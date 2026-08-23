@@ -259,6 +259,9 @@ impl VmBridge {
             field_names.clone(),
         );
         let state_obj_id = vm.insert_heap_object(instance);
+        // Plan 419: widget state 的永久 stake(bridges 与 VM 同寿命;每次
+        // call_handler 的 push/RET-sweep 在此之上配平)。
+        vm.rc_retain_id(state_obj_id);
 
         // Audit B12(b): record declared handler arities (root + children) so
         // dispatch can skip phantom string args at no-param handlers.
@@ -411,6 +414,9 @@ impl VmBridge {
             field_names.clone(),
         );
         let state_obj_id = vm.insert_heap_object(instance);
+        // Plan 419: widget state 的永久 stake(bridges 与 VM 同寿命;每次
+        // call_handler 的 push/RET-sweep 在此之上配平)。
+        vm.rc_retain_id(state_obj_id);
 
         // Audit B12(b): record declared handler arities (root + children) so
         // dispatch can skip phantom string args at no-param handlers.
@@ -886,6 +892,8 @@ impl VmBridge {
                                     storage: None,
                                 },
                             );
+                            // Plan 419: 字段持有列表引用。
+                            self.vm.rc_retain_id(id);
                             auto_val::Value::Int(id as i32)
                         }
                         other => other.clone(),
@@ -985,16 +993,12 @@ impl VmBridge {
         }
 
         let mut task = AutoTask::new(0, 4096, 0);
-        task.ram.push_i32(state_obj_id as i32);
+        self.vm.rc_push_id(&mut task, state_obj_id); // Plan 419
         for a in args {
             if let Value::Str(s) = a {
-                let idx = {
-                    let mut strings = self.vm.strings.write().unwrap();
-                    let idx = strings.len();
-                    strings.push(s.as_bytes().to_vec());
-                    idx
-                };
-                task.ram.push_str_idx(idx as u32);
+                // Plan 419/池去重一致性:走 add_string(原为裸 push,池漂移源)。
+                let idx = self.vm.add_string(s.as_bytes().to_vec());
+                self.vm.rc_push_str_idx(&mut task, idx as usize);
             } else {
                 push_value(&mut task.ram, a);
             }
@@ -1026,19 +1030,15 @@ impl VmBridge {
         // Push arguments left-to-right: __state (the state heap id) first, then
         // the handler's declared params. `call_fn_by_name` then sets up the call
         // frame; params are accessed as bp-(n_args+1) .. bp-2 (see LOAD_LOCAL).
-        task.ram.push_i32(self.state_obj_id as i32);
+        self.vm.rc_push_id(&mut task, self.state_obj_id); // Plan 419
         for a in args {
             // Strings must be interned into the VM strings pool and pushed as
             // their tagged index (the same encoding LOAD_STR / GET_FIELD use),
             // otherwise a payload like `.SelectDay(cell.date)` arrives as 0.
             if let Value::Str(s) = a {
-                let idx = {
-                    let mut strings = self.vm.strings.write().unwrap();
-                    let idx = strings.len();
-                    strings.push(s.as_bytes().to_vec());
-                    idx
-                };
-                task.ram.push_str_idx(idx as u32);
+                // Plan 419/池去重一致性:走 add_string(原为裸 push,池漂移源)。
+                let idx = self.vm.add_string(s.as_bytes().to_vec());
+                self.vm.rc_push_str_idx(&mut task, idx as usize);
             } else {
                 push_value(&mut task.ram, a);
             }

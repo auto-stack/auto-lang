@@ -1221,6 +1221,11 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
     for (_mod_name, init_addr) in &module_init_addrs {
         let init_task_id = vm.spawn_task(*init_addr, 65536);
         vm.run_task_loop().await;
+        // Plan 419: init 任务栈无人再读 —— 释放后移除。
+        if let Some(arc) = vm.tasks.get(&init_task_id) {
+            let mut t = arc.lock().await;
+            vm.rc_release_task_stack(&mut t);
+        }
         vm.tasks.remove(&init_task_id);
     }
 
@@ -1895,8 +1900,10 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
     let mut task = task_arc.lock().await;
 
     // Check if task had an error
-    if let Some(error) = &task.last_error {
-        return Err(crate::error::AutoError::Msg(error.clone()));
+    if let Some(error) = task.last_error.clone() {
+        // Plan 419: 出错任务的栈不再被读取 —— 整栈释放(含 state_vars)。
+        vm.rc_release_task_stack(&mut task);
+        return Err(crate::error::AutoError::Msg(error));
     }
 
     if task.ram.sp == 0 {
@@ -2059,6 +2066,10 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
             }
         }
     };
+
+    // Plan 419: 结果已提取 —— 释放该任务残余栈(含 state_vars;结果若为
+    // 堆 id,格式化已完成,其 stake 随整栈释放)。
+    vm.rc_release_task_stack(&mut task);
 
     Ok(result)
 }
@@ -5092,6 +5103,3 @@ pub use ui::{
 
 #[cfg(feature = "ui-iced")]
 pub use ui::iced::{IntoIcedElement, ComponentIced};
-
-#[cfg(feature = "ui-gpui")]
-pub use ui::gpui::{IntoGpuiElement, ComponentGpui, GpuiComponentState, VNodeEntity};

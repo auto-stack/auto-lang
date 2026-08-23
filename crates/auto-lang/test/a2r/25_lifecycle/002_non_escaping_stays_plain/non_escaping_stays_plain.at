@@ -1,0 +1,10 @@
+// Plan 419 §4.5: a local that never escapes (no capture, no return of a
+// reference) stays a plain Rust value — no Rc/RefCell overhead.
+fn main() {
+    let total int = 0
+    let items = List<int>.new([1, 2, 3])
+    for i in items {
+        total = total + i
+    }
+    print(total)
+}

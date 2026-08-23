@@ -569,6 +569,26 @@ impl HeapObject for SpecializedPair {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    // Plan 419: 携带 Value 的 pair 变体按 VmRef 递归释放。
+    fn child_refs(&self) -> Vec<u64> {
+        fn value_refs(v: &Value) -> Option<u64> {
+            match v {
+                Value::VmRef(r) => Some(r.id as u64),
+                _ => None,
+            }
+        }
+        match self {
+            SpecializedPair::IntValue { val, .. } => value_refs(val).into_iter().collect(),
+            SpecializedPair::ValueInt { key, .. } => value_refs(key).into_iter().collect(),
+            SpecializedPair::BoolValue { val, .. } => value_refs(val).into_iter().collect(),
+            SpecializedPair::ValueBool { key, .. } => value_refs(key).into_iter().collect(),
+            SpecializedPair::Generic { key, val } => {
+                value_refs(key).into_iter().chain(value_refs(val)).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -589,6 +609,18 @@ impl HeapObject for GenericInstanceData {
     /// Convert to mutable Any for downcasting
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    // Plan 419: 类型擦除字段中的 VmRef 是子引用(结构体实例/Option.Some/
+    // Result.Ok 等全部经 GenericInstanceData 存放)。
+    fn child_refs(&self) -> Vec<u64> {
+        self.fields
+            .iter()
+            .filter_map(|v| match v {
+                Value::VmRef(r) => Some(r.id as u64),
+                _ => None,
+            })
+            .collect()
     }
 }
 

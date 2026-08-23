@@ -176,6 +176,16 @@ impl crate::vm::heap_object::HeapObject for ObjectData {
     }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    // Plan 419: 字段中的 VmRef 是子引用。
+    fn child_refs(&self) -> Vec<u64> {
+        self.fields
+            .values()
+            .filter_map(|v| match v {
+                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 // ============================================================================
@@ -261,6 +271,17 @@ impl HeapObject for ListData<i32> {
     fn type_tag(&self) -> TypeTag { TypeTag::ListInt }
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    // Plan 419: ListData<i32> 以裸 i32 存引用(shim_iterator_next 把 VmRef
+    // 落成 r.id as i32),≥HEAP_ID_BASE 的元素按堆引用递归释放。
+    fn child_refs(&self) -> Vec<u64> {
+        self.elems
+            .iter()
+            .filter_map(|&e| {
+                let id = e as i64;
+                if id >= crate::vm::rc::HEAP_ID_BASE as i64 { Some(id as u64) } else { None }
+            })
+            .collect()
+    }
 }
 
 impl HeapObject for ListData<char> {
@@ -285,4 +306,14 @@ impl HeapObject for ListData<auto_val::Value> {
     fn type_tag(&self) -> TypeTag { TypeTag::ListValue }
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    // Plan 419: 元素中的 VmRef 是子引用。
+    fn child_refs(&self) -> Vec<u64> {
+        self.elems
+            .iter()
+            .filter_map(|v| match v {
+                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                _ => None,
+            })
+            .collect()
+    }
 }

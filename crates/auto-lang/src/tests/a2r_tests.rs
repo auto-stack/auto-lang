@@ -428,6 +428,12 @@ ext Store {
 
 // === 07_ownership ===
 #[test] fn test_07_ownership_001_borrow_view() { test_a2r("07_ownership/001_borrow_view").unwrap(); }
+
+// === 25_lifecycle (Plan 419 §4.5: 写捕获自动升级 / 非逃逸直值) ===
+#[test] fn test_25_lifecycle_001_ambiguous_closure_upgrades_rc() { test_a2r("25_lifecycle/001_ambiguous_closure_upgrades_rc").unwrap(); }
+#[test] fn test_25_lifecycle_002_non_escaping_stays_plain() { test_a2r("25_lifecycle/002_non_escaping_stays_plain").unwrap(); }
+#[test] fn test_25_lifecycle_003_copy_type_write_capture() { test_a2r("25_lifecycle/003_copy_type_write_capture").unwrap(); }
+#[test] fn test_25_lifecycle_004_read_capture_stays_plain() { test_a2r("25_lifecycle/004_read_capture_stays_plain").unwrap(); }
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }

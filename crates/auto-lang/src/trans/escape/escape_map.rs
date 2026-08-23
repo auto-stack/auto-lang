@@ -93,6 +93,10 @@ pub struct EscapeMap {
     decisions: HashMap<BindingId, OwnershipTier>,
     /// Reasons for non-borrow tiers, used in W0007 messages.
     reasons: HashMap<BindingId, String>,
+    /// Plan 419 §4.5: 闭包写捕获的绑定集合(捕获且被修改 → a2r 自动升级
+    /// Rc<RefCell<T>>;与普通 escape 的 RcRefCell tier 区分 —— 只有写捕获
+    /// 触发声明改写/访问改写)。
+    write_captures: std::collections::HashSet<BindingId>,
 }
 
 impl EscapeMap {
@@ -119,6 +123,29 @@ impl EscapeMap {
                 self.reasons.insert(id, reason.into());
             }
         }
+    }
+
+    /// Plan 419 §4.5: 标记写捕获绑定(同时升级 tier 为 RcRefCell)。
+    pub fn record_write_capture(&mut self, id: BindingId) {
+        self.record(id.clone(), OwnershipTier::RcRefCell, "closure write-capture (plan 419)");
+        self.write_captures.insert(id);
+    }
+
+    /// Plan 419 §4.6: decisions 表迭代(测试断言用)。
+    pub fn decisions_iter(&self) -> impl Iterator<Item = (&BindingId, &OwnershipTier)> {
+        self.decisions.iter()
+    }
+
+    /// Plan 419 §4.5: 全部写捕获绑定名。
+    pub fn write_capture_names(&self) -> Vec<Name> {
+        self.write_captures.iter().map(|id| id.name.clone()).collect()
+    }
+
+    /// Plan 419 §4.5: name 是否为写捕获绑定(任一深度,供闭包体内查询)。
+    pub fn is_write_capture(&self, name: &Name) -> bool {
+        self.write_captures
+            .iter()
+            .any(|id| id.name == *name)
     }
 
     /// Query the decision for a binding visible at the given scope depth.

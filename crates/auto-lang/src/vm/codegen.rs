@@ -223,6 +223,11 @@ pub struct Codegen {
     /// Stack allows proper nesting: inner closures can capture from outer closures
     pub captured_vars_stack: Vec<HashMap<String, usize>>,
 
+    /// Plan 419: 被 by-reference 捕获的局部槽位集合(CLOSURE capture_slots
+    /// 机制跨作用域读写创建者帧槽)。块尾释放(pop_scope 发射 PUSH_NIL+
+    /// STORE_LOCAL)跳过这些槽,避免闭包读槽被清。
+    pub byref_captured_slots: std::collections::HashSet<usize>,
+
     /// Plan 073: Loop exit tracking for break/continue statements
     /// Each nested loop has a Vec of jump placeholders that need to be patched
     /// when the loop exits
@@ -508,6 +513,7 @@ impl Codegen {
             var_types: HashMap::new(), // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
+            byref_captured_slots: std::collections::HashSet::new(),
             loop_exits: Vec::new(),
             loop_continue_positions: Vec::new(),
             loop_continues: Vec::new(),
@@ -845,6 +851,7 @@ impl Codegen {
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
+            byref_captured_slots: std::collections::HashSet::new(),
             loop_exits: Vec::new(),
             loop_continue_positions: Vec::new(),
             loop_continues: Vec::new(),
@@ -8717,10 +8724,35 @@ impl Codegen {
                 self.compile_closure(closure)?;
             }
             Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
-                // Plan 060/122: Ownership operators (.view, .mut, .move, .take)
-                // For MVP, just compile the inner expression
-                // TODO: In future, implement proper borrow checking and ownership semantics
-                self.compile_expr(inner)?;
+                // Plan 060/122 → Plan 419 §4.4 接线:
+                // - .view(共享读):直通 —— 只读访问,RC>1 无成本。
+                // - .mut(独占写):编译 inner 后发射 auto.rc.assert_unique
+                //   (动态兜底:RC>1 = Shared → RuntimeError)。
+                // - .move/.take:inner 为简单局部时,发射 PUSH_NIL+STORE_LOCAL
+                //   清源槽(防 double-drop;源槽读回 Nil)。
+                match expr {
+                    Expr::Mut(_) => {
+                        self.compile_expr(inner)?;
+                        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP
+                            .get("auto.rc.assert_unique")
+                        {
+                            self.emit(OpCode::CALL_NAT);
+                            self.emit_u16(id);
+                        }
+                    }
+                    Expr::Move(_) | Expr::Take(_) => {
+                        self.compile_expr(inner)?;
+                        if let Expr::Ident(name) = inner.as_ref() {
+                            if let Some(slot) = self.lookup_var(&name.to_string()) {
+                                self.emit(OpCode::PUSH_NIL);
+                                self.emit_store_loc(slot);
+                            }
+                        }
+                    }
+                    _ => {
+                        self.compile_expr(inner)?;
+                    }
+                }
             }
             // Plan 073: May<T> null coalesce operator: left ?? right
             Expr::NullCoalesce(left, right) => {
@@ -10817,8 +10849,28 @@ impl Codegen {
     }
 
     /// Pop the current scope
+    ///
+    /// Plan 419: 深于函数体的作用域(块/循环体)在弹栈时发射槽位释放
+    /// (PUSH_NIL + STORE_LOCAL:旧值 -1、槽置 Nil)。跳过 by-ref 捕获槽;
+    /// 函数体顶层作用域由 RET 帧扫描兜底,不在此发射(防双重释放);
+    /// break/continue/return 跳过释放点 → 泄漏(安全方向)。
     fn pop_scope(&mut self) {
         if self.scope_stack.len() > 1 {
+            if self.scope_stack.len() > 2 {
+                if let Some(scope) = self.scope_stack.last() {
+                    let slots: Vec<usize> = scope
+                        .values()
+                        .copied()
+                        .filter(|idx| !self.byref_captured_slots.contains(idx))
+                        .collect();
+                    for idx in slots {
+                        // emit_store_loc 需要 fn 上下文(参数 vs 局部判定);
+                        // config 模式无 fn 上下文时退化为 STORE_LOCAL 直发。
+                        self.emit(OpCode::PUSH_NIL);
+                        self.emit_store_loc(idx);
+                    }
+                }
+            }
             self.scope_stack.pop();
         }
     }
@@ -11599,6 +11651,10 @@ impl Codegen {
             let slot_offset = self.lookup_var(var_name)
                 .map(|idx| idx as u16)
                 .unwrap_or(0xFFFF); // 0xFFFF = no slot (fallback to env)
+            // Plan 419: 记录 by-ref 捕获槽,块尾释放跳过。
+            if slot_offset != 0xFFFF {
+                self.byref_captured_slots.insert(slot_offset as usize);
+            }
             self.code.extend_from_slice(&slot_offset.to_le_bytes());
         }
 

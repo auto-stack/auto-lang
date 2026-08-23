@@ -717,7 +717,7 @@ fn py_auto_marshal_return(
         let owned = py_val.clone().unbind();
         let handle = PyObjectHandle::new(type_name, owned);
         let id = vm.insert_heap_object(handle);
-        task.ram.push_nv(auto_val::encode_object(id as u32));
+        vm.rc_push(task, auto_val::encode_object(id as u32));
     }
     Ok(())
 }
@@ -740,7 +740,7 @@ fn py_dict_to_vm_heap(
 
     let wrapped = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("PyDict", obj);
     let id = vm.insert_heap_object(wrapped);
-    task.ram.push_nv(auto_val::encode_object(id as u32));
+    vm.rc_push(task, auto_val::encode_object(id as u32));
     Ok(())
 }
 

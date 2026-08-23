@@ -280,7 +280,7 @@ for_each_native!(gen_native_constants);
 
 /// int.and(mask) — Bitwise AND: val & mask
 /// Stack: [self, mask] -> result
-fn shim_int_and(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_and(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let mask = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     task.ram.push_i32(val & mask);
@@ -288,7 +288,7 @@ fn shim_int_and(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.or(mask) — Bitwise OR: val | mask
-fn shim_int_or(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let mask = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     task.ram.push_i32(val | mask);
@@ -296,7 +296,7 @@ fn shim_int_or(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.xor(mask) — Bitwise XOR: val ^ mask
-fn shim_int_xor(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_xor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let mask = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     task.ram.push_i32(val ^ mask);
@@ -305,7 +305,7 @@ fn shim_int_xor(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.not() — Bitwise NOT: ~val
 /// Stack: [self] -> result
-fn shim_int_not(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_not(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
     task.ram.push_i32(!val);
     Ok(())
@@ -313,7 +313,7 @@ fn shim_int_not(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.shl(n) — Logical left shift: val << n
 /// For n >= 32, the result is 0 (all bits shifted out).
-fn shim_int_shl(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_shl(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     // wrapping_shl masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
@@ -324,7 +324,7 @@ fn shim_int_shl(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.shr(n) — Logical right shift: val >> n (unsigned)
 /// For n >= 32, the result is 0 (all bits shifted out).
-fn shim_int_shr(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_shr(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
@@ -335,7 +335,7 @@ fn shim_int_shr(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.sar(n) — Arithmetic right shift: val >> n (preserves sign)
 /// For n >= 32, the result is sign-filled (0 if non-negative, -1 if negative).
-fn shim_int_sar(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_sar(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Sign-fill instead.
@@ -349,7 +349,7 @@ fn shim_int_sar(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.rol(n) — Rotate left
-fn shim_int_rol(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_rol(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.rotate_left(n as u32));
@@ -357,7 +357,7 @@ fn shim_int_rol(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.ror(n) — Rotate right
-fn shim_int_ror(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_ror(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.rotate_right(n as u32));
@@ -365,28 +365,28 @@ fn shim_int_ror(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.count_ones() — Population count
-fn shim_int_count_ones(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_count_ones(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.count_ones() as i32);
     Ok(())
 }
 
 /// int.leading_zeros() — Count leading zeros
-fn shim_int_leading_zeros(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_leading_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.leading_zeros() as i32);
     Ok(())
 }
 
 /// int.trailing_zeros() — Count trailing zeros
-fn shim_int_trailing_zeros(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_trailing_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.trailing_zeros() as i32);
     Ok(())
 }
 
 /// int.flip() — Bit-reverse (mirror all bits)
-fn shim_int_bitrev(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bitrev(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_i32();
     task.ram.push_i32(val.reverse_bits());
     Ok(())
@@ -395,7 +395,7 @@ fn shim_int_bitrev(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 // === Phase 4: Dynamic bitfield views ===
 
 /// int.bits_read(start, len) — Read bitfield: (val >> start) & ((1 << len) - 1)
-fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bit_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let len = task.ram.pop_i32();
     let start = task.ram.pop_i32();
     let val = task.ram.pop_i32();
@@ -407,7 +407,7 @@ fn shim_int_bit_read(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// int.bit_test(n) — Test bit n: (val >> n) & 1 → bool (1 or 0)
-fn shim_int_bit_test(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bit_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     // For n >= 32 or n < 0, the bit does not exist in an i32, so the result is false.
@@ -418,7 +418,7 @@ fn shim_int_bit_test(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.bit_on(n) — Set bit n: val | (1 << n)
 /// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
-fn shim_int_bit_on(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bit_on(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     let result = if n >= 0 && n < 32 { val | (1 << n) } else { val };
@@ -428,7 +428,7 @@ fn shim_int_bit_on(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.bit_off(n) — Clear bit n: val & !(1 << n)
 /// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
-fn shim_int_bit_off(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bit_off(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     let result = if n >= 0 && n < 32 { val & !(1 << n) } else { val };
@@ -438,7 +438,7 @@ fn shim_int_bit_off(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// int.bit_flip(n) — Toggle bit n: val ^ (1 << n)
 /// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
-fn shim_int_bit_flip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+fn shim_int_bit_flip(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let n = task.ram.pop_i32();
     let val = task.ram.pop_i32();
     let result = if n >= 0 && n < 32 { val ^ (1 << n) } else { val };
@@ -452,7 +452,7 @@ fn shim_int_bit_flip(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 macro_rules! math_unary_shim {
     ($name:ident, $method:ident) => {
-        pub fn $name(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+        pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let n = task.ram.pop_f64();
             task.ram.push_f64(n.$method());
             Ok(())
@@ -462,7 +462,7 @@ macro_rules! math_unary_shim {
 
 macro_rules! math_binary_shim {
     ($name:ident, $method:ident) => {
-        pub fn $name(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+        pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let exp = task.ram.pop_f64();
             let base = task.ram.pop_f64();
             task.ram.push_f64(base.$method(exp));
@@ -493,14 +493,16 @@ math_unary_shim!(shim_math_to_degrees, to_degrees);
 math_binary_shim!(shim_math_pow, powf);
 math_binary_shim!(shim_math_powf, powf);
 
-pub fn shim_math_powi(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let exp = task.ram.pop_i32();
+pub fn shim_math_powi(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let exp = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_exp = crate::vm::native::StakeGuard::new(vm, exp as i64 as u64);
     let base = task.ram.pop_f64();
     task.ram.push_f64(base.powi(exp));
     Ok(())
 }
 
-pub fn shim_math_atan2(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_math_atan2(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let x = task.ram.pop_f64();
     let y = task.ram.pop_f64();
     task.ram.push_f64(y.atan2(x));
@@ -566,7 +568,9 @@ fn vm_write(vm: &AutoVM, s: &str) {
 
 /// Read a string argument from the stack (tagged string index → text).
 fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
-    let nv = task.ram.pop_nv();
+    let nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
     if auto_val::is_string(nv) {
         let idx = auto_val::decode_string(nv);
         vm.get_string(idx)
@@ -587,7 +591,7 @@ pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     };
     // Push the result string into the pool and tag-push its index.
     let idx = vm.add_string(out.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -605,7 +609,7 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     match crate::ui::code_editor::code_editor_text(&key) {
         Some(text) => {
             let idx = vm.add_string(text.into_bytes());
-            crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+            vm.rc_push_str_idx(task, idx as usize);
             Ok(())
         }
         None => Err(VMError::RuntimeError(format!(
@@ -616,8 +620,8 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
 /// `code_editor_cursor_line(key) -> Int` (0-based line)
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_cursor_line(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let line = crate::ui::code_editor::code_editor_cursor(&key)
         .map(|(l, _, _)| l)
         .unwrap_or(0);
@@ -627,8 +631,8 @@ pub fn shim_code_editor_cursor_line(task: &mut AutoTask, _vm: &AutoVM) -> Result
 
 /// `code_editor_cursor_col(key) -> Int` (char column)
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let col = crate::ui::code_editor::code_editor_cursor(&key)
         .map(|(_, c, _)| c)
         .unwrap_or(0);
@@ -638,8 +642,8 @@ pub fn shim_code_editor_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<
 
 /// `code_editor_selection_len(key) -> Int` (bytes)
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_selection_len(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_selection_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let sel = crate::ui::code_editor::code_editor_cursor(&key)
         .map(|(_, _, s)| s)
         .unwrap_or(0);
@@ -649,8 +653,8 @@ pub fn shim_code_editor_selection_len(task: &mut AutoTask, _vm: &AutoVM) -> Resu
 
 /// `code_editor_find(key) -> Bool` — jump to the next regex match (wraps).
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_find(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let found = crate::ui::code_editor::code_editor_find(&key);
     task.ram.push_nv(auto_val::encode_bool(found));
     Ok(())
@@ -658,10 +662,10 @@ pub fn shim_code_editor_find(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// `code_editor_set_text(key, text)` — programmatic write (diff-guarded).
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Args push left-to-right: pop the LAST (text) first, then the key.
-    let text = pop_string_arg(task, _vm);
-    let key = pop_string_arg(task, _vm);
+    let text = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
     if !crate::ui::code_editor::code_editor_set_text(&key, &text) {
         return Err(VMError::RuntimeError(format!(
             "code_editor_set_text: no editor registered for key {key:?}"
@@ -676,8 +680,8 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<()
 
 /// `code_editor_undo(key) -> Bool` — true when an editor exists.
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_undo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_undo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_undo(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
@@ -685,8 +689,8 @@ pub fn shim_code_editor_undo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// `code_editor_redo(key) -> Bool`
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_redo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_redo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_redo(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
@@ -694,8 +698,8 @@ pub fn shim_code_editor_redo(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// `code_editor_select_all(key) -> Bool`
 #[cfg(feature = "code-editor")]
-pub fn shim_code_editor_select_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_select_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_select_all(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
@@ -703,8 +707,8 @@ pub fn shim_code_editor_select_all(task: &mut AutoTask, _vm: &AutoVM) -> Result<
 
 /// `code_editor_cut(key) -> Bool` — selection → OS clipboard, then delete.
 #[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
-pub fn shim_code_editor_cut(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_cut(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_clipboard_op(
         &key,
         crate::ui::code_editor::ClipboardOp::Cut,
@@ -715,8 +719,8 @@ pub fn shim_code_editor_cut(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VME
 
 /// `code_editor_copy(key) -> Bool` — selection → OS clipboard.
 #[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
-pub fn shim_code_editor_copy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_copy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_clipboard_op(
         &key,
         crate::ui::code_editor::ClipboardOp::Copy,
@@ -727,8 +731,8 @@ pub fn shim_code_editor_copy(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VM
 
 /// `code_editor_paste(key) -> Bool` — OS clipboard → insert at cursor.
 #[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
-pub fn shim_code_editor_paste(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let key = pop_string_arg(task, _vm);
+pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
     let ok = crate::ui::code_editor::code_editor_clipboard_op(
         &key,
         crate::ui::code_editor::ClipboardOp::Paste,
@@ -744,14 +748,14 @@ pub fn shim_code_editor_paste(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
 pub fn shim_clipboard_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let text = crate::ui::clipboard::clipboard_get().unwrap_or_default();
     let idx = vm.add_string(text.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
 /// `clipboard_set_text(text) -> Bool`
 #[cfg(feature = "ui-clipboard")]
-pub fn shim_clipboard_set_text(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let text = pop_string_arg(task, _vm);
+pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text = pop_string_arg(task, vm);
     let ok = crate::ui::clipboard::clipboard_set(&text);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
@@ -779,7 +783,7 @@ pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let idx = vm.add_string(path.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -796,7 +800,7 @@ pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let idx = vm.add_string(path.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
@@ -807,103 +811,103 @@ pub fn shim_file_basename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let path = pop_string_arg(task, vm);
     let base = path.rsplit(['/', '\\']).next().unwrap_or("").to_string();
     let idx = vm.add_string(base.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
 // Feature-off stubs: same signatures, clear runtime error.
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_text: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_cursor_line(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_cursor_line(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_cursor_col(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_cursor_col(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_selection_len(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_selection_len(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_selection_len: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_find(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_find(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_find: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_set_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_set_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_set_text: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_undo(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_undo(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_undo: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_redo(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_redo(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_redo: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_select_all(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_select_all(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_select_all: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_cut(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_cut(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
     ))
 }
 #[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_copy(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_copy(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
     ))
 }
 #[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_paste(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_code_editor_paste(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
     ))
 }
 #[cfg(not(feature = "ui-clipboard"))]
-pub fn shim_clipboard_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_clipboard_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "clipboard_text: the `ui-clipboard` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "ui-clipboard"))]
-pub fn shim_clipboard_set_text(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_clipboard_set_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "clipboard_set_text: the `ui-clipboard` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "ui-dialog"))]
-pub fn shim_dialog_open(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_dialog_open(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "dialog_open: the `ui-dialog` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "ui-dialog"))]
-pub fn shim_dialog_save(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_dialog_save(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "dialog_save: the `ui-dialog` feature is disabled".into(),
     ))
@@ -936,12 +940,12 @@ pub fn shim_console_log(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_console_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let text = crate::vm::ui_console::ui_console_lines(crate::vm::ui_console::DEFAULT_LINES);
     let idx = vm.add_string(text.into_bytes());
-    crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
 /// `console_clear() -> Bool` — drop all console lines.
-pub fn shim_console_clear(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_console_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     crate::vm::ui_console::ui_console_clear();
     task.ram.push_nv(auto_val::encode_bool(true));
     Ok(())
@@ -961,7 +965,7 @@ pub fn shim_shell_export(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Raises `VMError::ExitRequested` so the current run unwinds immediately;
 /// the host records the code for the process-exit propagation.
 pub fn shim_shell_exit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let code = auto_val::decode_i32(task.ram.pop_nv());
+    let code = auto_val::decode_i32(crate::vm::native::pop_arg_nv(task));
     if let Some(host) = &vm.host {
         host.exit(code);
     }
@@ -973,7 +977,9 @@ pub fn shim_shell_exit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Otherwise prints as an integer.
 pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
@@ -990,7 +996,9 @@ pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
@@ -1044,7 +1052,9 @@ pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Plan 377: 全值单槽化。f64/f32 各占 1 槽，弹出单个 NanoValue 按 tag 分派。
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_f64(nv) {
             // f64（非 nanboxed，直接位模式）
             let val = f64::from_bits(nv);
@@ -1091,7 +1101,9 @@ pub fn shim_print_u64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// - 数值 → to_string()
 pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         let tag = auto_val::tag_of(nv);
         // f64（非 nanboxed，直接位模式）
         if !auto_val::is_nanboxed(nv) {
@@ -1235,7 +1247,9 @@ pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
 /// If the value is non-negative and not a valid string index, prints as integer.
 pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
@@ -1289,7 +1303,9 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Same logic as shim_print_str but uses vm_write instead of vm_print.
 pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let str_index = auto_val::decode_string(nv);
             if let Some(bytes) = vm.get_string(str_index) {
@@ -1317,9 +1333,11 @@ pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_assert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         let is_true = if auto_val::is_bool(nv) {
             auto_val::decode_bool(nv)
         } else if auto_val::is_i32(nv) {
@@ -1339,7 +1357,9 @@ pub fn shim_assert(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 /// Used by #[vm] function stubs when no matching native implementation is found.
 pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let msg = {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
@@ -1354,8 +1374,12 @@ pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
 pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let right_nv = task.ram.pop_nv();
-        let left_nv = task.ram.pop_nv();
+        let right_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_right_nv = crate::vm::native::StakeGuard::nv(vm, right_nv);
+        let left_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_left_nv = crate::vm::native::StakeGuard::nv(vm, left_nv);
 
         let left_is_str = auto_val::is_string(left_nv);
         let right_is_str = auto_val::is_string(right_nv);
@@ -1388,8 +1412,12 @@ pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let right_nv = task.ram.pop_nv();
-        let left_nv = task.ram.pop_nv();
+        let right_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_right_nv = crate::vm::native::StakeGuard::nv(vm, right_nv);
+        let left_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_left_nv = crate::vm::native::StakeGuard::nv(vm, left_nv);
 
         let left_is_str = auto_val::is_string(left_nv);
         let right_is_str = auto_val::is_string(right_nv);
@@ -1446,11 +1474,13 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         // No arguments: empty ListData<i32>.
         let list: ListData<i32> = ListData::new();
         let list_id = vm.insert_heap_object(list);
-        task.ram.push_i32(list_id as i32);
+        vm.rc_push_id(task, list_id as u64); // Plan 419
         return Ok(());
     }
 
-    let arg = task.ram.pop_i32();
+    let arg = crate::vm::native::pop_arg_i32(task);
+    // Plan 419: 先克隆(含 retain)再释放参数 stake(读取必须先于释放)。
+    let _stake_arg = crate::vm::native::StakeGuard::new(vm, arg as i64 as u64);
 
     // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
     if let Some(arr_ref) = vm.get_heap_object(arg as u64) {
@@ -1465,15 +1495,23 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                     if let Value::Int(i) = v { list.push(*i); }
                 }
                 let list_id = vm.insert_heap_object(list);
-                task.ram.push_i32(list_id as i32);
+                vm.rc_push_id(task, list_id as u64); // Plan 419
             } else {
                 // Plan 320: use ListData<Value> for empty or mixed/struct lists.
+                // Plan 419: 克隆进新列表的 VmRef/裸 id 元素随容器持有 retain
+                // (arg 已按消费型释放,克隆引用若无 stake 会被级联回收)。
                 let mut list: ListData<Value> = ListData::new();
                 for v in arr.elems.iter() {
+                    match v {
+                        Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                        Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                            vm.rc_retain_id(*i as u64),
+                        _ => {}
+                    }
                     list.push(v.clone());
                 }
                 let list_id = vm.insert_heap_object(list);
-                task.ram.push_i32(list_id as i32);
+                vm.rc_push_id(task, list_id as u64); // Plan 419
             }
             return Ok(());
         }
@@ -1495,7 +1533,7 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         list.push(*elem);
     }
     let list_id = vm.insert_heap_object(list);
-    task.ram.push_i32(list_id as i32);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
     Ok(())
 }
 
@@ -1528,6 +1566,7 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         Value::Int(auto_val::decode_i32(elem_nv))
     };
     let list_id = task.ram.pop_i32() as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
 
     // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -1541,6 +1580,11 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 auto_val::decode_i32(elem_nv)
             };
+            // Plan 419: 裸 id 元素入容器 —— 容器获得持有一份(CALL_NAT 死区
+            // 结算会释放被弹出的参数槽,retain 与之配平)。
+            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_retain_id(stored as u64);
+            }
             list.push(stored);
             task.ram.push_i32(0);
             return Ok(());
@@ -1565,6 +1609,13 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
         // Plan 320: ListData<Value> (struct element lists like List<Note>)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: VmRef/裸 id 元素入容器,retain 配平死区结算。
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                    vm.rc_retain_id(*i as u64),
+                _ => {}
+            }
             list.push(elem_val);
             task.ram.push_i32(0);
             return Ok(());
@@ -1585,13 +1636,21 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             let elem = list.pop().unwrap_or(0);
+            // Plan 419: 元素离开容器 —— 容器 stake 死亡;裸 id 回栈为转移
+            // (push 不 +1,与容器侧 release 配平)。
+            if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_release_id(elem as u64);
+            }
             task.ram.push_i32(elem);
             return Ok(());
         }
@@ -1600,7 +1659,7 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
             if let Some(s) = list.pop() {
                 let idx = vm.add_string(s.into_bytes());
-                task.ram.push_str_idx(idx as u32);
+                vm.rc_push_str_idx(task, idx as usize);
             } else {
                 task.ram.push_i32(0);
             }
@@ -1609,6 +1668,13 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         // Plan 335: ListData<Value> (struct element lists)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
             if let Some(val) = list.pop() {
+                // Plan 419: 容器 stake 死亡(push_value 的 +1 使净效果为转移)。
+                match &val {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                        vm.rc_release_id(*i as u64),
+                    _ => {}
+                }
                 push_value(task, vm, &val);
             } else {
                 task.ram.push_i32(0);
@@ -1629,7 +1695,10 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -1661,7 +1730,10 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
@@ -1681,12 +1753,33 @@ pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 // Plan 077 Phase 5: Updated to use unified registry
 pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    
-    let list_id = task.ram.pop_i32() as u64;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 419: 被清空元素的容器 stake 逐个死亡。
+            for &e in &list.elems {
+                if (e as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    vm.rc_release_id(e as u64);
+                }
+            }
+            list.clear();
+        }
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 同上(VmRef/裸 id)。
+            for v in &list.elems {
+                match v {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                        vm.rc_release_id(*i as u64),
+                    _ => {}
+                }
+            }
             list.clear();
         }
     }
@@ -1711,18 +1804,39 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
     }
 }
 
+/// Plan 419: ListData<i32> 元素回栈 —— ≥HEAP_ID_BASE 的元素是裸堆 id,+1。
+/// (调用方持有 &AutoVM 时用本函数替代 push_tagged_value。)
+fn push_tagged_value_rc(vm: &AutoVM, task: &mut AutoTask, val: i32) {
+    if val < 0 {
+        let str_idx = (-(val) - 1) as u32;
+        vm.rc_push_str_idx(task, str_idx as usize);
+    } else {
+        vm.rc_push_id(task, val as u64);
+    }
+}
+
 /// Plan 335: 把 ListData<Value> 里取出的 `Value` 推回 VM 栈（nanbox 编码）。
 /// 用于 get/pop/remove 等 struct List 元素访问的返回值。
 /// VmRef → encode_object；Str → 新增 string pool 条目；Int → i32；
 /// Bool → encode_bool（Plan 406：裸 1/0 会让 is_bool 消费者失效）。
+/// Plan 419: VmRef/裸 id(≥4M 的 Int)入栈 +1 —— get(拷贝语义)与
+/// pop/remove(容器侧另行 release,转移语义)统一 +1。
 fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
     match val {
-        auto_val::Value::Int(i) => task.ram.push_i32(*i),
+        auto_val::Value::Int(i) => {
+            if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_push_id(task, *i as u64);
+            } else {
+                task.ram.push_i32(*i);
+            }
+        }
         auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
-        auto_val::Value::VmRef(r) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
+        auto_val::Value::VmRef(r) => {
+            vm.rc_push(task, auto_val::encode_object(r.id as u32));
+        }
         auto_val::Value::Str(s) => {
             let str_idx = vm.add_string(s.as_bytes().to_vec());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
         }
         _ => task.ram.push_i32(0), // Nil 等兜底为 0
     }
@@ -1766,8 +1880,12 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     {
-        let index_nv = task.ram.pop_nv();
-        let list_nv = task.ram.pop_nv();
+        let index_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_index_nv = crate::vm::native::StakeGuard::nv(vm, index_nv);
+        let list_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_list_nv = crate::vm::native::StakeGuard::nv(vm, list_nv);
         let index = if auto_val::is_i32(index_nv) { auto_val::decode_i32(index_nv) as usize } else { 0usize };
         let list_id = if auto_val::is_i32(list_nv) { auto_val::decode_i32(list_nv) as u64 } else { 0u64 };
 
@@ -1775,7 +1893,8 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let guard = obj.read().unwrap();
             if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                 if let Some(&val) = list.get(index) {
-                    push_tagged_value(&mut task.ram, val);
+                    // Plan 419: 元素仍在容器 —— 拷贝引用入栈 +1。
+                    push_tagged_value_rc(vm, task, val);
                 } else {
                     task.ram.push_i32(0);
                 }
@@ -1786,7 +1905,7 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
                 if let Some(s) = list.get(index) {
                     let idx = vm.add_string(s.clone().into_bytes());
-                    task.ram.push_str_idx(idx as u32);
+                    vm.rc_push_str_idx(task, idx as usize);
                 } else {
                     task.ram.push_i32(0);
                 }
@@ -1817,16 +1936,42 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.set(index, auto_val::decode_i32(elem_nv));
+            // Plan 419: 旧元素释放;新值 retain(死区结算配平)。
+            if let Some(&old) = list.get(index) {
+                if (old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    vm.rc_release_id(old as u64);
+                }
+            }
+            let stored = auto_val::decode_i32(elem_nv);
+            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_retain_id(stored as u64);
+            }
+            list.set(index, stored);
             task.ram.push_i32(0);
             return Ok(());
         }
         // Plan 335: ListData<Value> (struct element lists)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 同上。
+            if let Some(old) = list.get(index) {
+                match old {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                        vm.rc_release_id(*i as u64),
+                    _ => {}
+                }
+            }
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                    vm.rc_retain_id(*i as u64),
+                _ => {}
+            }
             list.set(index, elem_val);
             task.ram.push_i32(0);
             return Ok(());
@@ -1849,17 +1994,30 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let elem_val = nv_to_value(elem_nv);
     let index = task.ram.pop_i32() as usize;
     let list_id = task.ram.pop_i32() as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
 
     // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.insert(index, auto_val::decode_i32(elem_nv));
+            // Plan 419: 新值 retain(死区结算配平)。
+            let stored = auto_val::decode_i32(elem_nv);
+            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_retain_id(stored as u64);
+            }
+            list.insert(index, stored);
             task.ram.push_i32(0);
             return Ok(());
         }
         // Plan 335: ListData<Value> (struct element lists)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 新值 retain。
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                    vm.rc_retain_id(*i as u64),
+                _ => {}
+            }
             list.insert(index, elem_val);
             task.ram.push_i32(0);
             return Ok(());
@@ -1878,14 +2036,23 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let index = task.ram.pop_i32() as usize;
-    let list_id = task.ram.pop_i32() as u64;
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // First try heap_objects (ListData<i32> from List.new())
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             if let Some(elem) = list.remove(index) {
+                // Plan 419: 元素离开容器 —— 容器 stake 死亡;回栈为转移。
+                if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    vm.rc_release_id(elem as u64);
+                }
                 task.ram.push_i32(elem);
                 return Ok(());
             }
@@ -1893,6 +2060,13 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         // Plan 335: ListData<Value> (struct element lists)
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
             if let Some(val) = list.remove(index) {
+                // Plan 419: 容器 stake 死亡(push_value +1 → 净转移)。
+                match &val {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                        vm.rc_release_id(*i as u64),
+                    _ => {}
+                }
                 push_value(task, vm, &val);
                 return Ok(());
             }
@@ -1907,9 +2081,13 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Drop/free the list.
 /// Stack: list_id -> result (0)
 // Plan 077 Phase 5: Updated to use unified registry
+// Plan 419: 语义更新 —— 无条件 remove 改为 rc 释放(RC 归零才真回收,
+// 兼容"手动提前释放"直觉;多持有时只减一)。
 pub fn shim_list_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let list_id = task.ram.pop_i32() as u64;
-    vm.remove_heap_object(list_id);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+    vm.rc_release_id(list_id);
 
     // Return success (0)
     task.ram.push_i32(0);
@@ -1921,8 +2099,13 @@ pub fn shim_list_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let additional = task.ram.pop_i32() as usize;
-    let list_id = task.ram.pop_i32() as u64;
+    let additional = crate::vm::native::pop_arg_i32(task) as usize;
+
+
+    let _stake_additional = crate::vm::native::StakeGuard::new(vm, additional as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
@@ -2027,16 +2210,20 @@ fn vm_to_printable_bool(val: i32) -> i32 {
 /// List.map(closure) -> new List
 /// Stack: closure_id, list_id -> result_list_id
 pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         let mut results = Vec::with_capacity(elements.len());
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            results.push(task.ram.pop_i32());
+            results.push(crate::vm::native::pop_arg_i32(task));
         }
         let new_id = create_list_from_i32(vm, results);
         task.ram.push_i32(new_id as i32);
@@ -2049,7 +2236,9 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        let ret_nv = task.ram.pop_nv();
+        let ret_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_ret_nv = crate::vm::native::StakeGuard::nv(vm, ret_nv);
         results.push(nv_to_value(ret_nv));
     }
     let new_id = create_list_from_value(vm, results);
@@ -2060,16 +2249,22 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// List.filter(closure) -> new List
 /// Stack: closure_id, list_id -> result_list_id
 pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         let mut results = Vec::new();
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            let predicate = task.ram.pop_i32();
+            let predicate = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_predicate = crate::vm::native::StakeGuard::new(vm, predicate as i64 as u64);
             if vm_is_truthy(predicate) {
                 results.push(elem);
             }
@@ -2085,7 +2280,9 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        let predicate = task.ram.pop_i32();
+        let predicate = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_predicate = crate::vm::native::StakeGuard::new(vm, predicate as i64 as u64);
         if vm_is_truthy(predicate) {
             results.push(elem.clone());
         }
@@ -2098,15 +2295,19 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// List.for_each(closure) -> void
 /// Stack: closure_id, list_id -> 0
 pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            task.ram.pop_i32(); // Discard result
+            { let d = crate::vm::native::pop_arg_i32(task); vm.rc_release_id(d as u64); } // Plan 419: 丢弃即释放
         }
         task.ram.push_i32(0);
         return Ok(());
@@ -2117,7 +2318,10 @@ pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        task.ram.pop_nv(); // Discard result
+        let _disc = crate::vm::native::pop_arg_nv(task);
+
+        let _stake__disc = crate::vm::native::StakeGuard::nv(vm, _disc);
+        vm.rc_release(_disc); // Plan 419: 丢弃的结果若为引用,-1
     }
     task.ram.push_i32(0);
     Ok(())
@@ -2126,15 +2330,21 @@ pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// List.find(closure) -> ?T (found value or -1 for None)
 /// Stack: closure_id, list_id -> result
 pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            let found = task.ram.pop_i32();
+            let found = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
             if vm_is_truthy(found) {
                 task.ram.push_i32(elem);
                 return Ok(());
@@ -2149,7 +2359,9 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        let found = task.ram.pop_i32();
+        let found = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
         if vm_is_truthy(found) {
             push_value(task, vm, elem);
             return Ok(());
@@ -2162,15 +2374,21 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// List.any(closure) -> bool
 /// Stack: closure_id, list_id -> bool (1/0)
 pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            let result = task.ram.pop_i32();
+            let result = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
             if vm_is_truthy(result) {
                 task.ram.push_nv(auto_val::encode_bool(true));
                 return Ok(());
@@ -2185,7 +2403,9 @@ pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        let result = task.ram.pop_i32();
+        let result = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
         if vm_is_truthy(result) {
             task.ram.push_nv(auto_val::encode_bool(true));
             return Ok(());
@@ -2198,15 +2418,21 @@ pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// List.all(closure) -> bool
 /// Stack: closure_id, list_id -> bool (1/0)
 pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         for elem in elements {
-            task.ram.push_i32(elem);
+            push_tagged_value_rc(vm, task, elem);
             vm.call_closure(task, closure_id, 1)?;
-            let result = task.ram.pop_i32();
+            let result = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
             if !vm_is_truthy(result) {
                 task.ram.push_nv(auto_val::encode_bool(false));
                 return Ok(());
@@ -2221,7 +2447,9 @@ pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     for elem in &elements {
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 1)?;
-        let result = task.ram.pop_i32();
+        let result = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
         if !vm_is_truthy(result) {
             task.ram.push_nv(auto_val::encode_bool(false));
             return Ok(());
@@ -2234,9 +2462,15 @@ pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// List.reduce(init, closure) -> accumulated value
 /// Stack: closure_id, init_val, list_id -> result
 pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let closure_id = task.ram.pop_i32() as u32;
-    let init_val = task.ram.pop_i32();
-    let list_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let init_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_init_val = crate::vm::native::StakeGuard::new(vm, init_val as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Fast path: i32 elements
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
@@ -2245,7 +2479,7 @@ pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             task.ram.push_i32(acc);
             task.ram.push_i32(elem);
             vm.call_closure(task, closure_id, 2)?;
-            acc = task.ram.pop_i32();
+            acc = crate::vm::native::pop_arg_i32(task);
         }
         task.ram.push_i32(acc);
         return Ok(());
@@ -2258,7 +2492,9 @@ pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         push_value(task, vm, &acc);
         push_value(task, vm, elem);
         vm.call_closure(task, closure_id, 2)?;
-        let ret_nv = task.ram.pop_nv();
+        let ret_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_ret_nv = crate::vm::native::StakeGuard::nv(vm, ret_nv);
         acc = nv_to_value(ret_nv);
     }
     push_value(task, vm, &acc);
@@ -2272,14 +2508,16 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
     // Pop separator (string pool tag)
-    let sep_idx = decode_str_idx_nv(task.ram.pop_nv());
+    let sep_idx = decode_str_idx_nv(crate::vm::native::pop_arg_nv(task));
     let separator = vm.strings.read().unwrap()
         .get(sep_idx)
         .map(|b| String::from_utf8_lossy(b).to_string())
         .unwrap_or_default();
 
     // Pop list_id
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
@@ -2294,14 +2532,14 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             }).collect();
             let joined = parts.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
         // Try ListData<String>
         if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
             let joined = list.elems.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
         // Try ListData<i32> as fallback
@@ -2309,14 +2547,14 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             let parts: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
             let joined = parts.join(&separator);
             let str_idx = vm.add_string(joined.into_bytes());
-            task.ram.push_str_idx(str_idx as u32);
+            vm.rc_push_str_idx(task, str_idx as usize);
             return Ok(());
         }
     }
 
     // Fallback: return empty string
     let str_idx = vm.add_string(Vec::new());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -2325,9 +2563,14 @@ pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let elem_nv = task.ram.pop_nv();
+    let elem_nv = crate::vm::native::pop_arg_nv(task);
+
+
+    let _stake_elem_nv = crate::vm::native::StakeGuard::nv(vm, elem_nv);
     let elem_val = nv_to_value(elem_nv);
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Plan 335: 统一在 ListData<i32> / ListData<Value> / heap ListData（array
     // 字面量已并入，Plan 390 §15 H3b）上查找。
@@ -2353,7 +2596,10 @@ pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
     if let Some(obj) = vm.get_heap_object(list_id) {
@@ -2387,8 +2633,13 @@ pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let _closure_id = task.ram.pop_i32();
-    let list_id = task.ram.pop_i32() as u64;
+    let _closure_id = crate::vm::native::pop_arg_i32(task);
+
+
+    let _stake__closure_id = crate::vm::native::StakeGuard::new(vm, _closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(list_id) {
         let mut guard = obj.write().unwrap();
@@ -2421,8 +2672,12 @@ pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Plan 200 Task 3.3
 pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::generic_registry::GenericInstanceData;
-    let closure_id = task.ram.pop_i32() as u32;
-    let result_id = task.ram.pop_i32() as u64;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let result_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_result_id = crate::vm::native::StakeGuard::new(vm, result_id as i64 as u64);
 
     // Look up the Result heap object
     let obj = vm.get_heap_object(result_id)
@@ -2442,12 +2697,14 @@ pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         // Call closure with the error value as argument
         task.ram.push_i32(err_val);
         vm.call_closure(task, closure_id, 1)?;
-        let new_err_val = task.ram.pop_i32();
+        let new_err_val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_new_err_val = crate::vm::native::StakeGuard::new(vm, new_err_val as i64 as u64);
 
         // Wrap back in Result.Err heap object
         let new_instance = GenericInstanceData::new("Result.Err".to_string(), vec![auto_val::Value::Int(new_err_val)]);
         let new_id = vm.insert_heap_object(new_instance);
-        task.ram.push_i32(new_id as i32);
+        vm.rc_push_id(task, new_id as u64); // Plan 419
     } else {
         // Ok — pass through unchanged
         drop(guard);
@@ -2467,7 +2724,10 @@ pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::sync::atomic::Ordering;
     use crate::vm::engine::{Iterator, ListIterator};
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
     // Allocate new iterator ID
     let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
@@ -2494,7 +2754,10 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::types::ListData;
     use crate::vm::engine::Iterator;
 
-    let iterator_id = task.ram.pop_i32() as u32;
+    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
 
     // Plan 076 Phase 3: Always return i32 by extracting Int from Value
     // Get the iterator (need to clone to update)
@@ -2890,7 +3153,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 match chunk_result {
                     Some(chunk) => {
                         let idx = vm.add_string(chunk.into_bytes());
-                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                        vm.rc_push_str_idx(task, idx as usize);
                     }
                     None => {}
                 }
@@ -2932,7 +3195,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 match event {
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
                         let idx = vm.add_string(s.into_bytes());
-                        task.ram.push_nv(auto_val::encode_string(idx as u32));
+                        vm.rc_push_str_idx(task, idx as usize);
                     }
                     Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
                     | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_)) => {
@@ -2996,6 +3259,10 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         -1
     };
 
+    // Plan 419: 元素仍在源容器 —— 裸堆 id 结果入栈 +1。
+    if (result as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_retain_id(result as u64);
+    }
     task.ram.push_i32(result);
     Ok(())
 }
@@ -3013,8 +3280,12 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 
     // Stack: func_addr, iterator_id
     // Pop in reverse order (stack is LIFO)
-    let func_addr = task.ram.pop_i32() as u32;
-    let source_iterator_id = task.ram.pop_i32() as u32;
+    let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
+    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_source_iterator_id = crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
 
     // Verify source iterator exists
     if !vm.iterators.contains_key(&source_iterator_id) {
@@ -3052,8 +3323,12 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 
     // Stack: func_addr, iterator_id
     // Pop in reverse order (stack is LIFO)
-    let func_addr = task.ram.pop_i32() as u32;
-    let source_iterator_id = task.ram.pop_i32() as u32;
+    let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
+    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_source_iterator_id = crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
 
     // Verify source iterator exists
     if !vm.iterators.contains_key(&source_iterator_id) {
@@ -3085,7 +3360,10 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use std::sync::atomic::Ordering;
     use crate::vm::engine::{Iterator, EnumerateIterator};
 
-    let source_iterator_id = task.ram.pop_i32() as u32;
+    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+
+    let _stake_source_iterator_id = crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
 
     if !vm.iterators.contains_key(&source_iterator_id) {
         task.ram.push_i32(-1);
@@ -3117,7 +3395,10 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     use crate::vm::engine::Iterator;
         use crate::vm::types::ListData;
 
-    let iterator_id = task.ram.pop_i32() as u32;
+    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
 
     // Collect all elements from the iterator
     let mut elements = Vec::new();
@@ -3159,7 +3440,7 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let list_id = vm.insert_heap_object(list_data);
 
     // Return list_id as i32 (lower 32 bits only for MVP)
-    task.ram.push_i32(list_id as i32);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
 
     Ok(())
 }
@@ -3173,9 +3454,16 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     use crate::vm::engine::Iterator;
         use crate::vm::types::ListData;
 
-    let iterator_id = task.ram.pop_i32() as u32;
-    let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
-    let initial = task.ram.pop_i32();
+    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+    let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
+    let initial = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_initial = crate::vm::native::StakeGuard::new(vm, initial as i64 as u64);
 
     let mut result = initial;
 
@@ -3220,8 +3508,13 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::engine::Iterator;
         use crate::vm::types::ListData;
 
-    let iterator_id = task.ram.pop_i32() as u32;
-    let _func_addr = task.ram.pop_i32() as u32; // Not used in MVP
+    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+    let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
 
     let mut result = -1; // Default: not found
 
@@ -3268,7 +3561,7 @@ pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let map = SpecializedHashMap::new("value");  // Use StringValue variant for generic storage
     let map_id = vm.insert_heap_object(map);
 
-    task.ram.push_i32(map_id as i32);
+    vm.rc_push_id(task, map_id as u64); // Plan 419
     Ok(())
 }
 
@@ -3284,6 +3577,7 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         let value_nv = task.ram.pop_nv();
         let key_idx = task.ram.pop_str_idx();
         let map_id = task.ram.pop_i32() as u64;
+let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id);
         if let Some(obj) = vm.get_heap_object(map_id) {
             let strings = vm.strings.read().unwrap();
             let key_bytes = strings.get(key_idx).cloned()
@@ -3306,6 +3600,11 @@ pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             drop(strings);
             let mut guard = obj.write().unwrap();
             if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                // Plan 419: 旧值 VmRef 释放;新值 VmRef retain(死区结算配平)。
+                if let Some(old) = map.get(&key_str) {
+                    if let Value::VmRef(r) = old { vm.rc_release_id(r.id as u64); }
+                }
+                if let Value::VmRef(r) = &value { vm.rc_retain_id(r.id as u64); }
                 map.insert(key_str, value).map_err(|e| VMError::RuntimeError(e))?;
             }
         }
@@ -3348,6 +3647,7 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         let map_id = if auto_val::is_i32(map_nv) { auto_val::decode_i32(map_nv) as u64 }
                      else if auto_val::is_object(map_nv) { auto_val::decode_object(map_nv) as u64 }
                      else { 0 };
+let _stake_map_id = crate::vm::native::StakeGuard::nv(vm, map_nv);
         if let Some(obj) = vm.get_heap_object(map_id) {
             let key_bytes = vm.strings.read().unwrap().get(key_str_idx).cloned()
                 .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
@@ -3355,6 +3655,11 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             drop(key_bytes);
             let mut guard = obj.write().unwrap();
             if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                // Plan 419: 旧值 VmRef 释放;新值 VmRef retain。
+                if let Some(old) = map.get(&key_str) {
+                    if let Value::VmRef(r) = old { vm.rc_release_id(r.id as u64); }
+                }
+                if let Value::VmRef(r) = &value { vm.rc_retain_id(r.id as u64); }
                 map.insert(key_str, value)
                     .map_err(|e| VMError::RuntimeError(e))?;
             }
@@ -3369,7 +3674,9 @@ pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3395,12 +3702,12 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
                         return Ok(());
                     }
                     auto_val::Value::VmRef(vm_ref) => {
                         {
-                            task.ram.push_nv(auto_val::encode_object(vm_ref.id as u32));
+                            vm.rc_push(task, auto_val::encode_object(vm_ref.id as u32));
                         }
                         return Ok(());
                     }
@@ -3417,7 +3724,7 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     // Use contains_key to distinguish "missing" from "empty value".
     {
         let str_idx = vm.add_string(Vec::new()); // empty string
-        task.ram.push_str_idx(str_idx as u32);
+        vm.rc_push_str_idx(task, str_idx as usize);
     }
     Ok(())
 }
@@ -3426,7 +3733,9 @@ pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: hashmap_id, key_str_id -> value (or nil if not found)
 pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3457,7 +3766,9 @@ pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3483,7 +3794,9 @@ pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let mut guard = obj.write().unwrap();
@@ -3500,7 +3813,13 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                     }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
+                        return Ok(());
+                    }
+                    // Plan 419: VmRef 值离开容器且不回栈 —— stake 死亡。
+                    auto_val::Value::VmRef(r) => {
+                        vm.rc_release_id(r.id as u64);
+                        task.ram.push_i32(0);
                         return Ok(());
                     }
                     _ => {
@@ -3523,7 +3842,10 @@ pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Stack: hashmap_id -> size
 pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let size = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3544,11 +3866,18 @@ pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Stack: hashmap_id -> result (0)
 pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let mut guard = obj.write().unwrap();
         if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            // Plan 419: 被清空条目的 VmRef stake 逐个死亡。
+            for id in map.value_refs() {
+                vm.rc_release_id(id);
+            }
             map.clear();
         }
     }
@@ -3559,16 +3888,21 @@ pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
 /// Drop the HashMap (no-op for now, heap objects are managed by Arc)
 /// Stack: hashmap_id -> result (0)
-pub fn shim_hashmap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // No-op: heap objects are managed by Arc<RwLock<>>
-    // When the last reference is dropped, the object is automatically freed
+/// Plan 419: 语义更新 —— rc 释放(RC 归零才真回收,"手动提前释放"直觉)。
+pub fn shim_hashmap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+    vm.rc_release_id(map_id);
     Ok(())
 }
 
 /// Check if HashMap is empty
 /// Stack: hashmap_id -> bool (1 if empty, 0 if not)
 pub fn shim_hashmap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3588,9 +3922,13 @@ pub fn shim_hashmap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Get value from HashMap with default fallback
 /// Stack: hashmap_id, key_str_id, default_value -> value
 pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let default_val = task.ram.pop_i32();
+    let default_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_default_val = crate::vm::native::StakeGuard::new(vm, default_val as i64 as u64);
     let key_str_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3606,7 +3944,7 @@ pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
                     auto_val::Value::Bool(b) => { task.ram.push_i32(if b { 1 } else { 0 }); return Ok(()); }
                     auto_val::Value::Str(s) => {
                         let str_idx = vm.add_string(s.as_bytes().to_vec());
-                        task.ram.push_str_idx(str_idx as u32);
+                        vm.rc_push_str_idx(task, str_idx as usize);
                         return Ok(());
                     }
                     _ => {}
@@ -3622,7 +3960,9 @@ pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Get all keys from a HashMap as a List of strings
 /// Stack: hashmap_id -> list_id (List of string keys)
 pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -3644,7 +3984,7 @@ pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
                 list.push(auto_val::Value::Str(auto_val::AutoStr::from(key.as_str())));
             }
             let list_id = vm.insert_heap_object(list);
-            task.ram.push_i32(list_id as i32);
+            vm.rc_push_id(task, list_id as u64); // Plan 419
             return Ok(());
         }
     }
@@ -3653,7 +3993,7 @@ pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     use crate::vm::types::ListData;
     let list: ListData<auto_val::Value> = ListData::new();
     let list_id = vm.insert_heap_object(list);
-    task.ram.push_i32(list_id as i32);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
     Ok(())
 }
 
@@ -3667,7 +4007,7 @@ pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let set = SpecializedHashSet::new();
     let set_id = vm.insert_heap_object(set);
 
-    task.ram.push_i32(set_id as i32);
+    vm.rc_push_id(task, set_id as u64); // Plan 419
     Ok(())
 }
 
@@ -3675,7 +4015,9 @@ pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key = {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv) as usize;
             vm.strings.read().unwrap().get(idx).cloned()
@@ -3686,7 +4028,10 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         }
     };
 
-    let set_id = task.ram.pop_i32() as u64;
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(set_id) {
         let mut guard = obj.write().unwrap();
@@ -3703,7 +4048,9 @@ pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key = {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv) as usize;
             vm.strings.read().unwrap().get(idx).cloned()
@@ -3714,7 +4061,10 @@ pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
     };
 
-    let set_id = task.ram.pop_i32() as u64;
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(set_id) {
         let guard = obj.read().unwrap();
@@ -3735,7 +4085,9 @@ pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Stack: hashset_id, elem_str_id -> result (0)
 pub fn shim_hashset_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let elem_str_idx = task.ram.pop_str_idx();
-    let set_id = task.ram.pop_i32() as u64;
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(set_id) {
         let elem_bytes = vm.strings.read().unwrap().get(elem_str_idx).cloned()
@@ -3756,7 +4108,9 @@ pub fn shim_hashset_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Get the number of elements
 /// Stack: hashset_id -> size
 pub fn shim_hashset_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let set_id = task.ram.pop_i32() as u64;
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
 
     let size = if let Some(obj) = vm.get_heap_object(set_id) {
         let guard = obj.read().unwrap();
@@ -3776,7 +4130,9 @@ pub fn shim_hashset_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Clear all elements
 /// Stack: hashset_id -> result (0)
 pub fn shim_hashset_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let set_id = task.ram.pop_i32() as u64;
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(set_id) {
         let mut guard = obj.write().unwrap();
@@ -3791,8 +4147,12 @@ pub fn shim_hashset_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 
 /// Drop the HashSet (no-op for now, heap objects are managed by Arc)
 /// Stack: hashset_id -> result (0)
-pub fn shim_hashset_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // No-op: heap objects are managed by Arc<RwLock<>>
+pub fn shim_hashset_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+    vm.rc_release_id(set_id);
     Ok(())
 }
 
@@ -3803,12 +4163,14 @@ pub fn shim_hashset_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 /// Create a new StringBuilder
 /// Stack: capacity -> sb_id
 pub fn shim_stringbuilder_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _capacity = task.ram.pop_i32() as usize;
+    let _capacity = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
 
     let sb = crate::vm::collections::SpecializedStringBuilder::with_capacity(_capacity.max(16));
     let sb_id = vm.insert_heap_object(sb);
 
-    task.ram.push_i32(sb_id as i32);
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
     Ok(())
 }
 
@@ -3816,7 +4178,9 @@ pub fn shim_stringbuilder_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Stack: sb_id, str_id -> result (0)
 pub fn shim_stringbuilder_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_idx = task.ram.pop_str_idx();
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let bytes = vm.strings.read().unwrap().get(str_idx).cloned()
@@ -3837,8 +4201,12 @@ pub fn shim_stringbuilder_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 /// Append an integer to the StringBuilder
 /// Stack: sb_id, int_val -> result (0)
 pub fn shim_stringbuilder_append_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let int_val = task.ram.pop_i32();
-    let sb_id = task.ram.pop_i32() as u64;
+    let int_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_int_val = crate::vm::native::StakeGuard::new(vm, int_val as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -3854,8 +4222,12 @@ pub fn shim_stringbuilder_append_int(task: &mut AutoTask, vm: &AutoVM) -> Result
 /// Append a character to the StringBuilder
 /// Stack: sb_id, char_val -> result (0)
 pub fn shim_stringbuilder_append_char(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let char_bits = task.ram.pop_i32();
-    let sb_id = task.ram.pop_i32() as u64;
+    let char_bits = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_bits = crate::vm::native::StakeGuard::new(vm, char_bits as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     // Decode character (char is stored as i32 representing a Unicode code point)
     if let Some(ch) = char::from_u32(char_bits as u32) {
@@ -3874,7 +4246,9 @@ pub fn shim_stringbuilder_append_char(task: &mut AutoTask, vm: &AutoVM) -> Resul
 /// Get the length of the StringBuilder content
 /// Stack: sb_id -> length
 pub fn shim_stringbuilder_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let len = if let Some(obj) = vm.get_heap_object(sb_id) {
         let guard = obj.read().unwrap();
@@ -3894,7 +4268,9 @@ pub fn shim_stringbuilder_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Clear the StringBuilder
 /// Stack: sb_id -> result (0)
 pub fn shim_stringbuilder_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -3909,14 +4285,21 @@ pub fn shim_stringbuilder_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 
 /// Drop the StringBuilder (no-op, managed by Arc)
 /// Stack: sb_id -> result (0)
-pub fn shim_stringbuilder_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_stringbuilder_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+    vm.rc_release_id(sb_id);
     Ok(())
 }
 
 /// Build the final string from StringBuilder
 /// Stack: sb_id -> str_id (tagged string index)
 pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let result_str = if let Some(obj) = vm.get_heap_object(sb_id) {
         let guard = obj.read().unwrap();
@@ -3934,7 +4317,7 @@ pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     vm.strings.write().unwrap().push(result_str.into_bytes());
 
     // Return as tagged string index
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -3948,7 +4331,7 @@ pub fn shim_vecdeque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let deque = crate::vm::collections::SpecializedVecDeque::new();
     let deque_id = vm.insert_heap_object(deque);
 
-    task.ram.push_i32(deque_id as i32);
+    vm.rc_push_id(task, deque_id as u64); // Plan 419
     Ok(())
 }
 
@@ -3957,6 +4340,7 @@ pub fn shim_vecdeque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 pub fn shim_vecdeque_push_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let elem = task.ram.pop_i32();
     let deque_id = task.ram.pop_i32() as u64;
+    let _stake_deque = crate::vm::native::StakeGuard::new(vm, deque_id);
 
     if let Some(obj) = vm.get_heap_object(deque_id) {
         let mut guard = obj.write().unwrap();
@@ -3974,6 +4358,7 @@ pub fn shim_vecdeque_push_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_vecdeque_push_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let elem = task.ram.pop_i32();
     let deque_id = task.ram.pop_i32() as u64;
+    let _stake_deque = crate::vm::native::StakeGuard::new(vm, deque_id);
 
     if let Some(obj) = vm.get_heap_object(deque_id) {
         let mut guard = obj.write().unwrap();
@@ -3989,7 +4374,9 @@ pub fn shim_vecdeque_push_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// Pop an element from the back
 /// Stack: deque_id -> elem (or 0 if empty)
 pub fn shim_vecdeque_pop_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(deque_id) {
         let mut guard = obj.write().unwrap();
@@ -4009,7 +4396,9 @@ pub fn shim_vecdeque_pop_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Pop an element from the front
 /// Stack: deque_id -> elem (or 0 if empty)
 pub fn shim_vecdeque_pop_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(deque_id) {
         let mut guard = obj.write().unwrap();
@@ -4029,7 +4418,9 @@ pub fn shim_vecdeque_pop_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Get the front element
 /// Stack: deque_id -> elem (or 0 if empty)
 pub fn shim_vecdeque_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(deque_id) {
         let guard = obj.read().unwrap();
@@ -4049,7 +4440,9 @@ pub fn shim_vecdeque_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Get the back element
 /// Stack: deque_id -> elem (or 0 if empty)
 pub fn shim_vecdeque_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(deque_id) {
         let guard = obj.read().unwrap();
@@ -4069,7 +4462,9 @@ pub fn shim_vecdeque_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Get the size
 /// Stack: deque_id -> size
 pub fn shim_vecdeque_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let size = if let Some(obj) = vm.get_heap_object(deque_id) {
         let guard = obj.read().unwrap();
@@ -4089,7 +4484,9 @@ pub fn shim_vecdeque_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Check if empty
 /// Stack: deque_id -> is_empty (1 or 0)
 pub fn shim_vecdeque_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     let is_empty = if let Some(obj) = vm.get_heap_object(deque_id) {
         let guard = obj.read().unwrap();
@@ -4109,7 +4506,9 @@ pub fn shim_vecdeque_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Clear the deque
 /// Stack: deque_id -> result (0)
 pub fn shim_vecdeque_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let deque_id = task.ram.pop_i32() as u64;
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(deque_id) {
         let mut guard = obj.write().unwrap();
@@ -4124,7 +4523,12 @@ pub fn shim_vecdeque_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 
 /// Drop the VecDeque (no-op, managed by Arc)
 /// Stack: deque_id -> result (0)
-pub fn shim_vecdeque_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_vecdeque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+    vm.rc_release_id(deque_id);
     Ok(())
 }
 
@@ -4138,7 +4542,7 @@ pub fn shim_btreemap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let map = crate::vm::collections::SpecializedBTreeMap::new();
     let map_id = vm.insert_heap_object(map);
 
-    task.ram.push_i32(map_id as i32);
+    vm.rc_push_id(task, map_id as u64); // Plan 419
     Ok(())
 }
 
@@ -4148,6 +4552,7 @@ pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let value = task.ram.pop_i32();
     let key_idx = task.ram.pop_str_idx();
     let map_id = task.ram.pop_i32() as u64;
+    let _stake_map = crate::vm::native::StakeGuard::new(vm, map_id);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
@@ -4169,7 +4574,9 @@ pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: btreemap_id, key_str_id -> value (0 if not found)
 pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4194,7 +4601,9 @@ pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Stack: btreemap_id, key_str_id -> result (1 if exists, 0 otherwise)
 pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4219,7 +4628,9 @@ pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Stack: btreemap_id, key_str_id -> result (0)
 pub fn shim_btreemap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_idx = task.ram.pop_str_idx();
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let key_bytes = vm.strings.read().unwrap().get(key_idx).cloned()
@@ -4240,7 +4651,9 @@ pub fn shim_btreemap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Get the size
 /// Stack: btreemap_id -> size
 pub fn shim_btreemap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let size = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4260,7 +4673,9 @@ pub fn shim_btreemap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Check if empty
 /// Stack: btreemap_id -> is_empty (1 or 0)
 pub fn shim_btreemap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4280,7 +4695,9 @@ pub fn shim_btreemap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// Clear the map
 /// Stack: btreemap_id -> result (0)
 pub fn shim_btreemap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(map_id) {
         let mut guard = obj.write().unwrap();
@@ -4296,7 +4713,9 @@ pub fn shim_btreemap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Get the first (smallest) key
 /// Stack: btreemap_id -> key_str_id (or -1 if empty)
 pub fn shim_btreemap_first_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4323,7 +4742,9 @@ pub fn shim_btreemap_first_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// Get the last (largest) key
 /// Stack: btreemap_id -> key_str_id (or -1 if empty)
 pub fn shim_btreemap_last_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let map_id = task.ram.pop_i32() as u64;
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(map_id) {
         let guard = obj.read().unwrap();
@@ -4349,7 +4770,12 @@ pub fn shim_btreemap_last_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 
 /// Drop the BTreeMap (no-op, managed by Arc)
 /// Stack: btreemap_id -> result (0)
-pub fn shim_btreemap_drop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_btreemap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+    vm.rc_release_id(map_id);
     Ok(())
 }
 
@@ -4359,7 +4785,9 @@ pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // When compiler can't determine receiver type, it may call str.len on a List heap ID.
     // Detect this and dispatch to list.len instead.
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_i32(nv) {
             let i = auto_val::decode_i32(nv);
             if i >= 4000000 {
@@ -4402,8 +4830,12 @@ fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
 /// Stack: substring, string -> bool
 pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let sub_nv = task.ram.pop_nv();
-        let str_nv = task.ram.pop_nv();
+        let sub_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_sub_nv = crate::vm::native::StakeGuard::nv(vm, sub_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
         let str_s = nv_to_string(str_nv, vm);
         let sub_s = nv_to_string(sub_nv, vm);
         task.ram.push_nv(auto_val::encode_bool(str_s.contains(sub_s.as_str())));
@@ -4414,8 +4846,12 @@ pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// str.starts_with(prefix) — check if string starts with prefix
 pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let prefix_nv = task.ram.pop_nv();
-        let str_nv = task.ram.pop_nv();
+        let prefix_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_prefix_nv = crate::vm::native::StakeGuard::nv(vm, prefix_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
         let str_s = nv_to_string(str_nv, vm);
         let prefix_s = nv_to_string(prefix_nv, vm);
         task.ram.push_nv(auto_val::encode_bool(str_s.starts_with(prefix_s.as_str())));
@@ -4426,8 +4862,12 @@ pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// str.ends_with(suffix) — check if string ends with suffix
 pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let suffix_nv = task.ram.pop_nv();
-        let str_nv = task.ram.pop_nv();
+        let suffix_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_suffix_nv = crate::vm::native::StakeGuard::nv(vm, suffix_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
         let str_s = nv_to_string(str_nv, vm);
         let suffix_s = nv_to_string(suffix_nv, vm);
         task.ram.push_nv(auto_val::encode_bool(str_s.ends_with(suffix_s.as_str())));
@@ -4440,7 +4880,9 @@ pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Returns the value as CREATE_OK for proper .?() chaining
 pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         let s = if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
             vm.get_string(idx as u32)
@@ -4466,7 +4908,9 @@ pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Plan 378: restored the full i64 range and 2-slot stack representation.
 pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         let s = if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
             vm.get_string(idx as u32)
@@ -4487,7 +4931,9 @@ pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Stack: str_idx_or_sb_id -> length (as i32, char count for heap, byte count for const pool)
 pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
 
         // If it's a string, compute byte length directly
         if auto_val::is_string(nv) {
@@ -4520,7 +4966,9 @@ pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// The mutable string is stored in heap_objects as a SpecializedStringBuilder.
 pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop capacity (not used in this simple implementation)
-    let _capacity = task.ram.pop_i32();
+    let _capacity = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
 
     // Pop initial string index
     let str_idx = task.ram.pop_str_idx() as u32;
@@ -4540,9 +4988,11 @@ pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let obj_id = vm.heap_object_id_gen.fetch_add(1, Ordering::SeqCst);
     let obj: Arc<RwLock<dyn crate::vm::heap_object::HeapObject>> = Arc::new(RwLock::new(builder));
     vm.heap_objects.insert(obj_id, obj);
+    // Plan 419: 手写 insert 与 insert_heap_object 保持同一计数口径。
+    vm.rc_created_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     // Return object ID
-    task.ram.push_i32(obj_id as i32);
+    vm.rc_push_id(task, obj_id as u64); // Plan 419
     Ok(())
 }
 
@@ -4553,7 +5003,9 @@ pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let str_idx = task.ram.pop_str_idx() as u32;
 
     // Pop mutable string ID
-    let obj_id = task.ram.pop_i32() as u64;
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_obj_id = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
 
     // Get string to append
     let to_append = if let Some(bytes) = vm.get_string(str_idx) {
@@ -4582,7 +5034,9 @@ pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Stack: int_val (i32) -> str_idx (tagged)
 pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop integer value
-    let val = task.ram.pop_i32();
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
 
     // Convert to string
     let str_val = val.to_string();
@@ -4592,7 +5046,7 @@ pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let str_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -4614,7 +5068,7 @@ pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let new_idx = vm.add_string(bytes);
 
     // Return tagged string index
-    task.ram.push_str_idx(new_idx as u32);
+    vm.rc_push_str_idx(task, new_idx as usize);
     Ok(())
 }
 
@@ -4659,14 +5113,16 @@ pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Stack: pad_width (i32), val_lo (i32), val_hi (i32) -> str_idx (tagged)
 pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // u64 is stored as two i32 slots: low pushed first, high pushed second (on top)
-    let pad_width = task.ram.pop_i32() as usize;
+    let pad_width = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_pad_width = crate::vm::native::StakeGuard::new(vm, pad_width as i64 as u64);
     let val = task.ram.pop_u64();
 
     let hex_str = format!("{:0width$x}", val, width = pad_width);
     let bytes = hex_str.into_bytes();
     let str_idx = vm.add_string(bytes);
 
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -4689,7 +5145,7 @@ pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 
     // Register in heap
     let sb_id = vm.insert_heap_object(sb);
-    task.ram.push_i32(sb_id as i32);
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
     Ok(())
 }
 
@@ -4703,7 +5159,7 @@ pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_string_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let sb = crate::vm::collections::SpecializedStringBuilder::new();
     let sb_id = vm.insert_heap_object(sb);
-    task.ram.push_i32(sb_id as i32);
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
     Ok(())
 }
 
@@ -4711,8 +5167,12 @@ pub fn shim_string_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Push a character (as codepoint) to the end of the mutable string.
 /// Stack: [char_codepoint, sb_id] -> 0
 pub fn shim_string_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let char_codepoint = task.ram.pop_i32();
-    let sb_id = task.ram.pop_i32() as u64;
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint = crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(ch) = char::from_u32(char_codepoint as u32) {
         if let Some(obj) = vm.get_heap_object(sb_id) {
@@ -4731,7 +5191,9 @@ pub fn shim_string_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// Pop the last character from the mutable string.
 /// Stack: [sb_id] -> char_codepoint
 pub fn shim_string_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -4755,8 +5217,12 @@ pub fn shim_string_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Get the character at the given char index.
 /// Stack: [index, sb_id] -> char_codepoint
 pub fn shim_string_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let index = task.ram.pop_i32() as usize;
-    let sb_id = task.ram.pop_i32() as u64;
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(sb_id) {
         let guard = obj.read().unwrap();
@@ -4777,9 +5243,15 @@ pub fn shim_string_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Replace the character at the given char index.
 /// Stack: [char_codepoint, index, sb_id] -> 0
 pub fn shim_string_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let char_codepoint = task.ram.pop_i32();
-    let index = task.ram.pop_i32() as usize;
-    let sb_id = task.ram.pop_i32() as u64;
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint = crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(new_ch) = char::from_u32(char_codepoint as u32) {
         if let Some(obj) = vm.get_heap_object(sb_id) {
@@ -4802,9 +5274,15 @@ pub fn shim_string_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Insert a character at the given char index.
 /// Stack: [char_codepoint, index, sb_id] -> 0
 pub fn shim_string_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let char_codepoint = task.ram.pop_i32();
-    let index = task.ram.pop_i32() as usize;
-    let sb_id = task.ram.pop_i32() as u64;
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint = crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(ch) = char::from_u32(char_codepoint as u32) {
         if let Some(obj) = vm.get_heap_object(sb_id) {
@@ -4828,8 +5306,12 @@ pub fn shim_string_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Remove the character at the given char index and return it.
 /// Stack: [index, sb_id] -> char_codepoint
 pub fn shim_string_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let index = task.ram.pop_i32() as usize;
-    let sb_id = task.ram.pop_i32() as u64;
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -4858,7 +5340,9 @@ pub fn shim_string_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Clear all characters from the mutable string.
 /// Stack: [sb_id] -> 0
 pub fn shim_string_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -4875,7 +5359,9 @@ pub fn shim_string_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Check if the mutable string is empty.
 /// Stack: [sb_id] -> 1/0
 pub fn shim_string_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let sb_id = task.ram.pop_i32() as u64;
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     let result = if let Some(obj) = vm.get_heap_object(sb_id) {
         let guard = obj.read().unwrap();
@@ -4896,8 +5382,12 @@ pub fn shim_string_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Reserve capacity for at least n additional bytes.
 /// Stack: [n, sb_id] -> 0
 pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let n = task.ram.pop_i32() as usize;
-    let sb_id = task.ram.pop_i32() as u64;
+    let n = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_n = crate::vm::native::StakeGuard::new(vm, n as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(sb_id) {
         let mut guard = obj.write().unwrap();
@@ -4920,7 +5410,9 @@ pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same as
 /// CREATE_ARRAY) so it works with SET_ELEM/GET_ELEM.
 pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let size_raw = task.ram.pop_i32();
+    let size_raw = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_size_raw = crate::vm::native::StakeGuard::new(vm, size_raw as i64 as u64);
     if size_raw < 0 {
         return Err(VMError::RuntimeError(format!(
             "alloc_array: invalid size {} (must be >= 0)", size_raw
@@ -4933,7 +5425,7 @@ pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         elems,
         storage: None,
     });
-    task.ram.push_nv(auto_val::encode_object(array_id as u32));
+    vm.rc_push(task, auto_val::encode_object(array_id as u32));
     Ok(())
 }
 
@@ -4943,8 +5435,13 @@ pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let new_size = task.ram.pop_i32() as usize;
-    let arr_id = task.ram.pop_i32() as u64;
+    let new_size = crate::vm::native::pop_arg_i32(task) as usize;
+
+
+    let _stake_new_size = crate::vm::native::StakeGuard::new(vm, new_size as i64 as u64);
+    let arr_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_arr_id = crate::vm::native::StakeGuard::new(vm, arr_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(arr_id) {
         let mut guard = obj.write().unwrap();
@@ -4968,15 +5465,17 @@ pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         list.push(0);
     }
     let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
 /// free_array(array_id) -> nil
 /// Free an array (no-op in GC-managed VM).
 /// Stack: [array_id] -> nil (-2147483647)
-pub fn shim_free_array(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _arr_id = task.ram.pop_i32();
+pub fn shim_free_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _arr_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__arr_id = crate::vm::native::StakeGuard::new(vm, _arr_id as i64 as u64);
     task.ram.push_i32(-2147483647); // nil marker
     Ok(())
 }
@@ -4993,7 +5492,7 @@ pub fn shim_heap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Create an empty list to represent the Heap storage
     let list: ListData<i32> = ListData::new();
     let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -5003,7 +5502,10 @@ pub fn shim_heap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_heap_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let inst_id = task.ram.pop_i32() as u64;
+    let inst_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_inst_id = crate::vm::native::StakeGuard::new(vm, inst_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(inst_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
@@ -5021,8 +5523,13 @@ pub fn shim_heap_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_heap_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let min_cap = task.ram.pop_i32() as usize;
-    let inst_id = task.ram.pop_i32() as u64;
+    let min_cap = crate::vm::native::pop_arg_i32(task) as usize;
+
+
+    let _stake_min_cap = crate::vm::native::StakeGuard::new(vm, min_cap as i64 as u64);
+    let inst_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_inst_id = crate::vm::native::StakeGuard::new(vm, inst_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(inst_id) {
         let mut guard = obj.write().unwrap();
@@ -5047,16 +5554,11 @@ pub fn shim_heap_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Free Heap storage.
 /// Stack: [instance_id] -> nil
 pub fn shim_heap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::vm::types::ListData;
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
 
-    let inst_id = task.ram.pop_i32() as u64;
-    if let Some(obj) = vm.get_heap_object(inst_id) {
-        let mut guard = obj.write().unwrap();
-        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
-            list.clear();
-        }
-    }
-    task.ram.push_i32(-2147483647); // nil
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -5069,31 +5571,40 @@ pub fn shim_inline_int64_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         list.push(0);
     }
     let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
 /// InlineInt64.capacity() -> 64
 /// Stack: [instance_id] -> 64
-pub fn shim_inline_int64_capacity(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _inst_id = task.ram.pop_i32();
+pub fn shim_inline_int64_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _inst_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
     task.ram.push_i32(64);
     Ok(())
 }
 
 /// InlineInt64.try_grow(min_cap) -> bool
 /// Stack: [min_cap, instance_id] -> bool
-pub fn shim_inline_int64_try_grow(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let min_cap = task.ram.pop_i32() as u32;
-    let _inst_id = task.ram.pop_i32();
+pub fn shim_inline_int64_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let min_cap = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_min_cap = crate::vm::native::StakeGuard::new(vm, min_cap as i64 as u64);
+    let _inst_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
     task.ram.push_nv(auto_val::encode_bool(min_cap <= 64));
     Ok(())
 }
 
 /// InlineInt64.drop() -> nil
-pub fn shim_inline_int64_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _inst_id = task.ram.pop_i32();
-    task.ram.push_i32(-2147483647); // nil
+pub fn shim_inline_int64_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -5107,7 +5618,10 @@ pub fn shim_inline_int64_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
 pub fn shim_list_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
-    let list_id = task.ram.pop_i32() as u64;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(list_id) {
         let guard = obj.read().unwrap();
         if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
@@ -5157,7 +5671,7 @@ pub fn shim_rand_thread_rng(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let rng = std::sync::Mutex::new(Xorshift64::new(seed));
     let obj = RustStdlibObject::new("rand::ThreadRng", rng);
     let rng_id = vm.insert_heap_object(obj);
-    task.ram.push_i32(rng_id as i32);
+    vm.rc_push_id(task, rng_id as u64); // Plan 419
     Ok(())
 }
 
@@ -5167,23 +5681,34 @@ pub fn shim_rand_thread_rng(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_rng_gen_range(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let top = task.ram.pop_i32();
+    let top = crate::vm::native::pop_arg_i32(task);
+
+
+    let _stake_top = crate::vm::native::StakeGuard::new(vm, top as i64 as u64);
 
     // Check if top is a range marker (-1000000 + idx)
     let (lo, hi, rng_id) = if top <= -1000000 && top > -2000000 {
         let range_idx = (top + 1000000) as usize;
         if let Some(&(start, end, _eq)) = task.ram.ranges.get(range_idx) {
-            let rng_id = task.ram.pop_i32() as u64;
+            let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+            let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
             (start, end, rng_id)
         } else {
-            let rng_id = task.ram.pop_i32() as u64;
+            let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+            let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
             (0, 1, rng_id)
         }
     } else {
         // Legacy: hi, lo, rng_id layout
         let hi = top;
-        let lo = task.ram.pop_i32();
-        let rng_id = task.ram.pop_i32() as u64;
+        let lo = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_lo = crate::vm::native::StakeGuard::new(vm, lo as i64 as u64);
+        let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+        let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
         (lo, hi, rng_id)
     };
 
@@ -5208,7 +5733,10 @@ pub fn shim_rng_gen_range(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_rng_gen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let rng_id = task.ram.pop_i32() as u64;
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(rng_id) {
         let mut guard = obj.write().unwrap();
@@ -5225,14 +5753,18 @@ pub fn shim_rng_gen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// rng.drop() — no-op, GC will handle
-pub fn shim_rng_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _rng_id = task.ram.pop_i32();
+pub fn shim_rng_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
 /// rand::random() → random i32
 /// Stack: [] -> [random_i32]
-pub fn shim_rand_random(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_rand_random(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -5250,7 +5782,7 @@ pub fn shim_rand_random(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
 /// log no-op — swallows all arguments, returns nothing.
 /// Used for env_logger.init(), log::set_max_level(), tracing::init(), etc.
-pub fn shim_log_noop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_log_noop(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Arguments are already consumed by the caller's stack management.
     // Nothing to do — these functions are pure side-effects we ignore.
     Ok(())
@@ -5263,7 +5795,9 @@ pub fn shim_log_noop(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 /// Helper: pop a string from the VM stack
 fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv);
             vm.get_string(idx)
@@ -5279,7 +5813,7 @@ fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
 /// Helper: push a string onto the VM stack via string pool
 fn push_vm_string(task: &mut AutoTask, vm: &AutoVM, s: &str) {
     let idx = vm.add_string(s.as_bytes().to_vec()) as u32;
-    task.ram.push_str_idx(idx);
+    vm.rc_push_str_idx(task, idx as usize);
 }
 
 /// Regex.new(pattern) → opaque handle
@@ -5292,7 +5826,7 @@ pub fn shim_re_opaque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         Ok(re) => {
             let obj = RustStdlibObject::new("regex::Regex", std::sync::Mutex::new(re));
             let id = vm.insert_heap_object(obj);
-            task.ram.push_i32(id as i32);
+            vm.rc_push_id(task, id as u64); // Plan 419
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("Regex::new failed: {}", e)));
@@ -5307,7 +5841,9 @@ pub fn shim_re_opaque_is_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
     let text = pop_vm_string(task, vm);
-    let re_id = task.ram.pop_i32() as u64;
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(re_id) {
         let guard = obj.read().unwrap();
@@ -5329,7 +5865,9 @@ pub fn shim_re_opaque_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
     let text = pop_vm_string(task, vm);
-    let re_id = task.ram.pop_i32() as u64;
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(re_id) {
         let guard = obj.read().unwrap();
@@ -5353,7 +5891,9 @@ pub fn shim_re_opaque_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use crate::vm::types::ListData;
 
     let text = pop_vm_string(task, vm);
-    let re_id = task.ram.pop_i32() as u64;
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
 
     let mut matches: Vec<i32> = Vec::new();
     if let Some(obj) = vm.get_heap_object(re_id) {
@@ -5372,7 +5912,7 @@ pub fn shim_re_opaque_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let mut list = ListData::<i32>::new();
     list.elems = matches;
     let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -5383,7 +5923,9 @@ pub fn shim_re_opaque_replace_all(task: &mut AutoTask, vm: &AutoVM) -> Result<()
 
     let replacement = pop_vm_string(task, vm);
     let text = pop_vm_string(task, vm);
-    let re_id = task.ram.pop_i32() as u64;
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(re_id) {
         let guard = obj.read().unwrap();
@@ -5407,7 +5949,9 @@ pub fn shim_re_opaque_captures(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
     let text = pop_vm_string(task, vm);
-    let re_id = task.ram.pop_i32() as u64;
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
 
     let captures: Option<Vec<String>> = {
         if let Some(obj) = vm.get_heap_object(re_id) {
@@ -5425,7 +5969,7 @@ pub fn shim_re_opaque_captures(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     if let Some(groups) = captures {
         let caps_obj = RustStdlibObject::new("regex::Captures", std::sync::Mutex::new(groups));
         let id = vm.insert_heap_object(caps_obj);
-        task.ram.push_i32(id as i32);
+        vm.rc_push_id(task, id as u64); // Plan 419
     } else {
         task.ram.push_i32(0);
     }
@@ -5433,8 +5977,12 @@ pub fn shim_re_opaque_captures(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 }
 
 /// re.drop() — no-op, GC handles cleanup
-pub fn shim_re_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _re_id = task.ram.pop_i32();
+pub fn shim_re_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -5452,7 +6000,7 @@ pub fn shim_url_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         Ok(url) => {
             let obj = RustStdlibObject::new("url::Url", std::sync::Mutex::new(url));
             let id = vm.insert_heap_object(obj);
-            task.ram.push_i32(id as i32);
+            vm.rc_push_id(task, id as u64); // Plan 419
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("Url::parse failed: {}", e)));
@@ -5466,7 +6014,10 @@ pub fn shim_url_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_url_opaque_scheme(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5485,7 +6036,10 @@ pub fn shim_url_opaque_scheme(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_url_opaque_host_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5506,7 +6060,10 @@ pub fn shim_url_opaque_host_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_url_opaque_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5525,7 +6082,10 @@ pub fn shim_url_opaque_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_url_opaque_fragment(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5546,7 +6106,10 @@ pub fn shim_url_opaque_fragment(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_url_opaque_port(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5567,7 +6130,10 @@ pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use crate::vm::types::ListData;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     let mut pairs: Vec<i32> = Vec::new();
 
     if let Some(obj) = vm.get_heap_object(url_id) {
@@ -5586,7 +6152,7 @@ pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(
     let mut list = ListData::<i32>::new();
     list.elems = pairs;
     let id = vm.insert_heap_object(list);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -5595,7 +6161,10 @@ pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 pub fn shim_url_opaque_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5615,7 +6184,10 @@ pub fn shim_url_opaque_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 pub fn shim_url_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5636,7 +6208,9 @@ pub fn shim_url_opaque_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
     let relative = pop_vm_string(task, vm);
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
@@ -5646,7 +6220,7 @@ pub fn shim_url_opaque_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
                     Ok(joined) => {
                         let new_obj = RustStdlibObject::new("url::Url", std::sync::Mutex::new(joined));
                         let id = vm.insert_heap_object(new_obj);
-                        task.ram.push_i32(id as i32);
+                        vm.rc_push_id(task, id as u64); // Plan 419
                         return Ok(());
                     }
                     Err(e) => {
@@ -5665,7 +6239,10 @@ pub fn shim_url_opaque_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_url_opaque_origin(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let url_id = task.ram.pop_i32() as u64;
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(url_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5681,8 +6258,12 @@ pub fn shim_url_opaque_origin(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 }
 
 /// url.drop() — no-op, GC handles cleanup
-pub fn shim_url_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _url_id = task.ram.pop_i32();
+pub fn shim_url_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -5700,7 +6281,7 @@ pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         Ok(ver) => {
             let obj = RustStdlibObject::new("semver::Version", std::sync::Mutex::new(ver));
             let id = vm.insert_heap_object(obj);
-            task.ram.push_nv(auto_val::encode_object(id as u32));
+            vm.rc_push(task, auto_val::encode_object(id as u32));
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("Version::parse failed: {}", e)));
@@ -5712,7 +6293,10 @@ pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_semver_opaque_major(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(ver_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5731,7 +6315,10 @@ pub fn shim_semver_opaque_major(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_semver_opaque_minor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(ver_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5750,7 +6337,10 @@ pub fn shim_semver_opaque_minor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_semver_opaque_patch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(ver_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5769,7 +6359,10 @@ pub fn shim_semver_opaque_patch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_semver_opaque_pre(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(ver_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5788,7 +6381,10 @@ pub fn shim_semver_opaque_pre(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_semver_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(ver_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5807,8 +6403,13 @@ pub fn shim_semver_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<
 pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let v2_id = task.ram.pop_i32() as u64;
-    let v1_id = task.ram.pop_i32() as u64;
+    let v2_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_v2_id = crate::vm::native::StakeGuard::new(vm, v2_id as i64 as u64);
+    let v1_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_v1_id = crate::vm::native::StakeGuard::new(vm, v1_id as i64 as u64);
 
     let v1 = if let Some(obj) = vm.get_heap_object(v1_id) {
         let guard = obj.read().unwrap();
@@ -5836,8 +6437,12 @@ pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 }
 
 /// version.drop() — no-op, GC handles cleanup
-pub fn shim_semver_opaque_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _ver_id = task.ram.pop_i32();
+pub fn shim_semver_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -5851,7 +6456,7 @@ pub fn shim_semver_opaque_versionreq_parse(task: &mut AutoTask, vm: &AutoVM) -> 
         Ok(req) => {
             let obj = RustStdlibObject::new("semver::VersionReq", std::sync::Mutex::new(req));
             let id = vm.insert_heap_object(obj);
-            task.ram.push_nv(auto_val::encode_object(id as u32));
+            vm.rc_push(task, auto_val::encode_object(id as u32));
         }
         Err(e) => {
             return Err(VMError::RuntimeError(format!("VersionReq::parse failed: {}", e)));
@@ -5865,8 +6470,13 @@ pub fn shim_semver_opaque_versionreq_parse(task: &mut AutoTask, vm: &AutoVM) -> 
 pub fn shim_semver_opaque_versionreq_matches(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let ver_id = task.ram.pop_i32() as u64;
-    let req_id = task.ram.pop_i32() as u64;
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    let req_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_req_id = crate::vm::native::StakeGuard::new(vm, req_id as i64 as u64);
 
     let version: Option<semver::Version> = (|| {
         let obj = vm.get_heap_object(ver_id)?;
@@ -5909,7 +6519,7 @@ pub fn shim_chrono_local_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let dt = chrono::Local::now().naive_local();
     let obj = RustStdlibObject::new("chrono::NaiveDateTime", std::sync::Mutex::new(dt));
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -5919,7 +6529,10 @@ pub fn shim_chrono_year(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Datelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5939,7 +6552,10 @@ pub fn shim_chrono_month(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Datelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5959,7 +6575,10 @@ pub fn shim_chrono_day(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Datelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5979,7 +6598,10 @@ pub fn shim_chrono_hour(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Timelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -5999,7 +6621,10 @@ pub fn shim_chrono_minute(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Timelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -6019,7 +6644,10 @@ pub fn shim_chrono_second(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Timelike;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -6038,7 +6666,10 @@ pub fn shim_chrono_second(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_chrono_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
         if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
@@ -6064,7 +6695,9 @@ pub fn shim_chrono_format(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
 
     let fmt = pop_vm_string(task, vm);
-    let dt_id = task.ram.pop_i32() as u64;
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(dt_id) {
         let guard = obj.read().unwrap();
@@ -6081,8 +6714,12 @@ pub fn shim_chrono_format(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 /// dt.drop() — no-op, GC handles cleanup
-pub fn shim_chrono_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _dt_id = task.ram.pop_i32();
+pub fn shim_chrono_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -6157,7 +6794,7 @@ pub fn shim_sha2_sha256_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let hasher = sha2::Sha256::new();
     let obj = RustStdlibObject::new("sha2::Sha256", std::sync::Mutex::new(hasher));
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -6168,7 +6805,9 @@ pub fn shim_sha2_update(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     use sha2::Digest;
 
     let data = pop_vm_string(task, vm);
-    let hasher_id = task.ram.pop_i32() as u64;
+    let hasher_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_hasher_id = crate::vm::native::StakeGuard::new(vm, hasher_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(hasher_id) {
         let mut guard = obj.write().unwrap();
@@ -6190,7 +6829,10 @@ pub fn shim_sha2_finalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use sha2::Digest;
 
-    let hasher_id = task.ram.pop_i32() as u64;
+    let hasher_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_hasher_id = crate::vm::native::StakeGuard::new(vm, hasher_id as i64 as u64);
 
     if let Some(obj) = vm.get_heap_object(hasher_id) {
         let guard = obj.read().unwrap();
@@ -6211,8 +6853,12 @@ pub fn shim_sha2_finalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 }
 
 /// hasher.drop() — no-op, GC handles cleanup
-pub fn shim_sha2_drop(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _hasher_id = task.ram.pop_i32();
+pub fn shim_sha2_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
     Ok(())
 }
 
@@ -6242,14 +6888,16 @@ pub fn shim_instant_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         instant,
     );
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
 /// Get elapsed time from Instant handle as a formatted string.
 /// Stack: handle_id -> string (e.g., "123ms")
 pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid Instant handle".to_string()))?;
     let guard = obj.read().unwrap();
@@ -6285,7 +6933,9 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Helper to pop a string from the stack
 fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
     {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv) as usize;
             vm.strings.read().unwrap().get(idx).cloned()
@@ -6306,7 +6956,7 @@ pub fn shim_file_create_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let writer: Box<dyn std::io::Write + Send + Sync> = Box::new(std::io::BufWriter::new(file));
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::File", writer);
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -6324,7 +6974,7 @@ pub fn shim_file_open_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     };
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::FileContent", content);
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -6332,7 +6982,9 @@ pub fn shim_file_open_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Stack: data_string, handle_id -> void
 pub fn shim_file_write_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let data = pop_string(task, vm);
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid File handle".to_string()))?;
     let mut guard = obj.write().unwrap();
@@ -6349,9 +7001,11 @@ pub fn shim_file_write_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 
 /// handle.try_clone() → clone the handle (returns same content for read handles)
 /// Stack: handle_id -> handle_id (clone)
-pub fn shim_file_try_clone(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_file_try_clone(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // For simplicity, just push a copy of the handle ID
-    let handle = task.ram.pop_i32();
+    let handle = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     task.ram.push_i32(handle);
     Ok(())
 }
@@ -6367,7 +7021,7 @@ pub fn shim_once_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         cell,
     );
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -6376,7 +7030,9 @@ pub fn shim_once_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop string value
     let value = {
-        let nv = task.ram.pop_nv();
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
         if auto_val::is_string(nv) {
             let idx = auto_val::decode_string(nv) as usize;
             vm.strings.read().unwrap().get(idx).cloned()
@@ -6387,7 +7043,10 @@ pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         }
     };
 
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
     let mut guard = obj.write().unwrap();
@@ -6408,7 +7067,9 @@ pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Returns opaque handle (>=0) if set, or -1 if None.
 /// Stack: handle_id -> i32 (opaque handle or -1)
 pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
     let guard = obj.read().unwrap();
@@ -6427,7 +7088,7 @@ pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 value.clone(),
             );
             let id = vm.insert_heap_object(string_obj);
-            task.ram.push_i32(id as i32);
+            vm.rc_push_id(task, id as u64); // Plan 419
         }
     }
     Ok(())
@@ -6440,7 +7101,9 @@ pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Bool to string.
 /// Stack: bool_val -> str_idx
 pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = task.ram.pop_nv();
+    let nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
     // Prefer the TAG_BOOL encoding; fall back to legacy i32 truthiness
     // (0 / i32::MIN+1 = false, anything else = true) for values pushed
     // by older code paths that still use push_i32.
@@ -6452,7 +7115,7 @@ pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let s = if is_true { "true" } else { "false" };
     let str_idx = vm.add_string(s.as_bytes().to_vec());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6462,7 +7125,7 @@ pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let val = task.ram.pop_f64();
     let s = format!("{}", val);
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6473,24 +7136,30 @@ pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
 /// Check if a Result is Ok.
 /// Stack: result_val (i32) -> bool
-pub fn shim_result_is_ok(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
+pub fn shim_result_is_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     task.ram.push_nv(auto_val::encode_bool(val >= 0));
     Ok(())
 }
 
 /// Check if a Result is Err.
 /// Stack: result_val (i32) -> bool
-pub fn shim_result_is_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
+pub fn shim_result_is_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     task.ram.push_nv(auto_val::encode_bool(val < 0));
     Ok(())
 }
 
 /// Unwrap Result — returns value if Ok, panics if Err.
 /// Stack: result_val (i32) -> value (i32)
-pub fn shim_result_unwrap(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
+pub fn shim_result_unwrap(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     if val < 0 {
         return Err(VMError::RuntimeError("unwrap on Err result".to_string()));
     }
@@ -6500,17 +7169,23 @@ pub fn shim_result_unwrap(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 
 /// Unwrap Result with default.
 /// Stack: default (i32), result_val (i32) -> value (i32)
-pub fn shim_result_unwrap_or(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let default = task.ram.pop_i32();
-    let val = task.ram.pop_i32();
+pub fn shim_result_unwrap_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_default = crate::vm::native::StakeGuard::new(vm, default as i64 as u64);
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     task.ram.push_i32(if val >= 0 { val } else { default });
     Ok(())
 }
 
 /// Unwrap the Err value from a Result.
 /// Stack: result_val (i32) -> err_value (i32)
-pub fn shim_result_unwrap_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
+pub fn shim_result_unwrap_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     if val >= 0 {
         return Err(VMError::RuntimeError("unwrap_err on Ok result".to_string()));
     }
@@ -6520,14 +7195,16 @@ pub fn shim_result_unwrap_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), V
 
 /// Create Ok result — passthrough.
 /// Stack: value (i32) -> result (i32)
-pub fn shim_result_ok(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_result_ok(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
 /// Create Err result — negate to mark as error.
 /// Stack: value (i32) -> result (i32)
-pub fn shim_result_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let val = task.ram.pop_i32();
+pub fn shim_result_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     task.ram.push_i32(if val >= 0 { -val - 1 } else { val });
     Ok(())
 }
@@ -6538,7 +7215,9 @@ pub fn shim_result_err(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 /// Stack: list_handle -> void
 pub fn shim_list_reverse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid list handle in reverse".to_string()))?;
     let mut guard = obj.write().unwrap();
@@ -6553,8 +7232,10 @@ pub fn shim_list_reverse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 
 /// Thread-local random int in [0, max).
 /// Stack: max (i32) -> i32
-pub fn shim_rand_int(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let max = task.ram.pop_i32();
+pub fn shim_rand_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let max = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_max = crate::vm::native::StakeGuard::new(vm, max as i64 as u64);
     let max = if max <= 0 { 1 } else { max as u32 };
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -6568,7 +7249,7 @@ pub fn shim_rand_int(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 
 /// Thread-local random float in [0, 1).
 /// Stack: -> f64
-pub fn shim_rand_float(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_rand_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -6581,7 +7262,7 @@ pub fn shim_rand_float(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 
 /// Thread-local random bool.
 /// Stack: -> bool
-pub fn shim_rand_bool(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_rand_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -6596,7 +7277,9 @@ pub fn shim_rand_bool(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> 
 /// Stack: list_handle -> void
 pub fn shim_rand_shuffle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -6624,13 +7307,15 @@ pub fn shim_rand_shuffle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Stack: timestamp (i32) -> opaque_handle
 pub fn shim_chrono_from_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let ts = task.ram.pop_i32() as i64;
+    let ts = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_ts = crate::vm::native::StakeGuard::new(vm, ts as i64 as u64);
     let dt = chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.naive_utc())
         .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(1970, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)).unwrap());
     let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
     let handle = vm.insert_heap_object(obj) as i32;
-    task.ram.push_i32(handle);
+    vm.rc_push_id(task, handle as u64); // Plan 419
     Ok(())
 }
 
@@ -6638,15 +7323,21 @@ pub fn shim_chrono_from_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<()
 /// Stack: day, month, year -> opaque_handle
 pub fn shim_chrono_from_ymd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let day = task.ram.pop_i32();
-    let month = task.ram.pop_i32();
-    let year = task.ram.pop_i32();
+    let day = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_day = crate::vm::native::StakeGuard::new(vm, day as i64 as u64);
+    let month = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_month = crate::vm::native::StakeGuard::new(vm, month as i64 as u64);
+    let year = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_year = crate::vm::native::StakeGuard::new(vm, year as i64 as u64);
     let dt = chrono::NaiveDate::from_ymd_opt(year, month as u32, day as u32)
         .and_then(|d| d.and_hms_opt(0, 0, 0))
         .unwrap_or_else(|| chrono::NaiveDate::from_ymd_opt(1970, 1, 1).and_then(|d| d.and_hms_opt(0, 0, 0)).unwrap());
     let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
     let handle = vm.insert_heap_object(obj) as i32;
-    task.ram.push_i32(handle);
+    vm.rc_push_id(task, handle as u64); // Plan 419
     Ok(())
 }
 
@@ -6655,7 +7346,9 @@ pub fn shim_chrono_from_ymd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_chrono_weekday(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
     use chrono::Datelike;
-    let handle = task.ram.pop_i32() as u64;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let obj = vm.get_heap_object(handle)
         .ok_or_else(|| VMError::RuntimeError("Invalid DateTime handle".to_string()))?;
     let guard = obj.read().unwrap();
@@ -6690,7 +7383,7 @@ pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json = serde_json::to_string(&rows)
         .map_err(|e| VMError::RuntimeError(format!("csv_parse: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6719,7 +7412,7 @@ pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let json = serde_json::to_string(&rows)
         .map_err(|e| VMError::RuntimeError(format!("csv_parse_delim: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6740,7 +7433,7 @@ pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         result.push_str(&row.join(","));
     }
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6767,7 +7460,7 @@ pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         result.push_str(&row.join(&delim));
     }
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6785,7 +7478,7 @@ pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Simple MD5 implementation using digest
     let digest = md5_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6800,7 +7493,7 @@ pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     };
     let digest = sha1_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6815,7 +7508,7 @@ pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let digest = sha256_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6830,7 +7523,7 @@ pub fn shim_hash_sha512(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     };
     let digest = sha512_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -6873,7 +7566,9 @@ fn sha512_hash(data: &[u8]) -> String {
 /// Stack: message_str_idx, condition (i32) -> void
 pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let msg_idx = task.ram.pop_str_idx() as u32;
-    let condition = task.ram.pop_i32();
+    let condition = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_condition = crate::vm::native::StakeGuard::new(vm, condition as i64 as u64);
     if condition == 0 {
         let msg = if let Some(bytes) = vm.get_string(msg_idx) {
             String::from_utf8_lossy(&bytes).to_string()
@@ -6889,7 +7584,9 @@ pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// Stack: message_str_idx, condition (i32) -> void
 pub fn shim_test_assert_false(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let msg_idx = task.ram.pop_str_idx() as u32;
-    let condition = task.ram.pop_i32();
+    let condition = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_condition = crate::vm::native::StakeGuard::new(vm, condition as i64 as u64);
     if condition != 0 {
         let msg = if let Some(bytes) = vm.get_string(msg_idx) {
             String::from_utf8_lossy(&bytes).to_string()
@@ -6921,8 +7618,12 @@ pub fn shim_test_assert_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
     let msg_idx = task.ram.pop_str_idx() as u32;
-    let expected = task.ram.pop_i32();
-    let handle = task.ram.pop_i32() as u64;
+    let expected = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_expected = crate::vm::native::StakeGuard::new(vm, expected as i64 as u64);
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let len = {
         let obj = vm.get_heap_object(handle)
@@ -6944,7 +7645,9 @@ pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Stack: message_str_idx, result_val -> void
 pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let msg_idx = task.ram.pop_str_idx() as u32;
-    let val = task.ram.pop_i32();
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     if val < 0 {
         return Err(VMError::RuntimeError(format!("assert_ok failed: result is Err — {}", msg)));
@@ -6956,7 +7659,9 @@ pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Stack: message_str_idx, result_val -> void
 pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let msg_idx = task.ram.pop_str_idx() as u32;
-    let val = task.ram.pop_i32();
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
     let msg = vm.get_string(msg_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     if val >= 0 {
         return Err(VMError::RuntimeError(format!("assert_err failed: result is Ok — {}", msg)));
@@ -6969,7 +7674,9 @@ pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// sprintf — format string with positional arguments.
 /// Stack: ...args..., arg_count (i32), format_str_idx -> str_idx
 pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let arg_count = task.ram.pop_i32();
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
     let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
@@ -6977,7 +7684,9 @@ pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let mut args: Vec<String> = Vec::new();
     for _ in 0..arg_count {
         // Try to pop as string (simplified — real impl would need type info)
-        let val = task.ram.pop_i32();
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
         args.push(val.to_string());
     }
     args.reverse();
@@ -6991,19 +7700,23 @@ pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     }
 
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
 /// printf — format and print to stdout.
 pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let arg_count = task.ram.pop_i32();
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
     let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
     let mut args: Vec<String> = Vec::new();
     for _ in 0..arg_count {
-        let val = task.ram.pop_i32();
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
         args.push(val.to_string());
     }
     args.reverse();
@@ -7021,13 +7734,17 @@ pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
 /// eprintf — format and print to stderr.
 pub fn shim_fmt_eprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let arg_count = task.ram.pop_i32();
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
     let fmt_idx = task.ram.pop_str_idx() as u32;
     let fmt_str = vm.get_string(fmt_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
 
     let mut args: Vec<String> = Vec::new();
     for _ in 0..arg_count {
-        let val = task.ram.pop_i32();
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
         args.push(val.to_string());
     }
     args.reverse();
@@ -7051,7 +7768,7 @@ pub fn shim_fs_temp_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let temp = std::env::temp_dir();
     let s = temp.to_string_lossy().to_string();
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7065,7 +7782,7 @@ pub fn shim_fs_temp_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     std::fs::File::create(&path).map_err(|e| VMError::RuntimeError(format!("temp_file failed: {}", e)))?;
     let s = path.to_string_lossy().to_string();
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7095,7 +7812,7 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let json = serde_json::to_string(&entries)
         .map_err(|e| VMError::RuntimeError(format!("read_dir json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7106,7 +7823,9 @@ pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let cwd_idx = task.ram.pop_str_idx() as u32;
     let cmd_idx = task.ram.pop_str_idx() as u32;
-    let block_id = task.ram.pop_i32() as i64;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
     let cmd = vm.get_string(cmd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
@@ -7124,7 +7843,9 @@ pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// 队列(执行线程直发,不 spawn)。Stack: int(block_id), str_idx(json) ->
 pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json_idx = task.ram.pop_str_idx() as u32;
-    let block_id = task.ram.pop_i32() as i64;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
     let json = vm.get_string(json_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
         kind: crate::vm::shell_bridge::ShellExecKind::Result,
@@ -7144,7 +7865,9 @@ pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let cwd_idx = task.ram.pop_str_idx() as u32;
     let path_idx = task.ram.pop_str_idx() as u32;
-    let block_id = task.ram.pop_i32() as i64;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
     let path = vm.get_string(path_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     let cwd = vm.get_string(cwd_idx).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
     crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
@@ -7170,7 +7893,7 @@ pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     match crate::vm::host_bridge::call_host(&name, &args_json) {
         Ok(resp) => {
             let idx = vm.add_string(resp.into_bytes());
-            task.ram.push_str_idx(idx as u32);
+            vm.rc_push_str_idx(task, idx as usize);
             Ok(())
         }
         Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name, e))),
@@ -7192,6 +7915,95 @@ pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0)
 }
 
+
+// ============================================================================
+// Plan 419: 消费型 pop(死区结算的补盲)
+//
+// CALL_NAT 的死区结算只覆盖净减栈的 shim;"pop N → push N"(消费 receiver
+// 返回新值)的 sp 中性形态不会进死区,receiver 的 stake 就此泄漏。所有
+// 消费型(读后即弃)的 pop 走这里:引用值 -1 + 槽位清零(防死区二次释放)。
+// 存储型 pop(值进容器/邮箱)不走这里 —— 容器侧 retain 配平。
+// ============================================================================
+
+/// 消费型参数 pop:弹值 + 槽位清零(不计数 —— 计数由 StakeGuard 在
+/// shim 返回时统一释放,保证"先读取后释放"次序)。槽位清零令死区结算
+/// 对这些槽为 no-op,避免双重释放。
+pub fn pop_arg_i32(task: &mut AutoTask) -> i32 {
+    let v = task.ram.pop_i32();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    v
+}
+
+pub fn pop_arg_nv(task: &mut AutoTask) -> auto_val::NanoValue {
+    let v = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    v
+}
+
+/// Plan 419: shim 参数的 stake 守卫 —— Drop 时释放(覆盖早退 return;
+/// 读取对象必须发生在释放之前,故不在 pop 点释放)。id < HEAP_ID_BASE
+/// 时 Drop 为 no-op(迭代器/闭包/任务 id 安全)。
+pub struct StakeGuard<'a> {
+    vm: &'a AutoVM,
+    id: u64,
+}
+
+impl<'a> StakeGuard<'a> {
+    pub fn new(vm: &'a AutoVM, id: u64) -> Self {
+        Self { vm, id }
+    }
+    pub fn nv(vm: &'a AutoVM, nv: auto_val::NanoValue) -> Self {
+        Self { vm, id: crate::vm::rc::heap_ref_id(nv).unwrap_or(0) }
+    }
+}
+
+impl Drop for StakeGuard<'_> {
+    fn drop(&mut self) {
+        if self.id >= crate::vm::rc::HEAP_ID_BASE {
+            self.vm.rc_release_id(self.id);
+        }
+    }
+}
+
+// ============================================================================
+// Plan 419: 引用计数诊断 natives(rc_stats 的脚本侧断言通道)
+// ============================================================================
+
+/// auto.rc.live() -> int:当前存活堆对象数(rc_stats().live_heap)。
+pub fn shim_rc_live(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let live = vm.rc_stats().live_heap as i32;
+    task.ram.push_i32(live);
+    Ok(())
+}
+
+/// auto.rc.count(x) -> int:x 的引用计数(堆 id;非引用返回 0)。
+pub fn shim_rc_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    let count = vm.rc_count(id) as i32;
+    task.ram.push_i32(count);
+    Ok(())
+}
+
+/// auto.rc.assert_unique(x) -> x:.mut 借用的动态兜底 —— RC>1(Shared,
+/// 多属主)时抛 "mutable borrow of shared value"。RefCell 式极简借用检查:
+/// 以 RC>1 为冲突判据,不维护活跃借用表(plan 419 §4.4)。非引用值直通。
+pub fn shim_rc_assert_unique(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+        let count = vm.rc_count(id);
+        if count > 1 {
+            return Err(VMError::RuntimeError(format!(
+                "mutable borrow of shared value: heap object {} has {} owners",
+                id, count
+            )));
+        }
+    }
+    task.ram.push_nv(nv);
+    Ok(())
+}
+
 /// Canonicalize a path (absolute, resolved symlinks).
 /// Stack: str_idx -> str_idx
 pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -7201,7 +8013,7 @@ pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or(path);
     let str_idx = vm.add_string(canonical.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7215,7 +8027,7 @@ pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|e| e.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(ext.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7229,7 +8041,7 @@ pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(stem.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7245,7 +8057,7 @@ pub fn shim_fs_walk_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let json = serde_json::to_string(&files)
         .map_err(|e| VMError::RuntimeError(format!("walk_files json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7280,7 +8092,7 @@ pub fn shim_fs_walk(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json = serde_json::to_string(&paths)
         .map_err(|e| VMError::RuntimeError(format!("walk json: {}", e)))?;
     let str_idx = vm.add_string(json.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7317,7 +8129,7 @@ pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let result = serde_json::to_string(&json)
         .map_err(|e| VMError::RuntimeError(format!("metadata json: {}", e)))?;
     let str_idx = vm.add_string(result.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7360,7 +8172,7 @@ pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(filename.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7374,7 +8186,7 @@ pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
     let str_idx = vm.add_string(parent.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7387,7 +8199,7 @@ pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let a = vm.get_string(a_idx).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default();
     let joined = std::path::Path::new(&a).join(&b).to_string_lossy().to_string();
     let str_idx = vm.add_string(joined.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7402,7 +8214,7 @@ pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let data = vm.get_string(data_idx).unwrap_or_default();
     let digest = hmac_sha256_hash(&key, &data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7415,7 +8227,7 @@ pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(format!("file_md5: {}: {}", path, e)))?;
     let digest = md5_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7428,7 +8240,7 @@ pub fn shim_hash_file_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(format!("file_sha256: {}: {}", path, e)))?;
     let digest = sha256_hash(&data);
     let str_idx = vm.add_string(digest.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7456,7 +8268,7 @@ pub fn shim_random_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let rng = std::sync::Mutex::new(Xorshift64::new(seed));
     let obj = RustStdlibObject::new("random::Rng", rng);
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -7464,11 +8276,13 @@ pub fn shim_random_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// Stack: seed (i32) -> rng_handle (i32)
 pub fn shim_random_seeded(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let seed = task.ram.pop_i32() as u64;
+    let seed = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_seed = crate::vm::native::StakeGuard::new(vm, seed as i64 as u64);
     let rng = std::sync::Mutex::new(Xorshift64::new(seed));
     let obj = RustStdlibObject::new("random::Rng", rng);
     let id = vm.insert_heap_object(obj);
-    task.ram.push_i32(id as i32);
+    vm.rc_push_id(task, id as u64); // Plan 419
     Ok(())
 }
 
@@ -7476,8 +8290,12 @@ pub fn shim_random_seeded(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// Stack: max (i32), rng_handle (i32) -> i32
 pub fn shim_random_instance_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let max = task.ram.pop_i32();
-    let rng_id = task.ram.pop_i32() as u64;
+    let max = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_max = crate::vm::native::StakeGuard::new(vm, max as i64 as u64);
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
     let max = if max <= 0 { 1 } else { max as u32 };
     if let Some(obj) = vm.get_heap_object(rng_id) {
         let mut guard = obj.write().unwrap();
@@ -7498,7 +8316,9 @@ pub fn shim_random_instance_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// Stack: rng_handle (i32) -> f64
 pub fn shim_random_instance_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let rng_id = task.ram.pop_i32() as u64;
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(rng_id) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
@@ -7517,7 +8337,9 @@ pub fn shim_random_instance_float(task: &mut AutoTask, vm: &AutoVM) -> Result<()
 /// Stack: rng_handle (i32) -> i32 (0 or 1)
 pub fn shim_random_instance_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::rust_stdlib::RustStdlibObject;
-    let rng_id = task.ram.pop_i32() as u64;
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
     if let Some(obj) = vm.get_heap_object(rng_id) {
         let mut guard = obj.write().unwrap();
         if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
@@ -7540,7 +8362,7 @@ pub fn shim_f64_debug(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let val = task.ram.pop_f64();
     let s = format!("{:?}", val);
     let str_idx = vm.add_string(s.into_bytes());
-    task.ram.push_str_idx(str_idx as u32);
+    vm.rc_push_str_idx(task, str_idx as usize);
     Ok(())
 }
 
@@ -7568,8 +8390,12 @@ pub fn shim_str_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// Compare two datetimes by timestamp.
 /// Stack: handle_b (i32), handle_a (i32) -> i32 (-1, 0, 1)
 pub fn shim_datetime_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let b_id = task.ram.pop_i32() as u64;
-    let a_id = task.ram.pop_i32() as u64;
+    let b_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_b_id = crate::vm::native::StakeGuard::new(vm, b_id as i64 as u64);
+    let a_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_a_id = crate::vm::native::StakeGuard::new(vm, a_id as i64 as u64);
 
     let ts_a = get_datetime_timestamp(vm, a_id);
     let ts_b = get_datetime_timestamp(vm, b_id);

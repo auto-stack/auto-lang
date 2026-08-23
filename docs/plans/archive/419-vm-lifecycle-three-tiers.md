@@ -1,6 +1,9 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: 📝 计划定稿(2026-08-23),待执行。
+> **状态**: 🗄️ 已归档(2026-08-23)。三 Phase 全量落地 + 存量 bug 修复 + workaround 清零。
+> Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
+> Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑
+> 全过(tests_rc_lifecycle 19 测 + a2r golden 25_lifecycle 4 例)。
 > **来源**: Plan 060 第十二/十三轮调研(auto-shell 仓)。设计口径(用户):
 > Auto 无 Rust 级生命周期标注(`'a`),三层兜底 —— ①周期内引用(~80%)
 > 作用域尾清理;②一级逃逸分析覆盖大部分逃逸;③歧义项升级 Shared
@@ -307,3 +310,60 @@ canary → stats → 测试。每个 Phase 结束:全量套件 + ash-gui e2e + p
 renderer.rs(本仓),无 auto-shell 侧改动;ash-gui e2e 仅作验证(借
 auto-shell 仓实例)。a2r golden 用例放 crates/auto-lang/test/a2r/ 既有
 golden 体系。
+
+
+---
+
+## 8. 落地记录(2026-08-23)
+
+### 8.1 实现偏差与决策
+
+| 计划条目 | 落地形态 | 说明 |
+|---|---|---|
+| §1 表 CALL_NAT 行 | **死区结算 + StakeGuard 双机制** | CALL_NAT 包装层释放 [sp_after, sp_before) 死区(sp 净减形态);shim 消费型 pop 改 pop_arg_i32/nv(槽位清零防双重)+ StakeGuard(fn 末 Drop 释放,先读后放)覆盖 sp 中性形态(pop N push N 的 receiver 消费)。存储型 pop 保留 raw + 容器侧 retain 配平 |
+| §2.1 DROP codegen 发射 | **PUSH_NIL+STORE_LOCAL 组合** | 块尾槽位释放不新造操作码(不改 operand_size 表);pop_scope 深于函数体的作用域统一发射,byref_captured_slots 跳过 |
+| §2.1 insert RC=1 | **RC=0 + push 建 stake** | insert 不建条目(对象出世无持有者),首次 rc_push/rc_retain 建 —— 语义等价、不变量更干净 |
+| §2.1 毒化 canary | debug_assertions 门控 + 4096 次插入摊销 TTL 清理 | 每次插入全扫会在 churn 退化 O(n²) |
+| §3.1 dedup×freelist | **释放时删 dedup 键** | freelist 复用不走 dedup(先查 dedup[活条目] → 弹 freelist → 追加),杜绝"一键两槽"竞态腐化 |
+| §3.1 墓碑判定 | **显式 tombstone 位** | rc==0 与"创建未推栈"不可区分,显式位消歧(get_string canary 用) |
+| §4.1 逃逸分析 | **复用 Plan 310 EscapeAnalyzer + 写捕获扩展** | detect_closure_write_captures 后置检测(Bina Op::Asn 的 Ident LHS);三类出口中"闭包捕获"细分为读捕获(310 借用模型)/写捕获(419 升级) |
+| §4.2 RC 消除(LOAD/STORE_NORC) | **缓议(债务)** | Phase 1/2 后 perf 门禁未超标(churn 100k 秒级);优化待基准数据支撑 |
+| §4.4 .mut 编译期检查 | **动态兜底先行** | auto.rc.assert_unique native(RC>1 → RuntimeError);静态单活跃 .mut 检查需借用流分析,记债务 |
+| §4.5 Cell<T>(Copy 型) | **统一 Rc<RefCell>** | Copy 型写捕获暂不特化 Cell(语义等价、少一条 tier 分支);golden 003 锁定现状 |
+| §4.5 Arc<Mutex>(spawn 捕获) | **缓议(债务)** | Tier 4 位保留;异步捕获分析未接线 |
+| §4.6 rc_elision 里程碑 | **随 §4.2 缓议** | — |
+
+### 8.2 新增接口速查
+
+- `AutoVM`:rc_push / rc_push_id / rc_push_str_idx / rc_retain(_id) /
+  rc_release(_id) / rc_release_slot_range / rc_release_task_stack /
+  rc_count / rc_stats / pool_retain / pool_release / pool_live_count /
+  pool_count / pool_is_tombstone(rc.rs)
+- `HeapObject::child_refs()`(递归释放子引用)
+- natives:auto.rc.live(2940)/ auto.rc.count(2941)/ auto.rc.assert_unique(2942)
+- a2r:EscapeMap::record_write_capture / is_write_capture /
+  write_capture_names;rust.rs 写捕获声明/访问/闭包克隆三点改写
+
+### 8.3 存量问题修复记录(2026-08-23 追加)
+
+1. **编译器"栈溢出" #1/#2(已修复)**:循环体内结构体字面量赋值
+   (`for/if ... { x = Note{...} }`)与循环体内嵌套裸块。cdb 帧大小
+   实测推翻"无限递归"假设 —— 真因是 debug 构建下解析器单帧可达
+   50~270KB(parse_stmt_dispatch ~267KB / expr_pratt_with_left ~116KB /
+   atom ~74KB,每层嵌套 ~670KB),2MB 线程栈 3 层嵌套即溢出;64MB
+   栈下同程序正常解析、深度仅 ~13。修复(parser.rs):
+   - 递归咽喉(expr_pratt / expr_pratt_with_left / atom / group /
+     parse_body)挂 `stacker::maybe_grow(512KB, 1MB)` —— 余量不足时
+     同线程切换堆上栈段,数据零跨线程、余量充足时近零开销;
+   - `body_depth` 护栏(上限 256)+ `[non-recoverable]` 错误旁路。
+2. **add_error O(n²) 错误树嵌套(已修复)**:深嵌套下错误恢复路径把
+   嵌套着全部下层错误的传播错误逐层 re-push,5000 层实测内存 ~25GB、
+   解析挂死。修复:先查后推(超限拒收);护栏错误标记不可恢复,
+     两个 catch 臂(顶层 + parse_body_inner)旁路直通。
+3. **a2r 深递归用例**:test-trans 套件若干用例在 2MB 测试线程栈下
+   溢出 —— 需 test_a2r_deep 大栈 runner 或 RUST_MIN_STACK;存量特性。
+4. benchmark_downcast_performance 为计时敏感测试,并行满载下偶发 flaky。
+
+回归测试:vm/tests_parser_stack.rs ×6(bug1 双形态 + 端到端管线 +
+bug2 + 2000 层括号 + 257 层护栏),全部在 ≤4MB 小栈线程上通过,
+0.09s 完成;全量 3108 过(route::discovery 存量失败除外)。

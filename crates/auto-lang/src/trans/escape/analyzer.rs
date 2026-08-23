@@ -56,6 +56,7 @@ impl EscapeAnalyzer {
         let mut analyzer = Self::new();
         analyzer.visit_body(&func.body, 0);
         analyzer.apply_lowering();
+        analyzer.detect_closure_write_captures(&func.body);
         analyzer.map
     }
 
@@ -93,6 +94,32 @@ impl EscapeAnalyzer {
                 }
             }
         }
+    }
+
+    /// Plan 419 §4.5: 闭包写捕获后置检测 —— 闭包体内被赋值(Bina Op::Asn
+    /// 的 Ident LHS)的外层绑定标记为写捕获(RcRefCell + write_captures),
+    /// a2r 侧自动升级 Rc<RefCell<T>>。
+    fn detect_closure_write_captures(&mut self, body: &Body) {
+        let mut writers: Vec<crate::ast::Name> = Vec::new();
+        scan_closures_in_body(body, &mut writers);
+        let names: Vec<_> = writers.into_iter().collect();
+        for name in names {
+            // 在已记录的绑定里找(任一深度);函数参数等未跟踪绑定跳过。
+            if let Some(id) = self.find_binding_id(&name) {
+                self.map.record_write_capture(id);
+            }
+        }
+    }
+
+    fn find_binding_id(&self, name: &Name) -> Option<BindingId> {
+        for depth in (0..self.scope_stack.len()).rev() {
+            for n in &self.scope_stack[depth] {
+                if *n == *name {
+                    return Some(BindingId { scope_depth: depth, name: name.clone() });
+                }
+            }
+        }
+        None
     }
 
     // ---------------------------------------------------------------------
@@ -941,5 +968,111 @@ mod tests {
             "async block (no Go) should NOT escalate to ArcMutex, got {:?}",
             x_tier
         );
+    }
+}
+
+
+// ============================================================================
+// Plan 419 §4.5: 闭包写捕获扫描器
+// ============================================================================
+
+/// 深扫 body 中的全部闭包,收集"闭包体内被赋值的标识符"。
+fn scan_closures_in_body(body: &Body, writers: &mut Vec<Name>) {
+    for stmt in &body.stmts {
+        scan_closures_in_stmt(stmt, writers);
+    }
+}
+
+fn scan_closures_in_stmt(stmt: &Stmt, writers: &mut Vec<Name>) {
+    use crate::ast::Stmt as S;
+    match stmt {
+        S::Expr(e) => scan_closures_in_expr(e, writers),
+        S::If(i) => {
+            for b in &i.branches {
+                scan_closures_in_expr(&b.cond, writers);
+                scan_closures_in_body(&b.body, writers);
+            }
+            if let Some(els) = &i.else_ {
+                scan_closures_in_body(els, writers);
+            }
+        }
+        S::For(f) => {
+            scan_closures_in_body(&f.body, writers);
+        }
+        S::Store(st) => {
+            scan_closures_in_expr(&st.expr, writers);
+        }
+        S::Block(b) => scan_closures_in_body(b, writers),
+        S::Return(e) | S::Reply(e) => scan_closures_in_expr(e, writers),
+        _ => {}
+    }
+}
+
+fn scan_closures_in_expr(expr: &Expr, writers: &mut Vec<Name>) {
+    use crate::ast::Expr as E;
+    match expr {
+        E::Closure(c) => {
+            // 进入闭包:体内所有赋值目标(嵌套闭包亦然)都是写捕获。
+            collect_assigns_in_expr(&c.body, writers);
+        }
+        E::Block(b) => scan_closures_in_body(b, writers),
+        E::Call(call) => {
+            scan_closures_in_expr(&call.name, writers);
+            for arg in &call.args.args {
+                if let crate::ast::Arg::Pos(e) = arg {
+                    scan_closures_in_expr(e, writers);
+                }
+            }
+        }
+        E::Bina(l, _, r) => {
+            scan_closures_in_expr(l, writers);
+            scan_closures_in_expr(r, writers);
+        }
+        E::Dot(o, _) => scan_closures_in_expr(o, writers),
+        _ => {}
+    }
+}
+
+/// 收集表达式(含块)内的赋值目标标识符:Ident = rhs(Op::Asn)。
+fn collect_assigns_in_expr(expr: &Expr, writers: &mut Vec<Name>) {
+    use crate::ast::Expr as E;
+    match expr {
+        E::Block(b) => {
+            for stmt in &b.stmts {
+                collect_assigns_in_stmt(stmt, writers);
+            }
+        }
+        E::Closure(c) => collect_assigns_in_expr(&c.body, writers),
+        _ => {}
+    }
+}
+
+fn collect_assigns_in_stmt(stmt: &Stmt, writers: &mut Vec<Name>) {
+    use crate::ast::Stmt as S;
+    match stmt {
+        S::Expr(crate::ast::Expr::Bina(lhs, op, _)) if matches!(op, auto_val::Op::Asn) => {
+            if let crate::ast::Expr::Ident(n) = lhs.as_ref() {
+                writers.push(n.clone());
+            }
+        }
+        S::Expr(e) => collect_assigns_in_expr(e, writers),
+        S::If(i) => {
+            for b in &i.branches {
+                for s in &b.body.stmts {
+                    collect_assigns_in_stmt(s, writers);
+                }
+            }
+        }
+        S::For(f) => {
+            for s in &f.body.stmts {
+                collect_assigns_in_stmt(s, writers);
+            }
+        }
+        S::Block(b) => {
+            for s in &b.stmts {
+                collect_assigns_in_stmt(s, writers);
+            }
+        }
+        _ => {}
     }
 }

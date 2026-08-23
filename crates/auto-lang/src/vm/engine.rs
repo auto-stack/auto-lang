@@ -307,6 +307,18 @@ pub struct AutoVM {
     pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
     pub heap_object_id_gen: AtomicU64,
 
+    // Plan 419 Phase 1: 精确引用计数(heap_rc)+ 毒化 canary(tombstones)。
+    // heap_rc: id → 计数(owned slot 数);insert_heap_object 不建条目,
+    // 首次 rc_push/rc_retain 建条目。归零 → remove_heap_object 递归释放。
+    pub heap_rc: DashMap<u64, std::sync::atomic::AtomicU32>,
+    #[cfg(debug_assertions)]
+    pub tombstones: DashMap<u64, std::time::Instant>,
+    pub rc_created_total: AtomicU64,
+    pub rc_freed_total: AtomicU64,
+    pub rc_traffic: AtomicU64,
+    // Plan 419 Phase 2: 字符串池并行状态(rc/pinned/freelist,见 rc.rs)。
+    pub pool_state: std::sync::RwLock<crate::vm::rc::PoolState>,
+
     // Plan 121: Task/Msg Registry for Actor model
     // Manages singleton tasks and task instances
     pub task_registry: Arc<TaskRegistry>,
@@ -457,6 +469,14 @@ impl AutoVM {
             // objects/arrays/nodes registries folded in — single id space).
             heap_objects: DashMap::new(),
             heap_object_id_gen: AtomicU64::new(4000000),
+            // Plan 419 Phase 1: RC 协议状态
+            heap_rc: DashMap::new(),
+            #[cfg(debug_assertions)]
+            tombstones: DashMap::new(),
+            rc_created_total: AtomicU64::new(0),
+            rc_freed_total: AtomicU64::new(0),
+            rc_traffic: AtomicU64::new(0),
+            pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
             // Plan 121: Task/Msg registry for Actor model
             task_registry: Arc::new(TaskRegistry::new()),
             // Plan 127: Task handler registry for message routing
@@ -509,7 +529,11 @@ impl AutoVM {
             let str_idx = auto_val::decode_string(nv) as usize;
             let strings = self.strings.read().unwrap();
             if let Some(bytes) = strings.get(str_idx) {
-                return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+                let copy = auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+                drop(strings);
+                // Plan 419 Phase 2: 字段持有字节拷贝 —— 池引用的 stake 随转移死亡。
+                self.pool_release(str_idx);
+                return copy;
             }
         } else if auto_val::is_i32(nv) {
             // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
@@ -546,6 +570,15 @@ impl AutoVM {
         for (idx, s) in strings.iter().enumerate() {
             dedup.insert(s.clone(), idx);
         }
+        // Plan 419 Phase 2: flash 编译期常量条目 pinned —— 永活永复用、
+        // 免计费;字节码立即数只引用 pinned 条目(免重映射不变量,§3.1)。
+        let n = strings.len();
+        let mut pool = crate::vm::rc::PoolState::new();
+        pool.ensure_len(n);
+        for i in 0..n {
+            pool.pinned[i] = true;
+        }
+        self.pool_state = std::sync::RwLock::new(pool);
         self.strings = Arc::new(RwLock::new(strings));
     }
 
@@ -740,14 +773,34 @@ impl AutoVM {
         {
             let dedup = self.string_dedup.lock().unwrap();
             if let Some(&idx) = dedup.get(&bytes) {
-                // 池只增不减,索引恒有效。
+                // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
                 return idx;
+            }
+        }
+        // Plan 419 Phase 2: freelist 优先复用(池峰值 = 并发不同串数,
+        // 而非累计创建数)。复用条目 rc=0,由 push 侧 +1 建立 stake。
+        {
+            let mut pool = self.pool_state.write().unwrap();
+            if let Some(slot) = pool.freelist.pop() {
+                let mut strings = self.strings.write().unwrap();
+                if slot < strings.len() {
+                    strings[slot] = bytes.clone();
+                    drop(strings);
+                    pool.rc[slot] = std::sync::atomic::AtomicU32::new(0);
+                    pool.tombstone[slot] = false;
+                    drop(pool);
+                    self.string_dedup.lock().unwrap().insert(bytes, slot);
+                    return slot;
+                }
+                // strings 与 freelist 长度异常时兜底:还回槽位走追加。
+                pool.freelist.push(slot);
             }
         }
         let mut strings = self.strings.write().unwrap();
         let idx = strings.len();
         strings.push(bytes.clone());
         drop(strings);
+        self.pool_state.write().unwrap().ensure_len(idx + 1);
         self.string_dedup.lock().unwrap().insert(bytes, idx);
         idx
     }
@@ -775,6 +828,9 @@ impl AutoVM {
     pub fn insert_heap_object<T: HeapObject + Send + Sync + 'static>(&self, obj: T) -> u64 {
         let id = self.heap_object_id_gen.fetch_add(1, Ordering::Relaxed);
         self.heap_objects.insert(id, Arc::new(RwLock::new(obj)));
+        // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
+        // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
+        self.rc_created_total.fetch_add(1, Ordering::Relaxed);
         id
     }
 
@@ -796,6 +852,9 @@ impl AutoVM {
     /// }
     /// ```
     pub fn get_heap_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        // Plan 419: 毒化 canary —— 命中已释放 id 即 use-after-free(debug)。
+        #[cfg(debug_assertions)]
+        self.rc_check_tombstone(id);
         self.heap_objects.get(&id).map(|v| v.clone())
     }
 
@@ -933,6 +992,8 @@ impl AutoVM {
                 push_str_tag(ram, idx as u32);
             }
             Value::VmRef(vmref) => {
+                // Plan 419: 堆引用入栈 +1(咽喉点)。
+                vm.rc_retain_id(vmref.id as u64);
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
             }
             _ => {
@@ -1291,6 +1352,17 @@ impl AutoVM {
     /// 消失、ash 名字变 "." 的根因)。nanbox 字符串标签本就是 u32 负数
     /// 编码,容量到 2^31,此处放开没有表示性问题。
     pub fn get_string(&self, index: u32) -> Option<Vec<u8>> {
+        // Plan 419 Phase 2: 池墓碑 canary(debug)—— rc=0 的非 pinned 条目
+        // 已释放,读它即 use-after-free。
+        #[cfg(debug_assertions)]
+        {
+            if self.pool_is_tombstone(index as usize) {
+                panic!(
+                    "[RC canary] string tombstone access: pool index {} was freed",
+                    index
+                );
+            }
+        }
         let strings = self.strings.read().unwrap();
         strings.get(index as usize).cloned()
     }
@@ -1889,7 +1961,11 @@ impl AutoVM {
                             // compat with Literal/TypeBinding/Simple patterns.
                             match &msg {
                                 auto_val::Value::VmRef(vmref) => {
-                                    task.ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                                    // Plan 419: 消息引用入 handler 帧 +1;邮箱
+                                    // 排水侧的 stake(send 时的 retain)随之
+                                    // 死亡 —— 净效果:消息 stake 转入 handler 帧。
+                                    self.rc_push(&mut task, auto_val::encode_object(vmref.id as u32));
+                                    self.rc_release_id(vmref.id as u64);
                                 }
                                 auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
                                 auto_val::Value::Uint(u) => { task.ram.push_i32(*u as i32); }
@@ -2136,17 +2212,26 @@ impl AutoVM {
                     // Do nothing
                 }
                 OpCode::POP => {
-                    task.ram.pop_i32();
+                    // Plan 419: 弹出的值若为引用 → 计数 -1(协议 §1 POP 行);
+                    // 槽位清零防双重释放(嵌套执行外层可能再扫死区)。
+                    let nv = task.ram.pop_nv();
+                    self.rc_release(nv);
+                    task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 OpCode::POP_N => {
                     let n = self.flash.read_u8(task.ip);
                     task.ip += 1;
                     for _ in 0..n {
-                        task.ram.pop_i32();
+                        let nv = task.ram.pop_nv();
+                        self.rc_release(nv);
+                        task.ram.raw_nv[task.ram.sp] = 0;
                     }
                 }
                 OpCode::DUP => {
-                    if task.ram.sp > 0 { task.ram.push_nv(task.ram.raw_nv[task.ram.sp - 1]); } 
+                    // Plan 419: DUP 的值是引用时 +1(栈上多一个 owned slot)。
+                    if task.ram.sp > 0 {
+                        self.rc_push(task, task.ram.raw_nv[task.ram.sp - 1]);
+                    }
                 }
 
                 // === Constants ===
@@ -2193,7 +2278,8 @@ impl AutoVM {
                     let str_idx = self.flash.read_u32(task.ip);
                     task.ip += 4;
                     // Push string reference (NaN-boxed tag)
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    // Plan 419 Phase 2: flash 常量 pinned,rc_push 免计费直推。
+                    self.rc_push(task, auto_val::encode_string(str_idx as u32));
                     // Reset result type since this produces a string, not a number
                     task.last_result_type = ResultType::default();
                 }
@@ -2278,7 +2364,7 @@ impl AutoVM {
 
                     // Store node in heap_objects registry (Plan 390 §15 H3a)
                     let node_id = self.insert_heap_object(node);
-                    task.ram.push_nv(auto_val::encode_object(node_id as u32));
+                    self.rc_push(task, auto_val::encode_object(node_id as u32));
                 }
                 // Plan 364 Step 5: Config accumulation opcodes.
                 // PUSH_ACCUM name_str_idx:u16, id_str_idx:u16 — push a fresh Node container.
@@ -2376,7 +2462,7 @@ impl AutoVM {
                             }
                         }
                         let id = self.insert_heap_object(node);
-                        task.ram.push_nv(auto_val::encode_object(id as u32));
+                        self.rc_push(task, auto_val::encode_object(id as u32));
                     } else {
                         eprintln!("WARNING: POP_ACCUM with empty accum_stack");
                         task.ram.push_i32(0);
@@ -2413,11 +2499,15 @@ impl AutoVM {
                         } else if auto_val::is_string(nv) {
                             let str_idx = auto_val::decode_string(nv) as usize;
                             let strings = self.strings.read().unwrap();
-                            if let Some(str_bytes) = strings.get(str_idx) {
+                            let v = if let Some(str_bytes) = strings.get(str_idx) {
                                 auto_val::Value::Str(String::from_utf8_lossy(str_bytes).to_string().into())
                             } else {
                                 auto_val::Value::Nil
-                            }
+                            };
+                            drop(strings);
+                            // Plan 419 Phase 2: 对象字段持拷贝,池 stake 死亡。
+                            self.pool_release(str_idx);
+                            v
                         } else if auto_val::is_bool(nv) {
                             auto_val::Value::Bool(auto_val::decode_bool(nv))
                         } else if auto_val::is_null(nv) {
@@ -2458,7 +2548,7 @@ impl AutoVM {
                     // value so downstream consumers (GET_FIELD/SET_FIELD, send
                     // shim's is_object check) recognize it as an object ref,
                     // not a scalar i32. This unblocks L3 WithBindings.
-                    task.ram.push_nv(auto_val::encode_object(obj_id as u32));
+                    self.rc_push(task, auto_val::encode_object(obj_id as u32));
                 }
                 // Plan 073: Array literal support
                 OpCode::CREATE_ARRAY => {
@@ -2480,12 +2570,16 @@ impl AutoVM {
                                 // elements rendered as numbers like "-4".
                                 let str_idx = auto_val::decode_string(nv) as usize;
                                 let strings = self.strings.read().unwrap();
-                                if let Some(str_bytes) = strings.get(str_idx) {
+                                let v = if let Some(str_bytes) = strings.get(str_idx) {
                                     let s = String::from_utf8_lossy(str_bytes).to_string();
                                     auto_val::Value::Str(s.into())
                                 } else {
                                     auto_val::Value::Nil
-                                }
+                                };
+                                drop(strings);
+                                // Plan 419 Phase 2: 数组元素持拷贝,池 stake 死亡。
+                                self.pool_release(str_idx);
+                                v
                             } else if auto_val::is_object(nv) {
                                 auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
                             } else if auto_val::is_null(nv) {
@@ -2513,7 +2607,7 @@ impl AutoVM {
                         storage: None,
                     });
 
-                    task.ram.push_nv(auto_val::encode_object(array_id as u32));
+                    self.rc_push(task, auto_val::encode_object(array_id as u32));
                 }
                 // Plan 073: Range expression support (0..10, 0..=10)
                 OpCode::CREATE_RANGE => {
@@ -2763,7 +2857,7 @@ impl AutoVM {
                     // Add to strings pool and push tagged index(dedup:重复
                     // 中间串不再膨胀池 —— 2026-08-22 侧栏串写根因治理)
                     let result_idx = self.add_string(result.into_bytes());
-                    push_str_tag(&mut task.ram, result_idx as u32);
+                    self.rc_push_str_idx(task, result_idx as usize);
                 }
                 OpCode::NULL_COALESCE => {
                     {
@@ -2773,24 +2867,33 @@ impl AutoVM {
                         let may_nv = task.ram.pop_nv();
 
                         if auto_val::is_null(may_nv) {
-                            // None case: push default
+                            // Plan 419: None → default 转移回栈,may 死亡。
+                            self.rc_release(may_nv);
                             task.ram.push_nv(default_nv);
                         } else if auto_val::is_object(may_nv) {
                             let obj_id = auto_val::decode_object(may_nv) as u64;
                             if self.is_option_none(obj_id) {
+                                self.rc_release(may_nv);
                                 task.ram.push_nv(default_nv);
                             } else if self.is_option_some(obj_id) {
                                 if let Some(field_val) = self.get_option_inner(obj_id) {
+                                    // Plan 419: 容器 stake 死亡,内值入栈 +1;
+                                    // default 丢弃 -1。
+                                    self.rc_release(may_nv);
+                                    self.rc_release(default_nv);
                                     Self::push_value(&mut task.ram, &field_val, self);
                                 } else {
                                     task.ram.push_nv(may_nv);
+                                    self.rc_release(default_nv);
                                 }
                             } else {
                                 task.ram.push_nv(may_nv);
+                                self.rc_release(default_nv);
                             }
                         } else {
                             // Non-None, non-object: push as-is (it's the value itself)
                             task.ram.push_nv(may_nv);
+                            self.rc_release(default_nv);
                         }
                     }
                 }
@@ -2826,46 +2929,50 @@ impl AutoVM {
                         // Push an Option.None sentinel for the caller
                         should_propagate = true;
                         propagate_value = -1;
+                        // Plan 419: 弹出的 None 容器 stake 死亡。
+                        self.rc_release(may_nv);
                     } else if may_bits > 0 {
                         // Positive value: could be heap object (Option.Some, Result.Ok, Result.Err)
                         // or legacy plain positive integer
                         if let Some(obj) = self.get_heap_object(may_bits as u64) {
-                            let guard = obj.read().unwrap();
-                            if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
-                                match inst.mono_name.as_str() {
-                                    "Result.Err" => {
-                                        // Error case: propagate the Result.Err object to caller via early return
-                                        should_propagate = true;
-                                        propagate_value = may_bits;
+                            // Plan 419: 先克隆内值再释放容器 —— 容器 RC 归零会级联
+                            // 释放子引用,不能在容器借用存续期触碰其字段。
+                            enum MayKind { Err, WithInner(auto_val::Value), Bare }
+                            let kind = {
+                                let guard = obj.read().unwrap();
+                                if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                    match inst.mono_name.as_str() {
+                                        "Result.Err" => MayKind::Err,
+                                        "Result.Ok" | "Option.Some" => match inst.fields.first() {
+                                            Some(f) => MayKind::WithInner(f.clone()),
+                                            None => MayKind::Bare,
+                                        },
+                                        _ => MayKind::Bare,
                                     }
-                                    "Result.Ok" => {
-                                        // Ok case: unwrap the inner value (continue execution)
-                                        should_propagate = false;
-                                        if let Some(field) = inst.fields.first() {
-                                            Self::push_value(&mut task.ram, field, self);
-                                        } else {
-                                            task.ram.push_i32(may_bits);
-                                        }
-                                    }
-                                    "Option.Some" => {
-                                        // Option.Some: unwrap the inner value (continue execution)
-                                        should_propagate = false;
-                                        if let Some(field) = inst.fields.first() {
-                                            Self::push_value(&mut task.ram, field, self);
-                                        } else {
-                                            task.ram.push_i32(may_bits);
-                                        }
-                                    }
-                                    _ => {
-                                        // Other heap object: pass through
-                                        should_propagate = false;
-                                        task.ram.push_i32(may_bits);
-                                    }
+                                } else {
+                                    MayKind::Bare
                                 }
-                            } else {
-                                // Non-generic heap object: pass through
-                                should_propagate = false;
-                                task.ram.push_i32(may_bits);
+                            };
+                            match kind {
+                                MayKind::Err => {
+                                    // Error case: propagate the Result.Err object to
+                                    // caller via early return (stack stake 转移)。
+                                    should_propagate = true;
+                                    propagate_value = may_bits;
+                                }
+                                MayKind::WithInner(field) => {
+                                    // Unwrap the inner value (continue execution)。
+                                    // Plan 419: 容器 stake 死亡;内值入栈 +1
+                                    // (push_value 的 VmRef 臂已 retain)。
+                                    should_propagate = false;
+                                    Self::push_value(&mut task.ram, &field, self);
+                                    self.rc_release_id(may_bits as u64);
+                                }
+                                MayKind::Bare => {
+                                    // Other/non-generic heap object: pass through。
+                                    should_propagate = false;
+                                    task.ram.push_i32(may_bits);
+                                }
                             }
                         } else {
                             // Legacy: plain positive value (not a heap object)
@@ -2892,6 +2999,11 @@ impl AutoVM {
                         let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
                         task.current_closure_id = task.saved_closure_id;
                         let new_sp = task.bp - n_args;
+                        // Plan 419: 帧扫描 —— 释放被展开区间内每个引用槽
+                        // (含 new_sp-1 槽的旧值;返回值槽由 write 重写)。
+                        let new_sp = new_sp.max(1);
+                        let sp_before = task.ram.sp;
+                        self.rc_release_slot_range(&mut task.ram, new_sp - 1, sp_before);
                         task.ram.write_i32(new_sp - 1, propagate_value);
                         task.bp = old_bp;
                         task.ip = ret_ip;
@@ -3032,7 +3144,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" }.to_string();
@@ -3040,7 +3152,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_f64(nv) {
                         let d = auto_val::decode_f64(nv);
                         let string_value = format!("{}", d);
@@ -3048,7 +3160,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_f32(nv) {
                         let f = auto_val::decode_f32(nv);
                         let string_value = format!("{}", f);
@@ -3056,7 +3168,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" };
@@ -3064,7 +3176,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.as_bytes().to_vec());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
@@ -3072,7 +3184,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     }
                     }
                 }
@@ -3116,7 +3228,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    self.rc_push_str_idx(task, str_idx as usize);
                 }
                 // Plan 193: i64 -> String
                 OpCode::TYPE_I64_TO_STR => {
@@ -3126,7 +3238,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    self.rc_push_str_idx(task, str_idx as usize);
                 }
                 // Plan 193: u64 -> String (hex)
                 OpCode::TYPE_U64_TO_STR => {
@@ -3136,7 +3248,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    self.rc_push_str_idx(task, str_idx as usize);
                 }
                 // Plan 193: bool -> String
                 OpCode::TYPE_BOOL_TO_STR => {
@@ -3147,7 +3259,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.as_bytes().to_vec());
                     drop(strings);
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    self.rc_push_str_idx(task, str_idx as usize);
                 }
                 // Plan 193: f64 -> i32 (truncate)
                 OpCode::TYPE_F64_TO_I32 => {
@@ -3179,7 +3291,7 @@ impl AutoVM {
                     let str_idx = strings.len();
                     strings.push(string_value.into_bytes());
                     drop(strings);
-                    push_str_tag(&mut task.ram, str_idx as u32);
+                    self.rc_push_str_idx(task, str_idx as usize);
                 }
                 // Plan 193: f32 -> i32 (truncate)
                 OpCode::TYPE_F32_TO_I32 => {
@@ -3236,7 +3348,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" }.to_string();
@@ -3244,7 +3356,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_f64(nv) {
                         let d = auto_val::decode_f64(nv);
                         let string_value = format!("{}", d);
@@ -3252,7 +3364,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else if auto_val::is_f32(nv) {
                         let f = auto_val::decode_f32(nv);
                         let string_value = format!("{}", f);
@@ -3260,7 +3372,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
@@ -3268,7 +3380,7 @@ impl AutoVM {
                         let str_idx = strings.len();
                         strings.push(string_value.into_bytes());
                         drop(strings);
-                        push_str_tag(&mut task.ram, str_idx as u32);
+                        self.rc_push_str_idx(task, str_idx as usize);
                     }
                     }
                 }
@@ -3287,6 +3399,7 @@ impl AutoVM {
                     {
                         let right_nv = task.ram.pop_nv();
                         let left_nv = task.ram.pop_nv();
+                        // Plan 419 Phase 2: 操作数 stake 在物化完成后释放(先读后放)。
                         let strings = self.strings.read().unwrap();
                         let left_str = if auto_val::is_string(left_nv) {
                             let idx = auto_val::decode_string(left_nv) as usize;
@@ -3304,10 +3417,12 @@ impl AutoVM {
                         } else { auto_val::decode_i32(right_nv).to_string() };
                         drop(strings);
                         let result = format!("{}{}", left_str, right_str);
-                        let mut strings = self.strings.write().unwrap();
-                        let result_idx = strings.len();
-                        strings.push(result.into_bytes());
-                        push_str_tag(&mut task.ram, result_idx as u32);
+                        self.rc_release(left_nv);
+                        self.rc_release(right_nv);
+                        // Plan 419 Phase 2: 走 add_string(dedup + freelist 复用)
+                        // + 池计数入栈。
+                        let result_idx = self.add_string(result.into_bytes());
+                        self.rc_push_str_idx(task, result_idx as usize);
                     }
                 }
                 // Plan 120: Option type constructor - Some(value)
@@ -3350,7 +3465,7 @@ impl AutoVM {
                     };
                     let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
                     let instance_id = self.insert_heap_object(instance);
-                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    self.rc_push(task, auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 120: Result type constructor - Err(message)
                 // Plan 208: Wrap error value in a Result.Err heap object
@@ -3359,7 +3474,7 @@ impl AutoVM {
                     let err_val = task.ram.pop_i32();
                     let instance = GenericInstanceData::new("Result.Err".to_string(), vec![auto_val::Value::Int(err_val)]);
                     let instance_id = self.insert_heap_object(instance);
-                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    self.rc_push(task, auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 120: Check if Option is Some
                 OpCode::IS_SOME => {
@@ -3483,7 +3598,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_STR => {
                     // Plan 077 Phase 5: Create List<String> in unified registry
@@ -3492,7 +3607,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_BOOL => {
                     // Plan 077 Phase 5: Create List<bool> in unified registry
@@ -3501,7 +3616,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
                 // Plan 076 Phase 4: InlineInt64 storage variants
                 OpCode::CREATE_LIST_INT_INLINE => {
@@ -3512,7 +3627,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_STR_INLINE => {
                     // Plan 077 Phase 5: Create List<String> with InlineInt64 storage in unified registry
@@ -3522,7 +3637,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
                 OpCode::CREATE_LIST_BOOL_INLINE => {
                     // Plan 077 Phase 5: Create List<bool> with InlineInt64 storage in unified registry
@@ -3532,7 +3647,7 @@ impl AutoVM {
                     let list_id = self.insert_heap_object(list_data);
 
                     // Push list ID onto stack
-                    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+                    self.rc_push(task, auto_val::encode_object(list_id as u32));
                 }
 
                 // === Plan 087 Phase 2: Generic Instance Support ===
@@ -3573,7 +3688,7 @@ impl AutoVM {
 
                     // Push instance ID onto stack
                     vm_debug!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
-                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    self.rc_push(task, auto_val::encode_object(instance_id as u32));
                 }
                 OpCode::CONSTRUCT_INSTANCE => {
                     // Plan 087 Phase 2: Populate fields of a generic instance
@@ -3652,6 +3767,8 @@ impl AutoVM {
                                         if idx < strings_guard.len() {
                                             let s = String::from_utf8_lossy(&strings_guard[idx]).to_string();
                                             drop(strings_guard);
+                                            // Plan 419 Phase 2: 实例字段持拷贝,池 stake 死亡。
+                                            self.pool_release(idx);
                                             Value::Str(auto_val::AutoStr::from(s))
                                         } else {
                                             drop(strings_guard);
@@ -3727,6 +3844,8 @@ impl AutoVM {
 
                     // Push instance_id back onto stack for variable assignment
                     // Stack layout after: [..., instance_id]
+                    // Plan 419: 自栈 pop 转移回栈(不 +1 —— NEW_INSTANCE 的
+                    // stake 一路随行;字段值的 stakes 已随 field_values 转移进实例)。
                     vm_debug!("DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
                         instance_id
                     );
@@ -3778,6 +3897,8 @@ impl AutoVM {
                             expected_name == "Option.Some"
                         };
                         task.ram.push_nv(auto_val::encode_bool(result));
+                        // Plan 419: 被消费的 receiver 引用 stake 死亡。
+                        self.rc_release(nv);
                     }
                 }
                 OpCode::GET_GENERIC_FIELD => {
@@ -3826,14 +3947,14 @@ impl AutoVM {
                                         ));
                                     }
                                 } else if field_index == 0 {
-                                    task.ram.push_nv(nv);
+                                    self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
                                 } else {
                                     return Err(VMError::RuntimeError(format!(
                                         "Field index {} out of bounds for non-generic object", field_index
                                     )));
                                 }
                             } else if field_index == 0 {
-                                task.ram.push_nv(nv);
+                                self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
                             } else {
                                 return Err(VMError::RuntimeError(format!(
                                     "Field index {} out of bounds", field_index
@@ -3841,12 +3962,15 @@ impl AutoVM {
                             }
                         } else if field_index == 0 {
                             // Primitive value — field 0 is the value itself
-                            task.ram.push_nv(nv);
+                            self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
                         } else {
                             return Err(VMError::RuntimeError(format!(
                                 "Field index {} out of bounds for primitive", field_index
                             )));
                         }
+                        // Plan 419: 被消费的 receiver 引用 stake 死亡
+                        // (push_value 已对字段 VmRef +1;原样回推路径为转移)。
+                        self.rc_release(nv);
                     }
                 }
                 OpCode::SET_GENERIC_FIELD => {
@@ -3883,6 +4007,9 @@ impl AutoVM {
                         instance_id, field_index, value
                     );
 
+                    // Plan 419: 记录旧字段引用(写锁释放后级联回收)。
+                    let mut old_field_ref: Option<u64> = None;
+
                     // Get instance and set field
                     if let Some(obj) = self.get_heap_object(instance_id) {
                         let mut guard = obj.write().unwrap();
@@ -3895,6 +4022,10 @@ impl AutoVM {
                             if let Some(instance) =
                                 guard.as_any_mut().downcast_mut::<GenericInstanceData>()
                             {
+                                old_field_ref = instance.fields.get(field_index).and_then(|v| match v {
+                                    Value::VmRef(r) => Some(r.id as u64),
+                                    _ => None,
+                                });
                                 let value_repr = format!("{:?}", value); // Capture before move
                                 instance.set_field(field_index, value).map_err(|e| {
                                     VMError::RuntimeError(format!("Failed to set field: {}", e))
@@ -3918,6 +4049,12 @@ impl AutoVM {
                             instance_id
                         )));
                     }
+                    // Plan 419: 旧字段级联释放 + receiver stake 死亡
+                    // (value 自栈转移进字段,计数不变)。
+                    if let Some(old_id) = old_field_ref {
+                        self.rc_release_id(old_id);
+                    }
+                    self.rc_release_id(instance_id);
                 }
                 OpCode::LIST_PUSH_INT => {
                     // Plan 077 Phase 7: Optimized with inline helper
@@ -3953,6 +4090,8 @@ impl AutoVM {
                             list_id
                         )));
                     }
+                    // Plan 419: value 自栈转移进容器;receiver stake 死亡。
+                    self.rc_release_id(list_id);
                 }
                 OpCode::LIST_POP_INT => {
                     // Plan 077 Phase 7: Optimized with inline helper
@@ -3972,6 +4111,7 @@ impl AutoVM {
                             try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
                         {
                             let value = list.pop().unwrap_or(0);
+                            // Plan 419: 元素离开容器,其 stake 转移给栈(计数不变)。
                             task.ram.push_i32(value);
                         } else {
                             return Err(VMError::RuntimeError(format!(
@@ -3984,6 +4124,8 @@ impl AutoVM {
                             list_id
                         )));
                     }
+                    // Plan 419: receiver stake 死亡。
+                    self.rc_release_id(list_id);
                 }
                 OpCode::LIST_GET_INT => {
                     // Plan 077 Phase 7: Optimized with inline helper
@@ -4004,6 +4146,10 @@ impl AutoVM {
                             try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt)
                         {
                             let value = list.get(index).copied().unwrap_or(0);
+                            // Plan 419: 元素仍在容器 —— 拷贝引用入栈 +1。
+                            if (value as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                self.rc_retain_id(value as u64);
+                            }
                             task.ram.push_i32(value);
                         } else {
                             return Err(VMError::RuntimeError(format!(
@@ -4016,6 +4162,8 @@ impl AutoVM {
                             list_id
                         )));
                     }
+                    // Plan 419: receiver stake 死亡。
+                    self.rc_release_id(list_id);
                 }
                 OpCode::LIST_SET_INT => {
                     // Plan 077 Phase 7: Optimized with inline helper
@@ -4029,6 +4177,7 @@ impl AutoVM {
                     use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
                     use crate::vm::types::ListData;
 
+                    let mut old_elem_ref: Option<u64> = None;
                     if let Some(obj) = self.get_heap_object(list_id) {
                         let mut guard = obj.write().unwrap();
 
@@ -4036,6 +4185,11 @@ impl AutoVM {
                         if let Some(list) =
                             try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
                         {
+                            if let Some(&old) = list.elems.get(index) {
+                                if (old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                    old_elem_ref = Some(old as u64);
+                                }
+                            }
                             if !list.set(index, value) {
                                 return Err(VMError::RuntimeError(format!(
                                     "List index out of bounds: {}",
@@ -4053,6 +4207,11 @@ impl AutoVM {
                             list_id
                         )));
                     }
+                    // Plan 419: 旧元素释放 + 新值自栈转移 + receiver 死亡。
+                    if let Some(old_id) = old_elem_ref {
+                        self.rc_release_id(old_id);
+                    }
+                    self.rc_release_id(list_id);
                 }
                 // Slice: stack: container, start, end -> new_container
                 OpCode::SLICE => {
@@ -4073,7 +4232,7 @@ impl AutoVM {
                             let sliced: String = chars[s_start..s_end].iter().collect();
                             drop(strings);
                             let new_idx = self.add_string(sliced.into_bytes());
-                            push_str_tag(&mut task.ram, new_idx as u32);
+                            self.rc_push_str_idx(task, new_idx as usize);
                         } else {
                             task.ram.push_i32(0);
                         }
@@ -4094,7 +4253,7 @@ impl AutoVM {
                                     elems: sliced,
                                     storage: None,
                                 });
-                                task.ram.push_nv(auto_val::encode_object(new_id as u32));
+                                self.rc_push(task, auto_val::encode_object(new_id as u32));
                             } else {
                                 drop(arr);
                                 task.ram.push_i32(0);
@@ -4127,7 +4286,7 @@ impl AutoVM {
                         let _ = data.set_field(i, val);
                     }
                     let instance_id = self.insert_heap_object(data);
-                    task.ram.push_nv(auto_val::encode_object(instance_id as u32));
+                    self.rc_push(task, auto_val::encode_object(instance_id as u32));
                 }
                 // Plan 200: Get tuple field by index
                 // Stack: tuple_id -> value (field_index from bytecode)
@@ -4150,7 +4309,7 @@ impl AutoVM {
                                     auto_val::Value::Bool(b) => task.ram.push_i32(if *b { 1 } else { 0 }),
                                     auto_val::Value::Str(s) => {
                                         let idx = self.add_string(s.as_bytes().to_vec());
-                                        push_str_tag(&mut task.ram, idx as u32);
+                                        self.rc_push_str_idx(task, idx as usize);
                                     }
                                     _ => task.ram.push_i32(0),
                                 }
@@ -4246,10 +4405,11 @@ impl AutoVM {
                                     {
                                         if elem < 0 {
                                             let str_idx = (-(elem) - 1) as u32;
-                                            task.ram.push_nv(auto_val::encode_string(str_idx));
+                                            self.rc_push_str_idx(task, str_idx as usize);
                                         } else if elem >= 4000000 {
                                             // Heap object ID
-                                            task.ram.push_nv(auto_val::encode_object(elem as u32));
+                                            // Plan 419: 元素引用入栈 +1。
+                                            self.rc_push(task, auto_val::encode_object(elem as u32));
                                         } else {
                                             task.ram.push_i32(elem);
                                         }
@@ -4269,7 +4429,7 @@ impl AutoVM {
                                     let str_idx = strings.len() as u32;
                                     strings.push(elem.as_bytes().to_vec());
                                     drop(strings);
-                                    task.ram.push_str_idx(str_idx);
+                                    self.rc_push_str_idx(task, str_idx as usize);
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
                                 }
@@ -4297,13 +4457,14 @@ impl AutoVM {
                                             let str_idx = strings.len() as u32;
                                             strings.push(s.as_bytes().to_vec());
                                             drop(strings);
-                                            task.ram.push_str_idx(str_idx);
+                                            self.rc_push_str_idx(task, str_idx as usize);
                                         }
                                         auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
                                         auto_val::Value::Bool(b) => { task.ram.push_nv(auto_val::encode_bool(*b)); }
                                         auto_val::Value::Float(f) => { task.ram.push_f32(*f as f32); }
                                         auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
-                                        auto_val::Value::VmRef(r) => { task.ram.push_nv(auto_val::encode_object(r.id as u32)); }
+                                        // Plan 419: 元素引用入栈 +1。
+                                        auto_val::Value::VmRef(r) => { self.rc_push(task, auto_val::encode_object(r.id as u32)); }
                                         auto_val::Value::Nil => { task.ram.push_i32(0); }
                                         _ => { task.ram.push_i32(0); }
                                     }
@@ -4320,6 +4481,9 @@ impl AutoVM {
                             task.ram.push_i32(0);
                         }
                     } // end of else block for non-string case
+                    // Plan 419: receiver(list/数组引用)的栈上 stake 死亡
+                    // (字符串 tag 非堆引用,release 为 no-op)。
+                    self.rc_release(obj_or_str_nv);
                 }
                 // Plan 073: Array element assignment (arr[index] = value)
                 OpCode::SET_ELEM => {
@@ -4328,13 +4492,18 @@ impl AutoVM {
                     let index = task.ram.pop_i32() as usize;
                     // Pop array_id. arrays still push raw i32 (H3 will migrate),
                     // but accept TAG_OBJECT too in case a heap List id reaches here.
+                    // Plan 419: receiver stake 在 arm 末尾释放;value 自栈转移
+                    // 进元素;被覆盖的旧元素为引用时释放。
+                    let receiver_nv;
                     let array_id = {
                         let nv = task.ram.pop_nv();
+                        receiver_nv = nv;
                         if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
                     // Pop value (bottom of stack)
                     let value = task.ram.pop_i32();
+                    let mut old_elem_ref: Option<u64> = None;
 
                     // Get array from heap_objects (Plan 390 §15 H3b: arrays are
                     // ListData<Value> in the unified registry now).
@@ -4343,6 +4512,11 @@ impl AutoVM {
                         if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<auto_val::Value>>() {
                             // Check bounds
                             if index < list.elems.len() {
+                                // Plan 419: 记录旧元素引用,写锁释放后级联回收。
+                                old_elem_ref = match &list.elems[index] {
+                                    auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                    _ => None,
+                                };
                                 // Update element value
                                 // Convert i32 value to appropriate Value type
                                 // For now, store as Int (we can enhance this later with type tracking)
@@ -4367,6 +4541,11 @@ impl AutoVM {
                             array_id
                         )));
                     }
+                    // Plan 419: 旧元素级联释放 + receiver stake 死亡。
+                    if let Some(old_id) = old_elem_ref {
+                        self.rc_release_id(old_id);
+                    }
+                    self.rc_release(receiver_nv);
                 }
                 // Plan 075: Object field assignment (obj.field = value)
                 OpCode::SET_FIELD => {
@@ -4379,14 +4558,20 @@ impl AutoVM {
                         else { auto_val::decode_i32(nv) as usize }
                     };
                     // Pop object_id
+                    // Plan 419: receiver 的栈上 stake 在 arm 末尾释放(错误路径
+                    // 泄漏一个 stake —— 安全方向);value 自栈转移进字段(不变);
+                    // 旧字段值为 VmRef 时在写入后释放(级联回收可能触发)。
+                    let receiver_nv;
                     let obj_id = {
                         let nv = task.ram.pop_nv();
+                        receiver_nv = nv;
                         if auto_val::is_i32(nv) { auto_val::decode_i32(nv) as u64 }
                         else if auto_val::is_object(nv) { auto_val::decode_object(nv) as u64 }
                         else { auto_val::decode_i32(nv) as u64 }
                     };
                     // Pop value (bottom of stack)
                     let value_nv = task.ram.pop_nv();
+                    let mut old_field_ref: Option<u64> = None;
 
                     // Get field name from strings pool
                     let strings = self.strings.read().unwrap();
@@ -4443,14 +4628,22 @@ impl AutoVM {
                                     field_name
                                 )));
                             };
+                            old_field_ref = obj.get(&key).and_then(|v| match v {
+                                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                _ => None,
+                            });
                             obj.set(key, {
-                                self.decode_tagged_nv(value_nv) 
+                                self.decode_tagged_nv(value_nv)
                             });
                         } else if let Some(inst) = heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
                             if let Some(idx) = field_idx {
+                                old_field_ref = inst.fields.get(idx).and_then(|v| match v {
+                                    auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                    _ => None,
+                                });
                                 inst.set_field(idx, {
-                                    self.decode_tagged_nv(value_nv) 
+                                    self.decode_tagged_nv(value_nv)
                                 }).map_err(|e| VMError::RuntimeError(e))?;
                             } else {
                                 return Err(VMError::RuntimeError(format!(
@@ -4502,6 +4695,11 @@ impl AutoVM {
                             obj_id
                         )));
                     }
+                    // Plan 419: 写锁已释放 —— 旧字段值级联释放 + receiver stake 死亡。
+                    if let Some(old_id) = old_field_ref {
+                        self.rc_release_id(old_id);
+                    }
+                    self.rc_release(receiver_nv);
                 }
                 // Plan 073: Object field access (obj.field)
                 OpCode::GET_FIELD => {
@@ -4510,8 +4708,13 @@ impl AutoVM {
                     task.ip += 4;
 
                     // Pop object ID from stack
+                    let receiver_nv;
                     let obj_id = {
                         let nv = task.ram.pop_nv();
+                        receiver_nv = nv;
+                        // Plan 419: receiver 的栈上 stake 在操作完成后释放
+                        // (arm 末尾;错误路径泄漏一个 stake —— 安全方向)。
+                        // 不能在此立即释放:`Cell{...}.x` 临时对象会先死后用。
                         if auto_val::is_i32(nv) {
                             auto_val::decode_i32(nv) as u64
                         } else if auto_val::is_object(nv) {
@@ -4575,12 +4778,13 @@ impl AutoVM {
                                         let str_idx = strings.len();
                                         strings.push(s.as_bytes().to_vec());
                                         drop(strings);
-                                        push_str_tag(&mut task.ram, str_idx as u32);
+                                        self.rc_push_str_idx(task, str_idx as usize);
                                     }
                                     auto_val::Value::Int(i) => task.ram.push_i32(i),
                                     auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
                                     auto_val::Value::Bool(b) => task.ram.push_i32(if b { 1 } else { 0 }),
-                                    auto_val::Value::VmRef(r) => task.ram.push_i32(r.id as i32),
+                                    // Plan 419: 子对象引用入栈 +1。
+                                    auto_val::Value::VmRef(r) => self.rc_push_id(task, r.id as u64),
                                     _ => task.ram.push_i32(0),
                                 }
                             } else {
@@ -4630,12 +4834,13 @@ impl AutoVM {
                                         let str_idx = strings.len();
                                         strings.push(str_bytes);
                                         drop(strings);
-                                        push_str_tag(&mut task.ram, str_idx as u32);
+                                        self.rc_push_str_idx(task, str_idx as usize);
                                     }
                                     auto_val::Value::Nil => task.ram.push_i32(0),
                                     // Plan 073: Nested objects/arrays - push their ID
                                     auto_val::Value::VmRef(vm_ref) => {
-                                        task.ram.push_i32(vm_ref.id as i32);
+                                        // Plan 419: 子对象引用入栈 +1。
+                                        self.rc_push_id(task, vm_ref.id as u64);
                                     }
                                     _ => {
                                         // Unsupported type - push 0 as placeholder
@@ -4674,11 +4879,12 @@ impl AutoVM {
                                             let str_idx = strings.len();
                                             strings.push(str_bytes);
                                             drop(strings);
-                                            push_str_tag(&mut task.ram, str_idx as u32);
+                                            self.rc_push_str_idx(task, str_idx as usize);
                                         }
                                         auto_val::Value::Nil => task.ram.push_i32(0),
                                         auto_val::Value::VmRef(vm_ref) => {
-                                            task.ram.push_nv(auto_val::encode_object(vm_ref.id as u32));
+                                            // Plan 419: 子对象引用入栈 +1。
+                                            self.rc_push(task, auto_val::encode_object(vm_ref.id as u32));
                                         }
                                         _ => {
                                             task.ram.push_i32(0);
@@ -4704,8 +4910,9 @@ impl AutoVM {
                                         if let Some(output) = rust_obj2.downcast_ref::<std::process::Output>() {
                                             let bytes = if field_name == "stdout" { &output.stdout } else { &output.stderr };
                                             let vec_obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes.to_vec());
-                                            let handle = self.insert_heap_object(vec_obj) as i32;
-                                            task.ram.push_i32(handle);
+                                            let handle = self.insert_heap_object(vec_obj);
+                                            // Plan 419: 新堆对象引用入栈 +1。
+                                            self.rc_push_id(task, handle);
                                         } else {
                                             task.ram.push_i32(0);
                                         }
@@ -4719,7 +4926,9 @@ impl AutoVM {
                                 let native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(type_name, &field_name);
                                 if let Some(native_name) = native_name {
                                     drop(heap_obj);
-                                    task.ram.push_nv(auto_val::encode_object(obj_id as u32));
+                                    // Plan 419: 接收者重新入栈作 self(+1;shim
+                                    // 侧 raw pop 不减,由 GET_FIELD 入口的 pop 减过)。
+                                    self.rc_push(task, auto_val::encode_object(obj_id as u32));
                                     if let Some(&native_id) = crate::vm::native_registry::NATIVE_ID_MAP.get(native_name) {
                                         if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                             shim(task, self)?;
@@ -4742,6 +4951,8 @@ impl AutoVM {
                         // Object not found - push 0 as error sentinel
                         task.ram.push_i32(0);
                     }
+                    // Plan 419: 操作完成,receiver 的栈上 stake 死亡。
+                    self.rc_release(receiver_nv);
                 }
                 // === Arithmetic ===
                 OpCode::ADD => {
@@ -4759,6 +4970,9 @@ impl AutoVM {
                         task.ram.push_f32(auto_val::decode_f32(a_bits) + auto_val::decode_f32(b_bits));
                     } else if auto_val::is_string(a_bits) || auto_val::is_string(b_bits) {
                         // String concatenation: decode both as strings, concatenate, push new string
+                        // Plan 419 Phase 2: 操作数 stake 随消费死亡。
+                        self.rc_release(a_bits);
+                        self.rc_release(b_bits);
                         let a_str = if auto_val::is_string(a_bits) {
                             let idx = auto_val::decode_string(a_bits) as usize;
                             let strings = self.strings.read().unwrap();
@@ -4775,11 +4989,11 @@ impl AutoVM {
                         };
                         let mut combined = a_str;
                         combined.extend_from_slice(&b_str);
-                        let mut strings = self.strings.write().unwrap();
-                        let new_idx = strings.len() as u32;
-                        strings.push(combined);
-                        drop(strings);
-                        task.ram.push_string(new_idx);
+                        self.rc_release(a_bits);
+                        self.rc_release(b_bits);
+                        // Plan 419 Phase 2: 同 STR_CAT(原为裸 push,dedup 漂移源)。
+                        let new_idx = self.add_string(combined);
+                        self.rc_push_str_idx(task, new_idx as usize);
                     } else {
                         let a = auto_val::decode_i32(a_bits);
                         let b = auto_val::decode_i32(b_bits);
@@ -5165,7 +5379,7 @@ impl AutoVM {
                             // 栈:[receiver] → [str 结果](argc=0,receiver 即栈顶)
                             task.ram.pop_nv();
                             let idx = self.add_string(s.into_bytes());
-                            push_str_tag(&mut task.ram, idx as u32);
+                            self.rc_push_str_idx(task, idx as usize);
                             return Ok(StepResult::Continue);
                         }
                     }
@@ -5421,7 +5635,7 @@ impl AutoVM {
                                     .unwrap_or_default();
                                 let result = s.to_uppercase();
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "lower" | "to_lower" | "to_lowercase" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5431,7 +5645,7 @@ impl AutoVM {
                                     .unwrap_or_default();
                                 let result = s.to_lowercase();
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "chars" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5443,7 +5657,7 @@ impl AutoVM {
                                 let mut list: ListData<i32> = ListData::new();
                                 for ch in s.chars() { list.push(ch as i32); }
                                 let list_id = self.insert_heap_object(list);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "graphemes" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5459,7 +5673,7 @@ impl AutoVM {
                                 // Fallback: split by char boundaries
                                 if list.len() == 0 { for ch in s.chars() { list.push(ch as i32); } }
                                 let list_id = self.insert_heap_object(list);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "split" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5490,7 +5704,7 @@ impl AutoVM {
                                 drop(strings);
                                 let list_id = self.insert_heap_object(list);
                                 // Remove receiver from CALL_SPEC layout, push result
-                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                { task.ram.pop_nv(); self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "is_empty" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5531,7 +5745,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "replace" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
@@ -5552,7 +5766,7 @@ impl AutoVM {
                                 } else { String::new() };
                                 let result = s.replace(&pat, &repl);
                                 let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
-                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "to_string" | "to_str" | "clone" => {
                                 // str.to_string() / str.to_str() / str.clone() — return self
@@ -5684,10 +5898,10 @@ impl AutoVM {
                                             let v = *val;
                                             if v >= 4000000 {
                                                 // Heap object ID — push as object reference
-                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(v as u32)); }
+                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(v as u32)); }
                                             } else if let Some(bytes) = self.get_string(v as u32) {
                                                 let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
-                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(new_idx as u32)); }
+                                                { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, new_idx as usize); }
                                             } else {
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
                                             }
@@ -5699,7 +5913,7 @@ impl AutoVM {
                                         // Plan 403: List<str> via CREATE_LIST_STR.
                                         if let Some(s) = list.get(index as usize) {
                                             let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.clone().into_bytes()); i };
-                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                                         } else {
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
                                         }
@@ -5824,9 +6038,9 @@ impl AutoVM {
                                         let idx = strings.len() as u32;
                                         strings.push(s.as_bytes().to_vec());
                                         drop(strings);
-                                        task.ram.push_nv(auto_val::encode_string(idx));
+                                        self.rc_push_str_idx(task, idx as usize);
                                     }
-                                    Some(auto_val::Value::VmRef(r)) => task.ram.push_nv(auto_val::encode_object(r.id as u32)),
+                                    Some(auto_val::Value::VmRef(r)) => self.rc_push(task, auto_val::encode_object(r.id as u32)),
                                     Some(other) => {
                                         // For other types, push as i32 fallback
                                         task.ram.push_nv(auto_val::encode_i32(0));
@@ -5974,7 +6188,7 @@ impl AutoVM {
                                     list.push(b as i32);
                                 }
                                 let list_id = self.insert_heap_object(list);
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_object(list_id as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(list_id as u32)); }
                             }
                             "to_string" | "to_str" => {
                                 // Plan 403-F Bug D: f64/f32/bool values reach here
@@ -5997,7 +6211,7 @@ impl AutoVM {
                                     strings.push(bytes);
                                     strings.len() - 1
                                 };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_string(idx as u32)); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             // Plan 403-F: float to_int/to_float/to_uint on
                             // f64/f32 values (which reach here as "<unknown_nv>").
@@ -6066,8 +6280,8 @@ impl AutoVM {
                         // Stack is: [..., receiver, arg0..argN-1]
                         // Push type_name and method on top (1 nanbox slot each, no null marker)
                         {
-                            task.ram.push_nv(auto_val::encode_string(type_idx as u32));
-                            task.ram.push_nv(auto_val::encode_string(method_idx as u32));
+                            self.rc_push_str_idx(task, type_idx as usize);
+                            self.rc_push_str_idx(task, method_idx as usize);
                         }
                         if let Some(shim) = self.native_interface.get(dispatch_id).cloned() {
                             shim(task, self)?;
@@ -6141,7 +6355,7 @@ impl AutoVM {
                                         };
                                         for _ in 0..=arg_count { task.ram.pop_i32(); }
                                         {
-                                            task.ram.push_nv(auto_val::encode_string(idx as u32));
+                                            self.rc_push_str_idx(task, idx as usize);
                                         }
                                         converted = true;
                                     }
@@ -6179,7 +6393,7 @@ impl AutoVM {
                                         };
                                         for _ in 0..=arg_count { task.ram.pop_i32(); }
                                         {
-                                            task.ram.push_nv(auto_val::encode_string(idx as u32));
+                                            self.rc_push_str_idx(task, idx as usize);
                                         }
                                         converted = true;
                                     }
@@ -6213,7 +6427,7 @@ impl AutoVM {
                                     strings.push(bytes);
                                     strings.len() - 1
                                 };
-                                task.ram.push_nv(auto_val::encode_string(idx as u32));
+                                self.rc_push_str_idx(task, idx as usize);
                             }
                         }
                     } else {
@@ -6226,9 +6440,13 @@ impl AutoVM {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
 
+                    // Plan 419: native 死区结算 —— shim 弹掉的参数/receiver 槽
+                    // 在此统一释放(shim 内 pop 均为 raw,不计数)。shim 内
+                    // 推栈的堆 id 必须 rc_push(+1),与本结算配平。
+                    let sp_before_native = task.ram.sp;
                     // DEBUG: Bypass native_interface for iterator.next
                     if native_id == 112 {
-                        // Save IP before call — if shim_iterator_next yields
+                        // Save IP before call — if iterator_next yields
                         // (SSE waiting), we need to retry this CALL_NAT.
                         let pre_call_ip = task.ip;
                         crate::vm::native::shim_iterator_next(task, self)?;
@@ -6236,7 +6454,8 @@ impl AutoVM {
                         // back up IP so the CALL_NAT re-executes on resume,
                         // and signal Yield so the scheduler can run other tasks.
                         if task.waiting_sse_stream_id.is_some() {
-                            // Rewind past CALL_NAT opcode (1 byte) + native_id (2 bytes).
+                            // Plan 419: yield 重试路径不结算 —— 参数仍在死区
+                            // 语义之外,重试时 shim 会重新 pop。
                             task.ip = pre_call_ip - 3;
                             return Ok(StepResult::Yield);
                         }
@@ -6258,6 +6477,11 @@ impl AutoVM {
                     } else {
                         return Err(VMError::MissingNative(native_id));
                     }
+                    // Plan 419: 死区 [sp_after, sp_before) 内引用槽结算清零。
+                    let sp_after_native = task.ram.sp;
+                    if sp_after_native < sp_before_native {
+                        self.rc_release_slot_range(&mut task.ram, sp_after_native, sp_before_native);
+                    }
                 }
                 // Plan 369 Task 10: Python FFI native call with explicit arg count.
                 // Reads native_id:u16, arg_count:u8. The arg_count is stashed on
@@ -6271,10 +6495,16 @@ impl AutoVM {
                     task.ip += 1;
                     task.pending_native_arg_count = arg_count;
 
+                    // Plan 419: 同 CALL_NAT 的死区结算。
+                    let sp_before_native = task.ram.sp;
                     if let Some(shim) = self.native_interface.get(native_id).cloned() {
                         shim(task, self)?;
                     } else {
                         return Err(VMError::MissingNative(native_id));
+                    }
+                    let sp_after_native = task.ram.sp;
+                    if sp_after_native < sp_before_native {
+                        self.rc_release_slot_range(&mut task.ram, sp_after_native, sp_before_native);
                     }
                 }
                 OpCode::RET => {
@@ -6310,6 +6540,12 @@ impl AutoVM {
                         );
                     }
                     let new_sp = new_sp.max(1);
+
+                    // Plan 419: RET 帧扫描 —— 释放帧区间 [new_sp-1, sp) 内每个
+                    // 引用槽(参数/局部/临时;返回值已 pop 转移给调用方,
+                    // 其落入的 new_sp-1 槽旧值也随覆盖而死亡)。
+                    let sp_after_result_pop = task.ram.sp;
+                    self.rc_release_slot_range(&mut task.ram, new_sp - 1, sp_after_result_pop);
 
                     {
                         task.ram.write_nv(new_sp - 1, result_nv);
@@ -6437,14 +6673,23 @@ impl AutoVM {
                         // Plan 385: 优先通过 capture_slots 读原始栈位置（by-reference）
                         if let Some(&(creator_bp, slot_offset)) = closure.capture_slots.get(var_name.as_str()) {
                             let nv = task.ram.read_nv(creator_bp + 1 + slot_offset);
-                            task.ram.push_nv(nv);
+                            // Plan 419: copy-on-load(+1)。
+                            drop(closure);
+                            self.rc_push(task, nv);
                             return Ok(StepResult::Continue);
                         }
                         // Fallback: 从 env 读值副本（by-value，兼容旧字节码）
                         if let Some(value) = closure.env.get(var_name.as_str()) {
                             // Push value to stack
                             match value {
-                                Value::Int(i) => task.ram.push_i32(*i),
+                                // Plan 419: env 持有的引用入栈 +1(env stake 保留;
+                                // env 以裸 Int(id) 存放,id ≥ HEAP_ID_BASE 即堆引用)。
+                                Value::Int(i) => {
+                                    if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                        self.rc_retain_id(*i as u64);
+                                    }
+                                    task.ram.push_i32(*i);
+                                }
                                 // TODO: Handle other value types
                                 _ => task.ram.push_i32(0),
                             }
@@ -6494,13 +6739,22 @@ impl AutoVM {
                         .map(|c| c.capture_slots.get(&var_name).copied())
                         .unwrap_or(None);
                     if let Some((creator_bp, slot_offset)) = has_slot {
-                        task.ram.write_nv(creator_bp + 1 + slot_offset, value_nv);
+                        // Plan 419: 槽内旧值死亡;新值自栈转移进槽。
+                        let addr = creator_bp + 1 + slot_offset;
+                        self.rc_release(task.ram.read_nv(addr));
+                        task.ram.write_nv(addr, value_nv);
                         return Ok(StepResult::Continue);
                     }
 
                     // Fallback: 写 closure.env（by-value，兼容旧字节码）
                     let value = auto_val::decode_i32(value_nv);
                     if let Some(mut closure) = self.closures.get_mut(&closure_id) {
+                        // Plan 419: env 旧值(id ≥ HEAP_ID_BASE 为堆引用)释放;新值转移。
+                        if let Some(Value::Int(old)) = closure.env.get(var_name.as_str()) {
+                            if (*old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                self.rc_release_id(*old as u64);
+                            }
+                        }
                         closure.env.insert(var_name, Value::Int(value));
                     } else {
                         return Err(VMError::RuntimeError(format!(
@@ -6991,12 +7245,14 @@ impl AutoVM {
                             if actual_offset > task.bp {
                                 task.ram.push_nv(auto_val::encode_null());
                             } else {
-                                task.ram.push_nv(task.ram.read_nv(task.bp - actual_offset));
+                                // Plan 419: copy-on-load —— 加载引用值 +1。
+                                self.rc_push(task, task.ram.read_nv(task.bp - actual_offset));
                             }
                         }
                     } else {
                         // Local variable: load from bp+1+idx
-                        task.ram.push_nv(task.ram.read_nv(task.bp + 1 + idx));
+                        // Plan 419: copy-on-load。
+                        self.rc_push(task, task.ram.read_nv(task.bp + 1 + idx));
                     }
                 }
                 OpCode::STORE_LOCAL => {
@@ -7010,13 +7266,20 @@ impl AutoVM {
                         let n_args = task.current_fn_n_args;
                         let offset = n_args - param_idx;
                         let actual_offset = offset + 1;
-                        task.ram.write_nv(task.bp - actual_offset, val_nv);
+                        // Plan 419: 槽内旧值 -1;新值自栈转移进槽(计数不变)。
+                        let addr = task.bp - actual_offset;
+                        self.rc_release(task.ram.read_nv(addr));
+                        task.ram.write_nv(addr, val_nv);
                     } else {
-                        task.ram.write_nv(task.bp + 1 + idx, val_nv);
+                        let addr = task.bp + 1 + idx;
+                        // Plan 419: 覆盖赋值旧值 -1(overwrite_drop 语义)。
+                        self.rc_release(task.ram.read_nv(addr));
+                        task.ram.write_nv(addr, val_nv);
                     }
                 }
                 OpCode::LOAD_LOC_0 => {
-                    task.ram.push_nv(task.ram.read_nv(task.bp + 1));
+                    // Plan 419: copy-on-load。
+                    self.rc_push(task, task.ram.read_nv(task.bp + 1));
                 }
                 // Plan 317: Actor state field access (absolute, bp-independent).
                 // state_vars is a Vec on AutoTask; field_idx is assigned by codegen.
@@ -7024,7 +7287,8 @@ impl AutoVM {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
                     let nv = task.state_vars.get(field_idx).copied().unwrap_or(0);
-                    task.ram.push_nv(nv);
+                    // Plan 419: copy-on-load。
+                    self.rc_push(task, nv);
                 }
                 OpCode::STORE_STATE_FIELD => {
                     let field_idx = self.flash.read_u8(task.ip) as usize;
@@ -7039,7 +7303,12 @@ impl AutoVM {
                         if field_idx >= task.state_vars.len() {
                             task.state_vars.resize(field_idx + 1, 0);
                         }
+                        // Plan 419: 旧 state 字段值 -1;新值转移进槽。
+                        self.rc_release(task.state_vars[field_idx]);
                         task.state_vars[field_idx] = val_nv;
+                    } else {
+                        // Plan 419: 被锁定跳过写入时,弹出的值按死亡处理。
+                        self.rc_release(val_nv);
                     }
                 }
                 // Plan 317: Global variable access (module-level var).
@@ -7052,7 +7321,8 @@ impl AutoVM {
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
                     let nv = self.globals.get(&name).map(|v| *v).unwrap_or(0);
-                    task.ram.push_nv(nv);
+                    // Plan 419: copy-on-load(全局表项保留自己的 stake)。
+                    self.rc_push(task, nv);
                 }
                 OpCode::STORE_GLOBAL => {
                     let name_idx = self.flash.read_u32(task.ip) as usize;
@@ -7062,24 +7332,42 @@ impl AutoVM {
                         .map(|b| String::from_utf8_lossy(b).to_string())
                         .unwrap_or_default();
                     let nv = task.ram.pop_nv();
+                    // Plan 419: 旧全局值 -1;新值自栈转移进全局表。
+                    if let Some(old) = self.globals.get(&name) {
+                        let old_nv = *old;
+                        drop(old);
+                        self.rc_release(old_nv);
+                    }
                     self.globals.insert(name, nv);
                 }
                 OpCode::LOAD_LOC_1 => {
-                    task.ram.push_nv(task.ram.read_nv(task.bp + 2));
+                    // Plan 419: copy-on-load。
+                    self.rc_push(task, task.ram.read_nv(task.bp + 2));
                 }
                 OpCode::LOAD_LOC_2 => {
-                    task.ram.push_nv(task.ram.read_nv(task.bp + 3));
+                    // Plan 419: copy-on-load。
+                    self.rc_push(task, task.ram.read_nv(task.bp + 3));
                 }
                 OpCode::STORE_LOC_0 => {
-                    { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 1, v); }
+                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    let v = task.ram.pop_nv();
+                    self.rc_release(task.ram.read_nv(task.bp + 1));
+                    task.ram.write_nv(task.bp + 1, v);
                 }
                 OpCode::STORE_LOC_1 => {
-                    { let v = task.ram.pop_nv(); task.ram.write_nv(task.bp + 2, v); }
+                    // Plan 419: 覆盖旧值 -1;新值转移。
+                    let v = task.ram.pop_nv();
+                    self.rc_release(task.ram.read_nv(task.bp + 2));
+                    task.ram.write_nv(task.bp + 2, v);
                 }
 
                 // === Stack ===
                 OpCode::DROP => {
-                    task.ram.pop_i32();
+                    // Plan 419: DROP 兑现 RAII 承诺 —— 弹出并释放 owned value
+                    // (引用值计数 -1,归零则真回收);槽位清零。
+                    let nv = task.ram.pop_nv();
+                    self.rc_release(nv);
+                    task.ram.raw_nv[task.ram.sp] = 0;
                 }
                 // Plan 088 Phase 4: Function Prologue
                 OpCode::FN_PROLOG => {
@@ -7117,6 +7405,7 @@ impl AutoVM {
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
+                    // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
                     let result = if a_nv == b_nv {
                         true
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
@@ -7147,6 +7436,8 @@ impl AutoVM {
                     } else {
                         false
                     };
+self.rc_release(a_nv);
+                    self.rc_release(b_nv);
                     task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
@@ -7154,6 +7445,7 @@ impl AutoVM {
                     {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
+                    // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
                     let result = if a_nv == b_nv {
                         false
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
@@ -7181,6 +7473,8 @@ impl AutoVM {
                     } else {
                         true
                     };
+self.rc_release(a_nv);
+                    self.rc_release(b_nv);
                     task.ram.push_nv(auto_val::encode_bool(result));
                     }
                 }
@@ -7808,12 +8102,16 @@ impl AutoVM {
         // unchanged because the try/catch runs in the same frame — restoring
         // bp here would fool the function-call loop into thinking the
         // function has returned.
+        // Plan 419: 被展开区间 [handler.sp, sp) 内的引用槽逐个 -1(错误路径
+        // 不丢帧清理 → 悬空计数)。
+        let sp_at_unwind = task.ram.sp;
+        self.rc_release_slot_range(&mut task.ram, handler.sp, sp_at_unwind);
         task.ram.sp = handler.sp;
         // Push the error message as a string value for the catch handler to
         // bind to its parameter. The string is added to the pool at runtime
         // and its index pushed as a tag.
         let idx = self.add_string(msg.clone().into_bytes());
-        crate::vm::engine::push_str_tag(&mut task.ram, idx as u32);
+        self.rc_push_str_idx(task, idx as usize);
         task.ip = handler.catch_pc;
         // Note: do NOT set task.last_error here — the error was caught and is
         // being handled. extract_autovm_result treats last_error as a fatal
