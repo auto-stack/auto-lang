@@ -443,6 +443,31 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
         // Try to load the compiled wrapper library
         if let Some(sandbox) = session.sandbox() {
+            // Plan 430 C2: 方法 shim 包(独立于自由函数 wrapper;early-continue 之前加载)
+            if let Some((methods_lib, _manifest_json)) = sandbox.find_methods_pack(&crate_name) {
+                match unsafe { libloading::Library::new(&methods_lib) } {
+                    Ok(lib) => {
+                        let lib = std::sync::Arc::new(lib);
+                        match crate::vm::ffi::dep_methods::read_shim_manifest(&lib) {
+                            Ok(manifest) => {
+                                crate::vm::ffi::dep_methods::register_pack(&crate_name, lib, &manifest);
+                            }
+                            Err(e) => {
+                                log::warn!("plan430: shim manifest read failed for {}: {:?}", crate_name, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "plan430: methods pack load failed for {} from {}: {}",
+                            crate_name,
+                            methods_lib.display(),
+                            e
+                        );
+                    }
+                }
+            }
+
             // Try v3 cache first (Phase 3C-v2 with sig_code), then v2, then v1
             let sig_hash_len = functions.len();
             let v3_version = format!("v3_{}", sig_hash_len);
@@ -486,7 +511,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                         (exported, sig)
                     } else {
                         // Fallback to known_signature or default String→String
-                        let sig = crate::ffi::known_signature(crate_name, func_name)
+                        let sig = crate::ffi::resolve_signature(crate_name, func_name)
                             .unwrap_or_else(|| {
                                 crate::ffi::RustSignature::new()
                                     .param(crate::ffi::RustType::String)
@@ -512,7 +537,7 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             } else {
                 // No manifest — use known_signature or default (legacy v1/v2 path)
                 for func_name in functions {
-                    let signature = crate::ffi::known_signature(crate_name, func_name)
+                    let signature = crate::ffi::resolve_signature(crate_name, func_name)
                         .unwrap_or_else(|| {
                             crate::ffi::RustSignature::new()
                                 .param(crate::ffi::RustType::String)

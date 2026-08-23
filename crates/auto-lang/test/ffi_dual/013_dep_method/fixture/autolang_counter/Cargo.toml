@@ -1,0 +1,9 @@
+# plan-430 C2 端到端夹具:被 dep 声明的三方 crate(方法面覆盖
+# 静态构造/String 参数/&mut/&self/void/i64/String 返回/静态方法)。
+# 独立工作区:不加入 auto-lang 的 workspace,也不被 wrapper 工程之外的 workspace 吸收。
+[package]
+name = "autolang_counter"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]

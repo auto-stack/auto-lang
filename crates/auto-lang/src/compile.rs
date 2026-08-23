@@ -765,13 +765,44 @@ impl CompileSession {
         // Plan 212b Task 2: Compile deps that have rust imports
         // Phase 2.1: Convert function names to FunctionShim descriptors with signatures
         if let Some(ref sandbox) = self.sandbox {
-            use crate::ffi::known_signature;
+            use crate::ffi::resolve_signature;
             use auto_cache::sandbox::{FunctionShim, ShimType};
 
             for (crate_name, functions) in &self.rust_imports {
                 if self.declared_crates.contains(crate_name) {
-                    let shims: Vec<FunctionShim> = functions.iter().map(|func| {
-                        match known_signature(crate_name, func) {
+                    // Plan 430 C2: 先构建方法 shim 包(nightly rustdoc → 生成 → cdylib)。
+                    // manifest 的自由函数签名同时注册为 D2 元数据;nightly 缺失时降级跳过。
+                    if let Some(built) = sandbox
+                        .compile_dep_methods(crate_name, &self.build_dep_source(crate_name))
+                        .ok()
+                        .flatten()
+                    {
+                        if let Ok(man) =
+                            serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(
+                                &built.manifest_json,
+                            )
+                        {
+                            for f in &man.functions {
+                                crate::vm::ffi::dep_methods::register_function_sig(
+                                    crate_name,
+                                    &f.name,
+                                    &f.params,
+                                    &f.ret,
+                                );
+                            }
+                        }
+                    }
+
+                    // Plan 430 C2: 大写开头的是类型导入(use.rust foo::{Type}),
+                    // 走方法 shim 包,不进自由函数 wrapper(避免生成无法编译的 auto_Type 包装)。
+                    let free_fns: Vec<&String> = functions
+                        .iter()
+                        .filter(|f| {
+                            !f.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                        })
+                        .collect();
+                    let shims: Vec<FunctionShim> = free_fns.iter().map(|func| {
+                        match resolve_signature(crate_name, func) {
                             Some(sig) => {
                                 let param_types: Vec<ShimType> = sig.params.iter().map(|t| match t {
                                     crate::ffi::RustType::Void => ShimType::Void,
@@ -792,7 +823,7 @@ impl CompileSession {
                                     _ => ShimType::CString,
                                 };
                                 FunctionShim {
-                                    name: func.clone(),
+                                    name: (*func).clone(),
                                     param_types,
                                     return_type,
                                     body_override: None,

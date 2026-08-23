@@ -4609,7 +4609,7 @@ impl Codegen {
             // Phase 2.1: Infer return type from known signature
             // Opaque constructors (parse, new, now, etc.) return heap object handles (Int),
             // not strings. Default to Int for functions without known signatures.
-            let ret_type = crate::ffi::known_signature(&crate_name, local_name)
+            let ret_type = crate::ffi::resolve_signature(&crate_name, local_name)
                 .map(|sig| match sig.returns {
                     crate::ffi::RustType::Void => Type::Void,
                     crate::ffi::RustType::Bool => Type::Bool,
@@ -6518,6 +6518,14 @@ impl Codegen {
                                 false
                             } else if self.exports.contains_key(&format!("{}.new", type_name)) {
                                 false // User defined their own new() — use regular CALL
+                            } else if self.rust_native_map.contains_key(type_name)
+                                && !matches!(type_name, "HashMap" | "HashSet")
+                            {
+                                // Plan 430: use.rust 导入的类型名(Vec...)与 Auto 泛型
+                                // 模板撞名时 rust 导入优先——构造器走 dispatch 3000。
+                                // HashMap/HashSet 例外:Auto Map natives(auto.hashmap.*)
+                                // 与 a2r 双路径已打通,由原生路径拥有,避免表示分裂。
+                                false
                             } else {
                                 self.generic_registry.has_template(type_name)
                             }

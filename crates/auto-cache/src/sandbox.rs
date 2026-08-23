@@ -835,7 +835,8 @@ pub extern "C" fn {exported}({params_str}){ret_annotation} {{
     }
 
     /// Find the compiled cdylib in a target directory
-    fn find_cdylib_in_dir(&self, dir: &Path, expected_name: &str) -> Option<PathBuf> {
+    /// (plan-430 C2: 也供 methods_pack 管线复用)
+    pub fn find_cdylib_in_dir(&self, dir: &Path, expected_name: &str) -> Option<PathBuf> {
         if !dir.exists() {
             return None;
         }

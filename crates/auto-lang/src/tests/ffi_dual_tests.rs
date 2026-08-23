@@ -90,3 +90,63 @@ fn ffi_dual_011_char_operations() {
 fn ffi_dual_012_str_find_replace() {
     test_ffi_dual("012_str_find_replace").unwrap();
 }
+
+// Plan 430 C2: 端到端 —— dep 声明的三方 crate 自动出方法 shim 包,
+// VM 侧经 dispatch 3000 兜底段调用其方法(构造器/&mut/&self/静态/字符串/i64)。
+// 依赖 nightly rustdoc 提取元信息 + cargo 编译 shim 包,任一缺失时跳过(非失败)。
+#[test]
+fn ffi_dual_013_dep_method() {
+    if !auto_cache::methods_pack::nightly_available() {
+        eprintln!("skipped: nightly toolchain unavailable for methods pack");
+        return;
+    }
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = d
+        .join("test/ffi_dual/013_dep_method/fixture/autolang_counter")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let src = format!(
+        r#"dep autolang_counter(path: "{fixture}")
+use.rust autolang_counter::{{Counter, Config}}
+let c = Counter.new("hits")
+c.increment()
+c.increment()
+print(c.value())
+print(c.label())
+c.set_label("misses")
+print(c.label())
+print(c.add(5))
+let d = c.clone_reset()
+print(d.value())
+print(Counter.version())
+
+let cfg = Config.new()
+let c2 = cfg.verbose(true)
+print(c2.is_verbose())
+let c3 = c2.level(7)
+print(c3.level_value())
+print(cfg.is_verbose())
+let m = c3.merge(cfg)
+print(m.level_value())
+let p = Config.parse("42")
+print(p.level_value())
+"#
+    );
+    let (_, stdout) = run_with_capture(&src).expect("run");
+    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7\n42";
+    assert_eq!(stdout.trim(), expected, "dep method e2e output mismatch:\n{stdout}");
+
+    // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)
+    let bad = format!(
+        r#"dep autolang_counter(path: "{fixture}")
+use.rust autolang_counter::{{Config}}
+let p = Config.parse("not-a-number")
+"#
+    );
+    let err = run_with_capture(&bad).expect_err("parse error must propagate");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("Config.parse") && msg.contains("invalid level"),
+        "error should carry dep-side message, got: {msg}"
+    );
+}

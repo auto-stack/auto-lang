@@ -35,6 +35,17 @@
 - 内建 shim 编译进 VM；用户 crate 经 `use.rust` 沙箱编译为 cdylib 动态加载，
   两路统一进 `NativeInterface` 混合查找。
 - plan-212 完成端到端：dep serde_json → cargo build cdylib → AutoVM 加载 .dll → 调用。
+- **plan-430 方法 shim 包（C 阶段，2026-08-23）**：dep 声明的 crate 自动多做一步
+  "nightly rustdoc 提取元信息 → shim-metadata 分类/生成 → 独立 cdylib
+  （`{crate}_methods_wrapper`）→ 指纹缓存"。方法 wrapper `auto_<Type>_<method>_<sig>`
+  以裸指针跨 C ABI；对象在 VM 堆中为 `DepOpaqueObject`（Drop 回调 cdylib 的
+  `auto__drop_<Type>`）。运行期入口在 `shim_rust_stdlib_dispatch`（id 3000）的
+  兜底段最后一段（生成段 → 手写臂 → native_catalog → dep 注册表），
+  实现在 `vm/ffi/dep_methods.rs`；自由函数签名元数据优先于 `known_signature`（D2）。
+  F 轮追加：`Result<T,E>` 返回走 unwrap_ok——wrapper 解 Ok，Err 经 cdylib
+  线程局部错误通道（`auto__last_error`）传出，VM 侧转 VMError；包构建借 rustc
+  当检查器，报错符号对应方法剔除重试。边界与决策记录：
+  docs/plans/reports/430-c1-dep-methods-pipeline.md、430-f1-unwrap-and-migration.md。
 
 ### Python FFI（`PyFfiBridge`，plan-214/222/300）
 

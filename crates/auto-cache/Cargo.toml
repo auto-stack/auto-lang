@@ -21,5 +21,8 @@ libloading = "0.8"
 # Plan 212 Phase 3C-v2: syn AST signature scanning
 syn = { version = "2", features = ["full", "parsing"] }
 
+# Plan 430 C2: rustdoc 元信息提取 + shim 包生成(进程内调用)
+shim-metadata = { path = "../shim-metadata" }
+
 [dev-dependencies]
 tempfile = "3"
