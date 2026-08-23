@@ -1,0 +1,17 @@
+fn fib(n int) int {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+fn main() {
+    for i in [1, 2, 3] {
+        if i == 2 { continue }
+        print(fib(i))
+    }
+    let m = { "k": 1 }
+    print(m)
+    let t = (1, "two", 3.0)
+    print(t)
+    match_or_like: while true { break }
+}

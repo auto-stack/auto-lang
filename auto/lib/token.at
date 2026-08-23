@@ -1,0 +1,354 @@
+// Rust ref: crates/auto-lang/src/token.rs @ b3bd64f5 (v0.5 临时基线)
+// Baseline: b3bd64f5
+// Coverage: 139 TokenKind 全量声明; keyword_kind 表全量; kind_name 全量
+// Missing:  Display/debug 格式化; PathSep 等个别变体仅声明(与 Rust 仅声明条目对齐)
+// DIVERGE:  D11: Option<TokenKind> 返回 → Ident 哨兵(keyword_kind); if 链替代 match(v1 已验证语法)
+
+enum TokenKind {
+    Int
+    Uint
+    U8
+    I8
+    Bool
+    Byte
+    Float
+    Double
+    Str
+    CStr
+    Char
+    Ident
+    LParen
+    RParen
+    LSquare
+    RSquare
+    LBrace
+    RBrace
+    Comma
+    Semi
+    Newline
+    Add
+    Sub
+    Star
+    Div
+    Mod
+    Not
+    Lt
+    Gt
+    Le
+    Ge
+    Asn
+    Eq
+    Neq
+    AddEq
+    SubEq
+    MulEq
+    DivEq
+    ModEq
+    Dot
+    Range
+    RangeEq
+    Colon
+    VBar
+    Amp
+    CommentLine
+    CommentContent
+    CommentStart
+    CommentEnd
+    DocComment
+    Arrow
+    DoubleArrow
+    Question
+    QuestionQuestion
+    DotQuestion
+    DotQuest
+    At
+    Hash
+    Tilde
+    HashIf
+    HashFor
+    HashIs
+    HashBrace
+    HashIdent
+    True
+    False
+    Nil
+    Null
+    If
+    Else
+    For
+    Loop
+    Break
+    Continue
+    Return
+    Yield
+    Try
+    Catch
+    While
+    Is
+    Var
+    In
+    Fn
+    Type
+    Union
+    Tag
+    Let
+    Mut
+    Move
+    Copy
+    Const
+    View
+    Take
+    Hold
+    Has
+    Spec
+    Use
+    Pac
+    Super
+    Super2
+    Super3
+    Super4
+    As
+    To
+    Enum
+    On
+    Alias
+    Node
+    Ext
+    Static
+    Shared
+    Impl
+    And
+    Or
+    Dep
+    Routes
+    Outlet
+    Link
+    Route
+    Nav
+    NoneKW
+    SomeKW
+    OkKW
+    ErrKW
+    Task
+    Spawn
+    Await
+    Reply
+    Go
+    DotView
+    DotMut
+    DotMove
+    DotTake
+    FStrStart
+    FStrPart
+    FStrEnd
+    FStrNote
+    Grid
+    EOF
+}
+
+// keyword_kind: Rust keyword_kind 的 None → Ident 哨兵(DIVERGE D11);调用方以 != Ident 判定
+fn keyword_kind(text str) TokenKind {
+    if text == "true" { return TokenKind.True }
+    if text == "false" { return TokenKind.False }
+    if text == "nil" { return TokenKind.Nil }
+    if text == "null" { return TokenKind.Null }
+    if text == "if" { return TokenKind.If }
+    if text == "else" { return TokenKind.Else }
+    if text == "for" { return TokenKind.For }
+    if text == "loop" { return TokenKind.Loop }
+    if text == "while" { return TokenKind.While }
+    if text == "try" { return TokenKind.Try }
+    if text == "catch" { return TokenKind.Catch }
+    if text == "is" { return TokenKind.Is }
+    if text == "var" { return TokenKind.Var }
+    if text == "in" { return TokenKind.In }
+    if text == "fn" { return TokenKind.Fn }
+    if text == "type" { return TokenKind.Type }
+    if text == "union" { return TokenKind.Union }
+    if text == "tag" { return TokenKind.Tag }
+    if text == "let" { return TokenKind.Let }
+    if text == "mut" { return TokenKind.Mut }
+    if text == "move" { return TokenKind.Move }
+    if text == "view" { return TokenKind.View }
+    if text == "take" { return TokenKind.Take }
+    if text == "copy" { return TokenKind.Copy }
+    if text == "hold" { return TokenKind.Hold }
+    if text == "has" { return TokenKind.Has }
+    if text == "spec" { return TokenKind.Spec }
+    if text == "use" { return TokenKind.Use }
+    if text == "pac" { return TokenKind.Pac }
+    if text == "super" { return TokenKind.Super }
+    if text == "super2" { return TokenKind.Super2 }
+    if text == "super3" { return TokenKind.Super3 }
+    if text == "super4" { return TokenKind.Super4 }
+    if text == "as" { return TokenKind.As }
+    if text == "to" { return TokenKind.To }
+    if text == "enum" { return TokenKind.Enum }
+    if text == "grid" { return TokenKind.Grid }
+    if text == "alias" { return TokenKind.Alias }
+    if text == "break" { return TokenKind.Break }
+    if text == "continue" { return TokenKind.Continue }
+    if text == "return" { return TokenKind.Return }
+    if text == "yield" { return TokenKind.Yield }
+    if text == "ext" { return TokenKind.Ext }
+    if text == "static" { return TokenKind.Static }
+    if text == "shared" { return TokenKind.Shared }
+    if text == "impl" { return TokenKind.Impl }
+    if text == "const" { return TokenKind.Const }
+    if text == "dep" { return TokenKind.Dep }
+    if text == "routes" { return TokenKind.Routes }
+    if text == "outlet" { return TokenKind.Outlet }
+    if text == "link" { return TokenKind.Link }
+    if text == "route" { return TokenKind.Route }
+    if text == "task" { return TokenKind.Task }
+    if text == "spawn" { return TokenKind.Spawn }
+    if text == "await" { return TokenKind.Await }
+    if text == "reply" { return TokenKind.Reply }
+    if text == "go" { return TokenKind.Go }
+    if text == "mod" { return TokenKind.Mod }
+    return TokenKind.Ident
+}
+
+// kind_name: 与 Rust Debug 输出({:?})逐字一致——M1 闸门 dump 对齐的唯一事实源
+fn kind_name(k TokenKind) str {
+    if k == TokenKind.Int { return "Int" }
+    if k == TokenKind.Uint { return "Uint" }
+    if k == TokenKind.U8 { return "U8" }
+    if k == TokenKind.I8 { return "I8" }
+    if k == TokenKind.Bool { return "Bool" }
+    if k == TokenKind.Byte { return "Byte" }
+    if k == TokenKind.Float { return "Float" }
+    if k == TokenKind.Double { return "Double" }
+    if k == TokenKind.Str { return "Str" }
+    if k == TokenKind.CStr { return "CStr" }
+    if k == TokenKind.Char { return "Char" }
+    if k == TokenKind.Ident { return "Ident" }
+    if k == TokenKind.LParen { return "LParen" }
+    if k == TokenKind.RParen { return "RParen" }
+    if k == TokenKind.LSquare { return "LSquare" }
+    if k == TokenKind.RSquare { return "RSquare" }
+    if k == TokenKind.LBrace { return "LBrace" }
+    if k == TokenKind.RBrace { return "RBrace" }
+    if k == TokenKind.Comma { return "Comma" }
+    if k == TokenKind.Semi { return "Semi" }
+    if k == TokenKind.Newline { return "Newline" }
+    if k == TokenKind.Add { return "Add" }
+    if k == TokenKind.Sub { return "Sub" }
+    if k == TokenKind.Star { return "Star" }
+    if k == TokenKind.Div { return "Div" }
+    if k == TokenKind.Mod { return "Mod" }
+    if k == TokenKind.Not { return "Not" }
+    if k == TokenKind.Lt { return "Lt" }
+    if k == TokenKind.Gt { return "Gt" }
+    if k == TokenKind.Le { return "Le" }
+    if k == TokenKind.Ge { return "Ge" }
+    if k == TokenKind.Asn { return "Asn" }
+    if k == TokenKind.Eq { return "Eq" }
+    if k == TokenKind.Neq { return "Neq" }
+    if k == TokenKind.AddEq { return "AddEq" }
+    if k == TokenKind.SubEq { return "SubEq" }
+    if k == TokenKind.MulEq { return "MulEq" }
+    if k == TokenKind.DivEq { return "DivEq" }
+    if k == TokenKind.ModEq { return "ModEq" }
+    if k == TokenKind.Dot { return "Dot" }
+    if k == TokenKind.Range { return "Range" }
+    if k == TokenKind.RangeEq { return "RangeEq" }
+    if k == TokenKind.Colon { return "Colon" }
+    if k == TokenKind.VBar { return "VBar" }
+    if k == TokenKind.Amp { return "Amp" }
+    if k == TokenKind.CommentLine { return "CommentLine" }
+    if k == TokenKind.CommentContent { return "CommentContent" }
+    if k == TokenKind.CommentStart { return "CommentStart" }
+    if k == TokenKind.CommentEnd { return "CommentEnd" }
+    if k == TokenKind.DocComment { return "DocComment" }
+    if k == TokenKind.Arrow { return "Arrow" }
+    if k == TokenKind.DoubleArrow { return "DoubleArrow" }
+    if k == TokenKind.Question { return "Question" }
+    if k == TokenKind.QuestionQuestion { return "QuestionQuestion" }
+    if k == TokenKind.DotQuestion { return "DotQuestion" }
+    if k == TokenKind.DotQuest { return "DotQuest" }
+    if k == TokenKind.At { return "At" }
+    if k == TokenKind.Hash { return "Hash" }
+    if k == TokenKind.Tilde { return "Tilde" }
+    if k == TokenKind.HashIf { return "HashIf" }
+    if k == TokenKind.HashFor { return "HashFor" }
+    if k == TokenKind.HashIs { return "HashIs" }
+    if k == TokenKind.HashBrace { return "HashBrace" }
+    if k == TokenKind.HashIdent { return "HashIdent" }
+    if k == TokenKind.True { return "True" }
+    if k == TokenKind.False { return "False" }
+    if k == TokenKind.Nil { return "Nil" }
+    if k == TokenKind.Null { return "Null" }
+    if k == TokenKind.If { return "If" }
+    if k == TokenKind.Else { return "Else" }
+    if k == TokenKind.For { return "For" }
+    if k == TokenKind.Loop { return "Loop" }
+    if k == TokenKind.Break { return "Break" }
+    if k == TokenKind.Continue { return "Continue" }
+    if k == TokenKind.Return { return "Return" }
+    if k == TokenKind.Yield { return "Yield" }
+    if k == TokenKind.Try { return "Try" }
+    if k == TokenKind.Catch { return "Catch" }
+    if k == TokenKind.While { return "While" }
+    if k == TokenKind.Is { return "Is" }
+    if k == TokenKind.Var { return "Var" }
+    if k == TokenKind.In { return "In" }
+    if k == TokenKind.Fn { return "Fn" }
+    if k == TokenKind.Type { return "Type" }
+    if k == TokenKind.Union { return "Union" }
+    if k == TokenKind.Tag { return "Tag" }
+    if k == TokenKind.Let { return "Let" }
+    if k == TokenKind.Mut { return "Mut" }
+    if k == TokenKind.Move { return "Move" }
+    if k == TokenKind.Copy { return "Copy" }
+    if k == TokenKind.Const { return "Const" }
+    if k == TokenKind.View { return "View" }
+    if k == TokenKind.Take { return "Take" }
+    if k == TokenKind.Hold { return "Hold" }
+    if k == TokenKind.Has { return "Has" }
+    if k == TokenKind.Spec { return "Spec" }
+    if k == TokenKind.Use { return "Use" }
+    if k == TokenKind.Pac { return "Pac" }
+    if k == TokenKind.Super { return "Super" }
+    if k == TokenKind.Super2 { return "Super2" }
+    if k == TokenKind.Super3 { return "Super3" }
+    if k == TokenKind.Super4 { return "Super4" }
+    if k == TokenKind.As { return "As" }
+    if k == TokenKind.To { return "To" }
+    if k == TokenKind.Enum { return "Enum" }
+    if k == TokenKind.On { return "On" }
+    if k == TokenKind.Alias { return "Alias" }
+    if k == TokenKind.Node { return "Node" }
+    if k == TokenKind.Ext { return "Ext" }
+    if k == TokenKind.Static { return "Static" }
+    if k == TokenKind.Shared { return "Shared" }
+    if k == TokenKind.Impl { return "Impl" }
+    if k == TokenKind.And { return "And" }
+    if k == TokenKind.Or { return "Or" }
+    if k == TokenKind.Dep { return "Dep" }
+    if k == TokenKind.Routes { return "Routes" }
+    if k == TokenKind.Outlet { return "Outlet" }
+    if k == TokenKind.Link { return "Link" }
+    if k == TokenKind.Route { return "Route" }
+    if k == TokenKind.Nav { return "Nav" }
+    if k == TokenKind.NoneKW { return "NoneKW" }
+    if k == TokenKind.SomeKW { return "SomeKW" }
+    if k == TokenKind.OkKW { return "OkKW" }
+    if k == TokenKind.ErrKW { return "ErrKW" }
+    if k == TokenKind.Task { return "Task" }
+    if k == TokenKind.Spawn { return "Spawn" }
+    if k == TokenKind.Await { return "Await" }
+    if k == TokenKind.Reply { return "Reply" }
+    if k == TokenKind.Go { return "Go" }
+    if k == TokenKind.DotView { return "DotView" }
+    if k == TokenKind.DotMut { return "DotMut" }
+    if k == TokenKind.DotMove { return "DotMove" }
+    if k == TokenKind.DotTake { return "DotTake" }
+    if k == TokenKind.FStrStart { return "FStrStart" }
+    if k == TokenKind.FStrPart { return "FStrPart" }
+    if k == TokenKind.FStrEnd { return "FStrEnd" }
+    if k == TokenKind.FStrNote { return "FStrNote" }
+    if k == TokenKind.Grid { return "Grid" }
+    if k == TokenKind.EOF { return "EOF" }
+    return "Unknown"
+}

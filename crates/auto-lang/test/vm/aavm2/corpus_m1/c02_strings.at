@@ -1,0 +1,15 @@
+// line comment
+/* block
+   comment */
+/// doc comment here
+fn greet(name str) str {
+    return "hello, " + name + "!\n"
+}
+fn main() {
+    let s = greet("aavm")
+    print(s.len())
+    print('x')
+    print('\n')
+    print('\')
+    print("tab\there")
+}

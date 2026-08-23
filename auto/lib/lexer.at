@@ -1,0 +1,492 @@
+// Rust ref: crates/auto-lang/src/lexer.rs @ b3bd64f5 (v0.5 临时基线)
+// Baseline: b3bd64f5
+// Coverage: 主循环(next_step)核心子集——空白/换行/行注释/块注释/DocComment/
+//           标识符(含连字符规则)+keyword 表/数字(十进制/浮点/f/d/u/u8/i/i8 后缀/
+//           0x/0b/下划线)/字符串(常见转义)/字符字面量/全部定界符与运算符
+//           (含 ..= ?. -> => ?? || && 复合);skip_whitespace/pos 记账语义
+// Missing:  f-字符串(`/f")、raw/multi/c 字符串、#comptime、byte 字面量、
+//           .view/.mut/.take/.move/.? 属性词、}+换行 else 抑制、LexerState 快照回滚
+// DIVERGE:  D12: Peekable<Chars> → char_at(i)+p/at 游标(431 D1 变体,免 Vec 构造);
+//           D13: Lexer struct → lex_dump 单遍局部变量(S2 需要回退时再封装);
+//           D14: token 流 → dump 串直出(kind_name 层)(S2 换真实 Token 结构);
+//           D15: 注释 buffer 后继(CommentContent/End) → 直出同序 dump;
+//           D16: len 按 char 计(源按 UTF-8 字节;corpus 限定 ASCII);
+//           D17: 循环体内一律不用 continue——VM 在"循环体含调用语句"时
+//                continue 穿透执行后续语句(probe p11/p12 实证,242 tracker 挂账),
+//                全部改写为 else-if 链;break 不受影响
+
+type Tok {
+    kind str
+    text str
+    len int
+    adv int
+}
+
+fn cur_char(source str, p int) int {
+    if p >= source.len() {
+        return 0
+    }
+    return source.char_at(p)
+}
+
+fn is_digit(c int) bool {
+    return c >= '0' && c <= '9'
+}
+
+fn is_alpha(c int) bool {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+}
+
+fn is_alnum(c int) bool {
+    return is_digit(c) || is_alpha(c)
+}
+
+fn is_hex_digit(c int) bool {
+    return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// number() 直译:后缀与进制判定逐分支对齐(内层扫描不用 continue/break)
+fn lex_number(source str, start int) Tok {
+    var p = start
+    var has_dot = false
+    var is_hex = false
+    var is_binary = false
+    var digits = ""
+    if cur_char(source, p) == '0' {
+        digits = digits + "0"
+        p = p + 1
+        if cur_char(source, p) == 'x' {
+            digits = digits + "x"
+            p = p + 1
+            is_hex = true
+        } else if cur_char(source, p) == 'b' {
+            digits = digits + "b"
+            p = p + 1
+            is_binary = true
+        }
+    }
+    var scanning = true
+    for scanning {
+        if p >= source.len() {
+            scanning = false
+        } else {
+            var c = cur_char(source, p)
+            if is_digit(c) && !is_binary {
+                digits = digits + source.slice(p, p + 1)
+                p = p + 1
+            } else if c == '_' {
+                p = p + 1
+            } else if is_binary && (c == '0' || c == '1') {
+                digits = digits + source.slice(p, p + 1)
+                p = p + 1
+            } else if is_hex && is_hex_digit(c) {
+                digits = digits + source.slice(p, p + 1)
+                p = p + 1
+            } else if c == '.' && !has_dot && is_digit(cur_char(source, p + 1)) {
+                has_dot = true
+                digits = digits + "."
+                p = p + 1
+            } else {
+                scanning = false
+            }
+        }
+    }
+    var kind = "Int"
+    var c1 = cur_char(source, p)
+    if c1 == 'f' {
+        p = p + 1
+        kind = "Float"
+    } else if c1 == 'd' {
+        p = p + 1
+        kind = "Double"
+    } else if c1 == 'u' {
+        p = p + 1
+        if cur_char(source, p) == '8' {
+            p = p + 1
+            kind = "U8"
+        } else {
+            kind = "Uint"
+        }
+    } else if c1 == 'i' {
+        p = p + 1
+        if cur_char(source, p) == '8' {
+            p = p + 1
+            kind = "I8"
+        }
+    }
+    if has_dot && kind == "Int" {
+        kind = "Float"
+    }
+    return Tok(kind, digits, digits.len(), p - start)
+}
+
+// str() 直译:常见转义逐项;未知转义按原样两字符入 text
+fn lex_string(source str, start int) Tok {
+    var p = start + 1
+    var text = ""
+    var scanning = true
+    for scanning {
+        if p >= source.len() {
+            scanning = false
+        } else {
+            var c = cur_char(source, p)
+            if c == '"' {
+                p = p + 1
+                scanning = false
+            } else if c == '\\' {
+                var esc = cur_char(source, p + 1)
+                if esc == 'n' {
+                    text = text + "\n"
+                } else if esc == 't' {
+                    text = text + "\t"
+                } else if esc == 'r' {
+                    text = text + "\r"
+                } else if esc == '0' {
+                    text = text + "\0"
+                } else if esc == '\\' {
+                    text = text + "\\"
+                } else if esc == '"' {
+                    text = text + "\""
+                } else {
+                    text = text + source.slice(p, p + 2)
+                }
+                p = p + 2
+            } else {
+                text = text + source.slice(p, p + 1)
+                p = p + 1
+            }
+        }
+    }
+    return Tok("Str", text, p - start, p - start)
+}
+
+// char() 直译:常见转义 + 普通字符
+fn lex_char(source str, start int) Tok {
+    var p = start + 1
+    var c = cur_char(source, p)
+    var text = ""
+    if c == '\\' {
+        var esc = cur_char(source, p + 1)
+        if esc == 'n' {
+            text = "\n"
+        } else if esc == 't' {
+            text = "\t"
+        } else if esc == 'r' {
+            text = "\r"
+        } else if esc == '0' {
+            text = "\0"
+        } else if esc == '\\' {
+            text = "\\"
+        } else if esc == '\'' {
+            text = "'"
+        } else {
+            text = source.slice(p, p + 2)
+        }
+        p = p + 3
+    } else {
+        text = source.slice(p, p + 1)
+        p = p + 2
+    }
+    return Tok("Char", text, p - start, p - start)
+}
+
+// identifier() 直译:字母/_ 起始;连字符后随字母/_ 时并入(preview-card 规则)
+fn lex_ident(source str, start int) Tok {
+    var p = start + 1
+    var scanning = true
+    for scanning {
+        if p >= source.len() {
+            scanning = false
+        } else {
+            var c = cur_char(source, p)
+            if is_alnum(c) {
+                p = p + 1
+            } else if c == '-' && is_alpha(cur_char(source, p + 1)) {
+                p = p + 1
+            } else {
+                scanning = false
+            }
+        }
+    }
+    var text = source.slice(start, p)
+    return Tok(kind_name(keyword_kind(text)), text, p - start, p - start)
+}
+
+fn dump_escape(s str) str {
+    var t = s.replace("\\", "\\\\")
+    t = t.replace("\n", "\\n")
+    t = t.replace("\t", "\\t")
+    t = t.replace("\r", "\\r")
+    return t
+}
+
+fn emit_line(out str, name str, text str, line int, at int, len int) str {
+    return out + name + "|" + dump_escape(text) + "|" + line.str() + "|" + at.str() + "|" + len.str() + "\n"
+}
+
+// 单字符定界符名(空串 = 非定界符)
+fn delim_name(c int) str {
+    if c == '(' {
+        return "LParen"
+    }
+    if c == ')' {
+        return "RParen"
+    }
+    if c == '[' {
+        return "LSquare"
+    }
+    if c == ']' {
+        return "RSquare"
+    }
+    if c == '{' {
+        return "LBrace"
+    }
+    if c == '}' {
+        return "RBrace"
+    }
+    if c == ',' {
+        return "Comma"
+    }
+    if c == ';' {
+        return "Semi"
+    }
+    if c == ':' {
+        return "Colon"
+    }
+    if c == '@' {
+        return "At"
+    }
+    return ""
+}
+
+// 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)
+fn lex_dump(source str) str {
+    var line = 1
+    var at = 0
+    var p = 0
+    var out = ""
+    var len = source.len()
+    for p < len {
+        var c = cur_char(source, p)
+        if c == ' ' || c == '\t' || c == '\r' {
+            // skip_whitespace(非 \n)
+            p = p + 1
+            at = at + 1
+        } else if c == '\n' {
+            // '\n':line+=1, at=0 后 single→token.at=0、at=1
+            line = line + 1
+            at = 1
+            p = p + 1
+            out = emit_line(out, "Newline", "\n", line, 0, 1)
+        } else if is_digit(c) {
+            var t = lex_number(source, p)
+            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            p = p + t.adv
+            at = at + t.len
+        } else if is_alpha(c) {
+            var t = lex_ident(source, p)
+            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            p = p + t.len
+            at = at + t.len
+        } else if c == '"' {
+            var t = lex_string(source, p)
+            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            p = p + t.len
+            at = at + t.len
+        } else if c == '\'' {
+            var t = lex_char(source, p)
+            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            p = p + t.len
+            at = at + t.len
+        } else if c == '/' {
+            var n = cur_char(source, p + 1)
+            if n == '/' {
+                // 行注释:text 含第二个 '/'(Rust 未消费即读);/// → DocComment
+                var q = p + 2
+                var scanning = true
+                for scanning {
+                    if q >= len || cur_char(source, q) == '\n' {
+                        scanning = false
+                    } else {
+                        q = q + 1
+                    }
+                }
+                var text = source.slice(p + 1, q)
+                if text.len() >= 2 && text.slice(0, 2) == "//" {
+                    var doc = text.slice(2, text.len()).trim()
+                    out = emit_line(out, "DocComment", doc, line, at, text.len() + 2)
+                } else {
+                    out = emit_line(out, "CommentLine", "//", line, at, 2)
+                    out = emit_line(out, "CommentContent", text, line, at + 2, text.len())
+                }
+                at = at + 2 + text.len()
+                p = q
+            } else if n == '*' {
+                // 块注释:复刻基线 quirk——内容中 '*' 后一字符被吞不入 text
+                // (DIVERGE D18:基线 lexer 的 '*' 分支 push(c)+next() 连吞两字符,
+                //  M1 闸门以基线为唯一依据,照抄;上游修复会改 golden,挂账 432 债务簿)
+                var q = p + 1
+                var ctext = ""
+                var scanning = true
+                for scanning {
+                    if q >= len {
+                        scanning = false
+                    } else {
+                        var cc = cur_char(source, q)
+                        if cc == '*' {
+                            q = q + 1
+                            if cur_char(source, q) == '/' {
+                                q = q + 1
+                                scanning = false
+                            } else {
+                                ctext = ctext + "*"
+                                q = q + 1
+                            }
+                        } else {
+                            ctext = ctext + source.slice(q, q + 1)
+                            q = q + 1
+                        }
+                    }
+                }
+                out = emit_line(out, "CommentStart", "/*", line, at, 2)
+                out = emit_line(out, "CommentContent", ctext, line, at + 2, ctext.len())
+                out = emit_line(out, "CommentEnd", "*/", line, at + 2 + ctext.len(), 2)
+                at = at + 2 + ctext.len() + 2
+                p = q
+            } else if n == '=' {
+                out = emit_line(out, "DivEq", "/=", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, "Div", "/", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if delim_name(c) != "" {
+            var nm = delim_name(c)
+            out = emit_line(out, nm, source.slice(p, p + 1), line, at, 1)
+            p = p + 1
+            at = at + 1
+        } else if c == '+' || c == '*' || c == '%' || c == '!' || c == '>' || c == '<' {
+            var base = "Add"
+            var eqk = "AddEq"
+            var sym = "+"
+            if c == '*' {
+                base = "Star"
+                eqk = "MulEq"
+                sym = "*"
+            } else if c == '%' {
+                base = "Mod"
+                eqk = "ModEq"
+                sym = "%"
+            } else if c == '!' {
+                base = "Not"
+                eqk = "Neq"
+                sym = "!"
+            } else if c == '>' {
+                base = "Gt"
+                eqk = "Ge"
+                sym = ">"
+            } else if c == '<' {
+                base = "Lt"
+                eqk = "Le"
+                sym = "<"
+            }
+            if cur_char(source, p + 1) == '=' {
+                out = emit_line(out, eqk, sym + "=", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, base, sym, line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if c == '=' {
+            var n = cur_char(source, p + 1)
+            if n == '>' {
+                out = emit_line(out, "DoubleArrow", "=>", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else if n == '=' {
+                out = emit_line(out, "Eq", "==", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, "Asn", "=", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if c == '-' {
+            var n = cur_char(source, p + 1)
+            if n == '>' {
+                out = emit_line(out, "Arrow", "->", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else if n == '=' {
+                out = emit_line(out, "SubEq", "-=", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, "Sub", "-", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if c == '?' {
+            if cur_char(source, p + 1) == '?' {
+                out = emit_line(out, "QuestionQuestion", "??", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, "Question", "?", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if c == '|' || c == '&' {
+            if c == '|' && cur_char(source, p + 1) == '|' {
+                out = emit_line(out, "Or", "||", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else if c == '&' && cur_char(source, p + 1) == '&' {
+                out = emit_line(out, "And", "&&", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else if c == '|' {
+                out = emit_line(out, "VBar", "|", line, at, 1)
+                p = p + 1
+                at = at + 1
+            } else {
+                out = emit_line(out, "Amp", "&", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else if c == '.' {
+            var n = cur_char(source, p + 1)
+            if n == '.' {
+                if cur_char(source, p + 2) == '=' {
+                    out = emit_line(out, "RangeEq", "..=", line, at, 3)
+                    p = p + 3
+                    at = at + 3
+                } else {
+                    out = emit_line(out, "Range", "..", line, at, 2)
+                    p = p + 2
+                    at = at + 2
+                }
+            } else if n == '?' {
+                out = emit_line(out, "DotQuestion", "?.", line, at, 2)
+                p = p + 2
+                at = at + 2
+            } else {
+                out = emit_line(out, "Dot", ".", line, at, 1)
+                p = p + 1
+                at = at + 1
+            }
+        } else {
+            // 未覆盖字符:Unknown 前进(闸门 diff 暴露后逐个收编)
+            out = emit_line(out, "Unknown", source.slice(p, p + 1), line, at, 1)
+            p = p + 1
+            at = at + 1
+        }
+    }
+    out = emit_line(out, "EOF", "", line, at, 0)
+    return out
+}

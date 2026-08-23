@@ -1,0 +1,9 @@
+fn main() {
+    let x = 10 + 20 * 3
+    let y = x % 7 - 1
+    var z = y / 2
+    z += 5
+    x -= 1
+    print(z >= 10 && y < 100 || x != 3)
+    print(!false == true)
+}

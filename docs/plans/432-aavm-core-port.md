@@ -43,10 +43,18 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S1：token + lexer（P0，预估 3-5 天）
 
-- [ ] 移植 `token.at`（~140 TokenKind 全量）、`error.at`/`pos.at`（真实行列追踪）、`lexer.at`
+- [x] 移植 `token.at`（~140 TokenKind 全量）、`error.at`/`pos.at`（真实行列追踪）、`lexer.at`
   （含 f-string、raw/multi 字符串、进制数字、`.view/.mut/.move/.take`、LexerState 快照回滚）。
-- [ ] 一致性闸门 M1：corpus（431 D1 lexer 层）token 流 diff Rust 侧 = 0。
-- [ ] Snapshot 头 + Coverage/Missing 回填。
+  （2026-08-24 核心子集落地:token.at 全量 139 变体+58 keyword+kind_name(脚本自基线生成);
+  lexer.at 主循环核心子集(见 Missing);error.at/pos.at 以 Pos 记账语义内嵌 lex_dump,
+  独立文件待 S2 需要错误类型时拆出)
+- [x] 一致性闸门 M1：corpus（431 D1 lexer 层）token 流 diff Rust 侧 = 0。
+  （corpus_m1 四文件(c01 算术/c02 字符串注释/c03 数字/c04 控制流)全绿——
+  kind|text|line|at|len 五字段逐 token 一致;test_aavm2_m1_lexer_corpus）
+- [x] Snapshot 头 + Coverage/Missing 回填。（两文件头五字段模板齐;divergences.md 10 处登记）
+  **S1 残余(进 M1 扩闸)**:f-string、raw/multi/c 字符串、#comptime、byte 字面量、
+  .view/.mut/.take/.move/.? 属性词、}+换行 else 抑制、LexerState 回滚——corpus 扩到
+  含这些构造成时逐个收编(现为 Missing,遇之报 Unknown,闸门即时暴露)。
 
 ### S2：AST + parser 核心（P1，预估 1-2 周，可按语句族拆子切片）
 
@@ -109,6 +117,18 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 3. `test/vm/aavm2/` 用例数与通过率报表；divergences.md 与各 Snapshot 头回填完整；
 4. 全程未对 Rust 主实现做未登记的顺手修改。
 
-## 执行结果
+## 执行结果（进行中）
 
-（待执行后回填）
+- **S1**(2026-08-24,单切片会话):
+  - token.at:139 TokenKind + keyword_kind(58 词)+ kind_name 全量,自 b3bd64f5
+    基线机械生成(docs/specs/aavm/data/ 脚本复用);
+  - lexer.at(~500 行):主循环核心子集直译——空白/换行(基线 at 记账 quirk 照抄)/
+    行+块+Doc 注释(含基线 '*' 吞字符 quirk)/标识符(连字符规则)/数字(进制+后缀+
+    下划线剥离语义)/字符串转义/字符字面量/全部定界符与复合运算符;
+  - M1 闸门:test_aavm2_m1(Rust 侧 Debug 名 dumper vs AAVM lex_dump,五字段逐
+    token 对比),corpus_m1 四文件 diff=0;
+  - **发现 VM 真 bug(挂 242)**:循环体含调用语句时 continue 穿透执行后续语句
+    (D17,20 行最小复现 p11/p12;break 不受影响)——v2 侧全部改 else-if 链规避;
+  - **发现基线 quirk(挂 432 债务簿)**:块注释内容 '*' 后一字符被吞(D18)、
+    Newline token 行号取递增后值、数字 len 用剥离后长度——均照抄保闸门。
+  - 已登记 AUTO_LIB_FILES_V2(token→lexer);全量 3129 绿 + aavm2 三用例绿。

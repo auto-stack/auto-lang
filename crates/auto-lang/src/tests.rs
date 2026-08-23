@@ -64,4 +64,6 @@ mod vm_file_tests; // Plan 177: VM file-based test framework
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 #[cfg(feature = "test-vm-files")]
+mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
+#[cfg(feature = "test-vm-files")]
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/

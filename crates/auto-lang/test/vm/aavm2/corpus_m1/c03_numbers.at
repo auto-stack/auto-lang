@@ -1,0 +1,12 @@
+fn main() {
+    let a = 42
+    let b = 3.14
+    let c = 2.5f
+    let d = 1.0d
+    let e = 100u
+    let f = 7i
+    let g = 0xFF
+    let h = 0b1010
+    let i = 1_000_000
+    print(a.str() + b.str())
+}
