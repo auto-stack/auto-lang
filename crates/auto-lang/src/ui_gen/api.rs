@@ -117,12 +117,10 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
 /// `command_output`/`command_result` dispatch (backward compatible).
 pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::StreamEndpoint> {
     let root = std::path::Path::new(root_dir);
-    let src_back = root.join("src").join("back").join("api.at");
-    let api_file = if src_back.exists() {
-        src_back
-    } else {
-        let back = root.join("back").join("api.at");
-        if back.exists() { back } else { return Vec::new(); }
+    // Plan 061:统一契约定位(本地 back/ 或 pac.at back.project 外部后端)
+    let api_file = match crate::config::resolve_back_api(root) {
+        Some(f) => f,
+        None => return Vec::new(),
     };
     let content = match std::fs::read_to_string(&api_file) {
         Ok(c) => c,

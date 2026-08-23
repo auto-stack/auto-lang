@@ -30,22 +30,17 @@ use auto_lang::api::{ApiModule, ApiType, ApiField, ApiEndpoint, ApiParam, ApiAtt
 /// - Backend: Tauri commands or Axum routes
 /// - Frontend: TypeScript types and API client
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
-    // Try common backend directory layouts: src/back/ or back/
-    let back_dir = if root_dir.join("src").join("back").exists() {
-        root_dir.join("src").join("back")
-    } else if root_dir.join("back").exists() {
-        root_dir.join("back")
-    } else {
-        // No backend directory found, skip generation
-        return Ok(());
+    // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at
+    // `back: { project }` 指向的外部后端项目(前端可无本地 back/)。
+    let api_file = match auto_lang::config::resolve_back_api(root_dir) {
+        Some(f) => f,
+        // No backend contract found anywhere, skip generation
+        None => return Ok(()),
     };
-
-    // Check if back/api.at exists
-    let api_file = back_dir.join("api.at");
-    if !api_file.exists() {
-        // No API file, skip generation
-        return Ok(());
-    }
+    let back_dir = api_file
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| root_dir.to_path_buf());
 
     // Read API file
     let api_content = std::fs::read_to_string(&api_file)

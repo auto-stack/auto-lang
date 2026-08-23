@@ -1413,7 +1413,9 @@ impl Automan {
                     // Plan 317: --server=vm → AutoVM HTTP server with module
                     // flattening. Find back/api.at (or main entry), run via
                     // run_file which flattens use deps + starts serve_async.
-                    let api_path = root_dir.join("src/back/api.at");
+                    // Plan 061:统一契约定位(本地 back/ 或外部后端项目)
+                    let api_path = auto_lang::config::resolve_back_api(&root_dir)
+                        .unwrap_or_else(|| root_dir.join("src/back/api.at"));
                     if api_path.exists() {
                         eprintln!("[AutoVM] Starting HTTP server from {} (module flattening enabled)", api_path.display());
                         let api_str = api_path.to_string_lossy().to_string();
@@ -1433,7 +1435,7 @@ impl Automan {
                         let _ = handle.join();
                         Ok(())
                     } else {
-                        Err("AutoVM server mode requires src/back/api.at".into())
+                        Err("AutoVM server mode requires an api.at contract (local src/back/ or pac.at back.project external backend)".into())
                     }
                 } else {
                     crate::rust_ui::run_vm_ui(&root_dir, args)

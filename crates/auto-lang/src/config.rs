@@ -307,6 +307,53 @@ impl BackendConfig {
     }
 }
 
+
+// ── Plan 061:外部后端(契约定位统一帮助函数)─────────────────────────────
+// 供 auto-man(gen/server 编排)与 ui_gen(SSE 接线)共用:前端项目无本地
+// back/ 目录时,经 pac.at `back: { project }` 解析到外部后端项目的 api.at。
+
+/// 读项目 pac.at 的外部后端目录(pac.at `back: { project: "../x" }` 对象
+/// 形式;裸字符串 `back: "../x"` 兼容)。相对路径相对项目根解析。
+/// None = 无 pac.at / 无配置 / 解析失败。
+pub fn external_backend_dir(project_dir: &Path) -> Option<std::path::PathBuf> {
+    let pac = project_dir.join("pac.at");
+    if !pac.is_file() {
+        return None;
+    }
+    // 探针参数与 Automan::parse_pac 一致(port=win32 占位,Config 求值用)。
+    let mut probe = Obj::new();
+    probe.set("port", Value::Str(AutoStr::from("win32")));
+    let cfg = AutoConfig::from_file(&pac, &probe).ok()?;
+    let dir = match cfg.root.get_prop("back") {
+        Value::Obj(obj) => obj
+            .get("project")
+            .map(|v| v.to_astr().trim().to_string())
+            .filter(|s| !s.is_empty())?,
+        v => {
+            let s = v.to_astr().trim().to_string();
+            if s.is_empty() { return None; }
+            s
+        }
+    };
+    let p = project_dir.join(dir);
+    Some(p.canonicalize().unwrap_or(p))
+}
+
+/// 统一契约文件定位:src/back/api.at → back/api.at → 外部后端 <project>/api.at。
+/// 三个读取点(gen 的 generate_api / SSE 的 resolve_stream_endpoints /
+/// --server=vm)共用,保证外部后端配置对全部启动/生成形态生效。
+pub fn resolve_back_api(project_dir: &Path) -> Option<std::path::PathBuf> {
+    let local = [
+        project_dir.join("src").join("back").join("api.at"),
+        project_dir.join("back").join("api.at"),
+    ];
+    if let Some(p) = local.iter().find(|p| p.is_file()) {
+        return Some(p.clone());
+    }
+    let api = external_backend_dir(project_dir)?.join("api.at");
+    api.is_file().then_some(api)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
