@@ -132,3 +132,7 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   - **发现基线 quirk(挂 432 债务簿)**:块注释内容 '*' 后一字符被吞(D18)、
     Newline token 行号取递增后值、数字 len 用剥离后长度——均照抄保闸门。
   - 已登记 AUTO_LIB_FILES_V2(token→lexer);全量 3129 绿 + aavm2 三用例绿。
+- **S2 前置考古**(2026-08-24 续):M2 目标格式清单全量落盘
+  (docs/specs/aavm/m2-ast-dump-format.md——顶层/语句/表达式/Op 的 S-expr
+  逐字格式 + 来源行号,免下会话重做);实施决策 D20(parse_dump 直出)/
+  D21(List.* sanctioned,C3 修正)预定;Pratt 表数值与 Branch 格式为开工首日项。

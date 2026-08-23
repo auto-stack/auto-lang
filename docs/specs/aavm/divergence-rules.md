@@ -36,6 +36,9 @@
 2. 函数名、结构体字段名**保留 Rust 原名**(snake_case 原样),便于逐函数对照;
    类型名 PascalCase 原样;
 3. 文件头用 §5 Snapshot 模板;文件内函数顺序与基线快照一致(对照 review 友好);
+   修正(plan-432 S2 考古):**List.* 为 sanctioned**(a2r 直译 List→Vec,
+   trans/rust.rs:1888;VM 侧 auto.list.* 可装结构体)——禁用清单收窄为
+   auto.*/Result.*/Map.* 便利层;
 4. **违规检测(lint)**:v2 runner(test_aavm2)在拼接语料后追加一个检查 pass
    ——对 `auto.`/`Result.`/`List.`/`Map.` 前缀调用做正则扫描,命中即 fail
    (实现挂 432 的 runner 迭代,规则先在此定稿)。
