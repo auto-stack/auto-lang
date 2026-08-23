@@ -344,13 +344,26 @@ golden 体系。
 - a2r:EscapeMap::record_write_capture / is_write_capture /
   write_capture_names;rust.rs 写捕获声明/访问/闭包克隆三点改写
 
-### 8.3 存量问题(与本计划无关,验证于 master)
+### 8.3 存量问题修复记录(2026-08-23 追加)
 
-1. **编译器栈溢出 #1**:循环体内结构体字面量覆盖赋值
-   (`for ... { x = Note{...} }`,x 可为外层或循环内声明)→ 编译期栈溢出。
-2. **编译器栈溢出 #2**:循环体内嵌套裸块(`for ... { { ... } }`)→ 同上。
-   (两者均在 pristine master 复现;419 测试以 fn 化覆盖赋值绕行。)
-3. **a2r 深递归用例**:test-trans 套件若干用例(19_ownership_003、
-   cookbook 部分)在 2MB 测试线程栈下溢出 —— 需 test_a2r_deep 大栈
-   runner 或 RUST_MIN_STACK;非本计划回归。
+1. **编译器"栈溢出" #1/#2(已修复)**:循环体内结构体字面量赋值
+   (`for/if ... { x = Note{...} }`)与循环体内嵌套裸块。cdb 帧大小
+   实测推翻"无限递归"假设 —— 真因是 debug 构建下解析器单帧可达
+   50~270KB(parse_stmt_dispatch ~267KB / expr_pratt_with_left ~116KB /
+   atom ~74KB,每层嵌套 ~670KB),2MB 线程栈 3 层嵌套即溢出;64MB
+   栈下同程序正常解析、深度仅 ~13。修复(parser.rs):
+   - 递归咽喉(expr_pratt / expr_pratt_with_left / atom / group /
+     parse_body)挂 `stacker::maybe_grow(512KB, 1MB)` —— 余量不足时
+     同线程切换堆上栈段,数据零跨线程、余量充足时近零开销;
+   - `body_depth` 护栏(上限 256)+ `[non-recoverable]` 错误旁路。
+2. **add_error O(n²) 错误树嵌套(已修复)**:深嵌套下错误恢复路径把
+   嵌套着全部下层错误的传播错误逐层 re-push,5000 层实测内存 ~25GB、
+   解析挂死。修复:先查后推(超限拒收);护栏错误标记不可恢复,
+     两个 catch 臂(顶层 + parse_body_inner)旁路直通。
+3. **a2r 深递归用例**:test-trans 套件若干用例在 2MB 测试线程栈下
+   溢出 —— 需 test_a2r_deep 大栈 runner 或 RUST_MIN_STACK;存量特性。
 4. benchmark_downcast_performance 为计时敏感测试,并行满载下偶发 flaky。
+
+回归测试:vm/tests_parser_stack.rs ×6(bug1 双形态 + 端到端管线 +
+bug2 + 2000 层括号 + 257 层护栏),全部在 ≤4MB 小栈线程上通过,
+0.09s 完成;全量 3108 过(route::discovery 存量失败除外)。

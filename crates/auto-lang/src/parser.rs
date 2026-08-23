@@ -177,8 +177,17 @@ struct FnAnnotations {
     api_endpoint: Option<crate::ast::ApiAttrs>,
 }
 
+
+
+/// Plan 419 §8.3:块嵌套深度护栏(防真实病态递归把分段栈无限吃穿;
+/// 正常程序 < 50。debug 构建每层嵌套 ~670KB 巨帧,256 层上限把
+/// 最坏分段栈提交约束在 ~170MB 量级)。
+const MAX_BODY_NESTING: u32 = 256;
+
 pub struct Parser<'a> {
     pub scope: ScopeManager,
+    /// Plan 419 §8.3:parse_body 嵌套深度(护栏计数)。
+    body_depth: u32,
     /// Plan 091: Optional Database for incremental compilation
     /// When set, Database methods are used instead of Universe methods
     pub db: Option<Arc<RwLock<Database>>>,
@@ -286,6 +295,7 @@ impl<'a> Parser<'a> {
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope: ScopeManager::new(),
+            body_depth: 0,
             db: None, // Plan 091: Optional Database
             lexer,
             cur,
@@ -355,6 +365,7 @@ impl<'a> Parser<'a> {
         let cur = lexer.next().expect("lexer should produce first token");
         let mut parser = Parser {
             scope: ScopeManager::new(),
+            body_depth: 0,
             db: None, // Plan 091: Optional Database
             lexer,
             cur,
@@ -407,6 +418,7 @@ impl<'a> Parser<'a> {
     ) -> Self {
         let mut parser = Parser {
             scope: ScopeManager::new(),
+            body_depth: 0,
             db: None, // Plan 091: Optional Database
             lexer,
             cur: first_token,
@@ -1369,6 +1381,12 @@ impl<'a> Parser<'a> {
     /// Returns true if we should continue parsing (haven't hit error limit),
     /// false if we should abort.
     fn add_error(&mut self, error: AutoError) -> bool {
+        // Plan 419 §8.3:超限即拒收(先查后推)。原实现先 push 再查,超限后
+        // 每层恢复路径仍把(嵌套着全部下层错误的)传播错误推入,错误树
+        // O(n²) 嵌套增长 —— 深嵌套输入实测内存 ~25GB、解析挂死。
+        if self.errors.len() >= self.error_limit {
+            return false;
+        }
         self.errors.push(error);
         self.errors.len() < self.error_limit
     }
@@ -1405,6 +1423,22 @@ pub enum CodeSection {
 
 impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> AutoResult<Code> {
+        // Plan 419 §8.3(巨帧治理):解析器在 debug 构建下单帧可达 50~270KB
+        // (cdb 实测:expr_pratt_with_left ~116KB / parse_stmt_dispatch
+        // ~267KB / atom ~74KB,每层嵌套 ~670KB),2MB 线程栈在 3 层嵌套
+        // 即溢出 ——「循环内结构体字面量赋值」「循环内嵌套块」等正常形态
+        // 都会触发(曾误判为无限递归;实测 64MB 栈下 9 行程序正常解析,
+        // 嵌套深度仅 ~13 层 → 有限深度 + 病态巨帧)。
+        //
+        // 修复:递归咽喉(parse_body / expr_pratt_with_left / atom)挂
+        // stacker::maybe_grow —— 余量低于 512KB 时在同线程上切换新的
+        // 1MB 堆上栈段继续,数据零跨线程;余量充足时仅一次线程本地读,
+        // 近零开销。护栏:body_depth 上限把真病态递归转为干净语法错误。
+        self.body_depth = 0;
+        self.parse_impl()
+    }
+
+    fn parse_impl(&mut self) -> AutoResult<Code> {
         let mut stmts = Vec::new();
         let mut source_lines = Vec::new();
         self.skip_empty_lines();
@@ -1520,6 +1554,10 @@ impl<'a> Parser<'a> {
                     let newline_count = match self.expect_eos(is_first) {
                         Ok(count) => count,
                         Err(e) => {
+                            // Plan 419 §8.3:护栏错误不可恢复 —— 立即中止。
+                            if e.to_string().contains("[non-recoverable]") {
+                                return Err(e);
+                            }
                             // Ambiguous syntax errors should not be recovered from
                             if e.to_string().contains("Ambiguous syntax") {
                                 return Err(e);
@@ -1780,6 +1818,13 @@ impl<'a> Parser<'a> {
     // simple Pratt parser
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
+        // Plan 419 §8.3:表达式递归咽喉(cdb 实测括号链在此自递归)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
+            self.expr_pratt_inner(min_power)
+        })
+    }
+
+    fn expr_pratt_inner(&mut self, min_power: u8) -> AutoResult<Expr> {
         // hold expression (Phase 3) - special case that returns directly
         if self.is_kind(TokenKind::Hold) {
             let start_pos = self.cur.pos; // Record start position
@@ -2212,7 +2257,14 @@ impl<'a> Parser<'a> {
         Ok(Some(types))
     }
 
-    fn expr_pratt_with_left(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
+    fn expr_pratt_with_left(&mut self, lhs: Expr, min_power: u8) -> AutoResult<Expr> {
+        // Plan 419 §8.3:表达式递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
+            self.expr_pratt_with_left_inner(lhs, min_power)
+        })
+    }
+
+    fn expr_pratt_with_left_inner(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
         // Plan 060: Check for single-param closure:  x => expr
         // If lhs is an identifier and next token is =>, parse as closure
         if matches!(lhs, Expr::Ident(_)) && self.is_kind(TokenKind::DoubleArrow) {
@@ -2809,10 +2861,13 @@ impl<'a> Parser<'a> {
     }
 
     pub fn group(&mut self) -> AutoResult<Expr> {
-        self.next(); // skip (
-        let expr = self.parse_expr()?;
-        self.expect(TokenKind::RParen)?; // skip )
-        Ok(expr)
+        // Plan 419 §8.3:括号递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
+            self.next(); // skip (
+            let expr = self.parse_expr()?;
+            self.expect(TokenKind::RParen)?; // skip )
+            Ok(expr)
+        })
     }
 
     pub fn sep_array(&mut self) -> AutoResult<()> {
@@ -3340,6 +3395,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn atom(&mut self) -> AutoResult<Expr> {
+        // Plan 419 §8.3:原子表达式递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.atom_inner())
+    }
+
+    fn atom_inner(&mut self) -> AutoResult<Expr> {
         if self.is_kind(TokenKind::LParen) {
             return self.group();
         }
@@ -6498,6 +6558,25 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_body(&mut self, is_node: bool) -> AutoResult<Body> {
+        // Plan 419 §8.3:深度护栏(见 parse 注释)。
+        self.body_depth += 1;
+        if self.body_depth > MAX_BODY_NESTING {
+            self.body_depth -= 1;
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "block nesting too deep (limit {}) [non-recoverable]",
+                    MAX_BODY_NESTING
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let r = stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.parse_body_inner(is_node));
+        self.body_depth -= 1;
+        r
+    }
+
+    fn parse_body_inner(&mut self, is_node: bool) -> AutoResult<Body> {
         self.expect(TokenKind::LBrace)?;
         self.enter_scope();
 
@@ -6675,6 +6754,12 @@ impl<'a> Parser<'a> {
                     stmt_index += 1;
                 }
                 Err(e) => {
+                    // Plan 419 §8.3:护栏错误不可恢复 —— 立即中止(防逐层
+                    // re-catch 嵌套放大错误树,见 add_error 注释)。
+                    if e.to_string().contains("[non-recoverable]") {
+                        self.exit_scope();
+                        return Err(e);
+                    }
                     // Add error to collection and synchronize
                     if !self.add_error(e) {
                         self.exit_scope();
