@@ -120,7 +120,9 @@ fn emit_arm(p: &MarshalPlan) -> String {
                 }
             ));
         }
-        SelfKind::Write => {
+        // Write(&mut self)与 Move(按值 self)共用:recv 是 &mut T,
+        // 方法解析对 (*recv) 自动解引用,按值 self 亦可从该位置移出。
+        SelfKind::Write | SelfKind::Move => {
             body.push_str(&format!(
 "        let __r = {{
             let handle = task.ram.pop_i32() as u64;
@@ -152,7 +154,9 @@ fn emit_arm(p: &MarshalPlan) -> String {
         RetPlan::ScalarF64 => "        task.ram.push_f64(__r as f64);\n".into(),
         RetPlan::ScalarBool => "        task.ram.push_nv(auto_val::encode_bool(__r));\n".into(),
         RetPlan::ScalarStr => "        let __s = __r.to_string();\n        let idx = vm.add_string(__s.into_bytes());\n        vm.rc_push_str_idx(task, idx);\n".into(),
-        RetPlan::ChainSelf => "        drop(__r);\n        task.ram.push_i32(handle as i32);\n".into(),
+        RetPlan::ChainSelf | RetPlan::ChainInPlace => {
+            "        drop(__r);\n        task.ram.push_i32(handle as i32);\n".into()
+        }
         RetPlan::Opaque(t) => format!(
             "        push_rust_obj(task, vm, \"{t}\", __r)?;\n"
         ),

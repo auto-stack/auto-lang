@@ -91,19 +91,25 @@ status: draft
 
 ### Phase C：shim 包生成器（3-5 天）
 
-- [ ] C1 代码生成器：marshalling 计划 → shim Rust 源码。
+- [x] C1 代码生成器：marshalling 计划 → shim Rust 源码。
   std 目标：生成 `match (type, method)` 臂的机器版（结构与现 stdlib.rs 臂一致，可并存的追加段）；
   三方目标：生成 cdylib shim 包 crate（`auto_*` wrapper + manifest，复用 Plan 212 的
   sig_code/manifest 机制并扩展方法 wrapper）。
-- [ ] C2 编译产物管线：三方 crate 在 dep 流程中加"提取元信息 + 编 shim 包"一步
+  （三方路径 2026-08-23 落地：`shim-metadata::emit_cdylib` 五件套 + CLI `shim-emit-pack`，
+  报告 430-c1）
+- [x] C2 编译产物管线：三方 crate 在 dep 流程中加"提取元信息 + 编 shim 包"一步
   （与现有 cargo 下载/编译 cdylib/加载 同构，用户感知仅为首次导入稍慢，之后缓存）。
-- [ ] C3 元信息版本指纹（工具链版本 × crate 版本的 hash 校验），防签名漂移。
+  （`Sandbox::compile_dep_methods` + dispatch 3000 兜底段接线；nightly 缺失自动降级）
+- [x] C3 元信息版本指纹（工具链版本 × crate 版本的 hash 校验），防签名漂移。
+  （fnv1a64(工具链 × crate × 生成器 × 分类器 × 签名集)，签名行含 Ty 宽度；缓存名 fp 前缀）
 
 ### Phase D：dispatch 改造与渐进迁移（持续）
 
-- [ ] D1 dispatch 3000 改为"先查 shim 包映射表，未命中再走手写 match 臂"的混合查找
+- [x] D1 dispatch 3000 改为"先查 shim 包映射表，未命中再走手写 match 臂"的混合查找
   （与 NativeInterface 现有静态/动态混合查找模式对齐）。
-- [ ] D2 `known_signature` 改为"先查元信息，未命中回退手写表"。
+- [x] D2 `known_signature` 改为"先查元信息，未命中回退手写表"。
+  （`ffi::resolve_signature`：方法包 manifest 自由函数签名优先 → known_signature 回退；
+  compile.rs/lib.rs/codegen.rs 三处调用点已替换）
 - [ ] D3 迁移一个最简 crate（建议 `Box`/`RefCell` 这类臂极少的）端到端走通：生成包 →
   加载 → 查表调用 → 删除对应手写臂 → 测试全绿。
 
@@ -171,4 +177,21 @@ status: draft
   - 已知长尾（后续）：`use.rust std::collections::HashMap` 导入语句会使构造器推断路径劣化
     （带类型注解但不 import 可用）；`String.from(x) + y` 拼接场景返回句柄——均登记为
     codegen 推断缺口，进本计划 F 阶段或 242 tracker。
-- **Phase C/F**：未开始（cdylib 三方路径、40 crate 迁移、known_signature 替换）——留待后续会话。
+- **Phase C/D2**（本轮，报告 430-c1）：
+  - C1 三方 shim 包生成器：shim-metadata 拆 lib+bin（lib 供 dep 管线进程内调用），
+    `emit_cdylib` 产出五件套（Cargo.toml/src/lib.rs/manifest/signatures/rules）；
+    rustdoc v53 解析器修三处实测陷阱（`for` 字段、`path` 字段、`trait:null≠缺失`），
+    新增自由函数枚举与 Move/借用返回/StrOwned 投影；
+  - C2 管线接线：`Sandbox::compile_dep_methods`（nightly rustdoc → 分类 → 生成 →
+    stable cargo 编译 cdylib → 指纹缓存，nightly 缺失降级）；auto-lang 新增
+    `vm/ffi/dep_methods`（DepOpaqueObject 堆对象 + 方法注册表，挂 dispatch 3000
+    兜底段最后一段）；类型导入（大写 use.rust 项）不再进自由函数 wrapper；
+  - C3 指纹：签名行记 (Ty 名, ABI 码) 对，宽度变化即重建；
+  - D2：`resolve_signature` 元数据优先回退 known_signature；
+  - 端到端：ffi_dual_013（path-dep fixture，覆盖静态/&mut/&self/void/字符串/i64/
+    不透明返回/ChainInPlace 链式/opaque 传参）+ semver/csv 真实 crate 实录；
+  - v1 边界裁定（详见报告）：Option/Result 返回跳过（unwrap 策略待例外层，真实 crate
+    最大闸门）；按值 self 跳过（chain 别名 × 消耗语义冲突，实测 ACCESS_VIOLATION 复盘）；
+    泛型接收者 impl 跳过；BUILTIN_OPAQUE 类型新旧层碰撞（csv 实录，F 阶段逐 crate 迁移）。
+- **Phase F**：未开始（40 crate 迁移、BUILTIN_OPAQUE_CRATES 语义改造、F3 演示）——
+  留待后续会话。

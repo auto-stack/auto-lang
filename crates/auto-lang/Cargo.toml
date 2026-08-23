@@ -62,6 +62,8 @@ iced-layout-tests = ["ui-iced", "dep:iced_test"]
 auto-val = { path = "../auto-val" }
 auto-atom = { path = "../auto-atom" }
 auto-cache = { path = "../auto-cache" }
+# Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
+shim-metadata = { path = "../shim-metadata" }
 # Plan 216: C FFI Bindgen manifest types
 auto-bindgen = { path = "../auto-bindgen" }
 rustyline = { workspace = true, features = ["with-file-history"] }

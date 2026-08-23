@@ -3,7 +3,11 @@
 /// rustdoc 类型表示的投影(足够分类器用)。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ty {
+    I8,
+    I16,
     I32,
+    U8,
+    U16,
     U32,
     I64,
     U64,
@@ -11,10 +15,14 @@ pub enum Ty {
     F32,
     F64,
     Bool,
-    /// &str / String(参数语义由规则层决定借用还是克隆)
+    /// &str / &String(参数按借用传)
     Str,
-    /// 外来类型(装箱为 RustStdlibObject)
+    /// 按值 String(参数转移所有权;返回值直接拥有)
+    StrOwned,
+    /// 借用的外来类型(&T 参数 → 传句柄指针;跨 ABI 安全)
     Opaque(String),
+    /// 拥有的外来类型(按值 T 参数 → v1 跳过:VM 侧无法构造)
+    OpaqueOwned(String),
     /// 泛型参数 T —— 默认导致"不可调用",除非例外表给 mono 提示
     Generic(String),
     SelfTy,
@@ -25,12 +33,27 @@ impl Ty {
     pub fn is_scalar(&self) -> bool {
         matches!(
             self,
-            Ty::I32 | Ty::U32 | Ty::I64 | Ty::U64 | Ty::F32 | Ty::F64 | Ty::Bool
+            Ty::I8
+                | Ty::I16
+                | Ty::I32
+                | Ty::U8
+                | Ty::U16
+                | Ty::U32
+                | Ty::I64
+                | Ty::U64
+                | Ty::Usize
+                | Ty::F32
+                | Ty::F64
+                | Ty::Bool
         )
     }
     pub fn rust_name(&self) -> String {
         match self {
+            Ty::I8 => "i8".into(),
+            Ty::I16 => "i16".into(),
             Ty::I32 => "i32".into(),
+            Ty::U8 => "u8".into(),
+            Ty::U16 => "u16".into(),
             Ty::U32 => "u32".into(),
             Ty::Usize => "usize".into(),
             Ty::I64 => "i64".into(),
@@ -38,8 +61,8 @@ impl Ty {
             Ty::F32 => "f32".into(),
             Ty::F64 => "f64".into(),
             Ty::Bool => "bool".into(),
-            Ty::Str => "String".into(),
-            Ty::Opaque(n) | Ty::Generic(n) => n.clone(),
+            Ty::Str | Ty::StrOwned => "String".into(),
+            Ty::Opaque(n) | Ty::OpaqueOwned(n) | Ty::Generic(n) => n.clone(),
             Ty::SelfTy => "Self".into(),
             Ty::Void => "()".into(),
         }
@@ -54,6 +77,8 @@ pub enum SelfKind {
     Read,
     /// &mut self
     Write,
+    /// 按值 self(wrapper 侧 Box::from_raw 重构后按值调用)
+    Move,
 }
 
 /// 一条方法元信息(签名层)。
@@ -76,10 +101,13 @@ pub enum RetPlan {
     ScalarF64,
     ScalarBool,
     ScalarStr,
-    /// 装箱 RustStdlibObject 压句柄
+    /// 装箱压句柄(std 路径:RustStdlibObject;三方路径:cdylib 裸指针)
     Opaque(String),
-    /// 链式:原地修改后压回接收者句柄(签名 ret == Self)
+    /// 链式(返回 Self,新值):装箱新对象压新句柄(签名 ret == Self)
     ChainSelf,
+    /// 链式(返回 &Self/&mut Self,同一对象):原地修改后压回**原**句柄
+    /// (builder 模式 `fn has_headers(&mut self, b: bool) -> &mut Self`)
+    ChainInPlace,
     Void,
 }
 

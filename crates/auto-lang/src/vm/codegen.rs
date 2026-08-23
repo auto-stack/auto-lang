@@ -4609,7 +4609,7 @@ impl Codegen {
             // Phase 2.1: Infer return type from known signature
             // Opaque constructors (parse, new, now, etc.) return heap object handles (Int),
             // not strings. Default to Int for functions without known signatures.
-            let ret_type = crate::ffi::known_signature(&crate_name, local_name)
+            let ret_type = crate::ffi::resolve_signature(&crate_name, local_name)
                 .map(|sig| match sig.returns {
                     crate::ffi::RustType::Void => Type::Void,
                     crate::ffi::RustType::Bool => Type::Bool,
