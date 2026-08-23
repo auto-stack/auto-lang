@@ -155,11 +155,20 @@ onexistent 则误报)。
   ash-bridge-060)的既有回归(纯 master 判定一致:plan370 d7+2×b12、
   store_list×2、calendar×2、sizing、selectday),加固零新增失败。
 
-### 新发现挂账(高危,建议 419/vm-lifecycle 会话处理)
+### 新发现 → 已修复:420 物化字面量 × 419 RC 的根引用缺口
 
 **041 应用在 419 RC 下 panic:`[RC canary] use-after-free: heap object
 4000002`(rc.rs:378)** —— T4 ActNew 执行 `.tabs[.tab].x` 链式写时,引擎
-get_heap_object 读到已被 RC 释放的对象。定位:420 的物化 state 列表
-(GenericInstanceData VmRef 直接存入 state 字段)与 419 tier-1 对象 RC 的
-根引用计数缺口 —— state 字段持有的 VmRef 未计入强根,瞬态使用后即被
-释放。041 矩阵因此无法完成(T4 即崩);回溯与复现步骤见本节上文。
+get_heap_object 读到已被 RC 释放的对象。
+
+**根因**:419 的 SET_FIELD 语义是"值的栈计数转移进字段 + receiver stake
+死亡、旧字段级联释放",前提是**字段先有自己的持有份额**;而 420 的
+`eval_expr_to_value` 物化路径(Expr::Array/Expr::Object)把 VmRef 直接
+塞进 state 字段/父容器,从未 rc_retain —— 首个链式写把对象释放到零,
+字段悬垂。
+
+**修复**(fix-rc-state-roots):物化返回引用时补上"被字段/父容器持有"
+的 rc_retain_id(+1)。回归锁 `plan423_p5_state_literal_refs_survive_
+chained_write`(物化 state + 连续两次 `.tabs[0].a = v` 链式写 + 值落盘
+断言)—— 摘掉两行 retain 即败,修复后过。验证:041 矩阵 48/48(金丝雀
+全程静默);feature 套件 3572 过 / 9 失败(全部为既有并行合并回归,零新增)。

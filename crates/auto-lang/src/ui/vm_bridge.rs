@@ -1175,6 +1175,12 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
                 list.push(eval_expr_to_value(e, vm));
             }
             let id = vm.insert_heap_object(list);
+            // Plan 423 P5 续修(RC 根引用缺口):返回的引用将被 state 字段/
+            // 父容器长期持有 —— 按 419 计数语义补上这份持有份额(+1)。
+            // 缺它时:GET_ELEM/GET_FIELD 的栈份额在链式写的 receiver stake
+            // 死亡时归零 → 对象被释放 → 字段成悬垂 → canary UAF(041
+            // ActNew 实测 panic,rc.rs:378)。
+            vm.rc_retain_id(id);
             Value::VmRef(auto_val::VmRef { id: id as usize })
         }
         Expr::Object(pairs) => {
@@ -1195,6 +1201,8 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
                 names,
             );
             let id = vm.insert_heap_object(inst);
+            // Plan 423 P5 续修:同上 —— 持有份额 +1(被列表元素/字段持有)。
+            vm.rc_retain_id(id);
             Value::VmRef(auto_val::VmRef { id: id as usize })
         }
         // EDGE-04 fix: type literal `Type{ field: val, ... }` (parsed as
@@ -1385,6 +1393,60 @@ mod tests {
     /// (毒化字节码在垃圾指令里跑满步数预算的实机 20G 内存事故形态)。
     /// l[0] 的每次 GET_ELEM 都会把元素副本压入运行期字符串池 → 110 万次
     /// 循环即越过阈值。
+    /// Plan 423 P5 续修回归锁:物化 state 字面量(列表/对象 VmRef)必须带
+    /// "被字段/父容器持有"的 RC 份额 —— 否则首个链式写(`.tabs[0].x = v`)
+    /// 的 receiver stake 死亡即把对象释放到零,字段悬垂,canary UAF panic
+    /// (041 ActNew 实测,rc.rs:378)。此测试在修复前会 panic。
+    #[test]
+    fn plan423_p5_state_literal_refs_survive_chained_write() {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let mut widget = make_test_widget("RcRootTest", vec![]);
+        let model_src = r#"
+            var tabs list = [{a: 1, b: 2}, {a: 3, b: 4}]
+        "#;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(model_src).with_session(session);
+        let ast = parser.parse().expect("parse model");
+        let inits: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                crate::ast::Stmt::Store(st) => Some(st.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(inits.len(), 1, "expected one var decl");
+        widget.state_vars.push(AuraStateDef {
+            name: "tabs".to_string(),
+            type_info: Type::Unknown,
+            initial: inits[0].expr.clone(),
+            decorators: vec![],
+        });
+        let handler_src = r#"
+            .tabs[0].a = 99
+        "#;
+        let mut parser = Parser::from(handler_src).with_session(CompilerSession::ui());
+        let ast2 = parser.parse().expect("parse handler");
+        widget
+            .handlers
+            .insert(".Poke".to_string(), LogicPayload::AstStmts(ast2.stmts));
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        // 连续两次链式写:第一次若缺持有份额,receiver stake 死亡即 UAF。
+        bridge.call_handler("Poke", &[]).expect("first chained write");
+        bridge.call_handler("Poke", &[]).expect("second chained write");
+        let tabs = bridge.read_state_as_vec("tabs").expect("tabs");
+        let first = bridge.materialize_obj_ref(&tabs[0]);
+        match first {
+            auto_val::Value::Obj(obj) => {
+                let a = obj.get("a").unwrap_or(Value::Int(0));
+                assert_eq!(a, Value::Int(99), "chained write must land");
+            }
+            other => panic!("tabs[0] not an object: {other:?}"),
+        }
+    }
+
     #[test]
     fn plan423_p5_runaway_guard_halts_unbounded_growth() {
         use crate::aura::LogicPayload;
