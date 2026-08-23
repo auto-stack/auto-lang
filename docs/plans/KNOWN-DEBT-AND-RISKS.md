@@ -12,7 +12,12 @@
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 385 | 逃逸风险 | 闭包 capture_slots 记录 creator_bp，若闭包逃逸（存入全局变量、在创建者函数返回后调用），creator_bp 指向已释放栈帧 → UB。当前无逃逸检测。常见用例（forEach 回调、直接调用）安全，因为创建者仍在栈上。 | `vm/engine.rs` Closure.capture_slots + `vm/codegen.rs:10971 compile_closure` |
-| 419-P1/P2 | RC canary 确定性触发（2026-08-23 外部报告） | ash-gui(ash-runner merged 模式,最大 VM 应用)下**确定性崩溃**:首条命令提交(type→submit→store.RunCommand)即 panic `[RC canary] use-after-free: heap object 4000000 was freed 0.0s ago`(rc.rs:378),×2 复现,master 4c4d6db1+合并。db8a4600(无 RC 代码)同负载数小时零崩溃。3124 单测不覆盖该路径。两种定性:①RC 计数实现过释放(误报);②真 UAF 一直存在 —— 若为②,即 auto-shell plan 060 静默退出债(第五/十五轮)的根因真身。复现:`cd ash-gui/ash-gui-auto && AUTOUI_MCP_PORT=9390 ../ash-server/target/debug/ash-runner.exe` + MCP echo 提交。**2026-08-23 二次复测:8b5426fa(RC 持有份额×3 族修复后)仍复现**(对象 id 4001245,同族)。 | `vm/rc.rs:378`;auto-shell plan 060 §第十六轮 |
+| 419-P1/P2 | RC canary 确定性触发（2026-08-23 外部报告） | ash-gui(ash-runner merged 模式,最大 VM 应用)下**确定性崩溃**:首条命令提交(type→submit→store.RunCommand)即 panic `[RC canary] use-after-free: heap object 4000000 was freed 0.0s ago`(rc.rs:378),×2 复现,master 4c4d6db1+合并。db8a4600(无 RC 代码)同负载数小时零崩溃。3124 单测不覆盖该路径。两种定性:①RC 计数实现过释放(误报);②真 UAF 一直存在 —— 若为②,即 auto-shell plan 060 静默退出债(第五/十五轮)的根因真身。复现:`cd ash-gui/ash-gui-auto && AUTOUI_MCP_PORT=9390 ../ash-server/target/debug/ash-runner.exe` + MCP echo 提交。**2026-08-23 二次复测:8b5426fa 后仍复现(id 4001245)**。
+**三次复测(afe30bf8,RUST_BACKTRACE=full)定位数据**:
+- UAF 访问点 = engine.rs:3936(GET_FIELD 类指令:值经 `i32>=4_000_000 → 堆id` 启发式解码后 get_heap_object)→ rc.rs:389 canary;
+- 派发路径 = iced update → renderer.rs:6677(update 闭包)→ call_fn_by_name(即 on_with_input_for handler 派发)→ run_one_instruction;
+- 堆 id 从 4_000_000 递增(engine.rs:471),故 id=4000111 即**第 111 号分配**(早期启动对象);三次运行 id 在 4000000~4001245 间浮动(分配序随启动路径微变);
+- 机理二选一:①RC 过释放族(第 4 族,GET_FIELD 路径的持有份额缺口——已修三族未覆盖);②真陈旧 VmRef 跨 handler 存活。**注意 3936 的 i32≥4M 启发式本身也可疑**:合法大整数会被误当堆 id 探测(本次恰命中已释放 id 才炸;未命中则静默 None——建议排查时顺带审视该启发式的误判面)。 | `vm/rc.rs:378`;auto-shell plan 060 §第十六轮 |
 
 ---
 
