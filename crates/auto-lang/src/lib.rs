@@ -195,6 +195,26 @@ pub fn is_vm_debug() -> bool {
         })
 }
 
+/// Plan 423 P5 续修(诊断设施):AUTO_VM_TRACE_OPS=1 —— 每指令 trace
+/// (ip/opcode/sp/bp)。与 AUTO_VM_DEBUG(点状埋点)互补,定位 RC 计数
+/// 漂移需要完整指令流。OnceLock 缓存,未启用时零成本。
+pub fn is_vm_trace_ops() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("AUTO_VM_TRACE_OPS").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+    })
+}
+
+/// Plan 423 P5 续修(诊断设施):P419_TRACE_POOL=<idx> —— 只 trace 指定
+/// 字符串池索引的 retain/release/free(定位悬垂池索引的生死链)。
+/// 返回 None 表示未启用。
+pub fn pool_trace_idx() -> Option<usize> {
+    static ENV: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("P419_TRACE_POOL").ok().and_then(|v| v.parse::<usize>().ok())
+    })
+}
+
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
     ($($arg:tt)*) => {

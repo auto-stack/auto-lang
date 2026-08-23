@@ -512,8 +512,13 @@ pub fn handler_fn_name(pattern: &str) -> String {
 /// The bare event name of a handler pattern: strips the leading `.` and any
 /// `Msg::`-style qualifier. Shared by [`handler_fn_name`] and the sibling-call
 /// visibility sets below (Plan 056 blocker A).
+///
+/// Plan 423 P5 续修:也剥参数列表 —— `on { .SelectDay(date) -> }` 的模式带
+/// `(date)`,此前名字进了导出表(`handler_App_SelectDay(date)`),而分发按
+/// 无参名查找 → HandlerNotFound(016-calendar SelectDay 点击静默失败)。
 pub fn bare_handler_name(pattern: &str) -> &str {
     let name = pattern.trim_start_matches('.');
+    let name = name.split('(').next().unwrap_or(name);
     name.rfind("::").map(|p| &name[p + 2..]).unwrap_or(name)
 }
 
@@ -1611,6 +1616,10 @@ mod tests {
         assert_eq!(handler_fn_name(".Inc"), "handler_Inc");
         assert_eq!(handler_fn_name("Msg::PrevMonth"), "handler_PrevMonth");
         assert_eq!(handler_fn_name(".SelectDay"), "handler_SelectDay");
+        // Plan 423 P5 续修:带参数列表的模式必须剥 `(date)` —— 否则导出名
+        // 与分发查找名错位 → HandlerNotFound。
+        assert_eq!(handler_fn_name(".SelectDay(date)"), "handler_SelectDay");
+        assert_eq!(handler_fn_name("Msg::Add(str)"), "handler_Add");
     }
 
     // ---- Plan 398 §14.1 regression tests: sibling-handler call rewriting ----

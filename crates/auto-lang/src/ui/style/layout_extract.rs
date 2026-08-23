@@ -402,11 +402,15 @@ mod tests {
     fn test_sizing() {
         let layout = BoxLayout::from_class_string("w-full h-12 gap-2 max-w-md");
         assert!(matches!(layout.width, Some(SizeValue::Full)));
-        assert!(matches!(layout.height, Some(SizeValue::Fixed(3))));
+        // Fixed = Tailwind 间距单位(class.rs 文档:1 = 4px)—— h-12 → 12 单位
+        // = 48px。旧断言 Fixed(3) 是 rem 混读(3rem 是 h-12 的 CSS 语义,
+        // 但本枚举按间距单位存储,format_size_value ×4 渲染,全库一致)。
+        assert!(matches!(layout.height, Some(SizeValue::Fixed(12))));
         assert_eq!(layout.gap, Some(8.0));
         assert!(layout.max_width.is_some());
         let inline = layout.format_inline(Some((1600.0, 900.0))).unwrap();
         assert!(inline.contains("w=full(1600)"));
+        assert!(inline.contains("h=48"));
         assert!(inline.contains("gap=8"));
         assert!(inline.contains("max-w="));
     }

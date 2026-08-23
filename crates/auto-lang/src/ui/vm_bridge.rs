@@ -1255,6 +1255,12 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
                                 elems: Vec::new(),
                                 storage: None,
                             });
+                            // Plan 423 P5 续修(RC 根引用缺口):同 Array/Object
+                            // 字面量分支 —— 引用将被 state 字段长期持有,补
+                            // 持有份额(+1)。缺它时 Init 的首个 .push 链式写
+                            // 即把计数归零 → 字段悬垂 → canary UAF(021
+                            // block-static 实测 rc.rs:378)。
+                            vm.rc_retain_id(id);
                             return Value::VmRef(auto_val::VmRef { id: id as usize });
                         }
                         // <OtherType>.new() — 若是注册类型,走字面量物化(空字段)。
@@ -1331,6 +1337,10 @@ fn materialize_type_literal(node: &crate::ast::Node, vm: &mut AutoVM) -> Value {
         GenericInstanceData::new(mono_name, field_values)
     };
     let heap_id = vm.insert_heap_object(instance);
+    // Plan 423 P5 续修(RC 根引用缺口):同 Array/Object 字面量分支 ——
+    // 引用将被 state 字段长期持有,补持有份额(+1)。缺它时链式写
+    // (`.field.x = v`)的 receiver stake 死亡即归零 → 字段悬垂 → canary UAF。
+    vm.rc_retain_id(heap_id);
     Value::VmRef(auto_val::VmRef { id: heap_id as usize })
 }
 
@@ -1340,8 +1350,11 @@ fn materialize_type_literal(node: &crate::ast::Node, vm: &mut AutoVM) -> Value {
 /// - ".Inc" -> "Inc"
 /// - "Msg::Inc" -> "Inc"
 /// - "Inc" -> "Inc"
+/// - ".SelectDay(date)" -> "SelectDay" (Plan 423 P5 续修:剥参数列表,
+///   与 handler_codegen::bare_handler_name 同型)
 fn extract_handler_name(pattern: &str) -> &str {
     let name = pattern.trim_start_matches('.');
+    let name = name.split('(').next().unwrap_or(name);
     if let Some(pos) = name.rfind("::") {
         &name[pos + 2..]
     } else {
@@ -1805,6 +1818,9 @@ mod tests {
         assert_eq!(extract_handler_name("Inc"), "Inc");
         assert_eq!(extract_handler_name(".AddItem"), "AddItem");
         assert_eq!(extract_handler_name("Event::Click::Press"), "Press");
+        // Plan 423 P5 续修:带参数列表的模式(016-calendar SelectDay 根因)。
+        assert_eq!(extract_handler_name(".SelectDay(date)"), "SelectDay");
+        assert_eq!(extract_handler_name("Msg::AddTodo(str)"), "AddTodo");
     }
 
     #[test]
@@ -2475,3 +2491,4 @@ impl VmBridge {
         out
     }
 }
+

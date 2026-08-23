@@ -306,6 +306,10 @@ impl AutoVM {
             return;
         }
         let cur = st.rc[idx].fetch_add(1, Ordering::Relaxed);
+        // Plan 423 P5 续修(诊断设施):指定索引生死链 trace。
+        if crate::pool_trace_idx() == Some(idx) {
+            eprintln!("[P419POOL] retain {} (rc {} -> {})", idx, cur, cur + 1);
+        }
         let _ = cur;
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
     }
@@ -317,7 +321,11 @@ impl AutoVM {
             if idx >= st.rc.len() || st.pinned[idx] {
                 return;
             }
-            st.rc[idx].fetch_sub(1, Ordering::AcqRel) == 1
+            let cur = st.rc[idx].fetch_sub(1, Ordering::AcqRel);
+            if crate::pool_trace_idx() == Some(idx) {
+                eprintln!("[P419POOL] release {} (rc {} -> {})", idx, cur, cur - 1);
+            }
+            cur == 1
         };
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
         if zeroed {
@@ -327,6 +335,9 @@ impl AutoVM {
 
     /// 归零真释放:置墓碑、清内容、进 freelist、删 dedup 键(一键一槽不变量)。
     fn pool_free_idx(&self, idx: usize) {
+        if crate::pool_trace_idx() == Some(idx) {
+            eprintln!("[P419POOL] FREE {} (tombstone + freelist)", idx);
+        }
         let key = {
             let mut strings = self.strings.write().unwrap();
             let key = strings.get(idx).cloned();

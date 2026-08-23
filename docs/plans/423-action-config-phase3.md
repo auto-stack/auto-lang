@@ -172,3 +172,52 @@ get_heap_object 读到已被 RC 释放的对象。
 chained_write`(物化 state + 连续两次 `.tabs[0].a = v` 链式写 + 值落盘
 断言)—— 摘掉两行 retain 即败,修复后过。验证:041 矩阵 48/48(金丝雀
 全程静默);feature 套件 3572 过 / 9 失败(全部为既有并行合并回归,零新增)。
+
+---
+
+## 9. Phase 5 续二:9 项既有回归根因归零(2026-08-23,分支 fix-rc-materialize)
+
+上文遗留的 9 项既有回归(plan370 d7+2×b12、store_list×2、calendar×3、
+selectday、sizing)全部定位并修复。RC 金丝雀 + 每指令 trace(新诊断设施)
+实证,三族独立根因:
+
+1. **state 物化持有份额缺口(89a5ace0 同族续修)**:`eval_expr_to_value` 的
+   `List<T>.new(...)` 分支(EDGE-16 物化)与 `materialize_type_literal`
+   (EDGE-04)返回 VmRef 时未 rc_retain —— store model 的
+   `var blocks List<BlockItem> = List<BlockItem>.new([])` 物化后,Init 的
+   `.blocks.push` 链式写即归零悬垂(021/store_list×2、015 repro_b12×2 实测)。
+2. **GET_FIELD 两处裸值入栈**:
+   - GenericInstanceData 分支 `Value::Int(i)` 当 `i ≥ HEAP_ID_BASE`(裸堆 id,
+     Plan 057 Bug 2 数组槽约定)时裸 push_i32 无 +1 —— GET_ELEM 等消费弹栈
+     释放把字段持有份额吃掉(015 d7 TogglePin `notes[idx].pinned` 链式写实测,
+     P419_TRACE + 每指令 trace 对齐定位)。修复:`rc_push_id`。
+   - Str 分支(GenericInstanceData/ObjectData/Node 三处)裸 `strings.push`
+     不进 pool_state(rc/pinned/tombstone 不覆盖)也不进 dedup —— 条目落在
+     计数数组边界外无份额,后续 add_string 的 ensure_len 扩池覆盖后 rc=0
+     即"可释放",而参数/局部槽仍持 nanbox 索引 → 消费释放归零成墓碑 →
+     下轮读 panic(016-calendar `ds == today` EQ canary,get_string 墓碑)。
+     修复:统一收口 `add_string`(dedup+ensure_len+freelist 复用);同类
+     裸入池点(TYPE_TO_STR 族、GET_ELEM、list last/get 共 31 处)全量收口,
+     list last/get 的裸 push_nv 同步改 rc_push(与 GET_ELEM 语义一致)。
+3. **handler 名剥参(交接簿里 calendar HandlerNotFound 的真因)**:
+   `on { .SelectDay(date) -> }` 的模式带参数列表,`bare_handler_name`/
+   `extract_handler_name` 不剥 `(date)` → 导出名 `handler_App_SelectDay(date)`,
+   分发按无参名查找 → HandlerNotFound(点击静默失败)。修复:两处在 `(` 处
+   截断 + 回归单测(此前测试只覆盖无参模式)。
+
+附带:test_sizing 断言修正(Fixed 语义是 Tailwind 间距单位 1=4px,h-12 →
+Fixed(12)=48px;旧断言 Fixed(3) 是 rem 混读,6 月 f57024ae 写死后解析器
+改按间距单位,断言未跟上)。
+
+**诊断设施(永久保留)**:`AUTO_VM_TRACE_OPS=1` 每指令 trace
+(ip/opcode/sp/bp + LOAD/STORE_LOCAL 槽位)、`P419_TRACE_POOL=<idx>` 指定
+池索引生死链 trace —— 均 OnceLock 缓存,未启用零成本。定位此类 RC 漂移
+的标准打法:P419_TRACE(堆)+ P419_TRACE_POOL(池)+ 每指令 trace 三流对齐。
+
+**验证**:feature 套件 **3581 过 / 0 失败**(基线 3572/9 → 9 项全清、零新增);
+无特性套件 3125/0;041 矩阵 48/48(金丝雀全程静默)。
+
+**挂账(安全方向,后续可做)**:ARRAY_LEN 弹栈不释放引用操作数(每调用
+泄漏一个份额;持久列表无感,临时列表会长存);裸 i32 堆 id 编码与 TAG_OBJECT
+双轨并存,pop 侧无法区分"带份额压栈"与"历史裸压",全量收口需要一次性
+迁移(419 的遗留议题)。

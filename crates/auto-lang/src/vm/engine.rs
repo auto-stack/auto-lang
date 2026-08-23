@@ -805,6 +805,17 @@ impl AutoVM {
         idx
     }
 
+    /// Plan 423 P5 续修:运行期字符串入池并带份额入栈的咽喉。原各处裸
+    /// `strings.push` 不进 pool_state(rc/pinned/tombstone 不覆盖)也不进
+    /// dedup —— 条目落在计数数组边界外无份额;后续 add_string 的
+    /// ensure_len 扩池后 rc=0 即"可释放",而栈/槽上仍持 nanbox 索引,
+    /// 消费释放归零即悬垂(016-calendar `ds == today` EQ canary 实测
+    /// engine.rs get_string tombstone)。统一收口到 add_string。
+    pub fn intern_runtime_str(&self, task: &mut AutoTask, bytes: Vec<u8>) {
+        let idx = self.add_string(bytes);
+        self.rc_push_str_idx(task, idx);
+    }
+
     // ============================================================================
     // Plan 077 Phase 4: Unified Object Registry Helper Methods
     // ============================================================================
@@ -2182,6 +2193,18 @@ impl AutoVM {
         }
         let op: OpCode = op_byte.into();
 
+        // Plan 423 P5 续修(诊断设施):每指令 trace。定位 RC 计数漂移时
+        // 需要完整指令流对齐 retain/release(OnceLock 缓存,默认零成本)。
+        if crate::is_vm_trace_ops() {
+            eprintln!(
+                "[VMOP] ip=0x{:04x} op={:?} sp={} bp={}",
+                task.ip - 1,
+                op,
+                task.ram.sp,
+                task.bp
+            );
+        }
+
             // Plan 199: Debugger hook — check if we should pause before executing
             {
                 let mut dbg = self.debugger.lock().unwrap();
@@ -3140,51 +3163,45 @@ impl AutoVM {
                             }
                             None => format!("<heap:{}>", value_bits),
                         };
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" }.to_string();
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_f64(nv) {
                         let d = auto_val::decode_f64(nv);
                         let string_value = format!("{}", d);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_f32(nv) {
                         let f = auto_val::decode_f32(nv);
                         let string_value = format!("{}", f);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" };
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.as_bytes().to_vec());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.as_bytes().to_vec());
+                        self.rc_push_str_idx(task, str_idx);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     }
                     }
                 }
@@ -3224,42 +3241,38 @@ impl AutoVM {
                 OpCode::TYPE_F64_TO_STR => {
                     let val = task.ram.pop_f64();
                     let string_value = format!("{}", val);
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len();
-                    strings.push(string_value.into_bytes());
-                    drop(strings);
-                    self.rc_push_str_idx(task, str_idx as usize);
+                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                    let str_idx = self.add_string(string_value.into_bytes());
+                    self.rc_push_str_idx(task, str_idx);
                 }
                 // Plan 193: i64 -> String
                 OpCode::TYPE_I64_TO_STR => {
                     let val = self.pop_i64_vm(task);
                     let string_value = format!("{}", val);
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len();
-                    strings.push(string_value.into_bytes());
-                    drop(strings);
-                    self.rc_push_str_idx(task, str_idx as usize);
+                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                    let str_idx = self.add_string(string_value.into_bytes());
+                    self.rc_push_str_idx(task, str_idx);
                 }
                 // Plan 193: u64 -> String (hex)
                 OpCode::TYPE_U64_TO_STR => {
                     let val = self.pop_u64_vm(task);
                     let string_value = format!("{:08x}", val);
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len();
-                    strings.push(string_value.into_bytes());
-                    drop(strings);
-                    self.rc_push_str_idx(task, str_idx as usize);
+                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                    let str_idx = self.add_string(string_value.into_bytes());
+                    self.rc_push_str_idx(task, str_idx);
                 }
                 // Plan 193: bool -> String
                 OpCode::TYPE_BOOL_TO_STR => {
                     let nv = task.ram.pop_nv();
                     let is_true = nv_truthy(nv);
                     let string_value = if is_true { "true" } else { "false" };
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len();
-                    strings.push(string_value.as_bytes().to_vec());
-                    drop(strings);
-                    self.rc_push_str_idx(task, str_idx as usize);
+                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                    let str_idx = self.add_string(string_value.as_bytes().to_vec());
+                    self.rc_push_str_idx(task, str_idx);
                 }
                 // Plan 193: f64 -> i32 (truncate)
                 OpCode::TYPE_F64_TO_I32 => {
@@ -3287,11 +3300,10 @@ impl AutoVM {
                 OpCode::TYPE_F32_TO_STR => {
                     let val = task.ram.pop_f32();
                     let string_value = format!("{}", val);
-                    let mut strings = self.strings.write().unwrap();
-                    let str_idx = strings.len();
-                    strings.push(string_value.into_bytes());
-                    drop(strings);
-                    self.rc_push_str_idx(task, str_idx as usize);
+                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                    let str_idx = self.add_string(string_value.into_bytes());
+                    self.rc_push_str_idx(task, str_idx);
                 }
                 // Plan 193: f32 -> i32 (truncate)
                 OpCode::TYPE_F32_TO_I32 => {
@@ -3344,43 +3356,38 @@ impl AutoVM {
                             }
                             None => format!("<heap:{}>", value_bits),
                         };
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_bool(nv) {
                         let b = auto_val::decode_bool(nv);
                         let string_value = if b { "true" } else { "false" }.to_string();
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_f64(nv) {
                         let d = auto_val::decode_f64(nv);
                         let string_value = format!("{}", d);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else if auto_val::is_f32(nv) {
                         let f = auto_val::decode_f32(nv);
                         let string_value = format!("{}", f);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     } else {
                         let value_bits = auto_val::decode_i32(nv);
                         let string_value = format!("{}", value_bits);
-                        let mut strings = self.strings.write().unwrap();
-                        let str_idx = strings.len();
-                        strings.push(string_value.into_bytes());
-                        drop(strings);
-                        self.rc_push_str_idx(task, str_idx as usize);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
                     }
                     }
                 }
@@ -4425,11 +4432,10 @@ impl AutoVM {
                                 vm_debug!("DEBUG GET_ELEM: Found List<String>");
                                 if let Some(normalized_idx) = normalize_index(index_i32, list.elems.len()) {
                                     let elem = &list.elems[normalized_idx];
-                                    let mut strings = self.strings.write().unwrap();
-                                    let str_idx = strings.len() as u32;
-                                    strings.push(elem.as_bytes().to_vec());
-                                    drop(strings);
-                                    self.rc_push_str_idx(task, str_idx as usize);
+                                    // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                                    // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                                    let str_idx = self.add_string(elem.as_bytes().to_vec());
+                                    self.rc_push_str_idx(task, str_idx);
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
                                 }
@@ -4453,11 +4459,10 @@ impl AutoVM {
                                     let elem = &list.elems[normalized_idx];
                                     match elem {
                                         auto_val::Value::Str(s) => {
-                                            let mut strings = self.strings.write().unwrap();
-                                            let str_idx = strings.len() as u32;
-                                            strings.push(s.as_bytes().to_vec());
-                                            drop(strings);
-                                            self.rc_push_str_idx(task, str_idx as usize);
+                                            // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                                            // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                                            let str_idx = self.add_string(s.as_bytes().to_vec());
+                                            self.rc_push_str_idx(task, str_idx);
                                         }
                                         auto_val::Value::Int(i) => { task.ram.push_i32(*i); }
                                         auto_val::Value::Bool(b) => { task.ram.push_nv(auto_val::encode_bool(*b)); }
@@ -4774,11 +4779,9 @@ impl AutoVM {
                             if !resolved.is_nil() {
                                 match resolved {
                                     auto_val::Value::Str(s) => {
-                                        let mut strings = self.strings.write().unwrap();
-                                        let str_idx = strings.len();
-                                        strings.push(s.as_bytes().to_vec());
-                                        drop(strings);
-                                        self.rc_push_str_idx(task, str_idx as usize);
+                                        // Plan 423 P5 续修:入池收口(原裸
+                                        // strings.push 无 pool_state/dedup)。
+                                        self.intern_runtime_str(task, s.as_bytes().to_vec());
                                     }
                                     auto_val::Value::Int(i) => task.ram.push_i32(i),
                                     auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
@@ -4829,12 +4832,9 @@ impl AutoVM {
                                     auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
                                     auto_val::Value::Str(s) => {
                                         // Push tagged string index (NaN-boxed)
-                                        let str_bytes = s.as_bytes().to_vec();
-                                        let mut strings = self.strings.write().unwrap();
-                                        let str_idx = strings.len();
-                                        strings.push(str_bytes);
-                                        drop(strings);
-                                        self.rc_push_str_idx(task, str_idx as usize);
+                                        // Plan 423 P5 续修:入池收口(add_string
+                                        // + 份额入栈;原裸 push 无计数覆盖)。
+                                        self.intern_runtime_str(task, s.as_bytes().to_vec());
                                     }
                                     auto_val::Value::Nil => task.ram.push_i32(0),
                                     // Plan 073: Nested objects/arrays - push their ID
@@ -4859,7 +4859,21 @@ impl AutoVM {
                             if let Some(idx) = field_idx {
                                 if let Some(value) = inst.get_field(idx) {
                                     match value {
-                                        auto_val::Value::Int(i) => task.ram.push_i32(*i),
+                                        auto_val::Value::Int(i) => {
+                                            // Plan 423 P5 续修(RC 根引用缺口):
+                                            // Int ≥ HEAP_ID_BASE 是裸堆 id(数组/
+                                            // 列表槽约定,Plan 057 Bug 2)—— 引用
+                                            // 值入栈必须 +1。此前裸 push_i32,
+                                            // GET_ELEM/ARRAY_LEN 等消费弹栈释放
+                                            // 时把字段持有份额吃掉归零 → 字段悬垂
+                                            // → canary UAF(015 TogglePin 链式写
+                                            // 实测 rc.rs:378)。
+                                            if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                                self.rc_push_id(task, *i as u64);
+                                            } else {
+                                                task.ram.push_i32(*i);
+                                            }
+                                        }
                                         auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
                                         auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
                                         auto_val::Value::Double(d) => task.ram.push_f64(*d),
@@ -4874,12 +4888,10 @@ impl AutoVM {
                                         }
                                         auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
                                         auto_val::Value::Str(s) => {
-                                            let str_bytes = s.as_bytes().to_vec();
-                                            let mut strings = self.strings.write().unwrap();
-                                            let str_idx = strings.len();
-                                            strings.push(str_bytes);
-                                            drop(strings);
-                                            self.rc_push_str_idx(task, str_idx as usize);
+                                            // Plan 423 P5 续修:入池收口(原裸
+                                            // strings.push 无 pool_state/dedup ——
+                                            // 016-calendar today 参数槽悬垂根因)。
+                                            self.intern_runtime_str(task, s.as_bytes().to_vec());
                                         }
                                         auto_val::Value::Nil => task.ram.push_i32(0),
                                         auto_val::Value::VmRef(vm_ref) => {
@@ -5634,7 +5646,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 let result = s.to_uppercase();
-                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                let idx = self.add_string(result.into_bytes());
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "lower" | "to_lower" | "to_lowercase" => {
@@ -5644,7 +5656,7 @@ impl AutoVM {
                                     .map(|b| String::from_utf8_lossy(b).to_string())
                                     .unwrap_or_default();
                                 let result = s.to_lowercase();
-                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                let idx = self.add_string(result.into_bytes());
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "chars" => {
@@ -5744,7 +5756,7 @@ impl AutoVM {
                                     .get(str_idx)
                                     .map(|b| String::from_utf8_lossy(b).trim().to_string())
                                     .unwrap_or_default();
-                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.into_bytes()); i };
+                                let idx = self.add_string(s.into_bytes());
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
                             "replace" => {
@@ -5765,7 +5777,7 @@ impl AutoVM {
                                     self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
                                 } else { String::new() };
                                 let result = s.replace(&pat, &repl);
-                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(result.into_bytes()); i };
+                                let idx = self.add_string(result.into_bytes());
                                 { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
                             }
                             "to_string" | "to_str" | "clone" => {
@@ -5864,11 +5876,11 @@ impl AutoVM {
                                             auto_val::Value::Float(f) => auto_val::encode_f64(*f as f64),
                                             auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
                                             auto_val::Value::Str(s) => {
-                                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                let idx = self.add_string(s.to_string().into_bytes());
                                                 auto_val::encode_string(idx as u32)
                                             }
                                             auto_val::Value::String(s) => {
-                                                let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                let idx = self.add_string(s.to_string().into_bytes());
                                                 auto_val::encode_string(idx as u32)
                                             }
                                             auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
@@ -5878,14 +5890,14 @@ impl AutoVM {
                                         // Plan 403: List<str> (CREATE_LIST_STR) — peek
                                         // the last String and re-encode as nanbox string.
                                         list.elems.last().map(|s| {
-                                            let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.as_bytes().to_vec()); i };
+                                            let idx = self.add_string(s.as_bytes().to_vec());
                                             auto_val::encode_string(idx as u32)
                                         }).unwrap_or(auto_val::encode_null())
                                     } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
                                         list.elems.last().map(|&i| auto_val::encode_i32(i)).unwrap_or(auto_val::encode_null())
                                     } else { auto_val::encode_null() }
                                 } else { auto_val::encode_null() };
-                                { for _ in 0..=arg_count { task.ram.pop_nv(); } task.ram.push_nv(top_nv); }
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push(task, top_nv); }
                             }
                             "get" => {
                                 // Pop index arg, then get element from list
@@ -5900,7 +5912,7 @@ impl AutoVM {
                                                 // Heap object ID — push as object reference
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push(task, auto_val::encode_object(v as u32)); }
                                             } else if let Some(bytes) = self.get_string(v as u32) {
-                                                let new_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(bytes.to_vec()); i };
+                                                let new_idx = self.add_string(bytes.to_vec());
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, new_idx as usize); }
                                             } else {
                                                 { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(auto_val::encode_i32(v)); }
@@ -5912,7 +5924,7 @@ impl AutoVM {
                                     } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<String>>() {
                                         // Plan 403: List<str> via CREATE_LIST_STR.
                                         if let Some(s) = list.get(index as usize) {
-                                            let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.clone().into_bytes()); i };
+                                            let idx = self.add_string(s.clone().into_bytes());
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                                         } else {
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
@@ -5927,17 +5939,17 @@ impl AutoVM {
                                                 auto_val::Value::Float(f) => auto_val::encode_f64(*f as f64),
                                                 auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
                                                 auto_val::Value::Str(s) => {
-                                                    let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                    let idx = self.add_string(s.to_string().into_bytes());
                                                     auto_val::encode_string(idx as u32)
                                                 }
                                                 auto_val::Value::String(s) => {
-                                                    let idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(s.to_string().into_bytes()); i };
+                                                    let idx = self.add_string(s.to_string().into_bytes());
                                                     auto_val::encode_string(idx as u32)
                                                 }
                                                 auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
                                                 _ => auto_val::encode_null(),
                                             };
-                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_nv(nv); }
+                                            { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } self.rc_push(task, nv); }
                                         } else {
                                             { task.ram.pop_nv(); for _ in 1..arg_count { task.ram.pop_nv(); } task.ram.push_i32(0); }
                                         }
@@ -6274,8 +6286,8 @@ impl AutoVM {
                         // Push method and type_name strings for the dispatch handler
                         let method_bytes = method_name.as_bytes().to_vec();
                         let type_bytes = short_type.as_bytes().to_vec();
-                        let method_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(method_bytes); i };
-                        let type_idx = { let mut strings = self.strings.write().unwrap(); let i = strings.len(); strings.push(type_bytes); i };
+                        let method_idx = self.add_string(method_bytes);
+                        let type_idx = self.add_string(type_bytes);
                         // shim_rust_stdlib_dispatch expects: type_name(str), method(str) on top
                         // Stack is: [..., receiver, arg0..argN-1]
                         // Push type_name and method on top (1 nanbox slot each, no null marker)
@@ -7228,6 +7240,9 @@ impl AutoVM {
                 OpCode::LOAD_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+                    if crate::is_vm_trace_ops() {
+                        eprintln!("[VMOP] LOAD_LOCAL idx=0x{:02x}", idx);
+                    }
 
                     // Plan 087 Phase 3: Check if this is a parameter (idx >= 0x80)
                     if idx >= 0x80 {
@@ -7258,6 +7273,9 @@ impl AutoVM {
                 OpCode::STORE_LOCAL => {
                     let idx = self.flash.read_u8(task.ip) as usize;
                     task.ip += 1;
+                    if crate::is_vm_trace_ops() {
+                        eprintln!("[VMOP] STORE_LOCAL idx=0x{:02x}", idx);
+                    }
                     let val_nv = task.ram.pop_nv();
 
                     // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
