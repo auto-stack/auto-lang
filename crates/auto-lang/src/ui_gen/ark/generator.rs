@@ -77,7 +77,7 @@ pub struct ArkGenerator {
     indent_level: usize,
 
     /// Current widget's handlers (for event resolution)
-    current_handlers: HashMap<String, LogicPayload>,
+    current_handlers: std::collections::BTreeMap<String, LogicPayload>,
 
     /// Whether current widget has messages
     has_messages: bool,
@@ -106,7 +106,7 @@ impl ArkGenerator {
             custom_widgets: HashSet::new(),
             current_modifiers: Vec::new(),
             indent_level: 0,
-            current_handlers: HashMap::new(),
+            current_handlers: std::collections::BTreeMap::new(),
             has_messages: false,
             sanitized_name: None,
             loop_vars: HashSet::new(),
@@ -2176,7 +2176,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -2227,7 +2227,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -2283,7 +2283,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -2333,7 +2333,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: Some(AuraRoutes {
                 routes: vec![AuraRoute {
@@ -2406,7 +2406,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None, // No routes - simple entry page
             lifecycle: vec![],
@@ -2472,7 +2472,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None, // No routes - this is a child page
             lifecycle: vec![],
@@ -2541,7 +2541,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -2594,7 +2594,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],

@@ -1503,7 +1503,7 @@ mod tests {
             computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],

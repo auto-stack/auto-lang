@@ -606,7 +606,7 @@ mod tests {
                 span: None,
                 debug_id: None,
             },
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],

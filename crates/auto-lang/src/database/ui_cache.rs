@@ -138,6 +138,40 @@ impl UICache {
         self.file_hashes.keys()
     }
 
+    /// Plan 015 P0#2: drop entries whose source .at no longer exists, so the
+    /// saved cache only lists artifacts that are still live. Returns the
+    /// removed artifact output paths (relative, as recorded).
+    pub fn retain_existing_sources(&mut self, source_exists: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
+        let mut removed_outputs = Vec::new();
+        let mut stale: Vec<PathBuf> = Vec::new();
+        for src in self.file_hashes.keys() {
+            if !source_exists(src) {
+                stale.push(src.clone());
+            }
+        }
+        for src in &stale {
+            if let Some(arts) = self.artifacts.remove(src) {
+                for a in arts {
+                    removed_outputs.push(a.output_path.clone());
+                }
+            }
+        }
+        for src in &stale {
+            self.file_hashes.remove(src);
+        }
+        removed_outputs
+    }
+
+    /// Plan 015 P0#2: every artifact output path currently recorded (i.e.
+    /// files the generator owns). A .vue in the components dir that is NOT
+    /// here but IS in a previous cache snapshot is a stale regen product.
+    pub fn all_artifact_outputs(&self) -> std::collections::HashSet<PathBuf> {
+        self.artifacts
+            .values()
+            .flat_map(|v| v.iter().map(|a| a.output_path.clone()))
+            .collect()
+    }
+
     /// Get number of tracked files
     pub fn file_count(&self) -> usize {
         self.file_hashes.len()

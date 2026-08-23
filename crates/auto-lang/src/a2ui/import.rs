@@ -31,7 +31,7 @@ fn import_surface_update(
 ) -> Result<AuraWidget, A2UIError> {
     let mut nodes = Vec::new();
     let mut state_vars = Vec::new();
-    let mut handlers: HashMap<String, LogicPayload> = HashMap::new();
+    let mut handlers: std::collections::BTreeMap<String, LogicPayload> = std::collections::BTreeMap::new();
 
     for comp in &update.components {
         let (node, comp_state, comp_handlers) = import_component(comp)?;
@@ -96,7 +96,7 @@ fn import_component(
     (
         AuraNode,
         Vec<AuraStateDef>,
-        HashMap<String, LogicPayload>,
+        std::collections::BTreeMap<String, LogicPayload>,
     ),
     A2UIError,
 > {
@@ -110,12 +110,12 @@ fn import_component_body(
     (
         AuraNode,
         Vec<AuraStateDef>,
-        HashMap<String, LogicPayload>,
+        std::collections::BTreeMap<String, LogicPayload>,
     ),
     A2UIError,
 > {
     let mut state_vars = Vec::new();
-    let mut handlers = HashMap::new();
+    let mut handlers = std::collections::BTreeMap::new();
 
     let node = match body {
         A2UIComponentBody::Container { children } => {
@@ -550,13 +550,13 @@ fn import_components(
     (
         Vec<AuraNode>,
         Vec<AuraStateDef>,
-        HashMap<String, LogicPayload>,
+        std::collections::BTreeMap<String, LogicPayload>,
     ),
     A2UIError,
 > {
     let mut nodes = Vec::new();
     let mut state_vars = Vec::new();
-    let mut handlers = HashMap::new();
+    let mut handlers = std::collections::BTreeMap::new();
 
     for comp in components {
         let (node, comp_states, comp_handlers) = import_component(comp)?;

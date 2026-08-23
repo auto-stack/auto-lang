@@ -2798,8 +2798,14 @@ impl VueGenerator {
             }
         }
 
-        // Generate stub functions for handlers referenced in template but not defined in on-block
-        for handler_name in &self.used_handlers {
+        // Generate stub functions for handlers referenced in template but not defined in on-block.
+        // Plan 015 P0#3: sorted iteration — used_handlers is a HashSet
+        // (RandomState), so the unsorted order churns stub emission across
+        // builds (jade gap 56).
+        {
+            let mut sorted_handlers: Vec<&String> = self.used_handlers.iter().collect();
+            sorted_handlers.sort();
+            for handler_name in sorted_handlers {
             if generated_handlers.contains(handler_name) {
                 continue;
             }
@@ -2848,6 +2854,7 @@ impl VueGenerator {
                 script.push_str("  editing.value = false\n");
             }
             script.push_str("}\n\n");
+            }
         }
 
         // Generate lifecycle hooks from widget.lifecycle
@@ -3463,8 +3470,13 @@ impl VueGenerator {
             attrs.push(format!(":style=\"{}\"", ds));
         }
 
-        // Remaining props as v-bind attributes
-        for (key, value) in props {
+        // Remaining props as v-bind attributes.
+        // Plan 015 P0#3: sorted iteration — props is a HashMap (RandomState);
+        // the unsorted order churned generated attribute order (jade gap 56).
+        {
+            let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+            sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
+            for (key, value) in sorted_bind {
             if key == "is" || key == "class" || key == "style" {
                 continue;
             }
@@ -3506,10 +3518,13 @@ impl VueGenerator {
                 }
                 AuraPropValue::StyleBinding(_) => {}
             }
+            }
         }
 
         // Event listeners (same conventions as plain elements)
-        for (event, aura_event) in events {
+        let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                    for (event, aura_event) in sorted_ev {
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
@@ -3876,8 +3891,14 @@ impl VueGenerator {
                     let mut attrs = Vec::new();
                     // Track first prop expression for :key binding
                     let mut first_prop_expr: Option<String> = None;
-                    // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
-                    for (key, value) in props {
+                    // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text).
+                    // Plan 015 P0#3: sorted iteration — props is a HashMap
+                    // (RandomState); sorted keeps generated attribute order
+                    // stable across builds (jade gap 56).
+                    {
+                        let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                        sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
+                        for (key, value) in sorted_bind {
                         // Template ref on a child component: `ref: "canvasRef"`
                         // → static `ref="canvasRef"` attribute + a `ref<any>`
                         // declaration in <script setup> (the child's
@@ -3948,6 +3969,7 @@ impl VueGenerator {
                         }
                         attrs.push(format!(":{}=\"{}\"", key, value_str));
                     }
+                    }
                     // Add :key binding for component reuse identity.
                     //
                     // We use a per-widget-instance counter so each component usage site
@@ -3993,7 +4015,9 @@ impl VueGenerator {
                         attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
                     }
                     // Event handlers
-                    for (event, aura_event) in events {
+                    let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                                for (event, aura_event) in sorted_ev {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
@@ -4139,7 +4163,10 @@ impl VueGenerator {
                     let mut value_state_ref: Option<String> = None;
 
                     // Props as attributes
-                    for (key, value) in props {
+                    { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                      // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+                      sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+                      for (key, value) in sorted_pr {
                         if key == "class" || key == "style" {
                             continue; // Already handled in extract_classes
                         }
@@ -4299,9 +4326,12 @@ impl VueGenerator {
                             attrs.push(format!("{}={}", key, value_str));
                         }
                     }
+                } // plan-015 sorted-props block
 
                     // Event handlers
-                    for (event, aura_event) in events {
+                    let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                                for (event, aura_event) in sorted_ev {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
@@ -4679,9 +4709,11 @@ impl VueGenerator {
                     let value_str = self.expr_to_vue_bound_value(value)?;
                     attrs.push(format!(":{}=\"{}\"", key, value_str));
                 }
-
+            
                 // Event handlers
-                for (event, aura_event) in events {
+                let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                            for (event, aura_event) in sorted_ev {
                     let vue_event = self.auto_event_to_vue(event);
                     // Plan 408 P10: callback-prop short-circuit (consistency
                     // with the element/shadcn event paths).
@@ -5098,7 +5130,10 @@ impl VueGenerator {
 
                 // Build props string
                 let mut props_parts = Vec::new();
-                for (key, value) in props {
+                { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                  // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+                  sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+                  for (key, value) in sorted_pr {
                     if has_primary && key == "text" {
                         continue; // hoisted as the positional primary prop above
                     }
@@ -5113,9 +5148,12 @@ impl VueGenerator {
                     };
                     props_parts.push(format!("{}: {}", key, value_str));
                 }
+            } // plan-015 sorted-props block
 
                 // Build events string
-                for (event_name, event) in events {
+                let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                            for (event_name, event) in sorted_ev {
                     let _params_str = if event.params.is_empty() {
                         String::new()
                     } else {
@@ -5204,11 +5242,14 @@ impl VueGenerator {
                 let mut result = String::new();
 
                 let mut props_parts = Vec::new();
+                // props here is Vec<(String, Expr)> — insertion order, no sort needed
                 for (key, value) in props {
                     props_parts.push(format!("{}: {}", key, self.expr_to_auto_string(value)));
                 }
 
-                for (event_name, event) in events {
+                let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                            for (event_name, event) in sorted_ev {
                     props_parts.push(format!("{}: .{}", event_name, event.handler));
                 }
 
@@ -7772,7 +7813,10 @@ impl VueGenerator {
         attrs: &mut Vec<String>,
         props: &HashMap<String, AuraPropValue>,
     ) {
-        for (key, value) in props {
+        { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+          // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+          sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+          for (key, value) in sorted_pr {
             if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html"
                 // Plan 412 §4.3: square 的尺寸 props 已转成 h-/w- 类,且 h/w/size
                 // 不是有效 HTML 属性 —— 不透传。
@@ -7795,6 +7839,7 @@ impl VueGenerator {
                 _ => {}
             }
         }
+    } // plan-015 sorted-props block
     }
 
     /// Plan 057 续(富文本输入):textarea 带 highlight/ghost props 时生成叠加层
@@ -8361,8 +8406,13 @@ impl VueGenerator {
 
             // === ChatMessage ===
             // Plan 400 B-phase: bind role/content/timestamp/thinking props.
+            // Plan 015 P0#3: iterate in sorted key order — props is a HashMap
+            // (RandomState), so the unsorted iteration order churns the
+            // generated attribute order across builds (jade gap 56).
             "chat_message" | "ChatMessage" => {
-                for (key, value) in props.iter() {
+                let mut sorted_props: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                sorted_props.sort_by(|a, b| a.0.cmp(b.0));
+                for (key, value) in sorted_props {
                     if let AuraPropValue::Expr(expr) = value {
                         if let Ok(v) = self.expr_to_vue_bound_value(expr) {
                             attrs.push(format!(":{}=\"{}\"", key, v));
@@ -10930,7 +10980,9 @@ impl VueGenerator {
         }
 
         // Add event handlers
-        for (event, aura_event) in events {
+        let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
+                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                    for (event, aura_event) in sorted_ev {
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
@@ -14659,7 +14711,7 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             state_vars: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![AuraProp {
                 name: "blocks".to_string(),
                 type_info: Type::List(Box::new(user("Block"))),
@@ -19055,7 +19107,7 @@ store Files {
                 decorators: vec![],
             }],
             messages: vec![],
-            handlers: HashMap::from([
+            handlers: std::collections::BTreeMap::from([
                 (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
             ]),
@@ -19121,7 +19173,7 @@ store Files {
                 decorators: vec![],
             }],
             messages: vec![],
-            handlers: HashMap::from([
+            handlers: std::collections::BTreeMap::from([
                 (".Delta(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".ToolCall(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".Done(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
@@ -19188,7 +19240,7 @@ store Files {
             name: "MultiStreamStore".to_string(),
             state_vars: vec![],
             messages: vec![],
-            handlers: HashMap::from([
+            handlers: std::collections::BTreeMap::from([
                 (".RunOutput(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
             ]),
@@ -19275,7 +19327,7 @@ store PlainStore {
             name: "MyStore".to_string(),
             state_vars: vec![],
             messages: vec![],
-            handlers: HashMap::from([
+            handlers: std::collections::BTreeMap::from([
                 (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
             ]),

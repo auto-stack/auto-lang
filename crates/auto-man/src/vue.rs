@@ -3291,6 +3291,10 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
+    // Plan 015 P0#2: snapshot of previously-owned artifact outputs — used at
+    // the end of the build to delete stale SFCs whose source .at was removed
+    // or renamed (they would otherwise keep passing vue-tsc on old code).
+    let previous_outputs: std::collections::HashSet<PathBuf> = cache.all_artifact_outputs();
 
     // Invalidate cache if .api_functions changed (API imports may be different)
     if cache.invalidate_if_api_functions_changed(&api_fns_path) {
@@ -3505,6 +3509,36 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                             }
                         } else {
                             println!("  pages/{} (cached)", file_name.bright_green());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Plan 015 P0#2: drop cache entries whose source .at disappeared, then
+    // delete SFCs in the components dir that this build no longer owns but a
+    // previous build generated (stale regen products). Hand-written files
+    // that were never artifacts are untouched.
+    let _orphaned = cache.retain_existing_sources(&|src: &Path| src.exists());
+    let live_outputs = cache.all_artifact_outputs();
+    let components_dir = output_dir.join("src").join("components");
+    if components_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&components_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "vue").unwrap_or(false) {
+                    let rel = path.strip_prefix(&output_dir).unwrap_or(&path).to_path_buf();
+                    let was_generated = previous_outputs.contains(&rel);
+                    if was_generated && !live_outputs.contains(&rel) {
+                        match fs::remove_file(&path) {
+                            Ok(()) => println!("  {} removed stale {}", "cache".bright_yellow(), rel.display()),
+                            Err(e) => eprintln!(
+                                "{} failed to remove stale {}: {}",
+                                "Warning:".bright_yellow(),
+                                rel.display(),
+                                e
+                            ),
                         }
                     }
                 }

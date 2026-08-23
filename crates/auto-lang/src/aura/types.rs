@@ -66,7 +66,7 @@ pub struct AuraWidget {
     pub view_tree: AuraNode,
 
     /// Event handlers: mapped by event pattern (e.g., "Msg::Inc")
-    pub handlers: HashMap<String, LogicPayload>,
+    pub handlers: std::collections::BTreeMap<String, LogicPayload>,
 
     /// Handler parameter names (pattern → param names) for action fn signatures
     pub handler_params: HashMap<String, Vec<String>>,
@@ -164,7 +164,7 @@ pub struct WidgetLogicRef<'a> {
     pub name: &'a str,
     pub state_vars: &'a [AuraStateDef],
     pub messages: &'a [AuraMessage],
-    pub handlers: &'a HashMap<String, LogicPayload>,
+    pub handlers: &'a std::collections::BTreeMap<String, LogicPayload>,
     pub handler_params: &'a HashMap<String, Vec<String>>,
     pub lifecycle: &'a [AuraLifecycle],
     pub computed: &'a [AuraComputed],
@@ -368,7 +368,7 @@ pub struct AuraStore {
     pub messages: Vec<AuraMessage>,
 
     /// Event handlers: pattern → logic (→ action function bodies)
-    pub handlers: HashMap<String, LogicPayload>,
+    pub handlers: std::collections::BTreeMap<String, LogicPayload>,
 
     /// Handler parameter names (pattern → param names) for action fn signatures
     pub handler_params: HashMap<String, Vec<String>>,
@@ -1153,7 +1153,7 @@ mod tests {
             computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -1256,7 +1256,7 @@ mod tests {
             computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],

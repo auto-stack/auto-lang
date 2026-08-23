@@ -338,8 +338,10 @@ enum Commands {
         scene: Option<String>,
         #[arg(long, help = "Stop after code generation; skip npm/gradle install and build (vue backend)")]
         gen_only: bool,
-        #[arg(long, help = "Escalate codegen validation warnings (vue backend) to build failure")]
+        #[arg(long, help = "Escalate codegen validation warnings (vue backend) to build failure (default since plan 015 P0#1; kept for compatibility)")]
         strict: bool,
+        #[arg(long, help = "Keep building despite codegen validation warnings (vue backend); restores the pre-015 default")]
+        lenient: bool,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -750,12 +752,15 @@ fn real_main(cli: Cli) -> Result<()> {
         }
 
         // ========== Build & Run ==========
-        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only, strict }) => {
+        Some(Commands::Build { dir, port, back_port, front_port, render, scene, gen_only, strict, lenient }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
             }
-            if strict {
+            // Plan 015 P0#1: strict validation is the DEFAULT for `auto build`
+            // (silent stale-SFC success classes). --lenient restores the old
+            // behavior; --strict stays accepted as a no-op for compatibility.
+            if strict || !lenient {
                 auto_lang::ui_gen::validators::set_strict(true);
             }
             let dir = dir.unwrap_or_else(|| ".".to_string());
