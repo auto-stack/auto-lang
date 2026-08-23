@@ -2,7 +2,7 @@
 plan: 429
 title: aavm-prelude-rust-cleanup（AAVM 前奏：Rust 参考实现清理与风险收敛）
 affects: []   # 本计划不改 specs 语义，仅代码整理与调研产出
-status: draft
+status: in-progress
 ---
 
 # Plan 429: AAVM 前奏——Rust 参考实现清理与风险收敛
@@ -38,22 +38,22 @@ status: draft
 
 ### Phase A：安全小修（每项独立 commit，可单独回滚）
 
-- [ ] A1 **删除孤儿文件 `crates/auto-lang/src/parser.rs_helper.rs`**（28 行）
+- [x] A1 **删除孤儿文件 `crates/auto-lang/src/parser.rs_helper.rs`**（28 行）
   来自 2026-01-28 标题为 "temp" 的 commit 194c41ab；先全仓 grep（`mod parser.rs_helper` /
   `include!` / `mod parser_rs_helper`）确认真无引用再删。
-- [ ] A2 **合并 `symbol.rs`（34 行）与 `symbols.rs`（28 行）的重复定义**
+- [x] A2 **合并 `symbol.rs`（34 行）与 `symbols.rs`（28 行）的重复定义**
   两份几乎相同的 `SymbolLocation` + `CodePak`（都注明 "extracted from universe.rs, Plan 091"）。
   保留一份（建议 symbols.rs），另一份 `pub use` 转发一个周期后删除；grep 全部引用点改路径。
-- [ ] A3 **统一 `AUTO_LIB_FILES` 两份清单**
+- [x] A3 **统一 `AUTO_LIB_FILES` 两份清单**
   `src/tests/vm_file_tests.rs`（12 个文件，含 generics.at）vs `src/lib.rs` 的 `run_vm_file_test` 路径
   （11 个，漏 generics.at）。统一为一份（抽到公共 const 或函数），lib.rs 侧引用之。
   注意：99_bootstrap 的 060-080 组当前本来就挂，此修复**不要求**把它们跑绿，只需保证清单一致、
   其余用例不回归。
-- [ ] A4 全量测试确认无回归（`cargo test -p auto-lang --lib` 与改动前基线一致）。
+- [x] A4 全量测试确认无回归（`cargo test -p auto-lang --lib` 与改动前基线一致）。
 
 ### Phase B：风险盘点（产出三份报告，放 `docs/plans/reports/429-*.md`）
 
-- [ ] B1 **shim 需求盘点工具**（rust 脚本或一次性 bin，后续被计划 430 复用为元信息工具输入）
+- [x] B1 **shim 需求盘点工具**（rust 脚本或一次性 bin，后续被计划 430 复用为元信息工具输入）
   - 扫描对象（核心自举范围）：`lexer.rs`、`token.rs`、`parser.rs` 剔 UI 区（以计划 431 边界为准，
     本阶段先用函数名粗粒度过滤 widget/store/task/scene/routes/msg/on-events）、`types.rs`、`infer/`、
     `vm/opcode.rs`、`vm/codegen.rs`、`vm/engine.rs`、`vm/native_catalog.rs`。
@@ -63,12 +63,12 @@ status: draft
     `BUILTIN_OPAQUE_CRATES` 白名单，输出缺口报告：`已覆盖 / 缺失 / 需沙箱`。
   - **高频缺口当场补 shim 臂**（预计集中在 String/Vec/HashMap 的十几个方法），
     长尾留给计划 430 的元信息工具。
-- [ ] B2 **性能摸底**
+- [x] B2 **性能摸底**
   - 写一个 `use.rust` 密集的基准程序（String 拼接/查找 + Vec push/迭代 + HashMap 插入/查找循环，
   规模 ~10^4-10^5 操作），分别：① AutoVM 解释执行（`--release`）② a2r 转译后 cargo 编译执行。
   - 量化倍数写入报告；据此给出 AAVM corpus 规模预算建议（如"单用例 VM 解释执行 ≤ N 秒"）。
   - 不做优化，只摸底。
-- [ ] B3 **a2r 语法面盘点**
+- [x] B3 **a2r 语法面盘点**
   - 盘点核心自举范围 Rust 代码用到的语言构造（enum/模式匹配/闭包捕获/泛型/trait/迭代器链/
   Rc/Arc/宏使用），对照现有 a2r golden（186 例）与 parity 覆盖矩阵，产出"预期能力表"：
   `✅ 已覆盖（golden 编号）/ ⚠️ 部分 / ❌ 缺失`。
@@ -76,9 +76,9 @@ status: draft
 
 ### Phase C：基线冻结
 
-- [ ] C1 确认/等待 v0.5 tag 落地；记录 tag 下核心文件清单及各自 commit hash
+- [x] C1 确认/等待 v0.5 tag 落地；记录 tag 下核心文件清单及各自 commit hash
   （作为计划 432 起新 AAVM 各 `.at` 文件头 Snapshot 的统一基线）。
-- [ ] C2 报告汇总：三份 B 阶段报告 + 基线 hash 表，收进本文件"执行结果"节，
+- [x] C2 报告汇总：三份 B 阶段报告 + 基线 hash 表，收进本文件"执行结果"节，
   并在 `docs/guides/aavm-sync-guide.md` 头部加"已被 429-434 系列取代"的指向注记（内容暂不重写）。
 
 ## 风险与缓解
