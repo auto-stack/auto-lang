@@ -1380,6 +1380,46 @@ mod tests {
     use super::*;
     use crate::ast::Type;
 
+    /// Plan 423 P5 加固:runaway 守卫 —— 单次 handler 调用内字符串池增量
+    /// 超 RUNAWAY_STRINGS_GROWTH(1M)必须以明确错误中止,而不是无界吃内存
+    /// (毒化字节码在垃圾指令里跑满步数预算的实机 20G 内存事故形态)。
+    /// l[0] 的每次 GET_ELEM 都会把元素副本压入运行期字符串池 → 110 万次
+    /// 循环即越过阈值。
+    #[test]
+    fn plan423_p5_runaway_guard_halts_unbounded_growth() {
+        use crate::aura::LogicPayload;
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let mut widget = make_test_widget("RunawayTest", vec![]);
+        // 载体演进:①无副作用的读取会被编译器省略;②Plan 419 的字符串池
+        // RC+freelist 让"重复串/拼接串"的活池有界(str_churn_bounded)——
+        // 字符串维度已被其关闭。存活增长向量是**堆对象**(列表持有引用
+        // 不释放):60 万个对象字面量入列,活堆 +60 万 > 50 万阈值。
+        let src = r#"
+            var l list = []
+            for i in 0..600000 {
+                l.push({a: i})
+            }
+        "#;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse runaway snippet");
+        widget
+            .handlers
+            .insert(".Boom".to_string(), LogicPayload::AstStmts(ast.stmts));
+        let mut bridge = VmBridge::new(&widget).expect("bridge");
+        let err = bridge
+            .call_handler("Boom", &[])
+            .expect_err("runaway growth must halt with an error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("runaway execution halted"),
+            "unexpected error: {msg}"
+        );
+        assert!(msg.contains("strings"), "growth detail in message: {msg}");
+    }
+
+
     /// Helper to create a minimal AuraWidget for testing
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {

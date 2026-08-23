@@ -131,3 +131,35 @@ onexistent 则误报)。
   合成问题,bisect 确认 07-30 后即如此)。
 2. `style::layout_extract::tests::test_sizing` — height Fixed(3) 断言漂移。
 3. 深递归超出 16MB 的极端场景(如需,后续做引擎侧尾递归/迭代化)。
+
+
+---
+
+## 8. Phase 5 续:根因归零加固(2026-08-23,分支 423-phase5-hardening)
+
+背景:Phase 5 修掉了直接根因,但链路上 ③(毒化字节码)④(无界内存增长)
+两环只有单测锁,未机制化。本续把两环变成引擎/编译器层的硬保障。
+
+- **导出闸门(codegen.finish)**:`poisoned_fn_exports` 校验函数导出地址必须
+  落在 FN_PROLOG,毒化导出在模块出口丢弃 + eprintln —— 未来任何 handler
+  编译失败只会得到清晰的 HandlerNotFound,不再产出运行时内存炸弹。
+  豁免族:任务标记(#start/#stop/#else)、async 带外体(async_block_body_*)、
+  闭包体(closure_*,CALL_CLOSURE 协议入口)—— 三族均无 prolog(闭包族
+  误伤由 419 的 closure_keeps_alive 测试当场抓获,已修正)。
+- **runaway 守卫(call_fn_by_name)**:每 5 万步核对字符串池/堆对象活数增量,
+  单次调用增长超 50 万即以 "runaway execution halted" 中止(带 ip/函数名)。
+  行为测试:60 万对象字面量入列触发。阈值经 419 的 str_churn(脚本路径,
+  不经 call_fn_by_name)确认不冲突;字符串维度已被 419 的 RC+freelist 关闭,
+  堆对象是存活增长向量。
+- 验证:feature 套件 3571 过 / 9 失败 —— 全部为 master 上并行合并(419/
+  ash-bridge-060)的既有回归(纯 master 判定一致:plan370 d7+2×b12、
+  store_list×2、calendar×2、sizing、selectday),加固零新增失败。
+
+### 新发现挂账(高危,建议 419/vm-lifecycle 会话处理)
+
+**041 应用在 419 RC 下 panic:`[RC canary] use-after-free: heap object
+4000002`(rc.rs:378)** —— T4 ActNew 执行 `.tabs[.tab].x` 链式写时,引擎
+get_heap_object 读到已被 RC 释放的对象。定位:420 的物化 state 列表
+(GenericInstanceData VmRef 直接存入 state 字段)与 419 tier-1 对象 RC 的
+根引用计数缺口 —— state 字段持有的 VmRef 未计入强根,瞬态使用后即被
+释放。041 矩阵因此无法完成(T4 即崩);回溯与复现步骤见本节上文。

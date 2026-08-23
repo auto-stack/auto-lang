@@ -33,8 +33,8 @@ fn jump_oob_error(task: &AutoTask, offset: isize, new_ip: isize, flash_len: usiz
 /// Plan 423 P5:runaway 判定参数 —— 一次 handler 调用内的字符串池/堆增量
 /// 阈值与检查节拍。正常 UI handler 为百级增量;毒化字节码/失控循环为百万
 /// 级(检查本身每 5 万步一次,开销可忽略)。pub 供单测引用。
-pub const RUNAWAY_STRINGS_GROWTH: usize = 1_000_000;
-pub const RUNAWAY_HEAP_GROWTH: usize = 2_000_000;
+pub const RUNAWAY_STRINGS_GROWTH: usize = 500_000;
+pub const RUNAWAY_HEAP_GROWTH: usize = 500_000;
 pub const RUNAWAY_CHECK_EVERY: u64 = 50_000;
 
 macro_rules! vm_debug {

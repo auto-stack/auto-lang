@@ -13152,7 +13152,13 @@ pub fn poisoned_fn_exports(
     exports
         .iter()
         .filter(|(n, &addr)| {
-            !n.contains('#')
+            // 非"函数入口"语义的导出族豁免:任务标记(#start/#stop/#else)、
+            // async 块带外体(SPAWN_GO/.await 专用入口)与闭包体
+            // (CALL_CLOSURE 协议入口)—— 三者均无 FN_PROLOG。
+            let special = n.contains('#')
+                || n.starts_with("async_block_body")
+                || n.starts_with("closure_");
+            !special
                 && (addr as usize >= code.len() || code[addr as usize] != OpCode::FN_PROLOG as u8)
         })
         .map(|(n, _)| n.clone())
@@ -13173,6 +13179,8 @@ mod plan423_p5_tests {
         exports.insert("poisoned".to_string(), 3); // 落在 0x1F(load.str)
         exports.insert("good_b".to_string(), 4); // 落在 0xB8
         exports.insert("task#start".to_string(), 3); // 任务标记豁免
+        exports.insert("async_block_body_123".to_string(), 3); // async 带外体豁免(无 prolog)
+        exports.insert("closure_68".to_string(), 3); // 闭包体豁免(CALL_CLOSURE 入口)
         exports.insert("oob".to_string(), 99); // 越界
         let mut dropped = poisoned_fn_exports(&code, &exports);
         dropped.sort();
