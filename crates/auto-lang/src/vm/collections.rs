@@ -108,6 +108,23 @@ impl SpecializedHashMap {
         }
     }
 
+    /// Plan 419: 收集值中的堆引用 id(VmRef;StringValue 的 Int 若为裸
+    /// 堆 id ≥ 4M 亦计入)。供 RC 释放(child_refs / clear)遍历。
+    pub fn value_refs(&self) -> Vec<u64> {
+        let mut out = Vec::new();
+        if let SpecializedHashMap::StringValue(map) = self {
+            for v in map.values() {
+                match v {
+                    Value::VmRef(r) => out.push(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
+                        out.push(*i as u64),
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
     /// Remove a key-value pair
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         match self {
@@ -192,6 +209,11 @@ impl HeapObject for SpecializedHashMap {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    // Plan 419: StringValue 变体持有 VmRef 值 —— 递归释放。
+    fn child_refs(&self) -> Vec<u64> {
+        self.value_refs()
     }
 }
 

@@ -184,7 +184,7 @@ impl VMConvertible for String {
 
     fn push_to_stack(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), FFIError> {
         let len = vm.add_string(self.as_bytes().to_vec());
-        task.ram.push_str_idx(len as u32);
+        vm.rc_push_str_idx(task, len as usize);
         Ok(())
     }
 }
@@ -299,7 +299,7 @@ impl VMConvertible for Vec<i32> {
         let list_id = vm.insert_heap_object(list);
 
         // Push list_id to stack
-        task.ram.push_i32(list_id as i32);
+        vm.rc_push_id(task, list_id as u64); // Plan 419
         Ok(())
     }
 }
@@ -375,7 +375,7 @@ impl VMConvertible for Vec<String> {
         let list_id = vm.insert_heap_object(list);
 
         // Push list_id to stack
-        task.ram.push_i32(list_id as i32);
+        vm.rc_push_id(task, list_id as u64); // Plan 419
         Ok(())
     }
 }
@@ -429,6 +429,8 @@ pub fn encode_i64_with_heap(vm: &AutoVM, val: i64) -> NanoValue {
         nv
     } else {
         let id = vm.insert_heap_object(BigIntData::from_i64(val));
+        // Plan 419: 装箱产物入栈即堆引用 —— 调用方均为直接 push,在此统一 +1。
+        vm.rc_retain_id(id);
         encode_bigint(id as u32)
     }
 }
@@ -439,6 +441,8 @@ pub fn encode_u64_with_heap(vm: &AutoVM, val: u64) -> NanoValue {
         nv
     } else {
         let id = vm.insert_heap_object(BigIntData::from_u64(val));
+        // Plan 419: 同上。
+        vm.rc_retain_id(id);
         encode_bigint(id as u32)
     }
 }

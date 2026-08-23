@@ -876,6 +876,28 @@ impl RustTrans {
     /// at the current scope depth in the current function. Returns Owned when
     /// no analysis data is available (e.g. params, globals, or functions not
     /// in escape_results) — Owned is the safe conservative default.
+    /// Plan 419 §4.5: 当前函数中该绑定是否为闭包写捕获(→ a2r 自动升级
+    /// Rc<RefCell<T>>)。
+    fn is_write_captured(&self, name: &str) -> bool {
+        if self.current_fn_name.is_empty() {
+            return false;
+        }
+        self.escape_results
+            .get(&self.current_fn_name)
+            .map_or(false, |m| m.is_write_capture(&name.into()))
+    }
+
+    /// Plan 419 §4.5: 当前函数的全部写捕获绑定名。
+    fn write_capture_names(&self) -> Vec<AutoStr> {
+        if self.current_fn_name.is_empty() {
+            return Vec::new();
+        }
+        self.escape_results
+            .get(&self.current_fn_name)
+            .map(|m| m.write_capture_names())
+            .unwrap_or_default()
+    }
+
     fn current_escape_tier(&self, name: &str) -> crate::trans::escape::OwnershipTier {
         use crate::trans::escape::OwnershipTier;
         if self.current_fn_name.is_empty() {
@@ -2099,6 +2121,14 @@ impl RustTrans {
                 if self.is_global_var(name) {
                     let static_name = self.global_var_static_name(name);
                     write!(out, "*{}.lock().unwrap()", static_name)
+                } else if self.is_write_captured(name.as_str()) {
+                    // Plan 419 §4.5: 写捕获绑定是 Rc<RefCell<T>> —— 读走
+                    // .borrow(),赋值 LHS(assign_lhs_depth>0)走 .borrow_mut()。
+                    if self.assign_lhs_depth > 0 {
+                        write!(out, "*{}.borrow_mut()", Self::rust_ident(name.as_str()))
+                    } else {
+                        write!(out, "*{}.borrow()", Self::rust_ident(name.as_str()))
+                    }
                 } else if let Some(rust_name) = Self::auto_type_to_rust(name.as_str()) {
                     write!(out, "{}", rust_name)
                 } else if name.as_str() == "StringBuilder" {
@@ -3422,6 +3452,22 @@ impl RustTrans {
 
             // Closure (Plan 060): (params) => body or param => body
             Expr::Closure(closure) => {
+                // Plan 419 §4.5: 写捕获自由变量在闭包内持 Rc 克隆 ——
+                // `{ let x = Rc::clone(&x); move |..| .. }`(体内访问由 Ident
+                // 改写统一走 borrow/borrow_mut,克隆名与原绑定同名)。
+                let captured: Vec<AutoStr> = self
+                    .write_capture_names()
+                    .into_iter()
+                    .filter(|n| Self::expr_references_ident(&closure.body, n))
+                    .collect();
+                if !captured.is_empty() {
+                    write!(out, "{{ ")?;
+                    for n in &captured {
+                        write!(out, "let {} = std::rc::Rc::clone(&{}); ",
+                            Self::rust_ident(n.as_str()), Self::rust_ident(n.as_str()))?;
+                    }
+                    write!(out, "move ")?;
+                }
                 // Plan 364 W5 (D4): explicit `move` prefix → `move |..| ..`
                 if closure.is_move {
                     write!(out, "move ")?;
@@ -3441,6 +3487,9 @@ impl RustTrans {
 
                 // Closure body - it's a boxed expression
                 self.expr(&closure.body, out)?;
+                if !captured.is_empty() {
+                    write!(out, " }}")?;
+                }
                 Ok(())
             }
 
@@ -8378,6 +8427,13 @@ impl RustTrans {
     fn expr_references_ident(expr: &Expr, ident: &AutoStr) -> bool {
         match expr {
             Expr::Ident(name) => name == ident,
+            // Plan 419 §4.5: 闭包体多为块表达式 —— 必须下钻(此前 `_ => false`
+            // 令写捕获自由变量检测漏检)。
+            Expr::Block(body) => body
+                .stmts
+                .iter()
+                .any(|s| Self::stmt_references_ident(s, ident)),
+            Expr::Closure(c) => Self::expr_references_ident(&c.body, ident),
             Expr::Call(call) => {
                 Self::expr_references_ident(&call.name, ident)
                     || call.args.args.iter().any(|a| {
@@ -10604,6 +10660,14 @@ impl RustTrans {
             || is_borrowed_split_source;
 
         let safe_name = Self::rust_ident(store.name.as_str());
+        // Plan 419 §4.5: 闭包写捕获绑定 —— 声明升级 Rc<RefCell<T>>
+        // (全限定路径,免 use 前导;访问点由 Ident 改写 borrow/borrow_mut)。
+        if self.is_write_captured(store.name.as_str()) {
+            write!(out, "let {} = std::rc::Rc::new(std::cell::RefCell::new(", safe_name)?;
+            self.expr(&store.expr, out)?;
+            write!(out, "))")?;
+            return Ok(());
+        }
         // Plan 399 Phase 11.5: a `let` binding that is mutated later (push/assign)
         // needs `let mut` — Auto's `let` allows mutation, Rust's doesn't.
         let needs_mut = matches!(store.kind, StoreKind::Let)
@@ -16422,6 +16486,9 @@ impl RustTrans {
                 let var_name = caps.get(1).unwrap().as_str();
                 // Skip if already mut
                 if trimmed.starts_with("let mut") { continue; }
+                // Plan 419 §4.5: Rc<RefCell<T>> 写捕获绑定自带内部可变性,
+                // 追加 mut 只会产生 unused_mut 告警。
+                if trimmed.contains("std::rc::Rc::new(std::cell::RefCell::new(") { continue; }
                 // Look ahead for assignments to this variable
                 let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
                 let direct_pat = format!(r"\b{}\s*=[^=]", var_name);

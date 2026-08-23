@@ -1,0 +1,9 @@
+// Plan 419 §4.5: write-capture of a Copy-typed scalar (i32) — Auto has no
+// lifecycle annotations; the conservative upgrade is Rc<RefCell<T>>
+// (Cell<T> is the Copy specialization, kept as a noted optimization tier).
+fn main() {
+    var hits int = 0
+    let bump = fn() { hits = hits + 1 }
+    bump()
+    print(hits)
+}
