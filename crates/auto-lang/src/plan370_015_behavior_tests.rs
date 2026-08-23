@@ -21,6 +21,55 @@ mod plan370_015_behavior_tests {
     use crate::ui::dynamic::DynamicComponent;
     use auto_val::Value;
 
+    /// Plan 423 P5:重测试跑在 16MB 栈线程上 —— 015 组件的 build/dispatch
+    /// 递归深度超过默认 2MB 测试线程栈(d10 曾 STATUS_STACK_OVERFLOW)。
+    fn run_big_stack<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn big-stack test thread")
+            .join()
+            .expect("big-stack test thread panicked")
+    }
+
+    /// Plan 423 P5 结构不变量(永久回归锁):**每个导出地址必须落在
+    /// FN_PROLOG(0xB8)上**。错位 = 调用从指令中间进入 → 栈失衡 → RET 弹错
+    /// 返回地址 → 落入函数间蹦床 jmp→代码末尾(InvalidOpCode 255)或在垃圾
+    /// 指令里跑满步数预算无界吃内存(实机 20G 内存事故)。历史根因:
+    /// store.field 重写按别名查真名键控的字段表 → "Undefined variable:
+    /// store" → handler 半成品毒化字节码(handler_codegen.rs 已修)。
+    #[test]
+    fn z6_export_prolog_alignment() {
+        let dc = match build_015_component() {
+            Some(c) => c,
+            None => {
+                eprintln!("plan370: SKIPPED — app.at not found");
+                return;
+            }
+        };
+        let table = dc.debug_fn_table();
+        assert!(!table.is_empty());
+        let mut misaligned = Vec::new();
+        for (name, addr) in &table {
+            if *addr == 0 {
+                continue; // 0 = module top(非函数入口)
+            }
+            let byte = dc.debug_byte(*addr);
+            if byte != 0xB8 {
+                misaligned.push(format!("{name} @0x{addr:04x} byte=0x{byte:02x}"));
+            }
+        }
+        assert!(
+            misaligned.is_empty(),
+            "exports not aligned to FN_PROLOG ({} of {}):
+{}",
+            misaligned.len(),
+            table.len(),
+            misaligned.join("
+")
+        );
+    }
+
     /// Payload-encoded event helper: `{event}\u{1F}i\u{1F}{n}` for an int arg.
     fn with_int(event: &str, n: i32) -> String {
         format!("{}\u{1F}i\u{1F}{}", event, n)
@@ -73,7 +122,8 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d1_init_loads_seed_notes() {
-        let dc = match build_015_component() {
+        run_big_stack(|| {
+            let dc = match build_015_component() {
             Some(c) => c,
             None => {
                 eprintln!("plan370: SKIPPED — app.at not found");
@@ -85,6 +135,7 @@ mod plan370_015_behavior_tests {
         assert_eq!(state_str(&dc, "active_id"), "0", "initial active_id");
         assert_eq!(state_str(&dc, "active_folder"), "all", "initial active_folder");
         assert_eq!(state_str(&dc, "active_tag"), "", "initial active_tag empty");
+        })
     }
 
     // ── D2: NewNote appends + re-points active_id ───────────────────────────
@@ -94,29 +145,31 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d2_new_note_appends() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        let before = notes_count(&dc);
-        dc.on_with_input("NewNote", None);
-        let after = notes_count(&dc);
-        assert_eq!(
-            after,
-            before + 1,
-            "NewNote should append one note ({} -> {})",
-            before,
-            after
-        );
-        // store.NewNote sets active_id = notes.len() - 1 (the new note).
-        assert_eq!(
-            state_str(&dc, "active_id"),
-            (after - 1).to_string(),
-            "active_id should point at the new note"
-        );
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            let before = notes_count(&dc);
+            dc.on_with_input("NewNote", None);
+            let after = notes_count(&dc);
+            assert_eq!(
+                after,
+                before + 1,
+                "NewNote should append one note ({} -> {})",
+                before,
+                after
+            );
+            // store.NewNote sets active_id = notes.len() - 1 (the new note).
+            assert_eq!(
+                state_str(&dc, "active_id"),
+                (after - 1).to_string(),
+                "active_id should point at the new note"
+            );
+        })
     }
 
     // ── D3: SelectNote(i) sets active_id (parameterized handler) ────────────
@@ -124,20 +177,22 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d3_select_note_sets_active_id() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
-        dc.on_with_input(&with_int("SelectNote", 3), None);
-        assert_eq!(
-            state_str(&dc, "active_id"),
-            "3",
-            "SelectNote(3) should set active_id=3"
-        );
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
+            dc.on_with_input(&with_int("SelectNote", 3), None);
+            assert_eq!(
+                state_str(&dc, "active_id"),
+                "3",
+                "SelectNote(3) should set active_id=3"
+            );
+        })
     }
 
     // ── D4: View tabs switch active_folder ──────────────────────────────────
@@ -145,20 +200,22 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d4_view_tabs_switch_folder() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        assert_eq!(state_str(&dc, "active_folder"), "all");
-        dc.on_with_input("SelectPinned", None);
-        assert_eq!(state_str(&dc, "active_folder"), "pinned");
-        dc.on_with_input("SelectRecent", None);
-        assert_eq!(state_str(&dc, "active_folder"), "recent");
-        dc.on_with_input("SelectAll", None);
-        assert_eq!(state_str(&dc, "active_folder"), "all");
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            assert_eq!(state_str(&dc, "active_folder"), "all");
+            dc.on_with_input("SelectPinned", None);
+            assert_eq!(state_str(&dc, "active_folder"), "pinned");
+            dc.on_with_input("SelectRecent", None);
+            assert_eq!(state_str(&dc, "active_folder"), "recent");
+            dc.on_with_input("SelectAll", None);
+            assert_eq!(state_str(&dc, "active_folder"), "all");
+        })
     }
 
     // ── D6: Tag filter sets/clears active_tag (parameterized handler) ───────
@@ -166,18 +223,20 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d6_tag_filter_sets_and_clears() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        assert_eq!(state_str(&dc, "active_tag"), "");
-        dc.on_with_input(&with_str("SelectTag", "work"), None);
-        assert_eq!(state_str(&dc, "active_tag"), "work", "SelectTag(work)");
-        dc.on_with_input("ClearTag", None);
-        assert_eq!(state_str(&dc, "active_tag"), "", "ClearTag");
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            assert_eq!(state_str(&dc, "active_tag"), "");
+            dc.on_with_input(&with_str("SelectTag", "work"), None);
+            assert_eq!(state_str(&dc, "active_tag"), "work", "SelectTag(work)");
+            dc.on_with_input("ClearTag", None);
+            assert_eq!(state_str(&dc, "active_tag"), "", "ClearTag");
+        })
     }
 
     // ── D7: TogglePin flips the active note's pinned flag ───────────────────
@@ -189,29 +248,31 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d7_toggle_pin_flips_flag() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        // active_id=0 → notes[0] is "Welcome", pinned:true in the seed data.
-        assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
-        let before = match note_field(&dc, 0, "pinned") {
-            Value::Bool(b) => b,
-            other => panic!("notes[0].pinned not a bool: {:?}", other),
-        };
-        dc.on_with_input("TogglePin", None);
-        let after = match note_field(&dc, 0, "pinned") {
-            Value::Bool(b) => b,
-            other => panic!("notes[0].pinned not a bool after toggle: {:?}", other),
-        };
-        assert_ne!(
-            before, after,
-            "TogglePin should flip notes[active_id].pinned ({} -> {})",
-            before, after
-        );
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            // active_id=0 → notes[0] is "Welcome", pinned:true in the seed data.
+            assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
+            let before = match note_field(&dc, 0, "pinned") {
+                Value::Bool(b) => b,
+                other => panic!("notes[0].pinned not a bool: {:?}", other),
+            };
+            dc.on_with_input("TogglePin", None);
+            let after = match note_field(&dc, 0, "pinned") {
+                Value::Bool(b) => b,
+                other => panic!("notes[0].pinned not a bool after toggle: {:?}", other),
+            };
+            assert_ne!(
+                before, after,
+                "TogglePin should flip notes[active_id].pinned ({} -> {})",
+                before, after
+            );
+        })
     }
 
     // ── D8: ToggleDarkMode flips dark_mode ──────────────────────────────────
@@ -219,18 +280,20 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d8_toggle_dark_mode() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        assert_eq!(state_str(&dc, "dark_mode"), "false", "initial dark_mode");
-        dc.on_with_input("ToggleDarkMode", None);
-        assert_eq!(state_str(&dc, "dark_mode"), "true", "after first toggle");
-        dc.on_with_input("ToggleDarkMode", None);
-        assert_eq!(state_str(&dc, "dark_mode"), "false", "after second toggle");
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            assert_eq!(state_str(&dc, "dark_mode"), "false", "initial dark_mode");
+            dc.on_with_input("ToggleDarkMode", None);
+            assert_eq!(state_str(&dc, "dark_mode"), "true", "after first toggle");
+            dc.on_with_input("ToggleDarkMode", None);
+            assert_eq!(state_str(&dc, "dark_mode"), "false", "after second toggle");
+        })
     }
 
     // ── D9: SetAccent changes accent_color ──────────────────────────────────
@@ -244,22 +307,24 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d9_set_accent_color() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        assert_eq!(state_str(&dc, "accent_color"), "indigo", "initial accent");
-        // SetAccent lives on NavTree; drive the store directly to exercise the
-        // store.SetAccent(name) method-call chain (the D-GAP-4 codegen path).
-        dc.on_with_input_for("NotesStore", &with_str("SetAccent", "coral"), None);
-        assert_eq!(
-            state_str(&dc, "accent_color"),
-            "coral",
-            "store.SetAccent(coral) should update accent_color"
-        );
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            assert_eq!(state_str(&dc, "accent_color"), "indigo", "initial accent");
+            // SetAccent lives on NavTree; drive the store directly to exercise the
+            // store.SetAccent(name) method-call chain (the D-GAP-4 codegen path).
+            dc.on_with_input_for("NotesStore", &with_str("SetAccent", "coral"), None);
+            assert_eq!(
+                state_str(&dc, "accent_color"),
+                "coral",
+                "store.SetAccent(coral) should update accent_color"
+            );
+        })
     }
 
     // ── D10: EditorPanel.Edit fills edit_title/edit_body from note ──────────
@@ -270,37 +335,39 @@ mod plan370_015_behavior_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn d10_edit_fills_edit_fields() {
-        let mut dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
+        run_big_stack(|| {
+        let mut dc =     match build_015_component() {
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            // Precondition: editing is false, edit fields empty.
+            assert_eq!(state_str(&dc, "editing"), "false", "initial editing");
+            assert_eq!(state_str(&dc, "edit_title"), "", "initial edit_title");
+
+            // The note prop is normally written by ensure_child_state during view
+            // build. In headless mode (no render), simulate it: write notes[0] as
+            // the `note` prop so the handler can read .note.title.
+            let notes = dc.read_state_as_vec("notes").expect("notes");
+            let note0 = notes[0].clone(); // Int(heap_id)
+            if dc.bridge_mut().write_state("note", note0).is_err() {
+                // Field may not exist in state_field_names; add it via ensure_child_state.
+                let mut props = std::collections::HashMap::new();
+                props.insert("note".to_string(), notes[0].clone());
+                dc.bridge_mut().ensure_child_state("EditorPanel", &[], &props);
             }
-        };
-        // Precondition: editing is false, edit fields empty.
-        assert_eq!(state_str(&dc, "editing"), "false", "initial editing");
-        assert_eq!(state_str(&dc, "edit_title"), "", "initial edit_title");
 
-        // The note prop is normally written by ensure_child_state during view
-        // build. In headless mode (no render), simulate it: write notes[0] as
-        // the `note` prop so the handler can read .note.title.
-        let notes = dc.read_state_as_vec("notes").expect("notes");
-        let note0 = notes[0].clone(); // Int(heap_id)
-        if dc.bridge_mut().write_state("note", note0).is_err() {
-            // Field may not exist in state_field_names; add it via ensure_child_state.
-            let mut props = std::collections::HashMap::new();
-            props.insert("note".to_string(), notes[0].clone());
-            dc.bridge_mut().ensure_child_state("EditorPanel", &[], &props);
-        }
+            // Trigger EditorPanel's .Edit handler.
+            dc.on_with_input_for("EditorPanel", "Edit", None);
 
-        // Trigger EditorPanel's .Edit handler.
-        dc.on_with_input_for("EditorPanel", "Edit", None);
-
-        // After Edit: editing=true, edit_title=note's title, edit_body=note's body.
-        assert_eq!(state_str(&dc, "editing"), "true", "editing after Edit");
-        let title = state_str(&dc, "edit_title");
-        eprintln!("d10: edit_title after Edit = {:?}", title);
-        assert!(!title.is_empty(), "edit_title should be filled from note.title");
+            // After Edit: editing=true, edit_title=note's title, edit_body=note's body.
+            assert_eq!(state_str(&dc, "editing"), "true", "editing after Edit");
+            let title = state_str(&dc, "edit_title");
+            eprintln!("d10: edit_title after Edit = {:?}", title);
+            assert!(!title.is_empty(), "edit_title should be filled from note.title");
+        })
     }
 
     /// Audit B12(b) REAL-013 repro, same production path as the 015 tests:
@@ -382,3 +449,4 @@ mod plan370_015_behavior_tests {
         );
     }
 }
+

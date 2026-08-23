@@ -302,6 +302,13 @@ pub fn config_generation() -> u64 {
     CONFIG_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+/// Plan 423 P5:最近一次成功重载的摘要(action_config_reload 工具响应用)。
+static LAST_RELOAD_INFO: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn last_reload_info() -> Option<String> {
+    LAST_RELOAD_INFO.lock().unwrap().clone()
+}
+
 /// Plan 418 P2-3: which synthesized menubar is open (menu id), if any.
 /// Renderer-side local UI state (same pattern as preview-card states) —
 /// kept here so the builder (view) and the renderer (update) share it
@@ -387,6 +394,13 @@ pub fn reload_action_config() -> Option<std::sync::Arc<UiActionConfig>> {
             let arc = std::sync::Arc::new(cfg);
             *ACTION_CONFIG.write().unwrap() = Some(arc.clone());
             *CONFIG_STAMP.lock().unwrap() = config_stamp(&path);
+            *LAST_RELOAD_INFO.lock().unwrap() = Some(format!(
+                "{} actions, {} menus, {} toolbar items, {} OS keymap overrides",
+                arc.actions.len(),
+                arc.menus.len(),
+                arc.toolbar.len(),
+                os_overrides
+            ));
             CONFIG_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Some(arc)
         }

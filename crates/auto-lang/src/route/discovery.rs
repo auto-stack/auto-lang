@@ -406,7 +406,12 @@ mod tests {
         let discovery = RouteDiscovery::new(dir.clone());
         assert!(discovery.exists());
 
-        let discovery2 = RouteDiscovery::new(PathBuf::from("/nonexistent"));
+        // Plan 423 P5:不能用 "/nonexistent" —— Windows 下解析为当前盘符根
+        // (D:\nonexistent),若真机存在该目录则误报。改用临时目录下带
+        // 随机段的不存在路径,机器无关。
+        let nonexistent = std::env::temp_dir()
+            .join(format!("auto_nonexistent_{}", std::process::id()));
+        let discovery2 = RouteDiscovery::new(nonexistent);
         assert!(!discovery2.exists());
 
         cleanup_test_dir(&dir);

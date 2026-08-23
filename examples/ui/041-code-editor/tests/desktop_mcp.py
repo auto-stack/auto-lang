@@ -26,10 +26,12 @@ Prerequisites:
     - Python requests: pip install requests
 """
 
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 try:
@@ -57,7 +59,15 @@ PROJECT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 class McpClient:
-    """JSON-RPC client for the UI MCP server."""
+    """JSON-RPC client for the UI MCP server.
+
+    Plan 423 P5 内存防护:应用侧若踩中 VM 字节码错位 bug,handler 会在垃圾
+    指令里跑满步数预算并无界生长视图/字符串池 —— snapshot 响应随之膨胀到
+    GB 级,python 侧 json 解析持有数倍载荷曾把系统内存吃到 20G+。故:
+    * 响应体硬上限(MAX_RESPONSE_BYTES,超出即断言失败并中止);
+    * 丢弃超大响应后不再重试。"""
+
+    MAX_RESPONSE_BYTES = 64 * 1024 * 1024  # 64MB — 正常快照远小于此
 
     def __init__(self, url):
         self.url = url
@@ -71,13 +81,20 @@ class McpClient:
                     "jsonrpc": "2.0", "method": "tools/call",
                     "params": {"name": tool_name, "arguments": arguments},
                     "id": self.req_id,
-                }, timeout=45)
+                }, timeout=45, stream=True)
                 break
             except (requests.ConnectionError, requests.Timeout):
                 if attempt == 2:
                     raise
                 time.sleep(2)
-        data = resp.json()
+        size = int(resp.headers.get("Content-Length") or 0)
+        body = resp.raw.read(self.MAX_RESPONSE_BYTES + 1, decode_content=True)
+        if len(body) > self.MAX_RESPONSE_BYTES or size > self.MAX_RESPONSE_BYTES:
+            raise RuntimeError(
+                f"MCP response for {tool_name} exceeded {self.MAX_RESPONSE_BYTES} bytes "
+                f"(got {max(size, len(body))}) — app-side runaway (VM desync?) — aborting"
+            )
+        data = json.loads(body)
         if "error" in data:
             raise RuntimeError(f"MCP error: {data['error']}")
         content = data.get("result", {}).get("content", [])
@@ -212,6 +229,20 @@ def state_int(state_text, field):
 def state_bool(state_text, field):
     m = re.search(rf"{field}:\s*(true|false)", state_text)
     return m.group(1) == "true" if m else None
+
+
+def _kill_proc_tree(proc):
+    """Plan 423 P5:terminate 不杀 Windows 子进程树 —— taskkill /T /F 兜底,
+    防止失控的 UI 应用(VM 错位 runaway)被留成孤儿。"""
+    proc.terminate()
+    try:
+        proc.wait(5)
+    except Exception:
+        pass
+    subprocess.run(
+        ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+        capture_output=True,
+    )
 
 
 class TestResult:
@@ -545,11 +576,7 @@ def run_tests(mcp_url, proc):
         # restore the main app client (T8 quits the ORIGINAL process) and
         # retire the T9 instance.
         mcp, snap_cache = _mcp_orig, _snap_orig
-        t9_proc.terminate()
-        try:
-            t9_proc.wait(5)
-        except Exception:
-            t9_proc.kill()
+        _kill_proc_tree(t9_proc)
     else:
         print("  NOTE  AUTO_OPEN_PATH/AUTO_SAVE_PATH not set; skipping T9 (see runner env)")
 
@@ -646,13 +673,39 @@ def run_tests(mcp_url, proc):
                     f.write(config_backup)
                 mcp10.call("action_config_reload")  # restore effective config
         finally:
-            t10_proc.terminate()
-            try:
-                t10_proc.wait(5)
-            except Exception:
-                t10_proc.kill()
+            _kill_proc_tree(t10_proc)
     else:
         print("  NOTE  AUTO_OPEN_PATH/AUTO_SAVE_PATH not set; skipping T10")
+
+    # T11: Plan 423 P5 —— OS 用户层 keymap 端到端(独立进程 + 临时 APPDATA,
+    # 不污染真实用户目录):写 <APPDATA>/auto/keymaps/auto-edit.at 覆盖
+    # file.new 的快捷键 → action_config_reload 响应须含 "1 OS keymap overrides"。
+    print("\nT11: OS user keymap layer (e2e)")
+    if os.environ.get("AUTO_OPEN_PATH"):
+        import shutil
+        t11_appdata = tempfile.mkdtemp(prefix="auto041_t11_appdata_")
+        t11_km_dir = os.path.join(t11_appdata, "auto", "keymaps")
+        os.makedirs(t11_km_dir, exist_ok=True)
+        with open(os.path.join(t11_km_dir, "auto-edit.at"), "w", encoding="utf-8") as f:
+            f.write('k { action { id : "file.new"  shortcut : "Ctrl+Shift+Alt+F12" } }\n')
+        t11_port = pick_free_port()
+        t11_proc = subprocess.Popen(
+            [AUTO_BIN, "run", "-r", "vm"],
+            cwd=PROJECT,
+            env={**os.environ, "AUTOUI_MCP_PORT": str(t11_port), "APPDATA": t11_appdata},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            t11_url = f"http://127.0.0.1:{t11_port}/mcp"
+            assert wait_for_server(t11_url, 30), "T11 server never up"
+            mcp11 = McpClient(t11_url)
+            resp = mcp11.call("action_config_reload")
+            result.check("T11 OS keymap override applied (e2e)",
+                         "1 OS keymap overrides" in resp, resp[:160])
+        finally:
+            _kill_proc_tree(t11_proc)
+            shutil.rmtree(t11_appdata, ignore_errors=True)
+    else:
+        print("  NOTE  AUTO_OPEN_PATH not set; skipping T11")
 
     print("\nT8: ActQuit (menu item)")
     open_menu(mcp, snap_cache, "文件")
@@ -729,8 +782,14 @@ def main():
         print("MCP server ready")
         result = run_tests(mcp_url, proc)
     finally:
+        # Plan 423 P5:proc.kill() 在 Windows 上不杀子进程树,UI 应用可能无视
+        # WM_CLOSE 存活成孤儿(内存失控时曾被留下)—— taskkill /T /F 兜底。
         if proc.poll() is None:
             proc.kill()
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            capture_output=True,
+        )
 
     print("\n" + "=" * 60)
     print(f"RESULT: {result.passed} passed, {result.failed} failed")
