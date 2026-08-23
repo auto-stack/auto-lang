@@ -1372,8 +1372,8 @@ A widget has three per-instance lifecycle phases (see
 | Phase | Syntax | Runs | a2vue (Vue) | interpreter (Plan 436 L1) | a2r (Rust) |
 |---|---|---|---|---|---|
 | setup | `setup { ... }` block | synchronously, before first render | `<script setup>` top level | once at `InterpreterBridge::interpret` load, bindings into the widget's single-instance `WidgetState.fields`, before any view evaluation | **explicit error** — Rust target has no per-instance setup slot yet (Plan 436 决策 1-A; 1-B generation deferred) |
-| .Init | `on { .Init -> {...} }` | after mount | `onMounted` | not dispatched (no lifecycle routing yet — documented gap) | `__self.on(XMsg::Init)` in the constructor's post-construct phase |
-| .Destroy | `on { .Destroy -> {...} }` | on unmount | `onUnmounted` | not dispatched (no lifecycle routing yet — documented gap) | not generated |
+| .Init | `on { .Init -> {...} }` | after mount | `onMounted` | not dispatched (no lifecycle routing yet — documented gap) | `XMsg::Init` arm in `on()` + dispatched via `__self.on(XMsg::Init)` in the constructor's post-construct phase (async-init variant `__InitLoaded` when it calls an API fn) |
+| .Destroy | `on { .Destroy -> {...} }` | on unmount | `onUnmounted` | not dispatched (no lifecycle routing yet — documented gap) | `XMsg::Destroy` arm generated in `on()`, but **nothing auto-dispatches it** (no `Drop` impl sends the message — the host must) |
 
 Interpreter-side boundary notes (Plan 436): the setup preamble executes in
 its own VM run — program-level functions/globals do not persist into it

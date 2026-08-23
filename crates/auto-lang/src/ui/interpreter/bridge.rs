@@ -111,12 +111,17 @@ impl InterpreterBridge {
                     .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
                 self.run_setup_preambles(&ast)?;
             }
-            // 非 UI 场景程序(普通脚本):保持原有 VM 默认解析求值路径,
-            // 其自身的解析/运行错误在那边照常上浮。
-            Err(_) => {
-                self.interpreter
-                    .eval(code)
-                    .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
+            // 非 UI 场景程序(普通脚本):保持原有 VM 默认解析求值路径
+            // (回退成功即行为不变)。若 VM 路径同样失败,把 UI 场景解析
+            // 错误一并列出——坏 UI 程序的精确诊断不被回退吞掉(Plan 436
+            // review 修正:此前静默丢弃 UI 解析错误,只浮出较粗的 VM 报错)。
+            Err(ui_err) => {
+                if let Err(vm_err) = self.interpreter.eval(code) {
+                    return Err(BridgeError::AutoLang(format!(
+                        "{}\n(UI-scenario parse: {})",
+                        vm_err, ui_err
+                    )));
+                }
             }
         }
         Ok(())
@@ -395,6 +400,21 @@ widget NoSetup {
         assert!(
             bridge.widget_state("NoSetup").is_none(),
             "no WidgetState without a setup block (L1 boundary)"
+        );
+    }
+
+    /// Plan 436 review:坏 UI 程序(UI 场景解析失败)经回退路径也失败时,
+    /// 两条诊断都上浮——UI 解析错误不被回退静默吞掉。
+    #[test]
+    fn test_broken_ui_program_reports_ui_parse_error() {
+        let mut bridge = InterpreterBridge::new();
+        let err = bridge
+            .interpret("widget W {\n    setup { let = }\n}\n")
+            .expect_err("broken UI program must error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("UI-scenario parse"),
+            "combined diagnostics must include the UI parse error: {msg}"
         );
     }
 
