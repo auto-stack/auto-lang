@@ -5,8 +5,8 @@ shadcn widgets：每个组件一个页面，含示例预览（`preview-card`）�
 （`codeblock`）和属性文档（`table`）。支持 **vue / vm / rust** 三端的思路，
 当前 vue 端完全可用。
 
-> 前身是 `examples/gallery`（改名而来）。`examples/ui/024-widgets-gallery`
-> 的修复验证内容已并入此处，024 仅留 README 指引。
+> 前身是 `examples/gallery`（改名而来），并吸收了原 `examples/ui/024-widgets-gallery`
+> 的修复验证内容（024 目录已于 2026-08 清理删除）。
 
 ## 布局（`source/front/app.at`）
 

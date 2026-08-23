@@ -42,7 +42,7 @@
 | **346** | Web Framework 差距调研 | 调研本体完结；核心差距已实施（query/表单/中间件/500/日志/通配符，http_server.rs 内 "Plan 346" 标注；session/SSR/OpenAPI 由 352 完成） | 未实施且**无后续计划认领**：3c 重定向、5a 服务端 multipart 上传、5e Rate Limit、#12 Request-ID |
 | **359** | "Auto 作 Rust 脚本层"发布 | C1/C2/**C3（仪表盘已落地**，report.rs render_maturity_directory + parity-dashboard.html 241/241 + CI artifact，769bfeb8——08-04 自述"未做"已过时）/B1/B2/D1/D2 部分 | D2 generators 用例（parity/libs 无 generators）+ D3.3 双 demo；D3 http_client_sync 仍 blocked（DIV-HTTP-LANG-1）；**Phase E 五项 open**（DIV-TRAIT-VM-1/VM-2/LANG-1/HTTP-LANG-1/CHAR-AT-1）；A1/A2 落地页（V3 未达）；165 checkbox 未回填 |
 | **366** | 跨平台 UI 测试 DSL | 366a 近端交付 3-4/5：acceptance.atd（T1-T13+T12-DARK）+ Playwright spec.ts | `auto test:ui` 一键命令未实现（实际由 Plan 371 run_autotest.py/.autotest 承担，可声明取代）；366b-f DSL 本体长期设计 |
-| **401** | AutoUI 示例升级纲领 | 018/022（404）/023（405）✅；011 拆 403；024 由 409 以 `examples/widgets-gallery/` 完成 | 待办：019/020/021/025（均单文件）；021 双目录并存易混淆；旧 `examples/ui/024-*` 目录仅剩 README/gen 残留可清理 |
+| **401** | AutoUI 示例升级纲领 | 018/022（404）/023（405）✅；011 拆 403；024 由 409 以 `examples/widgets-gallery/` 完成 | 待办：019/020/021-blog-viewer（均单文件）。（2026-08-23 处理：024-* 残留目录已删；025 已删（能力并入 015）；021-block-static 等 16 个能力样板已迁 `examples/capability-tests/`，021 撞号随之消解） |
 | **402** | 038 扫雷示例 | vue 完整；VM 核心流程可用（§13.8 修复 + §13.10 实机点击已修 7c09e371 + 右键/计时器落地） | 连锁展开/数字显示/胜负的**实机目视确认**未记录闭环（§13.8 🟡）；rust 版归 407 |
 | **407-minesweeper** | 038 扫雷 rust 第三后端 | Phase 1–2 + R6 右键 + R9 grid 居中，均合并（f863be5e）——文档原"计划阶段"严重滞后，已更正 | R7 动态窗口 resize（difficulty→窗口尺寸）；Phase 4（三后端对比 + 015/011 回归）；生成快照 stale（早于 R6 修复，重生成即带） |
 | **398** | VM expose/store sibling 修复 | ✅ **已归档（2026-08-20 finish-plan 复核：5/5 测试重跑绿）**——核心三修 + §14.1 回归测试（audit-A3）+ §14.2（b0434cff）全部完成 | M0.5/M1 auto-shell 下游任务 🟢 延期登记债务簿 |

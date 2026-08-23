@@ -19,6 +19,37 @@ Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 Each canary's `src/front/app.at` documents the desired behavior and the
 specific codegen/parser change needed ("What's needed" header comment).
 
+## Feature fixtures (migrated from `examples/ui/` 021–040, 2026-08-23)
+
+Single-capability showcase apps written **alongside the compiler feature they
+pin** (usually added in the feature's own commit). They are not apps and are
+not upgrade candidates (Plan 401 marks them ⏸ 不升级); they live here so that
+`examples/ui/` stays a pure app incubator. Numeric prefixes keep the git
+history traceable. Retire a fixture when its capability gains an in-tree
+unit/integration test that subsumes it.
+
+| Fixture | Pins | Origin |
+|---|---|---|
+| `021-block-static/` | `use store` inside blocks (EDGE-16 regression carrier) | EDGE-16 fix |
+| `026-keyboard-mouse-events/` | keyboard + mouse event surfaces | capability demo batch |
+| `027-native-css/` | native CSS passthrough | capability demo batch |
+| `028-dom-escape/` | DOM escape-hatch | capability demo batch |
+| `029-external-imports/` | `use { fn } from` TS import | capability demo batch |
+| `030-custom-events-style/` | custom events + `style_obj` e2e | custom events e2e |
+| `031-dyn-component-watch/` | dyn components + `watch` e2e | dyn/watch e2e |
+| `032-expose/` | `defineExpose` | phase5 app capabilities |
+| `033-slots/` | slots | phase5 app capabilities |
+| `034-vmodel/` | `v-model` | phase5 app capabilities |
+| `035-vfor-key/` | explicit `key:` in `v-for` | v-for key |
+| `036-warnings/` | warning channel + silent-emission guards | plan 012 batch A |
+| `037-stores-multi/` | multi-store build correctness | plan 012 batch B |
+| `038-vshow/` | `v-show` | plan 012 P2 trio |
+| `039-reserved-words/` | reserved-word contextualization | plan 012 P2 trio |
+| `040-trycatch/` | `try/catch/finally` | plan 012 P2 trio |
+
+Verify the same way as a canary (`auto build` + `vue-tsc --noEmit`, or the
+fixture's own README).
+
 ## Verify a canary
 
 ```bash

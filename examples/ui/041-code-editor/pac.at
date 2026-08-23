@@ -1,8 +1,0 @@
-name: "code-editor"
-version: "1.0.0"
-description: "Plan 413 - Auto Playground mini: edit .at source in a native code editor"
-scene: "ui"
-render: "vm"
-front_port: 4041
-title: "AutoEdit"
-ui_config: "auto-edit.at"

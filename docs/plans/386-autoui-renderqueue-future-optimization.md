@@ -85,7 +85,7 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
 - **code_editor（Plan 413）约束与反馈**：编辑器 core 产出按行稳定 id 键控的
   `EditorDrawList`（文本 run + quad + 行号文本 run），shaping 留 app 侧（光标/
   命中/换行需同步布局，不做 IPC shaping 服务）。启动 Stage 1 时：验收应纳入
-  `examples/ui/041-code-editor` 作为 golden 样例（最严苛的文本消费者）；协议需
+  `examples/ui/041-auto-edit` 作为 golden 样例（最严苛的文本消费者）；协议需
   补三点——事件下行通道的 IME（preedit/commit/cursor rect，分离模式下 winit
   在 host 侧）、字体注册命令（app 自带字体的上传）、按行 CacheControl/
   DirtyRect。详见 Plan 413 §7。

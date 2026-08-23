@@ -12,7 +12,7 @@
 
 Auto 的状态目前是**每 widget 私有**的:`widget` 里的 `model {}` → 生成 Vue `ref()`s,只在该 widget 内可见。015-notes 靠**后端作 shared source of truth**(每页 `use back.api: ...` 重新拉数据)掩盖了这个缺口 —— `auto-musk` 同理。
 
-但**纯前端 / 无后端**(如 025-notes-extended)或**前端缓存层**(避免每页重复 fetch)需要**跨 widget / 跨路由共享的客户端状态**。这正是 025 单视图绕过路由的根本原因:路由页之间无法共享 `notes`。
+但**纯前端 / 无后端**(原 025-notes-extended,临时 fork 已删除、能力并入 015-notes)或**前端缓存层**(避免每页重复 fetch)需要**跨 widget / 跨路由共享的客户端状态**。这正是当年 025 单视图绕过路由的根本原因:路由页之间无法共享 `notes`。
 
 > **现状核查**:仓库内**无**任何 SharedStore / global-state 设计(grep `sharedstore|pinia|defineStore|global state` 在 crates/docs/examples 均无命中)。本设计从零起草。
 

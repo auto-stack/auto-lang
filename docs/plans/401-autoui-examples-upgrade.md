@@ -97,17 +97,19 @@ examples/ui/018-book-reader/
 |---|---|---|---|---|
 | 018-book-reader | 已升级 | ✅ 完成 | (本纲领 §018) | 10/10 全绿，合并 master `bc5e1041` |
 | 011-calculator | 整数四则 | 🔀 已拆出 | Plan 403 | grid 重构 + MCP + 多模式 |
-| 022-kanban | 已升级 | ✅ 完成 | [Plan 404](404-022-kanban.md) | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
+| 022-kanban | 已升级 | ✅ 完成 | 本纲领 §022（提交历史） | CRUD + 列移动 + HTML5 拖拽，6/6 全绿；修 row/col 属性穿透 bug |
 | 023-realworld | 已升级 | ✅ 完成(阶段1+2) | [Plan 405](405-023-realworld.md) | 完整 Conduit(认证+CRUD+评论+关注+收藏+资料)，14/14 全绿；vue 原型 |
 | 019-video-app | 135 行单文件 | ⬜ 待办 | — | 中 |
 | 020-music-player | 115 行单文件 | ⬜ 待办 | — | 中 |
 | 021-blog-viewer | 89 行单文件 | ⬜ 待办 | — | 中 |
-| 024-widget-gallery | 283 行展示型 | 🔀 已由 409 承接 | [Plan 409](409-widgets-gallery.md) | gallery 已落地为 `examples/widgets-gallery/`（62 页三模式一致性）；旧 `examples/ui/024-*` 目录仅剩 README/gen 残留 |
-| 025-notes-extended | 6 文件无后端 | ⬜ 待办 | — | 低 |
-| 026-keyboard-mouse-events | 121 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
-| 027-native-css | 79 行能力展示 | ⏸ 不升级 | — | 非 App 性质（能力 demo） |
+| 024-widget-gallery | 283 行展示型 | 🗑 已清理 | [Plan 409](409-widgets-gallery.md) | gallery 已落地为 `examples/widgets-gallery/`（62 页三模式一致性）；旧 `examples/ui/024-*` 目录（含单数拼写的空壳）已于 2026-08-23 删除，唯一入口为 `examples/widgets-gallery/` |
+| 025-notes-extended | 6 文件无后端 | 🗑 已清理 | — | 015 的前端丰富度临时 fork，store+路由概念已被 015-notes 吸收（Plan 354 §7）；目录于 2026-08-23 删除（SPEC 留存于 git 历史） |
+| 026-keyboard-mouse-events | 121 行能力展示 | 📦 已迁出 | — | 非 App 性质（能力 demo）；2026-08-23 迁至 `examples/capability-tests/` |
+| 027-native-css | 79 行能力展示 | 📦 已迁出 | — | 非 App 性质（能力 demo）；同批迁出 |
 
-**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 024（✅ 经 409）→ 019/020/021（中等）→ 025（低）。
+> **2026-08-23 目录分轨**：`examples/ui/` 现在只放 App 性质示例（含 038-minesweeper、041-auto-edit）。021-block-static + 026–040 的 16 个能力样板（撞号的 038-vshow 也在其中）整体迁至 `examples/capability-tests/`（见其 README 的 Feature fixtures 区段）；特性获得可覆盖的内联测试后按 README 约定退役。
+
+**推荐批次顺序**：022-kanban（✅）→ 023-realworld（✅ 阶段1+2）→ 024（✅ 经 409，旧目录已清理）→ 019/020/021（中等）。（025 已删除，不再排队）
 
 ---
 

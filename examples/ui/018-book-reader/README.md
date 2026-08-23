@@ -24,7 +24,8 @@ Kindle) within AutoUI's reach.
 - **Runtime theme toggle (escape hatch)** — a handmade `vue/src/components/
   ThemeToggle.vue` toggles `<html class="dark">` at runtime (the `theme-toggle`
   tag auto-maps to it), backed by a handmade `index.css`. Demonstrates the
-  declarative-DOM + escape-hatch combo (cf. 028-dom-escape).
+  declarative-DOM + escape-hatch combo (cf.
+  `examples/capability-tests/028-dom-escape`).
 - **Prev/next chapter navigation** — the reading view fetches the adjacent
   chapter and updates the URL + progress on click.
 

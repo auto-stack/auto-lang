@@ -79,7 +79,7 @@ worktree 内 `cargo build -p auto` → 跑 041（VM 模式）→ 截图核对：
 - `ui/code_editor/theme.rs`：gutter_background = background（dark/light 两套）
 - `ui/code_editor/core/render.rs`：FOLD_GUTTER_W = 19.0
 - `ui/iced/renderer.rs`：lucide 补 7 个图标；run_dynamic_iced 启动日志 ×2 行
-- `examples/ui/041-code-editor/src/front/app.at`：menubar（文件/编辑/视图/帮助，展开式）+ toolbar（8 个 icon 按钮）+ tab 关闭按钮 + console icon 按钮修复（px-0 py-0 + icon 子组件）+ 激活 tab bg-[#1C1D24]
+- `examples/ui/041-auto-edit/src/front/app.at`（原 041-code-editor，2026-08 改名）:menubar（文件/编辑/视图/帮助，展开式）+ toolbar（8 个 icon 按钮）+ tab 关闭按钮 + console icon 按钮修复（px-0 py-0 + icon 子组件）+ 激活 tab bg-[#1C1D24]
 
 
 ---

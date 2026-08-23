@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Plan 418 Phase 1: MCP action-matrix tests for the real 041 code-editor
-(auto-edit) app in VM mode.
+Plan 418 Phase 1: MCP action-matrix tests for the real auto-edit app
+(原 041-code-editor) in VM mode.
 
 Starts `auto run -r vm`, waits for the UI MCP server, then exercises the
 13 semantic Act* handlers through their REAL trigger surfaces (menu items,
@@ -17,7 +17,7 @@ Snapshot caveat: event bindings render WITHOUT arguments
 are located by their text label via find_button_by_text.
 
 Usage:
-    cd examples/ui/041-code-editor/tests
+    cd examples/ui/041-auto-edit/tests
     python desktop_mcp.py
 
 Prerequisites:

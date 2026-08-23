@@ -1,9 +1,0 @@
-// types.at — shared Note model (frontend-only; in-memory).
-
-type Note {
-    id int
-    title str
-    body str
-    time str
-    tags []str
-}

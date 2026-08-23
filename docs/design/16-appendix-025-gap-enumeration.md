@@ -1,7 +1,7 @@
 # 025 Gap Enumeration (lightweight) — Design 16 appendix
 
 > **日期**:2026-06-30
-> **来源**:从 `examples/ui/025-notes-extended/SPEC.md` 出发,用一组**探针 widget**逐个试探 AI 会自然写出的不确定构造,`auto build` → 捕获失败。
+> **来源**:从 `examples/ui/025-notes-extended/SPEC.md` 出发,用一组**探针 widget**逐个试探 AI 会自然写出的不确定构造,`auto build` → 捕获失败。（025 目录已于 2026-08-23 删除,SPEC 留存于 git 历史;本文档作为差距枚举的历史记录保留。）
 > **目的**:为"金丝雀测试 + 差距特性实现"提供**完整的差距清单**(已知 + 非obvious),避免只修已知的 3 个而漏掉其余。
 > **方法学注**:这是**轻量枚举**(一次构建、探针法),**不是** Design 16 的正式 gap 分析(后者是 AI 全量再生 + 量修复轮次 N)。正式 gap 分析留到明显差距补齐后再做,以量长尾。
 

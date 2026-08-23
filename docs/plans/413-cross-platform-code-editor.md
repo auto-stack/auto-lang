@@ -237,7 +237,7 @@ View::code_editor("editor1")
 
 - `ui_gen/widget/registry.rs`:`register_form_widgets` 增 `CodeEditor` spec(仿 Textarea @806-833,vue → CodeMirror 6 组件,ark/jet 先占位);`ui_gen/vue.rs` tag map(5131)/event map(10783)/`force_native_elements`(3514)。
 - `examples/widgets-gallery/src/front/pages/code-editor.at` 新页 + `app.at` 路由(gallery 跑 VM 模式,即 Phase 2 的试金石)。
-- 新示例 `examples/ui/041-code-editor/`:一个迷你"Auto Playground"——用 code_editor 编辑 `.at` 代码(lang: "auto" 复用现有 widget-tag 关键字高亮),运行按钮触发 VM 求值;顺带成为编辑器+VM 集成的回归用例。
+- 新示例 `examples/ui/041-auto-edit/`（原 041-code-editor，2026-08 改名）:一个迷你"Auto Playground"——用 code_editor 编辑 `.at` 代码(lang: "auto" 复用现有 widget-tag 关键字高亮),运行按钮触发 VM 求值;顺带成为编辑器+VM 集成的回归用例。
 
 ### Phase 5 — 测试与验收
 
@@ -290,7 +290,7 @@ View::code_editor("editor1")
 ## 6. 验收标准
 
 1. `examples/widgets-gallery` 新增 code-editor 页,VM 模式下 Windows 与 Linux 展示一致:高亮、行号、当前行高亮、软换行开关、搜索框正则高亮、vi 开关、undo/redo。
-2. `examples/ui/041-code-editor` 三模式中 vm/rust 两模式可用,`auto build && auto run` 产物在 Windows 打开即为可编辑。
+2. `examples/ui/041-auto-edit`(原 041-code-editor) 三模式中 vm/rust 两模式可用,`auto build && auto run` 产物在 Windows 打开即为可编辑。
 3. 中文 IME(微软拼音)输入、光标跟随;Ctrl+C/V/X 跨平台剪贴板。
 4. 1MB 文件滚动流畅(目标:无肉眼卡顿,行号槽无整帧重画)。
 5. `cargo test -p auto-lang` 全绿;codegen 快照更新;MCP 自动化用例通过。
@@ -309,7 +309,7 @@ View::code_editor("editor1")
 | 7.3 | 行号槽 CPU 光栅 image 在分离架构下要走 `UpdateTexture` 传输,浪费 | gutter 双路实现:`EditorDrawList` 中行号本就是文本 run(lowering 直接 DrawText);image 路径只是 iced 适配层的缓存优化,见 §3.1 `gutter.rs` |
 | 7.4 | 协议缺口(design 20 需补充的三点):① 事件下行通道缺 **IME**(preedit/commit/cursor rect)—— 分离模式下 winit 窗口在宿主侧,TSF 输入法状态必须转发给 app,否则编辑器中文输入失效(参照 wayland zwp_text_input);② 缺**字体注册**命令(app 自带等宽字体的上传通道,现有 `UpdateTexture` 不覆盖);③ 增量帧缓存需**按行**生效:编辑器滚动 = offset + 少量新暴露行,`CacheControl`/DirtyRect 应能挂在 draw list 的行稳定 id 上 | 记入 Plan 386 设计输入;本计划的行键控 EditorDrawList 设计使宿主端按行缓存自然成立 |
 | 7.5 | 排期关系:Plan 386 处于暂缓(启动条件未满足),本计划**不等待、不阻塞** | 现在按 in-process iced 0.14 实施 —— in-process 本就是 Windows dev host(Plan 365 Host ①)的长期运行方式,Phase 0-5 无一次性代码;将来接入 Stage 1 仅新增 ~300–500 行 lowering 适配层 |
-| 7.6 | 反向收益:编辑器是 RenderCommand 原语集(quad/text/image/clip/layer)最严苛的消费者(千级 glyph、按行高亮、高频局部重绘),toy widget 验证不了协议完备性 | 建议把 `examples/ui/041-code-editor`(或未来的 auto-edit 应用)纳入 Plan 386 Stage 1 的 golden 对照样例 |
+| 7.6 | 反向收益:编辑器是 RenderCommand 原语集(quad/text/image/clip/layer)最严苛的消费者(千级 glyph、按行高亮、高频局部重绘),toy widget 验证不了协议完备性 | 建议把 `examples/ui/041-auto-edit`(原 041-code-editor,即 auto-edit 应用本体)纳入 Plan 386 Stage 1 的 golden 对照样例 |
 | 7.7 | **时序结论(2026-08 复审,用户已采纳)**:不采用"RenderQueue 先行、auto-edit 后行"。分离架构是纯内存优化而非功能前置(Plan 386 启动条件即此意);editor 先行零丢弃(core 事件类型与 draw 契约已隔离);且 auto-edit 是最佳**协议压力测试**但非最佳**内存受益者**(地板 = 文档 + undo + shaping,轻量 app 才是分离架构的内存主受益方)。量化对比:RenderQueue 全程约 2.5–5 人月/1.5–2.5 万行 vs auto-edit 约 2–3 人周/2–2.5 千行(约 5:1);颠倒顺序最多省 iced 适配层 ~500 行 | 采纳的折中:与 Plan 413 并行做 editor-only 的 draw list → RenderCommand golden lowering **薄切片**(纯函数、无 transport/host,数天级),见 Plan 386 设计输入;全量 Stage 1 仍按其启动条件推进 |
 
 (auto-edit 应用层 —— 文件树/多 tab/搜索栏/状态栏 —— 由现有 AutoUI widget 组合,同样位于 `View` 之上,不受分离架构影响。)

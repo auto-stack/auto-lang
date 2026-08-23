@@ -1,0 +1,8 @@
+name: "auto-edit"
+version: "1.0.0"
+description: "auto-edit — AutoLang 文本编辑器（Plan 413/414/418，原 041-code-editor）"
+scene: "ui"
+render: "vm"
+front_port: 4041
+title: "AutoEdit"
+ui_config: "auto-edit.at"

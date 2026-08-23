@@ -60,7 +60,7 @@
 - **P2 codegen(`crates/auto-lang/src/ui_gen/vue.rs`)**:`base_event_to_dom` 显式映射 `oncursor/on_cursor`/`oncontextmenu/on_context_menu`;新增 `handler_params` 索引(on-block 参数,pattern → 参数名);`code_editor_event_payload_call` —— 当 handler 声明 ≥2 参时转发 `$event.line, $event.column`(cursor)/`$event.x, $event.y`(contextmenu),1 参转发整个 `$event`,0 参保持裸引用;DSL 显式实参优先;v-for 内保持 loop-var 惯例。
 - **P3**:auto lexer 同 `main.ts` Prism `languages.auto` 关键字表(+var/loop/is/break/match);gallery 文案更新(`examples/widgets-gallery/src/front/pages/code-editor.at`):vue 壳 props+事件全通、vi iced-only。
 - **P4 测试**:`ui_gen/vue.rs` 单测 3 个(全 props 组合、payload 双参/单参、0 参裸绑定;顺带修复了 413 遗留的连叠 `#[test]` 使 `test_code_editor_rendering` 双跑、`test_autodown_editor_rendering`(354)丢属性从不跑的问题);`tests/vue_capabilities.rs` 新增 `cap_code_editor_props_and_position_events`(真实 parse 管线 + shadcn 模式);auto-man `package_json_includes_codemirror_deps` 扩展覆盖新契约。
-- **041 实测 review**:`examples/ui/041-code-editor/src/front/app.at` 以 shadcn 生成器过一遍,输出 `<CodeEditor v-model="src_main" lang="auto" … :highlight-current-line="true" data-editor-key="tab-main" … @cursor="CursorMain" …>`(041 handler 无参 → 裸绑定,由 VM natives 读光标,契约一致)。
+- **041 实测 review**:`examples/ui/041-auto-edit/src/front/app.at`（原 041-code-editor）以 shadcn 生成器过一遍,输出 `<CodeEditor v-model="src_main" lang="auto" … :highlight-current-line="true" data-editor-key="tab-main" … @cursor="CursorMain" …>`(041 handler 无参 → 裸绑定,由 VM natives 读光标,契约一致)。
 
 ### 遗留 / 未做
 
