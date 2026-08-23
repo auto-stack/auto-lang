@@ -18,6 +18,7 @@ use crate::vm::task::AutoTask;
 use crate::vm::engine::AutoVM;
 use crate::vm::virt_memory::VirtualRAM;
 use dashmap::DashMap;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -63,6 +64,56 @@ pub fn heap_ref_id(nv: auto_val::NanoValue) -> Option<u64> {
     } else {
         None
     }
+}
+
+// ============================================================================
+// Plan 419 §9(复活):ash-gui UAF 三点诊断埋点。
+//
+// env P419_UAF_TRACE 控制(OnceLock 读一次,关闭时零开销):
+//   P419_UAF_TRACE=              → 区间 [4M, 4M+1500](§9.4 ① 缺省窗口)
+//   P419_UAF_TRACE=4000111       → 单 id 精确追踪(§9.4 ③ 收窄用)
+//   P419_UAF_TRACE=4000100-4000120 → 自定区间
+// 开启后对区间内 id 记录 ALLOC / FREE / retain / release / ACCESS 全事件;
+// FREE 与 retain-after-free(复活竞态烟雾枪)附强制栈。ACCESS 点打在
+// GET_GENERIC_FIELD 的启发式探测处,tag 来源(TAG_OBJECT vs TAG_I32≥4M)
+// 直接判 H0(启发式误判)与 H1/H2(真悬垂)。
+// ============================================================================
+static P419_UAF_CFG: OnceLock<(bool, u64, u64)> = OnceLock::new();
+
+fn p419_uaf_cfg() -> &'static (bool, u64, u64) {
+    P419_UAF_CFG.get_or_init(|| {
+        let Some(spec) = std::env::var_os("P419_UAF_TRACE") else {
+            return (false, 0, 0);
+        };
+        let spec = spec.to_string_lossy().trim().to_string();
+        if spec.is_empty() {
+            return (true, HEAP_ID_BASE, HEAP_ID_BASE + 1500);
+        }
+        let (lo, hi) = match spec.split_once('-') {
+            Some((lo, hi)) => (
+                lo.trim().parse().unwrap_or(HEAP_ID_BASE),
+                hi.trim().parse().unwrap_or(HEAP_ID_BASE + 1500),
+            ),
+            None => {
+                let v = spec.parse().unwrap_or(HEAP_ID_BASE);
+                (v, v)
+            }
+        };
+        (true, lo, hi.max(lo))
+    })
+}
+
+/// id 是否落在诊断区间(含总开关判定)。
+pub fn p419_uaf_traces(id: u64) -> bool {
+    let &(on, lo, hi) = p419_uaf_cfg();
+    on && id >= lo && id <= hi
+}
+
+/// 区间是否足够窄(≤16)——窄区间才给 ALLOC 附分配栈,宽区间免启动期栈洪泛
+/// (宽窗口只服务「谁被释放了」;分配站归属用单 id 收窄后补拍)。
+pub fn p419_uaf_narrow() -> bool {
+    let &(on, lo, hi) = p419_uaf_cfg();
+    on && hi - lo <= 16
 }
 
 // ============================================================================
@@ -160,6 +211,19 @@ impl AutoVM {
         if id < HEAP_ID_BASE {
             return;
         }
+        if p419_uaf_traces(id) {
+            let old = self.rc_count(id);
+            // 已 tombstone 又被 retain = 复活竞态(§9.2 重入边界/TOCTOU 烟雾枪)。
+            if self.tombstones.get(&id).is_some() {
+                eprintln!(
+                    "[P419UAF] !! RETAIN-AFTER-FREE id={} (rc {} -> {}) — site:\n{}",
+                    id, old, old + 1,
+                    std::backtrace::Backtrace::force_capture()
+                );
+            } else {
+                eprintln!("[P419UAF] retain id={} (rc {} -> {})", id, old, old + 1);
+            }
+        }
         if std::env::var("P419_TRACE").is_ok() { eprintln!("[P419] retain {} -> {}", id, self.rc_count(id) + 1); }
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
         match self.heap_rc.entry(id) {
@@ -189,6 +253,10 @@ impl AutoVM {
     pub fn rc_release_id(&self, id: u64) {
         if id < HEAP_ID_BASE {
             return;
+        }
+        if p419_uaf_traces(id) {
+            let old = self.rc_count(id);
+            eprintln!("[P419UAF] release id={} (rc {} -> {})", id, old, old.saturating_sub(1));
         }
         if std::env::var("P419_TRACE").is_ok() { eprintln!("[P419] release {} -> {}", id, self.rc_count(id).saturating_sub(1)); }
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
@@ -273,6 +341,18 @@ impl AutoVM {
         let Some(arc) = self.remove_heap_object(id) else {
             return;
         };
+        if p419_uaf_traces(id) {
+            let tag = arc
+                .read()
+                .map(|g| format!("{:?}", g.type_tag()))
+                .unwrap_or_else(|_| "<locked>".to_string());
+            // §9.4 ① free-site 栈:直接回答「谁释放了它」。
+            eprintln!(
+                "[P419UAF] FREE id={} type={} — free site:\n{}",
+                id, tag,
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
         self.rc_freed_total.fetch_add(1, Ordering::Relaxed);
         #[cfg(debug_assertions)]
         {
