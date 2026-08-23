@@ -106,6 +106,12 @@ pub struct Pac {
     /// toolbar/shortcuts from it (Action declaration layer).
     pub ui_config: Option<AutoStr>,
 
+    /// Plan 061:外部后端项目,declared as `back: { project: "../ash-server" }`
+    /// in pac.at. 前端 back/ 不再自写契约,而是引用外部后端项目(merged
+    /// 运行时装载其 cdylib;编译期把其 api.at 同步到本地 back/api.at)。
+    /// None = 本地 back/ 目录(现状,向后兼容)。
+    pub external_backend: Option<AutoStr>,
+
     /// shadcn-vue widget mapping toggle (Plan 013), declared as
     /// `shadcn: off` in pac.at. Default true = current behavior (widgets map
     /// to shadcn-vue components, `@/components/ui/*` imports). false = native
@@ -242,6 +248,21 @@ impl Pac {
         let ui_config_trimmed = ui_config.trim().to_string();
         let ui_config = (!ui_config_trimmed.is_empty()).then(|| AutoStr::from(ui_config_trimmed));
 
+        // Plan 061: external backend project, `back: { project: "../ash-server" }`.
+        // 对象形式取 project 子字段;裸字符串形式(`back: "../ash-server"`)同样
+        // 接受,便于简写。空/缺省 = None(本地 back/)。
+        let external_backend = match config.root.get_prop("back") {
+            Value::Obj(obj) => obj
+                .get("project")
+                .map(|v| v.to_astr().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(AutoStr::from),
+            v => {
+                let s = v.to_astr().trim().to_string();
+                (!s.is_empty()).then(|| AutoStr::from(s))
+            }
+        };
+
         // Plan 013: shadcn-vue mapping toggle, `shadcn: off` in pac.at.
         // Accepts Bool (off/on/false/true), quoted "off"/"false"/"no"/"0".
         // Absent or unrecognized → true (current shadcn default).
@@ -362,6 +383,7 @@ impl Pac {
             window,
             title,
             ui_config,
+            external_backend,
             shadcn,
             default_classes,
             is_update: false,

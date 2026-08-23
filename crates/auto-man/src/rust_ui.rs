@@ -2331,6 +2331,89 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     Ok(())
 }
 
+// ── Plan 061:外部后端(pac.at `back: { project }`)装载编排 ─────────────
+
+/// 读 pac.at 的 `back.project` 配置(无 pac.at / 无配置 → None)。
+/// 探针参数与 Automan::parse_pac 一致(port=win32 占位,Config 求值用)。
+fn external_backend_of(project_dir: &Path) -> AutoResult<Option<auto_val::AutoStr>> {
+    use auto_val::{AutoStr, Obj, Value};
+    let pac_path = project_dir.join("pac.at");
+    if !pac_path.is_file() {
+        return Ok(None);
+    }
+    let mut probe = Obj::new();
+    probe.set("port", Value::Str(AutoStr::from("win32")));
+    let config = auto_lang::config::AutoConfig::from_file(&pac_path, &probe)?;
+    let pac = crate::pac::Pac::new(config);
+    Ok(pac.external_backend.filter(|s| !s.is_empty()))
+}
+
+/// merged 模式宿主注册表:后端 cdylib 经它把端点实现注册进既有宿主桥,
+/// 事件回流复用 renderer 的 SSE 注入通道(与 ash-runner 手写宿主同构)。
+struct VmHostRegistry;
+
+impl auto_lang::vm::backend_abi::BackendRegistry for VmHostRegistry {
+    fn host_call(
+        &self,
+        name: &str,
+        f: auto_lang::vm::backend_abi::BackendHostCallFn,
+    ) {
+        auto_lang::vm::host_bridge::register_host_call(name, f);
+    }
+    fn inject_event(&self, tag: &str, json: &str) -> bool {
+        auto_lang::ui::iced::renderer::inject_shell_event(tag, json)
+    }
+    fn log(&self, msg: &str) {
+        eprintln!("[backend] {msg}");
+    }
+}
+
+/// 在后端项目的 target/{debug,release} 下定位其 cdylib 并装载注册。
+/// 库名 = 后端 pac.at `name` 规整('-'→'_',Windows `x.dll` / macOS
+/// `libx.dylib` / Linux `libx.so`);缺失时给出"先构建后端"的明确指引。
+fn load_external_backend(
+    backend_dir: &Path,
+) -> Result<auto_lang::vm::backend_abi::LoadedBackend, String> {
+    use auto_val::{AutoStr, Obj, Value};
+    let pac_path = backend_dir.join("pac.at");
+    let lib_stem = if pac_path.is_file() {
+        let mut probe = Obj::new();
+        probe.set("port", Value::Str(AutoStr::from("win32")));
+        auto_lang::config::AutoConfig::from_file(&pac_path, &probe)
+            .ok()
+            .map(|c| c.name().to_string())
+            .filter(|n| !n.is_empty())
+            .map(|n| n.replace('-', "_"))
+            .unwrap_or_else(|| "backend".to_string())
+    } else {
+        "backend".to_string()
+    };
+    let lib_file = if cfg!(windows) {
+        format!("{lib_stem}.dll")
+    } else if cfg!(target_os = "macos") {
+        format!("lib{lib_stem}.dylib")
+    } else {
+        format!("lib{lib_stem}.so")
+    };
+    let candidates = [
+        backend_dir.join("target").join("debug").join(&lib_file),
+        backend_dir.join("target").join("release").join(&lib_file),
+    ];
+    let found = candidates.iter().find(|p| p.is_file());
+    let Some(lib_path) = found else {
+        return Err(format!(
+            "backend cdylib `{}` not found under {}/target/{{debug,release}} — build the backend project first (`cargo build` in {})",
+            lib_file,
+            backend_dir.display(),
+            backend_dir.display()
+        ));
+    };
+    auto_lang::vm::backend_abi::load_backend_cdylib(
+        lib_path,
+        std::sync::Arc::new(VmHostRegistry),
+    )
+}
+
 /// Run the UI via the AutoLang interpreter (--render=vm mode).
 /// Starts the same API backend server as --render=rust, but runs
 /// the frontend through the in-process interpreter instead of
@@ -2374,6 +2457,58 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
         );
         None
     };
+
+    // Plan 061:外部后端(pac.at `back: { project: "..." }`)——merged 模式下
+    // 由宿主装载后端项目 cdylib:① 同步契约(后端 api.at → 本地 src/back/,
+    // 前端 `use back.api` 编译路径不变);② libloading 装载 + ABI 校验 +
+    // 注册进宿主桥(vm::host_bridge,与 ash-runner 手写宿主同表)。
+    // 无 back.project 配置时零行为变化(本地 back/ 现状)。
+    let mut _backend_keepalive: Option<auto_lang::vm::backend_abi::LoadedBackend> = None;
+    if !split_mode {
+        match external_backend_of(project_dir) {
+            Ok(Some(backend_rel)) => {
+                let backend_dir = project_dir.join(backend_rel.as_str())
+                    .canonicalize()
+                    .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
+                // ① 契约同步(后端拥有 api.at;本地 back/api.at 是生成物)
+                let src_api = backend_dir.join("api.at");
+                if src_api.is_file() {
+                    let dst_dir = project_dir.join("src").join("back");
+                    let _ = fs::create_dir_all(&dst_dir);
+                    if fs::copy(&src_api, dst_dir.join("api.at")).is_ok() {
+                        println!(
+                            "  {} external backend: synced api.at from {}",
+                            "✓".bright_green(),
+                            backend_dir.display()
+                        );
+                    }
+                } else {
+                    eprintln!(
+                        "  {} external backend: no api.at in {} (contract sync skipped)",
+                        "⚠".bright_yellow(),
+                        backend_dir.display()
+                    );
+                }
+                // ② cdylib 装载(名字取自后端 pac.at 的 name;debug 优先)
+                match load_external_backend(&backend_dir) {
+                    Ok(lib) => {
+                        println!(
+                            "  {} external backend loaded: {}",
+                            "✓".bright_green(),
+                            backend_dir.display()
+                        );
+                        _backend_keepalive = Some(lib);
+                    }
+                    Err(e) => {
+                        stop_api_server(&mut _api_child);
+                        return Err(format!("external backend load failed: {e}").into());
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!("  {} pac.at parse failed: {}", "⚠".bright_yellow(), e),
+        }
+    }
 
     let entry = project_dir.join("src").join("front").join("app.at");
     if !entry.exists() {
