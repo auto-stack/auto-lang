@@ -17,7 +17,8 @@
 - UAF 访问点 = engine.rs:3936(GET_FIELD 类指令:值经 `i32>=4_000_000 → 堆id` 启发式解码后 get_heap_object)→ rc.rs:389 canary;
 - 派发路径 = iced update → renderer.rs:6677(update 闭包)→ call_fn_by_name(即 on_with_input_for handler 派发)→ run_one_instruction;
 - 堆 id 从 4_000_000 递增(engine.rs:471),故 id=4000111 即**第 111 号分配**(早期启动对象);三次运行 id 在 4000000~4001245 间浮动(分配序随启动路径微变);
-- 机理二选一:①RC 过释放族(第 4 族,GET_FIELD 路径的持有份额缺口——已修三族未覆盖);②真陈旧 VmRef 跨 handler 存活。**注意 3936 的 i32≥4M 启发式本身也可疑**:合法大整数会被误当堆 id 探测(本次恰命中已释放 id 才炸;未命中则静默 None——建议排查时顺带审视该启发式的误判面)。 | `vm/rc.rs:378`;auto-shell plan 060 §第十六轮 |
+- 机理二选一:①RC 过释放族(第 4 族,GET_FIELD 路径的持有份额缺口——已修三族未覆盖);②真陈旧 VmRef 跨 handler 存活。**注意 3936 的 i32≥4M 启发式本身也可疑**:合法大整数会被误当堆 id 探测(本次恰命中已释放 id 才炸;未命中则静默 None——建议排查时顺带审视该启发式的误判面)。
+**✅ 已解决(2026-08-23,分支 419-uaf a76e9cbe)**:根因 = `json_to_vm_value` **外层** Array/Object 臂组装顶层容器时漏「插入即 retain」(内层 `_inner` 两臂 Plan 419 已落地,外层漏了同款)——顶层容器的直接子引用被 child_refs 声明却零持有,父对象死亡时级联子释放抵消他人真实 stake,子对象提前释放。定性 = 上述②**真 UAF**(RC 落地前同缺口静默堆损坏,即 auto-shell plan 060 静默退出债根因的强候选)。崩点修正:非 3936/GET_FIELD,实际在**首帧 view() 状态物化**(read_all_state_materialized → vmref_to_vec);触发不在 submit 主路径(init 期埋雷,首帧引爆)。修复后崩溃用例转绿、ash-gui 62 过、本仓 3125 测全过、canary 保持开启。详见 plan 419 §9.7(P419_UAF_TRACE 埋点随修复留在代码)。 | `vm/ffi/stdlib.rs json_to_vm_value`;plan 419 §9.7;auto-shell plan 060 §第十六轮 |
 
 ---
 
