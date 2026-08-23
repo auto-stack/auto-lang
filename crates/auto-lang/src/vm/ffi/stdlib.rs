@@ -6853,7 +6853,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 // ============================================================================
 
 /// Push a Rust stdlib object onto the VM heap and push its handle.
-fn push_rust_obj<T: Any + Send + Sync + 'static>(
+pub(crate) fn push_rust_obj<T: Any + Send + Sync + 'static>(
     task: &mut AutoTask,
     vm: &AutoVM,
     type_name: &str,
@@ -6895,6 +6895,17 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     let type_name: String = String::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
 
+    // Plan 430 D1: 生成段(shim-metadata)优先;命中即返回,未命中回退手写臂。
+    match super::generated_std::generated_std_dispatch(
+        type_name.as_str(),
+        method.as_str(),
+        task,
+        vm,
+    )? {
+        Some(()) => return Ok(()),
+        None => {}
+    }
+
     match (type_name.as_str(), method.as_str()) {
         // std::time::Instant
         ("Instant", "now") => {
@@ -6916,35 +6927,19 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
 
-        // std::time::Duration
-        ("Duration", "from_secs") => {
-            let secs: i32 = i32::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs: {}", e)))?;
-            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs(secs as u64))?;
-        }
-        ("Duration", "from_millis") => {
-            let ms: i32 = i32::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Duration.from_millis: {}", e)))?;
-            push_rust_obj(task, vm, "Duration", std::time::Duration::from_millis(ms as u64))?;
-        }
-        ("Duration", "from_secs_f64") => {
-            let secs: f32 = f32::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("Duration.from_secs_f64: {}", e)))?;
-            push_rust_obj(task, vm, "Duration", std::time::Duration::from_secs_f64(secs as f64))?;
-        }
-        ("Duration", "as_secs") | ("Duration", "as_millis") | ("Duration", "as_micros")
-        | ("Duration", "as_nanos") | ("Duration", "as_secs_f64") => {
+        // std::time::Duration(构造器与 as_secs/as_secs_f64 已迁 plan-430 生成段;
+        // 残留 u128 返回的访问器,超 i64 槽暂留手写)
+        ("Duration", "as_millis") | ("Duration", "as_micros")
+        | ("Duration", "as_nanos") => {
             let handle = task.ram.pop_i32() as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some(dur) = rust_obj.downcast_ref::<std::time::Duration>() {
                         let val = match method.as_str() {
-                            "as_secs" => dur.as_secs() as i32,
                             "as_millis" => dur.as_millis() as i32,
                             "as_micros" => dur.as_micros() as i32,
                             "as_nanos" => dur.as_nanos() as i32,
-                            "as_secs_f64" => dur.as_secs_f64() as i32,
                             _ => 0,
                         };
                         task.ram.push_i32(val);
@@ -8052,6 +8047,11 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                         return Ok(());
                     }
                 }
+            }
+            // Plan 430 C2: 三方 crate 方法 shim 包(dep 声明 + use.rust 导入的类型;
+            // 生成段/手写臂/native_catalog 均未命中后的最后一段)
+            if crate::vm::ffi::dep_methods::dispatch(&type_name, &method, task, vm)? {
+                return Ok(());
             }
             return Err(VMError::RuntimeError(format!(
                 "Unknown Rust stdlib call: {type_name}.{method}"

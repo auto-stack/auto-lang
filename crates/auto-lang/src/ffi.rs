@@ -1126,6 +1126,21 @@ pub fn known_signature(crate_name: &str, func_name: &str) -> Option<RustSignatur
     }
 }
 
+/// Plan 430 D2: 签名解析——方法 shim 包元数据优先,未命中回退手写 known_signature。
+///
+/// 元数据来源是 dep 管线构建的方法 shim 包 manifest(resolve_deps 阶段注册),
+/// 字母表 v/i/l/f/b/s/p 与 sig_code 一致。
+pub fn resolve_signature(crate_name: &str, func_name: &str) -> Option<RustSignature> {
+    if let Some((params, ret)) =
+        crate::vm::ffi::dep_methods::lookup_function_sig(crate_name, func_name)
+    {
+        let param_types: Vec<RustType> = params.chars().map(sig_char_to_rust_type).collect();
+        let returns = sig_char_to_rust_type(ret.chars().next().unwrap_or('s'));
+        return Some(RustSignature { params: param_types, returns });
+    }
+    known_signature(crate_name, func_name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -26,6 +26,9 @@ pub mod registry;
 pub mod sig_code;
 pub mod scanner;
 
+// Plan 430 C2: 三方 crate 方法 shim 包(nightly rustdoc 提取 → 生成 → cdylib 编译)
+pub mod methods_pack;
+
 // Re-export main types for convenience
 pub use sandbox::{CrateMetadata, CrateSource, DepSource, Sandbox, SandboxError};
 pub use registry::{CrateRegistry, RegistryError};

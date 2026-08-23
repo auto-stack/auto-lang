@@ -91,19 +91,25 @@ status: draft
 
 ### Phase C：shim 包生成器（3-5 天）
 
-- [ ] C1 代码生成器：marshalling 计划 → shim Rust 源码。
+- [x] C1 代码生成器：marshalling 计划 → shim Rust 源码。
   std 目标：生成 `match (type, method)` 臂的机器版（结构与现 stdlib.rs 臂一致，可并存的追加段）；
   三方目标：生成 cdylib shim 包 crate（`auto_*` wrapper + manifest，复用 Plan 212 的
   sig_code/manifest 机制并扩展方法 wrapper）。
-- [ ] C2 编译产物管线：三方 crate 在 dep 流程中加"提取元信息 + 编 shim 包"一步
+  （三方路径 2026-08-23 落地：`shim-metadata::emit_cdylib` 五件套 + CLI `shim-emit-pack`，
+  报告 430-c1）
+- [x] C2 编译产物管线：三方 crate 在 dep 流程中加"提取元信息 + 编 shim 包"一步
   （与现有 cargo 下载/编译 cdylib/加载 同构，用户感知仅为首次导入稍慢，之后缓存）。
-- [ ] C3 元信息版本指纹（工具链版本 × crate 版本的 hash 校验），防签名漂移。
+  （`Sandbox::compile_dep_methods` + dispatch 3000 兜底段接线；nightly 缺失自动降级）
+- [x] C3 元信息版本指纹（工具链版本 × crate 版本的 hash 校验），防签名漂移。
+  （fnv1a64(工具链 × crate × 生成器 × 分类器 × 签名集)，签名行含 Ty 宽度；缓存名 fp 前缀）
 
 ### Phase D：dispatch 改造与渐进迁移（持续）
 
-- [ ] D1 dispatch 3000 改为"先查 shim 包映射表，未命中再走手写 match 臂"的混合查找
+- [x] D1 dispatch 3000 改为"先查 shim 包映射表，未命中再走手写 match 臂"的混合查找
   （与 NativeInterface 现有静态/动态混合查找模式对齐）。
-- [ ] D2 `known_signature` 改为"先查元信息，未命中回退手写表"。
+- [x] D2 `known_signature` 改为"先查元信息，未命中回退手写表"。
+  （`ffi::resolve_signature`：方法包 manifest 自由函数签名优先 → known_signature 回退；
+  compile.rs/lib.rs/codegen.rs 三处调用点已替换）
 - [ ] D3 迁移一个最简 crate（建议 `Box`/`RefCell` 这类臂极少的）端到端走通：生成包 →
   加载 → 查表调用 → 删除对应手写臂 → 测试全绿。
 
@@ -118,9 +124,17 @@ status: draft
 ### Phase F：40 crate 全量迁移（E 完成后排期，可跨版本）
 
 - [ ] F1 按"臂数量少→多"排序逐 crate 迁移（每 crate：生成 → 验证 → 删臂 → commit）。
+  （2026-08-23 F 轮裁定：**builtin crate 整体迁移被两类能力缺口挡住**——①字段访问
+  （semver major/minor/patch 是字段非方法，legacy 静态表面向字段）；②Display/trait
+  方法（to_string 等，v1 只取固有 impl）。D3 以 std Duration 迁移替代完成（见执行结果）；
+  builtin 迁移的前置 = dep 对象字段访问通道 + trait 方法解析（Plan 190 挂账项）。
+  std 手写臂侧：Duration 5 臂已迁生成段，剩余臂按同法逐个迁。）
 - [ ] F2 全部迁完后：`BUILTIN_OPAQUE_CRATES` 白名单语义改为"预生成 shim 包的默认配置清单"；
   `shim_rust_stdlib_dispatch` 手写臂清零退役。
-- [ ] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
+- [x] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
+  （2026-08-23 以 **uuid**（不在 builtin 清单）达成：`dep uuid(features: ["v4"])` +
+  `use.rust uuid::{Uuid}` → new_v4/get_version_num/parse_str(unwrap_ok)/is_nil 全通，
+  零手写代码；附带落地 unwrap_ok 策略使 parse 族构造器可用。报告 430-f1。）
 
 ## 风险与缓解
 
@@ -147,6 +161,61 @@ status: draft
 3. B3 的 diff 报告归档；发现的手写臂可疑行为（有损截断等）有逐条裁决记录；
 4. 40 crate 迁移进度表（F1）持续回填本文件。
 
-## 执行结果
+## 执行结果（进行中,2026-08-23）
 
-（待执行后回填）
+- **Phase A**（c0c8f50d）：nightly rustdoc JSON v53 解析打通（签名/self 可变性/泛型齐备）；
+  stable 1.97 不支持；std 本体配方暂未打通 → v1 决策：std 走手编目录，三方走 rustdoc。
+  元信息 shim 包格式 v1 定稿（报告 430-a1）。
+- **Phase B**（566680b8）：crates/shim-metadata 工具落地——rustdoc v53 解析器、6 条规律分类器、
+  mono/skip/note 例外表、std 目录 v1、std 追加段代码生成器；std-plan 冒烟 61 plans/0 skips。
+- **Phase D+E 主体**（本轮）：
+  - D1 接线：generated_std.rs（生成段，~890 行）编入 auto-lang，dispatch 3000 手写臂之前优先调用；
+    push_rust_obj 提为 pub(crate)。
+  - 生成器迭代（借 rustc 当检查器）：turbofish、Result<Option<()>> 签名、借用块作用域内
+    .to_string()/.copied()/.map、usize 参数、owned-key 方法、ferr 错误包装。
+  - **Vec 全链路打通**：10 万次 push + len + is_empty 输出全部正确（429-B2 的 len=0 bug 场景修复）。
+  - codegen 修复：泛型构造器路径（Plan 087）与 use.rust 导入类型撞名时 rust 导入优先
+    （Vec.new 此前被劫持为 GenericInstanceData 占位——429-B2 bug 的第二根因）。
+  - **E 阶段设计裁定**（实测驱动，修订原计划）：
+    1. String 是标量池值非堆对象——方法走引擎 str 原生路径（len/contains/to_uppercase/replace/trim
+       实测全对），生成段只留 String.from/new 静态构造器；
+    2. HashMap/HashSet 由 Auto 原生 Map 路径拥有（auto.hashmap natives + a2r 真 HashMap 双路径
+       golden 已证），生成段不覆盖，避免表示分裂；AAVM 规范：Map 用带类型注解的 Auto 语法；
+    3. Vec 用生成 shim（opaque Vec<i64> 堆对象）。
+  - 已知长尾（后续）：`use.rust std::collections::HashMap` 导入语句会使构造器推断路径劣化
+    （带类型注解但不 import 可用）；`String.from(x) + y` 拼接场景返回句柄——均登记为
+    codegen 推断缺口，进本计划 F 阶段或 242 tracker。
+- **Phase C/D2**（本轮，报告 430-c1）：
+  - C1 三方 shim 包生成器：shim-metadata 拆 lib+bin（lib 供 dep 管线进程内调用），
+    `emit_cdylib` 产出五件套（Cargo.toml/src/lib.rs/manifest/signatures/rules）；
+    rustdoc v53 解析器修三处实测陷阱（`for` 字段、`path` 字段、`trait:null≠缺失`），
+    新增自由函数枚举与 Move/借用返回/StrOwned 投影；
+  - C2 管线接线：`Sandbox::compile_dep_methods`（nightly rustdoc → 分类 → 生成 →
+    stable cargo 编译 cdylib → 指纹缓存，nightly 缺失降级）；auto-lang 新增
+    `vm/ffi/dep_methods`（DepOpaqueObject 堆对象 + 方法注册表，挂 dispatch 3000
+    兜底段最后一段）；类型导入（大写 use.rust 项）不再进自由函数 wrapper；
+  - C3 指纹：签名行记 (Ty 名, ABI 码) 对，宽度变化即重建；
+  - D2：`resolve_signature` 元数据优先回退 known_signature；
+  - 端到端：ffi_dual_013（path-dep fixture，覆盖静态/&mut/&self/void/字符串/i64/
+    不透明返回/ChainInPlace 链式/opaque 传参）+ semver/csv 真实 crate 实录；
+  - v1 边界裁定（详见报告）：Option/Result 返回跳过（unwrap 策略待例外层，真实 crate
+    最大闸门）；按值 self 跳过（chain 别名 × 消耗语义冲突，实测 ACCESS_VIOLATION 复盘）；
+    泛型接收者 impl 跳过；BUILTIN_OPAQUE 类型新旧层碰撞（csv 实录，F 阶段逐 crate 迁移）。
+- **Phase F 首轮**（本轮，报告 430-f1）：
+  - **unwrap_ok 策略落地**（F 遗留首优先级）：rustdoc 投影把 `Result<T,E>` 解包为 T +
+    fallible 标记；wrapper 解 Ok，Err 写入 cdylib 线程局部错误通道
+    （`auto__last_error`/`auto__clear_error`），VM 侧 fallible 方法压栈前查通道转
+    VMError——**错误消息完整穿透三层**（semver 实测：
+    `Version::parse failed: unexpected character 'n' while parsing major version number`）。
+    Option 仍跳过（None 语义待例外层）；std/三方分类双轨：std 保 Option 装箱语义
+    （防 Vec.get 等丢臂），三方跳过。
+  - **rustc 检查器剔除环**：包构建失败时从报错提取肇事符号，剔除对应方法重试——
+    个别不可编译的 wrapper（u128 参数/跨 crate opaque 实参）不再弄死整包。
+  - **D3（std Duration 变体）**：from_secs/from_millis/from_secs_f64/as_secs/as_secs_f64
+    五臂迁 std 目录 → 生成段，手写臂删除，全量 3128 绿；**顺手修正遗留 u64→i32 有损
+    截断**（5e9 秒不再变 705032704）。发现 "Duration" 标签下混用 chrono/std 两种具体
+    类型（days/hours/seconds 是 chrono），chrono 系与 u128 返回的 as_millis 族暂留手写。
+  - **F3（uuid）**：真实 crates.io 新 crate 零手写即插即用（见上）。
+  - ** marshaller 修复**：bool 返回只保证 al 有效——读 i64 槽必须掩码（实测 uuid
+    is_nil 曾把垃圾高位带回触发 48 位越界 panic）；整型压栈改 heap-aware push_i64_vm。
+  - 分类器新增边界：128 位参数跳过；rustdoc `crate::` 前缀路径剥离（uuid 根重导出实测）。
