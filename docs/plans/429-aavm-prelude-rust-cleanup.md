@@ -2,7 +2,7 @@
 plan: 429
 title: aavm-prelude-rust-cleanup（AAVM 前奏：Rust 参考实现清理与风险收敛）
 affects: []   # 本计划不改 specs 语义，仅代码整理与调研产出
-status: in-progress
+status: complete
 ---
 
 # Plan 429: AAVM 前奏——Rust 参考实现清理与风险收敛
