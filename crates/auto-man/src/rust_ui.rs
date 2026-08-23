@@ -2459,9 +2459,9 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     };
 
     // Plan 061:外部后端(pac.at `back: { project: "..." }`)——merged 模式下
-    // 由宿主装载后端项目 cdylib:① 同步契约(后端 api.at → 本地 src/back/,
-    // 前端 `use back.api` 编译路径不变);② libloading 装载 + ABI 校验 +
-    // 注册进宿主桥(vm::host_bridge,与 ash-runner 手写宿主同表)。
+    // 由宿主链接并装载后端项目:① 链接式契约引用(`back.*` 解析映射到
+    // 后端根,前端无需本地 back/,零复制);② libloading 装载 cdylib +
+    // ABI 校验 + 注册进宿主桥(vm::host_bridge,与 ash-runner 同表)。
     // 无 back.project 配置时零行为变化(本地 back/ 现状)。
     let mut _backend_keepalive: Option<auto_lang::vm::backend_abi::LoadedBackend> = None;
     if !split_mode {
@@ -2470,21 +2470,19 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
                 let backend_dir = project_dir.join(backend_rel.as_str())
                     .canonicalize()
                     .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
-                // ① 契约同步(后端拥有 api.at;本地 back/api.at 是生成物)
-                let src_api = backend_dir.join("api.at");
-                if src_api.is_file() {
-                    let dst_dir = project_dir.join("src").join("back");
-                    let _ = fs::create_dir_all(&dst_dir);
-                    if fs::copy(&src_api, dst_dir.join("api.at")).is_ok() {
-                        println!(
-                            "  {} external backend: synced api.at from {}",
-                            "✓".bright_green(),
-                            backend_dir.display()
-                        );
-                    }
+                // ① 链接式契约引用:`back.*` 模块解析映射到后端项目根
+                // (lib.rs resolve_module_path 的 EXTERNAL_BACK_ROOT 钩子),
+                // 前端无需本地 back/ 目录,零复制。
+                if backend_dir.join("api.at").is_file() {
+                    auto_lang::set_external_back_root(backend_dir.clone());
+                    println!(
+                        "  {} external backend linked: back.* -> {}",
+                        "✓".bright_green(),
+                        backend_dir.display()
+                    );
                 } else {
                     eprintln!(
-                        "  {} external backend: no api.at in {} (contract sync skipped)",
+                        "  {} external backend: no api.at in {}",
                         "⚠".bright_yellow(),
                         backend_dir.display()
                     );
