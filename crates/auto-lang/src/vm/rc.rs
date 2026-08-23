@@ -222,6 +222,13 @@ impl AutoVM {
                 );
             } else {
                 eprintln!("[P419UAF] retain id={} (rc {} -> {})", id, old, old + 1);
+                // 窄区间:首次获取(0->1)附栈,识别唯一真实持有者的来历。
+                if old == 0 && p419_uaf_narrow() {
+                    eprintln!(
+                        "[P419UAF] first-acquire site:\n{}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
             }
         }
         if std::env::var("P419_TRACE").is_ok() { eprintln!("[P419] retain {} -> {}", id, self.rc_count(id) + 1); }
