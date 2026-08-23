@@ -330,6 +330,28 @@ def run_tests(mcp_url, proc):
     else:
         result.check("about menu item found", False, "no .ActAbout in help menu snapshot")
 
+    # T3b: Plan 428 — code folding via View menu (native round-trip on the
+    # seed text: line 2 `fn add` block, body of 2 lines).
+    print("\nT3b: Plan 428 code folding (native channel)")
+    open_menu(mcp, snap_cache, "视图")
+    item = find_button_by_text(snap_cache[0], "折叠切换")
+    if item:
+        mcp.click(item)
+        time.sleep(0.3)
+        hidden1 = state_int(mcp.state("fold_hidden"), "fold_hidden")
+        result.check("fold engaged (2 body lines hidden)", hidden1 == 2, f"fold_hidden={hidden1}")
+        open_menu(mcp, snap_cache, "视图")
+        item = find_button_by_text(snap_cache[0], "折叠切换")
+        if item:
+            mcp.click(item)
+            time.sleep(0.3)
+            hidden2 = state_int(mcp.state("fold_hidden"), "fold_hidden")
+            result.check("fold released (0 hidden)", hidden2 == 0, f"fold_hidden={hidden2}")
+        else:
+            result.check("fold menu item found (2nd)", False, "no 折叠切换 after re-open")
+    else:
+        result.check("fold menu item found", False, "no 折叠切换 in view menu snapshot")
+
     # T4: ActNew via File menu — title/path reset
     print("\nT4: ActNew (menu item)")
     open_menu(mcp, snap_cache, "文件")

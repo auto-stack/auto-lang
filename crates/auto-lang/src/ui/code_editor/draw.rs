@@ -2,18 +2,18 @@
 //
 // `EditorDrawList` is what `core::render` produces and what any backend
 // adapter consumes. It carries no iced types and no renderer state; the
-// iced adapter lowers it to `fill_quad` / `fill_raw` / image calls, a future
-// RenderCommand lowering (Plan 386 Stage 1) serializes it to quads/text
-// runs. Text is expressed as a weak buffer reference — valid in-process
-// (pointer semantics for `fill_raw`); the lowering path re-expresses each
-// visible run as shaped glyphs (design 20 §4.1).
+// iced adapter lowers it to `fill_quad` / `fill_text` / image calls, a
+// future RenderCommand lowering (Plan 386 Stage 1) serializes it to quads
+// and text runs.
+//
+// Plan 428 P2: the body text is no longer a weak buffer handed to a single
+// `fill_raw` — folding must skip hidden lines, so render extracts the
+// visible runs itself (per syntax-color span) as owned `TextRun` pieces.
+// All geometry stays in ORIGINAL buffer coordinates; each piece's y is the
+// folded-view projection (`fold::FoldMap::project_y`).
 //
 // License: MIT. Architecture inspired by cosmic-edit (GPL-3.0, System76);
 // original implementation.
-
-use std::sync::Weak;
-
-use cosmic_text::Buffer;
 
 use super::theme::Rgba;
 
@@ -49,18 +49,30 @@ impl Rect {
     }
 }
 
-/// The body text: a weak reference to the cosmic-text buffer plus placement.
-/// In-process backends hand this straight to `fill_raw`; a separating
-/// backend lowers it per visible run (see module docs).
+/// One piece of body text (Plan 428 P2): a syntax-color span slice of one
+/// visible layout run, positioned in widget-local logical pixels. Pieces are
+/// owned strings — backends shape them through the same cosmic-text stack
+/// (same font system, family, size, `Wrapping::None`), which the P0 spike
+/// verified keeps monospace advance widths identical to the buffer's own
+/// shaping (§6(a)).
 #[derive(Debug, Clone)]
-pub struct TextSection {
-    /// Weak reference to the engine-owned buffer (same-process handoff).
-    pub buffer: Weak<Buffer>,
-    /// Top-left of the text area, relative to the widget.
-    pub origin: Pt,
+pub struct TextRun {
+    pub text: String,
+    /// Left edge of the piece (widget-local; includes the gutter offset).
+    pub x: f32,
+    /// Top of the line in FOLDED-VIEW coordinates (hidden lines removed).
+    pub y: f32,
+    pub size: f32,
+    pub line_height: f32,
     pub color: Rgba,
-    /// Clip rectangle (the text area).
-    pub clip: Rect,
+}
+
+/// One fold affordance in the gutter's fold column (Plan 428 P3: two-state
+/// chevron; `y` is the projected top of the opener line).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GutterFold {
+    pub y: f32,
+    pub folded: bool,
 }
 
 /// One visible line number (stable per line index — the key a separating
@@ -84,9 +96,9 @@ pub struct GutterSection {
     pub font_size: f32,
     pub line_height: f32,
     pub numbers: Vec<GutterNumber>,
-    /// Y positions of foldable-block opener lines (Plan 414 §5 Phase A:
-    /// visual chevrons in the fold column between numbers and text).
-    pub folds: Vec<f32>,
+    /// Fold affordances in the fold column (Plan 428 P3: two-state
+    /// chevrons — expanded ▾ / folded ▸ — at foldable opener lines).
+    pub folds: Vec<GutterFold>,
 }
 
 /// Caret (text cursor) rectangle.
@@ -128,7 +140,12 @@ pub struct EditorDrawList {
     pub selection: Vec<(Rect, Rgba)>,
     /// Regex search match rectangles (one per match per affected run).
     pub search_matches: Vec<(Rect, Rgba)>,
-    pub text: Option<TextSection>,
+    /// Body text pieces (Plan 428 P2: per visible run × syntax span).
+    pub text_runs: Vec<TextRun>,
+    /// Lines currently hidden by folding — adapters mix this into their
+    /// raster cache keys (fold toggles must invalidate the gutter image
+    /// even though the text revision is unchanged).
+    pub fold_hidden: usize,
     pub caret: Option<CaretDraw>,
     pub preedit: Option<PreeditDraw>,
     pub scrollbar_v: Option<ScrollbarDraw>,

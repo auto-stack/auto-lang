@@ -1,6 +1,6 @@
 # Plan 428: 代码折叠 Phase B — core 渲染管线改造(逐 run 自绘)
 
-> **状态**: 🚧 P0 调研已完成(2026-08-23,路线定稿 A,见 §6;P1-P4 待实施)
+> **状态**: ✅ P1-P4 落地并全量验证(2026-08-23 合并;恢复重建+死锁修复见 §7.5;实机人工验收 §7.4-5 待做)
 > **改号说明**: 原 419-code-folding-phase-b.md → 428(2026-08-23;419 由 vm-lifecycle-three-tiers 占用)
 > **原始**: 源自 414 §3"点击折叠为 Phase B,需按行隐藏渲染,fill_raw 整缓冲绘制做不到——待单独立项")
 > **来源**: Plan 414 §3(fold Phase A 只交付视觉 chevron)/ Plan 413(fill_raw 架构与 26s/1MB shaping 教训)
@@ -97,4 +97,137 @@
 - **P2(按 A 收敛)**:render.rs 逐 run(按 span 拆色)产出 (text, rect, color),iced 端以 fill_text 逐项绘制正文,**移除正文单次 fill_raw 路径**(preedit/gutter/装饰 quad 不变);新增对齐校验(选区 quad 与 Paragraph 实测宽度一致性单测);26s/1MB ignore 测试不回归。
 - **P3(不变)**:gutter 两态 chevron + 命中(命中走 fold-map 的 y 偏移)。
 - **P4(不变+补)**:组合回归外,明确两条策略——光标进入折叠区间自动展开;折叠区内搜索命中跳转时自动展开(或定边界)。
+
+---
+
+## 7. P1-P4 实施记录(2026-08-23,分支 `428-fold-b`,自 master 8b5426fa)
+
+> ⚠️ **状态:代码全部落地、核心单测全绿,但收尾验证被环境故障中断**
+> (会话后期 Bash 工具全体 `spawn bash.exe ENOENT`,无法跑测试/git——
+> 本文档与全部代码改动已在磁盘上,见 §7.4 待办清单)。
+
+### 7.1 落地内容(按相位)
+
+**P1 折叠状态+区间+fold-map**(全部单测绿):
+- 新 `core/fold.rs`:`FoldRegion`(花括号配对启发式,`} else {` 净深度≤0
+  跳过、未闭合不折叠、支持嵌套发现)+ `FoldMap`(merged 隐藏区间、
+  `hidden_above`/`project_y`/`unfold_y` 反投影命中、`hidden_range_
+  containing` 供自动展开)。10 项单测(含 unfold_y 往返、嵌套合并)。
+- `CodeEditorCore` 增 `folds: Mutex<BTreeSet<usize>>`(折叠 opener 集合,
+  视图态不进 undo)+ `fold_map: Mutex<Arc<FoldMap>>`(渲染快照)。
+  API:`fold_toggle`/`fold_is_folded`/`unfold_line`/`fold_hidden_count`/
+  `auto_unfold_at_cursor`。**状态操作即时计算区间**(`fresh_fold_map`)——
+  native 通道可在无渲染时 toggle(headless 测试/MCP);渲染 map 只管几何。
+- native:`code_editor_fold_toggle(key, line_1based) -> Bool`(2932)、
+  `code_editor_fold_hidden_count(key) -> Int`(2933)——shim + catalog +
+  bigvm 返回类型表 + codegen intrinsics 双表 + 无特性回退,全套。
+
+**P2 渲染管线改造(route A)**:
+- `render.rs`:可见 run 走查按 `is_hidden` 跳行、`project_y` 前缀和投影;
+  正文按行 `AttrsList::spans_iter()` 拆色产出 `TextRun{text,x,y,size,
+  line_height,color}`(同色相邻合并、空白片跳过;P0 基准 150-400 片/屏
+  预算内);折叠 opener 行尾追加 `⋯` 标记(软换行多 run 时挂最后 run)。
+  选区/搜索/当前行高亮同步投影+隐藏跳过;caret 落隐藏行不绘制;
+  滚动条 thumb 比例改按有效行数(total - hidden)。
+- `draw.rs`:`TextSection`(weak buffer)删除,`EditorDrawList.text_runs`
+  上位 + `fold_hidden`(gutter 光栅缓存键混入,折叠切换无文本 revision
+  也失效缓存)。`editor_buffer_weak` 及其 Arc::make_mut 弱句柄协议整体
+  退役——不再需要。
+- `iced/widget.rs`:正文逐片 `fill_text`(mono_font 与 core `mono_family`
+  同族、`Wrapping::None`、`Shaping::Advanced`、`LineHeight::Absolute`),
+  选区四边形与文本同源同栈(P0 §6(a) 的对齐前提)。
+
+**P3 gutter 两态+命中**:
+- `GutterSection.folds: Vec<GutterFold{y, folded}>`;光栅两态三角
+  (展开 ▾ / 折叠 ▸,右向几何=底边满高、尖端收敛)。
+- `LayoutInfo` 增 `fold_bands: Vec<(line_i, proj_top, orig_top)>`(命中
+  反投影)+ `fold_column: Option<Rect>`;`handle_mouse_press` 折叠列
+  命中→`fold_toggle`;正文点击/拖拽选区 y 经 `unfold_y` 反投影后再交
+  cosmic hit(点击映射到绘制所见行)。
+
+**P4 交互**:
+- 光标进入折叠体自动展开:`handle_input` KeyPressed 臂尾 `auto_unfold_
+  at_cursor`(键盘移入隐藏行即揭示);`find_next` 命中折叠区行同样揭示
+  (编辑器锁→fold 锁序与 render 一致)。
+- 041 接线:`auto-edit.at` 增 `view.fold`(视图菜单"折叠切换");
+  `app.at` 增 `fold_hidden` 状态 + `.ActFold`(toggle 激活编辑器第 2 行
+  fn 块 + 读回隐藏数)+ 状态栏 `Fold N` 读数;矩阵 `desktop_mcp.py`
+  增 **T3b**(T4 ActNew 清空文本之前执行:toggle→hidden==2→toggle→0)。
+
+### 7.2 已验证(shell 故障前)
+
+- `fold` 全族 15/15(fold.rs 10 项 + 集成 3 项:渲染投影/列点击 toggle/
+  光标自动展开 + Phase A chevron 适配 1 项)。
+- code_editor 套件 33/33(旧契约测试已适配新 `text_runs`/`GutterFold`)。
+- 编译:lib(`ui-iced,code-editor`)通过。
+
+### 7.3 设计要点/取舍
+
+- 折叠是视图态:不 bump revision、不进 undo、不触发 text_changed;
+  gutter 缓存键 `revision ^ (fold_hidden << 52)`。
+- 滚动仍按原文行推进(滚过大型折叠区要按原文行数滚)——已知取舍,
+  后续可在 wheel 路径按 fold-map 跳跃隐藏段(挂账)。
+- 折叠列命中按"投影带包含 y"判定;命中非 opener 行落到正文点击语义。
+- 嵌套折叠:隐藏区间 merge;`unfold_line` 展开所有与命中行相交的
+  folded opener(自动展开语义)。
+
+### 7.4 待办(环境恢复后,按序)
+
+1. `cargo test -p auto-lang --features ui-iced,code-editor --lib code_editor`
+   —— native e2e 扩展(fold natives 经 `run_with_capture` 全链路)尚未跑过。
+2. `cargo test -p auto-lang --features ui-iced,code-editor --lib large_file_
+   renders -- --ignored` —— 26s/1MB 惰性不回归(此前一次长跑被环境故障杀)。
+3. 全量 feature 套件(基线 3581/0)+ 无特性套件(native_catalog ID 冲突
+   校验测试会核对 2932/2933)。
+4. 构建 bin + 041 矩阵(含新 T3b;跑前 taskkill auto.exe)。
+5. 实机人工验收:点 chevron 折/开、折叠后点击正文行落点正确、
+   Ctrl+F 命中折叠区自动展开。
+6. 提交(计划号 428 入头)+ 合并 master + 清理 worktree/分支;
+   本文档在主检出为未跟踪态,提交时随分支纳入。
+
+### 7.5 环境恢复后的补验与修复记录(2026-08-23,恢复会话)
+
+**背景**:§7.4 中断后,并行清理会话(0311aec5)删除了 worktree 与分支,仅以
+`git diff` 备份了**已跟踪文件**的补丁(`scratch/worktree-cleanup-2026-08-23/
+428-fold-b-uncommitted.patch`,11 文件 815+);新建的 `core/fold.rs` 是未跟踪
+文件,未入任何备份(tar 只有目录骨架)。恢复会话从 master 重建 worktree、
+改 041 路径后应用补丁,**按调用点契约重建 fold.rs**(mod.rs/render.rs 的
+region_at/build/is_hidden/project_y/unfold_y/hidden_range_containing/
+regions_from_texts 引用 + 集成测试语义完整约束了公开面),重建后全部测试
+通过——重建与原版语义一致(签名偏差仅两处:line_height 字段 pub、
+unfold_y 返回 Option,均由编译器从调用点反推)。
+
+**恢复会话修复的三个问题**(均为原会话最终代码未经全量重跑掩盖的):
+
+1. **find_next 同线程重入死锁**:P4 在 find_next 内插入的 `unfold_line` 在
+   持有 editor guard 时经 fresh_fold_map 二次获取 editor 锁(非重入 Mutex)
+   → `core_search_highlights_and_finds` 死锁挂起。修复:set_cursor/
+   set_selection 后 `drop(editor)` 再 unfold,滚动调整前重新取锁
+   (core/mod.rs)。原会话"15/15"只是 fold 过滤子集,全量套件没重跑过。
+2. **native e2e 断言期待值错误**:VM 的 `print` 对 Bool 渲染 1/0
+   (shim_print 无 true/false 字面量),断言改按 1/0 校验(native.rs)。
+   输出 `1
+2
+0
+0` 语义本就正确(折→隐藏2→展开→0)。
+3. (重建本身)fold.rs 单测 10 项按原语义等价重写。
+
+**§7.4 清单补验结果**:
+
+| 项 | 结果 |
+|---|---|
+| code_editor 套件 | **36/36**(2 ignored 为 1MB perf) |
+| 1MB 惰性 ignore | **通过,4.30s** |
+| 全量 feature 套件 | lib **3594/0** + desktop_behavior 8/0 |
+| 无特性套件 | lib **3125/0**(含 2932/2933 ID 冲突校验) |
+| 041 矩阵(含 T3b) | **T3b 4/4 全过**(fold engaged 2 hidden → released 0) |
+| 实机人工验收 | 待做(§7.4-5;交互路径已有集成测试覆盖) |
+
+**既有红归因**(与 428 无关,stash 干净 master 实证同样失败):
+- `ui_snapshots` 3 项:015-notes 源码在 Plan 370(cf2fbc27)改写后快照未再生
+  (2876→2920 字节)+ insta assertion_line 元数据 + worktree 绝对路径差异
+  (仓库历史上有专门的 .snap.new 残留清理提交,勿在 worktree 再生快照)。
+- `vue_capabilities::cap_widget_map_model_init` 1 项:master 同挂。
+- 矩阵 `paste restores text`:本机剪贴板被间歇独占(环境性)——同刻干净
+  master 的 bin+041 同挂同一条;T6 其余编辑动作全绿,handler 逻辑无关。
 

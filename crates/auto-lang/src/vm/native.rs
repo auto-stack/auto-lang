@@ -674,6 +674,35 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     Ok(())
 }
 
+// ── Plan 428 P1: code folding natives ─────────────────────────────────
+
+/// `code_editor_fold_toggle(key, line_1based) -> Bool` — toggle the fold
+/// whose opener sits on `line` (1-based, gutter numbering). Returns `true`
+/// when the region is folded afterwards. View state only — no undo entry.
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_fold_toggle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (line) first, then the key.
+    let line_1based = task.ram.pop_i32();
+    let key = pop_string_arg(task, vm);
+    let folded = crate::ui::code_editor::code_editor_with(&key, |core| {
+        core.fold_toggle(line_1based.max(1) as usize - 1)
+    })
+    .unwrap_or(false);
+    task.ram.push_nv(auto_val::encode_bool(folded));
+    Ok(())
+}
+
+/// `code_editor_fold_hidden_count(key) -> Int` — lines currently hidden by
+/// folding (tests / MCP assertions read this).
+#[cfg(feature = "code-editor")]
+pub fn shim_code_editor_fold_hidden_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    let count = crate::ui::code_editor::code_editor_with(&key, |core| core.fold_hidden_count())
+        .unwrap_or(0);
+    task.ram.push_i32(count as i32);
+    Ok(())
+}
+
 // ── Plan 418: editor action natives (menu/toolbar handlers) ────────────
 // Same semantics as the editor's internal Ctrl+Z/Y/A/C/X/V handling, but
 // triggered programmatically from `.at` handlers (auto-edit menus).
@@ -850,6 +879,18 @@ pub fn shim_code_editor_find(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_code_editor_set_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_set_text: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_fold_toggle(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_fold_toggle: the `code-editor` feature is disabled".into(),
+    ))
+}
+#[cfg(not(feature = "code-editor"))]
+pub fn shim_code_editor_fold_hidden_count(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Err(VMError::RuntimeError(
+        "code_editor_fold_hidden_count: the `code-editor` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "code-editor"))]
@@ -8506,6 +8547,34 @@ print(t2)
             assert!(out.contains("line one"), "text read: {out}");
             assert!(out.contains("0"), "cursor line: {out}");
             assert!(out.contains("rewritten"), "set+read roundtrip: {out}");
+
+            // Plan 428 P1: fold natives round-trip (headless — no render).
+            ce::code_editor_set_text(
+                &key,
+                "fn a() {
+    body()
+}
+",
+            );
+            let (_r2, out2) = crate::run_with_capture(
+                r#"
+let folded = code_editor_fold_toggle("__code_editor_vm-native-test", 1)
+print(folded)
+let hidden = code_editor_fold_hidden_count("__code_editor_vm-native-test")
+print(hidden)
+let folded2 = code_editor_fold_toggle("__code_editor_vm-native-test", 1)
+print(folded2)
+let hidden2 = code_editor_fold_hidden_count("__code_editor_vm-native-test")
+print(hidden2)
+"#,
+            )
+            .unwrap();
+            // The VM's `print` renders bools as 1/0 (shim_print prints
+            // strings or integers — there is no `true`/`false` literal).
+            assert!(out2.contains('1'), "first toggle folds: {out2}");
+            assert!(out2.contains('2'), "body of 2 lines hidden: {out2}");
+            assert!(out2.contains('0'), "second toggle unfolds: {out2}");
+            assert!(out2.trim_end().ends_with('0'), "hidden back to 0: {out2}");
 
             // Missing editor key raises a runtime error (not a panic).
             let err = crate::run(r#"let x = code_editor_text("__code_editor_no-such")"#);

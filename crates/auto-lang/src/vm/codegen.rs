@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -476,6 +476,9 @@ impl Codegen {
         intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
         intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
         intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
+        // Plan 428 P1: code folding natives (view state).
+        intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
+        intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
         intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
         intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
         intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
@@ -811,6 +814,9 @@ impl Codegen {
         intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
         intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
         intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
+        // Plan 428 P1: code folding natives (view state).
+        intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
+        intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
         intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
         intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
         intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
