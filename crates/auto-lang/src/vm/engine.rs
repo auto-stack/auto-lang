@@ -16,6 +16,20 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 /// Debug logging macro - only prints when VM debug mode is enabled
+/// Plan 423 P5:越界跳转的错误上下文(裸 InvalidOpCode(0xFF) 无从定位
+/// mispatched jump —— 带 ip/offset/new_ip/当前函数名)。
+fn jump_oob_error(task: &AutoTask, offset: isize, new_ip: isize, flash_len: usize) -> VMError {
+    let fn_name = task
+        .call_stack
+        .last()
+        .and_then(|f| f.fn_name.clone())
+        .unwrap_or_else(|| "<root>".to_string());
+    VMError::RuntimeError(format!(
+        "jump out of bounds: ip=0x{:04x} offset={} new_ip=0x{:04x} flash_len=0x{:04x} in {}",
+        task.ip, offset, new_ip, flash_len, fn_name
+    ))
+}
+
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
         if crate::is_vm_debug() {
@@ -7401,7 +7415,7 @@ impl AutoVM {
                     let new_ip = (task.ip as isize) + offset;
 
                     if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
-                        return Err(VMError::InvalidOpCode(0xFF));
+                        return Err(jump_oob_error(task, offset, new_ip, self.flash.memory.len()));
                     }
 
                     task.ip = new_ip as usize;
@@ -7413,7 +7427,7 @@ impl AutoVM {
                     let new_ip = (task.ip as isize) + offset;
 
                     if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
-                        return Err(VMError::InvalidOpCode(0xFF));
+                        return Err(jump_oob_error(task, offset, new_ip, self.flash.memory.len()));
                     }
 
                     task.ip = new_ip as usize;
@@ -7430,7 +7444,7 @@ impl AutoVM {
                     if !nv_truthy(cond_nv) {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
-                            return Err(VMError::InvalidOpCode(0xFF));
+                            return Err(jump_oob_error(task, offset, new_ip, self.flash.memory.len()));
                         }
                         task.ip = new_ip as usize;
                     }
@@ -7444,7 +7458,7 @@ impl AutoVM {
                     if nv_truthy(cond_nv) {
                         let new_ip = (task.ip as isize) + offset;
                         if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
-                            return Err(VMError::InvalidOpCode(0xFF));
+                            return Err(jump_oob_error(task, offset, new_ip, self.flash.memory.len()));
                         }
                         task.ip = new_ip as usize;
                     }
@@ -7680,8 +7694,19 @@ impl AutoVM {
                 }
 
                 _ => {
-                    // Unimplemented opcodes for Phase 1
-                    return Err(VMError::InvalidOpCode(op_byte));
+                    // Unimplemented opcodes for Phase 1. Include the ip and
+                    // current fn name — mid-instruction landings (mispatched
+                    // jumps / call-resume offsets) otherwise give a bare 255
+                    // with no way to locate the site (Plan 423 P5).
+                    let fn_name = task
+                        .call_stack
+                        .last()
+                        .and_then(|f| f.fn_name.clone())
+                        .unwrap_or_else(|| "<root>".to_string());
+                    return Err(VMError::RuntimeError(format!(
+                        "InvalidOpCode(0x{:02x}) at ip=0x{:04x} in {}",
+                        op_byte, task.ip, fn_name
+                    )));
                 }
             }
 

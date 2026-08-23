@@ -43,3 +43,9 @@ ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-bo
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
 th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
+
+# Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
+# 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高
+# 测试线程栈 —— 对本仓库所有 cargo test 运行生效,免去逐测试包裹。
+[env]
+RUST_MIN_STACK = "16777216"

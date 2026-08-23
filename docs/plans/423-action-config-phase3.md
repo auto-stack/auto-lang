@@ -1,6 +1,6 @@
 # Plan 423: Action 配置层 Phase 3 — 热重载 / OS 用户层 keymap / 表达式引擎 / enabled-if
 
-> **状态**: ✅ 已实施(2026-08-23,master 直接提交;矩阵 47/47 含 T10 新组;P1-P4 全落地)
+> **状态**: ✅ 已实施 + Phase 5 测试债清偿(2026-08-23;矩阵 48/48;plan370_015 12/12)
 > **来源**: 418 §4("热重载不做,重启生效"/"OS 层 keymap 为 Phase 3"/"不做表达式引擎(列后续)")+ §8.4(enabled-if 已解析未渲染)
 > **关联**: 418(action_config 管线与三源绑定)/ 275(键绑定管道,archive)/ 032 系(并行进行中的键绑定相关,注意协调)
 
@@ -67,3 +67,67 @@
 1. **plan370_015_behavior_tests 的 d3/d4/d6/d7 四项在本会话开工基点(46fd548d)即已失败**(feature 门控 `--features ui-iced` 的测试从未被无特性跑法覆盖;表现为 payload 参数化 handler 副作用未落地,如 SelectNote(3) 后 active_id 仍 "0")。bisect 确认非 420/423 引入。待单独立项修复。
 2. 同因暴露:auto-musk 合并(424-426)留下的 `plan370_test_support.rs`/`vm_bridge.rs` 测试构造缺 `setup` 字段(feature 构建 E0063)——本次顺手修复(`setup: None`)。
 3. OS keymap 层仅单元级验证(层叠逻辑);端到端(写 %APPDATA% 文件 + reload + 键盘事件)未进矩阵 —— 键盘事件注入工具(AUTOUI_KEYBOARD)走 key_bindings 快照,config 层短路查询与其解耦,人工验收项。
+
+
+---
+
+## 7. Phase 5:测试债清偿与内存事故根因(2026-08-23,分支 423-phase5)
+
+### 背景
+
+全量 `--features ui-iced,code-editor` 测试此前从未被常规跑法覆盖(cargo test 无特性),
+积压了一批失败;其中 plan370_015 的四项失败与一次**实机 20GB 内存耗尽重启事故**同根。
+
+### 根因链(实机 20G 内存事故的完整闭环)
+
+1. `handler_codegen` 的 `store.field` 重写按**别名**("store")查 `STORE_FIELDS`,
+   而该表按**真名**("NotesStore")键控——别名永远查不中(`store.Method()` 路径
+   有别名→真名解析,字段路径没有)。
+2. → 委托 handler 体编译失败:"Undefined variable: store"(`store.X = v`、
+   `store.TogglePin(store.active_id)` 等 14 个 App/NavTree handler)。
+3. → Stmt::Fn 在导出已记录、跳转占位未补的状态下中途退出——**半成品毒化字节码**
+   留在模块里(导出指向非 FN_PROLOG 位置)。
+4. → 运行时从指令中间进入:栈失衡 → RET 弹错返回地址 → 落入函数间"跳过函数体"
+   蹦床,`jmp` 到恰好 flash_len 处(InvalidOpCode 255),或在垃圾指令里跑满
+   call_fn_by_name 的 1000 万步预算**无界生长字符串池/视图**。
+5. → MCP snapshot 响应随之膨胀到 GB 级,python 驱动脚本的 json 解析持有数倍
+   载荷 → 系统内存耗尽(20G+)。python 是受害者/放大器,VM 错位才是源头;
+   未合并的 vm-lifecycle(引用计数)改动与此无关(未进 master)。
+
+### 落地内容
+
+- **P5-1 根因修复**:字段重写两处分支(store.field / .store.field)补
+  STORE_WIDGET_NAMES 别名→真名解析(与 store.Method() 同型)。plan370_015
+  d3/d4/d6/d7 四项复活(12/12),同族 InvalidOpCode(255)(含 420 挂账的
+  ActNew 偶发)一并根治。
+- **P5-1 永久回归锁**:`z6_export_prolog_alignment` 结构不变量测试——每个
+  导出地址必须落在 FN_PROLOG(0xB8),错位即失败并列出全部毒化导出。
+- **P5-2 栈溢出**:`.cargo/config.toml` 仓库级 `RUST_MIN_STACK=16MB`(VM
+  行为测试的 Rust 递归深度超 libtest 默认 2MB;d10/B12-repro 等曾
+  STATUS_STACK_OVERFLOW);plan370 重测试另加大栈线程包裹(自解释)。
+- **P5-3 环境性测试**:benchmark_downcast 改 best-of-5(纳秒断言负载抖动);
+  test_exists 改临时目录不存在路径("/nonexistent" 在 Windows 解析到当前
+  盘符根,真机存在 D:
+onexistent 则误报)。
+- **P5-4 OS keymap 端到端**:reload 工具响应带 "N OS keymap overrides"
+  (last_reload_info);矩阵 T11(独立进程 + 临时 APPDATA,零污染):写
+  keymap 文件 → reload → 断言覆盖生效。矩阵 48/48。
+- **诊断基建(保留)**:引擎越界跳转/非法操作码错误带 ip/offset/函数名上下文;
+  VmBridge/DynamicComponent 的 debug_disasm/debug_raw/debug_fn_table 诊断
+  API;handler 合成失败从 log::warn(无 logger 时静默)改 eprintln。
+- **驱动脚本防护**:desktop_mcp.py 响应体 64MB 硬上限(超限即中止,防再被
+  失控应用的 GB 级快照撑爆);taskkill /T /F 子进程树兜底(terminate 杀不掉
+  UI 应用时不再留孤儿)。
+
+### 验证
+
+- plan370_015 12/12;repro_b12 3/3;041 矩阵 48/48(T11 新组);
+  全量 feature 套件 3549 过 / 2 失败(见下)。
+
+### 剩余挂账(非本族,master 既有)
+
+1. `vm_bridge::repro_selectday_panic` — HandlerNotFound("SelectDay"):
+  016-calendar 的 SelectDay handler 未被合成(与毒化字节码无关的另一路
+  合成问题,bisect 确认 07-30 后即如此)。
+2. `style::layout_extract::tests::test_sizing` — height Fixed(3) 断言漂移。
+3. 深递归超出 16MB 的极端场景(如需,后续做引擎侧尾递归/迭代化)。

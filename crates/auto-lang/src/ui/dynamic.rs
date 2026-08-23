@@ -403,12 +403,31 @@ impl DynamicComponent {
 
     /// Read a state field value from the VM.
     ///
-    /// Returns the current value of the named state field, or an error if
-    /// the field does not exist.
+    /// Returns the current value of the named state field, or an error if the
+    /// field does not exist.
     pub fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
         self.bridge
             .read_state(field_name)
             .map_err(|e| e.to_string())
+    }
+
+    /// Plan 423 P5(测试债诊断):透传 bridge 的函数表+反汇编(测试/调试用)。
+    pub fn debug_disasm(&self, addr: u32, before: usize, after: usize) -> String {
+        self.bridge.debug_disasm(addr, before, after)
+    }
+
+    /// Plan 423 P5:原始字节十六进制透传。
+    pub fn debug_raw(&self, addr: u32, len: usize) -> String {
+        self.bridge.debug_raw(addr, len)
+    }
+
+    /// Plan 423 P5:函数表 + 单字节读取透传(导出对齐不变量测试用)。
+    pub fn debug_fn_table(&self) -> Vec<(String, u32)> {
+        self.bridge.debug_fn_table()
+    }
+
+    pub fn debug_byte(&self, addr: u32) -> u8 {
+        self.bridge.debug_byte(addr)
     }
 
     /// Write a state field value to the VM.

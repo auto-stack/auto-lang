@@ -1517,8 +1517,17 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
 // ── Tool: action_config_reload (Plan 423 P4) ──
 
 fn tool_action_config_reload() -> serde_json::Value {
-    use crate::ui::action_config::{action_config, config_generation, reload_action_config};
+    use crate::ui::action_config::{
+        action_config, config_generation, last_reload_info, reload_action_config,
+    };
     reload_action_config();
+    if let Some(info) = last_reload_info() {
+        return text_result(format!(
+            "ActionConfigReload ok: {} (generation {})",
+            info,
+            config_generation(),
+        ));
+    }
     match action_config() {
         Some(cfg) => text_result(format!(
             "ActionConfigReload ok: {} actions, {} menus, {} toolbar items (generation {})",

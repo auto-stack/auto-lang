@@ -1460,8 +1460,8 @@ impl Codegen {
 
                 // Insert FN_PROLOG at entry_point (before function body)
                 // This is 3 bytes: 1 byte opcode + 1 byte n_args + 1 byte n_locals
-                vm_debug!("DEBUG: Emitting FN_PROLOG at address {}, n_args={}, n_locals={}",
-                    entry_point, n_args, n_locals
+                vm_debug!("DEBUG: Emitting FN_PROLOG for '{}' at address {}, n_args={}, n_locals={}",
+                    fn_decl.name, entry_point, n_args, n_locals
                 );
                 self.code
                     .insert(entry_point as usize, OpCode::FN_PROLOG as u8);

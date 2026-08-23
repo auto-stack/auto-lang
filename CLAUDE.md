@@ -30,6 +30,9 @@ cargo build                  # Build all crates (debug mode)
 cargo test                   # Run all tests
 cargo test -p auto-lang      # Run auto-lang crate tests
 cargo test -p auto-lang -- trans  # Run transpiler (a2c/a2r) tests
+# Plan 423 P5: UI/VM 行为测试被 feature 门控,无特性跑法测不到 —— 定期跑:
+cargo test -p auto-lang --features ui-iced,code-editor --lib
+# (仓库 .cargo/config.toml 已设 RUST_MIN_STACK=16MB,VM 深递归测试需要)
 ```
 
 - Always run `cargo test` after modifying VM-related code

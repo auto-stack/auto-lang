@@ -1721,13 +1721,25 @@ mod tests {
         let mut vm = AutoVM::new(flash, 64);
         let expr = Expr::Array(vec![Expr::Int(1), Expr::Int(2)]);
         let val = eval_expr_to_value(&expr, &mut vm);
+        // Plan 420:数组字面量物化为原生 ListData 堆对象(VmRef)—— 与
+        // handler 内局部列表同表示,len()/push()/[i] 等字节码操作才能作用
+        // 于 state 字段。经 index_list_all 解回元素断言。
         match val {
-            Value::Array(arr) => {
-                assert_eq!(arr.len(), 2);
-                assert_eq!(arr[0], Value::Int(1));
-                assert_eq!(arr[1], Value::Int(2));
+            Value::VmRef(r) => {
+                let elems = {
+                    let obj = vm.get_heap_object(r.id as u64).expect("list heap object");
+                    let guard = obj.read().unwrap();
+                    use crate::vm::types::ListData;
+                    match guard.as_any().downcast_ref::<ListData<Value>>() {
+                        Some(list) => list.elems.clone(),
+                        None => panic!("VmRef does not point at ListData<Value>"),
+                    }
+                };
+                assert_eq!(elems.len(), 2);
+                assert_eq!(elems[0], Value::Int(1));
+                assert_eq!(elems[1], Value::Int(2));
             }
-            other => panic!("Expected Array, got {:?}", other),
+            other => panic!("Expected VmRef(list), got {:?}", other),
         }
     }
 
@@ -1881,7 +1893,8 @@ mod tests {
         // Each cell is an Obj literal { label, date, is_other_month }.
         for (i, cell) in days.iter().enumerate() {
             match cell {
-                Value::Obj(_) | Value::Int(_) => {}
+                // Plan 420:对象字面量物化为 GenericInstanceData(VmRef)。
+                Value::Obj(_) | Value::Int(_) | Value::VmRef(_) => {}
                 other => panic!("cell {} is not an object: {:?}", i, other),
             }
         }
@@ -2290,5 +2303,73 @@ widget Store {
 
         // Silence unused warning for scan_use_statements when the body returns early.
         let _ = scan_use_statements;
+    }
+}
+
+// ── Plan 423 P5(测试债诊断):字节码诊断辅助 ──────────────────────────────
+
+impl VmBridge {
+    /// 函数表(name → 地址,按地址排序)+ 指定地址附近的反汇编。
+    /// 仅供测试/调试(plan370_015 InvalidOpCode(255) 归因)。
+    /// Plan 423 P5:函数表(Vec<(name, addr)>,按地址排序)—— 导出对齐
+    /// 不变量测试用(每个导出地址必须是 FN_PROLOG)。
+    pub fn debug_fn_table(&self) -> Vec<(String, u32)> {
+        let mut names: Vec<(String, u32)> = self
+            .vm
+            .flash
+            .exports_by_name
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        names.sort_by_key(|(_, a)| *a);
+        names
+    }
+
+    /// 原始字节读取(不变量测试用)。
+    pub fn debug_byte(&self, addr: u32) -> u8 {
+        self.vm.flash.memory.get(addr as usize).copied().unwrap_or(0xEE)
+    }
+
+    /// Plan 423 P5:原始字节十六进制(反汇编起点错位时会误导,字节不会)。
+    pub fn debug_raw(&self, addr: u32, len: usize) -> String {
+        let mut out = format!("== raw 0x{:04x}..0x{:04x} ==\n", addr, addr as usize + len);
+        for i in 0..len {
+            let a = addr as usize + i;
+            let b = self.vm.flash.memory.get(a).copied().unwrap_or(0xEE);
+            out.push_str(&format!("{:02x} ", b));
+            if i % 16 == 15 {
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    pub fn debug_disasm(&self, addr: u32, before: usize, after: usize) -> String {
+        use crate::vm::disasm::Disassembler;
+        let mut names: Vec<(String, u32)> = self
+            .vm
+            .flash
+            .exports_by_name
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        names.sort_by_key(|(_, a)| *a);
+        let mut out = String::from("== fn table ==\n");
+        for (n, a) in &names {
+            out.push_str(&format!("  0x{:04x} {}\n", a, n));
+        }
+        let dis = Disassembler::new(&self.vm.flash);
+        let start = (addr as usize).saturating_sub(before);
+        let end = (addr as usize) + after;
+        out.push_str(&format!("== disasm 0x{:04x}..0x{:04x} ==\n", start, end));
+        for l in dis.disassemble_range(start, end) {
+            out.push_str(&format!(
+                "  0x{:04x} {} {}\n",
+                l.offset,
+                l.mnemonic,
+                l.operands
+            ));
+        }
+        out
     }
 }

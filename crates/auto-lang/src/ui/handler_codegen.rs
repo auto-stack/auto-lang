@@ -342,9 +342,17 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
         }
     }
     // store.field → __state.field (store fields merged into root state)
+    // Plan 423 P5 修复:先经 STORE_WIDGET_NAMES 把别名(store)解析成真名
+    // (NotesStore)再查 STORE_FIELDS —— 与 store.Method() 路径同型。此前
+    // 直接 contains_key(alias),而字段表按真名键控,别名永远查不中 →
+    // 裸 `store` 标识符漏进 codegen("Undefined variable: store"),handler
+    // 半成品毒化字节码(导出指向非 prolog → 运行时栈失衡/InvalidOpCode 255/
+    // 垃圾指令跑满步数预算无界吃内存,实机 20G 内存事故的源头)。
     if let Expr::Dot(obj, _field) = e {
         if let Expr::Ident(alias) = obj.as_ref() {
-            let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(alias.as_str()));
+            let real = STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned());
+            let target = real.as_deref().unwrap_or(alias.as_str());
+            let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(target));
             if is_store {
                 *obj = Box::new(Expr::Ident(Name::from(STATE_PARAM)));
                 return;
@@ -356,7 +364,9 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
     if let Expr::Dot(inner, field) = e {
         if let Expr::Dot(obj, store_alias) = inner.as_ref() {
             if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
-                let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(store_alias.as_str()));
+                let real = STORE_WIDGET_NAMES.with(|s| s.borrow().get(store_alias.as_str()).cloned());
+                let target = real.as_deref().unwrap_or(store_alias.as_str());
+                let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(target));
                 if is_store {
                     *e = Expr::Dot(
                         Box::new(Expr::Ident(Name::from(STATE_PARAM))),
@@ -842,7 +852,7 @@ pub fn synthesize_widget_module(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                log::warn!("handler_codegen: import stmt failed to compile: {}", e);
+                eprintln!("[HANDLER-CODEGEN] import stmt failed to compile: {}", e);
             }
         }
     }
@@ -913,8 +923,8 @@ pub fn synthesize_widget_module(
                 body_stmts,
             );
             if let Err(e) = codegen.compile_stmt(&handler_fn) {
-                log::warn!(
-                    "handler_codegen: {}.{} failed: {}",
+                eprintln!(
+                    "[HANDLER-CODEGEN] {}.{} failed: {}",
                     w.name, event_pattern, e
                 );
             }
@@ -1331,7 +1341,7 @@ pub fn synthesize_from_decl(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                log::warn!("handler_codegen: import stmt failed to compile: {}", e);
+                eprintln!("[HANDLER-CODEGEN] import stmt failed to compile: {}", e);
             }
         }
     }
@@ -1460,8 +1470,8 @@ pub fn synthesize_from_decl(
             // This prevents linker errors; the actual routing happens at the renderer level
             // (iced event → DynamicMessage → parent handler).
             if let Err(e) = codegen.compile_stmt(&handler_fn) {
-                log::warn!(
-                    "handler_codegen: {}.{} failed: {}",
+                eprintln!(
+                    "[HANDLER-CODEGEN] {}.{} failed: {}",
                     d.name, event_pattern, e
                 );
             }
