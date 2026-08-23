@@ -1027,7 +1027,13 @@ impl CodeEditorCore {
                     editor.set_selection(Selection::Normal(end));
                     CoreOutput { cursor_changed: true, ..CoreOutput::default() }
                 }
-                    _ => CoreOutput::default(),
+                    // Unhandled ctrl+letters must BUBBLE: the app-level
+                    // shortcut layer (action-config fallback, Plan 418 P2-4)
+                    // only receives uncaptured events — force-capturing here
+                    // would eat shortcuts like Ctrl+J/Ctrl+D/Ctrl+S whenever
+                    // the editor holds focus (same principle as Ctrl+Tab
+                    // bubbling below).
+                    _ => return CoreOutput::default(),
                 };
                 return out.captured();
             }
@@ -2292,6 +2298,32 @@ line two", &mut fs);
         }
         assert!(clicked_line.is_some());
         assert!(core.text().contains('x'));
+    }
+
+    /// Plan 428 实机验收发现(413 期回归):编辑器强制捕获未处理的
+    /// Ctrl+字母,而应用级快捷键层(action-config 回退层,Plan 418 P2-4)
+    /// 只收未捕获事件——Ctrl+J/Ctrl+D/Ctrl+S 在编辑器有焦点时全部失效。
+    /// 未识别组合必须放行;编辑器自己处理的组合保持捕获。
+    #[test]
+    fn unhandled_ctrl_letter_bubbles_for_app_shortcuts() {
+        let mut fs = FontSystem::new();
+        let core = CodeEditorCore::new("test-ctrl-bubble", CodeEditorConfig::default(), &mut fs);
+        core.set_text("some text\nmore", &mut fs);
+        core.set_focused(true);
+        let mut clip = NullClipboard;
+        let ctrl = EditorModifiers { control: true, ..EditorModifiers::none() };
+        let press = |key: EditorKey| EditorInput::KeyPressed {
+            key,
+            text: None,
+            modifiers: ctrl,
+        };
+        let out_j = core.handle_input(&mut fs, press(EditorKey::Char('j')), &mut clip);
+        assert!(!out_j.captured, "Ctrl+J is the app's console toggle — must bubble");
+        let out_s = core.handle_input(&mut fs, press(EditorKey::Char('s')), &mut clip);
+        assert!(!out_s.captured, "Ctrl+S is the app's save — must bubble");
+        // Handled combos stay captured (editor bindings keep working).
+        let out_a = core.handle_input(&mut fs, press(EditorKey::Char('a')), &mut clip);
+        assert!(out_a.captured, "Ctrl+A select-all is an editor binding");
     }
 
     /// Plan 413 regression: an external value diff that rewrites the buffer
