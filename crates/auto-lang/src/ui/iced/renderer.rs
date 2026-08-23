@@ -6816,6 +6816,123 @@ fn compare_pngs(
                 }
             }
         }
+        // ── Plan 060 R16:child-callback 缺失桥补齐 ──────────────────────
+        // vm 剥离 callback emit(handler_codegen D-GAP-4),这些按钮的 .at
+        // handler 为空体、父级 handler 不发生 —— 点击无任何效果(真实鼠标
+        // 与 MCP 模拟同症,2026-08-23 实证:Stop 连点 7 次 ping -n 30 跑满、
+        // DeleteBlock 块数不变、ToolSidebar.Pick input 不填)。按既有惯例
+        // (OpenPath/ToggleCollapse/RunCommand 后备)在 renderer 侧补桥:
+        if widget_name == "BlockItem" && event_name == "Stop" {
+            // Stop → ShellStore.Cancel(cancel() #[api] → host → worker kill)。
+            // .at 侧 .Cancel 的 for 循环读 .blocks 为 nil(B 系列债)不会跑,
+            // 这里 Rust 直改:Running → Cancelled(终态由 command_result 事件
+            // 的 Cancelled 状态确认,worker 侧配套映射)。
+            let _ = state.component.on_with_input_for("ShellStore", "Cancel", None);
+            if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                let mut flipped = false;
+                for b in blocks.iter_mut() {
+                    if let auto_val::Value::Obj(obj) = b {
+                        let running = obj.get("status")
+                            .and_then(|s| if let auto_val::Value::Obj(so) = &s {
+                                so.get("kind").map(|v| v.as_str() == "Running")
+                            } else { None })
+                            .unwrap_or(false);
+                        if running {
+                            let mut status = auto_val::Obj::new();
+                            status.set("kind", auto_val::Value::str("Cancelled"));
+                            status.set("message", auto_val::Value::str(""));
+                            obj.set("status", auto_val::Value::Obj(status));
+                            flipped = true;
+                        }
+                    }
+                }
+                if flipped {
+                    let _ = state.component.write_state_vec("blocks", blocks);
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
+        if widget_name == "BlockItem" && event_name.starts_with("DeleteBlock") {
+            // DeleteBlock(id) → Rust 直改 blocks(镜像 ToggleCollapse 模式;
+            // store 的 .at 实现同样读 .blocks 为 nil,不可走 handler)。
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            let id = args.first().map(|v| v.as_int() as i64).unwrap_or(-1);
+            if id >= 0 {
+                if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                    let before = blocks.len();
+                    blocks.retain(|b| match b {
+                        auto_val::Value::Obj(obj) =>
+                            obj.get("id").map(|v| v.as_int() as i64) != Some(id),
+                        _ => true,
+                    });
+                    if blocks.len() != before {
+                        let _ = state.component.write_state_vec("blocks", blocks);
+                        *state.view_dirty.borrow_mut() = true;
+                    }
+                }
+            }
+        }
+        if widget_name == "BlockItem" && event_name.starts_with("Rerun") {
+            // Rerun(cmd) → 复用 store.RunCommand 主路径(与 PromptBar.Run 的
+            // emit 模拟同构:dispatch 后读 __pending_command_* 置换/追加块)。
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            if let Some(cmd) = args.first().map(|v| v.as_str()).filter(|c| !c.trim().is_empty()) {
+                let blocks_before = state.component
+                    .read_state_as_vec("blocks")
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                state.component.on_with_input_for(
+                    "ShellStore",
+                    "RunCommand",
+                    Some(cmd.to_string()),
+                );
+                let bid = state.component.read_state("__pending_command_id")
+                    .map(|v| v.as_int() as i64).unwrap_or(0);
+                let cwd = state.component.read_state("cwd")
+                    .map(|v| v.as_str().to_string()).unwrap_or_default();
+                if bid >= 0 {
+                    let mut status = auto_val::Obj::new();
+                    status.set("kind", auto_val::Value::str("Running"));
+                    status.set("message", auto_val::Value::str(""));
+                    let mut block = auto_val::Obj::new();
+                    block.set("id", auto_val::Value::Int(bid as i32));
+                    block.set("command", auto_val::Value::str(cmd));
+                    block.set("cwd", auto_val::Value::str(&cwd));
+                    block.set("status", auto_val::Value::Obj(status));
+                    block.set("streamed_text", auto_val::Value::str(""));
+                    block.set("duration_ms", auto_val::Value::Int(0));
+                    block.set("output", auto_val::Value::Nil);
+                    block.set("exit_code", auto_val::Value::Int(0));
+                    block.set("collapsed", auto_val::Value::Bool(false));
+                    block.set("table_sort_col", auto_val::Value::Int(-1));
+                    block.set("table_sort_dir", auto_val::Value::Int(1));
+                    block.set("table_filter_q", auto_val::Value::str(""));
+                    if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
+                        let store_pushed_this = blocks.len() > blocks_before;
+                        if store_pushed_this {
+                            *blocks.last_mut().unwrap() = auto_val::Value::Obj(block);
+                        } else {
+                            blocks.push(auto_val::Value::Obj(block));
+                        }
+                        let _ = state.component.write_state_vec("blocks", blocks);
+                    }
+                    *state.view_dirty.borrow_mut() = true;
+                }
+            }
+        }
+        if widget_name == "ToolSidebar" && event_name.starts_with("Pick") {
+            // Pick(name) → App.Pick 语义:injected_command + PromptBar 填充。
+            // PromptBar 的 prop watcher(vm 端不可靠)跳过,直接写 root input
+            // —— 与 autoui_type / Run 清空同机制,强制重建 textarea 实例。
+            let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            if let Some(name) = args.first().map(|v| v.as_str()).filter(|n| !n.is_empty()) {
+                let _ = state.component.write_state("injected_command", auto_val::Value::str(name));
+                let _ = state.component.write_state("input", auto_val::Value::str(name));
+                *state.cached_rendered.borrow_mut() = None;
+                *state.cached_converted_view.borrow_mut() = None;
+                *state.view_dirty.borrow_mut() = true;
+            }
+        }
 
         // Plan 402: if difficulty changed (SetDifficulty/Init), resize window
         // to fit the board snugly.
