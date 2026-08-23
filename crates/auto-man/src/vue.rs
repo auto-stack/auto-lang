@@ -151,6 +151,148 @@ fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
     result
 }
 
+/// Plan 442 P0-1: every consumption-conditional dependency, with the
+/// pre-442 pinned versions. Single source of truth for both emission in
+/// [`generate_package_json`] and the sync-path drift check
+/// [`package_json_deps_drifted`].
+const OPTIONAL_DEPS: &[(&str, &str)] = &[
+    // code_editor widget → the CodeEditor.vue shell's full import set.
+    ("vue-codemirror", "^6.1.1"),
+    ("codemirror", "^6.0.1"),
+    ("@codemirror/view", "^6.26.3"),
+    ("@codemirror/state", "^6.4.1"),
+    ("@codemirror/language", "^6.10.1"),
+    ("@codemirror/search", "^6.5.6"),
+    ("@codemirror/lang-rust", "^6.0.1"),
+    ("@codemirror/lang-python", "^6.1.6"),
+    ("@codemirror/lang-javascript", "^6.2.2"),
+    ("@codemirror/lang-markdown", "^6.2.5"),
+    ("@codemirror/lang-json", "^6.0.1"),
+    // toast() programmatic calls (ui_gen emits `from 'vue-sonner'`).
+    ("vue-sonner", "^2.0.9"),
+    // Scaffolded ui components — the shadcn-vue CLI installs its own deps
+    // at add time, but package.json must keep declaring them so a
+    // regenerated file never drops what the app consumes.
+    ("reka-ui", "^2.0.0"),
+    ("class-variance-authority", "^0.7.0"),
+    ("vaul-vue", "^0.4.1"),
+    ("vee-validate", "^4.15.1"),
+    ("@vee-validate/zod", "^4.15.1"),
+    ("zod", "^3.25.76"),
+    ("embla-carousel-vue", "^8.5.1"),
+    ("@vueuse/core", "^10.7.0"),
+];
+
+/// Plan 442 P0-1: which optional dependency groups the generated code
+/// actually consumes. Deps are emitted per group instead of the pre-442
+/// full-hardcoded list (every vue app used to declare the whole
+/// codemirror/reka-ui/vue-sonner/vee-validate/zod/embla/@vueuse/vaul-vue
+/// set regardless of use — musk-038 待澄清 #9, 裁定选项 (ii)).
+///
+/// Detection is marker-based over the FULL generated-code corpus (App.vue
+/// + every page/component SFC), mirroring the imports the generator
+/// emits. Import markers carry the closing quote so `ui/button` does not
+/// match `ui/button-group`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct VueDependencyUsage {
+    /// `code_editor` widget present → CodeEditor.vue shell (our scaffold,
+    /// not the shadcn-vue CLI) → the full codemirror dependency set.
+    pub code_editor: bool,
+    /// A handler calls toast() → generated code imports vue-sonner.
+    pub toast: bool,
+    /// Scaffolded ui components by import marker.
+    pub button: bool,
+    pub drawer: bool,
+    pub form: bool,
+    pub carousel: bool,
+    pub sidebar: bool,
+}
+
+impl VueDependencyUsage {
+    pub fn detect(corpus: &str) -> Self {
+        Self {
+            code_editor: corpus.contains("@/components/CodeEditor"),
+            toast: corpus.contains("'vue-sonner'"),
+            button: corpus.contains("@/components/ui/button'"),
+            drawer: corpus.contains("@/components/ui/drawer'"),
+            form: corpus.contains("@/components/ui/form'"),
+            carousel: corpus.contains("@/components/ui/carousel'"),
+            sidebar: corpus.contains("@/components/ui/sidebar'"),
+        }
+    }
+
+    /// Optional package names this usage requires (all members of
+    /// [`OPTIONAL_DEPS`]).
+    pub fn required_packages(&self) -> Vec<&'static str> {
+        let mut pkgs = Vec::new();
+        if self.code_editor {
+            pkgs.extend([
+                "vue-codemirror", "codemirror", "@codemirror/view", "@codemirror/state",
+                "@codemirror/language", "@codemirror/search", "@codemirror/lang-rust",
+                "@codemirror/lang-python", "@codemirror/lang-javascript",
+                "@codemirror/lang-markdown", "@codemirror/lang-json",
+            ]);
+        }
+        if self.toast {
+            pkgs.push("vue-sonner");
+        }
+        if self.button {
+            pkgs.push("reka-ui");
+            pkgs.push("class-variance-authority");
+        }
+        if self.drawer {
+            pkgs.push("vaul-vue");
+        }
+        if self.form {
+            pkgs.extend(["vee-validate", "@vee-validate/zod", "zod"]);
+        }
+        if self.carousel {
+            pkgs.push("embla-carousel-vue");
+        }
+        // shadcn-vue's carousel and sidebar both lean on @vueuse/core.
+        if self.carousel || self.sidebar {
+            pkgs.push("@vueuse/core");
+        }
+        pkgs
+    }
+}
+
+/// Plan 442 P0-1: package.json is stale when any optional dep's declared
+/// state no longer matches the code's usage — either direction (missing
+/// after a feature was added, or leftover from the full-hardcoded era).
+fn package_json_deps_drifted(existing: &str, usage: &VueDependencyUsage) -> bool {
+    let required = usage.required_packages();
+    OPTIONAL_DEPS
+        .iter()
+        .any(|(pkg, _)| existing.contains(&format!("\"{}\"", pkg)) != required.contains(pkg))
+}
+
+/// Plan 442 P0-1: sync the CodeEditor.vue shell with actual usage. The
+/// shell is OUR scaffold (not the shadcn-vue CLI) and vue-tsc typechecks
+/// every .vue under src/, so an unused shell without the codemirror deps
+/// would break `pnpm build`. Write-if-missing when used; when unused,
+/// remove the file only if it still matches the generated template
+/// (user-modified copies are left alone).
+fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Result<(), String> {
+    let path = output_path.join("src").join("components").join("CodeEditor.vue");
+    if usage.code_editor {
+        if !path.exists() {
+            std::fs::create_dir_all(path.parent().unwrap())
+                .map_err(|e| format!("Failed to create components dir: {}", e))?;
+            std::fs::write(&path, generate_code_editor_component())
+                .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
+        }
+    } else if path.exists() {
+        let existing = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read CodeEditor.vue: {}", e))?;
+        if existing == generate_code_editor_component() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to remove unused CodeEditor.vue: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
 // Template generators
 
 fn generate_package_json(
@@ -158,30 +300,50 @@ fn generate_package_json(
     has_routes: bool,
     i18n_enabled: bool,
     extra_deps: &[(String, String)],
+    usage: &VueDependencyUsage,
 ) -> String {
-    let router_dep = if has_routes {
-        r#"    "vue-router": "^4.2.0",
-"#
-    } else {
-        ""
-    };
-
+    // Plan 442 P0-1: dependencies are emitted by actual consumption
+    // (usage groups + router/i18n/npm_deps), not the pre-442 hardcoded
+    // full list. Base set = vue + the cn() util pair (every scaffolded ui
+    // component imports it) + lucide-vue-next (icon tag) + prismjs
+    // (markdown highlight in the scaffold baseline).
+    let mut deps: Vec<(String, String)> = vec![
+        ("vue".to_string(), ">=3.4.0 <3.5.36".to_string()),
+        ("clsx".to_string(), "^2.1.0".to_string()),
+        ("tailwind-merge".to_string(), "^2.2.0".to_string()),
+        ("lucide-vue-next".to_string(), "^0.312.0".to_string()),
+        ("prismjs".to_string(), "^1.29.0".to_string()),
+    ];
+    if has_routes {
+        deps.push(("vue-router".to_string(), "^4.2.0".to_string()));
+    }
     // Plan musk-022 Phase 2: vue-i18n dependency when i18n is enabled.
-    let i18n_dep = if i18n_enabled {
-        r#"    "vue-i18n": "^9.14.0",
-"#
-    } else {
-        ""
-    };
+    if i18n_enabled {
+        deps.push(("vue-i18n".to_string(), "^9.14.0".to_string()));
+    }
+    // Plan 442 P0-1: consumption-conditional groups (see OPTIONAL_DEPS).
+    let required = usage.required_packages();
+    for (pkg, ver) in OPTIONAL_DEPS {
+        if required.contains(pkg) {
+            deps.push(((*pkg).to_string(), (*ver).to_string()));
+        }
+    }
+    // pac.at npm_deps — user-specified; skip names already emitted above
+    // (duplicate JSON keys would silently shadow one of the two specs).
+    for (pkg, ver) in extra_deps {
+        if !deps.iter().any(|(p, _)| p == pkg) {
+            deps.push((pkg.clone(), ver.clone()));
+        }
+    }
 
-    // Build extra deps lines from pac.at npm_deps.
-    // Each entry is (package_name, version_spec) where version_spec may be
-    // "^1.0.0", "latest", "link:/path", "file:../path", etc.
-    let extra_lines: String = extra_deps.iter().map(|(pkg, ver)| {
-        format!("    \"{}\": \"{}\",\n", pkg, ver)
-    }).collect();
+    let deps_body = deps
+        .iter()
+        .map(|(p, v)| format!("    \"{}\": \"{}\"", p, v))
+        .collect::<Vec<_>>()
+        .join(",\n");
 
-    format!(r#"{{
+    format!(
+        r#"{{
   "name": "{}",
   "version": "0.1.0",
   "private": true,
@@ -192,31 +354,7 @@ fn generate_package_json(
     "preview": "vite preview"
   }},
   "dependencies": {{
-    "vue": ">=3.4.0 <3.5.36",
-{}{}{}    "@vueuse/core": "^10.7.0",
-    "reka-ui": "^2.0.0",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0",
-    "lucide-vue-next": "^0.312.0",
-    "prismjs": "^1.29.0",
-    "embla-carousel-vue": "^8.5.1",
-    "vaul-vue": "^0.4.1",
-    "vue-sonner": "^2.0.9",
-    "vee-validate": "^4.15.1",
-    "@vee-validate/zod": "^4.15.1",
-    "zod": "^3.25.76",
-    "vue-codemirror": "^6.1.1",
-    "codemirror": "^6.0.1",
-    "@codemirror/view": "^6.26.3",
-    "@codemirror/state": "^6.4.1",
-    "@codemirror/language": "^6.10.1",
-    "@codemirror/search": "^6.5.6",
-    "@codemirror/lang-rust": "^6.0.1",
-    "@codemirror/lang-python": "^6.1.6",
-    "@codemirror/lang-javascript": "^6.2.2",
-    "@codemirror/lang-markdown": "^6.2.5",
-    "@codemirror/lang-json": "^6.0.1"
+{}
   }},
   "devDependencies": {{
     "@vitejs/plugin-vue": "^5.0.0",
@@ -230,7 +368,10 @@ fn generate_package_json(
     "@types/prismjs": "^1.26.0"
   }}
 }}
-"#, name, router_dep, i18n_dep, extra_lines)
+"#,
+        name,
+        deps_body
+    )
 }
 
 /// Plan 413/421: the CodeEditor CodeMirror shell component. Wraps
@@ -267,7 +408,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { EditorView } from '@codemirror/view'
 import { StreamLanguage } from '@codemirror/language'
-import { SearchQuery, setSearchEffect, search as searchPanel } from '@codemirror/search'
+import { SearchQuery, setSearchQuery, search as searchPanel } from '@codemirror/search'
 import type { Extension } from '@codemirror/state'
 import { rust } from '@codemirror/lang-rust'
 import { python } from '@codemirror/lang-python'
@@ -354,7 +495,7 @@ const extensions = computed(() => {
     ext.push(EditorView.theme({ '&': { fontSize: `${props.fontSize}px` } }))
   }
   // Plan 421 P1: 搜索面板(basicSetup 只带 searchKeymap,不带面板本体);
-  // Ctrl+F 打开面板,查询词来自 search prop(见下方 watch → setSearchEffect,
+  // Ctrl+F 打开面板,查询词来自 search prop(见下方 watch → setSearchQuery,
   // 正则、全量 live-highlight,对齐 iced 端 search 语义)。
   ext.push(searchPanel({ top: true }))
   // Plan 421 P2: oncursor — updateListener selectionSet 触发,rAF 节流。
@@ -386,11 +527,14 @@ const on_ready = (payload: { view: EditorView }) => {
   if (props.search) applySearch(props.search)
 }
 
-// Plan 421 P1: search prop(正则)→ setSearchEffect,全量 live-highlight
+// Plan 421 P1: search prop(正则)→ setSearchQuery,全量 live-highlight
 // 所有匹配(iced 端 418 §8.8 的 live-highlight 语义)。
+// Plan 442 P0-2: @codemirror/search@6 实际导出的是 setSearchQuery ——
+// 原模板用的那个 Effect 拼写名不存在于该包导出面,fresh checkout 的
+// vue-tsc 必炸(musk-038 待澄清 #10)。
 const applySearch = (pattern: string) => {
   view.value?.dispatch({
-    effects: setSearchEffect.of(new SearchQuery({ search: pattern, regexp: true })),
+    effects: setSearchQuery.of(new SearchQuery({ search: pattern, regexp: true })),
   })
 }
 watch(() => props.search, (p) => applySearch(p || ''))
@@ -954,7 +1098,7 @@ fn write_project_files(
     output_path: &Path,
     name: &str,
     vue_code: &str,
-    _components: &[String],
+    usage: &VueDependencyUsage,
     has_routes: bool,
     extra_deps: &[(String, String)],
     style_files: &[String],
@@ -962,7 +1106,7 @@ fn write_project_files(
     locale_files: &[String],
 ) -> Result<(), String> {
     // package.json
-    let package_json = generate_package_json(name, has_routes, i18n.enabled, extra_deps);
+    let package_json = generate_package_json(name, has_routes, i18n.enabled, extra_deps, usage);
     fs::write(output_path.join("package.json"), package_json)
         .map_err(|e| format!("Failed to write package.json: {}", e))?;
 
@@ -986,14 +1130,10 @@ fn write_project_files(
     fs::write(output_path.join("components.json"), components_json)
         .map_err(|e| format!("Failed to write components.json: {}", e))?;
 
-    // Plan 413: CodeEditor CodeMirror shell (write-if-missing).
-    let code_editor_vue = output_path.join("src").join("components").join("CodeEditor.vue");
-    if !code_editor_vue.exists() {
-        std::fs::create_dir_all(code_editor_vue.parent().unwrap())
-            .map_err(|e| format!("Failed to create components dir: {}", e))?;
-        fs::write(&code_editor_vue, generate_code_editor_component())
-            .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
-    }
+    // Plan 442 P0-1: CodeEditor shell synced to actual usage (unused →
+    // pruned, else vue-tsc breaks on its codemirror imports once the
+    // deps are no longer declared).
+    sync_code_editor_shell(output_path, usage)?;
 
     // vite.config.ts
     let vite_config = generate_vite_config();
@@ -2330,7 +2470,7 @@ export default router
             &self.output_dir,
             &self.name,
             &self.app_vue_code,
-            &self.shadcn_components,
+            &self.dependency_usage(),
             self.has_routes,
             &self.npm_deps,
             &style_copies,
@@ -2412,19 +2552,25 @@ export default router
     /// imports './router' for routed projects, so every scaffold/run path
     /// must leave this file in place — the incremental scaffolding path
     /// historically skipped it, breaking vite import resolution.
+    /// Plan 442 P0-1: dependency usage over the full generated corpus
+    /// (App.vue + every page/component SFC) — the input for
+    /// [`generate_package_json`]'s conditional emission.
+    pub fn dependency_usage(&self) -> VueDependencyUsage {
+        let mut corpus = self.app_vue_code.clone();
+        for (_, _, code, _) in &self.components {
+            corpus.push_str(code);
+        }
+        VueDependencyUsage::detect(&corpus)
+    }
+
     /// Plan 413: ensure the CodeEditor CodeMirror shell exists (scaffolded
     /// built-in; write-if-missing so incremental regen never clobbers user
-    /// edits to it).
+    /// edits to it). Plan 442 P0-1: usage-aware — apps that consume no
+    /// code_editor widget get no shell (and its codemirror deps), and a
+    /// previously scaffolded untouched shell is pruned.
     pub fn ensure_code_editor_component(&self) -> AutoResult<()> {
-        let path = self.output_dir.join("src").join("components").join("CodeEditor.vue");
-        if path.exists() {
-            return Ok(());
-        }
-        std::fs::create_dir_all(path.parent().unwrap())
-            .map_err(|e| format!("Failed to create components dir: {}", e))?;
-        std::fs::write(&path, generate_code_editor_component())
-            .map_err(|e| format!("Failed to write CodeEditor.vue: {}", e))?;
-        Ok(())
+        sync_code_editor_shell(&self.output_dir, &self.dependency_usage())
+            .map_err(|e| e.into())
     }
 
     pub fn ensure_router_file(&self) -> AutoResult<()> {
@@ -2475,7 +2621,7 @@ export default router
             output_path,
             &self.name,
             &self.app_vue_code,
-            &self.shadcn_components,
+            &self.dependency_usage(),
             self.has_routes,
             &self.npm_deps,
             &style_copies,
@@ -2571,17 +2717,20 @@ export default router
         println!("{}", "  ✓ Regenerated index.html".bright_green());
 
         // Regenerate package.json if outdated (e.g., missing @types/prismjs,
-        // or missing vue-i18n when i18n is enabled — Plan musk-022 Phase 2)
+        // or missing vue-i18n when i18n is enabled — Plan musk-022 Phase 2;
+        // or optional deps drifted from actual usage — Plan 442 P0-1)
         let pkg_path = self.output_dir.join("package.json");
         if pkg_path.exists() {
             let existing_pkg = fs::read_to_string(&pkg_path)
                 .map_err(|e| format!("Failed to read package.json: {}", e))?;
             let needs_i18n = self.i18n.enabled && !existing_pkg.contains("vue-i18n");
+            let usage = self.dependency_usage();
             if !existing_pkg.contains("@types/prismjs")
                 || !existing_pkg.contains("onlyBuiltDependencies")
                 || needs_i18n
+                || package_json_deps_drifted(&existing_pkg, &usage)
             {
-                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps);
+                let new_pkg = generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage);
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
                 println!("{}", "  ✓ Updated package.json".bright_green());
@@ -3678,17 +3827,118 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
 mod tests {
     use super::*;
 
-    /// Plan 413/421: the scaffold ships the CodeMirror deps (tree-shaken when
-    /// unused) and the CodeEditor shell component template.
+    /// Plan 442 P0-1: apps that consume none of the optional features
+    /// declare none of the optional deps (the pre-442 scaffold hardcoded
+    /// the full list in every package.json — musk-038 待澄清 #9).
     #[test]
-    fn package_json_includes_codemirror_deps() {
-        let pkg = generate_package_json("demo", false, false, &[]);
+    fn package_json_base_deps_only_without_features() {
+        let pkg = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
+        for dep in [
+            "vue-codemirror", "codemirror", "@codemirror/view", "@codemirror/state",
+            "@codemirror/language", "@codemirror/search", "@codemirror/lang-rust",
+            "vue-sonner", "reka-ui", "class-variance-authority", "vaul-vue",
+            "vee-validate", "@vee-validate/zod", "zod", "embla-carousel-vue",
+            "@vueuse/core",
+        ] {
+            assert!(!pkg.contains(&format!("\"{}\"", dep)), "{} leaked: {dep}", pkg);
+        }
+        // Base scaffold deps stay.
+        assert!(pkg.contains("\"vue\""), "{pkg}");
+        assert!(pkg.contains("\"clsx\""), "{pkg}");
+        assert!(pkg.contains("\"tailwind-merge\""), "{pkg}");
+        assert!(pkg.contains("\"lucide-vue-next\""), "{pkg}");
+        assert!(pkg.contains("\"prismjs\""), "{pkg}");
+    }
+
+    /// Plan 413/421/442: a consumed code_editor widget ships the CodeMirror
+    /// dep set (matching the CodeEditor.vue shell's actual imports).
+    #[test]
+    fn package_json_includes_codemirror_deps_when_code_editor() {
+        let usage = VueDependencyUsage { code_editor: true, ..Default::default() };
+        let pkg = generate_package_json("demo", false, false, &[], &usage);
         assert!(pkg.contains("\"vue-codemirror\""), "{pkg}");
+        assert!(pkg.contains("\"codemirror\""), "{pkg}");
+        assert!(pkg.contains("\"@codemirror/view\""), "{pkg}");
+        assert!(pkg.contains("\"@codemirror/state\""), "{pkg}");
         assert!(pkg.contains("\"@codemirror/lang-rust\""), "{pkg}");
         // Plan 421: the shell's new imports (StreamLanguage + search).
         assert!(pkg.contains("\"@codemirror/language\""), "{pkg}");
         assert!(pkg.contains("\"@codemirror/search\""), "{pkg}");
-        // The shell component renders vue-codemirror with the prop contract.
+    }
+
+    /// Plan 442 P0-1: per-component-group emission (button → reka-ui+cva,
+    /// drawer → vaul-vue, form → vee-validate+zod, carousel → embla +
+    /// @vueuse/core) and toast() → vue-sonner.
+    #[test]
+    fn package_json_component_groups_conditional() {
+        let all = VueDependencyUsage {
+            code_editor: false,
+            toast: true,
+            button: true,
+            drawer: true,
+            form: true,
+            carousel: true,
+            sidebar: false,
+        };
+        let pkg = generate_package_json("demo", false, false, &[], &all);
+        assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
+        assert!(pkg.contains("\"reka-ui\""), "{pkg}");
+        assert!(pkg.contains("\"class-variance-authority\""), "{pkg}");
+        assert!(pkg.contains("\"vaul-vue\""), "{pkg}");
+        assert!(pkg.contains("\"vee-validate\""), "{pkg}");
+        assert!(pkg.contains("\"@vee-validate/zod\""), "{pkg}");
+        assert!(pkg.contains("\"zod\""), "{pkg}");
+        assert!(pkg.contains("\"embla-carousel-vue\""), "{pkg}");
+        assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
+        // A single consumed group doesn't drag the others in.
+        let only_toast = VueDependencyUsage { toast: true, ..Default::default() };
+        let pkg = generate_package_json("demo", false, false, &[], &only_toast);
+        assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
+        assert!(!pkg.contains("\"reka-ui\""), "{pkg}");
+        assert!(!pkg.contains("\"vaul-vue\""), "{pkg}");
+        assert!(!pkg.contains("\"embla-carousel-vue\""), "{pkg}");
+    }
+
+    /// Plan 442 P0-1: marker detection over the generated corpus — the
+    /// closing quote keeps `ui/button` from matching `ui/button-group`.
+    #[test]
+    fn dependency_usage_detects_markers() {
+        let usage = VueDependencyUsage::detect(concat!(
+            "import CodeEditor from '@/components/CodeEditor.vue'\n",
+            "import { toast } from 'vue-sonner'\n",
+            "import { UiButton } from '@/components/ui/button'\n",
+        ));
+        assert!(usage.code_editor && usage.toast && usage.button);
+        assert!(!usage.drawer && !usage.form && !usage.carousel && !usage.sidebar);
+
+        let usage = VueDependencyUsage::detect(
+            "import { UiButtonGroup } from '@/components/ui/button-group'\n",
+        );
+        assert!(!usage.button);
+
+        let usage = VueDependencyUsage::detect("");
+        assert_eq!(usage, VueDependencyUsage::default());
+    }
+
+    /// Plan 442 P0-1: the sync-path drift check fires in both directions —
+    /// declared-but-unused (the full-hardcoded era) and used-but-missing.
+    #[test]
+    fn package_json_drift_detection() {
+        let legacy_full = generate_package_json(
+            "demo", false, false, &[],
+            &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() },
+        );
+        assert!(!package_json_deps_drifted(&legacy_full, &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() }));
+        // Same pkg, app no longer uses the features → drifted (prune).
+        assert!(package_json_deps_drifted(&legacy_full, &VueDependencyUsage::default()));
+        // Minimal pkg, app gained a feature → drifted (add).
+        let minimal = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
+        assert!(package_json_deps_drifted(&minimal, &VueDependencyUsage { toast: true, ..Default::default() }));
+    }
+
+    /// Plan 413/421: the CodeEditor shell component template contract.
+    #[test]
+    fn code_editor_component_template_contract() {
         let component = generate_code_editor_component();
         assert!(component.contains("vue-codemirror"), "{component}");
         assert!(component.contains("defineProps"), "{component}");
@@ -3698,7 +3948,10 @@ mod tests {
         assert!(component.contains("highlightCurrentLine"), "{component}");
         assert!(component.contains(":tab-size=\"tabSize\""), "{component}");
         assert!(component.contains("fontSize"), "{component}");
-        assert!(component.contains("setSearchEffect"), "{component}");
+        // Plan 442 P0-2: search 注入走 setSearchQuery(setSearchEffect 在
+        // @codemirror/search@6 导出面不存在,见 musk-038 待澄清 #10)。
+        assert!(component.contains("setSearchQuery.of("), "{component}");
+        assert!(!component.contains("setSearchEffect"), "{component}");
         assert!(component.contains("searchPanel({ top: true })"), "{component}");
         assert!(component.contains("emit('cursor',"), "{component}");
         assert!(component.contains("emit('contextmenu',"), "{component}");
@@ -3870,13 +4123,13 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
 
     #[test]
     fn test_generate_package_json_includes_vue_i18n() {
-        let pkg = generate_package_json("demo", false, true, &[]);
+        let pkg = generate_package_json("demo", false, true, &[], &VueDependencyUsage::default());
         assert!(pkg.contains("\"vue-i18n\": \"^9.14.0\""), "package.json:\n{}", pkg);
     }
 
     #[test]
     fn test_generate_package_json_no_vue_i18n_when_disabled() {
-        let pkg = generate_package_json("demo", false, false, &[]);
+        let pkg = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
         assert!(!pkg.contains("vue-i18n"), "package.json should not mention i18n:\n{}", pkg);
     }
 
