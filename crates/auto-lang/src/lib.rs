@@ -121,8 +121,6 @@ pub mod trans;
 pub mod type_registry;
 // Plan 109: AutoDown Document Format
 pub mod autodown;
-// Plan 091: Extracted from universe.rs
-pub mod symbol;
 pub mod util;
 pub mod vm;
 // Plan 095: Compile-Time Execution Engine
