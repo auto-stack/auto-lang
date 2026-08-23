@@ -1,8 +1,10 @@
 # Plan 419: AutoVM 三层生命周期管理(作用域清理 / 逃逸分析 / Shared 升级)
 
-> **状态**: 🔔 **复活(2026-08-23 第三次复测)**。三 Phase 已落地,但 RC 金丝雀在
-> ash-gui(最大 VM 应用)抓到**确定性 UAF 未修**——已修三族之外还有第 4 族,
-> 首条命令提交即 panic。详见文末 §9「复活:ash-gui 确定性 UAF」。
+> **状态**: ✅ **复活已闭环(2026-08-23 根因修复,分支 419-uaf 待合并)**。
+> §9 的确定性 UAF 已定位修复:`json_to_vm_value` 外层臂漏「插入即 retain」
+> (§9.7),ash-gui 崩溃用例转绿、本仓 3125 测全过、canary 保持开启。
+> 三 Phase 落地结论不变;此前「第 4 族」实为 native 构造路径的获取缺口,
+> 非指令族记账缺口。
 > 原归档结论(三 Phase 落地 + 19 测 + a2r golden)仍成立,问题在覆盖面外。
 > Phase 1 堆对象 RC(0c1dc0d5)/ Phase 2 池 RC+freelist+pinned(9bc4e671)/
 > Phase 3 借用接线 + 写捕获 a2r 升级(见 git log)。§2.2/§3.2/§4.6 里程碑
@@ -440,3 +442,69 @@ iced update → renderer.rs:6677(run_dynamic_iced update 闭包)
 - KNOWN-DEBT-AND-RISKS.md「419-P1/P2 RC canary」条目(本节的索引处);
 - auto-shell docs/plans/060 §第五/十五/十六轮(静默退出债 + RC 发现史)、
   docs/plans/061 §3(基线规则:修复后合并 plan-061 外部后端分支)。
+
+### 9.7 定位与修复(2026-08-23,worktree 419-uaf)
+
+**复现 rig**(`D:/autostack/diag-419/`,与原报告会话等价):auto-shell
+main(2f7774a) detached 检出 + auto-lang「plan-061 ⊕ master」合并分支
+(`419-uaf-061`)。配对硬约束:宿主桥 backend_abi 在 plan-061 侧、RC
+canary 与崩点行号在 master 侧,缺一不可(auto-shell@38290ad + master
+的组合会回退跑 auto-edit 示例,不触发病径;auto-shell main + 纯 master
+编不过)。私有 junction `diag-419/auto-lang`、`diag-419/auto-ai`,不动
+共享 `.worktrees` 接线。
+
+**埋点**(随修复留在代码,`P419_UAF_TRACE` env 门控,关闭零开销;支持
+`4000111` 单 id / `lo-hi` 区间 / 空值缺省 [4M, 4M+1500]):区间内
+ALLOC/FREE/retain/release/ACCESS(GET_GENERIC_FIELD)全事件;FREE 与
+retain-after-free(复活竞态)附强制栈;窄区间时 ALLOC 与首次获取(0→1)
+附栈。
+
+**三点连线**(crash id **4000093**,分配序确定,两轮复现同 id):
+- **ALLOC** #93 ListValue:`shim_json_to_value → json_to_vm_value(_inner)`
+  ——init handler 期间构造的 JSON 数组,挂在临时 `__json_object`(4000095)下;
+- **唯一 retain**(0→1):LOAD 类指令 `rc_push` 压栈(copy-on-load),随后
+  SET_GENERIC_FIELD 弹出并「转移」进组件 state 字段;
+- **FREE**:`STORE_LOC_0` 覆盖局部槽 → 临时 `__json_object` 死亡 →
+  **级联子释放释放了从未 retain 过的 4000093** → rc 1→0 提前释放 + 墓碑;
+- **ACCESS**(panic):iced 首帧 view() → `dynamic_view` →
+  `read_all_state_materialized` → `vmref_to_vec` → `get_heap_object`
+  命中墓碑(rc.rs canary)。
+
+**根因**:`json_to_vm_value` **外层** Array/Object 臂组装顶层容器时漏
+「插入即 retain」——内层 `_inner` 两臂 Plan 419 已落地,外层漏了同款。
+顶层容器的直接子引用被 `child_refs` 声明却无持有计数,父死连坐释放时
+抵消他人真实 stake,子对象提前死亡(state 字段仍持引用)。属 §9.3 **H1
+「过释放」家族**,但机制是 **native 构造路径的获取缺口**,非指令族 load
+路径缺口;H0(启发式误判)与 H2(重入陈旧 VmRef)在本崩例均不成立。
+报告 §9.2 的两点推断修正:崩点不在 engine.rs:3936/GET_GENERIC_FIELD
+(实际在首帧 view 的状态物化);触发不在 submit 主路径(init 期即埋雷,
+首帧引爆)。
+
+**修复**(a76e9cbe):外层 `list.push`/`fields.push` 前对 `Value::VmRef`
+子值 `rc_retain_id`,与 inner 对齐。同类审计:native.rs 列表克隆路径
+已有 retain;http_server.rs 构造点全在 `#[test]`;其余 native 均推字符串
+经 `json_to_vm_value` 转换——无平行病灶。
+
+**修复后记账**(同 id 4000093):ALLOC → 0→1(构造插入,新增的账)→
+1→2(LOAD 压栈)→ 2→1(父死连坐,有账可抵)→ 存活至会话结束。零
+FREE、零 canary。
+
+**验收**:
+- 崩溃用例 `test_command_exec` 全 2 例(成功+失败路径)PASSED,两轮复跑
+  稳定,VM 日志零 canary/panic;
+- ash-gui 全量:62 passed + 44 skipped + 1 failed——唯一失败
+  `test_mcp_server_responds` 断言「13 工具」,合并栈实际 14(master 新增
+  `autoui_press_sequence`),纯版本错配与修复无关,plan-061 合并后
+  auto-shell 侧需同步改断言;
+- 本仓 auto-lang lib:**3125 passed / 0 failed**(全量初跑 1 例
+  ui_console ring flaky——并行共享全局态,单测与复跑皆绿,与本改动无关);
+- canary 保持开启。
+
+**遗留**:
+- diag rig(`D:/autostack/diag-419/`:probe.py + vm-run1~9.log + auto-shell
+  detached worktree + 双 junction)已在收尾时拆除——原始日志为会话内
+  临时证据,结论均已在本文档;复验路径见本节「复现 rig」+ P419_UAF_TRACE;
+- `419-uaf-061` 分支为复现专用合并栈(plan-061 ⊕ master + 埋点 + 修复),
+  修复本体已 cherry-pick 回 `419-uaf`(master 基),随收尾一并清理;
+- §9.1 的「三次复测」id(4000111/4001245)与本轮(4000093)不同属分配序
+  浮动,病灶同一(顶层 JSON 容器子引用零 retain 的确定性缺口)。

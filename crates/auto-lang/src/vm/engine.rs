@@ -838,6 +838,20 @@ impl AutoVM {
     /// ```
     pub fn insert_heap_object<T: HeapObject + Send + Sync + 'static>(&self, obj: T) -> u64 {
         let id = self.heap_object_id_gen.fetch_add(1, Ordering::Relaxed);
+        if crate::vm::rc::p419_uaf_traces(id) {
+            eprintln!(
+                "[P419UAF] ALLOC id={} (#{}) type={:?}",
+                id,
+                id - crate::vm::rc::HEAP_ID_BASE,
+                obj.type_tag()
+            );
+            if crate::vm::rc::p419_uaf_narrow() {
+                eprintln!(
+                    "[P419UAF] alloc site:\n{}",
+                    std::backtrace::Backtrace::force_capture()
+                );
+            }
+        }
         self.heap_objects.insert(id, Arc::new(RwLock::new(obj)));
         // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
         // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
@@ -3933,6 +3947,30 @@ impl AutoVM {
                         };
 
                         if let Some(id) = obj_id {
+                            // Plan 419 §9.4 ②:访问点打点——tag 来源直接判
+                            // H0(TAG_I32≥4M 启发式误判)vs H1/H2(真悬垂)。
+                            if crate::vm::rc::p419_uaf_traces(id) {
+                                let via = if auto_val::is_object(nv) {
+                                    "TAG_OBJECT"
+                                } else if auto_val::is_i32(nv) {
+                                    "TAG_I32-heur"
+                                } else {
+                                    "other"
+                                };
+                                // 裸表探测(绕过 canary):log 先行,随后真正的
+                                // get_heap_object 若命中 tombstone 即 panic。
+                                let live = self.heap_objects.get(&id).is_some();
+                                let tomb = self.tombstones.get(&id).is_some();
+                                let fn_name = task
+                                    .call_stack
+                                    .last()
+                                    .and_then(|f| f.fn_name.clone())
+                                    .unwrap_or_else(|| "<root>".to_string());
+                                eprintln!(
+                                    "[P419UAF] ACCESS GET_GENERIC_FIELD id={} via={} field={} live={} tomb={} fn='{}' ip=0x{:x}",
+                                    id, via, field_index, live, tomb, fn_name, task.ip
+                                );
+                            }
                             if let Some(obj) = self.get_heap_object(id) {
                                 let guard = obj.read().unwrap();
                                 let is_generic_instance =
