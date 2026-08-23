@@ -188,6 +188,64 @@ pub fn theme_name(dark: bool, accent: &str) -> String {
     theme_name_inner(dark, accent)
 }
 
+/// Plan 442 A6: highlight-only API for read-only code rendering — the
+/// consumer is the VM render target's markdown `code_block` (musk-038 T16
+/// decision (a): syntect-native highlighting; the vue track keeps
+/// prismjs, visual near-parity per the 038 T15 matrix). No cosmic-text
+/// buffer, no editor registry entry — plain syntect spans over the
+/// shared singleton, so it is callable from any render path.
+///
+/// Returns consecutive text segments merged by color: `None` = the
+/// theme's base foreground (render with the surrounding text color),
+/// `Some((r, g, b))` = token color from the pre-registered `autoui-*`
+/// theme for (dark, accent). Unknown languages and `lang: "none"`
+/// degrade to a single unstyled segment.
+pub fn highlight_segments(
+    lang: &str,
+    text: &str,
+    dark: bool,
+    accent: &str,
+) -> Vec<(String, Option<(u8, u8, u8)>)> {
+    use syntect::easy::HighlightLines;
+    use syntect::util::LinesWithEndings;
+
+    let fallback = || vec![(text.to_string(), None)];
+    let Some(ext) = lang_to_extension(lang) else {
+        return fallback();
+    };
+    let system = syntax_system();
+    let Some(theme) = system.theme_set.themes.get(&theme_name(dark, accent)) else {
+        return fallback();
+    };
+    let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
+        return fallback();
+    };
+    let base_fg = theme
+        .settings
+        .foreground
+        .map(|fg| (fg.r, fg.g, fg.b));
+
+    let mut hl = HighlightLines::new(syntax, theme);
+    let mut out: Vec<(String, Option<(u8, u8, u8)>)> = Vec::new();
+    for line in LinesWithEndings::from(text) {
+        let Ok(regions) = hl.highlight_line(line, &system.syntax_set) else {
+            continue;
+        };
+        for (style, seg) in regions {
+            let rgb = (style.foreground.r, style.foreground.g, style.foreground.b);
+            let color = if base_fg == Some(rgb) { None } else { Some(rgb) };
+            match out.last_mut() {
+                Some((prev, prev_color)) if *prev_color == color => prev.push_str(seg),
+                _ => out.push((seg.to_string(), color)),
+            }
+        }
+    }
+    if out.is_empty() {
+        return fallback();
+    }
+    out
+}
+
 /// Reset all buffers' syntax after the syntax set changed (not currently
 /// needed — the set is static after boot).
 #[allow(dead_code)]
@@ -234,5 +292,50 @@ mod tests {
         assert_eq!(lang_to_extension("auto"), Some("at"));
         assert_eq!(lang_to_extension("none"), None);
         assert_eq!(lang_to_extension("python"), Some("py"));
+    }
+
+    /// Plan 442 A6: the highlight-only contract — segments concatenated
+    /// reproduce the input, keywords/strings get non-base colors, unknown
+    /// langs and `none` degrade to a single unstyled segment, and adjacent
+    /// same-color regions merge (grammars split comment punctuation from
+    /// the comment body and string quotes from the body — exact token
+    /// boundaries are grammar-defined, the contract is color runs).
+    #[test]
+    fn highlight_segments_roundtrip_and_colors() {
+        let code = "fn main() { let s = \"hi\"; }";
+        let segs = highlight_segments("rust", code, true, "indigo");
+        let joined: String = segs.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(joined, code);
+
+        // Keywords (`fn`/`let`) and string bodies must carry non-base colors.
+        // String quotes are separate grammar regions — match by content.
+        let fn_seg = segs.iter().find(|(s, _)| s == "fn").expect("fn segment");
+        assert!(fn_seg.1.is_some(), "keyword must be colored: {segs:?}");
+        let str_seg = segs.iter().find(|(s, _)| s.contains("hi")).expect("string segment");
+        assert!(str_seg.1.is_some(), "string must be colored: {segs:?}");
+        // Base-fg runs are None and merge across ident+space boundaries
+        // (e.g. " x " between `let` and `=` arrives as one unstyled run).
+        assert!(segs.iter().any(|(_, c)| c.is_none()), "base-fg runs are None: {segs:?}");
+
+        // Degradations: unknown language token, explicit none, empty text.
+        assert_eq!(
+            highlight_segments("none", code, true, "indigo"),
+            vec![(code.to_string(), None)]
+        );
+        assert_eq!(
+            highlight_segments("", code, true, "indigo"),
+            vec![(code.to_string(), None)]
+        );
+        assert_eq!(highlight_segments("no-such-lang", code, true, "indigo").len(), 1);
+        assert_eq!(
+            highlight_segments("rust", "", true, "indigo"),
+            vec![("".to_string(), None)]
+        );
+
+        // Multi-line input roundtrips with the trailing newline preserved.
+        let multi = "let x = 1;\nfn f() {}\n";
+        let segs = highlight_segments("rust", multi, true, "indigo");
+        let joined: String = segs.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(joined, multi);
     }
 }

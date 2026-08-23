@@ -544,6 +544,13 @@ pub enum StyleClass {
 
     /// position: sticky — VM degrades to in-flow position
     Sticky,
+
+    /// Plan 442 A6: `lang-<token>` metadata class carrying the code
+    /// block's language (e.g. `lang-rust`) from the view builder to the
+    /// renderer's syntax-highlight path. Not a visual utility — every
+    /// style adapter treats it as inert; the iced renderer reads it to
+    /// pick the syntect grammar for read-only code highlighting.
+    CodeLang(String),
 }
 
 impl StyleClass {
@@ -579,6 +586,20 @@ impl StyleClass {
             };
 
         // ========== Spacing (L1 + L2) ==========
+
+        // Plan 442 A6: lang-<token> — code-language metadata (checked
+        // before the spacing prefixes; no Tailwind utility starts with
+        // "lang-"). Token charset keeps the class a single CSS-safe word
+        // (rust, py, c++, objective-c ...).
+        if let Some(rest) = class.strip_prefix("lang-") {
+            if !rest.is_empty()
+                && rest
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '#' | '.' | '_' | '-'))
+            {
+                return Ok(StyleClass::CodeLang(rest.to_string()));
+            }
+        }
 
         // Parse padding: p-{0-12} or p-[Npx]
         if let Some(rest) = class.strip_prefix("p-") {

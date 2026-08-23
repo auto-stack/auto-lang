@@ -128,6 +128,12 @@ pub fn get_support(tag: &str) -> TagSupport {
             "renders code text with a language label; Prism palette not aligned (411 P2-A①)",
         ),
         "code_editor" | "codeEditor" | "codeeditor" => TagSupport::full(),
+        // Plan 442 A4: svg 子树序列化为 SVG 文档,经 resvg(svg::Handle 缓存)
+        // 渲染;单色 currentColor 文档走画时着色。动态属性/动画不支持。
+        "svg" => TagSupport::partial(
+            &[],
+            "serialized SVG document rendered via resvg; literal attrs only (viewBox/d/fill/...), dynamic attrs and animation unsupported",
+        ),
         "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
             TagSupport::partial(
                 &[],
