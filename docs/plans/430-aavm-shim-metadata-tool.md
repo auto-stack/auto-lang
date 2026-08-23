@@ -147,6 +147,28 @@ status: draft
 3. B3 的 diff 报告归档；发现的手写臂可疑行为（有损截断等）有逐条裁决记录；
 4. 40 crate 迁移进度表（F1）持续回填本文件。
 
-## 执行结果
+## 执行结果（进行中,2026-08-23）
 
-（待执行后回填）
+- **Phase A**（c0c8f50d）：nightly rustdoc JSON v53 解析打通（签名/self 可变性/泛型齐备）；
+  stable 1.97 不支持；std 本体配方暂未打通 → v1 决策：std 走手编目录，三方走 rustdoc。
+  元信息 shim 包格式 v1 定稿（报告 430-a1）。
+- **Phase B**（566680b8）：crates/shim-metadata 工具落地——rustdoc v53 解析器、6 条规律分类器、
+  mono/skip/note 例外表、std 目录 v1、std 追加段代码生成器；std-plan 冒烟 61 plans/0 skips。
+- **Phase D+E 主体**（本轮）：
+  - D1 接线：generated_std.rs（生成段，~890 行）编入 auto-lang，dispatch 3000 手写臂之前优先调用；
+    push_rust_obj 提为 pub(crate)。
+  - 生成器迭代（借 rustc 当检查器）：turbofish、Result<Option<()>> 签名、借用块作用域内
+    .to_string()/.copied()/.map、usize 参数、owned-key 方法、ferr 错误包装。
+  - **Vec 全链路打通**：10 万次 push + len + is_empty 输出全部正确（429-B2 的 len=0 bug 场景修复）。
+  - codegen 修复：泛型构造器路径（Plan 087）与 use.rust 导入类型撞名时 rust 导入优先
+    （Vec.new 此前被劫持为 GenericInstanceData 占位——429-B2 bug 的第二根因）。
+  - **E 阶段设计裁定**（实测驱动，修订原计划）：
+    1. String 是标量池值非堆对象——方法走引擎 str 原生路径（len/contains/to_uppercase/replace/trim
+       实测全对），生成段只留 String.from/new 静态构造器；
+    2. HashMap/HashSet 由 Auto 原生 Map 路径拥有（auto.hashmap natives + a2r 真 HashMap 双路径
+       golden 已证），生成段不覆盖，避免表示分裂；AAVM 规范：Map 用带类型注解的 Auto 语法；
+    3. Vec 用生成 shim（opaque Vec<i64> 堆对象）。
+  - 已知长尾（后续）：`use.rust std::collections::HashMap` 导入语句会使构造器推断路径劣化
+    （带类型注解但不 import 可用）；`String.from(x) + y` 拼接场景返回句柄——均登记为
+    codegen 推断缺口，进本计划 F 阶段或 242 tracker。
+- **Phase C/F**：未开始（cdylib 三方路径、40 crate 迁移、known_signature 替换）——留待后续会话。

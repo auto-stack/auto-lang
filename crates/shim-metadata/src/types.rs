@@ -7,6 +7,7 @@ pub enum Ty {
     U32,
     I64,
     U64,
+    Usize,
     F32,
     F64,
     Bool,
@@ -31,6 +32,7 @@ impl Ty {
         match self {
             Ty::I32 => "i32".into(),
             Ty::U32 => "u32".into(),
+            Ty::Usize => "usize".into(),
             Ty::I64 => "i64".into(),
             Ty::U64 => "u64".into(),
             Ty::F32 => "f32".into(),
@@ -89,6 +91,8 @@ pub enum ArgPlan {
     TakeStr,
     ScalarI32,
     ScalarI64,
+    /// usize 型参数(索引/长度):按 i64 弹栈,传参时 as usize
+    ScalarUsize,
     ScalarF64,
     ScalarBool,
     /// 接收者堆句柄
@@ -102,6 +106,8 @@ pub struct MarshalPlan {
     pub method: ShimMethod,
     pub ret: RetPlan,
     pub args: Vec<ArgPlan>,
+    /// 返回 Option<&T>(借用引用)→ 生成 .copied() 装箱
+    pub copy_result: bool,
 }
 
 /// 分类失败原因(→ 例外表/跳过清单)。

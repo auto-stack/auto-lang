@@ -34,6 +34,8 @@
 mod convert;
 mod error;
 pub mod stdlib;
+// Plan 430: shim-metadata 生成的 std 追加段(dispatch 3000 优先于手写臂)
+mod generated_std;
 pub mod rust_stdlib;
 pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
 pub mod websocket;   // Plan 350: WebSocket client

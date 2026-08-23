@@ -69,13 +69,21 @@ pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
 }
 
 fn classify_one(m: &ShimMethod) -> Option<MarshalPlan> {
+    let key = format!("{}.{}", m.type_name, m.method);
+    // 规则 5 默认借用;owned-key 方法(insert 类)转移/克隆(v1 硬编码名单,后续入例外表)
+    const OWNED_KEY: &[&str] = &["HashMap.insert", "HashSet.insert"];
+    // Option<&T> → .copied()(v1 硬编码,后续入例外表)
+    const COPY_RESULT: &[&str] = &["Vec.get", "Vec.first", "Vec.last", "HashMap.get"];
+    let owned = OWNED_KEY.contains(&key.as_str());
     // 参数规划
     let mut args = Vec::new();
     for p in &m.params {
         args.push(match p {
+            Ty::Str if owned => ArgPlan::TakeStr,
             Ty::Str => ArgPlan::BorrowStr, // 规则 5:默认借用
             Ty::I32 | Ty::U32 => ArgPlan::ScalarI32,
             Ty::I64 | Ty::U64 => ArgPlan::ScalarI64,
+            Ty::Usize => ArgPlan::ScalarUsize,
             Ty::F32 | Ty::F64 => ArgPlan::ScalarF64,
             Ty::Bool => ArgPlan::ScalarBool,
             Ty::Opaque(_) => ArgPlan::OpaqueHandle,
@@ -86,7 +94,7 @@ fn classify_one(m: &ShimMethod) -> Option<MarshalPlan> {
     // 返回值规划(规则 1/3/6)
     let ret = match &m.ret {
         Ty::I32 | Ty::U32 => RetPlan::ScalarI32,
-        Ty::I64 | Ty::U64 => RetPlan::ScalarI64, // 规则 6:宽整型用 i64 槽,不做有损截断
+        Ty::I64 | Ty::U64 | Ty::Usize => RetPlan::ScalarI64, // 规则 6:宽整型用 i64 槽,不做有损截断
         Ty::F32 | Ty::F64 => RetPlan::ScalarF64,
         Ty::Bool => RetPlan::ScalarBool,
         Ty::Str => RetPlan::ScalarStr,
@@ -99,9 +107,11 @@ fn classify_one(m: &ShimMethod) -> Option<MarshalPlan> {
         Ty::Void => RetPlan::Void,
         Ty::Generic(_) => return None,
     };
+    let copy_result = COPY_RESULT.contains(&key.as_str());
     Some(MarshalPlan {
         method: m.clone(),
         ret,
         args,
+        copy_result,
     })
 }

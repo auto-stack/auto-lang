@@ -6853,7 +6853,7 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 // ============================================================================
 
 /// Push a Rust stdlib object onto the VM heap and push its handle.
-fn push_rust_obj<T: Any + Send + Sync + 'static>(
+pub(crate) fn push_rust_obj<T: Any + Send + Sync + 'static>(
     task: &mut AutoTask,
     vm: &AutoVM,
     type_name: &str,
@@ -6894,6 +6894,17 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
     let type_name: String = String::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(format!("rust_stdlib_dispatch: {}", e)))?;
+
+    // Plan 430 D1: 生成段(shim-metadata)优先;命中即返回,未命中回退手写臂。
+    match super::generated_std::generated_std_dispatch(
+        type_name.as_str(),
+        method.as_str(),
+        task,
+        vm,
+    )? {
+        Some(()) => return Ok(()),
+        None => {}
+    }
 
     match (type_name.as_str(), method.as_str()) {
         // std::time::Instant
