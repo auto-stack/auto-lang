@@ -1090,6 +1090,22 @@ pub enum Warning {
         span: SourceSpan,
     },
 
+    /// Plan 425 复审债务:widget 体块关键字拼写近失告警——view 可选化后,
+    /// 未知块关键字(如 `veiw {}`)静默解析为视图元素;与已知块关键字
+    /// Damerau-Levenshtein 距离为 1 且后随 `{` 时告警提示正确拼写。
+    #[error("suspicious block keyword")]
+    #[diagnostic(
+        code(auto_warning_W0009),
+        severity(warning),
+        help("'{found}' looks like a misspelling of the block keyword '{suggestion}' — it was parsed as a view element")
+    )]
+    SuspiciousBlockKeyword {
+        found: String,
+        suggestion: String,
+        #[label("did you mean '{suggestion}'?")]
+        span: SourceSpan,
+    },
+
     /// Plan 126: Invalid .go usage warning
     /// .go should only be applied to Future types
     #[error("invalid .go usage")]
