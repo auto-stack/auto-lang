@@ -793,6 +793,138 @@ pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 // ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
 // Both return "" on cancel/unavailable (headless CI included).
 
+/// Plan 428 debt fix: parent the blocking dialogs to the app's main
+/// window. The dialogs previously had NO owner — they could open BEHIND
+/// the app window ("frozen" UX) or, destroyed abnormally, leak the owner
+/// disabled forever (428 acceptance finding, KNOWN-DEBT-AND-RISKS 428).
+/// The HWND is discovered via Win32 (largest visible top-level window of
+/// this process — no iced plumbing needed) and cached for the process
+/// lifetime. Non-Windows targets keep the plain dialog.
+#[cfg(all(feature = "ui-dialog", target_os = "windows"))]
+mod dialog_parent {
+    use raw_window_handle::{
+        DisplayHandle, HasDisplayHandle, HasWindowHandle, RawWindowHandle, Win32WindowHandle,
+        WindowHandle,
+    };
+    use std::cell::Cell;
+    use std::num::NonZeroIsize;
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    struct Rect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
+        fn IsWindowVisible(hwnd: isize) -> i32;
+        fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
+        fn GetClassNameW(hwnd: isize, class: *mut u16, max: i32) -> i32;
+        fn GetWindowRect(hwnd: isize, rect: *mut Rect) -> i32;
+    }
+
+    thread_local! {
+        /// (hwnd, area) of the best main-window candidate so far.
+        static BEST: Cell<(isize, i64)> = const { Cell::new((0, -1)) };
+    }
+
+    extern "system" fn enum_cb(hwnd: isize, _lparam: isize) -> i32 {
+        // Skip invisible helpers (GPU/IME) and non-app windows.
+        if unsafe { IsWindowVisible(hwnd) } == 0 {
+            return 1;
+        }
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        if pid != std::process::id() {
+            return 1;
+        }
+        let mut buf = [0u16; 64];
+        let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) }.max(0) as usize;
+        let class = String::from_utf16_lossy(&buf[..n]);
+        // #32770 = Win32 dialog (a dialog can't own our dialog); the
+        // winit event target is a message-only-ish shim, not the window.
+        if class == "#32770" || class == "Winit Thread Event Target" {
+            return 1;
+        }
+        let mut r = Rect { left: 0, top: 0, right: 0, bottom: 0 };
+        if unsafe { GetWindowRect(hwnd, &mut r) } == 0 {
+            return 1;
+        }
+        let area = (r.right - r.left).max(0) as i64 * (r.bottom - r.top).max(0) as i64;
+        BEST.with(|b| {
+            if area > b.get().1 {
+                b.set((hwnd, area));
+            }
+        });
+        1
+    }
+
+    fn main_hwnd() -> Option<NonZeroIsize> {
+        static HWND: OnceLock<Option<NonZeroIsize>> = OnceLock::new();
+        *HWND.get_or_init(|| {
+            BEST.with(|b| b.set((0, -1)));
+            unsafe { EnumWindows(enum_cb, 0) };
+            let (hwnd, area) = BEST.with(|b| b.get());
+            (area > 0).then(|| NonZeroIsize::new(hwnd)).flatten()
+        })
+    }
+
+    /// rfd's `set_parent` bound: a Win32 HWND + the trivial Windows
+    /// display handle.
+    struct Owner(NonZeroIsize);
+
+    impl HasWindowHandle for Owner {
+        fn window_handle(&self) -> Result<WindowHandle<'_>, raw_window_handle::HandleError> {
+            let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
+            // SAFETY: the HWND came from EnumWindows on a live window and
+            // is cached for the process lifetime.
+            Ok(unsafe { WindowHandle::borrow_raw(raw) })
+        }
+    }
+
+    impl HasDisplayHandle for Owner {
+        fn display_handle(&self) -> Result<DisplayHandle<'_>, raw_window_handle::HandleError> {
+            Ok(DisplayHandle::windows())
+        }
+    }
+
+    /// Attach `dialog` to the main window when one was found.
+    pub fn attach(dialog: rfd::FileDialog) -> rfd::FileDialog {
+        match main_hwnd() {
+            Some(hwnd) => dialog.set_parent(&Owner(hwnd)),
+            None => dialog,
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// The handle wrappers must satisfy rfd's `set_parent` bound and
+        /// construct without error (the HWND value itself is opaque).
+        #[test]
+        fn owner_satisfies_rfd_parent_bound() {
+            let owner = Owner(NonZeroIsize::new(1).unwrap());
+            assert!(owner.window_handle().is_ok());
+            assert!(owner.display_handle().is_ok());
+            // set_parent takes `&W: HasWindowHandle + HasDisplayHandle`.
+            fn bound<W: HasWindowHandle + HasDisplayHandle>(_: &W) {}
+            bound(&owner);
+        }
+    }
+}
+
+#[cfg(all(feature = "ui-dialog", target_os = "windows"))]
+use dialog_parent::attach;
+#[cfg(all(feature = "ui-dialog", not(target_os = "windows")))]
+fn attach(dialog: rfd::FileDialog) -> rfd::FileDialog {
+    dialog
+}
+
 /// `dialog_open(filter) -> String` — filter is a `,. ;`-separated extension
 /// list (".at, .au"); empty disables filtering.
 #[cfg(feature = "ui-dialog")]
@@ -807,6 +939,7 @@ pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if !exts.is_empty() {
         dialog = dialog.add_filter("Files", &exts);
     }
+    dialog = attach(dialog);
     let path = dialog
         .pick_file()
         .map(|p| p.to_string_lossy().to_string())
@@ -824,6 +957,7 @@ pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if !default_name.is_empty() {
         dialog = dialog.set_file_name(default_name);
     }
+    dialog = attach(dialog);
     let path = dialog
         .save_file()
         .map(|p| p.to_string_lossy().to_string())

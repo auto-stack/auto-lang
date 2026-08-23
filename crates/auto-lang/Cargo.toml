@@ -50,7 +50,10 @@ code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "dep:two-face"]
 # Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
 # Both mount under ui-iced; each can also be enabled standalone.
 ui-clipboard = ["dep:arboard"]
-ui-dialog = ["dep:rfd"]
+# raw-window-handle: rfd::FileDialog::set_parent takes HasWindowHandle +
+# HasDisplayHandle (rwh 0.6 — same instance iced already locks) — used to
+# parent the blocking dialogs to the app's main window (Plan 428 debt fix).
+ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
 # Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
 # offline bounds assertions for the VM Row/layout bug matrix.
 iced-layout-tests = ["ui-iced", "dep:iced_test"]
@@ -135,6 +138,9 @@ iced_test = { version = "0.14", optional = true }
 arboard = { version = "3", optional = true }
 # Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.
 rfd = { version = "0.15", optional = true }
+# Plan 428 debt fix: parent those dialogs to the main window (rwh 0.6 —
+# version-locked with rfd/iced so the handle traits line up).
+raw-window-handle = { version = "0.6", optional = true }
 image = { version = "0.25", optional = true }
 # Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
 # iced 0.14.0's pin (0.15) — a second copy would break the Weak<Buffer>

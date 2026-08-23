@@ -71,7 +71,7 @@
 | 426 | setup 解释器侧 | `setup {}` 仅落 a2vue（script setup 顶层）；解释器每实例执行约定未实现（另实测：a2r 对 setup 块静默忽略）。AutoUI 运行时已合并回本仓（旧 ../auto-ui 仓已废弃）。**已立项 Plan 436**（a2r 止血/落地 + 解释器 L1 单实例语义 + 文档），实施点 `crates/auto-lang/src/ui/interpreter/`。 | `parser.rs` parse_setup_block_inner + 归档计划 §5 |
 | 426 | async setup | setup 内 `await` 编译期拒绝（async setup 需 Suspense 边界），单测锁定；支持另立任务。 | `parser.rs` stmt_expr_contains_await |
 | 426 | 模板 refs 解包 | setup 绑定的 refs 标注字段在模板中不自动解包（普通对象嵌套 ref 的 Vue 语义）；script 侧已注入 .value。继承 composable facade 机制。 | `ui_gen/ts_adapter.rs` facade_ref_fields |
-| 428 | 阻塞式文件对话框冻结 UI | `dialog_open/save` 用 rfd 同步 `pick_file()` 直接阻塞 UI 线程（handler 经 iced update 跑在主线程），且对话框**无父窗口**。428 实机验收实测：对话框模态期间主窗口输入死（VM/MCP 仍活——模态循环仍泵 iced 代理事件，故 MCP 注入键盘可用而真实键鼠死）；一旦对话框异常消失（远程桌面/窗口清扫等场景），`Show()` 不返回 → UI 线程永久卡死，进程内无解只能杀。修法方向：rfd `set_parent`（需 iced 窗口句柄 plumbed 到 shim）或异步 handler 框架；修复前 ActOpen/ActSave 对话框路径维持矩阵既有 out-of-scope 立场（AUTO_OPEN_PATH 旁路可测）。 | `vm/native.rs shim_dialog_open/save` + 428 计划 §7.5 |
+| 428 | ~~阻塞式文件对话框冻结 UI~~ ✅ 已修(2026-08-23 set_parent 落地):`dialog_open/save` 经 Win32 EnumWindows 就地发现主窗口 HWND(本进程最大可见顶层窗口,OnceLock 缓存),rfd `set_parent` 挂属主(raw-window-handle 0.6 直依赖,与 rfd/iced 同实例)——对话框永远浮于应用窗口之上,异常路径的属主禁用态泄漏随之消除。E2E 实证:对话框 GW_OWNER==主窗口、WM_CLOSE 干净取消(handler 完整收尾)、关闭后真实键盘恢复。**未做(残留风险低)**:pick_file 仍同步阻塞 UI 线程(模态期主窗口输入死属正常模态语义,代理事件仍泵,VM/MCP 活);若未来要求模态期主窗口可交互,需异步 handler 框架。 | `vm/native.rs dialog_parent` + 428 计划 §7.5 |
 
 ## 📋 未来增强（非风险，记录为后续优化方向）
 
