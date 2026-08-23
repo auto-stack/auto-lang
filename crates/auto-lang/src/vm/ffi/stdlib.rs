@@ -2101,6 +2101,11 @@ pub(crate) fn json_to_vm_value(
             let mut list: ListData<Value> = ListData::new();
             for elem in arr {
                 let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
+                // Plan 419 §9(复活): 外层容器组装同样「插入即 retain」——
+                // 与 inner 两臂对齐。此前此处漏 retain,顶层容器的直接子引用
+                // 无持有即被 child_refs 声明,父死连坐释放时抵消他人真实
+                // stake(ash-gui UAF:__json_object 子数组被提前释放)。
+                if let Value::VmRef(r) = &v { vm.rc_retain_id(r.id as u64); }
                 list.push(v);
             }
             let id = vm.insert_heap_object(list);
@@ -2112,7 +2117,10 @@ pub(crate) fn json_to_vm_value(
             let mut fields = Vec::with_capacity(obj.len());
             for (k, v) in obj {
                 field_names.push(k.clone());
-                fields.push(json_to_vm_value_inner(vm, v, depth + 1)?);
+                let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
+                // Plan 419 §9(复活): 同上,外层字段插入即 retain。
+                if let Value::VmRef(r) = &fv { vm.rc_retain_id(r.id as u64); }
+                fields.push(fv);
             }
             let inst = GenericInstanceData::new_with_names(
                 "__json_object".to_string(),
