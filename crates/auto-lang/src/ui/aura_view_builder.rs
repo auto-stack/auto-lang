@@ -1975,7 +1975,7 @@ let tabs_inner = View::Row {
                         .or_else(|| self.extract_children_text(children, bindings))
                         .unwrap_or_default();
                     let lang = self.extract_string(props, "lang").unwrap_or_default();
-                    let lang_label = if lang.is_empty() { "code".to_string() } else { lang };
+                    let lang_label = if lang.is_empty() { "code".to_string() } else { lang.clone() };
                     let header = View::Container {
                         child: Box::new(View::Text {
                             content: lang_label,
@@ -1984,9 +1984,18 @@ let tabs_inner = View::Row {
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
                     };
+                    // Plan 442 A6: lang-<token> class carries the language to
+                    // the renderer's syntect highlight path (read-only code
+                    // highlighting, musk-038 T16 决策 (a)); lang-less blocks
+                    // keep the hand-rolled tokenizer.
+                    let lang_class = if !lang.is_empty() && !lang.contains(char::is_whitespace) {
+                        format!(" lang-{lang}")
+                    } else {
+                        String::new()
+                    };
                     let code_text = View::Text {
                         content: code,
-                        style: Style::parse("font-mono text-sm text-zinc-50").ok(),
+                        style: Style::parse(&format!("font-mono text-sm text-zinc-50{lang_class}")).ok(),
                     };
                     let code_area = View::Container {
                         child: Box::new(code_text),

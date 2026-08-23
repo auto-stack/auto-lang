@@ -799,6 +799,10 @@ impl IcedStyle {
                     _ => "sticky",
                 });
             }
+            // Plan 442 A6: lang-<token> 是代码高亮的元数据通道,非视觉
+            // utility — 不产生任何样式,由 iced renderer 的 code 高亮
+            // 路径读取。
+            StyleClass::CodeLang(_) => {}
 
             // ========== Extended Sizing ==========
             StyleClass::MinHeight(px) => {

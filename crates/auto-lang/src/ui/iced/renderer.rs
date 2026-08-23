@@ -1134,9 +1134,20 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
 /// 2026-08-22(show 下沉):扫描逻辑与色板移至 vm::shell_bridge::highlight_rgb
 /// —— auto.shell.emit_show 的 Code payload 与本处 font-mono 自动高亮共用一份
 /// 实现,避免两份漂移。None = 默认前景色(color_maybe)。
-fn highlight_code(code: &str) -> Vec<iced::widget::text::Span<'static, ()>> {
+///
+/// Plan 442 A6: a known lang (codeblock 的 lang-<token> class)改走 syntect
+/// highlight-only API——与 code_editor 同引擎同主题(musk-038 T16 决策 (a));
+/// 无 lang 的 mono 文本保持共享手写 tokenizer(shell show payload 等)。
+fn highlight_code(code: &str, lang: Option<&str>) -> Vec<iced::widget::text::Span<'static, ()>> {
     use iced::widget::text::Span;
-    crate::vm::shell_bridge::highlight_rgb(code)
+    let colored: Vec<(String, Option<(u8, u8, u8)>)> = match lang {
+        Some(l) if !l.is_empty() => {
+            let (dark, accent) = crate::ui::code_editor::theme::theme_source();
+            crate::ui::code_editor::core::highlight::highlight_segments(l, code, dark, &accent)
+        }
+        _ => crate::vm::shell_bridge::highlight_rgb(code),
+    };
+    colored
         .into_iter()
         .map(|(text, rgb)| {
             let mut sp = Span::new(text);
@@ -2196,7 +2207,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
                     .unwrap_or(false);
                 if is_code {
-                    let spans = highlight_code(&content);
+                    // Plan 442 A6: codeblock 携带的 lang-<token> class 决定
+                    // syntect 语法选择(见 aura_view_builder codeblock 分支)。
+                    let lang = style.as_ref().and_then(|s| {
+                        s.classes.iter().find_map(|c| match c {
+                            StyleClass::CodeLang(l) => Some(l.clone()),
+                            _ => None,
+                        })
+                    });
+                    let spans = highlight_code(&content, lang.as_deref());
                     let mut rich = iced::widget::text::Rich::<(), M>::with_spans(spans)
                         .font(iced::Font { family: iced::font::Family::Monospace, ..iced::Font::DEFAULT });
                     if let Some(ref s) = style {
@@ -12231,6 +12250,44 @@ mod tests {
         Toggle(bool),
     }
 
+    /// Plan 442 A6: a lang-bearing code text (codeblock 的 lang-<token>
+    /// class)走 syntect highlight-only API——span 文本拼接还原原文,
+    /// 关键字/字符串着色且与 lang-less 手写 tokenizer 色板不同源。
+    #[test]
+    fn test_highlight_code_with_lang_uses_syntect() {
+        let code = "fn main() { let s = \"hi\"; }";
+        let spans = highlight_code(code, Some("rust"));
+        let joined: String = spans.iter().map(|s| s.text.as_ref()).collect();
+        assert_eq!(joined, code);
+        let kw = spans
+            .iter()
+            .find(|s| s.text.as_ref() == "fn")
+            .expect("fn span");
+        assert!(kw.color.is_some(), "syntect keyword must be colored");
+        // 语法把字符串引号与内容拆为不同 region——按内容匹配。
+        let st = spans
+            .iter()
+            .find(|s| s.text.as_ref().contains("hi"))
+            .expect("string span");
+        assert!(st.color.is_some(), "syntect string must be colored");
+    }
+
+    /// Plan 442 A6: codeblock 视图携带 lang-<token> class,renderer 提取
+    /// 后用于语法选择(Style::parse → classes → CodeLang)。
+    #[test]
+    fn test_codeblock_lang_class_roundtrip() {
+        let style = crate::ui::style::Style::parse("font-mono text-sm text-zinc-50 lang-rust")
+            .expect("style parses");
+        let lang = style.classes.iter().find_map(|c| match c {
+            StyleClass::CodeLang(l) => Some(l.clone()),
+            _ => None,
+        });
+        assert_eq!(lang.as_deref(), Some("rust"));
+        // 未知/畸形 lang token 不解析为 class(不产生样式)。
+        let bad = crate::ui::style::Style::parse("font-mono lang- bad").unwrap();
+        assert!(bad.classes.iter().all(|c| !matches!(c, StyleClass::CodeLang(_))));
+    }
+
     #[test]
     fn test_text_conversion() {
         let view: AbstractView<TestMessage> = AbstractView::text("Hello".to_string());
@@ -12241,7 +12298,8 @@ mod tests {
 
     #[test]
     fn test_highlight_prism_palette() {
-        let spans = highlight_code("fn install() // done\nlet ok = \"hi\" && true");
+        // Plan 442 A6: lang-less mono text keeps the hand-rolled tokenizer.
+        let spans = highlight_code("fn install() // done\nlet ok = \"hi\" && true", None);
         let color_of = |t: &str| -> Option<iced::Color> {
             spans.iter()
                 .find(|s| s.text.as_ref() == t)
@@ -12264,7 +12322,8 @@ mod tests {
 
     #[test]
     fn test_highlight_bash_cmd_and_comment() {
-        let spans = highlight_code("npx degit hi # vite");
+        // Plan 442 A6: lang-less mono text keeps the hand-rolled tokenizer.
+        let spans = highlight_code("npx degit hi # vite", None);
         let color_of = |t: &str| -> Option<iced::Color> {
             spans.iter().find(|s| s.text.as_ref() == t).unwrap().color
         };
