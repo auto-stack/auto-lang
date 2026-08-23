@@ -88,9 +88,13 @@ pub struct ShimMethod {
     pub method: String,
     pub self_kind: SelfKind,
     pub params: Vec<Ty>,
+    /// 返回位置的有效类型(Result<T,E> 已解包为 T,见 fallible)
     pub ret: Ty,
     /// 签名含未解决泛型(rustdoc generics.params 非空且方法级)
     pub generic: bool,
+    /// 原返回是 Result<T, E>:unwrap_ok 策略——wrapper 解 Ok,
+    /// Err 经 cdylib 错误通道传出,VM 侧转 VMError(430-F unwrap 策略)
+    pub fallible: bool,
 }
 
 /// 分类结果(规律层输出,430 §背景 6 条规则)。
@@ -136,6 +140,8 @@ pub struct MarshalPlan {
     pub args: Vec<ArgPlan>,
     /// 返回 Option<&T>(借用引用)→ 生成 .copied() 装箱
     pub copy_result: bool,
+    /// 原 Result 返回(wrapper 解 Ok;Err 走错误通道 → VMError)
+    pub fallible: bool,
 }
 
 /// 分类失败原因(→ 例外表/跳过清单)。

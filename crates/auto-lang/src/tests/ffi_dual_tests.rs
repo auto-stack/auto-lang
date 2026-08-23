@@ -128,9 +128,25 @@ print(c3.level_value())
 print(cfg.is_verbose())
 let m = c3.merge(cfg)
 print(m.level_value())
+let p = Config.parse("42")
+print(p.level_value())
 "#
     );
     let (_, stdout) = run_with_capture(&src).expect("run");
-    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7";
+    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7\n42";
     assert_eq!(stdout.trim(), expected, "dep method e2e output mismatch:\n{stdout}");
+
+    // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)
+    let bad = format!(
+        r#"dep autolang_counter(path: "{fixture}")
+use.rust autolang_counter::{{Config}}
+let p = Config.parse("not-a-number")
+"#
+    );
+    let err = run_with_capture(&bad).expect_err("parse error must propagate");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("Config.parse") && msg.contains("invalid level"),
+        "error should carry dep-side message, got: {msg}"
+    );
 }

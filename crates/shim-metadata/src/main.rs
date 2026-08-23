@@ -15,7 +15,7 @@ mod rustdoc;
 mod std_catalog;
 mod types;
 
-use classify::{classify_all, Exceptions};
+use classify::{classify_all, classify_all_third_party, Exceptions};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -54,7 +54,7 @@ fn main() {
             let exc = load_rules(args.get(3));
             match rustdoc::parse_all(&doc) {
                 Ok(parsed) => {
-                    let c = classify_all(&parsed.methods, &exc);
+                    let c = classify_all_third_party(&parsed.methods, &exc);
                     println!("== plans ({}) ==", c.plans.len());
                     for p in &c.plans {
                         println!(
@@ -112,7 +112,7 @@ fn main() {
                 None => Exceptions::default(),
             };
             let parsed = rustdoc::parse_all(&doc).expect("parse rustdoc");
-            let c = classify_all(&parsed.methods, &exc);
+            let c = classify_all_third_party(&parsed.methods, &exc);
             let meta = emit_cdylib::PackMeta {
                 crate_name,
                 crate_version,

@@ -107,4 +107,13 @@ impl Config {
     pub fn merge(&self, other: &Config) -> Config {
         Config { level: self.level.max(other.level), verbose: self.verbose || other.verbose }
     }
+
+    /// Result 返回:unwrap_ok 策略(Err 经 cdylib 错误通道 → VMError)
+    pub fn parse(text: String) -> Result<Config, String> {
+        let n = text
+            .trim()
+            .parse::<i64>()
+            .map_err(|e| format!("invalid level `{text}`: {e}"))?;
+        Ok(Config { verbose: false, level: n })
+    }
 }

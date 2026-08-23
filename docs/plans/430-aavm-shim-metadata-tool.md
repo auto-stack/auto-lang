@@ -124,9 +124,17 @@ status: draft
 ### Phase F：40 crate 全量迁移（E 完成后排期，可跨版本）
 
 - [ ] F1 按"臂数量少→多"排序逐 crate 迁移（每 crate：生成 → 验证 → 删臂 → commit）。
+  （2026-08-23 F 轮裁定：**builtin crate 整体迁移被两类能力缺口挡住**——①字段访问
+  （semver major/minor/patch 是字段非方法，legacy 静态表面向字段）；②Display/trait
+  方法（to_string 等，v1 只取固有 impl）。D3 以 std Duration 迁移替代完成（见执行结果）；
+  builtin 迁移的前置 = dep 对象字段访问通道 + trait 方法解析（Plan 190 挂账项）。
+  std 手写臂侧：Duration 5 臂已迁生成段，剩余臂按同法逐个迁。）
 - [ ] F2 全部迁完后：`BUILTIN_OPAQUE_CRATES` 白名单语义改为"预生成 shim 包的默认配置清单"；
   `shim_rust_stdlib_dispatch` 手写臂清零退役。
-- [ ] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
+- [x] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
+  （2026-08-23 以 **uuid**（不在 builtin 清单）达成：`dep uuid(features: ["v4"])` +
+  `use.rust uuid::{Uuid}` → new_v4/get_version_num/parse_str(unwrap_ok)/is_nil 全通，
+  零手写代码；附带落地 unwrap_ok 策略使 parse 族构造器可用。报告 430-f1。）
 
 ## 风险与缓解
 
@@ -193,5 +201,21 @@ status: draft
   - v1 边界裁定（详见报告）：Option/Result 返回跳过（unwrap 策略待例外层，真实 crate
     最大闸门）；按值 self 跳过（chain 别名 × 消耗语义冲突，实测 ACCESS_VIOLATION 复盘）；
     泛型接收者 impl 跳过；BUILTIN_OPAQUE 类型新旧层碰撞（csv 实录，F 阶段逐 crate 迁移）。
-- **Phase F**：未开始（40 crate 迁移、BUILTIN_OPAQUE_CRATES 语义改造、F3 演示）——
-  留待后续会话。
+- **Phase F 首轮**（本轮，报告 430-f1）：
+  - **unwrap_ok 策略落地**（F 遗留首优先级）：rustdoc 投影把 `Result<T,E>` 解包为 T +
+    fallible 标记；wrapper 解 Ok，Err 写入 cdylib 线程局部错误通道
+    （`auto__last_error`/`auto__clear_error`），VM 侧 fallible 方法压栈前查通道转
+    VMError——**错误消息完整穿透三层**（semver 实测：
+    `Version::parse failed: unexpected character 'n' while parsing major version number`）。
+    Option 仍跳过（None 语义待例外层）；std/三方分类双轨：std 保 Option 装箱语义
+    （防 Vec.get 等丢臂），三方跳过。
+  - **rustc 检查器剔除环**：包构建失败时从报错提取肇事符号，剔除对应方法重试——
+    个别不可编译的 wrapper（u128 参数/跨 crate opaque 实参）不再弄死整包。
+  - **D3（std Duration 变体）**：from_secs/from_millis/from_secs_f64/as_secs/as_secs_f64
+    五臂迁 std 目录 → 生成段，手写臂删除，全量 3128 绿；**顺手修正遗留 u64→i32 有损
+    截断**（5e9 秒不再变 705032704）。发现 "Duration" 标签下混用 chrono/std 两种具体
+    类型（days/hours/seconds 是 chrono），chrono 系与 u128 返回的 as_millis 族暂留手写。
+  - **F3（uuid）**：真实 crates.io 新 crate 零手写即插即用（见上）。
+  - ** marshaller 修复**：bool 返回只保证 al 有效——读 i64 槽必须掩码（实测 uuid
+    is_nil 曾把垃圾高位带回触发 48 位越界 panic）；整型压栈改 heap-aware push_i64_vm。
+  - 分类器新增边界：128 位参数跳过；rustdoc `crate::` 前缀路径剥离（uuid 根重导出实测）。

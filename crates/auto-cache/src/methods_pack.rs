@@ -9,8 +9,8 @@
 // 降级策略:nightly 不可用 → 返回 Ok(None),仅自由函数路径可用(现状不变)。
 
 use crate::sandbox::{DepSource, Sandbox, SandboxError};
-use shim_metadata::classify::{classify_all, Exceptions};
-use shim_metadata::emit_cdylib::{emit_pack, PackMeta};
+use shim_metadata::classify::{classify_all_third_party as classify_all, Exceptions};
+use shim_metadata::emit_cdylib::{emit_pack_parts, PackMeta};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
@@ -161,31 +161,58 @@ impl Sandbox {
         let exc = Exceptions::default();
         let classified = classify_all(&parsed.methods, &exc);
 
-        // 4. 指纹 + 生成(C3:工具链 × crate × 生成器 × 签名集)
+        // 4+5. 生成 → 编译,失败时借 rustc 当检查器:从报错提取肇事符号,
+        // 剔除对应方法后重试(至多 4 轮;Plan D/E 同款做法,防止个别
+        // 不可编译的 wrapper 弄死整包 —— u128 参数/跨 crate opaque 实参等)。
         let meta = PackMeta {
             crate_name: crate_name.to_string(),
             crate_version: source.version.clone().unwrap_or_else(|| "1".into()),
             toolchain,
         };
-        let (fp, files) = emit_pack(&meta, &dep_line, &classified, &exc, &parsed.free_fns);
-        std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
+        let mut plans = classified.plans.clone();
+        let mut skips = classified.skips.clone();
+        let (fp, files) = loop {
+            let (fp, files) = emit_pack_parts(&meta, &dep_line, &plans, &skips, &exc, &parsed.free_fns);
+            std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
+
+            let out = Command::new(self.cargo_path())
+                .args(["build", "--release"])
+                .current_dir(&build_dir)
+                .output()
+                .map_err(|e| {
+                    SandboxError::CompilationFailed(format!("cargo spawn failed: {e}"))
+                })?;
+            if out.status.success() {
+                break (fp, files);
+            }
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            let before = plans.len();
+            let offenders = offending_symbols(&stderr);
+            partition_out_offenders(&mut plans, &mut skips, &offenders);
+            if plans.len() == before {
+                // 报错与已知符号对不上(或已无可剔)——如实失败
+                return Err(SandboxError::CompilationFailed(format!(
+                    "methods wrapper build failed for {}: {}",
+                    crate_name, stderr
+                )));
+            }
+            log::warn!(
+                "plan430: rustc check dropped {} methods for {} (offenders: {:?}), retrying",
+                before - plans.len(),
+                crate_name,
+                offenders
+            );
+            if plans.is_empty() {
+                return Err(SandboxError::CompilationFailed(format!(
+                    "all methods dropped by rustc check for {}: {}",
+                    crate_name, stderr
+                )));
+            }
+        };
         std::fs::write(build_dir.join("manifest.json"), &files.manifest_json)?;
         std::fs::write(build_dir.join("signatures.json"), &files.signatures_json)?;
         std::fs::write(build_dir.join("rules.json"), &files.rules_json)?;
 
-        // 5. 编译 cdylib(stable 工具链即可;rustdoc 仅用于提取)
-        let out = Command::new(self.cargo_path())
-            .args(["build", "--release"])
-            .current_dir(&build_dir)
-            .output()
-            .map_err(|e| SandboxError::CompilationFailed(format!("cargo spawn failed: {e}")))?;
-        if !out.status.success() {
-            return Err(SandboxError::CompilationFailed(format!(
-                "methods wrapper build failed for {}: {}",
-                crate_name,
-                String::from_utf8_lossy(&out.stderr)
-            )));
-        }
         let target_dir = build_dir.join("target").join("release");
         let lib_file = self
             .find_cdylib_in_dir(&target_dir, &wrapper)
@@ -202,18 +229,65 @@ impl Sandbox {
             "plan430: compiled methods pack for {} (fp={}, methods={}, skips={}): {}",
             crate_name,
             version,
-            classified.plans.len(),
-            classified.skips.len(),
+            plans.len(),
+            skips.len(),
             output_path.display()
         );
 
         Ok(Some(MethodsPackBuilt {
-            methods: classified.plans.len(),
-            skipped: classified.skips.len(),
+            methods: plans.len(),
+            skipped: skips.len(),
             fingerprint: fp,
             manifest_json: files.manifest_json,
             lib_path: output_path,
         }))
+    }
+}
+
+/// 从 rustc 报错文本提取本生成器的导出符号名(auto_ 前缀)。
+fn offending_symbols(stderr: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for tok in stderr.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+        if tok.starts_with("auto_") && !found.iter().any(|f| f == tok) {
+            found.push(tok.to_string());
+        }
+    }
+    found
+}
+
+/// 按肇事符号划分保留/剔除:方法导出符号命中,或该类型的
+/// auto__drop_<Type> 命中(类型级问题 → 连带剔除整个类型的方法)。
+fn partition_out_offenders(
+    plans: &mut Vec<shim_metadata::types::MarshalPlan>,
+    skips: &mut Vec<shim_metadata::types::Skip>,
+    offenders: &[String],
+) {
+    if offenders.is_empty() {
+        return;
+    }
+    let dropped_types: Vec<String> = offenders
+        .iter()
+        .filter_map(|s| s.strip_prefix("auto__drop_").map(String::from))
+        .collect();
+    let mut i = 0;
+    while i < plans.len() {
+        let p = &plans[i];
+        let export = format!(
+            "auto_{}_{}",
+            p.method.type_name, p.method.method
+        );
+        let hit = offenders.iter().any(|o| o.starts_with(&export))
+            || dropped_types.contains(&p.method.type_name);
+        if hit {
+            let p = plans.remove(i);
+            skips.push(shim_metadata::types::Skip {
+                type_name: p.method.type_name.clone(),
+                method: p.method.method.clone(),
+                reason: "rustc check failed (dropped by retry loop)".into(),
+            });
+        } else {
+            i += 1;
+        }
     }
 }
 

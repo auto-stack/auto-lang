@@ -14,6 +14,7 @@ pub fn std_methods() -> Vec<ShimMethod> {
             params: params.to_vec(),
             ret,
             generic: false,
+            fallible: false,
         });
     };
     // ---- String(仅静态构造器;方法走引擎 str 原生路径,字符串是标量池值非堆对象) ----
@@ -34,6 +35,14 @@ pub fn std_methods() -> Vec<ShimMethod> {
     m("Vec", "reverse", SelfKind::Write, &[], Ty::Void);
     m("Vec", "dedup", SelfKind::Write, &[], Ty::Void);
     m("Vec", "clone", SelfKind::Read, &[], Ty::Opaque("Vec".into()));
+    // ---- Duration(plan-430 D3:自手写臂迁移;u64 走 i64 宽槽修正遗留有损截断) ----
+    // 注意:days/hours/seconds 是 chrono::Duration(同标签异类型),暂留手写臂;
+    // as_millis/as_micros/as_nanos 返回 u128(超 i64 槽),同样暂留。
+    m("Duration", "from_secs", SelfKind::Static, &[Ty::U64], Ty::Opaque("Duration".into()));
+    m("Duration", "from_millis", SelfKind::Static, &[Ty::U64], Ty::Opaque("Duration".into()));
+    m("Duration", "from_secs_f64", SelfKind::Static, &[Ty::F64], Ty::Opaque("Duration".into()));
+    m("Duration", "as_secs", SelfKind::Read, &[], Ty::U64);
+    m("Duration", "as_secs_f64", SelfKind::Read, &[], Ty::F64);
     // HashMap/HashSet:走 Auto 原生 Map 路径(VM auto.hashmap natives + a2r 真 HashMap),v1 不生成 shim
     v
 }

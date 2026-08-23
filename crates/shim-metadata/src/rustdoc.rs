@@ -73,13 +73,13 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 params.push(proj_ty(pty));
             }
         }
-        let ret = sig
+        let (ret, fallible) = sig
             .get("output")
             .and_then(|o| match o {
-                Value::Null => Some(Ty::Void),
+                Value::Null => Some((Ty::Void, false)),
                 _ => Some(proj_ret(o)),
             })
-            .unwrap_or(Ty::Void);
+            .unwrap_or((Ty::Void, false));
 
         methods.push(RawMethod {
             id: item.get("id").and_then(|v| v.as_u64()).unwrap_or(u64::MAX),
@@ -87,6 +87,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
             self_kind,
             params,
             ret,
+            fallible,
             generic,
         });
     }
@@ -151,6 +152,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 ret: raw.ret,
                 generic: raw.generic
                     || generic_impl_methods.get(&raw.id).copied().unwrap_or(false),
+                fallible: raw.fallible,
             }),
             None => free.push(ShimMethod {
                 type_name: String::new(),
@@ -159,6 +161,7 @@ pub fn parse_all(doc: &str) -> Result<ParsedCrate, String> {
                 params: raw.params,
                 ret: raw.ret,
                 generic: raw.generic,
+                fallible: raw.fallible,
             }),
         }
     }
@@ -171,6 +174,7 @@ struct RawMethod {
     self_kind: SelfKind,
     params: Vec<Ty>,
     ret: Ty,
+    fallible: bool,
     generic: bool,
 }
 
@@ -188,9 +192,12 @@ fn self_kind_of(ty: &Value) -> SelfKind {
 
 fn path_name(ty: &Value) -> Option<String> {
     if let Some(rp) = ty.get("resolved_path") {
-        // v53 字段是 "path"(旧字段名 "name" 兜底)
+        // v53 字段是 "path"(旧字段名 "name" 兜底);根重导出的 impl 会带
+        // "crate::" 前缀(crate::Uuid),剥掉后取短名(深模块路径 v1 不支持,见报告)
         let n = rp.get("path").or_else(|| rp.get("name"));
-        return n.and_then(|v| v.as_str()).map(String::from);
+        return n
+            .and_then(|v| v.as_str())
+            .map(|s| s.strip_prefix("crate::").unwrap_or(s).to_string());
     }
     if let Some(s) = ty.get("primitive").and_then(|v| v.as_str()) {
         return Some(title_primitive(s));
@@ -272,15 +279,36 @@ fn proj_ty(ty: &Value) -> Ty {
     Ty::Opaque("Unknown".into())
 }
 
-/// 返回位置投影:借用的外来返回 → Opaque("&Name")(分类器跳过标记);&str → Str。
-fn proj_ret(ty: &Value) -> Ty {
+/// 返回位置投影:借用的外来返回 → Opaque("&Name")(分类器跳过标记);&str → Str;
+/// `Result<T, E>` → 解包为 T 并标记 fallible(430-F unwrap_ok 策略;
+/// Option 不解包——None 语义待例外层,v1 仍跳过)。
+fn proj_ret(ty: &Value) -> (Ty, bool) {
+    if let Some(rp) = ty.get("resolved_path") {
+        let name = rp.get("path").and_then(|v| v.as_str()).unwrap_or("");
+        if name == "Result" {
+            if let Some(inner) = first_generic_arg(rp) {
+                let (t, _) = proj_ret(inner);
+                return (t, true);
+            }
+        }
+    }
     if let Some(br) = ty.get("borrowed_ref") {
         let inner = br.get("type").map(proj_ty).unwrap_or(Ty::Void);
         return match inner {
-            Ty::Str | Ty::StrOwned => Ty::Str,
-            Ty::OpaqueOwned(n) => Ty::Opaque(format!("&{n}")),
-            other => other,
+            Ty::Str | Ty::StrOwned => (Ty::Str, false),
+            Ty::OpaqueOwned(n) => (Ty::Opaque(format!("&{n}")), false),
+            other => (other, false),
         };
     }
-    proj_ty(ty)
+    (proj_ty(ty), false)
+}
+
+/// resolved_path 的第一个泛型实参(Result<T,E> 的 T)。
+fn first_generic_arg(rp: &Value) -> Option<&Value> {
+    rp.get("args")?
+        .get("angle_bracketed")?
+        .get("args")?
+        .as_array()?
+        .first()?
+        .get("type")
 }

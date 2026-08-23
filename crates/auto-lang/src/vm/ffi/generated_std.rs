@@ -268,6 +268,58 @@ pub fn generated_std_dispatch(
         push_rust_obj(task, vm, "Vec", __r)?;
             Ok(Some(()))
         }
+        ("Duration", "from_secs") => {
+        let a0: i64 = i64::pop_from_stack(task, vm).map_err(|e| ferr("Duration.from_secs pop", e))?;
+        let __r = std::time::Duration::from_secs(a0 as u64);
+        push_rust_obj(task, vm, "Duration", __r)?;
+            Ok(Some(()))
+        }
+        ("Duration", "from_millis") => {
+        let a0: i64 = i64::pop_from_stack(task, vm).map_err(|e| ferr("Duration.from_millis pop", e))?;
+        let __r = std::time::Duration::from_millis(a0 as u64);
+        push_rust_obj(task, vm, "Duration", __r)?;
+            Ok(Some(()))
+        }
+        ("Duration", "from_secs_f64") => {
+        let a0: f64 = f64::pop_from_stack(task, vm).map_err(|e| ferr("Duration.from_secs_f64 pop", e))?;
+        let __r = std::time::Duration::from_secs_f64(a0);
+        push_rust_obj(task, vm, "Duration", __r)?;
+            Ok(Some(()))
+        }
+        ("Duration", "as_secs") => {
+        let __r = {
+            let Some(obj) = vm.get_heap_object(task.ram.pop_i32() as u64) else {
+                return Err(ferr("Duration.as_secs", "bad handle"));
+            };
+            let guard = obj.read().unwrap();
+            let Some(ro) = guard.as_any().downcast_ref::<RustStdlibObject>() else {
+                return Err(ferr("Duration.as_secs", "not RustStdlibObject"));
+            };
+            let Some(recv) = ro.downcast_ref::<std::time::Duration>() else {
+                return Err(ferr("Duration.as_secs", "downcast failed"));
+            };
+            recv.as_secs()
+        };
+        task.ram.push_i64(__r as i64);
+            Ok(Some(()))
+        }
+        ("Duration", "as_secs_f64") => {
+        let __r = {
+            let Some(obj) = vm.get_heap_object(task.ram.pop_i32() as u64) else {
+                return Err(ferr("Duration.as_secs_f64", "bad handle"));
+            };
+            let guard = obj.read().unwrap();
+            let Some(ro) = guard.as_any().downcast_ref::<RustStdlibObject>() else {
+                return Err(ferr("Duration.as_secs_f64", "not RustStdlibObject"));
+            };
+            let Some(recv) = ro.downcast_ref::<std::time::Duration>() else {
+                return Err(ferr("Duration.as_secs_f64", "downcast failed"));
+            };
+            recv.as_secs_f64()
+        };
+        task.ram.push_f64(__r as f64);
+            Ok(Some(()))
+        }
         _ => Ok(None),
     }
 }

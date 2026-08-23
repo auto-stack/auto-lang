@@ -71,13 +71,24 @@ fn emit_arm(p: &MarshalPlan) -> String {
     }
     let callargs: Vec<String> = argdefs
         .iter()
-        .map(|(n, borrow, take)| {
+        .enumerate()
+        .map(|(i, (n, borrow, take))| {
             if *borrow {
                 format!("&{n}")
             } else if *take {
                 format!("{n}.clone()")
             } else {
-                n.clone()
+                // 数值参数按宽槽弹出,调用处按真实宽度收窄(u64/usize/f32 等;
+                // ScalarUsize 弹出时已 as usize)
+                let cast = match p.method.params.get(i) {
+                    Some(Ty::U64) => " as u64",
+                    Some(Ty::U32) => " as u32",
+                    Some(Ty::U16) => " as u16",
+                    Some(Ty::U8) => " as u8",
+                    Some(Ty::F32) => " as f32",
+                    _ => "",
+                };
+                format!("{n}{cast}")
             }
         })
         .collect();
@@ -170,6 +181,7 @@ fn rust_recv_type(ty: &str) -> String {
         "Vec" => "Vec<i64>".into(), // v1:元素按 i64(Auto int 值)
         "HashMap" => "std::collections::HashMap<String, i64>".into(),
         "HashSet" => "std::collections::HashSet<String>".into(),
+        "Duration" => "std::time::Duration".into(),
         other => other.into(),
     }
 }

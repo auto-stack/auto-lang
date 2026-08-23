@@ -24,7 +24,18 @@ pub struct Classified {
     pub skips: Vec<Skip>,
 }
 
+/// std 追加段路径(进程内):Option 装箱为不透明对象(E 阶段既有语义),Result 不涉及。
 pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
+    classify_with(methods, exc, false)
+}
+
+/// 三方 cdylib 路径:Option/Result 不能跨 ABI 装箱语义未定——
+/// Result 走 unwrap_ok(解包 + 错误通道),Option v1 跳过。
+pub fn classify_all_third_party(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
+    classify_with(methods, exc, true)
+}
+
+fn classify_with(methods: &[ShimMethod], exc: &Exceptions, third_party: bool) -> Classified {
     let mut plans = Vec::new();
     let mut skips = Vec::new();
     for m in methods {
@@ -56,7 +67,17 @@ pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
             });
             continue;
         }
-        match classify_one(m) {
+        // 三方路径:Option 返回 v1 跳过(None 语义待例外层)。
+        // std 路径:Option 装箱为不透明对象(既有语义)。
+        if third_party && matches!(&m.ret, Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Option") {
+            skips.push(Skip {
+                type_name: m.type_name.clone(),
+                method: m.method.clone(),
+                reason: "option return (None semantics pending)".into(),
+            });
+            continue;
+        }
+        match classify_one(m, third_party) {
             Ok(plan) => plans.push(plan),
             Err(reason) => skips.push(Skip {
                 type_name: m.type_name.clone(),
@@ -68,7 +89,7 @@ pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
     Classified { plans, skips }
 }
 
-fn classify_one(m: &ShimMethod) -> Result<MarshalPlan, String> {
+fn classify_one(m: &ShimMethod, third_party: bool) -> Result<MarshalPlan, String> {
     let key = format!("{}.{}", m.type_name, m.method);
     // 规则 5 默认借用;owned-key 方法(insert 类)转移/克隆(v1 硬编码名单,后续入例外表)
     const OWNED_KEY: &[&str] = &["HashMap.insert", "HashSet.insert"];
@@ -95,6 +116,10 @@ fn classify_one(m: &ShimMethod) -> Result<MarshalPlan, String> {
             Ty::Usize => ArgPlan::ScalarUsize,
             Ty::F32 | Ty::F64 => ArgPlan::ScalarF64,
             Ty::Bool => ArgPlan::ScalarBool,
+            // 128 位标量:超 i64 槽,VM 侧无法承载(顺序在前,防被通配臂吃掉)
+            Ty::Opaque(n) if n == "i128" || n == "u128" => {
+                return Err("128-bit param unsupported".into())
+            }
             Ty::Opaque(_) => ArgPlan::OpaqueHandle,
             // 拥有的外来类型参数:VM 侧无法构造该值,v1 跳过
             Ty::OpaqueOwned(_) => return Err("owned opaque param".into()),
@@ -114,11 +139,11 @@ fn classify_one(m: &ShimMethod) -> Result<MarshalPlan, String> {
             // 仅对 &mut self 方法成立;&self 返回 Self 是拷贝语义,同样压新句柄,先按 Chain 处理。
             RetPlan::ChainSelf
         }
-        // Option/Result 返回:v1 未定 unwrap/错误转换策略,跳过(例外层后续裁决)
-        Ty::Opaque(n) | Ty::OpaqueOwned(n)
-            if n == "Option" || n == "Result" =>
-        {
-            return Err("option/result return (unwrap policy pending)".into())
+        // Option/Result 返回:rustdoc 投影已把 Result<T,E> 解包为 T(m.fallible=true,
+        // wrapper 解 Ok + 错误通道);这里只会再见到 Option(三方跳过,std 装箱)
+        // 或残缺的 Result(泛型实参缺失)。
+        Ty::Opaque(n) | Ty::OpaqueOwned(n) if n == "Result" && third_party => {
+            return Err("result return without projectable Ok type".into())
         }
         // 借用返回(&T):wrapper 无法装箱一个引用,v1 跳过(&str 已投影为 Str 不在此列)。
         // 例外:builder 链式(&self/&mut self 返回 &Self/&mut Self)→ 原地改、压回原句柄。
@@ -139,5 +164,6 @@ fn classify_one(m: &ShimMethod) -> Result<MarshalPlan, String> {
         ret,
         args,
         copy_result,
+        fallible: m.fallible && third_party,
     })
 }

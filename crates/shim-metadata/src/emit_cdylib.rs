@@ -52,7 +52,12 @@ pub struct MethodEntry {
     pub ret_type: String,
     /// ChainInPlace 标记:返回 &Self/&mut Self(同一对象)→ VM 压回原句柄,
     /// 区别于返回同类**新**实例(clone_reset 类)的普通 'p'
+    #[serde(default)]
     pub chain: bool,
+    /// unwrap_ok 标记:原返回 Result<T,E>,wrapper 解 Ok;
+    /// Err 经 auto__last_error 通道传出 → VM 侧转 VMError(430-F)
+    #[serde(default)]
+    pub fallible: bool,
     /// 该类型的析构符号(auto__drop_<Type>)
     pub drop_export: String,
 }
@@ -97,7 +102,16 @@ pub fn fnv1a64(data: &[u8]) -> u64 {
 /// 元信息版本指纹:工具链 × crate × 生成器 × 分类结果签名集(C3,防签名漂移)。
 /// 同一 (crate, toolchain, generator) 下签名集变化 → 指纹变化 → 缓存失效重建。
 pub fn fingerprint(meta: &PackMeta, c: &Classified, free_fns: &[ShimMethod]) -> String {
-    let mut lines: Vec<String> = c.plans.iter().map(plan_sig_line).collect();
+    fingerprint_parts(meta, &c.plans, free_fns)
+}
+
+/// parts 版指纹(供 rustc 检查器剔除环重算用)。
+pub fn fingerprint_parts(
+    meta: &PackMeta,
+    plans: &[MarshalPlan],
+    free_fns: &[ShimMethod],
+) -> String {
+    let mut lines: Vec<String> = plans.iter().map(plan_sig_line).collect();
     lines.extend(free_fns.iter().map(|f| {
         format!(
             "fn {}.{}|{}|{}",
@@ -121,7 +135,8 @@ pub fn fingerprint(meta: &PackMeta, c: &Classified, free_fns: &[ShimMethod]) -> 
 
 fn plan_sig_line(p: &MarshalPlan) -> String {
     let m = &p.method;
-    // 参数同时记录 Ty 名与 ABI 码:宽度信息(u64 vs i64 等)变化必须改变指纹
+    // 参数同时记录 Ty 名与 ABI 码:宽度信息(u64 vs i64 等)变化必须改变指纹;
+    // fallible/chain 策略位同样入指纹。
     let params: Vec<String> = m
         .params
         .iter()
@@ -129,12 +144,14 @@ fn plan_sig_line(p: &MarshalPlan) -> String {
         .map(|(t, a)| format!("{}:{}", t.rust_name(), arg_char(a)))
         .collect();
     format!(
-        "m {}.{}|{:?}|{}|{:?}",
+        "m {}.{}|{:?}|{}|{:?}|f{}|c{}",
         m.type_name,
         m.method,
         m.self_kind,
         params.join(","),
-        p.ret
+        p.ret,
+        p.fallible as u8,
+        matches!(p.ret, RetPlan::ChainInPlace) as u8,
     )
 }
 
@@ -178,7 +195,19 @@ pub fn emit_pack(
     exc: &Exceptions,
     free_fns: &[ShimMethod],
 ) -> (String, PackFiles) {
-    let fp = fingerprint(meta, c, free_fns);
+    emit_pack_parts(meta, dep_line, &c.plans, &c.skips, exc, free_fns)
+}
+
+/// parts 版生成(供 rustc 检查器剔除环按缩减后的计划集重生成)。
+pub fn emit_pack_parts(
+    meta: &PackMeta,
+    dep_line: &str,
+    plans: &[MarshalPlan],
+    skips: &[Skip],
+    exc: &Exceptions,
+    free_fns: &[ShimMethod],
+) -> (String, PackFiles) {
+    let fp = fingerprint_parts(meta, plans, free_fns);
     let crate_ident = meta.crate_name.replace('-', "_");
 
     // 方法条目与 wrapper 源码
@@ -186,7 +215,7 @@ pub fn emit_pack(
     let mut wrappers = String::new();
     let mut drop_fns = String::new();
     let mut dropped_types: Vec<String> = Vec::new();
-    for p in &c.plans {
+    for p in plans {
         let m = &p.method;
         let full = format!("{crate_ident}::{}", m.type_name);
         if !dropped_types.contains(&full) {
@@ -242,20 +271,21 @@ pub fn emit_pack(
     let signatures_json = serde_json::json!({
         "crate": meta.crate_name,
         "version": meta.crate_version,
-        "methods": c.plans.iter().map(|p| serde_json::json!({
+        "methods": plans.iter().map(|p| serde_json::json!({
             "type": p.method.type_name,
             "method": p.method.method,
             "self": format!("{:?}", p.method.self_kind),
             "params": p.method.params.iter().map(|t| t.rust_name()).collect::<Vec<_>>(),
             "ret": p.method.ret.rust_name(),
             "generic": p.method.generic,
+            "fallible": p.fallible,
         })).collect::<Vec<_>>(),
         "free_functions": free_fns.iter().map(|f| serde_json::json!({
             "name": f.method,
             "params": f.params.iter().map(|t| t.rust_name()).collect::<Vec<_>>(),
             "ret": f.ret.rust_name(),
         })).collect::<Vec<_>>(),
-        "skips": c.skips.iter().map(|s| serde_json::json!({
+        "skips": skips.iter().map(|s| serde_json::json!({
             "type": s.type_name, "method": s.method, "reason": s.reason,
         })).collect::<Vec<_>>(),
     });
@@ -305,6 +335,34 @@ fn emit_lib_rs(manifest_json: &str, drop_fns: &str, wrappers: &str) -> String {
          \x20   if !p.is_null() {{\n\
          \x20       drop(unsafe {{ CString::from_raw(p) }});\n\
          \x20   }}\n\
+         }}\n\
+         \n\
+         // ---- unwrap_ok 错误通道(430-F):Err 暂存线程局部,VM 侧读取后转 VMError ----\n\
+         thread_local! {{\n\
+         \x20   static __LAST_ERR: std::cell::RefCell<Option<CString>> =\n\
+         \x20       const {{ std::cell::RefCell::new(None) }};\n\
+         }}\n\
+         \n\
+         fn __set_err(msg: String) {{\n\
+         \x20   __LAST_ERR.with(|e| *e.borrow_mut() = Some(CString::new(msg).unwrap_or_default()));\n\
+         }}\n\
+         \n\
+         fn __clear_err() {{\n\
+         \x20   __LAST_ERR.with(|e| *e.borrow_mut() = None);\n\
+         }}\n\
+         \n\
+         /// 返回线程局部错误串的指针(所有权留在 cdylib;VM 拷贝后调 auto__clear_error)\n\
+         #[no_mangle]\n\
+         pub extern \"C\" fn auto__last_error() -> *mut c_char {{\n\
+         \x20   __LAST_ERR.with(|e| match &*e.borrow() {{\n\
+         \x20       Some(c) => c.as_ptr() as *mut c_char,\n\
+         \x20       None => std::ptr::null_mut(),\n\
+         \x20   }})\n\
+         }}\n\
+         \n\
+         #[no_mangle]\n\
+         pub extern \"C\" fn auto__clear_error() {{\n\
+         \x20   __clear_err();\n\
          }}\n\
          \n\
          {drop_fns}\n\
@@ -473,14 +531,80 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         ),
     };
 
-    // 返回值包装(先落 __r 再转,避免块表达式直接接 `as` 的解析歧义)
+    // 返回值包装(先落 __r 再转,避免块表达式直接接 `as` 的解析歧义)。
     // ChainInPlace:返回的就是接收者引用本身 → 丢弃返回值、把接收者指针原样传回
     // (VM 侧压回原句柄,不新建对象)。
+    // fallible(unwrap_ok,430-F):原返回 Result<T,E> → 解 Ok;Err 写入错误通道
+    // (auto__last_error)并返回默认值,VM 侧读通道转 VMError。
     let (ret_decl, body_tail) = if matches!(p.ret, RetPlan::ChainInPlace) {
-        (
-            " -> *mut std::ffi::c_void".to_string(),
-            format!("{invocation}; arg_0"),
-        )
+        if p.fallible {
+            (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!(
+                    "let __raw = {invocation}; match __raw {{ Ok(_) => {{ __clear_err(); arg_0 }}, Err(e) => {{ __set_err(format!(\"{{e}}\")); std::ptr::null_mut() }} }}"
+                ),
+            )
+        } else {
+            (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!("{invocation}; arg_0"),
+            )
+        }
+    } else if p.fallible {
+        // 解 Ok 落 __r,再按返回码走收尾表达式;Err 写错误通道并返回默认值。
+        let err_arm =
+            |default: &str| format!("Err(e) => {{ __set_err(format!(\"{{e}}\")); {default} }}");
+        match rc {
+            'v' => (
+                "".to_string(),
+                format!(
+                    "let __raw = {invocation}; match __raw {{ Ok(()) => (), {} }}",
+                    err_arm("return;")
+                ),
+            ),
+            'i' => (
+                " -> i32".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; __r as i32",
+                    err_arm("return 0;")
+                ),
+            ),
+            'l' => (
+                " -> i64".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; __r as i64",
+                    err_arm("return 0;")
+                ),
+            ),
+            'f' => (
+                " -> f64".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; __r as f64",
+                    err_arm("return 0.0;")
+                ),
+            ),
+            'b' => (
+                " -> bool".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; __r",
+                    err_arm("return false;")
+                ),
+            ),
+            's' => (
+                " -> *mut c_char".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; __s_out(__r.to_string())",
+                    err_arm("return std::ptr::null_mut();")
+                ),
+            ),
+            _ => (
+                " -> *mut std::ffi::c_void".to_string(),
+                format!(
+                    "let __r = match {invocation} {{ Ok(v) => {{ __clear_err(); v }}, {} }}; Box::into_raw(Box::new(__r)) as *mut std::ffi::c_void",
+                    err_arm("return std::ptr::null_mut();")
+                ),
+            ),
+        }
     } else {
         match rc {
         'v' => ("".to_string(), format!("{invocation};")),
@@ -534,6 +658,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         ret: rc.to_string(),
         ret_type: ret_type_label(p),
         chain: matches!(p.ret, RetPlan::ChainInPlace),
+        fallible: p.fallible,
         drop_export: format!("auto__drop_{short}"),
     };
     (entry, src)
@@ -542,7 +667,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::classify_all;
+    use crate::classify::{classify_all, classify_all_third_party};
     use crate::types::{ArgPlan, SelfKind, ShimMethod, Ty};
 
     fn demo_classified() -> Classified {
@@ -554,6 +679,7 @@ mod tests {
                 params: vec![Ty::StrOwned],
                 ret: Ty::OpaqueOwned("Counter".into()),
                 generic: false,
+                fallible: false,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -562,6 +688,7 @@ mod tests {
                 params: vec![],
                 ret: Ty::Void,
                 generic: false,
+                fallible: false,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -570,6 +697,7 @@ mod tests {
                 params: vec![],
                 ret: Ty::I64,
                 generic: false,
+                fallible: false,
             },
             ShimMethod {
                 type_name: "Counter".into(),
@@ -578,15 +706,26 @@ mod tests {
                 params: vec![],
                 ret: Ty::Opaque("Option".into()),
                 generic: false,
+                fallible: false,
+            },
+            // unwrap_ok:Result<Counter, String> 已由投影解包为 Counter + fallible
+            ShimMethod {
+                type_name: "Counter".into(),
+                method: "parse".into(),
+                self_kind: SelfKind::Static,
+                params: vec![Ty::StrOwned],
+                ret: Ty::OpaqueOwned("Counter".into()),
+                generic: false,
+                fallible: true,
             },
         ];
-        classify_all(&methods, &Exceptions::default())
+        classify_all_third_party(&methods, &Exceptions::default())
     }
 
     #[test]
     fn wrapper_exports_and_skips() {
         let c = demo_classified();
-        assert_eq!(c.plans.len(), 3, "Option 返回应跳过: {:?}", c.skips);
+        assert_eq!(c.plans.len(), 4, "Option 返回应跳过: {:?}", c.skips);
         assert!(c.skips.iter().any(|s| s.method == "maybe"));
 
         let (fp, files) = emit_pack(
@@ -609,12 +748,19 @@ mod tests {
         assert!(files.lib_rs.contains(
             "let __r = <my_crate::Counter>::new(__s_in(arg_0)); Box::into_raw(Box::new(__r))"
         ));
+        // unwrap_ok:Err 写错误通道并返回空指针
+        assert!(files
+            .lib_rs
+            .contains("Err(e) => { __set_err(format!(\"{e}\")); return std::ptr::null_mut(); }"));
+        assert!(files.lib_rs.contains("fn auto__last_error()"));
         assert!(files.cargo_toml.contains("[workspace]"));
         let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();
-        assert_eq!(man.methods.len(), 3);
+        assert_eq!(man.methods.len(), 4);
         assert_eq!(man.methods[0].params, "s");
         assert_eq!(man.methods[1].params, "p");
         assert_eq!(man.fingerprint, fp);
+        let parse_entry = man.methods.iter().find(|e| e.method == "parse").unwrap();
+        assert!(parse_entry.fallible);
     }
 
     #[test]

@@ -42,7 +42,10 @@
   `auto__drop_<Type>`）。运行期入口在 `shim_rust_stdlib_dispatch`（id 3000）的
   兜底段最后一段（生成段 → 手写臂 → native_catalog → dep 注册表），
   实现在 `vm/ffi/dep_methods.rs`；自由函数签名元数据优先于 `known_signature`（D2）。
-  边界与决策记录：docs/plans/reports/430-c1-dep-methods-pipeline.md。
+  F 轮追加：`Result<T,E>` 返回走 unwrap_ok——wrapper 解 Ok，Err 经 cdylib
+  线程局部错误通道（`auto__last_error`）传出，VM 侧转 VMError；包构建借 rustc
+  当检查器，报错符号对应方法剔除重试。边界与决策记录：
+  docs/plans/reports/430-c1-dep-methods-pipeline.md、430-f1-unwrap-and-migration.md。
 
 ### Python FFI（`PyFfiBridge`，plan-214/222/300）
 

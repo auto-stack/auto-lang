@@ -233,6 +233,22 @@ fn call_free_cstring(lib: &libloading::Library, p: *mut c_char) {
     }
 }
 
+/// unwrap_ok 错误通道读取:auto__last_error 返回非空 → 拷贝消息并清除,
+/// 返回 Some(msg);无错误返回 None(指针归属 cdylib 线程局部,只拷贝不释放)。
+fn take_last_error(lib: &libloading::Library) -> Option<String> {
+    type ErrFn = unsafe extern "C" fn() -> *mut c_char;
+    let sym = (unsafe { lib.get::<ErrFn>(b"auto__last_error") }).ok()?;
+    let ptr = unsafe { sym() };
+    if ptr.is_null() {
+        return None;
+    }
+    let msg = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    if let Ok(clear) = unsafe { lib.get::<unsafe extern "C" fn()>(b"auto__clear_error") } {
+        unsafe { clear() };
+    }
+    Some(msg)
+}
+
 /// 弹出的参数中间表示(已按类归并:i/l/b → I,f → F,s → S,p → P)。
 #[derive(Clone, Copy)]
 enum CArg {
@@ -316,30 +332,52 @@ macro_rules! getsym {
     }};
 }
 
+/// unwrap_ok 错误检查:fallible 方法调用后查 cdylib 错误通道,命中即转 VMError。
+macro_rules! check_err {
+    ($lib:expr, $ctx:expr, $fallible:expr) => {
+        if $fallible {
+            if let Some(msg) = take_last_error(&$lib) {
+                return Err(VMError::RuntimeError(format!("{}: {}", $ctx, msg)));
+            }
+        }
+    };
+}
+
 /// 按返回类调用并压栈。参数已归并为 (类型表, 取值表)。
 /// $chain:原地链式(返回 &Self)→ 压回 $recv_handle 原句柄,不新建对象。
+/// $fallible:unwrap_ok——压栈前查错误通道,Err 即转 VMError。
 macro_rules! ret_call {
-    ($lib:expr, $name:expr, $task:expr, $vm:expr, $ctx:expr, ($($t:ty),*), ($($a:expr),*), $retc:expr, $ret_label:expr, $drop_sym:expr, $crate_nm:expr, $chain:expr, $recv_handle:expr) => {{
+    ($lib:expr, $name:expr, $task:expr, $vm:expr, $ctx:expr, ($($t:ty),*), ($($a:expr),*), $retc:expr, $ret_label:expr, $drop_sym:expr, $crate_nm:expr, $chain:expr, $fallible:expr, $recv_handle:expr, $ret_raw:expr) => {{
         match $retc {
             b'v' => {
                 let sym = getsym!($lib, $name, ($($t),*) -> ());
                 unsafe { sym($($a),*) };
+                check_err!($lib, $ctx, $fallible);
                 $task.ram.push_i32(0);
             }
             b'I' => {
                 let sym = getsym!($lib, $name, ($($t),*) -> i64);
                 let r = unsafe { sym($($a),*) };
-                // bool 返回只保证低字节有效;整型低位即值(x64 写 32 位寄存器零扩展)
-                $task.ram.push_i64(r);
+                check_err!($lib, $ctx, $fallible);
+                // bool 返回只保证 al 有效(高位是垃圾),必须掩码;
+                // 其余整型低位即值(x64 写 32 位寄存器零扩展)。
+                // 大整数走 heap-aware 压栈(virt_memory 48 位内联范围限制)。
+                if $ret_raw == 'b' {
+                    $task.ram.push_nv(auto_val::encode_bool((r & 0xFF) != 0));
+                } else {
+                    $vm.push_i64_vm($task, r);
+                }
             }
             b'F' => {
                 let sym = getsym!($lib, $name, ($($t),*) -> f64);
                 let r = unsafe { sym($($a),*) };
+                check_err!($lib, $ctx, $fallible);
                 $task.ram.push_f64(r);
             }
             b'S' => {
                 let sym = getsym!($lib, $name, ($($t),*) -> *mut c_char);
                 let r = unsafe { sym($($a),*) };
+                check_err!($lib, $ctx, $fallible);
                 let s = if r.is_null() {
                     String::new()
                 } else {
@@ -352,6 +390,7 @@ macro_rules! ret_call {
             _ => {
                 let sym = getsym!($lib, $name, ($($t),*) -> *mut c_void);
                 let r = unsafe { sym($($a),*) };
+                check_err!($lib, $ctx, $fallible);
                 if $chain {
                     let h = (*$recv_handle).unwrap_or(0);
                     if h == 0 {
@@ -378,6 +417,7 @@ fn make_method_shim(
     let name = CString::new(entry.export.clone()).unwrap_or_default();
     let classes: Vec<u8> = entry.params.chars().map(arg_class).collect();
     let retc = ret_class(entry.ret.chars().next().unwrap_or('v'));
+    let ret_raw = entry.ret.chars().next().unwrap_or('v');
     let ret_label = if entry.ret_type.is_empty() {
         entry.type_name.clone()
     } else {
@@ -387,6 +427,7 @@ fn make_method_shim(
     let has_recv = entry.self_kind != "static";
     let is_move = entry.self_kind == "move";
     let chain = entry.chain;
+    let fallible = entry.fallible;
     let crate_name = crate_name.to_string();
     let ctx = format!("{}.{}", entry.type_name, entry.method);
 
@@ -449,62 +490,62 @@ fn make_method_shim(
             }
         };
         match classes.as_slice() {
-            [] => ret_call!(lib, name, task, vm, ctx, (), (), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
+            [] => ret_call!(lib, name, task, vm, ctx, (), (), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
             [a] => match a {
-                b'I' => ret_call!(lib, name, task, vm, ctx, (i64), (ai(0)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                b'F' => ret_call!(lib, name, task, vm, ctx, (f64), (af(0)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                b'S' => ret_call!(lib, name, task, vm, ctx, (*const c_char), (as_(0)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void), (ap(0)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
+                b'I' => ret_call!(lib, name, task, vm, ctx, (i64), (ai(0)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                b'F' => ret_call!(lib, name, task, vm, ctx, (f64), (af(0)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                b'S' => ret_call!(lib, name, task, vm, ctx, (*const c_char), (as_(0)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void), (ap(0)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
             },
             [a, b] => match (a, b) {
-                (b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (i64, i64), (ai(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', b'F') => ret_call!(lib, name, task, vm, ctx, (i64, f64), (ai(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', b'S') => ret_call!(lib, name, task, vm, ctx, (i64, *const c_char), (ai(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', _) => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void), (ai(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'I') => ret_call!(lib, name, task, vm, ctx, (f64, i64), (af(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'F') => ret_call!(lib, name, task, vm, ctx, (f64, f64), (af(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'S') => ret_call!(lib, name, task, vm, ctx, (f64, *const c_char), (af(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', _) => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void), (af(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'I') => ret_call!(lib, name, task, vm, ctx, (*const c_char, i64), (as_(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'F') => ret_call!(lib, name, task, vm, ctx, (*const c_char, f64), (as_(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'S') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *const c_char), (as_(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void), (as_(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64), (ap(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'F') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, f64), (ap(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'S') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *const c_char), (ap(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void), (ap(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
+                (b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (i64, i64), (ai(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', b'F') => ret_call!(lib, name, task, vm, ctx, (i64, f64), (ai(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', b'S') => ret_call!(lib, name, task, vm, ctx, (i64, *const c_char), (ai(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', _) => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void), (ai(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'I') => ret_call!(lib, name, task, vm, ctx, (f64, i64), (af(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'F') => ret_call!(lib, name, task, vm, ctx, (f64, f64), (af(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'S') => ret_call!(lib, name, task, vm, ctx, (f64, *const c_char), (af(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', _) => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void), (af(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'I') => ret_call!(lib, name, task, vm, ctx, (*const c_char, i64), (as_(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'F') => ret_call!(lib, name, task, vm, ctx, (*const c_char, f64), (as_(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'S') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *const c_char), (as_(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void), (as_(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64), (ap(0), ai(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'F') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, f64), (ap(0), af(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'S') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *const c_char), (ap(0), as_(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void), (ap(0), ap(1)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
             },
             [a, b, c] => match (a, b, c) {
-                (b'I', b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (i64, i64, i64), (ai(0), ai(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', b'I', _) => ret_call!(lib, name, task, vm, ctx, (i64, i64, *mut c_void), (ai(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', b'F', _) => ret_call!(lib, name, task, vm, ctx, (i64, f64, *mut c_void), (ai(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', b'S', _) => ret_call!(lib, name, task, vm, ctx, (i64, *const c_char, *mut c_void), (ai(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', _, b'I') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, i64), (ai(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', _, b'F') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, f64), (ai(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', _, b'S') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, *const c_char), (ai(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'I', _, _) => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, *mut c_void), (ai(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'I', _) => ret_call!(lib, name, task, vm, ctx, (f64, i64, *mut c_void), (af(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'F', _) => ret_call!(lib, name, task, vm, ctx, (f64, f64, *mut c_void), (af(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', b'S', _) => ret_call!(lib, name, task, vm, ctx, (f64, *const c_char, *mut c_void), (af(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', _, b'I') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, i64), (af(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', _, b'F') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, f64), (af(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', _, b'S') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, *const c_char), (af(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'F', _, _) => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, *mut c_void), (af(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'I', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, i64, *mut c_void), (as_(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'F', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, f64, *mut c_void), (as_(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', b'S', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *const c_char, *mut c_void), (as_(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', _, b'I') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, i64), (as_(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', _, b'F') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, f64), (as_(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', _, b'S') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, *const c_char), (as_(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (b'S', _, _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, *mut c_void), (as_(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64, i64), (ap(0), ai(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'I', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64, *mut c_void), (ap(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'F', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, f64, *mut c_void), (ap(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, b'S', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *const c_char, *mut c_void), (ap(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, _, b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, i64), (ap(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, _, b'F') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, f64), (ap(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                (_, _, b'S') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, *const c_char), (ap(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
-                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, *mut c_void), (ap(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, &recv_handle),
+                (b'I', b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (i64, i64, i64), (ai(0), ai(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', b'I', _) => ret_call!(lib, name, task, vm, ctx, (i64, i64, *mut c_void), (ai(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', b'F', _) => ret_call!(lib, name, task, vm, ctx, (i64, f64, *mut c_void), (ai(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', b'S', _) => ret_call!(lib, name, task, vm, ctx, (i64, *const c_char, *mut c_void), (ai(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', _, b'I') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, i64), (ai(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', _, b'F') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, f64), (ai(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', _, b'S') => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, *const c_char), (ai(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'I', _, _) => ret_call!(lib, name, task, vm, ctx, (i64, *mut c_void, *mut c_void), (ai(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'I', _) => ret_call!(lib, name, task, vm, ctx, (f64, i64, *mut c_void), (af(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'F', _) => ret_call!(lib, name, task, vm, ctx, (f64, f64, *mut c_void), (af(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', b'S', _) => ret_call!(lib, name, task, vm, ctx, (f64, *const c_char, *mut c_void), (af(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', _, b'I') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, i64), (af(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', _, b'F') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, f64), (af(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', _, b'S') => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, *const c_char), (af(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'F', _, _) => ret_call!(lib, name, task, vm, ctx, (f64, *mut c_void, *mut c_void), (af(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'I', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, i64, *mut c_void), (as_(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'F', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, f64, *mut c_void), (as_(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', b'S', _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *const c_char, *mut c_void), (as_(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', _, b'I') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, i64), (as_(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', _, b'F') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, f64), (as_(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', _, b'S') => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, *const c_char), (as_(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (b'S', _, _) => ret_call!(lib, name, task, vm, ctx, (*const c_char, *mut c_void, *mut c_void), (as_(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'I', b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64, i64), (ap(0), ai(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'I', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, i64, *mut c_void), (ap(0), ai(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'F', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, f64, *mut c_void), (ap(0), af(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, b'S', _) => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *const c_char, *mut c_void), (ap(0), as_(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, _, b'I') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, i64), (ap(0), ap(1), ai(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, _, b'F') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, f64), (ap(0), ap(1), af(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                (_, _, b'S') => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, *const c_char), (ap(0), ap(1), as_(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
+                _ => ret_call!(lib, name, task, vm, ctx, (*mut c_void, *mut c_void, *mut c_void), (ap(0), ap(1), ap(2)), retc, ret_label, drop_sym, crate_name, chain, fallible, &recv_handle, ret_raw),
             },
             _ => {
                 return Err(VMError::RuntimeError(format!(
