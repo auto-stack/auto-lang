@@ -285,6 +285,67 @@ pub struct Parser<'a> {
     py_item_imports: Vec<AutoStr>,
 }
 
+/// Damerau-Levenshtein distance == 1 test (insert/delete/substitute/adjacent
+/// transpose) — used for near-miss block-keyword warnings without allocating
+/// a full distance matrix.
+fn damerau_levenshtein_1(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let (la, lb) = (a.len(), b.len());
+    match la.cmp(&lb) {
+        std::cmp::Ordering::Equal => {
+            let mut diff = Vec::with_capacity(2);
+            for i in 0..la {
+                if a[i] != b[i] {
+                    diff.push(i);
+                    if diff.len() > 2 {
+                        return false;
+                    }
+                }
+            }
+            match diff.as_slice() {
+                [_] => true,
+                [i, j] if *j == *i + 1 => a[*i] == b[*j] && a[*j] == b[*i],
+                _ => false,
+            }
+        }
+        std::cmp::Ordering::Less => {
+            if lb - la != 1 {
+                return false;
+            }
+            let mut ai = 0;
+            let mut skipped = false;
+            for &c in b {
+                if ai < la && a[ai] == c {
+                    ai += 1;
+                } else if !skipped {
+                    skipped = true;
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+        std::cmp::Ordering::Greater => {
+            // mirror: one deletion from a
+            if la - lb != 1 {
+                return false;
+            }
+            let mut bi = 0;
+            let mut skipped = false;
+            for &c in a {
+                if bi < lb && b[bi] == c {
+                    bi += 1;
+                } else if !skipped {
+                    skipped = true;
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
 impl<'a> Parser<'a> {
     /// Create parser (no Universe needed)
     /// Prefer this for new code.
@@ -12007,8 +12068,10 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let ident = self.cur.text.as_str();
-            match ident {
+            // Plan 425 复审:owned——fallback 分支的近失告警需要 &mut self,
+            // 与 self.cur 的不可变借用冲突。
+            let ident = self.cur.text.as_str().to_string();
+            match ident.as_str() {
                 "msg" => {
                     messages.push(self.parse_msg_decl_inner()?);
                 }
@@ -12055,6 +12118,35 @@ impl<'a> Parser<'a> {
                     // Plan 425: view 可选化——widget 体以元素开头(无 view 块)
                     // 时体即视图:首个非块关键字标识符按视图元素解析并自动
                     // 包裹为 view。已有 view 块则报错(单视图)。
+                    // Plan 425 复审债务修复:与块关键字拼写近失(距离 1,含
+                    // 相邻换位)且后随 `{` 的标识符告警——否则 `veiw {}` 会
+                    // 静默变成一个名为 veiw 的视图元素。
+                    // 单 token 前看(ident 后是否紧跟 `{`)——peek() 返回的是
+                    // 当前 token,真前看用 lexer save/restore(Plan 395 模式)。
+                    let lex_state = self.lexer.save_state();
+                    let saved_cur = self.cur.clone();
+                    let saved_prev = self.prev.clone();
+                    self.next();
+                    let next_is_brace = self.is_kind(TokenKind::LBrace);
+                    self.lexer.restore_state(lex_state);
+                    self.cur = saved_cur;
+                    self.prev = saved_prev;
+                    if next_is_brace {
+                        const BLOCK_KEYWORDS: [&str; 11] = [
+                            "msg", "model", "computed", "view", "on", "style",
+                            "use", "watch", "expose", "routes", "setup",
+                        ];
+                        if let Some(kw) = BLOCK_KEYWORDS
+                            .iter()
+                            .find(|kw| damerau_levenshtein_1(ident.as_str(), kw))
+                        {
+                            self.warn(Warning::SuspiciousBlockKeyword {
+                                found: ident.to_string(),
+                                suggestion: kw.to_string(),
+                                span: pos_to_span(self.cur.pos),
+                            });
+                        }
+                    }
                     if view.is_none() {
                         view = Some(ViewBlock { root: self.parse_view_node()? });
                     } else {
@@ -14904,6 +14996,43 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Plan 425 复审债务修复:块关键字拼写近失(如 `veiw {}`)在 view 可选化
+    /// 后会静默解析为视图元素——现在告警提示正确拼写;合法元素不误报。
+    #[test]
+    fn test_widget_block_keyword_near_miss_warning() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {
+    veiw { col { text \"hi\" { } } }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("near-miss still parses as element");
+        assert!(matches!(ast.stmts.first(), Some(crate::ast::Stmt::WidgetDecl(_))));
+        let hit = parser.warnings.iter().any(|w| {
+            matches!(
+                w,
+                Warning::SuspiciousBlockKeyword { found, suggestion, .. }
+                    if found == "veiw" && suggestion == "view"
+            )
+        });
+        assert!(hit, "expected near-miss warning, got {} warnings", parser.warnings.len());
+
+        let session2 = crate::session::CompilerSession::ui();
+        let src2 = "widget App {
+    col { text \"hi\" { } }
+}
+";
+        let mut parser2 = Parser::from(src2).with_session(session2);
+        parser2.parse().expect("legit element parses");
+        assert!(
+            !parser2.warnings.iter().any(|w| matches!(w, Warning::SuspiciousBlockKeyword { .. })),
+            "legit element must not warn"
+        );
+    }
+
+
     use super::*;
     fn parse_once(code: &str) -> Code {
         let mut parser = Parser::from(code);

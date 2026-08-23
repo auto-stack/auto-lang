@@ -58,7 +58,7 @@
 
 ---
 
-| 425 | view 可选化拼写 | widget 体内未知块关键字的拼写错误（如 `veiw {}`）静默解析为视图元素而非报错。spec 已注明取舍。 | `parser.rs` parse_widget_decl `_ =>` 分支 |
+| 425 | ~~view 可选化拼写~~ ✅ 已修(2026-08-23):Damerau-Levenshtein 距离 1(含相邻换位)且后随 `{` 的标识符发 W0009 告警(`SuspiciousBlockKeyword`,lexer save/restore 单 token 前看);合法元素零误报,单测锁定 | `parser.rs` parse_widget_decl `_ =>` 分支 |
 | 425 | 根序语义 | 根组件 = 源序首个 widget（component fn 糖化后不再追加在 widgets 之后），App 应前置；真实工程 app.at 均如此。 | `ui_gen/api.rs` + scenario-dialect spec |
 | 425 | 参数类型擦除 | component fn 参数的自定义类型仍擦除为 any（fragment hint 映射保留，保糖化字节等价）；widget 拼写走 parse_type 全类型。 | `parser.rs` fragment_param_hint_to_type |
 | 426 | setup 解释器侧 | `setup {}` 仅落 a2vue（script setup 顶层）；解释器（AutoUI 继承 AutoVM）每实例执行约定未实现，登记后续 auto-ui interpreter 联动。 | `parser.rs` parse_setup_block_inner + 归档计划 §5 |
