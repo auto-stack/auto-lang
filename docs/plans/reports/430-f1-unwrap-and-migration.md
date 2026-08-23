@@ -114,3 +114,17 @@ legacy 静态表能力面已可由 dep 包完整覆盖。fixture e2e 加 Point
 4. cookbook 测试若要用 dep 包路径需网络+nightly，CI 化时预生成包（F2 范畴）；
 5. 更多 trait 合成面（Debug→format!("{:?}")、Clone、PartialEq）按 F1 迁移
    实需再扩。
+
+## 附二：F 轮收尾（2026-08-24）
+
+1. **std 臂迁移续**：Instant.now/elapsed、PathBuf.from 迁生成段并删手写臂。
+   PathBuf.join **不迁**：std 的 `PathBuf::join` 经 deref 走 `Path::join`（返回新
+   对象），遗留臂语义是 `push`（原地改）——迁移会静默改用户可见行为。
+2. **F2 前置（builtin 已缓存包接线）**：`BUILTIN_OPAQUE_CRATES` 提升为模块级
+   pub 常量；`resolve_deps` 无 dep 语句时调 `register_builtin_cached_packs`——
+   builtin crate 经 `find_methods_pack` 接入**已缓存**的方法包（仅查缓存，
+   绝不触发 rustdoc/网络/构建；无缓存零成本降级为 legacy 现状）。csv 实测：
+   dep-less `use.rust csv::{ByteRecord}` + `ByteRecord.new()/is_empty()` → 1。
+   包来源：dep 声明过一次或 CI 预生成——F2 全量切换后此路径成为 builtin 主通道。
+3. 残余：F1 主体（逐 builtin crate 删 legacy 表——能力缺口已清，纯执行面）、
+   CI 预生成清单、Option None 语义、Move 解锁、泛型 mono 提示。

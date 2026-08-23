@@ -182,6 +182,8 @@ fn rust_recv_type(ty: &str) -> String {
         "HashMap" => "std::collections::HashMap<String, i64>".into(),
         "HashSet" => "std::collections::HashSet<String>".into(),
         "Duration" => "std::time::Duration".into(),
+        "Instant" => "std::time::Instant".into(),
+        "PathBuf" => "std::path::PathBuf".into(),
         other => other.into(),
     }
 }

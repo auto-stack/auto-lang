@@ -133,6 +133,11 @@ status: draft
   D3 以 std Duration 迁移替代完成；std 手写臂侧无阻断，Duration 已示范迁法。）
 - [ ] F2 全部迁完后：`BUILTIN_OPAQUE_CRATES` 白名单语义改为"预生成 shim 包的默认配置清单"；
   `shim_rust_stdlib_dispatch` 手写臂清零退役。
+  （F2 前置已落地 2026-08-24：`BUILTIN_OPAQUE_CRATES` 提升为模块级 pub 常量
+  （语义演进落点）；builtin crate **无 dep 声明**时经 `find_methods_pack`
+  接入**已缓存**的方法包——仅查缓存，绝不触发 rustdoc/网络/构建，无缓存零成本
+  降级为 legacy 现状。csv 实测 dep-less `ByteRecord.new()/is_empty()` 走通。
+  剩余 = 逐 crate 删 legacy 表（F1 主体）+ CI 预生成清单。）
 - [x] F3 演示项：往默认配置加一个新 crate（如 `semver`），跑工具 → 新库立即可用，零手写代码。
   （2026-08-23 以 **uuid**（不在 builtin 清单）达成：`dep uuid(features: ["v4"])` +
   `use.rust uuid::{Uuid}` → new_v4/get_version_num/parse_str(unwrap_ok)/is_nil 全通，
@@ -221,3 +226,17 @@ status: draft
   - ** marshaller 修复**：bool 返回只保证 al 有效——读 i64 槽必须掩码（实测 uuid
     is_nil 曾把垃圾高位带回触发 48 位越界 panic）；整型压栈改 heap-aware push_i64_vm。
   - 分类器新增边界：128 位参数跳过；rustdoc `crate::` 前缀路径剥离（uuid 根重导出实测）。
+- **F 轮收尾**（2026-08-24）：
+  - 解除 F1 两类阻断：**字段 getter 合成**（rustdoc struct 公共字段 → 方法面入包；
+    标量直读、String/不透明 clone，v53 `struct_field` 值即类型表示——第 4 号陷阱）+
+    **Display → to_string 合成**（trait impl 解析 + blanket ToString）。semver 实测
+    major/minor/patch/to_string/matches 全通——builtin semver 的 legacy 静态表能力面
+    已可由 dep 包完整覆盖。fixture 加 Point（pub 字段 + Display）入 e2e。
+  - 修 marshaller 真 bug：arity-3 类归并通配臂把 (I,I,S) 字符串实参按 c_void 传递
+    （tag 字段静默变空）——改穷举 64 组合 + 未知类兜底臂。
+  - std 臂迁移续：Instant.now/elapsed、PathBuf.from 迁生成段并删手写臂
+    （PathBuf.join 保留——std 的 join 经 deref 返回新对象，遗留臂语义是 push 原地改，
+    迁移会静默改行为）。
+  - F2 前置：builtin crate 无 dep 声明时接入**已缓存**方法包（`register_builtin_
+    cached_packs`，仅查缓存零网络零构建，无缓存零成本降级）；`BUILTIN_OPAQUE_CRATES`
+    提升为模块级 pub 常量。csv 实测 dep-less ByteRecord 走通。

@@ -44,6 +44,12 @@ pub fn std_methods() -> Vec<ShimMethod> {
     m("Duration", "from_secs_f64", SelfKind::Static, &[Ty::F64], Ty::Opaque("Duration".into()));
     m("Duration", "as_secs", SelfKind::Read, &[], Ty::U64);
     m("Duration", "as_secs_f64", SelfKind::Read, &[], Ty::F64);
+    // ---- Instant / PathBuf(F 轮续:自手写臂迁移) ----
+    // PathBuf.join 不迁:std PathBuf::join 经 deref 走 Path::join(返回新对象),
+    // 遗留臂语义是 push(原地改)——迁移会静默改行为,保留手写。
+    m("Instant", "now", SelfKind::Static, &[], Ty::Opaque("Instant".into()));
+    m("Instant", "elapsed", SelfKind::Read, &[], Ty::Opaque("Duration".into()));
+    m("PathBuf", "from", SelfKind::Static, &[Ty::StrOwned], Ty::Opaque("PathBuf".into()));
     // HashMap/HashSet:走 Auto 原生 Map 路径(VM auto.hashmap natives + a2r 真 HashMap),v1 不生成 shim
     v
 }

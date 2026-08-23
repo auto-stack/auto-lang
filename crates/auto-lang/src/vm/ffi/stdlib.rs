@@ -6907,25 +6907,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     }
 
     match (type_name.as_str(), method.as_str()) {
-        // std::time::Instant
-        ("Instant", "now") => {
-            let instant = std::time::Instant::now();
-            push_rust_obj(task, vm, "Instant", instant)?;
-        }
-        ("Instant", "elapsed") => {
-            let handle = task.ram.pop_i32() as u64;
-            if let Some(obj) = vm.get_heap_object(handle) {
-                let guard = obj.read().unwrap();
-                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(instant) = rust_obj.downcast_ref::<std::time::Instant>() {
-                        let elapsed = instant.elapsed();
-                        push_rust_obj(task, vm, "Duration", elapsed)?;
-                        return Ok(());
-                    }
-                }
-            }
-            task.ram.push_i32(0);
-        }
+        // std::time::Instant(now/elapsed 已迁 plan-430 生成段)
 
         // std::time::Duration(构造器与 as_secs/as_secs_f64 已迁 plan-430 生成段;
         // 残留 u128 返回的访问器,超 i64 槽暂留手写)
@@ -6950,12 +6932,8 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(0);
         }
 
-        // std::path::PathBuf
-        ("PathBuf", "from") => {
-            let s: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("PathBuf.from: {}", e)))?;
-            push_rust_obj(task, vm, "PathBuf", StdPathBuf::from(s))?;
-        }
+        // std::path::PathBuf(from 已迁 plan-430 生成段;join 保留手写——
+        // std PathBuf::join 经 deref 返回新对象,此臂语义是 push 原地改)
         ("PathBuf", "join") => {
             let other: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("PathBuf.join: {}", e)))?;

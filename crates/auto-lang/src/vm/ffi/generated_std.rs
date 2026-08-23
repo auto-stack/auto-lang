@@ -320,6 +320,34 @@ pub fn generated_std_dispatch(
         task.ram.push_f64(__r as f64);
             Ok(Some(()))
         }
+        ("Instant", "now") => {
+        let __r = std::time::Instant::now();
+        push_rust_obj(task, vm, "Instant", __r)?;
+            Ok(Some(()))
+        }
+        ("Instant", "elapsed") => {
+        let __r = {
+            let Some(obj) = vm.get_heap_object(task.ram.pop_i32() as u64) else {
+                return Err(ferr("Instant.elapsed", "bad handle"));
+            };
+            let guard = obj.read().unwrap();
+            let Some(ro) = guard.as_any().downcast_ref::<RustStdlibObject>() else {
+                return Err(ferr("Instant.elapsed", "not RustStdlibObject"));
+            };
+            let Some(recv) = ro.downcast_ref::<std::time::Instant>() else {
+                return Err(ferr("Instant.elapsed", "downcast failed"));
+            };
+            recv.elapsed()
+        };
+        push_rust_obj(task, vm, "Duration", __r)?;
+            Ok(Some(()))
+        }
+        ("PathBuf", "from") => {
+        let a0: String = String::pop_from_stack(task, vm).map_err(|e| ferr("PathBuf.from pop", e))?;
+        let __r = std::path::PathBuf::from(a0.clone());
+        push_rust_obj(task, vm, "PathBuf", __r)?;
+            Ok(Some(()))
+        }
         _ => Ok(None),
     }
 }

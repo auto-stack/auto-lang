@@ -46,6 +46,34 @@ use std::collections::HashMap;
 
 use auto_cache::{Sandbox, CrateMetadata, CrateSource};
 
+/// Plan 212 Phase 2.2 起的内建不透明 crate 清单(免 dep 声明)。
+/// Plan 430 F2 语义演进目标:此清单从"手写 native shim 的白名单"逐步变为
+/// "预生成方法 shim 包的默认配置清单"(迁一个删一个,见 plan-430 F1/F2)。
+pub const BUILTIN_OPAQUE_CRATES: &[&str] = &[
+    "regex", "url", "semver", "log", "env_logger", "tracing",
+    "rand", "rand_distr", "chrono", "csv", "walkdir", "toml",
+    "serde_json", "percent_encoding", "urlencoding", "base64", "hex",
+    "sha2", "mime_guess", "same_file", "heapless", "clap",
+    "ansi_term", "simplelog", "tar", "flate2", "crossbeam",
+    "anyhow", "serde", "tokio", "num", "ndarray",
+];
+
+/// Plan 430: shim 包 manifest 的自由函数签名 → D2 元数据注册。
+fn register_manifest_function_sigs(crate_name: &str, manifest_json: &str) {
+    if let Ok(man) =
+        serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(manifest_json)
+    {
+        for f in &man.functions {
+            crate::vm::ffi::dep_methods::register_function_sig(
+                crate_name,
+                &f.name,
+                &f.params,
+                &f.ret,
+            );
+        }
+    }
+}
+
 use auto_val::AutoStr;
 
 use std::rc::Rc;
@@ -442,14 +470,6 @@ impl CompileSession {
                 let crate_name = use_stmt.module.split("::").next().unwrap_or(&use_stmt.module).to_string();
 
                 // Plan 212 Phase 2.2: Built-in opaque types don't need dep declaration
-                const BUILTIN_OPAQUE_CRATES: &[&str] = &[
-                    "regex", "url", "semver", "log", "env_logger", "tracing",
-                    "rand", "rand_distr", "chrono", "csv", "walkdir", "toml",
-                    "serde_json", "percent_encoding", "urlencoding", "base64", "hex",
-                    "sha2", "mime_guess", "same_file", "heapless", "clap",
-                    "ansi_term", "simplelog", "tar", "flate2", "crossbeam",
-                    "anyhow", "serde", "tokio", "num", "ndarray",
-                ];
                 let is_builtin = BUILTIN_OPAQUE_CRATES.contains(&crate_name.as_str());
 
                 if !is_builtin && !self.is_dep_declared(&crate_name) {
@@ -629,6 +649,10 @@ impl CompileSession {
 
         let dep_statements = scan_dep_statements(source);
         if dep_statements.is_empty() {
+            // Plan 430 F2 前置:builtin crate 无 dep 声明时,接入**已缓存**的方法
+            // shim 包(仅查缓存,绝不触发 rustdoc/网络/构建——零成本降级)。
+            // 包由 dep 声明过一次或 CI 预生成;F2 全量切换后此路径成为 builtin 主通道。
+            self.register_builtin_cached_packs();
             return Ok(0);
         }
         let mut registered_count = 0;
@@ -777,20 +801,7 @@ impl CompileSession {
                         .ok()
                         .flatten()
                     {
-                        if let Ok(man) =
-                            serde_json::from_str::<shim_metadata::emit_cdylib::ShimManifest>(
-                                &built.manifest_json,
-                            )
-                        {
-                            for f in &man.functions {
-                                crate::vm::ffi::dep_methods::register_function_sig(
-                                    crate_name,
-                                    &f.name,
-                                    &f.params,
-                                    &f.ret,
-                                );
-                            }
-                        }
+                        register_manifest_function_sigs(crate_name, &built.manifest_json);
                     }
 
                     // Plan 430 C2: 大写开头的是类型导入(use.rust foo::{Type}),
@@ -855,6 +866,37 @@ impl CompileSession {
 
     }
 
+    /// Plan 430 F2 前置:builtin crate 无 dep 声明时,接入已缓存的方法 shim 包。
+    /// 仅查 `Sandbox::find_methods_pack` 缓存(fingerprint 命中的 cdylib + manifest),
+    /// 绝不触发 rustdoc/网络/构建——无缓存时零成本降级为现状(legacy 层服务)。
+    /// 包内自由函数签名照常注册为 D2 元数据;方法注册发生在 init_rust_ffi 加载侧。
+    fn register_builtin_cached_packs(&mut self) {
+        if self.rust_imports.is_empty() {
+            return;
+        }
+        if self.sandbox.is_none() {
+            match Sandbox::new() {
+                Ok(s) => self.sandbox = Some(s),
+                Err(_) => return,
+            }
+        }
+        let sandbox = self.sandbox.as_ref().expect("sandbox");
+        for crate_name in self.rust_imports.keys() {
+            if self.declared_crates.contains(crate_name) {
+                continue; // 有 dep 声明 → 主路径全量构建
+            }
+            if !BUILTIN_OPAQUE_CRATES.contains(&crate_name.as_str()) {
+                continue; // 非 builtin 且未声明 → resolve_uses 会报错,此处不管
+            }
+            if let Some((_lib, manifest_json)) = sandbox.find_methods_pack(crate_name) {
+                log::info!(
+                    "plan430: builtin cached methods pack for {} (dep-less)",
+                    crate_name
+                );
+                register_manifest_function_sigs(crate_name, &manifest_json);
+            }
+        }
+    }
 
 
     /// Plan 092: Check if a crate has been declared as a dependency
@@ -864,8 +906,7 @@ impl CompileSession {
     /// Returns true if the crate was declared in a `dep` statement.
 
     /// Build a DepSource for compile_dep from stored dep info.
-    fn build_dep_source(&self, crate_name: &str) -> auto_cache::sandbox::DepSource {
-        let features = self.dep_features.get(crate_name)
+    fn build_dep_source(&self, crate_name: &str) -> auto_cache::sandbox::DepSource {        let features = self.dep_features.get(crate_name)
             .map(|f| f.clone())
             .unwrap_or_default();
         let src = self.dep_sources.get(crate_name);
