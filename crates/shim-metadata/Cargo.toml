@@ -1,0 +1,15 @@
+[package]
+name = "shim-metadata"
+version = "0.1.0"
+edition = "2021"
+# Plan 430: rustdoc 元信息工具 —— 签名提取 × 规律分类器 → shim 包生成
+# 离线工具,不进 auto-lang 依赖树。
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "shim-metadata"
+path = "src/main.rs"

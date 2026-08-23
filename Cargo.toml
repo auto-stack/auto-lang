@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/a2r-std",
+    # Plan 430: rustdoc 元信息工具(离线,不入 auto-lang 依赖树)
+    "crates/shim-metadata",
     # Plan 387 W5b: behavior-parity tests — transpile .at → compile+run → compare
     # stdout to the VM actor suite. Slow (cargo build per case), so #[ignore]d.
     "crates/a2r-actor-tests",

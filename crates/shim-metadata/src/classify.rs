@@ -1,0 +1,107 @@
+//! 规律层:6 条签名分类规则(430 §背景) + 例外表应用。
+//! 规则默认值之外,例外表只存三类条目:mono(单态化提示)/skip(跳过)/note(句柄语义注记)。
+
+use crate::types::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// 例外表(rules.json 的 exceptions 字段)。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Exceptions {
+    /// "Vec.get" -> {"K":"String"} 泛型参数的默认实例化
+    #[serde(default)]
+    pub mono: HashMap<String, HashMap<String, String>>,
+    /// 显式跳过("Vec.sort_by": "closure param")
+    #[serde(default)]
+    pub skip: HashMap<String, String>,
+    /// 句柄语义注记("Vec.push": "invalidates iterators"),仅文档用途
+    #[serde(default)]
+    pub note: HashMap<String, String>,
+}
+
+pub struct Classified {
+    pub plans: Vec<MarshalPlan>,
+    pub skips: Vec<Skip>,
+}
+
+pub fn classify_all(methods: &[ShimMethod], exc: &Exceptions) -> Classified {
+    let mut plans = Vec::new();
+    let mut skips = Vec::new();
+    for m in methods {
+        let key = format!("{}.{}", m.type_name, m.method);
+        if let Some(reason) = exc.skip.get(&key) {
+            skips.push(Skip {
+                type_name: m.type_name.clone(),
+                method: m.method.clone(),
+                reason: format!("exception-skip: {reason}"),
+            });
+            continue;
+        }
+        // 规则 0:泛型方法默认不可调用,例外表 mono 提示可解(标注 T->具体类型)。
+        if m.generic && !exc.mono.contains_key(&key) {
+            skips.push(Skip {
+                type_name: m.type_name.clone(),
+                method: m.method.clone(),
+                reason: "generic method without mono hint".into(),
+            });
+            continue;
+        }
+        // 规则 0b:闭包/函数指针/impl Trait 参数 → 跳过(v53 投影后为 Opaque("Unknown")
+        // 或路径名含 Fn/impl;保守起见字符串判定)。
+        if m.params.iter().any(|p| matches!(p, Ty::Opaque(n) if n.contains("Fn") || n == "Unknown")) {
+            skips.push(Skip {
+                type_name: m.type_name.clone(),
+                method: m.method.clone(),
+                reason: "closure/unknown param".into(),
+            });
+            continue;
+        }
+        match classify_one(m) {
+            Some(plan) => plans.push(plan),
+            None => skips.push(Skip {
+                type_name: m.type_name.clone(),
+                method: m.method.clone(),
+                reason: "unclassifiable".into(),
+            }),
+        }
+    }
+    Classified { plans, skips }
+}
+
+fn classify_one(m: &ShimMethod) -> Option<MarshalPlan> {
+    // 参数规划
+    let mut args = Vec::new();
+    for p in &m.params {
+        args.push(match p {
+            Ty::Str => ArgPlan::BorrowStr, // 规则 5:默认借用
+            Ty::I32 | Ty::U32 => ArgPlan::ScalarI32,
+            Ty::I64 | Ty::U64 => ArgPlan::ScalarI64,
+            Ty::F32 | Ty::F64 => ArgPlan::ScalarF64,
+            Ty::Bool => ArgPlan::ScalarBool,
+            Ty::Opaque(_) => ArgPlan::OpaqueHandle,
+            Ty::Generic(_) | Ty::SelfTy => return None,
+            Ty::Void => return None,
+        });
+    }
+    // 返回值规划(规则 1/3/6)
+    let ret = match &m.ret {
+        Ty::I32 | Ty::U32 => RetPlan::ScalarI32,
+        Ty::I64 | Ty::U64 => RetPlan::ScalarI64, // 规则 6:宽整型用 i64 槽,不做有损截断
+        Ty::F32 | Ty::F64 => RetPlan::ScalarF64,
+        Ty::Bool => RetPlan::ScalarBool,
+        Ty::Str => RetPlan::ScalarStr,
+        Ty::SelfTy => {
+            // 规则 3:链式(返回 Self/&mut Self)——原地修改、压回句柄。
+            // 仅对 &mut self 方法成立;&self 返回 Self 是拷贝语义,同样压新句柄,先按 Chain 处理。
+            RetPlan::ChainSelf
+        }
+        Ty::Opaque(n) => RetPlan::Opaque(n.clone()),
+        Ty::Void => RetPlan::Void,
+        Ty::Generic(_) => return None,
+    };
+    Some(MarshalPlan {
+        method: m.clone(),
+        ret,
+        args,
+    })
+}
