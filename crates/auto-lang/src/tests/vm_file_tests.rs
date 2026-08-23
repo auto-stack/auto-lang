@@ -564,21 +564,10 @@ fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unw
 // Test cases reuse the same format as VM file tests (.at + .expected.out).
 // The AAVM runner prepends auto/lib/*.at code before the test case code.
 
-/// Auto library files to prepend for AAVM tests (order matters: dependencies first)
-const AUTO_LIB_FILES: &[&str] = &[
-    "auto/lib/pos.at",
-    "auto/lib/token.at",
-    "auto/lib/error.at",
-    "auto/lib/lexer.at",
-    "auto/lib/ast.at",
-    "auto/lib/parser.at",
-    "auto/lib/typeinfer.at",
-    "auto/lib/codegen.at",
-    "auto/lib/vm.at",
-    "auto/lib/a2r.at",
-    "auto/lib/generics.at",
-    "auto/lib/eval.at",
-];
+/// Auto library files to prepend for AAVM tests (order matters: dependencies first).
+/// Single source of truth lives in lib.rs (plan-429 A3: the two lists had drifted
+/// — this one included generics.at, lib.rs's did not).
+const AUTO_LIB_FILES: &[&str] = crate::AUTO_LIB_FILES;
 
 /// Cached auto/lib code. Loaded once per test process.
 static AUTO_LIB_CACHE: OnceLock<String> = OnceLock::new();

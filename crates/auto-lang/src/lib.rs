@@ -1435,7 +1435,8 @@ pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
 }
 
 /// Auto library files to prepend for AAVM bootstrap tests.
-const AUTO_LIB_FILES: &[&str] = &[
+/// Single source of truth — vm_file_tests.rs reuses this list (plan-429 A3).
+pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/pos.at",
     "auto/lib/token.at",
     "auto/lib/error.at",
@@ -1446,6 +1447,7 @@ const AUTO_LIB_FILES: &[&str] = &[
     "auto/lib/codegen.at",
     "auto/lib/vm.at",
     "auto/lib/a2r.at",
+    "auto/lib/generics.at",
     "auto/lib/eval.at",
 ];
 
