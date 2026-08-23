@@ -72,6 +72,7 @@
 | 426 | async setup | setup 内 `await` 编译期拒绝（async setup 需 Suspense 边界），单测锁定；支持另立任务。 | `parser.rs` stmt_expr_contains_await |
 | 426 | 模板 refs 解包 | setup 绑定的 refs 标注字段在模板中不自动解包（普通对象嵌套 ref 的 Vue 语义）；script 侧已注入 .value。继承 composable facade 机制。 | `ui_gen/ts_adapter.rs` facade_ref_fields |
 | 428 | ~~阻塞式文件对话框冻结 UI~~ ✅ 已修(2026-08-23 set_parent 落地):`dialog_open/save` 经 Win32 EnumWindows 就地发现主窗口 HWND(本进程最大可见顶层窗口,OnceLock 缓存),rfd `set_parent` 挂属主(raw-window-handle 0.6 直依赖,与 rfd/iced 同实例)——对话框永远浮于应用窗口之上,异常路径的属主禁用态泄漏随之消除。E2E 实证:对话框 GW_OWNER==主窗口、WM_CLOSE 干净取消(handler 完整收尾)、关闭后真实键盘恢复。**未做(残留风险低)**:pick_file 仍同步阻塞 UI 线程(模态期主窗口输入死属正常模态语义,代理事件仍泵,VM/MCP 活);若未来要求模态期主窗口可交互,需异步 handler 框架。 | `vm/native.rs dialog_parent` + 428 计划 §7.5 |
+| 428 | 折叠区滚动按原文行数推进 | 折叠状态下滚轮仍按原始行数滚动——滚过大型折叠区需要"空滚"隐藏行数(视觉无变化但滚动条动)。修法:wheel 路径按 fold-map 跳跃隐藏段(unfold_y 已有反投影基建)。日常编辑器尺度(块 ≤ 数十行)无感知,大文件深折叠才可察觉。 | `core/mod.rs` 滚动路径 + `core/fold.rs` FoldMap |
 
 ## 📋 未来增强（非风险，记录为后续优化方向）
 

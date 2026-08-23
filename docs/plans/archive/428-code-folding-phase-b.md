@@ -1,6 +1,9 @@
 # Plan 428: 代码折叠 Phase B — core 渲染管线改造(逐 run 自绘)
 
-> **状态**: ✅ P1-P4 落地并全量验证(2026-08-23 合并;恢复重建+死锁修复见 §7.5;实机人工验收 §7.4-5 待做)
+> **状态**: ✅ **COMPLETE(2026-08-23 归档)**。P1-P4 落地+全量验证+实机
+> 人工验收通过(§7.6);验收揪出的三个既有 bug 全部根修(gutter 高度缓存
+> /Ctrl 组合键吞键/rfd 对话框无父)。唯一挂账:折叠区滚动按原文行推进
+> (§7.3 取舍,已登记债务簿);恢复重建与死锁修复记录见 §7.5;P0 结论 §6。
 > **改号说明**: 原 419-code-folding-phase-b.md → 428(2026-08-23;419 由 vm-lifecycle-three-tiers 占用)
 > **原始**: 源自 414 §3"点击折叠为 Phase B,需按行隐藏渲染,fill_raw 整缓冲绘制做不到——待单独立项")
 > **来源**: Plan 414 §3(fold Phase A 只交付视觉 chevron)/ Plan 413(fill_raw 架构与 26s/1MB shaping 教训)
@@ -231,3 +234,29 @@ unfold_y 返回 Option,均由编译器从调用点反推)。
 - 矩阵 `paste restores text`:本机剪贴板被间歇独占(环境性)——同刻干净
   master 的 bin+041 同挂同一条;T6 其余编辑动作全绿,handler 逻辑无关。
 
+
+### 7.6 实机人工验收闭环(2026-08-23,用户验收)
+
+折叠四动作全过:chevron 折/开、折叠后正文点击落点、视图菜单"折叠切换"
++状态栏 Fold N 读数;Ctrl+F 命中折叠区自动展开由集成测试覆盖
+(cursor_into_fold_auto_expands + find_next 揭示路径)。
+
+验收揪出 **三个既有 bug,全部根修**(均非折叠改动引入,溯源为 413/418
+期遗留,矩阵/MCP 注入路径从未覆盖):
+
+1. **gutter 光栅缓存高度盲区**(`9e119cdc`):console 开合使编辑器变矮,
+   旧高光栅按宽度+revision 判"新鲜"被缩放进矮 quad——行号纵向压缩错位,
+   折叠 chevron 视觉位随之漂移影响列命中。缓存元组补高度参与新鲜度
+   (handle,w,h,rev),回归测试 shorter_viewport_rasterizes_not_scales。
+2. **编辑器吞应用级 Ctrl 快捷键**(`add8eab2`):handle_key 对未识别
+   Ctrl+字母强制捕获,而 action-config 快捷键层只收未捕获事件——编辑器
+   有焦点时 Ctrl+J/D/S/N/O 全灭(矩阵 T7 走 MCP 注入绕过捕获,从未验真
+   键盘)。未识别组合放行(与 Ctrl+Tab 同构),回归测试
+   unhandled_ctrl_letter_bubbles_for_app_shortcuts。
+3. **rfd 文件对话框无父窗口**(`a0201a13`):见债务簿 428 条目——对话框
+   可藏于主窗后("假死")或异常消失后属主禁用态泄漏(UI 线程永久卡死,
+   实测进程内无解)。Win32 EnumWindows 发现主窗 + set_parent 挂属主,
+   E2E 三项实证(GW_OWNER==主窗/干净取消/真键盘恢复)。
+
+**残留挂账**(登记债务簿):折叠区滚动仍按原文行数推进(§7.3 取舍);
+pick_file 同步阻塞 UI 线程属模态语义(对话框已挂属主,风险已消)。
