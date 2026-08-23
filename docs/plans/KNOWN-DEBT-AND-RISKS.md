@@ -12,6 +12,7 @@
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
 | 385 | 逃逸风险 | 闭包 capture_slots 记录 creator_bp，若闭包逃逸（存入全局变量、在创建者函数返回后调用），creator_bp 指向已释放栈帧 → UB。当前无逃逸检测。常见用例（forEach 回调、直接调用）安全，因为创建者仍在栈上。 | `vm/engine.rs` Closure.capture_slots + `vm/codegen.rs:10971 compile_closure` |
+| 419-P1/P2 | RC canary 确定性触发（2026-08-23 外部报告） | ash-gui(ash-runner merged 模式,最大 VM 应用)下**确定性崩溃**:首条命令提交(type→submit→store.RunCommand)即 panic `[RC canary] use-after-free: heap object 4000000 was freed 0.0s ago`(rc.rs:378),×2 复现,master 4c4d6db1+合并。db8a4600(无 RC 代码)同负载数小时零崩溃。3124 单测不覆盖该路径。两种定性:①RC 计数实现过释放(误报);②真 UAF 一直存在 —— 若为②,即 auto-shell plan 060 静默退出债(第五/十五轮)的根因真身。复现:`cd ash-gui/ash-gui-auto && AUTOUI_MCP_PORT=9390 ../ash-server/target/debug/ash-runner.exe` + MCP echo 提交。 | `vm/rc.rs:378`;auto-shell plan 060 §第十六轮 |
 
 ---
 
