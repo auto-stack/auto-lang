@@ -5210,7 +5210,11 @@ fn update_block_in_state(
 /// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
 /// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
 fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
+    // Plan 062(2026-08-23):间隔必须 ≠ mcp_action_subscription 的 16ms ——
+    // 两个 `time::every` 同 duration 的订阅在 iced 的订阅表里 hash 相同,
+    // 后注册者被去重、消息静默丢失(merged 模式 job_started/job_done 不到
+    // 达 update 的根因;实测 16→17ms 后事件恢复投递)。
+    iced::time::every(std::time::Duration::from_millis(17)).filter_map(|_| {
         let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
         let mut lock = guard.lock().unwrap();
         let Some(rx) = lock.as_mut() else {
@@ -5219,9 +5223,9 @@ fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
         // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
         match rx.try_recv() {
             Ok(ev) => Some(IcedMessage {
-                widget: "ShellStore".to_string(),
-                event: ev.event,
-                input_value: Some(ev.payload_json),
+                    widget: "ShellStore".to_string(),
+                    event: ev.event,
+                    input_value: Some(ev.payload_json),
             }),
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
