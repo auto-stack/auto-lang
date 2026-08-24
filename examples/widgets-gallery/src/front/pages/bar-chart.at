@@ -1,0 +1,150 @@
+// pages/bar-chart.at — BarChart 页（Plan 437 Charts 分组 ②）
+//
+// v1：柱形几何 Auto 内联（band scale + 每柱一个 M/h/v/h/Z 子路径，
+// 整系列合成单条 path，fill 填充）。分组多系列 = 每系列一条 path
+// （槽内按系列偏移）。渲染端 SVG 直通（442 A4）。
+// 纪律（§0.6.D）：float 中间量显式声明；int→float 经存储强转。
+
+widget BarChartPage {
+    msg Msg { Init }
+
+    model {
+        quarterly = [
+            { q: "Q1", sales: 155, cost: 90 },
+            { q: "Q2", sales: 210, cost: 120 },
+            { q: "Q3", sales: 180, cost: 110 },
+            { q: "Q4", sales: 260, cost: 150 }
+        ]
+        single = [
+            { q: "Mon", v: 30 },
+            { q: "Tue", v: 80 },
+            { q: "Wed", v: 10 },
+            { q: "Thu", v: 55 },
+            { q: "Fri", v: 95 }
+        ]
+        // ---- 几何（Init 计算）----
+        singleBars str = ""
+        singleLabels str = ""
+        grouped0 str = ""
+        grouped1 str = ""
+        groupedLabels str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 单系列（band scale：槽宽 = 内宽/n，柱宽 = 槽*0.6）----
+            var vmax int = 0
+            for d in .single {
+                var v = d["v"]
+                if v > vmax {
+                    vmax = v
+                }
+            }
+            var vmaxf float = vmax
+            var n int = .single.len()
+            var nf float = n
+            var slot float = 510.0 / nf
+            var barw float = slot * 0.6
+            var dstr = ""
+            var i = 0
+            for d in .single {
+                var vf float = d["v"]
+                var xf float = 40.0 + i * slot + slot * 0.2
+                var yf float = 260.0 - vf / vmaxf * 250.0
+                var hf float = 260.0 - yf
+                dstr = dstr + f"M${xf} ${yf} h${barw} v${hf} h-${barw} Z "
+                i = i + 1
+            }
+            .singleBars = dstr
+            var labels = ""
+            for d in .single {
+                if labels == "" {
+                    labels = d["q"]
+                } else {
+                    labels = labels + "   " + d["q"]
+                }
+            }
+            .singleLabels = labels
+
+            // ---- 分组双系列（sales + cost，槽内按系列偏移）----
+            var vmax2 int = 0
+            for d in .quarterly {
+                var a = d["sales"]
+                if a > vmax2 {
+                    vmax2 = a
+                }
+                var b = d["cost"]
+                if b > vmax2 {
+                    vmax2 = b
+                }
+            }
+            var vmax2f float = vmax2
+            var n2 int = .quarterly.len()
+            var n2f float = n2
+            var slot2 float = 510.0 / n2f
+            var barw2 float = slot2 * 0.3
+            var d0 = ""
+            var d1 = ""
+            var j = 0
+            for d in .quarterly {
+                var sf float = d["sales"]
+                var cf float = d["cost"]
+                var xb float = 40.0 + j * slot2 + slot2 * 0.2
+                var ys float = 260.0 - sf / vmax2f * 250.0
+                var hs float = 260.0 - ys
+                var yc float = 260.0 - cf / vmax2f * 250.0
+                var hc float = 260.0 - yc
+                d0 = d0 + f"M${xb} ${ys} h${barw2} v${hs} h-${barw2} Z "
+                d1 = d1 + f"M${xb + barw2} ${yc} h${barw2} v${hc} h-${barw2} Z "
+                j = j + 1
+            }
+            .grouped0 = d0
+            .grouped1 = d1
+            var labels2 = ""
+            for d in .quarterly {
+                if labels2 == "" {
+                    labels2 = d["q"]
+                } else {
+                    labels2 = labels2 + "     " + d["q"]
+                }
+            }
+            .groupedLabels = labels2
+        }
+    }
+
+    view {
+        col {
+            h1 "BarChart"
+            text "官方 Auto 实现的柱形图——band scale + 每柱一个子路径合成单条 path（fill 填充），分组多系列按槽内偏移分色。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+
+            h2 "Basic"
+            preview-card (id: "bar-chart-basic") {
+                col (style: "w-full") {
+                    svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                        path (d: "M40 72.5 H550 M40 135 H550 M40 197.5 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                        line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                        path (d: .singleBars, fill: "#2563eb") {}
+                    }
+                    row (style: "justify-between px-10 pt-1") {
+                        text .singleLabels { style: "text-xs text-muted-foreground" }
+                    }
+                }
+            }
+
+            h2 "Grouped"
+            preview-card (id: "bar-chart-grouped") {
+                col (style: "w-full") {
+                    svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                        path (d: "M40 72.5 H550 M40 135 H550 M40 197.5 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                        line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                        path (d: .grouped0, fill: "#2563eb") {}
+                        path (d: .grouped1, fill: "#16a34a") {}
+                    }
+                    row (style: "justify-between px-12 pt-1") {
+                        text .groupedLabels { style: "text-xs text-muted-foreground" }
+                    }
+                }
+            }
+        }
+    }
+}
