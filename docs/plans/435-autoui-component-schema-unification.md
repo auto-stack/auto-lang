@@ -365,3 +365,11 @@
 - **组件注册终态**:生产表三处(view_builder 两表 + vue map_tag 兜底表)+ registry
   spec 名 + gallery 消费侧 + **schema 自身(carried)** —— 新增组件唯一入口 =
   schema/aura.at(手写或经 registry spec 提取),运行时全部经 schema 重建。
+
+### P4-5a 合流注记(2026-08-25)
+
+- **跨会话挂账**:master 上 `native_catalog_ids_and_names_unique` 确定性红
+  (catalog ID 2780 撞号,auto.rand.int 与既有条目重复)—— 来自并发
+  plan-442/musk 会话的 native 注册,与本计划 UI 链路无关,待该会话修复。
+- P4-5a 全闸门绿:golden 稳定 + P4 4/4 + 围栏绿 + lib 3161/3162
+  (除上述并发红)。
