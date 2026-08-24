@@ -268,3 +268,27 @@
   generate_component_from_file 路径有预存解析错误(UnexpectedToken RParen ':',
   页面生成不受影响);③ golden 基线随 plan-443 重采样一次(defineModel 收窄,
   626 行合法变化)。
+
+### 挂账②清偿:gallery 5 组件解析失败(2026-08-25)
+
+- **五层根因逐层揭开**(每修一层露出下一层,全部根治):
+  1. **msg 变体命名参数** `Change(value: str)`:parser 支持(名字入新增的
+     `MsgVariant.payload_names`/`AuraMsgVariant.payload_names`,位置形态 None;
+     为 P4 组件包 API 文档面预留);
+  2. **管道文本简写** `tag | bare text`:`text | Slide 1` 此前靠垃圾解析碰巧
+     能过(|/Slide/1 成为垃圾子元素),多词带句点(`ComboboxEmpty | No framework
+     found.`)直接报错 —— 现按语义实现(VBar 后读整行,挂 primary prop 或
+     text 子节点);
+  3. **on 块无点前缀带参 handler** `Change(pressed) ->`:参数收集与点前缀一致
+     (抽 `parse_handler_params` 共用),pattern 保持无点兼容旧语法;
+  4. **连写块** `div { style: "..." } { children }`:children/props 块 if→while;
+  5. **model channel 非可写值硬错 → 降级**(Plan 443 哲学补全):字面量/表达式
+     喂通道降级为单向 :prop 绑定(记录 emitted_model_bindings 使子件侧仍编译
+     defineModel,值经 prop 流入)+ R016 Info 告警;旧严格性测试改断言降级。
+- **验证**:5 组件零错误生成;combobox/015-notes 页面零告警;golden 重采样
+  (5 文件错误文本→真实 SFC);lib 3140 绿(+2 测试);围栏绿;ui_snapshots 3/3。
+- **并发合流第二例**:master 在本修复合并期间又进 plan-444(emits 收敛:
+  defineEmits 带全部 payload 类型),无冲突并入;golden 基线随之重采样
+  (`Change: [string]` 形态)。多会话并发下的基线采样必须在**合并后**的主仓做。
+- **操作教训**:Windows 增量构建指纹在高频提交下偶发陈旧(cargo 未重编),
+  双树输出不一致时先 touch 强制重建再归因;本节排查曾因此绕路。
