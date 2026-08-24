@@ -22,10 +22,11 @@ Self-hosting is the capstone goal for AutoLang: a compiler written in AutoLang t
 | 237 | AAVM Architecture Gap Closure | Complete | Phase A-E complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops, a2r transpiler) |
 | 239 | AAVM List/Map Bytecode | Complete | BVM heap + 8 opcodes (LIST_NEW/PUSH/GET/LEN, MAP_NEW/INSERT/GET/LEN) |
 | 432 | AAVM v2 核心移植 | Complete | 六层管线 Auto 移植 + AutoVM 内自举(M3:helloworld+fib);M1-M5 六道闸门 30 语料全绿;divergences 22 处、lib-legacy 封存、债务簿落账;附带三处宿主缺陷修复(D26×2/D30) |
+| 433 | a2r 闭环 | Complete | AAVM v2 经 a2r 转译纯 Rust(329→0 错、零 a2r_std);AAVM-Rust 30/30 与参考一致;parity 四向矩阵全绿(aavm 子命令);自举回路演示;242 #16/415-D 收口,AA2R → 434 |
 
 ## Status
 
-**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories), Plan 229 (self-hosting via a2r — all 4 phases complete, bootstrap.exe passes self-test with run_eval + run_a2r, 235 tests), Plan 237 (AAVM architecture gap closure — Phase A-E all complete including a2r transpiler). Plan 432 (AAVM v2 core port — six-layer pipeline token→engine self-bootstraps in AutoVM, M3 milestone helloworld+fib(10), six gates green over 30-file corpus, v1 lib sealed).
+**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories), Plan 229 (self-hosting via a2r — all 4 phases complete, bootstrap.exe passes self-test with run_eval + run_a2r, 235 tests), Plan 237 (AAVM architecture gap closure — Phase A-E all complete including a2r transpiler). Plan 432 (AAVM v2 core port — six-layer pipeline token→engine self-bootstraps in AutoVM, M3 milestone helloworld+fib(10), six gates green over 30-file corpus, v1 lib sealed). Plan 433 (a2r closure — the Rust a2r transpiles AAVM v2 into standalone pure Rust, zero a2r_std, rustc metadata smoke zero-error after fixing 12 a2r defects; the transpiled compiler+VM matches the Rust reference on all 30 corpus cases at 0.1-2ms each; parity `aavm` subcommand reproduces the four-way matrix ①reference ②aavm_rust ③aavm_vm ④golden all green; Plan 242 #16 / 415-D closed, the Auto-written transpiler itself remains Plan 434).
 
 **Partial**: None.
 
@@ -112,3 +113,4 @@ The combined estimated timeline for just the planned work in this chapter is 30-
 - Plan 237: AAVM Architecture Gap Closure
 - Plan 239: AAVM List/Map Bytecode
 - Plan 432: AAVM v2 核心移植 (docs/plans/archive/432-aavm-core-port.md)
+- Plan 433: a2r 闭环 (docs/plans/archive/433-aavm-a2r-closure.md)
