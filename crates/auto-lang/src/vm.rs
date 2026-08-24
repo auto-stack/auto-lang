@@ -95,6 +95,7 @@ mod tests_closures;
 
 #[cfg(test)]
 mod tests_collections;
+mod tests_chart_geometry;
 
 // TODO: Create tests_bigvm.rs file
 // #[cfg(test)]

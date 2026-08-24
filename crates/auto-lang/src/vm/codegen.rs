@@ -1921,6 +1921,20 @@ impl Codegen {
                                             .unwrap_or_else(|| store.ty.clone())
                                     }
                                 }
+                                // Plan 437: 混合算术的类型记录——任一侧含 float/double
+                                // 字面量或变量即结果为 Float/Double。此前落 store.ty
+                                // （Unknown→按 Int 消费），导致 `var b = a * 1.0` 的
+                                // f-string part tag 错标 Int（f32 位模式打印成
+                                // 1084227584），下游所有 Ident 类型查询随之走错分支。
+                                Expr::Bina(lhs, _, rhs) => {
+                                    if self.contains_double(lhs) || self.contains_double(rhs) {
+                                        Type::Double
+                                    } else if self.contains_float(lhs) || self.contains_float(rhs) {
+                                        Type::Float
+                                    } else {
+                                        store.ty.clone()
+                                    }
+                                }
                                 _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
@@ -2060,6 +2074,21 @@ impl Codegen {
                         _ => {
                             self.emit(OpCode::PROMOTE_F64);
                         }
+                    }
+                }
+                // Plan 437: float 声明的 i32→f32 存储强转（与上面 Double 臂对称）。
+                // 此前只支持 Double——`var f float = <int>` 不转换，int 位模式
+                // 直接当 f32 消费（chart 几何 vmax==0.0 恒真、y 全落底边的病灶）。
+                else if matches!(stored_type, Some(Type::Float))
+                    && self.last_expr_type != ObjectType::Float
+                {
+                    match self.last_expr_type {
+                        ObjectType::Int | ObjectType::Byte | ObjectType::Bool => {
+                            self.emit(OpCode::I32_TO_F32);
+                        }
+                        // Double → Float 无降精度指令；值保持 f64 tag，由
+                        // tag 驱动的下游（算术/提取）自行解码。
+                        _ => {}
                     }
                 }
 

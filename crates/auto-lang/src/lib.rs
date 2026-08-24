@@ -1984,37 +1984,24 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
     }
 
     // Check VM runtime result type first (set during execution)
+    // Plan 437: last_result_type 是粘性运行时状态（如刚向 List<float> push
+    // 过 float 参数后未复位）——仅当栈顶确为 float（sp-2 处 f64 或 sp-1 处
+    // f32 tag）时才走 Float 格式化；其余 tag（i32/bool/string 负哨兵/对象）
+    // 全部落回下方通用路径按 tag 解码。此前的无条件 pop_f32 会把任意值按
+    // f32 位重解释（i32 2 → "0.000...003"、bool → "-0"、字符串哨兵 → "-2"）。
+    let top_is_f32 = task.ram.sp >= 1 && auto_val::is_f32(task.ram.raw_nv[task.ram.sp - 1]);
+    let top2_is_f64 = task.ram.sp >= 2 && auto_val::is_f64(task.ram.raw_nv[task.ram.sp - 2]);
     let result = match task.last_result_type {
-        ResultType::Float => {
+        ResultType::Float if top_is_f32 || top2_is_f64 => {
             {
             // f64 may be on stack (2 slots) even when last_result_type is Float.
             // This happens when FFI returns f64 but codegen marked the expression as Float.
             // Format as f32 to match expected behavior (which truncates via pop_f32).
-            //
-            // Plan 437: last_result_type 是粘性运行时状态（如刚向 List<float>
-            // push 过 float 参数后未复位）——以栈顶 tag 为准（对齐 Plan 406
-            // bool 的 tag-first 哲学与下方 ObjectType::Float 分支的对称逻辑）：
-            // i32/bool-tag 的值按自身格式化，绝不按 f32 位重解释
-            // （i32 2 → 2.8e-45 → "0.000...003"、bool 位 → "-0" 即此病灶）。
-            if task.ram.sp >= 2 {
+            if top2_is_f64 {
                 let nv = task.ram.raw_nv[task.ram.sp - 2];
-                if auto_val::is_f64(nv) {
-                    task.ram.sp -= 2;
-                    let result = f64::from_bits(nv) as f32;
-                    format!("{}", result)
-                } else {
-                    let top = task.ram.raw_nv[task.ram.sp - 1];
-                    if auto_val::is_f32(top) {
-                        let result = task.ram.pop_f32();
-                        format!("{}", result)
-                    } else if auto_val::is_bool(top) {
-                        let result = task.ram.pop_i32();
-                        if result != 0 { "true".to_string() } else { "false".to_string() }
-                    } else {
-                        let result = task.ram.pop_i32();
-                        format!("{}", result)
-                    }
-                }
+                task.ram.sp -= 2;
+                let result = f64::from_bits(nv) as f32;
+                format!("{}", result)
             } else {
                 let result = task.ram.pop_f32();
                 format!("{}", result)

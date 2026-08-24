@@ -380,6 +380,9 @@ impl OpCode {
         0xC0, 0xC1, 0xC2,
         // Plan 317: Actor state fields + global variables
         0xC3, 0xC4, 0xC5, 0xC6,
+        // Plan 403-F: f32 comparison (EQ_F..GE_F —— 枚举/engine/codegen 三处
+        // 落地时漏更此白名单，运行期被判 Invalid opcode: 0xc7，Plan 437 spike 撞出)
+        0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC,
         // Plan 364 Step 5: Config accumulation
         0xD0, 0xD1, 0xD2, 0xD3, 0xD4,
         // Error/Option
