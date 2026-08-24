@@ -1,6 +1,6 @@
 # Plan 242: a2r Feature Gap Tracker
 
-> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。#2 ✅ 已修（2026-08-22 Plan 415-A：Map 类型+对象字面量 → HashMap::from，golden 006_map_literal）；确认未做：#10 Redis/SQLite / #15 GPUI / #16 自举 Phase 2/E / #17 dep cc+memmap2；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
+> **实测状态（2026-08-20 复核）**: 🟡 表格滞后于代码——#1（泛型约束，Plan 166 fn 级 + Plan 364 W3 多 bound type/impl 级，rust.rs:10517/10525/12210）、#3（`.to(Type)`，ast.rs:507 + rust.rs:3509 + 测试 002_to_convert）、#5（struct 解构 `is`，parser.rs:3991 + rust.rs:2738 + 测试 002_struct_destructure）、#6（`ext Type for Trait`，parser.rs:4749/4697 + rust.rs:1580）均已在 master 落地但表格未标；#12 a2r 发射侧已由 Plan 355 完成（VM 内嵌 tokio 的 13 stub 属 VM 侧非 a2r）。#2 ✅ 已修（2026-08-22 Plan 415-A：Map 类型+对象字面量 → HashMap::from，golden 006_map_literal）；确认未做：#10 Redis/SQLite / #15 GPUI / #17 dep cc+memmap2；#16 自举 Phase 2/E ✅ 已由 Plan 433 收口（AAVM v2 六层管线经 Rust 版 a2r 转译为纯 Rust，四向矩阵全绿；Auto 版转译器本体 → 434）；#8 的 8a 根因 ✅ 已修（2026-08-20 audit-A6，`plan-fix/242-closure-infer` 合并 `c2bd1d0c`：infer_type_from_expr 补 `Expr::Closure` → `Type::Fn`，golden 004_closure_infer）。本追踪文档持续维护，不归档。
 
 ## Background
 
@@ -249,14 +249,27 @@ EventSink 的 `cb = fn(e StreamEvent) {}` 正是 task state field，走此路径
 
 ---
 
-### 16. Self-Hosting a2r Transpiler (in Auto)
-**Current state**: Phase 1 (AAVM parser/evaluator/bytecode) is complete. Phase 2 (a2r transpiler written in Auto) and Phase E (AAVM a2r transpiler) remain.
-**Desired state**: AutoLang can transpile itself to Rust via an Auto-written a2r transpiler.
-**Files likely touched**: `auto/compiler/transpiler.at` (new)
+### 16. Self-Hosting a2r Transpiler (in Auto) — ✅ Phase 2/E 收口(Plan 433,2026-08-24)
+**Current state**: Phase 1 (AAVM parser/evaluator/bytecode) complete (Plan 233/432);
+Phase 2 (compiler self-host in Auto) complete via AAVM v2 six-layer pipeline in
+`auto/lib` (Plan 432, AutoVM 内自举 + 六道闸门); Phase E (AAVM → a2r → Rust)
+complete via Plan 433: `auto trans --merge auto/lib` → rustc `--emit=metadata`
+零错、零 a2r_std 依赖,AAVM-Rust 二进制对 corpus 30/30 与 Rust 参考一致,
+四向矩阵(①reference ②aavm_rust ③aavm_vm ④golden)全绿(parity `aavm` 子命令)。
+**Desired state**: AutoLang can transpile itself to Rust — achieved for the
+compiler+VM (Rust 版 a2r 执行转译); the Auto-WRITTEN a2r transpiler itself
+(AA2R, ⑤ 方) is the Plan 434 余力项(五向矩阵),不阻塞系列收官。
+**Files touched**: `auto/lib/*.at` (v2, Plan 432/433 改写),
+`crates/auto-lang/src/trans/rust.rs` (a2r 缺陷修复 ×12,见 Plan 433 执行结果),
+`parity/crates/auto-parity/src/aavm.rs` (四向矩阵)。
 **Acceptance criteria**:
-- [ ] Auto-written transpiler passes all a2r test categories
-- [ ] Can transpile `auto/compiler/*.at` to Rust
-- [ ] Generated Rust compiler builds and passes a subset of tests
+- [x] AAVM (compiler+VM written in Auto) transpiles to standalone Rust
+      (rustc metadata smoke zero-error, zero a2r_std)
+- [x] Generated Rust compiler+VM runs the corpus identically to the reference
+      (30/30, four-way matrix green)
+- [x] Bootstrap loop demonstrated (auto/lib --a2r--> AAVM-Rust VM runs .at)
+- [ ] Auto-written transpiler passes all a2r test categories (→ Plan 434)
+- [ ] Can transpile `auto/compiler/*.at` to Rust via Auto-written a2r (→ Plan 434)
 
 ---
 

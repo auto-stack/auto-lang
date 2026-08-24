@@ -1,3 +1,4 @@
+mod aavm;
 mod compare;
 mod report;
 mod runner;
@@ -45,6 +46,12 @@ enum Command {
         /// Path to write the HTML dashboard to.
         #[arg(short, long, default_value = "docs/parity-dashboard.html")]
         output: PathBuf,
+    },
+    /// Plan 433 C1: AAVM 四向对比矩阵(①reference ②aavm_rust ③aavm_vm ④golden)。
+    Aavm {
+        /// 可选:同时写独立 HTML 矩阵页(相对 parity root)。
+        #[arg(long)]
+        html: Option<PathBuf>,
     },
 }
 
@@ -95,6 +102,37 @@ fn main() {
             let libs = discover_all_libraries(&root);
             for lib in libs {
                 println!("{}", lib);
+            }
+        }
+        Command::Aavm { html } => {
+            // --root 可能是相对路径("parity" 或 "."),先规范化再取父目录
+            let canonical = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+            let repo_root = canonical
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from(".."));
+            let cfg = aavm::AavmConfig {
+                repo_root,
+                auto_binary: cli.auto_binary.clone(),
+            };
+            match aavm::run_matrix(&cfg) {
+                Ok(report) => {
+                    println!("{}", aavm::format_matrix(&report));
+                    if let Some(html_rel) = html {
+                        let out_path = root.join(html_rel);
+                        match aavm::write_html(&report, &out_path) {
+                            Ok(()) => println!("HTML matrix written to {}", out_path.display()),
+                            Err(e) => eprintln!("html write error: {}", e),
+                        }
+                    }
+                    if !report.all_green() {
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("aavm matrix error: {}", e);
+                    std::process::exit(1);
+                }
             }
         }
         Command::Report { output } => {
