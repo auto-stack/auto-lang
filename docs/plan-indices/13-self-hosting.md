@@ -20,9 +20,10 @@ Plans covering the path to a self-hosted AutoLang compiler, including generic ty
 | 236 | AAVM Evaluator | ✅ | Tree-walking eval + AST restructuring + 16 tests |
 | 237 | AAVM Architecture Gap Closure | ✅ | Phase A-E complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops, a2r transpiler) |
 | 239 | AAVM List/Map Bytecode | ✅ | BVM heap + 8 opcodes (LIST_NEW/PUSH/GET/LEN, MAP_*) |
+| 432 | AAVM v2 核心移植 | ✅ | 六层管线(token/lexer/parser/typeinfo/codegen/engine)纯 Rust 模式 Auto 移植,AutoVM 内自举跑通 helloworld+fib(10)(M3 主里程碑);M1-M5 六道闸门全绿(corpus_m4 30 文件:bootstrap 038-052 回收 + 数组四件套);divergences 22 处定稿,lib-legacy 封存;附带宿主修复 D26 字符串池 RC/D26 堆侧 UAF/D30 负 int 哨兵池界 |
 
 ## Status Summary
-- Completed: 7 | Partial: 0 | Planned: 5 | Deprecated: 0
+- Completed: 8 | Partial: 0 | Planned: 5 | Deprecated: 0
 
 ## Key Achievements
 - Plan 037 completed in ~1 week (vs 6-10 week estimate) after discovering most features already worked

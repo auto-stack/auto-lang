@@ -2,7 +2,7 @@
 plan: 432
 title: aavm-core-port（AAVM v2 核心移植：垂直切片到 VM 内跑通示例）
 affects: [docs/specs/aavm/project.md]
-status: draft
+status: complete
 ---
 
 # Plan 432: AAVM v2 核心移植——垂直切片，直到在 AutoVM 里跑通示例

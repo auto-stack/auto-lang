@@ -21,10 +21,11 @@ Self-hosting is the capstone goal for AutoLang: a compiler written in AutoLang t
 | 236 | AAVM Evaluator | Complete | Tree-walking evaluator + AST restructuring + 16 tests |
 | 237 | AAVM Architecture Gap Closure | Complete | Phase A-E complete (value encoding, type inference, bytecode compiler, BVM string/map/list ops, a2r transpiler) |
 | 239 | AAVM List/Map Bytecode | Complete | BVM heap + 8 opcodes (LIST_NEW/PUSH/GET/LEN, MAP_NEW/INSERT/GET/LEN) |
+| 432 | AAVM v2 核心移植 | Complete | 六层管线 Auto 移植 + AutoVM 内自举(M3:helloworld+fib);M1-M5 六道闸门 30 语料全绿;divergences 22 处、lib-legacy 封存、债务簿落账;附带三处宿主缺陷修复(D26×2/D30) |
 
 ## Status
 
-**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories), Plan 229 (self-hosting via a2r — all 4 phases complete, bootstrap.exe passes self-test with run_eval + run_a2r, 235 tests), Plan 237 (AAVM architecture gap closure — Phase A-E all complete including a2r transpiler).
+**Implemented**: Plan 037 (expression/array support, completed in ~1 week versus a 6-10 week estimate after discovering most features already worked), Plan 095 (CTEE with lexer tokens, AST nodes, parser support, and VmInterpreter-based evaluation), Plans 233, 234-P1, 236, 239 (AAVM parser, evaluator, and bytecode milestones — self-hosting Phase 1 compiler front-end complete with 74 test directories), Plan 229 (self-hosting via a2r — all 4 phases complete, bootstrap.exe passes self-test with run_eval + run_a2r, 235 tests), Plan 237 (AAVM architecture gap closure — Phase A-E all complete including a2r transpiler). Plan 432 (AAVM v2 core port — six-layer pipeline token→engine self-bootstraps in AutoVM, M3 milestone helloworld+fib(10), six gates green over 30-file corpus, v1 lib sealed).
 
 **Partial**: None.
 
@@ -110,3 +111,4 @@ The combined estimated timeline for just the planned work in this chapter is 30-
 - Plan 236: AAVM Evaluator
 - Plan 237: AAVM Architecture Gap Closure
 - Plan 239: AAVM List/Map Bytecode
+- Plan 432: AAVM v2 核心移植 (docs/plans/archive/432-aavm-core-port.md)
