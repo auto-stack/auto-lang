@@ -5396,7 +5396,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -7435,6 +7435,20 @@ impl Codegen {
                             ("localStorage", "getItem") => Some("auto.localstorage.get_item".to_string()),
                             ("localStorage", "setItem") => Some("auto.localstorage.set_item".to_string()),
                             ("localStorage", "removeItem") => Some("auto.localstorage.remove_item".to_string()),
+                            // Plan 442 Phase B: `dom.*` / `location.reload()` web
+                            // globals (musk visual_store/settings/app). Desktop
+                            // semantics: prefers_dark -> true (iced renderer is
+                            // dark-fixed), open_url opens the OS browser,
+                            // copy_text reuses the Plan 418 clipboard native,
+                            // the rest are recorded no-op stubs.
+                            ("dom", "set_dark") => Some("auto.dom.set_dark".to_string()),
+                            ("dom", "prefers_dark") => Some("auto.dom.prefers_dark".to_string()),
+                            ("dom", "set_css_var") => Some("auto.dom.set_css_var".to_string()),
+                            ("dom", "focus_first") => Some("auto.dom.focus_first".to_string()),
+                            ("dom", "click_first") => Some("auto.dom.click_first".to_string()),
+                            ("dom", "open_url") => Some("auto.dom.open_url".to_string()),
+                            ("dom", "copy_text") => Some("auto.clipboard.set_text".to_string()),
+                            ("location", "reload") => Some("auto.dom.reload".to_string()),
                             ("io", "read_line") => Some("auto.io.read_line".to_string()),
                             ("io", "say") => Some("auto.print_str".to_string()),
                             ("process", "args") => Some("auto.process.args".to_string()),

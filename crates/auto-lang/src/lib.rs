@@ -5537,6 +5537,11 @@ mod plan442_sched_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_webcompat_tests;
 
+// Plan 442 Phase B gate: headless link probe against the real auto-musk
+// corpus (sibling checkout). #[ignore] — manual-only, never in CI.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_musk_probe_tests;
+
 
 #[cfg(test)]
 mod plan367_viewfn_tests;

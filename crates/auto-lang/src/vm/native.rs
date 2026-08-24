@@ -7381,6 +7381,105 @@ pub fn shim_localstorage_remove_item(task: &mut AutoTask, vm: &AutoVM) -> Result
     Ok(())
 }
 
+// Plan 442 Phase B: `dom.*` / `location.reload()` web globals for the VM
+// target. The iced renderer is dark-fixed, so prefers_dark reports true and
+// set_dark/set_css_var are recorded no-ops; focus/click/reload are desktop
+// stubs; open_url really opens the OS browser. copy_text is routed by the
+// codegen to auto.clipboard.set_text (Plan 418) and has no shim here.
+
+/// `dom.set_dark(on)` — Stack: on -> (void). Renderer theme is dark-fixed;
+/// the intent is recorded in the session KV for a future light theme.
+pub fn shim_dom_set_dark(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let on_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, on_nv);
+        crate::vm::ffi::stdlib::storage_raw_set(
+            "auto.dom.dark".to_string(),
+            if auto_val::decode_bool(on_nv) { "1".to_string() } else { "0".to_string() },
+        );
+    }
+    Ok(())
+}
+
+/// `dom.prefers_dark()` — Stack: -> bool. The iced VM renderer is dark-only
+/// (renderer.rs theme_fn returns Theme::Dark), so report true.
+pub fn shim_dom_prefers_dark(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `dom.set_css_var(name, value)` — Stack: name, value -> (void). CSS custom
+/// properties are a web rendering concept; record and drop on desktop.
+pub fn shim_dom_set_css_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let _val_nv = crate::vm::native::pop_arg_nv(task);
+        let name_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, name_nv);
+    }
+    Ok(())
+}
+
+/// `dom.focus_first(selector)` — Stack: sel -> (void). Keyboard focus routing
+/// differs on desktop; no-op stub.
+pub fn shim_dom_focus_first(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    }
+    Ok(())
+}
+
+/// `dom.click_first(selector)` — Stack: sel -> (void). No-op stub.
+pub fn shim_dom_click_first(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    }
+    Ok(())
+}
+
+/// `dom.open_url(url)` — Stack: url -> (void). Opens the OS browser
+/// (detached spawn; failure is non-fatal).
+pub fn shim_dom_open_url(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let url_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, url_nv);
+        let url = if auto_val::is_string(url_nv) {
+            let idx = auto_val::decode_string(url_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(url_nv).to_string()
+        };
+        if !url.is_empty() {
+            let r = if cfg!(target_os = "windows") {
+                std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &url])
+                    .spawn()
+            } else if cfg!(target_os = "macos") {
+                std::process::Command::new("open").arg(&url).spawn()
+            } else {
+                std::process::Command::new("xdg-open").arg(&url).spawn()
+            };
+            if let Err(e) = r {
+                eprintln!("[VM] dom.open_url('{}') failed: {}", url, e);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `location.reload()` — Stack: -> (void). Browser page reload has no direct
+/// desktop equivalent (would be an app restart); no-op stub.
+pub fn shim_dom_reload(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
 // Plan 240: File I/O opaque shims
 
 /// Helper to pop a string from the stack

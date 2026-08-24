@@ -249,12 +249,38 @@
   setup_auth_fetch→rust fetch 注入、relay_command_runner rust 版）+ 构建双目标验证。
   （VM 轨：`ports/platform.vm.at`——dom/location 桩 + localStorage 已由
   本仓全局桥承接。）
+  - **✅ VM 轨已落地（2026-08-25，musk 会话）**：`ports/platform.vm.at`
+    （inject_styles/setup_auth_fetch no-op 桩——认证头注入缺口登记 musk
+    KNOWN-DEBT 442-B;relay 命令降级留痕,跨 store 接线待多 store 放开后
+    并入,与 web 侧 D 组登记同源）;dom/location 由本仓 native 桥承接
+    （2774-2779+2784:prefers_dark→true 对齐 iced 深色渲染器、open_url 真
+    OS 打开、copy_text 复用 418 剪贴板、set_dark/set_css_var 记录型
+    no-op、focus/click/reload 桌面语义桩）。
 - B2 composables 域：`ports/composables.rust.at`（useT→auto-i18n 直绑、gate_router
   rust 版）——依赖 musk 038 Phase 1 产物。
+  - **✅ VM 轨已落地（2026-08-25，musk 会话）**：`ports/composables.vm.at`
+    ——useT 返回闭包直绑 i18n.at（模块限定名 i18n.i18nT,adapter 内部
+    use.web 别名不进 codegen 绑定面,探针实测）;locale 存 Plan 401 会话 KV,
+    键对齐 web 轨 'musk-language' 双轨互通;settingsInit/ChangeLocale 同源;
+    useGateRouter no-op（VM 导航走视图状态机）。
 - B3 icons 域：`ports/icons.rust.at`（auto-icons 数据层直绑；渲染层依 A4 结论）。
 - B4 renderer/upload 域：`ports/renderer.rust.at`（auto-down 008 产物）、
   `ports/upload.rust.at`（rust http 客户端版）。
+  - **✅ VM 轨裁定（2026-08-25，musk 会话）**：icons/renderer/upload 三域在
+    VM 目标全部是 `use.web component` 视图层引用,不产生 handler 符号面——
+    严格模式（AUTO_VM_EXT_STUBS=0）全量语料 link 零需求,无需 .vm.at 本体
+    （显式降级:VM 轨组件经 widget 渲染路径,不引 vue 组件符号）。
 - B5 musk `auto build` 双目标全绿（vue 产物对拍不变 + rust/vm 目标产物生成）。
+  - **✅ VM 侧 + vue 回归已过（2026-08-25，musk 会话）**：新增 headless 探针
+    `plan442_musk_probe_tests.rs`（#[ignore] 手动门,直读 sibling auto-musk
+    真实语料）宽松+严格双模式全绿——musk 全量前端 parse+codegen+link
+    零默认桩;配套 B0 源修复（let 重赋值 ×6 改 var、SaveEditItem struct
+    字面量内 `.x` 状态读取提升为局部变量——handler 重写不进 Arg 字面量
+    字段值,self 别名断绑定）+ vue 轨 `auto build`（含 vite）绿,语义等价。
+    rust 目标（a2r）adapter 按 §6 待澄清 1 排序递延（rs.at 挂账维持）。
+    ext_stubs 配套修复:`X.at` 基文件不存在时探测 `X.web.at` 锚点再走
+    VM 链（musk ports 只存目标 adapter 的布局）;stem 归一化剥 `.web` 尾
+    （防 `X.web.vm.at` 误派生）。
 
 ### Phase C — 后端 AutoVM 激活（auto-musk 动作）
 

@@ -323,6 +323,17 @@ macro_rules! for_each_native {
             (2771, NATIVE_LOCALSTORAGE_GET_ITEM, shim_localstorage_get_item, "auto.localstorage.get_item"),
             (2772, NATIVE_LOCALSTORAGE_SET_ITEM, shim_localstorage_set_item, "auto.localstorage.set_item"),
             (2773, NATIVE_LOCALSTORAGE_REMOVE_ITEM, shim_localstorage_remove_item, "auto.localstorage.remove_item"),
+            // === Plan 442 Phase B: `dom.*` / `location.reload()` web globals ===
+            // The iced VM renderer is dark-fixed, so prefers_dark -> true and
+            // set_dark/set_css_var are recorded no-ops; focus/click/reload are
+            // desktop-semantics stubs; open_url really opens the OS browser.
+            (2774, NATIVE_DOM_SET_DARK, shim_dom_set_dark, "auto.dom.set_dark"),
+            (2775, NATIVE_DOM_PREFERS_DARK, shim_dom_prefers_dark, "auto.dom.prefers_dark"),
+            (2776, NATIVE_DOM_SET_CSS_VAR, shim_dom_set_css_var, "auto.dom.set_css_var"),
+            (2777, NATIVE_DOM_FOCUS_FIRST, shim_dom_focus_first, "auto.dom.focus_first"),
+            (2778, NATIVE_DOM_CLICK_FIRST, shim_dom_click_first, "auto.dom.click_first"),
+            (2779, NATIVE_DOM_OPEN_URL, shim_dom_open_url, "auto.dom.open_url"),
+            (2784, NATIVE_DOM_RELOAD, shim_dom_reload, "auto.dom.reload"),
 
             // === OnceCell (2850-2852) — Plan 240 ===
             (2850, NATIVE_ONCE_NEW, shim_once_new, "auto.cell.once_new"),
@@ -973,6 +984,15 @@ macro_rules! for_each_bigvm_native {
             ("auto.localstorage.get_item", 2771, String),
             ("auto.localstorage.set_item", 2772, Void),
             ("auto.localstorage.remove_item", 2773, Void),
+
+            // === Plan 442 Phase B: dom/location web globals ===
+            ("auto.dom.set_dark", 2774, Void),
+            ("auto.dom.prefers_dark", 2775, Bool),
+            ("auto.dom.set_css_var", 2776, Void),
+            ("auto.dom.focus_first", 2777, Void),
+            ("auto.dom.click_first", 2778, Void),
+            ("auto.dom.open_url", 2779, Void),
+            ("auto.dom.reload", 2784, Void),
 
             // === IO (1150) ===
             ("auto.io.read_line", 1150, String),
@@ -2222,6 +2242,23 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("localStorage.getItem", 2771),
     ("localStorage.setItem", 2772),
     ("localStorage.removeItem", 2773),
+
+    // === Plan 442 Phase B: dom/location web globals ===
+    ("auto.dom.set_dark", 2774),
+    ("auto.dom.prefers_dark", 2775),
+    ("auto.dom.set_css_var", 2776),
+    ("auto.dom.focus_first", 2777),
+    ("auto.dom.click_first", 2778),
+    ("auto.dom.open_url", 2779),
+    ("auto.dom.reload", 2784),
+    ("dom.set_dark", 2774),
+    ("dom.prefers_dark", 2775),
+    ("dom.set_css_var", 2776),
+    ("dom.focus_first", 2777),
+    ("dom.click_first", 2778),
+    ("dom.open_url", 2779),
+    ("dom.copy_text", 2926),
+    ("location.reload", 2784),
 
     // === IO (1150) ===
     ("auto.io.read_line", 1150),

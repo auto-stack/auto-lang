@@ -93,6 +93,21 @@ fn resolve_ext_source(base_dir: &Path, path: &str) -> Option<PathBuf> {
         }
         dir = d.parent();
     }
+    // Plan 442 Phase B: musk-style ports keep only the target adapter on
+    // disk (`X.web.at`; the bare `X.at` is a use.web-path convention resolved
+    // by auto-man's target gating). Probe the web-adapter sibling so the
+    // VM chain below can then pick `X.vm.at` when it exists.
+    if let Some(web_variant) = path.strip_suffix(".at").map(|stem| format!("{stem}.web.at")) {
+        let mut dir = Some(base_dir);
+        for _ in 0..3 {
+            let Some(d) = dir else { break };
+            let cand = d.join(&web_variant);
+            if cand.is_file() {
+                return Some(cand);
+            }
+            dir = d.parent();
+        }
+    }
     std::env::current_dir()
         .ok()
         .map(|c| c.join(path))
@@ -105,7 +120,15 @@ fn resolve_ext_source(base_dir: &Path, path: &str) -> Option<PathBuf> {
 /// `resolve_at_adapter` target gating, with web as the fallback since it is
 /// the only adapter family that exists before Plan 442 Phase B lands).
 pub(crate) fn resolve_vm_at_adapter(resolved: &Path) -> Option<PathBuf> {
-    let stem = resolved.file_stem()?.to_str()?;
+    // Stem normalization: strip the trailing ".at", then a trailing ".web"
+    // (so a resolved "X.web.at" anchor still maps the chain to X.vm.at /
+    // X.web.at / X.at rather than "X.web.vm.at").
+    let file_name = resolved.file_name()?.to_str()?;
+    let stem = file_name
+        .strip_suffix(".at")
+        .or_else(|| Some(file_name))?
+        .strip_suffix(".web")
+        .unwrap_or_else(|| file_name.strip_suffix(".at").unwrap_or(file_name));
     for cand in [
         resolved.with_file_name(format!("{}.vm.at", stem)),
         resolved.with_file_name(format!("{}.web.at", stem)),
