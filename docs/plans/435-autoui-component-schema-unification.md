@@ -318,6 +318,8 @@
 - **验收(测试 4/4)**:优先级链、shadow 拒绝(Button/AlertDialog)、
   官方包自举(零特例)、e2e(use package + copy-button → SFC 引用 CopyButton)。
   golden 重采样(唯一差异 = package.at 清单跳过);lib 3140;围栏绿。
-- **挂账**:① ring_caps 测试全量并行下偶发 flaky(单跑 3/3 绿,与本次无关,
-  待单独归因);② P4-4(registry.rs 181 vue 映射 schema 派生)与
-  P4-5(ShadcnRegistry 清退 + unclassified 17 清零)未动。
+- **挂账**:① 全量并行下偶发 flaky 两例(单跑均绿,共享状态/顺序敏感,
+  待单独归因):ring_caps(ui_console)+ ffi_dual_014_std_generated_segment
+  (plan-430 系);② P4-4(registry.rs 181 vue 映射 schema 派生)与
+  P4-5(ShadcnRegistry 清退 + unclassified 17 清零)未动;③ 并发会话持续
+  在 master 落 gallery 页(line-chart)——golden 基线已并入(72 文件)。
