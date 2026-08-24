@@ -265,6 +265,10 @@ status: complete
   跨版本，全部登记于 KNOWN-DEBT-AND-RISKS.md；
 - 2026-08-25 复审新增 4 条风险登记：compile_dep_methods 错误静默吞掉、版本指纹用声明
   版本（缓存陈旧）、剔环无上限+前缀误伤、泛型自由函数假 'v' 签名进 manifest——
-  详见 KNOWN-DEBT 430 复审条目；
+  **✅ 同日已全部清偿**（plan-430-fixes，merge 688b6bf49）：调用点改 match 三分支补日志；
+  `resolved_crate_version`（cargo metadata --locked）取真实版本入指纹 + 缓存快路径核对
+  版本不一致即重建；`MAX_BUILD_ATTEMPTS=5` 上限 + `plan_export_symbol` 精确匹配；
+  free_fns 泛型过滤（manifest/指纹/signatures 三处一致，skips 留痕）。新增单测 5 个，
+  shim-metadata 62 绿 + auto-cache 全绿 + auto-lang 3140 过 0 败；
 - 测试网缺口：19_rust_std VM goldens 全部 #[ignore]（已迁 std 臂无 VM 路径防回归网）、
   uuid/semver/csv 端到端仅报告实录——复审登记，建议后续补 ffi_dual_014。
