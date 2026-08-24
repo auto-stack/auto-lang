@@ -1,11 +1,14 @@
 //! Plan 435 P0 —— 内置组件四表漂移围栏(schema drift fence)。
 //!
 //! 来源:2026-08-23 漂移审计(scratch/schema_drift_audit.py,Plan 435 §1.1)的
-//! Rust 化,常驻测试套。比对四张内置组件事实表:
+//! Rust 化,常驻测试套。比对内置组件的全部事实表:
 //!   1. `src/aura/schema.rs`                 验证声明(elements.insert)
 //!   2. `src/ui_gen/vue.rs`                  Web 路径(components.insert + match tag 表)
 //!   3. `src/ui/aura_view_builder.rs`        桌面路径(两张 match tag 派发表)
 //!   4. `src/ui/render_support.rs`           iced 支持级(单张 match tag 表)
+//!   5. `src/parser.rs`                      tag 特判(get_primary_prop 归类表)
+//!   6. `src/a2ui/export.rs`                 tag → A2UI 互操作映射
+//!   7. `src/a2ui/import.rs`                 A2UI → tag 反向映射(tag: "..." 字面量)
 //! 另带 `schema/aura.at`(Plan 098 冻结孤儿,P1 重建)的对照维度。
 //!
 //! 围栏语义:**只拦新增漂移**。审计当日已知漂移冻结在
@@ -30,6 +33,10 @@ const EXPECTED_RENDER_TABLES: usize = 1;
 /// vue.rs 的语句级 `match tag {` 表数量(map_tag 原生映射 + PascalCase 归一)。
 /// `match tag_lower.as_str() {` 这类小表刻意不收。
 const EXPECTED_VUE_TABLES: usize = 2;
+/// parser.rs 的语句级 `match tag {` 表数量(get_primary_prop 的 tag 归类)。
+const EXPECTED_PARSER_TABLES: usize = 1;
+/// a2ui/export.rs 的语句级 `match tag {` 表数量(tag → A2UIComponentBody)。
+const EXPECTED_A2UI_EXPORT_TABLES: usize = 1;
 
 fn repo_file(rel: &str) -> PathBuf {
     let p = Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
@@ -186,6 +193,20 @@ fn quoted_strings(text: &str) -> Vec<String> {
     out
 }
 
+/// 提取 `tag: "xxx"` 字面量(a2ui/import.rs 的 enum → tag 反向映射形态)。
+fn scan_tag_literals(src: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for line in src.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("tag: \"") {
+            if let Some(end) = rest.find('"') {
+                out.insert(rest[..end].to_string());
+            }
+        }
+    }
+    out
+}
+
 /// 提取 `schema/aura.at` 的 `element NAME {` 声明名表。
 fn scan_aura_at(src: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
@@ -230,9 +251,15 @@ fn schema_drift_fence() {
         }
     }
     let at = scan_aura_at(&aura_at);
-    let vue_shadcn: BTreeSet<String> = scan_insert_tags(&vue_rs, "components")
-        .into_iter()
-        .collect();
+    // vue.rs 的重复 insert 与 schema.rs 同罪:HashMap 后写覆盖,前者是死代码。
+    let vue_seq = scan_insert_tags(&vue_rs, "components");
+    let mut vue_shadcn: BTreeSet<String> = BTreeSet::new();
+    let mut vue_dup: BTreeSet<String> = BTreeSet::new();
+    for tag in &vue_seq {
+        if !vue_shadcn.insert(tag.clone()) {
+            vue_dup.insert(tag.clone());
+        }
+    }
 
     let vb_tables = scan_match_tables(&vb_rs);
     assert_eq!(
@@ -267,12 +294,37 @@ fn schema_drift_fence() {
     );
     let (vue_mt0, vue_mt1) = (&vue_tables[0], &vue_tables[1]);
 
+    let parser_rs = read("src/parser.rs");
+    let parser_tables = scan_match_tables(&parser_rs);
+    assert_eq!(
+        parser_tables.len(),
+        EXPECTED_PARSER_TABLES,
+        "parser.rs 语句级 `match tag {{` 表数量变化({} -> {}):新表若属 tag 知识,\
+         请把它的维度加进本测试并更新 baseline;小表请改名避开 `match tag {{`",
+        EXPECTED_PARSER_TABLES,
+        parser_tables.len()
+    );
+    let parser_tags = &parser_tables[0];
+
+    let a2ui_export_rs = read("src/a2ui/export.rs");
+    let a2ui_export_tables = scan_match_tables(&a2ui_export_rs);
+    assert_eq!(
+        a2ui_export_tables.len(),
+        EXPECTED_A2UI_EXPORT_TABLES,
+        "a2ui/export.rs `match tag {{` 表数量变化({} -> {})",
+        EXPECTED_A2UI_EXPORT_TABLES,
+        a2ui_export_tables.len()
+    );
+    let a2ui_export = &a2ui_export_tables[0];
+    let a2ui_import = scan_tag_literals(&read("src/a2ui/import.rs"));
+
     println!("四表规模: schema.rs={} aura.at={} vue.shadcn={} vb0={} vb1={} render={}",
         rs.len(), at.len(), vue_shadcn.len(), vb0.len(), vb1.len(), render.len());
 
     // ---- 维度语义(新增漂移时随报错一起打印) ----
     let mut drift: Drift = BTreeMap::new();
     add(&mut drift, "rs_duplicate_insert", rs_dup);
+    add(&mut drift, "vue_duplicate_insert", vue_dup);
     add(&mut drift, "at_not_in_rs", only_in(&at, &rs));
     add(&mut drift, "rs_not_in_at", only_in(&rs, &at));
     add(&mut drift, "vue_not_in_rs", only_in(&vue_shadcn, &rs));
@@ -287,6 +339,9 @@ fn schema_drift_fence() {
     add(&mut drift, "render_not_in_vb", only_in(render, &vb_union));
     add(&mut drift, "vue_mt0_not_in_rs", only_in(vue_mt0, &rs));
     add(&mut drift, "vue_mt1_not_in_rs", only_in(vue_mt1, &rs));
+    add(&mut drift, "parser_not_in_rs", only_in(parser_tags, &rs));
+    add(&mut drift, "a2ui_export_not_in_rs", only_in(a2ui_export, &rs));
+    add(&mut drift, "a2ui_import_not_in_rs", only_in(&a2ui_import, &rs));
 
     // ---- baseline:只拦新增 ----
     let baseline_path =
@@ -296,7 +351,9 @@ fn schema_drift_fence() {
             "# Plan 435 P0 —— schema 漂移围栏 baseline(已知漂移白名单)\n\
              # 格式: 维度<TAB>tag,按字母序。围栏只拦 baseline 之外的新增漂移;\n\
              # 漂移消除后请顺手裁剪本文件。更新方式:\n\
-             # SCHEMA_DRIFT_UPDATE_BASELINE=1 cargo test -p auto-lang --test schema_drift\n\n",
+             # SCHEMA_DRIFT_UPDATE_BASELINE=1 cargo test -p auto-lang --test schema_drift\n\
+             # 约定:新增 baseline 条目必须在提交信息里写明理由(重生成会覆盖手动注释,\n\
+             # 所以理由落在 commit message,不在本文件)。\n\n",
         );
         for (dim, tags) in &drift {
             for tag in tags {
@@ -357,8 +414,10 @@ fn schema_drift_fence() {
         let mut msg = String::from(
             "Plan 435 P0 漂移围栏:发现 baseline 之外的新增漂移(四表不同步)。\n\
              维度语义:\n\
-             - rs_duplicate_insert: schema.rs 同一 tag insert 两次(HashMap 后写覆盖,前者是死代码)\n\
+             - rs/vue_duplicate_insert: schema.rs / vue.rs 同一 tag insert 两次(HashMap 后写覆盖,前者是死代码)\n\
              - *_not_in_rs / rs_not_in_*: 声明表(schema.rs)与各实现表的孤儿 tag\n\
+             - parser_not_in_rs: parser.rs tag 特判表里的孤儿(含 PascalCase 变体)\n\
+             - a2ui_export/import_not_in_rs: A2UI 互操作映射的孤儿 tag\n\
              - vb0/vb1_not_in_vb1/vb0: view_builder 两张派发表不镜像(D-GAP 纪律)\n\
              - vb/render_not_in_render/vb: 桌面实现与 iced 支持级表不同步\n\
              - vue_mt0/1_not_in_rs: vue.rs map_tag 原生映射 / Pascal 归一表的孤儿\n\
