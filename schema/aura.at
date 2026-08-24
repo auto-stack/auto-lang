@@ -681,7 +681,7 @@ element code {
     tag: "code"
     category: "unknown"
     tier: "native_html"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -707,7 +707,7 @@ element codepane {
     category: "content"
     tier: "native_html"
     aliases: ["CodePane", "code-pane"]
-    backends: { web: "native", iced: "fallback", gpui: "unknown" }
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
     props: [
         { name: "auto", type: "string", description: "Auto (AURA) source code" }
         { name: "vue", type: "string", description: "Generated Vue.js code" }
@@ -1241,6 +1241,28 @@ element alert {
     description: "Alert message box"
 }
 
+element alert-description {
+    tag: "alert-description"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["AlertDescription"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element alert-title {
+    tag: "alert-title"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["AlertTitle"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element alert_dialog {
     tag: "alert_dialog"
     category: "overlay"
@@ -1366,6 +1388,17 @@ element alert_dialog_trigger {
     description: "Alert dialog trigger"
 }
 
+element area-chart {
+    tag: "area-chart"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["AreaChart"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element aspect_ratio {
     tag: "aspect_ratio"
     category: "layout"
@@ -1452,20 +1485,43 @@ element avatar-fallback {
     tag: "avatar-fallback"
     category: "unknown"
     tier: "web_component"
+    aliases: ["AvatarFallback"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element avatar-image {
     tag: "avatar-image"
     category: "unknown"
     tier: "web_component"
+    aliases: ["AvatarImage"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element bar-chart {
+    tag: "bar-chart"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["BarChart"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element box {
+    tag: "box"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element breadcrumb {
@@ -1573,6 +1629,61 @@ element calendar {
     ]
     allows_children: false
     description: "Calendar date picker"
+}
+
+element calendar-cell {
+    tag: "calendar-cell"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["CalendarCell"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element calendar-day {
+    tag: "calendar-day"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["CalendarDay"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element calendar-grid {
+    tag: "calendar-grid"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["CalendarGrid"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element calendar-header {
+    tag: "calendar-header"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["CalendarHeader"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element calendar-heading {
+    tag: "calendar-heading"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["CalendarHeading"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element card {
@@ -1751,6 +1862,39 @@ element chart {
     ]
     allows_children: true
     description: "Chart container"
+}
+
+element chart-legend {
+    tag: "chart-legend"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ChartLegend"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element chart-tooltip {
+    tag: "chart-tooltip"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ChartTooltip"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element chat_message {
+    tag: "chat_message"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ChatMessage"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element chip {
@@ -2164,6 +2308,17 @@ element context_menu_trigger {
     description: "Context menu trigger (right-click area)"
 }
 
+element data-table {
+    tag: "data-table"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["DataTable"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element date {
     tag: "date"
     category: "unknown"
@@ -2219,70 +2374,88 @@ element dialog-close {
     tag: "dialog-close"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogClose"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-content {
     tag: "dialog-content"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-description {
     tag: "dialog-description"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-footer {
     tag: "dialog-footer"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogFooter"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-header {
     tag: "dialog-header"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogHeader"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-title {
     tag: "dialog-title"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogTitle"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dialog-trigger {
     tag: "dialog-trigger"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DialogTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element donut-chart {
+    tag: "donut-chart"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["DonutChart"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element drawer {
@@ -2418,20 +2591,22 @@ element dropdown-menu-content {
     tag: "dropdown-menu-content"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DropdownMenuContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dropdown-menu-item {
     tag: "dropdown-menu-item"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DropdownMenuItem"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dropdown-menu-separator {
@@ -2448,10 +2623,11 @@ element dropdown-menu-trigger {
     tag: "dropdown-menu-trigger"
     category: "unknown"
     tier: "web_component"
+    aliases: ["DropdownMenuTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element dropdown_content {
@@ -2696,6 +2872,28 @@ element kbd {
     description: "Keyboard key display"
 }
 
+element line-chart {
+    tag: "line-chart"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["LineChart"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element markdown {
+    tag: "markdown"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Markdown"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element menubar_content {
     tag: "menubar_content"
     category: "navigation"
@@ -2774,6 +2972,17 @@ element menubar_trigger {
     description: "Menubar trigger"
 }
 
+element mermaid {
+    tag: "mermaid"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Mermaid"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element modal {
     tag: "modal"
     category: "unknown"
@@ -2798,6 +3007,17 @@ element native_select {
     ]
     allows_children: true
     description: "Native HTML select"
+}
+
+element nav-destination {
+    tag: "nav-destination"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavDestination"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element nav_menu {
@@ -2896,10 +3116,66 @@ element navigation-menu {
     tag: "navigation-menu"
     category: "unknown"
     tier: "web_component"
+    aliases: ["NavigationMenu"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element navigation-menu-content {
+    tag: "navigation-menu-content"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavigationMenuContent"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element navigation-menu-item {
+    tag: "navigation-menu-item"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavigationMenuItem"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element navigation-menu-link {
+    tag: "navigation-menu-link"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavigationMenuLink"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element navigation-menu-list {
+    tag: "navigation-menu-list"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavigationMenuList"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element navigation-menu-trigger {
+    tag: "navigation-menu-trigger"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavigationMenuTrigger"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element number_field {
@@ -2983,6 +3259,28 @@ element pagination {
     ]
     allows_children: true
     description: "Pagination container"
+}
+
+element pagination-link {
+    tag: "pagination-link"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["PaginationLink"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element pagination-previous {
+    tag: "pagination-previous"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["PaginationPrevious"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element pagination_ellipsis {
@@ -3179,14 +3477,15 @@ element radio-group {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element radioitem {
-    tag: "radioitem"
+element radio-item {
+    tag: "radio-item"
     category: "unknown"
     tier: "web_component"
+    aliases: ["RadioItem"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element range {
@@ -3254,6 +3553,50 @@ element resizable_panel {
     ]
     allows_children: true
     description: "Resizable panel"
+}
+
+element scroll-area {
+    tag: "scroll-area"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ScrollArea"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element scroll-area-scrollbar {
+    tag: "scroll-area-scrollbar"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ScrollAreaScrollbar"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element scroll-area-thumb {
+    tag: "scroll-area-thumb"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ScrollAreaThumb"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element scroll-area-viewport {
+    tag: "scroll-area-viewport"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ScrollAreaViewport"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element select {
@@ -3374,10 +3717,11 @@ element sheet-description {
     tag: "sheet-description"
     category: "unknown"
     tier: "web_component"
+    aliases: ["SheetDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element sheet_content {
@@ -3619,6 +3963,17 @@ element slider {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element sonner {
+    tag: "sonner"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Sonner"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element spinner {
     tag: "spinner"
     category: "unknown"
@@ -3722,6 +4077,17 @@ element stepper_trigger {
     description: "Stepper trigger"
 }
 
+element swiper {
+    tag: "swiper"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Swiper"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element switch {
     tag: "switch"
     category: "unknown"
@@ -3755,6 +4121,17 @@ element table {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element table-footer {
+    tag: "table-footer"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["TableFooter"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element table_body {
@@ -4004,6 +4381,61 @@ element toast {
     description: "Toast notification container (Sonner)"
 }
 
+element toast-action {
+    tag: "toast-action"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ToastAction"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element toast-close {
+    tag: "toast-close"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ToastClose"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element toast-description {
+    tag: "toast-description"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ToastDescription"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element toast-title {
+    tag: "toast-title"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ToastTitle"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element toast-viewport {
+    tag: "toast-viewport"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["ToastViewport"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element toaster {
     tag: "toaster"
     category: "content"
@@ -4077,30 +4509,33 @@ element tooltip-content {
     tag: "tooltip-content"
     category: "unknown"
     tier: "web_component"
+    aliases: ["TooltipContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element tooltip-provider {
     tag: "tooltip-provider"
     category: "unknown"
     tier: "web_component"
+    aliases: ["TooltipProvider"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element tooltip-trigger {
     tag: "tooltip-trigger"
     category: "unknown"
     tier: "web_component"
+    aliases: ["TooltipTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element tr {

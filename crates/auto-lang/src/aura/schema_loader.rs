@@ -721,6 +721,21 @@ pub fn load_default_schema() -> Result<AuraSchema, SchemaLoadError> {
     loader.load(include_str!("../../../../schema/aura.at"))
 }
 
+/// Plan 435 P3:进程级缓存的默认 schema(load_default_schema 会 Box::leak 构建
+/// &'static 数据,逐调用会持续泄漏;高频消费者(render_support / vue import 映射)
+/// 统一走这里)。加载失败缓存 None,消费方自行回落。
+pub fn default_schema_cached() -> Option<&'static AuraSchema> {
+    static CACHED: std::sync::OnceLock<Option<&'static AuraSchema>> =
+        std::sync::OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            load_default_schema()
+                .ok()
+                .map(|s| Box::leak(Box::new(s)) as &'static AuraSchema)
+        })
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

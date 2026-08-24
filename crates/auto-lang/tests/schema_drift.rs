@@ -694,6 +694,37 @@ fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Plan 435 P3(第五表发现):ui_gen/widget/registry.rs 是**活的**跨后端注册表
+/// (vue.rs 的 ShadcnRegistry components.insert 已 deprecated,仅测试引用)。
+/// 提取其 WidgetSpec 声明名(含 with_alias)与 vue backend 映射计数,进围栏。
+fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) {
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    // spec 声明名 + 其后到 self.register( 为止的块窗,判定是否带 vue import
+    let mut imported: BTreeSet<String> = BTreeSet::new();
+    for m in src.match_indices("WidgetSpec::new(\"") {
+        let rest = &src[m.0 + "WidgetSpec::new(\"".len()..];
+        let Some(end) = rest.find('"') else { continue };
+        let name = rest[..end].to_string();
+        names.insert(name.clone());
+        let window = &rest[..rest.len().min(2500)];
+        let block_end = window.find("self.register(").unwrap_or(window.len());
+        if window[..block_end].contains("import: Some(") {
+            imported.insert(name.clone());
+        }
+    }
+    for m in src.match_indices(".with_alias(\"") {
+        let rest = &src[m.0 + ".with_alias(\"".len()..];
+        if let Some(end) = rest.find('"') {
+            names.insert(rest[..end].to_string());
+        }
+    }
+    let vue_mappings = src
+        .lines()
+        .filter(|l| l.contains(".backends.insert(\"vue\""))
+        .count();
+    (names, vue_mappings, imported)
+}
+
 /// 生成器的全部输入(测试里一次采集,生成与断言共用)。
 struct AtGenInput {
     rs_elements: BTreeMap<String, RsElement>,
@@ -707,6 +738,8 @@ struct AtGenInput {
     vue_imports: BTreeMap<String, String>,
     /// widgets-gallery 使用但无生产表登记的 tag(消费侧来源,unclassified 入册)
     gallery_only: BTreeSet<String>,
+    /// 活注册表(ui_gen/widget/registry.rs)spec 而无其他表登记的 tag(P3 第 11 源)
+    registry_only: BTreeSet<String>,
     /// 臂组别名并查结果:tag → canonical
     canonical_of: BTreeMap<String, String>,
 }
@@ -852,6 +885,11 @@ const TIER_OVERRIDES: &[(&str, &str)] = &[
 
 /// tier 推导(组级):桌面实现 > web 组件 > 原生直通 > 未分类;override 优先。
 fn derive_tier(group: &BTreeSet<String>, inp: &AtGenInput) -> &'static str {
+    if group.iter().any(|t| inp.registry_only.contains(t)) {
+        // 第 11 源默认 web_component(活注册表带 vue import 的 spec);
+        // 无 import 的归 unclassified 待人工归类
+        return "web_component";
+    }
     for (tag, tier) in TIER_OVERRIDES {
         if group.contains(*tag) {
             return tier;
@@ -995,7 +1033,12 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             .map(|d| d.description.clone())
             .filter(|d| !d.is_empty())
             .or_else(|| {
-                if inp.gallery_only.contains(canonical) {
+                if inp.registry_only.contains(canonical) {
+                    Some(
+                        "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+                            .to_string(),
+                    )
+                } else if inp.gallery_only.contains(canonical) {
                     Some(
                         "P1: used in widgets-gallery but unregistered in any \
                          production table (implicit fallback/ext path); P2 review"
@@ -1167,13 +1210,26 @@ fn schema_drift_fence() {
     // ---- P1:别名归并 + 生成输入 ----
     let rs_elements = extract_rs_elements(&schema_rs);
     let mut render_levels: BTreeMap<String, String> = BTreeMap::new();
+    let mut shadowed_arms: BTreeSet<String> = BTreeSet::new();
     for (tags, level) in scan_match_arm_groups_plus_singles(&render_rs) {
+        for t in &tags {
+            if render_levels.contains_key(t) {
+                // 同表重复臂:Rust match first-wins,后臂不可达(死代码)
+                shadowed_arms.insert(t.clone());
+            }
+        }
         if !level.is_empty() {
             for t in tags {
-                render_levels.insert(t, level.clone());
+                render_levels.entry(t).or_insert(level.clone()); // first-wins
             }
         }
     }
+    assert!(
+        shadowed_arms.is_empty(),
+        "P3:render_support 存在同表遮蔽臂(先臂生效,后臂死代码):
+  {}",
+        shadowed_arms.iter().cloned().collect::<Vec<_>>().join(", ")
+    );
     let vue_imports = scan_vue_imports(&vue_rs);
     let mut prod_union: BTreeSet<String> = BTreeSet::new();
     for set in [
@@ -1199,14 +1255,44 @@ fn schema_drift_fence() {
     // 第 10 源:widgets-gallery 消费侧 tag —— 折叠匹配后仍无生产表登记的,
     // 各自成组入册(unclassified;隐式 fallback / ext 组件路径,P2 告警收编)
     let gallery_tags = scan_gallery_tags();
-    let prod_fold: BTreeSet<String> =
+    let mut prod_fold: BTreeSet<String> =
         prod_union.iter().map(|t| fold_key(t)).collect();
+    // 第 11 源:活注册表 spec(ui_gen/widget/registry.rs)—— 其他表未登记的
+    // (chart/scroll-area/toast 家族等)入册;Pascal spec 名与 kebab 别名同折叠合并
+    let (registry_names, _vue_mappings, _registry_imported) =
+        scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+    let other_fold: BTreeSet<String> =
+        prod_union.iter().map(|t| fold_key(t)).collect();
+    prod_fold.extend(registry_names.iter().map(|t| fold_key(t)));
     let mut canonical_of = canonical_of;
     let mut gallery_only: BTreeSet<String> = BTreeSet::new();
+    let mut registry_only: BTreeSet<String> = BTreeSet::new();
     for g in &gallery_tags {
         if !prod_fold.contains(&fold_key(g)) {
             canonical_of.insert(g.clone(), g.clone());
             gallery_only.insert(g.clone());
+        }
+    }
+    // 未被其他表覆盖的 registry spec:按折叠分桶,canonical 取小写成员
+    let mut uncovered_buckets: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for r in &registry_names {
+        if !other_fold.contains(&fold_key(r)) {
+            uncovered_buckets
+                .entry(fold_key(r))
+                .or_default()
+                .push(r.clone());
+        }
+    }
+    for (_f, mut members) in uncovered_buckets {
+        members.sort();
+        let canonical = members
+            .iter()
+            .find(|m| **m == m.to_lowercase())
+            .cloned()
+            .unwrap_or_else(|| members[0].clone());
+        registry_only.insert(canonical.clone());
+        for m in members {
+            canonical_of.insert(m, canonical.clone());
         }
     }
     let inp = AtGenInput {
@@ -1218,6 +1304,7 @@ fn schema_drift_fence() {
         render_levels,
         vue_imports,
         gallery_only,
+        registry_only,
         canonical_of,
     };
 
@@ -1271,9 +1358,41 @@ fn schema_drift_fence() {
         }
         panic!("{}", msg);
     }
+    // P3(第五表):活的跨后端注册表(ui_gen/widget/registry.rs)
+    // —— spec 名(含别名)折叠后必须被 schema 覆盖;vue 映射数变更是显式事件。
+    {
+        let (registry_names, _vue_mappings, _imported) =
+            scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+        assert!(
+            _vue_mappings > 100,
+            "活的 widget registry 的 vue 映射数异常偏少({}),扫描器或源结构变化?",
+            _vue_mappings
+        );
+        let mut uncovered: Vec<String> = Vec::new();
+        for name in &registry_names {
+            let fold = fold_key(name);
+            if !at_all.iter().any(|t| fold_key(t) == fold) {
+                uncovered.push(name.to_string());
+            }
+        }
+        assert!(
+            uncovered.is_empty(),
+            "P3:ui_gen/widget/registry.rs(活注册表)的 spec 未被 schema 覆盖:
+  {}",
+            uncovered.join(", ")
+        );
+    }
+
+    // 幻影豁免按折叠键(第 10/11 源的 Pascal/kebab 成员形态都在许可折叠集内)
+    let allowed_folds: BTreeSet<String> = prod_union
+        .iter()
+        .chain(gallery_tags.iter())
+        .chain(registry_names.iter())
+        .map(|t| fold_key(t))
+        .collect();
     let phantom: Vec<String> = only_in(&at_all, &prod_union)
         .into_iter()
-        .filter(|t| !inp.gallery_only.contains(t))
+        .filter(|t| !allowed_folds.contains(&fold_key(t)))
         .collect();
     assert!(
         phantom.is_empty(),
@@ -1291,6 +1410,40 @@ fn schema_drift_fence() {
         assert!(
             parsed.get_element("button").is_some(),
             "aura.at 解析结果缺 button"
+        );
+    }
+
+    // P3 派生翻转一致性:render_support 静态表级别 ≡ schema backends.iced
+    // (get_support 已 schema 优先;此断言保证静态表不与 schema 漂移)。
+    {
+        use auto_lang::aura::default_schema_cached;
+        let schema = default_schema_cached()
+            .expect("schema 应可加载");
+        let mut mismatches: Vec<String> = Vec::new();
+        for (tags, level) in scan_match_arm_groups_plus_singles(&render_rs) {
+            if level.is_empty() {
+                continue;
+            }
+            for tag in tags {
+                let Some((canon, _)) = schema.resolve_tag(&tag) else {
+                    mismatches.push(format!("{}: 不在 schema", tag));
+                    continue;
+                };
+                let meta_iced = schema
+                    .meta
+                    .get(canon)
+                    .map(|m| m.backends.iced.clone())
+                    .unwrap_or_default();
+                if meta_iced != level {
+                    mismatches
+                        .push(format!("{}: 静态={} schema={}", tag, level, meta_iced));
+                }
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "P3:render_support 静态级别与 schema backends.iced 不一致:\n  {}",
+            mismatches.join("\n  ")
         );
     }
     // ---- 维度语义(新增漂移时随报错一起打印) ----

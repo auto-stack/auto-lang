@@ -104,6 +104,14 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
+/// Plan 435 P3:HashMap 迭代序跨进程不确定(RandomState),SFC 发射必须确定。
+/// 发射层统一经此取按 key 排序的条目(golden byte-identical 的前提)。
+fn sorted_entries<'a, K: std::cmp::Ord, V>(m: &'a std::collections::HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
+    let mut v: Vec<(&K, &V)> = m.iter().collect();
+    v.sort_by(|a, b| a.0.cmp(b.0));
+    v
+}
+
 use crate::aura::{AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
@@ -2188,7 +2196,7 @@ impl VueGenerator {
         // Plan 132: Scan handlers for API function calls
         if !self.explicit_api_imports {
             // Legacy mode: scan AST to discover API calls
-            for (_pattern, payload) in &widget.handlers {
+            for (_pattern, payload) in sorted_entries(&widget.handlers) {
                 self.extract_api_calls_from_payload(payload);
             }
             // Also scan lifecycle events (.Init, .Destroy) for API calls
@@ -2197,7 +2205,7 @@ impl VueGenerator {
             }
         } else {
             // Explicit import mode: collect which declared imports are actually used
-            for (_pattern, payload) in &widget.handlers {
+            for (_pattern, payload) in sorted_entries(&widget.handlers) {
                 self.extract_api_calls_from_payload(payload);
             }
             for lc in &widget.lifecycle {
@@ -2209,7 +2217,7 @@ impl VueGenerator {
         // `complete`). Their function bodies get wrapped in setTimeout(80ms)
         // with a sequence guard so rapid typing fires one backend request per
         // pause, and a stale (slower) result can't clobber the newest one.
-        for (pattern, payload) in &widget.handlers {
+        for (pattern, payload) in sorted_entries(&widget.handlers) {
             if let LogicPayload::AstStmts(stmts) = payload {
                 if Self::stmts_call_complete(stmts) {
                     self.debounced_handlers.insert(self.pattern_to_handler_name(pattern));
@@ -2601,7 +2609,7 @@ impl VueGenerator {
         // handler_params is keyed by the verbatim pattern, so keep the mapping.
         let mut handler_base_patterns: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
-        for (pattern, payload) in &widget.handlers {
+        for (pattern, payload) in sorted_entries(&widget.handlers) {
             let handler_name = self.pattern_to_handler_name(pattern);
             handler_base_patterns
                 .insert(handler_name.clone(), Self::base_pattern(pattern).to_string());
@@ -2799,7 +2807,10 @@ impl VueGenerator {
         }
 
         // Generate stub functions for handlers referenced in template but not defined in on-block
-        for handler_name in &self.used_handlers {
+        // (used_handlers 是 HashSet,迭代序不确定 —— 排序保证 SFC 字节确定)
+        let mut stub_handlers: Vec<&String> = self.used_handlers.iter().collect();
+        stub_handlers.sort();
+        for handler_name in stub_handlers {
             if generated_handlers.contains(handler_name) {
                 continue;
             }
@@ -3464,7 +3475,7 @@ impl VueGenerator {
         }
 
         // Remaining props as v-bind attributes
-        for (key, value) in props {
+        for (key, value) in sorted_entries(props) {
             if key == "is" || key == "class" || key == "style" {
                 continue;
             }
@@ -3509,7 +3520,7 @@ impl VueGenerator {
         }
 
         // Event listeners (same conventions as plain elements)
-        for (event, aura_event) in events {
+        for (event, aura_event) in sorted_entries(events) {
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
@@ -3877,7 +3888,7 @@ impl VueGenerator {
                     // Track first prop expression for :key binding
                     let mut first_prop_expr: Option<String> = None;
                     // Pass all props as v-bind (:prop="expr" needs a JS expression, not template text)
-                    for (key, value) in props {
+                    for (key, value) in sorted_entries(props) {
                         // Template ref on a child component: `ref: "canvasRef"`
                         // → static `ref="canvasRef"` attribute + a `ref<any>`
                         // declaration in <script setup> (the child's
@@ -3993,7 +4004,7 @@ impl VueGenerator {
                         attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
                     }
                     // Event handlers
-                    for (event, aura_event) in events {
+                    for (event, aura_event) in sorted_entries(events) {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
@@ -4139,7 +4150,7 @@ impl VueGenerator {
                     let mut value_state_ref: Option<String> = None;
 
                     // Props as attributes
-                    for (key, value) in props {
+                    for (key, value) in sorted_entries(props) {
                         if key == "class" || key == "style" {
                             continue; // Already handled in extract_classes
                         }
@@ -4301,7 +4312,7 @@ impl VueGenerator {
                     }
 
                     // Event handlers
-                    for (event, aura_event) in events {
+                    for (event, aura_event) in sorted_entries(events) {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
@@ -4681,7 +4692,7 @@ impl VueGenerator {
                 }
 
                 // Event handlers
-                for (event, aura_event) in events {
+                for (event, aura_event) in sorted_entries(events) {
                     let vue_event = self.auto_event_to_vue(event);
                     // Plan 408 P10: callback-prop short-circuit (consistency
                     // with the element/shadcn event paths).
@@ -5098,7 +5109,7 @@ impl VueGenerator {
 
                 // Build props string
                 let mut props_parts = Vec::new();
-                for (key, value) in props {
+                for (key, value) in sorted_entries(props) {
                     if has_primary && key == "text" {
                         continue; // hoisted as the positional primary prop above
                     }
@@ -5115,7 +5126,7 @@ impl VueGenerator {
                 }
 
                 // Build events string
-                for (event_name, event) in events {
+                for (event_name, event) in sorted_entries(events) {
                     let _params_str = if event.params.is_empty() {
                         String::new()
                     } else {
@@ -5208,7 +5219,7 @@ impl VueGenerator {
                     props_parts.push(format!("{}: {}", key, self.expr_to_auto_string(value)));
                 }
 
-                for (event_name, event) in events {
+                for (event_name, event) in sorted_entries(events) {
                     props_parts.push(format!("{}: .{}", event_name, event.handler));
                 }
 
@@ -7150,7 +7161,7 @@ impl VueGenerator {
         use std::collections::{HashMap, HashSet};
         let mut calls_by_handler: HashMap<String, Vec<String>> = HashMap::new();
         let mut declared: HashSet<String> = HashSet::new();
-        for (pattern, payload) in &widget.handlers {
+        for (pattern, payload) in sorted_entries(&widget.handlers) {
             let fn_name = self.pattern_to_handler_name(pattern);
             let calls = match payload {
                 LogicPayload::AstStmts(stmts) => Self::collect_self_handler_calls(stmts),
@@ -7772,7 +7783,7 @@ impl VueGenerator {
         attrs: &mut Vec<String>,
         props: &HashMap<String, AuraPropValue>,
     ) {
-        for (key, value) in props {
+        for (key, value) in sorted_entries(props) {
             if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html"
                 // Plan 412 §4.3: square 的尺寸 props 已转成 h-/w- 类,且 h/w/size
                 // 不是有效 HTML 属性 —— 不透传。
@@ -10930,7 +10941,7 @@ impl VueGenerator {
         }
 
         // Add event handlers
-        for (event, aura_event) in events {
+        for (event, aura_event) in sorted_entries(events) {
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
