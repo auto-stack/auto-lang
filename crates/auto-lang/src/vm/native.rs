@@ -2447,7 +2447,12 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             results.push(crate::vm::native::pop_arg_i32(task));
         }
         let new_id = create_list_from_i32(vm, results);
-        task.ram.push_i32(new_id as i32);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
         return Ok(());
     }
 
@@ -2463,7 +2468,8 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         results.push(nv_to_value(ret_nv));
     }
     let new_id = create_list_from_value(vm, results);
-    task.ram.push_i32(new_id as i32);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
     Ok(())
 }
 
@@ -2491,7 +2497,12 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             }
         }
         let new_id = create_list_from_i32(vm, results);
-        task.ram.push_i32(new_id as i32);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
         return Ok(());
     }
 
@@ -2509,7 +2520,8 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         }
     }
     let new_id = create_list_from_value(vm, results);
-    task.ram.push_i32(new_id as i32);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
     Ok(())
 }
 

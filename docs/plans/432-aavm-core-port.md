@@ -170,9 +170,11 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
     child_pool_idxs 随容器死亡释放(heap_object.rs/types.rs/rc.rs)、
     engine.rs RET 恢复 num_locals、add_string dedup 命中墓碑防御。
     复现测试 repro_242_string_pool_uaf 常驻转绿;**M2 闸门 18 语料
-    diff=0**;全量 3242 过零新增失败。残留:conformance_bootstrap 堆侧
-    4000001 UAF(槽位复用 RETAIN-AFTER-FREE,P419_UAF_TRACE 全链留档)
-    为独立缺陷(master 同红),待另行修复。
+    diff=0**;全量 3242 过零新增失败。**堆侧同族缺陷亦已修**(同会话续):
+    shim_list_map/filter 四处新建列表裸 push_i32 入栈(无 rc 份额),
+    经局部槽 copy-on-load/pop_arg 生命周期后 RETAIN-AFTER-FREE →
+    conformance_bootstrap + conformance_023 双双转绿;全量 3243 过,
+    剩余 6 败(5 cookbook 行为断言 + charts 环境)为无关存量。
   - 发现并规避的 VM 缺陷(D25):构造参数内联原生调用返回值丢失、List.pop
     栈污染;全部以 .at 侧写法规避(提升变量 + depth 计数)。
   - AUTO_LIB_FILES_V2 已登记 parser.at;M1 闸门 + aavm2 smoke(001/002)全绿。

@@ -80,9 +80,15 @@
   释放(types.rs/rc.rs/heap_object.rs)+ pop/remove 改"先 +1 回栈再释放"
   (原顺序在末次引用时自造悬垂,堆 id 分支同修)+ RET 恢复 num_locals
   + add_string dedup 命中墓碑防御。复现测试 repro_242_string_pool_uaf
-  常驻;**M2 闸门 18 语料 diff=0 转绿**。残留:conformance_bootstrap 的
-  堆侧 4000001 UAF(槽位复用后 RETAIN-AFTER-FREE,P419_UAF_TRACE 全链
-  已留档)为另一独立缺陷,master 上同样红,另行修复。
+  常驻;**M2 闸门 18 语料 diff=0 转绿**。堆侧同族缺陷(242:S2-432 续)
+  亦已修:P419_UAF_TRACE=4000001 生死链显示 shim_list_map/filter 四处
+  新建列表 id 以裸 push_i32 入栈(违反"首次 rc_push 建条目"契约)——
+  栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份 → copy-on-load 的 +1
+  成"首次获取" → pop_arg 释放归零即对象在局部槽仍引用时死亡 → 槽位
+  复用后 LOAD_LOC_1 RETAIN-AFTER-FREE → canary。修复 = 四处改
+  rc_push_id;conformance_bootstrap 与 conformance_023(map/filter 行为)
+  双双转绿。剩余 6 个 master 存量失败(5 cookbook "Assertion failed"
+  行为断言 + charts 环境问题)与内存安全无关,另行处理。
 
 ## 计数(S2 时点)
 
