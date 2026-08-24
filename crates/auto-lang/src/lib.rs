@@ -1990,6 +1990,12 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
             // f64 may be on stack (2 slots) even when last_result_type is Float.
             // This happens when FFI returns f64 but codegen marked the expression as Float.
             // Format as f32 to match expected behavior (which truncates via pop_f32).
+            //
+            // Plan 437: last_result_type 是粘性运行时状态（如刚向 List<float>
+            // push 过 float 参数后未复位）——以栈顶 tag 为准（对齐 Plan 406
+            // bool 的 tag-first 哲学与下方 ObjectType::Float 分支的对称逻辑）：
+            // i32/bool-tag 的值按自身格式化，绝不按 f32 位重解释
+            // （i32 2 → 2.8e-45 → "0.000...003"、bool 位 → "-0" 即此病灶）。
             if task.ram.sp >= 2 {
                 let nv = task.ram.raw_nv[task.ram.sp - 2];
                 if auto_val::is_f64(nv) {
@@ -1997,8 +2003,17 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
                     let result = f64::from_bits(nv) as f32;
                     format!("{}", result)
                 } else {
-                    let result = task.ram.pop_f32();
-                    format!("{}", result)
+                    let top = task.ram.raw_nv[task.ram.sp - 1];
+                    if auto_val::is_f32(top) {
+                        let result = task.ram.pop_f32();
+                        format!("{}", result)
+                    } else if auto_val::is_bool(top) {
+                        let result = task.ram.pop_i32();
+                        if result != 0 { "true".to_string() } else { "false".to_string() }
+                    } else {
+                        let result = task.ram.pop_i32();
+                        format!("{}", result)
+                    }
                 }
             } else {
                 let result = task.ram.pop_f32();

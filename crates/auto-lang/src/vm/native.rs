@@ -1749,6 +1749,14 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         Value::Nil
     } else if auto_val::is_bool(elem_nv) {
         Value::Bool(auto_val::decode_bool(elem_nv))
+    } else if auto_val::is_f64(elem_nv) {
+        // Plan 437: f64 nanbox 此前落进末尾 else 被 decode_i32 重解释成垃圾
+        // int（3.0 → 1074266112）。引擎方法分发臂（engine.rs "push"，Plan 403）
+        // 与 CREATE_ARRAY 早已修 float，原生 shim 这条 mono-dispatch 路径漏修
+        // ——List<float>.push() 全部损坏（chart 几何坐标列表直接受阻）。
+        Value::Double(auto_val::decode_f64(elem_nv))
+    } else if auto_val::is_f32(elem_nv) {
+        Value::Float(auto_val::decode_f32(elem_nv) as f64)
     } else {
         Value::Int(auto_val::decode_i32(elem_nv))
     };
@@ -1920,7 +1928,7 @@ pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
 /// Check if the list is empty.
 /// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
-// Plan 077 Phase 5: Updated to use unified registry
+// Plan 077 Phase 5: Updated to unified registry
 pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
 
@@ -2057,6 +2065,10 @@ fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
             }
         }
         auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
+        // Plan 437: float 元素此前落进 `_ => push_i32(0)` 兜底——List<float>.get()
+        // 恒返回 0。镜像 GET_ELEM 的 ListData<Value> 臂（Double→f64/Float→f32）。
+        auto_val::Value::Double(d) => task.ram.push_f64(*d),
+        auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
         auto_val::Value::VmRef(r) => {
             vm.rc_push(task, auto_val::encode_object(r.id as u32));
         }
@@ -2113,7 +2125,15 @@ pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
         let _stake_list_nv = crate::vm::native::StakeGuard::nv(vm, list_nv);
         let index = if auto_val::is_i32(index_nv) { auto_val::decode_i32(index_nv) as usize } else { 0usize };
-        let list_id = if auto_val::is_i32(list_nv) { auto_val::decode_i32(list_nv) as u64 } else { 0u64 };
+        // Plan 437: 列表引用是 TAG_OBJECT nanbox（encode_object(list_id)），
+        // 原先只认 is_i32 → object-tag 接收者落 list_id=0，.get() 恒返回 0。
+        let list_id = if auto_val::is_object(list_nv) {
+            auto_val::decode_object(list_nv) as u64
+        } else if auto_val::is_i32(list_nv) {
+            auto_val::decode_i32(list_nv) as u64
+        } else {
+            0u64
+        };
 
         if let Some(obj) = vm.get_heap_object(list_id) {
             let guard = obj.read().unwrap();
