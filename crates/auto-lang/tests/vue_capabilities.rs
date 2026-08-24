@@ -917,6 +917,153 @@ widget W {
 }
 
 // ============================================================================
+// Plan 015 P1#8 — R016 hard-keyword collision (view AST validator)
+// ============================================================================
+
+/// Parse a widget source and extract its aura widget (real pipeline), then
+/// run the R016 keyword-collision rule on the view tree.
+fn r016_warnings(src: &str) -> Vec<auto_lang::ui_gen::validators::ValidationWarning> {
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("widget source must parse");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("widget decl");
+    let widget = extract_widget_from_decl(decl).expect("extract widget");
+    auto_lang::ui_gen::validators::r016_keyword_collision(&widget.view_tree, &widget.name)
+}
+
+/// jade gap 18/29: an element named `view` collides with the hard keyword —
+/// it parses silently and degrades to a `<div>`. R016 must flag it.
+#[test]
+fn cap_keyword_element_view_flagged() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    view {
+        col {
+            view { text "inner" }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        ws.iter().any(|w| w.rule == "R016" && w.message.contains("view")),
+        "view element must be flagged: {ws:?}"
+    );
+}
+
+/// jade gap 18/29 follow-up: an element named `task` collides the same way.
+#[test]
+fn cap_keyword_element_task_flagged() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    view {
+        col {
+            task { text "x" }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        ws.iter().any(|w| w.rule == "R016" && w.message.contains("task")),
+        "task element must be flagged: {ws:?}"
+    );
+}
+
+/// jade gap 34/53: `link` without `to:` silently becomes
+/// `<router-link to="">`. R016 must flag it.
+#[test]
+fn cap_keyword_link_without_to_flagged() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    view {
+        col {
+            link { text "click" }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        ws.iter().any(|w| w.rule == "R016" && w.message.contains("router-link")),
+        "link without to: must be flagged: {ws:?}"
+    );
+}
+
+/// The legal router-link form (`link (to: ...)`) must NOT be flagged.
+#[test]
+fn cap_keyword_link_with_to_clean() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    view {
+        col {
+            link (to: "/home") { text "Home" }
+        }
+    }
+}
+"#,
+    );
+    assert!(ws.is_empty(), "link (to:) must not warn: {ws:?}");
+}
+
+/// Probe-verified legal keyword-adjacent forms must NOT be flagged:
+/// paren `type:` prop, block `type:` prop, block `as:`/`to:` props
+/// (Plan 012 P2 contextualized them), and `path` as model/computed/loop
+/// variable names.
+#[test]
+fn cap_keyword_legal_forms_clean() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    model { var path str = "/a" }
+    computed { full_path => .path + "/b" }
+    view {
+        col {
+            button "ok" (type: "button") { }
+            input { type: "text" }
+            div { as: "x", to: "/y" }
+            text .path
+        }
+    }
+}
+"#,
+    );
+    assert!(ws.is_empty(), "legal keyword-adjacent forms must not warn: {ws:?}");
+}
+
+/// A model field named `view` referenced as `text .view` lexes `.view` into
+/// the View keyword token, leaking a garbage `view` element node into the
+/// view tree — caught by R016's view-element check.
+#[test]
+fn cap_model_field_named_view_ref_flagged() {
+    let ws = r016_warnings(
+        r#"
+widget W {
+    model { var view str = "a" }
+    view {
+        text .view
+    }
+}
+"#,
+    );
+    assert!(
+        ws.iter().any(|w| w.rule == "R016" && w.message.contains("view")),
+        "leaked view element from .view ref must be flagged: {ws:?}"
+    );
+}
+
+// ============================================================================
 // Plan 028 — a2ts capability gaps for the Block migration (F1–F9).
 // ============================================================================
 

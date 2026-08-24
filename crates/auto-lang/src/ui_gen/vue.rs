@@ -1935,7 +1935,14 @@ impl VueGenerator {
         let mut script = String::new();
 
         // Determine needed imports
-        let needs_ref = !widget.state_vars.is_empty() || !self.template_refs.is_empty();
+        // plan 015: with PLAN-037 T4, model vars compile to defineModel (a
+        // macro — no `ref` usage), so state_vars no longer imply a `ref`
+        // import. The remaining ref() emitters are: template refs, the
+        // tick timer, and the previewcard/codeblock copy state.
+        let needs_ref = !self.template_refs.is_empty()
+            || widget.tick_interval.is_some()
+            || !self.previewcard_data.is_empty()
+            || !self.codeblock_data.is_empty();
         let needs_computed = !widget.computed.is_empty();
 
         // Generate Vue import statement
@@ -1947,9 +1954,11 @@ impl VueGenerator {
         // exactly like a local ref (same .value semantics, same template
         // unwrap); when the parent binds the channel via call-site model
         // addressing (v-model:name) it becomes two-way.
-        if !widget.state_vars.is_empty() {
-            imports.push("defineModel");
-        }
+        // plan 015: defineModel is a <script setup> COMPILER MACRO — like
+        // defineProps/defineEmits it must NOT be imported. Importing it
+        // collides with Volar's injected macro shim (TS2440 "Import
+        // declaration conflicts with local declaration"), breaking vue-tsc
+        // in real projects (autodown editor + jade front gates).
         if needs_computed {
             imports.push("computed");
         }
@@ -14127,7 +14136,8 @@ widget Counter {
 
         // Plan 100: Default is now TypeScript, so check for lang="ts"
         assert!(sfc.contains(r#"<script setup lang="ts">"#));
-        assert!(sfc.contains("import { ref, defineModel } from 'vue'"));
+        // plan 015: defineModel is a macro — never imported (TS2440 guard).
+        assert!(!sfc.contains("defineModel } from 'vue'"));
         assert!(sfc.contains("const count = defineModel<number>(\"count\", { default: 0 })"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
@@ -16615,8 +16625,8 @@ widget SlashMenu {
 }
 "#);
         assert!(
-            sfc.contains("import { ref, defineModel, computed, watch } from 'vue'"),
-            "watch imported:\n{}",
+            sfc.contains("import { computed, watch } from 'vue'"),
+            "watch imported (defineModel is a macro, never imported — plan 015):\n{}",
             sfc
         );
         assert!(

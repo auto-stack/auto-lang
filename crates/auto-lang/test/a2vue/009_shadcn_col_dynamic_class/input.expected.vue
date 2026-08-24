@@ -1,6 +1,6 @@
 <!-- ShadcnColDynamic component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref, defineModel, computed } from 'vue'
+import { computed } from 'vue'
 
 const isActive = defineModel<boolean>("isActive", { default: false })
 

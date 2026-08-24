@@ -1,6 +1,5 @@
 <!-- TextFnCall component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref, defineModel } from 'vue'
 import { t } from 'vue-i18n'
 
 
