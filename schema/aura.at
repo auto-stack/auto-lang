@@ -54,6 +54,7 @@ element autodown {
     tier: "builtin_widget"
     aliases: ["autodown_editor", "autodowneditor", "markdown_editor"]
     backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    vue: { component: "AutoDownEditor", import: "@autodown/editor" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -65,6 +66,7 @@ element avatar {
     tier: "builtin_widget"
     aliases: ["Avatar"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Avatar", import: "@/components/ui/avatar" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -76,6 +78,7 @@ element badge {
     tier: "builtin_widget"
     aliases: ["Badge"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Badge", import: "@/components/ui/badge" }
     props: [
         { name: "text", type: "string", description: "Badge text" }
         { name: "variant", type: "one_of:default,secondary,destructive,outline", default: "default", description: "Badge variant" }
@@ -91,6 +94,7 @@ element button {
     tier: "builtin_widget"
     aliases: ["Button", "btn"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "Button", import: "@/components/ui/button" }
     props: [
         { name: "text", type: "string", description: "Button label text" }
         { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
@@ -110,6 +114,7 @@ element center {
     tier: "builtin_widget"
     aliases: ["Center"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -121,6 +126,7 @@ element checkbox {
     tier: "builtin_widget"
     aliases: ["Checkbox", "check"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "Checkbox", import: "@/components/ui/checkbox" }
     props: [
         { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checked state" }
         { name: "onchange", type: "msg_ref", description: "Message on toggle" }
@@ -137,6 +143,7 @@ element codeeditor {
     tier: "builtin_widget"
     aliases: ["codeEditor", "code_editor"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "CodeEditor", import: "@/components/CodeEditor" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -148,6 +155,7 @@ element col {
     tier: "builtin_widget"
     aliases: ["Col", "Column", "column"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "gap", type: "int", default: "0", description: "Spacing between children" }
@@ -204,6 +212,7 @@ element grid {
     tier: "builtin_widget"
     aliases: ["Grid"]
     backends: { web: "native", iced: "partial", gpui: "unknown" }
+    vue: { component: "div" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "columns", type: "int", default: "1", description: "Number of columns" }
@@ -278,6 +287,7 @@ element image {
     tier: "builtin_widget"
     aliases: ["Image"]
     backends: { web: "native", iced: "partial", gpui: "unknown" }
+    vue: { component: "img" }
     props: [
         { name: "src", type: "string", required: true, description: "Image URL" }
         { name: "alt", type: "string", default: "", description: "Alt text" }
@@ -305,6 +315,7 @@ element input {
     tier: "builtin_widget"
     aliases: ["Input"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Input", import: "@/components/ui/input" }
     props: [
         { name: "value", type: "state_ref", description: "Bound value (two-way binding)" }
         { name: "placeholder", type: "string", description: "Placeholder text" }
@@ -324,6 +335,7 @@ element label {
     tier: "builtin_widget"
     aliases: ["Label"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "label" }
     props: [
         { name: "for", type: "string", description: "Associated form control ID" }
         { name: "text", type: "string", description: "Label text" }
@@ -338,6 +350,7 @@ element list {
     category: "list"
     tier: "builtin_widget"
     backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    vue: { component: "ul" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -351,6 +364,7 @@ element list_item {
     tier: "builtin_widget"
     aliases: ["list-item"]
     backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    vue: { component: "li" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "onclick", type: "msg_ref", description: "Message when clicked" }
@@ -375,6 +389,7 @@ element menubar {
     category: "navigation"
     tier: "builtin_widget"
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "Menubar", import: "@/components/ui/menubar" }
     sub_widgets: ["menubar_content", "menubar_item", "menubar_label", "menubar_menu", "menubar_separator", "menubar_trigger"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -400,6 +415,7 @@ element nav-link {
     tier: "builtin_widget"
     aliases: ["nav_link"]
     backends: { web: "none", iced: "partial", gpui: "unknown" }
+    vue: { component: "NavLink", import: "@/components/ui/nav-link" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -425,6 +441,7 @@ element popover {
     tier: "builtin_widget"
     aliases: ["Popover"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Popover", import: "@/components/ui/popover" }
     sub_widgets: ["popover_content", "popover_trigger"]
     props: [
         { name: "open", type: "expr", description: "Open state (state binding, e.g. .ctx_open)" }
@@ -444,6 +461,7 @@ element progress {
     tier: "builtin_widget"
     aliases: ["Progress"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "Progress", import: "@/components/ui/progress" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -455,6 +473,7 @@ element row {
     tier: "builtin_widget"
     aliases: ["Row"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "gap", type: "int", default: "0", description: "Spacing between children" }
@@ -471,6 +490,7 @@ element scroll {
     tier: "builtin_widget"
     aliases: ["Scroll", "scrollable"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "ScrollArea", import: "@/components/ui/scroll-area" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "direction", type: "one_of:vertical,horizontal,both", default: "vertical", description: "Scroll direction" }
@@ -496,6 +516,7 @@ element separator {
     tier: "builtin_widget"
     aliases: ["Separator", "sep"]
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "Separator", import: "@/components/ui/separator" }
     props: [
         { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Separator orientation" }
         { name: "label", type: "string", description: "Optional label for separator" }
@@ -511,6 +532,7 @@ element spacer {
     tier: "builtin_widget"
     aliases: ["Spacer"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "size", type: "int", description: "Spacer size in pixels (or flex if omitted)" }
@@ -560,6 +582,7 @@ element text {
     tier: "builtin_widget"
     aliases: ["Text"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    vue: { component: "span" }
     props: []
     allows_children: false
     description: "Text content (literal or interpolated)"
@@ -571,6 +594,7 @@ element textarea {
     tier: "builtin_widget"
     aliases: ["Textarea"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Textarea", import: "@/components/ui/textarea" }
     props: [
         { name: "placeholder", type: "string", description: "Placeholder text" }
         { name: "value", type: "union:string,state_ref", description: "Textarea value" }
@@ -588,6 +612,7 @@ element toast-provider {
     tier: "builtin_widget"
     aliases: ["toast_provider"]
     backends: { web: "none", iced: "partial", gpui: "unknown" }
+    vue: { component: "Toaster", import: "@/components/ui/sonner" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -1032,16 +1057,6 @@ element frame {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element grid-item {
-    tag: "grid-item"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "full", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element loading {
     tag: "loading"
     category: "unknown"
@@ -1134,16 +1149,6 @@ element scroll_view {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element stack {
-    tag: "stack"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element textinput {
     tag: "textinput"
     category: "unknown"
@@ -1173,6 +1178,7 @@ element accordion {
     category: "content"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Accordion", import: "@/components/ui/accordion" }
     sub_widgets: ["accordion_content", "accordion_item", "accordion_trigger"]
     props: [
         { name: "type", type: "one_of:single,multiple", default: "single", description: "Accordion type" }
@@ -1190,6 +1196,7 @@ element accordion_content {
     tier: "web_component"
     aliases: ["accordion-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AccordionContent", import: "@/components/ui/accordion" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1203,6 +1210,7 @@ element accordion_item {
     tier: "web_component"
     aliases: ["accordion-item"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AccordionItem", import: "@/components/ui/accordion" }
     props: [
         { name: "value", type: "string", required: true, description: "Item value (required)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1217,6 +1225,7 @@ element accordion_trigger {
     tier: "web_component"
     aliases: ["accordion-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AccordionTrigger", import: "@/components/ui/accordion" }
     props: [
         { name: "text", type: "string", description: "Trigger text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1231,6 +1240,7 @@ element alert {
     tier: "web_component"
     aliases: ["Alert"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Alert", import: "@/components/ui/alert" }
     props: [
         { name: "variant", type: "one_of:default,destructive", default: "default", description: "Alert style variant" }
         { name: "title", type: "string", description: "Alert title" }
@@ -1247,6 +1257,7 @@ element alert-description {
     tier: "web_component"
     aliases: ["AlertDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDescription", import: "@/components/ui/alert" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1258,6 +1269,7 @@ element alert-title {
     tier: "web_component"
     aliases: ["AlertTitle"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertTitle", import: "@/components/ui/alert" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1269,6 +1281,7 @@ element alert_dialog {
     tier: "web_component"
     aliases: ["AlertDialog", "alert-dialog"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialog", import: "@/components/ui/alert-dialog" }
     sub_widgets: ["alert_dialog_action", "alert_dialog_cancel", "alert_dialog_content", "alert_dialog_description", "alert_dialog_footer", "alert_dialog_header", "alert_dialog_title", "alert_dialog_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -1284,6 +1297,7 @@ element alert_dialog_action {
     tier: "web_component"
     aliases: ["alert-dialog-action"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogAction", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Action button text" }
         { name: "onclick", type: "msg_ref", description: "Click handler" }
@@ -1299,6 +1313,7 @@ element alert_dialog_cancel {
     tier: "web_component"
     aliases: ["alert-dialog-cancel"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogCancel", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Cancel button text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1313,6 +1328,7 @@ element alert_dialog_content {
     tier: "web_component"
     aliases: ["alert-dialog-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogContent", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1326,6 +1342,7 @@ element alert_dialog_description {
     tier: "web_component"
     aliases: ["alert-dialog-description"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogDescription", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Description text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1340,6 +1357,7 @@ element alert_dialog_footer {
     tier: "web_component"
     aliases: ["alert-dialog-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogFooter", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1353,6 +1371,7 @@ element alert_dialog_header {
     tier: "web_component"
     aliases: ["alert-dialog-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogHeader", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1366,6 +1385,7 @@ element alert_dialog_title {
     tier: "web_component"
     aliases: ["alert-dialog-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogTitle", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "text", type: "string", description: "Title text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1380,6 +1400,7 @@ element alert_dialog_trigger {
     tier: "web_component"
     aliases: ["alert-dialog-trigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AlertDialogTrigger", import: "@/components/ui/alert-dialog" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1394,6 +1415,7 @@ element area-chart {
     tier: "web_component"
     aliases: ["AreaChart"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "AreaChart", import: "@/components/ui/chart-area" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1405,6 +1427,7 @@ element aspect_ratio {
     tier: "web_component"
     aliases: ["AspectRatio", "aspect-ratio", "aspectratio"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "AspectRatio", import: "@/components/ui/aspect-ratio" }
     props: [
         { name: "ratio", type: "int", default: "16", description: "Aspect ratio (e.g., 16 for 16/9)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1487,6 +1510,7 @@ element avatar-fallback {
     tier: "web_component"
     aliases: ["AvatarFallback"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "AvatarFallback", import: "@/components/ui/avatar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1498,6 +1522,7 @@ element avatar-image {
     tier: "web_component"
     aliases: ["AvatarImage"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "AvatarImage", import: "@/components/ui/avatar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1509,6 +1534,7 @@ element bar-chart {
     tier: "web_component"
     aliases: ["BarChart"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "BarChart", import: "@/components/ui/chart-bar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1519,6 +1545,7 @@ element box {
     category: "unknown"
     tier: "web_component"
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "div" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1529,6 +1556,7 @@ element breadcrumb {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Breadcrumb", import: "@/components/ui/breadcrumb" }
     sub_widgets: ["breadcrumb_item", "breadcrumb_link", "breadcrumb_list", "breadcrumb_page", "breadcrumb_separator"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1542,6 +1570,7 @@ element breadcrumb_item {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "BreadcrumbItem", import: "@/components/ui/breadcrumb" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1554,6 +1583,7 @@ element breadcrumb_link {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "BreadcrumbLink", import: "@/components/ui/breadcrumb" }
     props: [
         { name: "href", type: "string", description: "Link URL" }
         { name: "text", type: "string", description: "Link text" }
@@ -1569,6 +1599,7 @@ element breadcrumb_list {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "BreadcrumbList", import: "@/components/ui/breadcrumb" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1581,6 +1612,7 @@ element breadcrumb_page {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "BreadcrumbPage", import: "@/components/ui/breadcrumb" }
     props: [
         { name: "text", type: "string", description: "Current page text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1594,6 +1626,7 @@ element breadcrumb_separator {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "BreadcrumbSeparator", import: "@/components/ui/breadcrumb" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1621,6 +1654,7 @@ element calendar {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Calendar", import: "@/components/ui/calendar" }
     props: [
         { name: "value", type: "state_ref", description: "Selected date binding" }
         { name: "placeholder", type: "string", default: "Pick a date", description: "Placeholder text" }
@@ -1637,6 +1671,7 @@ element calendar-cell {
     tier: "web_component"
     aliases: ["CalendarCell"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "CalendarCell", import: "@/components/ui/calendar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1648,6 +1683,7 @@ element calendar-day {
     tier: "web_component"
     aliases: ["CalendarDay"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "CalendarDay", import: "@/components/ui/calendar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1659,6 +1695,7 @@ element calendar-grid {
     tier: "web_component"
     aliases: ["CalendarGrid"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "CalendarGrid", import: "@/components/ui/calendar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1670,6 +1707,7 @@ element calendar-header {
     tier: "web_component"
     aliases: ["CalendarHeader"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "CalendarHeader", import: "@/components/ui/calendar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1681,6 +1719,7 @@ element calendar-heading {
     tier: "web_component"
     aliases: ["CalendarHeading"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "CalendarHeading", import: "@/components/ui/calendar" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1692,6 +1731,7 @@ element card {
     tier: "web_component"
     aliases: ["Card"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Card", import: "@/components/ui/card" }
     sub_widgets: ["cardcontent", "carddescription", "cardfooter", "cardheader", "cardtitle"]
     props: [
         { name: "variant", type: "one_of:default,outline", default: "default", description: "Card variant style" }
@@ -1717,6 +1757,7 @@ element cardcontent {
     tier: "web_component"
     aliases: ["CardContent", "card-content"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CardContent", import: "@/components/ui/card" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1730,6 +1771,7 @@ element carddescription {
     tier: "web_component"
     aliases: ["CardDescription", "card-description"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CardDescription", import: "@/components/ui/card" }
     props: [
         { name: "text", type: "string", description: "Description text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1744,6 +1786,7 @@ element cardfooter {
     tier: "web_component"
     aliases: ["CardFooter", "card-footer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CardFooter", import: "@/components/ui/card" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1757,6 +1800,7 @@ element cardheader {
     tier: "web_component"
     aliases: ["CardHeader", "card-header"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CardHeader", import: "@/components/ui/card" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1770,6 +1814,7 @@ element cardtitle {
     tier: "web_component"
     aliases: ["CardTitle", "card-title"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CardTitle", import: "@/components/ui/card" }
     props: [
         { name: "text", type: "string", description: "Title text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1856,6 +1901,7 @@ element chart {
     category: "content"
     tier: "web_component"
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "ChartContainer", import: "@/components/ui/chart", extras: ["ChartTooltip", "ChartLegend", "ChartStyle"] }
     props: [
         { name: "config", type: "string", description: "Chart config object" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -1870,6 +1916,7 @@ element chart-legend {
     tier: "web_component"
     aliases: ["ChartLegend"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ChartLegend", import: "@/components/ui/chart" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1881,6 +1928,7 @@ element chart-tooltip {
     tier: "web_component"
     aliases: ["ChartTooltip"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ChartTooltip", import: "@/components/ui/chart" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1892,6 +1940,7 @@ element chat_message {
     tier: "web_component"
     aliases: ["ChatMessage"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ChatMessage", import: "@/components/ChatMessage" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -1913,6 +1962,7 @@ element collapsible {
     category: "content"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Collapsible", import: "@/components/ui/collapsible" }
     sub_widgets: ["collapsible_content", "collapsible_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -1928,6 +1978,7 @@ element collapsible_content {
     category: "content"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CollapsibleContent", import: "@/components/ui/collapsible" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -1940,6 +1991,7 @@ element collapsible_trigger {
     category: "content"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "CollapsibleTrigger", import: "@/components/ui/collapsible" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2164,6 +2216,7 @@ element context_menu {
     tier: "web_component"
     aliases: ["ContextMenu", "context-menu"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ContextMenu", import: "@/components/ui/context-menu" }
     sub_widgets: ["context_menu_checkbox_item", "context_menu_content", "context_menu_item", "context_menu_label", "context_menu_radio_group", "context_menu_radio_item", "context_menu_separator", "context_menu_shortcut", "context_menu_sub", "context_menu_sub_content", "context_menu_sub_trigger", "context_menu_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -2187,6 +2240,7 @@ element context_menu_content {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ContextMenuContent", import: "@/components/ui/context-menu" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2200,6 +2254,7 @@ element context_menu_item {
     tier: "web_component"
     aliases: ["ContextMenuItem", "context-menu-item"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ContextMenuItem", import: "@/components/ui/context-menu" }
     props: [
         { name: "text", type: "string", description: "Item text" }
         { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
@@ -2301,6 +2356,7 @@ element context_menu_trigger {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "ContextMenuTrigger", import: "@/components/ui/context-menu" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
     ]
@@ -2314,6 +2370,7 @@ element data-table {
     tier: "web_component"
     aliases: ["DataTable"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DataTable", import: "@/components/ui/data-table" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2365,6 +2422,7 @@ element dialog {
     tier: "web_component"
     aliases: ["Dialog"]
     backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Dialog", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -2376,6 +2434,7 @@ element dialog-close {
     tier: "web_component"
     aliases: ["DialogClose"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogClose", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2387,6 +2446,7 @@ element dialog-content {
     tier: "web_component"
     aliases: ["DialogContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogContent", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2398,6 +2458,7 @@ element dialog-description {
     tier: "web_component"
     aliases: ["DialogDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogDescription", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2409,6 +2470,7 @@ element dialog-footer {
     tier: "web_component"
     aliases: ["DialogFooter"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogFooter", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2420,6 +2482,7 @@ element dialog-header {
     tier: "web_component"
     aliases: ["DialogHeader"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogHeader", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2431,6 +2494,7 @@ element dialog-title {
     tier: "web_component"
     aliases: ["DialogTitle"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogTitle", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2442,6 +2506,7 @@ element dialog-trigger {
     tier: "web_component"
     aliases: ["DialogTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DialogTrigger", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2453,6 +2518,7 @@ element donut-chart {
     tier: "web_component"
     aliases: ["DonutChart"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DonutChart", import: "@/components/ui/chart-donut" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2464,6 +2530,7 @@ element drawer {
     tier: "web_component"
     aliases: ["Drawer"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Drawer", import: "@/components/ui/drawer" }
     sub_widgets: ["drawer_close", "drawer_content", "drawer_description", "drawer_footer", "drawer_header", "drawer_title", "drawer_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -2493,6 +2560,7 @@ element drawer_content {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerContent", import: "@/components/ui/drawer" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2505,6 +2573,7 @@ element drawer_description {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerDescription", import: "@/components/ui/drawer" }
     props: [
         { name: "text", type: "string", description: "Description text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2518,6 +2587,7 @@ element drawer_footer {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerFooter", import: "@/components/ui/drawer" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2530,6 +2600,7 @@ element drawer_header {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerHeader", import: "@/components/ui/drawer" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2542,6 +2613,7 @@ element drawer_title {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerTitle", import: "@/components/ui/drawer" }
     props: [
         { name: "text", type: "string", description: "Title text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2555,6 +2627,7 @@ element drawer_trigger {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DrawerTrigger", import: "@/components/ui/drawer" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
     ]
@@ -2582,6 +2655,7 @@ element dropdown-menu {
     tier: "web_component"
     aliases: ["DropdownMenu", "dropdown_menu"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "DropdownMenu", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -2593,6 +2667,7 @@ element dropdown-menu-content {
     tier: "web_component"
     aliases: ["DropdownMenuContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DropdownMenuContent", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2604,6 +2679,7 @@ element dropdown-menu-item {
     tier: "web_component"
     aliases: ["DropdownMenuItem"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DropdownMenuItem", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2625,6 +2701,7 @@ element dropdown-menu-trigger {
     tier: "web_component"
     aliases: ["DropdownMenuTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "DropdownMenuTrigger", import: "@/components/ui/dropdown-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2704,6 +2781,7 @@ element form {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "form" }
     sub_widgets: ["form_control", "form_description", "form_field", "form_item", "form_label", "form_message"]
     props: [
         { name: "id", type: "string", description: "Form ID" }
@@ -2719,6 +2797,7 @@ element form_control {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "FormControl", import: "@/components/ui/form" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2731,6 +2810,7 @@ element form_description {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "FormDescription", import: "@/components/ui/form" }
     props: [
         { name: "text", type: "string", description: "Description text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2744,6 +2824,7 @@ element form_field {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "FormField", import: "@/components/ui/form" }
     props: [
         { name: "name", type: "string", required: true, description: "Field name" }
         { name: "value", type: "state_ref", description: "Field value binding" }
@@ -2771,6 +2852,7 @@ element form_label {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "FormLabel", import: "@/components/ui/form" }
     props: [
         { name: "for", type: "string", description: "Label for attribute" }
         { name: "text", type: "string", description: "Label text" }
@@ -2785,6 +2867,7 @@ element form_message {
     category: "form"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "FormMessage", import: "@/components/ui/form" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -2792,11 +2875,23 @@ element form_message {
     description: "Form validation message"
 }
 
+element grid-item {
+    tag: "grid-item"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element hover_card {
     tag: "hover_card"
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "HoverCard", import: "@/components/ui/hover-card" }
     sub_widgets: ["hover_card_content", "hover_card_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -2812,6 +2907,7 @@ element hover_card_content {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "HoverCardContent", import: "@/components/ui/hover-card" }
     props: [
         { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2825,6 +2921,7 @@ element hover_card_trigger {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "HoverCardTrigger", import: "@/components/ui/hover-card" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
     ]
@@ -2878,6 +2975,7 @@ element line-chart {
     tier: "web_component"
     aliases: ["LineChart"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "LineChart", import: "@/components/ui/chart-line" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2889,6 +2987,7 @@ element markdown {
     tier: "web_component"
     aliases: ["Markdown"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "MarkdownRender", import: "markstream-vue", npm: "markstream-vue@^0.0.14-beta.8" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2899,6 +2998,7 @@ element menubar_content {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarContent", import: "@/components/ui/menubar" }
     props: [
         { name: "align", type: "one_of:start,center,end", default: "start", description: "Content alignment" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2912,6 +3012,7 @@ element menubar_item {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarItem", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Item text" }
         { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
@@ -2940,6 +3041,7 @@ element menubar_menu {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarMenu", import: "@/components/ui/menubar" }
     props: [
         { name: "value", type: "string", description: "Menu value" }
     ]
@@ -2964,6 +3066,7 @@ element menubar_trigger {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarTrigger", import: "@/components/ui/menubar" }
     props: [
         { name: "text", type: "string", description: "Trigger text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -2978,6 +3081,7 @@ element mermaid {
     tier: "web_component"
     aliases: ["Mermaid"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "Mermaid", import: "mermaid", npm: "mermaid@^11.15.0" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -2989,6 +3093,7 @@ element modal {
     tier: "web_component"
     aliases: ["Modal"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Dialog", import: "@/components/ui/dialog" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3025,6 +3130,7 @@ element nav_menu {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenu", import: "@/components/ui/navigation-menu" }
     sub_widgets: ["nav_menu_content", "nav_menu_indicator", "nav_menu_item", "nav_menu_link", "nav_menu_list", "nav_menu_trigger"]
     props: [
         { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Menu orientation" }
@@ -3039,6 +3145,7 @@ element nav_menu_content {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuContent", import: "@/components/ui/navigation-menu" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3063,6 +3170,7 @@ element nav_menu_item {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuItem", import: "@/components/ui/navigation-menu" }
     props: [
         { name: "value", type: "string", description: "Item value" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3076,6 +3184,7 @@ element nav_menu_link {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuLink", import: "@/components/ui/navigation-menu" }
     props: [
         { name: "href", type: "string", description: "Link URL" }
         { name: "text", type: "string", description: "Link text" }
@@ -3092,6 +3201,7 @@ element nav_menu_list {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuList", import: "@/components/ui/navigation-menu" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3104,6 +3214,7 @@ element nav_menu_trigger {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuTrigger", import: "@/components/ui/navigation-menu" }
     props: [
         { name: "text", type: "string", description: "Trigger text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3118,6 +3229,7 @@ element navigation-menu {
     tier: "web_component"
     aliases: ["NavigationMenu"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenu", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3129,6 +3241,7 @@ element navigation-menu-content {
     tier: "web_component"
     aliases: ["NavigationMenuContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuContent", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3140,6 +3253,7 @@ element navigation-menu-item {
     tier: "web_component"
     aliases: ["NavigationMenuItem"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuItem", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3151,6 +3265,7 @@ element navigation-menu-link {
     tier: "web_component"
     aliases: ["NavigationMenuLink"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuLink", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3162,6 +3277,7 @@ element navigation-menu-list {
     tier: "web_component"
     aliases: ["NavigationMenuList"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuList", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3173,6 +3289,7 @@ element navigation-menu-trigger {
     tier: "web_component"
     aliases: ["NavigationMenuTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "NavigationMenuTrigger", import: "@/components/ui/navigation-menu" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3249,6 +3366,7 @@ element pagination {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "Pagination", import: "@/components/ui/pagination" }
     sub_widgets: ["pagination_ellipsis", "pagination_first", "pagination_item", "pagination_last", "pagination_list", "pagination_next", "pagination_prev"]
     props: [
         { name: "page", type: "state_ref", description: "Current page binding" }
@@ -3267,6 +3385,7 @@ element pagination-link {
     tier: "web_component"
     aliases: ["PaginationLink"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationLink", import: "@/components/ui/pagination" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3278,6 +3397,7 @@ element pagination-previous {
     tier: "web_component"
     aliases: ["PaginationPrevious"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationPrevious", import: "@/components/ui/pagination" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3288,6 +3408,7 @@ element pagination_ellipsis {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationEllipsis", import: "@/components/ui/pagination" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3313,6 +3434,7 @@ element pagination_item {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationItem", import: "@/components/ui/pagination" }
     props: [
         { name: "value", type: "int", description: "Page number" }
         { name: "onclick", type: "msg_ref", description: "Click handler" }
@@ -3340,6 +3462,7 @@ element pagination_list {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationContent", import: "@/components/ui/pagination" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3352,6 +3475,7 @@ element pagination_next {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PaginationNext", import: "@/components/ui/pagination" }
     props: [
         { name: "onclick", type: "msg_ref", description: "Click handler" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3432,6 +3556,7 @@ element popover_content {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PopoverContent", import: "@/components/ui/popover" }
     props: [
         { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position side" }
         { name: "align", type: "one_of:start,center,end", default: "center", description: "Content alignment" }
@@ -3446,6 +3571,7 @@ element popover_trigger {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "PopoverTrigger", import: "@/components/ui/popover" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3472,6 +3598,7 @@ element radio-group {
     tier: "web_component"
     aliases: ["RadioGroup", "radiogroup"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "RadioGroup", import: "@/components/ui/radio-group" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3483,6 +3610,7 @@ element radio-item {
     tier: "web_component"
     aliases: ["RadioItem"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "RadioGroupItem", import: "@/components/ui/radio-group" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3561,6 +3689,7 @@ element scroll-area {
     tier: "web_component"
     aliases: ["ScrollArea"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ScrollArea", import: "@/components/ui/scroll-area" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3572,6 +3701,7 @@ element scroll-area-scrollbar {
     tier: "web_component"
     aliases: ["ScrollAreaScrollbar"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ScrollAreaScrollbar", import: "@/components/ui/scroll-area" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3583,6 +3713,7 @@ element scroll-area-thumb {
     tier: "web_component"
     aliases: ["ScrollAreaThumb"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ScrollAreaThumb", import: "@/components/ui/scroll-area" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3594,6 +3725,7 @@ element scroll-area-viewport {
     tier: "web_component"
     aliases: ["ScrollAreaViewport"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ScrollAreaViewport", import: "@/components/ui/scroll-area" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3605,6 +3737,7 @@ element select {
     tier: "web_component"
     aliases: ["Select"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Select", import: "@/components/ui/select" }
     sub_widgets: ["select-content", "select-group", "select-item", "select-label", "select-separator", "select-trigger", "select-value", "selectscrollbutton"]
     props: []
     allows_children: true
@@ -3617,6 +3750,7 @@ element select-content {
     tier: "web_component"
     aliases: ["selectcontent"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectContent", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3628,6 +3762,7 @@ element select-group {
     tier: "web_component"
     aliases: ["selectgroup"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectGroup", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3639,6 +3774,7 @@ element select-item {
     tier: "web_component"
     aliases: ["selectitem"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectItem", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3650,6 +3786,7 @@ element select-label {
     tier: "web_component"
     aliases: ["selectlabel"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectLabel", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3672,6 +3809,7 @@ element select-trigger {
     tier: "web_component"
     aliases: ["selecttrigger"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectTrigger", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3683,6 +3821,7 @@ element select-value {
     tier: "web_component"
     aliases: ["selectvalue"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SelectValue", import: "@/components/ui/select" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3704,6 +3843,7 @@ element sheet {
     tier: "web_component"
     aliases: ["Sheet"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Sheet", import: "@/components/ui/sheet" }
     sub_widgets: ["sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger"]
     props: [
         { name: "open", type: "state_ref", description: "Open state binding" }
@@ -3719,6 +3859,7 @@ element sheet-description {
     tier: "web_component"
     aliases: ["SheetDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetDescription", import: "@/components/ui/sheet" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3729,6 +3870,7 @@ element sheet_content {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetContent", import: "@/components/ui/sheet" }
     props: [
         { name: "side", type: "one_of:top,right,bottom,left", default: "right", description: "Sheet position side" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3742,6 +3884,7 @@ element sheet_footer {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetFooter", import: "@/components/ui/sheet" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3754,6 +3897,7 @@ element sheet_header {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetHeader", import: "@/components/ui/sheet" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3766,6 +3910,7 @@ element sheet_title {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetTitle", import: "@/components/ui/sheet" }
     props: [
         { name: "text", type: "string", description: "Title text" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3779,6 +3924,7 @@ element sheet_trigger {
     category: "overlay"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SheetTrigger", import: "@/components/ui/sheet" }
     props: [
         { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3792,6 +3938,7 @@ element sidebar {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Sidebar", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_group_content", "sidebar_group_label", "sidebar_header", "sidebar_menu", "sidebar_menu_button", "sidebar_menu_item", "sidebar_provider", "sidebar_trigger"]
     props: [
         { name: "side", type: "one_of:left,right", default: "left", description: "Sidebar position" }
@@ -3808,6 +3955,7 @@ element sidebar_content {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarContent", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3820,6 +3968,7 @@ element sidebar_footer {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarFooter", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3870,6 +4019,7 @@ element sidebar_header {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarHeader", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3882,6 +4032,7 @@ element sidebar_menu {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenu", import: "@/components/ui/sidebar" }
     sub_widgets: ["sidebar_menu_button", "sidebar_menu_item"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3895,6 +4046,7 @@ element sidebar_menu_button {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuButton", import: "@/components/ui/sidebar" }
     props: [
         { name: "tooltip", type: "string", description: "Tooltip text" }
         { name: "active", type: "bool", default: "false", description: "Active state" }
@@ -3911,6 +4063,7 @@ element sidebar_menu_item {
     category: "navigation"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "SidebarMenuItem", import: "@/components/ui/sidebar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -3947,6 +4100,7 @@ element skeleton {
     category: "unknown"
     tier: "web_component"
     backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Skeleton", import: "@/components/ui/skeleton" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3958,6 +4112,7 @@ element slider {
     tier: "web_component"
     aliases: ["Slider"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Slider", import: "@/components/ui/slider" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -3969,6 +4124,7 @@ element sonner {
     tier: "web_component"
     aliases: ["Sonner"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "Sonner", import: "@/components/ui/sonner" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -3980,6 +4136,17 @@ element spinner {
     tier: "web_component"
     aliases: ["Spinner"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element stack {
+    tag: "stack"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "div" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4094,6 +4261,7 @@ element switch {
     tier: "web_component"
     aliases: ["Switch"]
     backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Switch", import: "@/components/ui/switch" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4117,6 +4285,7 @@ element table {
     tier: "web_component"
     aliases: ["Table"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "Table", import: "@/components/ui/table" }
     sub_widgets: ["table_body", "table_caption", "table_cell", "table_head", "table_header", "table_row"]
     props: []
     allows_children: true
@@ -4129,6 +4298,7 @@ element table-footer {
     tier: "web_component"
     aliases: ["TableFooter"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "TableFooter", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4139,6 +4309,7 @@ element table_body {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableBody", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4149,6 +4320,7 @@ element table_caption {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableCaption", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4159,6 +4331,7 @@ element table_cell {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableCell", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4169,6 +4342,7 @@ element table_head {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableHead", import: "@/components/ui/table" }
     sub_widgets: ["table_header"]
     props: []
     allows_children: true
@@ -4180,6 +4354,7 @@ element table_header {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableHeader", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4190,6 +4365,7 @@ element table_row {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "TableRow", import: "@/components/ui/table" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4201,6 +4377,7 @@ element tabs {
     tier: "web_component"
     aliases: ["Tabs"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Tabs", import: "@/components/ui/tabs" }
     sub_widgets: ["tabscontent", "tabslist", "tabstrigger"]
     props: [
         { name: "defaultvalue", type: "string", description: "Default active tab" }
@@ -4216,6 +4393,7 @@ element tabscontent {
     tier: "web_component"
     aliases: ["TabsContent", "tabs-content"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "TabsContent", import: "@/components/ui/tabs" }
     props: [
         { name: "value", type: "string", required: true, description: "Tab value identifier" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -4230,6 +4408,7 @@ element tabslist {
     tier: "web_component"
     aliases: ["tabs-list"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "TabsList", import: "@/components/ui/tabs" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -4243,6 +4422,7 @@ element tabstrigger {
     tier: "web_component"
     aliases: ["TabsTrigger", "tabs-trigger"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "TabsTrigger", import: "@/components/ui/tabs" }
     props: [
         { name: "value", type: "string", required: true, description: "Tab value identifier" }
         { name: "text", type: "string", description: "Tab label text" }
@@ -4370,6 +4550,7 @@ element toast {
     tier: "web_component"
     aliases: ["Toast"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Toast", import: "@/components/ui/toast" }
     sub_widgets: ["toaster"]
     props: [
         { name: "position", type: "one_of:top-left,top-center,top-right,bottom-left,bottom-center,bottom-right", default: "bottom-right", description: "Toast position" }
@@ -4387,6 +4568,7 @@ element toast-action {
     tier: "web_component"
     aliases: ["ToastAction"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ToastAction", import: "@/components/ui/toast" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4398,6 +4580,7 @@ element toast-close {
     tier: "web_component"
     aliases: ["ToastClose"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ToastClose", import: "@/components/ui/toast" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4409,6 +4592,7 @@ element toast-description {
     tier: "web_component"
     aliases: ["ToastDescription"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ToastDescription", import: "@/components/ui/toast" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4420,6 +4604,7 @@ element toast-title {
     tier: "web_component"
     aliases: ["ToastTitle"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ToastTitle", import: "@/components/ui/toast" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4431,6 +4616,7 @@ element toast-viewport {
     tier: "web_component"
     aliases: ["ToastViewport"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "ToastViewport", import: "@/components/ui/toast" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4454,6 +4640,7 @@ element toggle {
     tier: "web_component"
     aliases: ["Toggle"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Switch", import: "@/components/ui/switch" }
     props: [
         { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checked state" }
         { name: "onchange", type: "msg_ref", description: "Message on toggle" }
@@ -4500,6 +4687,7 @@ element tooltip {
     tier: "web_component"
     aliases: ["Tooltip"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Tooltip", import: "@/components/ui/tooltip" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -4511,6 +4699,7 @@ element tooltip-content {
     tier: "web_component"
     aliases: ["TooltipContent"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "TooltipContent", import: "@/components/ui/tooltip" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4522,6 +4711,7 @@ element tooltip-provider {
     tier: "web_component"
     aliases: ["TooltipProvider"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "TooltipProvider", import: "@/components/ui/tooltip" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
@@ -4533,6 +4723,7 @@ element tooltip-trigger {
     tier: "web_component"
     aliases: ["TooltipTrigger"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "TooltipTrigger", import: "@/components/ui/tooltip" }
     props: []
     allows_children: true
     description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
