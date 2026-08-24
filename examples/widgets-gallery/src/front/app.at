@@ -31,6 +31,7 @@ widget App {
         "/contextmenu" -> use contextmenu
         "/datatable" -> use datatable
         "/datepicker" -> use datepicker
+        "/line-chart" -> use line-chart
         "/dialog" -> use dialog
         "/drawer" -> use drawer
         "/dropdownmenu" -> use dropdownmenu
@@ -186,6 +187,10 @@ widget App {
                         nav-link (to: "/textarea", icon: "type", label: "Textarea") {}
                         nav-link (to: "/toggle", icon: "square-stack", label: "Toggle") {}
                         nav-link (to: "/togglegroup", icon: "layout-grid", label: "ToggleGroup") {}
+
+                        // Charts group (Plan 437)
+                        text "Charts" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
+                        nav-link (to: "/line-chart", icon: "activity", label: "AutoLineChart") {}
 
                         // Display group
                         text "Display" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}

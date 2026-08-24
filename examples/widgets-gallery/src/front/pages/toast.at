@@ -7,6 +7,11 @@ widget ToastPage {
     model { activeTab str = "preview" }
 
     on {
+        // Plan 437 附带修复（R004 严格模式）：模板引用的 .save/.fail/.tip
+        // 此前未定义，vue 构建在严格校验下被拦截（存量问题，挡整站构建）。
+        .save -> { toast.success("Action completed successfully!") }
+        .fail -> { toast.error("Something went wrong.") }
+        .tip -> { toast.info("Toast at top-right", position: "top-right") }
         .showSuccessToast -> { toast.success("Action completed successfully!") }
         .showErrorToast -> { toast.error("Something went wrong.") }
         .showInfoToast -> { toast.info("Here is a quick update.") }
@@ -16,7 +21,10 @@ widget ToastPage {
         .showBottomLeft -> { toast.info("Toast at bottom-left", position: "bottom-left") }
         .showBottomCenter -> { toast.info("Toast at bottom-center", position: "bottom-center") }
         .showBottomRight -> { toast.info("Toast at bottom-right (default)", position: "bottom-right") }
-        .showCenter -> { toast.warning("Toast at window center", position: "center") }
+        // Plan 437 附带修复：position "center" 是 VM 端专属（窗口级居中），
+        // vue-sonner 的 Position 类型不含它——严格 vue-tsc 拦截整站构建。
+        // 双端合法位置用 top-center；VM 窗口居中能力在下方 codeblock 文档保留。
+        .showCenter -> { toast.warning("Toast at window center", position: "top-center") }
         .show2s -> { toast("This toast dismisses in 2 seconds", duration: 2000) }
         .show5s -> { toast("This toast dismisses in 5 seconds", duration: 5000) }
         .show8s -> { toast("This toast dismisses in 8 seconds", duration: 8000) }
