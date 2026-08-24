@@ -28,5 +28,5 @@ Widget: EditorPanel | props: 4 | state: 5 | handlers: 11 | messages: 1
 API imports: ["update_note", "delete_note", "toggle_pin", "update_tags"]
 Store deps: ["NotesStore"]
 Store composables: 0
-Validation warnings: 3
-SFC 'EditorPanel': 6694 bytes, has template: true, has script: true, has style: true
+Validation warnings: 2
+SFC 'EditorPanel': 6601 bytes, has template: true, has script: true, has style: true
