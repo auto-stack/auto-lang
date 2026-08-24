@@ -1,6 +1,6 @@
 # Plan 435: AutoUI 组件统一声明 — schema 漂移治理与统一组件注册
 
-> **状态**: 🚧 实施中 —— P0 已落地(2026-08-24,分支 `plan-435-schema-unification`);P1-P4 待实施
+> **状态**: 🚧 实施中 —— P0 已落地并复审通过(2026-08-24,分支 `plan-435-schema-unification`);P1-P4 待实施,P5 新增(见 §3.1 需求映射与补强);P0 分支尚未合并 master
 > **来源**: 2026-08-23 组件声明问题调查 + 漂移审计(脚本 `scratch/schema_drift_audit.py`,明细 `scratch/drift_*.txt`)
 > **关联**: 098(aura.at schema 初版)/ 280(render_support)/ 320(WidgetRegistry.all)/ 361(validators)/ 408(路由别名不 shadow 内置)/ 412(widgets-gallery Layout 分组)/ 422(弹层语义,碰 view_builder)
 > **基准原则**: **生产代码 + examples(widgets-gallery 62 页)是事实源**;`aura/schema.rs` 本身已漂移,仅作交叉参考,不作基准。
@@ -82,13 +82,35 @@
 - **P2 schema 接入与校验**:loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
 - **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
 - **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
+- **P5 文档与 Demo 系统(2026-08-24 复审新增)**:以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
+
+## 3.1 需求映射(2026-08-24 复审,目标形态三层声明体系)
+
+> 需求原文:**基础组件用 schema;官方实现的组件用 auto 代码;第三方库里的 auto 组件用统一方法注册声明——所有组件注册进 widgets 库,并有对应文档和 demo 页(widgets-gallery)。**
+
+| 需求层 | 声明方式 | 对应阶段 | 状态 |
+|---|---|---|---|
+| 基础组件(native_html + builtin_widget) | schema/aura.at 声明契约,Rust 留行为 | P1-P3 | 覆盖 |
+| 官方组件(shadcn 家族 + gallery 组件) | `.at` widget 源码即为声明(AuraWidget) | P4(Local/Package)+ 补强①② | 需补强 |
+| 第三方 auto 组件 | `use` 包源引用 + 包 manifest | P4 + 补强③ | 需细化 |
+| 文档 + demo 页面 | schema/registry 生成 + gallery 手写叙事 | **P5(新增)** | 原计划缺失 |
+
+**补强项(P4/P5 开工前并入)**:
+
+1. **组件家族声明**:carousel 家族(CarouselContent/Item/Previous/Next)目前只是命名惯例上的松散 `widget`,父子关系靠 vue.rs `known_sub_widgets` 隐式发现;ElementDef 只有 `allows_children: bool`,无 child 关系建模。schema 需加 `sub_widgets: [...]` 字段(或等价的 family 声明),官方/第三方复合组件同用。
+2. **官方组件库定位**:明确官方组件库 = 一个 `.at` 包(候选:packages/widgets 从"生成物"升级为"源码库",gallery components 收编入内),它本身作为第三方注册机制的第一个消费者(自举验证)。
+3. **第三方注册细节**:包 manifest 格式(入口 .at + 版本 + namespace)、`use` 解析顺序、shadow 规则(Plan 408 语义推广)、多后端一致性(至少 web+vm 两端冒烟)。
+4. **shadcn 长尾战略归宿**:`tier: web_component` 的 245 项,写明迁移预期——渐进重写为官方 `.at` 组件(进家族声明+严格 props)或永久停留 codegen 映射(仅 tag+import);两者在 schema 中可区分,避免"永远漂在中间"。
+
+**P0 复审补丁(半天量级,可与 P1 并行)**:围栏补 parser.rs tag 特判维度与 a2ui import/export 维度;vue.rs `components.insert` 补重复检测(现仅 schema.rs 有 `rs_duplicate_insert`,不对称);baseline 建议逐条加理由注释约定。
 
 ## 4. 验收
 
 - **P0**:drift test 可复现本次审计的全部孤立项(红),后续任何新增组件不同步四表无法合入;同表重复 insert(如 popover 两处)直接编译期/测试期报错。
 - **P1/P2**:四表数字对账(42/192/245/51 → 1 份 schema + 派生物);widgets-gallery 62 页全部 tag 在 schema 有声明;`auto build` 对故意写错的 tag/prop 给出 schema 驱动建议(LSP 同源)。
 - **P3**:widgets-gallery vue 输出 golden 零回归;新增一个内置组件 = 改 schema + 一处实现(drift test 保证其余表同步)。
-- **P4**:一个第三方组件通过"包声明 + use 引用"在 web 端可用(生成路径);内置组件不可被同名自定义组件 shadow(回归 Plan 408 语义)。
+- **P4**:一个第三方组件通过"包声明 + use 引用"在 web 端可用(生成路径);内置组件不可被同名自定义组件 shadow(回归 Plan 408 语义);官方 `.at` 包通过同一机制注册成功(自举)。
+- **P5**:全部注册组件(含第三方示例包)在 gallery 有文档页 + demo 页,文档覆盖围栏红→绿;button 等核心页的 Properties 表改为 schema 生成后与手写版逐字对拍一致;VitePress 组件参考页上线并与 gallery 活 demo 互链。
 
 ## 5. 风险
 
