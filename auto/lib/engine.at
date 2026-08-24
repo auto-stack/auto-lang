@@ -37,30 +37,26 @@
 // 值栈元素:异构值的显式载体(433:a2r 需要静态元素类型;VM 侧 List
 // 本就动态,行为不变)。判别器结构体而非 enum——VM 实证枚举载荷值
 // 跨函数传参会丢标签(probe20/22/23,E1 空/NONE/哨兵泄漏;结构体
-// S1-S3 全绿),挂 242 tracker。k:0=int 1=str 2=arr;未用载荷域取
-// 空值(i=0/s=""/arr=空表)。
+// S1-S3 全绿),挂 242 tracker。k:0=int 1=str 2=arr;i 对 arr 即
+// arena(数组侧表)索引——索引即引用,镜像宿主 VM 的堆 id 设计
+// (D31 续:VM 引用语义与 a2r 值语义在"单一事实源=arena 槽位"上
+// 对齐,局部槽/栈位持有的是可自由复制的索引)。
 type Val {
     k int
     i int
     s str
-    arr List<Val>
-}
-
-fn ev_empty() List<Val> {
-    var e List<Val> = List.new()
-    return e
 }
 
 fn ev_vi(x int) Val {
-    return Val(0, x, "", ev_empty())
+    return Val(0, x, "")
 }
 
 fn ev_vs(t str) Val {
-    return Val(1, 0, t, ev_empty())
+    return Val(1, 0, t)
 }
 
-fn ev_va(l List<Val>) Val {
-    return Val(2, 0, "", l)
+fn ev_va(ai int) Val {
+    return Val(2, ai, "")
 }
 
 // 栈写:sp 越界即 push,否则原地 set(镜像 ev_push)
@@ -91,7 +87,7 @@ fn ev_str(v Val) str {
     if v.k == 0 {
         return ev_dec(v.i).str()
     }
-    return "[arr:" + v.arr.len().str() + "]"
+    return "[arr]"
 }
 
 // 真值:int 按 !=0;其余(含 str)恒真(镜像 VM `v != 0` 的
@@ -164,28 +160,28 @@ fn ev_cmp(a Val, b Val) int {
 }
 
 // arr 载荷提取(只读用途);非数组值返回空表(长度 0 → OOB 语义)
-fn ev_arr(v Val) List<Val> {
+fn ev_arr_of(mut arena List<List<Val>>, v Val) List<Val> {
+    var none_l List<Val> = List.new()
     if v.k == 2 {
-        return v.arr
+        return arena.get(v.i)
     }
-    return ev_empty()
+    return none_l
 }
 
-// set.elem 写通道:VM 引用语义原地写后返回同一引用(写回为
-// 无操作);a2r 值语义返回修改后的副本,调用方写回数组所在槽位
-fn ev_arr_write(v Val, idx int, val Val) Val {
-    if v.k == 2 {
-        var l2 = v.arr
-        l2.set(idx, val)
-        return ev_va(l2)
-    }
-    return v
+// set.elem 写通道:唯一变异点 = arena 槽位。VM 引用语义下 l2 即
+// arena 内同一引用(set 后 arena.set 为无操作写回);a2r 值语义下
+// 写回修改副本进 arena——两种语义的可观察状态一致
+fn ev_arr_write(mut arena List<List<Val>>, ai int, idx int, val Val) {
+    var l2 List<Val> = arena.get(ai)
+    l2.set(idx, val)
+    arena.set(ai, l2)
 }
 
 // 数组/字符串长度动态分派(镜像 ARRAY_LEN 两分支)
-fn ev_len(v Val) int {
+fn ev_len(mut arena List<List<Val>>, v Val) int {
     if v.k == 2 {
-        return v.arr.len()
+        var l = arena.get(v.i)
+        return l.len()
     }
     if v.k == 1 {
         return v.s.len()
@@ -214,6 +210,7 @@ fn ev_run_t(source str, trace int) str {
         fi = fi + 1
     }
     var stack List<Val> = List.new()
+    var arena List<List<Val>> = List.new()
     var sp = 0
     // 初始帧:[0=ret 哨兵, 0=oldbp 哨兵];bp=1;main 的 RET 触底即 halt
     sp = ev_push(stack, sp, ev_vi(0))
@@ -427,7 +424,8 @@ fn ev_run_t(source str, trace int) str {
             var v10 = ev_dec(ev_int(stack.get(sp - 1)))
             stack.set(sp - 1, ev_vi(ev_enc(-v10)))
         } else if op == "create.arr" {
-            // 元素已按序压栈;自下而上读入新 List(VArr 载体)
+            // 元素已按序压栈;自下而上读入新 List,入 arena 后以索引
+            // 为载体(索引即引用,镜像宿主堆 id)
             var n6 = ins.n
             var arr6 List<Val> = List.new()
             var i6 = 0
@@ -436,13 +434,15 @@ fn ev_run_t(source str, trace int) str {
                 i6 = i6 + 1
             }
             sp = sp - n6
-            sp = ev_push(stack, sp, ev_va(arr6))
+            arena.push(arr6)
+            var ai6 = arena.len() - 1
+            sp = ev_push(stack, sp, ev_va(ai6))
         } else if op == "get.elem" {
             // 栈:[..., arr, idx];负下标归一,-1=末位;OOB 推 0
             // (engine.rs 4403);str 接收者取码点(Missing→已含)
             var idx7 = ev_dec(ev_int(stack.get(sp - 1)))
             var arrv Val = stack.get(sp - 2)
-            var len7 = ev_len(arrv)
+            var len7 = ev_len(arena, arrv)
             var j7 = idx7
             if j7 < 0 {
                 j7 = len7 + j7
@@ -450,7 +450,8 @@ fn ev_run_t(source str, trace int) str {
             var val7 = ev_vi(0)
             if j7 >= 0 && j7 < len7 {
                 if arrv.k == 2 {
-                    val7 = arrv.arr.get(j7)
+                    var l7 = ev_arr_of(arena, arrv)
+                    val7 = l7.get(j7)
                 } else if arrv.k == 1 {
                     // D25-① 规避:char_at 原生调用先提升
                     var cv = arrv.s.char_at(j7)
@@ -466,12 +467,14 @@ fn ev_run_t(source str, trace int) str {
             var idx8 = ev_dec(ev_int(stack.get(sp - 1)))
             var arr8 = stack.get(sp - 2)
             var val8 = stack.get(sp - 3)
-            stack.set(sp - 2, ev_arr_write(arr8, idx8, val8))
+            if arr8.k == 2 {
+                ev_arr_write(arena, arr8.i, idx8, val8)
+            }
             sp = sp - 3
         } else if op == "arr.len" {
             // 动态分派:List→元素数,str→长度(镜像 ARRAY_LEN 两分支)
             var v9 = stack.get(sp - 1)
-            var l9 = ev_len(v9)
+            var l9 = ev_len(arena, v9)
             sp = sp - 1
             sp = ev_push(stack, sp, ev_vi(l9))
         } else {
