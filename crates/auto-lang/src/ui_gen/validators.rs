@@ -964,7 +964,11 @@ fn walk_node(
                         }
                     }
                 }
-            } else if !scope.is_local(tag) {
+            } else if !scope.is_local(tag)
+                // PascalCase tag = 组件引用语义(内置 tag 全小写;跨文件子组件在
+                // 单文件模式下不可见),交由生成层解析,不在此告警
+                && !tag.chars().next().map_or(false, |c| c.is_uppercase())
+            {
                 // 未知 tag:给拼写建议(折叠匹配已失败,levenshtein 兜底)
                 let suggestion = schema
                     .all_tags()

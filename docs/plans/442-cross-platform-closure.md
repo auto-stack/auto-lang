@@ -1,7 +1,7 @@
 # Plan 442: 跨平台合龙——musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活
 
-> **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2 ✅）+ A4/A6（✅）已在
-> worktree `plan-442` 落地（仓内测试全绿，musk 侧验收待跨仓复核）；gated 主体
+> **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2 ✅✅ 双侧复核含 musk
+> 环境）+ A4/A6（✅,A4 经 musk canary 重放复核）已落地；gated 主体
 > A1–A3/A5/B/C 仍等前置全满足）
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
@@ -88,8 +88,22 @@
     button-group 误配）驱动 `OPTIONAL_DEPS` 表按组发射；CodeEditor.vue 壳
     usage 感知同步（未用即剪，防 vue-tsc 咬到未声明依赖的壳）；sync 路径
     `package_json_deps_drifted` 双向漂移检测；npm_deps 去重。仓内测试 29/29
-    （vue 模块）。**musk 侧验收（fresh build grep + widgets-gallery pnpm
-    build）待 auto-musk 复核**。
+    （vue 模块）。
+  - **✅ musk 侧复核通过（2026-08-23，musk 会话,新 CLI=master ebbdc647）**：
+    ①auto-musk fresh 全量 build（detached 干净 worktree,零既有 gen）→
+    gen package.json 对 codemirror/vue-sonner/vee-validate/zod/embla/
+    @vueuse/vaul **grep 零命中**（reka-ui/cva/clsx/tailwind-merge 为
+    Button 脚手架真实使用,正确保留——验收原文把 reka-ui 列入零命中清单系
+    措辞笔误,按映射语义以"未用依赖零命中"为准）；②CodeEditor 壳未生成,
+    gen src codemirror 引用清零,musk deps-guard 的 TRANSITIONAL 过渡区
+    已删除恢复严格白名单且 exit 0;③widgets-gallery `--render vue` 重生成
+    →依赖发射正确（toast→vue-sonner、code_editor→codemirror×11 按使用
+    保留）。**观察项（非阻塞,建议 follow-up）**：a) shadcn-vue CLI 添加
+    button 时注入 `@lucide/vue ^1.33.0`（注册表 button 图标依赖,gen 源
+    零引用——工具链痕迹,可接受或后续钉住）;b) gallery vue 轨构建红为
+    **存量 demo 类型错**（toast.at `position:'center'` 不在 vue-sonner@
+    2.0.9 Position 类型集;仅改 'top-center' 即 vue-tsc+vite 全绿,实测
+    验证）——与 P0-1/P0-2 无关,1 行修复归本仓。
 - **P0-2 CodeEditor 模板 setSearchEffect 类型错修复**（来源 musk-038 待澄清 #10）：
   `crates/auto-man/src/vue.rs` 模板（Plan 421 产物）发射 `import { setSearchEffect }
   from '@codemirror/search'`——该 API 在 @codemirror/search@6 实际导出面**不存在**
@@ -99,8 +113,11 @@
   注入路径），模板注释同步修正。验收：fresh scaffold 的 gen `pnpm build` 全绿
   （musk-038 #10 复核即本条验收记录）。
   - **✅ 已落地（2026-08-23，worktree plan-442）**：import/dispatch/注释/测试
-    断言四处改 setSearchQuery。**fresh scaffold `pnpm build` 验收待 musk-038
-    #10 复核**（需 npm 环境）。
+    断言四处改 setSearchQuery。
+  - **✅ musk 侧复核通过（2026-08-23,musk 会话）**：fresh detached worktree
+    （零既有 gen）新 CLI 全量 `auto build` → `pnpm install` + `pnpm run build`
+    （vue-tsc && vite）双绿（"Vue project built successfully"）,fresh scaffold
+    不再复现 setSearchEffect 类型错（即 musk-038 #10 验收记录）。
 
 ### Phase A — VM 渲染能力补缺（auto-lang，先行）
 
@@ -110,6 +127,12 @@
   Undefined variable 警告；musk 30 widget 源作回归语料。
 - A3 ext link：TS ext 依赖在 VM 目标的显式 link 错误改为可配置跳过/挂平台桩。
 - A4 svg 节点能力：按 musk 038 T9 canary 结论决定（语言层支持 / 挂账）。
+  - **✅ 已落地（worktree plan-442：vue 轨原生直通 + 静态属性 / VM 轨 svgdoc
+    文档渲染）+ ✅ musk 侧 canary 重放通过（2026-08-23,musk 会话）**：T9 同型
+    canary（`svg { viewBox/fill/stroke/width/height, path { d } }`）产物为真实
+    `<svg>/<path>`——静态属性原样发射、`:width/:height` 动态绑定保留,auto
+    build exit 0。musk KNOWN-DEBT 038 条目已更新为"解除条件已达成,待 Icon
+    widget 实现 + renderToString 对拍升级"（独立小任务）。
   - **✅ 语言层支持已落地（2026-08-23，worktree plan-442）**：vue 轨 map_tag
     SVG 直通臂（svg/path/circle/rect/line/polyline/polygon/ellipse/g/defs/
     use/stop/linearGradient/radialGradient/clipPath）+ 字面量属性静态发射

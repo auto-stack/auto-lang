@@ -17,6 +17,20 @@ pub enum SupportLevel {
     Unsupported,
 }
 
+impl SupportLevel {
+    /// Plan 435 P3:从 schema backends.iced 字符串解析级别;
+    /// unknown/none/未识别返回 None(调用方保留静态表值)。
+    pub fn parse_name(s: &str) -> Option<SupportLevel> {
+        match s {
+            "full" => Some(SupportLevel::Full),
+            "partial" => Some(SupportLevel::Partial),
+            "fallback" => Some(SupportLevel::Fallback),
+            "unsupported" => Some(SupportLevel::Unsupported),
+            _ => None,
+        }
+    }
+}
+
 /// Per-tag support info
 #[derive(Debug, Clone)]
 pub struct TagSupport {
@@ -54,7 +68,27 @@ impl TagSupport {
 }
 
 /// Look up the render support level for an AURA tag.
+///
+/// Plan 435 P3 数据流翻转:**级别以 schema/aura.at 的 backends.iced 为权威**
+/// (三级折叠解析:精确→别名→折叠键);本文件静态表降级为详情来源
+/// (ignored_props/note,这些不在 schema 里)与 schema 缺失时的回退。
+/// 围栏测试保证静态表与 schema 级别一致(schema 即从本表提取,再生成闭环)。
 pub fn get_support(tag: &str) -> TagSupport {
+    let mut support = get_support_details(tag);
+    if let Some(schema) = crate::aura::default_schema_cached() {
+        if let Some((canonical, _)) = schema.resolve_tag(tag) {
+            if let Some(meta) = schema.meta.get(canonical) {
+                if let Some(level) = SupportLevel::parse_name(&meta.backends.iced) {
+                    support.level = level;
+                }
+            }
+        }
+    }
+    support
+}
+
+/// 静态详情表(原 get_support 主体):每 tag 的级别 + ignored_props + note。
+fn get_support_details(tag: &str) -> TagSupport {
     match tag {
         // ── Core layout (Full) ──
         "col" | "column" => TagSupport::full(),
@@ -200,10 +234,6 @@ pub fn get_support(tag: &str) -> TagSupport {
         "sidebar" | "navigation" | "breadcrumb" => TagSupport::fallback(
             &["style", "items"],
             "navigation component not implemented — renders as Column",
-        ),
-        "code" | "codeblock" | "code-pane" => TagSupport::fallback(
-            &["language", "style"],
-            "code block not implemented",
         ),
         "chart" | "canvas" => TagSupport::fallback(
             &["style", "data", "type"],

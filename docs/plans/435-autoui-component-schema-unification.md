@@ -80,7 +80,7 @@
 - **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
 - **P1 基准提取与 schema 重建**(✅ 2026-08-24 落地,见文末执行结果):提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
 - **P2 schema 接入与校验**(✅ 2026-08-24 落地,见文末执行结果):loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
-- **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
+- **P3 派生翻转**(🟡 2026-08-24 部分落地,见文末执行结果;vue import 翻转经第五表发现重定向 P4):render_support 已 schema 驱动;确定性修复 + golden 闸门建立;**golden 验收:widgets-gallery vue 输出 byte-identical(跨进程确定性从无到有)**。
 - **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
 - **P5 文档与 Demo 系统(2026-08-24 复审新增)**:以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
 
@@ -217,3 +217,35 @@
 - **发现挂账**:view 顶层裸兄弟(UI scenario)解析失败(单词/连字符 tag 皆然,
   嵌套 col 内正常)——gallery 全嵌套所以无感;疑与 plan-015 "顶层裸兄弟修复"
   相关,待单独归因(不影响本计划)。
+
+### P3 派生翻转(2026-08-24,worktree `plan-435-schema-unification`;render_support ✅ / vue 映射重定向 P4)
+
+- **前置:生成器确定性修复(根因级)**。Vue SFC 发射层 19 处 HashMap 迭代
+  (props/events/handlers)+ used_handlers(HashSet)桩函数序跨进程不确定
+  (RandomState)——**即 ui_snapshots 预存债"SFC 字节数漂移"的根因**。
+  `sorted_entries()` 统一排序后跨进程 diff=0;golden byte 基线自此才可能成立。
+- **golden 闸门**:`tests/gallery_golden.rs` —— gallery 全部 71 个 .at 逐文件
+  生成 SFC,长度+稳定哈希入 `tests/fixtures/gallery_vue_golden.txt`
+  (GALLERY_GOLDEN_UPDATE=1 再生成,人工复核;TOTAL 行盯全文)。
+- **render_support 翻转 ✅**:`get_support` 级别改为 schema 权威
+  (default_schema_cached OnceLock 缓存,resolve_tag 三级折叠解析);
+  静态表降级为详情来源(ignored_props/note 不在 schema)+ 回退。
+  围栏新增一致性硬断言:静态级别 ≡ schema backends.iced(逐 tag)。
+- **顺带修真 bug**:render_support 存在**同表遮蔽死臂**(L160 partial 先匹配生效,
+  L238 fallback 永不可达,code/codeblock 级别交叉)——删除死臂;扫描器改
+  first-wins 对齐 Rust match 语义;围栏加同表遮蔽臂检测。
+- **第五表发现(审计勘误)**:`ui_gen/widget/registry.rs`(3566 行,181 个 vue
+  BackendMapping + ark/jet 后端)才是**活的**组件注册表;vue.rs 的
+  `components.insert`(ShadcnRegistry)已 deprecated 仅测试引用——P0 审计的
+  "vue.rs 245"部分是死表。围栏立即抓到 **78 个此前完全不可见的组件**
+  (area/bar/line/donut-chart 全家、scroll-area 全家、toast-* 家族、data-table、
+  markdown、mermaid、swiper、calendar 部件、navigation-menu 部件等)——
+  已作为**第 11 提取源**入册(schema 330→368),围栏加 spec 覆盖 +
+  vue 映射数下限断言。
+- **vue import 映射翻转 → 重定向 P4**:翻转对象更正为 registry.rs;其
+  BackendMapping 含 prop/event 重写与 extra_components,完整翻转实质是
+  ComponentRegistry 收敛工程(与 deprecated ShadcnRegistry 清退同期),归入 P4。
+- **别名归一**:resolve_tag 折叠匹配已在校验(S001/S002)与 render_support 生效;
+  parser/vb 的归一入口统一(normalize_tag)记 P4 顺手项——行为等价已由
+  golden 保护,统一收益是入口唯一。
+- **验证**:gallery golden 绿(byte 级)、lib 3131 绿、围栏绿(含新维度)。

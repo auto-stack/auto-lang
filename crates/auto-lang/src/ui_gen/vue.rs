@@ -104,6 +104,14 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
+/// Plan 435 P3:HashMap 迭代序跨进程不确定(RandomState),SFC 发射必须确定。
+/// 发射层统一经此取按 key 排序的条目(golden byte-identical 的前提)。
+fn sorted_entries<'a, K: std::cmp::Ord, V>(m: &'a std::collections::HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
+    let mut v: Vec<(&K, &V)> = m.iter().collect();
+    v.sort_by(|a, b| a.0.cmp(b.0));
+    v
+}
+
 use crate::aura::{AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
