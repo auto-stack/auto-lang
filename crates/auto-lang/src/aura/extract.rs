@@ -512,7 +512,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     let (handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
-        (HashMap::new(), HashMap::new())
+        (std::collections::BTreeMap::new(), HashMap::new())
     };
     // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions — keep the
     // (url, event) wiring info alongside the handler keyed by its pattern.
@@ -623,7 +623,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     let (mut handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
-        (HashMap::new(), HashMap::new())
+        (std::collections::BTreeMap::new(), HashMap::new())
     };
 
     // Detect .Tick handler and extract interval from model vars
@@ -1361,8 +1361,8 @@ fn assign_node_ids_recursive(
 }
 
 /// Extract handlers from on block
-fn extract_on_block(on: &OnBlock) -> ExtractResult<(HashMap<String, LogicPayload>, HashMap<String, Vec<String>>)> {
-    let mut handlers = HashMap::new();
+fn extract_on_block(on: &OnBlock) -> ExtractResult<(std::collections::BTreeMap<String, LogicPayload>, HashMap<String, Vec<String>>)> {
+    let mut handlers = std::collections::BTreeMap::new();
     let mut handler_params = HashMap::new();
 
     for handler in &on.handlers {

@@ -14306,6 +14306,20 @@ impl<'a> Parser<'a> {
                 let num = self.cur.text.to_string();
                 self.next();
                 parts.push(num);
+            } else if self.is_kind(TokenKind::Float) {
+                // Plan 015 P1#5 (gap 37a follow-up): float literals in event
+                // args — previously only Int parsed, floats fell to the loud
+                // unsupported-argument error.
+                let num = self.cur.text.to_string();
+                self.next();
+                parts.push(num);
+            } else if self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) {
+                // Plan 015 P1#5: bool literals in view event args
+                // (".HoverChange(true)") — previously a loud parse error,
+                // forcing int 1/0 stand-ins.
+                let b = self.cur.text.to_string();
+                self.next();
+                parts.push(b);
             } else if self.is_kind(TokenKind::Str) {
                 let s = format!("\"{}\"", self.cur.text);
                 self.next();
@@ -14529,6 +14543,27 @@ impl<'a> Parser<'a> {
                 // backend's `this.`-strip turned it into the bogus identifier
                 // `cthis` (undefined — the v-for binds `c`).
                 prev_was_ident = true;
+                // Plan 015 P1#5: ".Handler(args)" — a dot-prefixed handler name
+                // followed by an argument list (the args themselves may be
+                // literals like true / 0.5).
+                if self.is_kind(TokenKind::LParen) {
+                    self.next();
+                    parts.push("(".to_string());
+                    let mut first = true;
+                    while !self.is_kind(TokenKind::RParen) {
+                        if !first {
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next();
+                                parts.push(", ".to_string());
+                            }
+                        }
+                        first = false;
+                        let arg = self.parse_event_arg()?;
+                        parts.push(arg);
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    parts.push(")".to_string());
+                }
             } else if self.is_kind(TokenKind::FStrNote) {
                 // `$event` (and `$event.field`) — the DOM event object, mapped
                 // verbatim to Vue's `$event` template variable by the Vue
@@ -14572,6 +14607,12 @@ impl<'a> Parser<'a> {
                 let num = self.cur.text.to_string();
                 self.next();
                 parts.push(num);
+                } else if self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) {
+                    // Plan 015 P1#5: float and bool literals in view event args
+                    // (".HoverChange(true)") — previously loud parse errors.
+                    let lit = self.cur.text.to_string();
+                    self.next();
+                    parts.push(lit);
             } else if self.is_kind(TokenKind::Str) {
                 let s = format!("\"{}\"", self.cur.text.as_str());
                 self.next();

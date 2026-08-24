@@ -506,8 +506,11 @@ fn r005_emit_without_declaration(sfc: &str, widget: &str) -> Vec<ValidationWarni
     let mut declared: std::collections::HashSet<String> = std::collections::HashSet::new();
     for cap in emit_decl_re.captures_iter(&script) {
         let body = cap.group(1);
-        // body 形如 "X: []\n  Y: []"，取冒号前的标识符
-        let name_re = regex_lite(r"([a-zA-Z_]\w*)\s*:");
+        // body 形如 "X: []\n  'update:open': [boolean]"，取冒号前的名字。
+        // Plan 015: quoted msg variants emit quoted keys — accept both the
+        // bare-identifier form and the quoted form (R005 used to false-positive
+        // on every quoted event).
+        let name_re = regex_lite(r#"["']?([a-zA-Z_][\w:.-]*)["']?\s*:"#);
         for nc in name_re.captures_iter(body) {
             declared.insert(nc.group(1).to_string());
         }

@@ -489,7 +489,7 @@ mod tests {
             computed: vec![],
             messages: vec![],
             view_tree: AuraNode::element("col"),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -523,7 +523,7 @@ mod tests {
             view_tree: AuraNode::element("col")
                 .with_child(AuraNode::text("Hello"))
                 .with_child(AuraNode::element("button")),
-            handlers: HashMap::new(),
+            handlers: std::collections::BTreeMap::new(),
             props: vec![],
             routes: None,
             lifecycle: vec![],
@@ -570,7 +570,7 @@ mod tests {
                 computed: vec![],
                 messages: vec![],
                 view_tree: AuraNode::text("Hello"),
-                handlers: HashMap::new(),
+                handlers: std::collections::BTreeMap::new(),
                 props: vec![],
                 routes: None,
                 lifecycle: vec![],

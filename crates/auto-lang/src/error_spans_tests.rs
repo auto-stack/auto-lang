@@ -100,56 +100,54 @@ fn gap18_29_reserved_words_as_loop_vars_parse() {
 /// be loud and point AT the offending `false` token, not at the view's
 /// closing `}`.
 #[test]
-fn gap37a_event_literal_arg_error_points_at_offending_token() {
+fn gap37a_bool_literal_event_arg_now_parses() {
+    // Plan 015 P1#5: bool literals are VALID event args now. This used to
+    // assert the loud error (gap 37a fix); the loud-error contract still
+    // holds for genuinely unsupported tokens (see parse_event_arg's tail).
     let code = concat!(
-        "widget App {\n",
-        "  model { var open bool = false }\n",
-        "  view {\n",
-        "    col {\n",
-        "      button { onclick.self: .\"update:open\"(false) }\n",
-        "    }\n",
-        "  }\n",
-        "}\n"
+        "widget App {
+",
+        "  model { var open bool = false }
+",
+        "  view {
+",
+        "    col {
+",
+        "      button { onclick.self: .\"update:open\"(false) }
+",
+        "    }
+",
+        "  }
+",
+        "}
+"
     );
-    let err = parse_ui(code).expect_err("bool literal event arg must fail");
-
-    // The root-cause error must mention the offending token...
-    let msg = err.to_string();
-    assert!(
-        msg.contains("unsupported event argument `false`"),
-        "root-cause message must name the offending token, got: {}",
-        msg
-    );
-
-    // ...and its span must be the `false` token, not a closing brace.
-    let false_off = code.find("(false)").unwrap() + 1;
-    let label_off = first_label_offset(&err).expect("error must carry a label");
-    assert_eq!(
-        label_off, false_off,
-        "error span must point at the `false` literal (code[..] = {:?})",
-        &code[false_off..false_off + 5]
-    );
-    assert_eq!(&code[label_off..label_off + 5], "false");
+    parse_ui(code).expect("bool literal event arg must parse (plan 015 P1#5)");
 }
 
 /// Same root cause, unquoted handler with a bool arg (`.Inc(false)`).
 #[test]
-fn gap37a_bool_arg_error_span_unquoted_handler() {
+fn gap37a_bool_arg_unquoted_handler_now_parses() {
+    // Plan 015 P1#5: bool literal args parse for unquoted handlers too.
     let code = concat!(
-        "widget App {\n",
-        "  model { var x int = 0 }\n",
-        "  view {\n",
-        "    col {\n",
-        "      button { onclick: .Inc(false) }\n",
-        "    }\n",
-        "  }\n",
-        "}\n"
+        "widget App {
+",
+        "  model { var x int = 0 }
+",
+        "  view {
+",
+        "    col {
+",
+        "      button { onclick: .Inc(false) }
+",
+        "    }
+",
+        "  }
+",
+        "}
+"
     );
-    let err = parse_ui(code).expect_err("bool literal event arg must fail");
-    let false_off = code.find("(false)").unwrap() + 1;
-    let label_off = first_label_offset(&err).expect("error must carry a label");
-    assert_eq!(label_off, false_off);
-    assert!(err.to_string().contains("unsupported event argument `false`"));
+    parse_ui(code).expect("bool literal event arg must parse (plan 015 P1#5)");
 }
 
 /// jade gap 37b: `.Handler(a, e)` multi-param on-handlers — both params must
