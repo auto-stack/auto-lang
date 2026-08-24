@@ -1481,9 +1481,10 @@ pub(crate) const AUTO_LIB_FILES: &[&str] = &[
 /// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
 /// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
 pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
-    // plan-432 S1: token → lexer(依赖序,见 docs/specs/aavm/file-mapping.md)
+    // plan-432 S1/S2: token → lexer → parser(依赖序,见 docs/specs/aavm/file-mapping.md)
     "auto/lib/token.at",
     "auto/lib/lexer.at",
+    "auto/lib/parser.at",
 ];
 
 /// Read and concatenate all auto/lib/*.at files for bootstrap tests.

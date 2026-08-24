@@ -58,3 +58,22 @@
 - Newline 跳过策略(parser 侧 skip_empty_lines 语义);
 - if 分支 Branch 结构的 Display(branches 元素格式,ast.rs Branch);
 - fn 嵌套/前向引用(单遍定义序)。
+
+
+## S2 落地勘误(2026-08-24,以 live dump 黄金输出为准)
+
+- fn 声明行"params/ret 省略当空/Unknown"**不精确**:fn_params 的参数类型缺省
+  是 `Type::Int`(`(type int) (mode view)`),ret 在"无类型直接 `{`"时是
+  `Type::Void`(`(ret void)`)——见 p10 黄金:
+  `(fn (name add) (params (param (name x) (type int) (mode view)) ...) (ret void) (body (name x)))`。
+- let/var 无注解:let 走 parser 内联推断(parse_store_stmt→infer_type_expr),
+  dump 带推断型如 `(let (name x) (type int) (int 1))`;**var 的 Display 永不带
+  类型**(`(var (name y) (int 2))`)。Call/Object 初始化推断为 Unknown → 无型槽。
+- 字面量值显示:hex/bin/下划线按**值**(`0xFF`→`(int 255)`、`1_000_000`→
+  `(int 1000000)`);float/double 按 shortest Display(`1.0d`→`(double 1)`);
+  Str/Char 原样入 dump(含裸换行)。
+- 方法调用:Dot+Call 重写为 `(call (dot o.m))`,空参省 args 段:
+  `(call (dot (name a).str))`。
+- 元组类型推断:`(type (int, str, float))`;对象字面量推断 Unknown。
+- 运行验证:18 语料文件(corpus_m2 14 + corpus_m1 4)Rust 侧全绿;
+  AAVM 侧被 D26 VM 回归阻断,闸门挂 ignore 待修。

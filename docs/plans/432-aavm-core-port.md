@@ -58,11 +58,13 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S2：AST + parser 核心（P1，预估 1-2 周，可按语句族拆子切片）
 
-- [ ] `ast.at`：按 431 A2 裁剪后的 Stmt/Expr 子集，per-kind 结构（拒绝上帝节点）；
-    `parser.at`：递归下降 + Pratt（优先级表直译）、闭包/f-string/is-match/use（含 use.rust）/
-    类型解析/泛型参数。UI/task/store 区不移植（解析到即报"v2 不支持"，报错含位置）。
-- [ ] 闸门 M2：核心语料 AST dump diff = 0（Rust 侧 dump 工具用 431 E2 的）。
-- [ ] 子切片建议：S2a 声明+表达式 / S2b 控制流+模式 / S2c 类型+use+泛型。
+- [~] `parser.at`(D20:parse_dump 直出,无独立 ast.at)：递归下降 + Pratt(优先级表
+    直译)、类型解析、fn 参数、let 内联推断、for/if/while 全形态。
+    闭包/f-string/is-match/use/泛型 = Missing(遇之报 v2 unsupported,corpus 无)。
+    UI/task/store 区解析到即报 "v2 不支持"(含行号)。
+- [~] 闸门 M2:语料+Rust 侧 dump 工具均就绪(18 文件黄金输出全绿),
+    **但 AAVM 侧运行被 VM 字符串池 RC 回归阻断(D26)——闸门测试挂 ignore 待 VM 修复**。
+- [x] 事实上的子切分:本切片一次落地声明+表达式+控制流+类型(语料所需全量)。
 
 ### S3：typeinfo 核心（P2，预估 1 周）
 
@@ -136,3 +138,33 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   (docs/specs/aavm/m2-ast-dump-format.md——顶层/语句/表达式/Op 的 S-expr
   逐字格式 + 来源行号,免下会话重做);实施决策 D20(parse_dump 直出)/
   D21(List.* sanctioned,C3 修正)预定;Pratt 表数值与 Branch 格式为开工首日项。
+
+- **S2**(2026-08-24 续,worktree 432-core-port-s2):
+  - **lexer.at 重构(D13/D14 落地)**:`tokenize(source) -> List<Token>` 直出
+    真实 Token 结构;`lex_dump` 降为 List 上的格式化包装;**M1 闸门保持 diff=0**。
+  - **parser.at(~1200 行)**:parse_dump 直出 S-expr。语句(let/var/const/shared、
+    fn、if/else-if、for 全七形态、while/loop 脱糖 `(for (cond)...)`、break/
+    continue/return、块语句);表达式(Pratt 表数值直译:asn 1/2 … dot 35/36、
+    一元 26/28、postfix pair 8/call 30/index 32;方法调用重写 `(call (dot o.m))`、
+    下标、Range、数组/元组/对象字面量、全字面量);类型解析(builtin 表+?T/!T);
+    fn 参数(mode view 缺省/类型缺省 int/默认值);**let 无注解时的 parser 内联
+    推断**(parse_store_stmt:7864 的 infer_type_expr 核心子集,经 E.ity 构造期
+    计算——Bina unify/Array/Tuple/作用域查找);EmptyLine(n)与 expect_eos 语义。
+  - **Rust 侧 dump 工具落地**(aavm2_m2.rs:rust_parse_dump = Parser::from +
+    format!("{}", code));**corpus_m2 14 文件**(99_bootstrap 009-021 构造同源,
+    未定义变量片段按 check_symbol 语义补绑定)+ corpus_m1 4 文件(全程序)
+    = 18 文件黄金输出全绿(含 `(type int)` 推断、`(ret void)`、`(mode view))`、
+    `(double 1)` 剥零、`(char '')` 原样、`(object (pair "k" ...))` 等 quirk)。
+  - **语料修正 2 处**(S1 自建语料的解析性问题,非闸门放宽):
+    c02 `print('')`(D19 转义收尾吞字符 quirk 使其不可解析)→ `print('\')`;
+    c04 `match_or_like:` label 前缀(Rust parser 报 "Expected term, got While")
+    → 去前缀。M1 为活对比,lexer 层覆盖不受影响。
+  - **M2 闸门被 VM 字符串池 RC 回归阻断(D26,挂 242:S2-432)**:循环内以
+    运行期字符串 `List.push` 后读回即 UAF canary(12 行最小复现,提升变量/
+    改 for 均不可绕);**master 的 conformance_bootstrap 同类 canary 已红**
+    (heap 4000001),99_bootstrap parser 系列测试 ignored——疑似 Plan 419/423
+    RC 改造存量回归,非本切片引入。M2 闸门测试挂 ignore 注明;**VM 修复后
+    移除 ignore 即可验闸**(parse_dump 逻辑侧已按黄金输出逐构造对齐)。
+  - 发现并规避的 VM 缺陷(D25):构造参数内联原生调用返回值丢失、List.pop
+    栈污染;全部以 .at 侧写法规避(提升变量 + depth 计数)。
+  - AUTO_LIB_FILES_V2 已登记 parser.at;M1 闸门 + aavm2 smoke(001/002)全绿。

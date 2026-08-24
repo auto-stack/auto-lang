@@ -3,18 +3,32 @@
 // Coverage: 主循环(next_step)核心子集——空白/换行/行注释/块注释/DocComment/
 //           标识符(含连字符规则)+keyword 表/数字(十进制/浮点/f/d/u/u8/i/i8 后缀/
 //           0x/0b/下划线)/字符串(常见转义)/字符字面量/全部定界符与运算符
-//           (含 ..= ?. -> => ?? || && 复合);skip_whitespace/pos 记账语义
+//           (含 ..= ?. -> => ?? || && 复合);skip_whitespace/pos 记账语义;
+//           S2 起 tokenize() 直出 Token List(parser.at 的输入,D14 落地),
+//           lex_dump() 降为 List 上的格式化包装(M1 闸门不变)
 // Missing:  f-字符串(`/f")、raw/multi/c 字符串、#comptime、byte 字面量、
 //           .view/.mut/.take/.move/.? 属性词、}+换行 else 抑制、LexerState 快照回滚
 // DIVERGE:  D12: Peekable<Chars> → char_at(i)+p/at 游标(431 D1 变体,免 Vec 构造);
-//           D13: Lexer struct → lex_dump 单遍局部变量(S2 需要回退时再封装);
-//           D14: token 流 → dump 串直出(kind_name 层)(S2 换真实 Token 结构);
-//           D15: 注释 buffer 后继(CommentContent/End) → 直出同序 dump;
+//           D13: (S2 已落地)单遍局部变量 → tokenize() List + lex_dump() 包装;
+//           D14: (S2 已落地)dump 串直出 → 真实 Token 结构(五字段与 M1 行一致);
+//           D15: 注释 buffer 后继(CommentContent/End) → 同序 Token;
 //           D16: len 按 char 计(源按 UTF-8 字节;corpus 限定 ASCII);
 //           D17: 循环体内一律不用 continue——VM 在"循环体含调用语句"时
 //                continue 穿透执行后续语句(probe p11/p12 实证,242 tracker 挂账),
-//                全部改写为 else-if 链;break 不受影响
+//                全部改写为 else-if 链;break 不受影响;
+//           D18: 块注释内容 '*' 后一字符被吞(基线 quirk 照抄,见块注释分支注释);
+//           D19: 转义 char 字面量收尾无条件吞一字符('\') 连吞 ')',基线照抄)
 
+// S2 起的公开 token 结构:五字段与 M1 dump 行一致(parser 只用 kind/text/line)
+type Token {
+    kind str
+    text str
+    line int
+    at int
+    len int
+}
+
+// lex_* 内部记账结构(len=dump 用长度,adv=推进量)
 type Tok {
     kind str
     text str
@@ -160,7 +174,9 @@ fn lex_string(source str, start int) Tok {
     return Tok("Str", text, p - start, p - start)
 }
 
-// char() 直译:常见转义 + 普通字符
+// char() 直译:常见转义 + 普通字符。
+// 基线 quirk 照抄(D19):转义分支收尾无条件再吞一字符(视为收尾引号),
+// 故 '\') 会连 ')' 一起吞掉(M1 闸门实证两侧 token 一致;上游修复会改 golden)
 fn lex_char(source str, start int) Tok {
     var p = start + 1
     var c = cur_char(source, p)
@@ -220,10 +236,6 @@ fn dump_escape(s str) str {
     return t
 }
 
-fn emit_line(out str, name str, text str, line int, at int, len int) str {
-    return out + name + "|" + dump_escape(text) + "|" + line.str() + "|" + at.str() + "|" + len.str() + "\n"
-}
-
 // 单字符定界符名(空串 = 非定界符)
 fn delim_name(c int) str {
     if c == '(' {
@@ -259,13 +271,14 @@ fn delim_name(c int) str {
     return ""
 }
 
-// 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)
-fn lex_dump(source str) str {
+// 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)。
+// 产出 Token List(词法语义与 M1 基线逐 token 一致)
+fn tokenize(source str) List {
     var line = 1
     var at = 0
     var p = 0
-    var out = ""
     var len = source.len()
+    var toks = List.new()
     for p < len {
         var c = cur_char(source, p)
         if c == ' ' || c == '\t' || c == '\r' {
@@ -277,26 +290,26 @@ fn lex_dump(source str) str {
             line = line + 1
             at = 1
             p = p + 1
-            out = emit_line(out, "Newline", "\n", line, 0, 1)
+            toks.push(Token("Newline", "\n", line, 0, 1))
         } else if is_digit(c) {
             var t = lex_number(source, p)
-            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            toks.push(Token(t.kind, t.text, line, at, t.len))
             p = p + t.adv
             at = at + t.len
         } else if is_alpha(c) {
             var t = lex_ident(source, p)
-            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            toks.push(Token(t.kind, t.text, line, at, t.len))
             p = p + t.len
             at = at + t.len
         } else if c == '"' {
             var t = lex_string(source, p)
-            out = emit_line(out, t.kind, t.text, line, at, t.len)
+            toks.push(Token(t.kind, t.text, line, at, t.len))
             p = p + t.len
             at = at + t.len
         } else if c == '\'' {
             var t = lex_char(source, p)
-            out = emit_line(out, t.kind, t.text, line, at, t.len)
-            p = p + t.len
+            toks.push(Token(t.kind, t.text, line, at, t.len))
+            p = t.len + p
             at = at + t.len
         } else if c == '/' {
             var n = cur_char(source, p + 1)
@@ -314,10 +327,10 @@ fn lex_dump(source str) str {
                 var text = source.slice(p + 1, q)
                 if text.len() >= 2 && text.slice(0, 2) == "//" {
                     var doc = text.slice(2, text.len()).trim()
-                    out = emit_line(out, "DocComment", doc, line, at, text.len() + 2)
+                    toks.push(Token("DocComment", doc, line, at, text.len() + 2))
                 } else {
-                    out = emit_line(out, "CommentLine", "//", line, at, 2)
-                    out = emit_line(out, "CommentContent", text, line, at + 2, text.len())
+                    toks.push(Token("CommentLine", "//", line, at, 2))
+                    toks.push(Token("CommentContent", text, line, at + 2, text.len()))
                 }
                 at = at + 2 + text.len()
                 p = q
@@ -348,23 +361,23 @@ fn lex_dump(source str) str {
                         }
                     }
                 }
-                out = emit_line(out, "CommentStart", "/*", line, at, 2)
-                out = emit_line(out, "CommentContent", ctext, line, at + 2, ctext.len())
-                out = emit_line(out, "CommentEnd", "*/", line, at + 2 + ctext.len(), 2)
+                toks.push(Token("CommentStart", "/*", line, at, 2))
+                toks.push(Token("CommentContent", ctext, line, at + 2, ctext.len()))
+                toks.push(Token("CommentEnd", "*/", line, at + 2 + ctext.len(), 2))
                 at = at + 2 + ctext.len() + 2
                 p = q
             } else if n == '=' {
-                out = emit_line(out, "DivEq", "/=", line, at, 2)
+                toks.push(Token("DivEq", "/=", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, "Div", "/", line, at, 1)
+                toks.push(Token("Div", "/", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else if delim_name(c) != "" {
             var nm = delim_name(c)
-            out = emit_line(out, nm, source.slice(p, p + 1), line, at, 1)
+            toks.push(Token(nm, source.slice(p, p + 1), line, at, 1))
             p = p + 1
             at = at + 1
         } else if c == '+' || c == '*' || c == '%' || c == '!' || c == '>' || c == '<' {
@@ -393,69 +406,69 @@ fn lex_dump(source str) str {
                 sym = "<"
             }
             if cur_char(source, p + 1) == '=' {
-                out = emit_line(out, eqk, sym + "=", line, at, 2)
+                toks.push(Token(eqk, sym + "=", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, base, sym, line, at, 1)
+                toks.push(Token(base, sym, line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else if c == '=' {
             var n = cur_char(source, p + 1)
             if n == '>' {
-                out = emit_line(out, "DoubleArrow", "=>", line, at, 2)
+                toks.push(Token("DoubleArrow", "=>", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else if n == '=' {
-                out = emit_line(out, "Eq", "==", line, at, 2)
+                toks.push(Token("Eq", "==", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, "Asn", "=", line, at, 1)
+                toks.push(Token("Asn", "=", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else if c == '-' {
             var n = cur_char(source, p + 1)
             if n == '>' {
-                out = emit_line(out, "Arrow", "->", line, at, 2)
+                toks.push(Token("Arrow", "->", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else if n == '=' {
-                out = emit_line(out, "SubEq", "-=", line, at, 2)
+                toks.push(Token("SubEq", "-=", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, "Sub", "-", line, at, 1)
+                toks.push(Token("Sub", "-", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else if c == '?' {
             if cur_char(source, p + 1) == '?' {
-                out = emit_line(out, "QuestionQuestion", "??", line, at, 2)
+                toks.push(Token("QuestionQuestion", "??", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, "Question", "?", line, at, 1)
+                toks.push(Token("Question", "?", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else if c == '|' || c == '&' {
             if c == '|' && cur_char(source, p + 1) == '|' {
-                out = emit_line(out, "Or", "||", line, at, 2)
+                toks.push(Token("Or", "||", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else if c == '&' && cur_char(source, p + 1) == '&' {
-                out = emit_line(out, "And", "&&", line, at, 2)
+                toks.push(Token("And", "&&", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else if c == '|' {
-                out = emit_line(out, "VBar", "|", line, at, 1)
+                toks.push(Token("VBar", "|", line, at, 1))
                 p = p + 1
                 at = at + 1
             } else {
-                out = emit_line(out, "Amp", "&", line, at, 1)
+                toks.push(Token("Amp", "&", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
@@ -463,30 +476,43 @@ fn lex_dump(source str) str {
             var n = cur_char(source, p + 1)
             if n == '.' {
                 if cur_char(source, p + 2) == '=' {
-                    out = emit_line(out, "RangeEq", "..=", line, at, 3)
+                    toks.push(Token("RangeEq", "..=", line, at, 3))
                     p = p + 3
                     at = at + 3
                 } else {
-                    out = emit_line(out, "Range", "..", line, at, 2)
+                    toks.push(Token("Range", "..", line, at, 2))
                     p = p + 2
                     at = at + 2
                 }
             } else if n == '?' {
-                out = emit_line(out, "DotQuestion", "?.", line, at, 2)
+                toks.push(Token("DotQuestion", "?.", line, at, 2))
                 p = p + 2
                 at = at + 2
             } else {
-                out = emit_line(out, "Dot", ".", line, at, 1)
+                toks.push(Token("Dot", ".", line, at, 1))
                 p = p + 1
                 at = at + 1
             }
         } else {
             // 未覆盖字符:Unknown 前进(闸门 diff 暴露后逐个收编)
-            out = emit_line(out, "Unknown", source.slice(p, p + 1), line, at, 1)
+            toks.push(Token("Unknown", source.slice(p, p + 1), line, at, 1))
             p = p + 1
             at = at + 1
         }
     }
-    out = emit_line(out, "EOF", "", line, at, 0)
+    toks.push(Token("EOF", "", line, at, 0))
+    return toks
+}
+
+// M1 闸门包装:kind|esc_text|line|at|len 逐 token 行式 dump
+fn lex_dump(source str) str {
+    var toks = tokenize(source)
+    var out = ""
+    var i = 0
+    while i < toks.len() {
+        var t = toks.get(i)
+        out = out + t.kind + "|" + dump_escape(t.text) + "|" + t.line.str() + "|" + t.at.str() + "|" + t.len.str() + "\n"
+        i = i + 1
+    }
     return out
 }

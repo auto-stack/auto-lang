@@ -41,3 +41,46 @@
 | token.at | 2 |
 | lexer.at | 8 |
 | 合计 | 10 |
+
+
+## auto/lib/parser.at(S2)
+
+- **D20**: AST 结构(Stmt/Expr 枚举 + Box 树)→ `parse_dump(source) -> str`
+  S-expr 直出(判据层;真实 AST 推迟到 S4 codegen 需要时定)。dump 由各
+  parse_* 构造期拼装,E 载体 `{kind,word,name,args,dump,ity}`。
+- **D21**: token 流承载 `Vec<Token>` + pushback → `List.new()/push/get/len`
+  (sanctioned);前瞻 = 索引算术(p_peek / paren_prefix 扫描)。
+- **D22**: Result 错误传播 + add_error 收集 → `p.err` 单槽 + 全函数入口短路;
+  错误信息编码行号与 token kind,parse_dump 直返错误串使闸门显式爆红。
+- **D23**: Type 枚举 → Display 字符串载体(builtin 表折叠;StrFixed 恒显
+  "str" 使该折叠无损);let 无注解时的 parser 内联推断(infer_type_expr
+  核心子集:字面量/Ident 作用域查找/Bina unify 简式/Array/Tuple)在 E.ity
+  构造期完成。unify coercion 分支语料未及,按 Unknown 传播。
+- **D24**: float/double 值显示 = 字面量文本剥分数尾零("1.0"→"1");
+  Rust 为 f32/f64 shortest-roundtrip Display,十进制文本字面量二者一致,
+  科学计数/大数留 Missing。
+- **D25**(VM 缺陷规避,probe 实证,挂 242:S2-432):
+  - ①原生调用(auto.list.*)内联作结构体构造参数时返回值丢失——
+    `Q(toks, List.new())` 的字段成垃圾;提升局部变量后恢复。
+  - ②`List.pop` 目录签名 Void 而 shim 压返回值:语句位调用即静默毁栈
+    (后续 print 消失),消费位返回垃圾(-2)。作用域退栈改为 depth 计数。
+- **D26**(blocker,挂 242:S2-432):**VM 字符串池 RC 回归阻断 M2**——
+  循环体内以运行期字符串(concat/函数返回值,字面量与循环外均正常)调
+  `List.push`,之后读回即 UAF:`[RC canary] string tombstone access`。
+  最小复现(~12 行):`while i < 3 { l.push("(s" + i.str() + ")"); i = i + 1 }`
+  后 `l.get(2)` → print 即 canary;P419_TRACE_POOL 追踪显示池槽
+  retain(0→1)/release(1→0)/FREE 循环复用后,复活的槽 tombstone 未清。
+  提升临时变量、改 for 循环均不可绕。**master 上 conformance_bootstrap
+  同类 canary 已红**(heap 4000001 UAF),99_bootstrap parser 系列 ignored,
+  疑似 Plan 419/423 RC 改造的存量回归。S2 的 parse_dump 必经
+  "循环内 push 语句串"路径,M2 闸门在 VM 修复前无法转绿(aavm2_m2
+  闸门测试已挂 ignore 并注明)。
+
+## 计数(S2 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8(+S2 重构后 tokenize/lex_dump 包装,D13/D14 落地) |
+| parser.at | 7 |
+| 合计 | 17 |

@@ -10,6 +10,6 @@ fn main() {
     print(s.len())
     print('x')
     print('\n')
-    print('\')
+    print('\\')
     print("tab\there")
 }
