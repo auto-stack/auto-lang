@@ -300,6 +300,11 @@ pub struct MsgVariant {
     /// means a unit variant; a single-element vec means `Set(int)`; multiple
     /// elements mean a tuple-style payload.
     pub payload: Vec<Type>,
+
+    /// Plan 435 挂账②:命名参数形态 `Change(value: str)` 的参数名,
+    /// 与 payload 逐位平行;位置形态(`Set(int)`)对应位为 None。
+    /// 名字不参与生成(handler 形参来自 on 块),供 P4 组件包 API 文档面使用。
+    pub payload_names: Vec<Option<String>>,
 }
 
 // ============================================================================
@@ -907,11 +912,13 @@ mod tests {
                     name: AutoStr::from("Inc"),
                     quoted: false,
                     payload: vec![],
+                payload_names: vec![],
                 },
                 MsgVariant {
                     name: AutoStr::from("Set"),
                     quoted: false,
                     payload: vec![Type::Int],
+                 payload_names: vec![None],
                 },
             ],
         };

@@ -762,6 +762,7 @@ fn extract_msg_decl(msg: &MsgDecl) -> AuraMessage {
                 name: v.name.as_str().to_string(),
                 quoted: v.quoted,
                 payload: v.payload.clone(),
+                payload_names: v.payload_names.clone(),
             })
             .collect(),
     }

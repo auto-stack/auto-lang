@@ -13007,11 +13007,36 @@ impl<'a> Parser<'a> {
             // Check for payload type. Plan 043 M5 #1: support multi-param
             // payloads `Complete(str, int)` / `RunSmart(int, str, []str)`
             // (was single-type only). Empty vec = unit variant.
-            let payload = if self.is_kind(TokenKind::LParen) {
+            // Plan 435 挂账②:support named params `Change(value: str)` —
+            // gallery 官方组件在用;名字记入 payload_names(位置形态为 None)。
+            // lookahead 用 lexer 单 token 回推(同 `::` 判定模式)。
+            let mut payload = vec![];
+            let mut payload_names = vec![];
+            if self.is_kind(TokenKind::LParen) {
                 self.next();
-                let mut types = vec![];
                 loop {
-                    types.push(self.parse_type()?);
+                    let name = if self.is_kind(TokenKind::Ident)
+                        || self.is_kind(TokenKind::Str)
+                    {
+                        if let Ok(tok) = self.lexer.next() {
+                            if tok.kind == TokenKind::Colon {
+                                self.lexer.push_token(tok);
+                                let n = self.cur.text.to_string();
+                                self.next(); // cur = 回推的 Colon
+                                self.expect(TokenKind::Colon)?;
+                                Some(n)
+                            } else {
+                                self.lexer.push_token(tok);
+                                None // 位置形态,token 原样归还
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    payload.push(self.parse_type()?);
+                    payload_names.push(name);
                     if self.is_kind(TokenKind::Comma) {
                         self.next();
                     } else {
@@ -13019,15 +13044,13 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.expect(TokenKind::RParen)?;
-                types
-            } else {
-                vec![]
-            };
+            }
 
             variants.push(MsgVariant {
                 name: variant_name,
                 quoted,
                 payload,
+                payload_names,
             });
 
             if self.is_kind(TokenKind::Comma) {
@@ -13860,10 +13883,41 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Plan 435 挂账②续:管道文本简写 `tag | bare text…`(行尾止)——
+        // 此前 `text | Slide 1` 靠垃圾解析碰巧能过(|/Slide/1 成为垃圾子元素),
+        // 多词带句点形态(`ComboboxEmpty | No framework found.`)直接报错。
+        // 现按语义实现:读整行文本,挂 primary prop(有声明)或 text 子节点。
+        if self.is_kind(TokenKind::VBar) {
+            self.next();
+            let mut text = String::new();
+            while !self.is_kind(TokenKind::Newline)
+                && !self.is_kind(TokenKind::RBrace)
+                && !self.is_kind(TokenKind::EOF)
+            {
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(&self.cur.text);
+                self.next();
+            }
+            if let Some(primary) = Self::get_primary_prop(&tag) {
+                if !props.iter().any(|p| p.name == primary) {
+                    props.push(ViewProp {
+                        name: primary.to_string(),
+                        value: ViewPropValue::Expr(Expr::Str(text.into())),
+                    });
+                }
+            } else {
+                children.push(ViewNode::text(text));
+            }
+        }
+
         // Parse children or inline props/events in braces
         // Support syntax: col { child1 child2 style: "..." }
         // Also supports primary prop shorthand: text "Hello" { style: "..." }
-        if self.is_kind(TokenKind::LBrace) {
+        // Plan 435 挂账②续:while 支持连写块 `div { style: ".." } { children }`
+        // (gallery 官方组件在用;首个块收 props,后续块收 children/props)
+        while self.is_kind(TokenKind::LBrace) {
             self.next();
             self.skip_empty_lines();
 
@@ -14732,6 +14786,32 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse on block for widget (returns OnBlock, not OnEvents)
+    /// Plan 435 挂账②续:on 块 handler 形参收集 —— `Name(p1, p2)` 或
+    /// `Name(n1 t1, n2 t2)`(类型标注忽略,取每组首 token 为参数名)。
+    /// 点前缀/无点前缀两种 pattern 形态共用。
+    fn parse_handler_params(&mut self) -> AutoResult<Vec<String>> {
+        if !self.is_kind(TokenKind::LParen) {
+            return Ok(Vec::new());
+        }
+        self.next();
+        let mut groups: Vec<Vec<String>> = Vec::new();
+        while !self.is_kind(TokenKind::RParen) {
+            let mut group = Vec::new();
+            while !self.is_kind(TokenKind::Comma) && !self.is_kind(TokenKind::RParen) {
+                group.push(self.cur.text.to_string());
+                self.next();
+            }
+            if !group.is_empty() {
+                groups.push(group);
+            }
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(groups.into_iter().filter_map(|g| g.into_iter().next()).collect())
+    }
+
     fn parse_on_block(&mut self) -> AutoResult<OnBlock> {
         self.expect_ident("on")?;
         self.expect(TokenKind::LBrace)?;
@@ -14803,41 +14883,16 @@ impl<'a> Parser<'a> {
                 let name = self.cur.text.to_string();
                 self.next();
                 // Check for params: .Name(param1, param2) or .Name(name1 type1, name2 type2)
-                let params = if self.is_kind(TokenKind::LParen) {
-                    self.next();
-                    // Collect comma-separated groups; each group is either
-                    // `name` or `name type` (1 or 2 space-separated tokens).
-                    let mut groups: Vec<Vec<String>> = Vec::new();
-                    while !self.is_kind(TokenKind::RParen) {
-                        let mut group = Vec::new();
-                        // Read tokens until the next comma or close paren.
-                        while !self.is_kind(TokenKind::Comma)
-                            && !self.is_kind(TokenKind::RParen)
-                        {
-                            group.push(self.cur.text.to_string());
-                            self.next();
-                        }
-                        if !group.is_empty() {
-                            groups.push(group);
-                        }
-                        if self.is_kind(TokenKind::Comma) {
-                            self.next();
-                        }
-                    }
-                    self.expect(TokenKind::RParen)?;
-                    // Parameter name is the first token of each group; a
-                    // trailing `type` (if present) is dropped.
-                    groups.into_iter()
-                        .filter_map(|g| g.into_iter().next())
-                        .collect()
-                } else {
-                    Vec::new()
-                };
+                let params = self.parse_handler_params()?;
                 (format!(".{}", name), params)
             } else {
+                // Plan 435 挂账②续:无点前缀带参形态 `Change(pressed) ->`
+                // (gallery 官方组件在用)——参数收集与点前缀分支一致;
+                // pattern 保持无点(兼容既有无点语法)。
                 let name = self.cur.text.to_string();
                 self.next();
-                (name, Vec::new())
+                let params = self.parse_handler_params()?;
+                (name, params)
             };
 
             // Expect -> (might be Arrow, or Asn followed by Gt)
@@ -16903,6 +16958,45 @@ widget App {
                 panic!("Widget with routes parsing failed: {:?}", e);
             }
         }
+    }
+
+    #[test]
+    #[test]
+    fn test_msg_variant_named_payload() {
+        // Plan 435 挂账②:命名参数形态 `Change(value: str)`(gallery 官方组件在用)
+        let code = r#"
+widget T {
+    msg Msg {
+        Change(value: str)
+        Complete(name: str, count: int)
+        Set(bool)
+        Go
+    }
+    model { n int = 0 }
+    view { text "x" {} }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut variants = vec![];
+        for stmt in &ast.stmts {
+            if let Stmt::WidgetDecl(w) = stmt {
+                if let Some(msg) = w.messages.first() {
+                    variants = msg.variants.clone();
+                }
+            }
+        }
+        assert_eq!(variants.len(), 4);
+        assert_eq!(variants[0].name.as_str(), "Change");
+        assert_eq!(variants[0].payload_names, vec![Some("value".to_string())]);
+        assert_eq!(variants[1].payload_names[0], Some("name".to_string()));
+        assert_eq!(variants[1].payload_names[1], Some("count".to_string()));
+        // 位置形态与无参形态不受影响
+        assert_eq!(variants[2].payload.len(), 1);
+        assert!(variants[2].payload_names.iter().all(|n| n.is_none()));
+        assert!(variants[3].payload.is_empty());
+        assert!(variants[3].payload_names.is_empty());
     }
 
     #[test]

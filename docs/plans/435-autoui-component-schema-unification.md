@@ -263,7 +263,7 @@
   crates/x/../../ 拼接),分别归一为 <ROOT>/<CRATE>;主仓与 worktree 双绿。
 - **S002 假阳性修复**:PascalCase tag = 组件引用语义(内置 tag 全小写),
   跳过告警——单文件模式下跨文件子组件(NavTree/EditorPanel)不再误报。
-- **挂账(待单独归因)**:① view 顶层裸兄弟(UI scenario)解析失败(P2 记录);
+- **挂账(待单独归因)**:① ~~view 顶层裸兄弟(UI scenario)解析失败~~ → **已销账:master plan-015(831c9ec3)已修复**,master 实测三兄弟含连字符 tag 解析通过;
   ② combobox/command/datepicker/toggle/togglegroup 五个 gallery components 在
   generate_component_from_file 路径有预存解析错误(UnexpectedToken RParen ':',
   页面生成不受影响);③ golden 基线随 plan-443 重采样一次(defineModel 收窄,
