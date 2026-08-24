@@ -65,7 +65,12 @@ fn generate(at: &Path) -> String {
         }
         Err(e) => format!("!!GENERATION ERROR!! {}", e),
     };
-    raw.replace(&root, "<ROOT>").replace(&root_fwd, "<ROOT>")
+    // 错误信息里路径是 MANIFEST_DIR 拼接的非规范化形态(crates/x/../../..),
+    // canonicalize 盖不住 —— 按原始前缀整体归一
+    let manifest = env!("CARGO_MANIFEST_DIR").to_string();
+    raw.replace(&manifest, "<CRATE>")
+        .replace(&root, "<ROOT>")
+        .replace(&root_fwd, "<ROOT>")
 }
 
 #[test]
