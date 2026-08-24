@@ -1,677 +1,4113 @@
-// AURA Schema Definition - Written in AutoLang itself!
+// AURA Schema —— Plan 435 P1:从生产代码提取生成(单一声明源)
 //
-// This file defines the schema for AURA widgets using AutoLang syntax.
-// Similar to how JSON Schema defines JSON structure in JSON format.
+// 本文件是 AutoUI 内置组件的唯一声明:tag/category/props 来自 schema.rs
+// (唯一带类型 props 的来源);aliases 来自派发表臂组(行为等价)与分隔符
+// 拼写变体;tier/backends 来自各生产表的成员资格(见围栏测试)。
+// 官方/第三方 .at 组件(widget)不在此声明——它们由 ComponentRegistry 注册
+// (P4);sub_widgets 字段为组件家族预留(P4 填充,web 家族已按 vue import
+// 路径预填)。
 //
-// Usage:
-// - The parser loads this schema to validate widgets
-// - LSP uses this for autocomplete and hover docs
-// - Error messages reference these definitions
+// tier 语义:native_html=Web 原生直通(类比 HTML_TAGS);builtin_widget=
+//   桌面(iced)有实现;web_component=shadcn 家族生成映射;
+//   unclassified=P1 提取时尚无归属(待人工归类,P2 消除)。
+// backends 语义:web=native|component|none;iced=full|partial|fallback|
+//   unsupported|unknown(unknown=有实现但支持级未登记)|none;
+//   gpui=unknown(P1 未盘点)。
+//
+// 再生成(修改生产表后):
+//   SCHEMA_DRIFT_GENERATE_AT=1 cargo test -p auto-lang --test schema_drift
+// 围栏会强制:生产表 tag ⊆ 本文件(tags ∪ aliases),新增组件必须重生成。
+//
+// 别名匹配策略(P2 校验器实现):tag 与 aliases 均按折叠键匹配
+// (剥 `-`/`_` + 小写),如 alert-dialog-action ≡ alert_dialog_action。
+// 依据:widgets-gallery 实际使用 kebab 形态,生产表登记 underscore/concat
+// 形态,管线靠隐式归一弥合 —— schema 将该归一显式化为策略。
 
-// ============================================================================
-// Schema Type Definitions
-// ============================================================================
 
-/// Prop type constraint - what values a prop can accept
-type PropType {
-    name str                           // Type name: "string", "int", "msg_ref", etc.
-    union List<str>? = nil             // For union types: ["string", "class_binding"]
-    one_of List<str>? = nil            // For enum types: ["text", "password", "email"]
-}
+// ============ tier: builtin_widget ============
 
-/// Definition of a single prop on an element
-type PropDef {
-    name str                           // Prop name (e.g., "onclick")
-    type str                           // Type name or "union:..." or "one_of:..."
-    required bool = false              // Whether this prop is required
-    default str? = nil                 // Default value if not specified
-    description str = ""               // Documentation for this prop
-}
-
-/// Definition of a view element
-type ElementSchema {
-    tag str                            // Element tag name (e.g., "button")
-    category str                       // Category: "layout", "content", "typography", etc.
-    props List<PropDef> = []           // Props this element supports
-    allows_children bool = true        // Whether children are allowed
-    description str = ""               // Documentation for this element
-}
-
-/// Definition of a custom component (user-defined widget)
-type ComponentSchema {
-    name str                           // Component name
-    props List<PropDef> = []           // Props the component accepts
-    emits List<str> = []               // Events the component can emit
-    description str = ""               // Documentation
-}
-
-/// Widget block constraints
-type WidgetBlockSchema {
-    required List<str>                 // Blocks that must appear exactly once
-    optional List<str>                 // Blocks that are optional (0 or 1)
-}
-
-/// The complete AURA schema
-type AuraSchemaDef {
-    version str = "1.0"                // Schema version
-    elements List<ElementSchema>       // All element definitions
-    components List<ComponentSchema> = []  // User-defined components
-    widget WidgetBlockSchema           // Widget block constraints
-}
-
-// ============================================================================
-// Prop Type Definitions
-// ============================================================================
-
-// Primitive types
-const STRING_TYPE: str = "string"
-const INT_TYPE: str = "int"
-const FLOAT_TYPE: str = "float"
-const BOOL_TYPE: str = "bool"
-const COLOR_TYPE: str = "color"
-
-// Reference types
-const STATE_REF_TYPE: str = "state_ref"
-const MSG_REF_TYPE: str = "msg_ref"
-const EXPR_TYPE: str = "expr"
-const CLOSURE_TYPE: str = "closure"
-
-// Special types
-const CLASS_BINDING_TYPE: str = "class_binding"
-const INTERPOLATED_TYPE: str = "interpolated"
-
-// Union type helpers
-const CLASS_OR_STRING: str = "union:string,class_binding"
-const BOOL_OR_STATE: str = "union:bool,state_ref"
-
-// ============================================================================
-// Element Schemas
-// ============================================================================
-
-// --- Layout Elements ---
-
-element col {
-    tag: "col"
-    category: "layout"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es), can be dynamic" }
-        { name: "gap", type: "int", description: "Spacing between children" }
-        { name: "padding", type: "int", description: "Inner padding" }
-        { name: "align", type: "one_of:start,center,end,stretch", description: "Cross-axis alignment" }
-        { name: "justify", type: "one_of:start,center,end,between,around", description: "Main-axis alignment" }
-    ]
+element article {
+    tag: "article"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Article"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
     allows_children: true
-    description: "Vertical layout container"
+    description: "P1 extracted from production tables; props TBD"
 }
 
-element row {
-    tag: "row"
-    category: "layout"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es), can be dynamic" }
-        { name: "gap", type: "int", description: "Spacing between children" }
-        { name: "padding", type: "int", description: "Inner padding" }
-        { name: "align", type: "one_of:start,center,end,stretch", description: "Cross-axis alignment" }
-    ]
+element aside {
+    tag: "aside"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Aside"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
     allows_children: true
-    description: "Horizontal layout container"
+    description: "P1 extracted from production tables; props TBD"
 }
 
-element grid {
-    tag: "grid"
-    category: "layout"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "columns", type: "int", description: "Number of columns" }
-        { name: "gap", type: "int", description: "Cell spacing" }
-    ]
+element autodown {
+    tag: "autodown"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["autodown_editor", "autodowneditor", "markdown_editor"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
     allows_children: true
-    description: "Grid layout container"
+    description: "P1 extracted from production tables; props TBD"
 }
 
-element scroll {
-    tag: "scroll"
-    category: "layout"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "direction", type: "one_of:vertical,horizontal,both", description: "Scroll direction" }
-    ]
+element avatar {
+    tag: "avatar"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Avatar"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: []
     allows_children: true
-    description: "Scrollable container"
-}
-
-element container {
-    tag: "container"
-    category: "layout"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "max_width", type: "int", description: "Maximum width in pixels" }
-        { name: "padding", type: "int", description: "Inner padding" }
-    ]
-    allows_children: true
-    description: "Generic container with optional constraints"
-}
-
-// --- Content Elements ---
-
-element button {
-    tag: "button"
-    category: "content"
-    props: [
-        { name: "text", type: "string", description: "Button label text" }
-        { name: "onclick", type: MSG_REF_TYPE, description: "Message to send when clicked" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether button is disabled" }
-    ]
-    allows_children: false
-    description: "A clickable button element"
-}
-
-element input {
-    tag: "input"
-    category: "content"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Bound value (two-way binding)" }
-        { name: "placeholder", type: "string", description: "Placeholder text" }
-        { name: "type", type: "one_of:text,password,email,number", description: "Input type" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
-        { name: "onenter", type: MSG_REF_TYPE, description: "Message on Enter key" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether input is disabled" }
-    ]
-    allows_children: false
-    description: "Text input field"
-}
-
-element checkbox {
-    tag: "checkbox"
-    category: "content"
-    props: [
-        { name: "checked", type: BOOL_OR_STATE, description: "Checked state" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on toggle" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether checkbox is disabled" }
-    ]
-    allows_children: false
-    description: "Checkbox control"
-}
-
-element toggle {
-    tag: "toggle"
-    category: "content"
-    props: [
-        { name: "checked", type: BOOL_OR_STATE, description: "Checked state" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on toggle" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Toggle switch"
-}
-
-element link {
-    tag: "link"
-    category: "content"
-    props: [
-        { name: "href", type: "string", required: true, description: "Link URL" }
-        { name: "text", type: "string", description: "Link text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Hyperlink"
-}
-
-element textarea {
-    tag: "textarea"
-    category: "content"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Bound value (two-way binding)" }
-        { name: "placeholder", type: "string", description: "Placeholder text" }
-        { name: "rows", type: "int", description: "Visible text lines" }
-        { name: "cols", type: "int", description: "Visible text width in columns" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether textarea is disabled" }
-        { name: "maxlength", type: "int", description: "Maximum character count" }
-    ]
-    allows_children: false
-    description: "Multi-line text input"
-}
-
-element select {
-    tag: "select"
-    category: "content"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
-        { name: "placeholder", type: "string", description: "Placeholder text when nothing selected" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether select is disabled" }
-    ]
-    allows_children: true
-    description: "Dropdown selection (contains option elements)"
-}
-
-element option {
-    tag: "option"
-    category: "content"
-    props: [
-        { name: "value", type: "string", required: true, description: "Option value" }
-        { name: "text", type: "string", description: "Display text (defaults to value)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether option is disabled" }
-    ]
-    allows_children: false
-    description: "Select dropdown option"
-}
-
-// --- Data Elements ---
-
-element table {
-    tag: "table"
-    category: "data"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "bordered", type: "bool", description: "Whether table has borders" }
-        { name: "striped", type: "bool", description: "Whether rows are striped" }
-    ]
-    allows_children: true
-    description: "Table container (contains thead, tbody)"
-}
-
-element thead {
-    tag: "thead"
-    category: "data"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Table header row container (contains tr)"
-}
-
-element tbody {
-    tag: "tbody"
-    category: "data"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Table body container (contains tr)"
-}
-
-element tr {
-    tag: "tr"
-    category: "data"
-    props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "onclick", type: MSG_REF_TYPE, description: "Message on row click" }
-    ]
-    allows_children: true
-    description: "Table row (contains th or td)"
-}
-
-element th {
-    tag: "th"
-    category: "data"
-    props: [
-        { name: "text", type: "string", description: "Header cell text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "align", type: "one_of:left,center,right", description: "Text alignment" }
-        { name: "colspan", type: "int", description: "Number of columns to span" }
-    ]
-    allows_children: false
-    description: "Table header cell"
-}
-
-element td {
-    tag: "td"
-    category: "data"
-    props: [
-        { name: "text", type: "string", description: "Cell text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "align", type: "one_of:left,center,right", description: "Text alignment" }
-        { name: "colspan", type: "int", description: "Number of columns to span" }
-    ]
-    allows_children: false
-    description: "Table data cell"
-}
-
-// --- Navigation Elements ---
-
-element tabs {
-    tag: "tabs"
-    category: "navigation"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Active tab index or id" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on tab change" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Tab container (contains tab elements)"
-}
-
-element tab {
-    tag: "tab"
-    category: "navigation"
-    props: [
-        { name: "text", type: "string", description: "Tab label text" }
-        { name: "value", type: "string", description: "Tab identifier value" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether tab is disabled" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Individual tab with content"
-}
-
-// --- Overlay Elements ---
-
-element modal {
-    tag: "modal"
-    category: "overlay"
-    props: [
-        { name: "visible", type: BOOL_OR_STATE, description: "Whether modal is visible" }
-        { name: "onclose", type: MSG_REF_TYPE, description: "Message on modal close" }
-        { name: "title", type: "string", description: "Modal title" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "closable", type: "bool", description: "Whether modal can be closed by clicking outside" }
-    ]
-    allows_children: true
-    description: "Modal dialog overlay"
-}
-
-element tooltip {
-    tag: "tooltip"
-    category: "overlay"
-    props: [
-        { name: "text", type: "string", description: "Tooltip text" }
-        { name: "position", type: "one_of:top,bottom,left,right", description: "Tooltip position" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Tooltip wrapper for element"
-}
-
-// --- Form Elements ---
-
-element slider {
-    tag: "slider"
-    category: "form"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Current value (two-way binding)" }
-        { name: "min", type: "int", description: "Minimum value" }
-        { name: "max", type: "int", description: "Maximum value" }
-        { name: "step", type: "int", description: "Value step increment" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on value change" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether slider is disabled" }
-    ]
-    allows_children: false
-    description: "Range slider input"
-}
-
-element radio {
-    tag: "radio"
-    category: "form"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
-        { name: "option", type: "string", description: "This radio's option value" }
-        { name: "text", type: "string", description: "Radio label text" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "disabled", type: BOOL_OR_STATE, description: "Whether radio is disabled" }
-    ]
-    allows_children: false
-    description: "Radio button (mutually exclusive selection)"
-}
-
-element radiogroup {
-    tag: "radiogroup"
-    category: "form"
-    props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Selected value (two-way binding)" }
-        { name: "onchange", type: MSG_REF_TYPE, description: "Message on selection change" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Radio button group container"
-}
-
-// --- Feedback Elements ---
-
-element progress {
-    tag: "progress"
-    category: "feedback"
-    props: [
-        { name: "value", type: "int", description: "Current progress value" }
-        { name: "max", type: "int", description: "Maximum progress value" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "type", type: "one_of:line,circle", description: "Progress bar type" }
-    ]
-    allows_children: false
-    description: "Progress indicator"
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element badge {
     tag: "badge"
     category: "feedback"
+    tier: "builtin_widget"
+    aliases: ["Badge"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     props: [
-        { name: "text", type: "string", description: "Badge text/content" }
-        { name: "type", type: "one_of:default,success,warning,error,info", description: "Badge style type" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Status badge or tag label"
-}
-
-element spinner {
-    tag: "spinner"
-    category: "feedback"
-    props: [
-        { name: "size", type: "int", description: "Spinner size in pixels" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Loading spinner indicator"
-}
-
-// --- Display Elements ---
-
-element card {
-    tag: "card"
-    category: "display"
-    props: [
-        { name: "title", type: "string", description: "Card title" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "onclick", type: MSG_REF_TYPE, description: "Message on card click" }
+        { name: "text", type: "string", description: "Badge text" }
+        { name: "variant", type: "one_of:default,secondary,destructive,outline", default: "default", description: "Badge variant" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
-    description: "Card content container"
+    description: "Badge for status or labels"
 }
 
-element avatar {
-    tag: "avatar"
-    category: "display"
+element button {
+    tag: "button"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["Button", "btn"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     props: [
-        { name: "src", type: "string", description: "Avatar image URL" }
-        { name: "name", type: "string", description: "User name (for initials fallback)" }
-        { name: "size", type: "int", description: "Avatar size in pixels" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "text", type: "string", description: "Button label text" }
+        { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether button is disabled" }
     ]
     allows_children: false
-    description: "User avatar display"
+    description: "A clickable button element"
 }
 
-// --- Tree Elements ---
+element center {
+    tag: "center"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Center"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
 
-element tree {
-    tag: "tree"
-    category: "data"
+element checkbox {
+    tag: "checkbox"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["Checkbox", "check"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     props: [
-        { name: "value", type: STATE_REF_TYPE, description: "Selected node id" }
-        { name: "onselect", type: MSG_REF_TYPE, description: "Message on node selection" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checked state" }
+        { name: "onchange", type: "msg_ref", description: "Message on toggle" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether checkbox is disabled" }
+    ]
+    allows_children: false
+    description: "Checkbox control"
+}
+
+element codeeditor {
+    tag: "codeeditor"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["codeEditor", "code_editor"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element col {
+    tag: "col"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["Col", "Column", "column"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "gap", type: "int", default: "0", description: "Spacing between children" }
+        { name: "padding", type: "union:int,string", default: "0", description: "Inner padding" }
+        { name: "align", type: "one_of:start,center,end,stretch", default: "start", description: "Cross-axis alignment" }
     ]
     allows_children: true
-    description: "Tree view container (contains tree_item elements)"
+    description: "Vertical layout container"
 }
 
-element tree_item {
-    tag: "tree_item"
-    category: "data"
+element container {
+    tag: "container"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["Container", "div"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
     props: [
-        { name: "text", type: "string", description: "Node label text" }
-        { name: "value", type: "string", description: "Node identifier value" }
-        { name: "expanded", type: BOOL_OR_STATE, description: "Whether node is expanded" }
-        { name: "selected", type: BOOL_OR_STATE, description: "Whether node is selected" }
-        { name: "onclick", type: MSG_REF_TYPE, description: "Message on node click" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "max_width", type: "int", description: "Maximum width in pixels" }
+        { name: "padding", type: "union:int,string", description: "Inner padding" }
     ]
     allows_children: true
-    description: "Tree node item (can contain nested tree_item)"
+    description: "Generic container with optional constraints"
 }
-
-// --- Typography Elements ---
-
-element text {
-    tag: "text"
-    category: "typography"
-    props: []  // Content is inline, not a named prop
-    allows_children: false
-    description: "Text content (literal or interpolated)"
-}
-
-element h1 {
-    tag: "h1"
-    category: "typography"
-    props: [
-        { name: "text", type: "string", description: "Heading text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Level 1 heading"
-}
-
-element h2 {
-    tag: "h2"
-    category: "typography"
-    props: [
-        { name: "text", type: "string", description: "Heading text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Level 2 heading"
-}
-
-element p {
-    tag: "p"
-    category: "typography"
-    props: [
-        { name: "text", type: "string", description: "Paragraph text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Paragraph text"
-}
-
-element span {
-    tag: "span"
-    category: "typography"
-    props: [
-        { name: "text", type: "string", description: "Span text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Inline text span"
-}
-
-// --- Media Elements ---
-
-element image {
-    tag: "image"
-    category: "media"
-    props: [
-        { name: "src", type: "string", required: true, description: "Image URL" }
-        { name: "alt", type: "string", description: "Alt text" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "fit", type: "one_of:cover,contain,fill,none", description: "Object fit mode" }
-    ]
-    allows_children: false
-    description: "Image display"
-}
-
-element icon {
-    tag: "icon"
-    category: "media"
-    props: [
-        { name: "name", type: "string", required: true, description: "Icon name" }
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "size", type: "int", description: "Icon size in pixels" }
-    ]
-    allows_children: false
-    description: "Icon display"
-}
-
-// --- Utility Elements ---
 
 element divider {
     tag: "divider"
     category: "utility"
+    tier: "builtin_widget"
+    aliases: ["Divider", "hr"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
-        { name: "direction", type: "one_of:horizontal,vertical", description: "Divider direction" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "direction", type: "one_of:horizontal,vertical", default: "horizontal", description: "Divider direction" }
     ]
     allows_children: false
     description: "Horizontal or vertical divider line"
 }
 
+element footer {
+    tag: "footer"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Footer"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element grid {
+    tag: "grid"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["Grid"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "columns", type: "int", default: "1", description: "Number of columns" }
+        { name: "gap", type: "int", default: "0", description: "Cell spacing" }
+    ]
+    allows_children: true
+    description: "Grid layout container"
+}
+
+element h1 {
+    tag: "h1"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H1"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h2 {
+    tag: "h2"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H2"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h3 {
+    tag: "h3"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H3"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element header {
+    tag: "header"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Header"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element icon {
+    tag: "icon"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["Icon"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "name", type: "string", required: true, description: "Icon name" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "size", type: "int", default: "24", description: "Icon size in pixels" }
+    ]
+    allows_children: false
+    description: "Icon display"
+}
+
+element image {
+    tag: "image"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["Image"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "src", type: "string", required: true, description: "Image URL" }
+        { name: "alt", type: "string", default: "", description: "Alt text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "fit", type: "one_of:cover,contain,fill,none", default: "cover", description: "Object fit mode" }
+    ]
+    allows_children: false
+    description: "Image display"
+}
+
+element img {
+    tag: "img"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Img"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element input {
+    tag: "input"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["Input"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "value", type: "state_ref", description: "Bound value (two-way binding)" }
+        { name: "placeholder", type: "string", description: "Placeholder text" }
+        { name: "type", type: "one_of:text,password,email,number", default: "text", description: "Input type" }
+        { name: "onchange", type: "msg_ref", description: "Message on value change" }
+        { name: "onenter", type: "msg_ref", description: "Message on Enter key" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether input is disabled" }
+    ]
+    allows_children: false
+    description: "Text input field"
+}
+
+element label {
+    tag: "label"
+    category: "form"
+    tier: "builtin_widget"
+    aliases: ["Label"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "for", type: "string", description: "Associated form control ID" }
+        { name: "text", type: "string", description: "Label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form label"
+}
+
+element main {
+    tag: "main"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Main"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element menubar {
+    tag: "menubar"
+    category: "navigation"
+    tier: "builtin_widget"
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    sub_widgets: ["menubar_content", "menubar_item", "menubar_label", "menubar_menu", "menubar_separator", "menubar_trigger"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar container"
+}
+
+element nav {
+    tag: "nav"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Nav"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element p {
+    tag: "p"
+    category: "typography"
+    tier: "builtin_widget"
+    aliases: ["P"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Paragraph text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Paragraph text"
+}
+
+element popover {
+    tag: "popover"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["Popover"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["popover_content", "popover_trigger"]
+    props: [
+        { name: "open", type: "expr", description: "Open state (state binding, e.g. .ctx_open)" }
+        { name: "x", type: "expr", description: "Coordinate anchor x (viewport px, contextmenu form)" }
+        { name: "y", type: "expr", description: "Coordinate anchor y (viewport px, contextmenu form)" }
+        { name: "placement", type: "one_of:bottom,bottom-start,bottom-end,top,top-start,top-end,left,right", default: "bottom-start", description: "Panel placement relative to anchor" }
+        { name: "ondismiss", type: "msg_ref", description: "Fired on outside click / anchor click / Esc / focus loss" }
+        { name: "class", type: "union:string,class_binding", description: "Panel chrome classes (bg/border/shadow land on the panel)" }
+    ]
+    allows_children: true
+    description: "Anchored popover (overlay)"
+}
+
+element progress {
+    tag: "progress"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Progress"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element row {
+    tag: "row"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["Row"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "gap", type: "int", default: "0", description: "Spacing between children" }
+        { name: "padding", type: "union:int,string", default: "0", description: "Inner padding" }
+        { name: "align", type: "one_of:start,center,end,stretch", default: "center", description: "Cross-axis alignment" }
+    ]
+    allows_children: true
+    description: "Horizontal layout container"
+}
+
+element scroll {
+    tag: "scroll"
+    category: "layout"
+    tier: "builtin_widget"
+    aliases: ["Scroll", "scrollable"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "direction", type: "one_of:vertical,horizontal,both", default: "vertical", description: "Scroll direction" }
+    ]
+    allows_children: true
+    description: "Scrollable container"
+}
+
+element section {
+    tag: "section"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Section"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element separator {
+    tag: "separator"
+    category: "utility"
+    tier: "builtin_widget"
+    aliases: ["Separator", "sep"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Separator orientation" }
+        { name: "label", type: "string", description: "Optional label for separator" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Visual divider"
+}
+
 element spacer {
     tag: "spacer"
     category: "utility"
+    tier: "builtin_widget"
+    aliases: ["Spacer"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
     props: [
-        { name: "class", type: CLASS_OR_STRING, description: "CSS class(es)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "size", type: "int", description: "Spacer size in pixels (or flex if omitted)" }
     ]
     allows_children: false
     description: "Flexible or fixed space"
 }
 
-// ============================================================================
-// Widget Block Schema
-// ============================================================================
-
-widget_blocks {
-    required: ["msg", "model", "view"]
-    optional: ["computed", "on"]
-}
-
-// ============================================================================
-// Full Schema Export
-// ============================================================================
-
-// This is the complete schema that gets loaded by the parser
-schema aura {
-    version: "1.0.0"
-    elements: [
-        // Layout
-        col, row, grid, scroll, container
-        // Content
-        button, input, checkbox, toggle, link, textarea, select, option
-        // Data
-        table, thead, tbody, tr, th, td, tree, tree_item
-        // Navigation
-        tabs, tab
-        // Overlay
-        modal, tooltip
-        // Form
-        slider, radio, radiogroup
-        // Feedback
-        progress, badge, spinner
-        // Display
-        card, avatar
-        // Typography
-        text, h1, h2, p, span
-        // Media
-        image, icon
-        // Utility
-        divider, spacer
+element span {
+    tag: "span"
+    category: "typography"
+    tier: "builtin_widget"
+    aliases: ["Span"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Span text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
-    widget: widget_blocks
+    allows_children: false
+    description: "Inline text span"
 }
+
+element square {
+    tag: "square"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Square"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element svg {
+    tag: "svg"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element text {
+    tag: "text"
+    category: "typography"
+    tier: "builtin_widget"
+    aliases: ["Text"]
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: false
+    description: "Text content (literal or interpolated)"
+}
+
+element textarea {
+    tag: "textarea"
+    category: "form"
+    tier: "builtin_widget"
+    aliases: ["Textarea"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", description: "Placeholder text" }
+        { name: "value", type: "union:string,state_ref", description: "Textarea value" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "rows", type: "int", description: "Number of rows" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Multi-line text input"
+}
+
+element toolbar {
+    tag: "toolbar"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+
+// ============ tier: native_html ============
+
+element + {
+    tag: "+"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element - {
+    tag: "-"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element circle {
+    tag: "circle"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element clipPath {
+    tag: "clipPath"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element codeblock {
+    tag: "codeblock"
+    category: "content"
+    tier: "native_html"
+    aliases: ["CodeBlock", "Codeblock", "code-block", "code_block"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "lang", type: "string", default: "text", description: "Programming language for syntax highlighting" }
+        { name: "code", type: "string", description: "Code content" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Code block with syntax highlighting"
+}
+
+element codepane {
+    tag: "codepane"
+    category: "content"
+    tier: "native_html"
+    aliases: ["CodePane", "code-pane"]
+    backends: { web: "native", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "auto", type: "string", description: "Auto (AURA) source code" }
+        { name: "vue", type: "string", description: "Generated Vue.js code" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Tabbed code block showing Auto and Vue code side by side"
+}
+
+element defs {
+    tag: "defs"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element ellipse {
+    tag: "ellipse"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element g {
+    tag: "g"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h4 {
+    tag: "h4"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["H4"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h5 {
+    tag: "h5"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["H5"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h6 {
+    tag: "h6"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["H6"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element line {
+    tag: "line"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element linearGradient {
+    tag: "linearGradient"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element link {
+    tag: "link"
+    category: "content"
+    tier: "native_html"
+    aliases: ["Link"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "href", type: "string", required: true, description: "Link URL" }
+        { name: "text", type: "string", description: "Link text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Hyperlink"
+}
+
+element mask {
+    tag: "mask"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element path {
+    tag: "path"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element polygon {
+    tag: "polygon"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element polyline {
+    tag: "polyline"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element previewcard {
+    tag: "previewcard"
+    category: "content"
+    tier: "native_html"
+    aliases: ["PreviewCard", "preview-card", "preview_card"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "id", type: "string", description: "Unique identifier for the preview card (used for state variables)" }
+        { name: "title", type: "string", default: "Preview", description: "Section title" }
+        { name: "auto", type: "string", description: "Auto (AURA) source code" }
+        { name: "vue", type: "string", description: "Generated Vue.js code" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Preview card with collapsible code section - like shadcn-vue docs"
+}
+
+element radialGradient {
+    tag: "radialGradient"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element rect {
+    tag: "rect"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element stop {
+    tag: "stop"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tree {
+    tag: "tree"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["Tree"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tree-item {
+    tag: "tree-item"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["TreeItem", "tree_item"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element use {
+    tag: "use"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+
+// ============ tier: unclassified ============
+
+element Change {
+    tag: "Change"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element TabTrigger {
+    tag: "TabTrigger"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element a {
+    tag: "a"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element audio {
+    tag: "audio"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Audio"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element avatar-fallback {
+    tag: "avatar-fallback"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element avatar-image {
+    tag: "avatar-image"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element canvas {
+    tag: "canvas"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element card-action {
+    tag: "card-action"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element category-section {
+    tag: "category-section"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["category_section"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element chip {
+    tag: "chip"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Chip"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element code {
+    tag: "code"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element component-card {
+    tag: "component-card"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["component_card", "componentcard"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element date {
+    tag: "date"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element date-picker-trigger {
+    tag: "date-picker-trigger"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element datetime {
+    tag: "datetime"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element datetimeinput {
+    tag: "datetimeinput"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dialog {
+    tag: "dialog"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Dialog"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dialog-close {
+    tag: "dialog-close"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-content {
+    tag: "dialog-content"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-description {
+    tag: "dialog-description"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-footer {
+    tag: "dialog-footer"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-header {
+    tag: "dialog-header"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-title {
+    tag: "dialog-title"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-trigger {
+    tag: "dialog-trigger"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-content {
+    tag: "dropdown-menu-content"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-item {
+    tag: "dropdown-menu-item"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-separator {
+    tag: "dropdown-menu-separator"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-trigger {
+    tag: "dropdown-menu-trigger"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element field {
+    tag: "field"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element frame {
+    tag: "frame"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element grid-item {
+    tag: "grid-item"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element li {
+    tag: "li"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Li"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element list {
+    tag: "list"
+    category: "list"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Generic list container"
+}
+
+element list_item {
+    tag: "list_item"
+    category: "list"
+    tier: "unclassified"
+    aliases: ["list-item"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "onclick", type: "msg_ref", description: "Message when clicked" }
+    ]
+    allows_children: true
+    description: "List item"
+}
+
+element loading {
+    tag: "loading"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element media {
+    tag: "media"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element menu-item {
+    tag: "menu-item"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["MenuItem"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element nav-link {
+    tag: "nav-link"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["nav_link"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element nav_item {
+    tag: "nav_item"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element navigation {
+    tag: "navigation"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element navigation-menu {
+    tag: "navigation-menu"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element notification {
+    tag: "notification"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element numberinput {
+    tag: "numberinput"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["number_input"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element overlay {
+    tag: "overlay"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element radioitem {
+    tag: "radioitem"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element range {
+    tag: "range"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Range"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element scroll_view {
+    tag: "scroll_view"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sheet-description {
+    tag: "sheet-description"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element skeleton {
+    tag: "skeleton"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element stack {
+    tag: "stack"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element summary {
+    tag: "summary"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Summary"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element switch {
+    tag: "switch"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Switch"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tag {
+    tag: "tag"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Tag"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element textinput {
+    tag: "textinput"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["text_input"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tfoot {
+    tag: "tfoot"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element toast-provider {
+    tag: "toast-provider"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["toast_provider"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tooltip-content {
+    tag: "tooltip-content"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element tooltip-provider {
+    tag: "tooltip-provider"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element tooltip-trigger {
+    tag: "tooltip-trigger"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element video {
+    tag: "video"
+    category: "unknown"
+    tier: "unclassified"
+    aliases: ["Video"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+
+// ============ tier: web_component ============
+
+element accordion {
+    tag: "accordion"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["accordion_content", "accordion_item", "accordion_trigger"]
+    props: [
+        { name: "type", type: "one_of:single,multiple", default: "single", description: "Accordion type" }
+        { name: "collapsible", type: "bool", default: "false", description: "Allow collapsing all items" }
+        { name: "default", type: "string", description: "Default expanded item value" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Accordion container"
+}
+
+element accordion_content {
+    tag: "accordion_content"
+    category: "content"
+    tier: "web_component"
+    aliases: ["accordion-content"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Accordion content"
+}
+
+element accordion_item {
+    tag: "accordion_item"
+    category: "content"
+    tier: "web_component"
+    aliases: ["accordion-item"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", required: true, description: "Item value (required)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Accordion item"
+}
+
+element accordion_trigger {
+    tag: "accordion_trigger"
+    category: "content"
+    tier: "web_component"
+    aliases: ["accordion-trigger"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Trigger text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Accordion trigger"
+}
+
+element alert {
+    tag: "alert"
+    category: "content"
+    tier: "web_component"
+    aliases: ["Alert"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "variant", type: "one_of:default,destructive", default: "default", description: "Alert style variant" }
+        { name: "title", type: "string", description: "Alert title" }
+        { name: "text", type: "string", description: "Alert description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert message box"
+}
+
+element alert_dialog {
+    tag: "alert_dialog"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["AlertDialog", "alert-dialog"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["alert_dialog_action", "alert_dialog_cancel", "alert_dialog_content", "alert_dialog_description", "alert_dialog_footer", "alert_dialog_header", "alert_dialog_title", "alert_dialog_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog container"
+}
+
+element alert_dialog_action {
+    tag: "alert_dialog_action"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-action"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Action button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog action button"
+}
+
+element alert_dialog_cancel {
+    tag: "alert_dialog_cancel"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-cancel"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Cancel button text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog cancel button"
+}
+
+element alert_dialog_content {
+    tag: "alert_dialog_content"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-content"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog content"
+}
+
+element alert_dialog_description {
+    tag: "alert_dialog_description"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-description"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog description"
+}
+
+element alert_dialog_footer {
+    tag: "alert_dialog_footer"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-footer"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog footer"
+}
+
+element alert_dialog_header {
+    tag: "alert_dialog_header"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-header"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog header"
+}
+
+element alert_dialog_title {
+    tag: "alert_dialog_title"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-title"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog title"
+}
+
+element alert_dialog_trigger {
+    tag: "alert_dialog_trigger"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["alert-dialog-trigger"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Alert dialog trigger"
+}
+
+element aspect_ratio {
+    tag: "aspect_ratio"
+    category: "layout"
+    tier: "web_component"
+    aliases: ["AspectRatio", "aspect-ratio", "aspectratio"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "ratio", type: "int", default: "16", description: "Aspect ratio (e.g., 16 for 16/9)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Aspect ratio container"
+}
+
+element autocomplete {
+    tag: "autocomplete"
+    category: "form"
+    tier: "web_component"
+    aliases: ["Autocomplete"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["autocomplete_empty", "autocomplete_input", "autocomplete_item", "autocomplete_list"]
+    props: [
+        { name: "value", type: "state_ref", description: "Selected value binding" }
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Autocomplete container"
+}
+
+element autocomplete_empty {
+    tag: "autocomplete_empty"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", default: "No results found.", description: "Empty state text" }
+    ]
+    allows_children: true
+    description: "Autocomplete empty state"
+}
+
+element autocomplete_input {
+    tag: "autocomplete_input"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", default: "Search...", description: "Input placeholder" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Autocomplete input"
+}
+
+element autocomplete_item {
+    tag: "autocomplete_item"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Item value" }
+        { name: "text", type: "string", description: "Item text" }
+        { name: "onclick", type: "msg_ref", description: "Select handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Autocomplete option item"
+}
+
+element autocomplete_list {
+    tag: "autocomplete_list"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Autocomplete options list"
+}
+
+element breadcrumb {
+    tag: "breadcrumb"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["breadcrumb_item", "breadcrumb_link", "breadcrumb_list", "breadcrumb_page", "breadcrumb_separator"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Breadcrumb navigation container"
+}
+
+element breadcrumb_item {
+    tag: "breadcrumb_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Breadcrumb item"
+}
+
+element breadcrumb_link {
+    tag: "breadcrumb_link"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "href", type: "string", description: "Link URL" }
+        { name: "text", type: "string", description: "Link text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Breadcrumb link"
+}
+
+element breadcrumb_list {
+    tag: "breadcrumb_list"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Breadcrumb list"
+}
+
+element breadcrumb_page {
+    tag: "breadcrumb_page"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Current page text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Breadcrumb current page"
+}
+
+element breadcrumb_separator {
+    tag: "breadcrumb_separator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Breadcrumb separator"
+}
+
+element button_group {
+    tag: "button_group"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Button orientation" }
+        { name: "size", type: "one_of:sm,default,lg", default: "default", description: "Button size" }
+        { name: "variant", type: "one_of:default,destructive,outline,secondary,ghost,link", default: "default", description: "Button variant" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Button group container"
+}
+
+element calendar {
+    tag: "calendar"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "state_ref", description: "Selected date binding" }
+        { name: "placeholder", type: "string", default: "Pick a date", description: "Placeholder text" }
+        { name: "weekday", type: "one_of:short,long", default: "short", description: "Weekday format" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Calendar date picker"
+}
+
+element card {
+    tag: "card"
+    category: "display"
+    tier: "web_component"
+    aliases: ["Card"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["cardcontent", "carddescription", "cardfooter", "cardheader", "cardtitle"]
+    props: [
+        { name: "variant", type: "one_of:default,outline", default: "default", description: "Card variant style" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card container with sections"
+}
+
+element cardcontent {
+    tag: "cardcontent"
+    category: "display"
+    tier: "web_component"
+    aliases: ["CardContent", "card-content"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card content section"
+}
+
+element carddescription {
+    tag: "carddescription"
+    category: "display"
+    tier: "web_component"
+    aliases: ["CardDescription", "card-description"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card description"
+}
+
+element cardfooter {
+    tag: "cardfooter"
+    category: "display"
+    tier: "web_component"
+    aliases: ["CardFooter", "card-footer"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card footer section"
+}
+
+element cardheader {
+    tag: "cardheader"
+    category: "display"
+    tier: "web_component"
+    aliases: ["CardHeader", "card-header"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card header section"
+}
+
+element cardtitle {
+    tag: "cardtitle"
+    category: "display"
+    tier: "web_component"
+    aliases: ["CardTitle", "card-title"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Card title"
+}
+
+element carousel {
+    tag: "carousel"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["carousel_content", "carousel_item", "carousel_next", "carousel_prev", "carousel_previous"]
+    props: [
+        { name: "align", type: "one_of:start,center,end", default: "center", description: "Slide alignment" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Carousel container"
+}
+
+element carousel_content {
+    tag: "carousel_content"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Carousel content wrapper"
+}
+
+element carousel_item {
+    tag: "carousel_item"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Carousel slide item"
+}
+
+element carousel_next {
+    tag: "carousel_next"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Carousel next button"
+}
+
+element carousel_prev {
+    tag: "carousel_prev"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["carousel_previous"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Carousel previous button"
+}
+
+element carousel_previous {
+    tag: "carousel_previous"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element chart {
+    tag: "chart"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "config", type: "string", description: "Chart config object" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Chart container"
+}
+
+element collapsible {
+    tag: "collapsible"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["collapsible_content", "collapsible_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "default_open", type: "bool", default: "false", description: "Default open state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Collapsible container"
+}
+
+element collapsible_content {
+    tag: "collapsible_content"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Collapsible content"
+}
+
+element collapsible_trigger {
+    tag: "collapsible_trigger"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Collapsible trigger"
+}
+
+element combobox {
+    tag: "combobox"
+    category: "form"
+    tier: "web_component"
+    aliases: ["Combobox"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["combobox_anchor", "combobox_empty", "combobox_group", "combobox_input", "combobox_item", "combobox_list", "combobox_trigger"]
+    props: [
+        { name: "value", type: "state_ref", description: "Selected value binding" }
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Combobox container"
+}
+
+element combobox_anchor {
+    tag: "combobox_anchor"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element combobox_empty {
+    tag: "combobox_empty"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", default: "No results found.", description: "Empty state text" }
+    ]
+    allows_children: true
+    description: "Combobox empty state"
+}
+
+element combobox_group {
+    tag: "combobox_group"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "heading", type: "string", description: "Group heading" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Combobox option group"
+}
+
+element combobox_input {
+    tag: "combobox_input"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", default: "Select...", description: "Input placeholder" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Combobox search input"
+}
+
+element combobox_item {
+    tag: "combobox_item"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Item value" }
+        { name: "text", type: "string", description: "Item text" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Select handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Combobox option item"
+}
+
+element combobox_list {
+    tag: "combobox_list"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Combobox options list"
+}
+
+element combobox_trigger {
+    tag: "combobox_trigger"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Combobox trigger button"
+}
+
+element command {
+    tag: "command"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["command_empty", "command_group", "command_input", "command_item", "command_list", "command_separator", "command_shortcut"]
+    props: [
+        { name: "query", type: "state_ref", description: "Search query binding" }
+        { name: "placeholder", type: "string", default: "Type a command...", description: "Search placeholder" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Command palette container"
+}
+
+element command_empty {
+    tag: "command_empty"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", default: "No results found.", description: "Empty state text" }
+    ]
+    allows_children: true
+    description: "Command palette empty state"
+}
+
+element command_group {
+    tag: "command_group"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "heading", type: "string", description: "Group heading" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Command palette group"
+}
+
+element command_input {
+    tag: "command_input"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", default: "Type a command...", description: "Input placeholder" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Command palette search input"
+}
+
+element command_item {
+    tag: "command_item"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Item value" }
+        { name: "text", type: "string", description: "Item text" }
+        { name: "onclick", type: "msg_ref", description: "Select handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Command palette item"
+}
+
+element command_list {
+    tag: "command_list"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Command palette list container"
+}
+
+element command_separator {
+    tag: "command_separator"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Command palette separator"
+}
+
+element command_shortcut {
+    tag: "command_shortcut"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Shortcut text (e.g., ⌘K)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Command palette keyboard shortcut"
+}
+
+element context_menu {
+    tag: "context_menu"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["ContextMenu", "context-menu"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["context_menu_checkbox_item", "context_menu_content", "context_menu_item", "context_menu_label", "context_menu_radio_group", "context_menu_radio_item", "context_menu_separator", "context_menu_shortcut", "context_menu_sub", "context_menu_sub_content", "context_menu_sub_trigger", "context_menu_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+    ]
+    allows_children: true
+    description: "Context menu container"
+}
+
+element context_menu_checkbox_item {
+    tag: "context_menu_checkbox_item"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_content {
+    tag: "context_menu_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Context menu content"
+}
+
+element context_menu_item {
+    tag: "context_menu_item"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["ContextMenuItem", "context-menu-item"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Item text" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Context menu item"
+}
+
+element context_menu_label {
+    tag: "context_menu_label"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Context menu label"
+}
+
+element context_menu_radio_group {
+    tag: "context_menu_radio_group"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_radio_item {
+    tag: "context_menu_radio_item"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_separator {
+    tag: "context_menu_separator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Context menu separator"
+}
+
+element context_menu_shortcut {
+    tag: "context_menu_shortcut"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_sub {
+    tag: "context_menu_sub"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["context_menu_sub_content", "context_menu_sub_trigger"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_sub_content {
+    tag: "context_menu_sub_content"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_sub_trigger {
+    tag: "context_menu_sub_trigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element context_menu_trigger {
+    tag: "context_menu_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+    ]
+    allows_children: true
+    description: "Context menu trigger (right-click area)"
+}
+
+element drawer {
+    tag: "drawer"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["Drawer"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["drawer_close", "drawer_content", "drawer_description", "drawer_footer", "drawer_header", "drawer_title", "drawer_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "direction", type: "one_of:left,right,top,bottom", default: "bottom", description: "Drawer direction" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer container (Vaul)"
+}
+
+element drawer_close {
+    tag: "drawer_close"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Close button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer close button"
+}
+
+element drawer_content {
+    tag: "drawer_content"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer content"
+}
+
+element drawer_description {
+    tag: "drawer_description"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer description"
+}
+
+element drawer_footer {
+    tag: "drawer_footer"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer footer"
+}
+
+element drawer_header {
+    tag: "drawer_header"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer header"
+}
+
+element drawer_title {
+    tag: "drawer_title"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Drawer title"
+}
+
+element drawer_trigger {
+    tag: "drawer_trigger"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+    ]
+    allows_children: true
+    description: "Drawer trigger"
+}
+
+element dropdown {
+    tag: "dropdown"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["dropdown-menu", "dropdown_content", "dropdown_item", "dropdown_label", "dropdown_separator", "dropdown_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Dropdown menu container"
+}
+
+element dropdown-menu {
+    tag: "dropdown-menu"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["DropdownMenu", "dropdown_menu"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dropdown_content {
+    tag: "dropdown_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position side" }
+        { name: "align", type: "one_of:start,center,end", default: "center", description: "Content alignment" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Dropdown menu content"
+}
+
+element dropdown_item {
+    tag: "dropdown_item"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["DropdownItem", "dropdown-item"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Item value" }
+        { name: "text", type: "string", description: "Item text" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Dropdown menu item"
+}
+
+element dropdown_label {
+    tag: "dropdown_label"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Dropdown menu label"
+}
+
+element dropdown_separator {
+    tag: "dropdown_separator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Dropdown menu separator"
+}
+
+element dropdown_trigger {
+    tag: "dropdown_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Dropdown menu trigger"
+}
+
+element form {
+    tag: "form"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["form_control", "form_description", "form_field", "form_item", "form_label", "form_message"]
+    props: [
+        { name: "id", type: "string", description: "Form ID" }
+        { name: "onsubmit", type: "msg_ref", description: "Submit handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form container"
+}
+
+element form_control {
+    tag: "form_control"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form control wrapper"
+}
+
+element form_description {
+    tag: "form_description"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form field description"
+}
+
+element form_field {
+    tag: "form_field"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "name", type: "string", required: true, description: "Field name" }
+        { name: "value", type: "state_ref", description: "Field value binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form field"
+}
+
+element form_item {
+    tag: "form_item"
+    category: "form"
+    tier: "web_component"
+    aliases: ["form-item"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form item wrapper"
+}
+
+element form_label {
+    tag: "form_label"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "for", type: "string", description: "Label for attribute" }
+        { name: "text", type: "string", description: "Label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form label"
+}
+
+element form_message {
+    tag: "form_message"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Form validation message"
+}
+
+element hover_card {
+    tag: "hover_card"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["hover_card_content", "hover_card_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "open_delay", type: "int", default: "0", description: "Open delay (ms)" }
+        { name: "close_delay", type: "int", default: "300", description: "Close delay (ms)" }
+    ]
+    allows_children: true
+    description: "Hover card container"
+}
+
+element hover_card_content {
+    tag: "hover_card_content"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Hover card content"
+}
+
+element hover_card_trigger {
+    tag: "hover_card_trigger"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+    ]
+    allows_children: true
+    description: "Hover card trigger"
+}
+
+element input_group {
+    tag: "input_group"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Input group wrapper"
+}
+
+element input_otp {
+    tag: "input_otp"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "state_ref", description: "OTP value binding" }
+        { name: "length", type: "int", default: "6", description: "Number of OTP digits" }
+        { name: "pattern", type: "string", description: "Input pattern" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "OTP input container"
+}
+
+element kbd {
+    tag: "kbd"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Keyboard key text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Keyboard key display"
+}
+
+element menubar_content {
+    tag: "menubar_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "align", type: "one_of:start,center,end", default: "start", description: "Content alignment" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar content"
+}
+
+element menubar_item {
+    tag: "menubar_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Item text" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar item"
+}
+
+element menubar_label {
+    tag: "menubar_label"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar label"
+}
+
+element menubar_menu {
+    tag: "menubar_menu"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Menu value" }
+    ]
+    allows_children: true
+    description: "Menubar menu"
+}
+
+element menubar_separator {
+    tag: "menubar_separator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Menubar separator"
+}
+
+element menubar_trigger {
+    tag: "menubar_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Trigger text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Menubar trigger"
+}
+
+element modal {
+    tag: "modal"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Modal"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element native_select {
+    tag: "native_select"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "state_ref", description: "Selected value binding" }
+        { name: "name", type: "string", description: "Form field name" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Native HTML select"
+}
+
+element nav_menu {
+    tag: "nav_menu"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["nav_menu_content", "nav_menu_indicator", "nav_menu_item", "nav_menu_link", "nav_menu_list", "nav_menu_trigger"]
+    props: [
+        { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Menu orientation" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu container"
+}
+
+element nav_menu_content {
+    tag: "nav_menu_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu content"
+}
+
+element nav_menu_indicator {
+    tag: "nav_menu_indicator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Navigation menu indicator"
+}
+
+element nav_menu_item {
+    tag: "nav_menu_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Item value" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu item"
+}
+
+element nav_menu_link {
+    tag: "nav_menu_link"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "href", type: "string", description: "Link URL" }
+        { name: "text", type: "string", description: "Link text" }
+        { name: "active", type: "bool", default: "false", description: "Active state" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu link"
+}
+
+element nav_menu_list {
+    tag: "nav_menu_list"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu list"
+}
+
+element nav_menu_trigger {
+    tag: "nav_menu_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Trigger text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation menu trigger"
+}
+
+element number_field {
+    tag: "number_field"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["number_field_decrement", "number_field_increment", "number_field_input"]
+    props: [
+        { name: "value", type: "state_ref", description: "Number value binding" }
+        { name: "min", type: "int", description: "Minimum value" }
+        { name: "max", type: "int", description: "Maximum value" }
+        { name: "step", type: "int", default: "1", description: "Step increment" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Number input field with controls"
+}
+
+element number_field_decrement {
+    tag: "number_field_decrement"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Number field decrement button"
+}
+
+element number_field_increment {
+    tag: "number_field_increment"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Number field increment button"
+}
+
+element number_field_input {
+    tag: "number_field_input"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", description: "Placeholder text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Number field input"
+}
+
+element option {
+    tag: "option"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Option"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element pagination {
+    tag: "pagination"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["pagination_ellipsis", "pagination_first", "pagination_item", "pagination_last", "pagination_list", "pagination_next", "pagination_prev"]
+    props: [
+        { name: "page", type: "state_ref", description: "Current page binding" }
+        { name: "total", type: "int", required: true, description: "Total items" }
+        { name: "per_page", type: "int", default: "10", description: "Items per page" }
+        { name: "sibling_count", type: "int", default: "1", description: "Sibling pages to show" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination container"
+}
+
+element pagination_ellipsis {
+    tag: "pagination_ellipsis"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Pagination ellipsis"
+}
+
+element pagination_first {
+    tag: "pagination_first"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination first page button"
+}
+
+element pagination_item {
+    tag: "pagination_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "int", description: "Page number" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination page item"
+}
+
+element pagination_last {
+    tag: "pagination_last"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination last page button"
+}
+
+element pagination_list {
+    tag: "pagination_list"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination list"
+}
+
+element pagination_next {
+    tag: "pagination_next"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination next button"
+}
+
+element pagination_prev {
+    tag: "pagination_prev"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Pagination previous button"
+}
+
+element pin_input {
+    tag: "pin_input"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["pin_input_group", "pin_input_separator", "pin_input_slot"]
+    props: [
+        { name: "value", type: "state_ref", description: "PIN value binding" }
+        { name: "length", type: "int", default: "4", description: "Number of PIN digits" }
+        { name: "type", type: "one_of:text,password", default: "text", description: "Input type" }
+        { name: "otp", type: "bool", default: "true", description: "Enable OTP autocomplete" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "PIN/OTP input container"
+}
+
+element pin_input_group {
+    tag: "pin_input_group"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "PIN input group wrapper"
+}
+
+element pin_input_separator {
+    tag: "pin_input_separator"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "PIN input separator"
+}
+
+element pin_input_slot {
+    tag: "pin_input_slot"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "index", type: "int", required: true, description: "Slot index (0-based)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "PIN input slot"
+}
+
+element popover_content {
+    tag: "popover_content"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "bottom", description: "Content position side" }
+        { name: "align", type: "one_of:start,center,end", default: "center", description: "Content alignment" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Popover content"
+}
+
+element popover_trigger {
+    tag: "popover_trigger"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Popover trigger"
+}
+
+element radio {
+    tag: "radio"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Radio"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["radio-group"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element radio-group {
+    tag: "radio-group"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["RadioGroup", "radiogroup"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element range_calendar {
+    tag: "range_calendar"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "state_ref", description: "Date range binding" }
+        { name: "placeholder", type: "string", default: "Pick a date range", description: "Placeholder text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Date range picker calendar"
+}
+
+element resizable {
+    tag: "resizable"
+    category: "layout"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["resizable_handle", "resizable_panel"]
+    props: [
+        { name: "direction", type: "one_of:horizontal,vertical", default: "horizontal", description: "Resize direction" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Resizable panel group"
+}
+
+element resizable_handle {
+    tag: "resizable_handle"
+    category: "layout"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "with_handle", type: "bool", default: "false", description: "Show drag handle" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Resizable panel handle"
+}
+
+element resizable_panel {
+    tag: "resizable_panel"
+    category: "layout"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "default_size", type: "int", description: "Default panel size (%)" }
+        { name: "min_size", type: "int", description: "Minimum panel size (%)" }
+        { name: "max_size", type: "int", description: "Maximum panel size (%)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Resizable panel"
+}
+
+element select {
+    tag: "select"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Select"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["select-content", "select-group", "select-item", "select-label", "select-separator", "select-trigger", "select-value", "selectscrollbutton"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-content {
+    tag: "select-content"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectcontent"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-group {
+    tag: "select-group"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectgroup"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-item {
+    tag: "select-item"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectitem"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-label {
+    tag: "select-label"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectlabel"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-separator {
+    tag: "select-separator"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectseparator"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-trigger {
+    tag: "select-trigger"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selecttrigger"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element select-value {
+    tag: "select-value"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["selectvalue"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element selectscrollbutton {
+    tag: "selectscrollbutton"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element sheet {
+    tag: "sheet"
+    category: "overlay"
+    tier: "web_component"
+    aliases: ["Sheet"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["sheet_content", "sheet_footer", "sheet_header", "sheet_title", "sheet_trigger"]
+    props: [
+        { name: "open", type: "state_ref", description: "Open state binding" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet (side drawer) container"
+}
+
+element sheet_content {
+    tag: "sheet_content"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "side", type: "one_of:top,right,bottom,left", default: "right", description: "Sheet position side" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet content"
+}
+
+element sheet_footer {
+    tag: "sheet_footer"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet footer"
+}
+
+element sheet_header {
+    tag: "sheet_header"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet header"
+}
+
+element sheet_title {
+    tag: "sheet_title"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet title"
+}
+
+element sheet_trigger {
+    tag: "sheet_trigger"
+    category: "overlay"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "as_child", type: "bool", default: "false", description: "Use child as trigger" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sheet trigger"
+}
+
+element sidebar {
+    tag: "sidebar"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["sidebar_content", "sidebar_footer", "sidebar_group", "sidebar_group_content", "sidebar_group_label", "sidebar_header", "sidebar_menu", "sidebar_menu_button", "sidebar_menu_item", "sidebar_provider", "sidebar_trigger"]
+    props: [
+        { name: "side", type: "one_of:left,right", default: "left", description: "Sidebar position" }
+        { name: "variant", type: "one_of:sidebar,floating,inset", default: "sidebar", description: "Sidebar variant" }
+        { name: "collapsible", type: "one_of:offcanvas,icon,none", default: "offcanvas", description: "Collapsible mode" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar container"
+}
+
+element sidebar_content {
+    tag: "sidebar_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar content"
+}
+
+element sidebar_footer {
+    tag: "sidebar_footer"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar footer"
+}
+
+element sidebar_group {
+    tag: "sidebar_group"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["sidebar_group_content", "sidebar_group_label"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar group"
+}
+
+element sidebar_group_content {
+    tag: "sidebar_group_content"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar group content"
+}
+
+element sidebar_group_label {
+    tag: "sidebar_group_label"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Group label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar group label"
+}
+
+element sidebar_header {
+    tag: "sidebar_header"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar header"
+}
+
+element sidebar_menu {
+    tag: "sidebar_menu"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["sidebar_menu_button", "sidebar_menu_item"]
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu"
+}
+
+element sidebar_menu_button {
+    tag: "sidebar_menu_button"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "tooltip", type: "string", description: "Tooltip text" }
+        { name: "active", type: "bool", default: "false", description: "Active state" }
+        { name: "text", type: "string", description: "Button text" }
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu button"
+}
+
+element sidebar_menu_item {
+    tag: "sidebar_menu_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar menu item"
+}
+
+element sidebar_provider {
+    tag: "sidebar_provider"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Sidebar provider context"
+}
+
+element sidebar_trigger {
+    tag: "sidebar_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Sidebar trigger button"
+}
+
+element slider {
+    tag: "slider"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Slider"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element spinner {
+    tag: "spinner"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Spinner"]
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element stepper {
+    tag: "stepper"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["stepper_description", "stepper_indicator", "stepper_item", "stepper_separator", "stepper_title", "stepper_trigger"]
+    props: [
+        { name: "value", type: "state_ref", description: "Current step binding" }
+        { name: "orientation", type: "one_of:horizontal,vertical", default: "horizontal", description: "Stepper orientation" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper container"
+}
+
+element stepper_description {
+    tag: "stepper_description"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Step description text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper description"
+}
+
+element stepper_indicator {
+    tag: "stepper_indicator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper indicator"
+}
+
+element stepper_item {
+    tag: "stepper_item"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "step", type: "int", required: true, description: "Step number" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper item"
+}
+
+element stepper_separator {
+    tag: "stepper_separator"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Stepper separator"
+}
+
+element stepper_title {
+    tag: "stepper_title"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Step title text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper title"
+}
+
+element stepper_trigger {
+    tag: "stepper_trigger"
+    category: "navigation"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Click handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Stepper trigger"
+}
+
+element tab {
+    tag: "tab"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Tab"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["tabs", "tabscontent", "tabslist", "tabstrigger"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table {
+    tag: "table"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Table"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    sub_widgets: ["table_body", "table_caption", "table_cell", "table_head", "table_header", "table_row"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_body {
+    tag: "table_body"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_caption {
+    tag: "table_caption"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_cell {
+    tag: "table_cell"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_head {
+    tag: "table_head"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["table_header"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_header {
+    tag: "table_header"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element table_row {
+    tag: "table_row"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tabs {
+    tag: "tabs"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["Tabs"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["tabscontent", "tabslist", "tabstrigger"]
+    props: [
+        { name: "defaultvalue", type: "string", description: "Default active tab" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tabs container"
+}
+
+element tabscontent {
+    tag: "tabscontent"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["TabsContent", "tabs-content"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", required: true, description: "Tab value identifier" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tab content panel"
+}
+
+element tabslist {
+    tag: "tabslist"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["tabs-list"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tabs list container"
+}
+
+element tabstrigger {
+    tag: "tabstrigger"
+    category: "navigation"
+    tier: "web_component"
+    aliases: ["TabsTrigger", "tabs-trigger"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", required: true, description: "Tab value identifier" }
+        { name: "text", type: "string", description: "Tab label text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tab trigger button"
+}
+
+element tags_input {
+    tag: "tags_input"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["tags_input_delete", "tags_input_field", "tags_input_item"]
+    props: [
+        { name: "value", type: "state_ref", description: "Tags array binding" }
+        { name: "placeholder", type: "string", default: "Add tag...", description: "Input placeholder" }
+        { name: "max", type: "int", description: "Maximum tags" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tags input container"
+}
+
+element tags_input_delete {
+    tag: "tags_input_delete"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "onclick", type: "msg_ref", description: "Delete handler" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tags input delete button"
+}
+
+element tags_input_field {
+    tag: "tags_input_field"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "placeholder", type: "string", description: "Input placeholder" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Tags input text field"
+}
+
+element tags_input_item {
+    tag: "tags_input_item"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", description: "Tag value" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Tags input tag item"
+}
+
+element tbody {
+    tag: "tbody"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Tbody"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element td {
+    tag: "td"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Td"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element th {
+    tag: "th"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Th"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    sub_widgets: ["thead"]
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element thead {
+    tag: "thead"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Thead"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element toast {
+    tag: "toast"
+    category: "content"
+    tier: "web_component"
+    aliases: ["Toast"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    sub_widgets: ["toaster"]
+    props: [
+        { name: "position", type: "one_of:top-left,top-center,top-right,bottom-left,bottom-center,bottom-right", default: "bottom-right", description: "Toast position" }
+        { name: "rich_colors", type: "bool", default: "false", description: "Use rich colors" }
+        { name: "expand", type: "bool", default: "false", description: "Expand toasts" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Toast notification container (Sonner)"
+}
+
+element toaster {
+    tag: "toaster"
+    category: "content"
+    tier: "web_component"
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "position", type: "one_of:top-left,top-center,top-right,bottom-left,bottom-center,bottom-right", default: "bottom-right", description: "Toast position" }
+    ]
+    allows_children: false
+    description: "Toast notification container (alias)"
+}
+
+element toggle {
+    tag: "toggle"
+    category: "content"
+    tier: "web_component"
+    aliases: ["Toggle"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "checked", type: "union:bool,state_ref", default: "false", description: "Checked state" }
+        { name: "onchange", type: "msg_ref", description: "Message on toggle" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Toggle switch"
+}
+
+element toggle_group {
+    tag: "toggle_group"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    sub_widgets: ["toggle_group_item"]
+    props: [
+        { name: "value", type: "state_ref", description: "Selected value binding" }
+        { name: "type", type: "one_of:single,multiple", default: "single", description: "Selection type" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Toggle group container"
+}
+
+element toggle_group_item {
+    tag: "toggle_group_item"
+    category: "form"
+    tier: "web_component"
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "value", type: "string", required: true, description: "Item value" }
+        { name: "label", type: "string", description: "ARIA label" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Toggle group item"
+}
+
+element tooltip {
+    tag: "tooltip"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Tooltip"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tr {
+    tag: "tr"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Tr"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+

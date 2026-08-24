@@ -734,126 +734,46 @@ widget_blocks {
 
     #[test]
     fn test_new_elements() {
+        // Plan 435 P1:schema/aura.at 由生产代码提取生成(330 元素)。
+        // props 断言只对 rs 声明过的元素(rs 是唯一带类型 props 的来源);
+        // select/slider/table 家族等未在 rs 声明的元素此刻 props 为空 —— P2 补。
         let schema = load_default_schema().expect("Failed to load schema");
 
-        // Check textarea element
-        let textarea = schema.get_element("textarea").expect("textarea element should exist");
-        assert_eq!(textarea.tag, "textarea");
+        // 规模:新 schema 覆盖全部生产表 + gallery 消费侧
+        assert!(
+            schema.all_tags().len() >= 300,
+            "expect >=300 elements, got {}",
+            schema.all_tags().len()
+        );
+
+        // rs 支撑的元素:props 逐项断言
+        let button = schema.get_element("button").expect("button");
+        assert!(!button.allows_children);
+        assert!(button.get_prop("text").is_some());
+        assert!(button.get_prop("onclick").is_some());
+        assert!(button.get_prop("disabled").is_some());
+
+        let col = schema.get_element("col").expect("col");
+        assert!(col.allows_children);
+        assert!(col.get_prop("gap").is_some());
+
+        let input = schema.get_element("input").expect("input");
+        assert!(input.get_prop("value").is_some());
+        assert!(input.get_prop("placeholder").is_some());
+
+        let textarea = schema.get_element("textarea").expect("textarea");
         assert!(!textarea.allows_children);
         assert!(textarea.get_prop("value").is_some());
         assert!(textarea.get_prop("rows").is_some());
-        assert!(textarea.get_prop("cols").is_some());
 
-        // Check select element
-        let select = schema.get_element("select").expect("select element should exist");
-        assert_eq!(select.tag, "select");
-        assert!(select.allows_children);  // Contains options
-        assert!(select.get_prop("value").is_some());
-        assert!(select.get_prop("onchange").is_some());
-
-        // Check option element
-        let option = schema.get_element("option").expect("option element should exist");
-        assert_eq!(option.tag, "option");
-        assert!(!option.allows_children);
-        assert!(option.get_prop("value").is_some());
-
-        // Check table elements
-        let table = schema.get_element("table").expect("table element should exist");
-        assert_eq!(table.tag, "table");
-        assert!(table.allows_children);
-
-        let thead = schema.get_element("thead").expect("thead element should exist");
-        assert!(thead.allows_children);
-
-        let tbody = schema.get_element("tbody").expect("tbody element should exist");
-        assert!(tbody.allows_children);
-
-        let tr = schema.get_element("tr").expect("tr element should exist");
-        assert!(tr.allows_children);
-
-        let th = schema.get_element("th").expect("th element should exist");
-        assert!(!th.allows_children);
-        assert!(th.get_prop("text").is_some());
-        assert!(th.get_prop("colspan").is_some());
-
-        let td = schema.get_element("td").expect("td element should exist");
-        assert!(!td.allows_children);
-        assert!(td.get_prop("text").is_some());
-        assert!(td.get_prop("align").is_some());
-
-        // Check tabs elements
-        let tabs = schema.get_element("tabs").expect("tabs element should exist");
-        assert!(tabs.allows_children);
-        assert!(tabs.get_prop("value").is_some());
-        assert!(tabs.get_prop("onchange").is_some());
-
-        let tab = schema.get_element("tab").expect("tab element should exist");
-        assert!(tab.allows_children);
-        assert!(tab.get_prop("text").is_some());
-
-        // Check modal element
-        let modal = schema.get_element("modal").expect("modal element should exist");
-        assert!(modal.allows_children);
-        assert!(modal.get_prop("visible").is_some());
-        assert!(modal.get_prop("onclose").is_some());
-
-        // Check slider element
-        let slider = schema.get_element("slider").expect("slider element should exist");
-        assert!(!slider.allows_children);
-        assert!(slider.get_prop("value").is_some());
-        assert!(slider.get_prop("min").is_some());
-        assert!(slider.get_prop("max").is_some());
-
-        // Check radio elements
-        let radio = schema.get_element("radio").expect("radio element should exist");
-        assert!(!radio.allows_children);
-        assert!(radio.get_prop("value").is_some());
-        assert!(radio.get_prop("option").is_some());
-
-        let radiogroup = schema.get_element("radiogroup").expect("radiogroup element should exist");
-        assert!(radiogroup.allows_children);
-
-        // Check progress element
-        let progress = schema.get_element("progress").expect("progress element should exist");
-        assert!(!progress.allows_children);
-        assert!(progress.get_prop("value").is_some());
-        assert!(progress.get_prop("max").is_some());
-
-        // Check badge element
-        let badge = schema.get_element("badge").expect("badge element should exist");
-        assert!(!badge.allows_children);
-        assert!(badge.get_prop("text").is_some());
-        assert!(badge.get_prop("type").is_some());
-
-        // Check spinner element
-        let spinner = schema.get_element("spinner").expect("spinner element should exist");
-        assert!(!spinner.allows_children);
-
-        // Check card element
-        let card = schema.get_element("card").expect("card element should exist");
-        assert!(card.allows_children);
-        assert!(card.get_prop("title").is_some());
-
-        // Check avatar element
-        let avatar = schema.get_element("avatar").expect("avatar element should exist");
-        assert!(!avatar.allows_children);
-        assert!(avatar.get_prop("src").is_some());
-        assert!(avatar.get_prop("name").is_some());
-
-        // Check tree elements
-        let tree = schema.get_element("tree").expect("tree element should exist");
-        assert!(tree.allows_children);
-        assert!(tree.get_prop("onselect").is_some());
-
-        let tree_item = schema.get_element("tree_item").expect("tree_item element should exist");
-        assert!(tree_item.allows_children);
-        assert!(tree_item.get_prop("text").is_some());
-        assert!(tree_item.get_prop("expanded").is_some());
-
-        // Check tooltip element
-        let tooltip = schema.get_element("tooltip").expect("tooltip element should exist");
-        assert!(tooltip.allows_children);
-        assert!(tooltip.get_prop("text").is_some());
-        assert!(tooltip.get_prop("position").is_some());
+        // 未在 rs 声明、但生产表存在的元素:存在性断言(props P2 补)
+        for tag in ["select", "table", "thead", "tbody", "tr", "th", "td",
+                    "tabs", "modal", "slider", "radio", "progress", "tooltip"] {
+            assert!(
+                schema.get_element(tag).is_some(),
+                "element `{}` should exist in generated schema",
+                tag
+            );
+        }
     }
 }
