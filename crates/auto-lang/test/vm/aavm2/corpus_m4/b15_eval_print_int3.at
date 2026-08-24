@@ -1,0 +1,2 @@
+// recycled from 99_bootstrap/042_eval_for_loop
+print(12345)

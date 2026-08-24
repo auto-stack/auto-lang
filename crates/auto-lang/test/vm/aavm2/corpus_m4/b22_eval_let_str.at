@@ -1,0 +1,3 @@
+// recycled from 99_bootstrap/049_eval_str_var
+let x = "hello"
+print(x)

@@ -13,15 +13,20 @@
 //            bp-n_args+rel-1)/store.loc.0/1/store.local/
 //            add/sub/mul/div/mod/eq/ne/lt/gt/le/ge/and/or/not/
 //            str.cat/dup/pop/jmp/jmp.z/.line(nop)/call/call.nat
-//            (nat#10=print → 输出行收集)/ret/halt
-// Missing:   浮点/数组/对象/下标/方法调用 native、闭包、全局变量、
-//            任务/调度/async(debugger/trace 按计划不移植)、
-//            值 RC(宿主 AutoVM 自管 .at 值生命周期)
+//            (nat#10=print → 输出行收集)/ret/halt;
+//            [M4 扩]create.arr(元素依次建 Auto List)、get.elem
+//            (负下标归一/OOB 推 0,镜像 engine.rs 4403)、set.elem
+//            (value 在栈底:idx,arr,value 逆序弹;引用语义原地写)、
+//            arr.len(List/str 动态分派,镜像 ARRAY_LEN 的两分支)
+// Missing:   浮点/对象/字符串下标(码点取值)/方法调用 native、
+//            闭包、全局变量、任务/调度/async(debugger/trace 按
+//            计划不移植)、值 RC(宿主 AutoVM 自管 .at 值生命周期)
 // DIVERGE:   D29: 字节码 Flash + ip 解码 → 指令 List 直译
 //            (ip=指令索引;jmp/call 目标即索引);print 输出 →
 //            out 字符串收集(run 返回);栈 = Auto List + 手记账 sp
 //            (ev_push 兼容 push/set);值 = Auto 原生值
-//            (int/str/bool;nil 以 0 表示);RET 帧/参数槽位算术
+//            (int/str;nil 与 bool 以 0/1 整型承载——宿主 print 对
+//            bool 亦打 "1"/"0",可观察行为一致);RET 帧/参数槽位算术
 //            与 engine.rs 逐条对齐(参数寻址 bp-n_args+rel-1)。
 //            D22 同款错误短路(ev_err)。
 
@@ -36,9 +41,27 @@ fn ev_push(stack List, sp int, v) int {
     return sp + 1
 }
 
-// 值显示(print 参数):镜像宿主 ADD-含字符串即拼接的语义
+// 值显示(print 参数):镜像宿主 ADD-含字符串即拼接的语义;负 int
+// 先解偏置(D30 编码)
 fn ev_fmt(v) str {
-    return "" + v
+    return "" + ev_dec(v)
+}
+
+// v2 负 int 编码(D30):宿主无类型 List 的负值与字符串哨兵别名,
+// 负 int 偏置 -1e9 入栈(落在任何真实池界之外,配合宿主 push_tagged_
+// value_rc 的池界检查原样读回);非负与字符串原样穿透
+fn ev_enc(v) {
+    if v < 0 {
+        return v - 1000000000
+    }
+    return v
+}
+
+fn ev_dec(v) {
+    if v <= -1000000000 {
+        return v + 1000000000
+    }
+    return v
 }
 
 // ── 执行循环 ──────────────────────────────────────────────────
@@ -108,8 +131,9 @@ fn ev_run_t(source str, trace int) str {
                 ip = ins.n
             }
         } else if op == "const.i32" {
-            sp = ev_push(stack, sp, ins.n)
+            sp = ev_push(stack, sp, ev_enc(ins.n))
         } else if op == "push.bool" {
+            // 布尔以 1/0 承载:与宿主 print(bool)→"1"/"0" 的可观察行为一致
             if ins.s == "true" {
                 sp = ev_push(stack, sp, 1)
             } else {
@@ -188,8 +212,8 @@ fn ev_run_t(source str, trace int) str {
             sp = sp - 1
             sp = ev_push(stack, sp, 0)
         } else if op == "add" || op == "sub" || op == "mul" || op == "div" || op == "mod" {
-            var b = stack.get(sp - 1)
-            var a = stack.get(sp - 2)
+            var b = ev_dec(stack.get(sp - 1))
+            var a = ev_dec(stack.get(sp - 2))
             sp = sp - 1
             var r = 0
             if op == "add" {
@@ -203,15 +227,15 @@ fn ev_run_t(source str, trace int) str {
             } else {
                 r = a % b
             }
-            stack.set(sp - 1, r)
+            stack.set(sp - 1, ev_enc(r))
         } else if op == "str.cat" {
             var b2 = stack.get(sp - 1)
             var a2 = stack.get(sp - 2)
             sp = sp - 1
             stack.set(sp - 1, a2 + b2)
         } else if op == "eq" || op == "ne" || op == "lt" || op == "gt" || op == "le" || op == "ge" {
-            var bv = stack.get(sp - 1)
-            var av = stack.get(sp - 2)
+            var bv = ev_dec(stack.get(sp - 1))
+            var av = ev_dec(stack.get(sp - 2))
             sp = sp - 1
             var r2 = 0
             var hit = true
@@ -254,6 +278,49 @@ fn ev_run_t(source str, trace int) str {
             } else {
                 stack.set(sp - 1, 0)
             }
+        } else if op == "neg" {
+            var v10 = ev_dec(stack.get(sp - 1))
+            stack.set(sp - 1, ev_enc(-v10))
+        } else if op == "create.arr" {
+            // 元素已按序压栈;自下而上读入新 List(引用值直存)
+            var n6 = ins.n
+            var arr6 = List.new()
+            var i6 = 0
+            while i6 < n6 {
+                arr6.push(stack.get(sp - n6 + i6))
+                i6 = i6 + 1
+            }
+            sp = sp - n6
+            sp = ev_push(stack, sp, arr6)
+        } else if op == "get.elem" {
+            // 栈:[..., arr, idx];负下标归一,-1=末位;OOB 推 0(engine.rs 4403)
+            var idx7 = ev_dec(stack.get(sp - 1))
+            var arr7 = stack.get(sp - 2)
+            var len7 = arr7.len()
+            var j7 = idx7
+            if j7 < 0 {
+                j7 = len7 + j7
+            }
+            var val7 = 0
+            if j7 >= 0 && j7 < len7 {
+                val7 = arr7.get(j7)
+            }
+            sp = sp - 2
+            sp = ev_push(stack, sp, val7)
+        } else if op == "set.elem" {
+            // 栈:[..., value, arr, idx](value 展栈底,Rust quick-fix 栈序);
+            // List 引用语义原地写
+            var idx8 = ev_dec(stack.get(sp - 1))
+            var arr8 = stack.get(sp - 2)
+            var val8 = stack.get(sp - 3)
+            arr8.set(idx8, val8)
+            sp = sp - 3
+        } else if op == "arr.len" {
+            // 动态分派:List→元素数,str→长度(镜像 ARRAY_LEN 两分支)
+            var v9 = stack.get(sp - 1)
+            var l9 = v9.len()
+            sp = sp - 1
+            sp = ev_push(stack, sp, l9)
         } else {
             return "ENGINE-ERROR:unknown op " + op
         }

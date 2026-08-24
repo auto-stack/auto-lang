@@ -1,0 +1,5 @@
+// recycled from 99_bootstrap/051a_eval_str_fn_arg_simple
+fn double(x) {
+    return x + x
+}
+print(double(3))

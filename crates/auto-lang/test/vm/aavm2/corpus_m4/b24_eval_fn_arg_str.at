@@ -1,0 +1,5 @@
+// recycled from 99_bootstrap/051_eval_str_fn_arg
+fn greet(name) {
+    print(name)
+}
+greet("world")

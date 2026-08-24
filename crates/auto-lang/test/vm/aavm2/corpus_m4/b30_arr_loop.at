@@ -1,0 +1,12 @@
+// composite: array literal + for-range index read + len + index write
+fn main() {
+    var a = [10, 20, 30]
+    var total = 0
+    for i in 0..3 {
+        total = total + a[i]
+    }
+    print(total)
+    print(a.len())
+    a[1] = 5
+    print(a[0] + a[1] + a[2])
+}

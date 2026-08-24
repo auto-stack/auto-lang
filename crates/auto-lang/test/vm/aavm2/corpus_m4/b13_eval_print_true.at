@@ -1,0 +1,2 @@
+// recycled from 99_bootstrap/040_eval_fn_call
+print(true)

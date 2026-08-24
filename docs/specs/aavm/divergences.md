@@ -168,3 +168,46 @@
 | engine.at | 1 |
 | 合计 | 20 |
 
+
+## M4 扩语料(2026-08-24 续,S5 未竟项收口)
+
+- **D30**: 负 int 值域偏置编码(engine.at ev_enc/ev_dec,−1e9)。宿主
+  无类型 List(ListData<i32>)的负值与字符串哨兵(-(idx+1))本质别名,
+  负 int 经 set→get 往返读回池字符串(实测 -1 → "len")。配套宿主修复
+  (blocker 级,计划纪律内已记录决策):native.rs push_tagged_value_rc
+  增池界检查,越界哨兵回落裸 i32(此前为悬垂 string tag,读回
+  "<invalid string index: N>");回归测试 repro_d30_negative_int_roundtrip
+  常驻,全量零新增失败。v2 侧:const.i32/neg/算术/比较/下标在出入栈界
+  编码解码,数组元素保持编码域一致,print 经 ev_fmt 解码;字符串对
+  `v <= -1e9` 比较为 false(宿主实测),ev_dec 对字符串安全穿透。
+- **D31**: 数组值 = Auto List 直存 v2 值栈(宿主 List 引用语义,
+  set.elem 原地写生效),无 tag 编码/堆 id 间接层。整表 print 不可比:
+  宿主 print(List) 打标签 id("4000000" 样),两侧堆状态不同必漂移
+  ——语料以元素/len 为观察通道,避免整表输出。
+- 下标赋值发射序镜像 Rust quick-fix(codegen.rs 5954):rhs→arr→idx→
+  set.elem,value 展栈底;v2 单遍步行以游标快照两段解析(P.pos 直存
+  直取,先发 rhs 再回头发 arr/idx)。
+- 顶层非 fn 语句:Rust compile_and_link 的 other_stmts 走 compile_stmt
+  无 .line(行号发射属 fn 体路径),v2 wrapper 步行同规则。
+- 一元负号:operand+neg 镜像 Rust 6414 int 路径(neg.f/neg.d 为
+  Missing);一元分支整合进 cg_expr 原子链(原 Not 提前 return 会漏
+  后续中缀(如 `-x + 1`)形态,顺手修正)。
+- .len():仅数组接收者(cg_expr arr_flag + CGVar.arr 绑定跟踪,镜像
+  Rust infer_object_type==Array 闸 7177);str.len 走 CALL_NAT 家族,
+  v2 侧 Missing(语料不含)。
+- 布尔可观察行为对齐确认:宿主 print 对 bool 一律打 "1"/"0"
+  (print(true)/print(1<2)/print(!false) 实测),v2 1/0 整型承载即
+  正确编码,无需字符串化(本会话曾据旧 run_eval 金样反向实施后依
+  实测回退;旧金样 "r1:true" 是 run_eval 返回值格式化,非 print 通道)。
+
+## 计数(M4 扩语料时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 |
+| parser.at | 7 |
+| typeinfo.at | 1 |
+| codegen.at | 2(D28 + 下标赋值游标快照两段步行;另复用 D22/D25) |
+| engine.at | 2(D29 + D30/D31) |
+| 合计 | 22 |

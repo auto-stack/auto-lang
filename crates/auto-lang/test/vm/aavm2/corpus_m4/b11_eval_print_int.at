@@ -1,0 +1,2 @@
+// recycled from 99_bootstrap/038_eval_arithmetic (run_eval inner program)
+print(42)

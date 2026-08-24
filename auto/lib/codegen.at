@@ -15,11 +15,18 @@
 //            local N]、二元算术/比较/逻辑、一元 !、用户 fn 调用(符号
 //            表解析)、print CALL_NAT nat#10、str.cat);字符串池内容
 //            寻址去重;.line 由语句步行者按语句首行发射;跳转 patch
-//            (目标指令索引 → 字节偏移)
-// Missing:   数组/对象/元组字面量与下标、方法调用(.str()/.len() 的
-//            CALL_NAT 家族)、闭包/捕获、浮点(CONST_F32/PROMOTE)、
-//            全局变量(LOAD_GLOBAL/STORE_GLOBAL)、顶层非 fn 语句、
-//            一元负号(NEG)、嵌套赋值、#[vm] stub、生成器、多模块链接
+//            (目标指令索引 → 字节偏移);
+//            [M4 扩]数组字面量(elems+create.arr count=N)、下标读
+//            (arr,idx,get.elem)与下标写(rhs,arr,idx,set.elem——value
+//            展栈底,Rust quick-fix 栈序镜像)、.len()→arr.len(仅数组
+//            接收者,镜像 Rust infer_object_type==Array 闸,7177)、顶层
+//            非 fn 语句(wrapper 内步行,.line 同 cg_stmts);let/var 的
+//            数组性绑定跟踪(CGVar.arr,供 .len() 接收者判定)
+// Missing:   对象/元组字面量与方法调用(.str() 等 CALL_NAT 家族)、
+//            字符串下标(get.elem 的 str→码点分支)、闭包/捕获、
+//            浮点(CONST_F32/PROMOTE)、全局变量(LOAD_GLOBAL/
+//            STORE_GLOBAL)、下标复合赋值、一元负号(NEG)、嵌套赋值、
+//            #[vm] stub、生成器、多模块链接
 // DIVERGE:   D28: Vec<u8> 字节码 + 链接重定位 → 指令 List(I{op,s,n})+
 //            序列化直出 —— 发射顺序/操作数逐字对齐;FN_PROLOG/RESERVE
 //            由 Rust 的"体后插入+地址平移"改为"占位+回填"(布局等价);
@@ -47,6 +54,7 @@ type FnEntry {
 type CGVar {
     name str
     idx int
+    arr int
 }
 
 type CG {
@@ -59,6 +67,7 @@ type CG {
     max_idx int
     err str
     str_flag int
+    arr_flag int
 }
 
 fn cg_new() CG {
@@ -68,13 +77,22 @@ fn cg_new() CG {
     var ins_l = List.new()
     var pool = List.new()
     var fns = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0)
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0)
 }
 
 fn cg_err(c CG, msg str) {
     if c.err == "" {
         c.err = "CODEGEN-ERROR:" + msg
     }
+}
+
+// 前瞻 token 文本(原始,不跳注释;corpus 括号内无注释)
+fn p_peek_text(p P, n int) str {
+    var i = p.pos + n
+    if i >= p.toks.len() {
+        return ""
+    }
+    return p.toks.get(i).text
 }
 
 // 指令字节宽度(与 Rust opcode 编码一致;S4 子集)
@@ -110,6 +128,9 @@ fn i_size(op str) int {
         return 2
     }
     if op == "load.local" || op == "store.local" {
+        return 2
+    }
+    if op == "create.arr" {
         return 2
     }
     return 1
@@ -170,11 +191,28 @@ fn cg_sort_ints_of_vars(sc List) List {
     return out
 }
 
-fn cg_add_var(c CG, name str) int {
+fn cg_add_var(c CG, name str, arr int) int {
     var next = c.max_idx + 1
     c.max_idx = next
-    c.scopes.get(c.depth - 1).push(CGVar(name, next))
+    c.scopes.get(c.depth - 1).push(CGVar(name, next, arr))
     return next
+}
+
+// 按 idx 反查变量的数组性(.len() 接收者判定)
+fn cg_var_arr(c CG, idx int) int {
+    var s = c.depth - 1
+    while s >= 0 {
+        var sc = c.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).idx == idx {
+                return sc.get(i).arr
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return 0
 }
 
 fn cg_lookup(c CG, name str) int {
@@ -296,17 +334,25 @@ fn cg_expr(c CG, p P, min int) {
         return
     }
     var k = p_kind(p)
+    // 每次表达式求值从干净 flag 起;原子按需置位(str/arr)
+    c.str_flag = 0
+    c.arr_flag = 0
     if k == "Not" {
         p_next(p)
         cg_expr(c, p, 28)
         emit(c, "not", "", 0)
-        return
-    }
-    if k == "Sub" || k == "Add" {
-        cg_err(c, "unary sign unsupported in S4 subset")
-        return
-    }
-    if k == "Int" {
+        c.str_flag = 0
+        c.arr_flag = 0
+    } else if k == "Sub" || k == "Add" {
+        // 一元符号:operand 后发 neg(镜像 Rust 6414;一元 + 为 no-op)
+        p_next(p)
+        cg_expr(c, p, 28)
+        if k == "Sub" {
+            emit(c, "neg", "", 0)
+        }
+        c.str_flag = 0
+        c.arr_flag = 0
+    } else if k == "Int" {
         var t = p_text(p)
         p_next(p)
         emit(c, "const.i32", int_val(t).str(), int_val(t))
@@ -350,10 +396,53 @@ fn cg_expr(c CG, p P, min int) {
                 return
             }
             cg_emit_load(c, idx)
+            c.arr_flag = cg_var_arr(c, idx)
         }
+    } else if k == "LSquare" {
+        // 数组字面量:elems 依次入栈,create.arr count=N(Rust 4865)
+        p_next(p)
+        skip_empty_lines(p)
+        var n = 0
+        if p_kind(p) != "RSquare" {
+            cg_expr(c, p, 0)
+            n = 1
+            while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+                p_next(p)
+                skip_empty_lines(p)
+                cg_expr(c, p, 0)
+                n = n + 1
+            }
+        }
+        p_expect(p, "RSquare")
+        emit(c, "create.arr", "count=" + n.str(), n)
+        c.arr_flag = 1
     } else {
         cg_err(c, "unsupported expr atom: " + k)
         return
+    }
+    // 后缀链:下标读(get.elem);.len()(仅数组接收者,镜像 Rust 7177 闸)
+    while c.err == "" && p_kind(p) == "LSquare" {
+        p_next(p)
+        skip_empty_lines(p)
+        cg_expr(c, p, 0)
+        skip_empty_lines(p)
+        p_expect(p, "RSquare")
+        emit(c, "get.elem", "", 0)
+        c.str_flag = 0
+        c.arr_flag = 0
+    }
+    if c.err == "" && p_kind(p) == "Dot" && p_peek_text(p, 1) == "len" && p_peek(p, 2) == "LParen" && p_peek(p, 3) == "RParen" {
+        if c.arr_flag != 1 {
+            cg_err(c, ".len() receiver is not an array")
+            return
+        }
+        p_next(p)
+        p_next(p)
+        p_next(p)
+        p_next(p)
+        emit(c, "arr.len", "", 0)
+        c.str_flag = 0
+        c.arr_flag = 0
     }
     while c.err == "" {
         var opk = p_kind(p)
@@ -361,6 +450,10 @@ fn cg_expr(c CG, p P, min int) {
             break
         }
         if opk == "Dot" && t_is_type_prop(p) {
+            break
+        }
+        if opk == "Dot" {
+            cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
             break
         }
         if !is_op_kind(opk) {
@@ -390,6 +483,7 @@ fn cg_expr(c CG, p P, min int) {
         } else {
             c.str_flag = 0
         }
+        c.arr_flag = 0
         if mn != "" {
             emit(c, mn, "", 0)
         }
@@ -425,11 +519,13 @@ fn cg_stmt(c CG, p P) {
         if is_type_name(p) {
             parse_type(p)
         }
+        var is_arr = 0
         if p_kind(p) == "Asn" {
             p_next(p)
             cg_expr(c, p, 0)
+            is_arr = c.arr_flag
         }
-        var idx = cg_add_var(c, name)
+        var idx = cg_add_var(c, name, is_arr)
         cg_emit_store(c, idx)
         return
     }
@@ -459,6 +555,55 @@ fn cg_stmt(c CG, p P) {
     if k == "Fn" {
         cg_err(c, "nested fn unsupported")
         return
+    }
+    // 下标赋值 a[idx] = rhs:Rust 发射序为 rhs→arr→idx→set.elem
+    // (value 展栈底,Rust 5954 quick-fix 栈序);单遍步行以游标
+    // 快照两段解析——先越前扫到匹配 ] 后的 Asn,先发 rhs 再回头发 arr/idx
+    if k == "Ident" && p_peek(p, 1) == "LSquare" {
+        var arr_name = p_text(p)
+        var aidx = cg_lookup(c, arr_name)
+        if aidx < 0 {
+            cg_err(c, "unknown ident: " + arr_name)
+            return
+        }
+        var start = p.pos
+        var scan = start + 2
+        var depth = 1
+        var ok = false
+        while scan < p.toks.len() && !ok {
+            var sk = p.toks.get(scan).kind
+            if is_comment_kind(sk) {
+                scan = scan + 1
+            } else {
+                if sk == "LSquare" {
+                    depth = depth + 1
+                } else if sk == "RSquare" {
+                    depth = depth - 1
+                    if depth == 0 {
+                        ok = true
+                    }
+                }
+                scan = scan + 1
+            }
+        }
+        if ok && scan < p.toks.len() && p.toks.get(scan).kind == "Asn" {
+            p.pos = scan + 1
+            skip_empty_lines(p)
+            cg_expr(c, p, 0)
+            var end_pos = p.pos
+            cg_emit_load(c, aidx)
+            p.pos = start
+            p_next(p)
+            p_next(p)
+            skip_empty_lines(p)
+            cg_expr(c, p, 0)
+            skip_empty_lines(p)
+            p_expect(p, "RSquare")
+            emit(c, "set.elem", "", 0)
+            p.pos = end_pos
+            return
+        }
+        p.pos = start
     }
     // 表达式语句:赋值特判
     if k == "Ident" {
@@ -595,7 +740,7 @@ fn cg_for(c CG, p P) {
         cg_err(c, "for: expected range op")
         return
     }
-    var idx = cg_add_var(c, name)
+    var idx = cg_add_var(c, name, 0)
     cg_emit_store(c, idx)
     var top = c.ins.len()
     cg_emit_load(c, idx)
@@ -655,7 +800,7 @@ fn cg_fn(c CG, p P) {
                 p_next(p)
                 expr_pratt(p, 0)
             }
-            cg_add_var(c, pname)
+            cg_add_var(c, pname, 0)
             n_args = n_args + 1
             if p_kind(p) == "Comma" {
                 p_next(p)
@@ -767,7 +912,10 @@ fn cg_compile(source str) CG {
         if p_kind(p) == "Fn" {
             cg_fn(c, p)
         } else {
-            cg_err(c, "top-level non-fn stmt unsupported: " + p_kind(p))
+            // 顶层非 fn 语句:wrapper 内步行(镜像 Rust compile_and_link
+            // 的 other_stmts 路径);该路径不发 .line(Rust 直接
+            // compile_stmt,无 fn 体的行号发射)
+            cg_stmt(c, p)
         }
         if c.err == "" {
             cg_eos(c, p)

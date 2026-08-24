@@ -1,0 +1,3 @@
+// recycled from 99_bootstrap/045_eval_list
+print(100)
+print(200)

@@ -1,0 +1,2 @@
+// recycled from 99_bootstrap/048_eval_str_print
+print("hello")

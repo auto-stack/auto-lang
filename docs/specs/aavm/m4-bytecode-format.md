@@ -40,11 +40,25 @@ push.nil|halt`。
   const 1+add+store;jmp top;循环域弹出释放;
 - 参数寻址 0x80+rel(load/store.local);局部 rel 0/1 快操作码
   (load 额外有 loc.2),≥2(N)走 store.local;
-- print → `call.nat nat#10`;字符串 + → `str.cat`。
+- print → `call.nat nat#10`;字符串 + → `str.cat`;
+- [M4 扩]数组字面量:elems 依次 + `create.arr count=N`(1B 操作数,
+  disasm 作 `count=N`;codegen.rs 4865);下标读:arr+idx+`get.elem`
+  (0 操作数);下标写(quick-fix 栈序,5954):rhs+arr+idx+
+  `set.elem`(void,语句级不发 pop;value 展栈底);
+- [M4 扩]数组 `.len()`:receiver+`arr.len`(0 操作数;Rust 闸:
+  infer_object_type==Array 且无实参,7177;str.len 走 CALL_NAT 不在此);
+- [M4 扩]一元负号:operand+`neg`(int 路径,6414;一元 + 为 no-op);
+- [M4 扩]顶层非 fn 语句:wrapper 内按源序步行,**不发 .line**
+  (compile_and_link 的 other_stmts 直走 compile_stmt,行号发射属
+  fn 体路径)。
 
 ## S4 裁剪边界
 
 语料 corpus_m4 十文件(hello/let/assign[纯+复合]/ifelse/while/for-range/
 fib/strcat/logic[&&/||/!]/multilet[3 局部+释放组归一])。
-Missing:数组/对象/元组/下标/方法调用 native/闭包/浮点/全局变量/顶层
-非 fn 语句/一元负号/嵌套赋值/#[vm]/生成器/多模块。
+[M4 扩]新增 20 文件:b11-b26(99_bootstrap 038-052+051a 的 run_eval
+内层程序回收,顶层语句形态)+ b27-b30(06_arrays 001-003 同源构造
++组合:字面量/下标含负/更新/循环累加)。053(List/Map native 建节点)
+超 v2 范围未回收。
+Missing:对象/元组字面量/方法调用 CALL_NAT 家族/字符串下标(码点)/
+闭包/浮点/全局变量/下标复合赋值/嵌套赋值/#[vm]/生成器/多模块。

@@ -1,0 +1,2 @@
+// recycled from 99_bootstrap/050_eval_str_concat
+print("a" + "b")
