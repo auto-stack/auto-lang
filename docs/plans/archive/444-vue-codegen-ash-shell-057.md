@@ -1,6 +1,6 @@
 # Plan 444 — Vue codegen 五类缺陷修复（解锁 auto-shell ash-gui Vue 构建，auto-shell-057）
 
-状态: complete（worktree plan-444-vue-emit-fixes，基于 fe2060b9 rebase，待合并 master）
+状态: complete（已合并 master de76581ea，2026-08-25 归档）
 创建: 2026-08-24
 来源: KNOWN-DEBT-AND-RISKS.md `auto-shell-057`（41f4a7b7 登记）+ auto-shell DEBTS.md「Vue 产物构建引擎侧阻塞（Plan 057 Phase 5 T-B）」外部报告
 基线: master 8c2a2d4a → rebase 至 fe2060b9（435 P3 合流后）

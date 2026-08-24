@@ -59,10 +59,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 426 | setup Preamble Slot | Done | Per-instance setup{} phase before first render (const bindings, refs block-level annotation, await rejected, TDZ guard), three-phase semantics table, musk 9-file migration |
 | 436 | setup Interpreter/a2r Landing | Done | a2r explicit-error guard for setup blocks (decision 1-A, PLAN-037 T7 philosophy, both the ui_gen/rust.rs widget path and the trans/rust.rs logic path); interpreter L1 single-instance semantics (UI-scenario parse in the bridge, setup preamble runs once in its own VM run with bindings into WidgetState.fields, before first view); syntax.md three-phase x three-backend matrix; interpreter mod.rs doc rot fixed |
 | 428 | Code Folding Phase B | Done | Route A per-run painting replaces fill_raw (fold regions + y-projection + two-state chevrons + auto-reveal on caret/search, natives 2932/2933, matrix T3b 4/4 + manual acceptance); three pre-existing bugs found during acceptance root-fixed (gutter raster height, Ctrl-key swallowing, parentless rfd dialog) |
+| 444 | Vue codegen 五类缺陷修复（auto-shell-057） | Complete | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text 拼接解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse/CodeEditor 缺口补齐；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436 (32 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436, 444 (33 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -185,3 +186,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [426-setup-preamble-slot.md](../plans/archive/426-setup-preamble-slot.md)
 - [428-code-folding-phase-b.md](../plans/archive/428-code-folding-phase-b.md)
 - [436-setup-interpreter-a2r.md](../plans/archive/436-setup-interpreter-a2r.md)
+- [444-vue-codegen-ash-shell-057.md](../plans/archive/444-vue-codegen-ash-shell-057.md)

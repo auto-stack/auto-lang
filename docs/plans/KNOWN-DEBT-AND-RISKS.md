@@ -46,6 +46,9 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 444 | 变体断言启发式 | ts_adapter 对「PascalCase 字段访问」一律补非空断言（`cell.Tagged!.text`）——api.ts 惯例下 PascalCase 可选字段即变体 payload（else 分支不变量保证非空），但用户对象若有运行时可空的 PascalCase 字段，`!` 会把编译期检查换成运行时 TypeError。 | `ui_gen/ts_adapter.rs` transpile_expr Dot 臂 |
+| 444 | emits 名册缺省回退 | 父级回调事件名优先按子 emits 名册解析（同文件自动并入 + auto-man 跨文件预扫描）；无 名册 的驱动路径（如 cmd_vue 遗留 `auto vue` 入口）回退 prop 派生命名，透传习惯（`on_delete`↔子 `DeleteBlock`）在该路径仍断并只发 R044/R045 警告。ash-gui 走 auto-man 路径不受影响。 | `ui_gen/vue.rs sub_widget_callback_event_to_vue` |
+| 444 | VM-only 桩为运行时报错 | `fs.*`/`File.*` 在 Vue/JS 目标降级为 `__vmOnly` 抛错桩（gen 期 R 警告 + 运行时显式 Error），非编译期拒绝——按「显式报错优于静默坏代码」裁定，VM/merged 目标不受影响。 | `ui_gen/ts_adapter.rs` Call 臂 + `__vmOnly` 发射 |
 | 377 | BigInt 溢出 | virt_memory 的 push_i64/u64 在 >2^48 时 panic（快失败）。engine/native 层有 heap-aware 版本（push_i64_vm），但 virt_memory 层无 VM 访问无法堆装箱。设计如此。 | `vm/virt_memory.rs push_i64/push_u64` |
 | 340 | forEach 闭包副作用 | forEach 的闭包副作用曾不生效（by-value 捕获）。Plan 385 的 capture_slots 已修复。但 forEach+Plan 385 的联动未单独测试。 | `vm/native.rs shim_list_for_each` + `vm/engine.rs capture_slots` |
 | 385 | 保守 by-reference | 所有被闭包引用的外部变量都按 by-reference 处理（无 escape analysis 区分）。简单但可能有性能影响（大量变量走间接访问）。 | `vm/codegen.rs compile_closure` |
