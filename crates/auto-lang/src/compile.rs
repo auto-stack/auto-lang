@@ -796,12 +796,26 @@ impl CompileSession {
                 if self.declared_crates.contains(crate_name) {
                     // Plan 430 C2: 先构建方法 shim 包(nightly rustdoc → 生成 → cdylib)。
                     // manifest 的自由函数签名同时注册为 D2 元数据;nightly 缺失时降级跳过。
-                    if let Some(built) = sandbox
+                    // 失败必须留痕(430 复审修复:此前 .ok() 静默吞错,
+                    // 用户只见"方法不可用"而无因)——降级走自由函数路径但不失语。
+                    match sandbox
                         .compile_dep_methods(crate_name, &self.build_dep_source(crate_name))
-                        .ok()
-                        .flatten()
                     {
-                        register_manifest_function_sigs(crate_name, &built.manifest_json);
+                        Ok(Some(built)) => {
+                            register_manifest_function_sigs(crate_name, &built.manifest_json);
+                        }
+                        Ok(None) => {
+                            log::info!(
+                                "plan430: methods pack skipped for {} (nightly unavailable)",
+                                crate_name
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "plan430: methods pack build failed for {}: {} (falling back to free-fn wrapper path)",
+                                crate_name, e
+                            );
+                        }
                     }
 
                     // Plan 430 C2: 大写开头的是类型导入(use.rust foo::{Type}),

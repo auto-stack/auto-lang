@@ -9,6 +9,8 @@ edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 430 复审修复:泛型自由函数跳过等降级路径需留痕(lib 场景由宿主接 logger)
+log = { workspace = true }
 
 [lib]
 name = "shim_metadata"
