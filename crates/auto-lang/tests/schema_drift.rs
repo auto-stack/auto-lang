@@ -725,6 +725,134 @@ fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) 
     (names, vue_mappings, imported)
 }
 
+/// Plan 435 P4-4:解析既有 schema/aura.at 的 vue: { .. } 行(按元素折叠键)。
+/// 手写 vue insert 退役后,再生成时以此**保留**存量数据(手写源已删)。
+fn scan_aura_at_vue(src: &str) -> BTreeMap<String, RegistryVue> {
+    let mut out: BTreeMap<String, RegistryVue> = BTreeMap::new();
+    let mut cur_fold: Option<String> = None;
+    for line in src.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("element ") {
+            if let Some(name) = rest.strip_suffix('{') {
+                cur_fold = Some(fold_key(name.trim()));
+            }
+        } else if let Some(rest) = t.strip_prefix("vue: {") {
+            let Some(fold) = cur_fold.clone() else { continue };
+            let inner = rest.strip_suffix('}').unwrap_or(rest);
+            let component = quoted_after(inner, "component: \"").unwrap_or_default();
+            let import = quoted_after(inner, "import: \"");
+            let mut extras = Vec::new();
+            if let Some(ep) = inner.find("extras: [") {
+                let seg = &inner[ep + "extras: [".len()..];
+                let end = seg.find(']').unwrap_or(seg.len());
+                extras = quoted_strings_in(&seg[..end]);
+            }
+            let mut npm = None;
+            if let Some(np) = quoted_after(inner, "npm: \"") {
+                if let Some((pkg, ver)) = np.split_once('@') {
+                    npm = Some((pkg.to_string(), ver.to_string()));
+                }
+            }
+            out.insert(
+                fold,
+                RegistryVue {
+                    specs: Vec::new(),
+                    component,
+                    import,
+                    extras,
+                    npm,
+                },
+            );
+        }
+    }
+    out
+}
+
+/// Plan 435 P4-4:registry.rs 单个 vue BackendMapping 的提取面。
+/// 实测 181 个映射中 props/events 重写为 0(vue 后端不用),仅 component/
+/// import + 1 extras + 2 npm。
+struct RegistryVue {
+    /// spec 声明名 + 块内 with_alias 别名(折叠匹配 schema 元素)
+    specs: Vec<String>,
+    component: String,
+    import: Option<String>,
+    extras: Vec<String>,
+    npm: Option<(String, String)>,
+}
+
+/// 扫描 registry.rs 各 WidgetSpec 块的 vue BackendMapping。
+fn scan_registry_vue(src: &str) -> Vec<RegistryVue> {
+    let mut out = Vec::new();
+    for m in src.match_indices("WidgetSpec::new(\"") {
+        let rest = &src[m.0 + "WidgetSpec::new(\"".len()..];
+        let Some(q) = rest.find('"') else { continue };
+        let spec = rest[..q].to_string();
+        let block_end = rest.find("self.register(").unwrap_or(rest.len().min(4000));
+        let body = &rest[..block_end];
+        let Some(vpos) = body.find(".backends.insert(\"vue\"") else { continue };
+        let vbody = &body[vpos..];
+        let Some(component) = quoted_after(vbody, "component: \"") else { continue };
+        let import = quoted_after(vbody, "import: Some(\"");
+        // extras: vec!["A", "B"]
+        let mut extras = Vec::new();
+        if let Some(ep) = vbody.find("extra_components: vec![") {
+            let start = ep + "extra_components: vec!".len();
+            let seg = &vbody[start..];
+            let end = seg.find(']').unwrap_or(seg.len());
+            extras = quoted_strings_in(&seg[..end]);
+        }
+        // npm_package: Some(("pkg".to_string(), "ver".to_string()))
+        let mut npm = None;
+        if let Some(np) = vbody.find("npm_package: Some((") {
+            let seg = &vbody[np..];
+            let vals = quoted_strings_in(&seg[..seg.find("))").unwrap_or(seg.len())]);
+            if vals.len() >= 2 {
+                npm = Some((vals[0].clone(), vals[1].clone()));
+            }
+        }
+        // 别名集:块内全部 with_alias(构造链在 vue insert 之前)
+        let mut specs = vec![spec];
+        for a in body.match_indices(".with_alias(\"") {
+            let r = &body[a.0 + ".with_alias(\"".len()..];
+            if let Some(e) = r.find('"') {
+                specs.push(r[..e].to_string());
+            }
+        }
+        out.push(RegistryVue { specs, component, import, extras, npm });
+    }
+    // with_alias 别名 → 同一映射(从别名行无法回溯所属块,改为在匹配阶段
+    // 同时用 spec 名与别名集合 —— 见 generate 侧)
+    out
+}
+
+fn quote_at(s: &str) -> String {
+    format!("\"{}\"", s)
+}
+
+fn quoted_after(s: &str, needle: &str) -> Option<String> {
+    let p = s.find(needle)?;
+    let rest = &s[p + needle.len()..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn quoted_strings_in(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'"' {
+            if let Some(e) = s[i + 1..].find('"') {
+                out.push(s[i + 1..i + 1 + e].to_string());
+                i = i + 1 + e + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 /// 生成器的全部输入(测试里一次采集,生成与断言共用)。
 struct AtGenInput {
     rs_elements: BTreeMap<String, RsElement>,
@@ -740,6 +868,10 @@ struct AtGenInput {
     gallery_only: BTreeSet<String>,
     /// 活注册表(ui_gen/widget/registry.rs)spec 而无其他表登记的 tag(P3 第 11 源)
     registry_only: BTreeSet<String>,
+    /// P4-4:registry.rs 的 vue BackendMapping 提取面(发射进 schema)
+    registry_vue: Vec<RegistryVue>,
+    /// P4-4:既有 aura.at 的 vue 行(手写退役后再生成的保留源)
+    carried_vue: BTreeMap<String, RegistryVue>,
     /// 臂组别名并查结果:tag → canonical
     canonical_of: BTreeMap<String, String>,
 }
@@ -1068,6 +1200,45 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             "    backends: {{ web: \"{}\", iced: \"{}\", gpui: \"unknown\" }}\n",
             web, iced
         ));
+        // P4-4:registry.rs 的 vue BackendMapping(schema 权威化;overlay 运行时重建)。
+        // 组内任意成员折叠匹配(别名组吸收后 canonical 折叠键可能不同于 spec 名,
+        // 如 autodown 组收编了 autodown_editor)。
+        let rv = inp
+            .registry_vue
+            .iter()
+            .find(|rv| {
+                rv.specs
+                    .iter()
+                    .any(|s| members.iter().any(|m| fold_key(m) == fold_key(s)))
+            })
+            .map(|rv| rv as &RegistryVue)
+            .or_else(|| {
+                members
+                    .iter()
+                    .filter_map(|m| inp.carried_vue.get(&fold_key(m)))
+                    .next()
+                    .map(|rv| rv as &RegistryVue)
+            });
+        if let Some(rv) = rv {
+            let mut parts = vec![format!("component: {}", quote_at(&rv.component))];
+            if let Some(imp) = &rv.import {
+                parts.push(format!("import: {}", quote_at(imp)));
+            }
+            if !rv.extras.is_empty() {
+                let list = rv
+                    .extras
+                    .iter()
+                    .map(|e| quote_at(e))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                parts.push(format!("extras: [{}]", list));
+            }
+            if let Some((pkg, ver)) = &rv.npm {
+                parts.push(format!("npm: {}", quote_at(&format!("{}@{}", pkg, ver))));
+            }
+            out.push_str(&format!("    vue: {{ {} }}
+", parts.join(", ")));
+        }
         if !sub_widgets.is_empty() {
             let list = sub_widgets
                 .iter()
@@ -1261,6 +1432,8 @@ fn schema_drift_fence() {
     // (chart/scroll-area/toast 家族等)入册;Pascal spec 名与 kebab 别名同折叠合并
     let (registry_names, _vue_mappings, _registry_imported) =
         scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+    let registry_vue = scan_registry_vue(&read("src/ui_gen/widget/registry.rs"));
+    let carried_vue = scan_aura_at_vue(&aura_at);
     let other_fold: BTreeSet<String> =
         prod_union.iter().map(|t| fold_key(t)).collect();
     prod_fold.extend(registry_names.iter().map(|t| fold_key(t)));
@@ -1305,6 +1478,8 @@ fn schema_drift_fence() {
         vue_imports,
         gallery_only,
         registry_only,
+        registry_vue,
+        carried_vue,
         canonical_of,
     };
 
@@ -1363,10 +1538,23 @@ fn schema_drift_fence() {
     {
         let (registry_names, _vue_mappings, _imported) =
             scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+        // P4-4 相位断言:手写退役(0)或迁移期(>=100);不存在中间态。
+        let schema = auto_lang::aura::default_schema_cached().expect("schema");
         assert!(
-            _vue_mappings > 100,
-            "活的 widget registry 的 vue 映射数异常偏少({}),扫描器或源结构变化?",
+            _vue_mappings == 0 || _vue_mappings >= 100,
+            "手写 vue insert 数({})处于异常中间态;退役走 schema/aura.at",
             _vue_mappings
+        );
+        // 数据不回退:schema 的 vue 声明量守恒(手写退役后由 carried_vue 保留)
+        let vue_count = schema
+            .meta
+            .values()
+            .filter(|m| m.vue.is_some())
+            .count();
+        assert!(
+            vue_count >= 160,
+            "schema vue 映射量异常偏少({}) —— 再生成丢失数据?",
+            vue_count
         );
         let mut uncovered: Vec<String> = Vec::new();
         for name in &registry_names {
@@ -1446,6 +1634,47 @@ fn schema_drift_fence() {
             mismatches.join("\n  ")
         );
     }
+    // P4-4:registry.rs 手写 vue 映射 ≡ schema vue 声明(overlay 数据源一致性;
+    // 手写退役前双向对账,退役后本断言保证 schema 不回退)
+    {
+        use auto_lang::aura::default_schema_cached;
+        let schema = default_schema_cached().expect("schema 应可加载");
+        let reg_vue = scan_registry_vue(&read("src/ui_gen/widget/registry.rs"));
+        let mut mism: Vec<String> = Vec::new();
+        for rv in &reg_vue {
+            let hit = rv.specs.iter().find_map(|s| {
+                schema
+                    .resolve_tag(s)
+                    .and_then(|(canon, _)| schema.meta.get(canon).map(|m| (canon, m)))
+                    .filter(|(_, m)| m.vue.is_some())
+            });
+            let Some((tag, meta)) = hit else {
+                mism.push(format!("{}: 手写有 vue 映射,schema 无", rv.specs.join("/")));
+                continue;
+            };
+            let v = meta.vue.as_ref().unwrap();
+            if v.component != rv.component
+                || v.import != rv.import
+            {
+                mism.push(format!(
+                    "{}: component/import 不一致 (registry={},{} schema={},{})",
+                    tag,
+                    rv.component,
+                    rv.import.as_deref().unwrap_or("-"),
+                    v.component,
+                    v.import.as_deref().unwrap_or("-")
+                ));
+            }
+        }
+        assert!(
+            mism.is_empty(),
+            "P4-4:registry 手写 vue 映射与 schema 不一致:
+  {}",
+            mism.join("
+  ")
+        );
+    }
+
     // ---- 维度语义(新增漂移时随报错一起打印) ----
     let mut drift: Drift = BTreeMap::new();
     add(&mut drift, "rs_duplicate_insert", rs_dup);

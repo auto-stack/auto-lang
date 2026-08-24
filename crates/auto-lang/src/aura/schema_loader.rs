@@ -54,6 +54,49 @@ struct ElementDefData {
     aliases: Vec<String>,
     backends: Option<(String, String, String)>, // (web, iced, gpui)
     sub_widgets: Vec<String>,
+    /// P4-4:vue BackendMapping(单行 vue: { .. })
+    vue: Option<crate::aura::schema::VueBackendSpec>,
+}
+
+/// Plan 435 P4-4:解析 `vue: { component: "..", import: "..", extras: [..], npm: "pkg@ver" }`。
+fn parse_vue_line(line: &str) -> Option<crate::aura::schema::VueBackendSpec> {
+    let t = line.trim();
+    let rest = t.strip_prefix("vue: {")?.strip_suffix('}')?;
+    let component = extract_kv_str(rest, "component:")?;
+    let import = extract_kv_str(rest, "import:");
+    let extras = rest
+        .split("extras:")
+        .nth(1)
+        .and_then(|s| s.split(']').next())
+        .map(|inner| {
+            inner
+                .split(',')
+                .filter_map(|p| {
+                    let p = p.trim();
+                    p.strip_prefix('"').and_then(|x| x.strip_suffix('"'))
+                })
+                .map(|s| Box::leak(s.to_string().into_boxed_str()) as &'static str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let npm = extract_kv_str(rest, "npm:").and_then(|spec| {
+        let (pkg, ver) = spec.split_once('@')?;
+        Some((pkg.to_string(), ver.to_string()))
+    });
+    Some(crate::aura::schema::VueBackendSpec {
+        component,
+        import,
+        extras,
+        npm,
+    })
+}
+
+fn extract_kv_str(s: &str, key: &str) -> Option<String> {
+    let p = s.find(key)?;
+    let rest = s[p + key.len()..].trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 /// 提取 `key: ["a", "b"]` 形态的引号串列表(Plan 435 aliases/sub_widgets)。
@@ -248,6 +291,7 @@ impl SchemaLoader {
         let mut aliases: Vec<String> = Vec::new();
         let mut backends: Option<(String, String, String)> = None;
         let mut sub_widgets: Vec<String> = Vec::new();
+        let mut vue: Option<crate::aura::schema::VueBackendSpec> = None;
 
         // Simple key-value parsing
         for line in content.lines() {
@@ -270,6 +314,8 @@ impl SchemaLoader {
                 aliases = list;
             } else if let Some(list) = extract_quoted_list(line, "sub_widgets:") {
                 sub_widgets = list;
+            } else if let Some(v) = parse_vue_line(line) {
+                vue = Some(v);
             } else if line.starts_with("backends:") {
                 let web = self.extract_string_value(line, "web:").unwrap_or_default();
                 let iced = self.extract_string_value(line, "iced:").unwrap_or_default();
@@ -291,6 +337,7 @@ impl SchemaLoader {
             aliases,
             backends,
             sub_widgets,
+            vue,
         })
     }
 
@@ -646,6 +693,7 @@ impl SchemaLoader {
                     .iter()
                     .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
                     .collect(),
+                vue: elem_data.vue.clone(),
             };
             meta_map.insert(element_def.tag, meta);
 

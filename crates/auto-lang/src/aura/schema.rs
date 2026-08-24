@@ -224,6 +224,18 @@ pub struct BackendMatrix {
     pub gpui: String,
 }
 
+/// Plan 435 P4-4:registry.rs vue BackendMapping 的 schema 化面。
+/// 实测 181 个映射无 props/events 重写(vue 后端不用),仅 component/import
+/// + 极少 extras/npm;运行时 overlay 以此重建 BackendMapping。
+#[derive(Debug, Clone)]
+pub struct VueBackendSpec {
+    pub component: String,
+    pub import: Option<String>,
+    pub extras: Vec<&'static str>,
+    /// (包名, 版本)
+    pub npm: Option<(String, String)>,
+}
+
 /// 元素侧信息(Plan 435 四新字段)。硬编码 fallback(AuraSchema::new)无 meta;
 /// schema_loader 从 schema/aura.at 填充。
 #[derive(Debug, Clone)]
@@ -234,6 +246,8 @@ pub struct ElementMeta {
     pub backends: BackendMatrix,
     /// 组件家族子件(web 家族按 vue import 路径推导;P4 官方包填 .at 家族)
     pub sub_widgets: Vec<&'static str>,
+    /// Plan 435 P4-4:vue BackendMapping(registry.rs 派生源)
+    pub vue: Option<VueBackendSpec>,
 }
 
 impl Default for ElementMeta {
@@ -247,6 +261,7 @@ impl Default for ElementMeta {
                 gpui: "unknown".to_string(),
             },
             sub_widgets: Vec::new(),
+            vue: None,
         }
     }
 }
