@@ -249,3 +249,22 @@
   parser/vb 的归一入口统一(normalize_tag)记 P4 顺手项——行为等价已由
   golden 保护,统一收益是入口唯一。
 - **验证**:gallery golden 绿(byte 级)、lib 3131 绿、围栏绿(含新维度)。
+
+### P3 续:与 master 并行确定性双修的合流(2026-08-24)
+
+- **双修合流**:master 侧 plan-015(44afea19/690abfc2/831c9ec3)与本计划独立修复
+  同一非确定性——master 走源头改造(widget.handlers → BTreeMap)+ 内联排序,
+  本分支走发射层 sorted_entries;合并时 13 处冲突取 master 完整结构,
+  props/events 的 HashMap 发射排序保留 sorted_entries。两法互补,合流后跨进程
+  diff=0 复验通过。
+- **ui_snapshots 三例预存债清偿**:字节漂移根因(非确定性)根治 + plan-443
+  defineModel 降级收窄的合法输出变化,快照重接受后 3/3 绿。
+- **golden 跨 worktree 可移植**:输出内嵌绝对路径有两种形态(canonical 与
+  crates/x/../../ 拼接),分别归一为 <ROOT>/<CRATE>;主仓与 worktree 双绿。
+- **S002 假阳性修复**:PascalCase tag = 组件引用语义(内置 tag 全小写),
+  跳过告警——单文件模式下跨文件子组件(NavTree/EditorPanel)不再误报。
+- **挂账(待单独归因)**:① view 顶层裸兄弟(UI scenario)解析失败(P2 记录);
+  ② combobox/command/datepicker/toggle/togglegroup 五个 gallery components 在
+  generate_component_from_file 路径有预存解析错误(UnexpectedToken RParen ':',
+  页面生成不受影响);③ golden 基线随 plan-443 重采样一次(defineModel 收窄,
+  626 行合法变化)。
