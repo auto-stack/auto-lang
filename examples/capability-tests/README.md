@@ -46,6 +46,7 @@ unit/integration test that subsumes it.
 | `038-vshow/` | `v-show` | plan 012 P2 trio |
 | `039-reserved-words/` | reserved-word contextualization | plan 012 P2 trio |
 | `040-trycatch/` | `try/catch/finally` | plan 012 P2 trio |
+| `041-model-deep-reactivity/` | unbound model var deep reactivity (`ref` vs defineModel) — runtime canary | plan 443 (filed from auto-os-config Plan 006 Phase 6) |
 
 Verify the same way as a canary (`auto build` + `vue-tsc --noEmit`, or the
 fixture's own README).
