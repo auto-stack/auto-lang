@@ -38,6 +38,7 @@
 | 432 | 负 int/字符串哨兵池内别名（残留） | D30 已修越界哨兵（池界外回落裸 i32，native.rs push_tagged_value_rc），但**池界内**别名仍在：无类型 ListData<i32> 里存裸 -1 仍读回池字符串 pool[0]（实测 -1 → "len"）。.at 侧负 int 需偏置编码规避（engine.at ev_enc/ev_dec，−1e9）。根治需 ListData 值域带 tag 或 .at 侧类型化 List。 | `vm/native.rs push_tagged_value_rc` + divergences.md D30 |
 | 432 | 参数个数不匹配静默毁帧 | 调用方/被调方 n_args 不一致时宿主无诊断：RET 按 fn 声明弹参，帧逐调用蚀一槽（432 执行期实测，D25 留档）。已在 242 tracker 挂账；建议 codegen 或引擎加一致性检查。 | `vm/engine.rs` RET + divergences.md D25 |
 | 432 | bool 压无类型 List 别名 | bool 值经 decode_i32 成 i32::MIN，与字符串负哨兵编码别名（D29 留档，242 挂账）；v2 以 1/0 整型承载规避。 | `vm/native.rs` + divergences.md D29 |
+| auto-shell-057 | vue codegen 五类缺陷阻塞下游构建（2026-08-24 外部报告） | 下游 auto-shell ash-gui 项目 `auto gen` 重生成后 vue-tsc 余 13 错 / 5 类，**Vue/浏览器渲染目标整体不可构建**（merged VM 目标不受影响）。443(defineModel 降级)/435 P0-P1 合入后复测构成不变。五类：① 子组件回调 props 生成 `on_delete`（snake_case 且必填）而父级绑定发射 `onDelete` —— 名字永不相配（043 R4 修过 PascalCase emit，`Delete` 形态漏网，3 错）；② 可空变体字段模板访问 `cell.Tagged.text` 在 v-if 守卫内仍报 TS18049，需生成 `?.`（2 错）；③ 多参 msg 的 emit 签名生成 0 参 —— `Sort(int,int)`/`Filter(str)` 调用点报 TS2554（043 B-1 只修单 payload，2 错）；④ VM-only stdlib 泄漏进 JS：widget handler 内 `fs.read_dir`/`File.is_dir`/裸 `await complete` 原样输出到 .vue script 产出坏 JS，无 JS shim 时应降级或显式报错（4 错）；⑤ str 模型字段的动态变体读 `__sse_status.Failed`（裸串或 {"Failed":msg} 二态）报 TS2339，需 any 通道或契约化（1 错）。另 gen 模板缺口：`auto gen` 重写 package.json 丢 `@vueuse/core`（shadcn ui 组件引用它）；无引用残留 CodeEditor.vue 不清理。**复现**：`cd auto-shell/ash-gui/ash-gui-auto && auto gen && cd gen/front/vue && pnpm add @vueuse/core && rm src/components/CodeEditor.vue && npx vue-tsc`。详见 auto-shell DEBTS.md「Vue 产物构建引擎侧阻塞」（2026-08-24，含逐类行号）。 | `ui_gen/vue.rs` prop_to_ts_type/sub_widget_event_to_vue（①③）、模板 emit（②）、ts_adapter handler 转译（④⑤）；auto-shell docs/plans/057 §Phase 5 |
 
 ---
 
@@ -120,4 +121,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-24（Plan 433 a2r 闭环:登记 4 条——VM 枚举传参缺陷/a2r is-绑定类型跟踪/后处理 as_str 归约/merge v1 遗留;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+*最后更新：2026-08-24（auto-shell-057 外部报告:vue codegen 五类缺陷阻塞下游构建;Plan 433 a2r 闭环:登记 4 条——VM 枚举传参缺陷/a2r is-绑定类型跟踪/后处理 as_str 归约/merge v1 遗留;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
