@@ -255,3 +255,57 @@
 | codegen.at | 2(+D32/D33/D36-③) |
 | engine.at | 3(D29 + D30/D31 重构 + D34/D35/D36) |
 | 合计 | 23 类(累计登记;433 新增 D32-D37 六类) |
+
+## 434 AA2R(Auto 版 a2r)
+
+- **D38**(宿主/前端配套修复,Plan 434):AA2R 自举路径上的缺口收编——
+  - **D38-VM**(宿主修复):`Str.char_at` 字节索引落在多字节字符中间时
+    `s[i..]` panic → 边界安全化(`s.get(i..)`,非边界返回 0;ASCII 行为
+    不变)。v2 lexer 首次扫描含 CJK 注释的 lib 源时触发(此前 corpus 全
+    ASCII,该路径从未执行)。
+  - **D38a**(parser.at):`parse_type` 增泛型实例 `Name<A, B>`(Display
+    对齐 unique_name;M2 语料不受影响,新增 p15/p16 常驻闸门)。
+  - **D38b**(parser.at):增 type-decl/enum-decl 声明(Display 对齐
+    ast/types.rs TypeDecl::fmt 与 ast/enums.rs EnumDecl::fmt;members-only,
+    枚举 gap-fill 对齐;成员/变体间空行 Display 无载体静默忽略)。
+    用户类型经注册表**内联整个声明快照**(已声明→完整 decl;前向引用→
+    `(type-decl (name X))` 空声明)——对齐 Rust `Type::User(TypeDecl)`
+    的 Display 行为;p15 语料实证。
+  - **D38c**(lexer.at):f-string(`f"..."`/`f"""..."""`/反引号)与三引号
+    多行字符串——f-string 发射 **FStrStart + FStrPart(整段内容)+
+    FStrEnd** 简化形(主 lexer 为逐段结构化 token;`$name`/`${expr}` 由
+    a2r.at 发射侧解析,`${expr}` 内容原样直通,校准子集见 D40);
+    三引号内容实换行入 Str。M1 语料不含此类 token,闸门不受影响。
+  - **D38d**(a2r.at):作用域栈 unscope 时**清空弃用槽位**——depth 计数
+    模式(D25)下,上一函数分支作用域的残留条目会在相同槽位被下一函数
+    的查找命中(跨 fn 同名遮蔽,`return b` 被陈旧 param=0 条目遮蔽的
+    实证);清空后槽位复用无污染。
+- **D39**(a2r.at 方法论):AA2R 不经 parse_dump 的 S-expr(字符串字面量
+  内引号歧义:lexer 解码后的原文重嵌入 dump 无法区分真实引号),改以
+  token 游标直走(432 codegen.at 同款),复用 parser.at 的 p_* 游标/
+  优先级表与 typeinfo.at 的 t_is_type_prop;预扫描类型表走**裸名形**
+  (不经 D38b 内联 Display——那是 dump 判据层口径)。
+- **D40**(a2r.at 与主 a2r 的已知文本差异,行为等价):主 a2r 的
+  mut-参数签名 `mut c: &mut CG`(绑定可变位)按逃逸分析选择性保留,
+  AA2R 统一省略(行为等价,unused-mut 由 allow 抑制);主 a2r merge 模式
+  的逐文件 `// Auto-generated` 分隔注释未复刻;struct 派生三分派
+  (float/List→3 派生)与 else-后空行规则等格式细节已对齐;`${expr}`
+  内容原样直通(方法调用/复杂表达式形态的 f-string 插值不支持)。
+- **主 a2r 缺陷(不修,挂 242)**:a2r.at 在主 a2r 下转译 45 错——
+  `.get(i).field` 链在接收者类型推断失败时发射 `Option` 形(E0609)、
+  `x = a.field`(&mut 引用的 str 字段读)不补 clone(E0507)等。矩阵 ②
+  因此维持 433 六文件语义,⑤(AA2R)覆盖含 a2r.at 的七文件全塔;主 a2r
+  修复后 ② 可回归整目录。
+
+## 计数(434 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 + D38c(+D32/D37) |
+| parser.at | 7 + D38a/D38b(+D32/D33) |
+| typeinfo.at | 1(+D32/D33/D36-④) |
+| codegen.at | 2(+D32/D33/D36-③) |
+| engine.at | 3(D29 + D30/D31 + D34/D35/D36) |
+| a2r.at(新) | D38d/D39/D40(方法论文档于文件头) |
+| 合计 | 26 类(434 新增 D38a-d/D39/D40;宿主修复 D38-VM 一项) |

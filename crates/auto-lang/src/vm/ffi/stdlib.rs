@@ -1465,12 +1465,17 @@ pub fn shim_str_is_empty(s: String) -> bool {
 }
 
 /// Get character at byte index (returns single-char string)
+///
+/// Plan 434 (AA2R): boundary-safe — a byte index inside a multi-byte char
+/// returns 0 instead of panicking (`s[i..]` panicked on non-boundary; the
+/// v2 lexer byte-wise scans hit it on CJK comment text the first time
+/// AA2R lexed the lib source itself). ASCII behavior unchanged.
 #[auto_macros::rust_fn("Str.char_at")]
 pub fn shim_str_char_at(s: String, index: i32) -> i32 {
     if index < 0 || index as usize >= s.len() {
         return 0
     }
-    match s[index as usize..].chars().next() {
+    match s.get(index as usize..).and_then(|t| t.chars().next()) {
         Some(c) => c as i32,
         None => 0,
     }

@@ -1502,6 +1502,8 @@ pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     "auto/lib/typeinfo.at",
     "auto/lib/codegen.at",
     "auto/lib/engine.at",
+    // plan-434: AA2R(Auto 版 a2r 核心子集;含 434 扩展后的 parser/lexer 见 D38)
+    "auto/lib/a2r.at",
 ];
 
 /// Read and concatenate all auto/lib/*.at files for bootstrap tests.
