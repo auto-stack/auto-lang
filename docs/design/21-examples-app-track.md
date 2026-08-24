@@ -69,7 +69,7 @@
 
 | 编号 | 应用 | 钉住的平台缺口 | 成本 | 依赖 |
 |---|---|---|---|---|
-| 024 | **charts** 图表工坊 | 模型驱动数据系列、hover/tooltip 交互、**vm 端自绘图表**(矢量) | 中 | — |
+| 024 | **charts** 图表工坊 | 模型驱动数据系列、hover/tooltip 交互、**vm 端自绘图表**(矢量) | 中 | 官方 chart 组件库（[437](../plans/437-024-charts.md) Phase 0–2 前置：现状仅 vue 端、无正式组件声明） |
 | 025 | **dashboard** 系统监视器 | charts 组合 + KPI + 轮询刷新(.Tick) + 响应式布局 | 低 | 024 |
 | 026 | **database** SQLite 客户端 | DataTable 深水区(虚拟滚动/分页/排序/筛选)、**Tree 缺口**、SQL 编辑器(复用 code_editor)、rusqlite 后端 a2r 大结果集 | 高,分三阶段(只读浏览→SQL console→写操作) | — |
 | 027 | **file-manager** 文件管理器 | Tree 导航、列表/网格切换、右键菜单(Plan 422 已解锁)、内联重命名、fs 后端 | 中 | — |
