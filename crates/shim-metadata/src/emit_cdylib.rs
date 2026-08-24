@@ -106,13 +106,16 @@ pub fn fingerprint(meta: &PackMeta, c: &Classified, free_fns: &[ShimMethod]) -> 
 }
 
 /// parts 版指纹(供 rustc 检查器剔除环重算用)。
+/// 430 复审修复:泛型自由函数不进指纹——它们的签名含未解决泛型,
+/// `classify_ret` 只能给出 Void 假码,指纹行反而失真;这类函数
+/// 连同 manifest 条目一并跳过(见 emit_pack_parts)。
 pub fn fingerprint_parts(
     meta: &PackMeta,
     plans: &[MarshalPlan],
     free_fns: &[ShimMethod],
 ) -> String {
     let mut lines: Vec<String> = plans.iter().map(plan_sig_line).collect();
-    lines.extend(free_fns.iter().map(|f| {
+    lines.extend(free_fns.iter().filter(|f| !f.generic).map(|f| {
         format!(
             "fn {}.{}|{}|{}",
             f.method,
@@ -228,15 +231,33 @@ pub fn emit_pack_parts(
         wrappers.push_str(&src);
     }
 
-    // 自由函数元信息(仅清单)
+    // 自由函数元信息(仅清单)。
+    // 430 复审修复:泛型自由函数(fn foo<T>(x: T) -> T)过滤——rustdoc 无法
+    // 单态化,`fn foo<T>(x: T) -> T` 经 classify_ret 只能落 RetPlan::Void,
+    // 以假 'v' 签名进 manifest 会被 resolve_signature 采信,错误类型推断
+    // 传导进 codegen。与方法的泛型跳过规则(classify)口径一致。
     let functions: Vec<FunctionEntry> = free_fns
         .iter()
+        .filter(|f| !f.generic)
         .map(|f| FunctionEntry {
             name: f.method.clone(),
             params: f.params.iter().map(param_char_of).collect(),
             ret: ret_char_of(&classify_ret(&f.ret)).to_string(),
         })
         .collect();
+    let skipped_generic_fns: Vec<&str> = free_fns
+        .iter()
+        .filter(|f| f.generic)
+        .map(|f| f.method.as_str())
+        .collect();
+    if !skipped_generic_fns.is_empty() {
+        log::warn!(
+            "plan430: skipped {} generic free function(s) in {}: {:?}",
+            skipped_generic_fns.len(),
+            meta.crate_name,
+            skipped_generic_fns
+        );
+    }
 
     let manifest = ShimManifest {
         format: MANIFEST_FORMAT,
@@ -281,14 +302,16 @@ pub fn emit_pack_parts(
             "generic": p.method.generic,
             "fallible": p.fallible,
         })).collect::<Vec<_>>(),
-        "free_functions": free_fns.iter().map(|f| serde_json::json!({
+        "free_functions": free_fns.iter().filter(|f| !f.generic).map(|f| serde_json::json!({
             "name": f.method,
             "params": f.params.iter().map(|t| t.rust_name()).collect::<Vec<_>>(),
             "ret": f.ret.rust_name(),
         })).collect::<Vec<_>>(),
         "skips": skips.iter().map(|s| serde_json::json!({
             "type": s.type_name, "method": s.method, "reason": s.reason,
-        })).collect::<Vec<_>>(),
+        })).chain(free_fns.iter().filter(|f| f.generic).map(|f| serde_json::json!({
+            "type": "", "method": f.method, "reason": "generic free fn (430 review): no monomorphization available",
+        }))).collect::<Vec<_>>(),
     });
     let signatures_json = serde_json::to_string_pretty(&signatures_json).unwrap_or_default();
 
@@ -438,6 +461,27 @@ fn ret_type_label(p: &MarshalPlan) -> String {
     }
 }
 
+/// 计算 MarshalPlan 的导出符号全名(与 emit_wrapper 生成的完全一致)。
+/// 430 复审修复:供 rustc 检查器剔除环做**精确**匹配——此前 auto-cache 侧用
+/// `starts_with("auto_Type_method")` 前缀匹配,`auto_Counter_newest_p_p` 会误伤 `new`。
+pub fn plan_export_symbol(p: &MarshalPlan) -> String {
+    let m = &p.method;
+    let mut chars = String::new();
+    if !matches!(m.self_kind, SelfKind::Static) {
+        chars.push('p');
+    }
+    for a in &p.args {
+        chars.push(arg_char(a));
+    }
+    let rc = ret_char(&p.ret);
+    // 导出符号:auto_<Type>_<method>_<params>_<ret>,无参时 params 段留空(auto_X_m__r)
+    if chars.is_empty() {
+        format!("auto_{}_{}__{rc}", m.type_name, m.method)
+    } else {
+        format!("auto_{}_{}_{chars}_{rc}", m.type_name, m.method)
+    }
+}
+
 /// 生成单个方法 wrapper 与其 manifest 条目。
 fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
     let m = &p.method;
@@ -453,12 +497,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
         chars.push(arg_char(a));
     }
     let rc = ret_char(&p.ret);
-    // 导出符号:auto_<Type>_<method>_<params>_<ret>,无参时 params 段留空(auto_X_m__r)
-    let export = if chars.is_empty() {
-        format!("auto_{short}_{}__{rc}", m.method)
-    } else {
-        format!("auto_{short}_{}_{chars}_{rc}", m.method)
-    };
+    let export = plan_export_symbol(p);
 
     // 参数声明与调用实参(源码顺序;接收者占 arg_0)
     let mut idx = 0usize;
@@ -681,7 +720,7 @@ fn emit_wrapper(crate_ident: &str, p: &MarshalPlan) -> (MethodEntry, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::classify::{classify_all, classify_all_third_party};
+    use crate::classify::classify_all_third_party;
     use crate::types::{ArgPlan, SelfKind, ShimMethod, Ty};
 
     fn demo_classified() -> Classified {
@@ -807,5 +846,77 @@ mod tests {
 
         // 确定性
         assert_eq!(fp1, fingerprint(&meta, &demo_classified(), &[]));
+    }
+
+    #[test]
+    fn generic_free_fns_are_excluded() {
+        // 430 复审修复:泛型自由函数不得以假 'v' 签名进 manifest/指纹
+        // (resolve_signature 元数据优先会采信 → 错误类型推断传导 codegen)。
+        let c = demo_classified();
+        let meta = PackMeta {
+            crate_name: "my_crate".into(),
+            crate_version: "0.1.0".into(),
+            toolchain: "t".into(),
+        };
+        let generic_fn = ShimMethod {
+            type_name: String::new(),
+            method: "identity".into(),
+            self_kind: SelfKind::Static,
+            params: vec![Ty::Generic("T".into())],
+            ret: Ty::Generic("T".into()),
+            generic: true,
+            fallible: false,
+            field: None,
+        };
+        let plain_fn = ShimMethod {
+            type_name: String::new(),
+            method: "add_one".into(),
+            self_kind: SelfKind::Static,
+            params: vec![Ty::I64],
+            ret: Ty::I64,
+            generic: false,
+            fallible: false,
+            field: None,
+        };
+        let (_, files) = emit_pack(&meta, "dep", &c, &Exceptions::default(), &[generic_fn.clone(), plain_fn.clone()]);
+        let man: ShimManifest = serde_json::from_str(&files.manifest_json).unwrap();
+        let names: Vec<&str> = man.functions.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, vec!["add_one"], "泛型自由函数必须被过滤");
+        // signatures.json 的 skips 里要有留痕
+        let sigs: serde_json::Value = serde_json::from_str(&files.signatures_json).unwrap();
+        let skip_methods: Vec<&str> = sigs["skips"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|s| s["method"].as_str())
+            .collect();
+        assert!(skip_methods.contains(&"identity"), "跳过需留痕: {:?}", skip_methods);
+
+        // 指纹同样不受泛型函数影响(其假签名行不进指纹):
+        // fp([generic]) == fp([]),且 fp([generic, plain]) == fp([plain])
+        let fp_g = fingerprint_parts(&meta, &c.plans, &[generic_fn.clone()]);
+        let fp_none = fingerprint_parts(&meta, &c.plans, &[]);
+        assert_eq!(fp_g, fp_none, "泛型函数不得影响指纹");
+        let fp_gp = fingerprint_parts(&meta, &c.plans, &[generic_fn.clone(), plain_fn.clone()]);
+        let fp_p = fingerprint_parts(&meta, &c.plans, &[plain_fn]);
+        assert_eq!(fp_gp, fp_p, "泛型函数不得影响指纹");
+        assert_ne!(fp_none, fp_p, "非泛型函数仍应影响指纹");
+    }
+
+    #[test]
+    fn plan_export_symbol_matches_wrapper() {
+        // 430 复审修复:剔除环的精确匹配依赖此函数与 wrapper 实际导出名一致
+        let c = demo_classified();
+        for p in &c.plans {
+            let (_, src) = emit_wrapper("my_crate", p);
+            let sym = plan_export_symbol(p);
+            assert!(
+                src.contains(&format!("fn {}", sym)),
+                "export symbol {} not found in wrapper source",
+                sym
+            );
+        }
+        let new_plan = &c.plans[0];
+        assert_eq!(plan_export_symbol(new_plan), "auto_Counter_new_s_p");
     }
 }

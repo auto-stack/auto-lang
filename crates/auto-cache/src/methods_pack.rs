@@ -11,9 +11,13 @@
 use crate::sandbox::{DepSource, Sandbox, SandboxError};
 use shim_metadata::classify::{classify_all_third_party as classify_all, Exceptions};
 use shim_metadata::emit_cdylib::{emit_pack_parts, PackMeta};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+
+/// rustc 检查器剔除环的总构建尝试上限(首建 + 重试)。
+/// 430 复审修复:此前无上限,最坏 O(plans) 轮全量 build。
+const MAX_BUILD_ATTEMPTS: u32 = 5;
 
 /// 一次成功构建的产物描述。
 pub struct MethodsPackBuilt {
@@ -98,21 +102,46 @@ impl Sandbox {
         let wrapper = Self::methods_wrapper_name(crate_name);
 
         // 1. 缓存快路径(manifest 指纹 → cdylib)
+        //    430 复审修复:核对 manifest 记录的 crate 版本与当前解析版本——
+        //    `dep uuid = "1"` 这类半开区间声明升级后(1.0→1.9),声明版本串不变,
+        //    若不核对则指纹永续陈旧(C3"防签名漂移"空转)。核对失败(无构建目录/
+        //    cargo metadata 不可用)时按缓存接受,保持降级姿态。
         if let Some((lib, manifest_json)) = self.find_methods_pack(crate_name) {
-            log::info!(
-                "plan430: cached methods pack for {}: {}",
-                crate_name,
-                lib.display()
-            );
-            let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
-            let (methods, skipped) = count_entries(&manifest_json);
-            return Ok(Some(MethodsPackBuilt {
-                lib_path: lib,
-                manifest_json,
-                fingerprint: fp,
-                methods,
-                skipped,
-            }));
+            let stale = match (
+                extract_crate_version(&manifest_json),
+                resolved_crate_version(
+                    &self.cargo_path(),
+                    &self.root().join("builds").join(&wrapper),
+                    crate_name,
+                ),
+            ) {
+                (Some(cached), Some(current)) if cached != current => {
+                    log::info!(
+                        "plan430: cached methods pack for {} is stale ({} -> {}), rebuilding",
+                        crate_name,
+                        cached,
+                        current
+                    );
+                    true
+                }
+                _ => false,
+            };
+            if !stale {
+                log::info!(
+                    "plan430: cached methods pack for {}: {}",
+                    crate_name,
+                    lib.display()
+                );
+                let fp = extract_fingerprint(&manifest_json).unwrap_or_default();
+                let (methods, skipped) = count_entries(&manifest_json);
+                return Ok(Some(MethodsPackBuilt {
+                    lib_path: lib,
+                    manifest_json,
+                    fingerprint: fp,
+                    methods,
+                    skipped,
+                }));
+            }
         }
 
         // 2. wrapper 工程(独立工作区,防被宿主 repo 吸收)。
@@ -164,13 +193,31 @@ impl Sandbox {
         // 4+5. 生成 → 编译,失败时借 rustc 当检查器:从报错提取肇事符号,
         // 剔除对应方法后重试(至多 4 轮;Plan D/E 同款做法,防止个别
         // 不可编译的 wrapper 弄死整包 —— u128 参数/跨 crate opaque 实参等)。
+        // 430 复审修复:crate_version 用 cargo metadata 解析出的**真实版本**
+        // (此前用声明版本,`dep uuid = "1"` 下升级 1.0→1.9 指纹不变,缓存陈旧)。
+        // 解析失败(离线/metadata 异常)回退声明版本,保持降级姿态。
+        let resolved_version = resolved_crate_version(&self.cargo_path(), &build_dir, crate_name);
+        if let Some(rv) = &resolved_version {
+            if Some(rv) != source.version.as_ref() {
+                log::info!(
+                    "plan430: {} resolved to version {} (declared {:?})",
+                    crate_name,
+                    rv,
+                    source.version
+                );
+            }
+        }
         let meta = PackMeta {
             crate_name: crate_name.to_string(),
-            crate_version: source.version.clone().unwrap_or_else(|| "1".into()),
+            crate_version: resolved_version
+                .or_else(|| source.version.clone())
+                .unwrap_or_else(|| "unknown".into()),
             toolchain,
         };
         let mut plans = classified.plans.clone();
         let mut skips = classified.skips.clone();
+        // 430 复审修复:剔环轮次上限(首建之外至多重试 MAX_BUILD_ATTEMPTS-1 轮)。
+        let mut retries_left: u32 = MAX_BUILD_ATTEMPTS - 1;
         let (fp, files) = loop {
             let (fp, files) = emit_pack_parts(&meta, &dep_line, &plans, &skips, &exc, &parsed.free_fns);
             std::fs::write(src_dir.join("lib.rs"), &files.lib_rs)?;
@@ -208,6 +255,18 @@ impl Sandbox {
                     crate_name, stderr
                 )));
             }
+            if retries_left == 0 {
+                return Err(SandboxError::CompilationFailed(format!(
+                    "methods wrapper build for {} still failing after {} rustc-check retries \
+                     (dropped {} of {} methods so far): {}",
+                    crate_name,
+                    MAX_BUILD_ATTEMPTS - 1,
+                    classified.plans.len() - plans.len(),
+                    classified.plans.len(),
+                    stderr
+                )));
+            }
+            retries_left -= 1;
         };
         std::fs::write(build_dir.join("manifest.json"), &files.manifest_json)?;
         std::fs::write(build_dir.join("signatures.json"), &files.signatures_json)?;
@@ -255,8 +314,10 @@ fn offending_symbols(stderr: &str) -> Vec<String> {
     found
 }
 
-/// 按肇事符号划分保留/剔除:方法导出符号命中,或该类型的
+/// 按肇事符号划分保留/剔除:方法导出符号**精确**命中,或该类型的
 /// auto__drop_<Type> 命中(类型级问题 → 连带剔除整个类型的方法)。
+/// 430 复审修复:此前用 starts_with("auto_Type_method") 前缀匹配,
+/// auto_Counter_newest_p_p 会连带误伤 Counter::new(set/set_label 同理)。
 fn partition_out_offenders(
     plans: &mut Vec<shim_metadata::types::MarshalPlan>,
     skips: &mut Vec<shim_metadata::types::Skip>,
@@ -271,13 +332,9 @@ fn partition_out_offenders(
         .collect();
     let mut i = 0;
     while i < plans.len() {
-        let p = &plans[i];
-        let export = format!(
-            "auto_{}_{}",
-            p.method.type_name, p.method.method
-        );
-        let hit = offenders.iter().any(|o| o.starts_with(&export))
-            || dropped_types.contains(&p.method.type_name);
+        let export = shim_metadata::emit_cdylib::plan_export_symbol(&plans[i]);
+        let hit = offenders.iter().any(|o| *o == export)
+            || dropped_types.contains(&plans[i].method.type_name);
         if hit {
             let p = plans.remove(i);
             skips.push(shim_metadata::types::Skip {
@@ -314,6 +371,41 @@ fn extract_fingerprint(manifest_json: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(manifest_json)
         .ok()?
         .get("fingerprint")?
+        .as_str()
+        .map(String::from)
+}
+
+/// 从 manifest JSON 提取 crate_version 字段(430 复审修复:缓存陈旧检测用)。
+fn extract_crate_version(manifest_json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(manifest_json)
+        .ok()?
+        .get("crate_version")?
+        .as_str()
+        .map(String::from)
+}
+
+/// 用 cargo metadata 查询构建目录中 crate **解析后的真实版本**。
+/// `--locked` 保证不动 Cargo.lock(此刻依赖已被 rustdoc 解析过,本地必有);
+/// 失败(无构建目录/离线缺依赖/JSON 异常)返回 None,调用方按降级处理。
+fn resolved_crate_version(cargo: &Path, build_dir: &Path, crate_name: &str) -> Option<String> {
+    if !build_dir.join("Cargo.lock").exists() {
+        return None;
+    }
+    let run = |locked: bool| {
+        let mut cmd = Command::new(cargo);
+        cmd.args(["metadata", "--format-version", "1"]);
+        if locked {
+            cmd.arg("--locked");
+        }
+        cmd.current_dir(build_dir).output().ok()
+    };
+    let out = run(true).filter(|o| o.status.success()).or_else(|| run(false))?;
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    json.get("packages")?
+        .as_array()?
+        .iter()
+        .find(|p| p.get("name").and_then(|n| n.as_str()) == Some(crate_name))
+        .and_then(|p| p.get("version"))?
         .as_str()
         .map(String::from)
 }
@@ -370,5 +462,66 @@ mod tests {
         let m = r#"{"format":1,"fingerprint":"0123456789abcdef","methods":[]}"#;
         assert_eq!(extract_fingerprint(m).as_deref(), Some("0123456789abcdef"));
         assert_eq!(extract_fingerprint("not json"), None);
+    }
+
+    #[test]
+    fn crate_version_extraction() {
+        // 430 复审修复:缓存陈旧检测依赖 manifest 记录的 crate_version 可读
+        let m = r#"{"format":1,"crate_version":"1.9.0","fingerprint":"abc"}"#;
+        assert_eq!(extract_crate_version(m).as_deref(), Some("1.9.0"));
+        assert_eq!(extract_crate_version(r#"{"format":1}"#), None);
+    }
+
+    #[test]
+    fn resolved_version_requires_lockfile_or_metadata() {
+        // 无 Cargo.lock 的目录(如临时目录)→ None(降级,不报错)
+        let tmp = std::env::temp_dir().join("plan430_no_lock_dir");
+        assert_eq!(
+            resolved_crate_version(Path::new("cargo"), &tmp, "whatever"),
+            None
+        );
+    }
+
+    #[test]
+    fn offender_partition_matches_exactly_not_by_prefix() {
+        // 430 复审修复:auto_Counter_newest_p_p 不得误伤 Counter::new
+        use shim_metadata::types::{ArgPlan, MarshalPlan, RetPlan, SelfKind, ShimMethod, Ty};
+        fn plan(method: &str) -> MarshalPlan {
+            MarshalPlan {
+                method: ShimMethod {
+                    type_name: "Counter".into(),
+                    method: method.into(),
+                    self_kind: SelfKind::Write,
+                    params: vec![],
+                    ret: Ty::Void,
+                    generic: false,
+                    fallible: false,
+                    field: None,
+                },
+                args: vec![],
+                ret: RetPlan::Void,
+                copy_result: false,
+                fallible: false,
+            }
+        }
+        let mut plans = vec![plan("new"), plan("newest"), plan("set"), plan("set_label")];
+        let mut skips = Vec::new();
+        // 精确肇事符号:newest(签名 p_v)与 set_label(签名 p_v)——
+        // 完整导出名由 plan_export_symbol 给出
+        let offenders = vec![
+            shim_metadata::emit_cdylib::plan_export_symbol(&plans[1]),
+            shim_metadata::emit_cdylib::plan_export_symbol(&plans[3]),
+        ];
+        partition_out_offenders(&mut plans, &mut skips, &offenders);
+        let remain: Vec<&str> = plans.iter().map(|p| p.method.method.as_str()).collect();
+        assert_eq!(remain, vec!["new", "set"], "前缀同名方法不得被误伤");
+        assert_eq!(skips.len(), 2);
+
+        // 类型级:auto__drop_Counter 命中 → 整类型连带剔除
+        let mut plans = vec![plan("new"), plan("value")];
+        let mut skips = Vec::new();
+        partition_out_offenders(&mut plans, &mut skips, &["auto__drop_Counter".to_string()]);
+        assert!(plans.is_empty());
+        assert_eq!(skips.len(), 2);
     }
 }
