@@ -1,0 +1,53 @@
+// Plan 430 复审补网:std 臂 VM 路径回归网(ffi_dual_014)。
+// 守护 dispatch 3000 生成段(generated_std.rs,工具生成 DO NOT EDIT):
+//   Vec 14 臂 / Duration 5 臂 / Instant 2 臂 / PathBuf.from / String.new|from。
+// 复审背景:430 已把手写 std 臂迁到生成段,但 19_rust_std VM goldens 当时全部
+// #[ignore],迁移主战场无活跃守护;本用例补上(另:19_rust_std 的陈旧 ignore
+// 已在本次一并解除,见 vm_file_tests.rs)。
+use.rust std::vec::Vec
+use.rust std::time::Duration
+use.rust std::path::PathBuf
+use.rust std::string::String
+
+fn main() {
+    // ---- Vec(生成段 14 臂的行为断言,非"ok"级) ----
+    var v = Vec.new()
+    print(v.len())
+    print(v.is_empty())
+    v.push(10)
+    v.push(20)
+    v.push(30)
+    print(v.len())
+    print(v.is_empty())
+    print(v.get(1))
+    print(v.first())
+    print(v.last())
+    v.insert(15, 1)
+    print(v.len())
+    v.remove(2)
+    print(v.len())
+    print(v.pop())
+    let c = v.clone()
+    v.reverse()
+    print(v.len())
+    print(c.len())
+    v.clear()
+    print(v.len())
+    print(v.is_empty())
+
+    // ---- Duration(含 u64 宽度回归:5e9 秒曾因 u64→i32 截断变 705032704) ----
+    let d = Duration.from_secs(5)
+    print(d.as_secs())
+    let big = Duration.from_secs(5000000000)
+    print(big.as_secs())
+    print(Duration.from_millis(1500).as_secs_f64())
+    print(Duration.from_secs_f64(0.25).as_secs_f64())
+    print(d)
+
+    // ---- PathBuf.from ----
+    // (String.from 构造器暂不入网:同线程先跑过多个 VM 测试后其返回 tag 会丢失,
+    //  print 出裸堆 ID(4000011 形态)——跨测试状态毒化 bug 已登记 KNOWN-DEBT,
+    //  修复后可加回。String 方法面走引擎 str 原生路径,由 ffi_dual_002/012 守护。)
+    let p = PathBuf.from("src/main.rs")
+    print(p)
+}

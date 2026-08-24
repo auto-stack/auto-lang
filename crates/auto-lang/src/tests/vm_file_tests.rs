@@ -435,17 +435,27 @@ is s {
 #[test] #[ignore] fn test_18_ffi_018_json_has_key() { test_vm("18_ffi/018_json_has_key").unwrap(); }
 
 // === 19_rust_std ===
-#[test] #[ignore] fn test_19_rust_std_001_time() { test_vm("19_rust_std/001_time").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_002_duration() { test_vm("19_rust_std/002_duration").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_003_pathbuf() { test_vm("19_rust_std/003_pathbuf").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_004_duration_print() { test_vm("19_rust_std/004_duration_print").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_005_instant_duration() { test_vm("19_rust_std/005_instant_duration").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_006_sync() { test_vm("19_rust_std/006_sync").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
-#[test] #[ignore] fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_001_time() { test_vm("19_rust_std/001_time").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_002_duration() { test_vm("19_rust_std/002_duration").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_003_pathbuf() { test_vm("19_rust_std/003_pathbuf").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_004_duration_print() { test_vm("19_rust_std/004_duration_print").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_005_instant_duration() { test_vm("19_rust_std/005_instant_duration").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_006_sync() { test_vm("19_rust_std/006_sync").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }
 // EDGE-16: VM 模式 std::process::Command FFI(shell.at 真实执行命令的基础)。
-#[test] #[ignore] fn test_19_rust_std_010_process_command() { test_vm("19_rust_std/010_process_command").unwrap(); }
+#[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
+fn test_19_rust_std_010_process_command() { test_vm("19_rust_std/010_process_command").unwrap(); }
 
 // === 20_permission ===
 #[test] #[ignore] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }

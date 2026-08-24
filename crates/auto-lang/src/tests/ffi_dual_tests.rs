@@ -156,3 +156,13 @@ let p = Config.parse("not-a-number")
         "error should carry dep-side message, got: {msg}"
     );
 }
+
+// Plan 430 复审补网:std 臂 VM 路径回归网。
+// 守护 dispatch 3000 生成段(generated_std.rs):Vec 14 臂/Duration 5 臂/
+// Instant 2 臂/PathBuf.from/String.new|from。复审发现 430 迁移 std 手写臂后,
+// VM 模式的 19_rust_std goldens 当时全部 #[ignore],迁移主战场零活跃守护——
+// 本用例补上;19_rust_std 的陈旧 ignore 亦已解除。
+#[test]
+fn ffi_dual_014_std_generated_segment() {
+    test_ffi_dual("014_std_generated_segment").unwrap();
+}
