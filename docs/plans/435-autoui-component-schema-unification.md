@@ -1,6 +1,6 @@
 # Plan 435: AutoUI 组件统一声明 — schema 漂移治理与统一组件注册
 
-> **状态**: 📋 已立项待实施(2026-08-23 漂移审计会话产出)
+> **状态**: 🚧 实施中 —— P0 已落地并复审通过(2026-08-24,分支 `plan-435-schema-unification`);P1-P4 待实施,P5 新增(见 §3.1 需求映射与补强);P0 分支尚未合并 master
 > **来源**: 2026-08-23 组件声明问题调查 + 漂移审计(脚本 `scratch/schema_drift_audit.py`,明细 `scratch/drift_*.txt`)
 > **关联**: 098(aura.at schema 初版)/ 280(render_support)/ 320(WidgetRegistry.all)/ 361(validators)/ 408(路由别名不 shadow 内置)/ 412(widgets-gallery Layout 分组)/ 422(弹层语义,碰 view_builder)
 > **基准原则**: **生产代码 + examples(widgets-gallery 62 页)是事实源**;`aura/schema.rs` 本身已漂移,仅作交叉参考,不作基准。
@@ -77,18 +77,40 @@
 
 ## 3. Phases
 
-- **P0 漂移围栏**:审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
+- **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
 - **P1 基准提取与 schema 重建**:提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
 - **P2 schema 接入与校验**:loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
 - **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
 - **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
+- **P5 文档与 Demo 系统(2026-08-24 复审新增)**:以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
+
+## 3.1 需求映射(2026-08-24 复审,目标形态三层声明体系)
+
+> 需求原文:**基础组件用 schema;官方实现的组件用 auto 代码;第三方库里的 auto 组件用统一方法注册声明——所有组件注册进 widgets 库,并有对应文档和 demo 页(widgets-gallery)。**
+
+| 需求层 | 声明方式 | 对应阶段 | 状态 |
+|---|---|---|---|
+| 基础组件(native_html + builtin_widget) | schema/aura.at 声明契约,Rust 留行为 | P1-P3 | 覆盖 |
+| 官方组件(shadcn 家族 + gallery 组件) | `.at` widget 源码即为声明(AuraWidget) | P4(Local/Package)+ 补强①② | 需补强 |
+| 第三方 auto 组件 | `use` 包源引用 + 包 manifest | P4 + 补强③ | 需细化 |
+| 文档 + demo 页面 | schema/registry 生成 + gallery 手写叙事 | **P5(新增)** | 原计划缺失 |
+
+**补强项(P4/P5 开工前并入)**:
+
+1. **组件家族声明**:carousel 家族(CarouselContent/Item/Previous/Next)目前只是命名惯例上的松散 `widget`,父子关系靠 vue.rs `known_sub_widgets` 隐式发现;ElementDef 只有 `allows_children: bool`,无 child 关系建模。schema 需加 `sub_widgets: [...]` 字段(或等价的 family 声明),官方/第三方复合组件同用。
+2. **官方组件库定位**:明确官方组件库 = 一个 `.at` 包(候选:packages/widgets 从"生成物"升级为"源码库",gallery components 收编入内),它本身作为第三方注册机制的第一个消费者(自举验证)。
+3. **第三方注册细节**:包 manifest 格式(入口 .at + 版本 + namespace)、`use` 解析顺序、shadow 规则(Plan 408 语义推广)、多后端一致性(至少 web+vm 两端冒烟)。
+4. **shadcn 长尾战略归宿**:`tier: web_component` 的 245 项,写明迁移预期——渐进重写为官方 `.at` 组件(进家族声明+严格 props)或永久停留 codegen 映射(仅 tag+import);两者在 schema 中可区分,避免"永远漂在中间"。
+
+**P0 复审补丁(半天量级,可与 P1 并行)**:围栏补 parser.rs tag 特判维度与 a2ui import/export 维度;vue.rs `components.insert` 补重复检测(现仅 schema.rs 有 `rs_duplicate_insert`,不对称);baseline 建议逐条加理由注释约定。
 
 ## 4. 验收
 
 - **P0**:drift test 可复现本次审计的全部孤立项(红),后续任何新增组件不同步四表无法合入;同表重复 insert(如 popover 两处)直接编译期/测试期报错。
 - **P1/P2**:四表数字对账(42/192/245/51 → 1 份 schema + 派生物);widgets-gallery 62 页全部 tag 在 schema 有声明;`auto build` 对故意写错的 tag/prop 给出 schema 驱动建议(LSP 同源)。
 - **P3**:widgets-gallery vue 输出 golden 零回归;新增一个内置组件 = 改 schema + 一处实现(drift test 保证其余表同步)。
-- **P4**:一个第三方组件通过"包声明 + use 引用"在 web 端可用(生成路径);内置组件不可被同名自定义组件 shadow(回归 Plan 408 语义)。
+- **P4**:一个第三方组件通过"包声明 + use 引用"在 web 端可用(生成路径);内置组件不可被同名自定义组件 shadow(回归 Plan 408 语义);官方 `.at` 包通过同一机制注册成功(自举)。
+- **P5**:全部注册组件(含第三方示例包)在 gallery 有文档页 + demo 页,文档覆盖围栏红→绿;button 等核心页的 Properties 表改为 schema 生成后与手写版逐字对拍一致;VitePress 组件参考页上线并与 gallery 活 demo 互链。
 
 ## 5. 风险
 
@@ -106,3 +128,30 @@
 - 脚本:`scratch/schema_drift_audit.py`(P0 的 Rust 化蓝本)
 - 明细:`scratch/drift_at.txt`(42)/ `scratch/drift_rs.txt`(192)/ `scratch/drift_vb0.txt`(51)/ `scratch/drift_vb1.txt`(48)
 - 关键代码位置:vue.rs `map_tag`(L5486,解析顺序)/ view_builder 两表(L873 tracked / L1657 untracked)/ schema_loader(孤儿)/ widget_registry(自定义组件地基)
+
+## 执行结果
+
+### P0 漂移围栏(2026-08-24,worktree `plan-435-schema-unification`)
+
+- **`crates/auto-lang/tests/schema_drift.rs`**:审计脚本 Rust 化,零新依赖。手写扫描器:
+  HashMap insert 表扫描(map 名精确匹配,排除 `shadcn_components_used.insert` 前缀撞名)+
+  `match tag` 派发表扫描(skeleton 剥离行注释与字符串内容后数括号深度,区分臂头/臂体,
+  `let x = match tag` 小表与 `match tag_lower` 刻意不收)。覆盖:
+  schema.rs `elements.insert`(192)/ vue.rs `components.insert`(245)+ map_tag 两表 /
+  view_builder 两张派发表(52/49;审计 51/48 之后 Plan 442 双侧加 svg)/
+  render_support(113),另带 aura.at(42)对照维度。共 14 个漂移维度 + 各文件表数量结构断言。
+- **围栏语义 = 只拦新增漂移**:审计当日孤项冻结为 baseline
+  (`tests/fixtures/schema_drift_baseline.txt`,980 行;`SCHEMA_DRIFT_UPDATE_BASELINE=1 cargo test -p auto-lang --test schema_drift` 再生成)。
+  与验收原文"复现孤项(红)"的偏差是**有意决策**:常红测试会破坏其他 agent 的
+  "全量绿"闸门;baseline 即孤项清单的可复核形态,围栏拦新增、P1-P3 收编时逐项裁剪。
+- **同表重复 insert 无 baseline 豁免,直接红**;顺带清除 schema.rs popover 死块
+  (L706 旧 Overlay 声明被 L2192 Plan 422 anchored popover 覆盖,HashMap 后写胜出,
+  删除零行为变更)。
+- **扫描器与审计 dump 交叉核对**:rs 集/at 集与 scratch/drift_*.txt 完全一致;
+  vb 镜像差集 = 审计的 {menubar, popover, toolbar}。
+- **负向验证**:render_support 注入假 tag → `[render_not_in_rs][render_not_in_vb]` 红;
+  回注 popover 死块 → `[rs_duplicate_insert] popover` 红;清理后均恢复绿。
+- lib 全量 3129 绿;围栏测试绿。**预存债(非本计划引入,已在 master 基线 c76011ec 复验,待另行归因)**:
+  ui_snapshots 三例(app/editor/sidebar)红——snap 内嵌绝对路径(换 worktree 必红)
+  + SFC 字节数漂移(app 2876→2920);vue_capabilities 一例 `cap_widget_map_model_init` 红
+  (widget map init 语义漂移)。
