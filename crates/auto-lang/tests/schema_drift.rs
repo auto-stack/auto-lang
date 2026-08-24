@@ -1538,12 +1538,11 @@ fn schema_drift_fence() {
     {
         let (registry_names, _vue_mappings, _imported) =
             scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
-        // P4-4 相位断言:手写退役(0)或迁移期(>=100);不存在中间态。
+        // P4-4:手写 vue insert 已退役(overlay 从 schema 重建)。
         let schema = auto_lang::aura::default_schema_cached().expect("schema");
-        assert!(
-            _vue_mappings == 0 || _vue_mappings >= 100,
-            "手写 vue insert 数({})处于异常中间态;退役走 schema/aura.at",
-            _vue_mappings
+        assert_eq!(
+            _vue_mappings, 0,
+            "手写 vue insert 应已退役(P4-4 overlay);新映射请走 schema/aura.at"
         );
         // 数据不回退:schema 的 vue 声明量守恒(手写退役后由 carried_vue 保留)
         let vue_count = schema
