@@ -113,6 +113,7 @@ status: complete
 
 ### S1 现状
 
+- rustc 冒烟由更强的 ⑤ 信号覆盖:七文件全塔整体 cargo build 零错 + 30/30 运行。
 - 字节级一致:01_basics 4/4、03_control_flow 8/11(is-match 3 例未移植)、
   04_strings 数例;机制级对齐:if-else 后空行规则、尾表达式/value-if、
   f-string(format!/println! 直组)、枚举 Display+from_id 配套、pub、
