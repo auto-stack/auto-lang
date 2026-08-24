@@ -2035,3 +2035,313 @@ widget Child {
         "no defineModel anywhere without a binding:\n{child}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Plan 444 (ash-shell-057): vue codegen five-defect canaries
+// ---------------------------------------------------------------------------
+
+/// Plan 444 ①a/①b (convention path): a callback prop whose Pascal form IS a
+/// child emit — parent binds `@Select`, child never declares `on_select` as
+/// a data prop, and a bare `on_select(x)` invocation rewrites to the emit.
+#[test]
+fn cap_444_callback_channel_convention() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    msg Msg { Selected(int) }
+    model { var active int = 0 }
+    view { col { Counter(on_select: .Selected) text .active { } } }
+    on { .Selected(i) -> { .active = i } }
+}
+
+widget Counter(on_select: msg) {
+    msg Msg { Select(int), Bump(int) }
+    model { var n int = 0 }
+    view { col { button "increment" { onclick: .Bump(.n + 1) } text .n { } } }
+    on { .Bump(next) -> { .n = next; on_select(next) } }
+}
+"#,
+    );
+    let child = codes.get("Counter").expect("Counter SFC");
+    assert!(
+        !child.contains("on_select:"),
+        "msg callback prop must not be a data prop:\n{child}"
+    );
+    assert!(
+        child.contains("emit('Select', "),
+        "bare on_select(next) rewrites to the Pascal emit:\n{child}"
+    );
+    assert!(
+        child.contains("Select: [number]"),
+        "callback-contract emit declared with payload:\n{child}"
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("@Select="),
+        "parent binds the prop-derived event (convention path):\n{app}"
+    );
+}
+
+/// Plan 444 ①a/①b (pass-through path): `on_delete: msg` with NO `Delete`
+/// variant — the child re-emits its own `DeleteBlock` via the empty-handler
+/// bridge, so the parent must bind `@DeleteBlock` and the child must not
+/// require `on_delete` (ash-gui BlockItem shape).
+#[test]
+fn cap_444_callback_channel_pass_through() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    msg Msg { DeleteBlock(int) }
+    model { var gone int = 0 }
+    view { col { Item(on_delete: .DeleteBlock) } }
+    on { .DeleteBlock(id) -> { .gone = id } }
+}
+
+widget Item(on_delete: msg) {
+    msg Msg { DeleteBlock(int) }
+    view { col { button "del" { onclick: .DeleteBlock(7) } } }
+    on { .DeleteBlock(id) -> { } }
+}
+"#,
+    );
+    let child = codes.get("Item").expect("Item SFC");
+    assert!(
+        !child.contains("on_delete:"),
+        "unmatched msg prop must not stay as a required data prop:\n{child}"
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("@DeleteBlock="),
+        "parent binds the child's actually-emitted msg (pass-through path):\n{app}"
+    );
+    assert!(
+        !app.contains("@Delete="),
+        "prop-derived @Delete would never fire:\n{app}"
+    );
+}
+
+/// Plan 444 ③: multi-payload msg variants referenced from the template with
+/// no on-block handler — the stub must become a synthesized-arg emit bridge
+/// and defineEmits must carry the payload arity (was `Sort: []` + TS2554).
+#[test]
+fn cap_444_multi_param_emit_bridge() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    msg Msg { Sort(int, int), Filter(str) }
+    view { col {
+        button "s" { onclick: .Sort(1, 2) }
+        input { oninput: .Filter("q") }
+    } }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("Sort: [number, number]"),
+        "defineEmits carries both payload types:\n{app}"
+    );
+    assert!(
+        app.contains("Filter: [string]"),
+        "defineEmits carries str payload:\n{app}"
+    );
+    assert!(
+        app.contains("function Sort(arg0: any, arg1: any): void {\n  emit('Sort', arg0, arg1)"),
+        "undefined handler becomes a synthesized-arg emit bridge:\n{app}"
+    );
+    assert!(
+        app.contains("function Filter(arg0: any): void {\n  emit('Filter', arg0)"),
+        "filter bridge:\n{app}"
+    );
+    assert!(
+        !app.contains("// TODO: handler not defined in on-block"),
+        "no arg-less TODO stubs for declared emits:\n{app}"
+    );
+}
+
+/// Plan 444 ①c: `text "#" + j.id` parses as ONE text node — the receiver is
+/// not dropped to a bare `{{ id }}` interpolation (App.vue TS2339).
+#[test]
+fn cap_444_text_concat_chain() {
+    let codes = gen_sfc_file(
+        r##"
+widget App {
+    model { var jobs []obj = [] }
+    view { col {
+        for j in .jobs {
+            row { text "#" + j.id { style: "w-8" } }
+        }
+    } }
+    on { .Init -> { } }
+}
+"##,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("{{ '#' + j.id }}"),
+        "concat chain renders as one interpolation with quotes + operator:\n{app}"
+    );
+    assert!(
+        !app.contains("{{ id }}"),
+        "receiver must not be dropped:\n{app}"
+    );
+    assert!(
+        !app.contains(">{{#}}<") && !app.contains("+\n"),
+        "no stray '+' text node / split spans:\n{app}"
+    );
+}
+
+/// Plan 444 ②: member access on a PascalCase variant field asserts non-null
+/// (`cell.Tagged!.text`) — TS18049 in strict builds.
+#[test]
+fn cap_444_variant_field_nonnull_assert() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    model { var cell obj = {} }
+    view { col { text "x" { } } }
+    on {
+        .Init -> {
+            if .cell.Text != None {
+                var a str = .cell.Text
+            } else {
+                var b str = .cell.Tagged.text
+            }
+        }
+    }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("Tagged!.text"),
+        "variant-field access gets a non-null assertion:\n{app}"
+    );
+}
+
+/// Plan 444 ⑤: dynamic member read on a str-typed model ref goes through the
+/// any channel (`(s.value as any).Failed`) — runtime is a bare string OR a
+/// {"Failed": msg} object (TS2339 on `string`).
+#[test]
+fn cap_444_str_ref_dynamic_member_any_channel() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    model {
+        var s str = ""
+        var msg str = ""
+    }
+    view { col { text "x" { } } }
+    on {
+        .Init -> {
+            if .s == "Cancelled" {
+                .msg = ""
+            } else {
+                .msg = .s.Failed
+            }
+        }
+    }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("(s.value as any).Failed"),
+        "str-ref member read goes through the any channel:\n{app}"
+    );
+}
+
+/// Plan 444 ④a: an api call (or complete()) inside an ELSE branch must still
+/// mark the handler async / debounced — the walkers previously stopped at
+/// branch bodies.
+#[test]
+fn cap_444_api_call_in_else_branch() {
+    let codes = gen_sfc_file(
+        r#"
+use back.api: complete
+widget App {
+    msg Msg { Go }
+    model { var q str = "" }
+    view { col { button "go" { onclick: .Go } } }
+    on {
+        .Go -> {
+            if .q == "" {
+                .q = "x"
+            } else {
+                .q = complete(.q, 1)
+            }
+        }
+    }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("import { complete } from '@/lib/api'"),
+        "api fn used in an else branch still imports:\n{app}"
+    );
+    assert!(
+        app.contains("setTimeout(async () => {"),
+        "complete-handler in an else branch gets the debounced async wrapper:\n{app}"
+    );
+    // The debounced design keeps `function Go(): void` sync — the await lives
+    // inside the async setTimeout callback, which is exactly what the output
+    // above shows. No TS1304/TS1308 remains: `complete` is imported and every
+    // `await` sits in an async context.
+}
+
+
+/// Plan 444 ④b: VM-only natives (fs.*/File.*) degrade to the throwing
+/// __vmOnly stub — explicit error instead of silently illegal JS.
+#[test]
+fn cap_444_vm_only_native_stub() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    msg Msg { Go }
+    view { col { button "go" { onclick: .Go } } }
+    on {
+        .Go -> {
+            var raw str = fs.read_dir(".")
+            if File.is_dir(raw) {
+                var dummy int = 1
+            }
+        }
+    }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    assert!(
+        app.contains("__vmOnly('fs.read_dir', '.')"),
+        "fs.read_dir rewrites to the stub:\n{app}"
+    );
+    assert!(
+        app.contains("__vmOnly('File.is_dir', raw)"),
+        "File.is_dir rewrites to the stub:\n{app}"
+    );
+    assert!(
+        app.contains("function __vmOnly(name: string, ...args: any[]): never"),
+        "the stub helper is declared:\n{app}"
+    );
+}
+
+#[test]
+fn zz_plan444_debug_015_app() {
+    let tmp = std::env::temp_dir().join("p444dbg");
+    std::fs::create_dir_all(&tmp).unwrap();
+    let src = std::fs::read_to_string("../../examples/ui/015-notes/src/front/app.at").unwrap();
+    let at = tmp.join("app.at");
+    std::fs::write(&at, src).unwrap();
+    let result = auto_lang::ui_gen::generate_component_from_file(
+        &at,
+        auto_lang::ui_gen::ComponentGenOptions::default(),
+    )
+    .unwrap();
+    for w in &result.validation_warnings {
+        eprintln!("WARN: {} {} {:?}", w.rule, w.severity, w.message);
+    }
+    for (name, code) in &result.all_widget_codes {
+        std::fs::write(tmp.join(format!("{}.vue", name)), code).unwrap();
+    }
+}

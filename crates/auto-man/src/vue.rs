@@ -206,6 +206,11 @@ pub struct VueDependencyUsage {
     pub form: bool,
     pub carousel: bool,
     pub sidebar: bool,
+    /// Plan 444 (ash-shell-057 ⑥): ui components whose scaffold imports
+    /// @vueuse/core besides carousel/sidebar — progress / scroll-area /
+    /// table (ash-gui's package.json regeneration dropped @vueuse and
+    /// vue-tsc failed on the fresh gen tree).
+    pub vueuse_scaffold: bool,
 }
 
 impl VueDependencyUsage {
@@ -218,6 +223,11 @@ impl VueDependencyUsage {
             form: corpus.contains("@/components/ui/form'"),
             carousel: corpus.contains("@/components/ui/carousel'"),
             sidebar: corpus.contains("@/components/ui/sidebar'"),
+            // Every scaffolded ui component that imports @vueuse/core.
+            // Keep in sync with the scaffolds' import lines.
+            vueuse_scaffold: corpus.contains("@/components/ui/progress'")
+                || corpus.contains("@/components/ui/scroll-area'")
+                || corpus.contains("@/components/ui/table'"),
         }
     }
 
@@ -250,7 +260,9 @@ impl VueDependencyUsage {
             pkgs.push("embla-carousel-vue");
         }
         // shadcn-vue's carousel and sidebar both lean on @vueuse/core.
-        if self.carousel || self.sidebar {
+        // Plan 444 (ash-shell-057 ⑥): so do the progress / scroll-area /
+        // table scaffolds — detected via `vueuse_scaffold`.
+        if self.carousel || self.sidebar || self.vueuse_scaffold {
             pkgs.push("@vueuse/core");
         }
         pkgs
@@ -271,8 +283,11 @@ fn package_json_deps_drifted(existing: &str, usage: &VueDependencyUsage) -> bool
 /// shell is OUR scaffold (not the shadcn-vue CLI) and vue-tsc typechecks
 /// every .vue under src/, so an unused shell without the codemirror deps
 /// would break `pnpm build`. Write-if-missing when used; when unused,
-/// remove the file only if it still matches the generated template
-/// (user-modified copies are left alone).
+/// remove the file when it is recognizably one of OUR scaffolds — an exact
+/// template match, or (Plan 444, ash-shell-057 ⑥) an older scaffold
+/// revision identified by its codemirror import signature. A stale
+/// old-template shell can never byte-match the current template, so the
+/// exact-only check left ash-gui's broken-compiling copy in place.
 fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Result<(), String> {
     let path = output_path.join("src").join("components").join("CodeEditor.vue");
     if usage.code_editor {
@@ -285,7 +300,13 @@ fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Res
     } else if path.exists() {
         let existing = std::fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read CodeEditor.vue: {}", e))?;
-        if existing == generate_code_editor_component() {
+        // Our scaffold's signature: the codemirror import set. An unused
+        // shell importing codemirror can never compile without its deps —
+        // prune it whatever revision it came from. Genuinely hand-written
+        // editors (no codemirror imports) are left alone.
+        let is_our_scaffold = existing == generate_code_editor_component()
+            || (existing.contains("vue-codemirror") && existing.contains("@codemirror/"));
+        if is_our_scaffold {
             std::fs::remove_file(&path)
                 .map_err(|e| format!("Failed to remove unused CodeEditor.vue: {}", e))?;
         }
@@ -1880,6 +1901,10 @@ export default router
         let mut sub_widget_slot_outlets: std::collections::HashMap<String, Vec<String>> = Default::default();
         // PLAN-037 T5: sub-widget model var names (name -> bindable channels)
         let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> = Default::default();
+        // Plan 444 (ash-shell-057 ①b): sub-widget emit rosters (name -> the
+        // event names its SFC actually fires) — parents resolve `on_x: .Y`
+        // callback bindings against this map.
+        let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
             for entry in fs::read_dir(&front_dir)
                 .map_err(|e| format!("Failed to read front directory: {}", e))?
@@ -1900,6 +1925,10 @@ export default router
                             sub_widget_models.insert(
                                 widget.name.clone(),
                                 widget.state_vars.iter().map(|sv| sv.name.clone()).collect(),
+                            );
+                            sub_widget_msgs.insert(
+                                widget.name.clone(),
+                                auto_lang::ui_gen::VueGenerator::widget_emit_set(widget),
                             );
                             sub_widget_names.push(widget.name.clone());
                         }
@@ -1982,7 +2011,7 @@ export default router
 
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone())) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone()), Some(sub_widget_msgs.clone())) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -2017,6 +2046,7 @@ export default router
                                 .with_default_classes(default_classes)
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
+                                .with_sub_widget_msgs(sub_widget_msgs.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -2176,6 +2206,7 @@ export default router
                                 .with_default_classes(default_classes)
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
+                                .with_sub_widget_msgs(sub_widget_msgs.clone())
                                 .with_bound_model_channels(
                                     bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
                                 );
@@ -3992,6 +4023,7 @@ mod tests {
             form: true,
             carousel: true,
             sidebar: false,
+            vueuse_scaffold: false,
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
@@ -4047,6 +4079,83 @@ mod tests {
         // Minimal pkg, app gained a feature → drifted (add).
         let minimal = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
         assert!(package_json_deps_drifted(&minimal, &VueDependencyUsage { toast: true, ..Default::default() }));
+    }
+
+    /// Plan 444 (ash-shell-057 ⑥): the progress / scroll-area / table
+    /// scaffolds import @vueuse/core — an app consuming any of them must
+    /// keep the dependency declared (ash-gui's fresh gen dropped it and
+    /// vue-tsc failed on the tree).
+    #[test]
+    fn plan_444_vueuse_scaffold_detection() {
+        let usage = VueDependencyUsage::detect(concat!(
+            "import { ScrollArea } from '@/components/ui/scroll-area'\n",
+            "import { Button } from '@/components/ui/button'\n",
+        ));
+        assert!(usage.vueuse_scaffold, "{usage:?}");
+        assert!(
+            usage.required_packages().contains(&"@vueuse/core"),
+            "scroll-area requires @vueuse/core"
+        );
+
+        // The scroll-area marker must not false-positive on a longer path.
+        let usage = VueDependencyUsage::detect(
+            "import { X } from '@/components/ui/scroll-area-shadow'\n",
+        );
+        assert!(!usage.vueuse_scaffold, "{usage:?}");
+
+        // Regeneration drift: a pkg that DROPPED @vueuse while the corpus
+        // still uses table must be flagged stale.
+        let stale = generate_package_json(
+            "ash", false, false, &[],
+            &VueDependencyUsage::default(),
+        );
+        assert!(package_json_deps_drifted(
+            &stale,
+            &VueDependencyUsage { vueuse_scaffold: true, ..Default::default() }
+        ));
+    }
+
+    /// Plan 444 (ash-shell-057 ⑥): an unused CodeEditor.vue shell from an
+    /// OLDER scaffold revision (no byte-match with the current template) is
+    /// still recognized by its codemirror import signature and pruned — the
+    /// exact-match-only check left ash-gui's broken-compiling copy in place.
+    /// Hand-written editors without codemirror imports stay untouched.
+    #[test]
+    fn plan_444_code_editor_stale_scaffold_prune() {
+        let dir = std::env::temp_dir().join(format!("plan444_ce_{}", std::process::id()));
+        let comps = dir.join("src").join("components");
+        std::fs::create_dir_all(&comps).unwrap();
+
+        // Old-revision scaffold: same import signature, different body.
+        let old_shell = format!(
+            "// old scaffold revision\nimport {{ Codemirror }} from 'vue-codemirror'\nimport {{ EditorView }} from '@codemirror/view'\nexport default {{ }}\n{}",
+            ""
+        );
+        std::fs::write(comps.join("CodeEditor.vue"), &old_shell).unwrap();
+        sync_code_editor_shell(&dir, &VueDependencyUsage::default()).unwrap();
+        assert!(
+            !comps.join("CodeEditor.vue").exists(),
+            "stale scaffold (codemirror signature) is pruned when unused"
+        );
+
+        // Hand-written editor: no codemirror imports — left alone.
+        let custom = "<template><textarea /></template>\n";
+        std::fs::write(comps.join("CodeEditor.vue"), custom).unwrap();
+        sync_code_editor_shell(&dir, &VueDependencyUsage::default()).unwrap();
+        assert!(
+            comps.join("CodeEditor.vue").exists(),
+            "hand-written editor without codemirror imports is preserved"
+        );
+
+        // Used → write-if-missing stays intact.
+        std::fs::remove_file(comps.join("CodeEditor.vue")).unwrap();
+        sync_code_editor_shell(
+            &dir,
+            &VueDependencyUsage { code_editor: true, ..Default::default() },
+        )
+        .unwrap();
+        assert!(comps.join("CodeEditor.vue").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Plan 413/421: the CodeEditor shell component template contract.
