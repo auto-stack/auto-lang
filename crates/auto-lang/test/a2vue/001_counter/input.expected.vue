@@ -1,6 +1,5 @@
 <!-- Counter component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref, defineModel } from 'vue'
 
 const count = defineModel<number>("count", { default: 0 })
 

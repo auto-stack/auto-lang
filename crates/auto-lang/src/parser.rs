@@ -13327,10 +13327,7 @@ impl<'a> Parser<'a> {
             self.parse_view_fragment_decl_body()
         } else {
             self.expect(TokenKind::LBrace)?;
-            self.skip_empty_lines();
-            let root = self.parse_view_node()?;
-            self.skip_empty_lines();
-            self.expect(TokenKind::RBrace)?;
+            let root = self.parse_view_root_nodes()?;
             Ok(Stmt::ViewBlock(ViewBlock { root }))
         }
     }
@@ -13563,15 +13560,44 @@ impl<'a> Parser<'a> {
     fn parse_view_block_inner(&mut self) -> AutoResult<ViewBlock> {
         self.expect_ident("view")?;
         self.expect(TokenKind::LBrace)?;
+        let root = self.parse_view_root_nodes()?;
+        Ok(ViewBlock { root })
+    }
+
+    /// Parse the nodes inside `view { ... }` up to the closing brace.
+    ///
+    /// Plan 015 (auto-down 批次, DEBTS.md 015 🟡): the view block used to
+    /// parse a SINGLE root node and then expect `}` — two bare top-level
+    /// siblings (`div { onclick: .A(1) } div { onclick: .B(2) }`) cascaded
+    /// into "Expected term, got RBrace" while the same shape inside a
+    /// `col { }` container worked. Now all top-level nodes are parsed; a
+    /// single node stays the root unchanged, and multiple siblings are
+    /// wrapped in an implicit `col` (the documented workaround container).
+    /// The opening `{` has been consumed; this consumes the closing `}`.
+    fn parse_view_root_nodes(&mut self) -> AutoResult<ViewNode> {
         self.skip_empty_lines();
 
-        // Parse view tree
-        let root = self.parse_view_node()?;
-
-        self.skip_empty_lines();
+        let mut roots = vec![self.parse_view_node()?];
+        loop {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            roots.push(self.parse_view_node()?);
+        }
         self.expect(TokenKind::RBrace)?;
 
-        Ok(ViewBlock { root })
+        if roots.len() == 1 {
+            Ok(roots.pop().unwrap())
+        } else {
+            Ok(ViewNode::Element {
+                tag: "col".to_string(),
+                props: Vec::new(),
+                events: Vec::new(),
+                children: roots,
+                span: None,
+            })
+        }
     }
 
     /// Parse a single view node
@@ -16725,6 +16751,101 @@ widget Counter {
             }
             Err(e) => {
                 // Print detailed error for debugging
+                panic!("Widget parsing failed: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_view_top_level_bare_siblings_with_param_events() {
+        // Plan 015 (auto-down 批次, DEBTS.md 015 🟡): bare top-level sibling
+        // elements with parameterized events used to fail with
+        // "Expected term, got RBrace" (the view block parsed a single root
+        // node only); the same shape inside `col { }` worked. Now multiple
+        // top-level siblings are wrapped in an implicit `col`.
+        let code = r#"
+widget W {
+    msg Msg { A(int), B(int) }
+    view {
+        div { onclick: .A(1) }
+        div { onclick: .B(2) }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        match result {
+            Ok(ast) => {
+                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
+                    !matches!(s, Stmt::EmptyLine(_))
+                }).collect();
+                assert_eq!(non_empty.len(), 1, "Should have one widget statement");
+
+                if let Stmt::WidgetDecl(widget) = non_empty[0] {
+                    let view = widget.view.as_ref().expect("View should be parsed");
+                    // Multiple top-level siblings → implicit col wrapper
+                    if let ViewNode::Element { tag, children, .. } = &view.root {
+                        assert_eq!(tag, "col", "siblings should be wrapped in an implicit col");
+                        assert_eq!(children.len(), 2, "both sibling divs survive");
+                        for child in children {
+                            if let ViewNode::Element { tag, events, .. } = child {
+                                assert_eq!(tag, "div");
+                                assert_eq!(events.len(), 1);
+                                assert_eq!(events[0].name, "onclick");
+                                assert_eq!(events[0].params.len(), 1, "event arg must survive");
+                            } else {
+                                panic!("Expected div element child, got {:?}", child);
+                            }
+                        }
+                    } else {
+                        panic!("Expected implicit col wrapper, got {:?}", view.root);
+                    }
+                } else {
+                    panic!("Expected WidgetDecl, got {:?}", non_empty[0]);
+                }
+            }
+            Err(e) => {
+                panic!("Widget parsing failed: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_view_single_root_stays_unwrapped() {
+        // Plan 015: a single top-level node must NOT gain a wrapper —
+        // regression guard that the multi-sibling fix keeps the existing
+        // single-root AST shape byte-identical.
+        let code = r#"
+widget W {
+    msg Msg { A(int) }
+    view {
+        div { onclick: .A(1) }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let result = parser.parse();
+
+        match result {
+            Ok(ast) => {
+                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
+                    !matches!(s, Stmt::EmptyLine(_))
+                }).collect();
+                if let Stmt::WidgetDecl(widget) = non_empty[0] {
+                    let view = widget.view.as_ref().expect("View should be parsed");
+                    if let ViewNode::Element { tag, .. } = &view.root {
+                        assert_eq!(tag, "div", "single root must stay the div itself");
+                    } else {
+                        panic!("Expected div root, got {:?}", view.root);
+                    }
+                } else {
+                    panic!("Expected WidgetDecl, got {:?}", non_empty[0]);
+                }
+            }
+            Err(e) => {
                 panic!("Widget parsing failed: {:?}", e);
             }
         }

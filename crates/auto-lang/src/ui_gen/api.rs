@@ -493,6 +493,13 @@ pub fn generate_component_from_file(
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
 
+    // Plan 015 P1#8: R016 — view AST hard-keyword 撞名检查（strict 下经
+    // has_blocking_warnings 让 build 失败；非 strict 只打警告）。
+    for w in &widgets {
+        all_validation_warnings
+            .extend(crate::ui_gen::validators::r016_keyword_collision(&w.view_tree, &w.name));
+    }
+
     // pac.at `shadcn: off` (Plan 013): Plain mode keeps native HTML elements
     // and emits no `@/components/ui/*` imports; default stays Shadcn.
     let vue_mode = if opts.shadcn.unwrap_or(true) {
@@ -993,6 +1000,27 @@ widget StrictCommaProbe {
         let ok = generate_component_from_file(&comma_path, ComponentGenOptions::default());
         assert!(ok.is_ok(), "non-strict build must succeed: {:?}", ok.err());
 
+        // Plan 015 P1#8: R016 (view AST hard-keyword 撞名) — non-strict
+        // collects the warning without failing (strict flag is off here).
+        let r016_src = r#"
+widget StrictR016Probe {
+    view {
+        col {
+            view { text "inner" }
+        }
+    }
+}
+"#;
+        let r016_path = std::env::temp_dir().join("plan015_strict_r016_probe.at");
+        std::fs::write(&r016_path, r016_src).expect("write probe .at");
+        let ok = generate_component_from_file(&r016_path, ComponentGenOptions::default())
+            .expect("non-strict build must succeed");
+        assert!(
+            ok.validation_warnings.iter().any(|w| w.rule == "R016"),
+            "R016 warning must be collected: {:?}",
+            ok.validation_warnings.iter().map(|w| w.rule).collect::<Vec<_>>()
+        );
+
         // Strict: the R008 warning becomes a hard build failure.
         let _guard = StrictGuard::on();
         let err = generate_component_from_file(&comma_path, ComponentGenOptions::default());
@@ -1050,15 +1078,47 @@ widget StrictInfoProbe {
         let info_path = std::env::temp_dir().join("plan012_strict_info_probe.at");
         std::fs::write(&info_path, info_src).expect("write probe .at");
         let res = generate_component_from_file(&info_path, ComponentGenOptions::default());
-        drop(_guard);
         assert!(
             res.is_ok(),
             "Info-severity notes must not block a strict build: {:?}",
             res.err()
         );
 
+        // Plan 015 P1#8: strict 下 R016（Error 级）同样升级为硬失败。
+        let err = generate_component_from_file(&r016_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on R016");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R016"),
+            "error should name strict mode and R016: {msg}"
+        );
+
+        // Strict + legal keyword-adjacent usage: paren `type:` prop and a
+        // router `link (to:)` must NOT trip R016 (probe-verified legal forms).
+        let legal_src = r#"
+widget StrictR016Legal {
+    view {
+        col {
+            button "ok" (type: "button") { }
+            link (to: "/home") { text "Home" }
+        }
+    }
+}
+"#;
+        let legal_path = std::env::temp_dir().join("plan015_strict_r016_legal.at");
+        std::fs::write(&legal_path, legal_src).expect("write probe .at");
+        let res = generate_component_from_file(&legal_path, ComponentGenOptions::default());
+        drop(_guard);
+        let legal = res.expect("legal keyword-adjacent usage must build");
+        assert!(
+            !legal.validation_warnings.iter().any(|w| w.rule == "R016"),
+            "legal usage must not produce R016: {:?}",
+            legal.validation_warnings.iter().map(|w| w.rule).collect::<Vec<_>>()
+        );
+
         let _ = std::fs::remove_file(&comma_path);
         let _ = std::fs::remove_file(&info_path);
+        let _ = std::fs::remove_file(&r016_path);
+        let _ = std::fs::remove_file(&legal_path);
     }
 
     // --- Plan 012 Batch B: store codegen correctness -------------------------

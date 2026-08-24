@@ -684,6 +684,145 @@ fn r009_define_expose_undefined(sfc: &str, widget: &str) -> Vec<ValidationWarnin
 }
 
 // ============================================================================
+// R016: view 元素与 parser hard keyword 撞名（Plan 015 P1#8）
+// ============================================================================
+
+/// R016: 扫 widget 的 view AST，发现与 hard keyword 撞名的元素用法。
+///
+/// Plan 015 P1#8（jade gaps 18/29/34/53，tmp/dsl-probes/auto-down 探针仲裁）：
+/// `view`/`task` 是 lexer hard keyword（TokenKind::View/Task），在 view 块里
+/// 被当作元素名时 parser 不报错、生成器静默降级为 `<div>`（探针
+/// kw-elem-view/kw-elem-task）；`link` 不带 `to:` 时静默生成
+/// `<router-link to="">`（kw-elem-link）。model 字段命名为 `view` 时，
+/// `text .view` 里的 `.view` 会被 lex 成 View token，在 view 树里漏出一个
+/// 垃圾 `view` 元素节点（kw-model-view-ref）——同样被本规则的 `view`
+/// 元素检查捕获。
+///
+/// 探针确认无碰撞、不误报的场景：`path`（model/computed/局部/for 变量均
+/// 正常）；prop 的 `type:`/`as:`/`to:` 块内与圆括号写法（Plan 012 P2 已
+/// 上下文敏感化）。
+///
+/// 与 R001-R009 不同，本规则的输入是 aura view AST（不是 SFC 文本），由
+/// generate_component_from_file 在 widget 提取后调用，strict 模式下经
+/// has_blocking_warnings 让 build 失败。
+///
+/// 命名注记：plan 015 文档里本规则记作 "R014"，但 R014（v-html children
+/// 忽略，vue.rs:4432）与 R015 均已被占用，故取下一空号 R016。
+pub fn r016_keyword_collision(
+    view_tree: &crate::aura::AuraNode,
+    widget_name: &str,
+) -> Vec<ValidationWarning> {
+    let mut warnings = Vec::new();
+    r016_walk(view_tree, widget_name, &mut warnings);
+    warnings
+}
+
+fn r016_walk(
+    node: &crate::aura::AuraNode,
+    widget: &str,
+    warnings: &mut Vec<ValidationWarning>,
+) {
+    use crate::aura::AuraNode;
+    match node {
+        AuraNode::Element { tag, children, .. } => {
+            match tag.as_str() {
+                "view" | "task" => warnings.push(
+                    ValidationWarning::new(
+                        "R016",
+                        Severity::Error,
+                        widget,
+                        format!(
+                            "Element `{}` collides with a parser hard keyword: it parses \
+                             without error but is silently emitted as a plain `<div>` \
+                             (jade gaps 18/29). The intended element is lost.",
+                            tag
+                        ),
+                    )
+                    .with_hint(format!(
+                        "Rename the element (e.g. `panel`, `card`), or use a supported \
+                         container like `col`/`row`. If this came from a model field \
+                         named `{}` referenced as `text .{}`, rename the field.",
+                        tag, tag
+                    )),
+                ),
+                _ => {}
+            }
+            // `text .view`（model 字段名撞 hard keyword）：lexer 把 `.view`
+            // 吐成一个整体 token，dot-primary 路径不触发，漏出 tag 形如
+            // `.view ` 的垃圾元素节点（静默降级为 `<div/>`）。合法元素名
+            // 永远不会以 `.` 开头。
+            let trimmed = tag.trim();
+            if trimmed.starts_with('.') {
+                warnings.push(
+                    ValidationWarning::new(
+                        "R016",
+                        Severity::Error,
+                        widget,
+                        format!(
+                            "Element tag `{}` is not a valid element name — it looks like \
+                             a model/computed reference (e.g. `text .view`) whose field \
+                             name collides with a hard keyword, so the reference leaked \
+                             into the view tree as a garbage node (emitted as `<div/>`).",
+                            trimmed
+                        ),
+                    )
+                    .with_hint(
+                        "Rename the referenced field so it is not a hard keyword \
+                         (e.g. `view` → `view_mode`, `task` → `task_item`).",
+                    ),
+                );
+            }
+            for child in children {
+                r016_walk(child, widget, warnings);
+            }
+        }
+        AuraNode::Link { to, href, children, .. } => {
+            if to.is_empty() && href.is_empty() {
+                warnings.push(
+                    ValidationWarning::new(
+                        "R016",
+                        Severity::Error,
+                        widget,
+                        "`link` without a `to:` prop parses as a router link with an \
+                         empty target — emitted as `<router-link to=\"\">`, navigating \
+                         nowhere (jade gap 34/53)."
+                            .to_string(),
+                    )
+                    .with_hint(
+                        "Add `to: \"/path\"` for a router link, or rename the element \
+                         if a plain anchor/container was intended.",
+                    ),
+                );
+            }
+            for child in children {
+                r016_walk(child, widget, warnings);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                r016_walk(child, widget, warnings);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for child in then_body {
+                r016_walk(child, widget, warnings);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    r016_walk(child, widget, warnings);
+                }
+            }
+        }
+        AuraNode::Component { children, .. } => {
+            for child in children {
+                r016_walk(child, widget, warnings);
+            }
+        }
+        _ => {}
+    }
+}
+
+// ============================================================================
 // 极简正则工具
 // ============================================================================
 
@@ -1023,6 +1162,86 @@ function Foo() { emit('Save'); emit('Cancel'); }"#,
         let sfc = make_sfc(r#"<AutoDownEditor />"#, "");
         let ws = r007_autodown_dual_instance(&sfc, "Test");
         assert_eq!(ws.len(), 0);
+    }
+
+    // --- R016 keyword-collision (Plan 015 P1#8) ---
+
+    fn make_element(tag: &str, children: Vec<crate::aura::AuraNode>) -> crate::aura::AuraNode {
+        crate::aura::AuraNode::Element {
+            tag: tag.to_string(),
+            props: Default::default(),
+            events: Default::default(),
+            children,
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    fn make_link(to: &str, children: Vec<crate::aura::AuraNode>) -> crate::aura::AuraNode {
+        crate::aura::AuraNode::Link {
+            to: to.to_string(),
+            text: String::new(),
+            href: String::new(),
+            children,
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    #[test]
+    fn r016_flags_view_element() {
+        let tree = make_element("col", vec![make_element("view", vec![])]);
+        let ws = r016_keyword_collision(&tree, "Test");
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].rule, "R016");
+        assert_eq!(ws[0].severity, Severity::Error);
+        assert!(ws[0].message.contains("view"));
+    }
+
+    #[test]
+    fn r016_flags_task_element() {
+        let tree = make_element("col", vec![make_element("task", vec![])]);
+        let ws = r016_keyword_collision(&tree, "Test");
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].rule, "R016");
+        assert!(ws[0].message.contains("task"));
+    }
+
+    #[test]
+    fn r016_flags_link_without_to() {
+        let tree = make_element("col", vec![make_link("", vec![])]);
+        let ws = r016_keyword_collision(&tree, "Test");
+        assert_eq!(ws.len(), 1);
+        assert_eq!(ws[0].rule, "R016");
+        assert!(ws[0].message.contains("router-link"));
+    }
+
+    #[test]
+    fn r016_ok_link_with_to() {
+        let tree = make_element("col", vec![make_link("/home", vec![])]);
+        let ws = r016_keyword_collision(&tree, "Test");
+        assert!(ws.is_empty(), "router link with to: must not warn: {ws:?}");
+    }
+
+    #[test]
+    fn r016_ok_normal_elements() {
+        // col/div/text and a nested loop/conditional tree — no keywords collide.
+        let tree = make_element(
+            "col",
+            vec![
+                make_element("div", vec![]),
+                make_element("text", vec![]),
+                crate::aura::AuraNode::Conditional {
+                    condition: ".flag".to_string(),
+                    then_body: vec![make_element("button", vec![])],
+                    else_body: None,
+                    span: None,
+                    debug_id: None,
+                },
+            ],
+        );
+        let ws = r016_keyword_collision(&tree, "Test");
+        assert!(ws.is_empty(), "normal elements must not warn: {ws:?}");
     }
 
     // --- 入口测试 ---
