@@ -33,9 +33,24 @@ fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// 单文件生成全文(与 `auto build` 同路径:generate_component_from_file)。
+/// 仓库根的绝对路径(worktree 与主仓长度不同,输出偶有内嵌,必须归一)。
+fn repo_root_display() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("canonicalize repo root")
+        .display()
+        .to_string()
+}
+
+/// 单文件生成全文(与 `auto build` 同路径)。输出做路径归一(仓库根 → <ROOT>):
+/// golden 必须跨 worktree 可移植,否则内嵌绝对路径'换 worktree 必红'
+/// (ui_snapshots 预存债同病根)。
 fn generate(at: &Path) -> String {
     let opts = auto_lang::ui_gen::ComponentGenOptions::default();
-    match auto_lang::ui_gen::generate_component_from_file(at, opts) {
+    let root = repo_root_display();
+    let root_fwd = root.replace('\\', "/");
+    let raw = match auto_lang::ui_gen::generate_component_from_file(at, opts) {
         Ok(result) => {
             let mut out = String::new();
             // 稳定排序:widget 名 → (文件名, SFC 全文)
@@ -49,7 +64,8 @@ fn generate(at: &Path) -> String {
             out
         }
         Err(e) => format!("!!GENERATION ERROR!! {}", e),
-    }
+    };
+    raw.replace(&root, "<ROOT>").replace(&root_fwd, "<ROOT>")
 }
 
 #[test]
