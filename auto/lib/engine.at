@@ -1,0 +1,262 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM v2 Sync Snapshot                                     ║
+// ║ Component: engine.at (Plan 432 S5 / D29: ev_run)          ║
+// ║ Rust ref:  vm/engine.rs(执行循环)+ lib.rs(main 入口查找) ║
+// ║ Gate:      M3 主里程碑 —— VM 内全管线跑通 corpus 行为      ║
+// ╚═══════════════════════════════════════════════════════════╝
+// Coverage:  栈机执行循环(指令 List 直译,无字节码解码);帧语义
+//            (CALL:ret-ip+old-bp;RET:result 转移 + new_sp=bp-n_args;
+//            fn.prolog 记 n_args;reserve 推 n+1 零槽);main 入口
+//            查找(无 main 回落 wrapper=0,镜像 lib.rs 1183);
+//            指令子集:const.i32/push.bool/push.nil/load.str/
+//            load.loc.0/1/2/load.local(参数 0x80+rel →
+//            bp-n_args+rel-1)/store.loc.0/1/store.local/
+//            add/sub/mul/div/mod/eq/ne/lt/gt/le/ge/and/or/not/
+//            str.cat/dup/pop/jmp/jmp.z/.line(nop)/call/call.nat
+//            (nat#10=print → 输出行收集)/ret/halt
+// Missing:   浮点/数组/对象/下标/方法调用 native、闭包、全局变量、
+//            任务/调度/async(debugger/trace 按计划不移植)、
+//            值 RC(宿主 AutoVM 自管 .at 值生命周期)
+// DIVERGE:   D29: 字节码 Flash + ip 解码 → 指令 List 直译
+//            (ip=指令索引;jmp/call 目标即索引);print 输出 →
+//            out 字符串收集(run 返回);栈 = Auto List + 手记账 sp
+//            (ev_push 兼容 push/set);值 = Auto 原生值
+//            (int/str/bool;nil 以 0 表示);RET 帧/参数槽位算术
+//            与 engine.rs 逐条对齐(参数寻址 bp-n_args+rel-1)。
+//            D22 同款错误短路(ev_err)。
+
+// ── 栈助手(sp 手记账;List 只增不缩) ─────────────────────────
+
+fn ev_push(stack List, sp int, v) int {
+    if sp == stack.len() {
+        stack.push(v)
+    } else {
+        stack.set(sp, v)
+    }
+    return sp + 1
+}
+
+// 值显示(print 参数):镜像宿主 ADD-含字符串即拼接的语义
+fn ev_fmt(v) str {
+    return "" + v
+}
+
+// ── 执行循环 ──────────────────────────────────────────────────
+
+fn ev_run(source str) str {
+    return ev_run_t(source, 0)
+}
+
+fn ev_run_t(source str, trace int) str {
+    var c = cg_compile(source)
+    if c.err != "" {
+        return c.err
+    }
+    // main 入口查找(无 main 回落 0 = wrapper,镜像 lib.rs 1183)
+    var entry = 0
+    var fi = 0
+    while fi < c.fns.len() {
+        if c.fns.get(fi).name == "main" {
+            entry = c.fns.get(fi).ins
+        }
+        fi = fi + 1
+    }
+    var stack = List.new()
+    var sp = 0
+    // 初始帧:[0=ret 哨兵, 0=oldbp 哨兵];bp=1;main 的 RET 触底即 halt
+    sp = ev_push(stack, sp, 0)
+    sp = ev_push(stack, sp, 0)
+    var bp = 1
+    var ip = entry
+    var out = ""
+    var cur_args = 0
+    var args_stack = List.new()
+    var args_depth = 0
+    var running = true
+    while running {
+        var ins = c.ins.get(ip)
+        ip = ip + 1
+        var op = ins.op
+        if trace == 1 {
+            if out != "" {
+                out = out + "
+"
+            }
+            out = out + op + " sp=" + sp.str() + " bp=" + bp.str()
+        }
+        if op == "" {
+            // 已删除的占位指令(如 n_locals=0 时的 reserve)——跳过
+        } else if op == "halt" {
+            running = false
+        } else if op == ".line" || op == "fn.prolog" {
+            if op == "fn.prolog" {
+                cur_args = ins.n
+            }
+        } else if op == "reserve" {
+            var n = ins.n
+            var k = 0
+            while k < n + 1 {
+                sp = ev_push(stack, sp, 0)
+                k = k + 1
+            }
+        } else if op == "jmp" {
+            ip = ins.n
+        } else if op == "jmp.z" {
+            var v = stack.get(sp - 1)
+            sp = sp - 1
+            if v == 0 {
+                ip = ins.n
+            }
+        } else if op == "const.i32" {
+            sp = ev_push(stack, sp, ins.n)
+        } else if op == "push.bool" {
+            if ins.s == "true" {
+                sp = ev_push(stack, sp, 1)
+            } else {
+                sp = ev_push(stack, sp, 0)
+            }
+        } else if op == "push.nil" {
+            sp = ev_push(stack, sp, 0)
+        } else if op == "load.str" {
+            sp = ev_push(stack, sp, c.pool.get(ins.n))
+        } else if op == "load.loc.0" {
+            sp = ev_push(stack, sp, stack.get(bp + 1))
+        } else if op == "load.loc.1" {
+            sp = ev_push(stack, sp, stack.get(bp + 2))
+        } else if op == "load.loc.2" {
+            sp = ev_push(stack, sp, stack.get(bp + 3))
+        } else if op == "load.local" {
+            if ins.n >= 128 {
+                // 参数:bp - n_args + rel - 1(engine.rs 7304 同式)
+                var rel = ins.n - 128
+                var slot = bp - cur_args + rel - 1
+                sp = ev_push(stack, sp, stack.get(slot))
+            } else {
+                sp = ev_push(stack, sp, stack.get(bp + 1 + ins.n))
+            }
+        } else if op == "store.loc.0" {
+            sp = sp - 1
+            stack.set(bp + 1, stack.get(sp))
+        } else if op == "store.loc.1" {
+            sp = sp - 1
+            stack.set(bp + 2, stack.get(sp))
+        } else if op == "store.local" {
+            sp = sp - 1
+            if ins.n >= 128 {
+                var rel2 = ins.n - 128
+                stack.set(bp - cur_args + rel2 - 1, stack.get(sp))
+            } else {
+                stack.set(bp + 1 + ins.n, stack.get(sp))
+            }
+        } else if op == "dup" {
+            sp = ev_push(stack, sp, stack.get(sp - 1))
+        } else if op == "pop" {
+            sp = sp - 1
+        } else if op == "call" {
+            var fe = c.fns.get(ins.n)
+            args_stack.push(cur_args)
+            args_depth = args_depth + 1
+            sp = ev_push(stack, sp, ip)
+            sp = ev_push(stack, sp, bp)
+            bp = sp - 1
+            ip = fe.ins
+        } else if op == "ret" {
+            var result = stack.get(sp - 1)
+            sp = sp - 1
+            var old_bp = stack.get(bp)
+            var ret_ip = stack.get(bp - 1)
+            var n_args = ins.n
+            var new_sp = bp - n_args
+            stack.set(new_sp - 1, result)
+            sp = new_sp
+            if old_bp == 0 && bp == 1 {
+                running = false
+            } else {
+                bp = old_bp
+                ip = ret_ip
+                if args_depth > 0 {
+                    args_depth = args_depth - 1
+                    cur_args = args_stack.get(args_depth)
+                }
+            }
+        } else if op == "call.nat" {
+            // nat#10 = print:弹 1 参入输出
+            if out != "" {
+                out = out + "\n"
+            }
+            out = out + ev_fmt(stack.get(sp - 1))
+            sp = sp - 1
+            sp = ev_push(stack, sp, 0)
+        } else if op == "add" || op == "sub" || op == "mul" || op == "div" || op == "mod" {
+            var b = stack.get(sp - 1)
+            var a = stack.get(sp - 2)
+            sp = sp - 1
+            var r = 0
+            if op == "add" {
+                r = a + b
+            } else if op == "sub" {
+                r = a - b
+            } else if op == "mul" {
+                r = a * b
+            } else if op == "div" {
+                r = a / b
+            } else {
+                r = a % b
+            }
+            stack.set(sp - 1, r)
+        } else if op == "str.cat" {
+            var b2 = stack.get(sp - 1)
+            var a2 = stack.get(sp - 2)
+            sp = sp - 1
+            stack.set(sp - 1, a2 + b2)
+        } else if op == "eq" || op == "ne" || op == "lt" || op == "gt" || op == "le" || op == "ge" {
+            var bv = stack.get(sp - 1)
+            var av = stack.get(sp - 2)
+            sp = sp - 1
+            var r2 = 0
+            var hit = true
+            if op == "eq" {
+                hit = av == bv
+            } else if op == "ne" {
+                hit = av != bv
+            } else if op == "lt" {
+                hit = av < bv
+            } else if op == "gt" {
+                hit = av > bv
+            } else if op == "le" {
+                hit = av <= bv
+            } else {
+                hit = av >= bv
+            }
+            if hit {
+                r2 = 1
+            }
+            stack.set(sp - 1, r2)
+        } else if op == "and" || op == "or" {
+            var b3 = stack.get(sp - 1)
+            var a3 = stack.get(sp - 2)
+            sp = sp - 1
+            var r3 = 0
+            if op == "and" {
+                if a3 != 0 && b3 != 0 {
+                    r3 = 1
+                }
+            } else {
+                if a3 != 0 || b3 != 0 {
+                    r3 = 1
+                }
+            }
+            stack.set(sp - 1, r3)
+        } else if op == "not" {
+            var v4 = stack.get(sp - 1)
+            if v4 == 0 {
+                stack.set(sp - 1, 1)
+            } else {
+                stack.set(sp - 1, 0)
+            }
+        } else {
+            return "ENGINE-ERROR:unknown op " + op
+        }
+    }
+    return out
+}

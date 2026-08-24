@@ -80,25 +80,36 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S4：opcode 声明 + codegen 核心（P2，预估 1-2 周）
 
-- [ ] `opcode.at` 全量声明（编号对齐 Rust）；`codegen.at`：两遍编译（先收集符号/地址再发射）、
-  脚本 wrapper（FN_PROLOG + 顶层语句）语义对齐 Rust codegen、字符串池、跳转 patch。
-- [ ] 闸门：对 corpus 生成的字节码与 Rust codegen 产物**结构级**一致（序列化对比允许元数据差异，
-  指令流一致；差异逐条解释或修）。
+- [x] `codegen.at`(D28: codegen_dump/cg_compile 直出;无独立 opcode.at——指令以
+    助记符 List 承载,字节宽度表 i_size 对齐 Rust 编码):脚本 wrapper、每 fn jmp-over、
+    FN_PROLOG/RESERVE 占位回填(替代 Rust 的体后插入+平移)、语句族全发射
+    (let/赋值[纯+复合]/if 链/while/for-range/return)、表达式(优先级表复用
+    parser.at;调用/参数编址 0x80+rel;str.cat;load.loc.2)、字符串池去重、
+    .line、跳转 patch、槽释放组升序。
+- [x] 闸门 M4:corpus_m4 十文件字节码与 Rust codegen+链接产物**结构级** diff=0
+    (2026-08-24;Rust 侧 dumper 归一两类元数据差异:load.str 显内容、释放组
+    按 HashMap 乱序与 2B store 布局漂移归一——规格 m4-bytecode-format.md)。
 
 ### S5：engine 核心（P2，预估 1-2 周）
 
-- [ ] `engine.at`：栈机 + 任务最小核（单任务先行，调度只留接口）、堆对象（type struct + kind）、
-  native 子集（print/断言/String/Vec/HashMap 所需，走 430 生成的 shim 包）、函数调用/RET 帧、
-  JMP 家族。debugger/trace/并发/async 不移植（遇指令报 v2 不支持）。
-- [ ] **闸门 M3：AAVM 全管线在 AutoVM 内编译并运行 helloworld + fib(10)，
-  输出与 Rust 参考实现一致**。这是本计划的主里程碑，达成即恢复旧版成就水平。
-- [ ] M4 扩 corpus：99_bootstrap 038-053 回收语料 + test/vm 行为子集，逐例迁移进 `test/vm/aavm2/`，
-  失败例逐个归因（移植 bug / 已知 divergence / 语料超 v2 范围）。
+- [x] `engine.at`(D29: ev_run):栈机执行循环(指令 List 直译,单任务,调度不
+    移植)、函数调用/RET 帧(参数槽 bp-n_args+rel-1 逐条对齐 engine.rs;
+    cur_args 按帧保存恢复)、JMP 家族、main 入口查找(无 main 回落 wrapper)、
+    print native(输出行收集)。堆对象/native 子集(String/Vec/HashMap)留
+    M4 扩闸按需(语料未及);布尔以 1/0 整型承载规避宿主 List 编码别名。
+- [x] **闸门 M3 主里程碑达成**(2026-08-24):AAVM 全管线
+    (token→lexer→parser→typeinfo→codegen→engine)在 AutoVM 内编译并运行
+    **helloworld 与 fib(10)=55,输出与 Rust 参考一致**
+    (test_aavm2_m3_milestone_fib);M5 行为闸门 corpus_m4 十文件全绿
+    (复用语料即行为用例)。
+- [~] M4 扩 corpus:99_bootstrap 038-053 多依赖 List/数组/对象 native(超
+    S4/S5 语料子集),留后续扩闸逐例回收(引擎侧需先补对应 native)。
 
 ### 收尾
 
 - [ ] 各 .at 文件 Snapshot/Coverage/Missing 回填；divergences.md 汇总定稿；
-  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。
+  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。(主体已随各切片完成,
+  定稿与封存待 M4 扩闸收口)
 - [ ] Rust 侧重构建议（431 A4 清单 + 执行期新增）整理进债务簿。
 
 ## 风险与缓解
@@ -193,3 +204,13 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   输出 unknown 对齐 Type::Unknown。corpus_m3 六文件 ground truth 实测校准后
   M3 闸门 diff=0(修两处:.type 关键字停走、body 前导换行跳过)。AUTO_LIB_
   FILES_V2 已登记 typeinfo.at。
+
+- **S4/S5**(2026-08-24 续,同会话):前置考古落盘 m4-bytecode-format.md
+  (发射模式/规范化契约/宿主 HashMap 乱序与 2B store 布局漂移实测);
+  codegen.at(~640 行,D28)+ engine.at(~250 行,D29)落地;调试期修
+  八处 .at 侧发射缺陷与两处宿主归一缺口。**六道闸门全绿:M1(4 文件
+  token)/M2(18 文件 AST)/M3(6 文件 .type)/M4(10 文件字节码,
+  3 轮稳定)/M5(10 文件行为)/主里程碑(helloworld+fib(10)=55 VM 内
+  全管线)**。全量 3246 过零新增(基线 5 个既有 cookbook 行为失败不变);
+  布尔压栈触发宿主 ListData<i32> 编码别名(bool→i32::MIN 哨兵取负溢出)
+  与参数个数不匹配静默毁帧两项宿主缺陷挂 242(divergences D29 留档)。

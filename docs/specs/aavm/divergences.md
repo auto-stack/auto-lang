@@ -127,3 +127,44 @@
 | typeinfo.at | 1(+D23/D22 复用) |
 | 合计 | 18 |
 
+## auto/lib/codegen.at(S4)
+
+- **D28**: Vec<u8> 字节码 + 链接器重定位(loader.rs)→ 指令 List
+  (I{op,s,n})+ codegen_dump 序列化直出 —— 发射顺序/操作数逐字对齐
+  Rust(考古见 m4-bytecode-format.md);FN_PROLOG/RESERVE 由 Rust 的
+  "体后插入+地址平移"改为"占位+回填"(布局等价,免平移);CALL 的
+  FuncCall reloc 改为 FnEntry 符号表序列化期解析;槽释放组按槽位升序
+  (Rust HashMap 迭代序不定,dumper 同步归一)。作用域 depth 计数
+  (List 只增不减,D25 写法)。
+- 实现期修正:.type 属性停走(借 typeinfo.at 的 t_is_type_prop)、
+  fn 体 { 后前导换行、纯赋值不预载 lhs、调用原子落入中缀环、
+  str.cat 字符串加法、load.loc.2 快操作码、for-range 的 start 以
+  min=18 界定不吞 `..`、I.n 载荷补齐(const/ret/prolog/local 编址)。
+
+## auto/lib/engine.at(S5)
+
+- **D29**: 字节码 Flash + ip 解码 + 任务调度 → 指令 List 直译
+  (ip=指令索引;jmp/call 目标即索引);print 输出 → out 字符串收集
+  (ev_run 返回,ev_run_t 带 trace 诊断模式);栈 = Auto List + 手记
+  账 sp(ev_push 兼容 push/set);值 = Auto 原生值,布尔以 1/0 整型
+  承载(规避宿主 ListData<i32> 的 bool nanbox 解码冲突——bool 值压入
+  无类型 List 会被 decode_i32 成 i32::MIN 触发哨兵取负溢出,挂 242
+  编码别名账);RET 帧/参数槽算术逐条对齐 engine.rs(参数
+  bp-n_args+rel-1;cur_args 按帧入栈/恢复);main 入口查找无 main
+  回落 wrapper=0(镜像 lib.rs 1183)。
+- 调试插曲(留档):.at 侧 cg_eos 漏传参(1 参调用 2 参 fn)曾致
+  宿主栈帧逐迭代蚀一槽——宿主对参数个数不匹配无任何诊断,静默毁帧,
+  挂 242 建议账(调用方/被调方 n_args 一致性检查)。
+
+## 计数(S4/S5 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 |
+| parser.at | 7 |
+| typeinfo.at | 1 |
+| codegen.at | 1(+D22/D25 复用) |
+| engine.at | 1 |
+| 合计 | 20 |
+
