@@ -2409,6 +2409,7 @@ pub(crate) fn resolve_use_module(
 ///      `AUTO_VM_EXT_STUBS=0` restores the strict hard-link-error behavior.
 /// Shared with the plan370/plan442 test support so tests exercise the
 /// production logic.
+#[cfg(feature = "ui")]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn load_ext_imports_for_vm(
     base_dir: &std::path::Path,
