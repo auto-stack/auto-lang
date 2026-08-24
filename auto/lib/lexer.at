@@ -274,6 +274,87 @@ fn delim_name(c int) str {
 // 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)。
 // 产出 Token List(词法语义与 M1 基线逐 token 一致)
 // DIVERGE(433): 返回 List → List<Token>(a2r 需元素类型;VM 语义不变)
+// f-string 词法(Plan 434 / D38c 简化形):start 位于 'f' 或 '`';
+// 形态:f"..."(end1) / f"""..."""(end3) / `...`(raw end1);
+// 发射 FStrStart + FStrPart(整段内容,f 形态解码转义,反引号 raw)+ FStrEnd;
+// 内容内 $name/${expr} 由 a2r.at 发射侧解析。返回推进量。
+fn lex_fstr_at(mut toks List<Token>, source str, start int, line int, at int) int {
+    var len = source.len()
+    var p = start
+    var end1 = '"'
+    var triple = 0
+    var raw = 0
+    if source.char_at(p) == '`' {
+        raw = 1
+        toks.push(Token("FStrStart", "`", line, at, 1))
+        p = p + 1
+    } else {
+        toks.push(Token("FStrStart", "f\"", line, at, 2))
+        p = p + 2
+        if source.char_at(p) == '"' && source.char_at(p + 1) == '"' {
+            triple = 1
+            p = p + 2
+        }
+    }
+    var text = ""
+    var nl = 0
+    var scanning = true
+    while scanning && p < len {
+        var c = source.char_at(p)
+        var hit_end = false
+        if triple == 1 {
+            if c == '"' && source.char_at(p + 1) == '"' && source.char_at(p + 2) == '"' {
+                hit_end = true
+                p = p + 3
+            }
+        } else {
+            if c == end1 {
+                hit_end = true
+                p = p + 1
+            }
+        }
+        if hit_end {
+            scanning = false
+        } else if raw == 0 && c == '\\' {
+            var esc = source.char_at(p + 1)
+            if esc == 'n' {
+                text = text + "\n"
+            } else if esc == 't' {
+                text = text + "\t"
+            } else if esc == 'r' {
+                text = text + "\r"
+            } else if esc == '\\' {
+                text = text + "\\"
+            } else if esc == '"' {
+                text = text + "\""
+            } else if esc == '$' {
+                text = text + "$"
+            } else {
+                text = text + source.slice(p, p + 2)
+            }
+            if esc == '\n' {
+                nl = nl + 1
+            }
+            p = p + 2
+        } else {
+            if c == '\n' {
+                nl = nl + 1
+            }
+            text = text + source.slice(p, p + 1)
+            p = p + 1
+        }
+    }
+    toks.push(Token("FStrPart", text, line, at, text.len()))
+    if triple == 1 {
+        toks.push(Token("FStrEnd", "\"\"\"", line, at, 3))
+    } else if raw == 1 {
+        toks.push(Token("FStrEnd", "`", line, at, 1))
+    } else {
+        toks.push(Token("FStrEnd", "\"", line, at, 1))
+    }
+    return p - start
+}
+
 fn tokenize(source str) List<Token> {
     var line = 1
     var at = 0
@@ -298,15 +379,55 @@ fn tokenize(source str) List<Token> {
             p = p + t.adv
             at = at + t.len
         } else if is_alpha(c) {
-            var t = lex_ident(source, p)
-            toks.push(Token(t.kind, t.text, line, at, t.len))
-            p = p + t.len
-            at = at + t.len
+            // f-string 前瞻(Plan 434 / D38c:f"..." 与 f"""...""";
+            // 整段内容单 FStrPart——$name/${expr} 由 a2r.at 发射侧解析)
+            if c == 'f' && cur_char(source, p + 1) == '"' {
+                var fadv = lex_fstr_at(toks, source, p, line, at)
+                p = p + fadv
+                at = at + fadv
+            } else {
+                var t = lex_ident(source, p)
+                toks.push(Token(t.kind, t.text, line, at, t.len))
+                p = p + t.len
+                at = at + t.len
+            }
+        } else if c == '`' {
+            // 反引号原始 f-string(无转义处理)
+            var badv = lex_fstr_at(toks, source, p, line, at)
+            p = p + badv
+            at = at + badv
         } else if c == '"' {
-            var t = lex_string(source, p)
-            toks.push(Token(t.kind, t.text, line, at, t.len))
-            p = p + t.len
-            at = at + t.len
+            if cur_char(source, p + 1) == '"' && cur_char(source, p + 2) == '"' {
+                // 三引号多行字符串(Plan 434):到闭 """,内容实换行入 Str
+                var q3 = p + 3
+                var end3 = -1
+                var scanning3 = true
+                while scanning3 && q3 < len {
+                    if cur_char(source, q3) == '"' && cur_char(source, q3 + 1) == '"' && cur_char(source, q3 + 2) == '"' {
+                        end3 = q3
+                        scanning3 = false
+                    }
+                    q3 = q3 + 1
+                }
+                var text3 = source.slice(p + 3, end3)
+                var nl3 = 0
+                var k3 = 0
+                while k3 < text3.len() {
+                    if text3.char_at(k3) == '\n' {
+                        nl3 = nl3 + 1
+                    }
+                    k3 = k3 + 1
+                }
+                toks.push(Token("Str", text3, line, at, end3 + 3 - p))
+                line = line + nl3
+                p = end3 + 3
+                at = 1
+            } else {
+                var t = lex_string(source, p)
+                toks.push(Token(t.kind, t.text, line, at, t.len))
+                p = p + t.len
+                at = at + t.len
+            }
         } else if c == '\'' {
             var t = lex_char(source, p)
             toks.push(Token(t.kind, t.text, line, at, t.len))

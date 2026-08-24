@@ -328,6 +328,26 @@ Build-time codegen and memory-mapped I/O bridging — unblocks the last Cookbook
 | 2026-07-14 | Item #14 (Cookbook suite) marked ✅ Done — Plan 240 core complete & archived; DB/async stubs handed to #10/#12; new item #17 (cc codegen + memmap2) added from Plan 240 Phase 13 | — |
 | 2026-08-07 | Item #8 补根因调查记录（8a 子节）— 来自 Plan 390 §14 L4 复审：`infer_type_from_expr` 缺 `Expr::Closure` 分支；§15.10 已覆盖 task-struct 路径；剩余普通 let-闭包推导待本 Item 解决 | — |
 
+## Item #18 — AA2R 语料暴露的发射缺口(Plan 434 登记;已修复)
+
+> **状态**: ✅ 已修(2026-08-24 plan-434 收官轮):链式类型推断(Index 元素/clone 透传/Dot 泛化接收者)、赋值位双 auto-clone 镜像(字段读/&mut 所有者、ident 重绑定)、str 型 to_string 家族(push 双臂/字段写入/let-H3 StrSlice)。五方矩阵 ② 已回归整目录七文件全绿;a2r.at 经主 a2r 转译编译零错 + corpus 30/30;golden 套件零回归。#18-3(循环 move)以 mut-toks 签名规避 + to_string 家族覆盖同类形态。
+> **来源**: Plan 434 S3——auto/lib/a2r.at(Auto 版 a2r)与 lexer.at 的
+> D38c f-string 扩展在主 a2r 下的转译失败(45 错 → 收敛后 1 错,见下)。
+
+1. **`.get(i).field` 链的 Option 形回退**(E0609 ×18):接收者类型推断
+   失败时发射 `ps.get(i).name`(Rust `Option<&_>` 无字段)而非索引形。
+   AA2R 侧以 `[i].clone()` 统一处理(a2r.at ar_method_call get 分支)。
+2. **`x = a.field` 的 &mut str 字段读不补 clone**(E0507 ×2):赋值位
+   纯字段读(非 Copy)直接 move 出借用。AA2R 侧对 str 字段读统一 clone。
+3. **循环内 owned 局部按值传参被 move**(E0382):`lex_fstr_at(toks, ...)`
+   在 tokenize 主循环内多次调用,toks 逐次 move——已以签名改 `mut toks`
+   触发 merge 模式 mut 参数表规避(lexer.at,434);通用修复(last-use
+   克隆/移动出循环)仍缺。
+
+**登记时点**:2026-08-24(Plan 434 执行中)。修复入口:trans/rust.rs
+`get` 方法发射(:7125/:7657 族)、store/assignment 的字段读 clone、
+escape 分析的循环携带变量。
+
 ---
 
 ## Related Documents

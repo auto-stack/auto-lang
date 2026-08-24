@@ -762,6 +762,7 @@ fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwr
 fn build_aavm_rust_bin() -> PathBuf {
     use std::process::Command;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at)。
     let lib_dir = root.join("auto/lib");
     let merged = crate::trans::rust::transpile_rust_project_merged(
         lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");

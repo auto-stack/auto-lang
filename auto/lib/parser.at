@@ -17,14 +17,16 @@
 //            内联推断(infer_type_expr 核心子集,经 E.ity 构造期计算);
 //            EmptyLine(n) 语义;expect_eos(Semi/Newline/Comma 分隔)
 // Missing:   闭包(x => / (a,b) => / fn(params){})、f-string、is/match、
-//            use(含 use.rust)、泛型参数/泛型实例、turbofish、node 实例与
-//            UI/task/store 方言(遇之报 v2 unsupported)、#[...] 注解、
-//            #section、三元 ?:、as/to/await/go、.view/.mut/.move/.take/.?、
-//            ::路径、下标切片、postfix !(collect!)、
+//            use(含 use.rust)、泛型参数(fn/type/enum 声明位)、turbofish、
+//            node 实例与 UI/task/store 方言(遇之报 v2 unsupported)、
+//            #[...] 注解、#section、三元 ?:、as/to/await/go、.view/.mut/
+//            .move/.take/.?、::路径、下标切片、postfix !(collect!)、
 //            check_symbol(未定义变量报错——仅影响非法输入,不影响合法语料
 //            dump)、args 的 Arg::Name/Pos 区分(两者 Display 相同,corpus
 //            不可区分)、方法链合并(.method() 语句)、convert_last_block、
-//            一元表达式的 let 推断(E 不携带子节点,una.ity 仅 ! 为 bool)
+//            一元表达式的 let 推断(E 不携带子节点,una.ity 仅 ! 为 bool)、
+//            type-decl 的泛型/别名/is/as/has/方法体/字段默认值、enum 的
+//            payload 变体/方法/变体属性/repr type
 // DIVERGE:   D20: AST 结构 → parse_dump S-expr 直出(判据层;真实 AST 推迟
 //                 到 S4 codegen 需要时定);
 //            D21: token 流承载 = List.new()/push/get/len(sanctioned);
@@ -38,6 +40,13 @@
 //            D24: float/double 值显示 = 字面量文本剥尾零(Rust 为 f32/f64
 //                 shortest-roundtrip Display;十进制文本字面量二者一致,
 //                 科学计数/大数留 Missing);
+//            D38a(Plan 434): parse_type 增泛型实例 Name<A, B>(Display 对齐
+//                 unique_name:List<T> 无空格、多参 ", ");此前遇 < 即报
+//            D38b(Plan 434): 增 type-decl/enum-decl 声明(Display 对齐
+//                 ast/types.rs TypeDecl::fmt 与 ast/enums.rs EnumDecl::fmt;
+//                 members-only,枚举值首项 0 + 显式 = N gap-fill 对齐基线;
+//                 成员/变体间空行 Display 无载体,静默忽略——AA2R 自举转译
+//                 lib 自身所需);M2 corpus 无此类节点,闸门不受影响;
 //            D17 同款:循环体内一律不用 continue(VM 242 bug 规避);
 //            D25: VM 缺陷规避(probe 实证,挂 242):①原生调用(auto.list.*)
 //                 内联作结构体构造参数时返回值丢失(List.new() 使字段成垃圾,
@@ -59,6 +68,23 @@ type P {
     scopes List<List<Binding>>
     globals List<Binding>
     depth int
+    decls List<Binding>
+}
+
+// 类型/枚举注册表查询(D38b):name → 声明期 Display 快照
+fn p_decl_lookup(p P, name str) str {
+    var i = 0
+    while i < p.decls.len() {
+        if p.decls.get(i).name == name {
+            return p.decls.get(i).ty
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn p_decl_register(mut p P, name str, display str) {
+    p.decls.push(Binding(name, display))
 }
 
 // 表达式结果:dump=S-expr;word=标识符词/方法词/运算符 kind;name=name 的
@@ -76,7 +102,8 @@ type E {
 fn parse_new(toks List<Token>) P {
     var scs List<List<Binding>> = List.new()
     var glo List<Binding> = List.new()
-    var p = P(toks, 0, "", scs, glo, 0)
+    var dcl List<Binding> = List.new()
+    var p = P(toks, 0, "", scs, glo, 0, dcl)
     // Parser::from 的 cur 初始化含 skip_comments:起始位置跳过前导注释
     var scanning = true
     for scanning {
@@ -353,13 +380,44 @@ fn parse_type_base(mut p P) str {
         var name = p_text(p)
         var b = builtin_type(name)
         if b == "" {
-            b = name
+            // 用户类型(D38b):注册表内联整个声明快照(对齐 Rust
+            // Type::User(TypeDecl) 的 Display——已声明 → 完整 decl,
+            // 前向引用/未注册 → 空声明 "(type-decl (name X))")
+            var snap = p_decl_lookup(p, name)
+            if snap != "" {
+                b = snap
+            } else {
+                b = "(type-decl (name " + name + "))"
+            }
         }
         p_next(p)
-        // 泛型实例 Missing:遇 < 即报(corpus 无)
+        // 泛型实例(Plan 434:AA2R 需解析 lib 自身的 List<T>/Map<K, V>):
+        // 基名取裸名(List/Map → Type::List/Map Display 内联参数;未注册
+        // 基名 → GenericInstance——Display 亦为裸名,参数侧的 unique_name
+        // 差异见 D38a 备注);多参 ", " 连接
         if p_kind(p) == "Lt" {
-            p_err(p, "v2 unsupported: generic type ")
-            return ""
+            p_next(p)
+            skip_empty_lines(p)
+            var args = ""
+            var first = true
+            while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Gt" {
+                var at = parse_type(p)
+                skip_empty_lines(p)
+                if !first {
+                    args = args + ", "
+                }
+                args = args + at
+                first = false
+                if p_kind(p) == "Comma" {
+                    p_next(p)
+                    skip_empty_lines(p)
+                } else if p_kind(p) != "Gt" {
+                    p_err(p, "expected ',' or '>' in generic args ")
+                    return ""
+                }
+            }
+            p_expect(p, "Gt")
+            return name + "<" + args + ">"
         }
         return b
     }
@@ -1158,7 +1216,7 @@ fn parse_fn(mut p P) str {
         p_err(p, "v2 unsupported: fn.c/fn.vm ")
         return ""
     }
-    if p_kind(p) != "Ident" {
+    if !is_name_kind(p_kind(p)) {
         p_err(p, "expected fn name, got ")
         return ""
     }
@@ -1343,8 +1401,160 @@ fn parse_return(mut p P) str {
     return "(return " + e.dump + ")"
 }
 
+// 可作名字的 token(对齐 parse_name 盲取文本;结构性分隔符除外——
+// 成员/变体名可为关键字,如 UI 方言的 grid)
+fn is_name_kind(k str) bool {
+    if k == "EOF" || k == "RBrace" || k == "Newline" || k == "Semi" || k == "Comma" || k == "Colon" || k == "Asn" || k == "LParen" || k == "LBrace" || k == "LSquare" || k == "RParen" || k == "RSquare" || k == "Arrow" || k == "Dot" || k == "Lt" || k == "Gt" {
+        return false
+    }
+    return true
+}
+
+// type 声明(Plan 434:AA2R 转译 lib 自身需要)。Display 对齐 ast/types.rs
+// 的 TypeDecl:仅 members 路径;泛型参数/别名/is/as/has/方法体/字段默认值
+// 遇之报 v2 unsupported(lib 未用,golden 02 组部分留后续)
+fn parse_type_decl(mut p P) str {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected type name, got ")
+        return ""
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) == "Lt" {
+        p_err(p, "v2 unsupported: type generic params ")
+        return ""
+    }
+    if p_kind(p) == "Asn" {
+        p_err(p, "v2 unsupported: type alias ")
+        return ""
+    }
+    if p_kind(p) == "Is" {
+        p_err(p, "v2 unsupported: type inheritance ")
+        return ""
+    }
+    if p_kind(p) == "As" {
+        p_err(p, "v2 unsupported: type as ")
+        return ""
+    }
+    if p_kind(p) == "Has" {
+        p_err(p, "v2 unsupported: type has ")
+        return ""
+    }
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var members = ""
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if p_kind(p) == "Fn" || p_kind(p) == "Static" {
+            p_err(p, "v2 unsupported: method in type ")
+            return ""
+        }
+        if p_kind(p) == "Hash" {
+            p_err(p, "v2 unsupported: member attr ")
+            return ""
+        }
+        if !is_name_kind(p_kind(p)) {
+            p_err(p, "expected member name, got ")
+            return ""
+        }
+        var fname = p_text(p)
+        p_next(p)
+        if p_kind(p) == "Colon" {
+            p_next(p)
+        }
+        var fty = parse_type(p)
+        if p_kind(p) == "Asn" {
+            p_err(p, "v2 unsupported: member default value ")
+            return ""
+        }
+        if members != "" {
+            members = members + " "
+        }
+        members = members + "(member (name " + fname + ") (type " + fty + "))"
+        // 成员间空行:Display 无 nl 载体,基线亦忽略——静默跳过
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    var out = "(type-decl (name " + name + ")"
+    if members != "" {
+        out = out + " (members " + members + ")"
+    }
+    out = out + ")"
+    p_decl_register(p, name, out)
+    return out
+}
+
+// enum 声明(Plan 434)。Display 对齐 ast/enums.rs 的 EnumDecl:
+// (enum (name X) (item (name A) (value 0)) ...);首项 value 0、显式 = N 后
+// last_val=N+1(基线 gap-fill);payload/方法/变体属性遇之报 unsupported
+fn parse_enum_decl(mut p P) str {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected enum name, got ")
+        return ""
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) == "Lt" {
+        p_err(p, "v2 unsupported: enum generic params ")
+        return ""
+    }
+    if p_kind(p) == "Ident" || p_kind(p) == "Type" {
+        p_err(p, "v2 unsupported: enum repr type ")
+        return ""
+    }
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var out = "(enum (name " + name + ") "
+    var next_val = 0
+    var first = true
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if p_kind(p) == "Fn" || p_kind(p) == "Static" {
+            p_err(p, "v2 unsupported: method in enum ")
+            return ""
+        }
+        if p_kind(p) == "Hash" {
+            p_err(p, "v2 unsupported: enum variant attr ")
+            return ""
+        }
+        if !is_name_kind(p_kind(p)) {
+            p_err(p, "expected variant name, got ")
+            return ""
+        }
+        var vname = p_text(p)
+        p_next(p)
+        if p_kind(p) == "LParen" || p_kind(p) == "LBrace" {
+            p_err(p, "v2 unsupported: enum payload variant ")
+            return ""
+        }
+        var val = next_val
+        if p_kind(p) == "Asn" {
+            p_next(p)
+            if p_kind(p) != "Int" {
+                p_err(p, "v2 unsupported: enum value ")
+                return ""
+            }
+            val = int_val(p_text(p))
+            p_next(p)
+        }
+        next_val = val + 1
+        if !first {
+            out = out + " "
+        }
+        out = out + "(item (name " + vname + ") (value " + val.str() + "))"
+        first = false
+        // 变体间空行同成员:静默跳过
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    p_decl_register(p, name, out + ")")
+    return out + ")"
+}
+
 fn is_unsupported_stmt_kind(k str) bool {
-    return k == "Use" || k == "Type" || k == "Enum" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Is" || k == "Yield" || k == "Reply" || k == "View"
+    return k == "Use" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Is" || k == "Yield" || k == "Reply" || k == "View"
 }
 
 fn parse_stmt(mut p P) str {
@@ -1358,6 +1568,12 @@ fn parse_stmt(mut p P) str {
     if k == "Mut" {
         p_err(p, "'mut' is not supported as a storage modifier ")
         return ""
+    }
+    if k == "Type" {
+        return parse_type_decl(p)
+    }
+    if k == "Enum" {
+        return parse_enum_decl(p)
     }
     if k == "Fn" {
         return parse_fn(p)

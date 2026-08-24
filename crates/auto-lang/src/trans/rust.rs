@@ -2637,6 +2637,65 @@ impl RustTrans {
                                 write!(out, ".to_string()")?;
                             }
                         }
+                        // Plan 434 (242 #18-2): mirror store()'s let-init
+                        // auto-clones for reassignment. `x = a.field` moves the
+                        // field out — behind a &mut owner that's E0507; behind an
+                        // owned owner reused later it's E0382. `x = y` rebinds a
+                        // non-Copy local the same way. The let path has had both
+                        // since Plan 013/348; the assignment path had neither.
+                        if matches!(op, Op::Asn) && !self.expr_is_taskref(rhs) {
+                            if let Expr::Dot(obj, _field) = rhs.as_ref() {
+                                if let Expr::Ident(obj_name) = obj.as_ref() {
+                                    // Only owners behind a reference (&mut params —
+                                    // `mut a T` / merge-mode &mut) need the clone:
+                                    // moving out of them is E0507. An OWNED local
+                                    // may keep the bare move (19_ownership goldens
+                                    // lock `acc = wp.description;` bare).
+                                    let obj_is_mut_ref = self.current_fn_mut_params.contains(obj_name)
+                                        || self.local_var_types.get(obj_name)
+                                            .map(|ty| matches!(ty, Type::Reference(_)))
+                                            .unwrap_or(false);
+                                    let obj_is_copy = self.local_var_types.get(obj_name)
+                                        .map(|ty| Self::is_copy_type(ty))
+                                        .unwrap_or(true);
+                                    if obj_is_mut_ref && !obj_is_copy {
+                                        write!(out, ".clone()")?;
+                                    }
+                                }
+                            }
+                            if let Expr::Ident(src_name) = rhs.as_ref() {
+                                if let Expr::Ident(dst_name) = lhs.as_ref() {
+                                    if src_name != dst_name && !self.is_global_var(src_name) {
+                                        if let Some(ty) = self.local_var_types.get(src_name) {
+                                            if matches!(ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+                                                write!(out, ".to_string()")?;
+                                            } else if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty) {
+                                                write!(out, ".clone()")?;
+                                            }
+                                        } else if self.current_fn_str_params.contains(src_name) {
+                                            // Untyped `str` param rebind — &str at runtime.
+                                            write!(out, ".to_string()")?;
+                                        }
+                                    }
+                                }
+                            }
+                            // A `str` param (&str at runtime) assigned INTO a
+                            // field of a non-Copy owner is a String write —
+                            // `a.ty = callee` needs the conversion. A non-Copy
+                            // local ident moved into a field and reused later
+                            // (`a.cur_fn = name` … `format!(…, name)`) needs
+                            // `.clone()` — the field-READ mirror below covers
+                            // the opposite direction only.
+                            if let (Expr::Dot(_, _), Expr::Ident(src_name)) = (lhs.as_ref(), rhs.as_ref()) {
+                                if self.current_fn_str_params.contains(src_name) {
+                                    write!(out, ".to_string()")?;
+                                } else if let Some(ty) = self.local_var_types.get(src_name) {
+                                    if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty) {
+                                        write!(out, ".clone()")?;
+                                    }
+                                }
+                            }
+                        }
                     }
                     Op::Eq | Op::Neq => {
                         // Auto char literals ('a') are emitted as i32, string literals stay as strings
@@ -7210,11 +7269,27 @@ impl RustTrans {
                         // Conservative: unknown types are treated as non-Copy (safer for ownership)
                         if is_push_or_insert {
                             if let Arg::Pos(Expr::Ident(name)) = arg {
-                                let is_copy = self.local_var_types.get(name)
-                                    .map(|ty| Self::is_copy_type(ty))
-                                    .unwrap_or(false);
-                                if !is_copy {
-                                    write!(out, ".clone()")?;
+                                // Plan 434 (242 #18-2): a str-typed ident is
+                                // &str at runtime when it's a `str` param /
+                                // str-return fn — pushing into a String elem
+                                // Vec needs `.to_string()` (`.clone()` keeps
+                                // &str; is_copy_type treats str as Copy so
+                                // neither clone branch below fires).
+                                let is_str_ty = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty,
+                                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                                    .unwrap_or(false)
+                                    || (self.local_var_types.get(name).is_none()
+                                        && self.current_fn_str_params.contains(name));
+                                if is_str_ty {
+                                    write!(out, ".to_string()")?;
+                                } else {
+                                    let is_copy = self.local_var_types.get(name)
+                                        .map(|ty| Self::is_copy_type(ty))
+                                        .unwrap_or(false);
+                                    if !is_copy {
+                                        write!(out, ".clone()")?;
+                                    }
                                 }
                             }
                         }
@@ -7790,11 +7865,24 @@ impl RustTrans {
                         // Auto-clone: .push() takes ownership, clone non-Copy ident args
                         if method_name.as_str() == "push" {
                             if let Expr::Ident(name) = expr {
-                                let is_copy = self.local_var_types.get(name)
-                                    .map(|ty| Self::is_copy_type(ty))
-                                    .unwrap_or(false);
-                                if !is_copy {
-                                    write!(out, ".clone()")?;
+                                // Plan 434 (242 #18-2): a `str`-slice ident is
+                                // &str at runtime (str param / str-return fn) —
+                                // pushing into a String element Vec needs
+                                // `.to_string()` (`.clone()` keeps &str).
+                                let str_slice = self.local_var_types.get(name)
+                                    .map(|ty| matches!(ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                                    .unwrap_or(false)
+                                    || (self.local_var_types.get(name).is_none()
+                                        && self.current_fn_str_params.contains(name));
+                                if str_slice {
+                                    write!(out, ".to_string()")?;
+                                } else {
+                                    let is_copy = self.local_var_types.get(name)
+                                        .map(|ty| Self::is_copy_type(ty))
+                                        .unwrap_or(false);
+                                    if !is_copy {
+                                        write!(out, ".clone()")?;
+                                    }
                                 }
                             }
                         }
@@ -8974,6 +9062,17 @@ impl RustTrans {
                         "char_at" => {
                             return Type::Int;
                         }
+                        // Plan 434 (242 #18-1): `.clone()` preserves the
+                        // receiver's type; a List `.get(i)` yields the elem.
+                        // Both feed the index/clone-chain inference above.
+                        "clone" => {
+                            return self.infer_type_from_expr(obj);
+                        }
+                        "get" => {
+                            if let Type::List(elem) = self.infer_type_from_expr(obj) {
+                                return *elem;
+                            }
+                        }
                         // stdlib module functions that return String
                         _ => {
                             if let Expr::Ident(module) = obj.as_ref() {
@@ -9072,6 +9171,27 @@ impl RustTrans {
                         }
                     }
                 }
+                // Plan 434 (242 #18-1): generalize — resolve the receiver's
+                // type recursively (e.g. `a.fns[i].clone().params`), then look
+                // the field up in struct_field_types. Covers field chains whose
+                // object is itself an index/clone/call expression; previously
+                // only bare-Ident receivers resolved.
+                let obj_ty = self.infer_type_from_expr(obj);
+                if !matches!(obj_ty, Type::Unknown) {
+                    let type_name = match &obj_ty {
+                        Type::User(td) => td.name.clone(),
+                        Type::Enum(ed) => ed.borrow().name.clone(),
+                        Type::GenericInstance(inst) => inst.base_name.clone(),
+                        _ => obj_ty.unique_name(),
+                    };
+                    if let Some(fields) = self.struct_field_types.get(&type_name) {
+                        for (fname, fty) in fields {
+                            if fname.as_str() == field.as_str() {
+                                return fty.clone();
+                            }
+                        }
+                    }
+                }
                 Type::Unknown
             }
             // Plan 376F: Infer type from plain identifier via local_var_types
@@ -9121,6 +9241,15 @@ impl RustTrans {
             }
             // Plan 376F: Cast expression (x as T) → T
             Expr::Cast { target_type, .. } => target_type.clone(),
+            // Plan 434 (242 #18-1): indexing a List infers the element type,
+            // so locals bound through `x.f[i].clone()` chains keep their
+            // struct type (previously the whole chain collapsed to Unknown,
+            // and `.get()` on such locals fell to the Option-form
+            // post-process regexes instead of AST-level index+clone).
+            Expr::Index(array, _idx) => match self.infer_type_from_expr(array) {
+                Type::List(elem) => *elem,
+                _ => Type::Unknown,
+            },
             // Plan 242 #8: closure literal → Fn(param types, ret). Previously
             // fell to Unknown, so let-bound closures / closure-typed fields
             // lost their type (masked by task-struct special-casing).
@@ -11170,11 +11299,17 @@ impl RustTrans {
                         && !self.is_global_var(src_name)
                         && !matches!(store.ty, Type::Reference(_) | Type::Ptr(_))
                     {
-                        let src_is_primitive_copy = self.local_var_types.get(src_name)
-                            .map(|ty| Self::is_primitive_copy(ty))
-                            .unwrap_or(true);
-                        if !src_is_primitive_copy {
-                            write!(out, ".clone()")?;
+                        // Plan 434 (242 #18-2): a str-SLICE-typed source is
+                        // &str at runtime when it's a `str` param (clone keeps
+                        // &str, so `let cur: String = cur_in.clone()` is
+                        // E0308). `.to_string()` is correct for both &str
+                        // params and String returns labeled `str`.
+                        if let Some(ty) = self.local_var_types.get(src_name) {
+                            if matches!(ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+                                write!(out, ".to_string()")?;
+                            } else if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty) {
+                                write!(out, ".clone()")?;
+                            }
                         }
                     }
                 }
@@ -20719,23 +20854,9 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "fn lex_fstr_f(mut source: &str, mut pos: i32) {",
         "fn lex_fstr_f(mut source: &str, mut pos: i32) -> Vec<Token> {",
     );
-    // Add main() with basic self-test if missing
-    // Plan 433 A1: only when the merged body actually provides run_eval/run_a2r
-    // (the v1 AAVM self-test entry points). A library-shaped merge (e.g. AAVM v2)
-    // would otherwise get a main referencing nonexistent functions.
-    if !cached_regex(r"(?m)^fn main\(\)").unwrap().is_match(&content)
-        && content.contains("fn run_eval") {
-        content.push_str(concat!(
-            "\nfn main() ",
-            "{\n",
-            "    let eval_output = run_eval(\"print(42)\");\n",
-            "    assert!(eval_output == \"42\\n\", \"eval self-test failed: got {:?}\", eval_output);\n",
-            "    let a2r_output = run_a2r(\"fn main() { print(1 + 2) }\");\n",
-            "    assert!(a2r_output.contains(\"fn main\"), \"a2r self-test failed\");\n",
-            "    println!(\"bootstrap self-test passed\");\n",
-            "}\n"
-        ));
-    }
+    // Plan 434: v1 bootstrap self-test main 追加已清退(433 KNOWN-DEBT 条目)
+    // ——v1 lib 仅存于 lib-legacy 封存与 99_bootstrap 的 #[ignore] 测试,
+    // 不再为 merge 产物注入自测 main;v2 lib 无 main 语义保持。
 
     // === fix_contains_key.py: now handled at AST level (contains_rust logic + cross-module struct_field_types) ===
 

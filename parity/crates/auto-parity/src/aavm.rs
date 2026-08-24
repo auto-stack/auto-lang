@@ -1,4 +1,4 @@
-//! Plan 433 C1: AAVM 四向对比矩阵(①②③④)。
+//! Plan 433 C1 / Plan 434: AAVM 五向对比矩阵(①②③④⑤)。
 //!
 //! | 方 | backend | 说明 |
 //! |---|---|---|
@@ -6,6 +6,7 @@
 //! | ② | aavm_rust | auto/lib v2 经 a2r --merge 转译编译出的编译器+VM 二进制 |
 //! | ③ | aavm_vm | AutoVM 解释执行 AAVM .at(lib 前置拼接 + ev_run 包装) |
 //! | ④ | golden | corpus 的 `.expected.out`;缺失时回落 ①(矩阵注明) |
+//! | ⑤ | aa2r | Plan 434 G2:lib(含 a2r.at)经 AA2R(Auto 写 a2r,AutoVM 解释承载)转译编译 |
 //!
 //! 一条命令可复现(Verification #2):
 //! `cargo run -- --root . --auto-binary ../../target/debug/auto.exe aavm`
@@ -22,6 +23,7 @@ pub const AUTO_LIB_FILES_V2: &[&str] = &[
     "auto/lib/typeinfo.at",
     "auto/lib/codegen.at",
     "auto/lib/engine.at",
+    "auto/lib/a2r.at",
 ];
 
 /// corpus 执行层语料目录(相对 repo root)。
@@ -40,6 +42,8 @@ pub struct MatrixCase {
     /// ④ golden 文本(无 golden 文件时 = ①,`golden_is_file` 记 false)
     pub golden: String,
     pub golden_is_file: bool,
+    /// ⑤ AA2R 产物 stdout(Plan 434)
+    pub aa2r: String,
     /// 后端运行错误(非空 = 该后端没能产出输出)
     pub errors: Vec<String>,
 }
@@ -50,6 +54,7 @@ impl MatrixCase {
             && self.reference.trim() == self.aavm_rust.trim()
             && self.reference.trim() == self.aavm_vm.trim()
             && self.reference.trim() == self.golden.trim()
+            && self.reference.trim() == self.aa2r.trim()
     }
 }
 
@@ -138,6 +143,7 @@ fn run_aavm_vm(config: &AavmConfig, case: &Path) -> Result<String, String> {
 
 /// ② AAVM-Rust:auto trans --merge → main harness → cargo bin(内容寻址缓存)。
 fn build_aavm_rust_bin(config: &AavmConfig) -> Result<(PathBuf, String), String> {
+    // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at 七文件全塔)。
     let lib_dir = config.repo_root.join("auto/lib");
     // 经临时文件取 merge 产物(CLI 的 stdout 会带 [trans] 横幅,文件内容干净)
     let tmp = std::env::temp_dir().join(format!("aavm-parity-merged-{}.rs", std::process::id()));
@@ -208,6 +214,88 @@ fn main() {
     Ok((exe, format!("built ({})", hash)))
 }
 
+/// ⑤ AA2R(Plan 434 G2):Auto 写的 a2r.at 转译 lib(含自身)→ cargo bin。
+/// 转译承载 = ③ 式(lib 前置拼接经 AutoVM 解释执行)——AA2R 以
+/// aa2r_transpile_merge(拼接 lib 源) 发射可独立编译的 Rust 文本。
+fn build_aa2r_bin(config: &AavmConfig) -> Result<(PathBuf, String), String> {
+    let mut lib_source = String::new();
+    let mut program = String::new();
+    for f in AUTO_LIB_FILES_V2 {
+        let path = config.repo_root.join(f);
+        let content = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?;
+        lib_source.push_str(&content);
+        lib_source.push('\n');
+        program.push_str(&content);
+        program.push('\n');
+    }
+    program.push_str(&format!(
+        "\nfn main() {{\n    print(aa2r_transpile_merge(\"{}\"))\n}}\n",
+        escape_for_at_literal(&lib_source)
+    ));
+    let tmp = std::env::temp_dir().join(format!("aa2r-prog-{}.at", std::process::id()));
+    std::fs::write(&tmp, &program).map_err(|e| e.to_string())?;
+    let out = run_auto(config, &tmp)?;
+    let merged = out.replace('\r', "");
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        merged.hash(&mut h);
+        format!("{:016x}", h.finish())
+    };
+    let proj = std::env::temp_dir().join(format!("aa2r-bin-{}", hash));
+    let exe = proj.join("target/release/aa2r_bin.exe");
+    if exe.exists() {
+        return Ok((exe, format!("cache hit ({})", hash)));
+    }
+    let src_dir = proj.join("src");
+    std::fs::create_dir_all(&src_dir).map_err(|e| e.to_string())?;
+    std::fs::write(
+        proj.join("Cargo.toml"),
+        "[package]\nname = \"aa2r_bin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[dependencies]\n",
+    )
+    .map_err(|e| e.to_string())?;
+    let harness = r#"
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("usage: aa2r <file.at>");
+        std::process::exit(2);
+    }
+    let source = match std::fs::read_to_string(&args[1]) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("read error: {}", e); std::process::exit(2); }
+    };
+    let out = ev_run(&source);
+    print!("{}", out);
+}
+"#;
+    let full = format!("{}{}", merged, harness);
+    std::fs::write(src_dir.join("main.rs"), &full).map_err(|e| e.to_string())?;
+    let build = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&proj)
+        .output()
+        .map_err(|e| format!("spawn cargo: {}", e))?;
+    if !build.status.success() {
+        return Err(format!("AA2R cargo build failed:\n{}", String::from_utf8_lossy(&build.stderr)));
+    }
+    Ok((exe, format!("built ({})", hash)))
+}
+
+fn run_aa2r(exe: &Path, case: &Path) -> Result<String, String> {
+    let out = Command::new(exe)
+        .arg(case)
+        .output()
+        .map_err(|e| format!("spawn aa2r bin: {}", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "aa2r bin exited {:?}: {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
 fn run_aavm_rust(exe: &Path, case: &Path) -> Result<String, String> {
     let out = Command::new(exe)
         .arg(case)
@@ -230,6 +318,7 @@ pub fn run_matrix(config: &AavmConfig) -> Result<MatrixReport, String> {
         return Err("no corpus files found".into());
     }
     let (bin, bin_note) = build_aavm_rust_bin(config)?;
+    let (bin5, bin5_note) = build_aa2r_bin(config)?;
 
     let mut cases = Vec::new();
     for path in &files {
@@ -257,6 +346,13 @@ pub fn run_matrix(config: &AavmConfig) -> Result<MatrixReport, String> {
                 String::new()
             }
         };
+        let aa2r = match run_aa2r(&bin5, path) {
+            Ok(s) => s,
+            Err(e) => {
+                errors.push(format!("⑤ aa2r: {}", e));
+                String::new()
+            }
+        };
         let golden_path = path.with_extension("expected.out");
         let (golden, golden_is_file) = if golden_path.is_file() {
             (std::fs::read_to_string(&golden_path).unwrap_or_default(), true)
@@ -271,33 +367,35 @@ pub fn run_matrix(config: &AavmConfig) -> Result<MatrixReport, String> {
             aavm_vm,
             golden,
             golden_is_file,
+            aa2r,
             errors,
         });
     }
-    Ok(MatrixReport { cases, bin_note: format!("{} ({})", bin.display(), bin_note) })
+    Ok(MatrixReport { cases, bin_note: format!("{} ({}) | ⑤ {}", bin.display(), bin_note, bin5_note) })
 }
 
 /// 文本矩阵(终端输出)。
 pub fn format_matrix(report: &MatrixReport) -> String {
     let mut out = String::new();
     out.push_str(&format!(
-        "AAVM 四向对比矩阵(①reference ②aavm_rust ③aavm_vm ④golden)  [{}]\n",
+        "AAVM 五向对比矩阵(①reference ②aavm_rust ③aavm_vm ④golden ⑤aa2r)  [{}]\n",
         report.bin_note
     ));
     out.push_str(&format!(
-        "{:<24} {:>9} {:>11} {:>9} {:>9}\n",
-        "case", "①ref", "②aavm-rust", "③aavm-vm", "④golden"
+        "{:<24} {:>9} {:>11} {:>9} {:>9} {:>9}\n",
+        "case", "①ref", "②aavm-rust", "③aavm-vm", "④golden", "⑤aa2r"
     ));
     out.push_str(&format!("{}\n", "-".repeat(70)));
     for c in &report.cases {
         let mark = |eq: bool| if eq { "ok" } else { "DIFF" };
         out.push_str(&format!(
-            "{:<24} {:>9} {:>11} {:>9} {:>9}\n",
+            "{:<24} {:>9} {:>11} {:>9} {:>9} {:>9}\n",
             c.name,
             mark(c.reference.trim_end() == c.reference.trim_end()),
             mark(c.aavm_rust.trim() == c.reference.trim()),
             mark(c.aavm_vm.trim() == c.reference.trim()),
             mark(c.golden.trim() == c.reference.trim()),
+            mark(c.aa2r.trim() == c.reference.trim()),
         ));
     }
     let green = report.cases.iter().filter(|c| c.all_agree()).count();
@@ -322,6 +420,9 @@ pub fn format_matrix(report: &MatrixReport) -> String {
         if c.aavm_vm.trim() != c.reference.trim() {
             out.push_str(&format!("--- ① reference ---\n{}\n--- ③ aavm_vm ---\n{}\n", c.reference, c.aavm_vm));
         }
+        if c.aa2r.trim() != c.reference.trim() {
+            out.push_str(&format!("--- ① reference ---\n{}\n--- ⑤ aa2r ---\n{}\n", c.reference, c.aa2r));
+        }
     }
     out
 }
@@ -334,12 +435,13 @@ pub fn write_html(report: &MatrixReport, path: &Path) -> Result<(), String> {
             if eq { "<td class=\"ok\">ok</td>" } else { "<td class=\"diff\">DIFF</td>" }.to_string()
         };
         rows.push_str(&format!(
-            "<tr><td>{}</td>{}{}{}{}</tr>\n",
+            "<tr><td>{}</td>{}{}{}{}{}</tr>\n",
             c.name,
             cell(true),
             cell(c.aavm_rust.trim() == c.reference.trim()),
             cell(c.aavm_vm.trim() == c.reference.trim()),
             cell(c.golden.trim() == c.reference.trim()),
+            cell(c.aa2r.trim() == c.reference.trim()),
         ));
     }
     let green = report.cases.iter().filter(|c| c.all_agree()).count();
@@ -347,7 +449,7 @@ pub fn write_html(report: &MatrixReport, path: &Path) -> Result<(), String> {
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="zh"><head><meta charset="utf-8">
-<title>AAVM 四向对比矩阵(Plan 433)</title>
+<title>AAVM 五向对比矩阵(Plan 433/434)</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; }}
 table {{ border-collapse: collapse; }}
@@ -357,13 +459,13 @@ td:first-child {{ text-align: left; font-family: monospace; }}
 .diff {{ background: #fde8e8; color: #a11; font-weight: bold; }}
 .summary {{ margin: 1rem 0; font-size: 1.1rem; }}
 </style></head><body>
-<h1>AAVM 四向对比矩阵(Plan 433)</h1>
+<h1>AAVM 五向对比矩阵(Plan 433/434)</h1>
 <p>① reference = auto-lang 原生实现(oracle) · ② aavm_rust = AAVM .at 经 a2r 转译编译后的
 编译器+VM · ③ aavm_vm = AutoVM 解释执行 AAVM .at · ④ golden = corpus .expected.out
 (无 golden 文件时回落 ①)。④golden 列在 golden 缺失时与 ① 同源,仅作占位。</p>
 <p class="summary">自举稳定集:{green}/{total} 全绿({bin_note})</p>
 <table>
-<tr><th>case</th><th>① reference</th><th>② aavm_rust</th><th>③ aavm_vm</th><th>④ golden</th></tr>
+<tr><th>case</th><th>① reference</th><th>② aavm_rust</th><th>③ aavm_vm</th><th>④ golden</th><th>⑤ aa2r</th></tr>
 {rows}
 </table>
 </body></html>"#,

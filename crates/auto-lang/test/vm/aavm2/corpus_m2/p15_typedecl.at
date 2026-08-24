@@ -1,0 +1,19 @@
+type Point {
+    x int
+    y int
+}
+
+type Wrapper {
+    inner List<Point>
+    grid List<List<int>>
+    fwd List<Later>
+    name str
+}
+
+type Later {
+    v int
+}
+
+fn take(p Point, w Wrapper) Point {
+    return p
+}

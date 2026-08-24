@@ -1,0 +1,2432 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM v2 Sync Snapshot                                     ║
+// ║ Component: a2r.at (Plan 434 / AA2R: Auto 版 a2r 核心子集) ║
+// ║ Rust ref:  crates/auto-lang/src/trans/rust.rs 发射决策子集 ║
+// ║            @ 41e7985c(21,395 行)                          ║
+// ║ Gate:      S1 golden 文本比对 + S3 G2 自举闭环 + 五方矩阵 ║
+// ╚═══════════════════════════════════════════════════════════╝
+// Coverage:  单文件/合并转译驱动;type/enum/fn 声明发射(struct 派生
+//            按字段类型三分派、enum 自动 Display+from_id);语句(let/var
+//            /if-else/for 全形态/while/loop/break/continue/return/表达式
+//            语句/块);表达式(Pratt 优先级重构——源括号按需重建、
+//            一元、调用/方法/字段/下标后缀链、二元含 str+str→format!
+//            嵌套、char 字面量二元位 ('x') as i64、范围);方法映射
+//            (len/str/new/get/set/char_at/slice/replace/trim/push);
+//            调用点参数转换(&str 参数 .as_str()、mut 参数 &mut/*再借用、
+//            view-struct 参数 mut 位 .clone());构造器位置参数→命名字段
+//            (str 字段一律 .to_string());let 注解(字面量推导补类型);
+//            .get() 赋值位前瞻(place 模式免 clone);.set() 语句位→
+//            下标赋值;let-init 纯字段读 owned 局部 → .clone();
+//            var→let mut;空行按 eos 换行数保留(注释行→空行);
+//            len 形态消费侧括号(二元左/构造器字段值/let-init)
+// Missing:   f-string/闭包/is-match/泛型声明/spec/ext/impl/use/dep/
+//            多目标/r2a/逃逸分析/post_process 正则族/生成器/task/
+//            命名构造参数/shared/static/宏/文档注释透传/元组/对象字面量
+// DIVERGE:   D39(Plan 434):AA2R 不经 parse_dump 的 S-expr(字符串字面量
+//                 内引号歧义),改以 token 游标直走(432 codegen.at
+//                 同款方法论),复用 parser.at 的 p_* 游标/优先级表与
+//                 typeinfo.at 的 t_is_type_prop;预扫描类型表走裸名形
+//                 (不经 parser.at 的 D38b 内联 Display——那是 dump
+//                 判据层的口径);
+//            D40: 与主 a2r 的文本差异定位"可解释"级:S1 闸门对账清单
+//                 见 docs/specs/aavm/divergences.md §434;
+//            D17/D25 同款 VM 规避(无 continue/List.pop/原生调用内联
+//                 作构造参数);输出缓冲 = List<str> 片段 + 末尾一次
+//                 join(避免 O(n²) 拼接)
+
+// ── 载体 ──────────────────────────────────────────────────────
+
+type ArParam {
+    name str
+    ty str
+    mode str
+}
+
+type ArFn {
+    name str
+    params List<ArParam>
+    ret str
+    mut_params List<str>
+}
+
+type ArField {
+    name str
+    ty str
+}
+
+type ArTy {
+    name str
+    fields List<ArField>
+}
+
+type ArEnum {
+    name str
+    variants List<str>
+}
+
+type ArVar {
+    name str
+    ty str
+    mode str
+    param int
+}
+
+type Ar {
+    out List<str>
+    indent int
+    err str
+    fns List<ArFn>
+    tys List<ArTy>
+    ens List<ArEnum>
+    scopes List<List<ArVar>>
+    depth int
+    cur_fn str
+    mutated List<str>
+    ty str
+    strk int
+    prec int
+    lenflag int
+    can_call int
+    atom_mut int
+    atom_param int
+    ended_field int
+    stmt_ctx int
+    merge int
+    tail_start int
+    tail_is_expr int
+    tail_no_semi int
+    last_strk int
+    infer int
+    arr_elem str
+    in_branch int
+    value_if int
+    std_used int
+    fstr_fmt str
+    fstr_args str
+    lu_names List<str>
+    lu_idx List<int>
+    arg_lenflags List<int>
+}
+
+fn ar_new() Ar {
+    var out List<str> = List.new()
+    var fns List<ArFn> = List.new()
+    var tys List<ArTy> = List.new()
+    var ens List<ArEnum> = List.new()
+    var scopes List<List<ArVar>> = List.new()
+    var base List<ArVar> = List.new()
+    scopes.push(base)
+    var mutated List<str> = List.new()
+    var arglf List<int> = List.new()
+    var lun List<str> = List.new()
+    var lui List<int> = List.new()
+    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf)
+}
+
+fn ar_err(mut a Ar, msg str) {
+    if a.err == "" {
+        a.err = "A2R-ERROR:" + msg
+    }
+}
+
+// ── 输出缓冲(D39:List<str> 片段 + 末尾 join) ─────────────────
+
+fn ar_emit(mut a Ar, s str) {
+    a.out.push(s)
+}
+
+fn ar_indent_str(a Ar) str {
+    var out = ""
+    var i = 0
+    while i < a.indent {
+        out = out + "    "
+        i = i + 1
+    }
+    return out
+}
+
+fn ar_line(mut a Ar, s str) {
+    a.out.push(ar_indent_str(a) + s)
+}
+
+fn ar_blank(mut a Ar) {
+    a.out.push("")
+}
+
+fn ar_result(a Ar) str {
+    var out = ""
+    var i = 0
+    while i < a.out.len() {
+        if i > 0 {
+            out = out + "\n"
+        }
+        out = out + a.out.get(i)
+        i = i + 1
+    }
+    return out + "\n"
+}
+
+// ── 字符串转义(Auto 解码文本 → Rust 字面量) ──────────────────
+
+fn ar_escape_str(s str) str {
+    var t = s.replace("\\", "\\\\")
+    t = t.replace("\"", "\\\"")
+    t = t.replace("\n", "\\n")
+    t = t.replace("\r", "\\r")
+    t = t.replace("\t", "\\t")
+    t = t.replace("\0", "\\0")
+    return t
+}
+
+fn ar_escape_char(s str) str {
+    var t = s.replace("\\", "\\\\")
+    t = t.replace("'", "\\'")
+    t = t.replace("\n", "\\n")
+    t = t.replace("\r", "\\r")
+    t = t.replace("\t", "\\t")
+    return t
+}
+
+// ── 类型映射(裸名 Display → Rust) ────────────────────────────
+
+fn ar_is_str_ty(t str) bool {
+    return t == "str" || t == "String" || t == "cstr"
+}
+
+fn ar_is_float_ty(t str) bool {
+    return t == "float" || t == "double"
+}
+
+fn ar_is_int_ty(t str) bool {
+    return t == "int" || t == "uint" || t == "usize" || t == "i64" || t == "u64" || t == "byte"
+}
+
+fn ar_base_ty(t str) str {
+    var i = 0
+    while i < t.len() {
+        if t.char_at(i) == '<' {
+            return t.slice(0, i)
+        }
+        i = i + 1
+    }
+    return t
+}
+
+fn ar_list_elem(t str) str {
+    if t == "List" {
+        return "String"
+    }
+    if t.len() > 6 && t.slice(0, 5) == "List<" && t.slice(t.len() - 1, t.len()) == ">" {
+        return t.slice(5, t.len() - 1)
+    }
+    return ""
+}
+
+fn ar_rust_ty(t str) str {
+    if t == "" {
+        return ""
+    }
+    if t == "int" {
+        return "i64"
+    }
+    if t == "uint" {
+        return "u32"
+    }
+    if t == "float" {
+        return "f32"
+    }
+    if t == "double" {
+        return "f64"
+    }
+    if ar_is_str_ty(t) {
+        return "String"
+    }
+    if t == "List" {
+        return "Vec<String>"
+    }
+    if t.len() > 6 && t.slice(0, 5) == "List<" {
+        return "Vec<" + ar_rust_ty(ar_list_elem(t)) + ">"
+    }
+    if t.len() > 5 && t.slice(0, 4) == "Map<" {
+        return "std::collections::HashMap<String, String>"
+    }
+    if t == "void" {
+        return ""
+    }
+    return t
+}
+
+fn ar_param_ty(t str) str {
+    if ar_is_str_ty(t) {
+        return "&str"
+    }
+    return ar_rust_ty(t)
+}
+
+// ── 符号表查询 ────────────────────────────────────────────────
+
+fn ar_fn_find(a Ar, name str) int {
+    var i = 0
+    while i < a.fns.len() {
+        if a.fns.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn ar_ty_find(a Ar, name str) int {
+    var i = 0
+    while i < a.tys.len() {
+        if a.tys.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn ar_enum_find(a Ar, name str) int {
+    var i = 0
+    while i < a.ens.len() {
+        if a.ens.get(i).name == name {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn ar_field_ty(a Ar, ty_name str, field str) str {
+    var ti = ar_ty_find(a, ty_name)
+    if ti < 0 {
+        return ""
+    }
+    var fields = a.tys.get(ti).fields
+    var i = 0
+    while i < fields.len() {
+        if fields.get(i).name == field {
+            return fields.get(i).ty
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn ar_enum_has_variant(a Ar, name str, variant str) bool {
+    var ei = ar_enum_find(a, name)
+    if ei < 0 {
+        return false
+    }
+    var vs = a.ens.get(ei).variants
+    var i = 0
+    while i < vs.len() {
+        if vs.get(i) == variant {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// ── 作用域变量栈(D25:depth 计数,只增不减) ───────────────────
+
+fn ar_vpush(mut a Ar, name str, ty str, mode str, param int) {
+    var sc = a.scopes.get(a.depth - 1)
+    sc.push(ArVar(name, ty, mode, param))
+    a.scopes.set(a.depth - 1, sc)
+}
+
+fn ar_vscope(mut a Ar) {
+    var sc List<ArVar> = List.new()
+    a.scopes.push(sc)
+    a.depth = a.depth + 1
+}
+
+fn ar_vunscope(mut a Ar) {
+    // D38d:清空弃用槽位——depth 计数模式下陈旧条目会跨 fn 遮蔽同名绑定
+    var fresh List<ArVar> = List.new()
+    a.scopes.set(a.depth - 1, fresh)
+    a.depth = a.depth - 1
+}
+
+fn ar_vty(a Ar, name str) str {
+    var s = a.depth - 1
+    while s >= 0 {
+        var sc = a.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).ty
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return ""
+}
+
+fn ar_vparam(a Ar, name str) int {
+    var s = a.depth - 1
+    while s >= 0 {
+        var sc = a.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).param
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return 0
+}
+
+// 当前 fn 的 mut 参数(调用点 &mut *x 再借用判定,D33)
+fn ar_is_cur_mut_param(a Ar, name str) bool {
+    var fi = ar_fn_find(a, a.cur_fn)
+    if fi < 0 {
+        return false
+    }
+    var ps = a.fns.get(fi).params
+    var i = 0
+    while i < ps.len() {
+        if ps.get(i).name == name && ps.get(i).mode == "mut" {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// last-use:绑定在本 fn 内的最后引用 token 位(> 当前位 → 后续仍用)
+fn ar_lu_record(mut a Ar, name str, idx int) {
+    var i = 0
+    while i < a.lu_names.len() {
+        if a.lu_names.get(i) == name {
+            a.lu_idx.set(i, idx)
+            return
+        }
+        i = i + 1
+    }
+    a.lu_names.push(name)
+    a.lu_idx.push(idx)
+}
+
+fn ar_lu_after(a Ar, name str, idx int) bool {
+    var i = 0
+    while i < a.lu_names.len() {
+        if a.lu_names.get(i) == name {
+            if a.lu_idx.get(i) > idx {
+                return true
+            }
+            return false
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn ar_is_mutated(a Ar, name str) bool {
+    var i = 0
+    while i < a.mutated.len() {
+        if a.mutated.get(i) == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// ── 裸名类型解析(预扫描/签名用;D39:不经 D38b 内联 Display) ──
+
+fn ar_bare_type(mut p P) str {
+    if p_kind(p) != "Ident" {
+        p_err(p, "expected type name ")
+        return ""
+    }
+    var name = p_text(p)
+    var b = builtin_type(name)
+    if b == "" {
+        b = name
+    }
+    p_next(p)
+    if p_kind(p) == "Lt" {
+        p_next(p)
+        skip_empty_lines(p)
+        var args = ""
+        var first = true
+        while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Gt" {
+            var at = ar_bare_type(p)
+            skip_empty_lines(p)
+            if !first {
+                args = args + ", "
+            }
+            args = args + at
+            first = false
+            if p_kind(p) == "Comma" {
+                p_next(p)
+                skip_empty_lines(p)
+            }
+        }
+        p_expect(p, "Gt")
+        return name + "<" + args + ">"
+    }
+    return b
+}
+
+// ── 语句/表达式 token 推进工具(括号平衡) ─────────────────────
+
+fn ar_skip_stmt(mut p P) {
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Newline" && p_kind(p) != "Semi" && p_kind(p) != "RBrace" {
+        if p_kind(p) == "LBrace" || p_kind(p) == "LParen" || p_kind(p) == "LSquare" {
+            var open = p_kind(p)
+            var close = "RBrace"
+            if open == "LParen" {
+                close = "RParen"
+            } else if open == "LSquare" {
+                close = "RSquare"
+            }
+            var depth = 0
+            var running = true
+            while running && p_kind(p) != "EOF" {
+                var k = p_kind(p)
+                if k == open {
+                    depth = depth + 1
+                } else if k == close {
+                    depth = depth - 1
+                    if depth == 0 {
+                        running = false
+                    }
+                }
+                p_next(p)
+            }
+        } else {
+            p_next(p)
+        }
+    }
+}
+
+fn ar_skip_expr_tokens(mut p P) {
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Comma" && p_kind(p) != "RParen" && p_kind(p) != "Newline" {
+        if p_kind(p) == "LParen" || p_kind(p) == "LSquare" || p_kind(p) == "LBrace" {
+            var open = p_kind(p)
+            var close = "RParen"
+            if open == "LSquare" {
+                close = "RSquare"
+            } else if open == "LBrace" {
+                close = "RBrace"
+            }
+            var depth = 0
+            var running = true
+            while running && p_kind(p) != "EOF" {
+                var k = p_kind(p)
+                if k == open {
+                    depth = depth + 1
+                } else if k == close {
+                    depth = depth - 1
+                    if depth == 0 {
+                        running = false
+                    }
+                }
+                p_next(p)
+            }
+        } else {
+            p_next(p)
+        }
+    }
+}
+
+// ── 顶层预扫描:签名/类型/枚举表 + decl/main 起始拆分 ──────────
+
+fn ar_prescan_fn(mut a Ar, mut p P) {
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected fn name ")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    var ps List<ArParam> = List.new()
+    p_expect(p, "LParen")
+    skip_empty_lines(p)
+    var running = true
+    while running && p.err == "" {
+        var mode = "view"
+        var k = p_kind(p)
+        if k == "View" || k == "Copy" {
+            p_next(p)
+        } else if k == "Mut" {
+            mode = "mut"
+            p_next(p)
+        } else if k == "Move" || k == "Take" {
+            mode = "mut"
+            p_next(p)
+        }
+        if p_kind(p) != "Ident" {
+            if mode != "view" {
+                p_err(p, "expected param name ")
+            }
+            running = false
+        } else {
+            var pname = p_text(p)
+            p_next(p)
+            var ty = "int"
+            if p_kind(p) == "Colon" {
+                p_next(p)
+            }
+            if is_type_name(p) {
+                ty = ar_bare_type(p)
+            }
+            ps.push(ArParam(pname, ty, mode))
+            if p_kind(p) == "Asn" {
+                p_next(p)
+                ar_skip_expr_tokens(p)
+            }
+            if p_kind(p) == "Comma" {
+                p_next(p)
+                skip_empty_lines(p)
+            } else {
+                running = false
+            }
+        }
+    }
+    p_expect(p, "RParen")
+    var ret = "void"
+    if p_kind(p) == "Arrow" {
+        p_next(p)
+        ret = ar_bare_type(p)
+        skip_empty_lines(p)
+    } else if is_type_name(p) {
+        ret = ar_bare_type(p)
+        skip_empty_lines(p)
+    }
+    var mp List<str> = List.new()
+    if p_kind(p) == "LBrace" {
+        var save = p.pos
+        var saved_mut List<str> = List.new()
+        ar_scan_mutations(a, p)
+        var pi = 0
+        while pi < ps.len() {
+            var pname2 = ps.get(pi).name
+            var hit = 0
+            var mi = 0
+            while mi < a.mutated.len() {
+                if a.mutated.get(mi) == pname2 {
+                    hit = 1
+                }
+                mi = mi + 1
+            }
+            if hit == 1 {
+                mp.push(pname2)
+            }
+            pi = pi + 1
+        }
+        a.mutated = saved_mut
+        p.pos = save
+    }
+    a.fns.push(ArFn(name, ps, ret, mp))
+}
+
+fn ar_prescan_type(mut a Ar, mut p P) {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected type name ")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) == "Lt" || p_kind(p) == "Asn" || p_kind(p) == "Is" || p_kind(p) == "As" || p_kind(p) == "Has" {
+        p_err(p, "v2 unsupported: type decl modifier ")
+        return
+    }
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var fields List<ArField> = List.new()
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if p_kind(p) == "Fn" || p_kind(p) == "Static" || p_kind(p) == "Hash" {
+            p_err(p, "v2 unsupported: type body member ")
+            return
+        }
+        if !is_name_kind(p_kind(p)) {
+            p_err(p, "expected member name ")
+            return
+        }
+        var fname = p_text(p)
+        p_next(p)
+        if p_kind(p) == "Colon" {
+            p_next(p)
+        }
+        var fty = ar_bare_type(p)
+        if p_kind(p) == "Asn" {
+            p_err(p, "v2 unsupported: member default ")
+            return
+        }
+        fields.push(ArField(fname, fty))
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    a.tys.push(ArTy(name, fields))
+}
+
+fn ar_prescan_enum(mut a Ar, mut p P) {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        p_err(p, "expected enum name ")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) == "Lt" {
+        p_err(p, "v2 unsupported: enum generic ")
+        return
+    }
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var vs List<str> = List.new()
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if p_kind(p) == "Fn" || p_kind(p) == "Static" || p_kind(p) == "Hash" {
+            p_err(p, "v2 unsupported: enum body member ")
+            return
+        }
+        if !is_name_kind(p_kind(p)) {
+            p_err(p, "expected variant name ")
+            return
+        }
+        var vname = p_text(p)
+        p_next(p)
+        if p_kind(p) == "LParen" || p_kind(p) == "LBrace" {
+            p_err(p, "v2 unsupported: enum payload ")
+            return
+        }
+        if p_kind(p) == "Asn" {
+            p_next(p)
+            if p_kind(p) != "Int" {
+                p_err(p, "v2 unsupported: enum value ")
+                return
+            }
+            p_next(p)
+        }
+        vs.push(vname)
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    a.ens.push(ArEnum(name, vs))
+}
+
+// ── fn 体再赋值预扫描(var → let mut 判定) ────────────────────
+
+fn ar_is_asn_kind(k str) bool {
+    return k == "Asn" || k == "AddEq" || k == "SubEq" || k == "MulEq" || k == "DivEq" || k == "ModEq"
+}
+
+fn ar_is_mutating_method(name str) bool {
+    return name == "push" || name == "set" || name == "insert" || name == "clear" || name == "remove" || name == "pop" || name == "sort" || name == "reverse" || name == "retain" || name == "extend"
+}
+
+// cur 在 body `{`;扫描到平衡 `}`,记录被改写的绑定名
+fn ar_scan_mutations(mut a Ar, mut p P) {
+    var depth = 1
+    p_next(p)
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "EOF" && depth > 0 {
+        var k = p_kind(p)
+        if k == "LBrace" {
+            depth = depth + 1
+            p_next(p)
+        } else if k == "RBrace" {
+            depth = depth - 1
+            p_next(p)
+        } else if k == "Ident" {
+            if p.pos > 0 && p.toks.get(p.pos - 1).kind == "Dot" {
+                // 字段名位(前一 token 为 Dot):不按绑定处理
+                p_next(p)
+            } else {
+            var name = p_text(p)
+            ar_lu_record(a, name, p.pos)
+            if ar_is_asn_kind(p_peek(p, 1)) {
+                a.mutated.push(name)
+                p_next(p)
+            } else if p_peek(p, 1) == "Dot" {
+                var j2 = p.pos + 1
+                var asn_found = false
+                var mut_found = false
+                var scanning = true
+                while scanning && j2 + 2 < p.toks.len() {
+                    var nk2 = p.toks.get(j2 + 2).kind
+                    if nk2 == "Dot" {
+                        j2 = j2 + 2
+                    } else if ar_is_asn_kind(nk2) {
+                        asn_found = true
+                        scanning = false
+                    } else if nk2 == "LParen" {
+                        var mname = p.toks.get(j2 + 1).text
+                        if ar_is_mutating_method(mname) {
+                            mut_found = true
+                        }
+                        scanning = false
+                    } else {
+                        scanning = false
+                    }
+                }
+                if asn_found || mut_found {
+                    a.mutated.push(name)
+                }
+                p_next(p)
+            } else if p_peek(p, 1) == "LParen" {
+                var fi = ar_fn_find(a, name)
+                p_next(p)
+                p_next(p)
+                var argi = 0
+                skip_empty_lines(p)
+                while p.err == "" && p_kind(p) != "RParen" && p_kind(p) != "EOF" {
+                    if p_kind(p) == "Ident" {
+                        ar_lu_record(a, p_text(p), p.pos)
+                        if fi >= 0 {
+                            var ps = a.fns.get(fi).params
+                            if argi < ps.len() && ps.get(argi).mode != "view" {
+                                a.mutated.push(p_text(p))
+                            }
+                        }
+                    }
+                    ar_skip_expr_tokens(p)
+                    if p_kind(p) == "Comma" {
+                        p_next(p)
+                        skip_empty_lines(p)
+                        argi = argi + 1
+                    }
+                }
+                p_expect(p, "RParen")
+            } else {
+                p_next(p)
+            }
+            }
+        } else {
+            p_next(p)
+        }
+    }
+}
+
+// ── 表达式发射(Pratt;返回文本,旗标经 a.* 附带) ──────────────
+
+fn ar_usize_cast(text str, lit int) str {
+    if lit == 1 {
+        return text
+    }
+    return "(" + text + ") as usize"
+}
+
+fn ar_paren_if(text str, prec int, min int) str {
+    if prec < min {
+        return "(" + text + ")"
+    }
+    return text
+}
+
+fn ar_reset_expr(mut a Ar) {
+    a.ty = ""
+    a.strk = 0
+    a.prec = 100
+    a.lenflag = 0
+    a.can_call = 0
+    a.atom_mut = 0
+    a.ended_field = 0
+    a.infer = 1
+    a.arr_elem = ""
+}
+
+fn ar_expr(mut a Ar, mut p P, min int) str {
+    if a.err != "" || p.err != "" {
+        return ""
+    }
+    ar_reset_expr(a)
+    var k = p_kind(p)
+    var cur = ""
+    if k == "Sub" || k == "Add" || k == "Not" || k == "Star" {
+        var pow = prefix_power(k)
+        p_next(p)
+        var operand = ar_expr(a, p, pow)
+        if a.err != "" {
+            return ""
+        }
+        if k == "Sub" {
+            cur = "-" + operand
+        } else if k == "Not" {
+            cur = "!" + operand
+            a.ty = "bool"
+        } else if k == "Star" {
+            cur = "*" + operand
+        } else {
+            cur = "+" + operand
+        }
+        a.prec = 60
+    } else if k == "Int" {
+        cur = int_val(p_text(p)).str()
+        p_next(p)
+        a.ty = "int"
+    } else if k == "Uint" {
+        cur = int_val(p_text(p)).str()
+        p_next(p)
+        a.ty = "uint"
+    } else if k == "Float" || k == "Double" {
+        cur = p_text(p)
+        p_next(p)
+        a.ty = "float"
+    } else if k == "True" || k == "False" {
+        cur = p_text(p)
+        p_next(p)
+        a.ty = "bool"
+    } else if k == "Char" {
+        cur = "'" + ar_escape_char(p_text(p)) + "'"
+        p_next(p)
+        a.ty = "char"
+    } else if k == "Str" {
+        cur = "\"" + ar_escape_str(p_text(p)) + "\""
+        p_next(p)
+        a.ty = "str"
+        a.strk = 1
+    } else if k == "FStrStart" {
+        cur = ar_fstr_value(a, p)
+        a.ty = "str"
+        a.strk = 3
+        a.infer = 1
+    } else if k == "Nil" || k == "Null" {
+        p_next(p)
+        cur = "None"
+        a.ty = ""
+    } else if k == "LParen" {
+        p_next(p)
+        skip_empty_lines(p)
+        cur = ar_expr(a, p, 0)
+        skip_empty_lines(p)
+        p_expect(p, "RParen")
+    } else if k == "LSquare" {
+        cur = ar_array_literal(a, p)
+        a.ty = "array"
+    } else if k == "Ident" {
+        var name = p_text(p)
+        cur = name
+        p_next(p)
+        a.ty = ar_vty(a, name)
+        if a.ty == "str" {
+            if ar_vparam(a, name) == 1 {
+                a.strk = 2
+            } else {
+                a.strk = 3
+            }
+        }
+        if a.ty == "" {
+            a.infer = 0
+        }
+        if ar_is_cur_mut_param(a, name) {
+            a.atom_mut = 1
+        }
+        if ar_vparam(a, name) == 1 {
+            a.atom_param = 1
+        } else {
+            a.atom_param = 0
+        }
+        a.can_call = 1
+    } else {
+        ar_err(a, "unsupported expr atom: " + k)
+        return ""
+    }
+    if a.err != "" || p.err != "" {
+        return ""
+    }
+    return ar_expr_tail(a, p, cur, min)
+}
+
+fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
+    var cur = cur_in
+    var cur_ty = a.ty
+    var cur_strk = a.strk
+    var cur_prec = a.prec
+    var cur_len = a.lenflag
+    var cur_infer = a.infer
+    var ended_field = a.ended_field
+    var can_call = a.can_call
+    while a.err == "" && p.err == "" {
+        var opk = p_kind(p)
+        var is_post = 0
+        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" || opk == "Colon" {
+            break
+        }
+        if opk == "LParen" {
+            if can_call != 1 {
+                ar_err(a, "unexpected call target")
+                break
+            }
+            cur = ar_call_tail(a, p, cur)
+            cur_ty = a.ty
+            cur_strk = a.strk
+            cur_prec = 100
+            cur_len = 0
+            cur_infer = a.infer
+            ended_field = 0
+            can_call = 0
+            is_post = 1
+        }
+        if opk == "Dot" {
+            if t_is_type_prop(p) {
+                break
+            }
+            p_next(p)
+            if !is_name_kind(p_kind(p)) && p_kind(p) != "Int" && p_kind(p) != "Uint" {
+                ar_err(a, "invalid field after dot")
+                break
+            }
+            var word = p_text(p)
+            p_next(p)
+            if cur_prec < 90 {
+                cur = "(" + cur + ")"
+                cur_prec = 100
+            }
+            if p_kind(p) == "LParen" {
+                if cur_len == 1 {
+                    cur = "(" + cur + ")"
+                    cur_len = 0
+                }
+                var mres = ar_method_call(a, p, cur, cur_ty, word)
+                cur = mres
+                cur_ty = a.ty
+                cur_strk = a.strk
+                cur_prec = 100
+                cur_len = a.lenflag
+                cur_infer = a.infer
+                ended_field = 0
+                can_call = 0
+            } else {
+                if ar_enum_has_variant(a, cur, word) {
+                    cur = cur + "::" + word
+                    cur_ty = ""
+                    cur_infer = 0
+                } else {
+                    cur = cur + "." + word
+                    if cur_ty != "" {
+                        cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), word)
+                    }
+                    if cur_ty == "str" {
+                        cur_strk = 3
+                    } else {
+                        cur_strk = 0
+                    }
+                    cur_infer = 0
+                }
+                cur_prec = 100
+                cur_len = 0
+                ended_field = 1
+                can_call = 0
+            }
+            is_post = 1
+        }
+        if opk == "LSquare" {
+            p_next(p)
+            skip_empty_lines(p)
+            var idx = ar_expr(a, p, 0)
+            skip_empty_lines(p)
+            p_expect(p, "RSquare")
+            var idx_lit = 0
+            if ar_all_digits(idx) == 1 {
+                idx_lit = 1
+            }
+            cur = cur + "[" + ar_usize_cast(idx, idx_lit) + "]"
+            cur_ty = ""
+            cur_prec = 100
+            cur_len = 0
+            cur_infer = 0
+            ended_field = 0
+            can_call = 0
+            is_post = 1
+        }
+        if is_post == 0 {
+        if !is_op_kind(opk) {
+            ar_err(a, "expected infix op, got " + opk)
+            break
+        }
+        var l = infix_l(opk)
+        if l == 0 || l < min {
+            break
+        }
+        p_next(p)
+        if opk == "Or" || opk == "And" {
+            skip_empty_lines(p)
+        }
+        var rhs_pos = p.pos
+        var rhs = ar_expr(a, p, infix_r(opk))
+        var rhs_ty = a.ty
+        var rhs_strk = a.strk
+        var rhs_prec = a.prec
+        var rhs_infer = a.infer
+        var rhs_len = a.lenflag
+        var op_txt = op_display(opk)
+        if opk == "Range" || opk == "RangeEq" {
+            var lt = ar_paren_if(cur, cur_prec, l)
+            var rt = ar_paren_if(rhs, rhs_prec, l + 1)
+            cur = lt + op_txt + rt
+            cur_ty = ""
+            cur_infer = 0
+        } else if opk == "Add" && (cur_ty == "str" || rhs_ty == "str") {
+            cur = "format!(\"{}{}\", " + cur + ", " + rhs + ")"
+            cur_ty = "str"
+            cur_strk = 3
+            cur_infer = 1
+        } else if ar_is_asn_kind(opk) {
+            if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
+                rhs = rhs + ".to_string()"
+            } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && ar_lu_after(a, rhs, rhs_pos) == true {
+                rhs = rhs + ".clone()"
+            } else if rhs_ty == "str" && a.ended_field == 1 {
+                rhs = rhs + ".clone()"
+            }
+            cur = cur + " " + op_txt + " " + rhs
+            cur_ty = rhs_ty
+            cur_infer = 0
+        } else {
+            if cur_ty == "char" {
+                cur = "(" + cur + ") as i64"
+                cur_ty = "int"
+            }
+            if rhs_ty == "char" {
+                rhs = "(" + rhs + ") as i64"
+                rhs_ty = "int"
+            }
+            var lhs_txt = ar_paren_if(cur, cur_prec, l)
+            if cur_len == 1 {
+                lhs_txt = "(" + cur + ")"
+            }
+            var rhs_txt = ar_paren_if(rhs, rhs_prec, l + 1)
+            cur = lhs_txt + " " + op_txt + " " + rhs_txt
+            if opk == "Eq" || opk == "Neq" || opk == "Lt" || opk == "Gt" || opk == "Le" || opk == "Ge" || opk == "And" || opk == "Or" {
+                cur_ty = "bool"
+                cur_infer = 1
+            } else if cur_ty == "" && rhs_ty != "" {
+                cur_ty = rhs_ty
+                cur_infer = rhs_infer
+            }
+            if cur_infer == 1 && rhs_infer == 0 {
+                cur_infer = 0
+            }
+            if cur_len == 1 || rhs_len == 1 {
+                cur_infer = 1
+            }
+            cur_strk = 0
+        }
+        cur_prec = l
+        cur_len = 0
+        ended_field = 0
+        can_call = 0
+        }
+    }
+    a.ty = cur_ty
+    a.strk = cur_strk
+    a.prec = cur_prec
+    a.lenflag = cur_len
+    a.ended_field = ended_field
+    a.infer = cur_infer
+    return cur
+}
+
+// f-string(Plan 434 / D38c):FStrStart + FStrPart(整段内容)+ FStrEnd;
+// 内容侧解析 $name / ${expr}(expr 原样直通,校准子集见 D40);
+// 字面 {/} → {{/}};置 a.fstr_fmt / a.fstr_args 供 format!/println! 组装
+fn ar_fstr_parse(mut a Ar, mut p P) {
+    p_next(p)
+    var content = p_text(p)
+    p_next(p)
+    p_next(p)
+    var fmt = ""
+    var args = ""
+    var i = 0
+    var n = content.len()
+    while i < n {
+        var c = content.char_at(i)
+        if c == 36 {
+            // $ 引用
+            if i + 1 < n && content.char_at(i + 1) == 123 {
+                // ${expr}:到首个 }
+                var j = i + 2
+                while j < n && content.char_at(j) != 125 {
+                    j = j + 1
+                }
+                var e = content.slice(i + 2, j)
+                fmt = fmt + "{}"
+                if args != "" {
+                    args = args + ", "
+                }
+                args = args + e
+                i = j + 1
+            } else {
+                var k2 = i + 1
+                while k2 < n {
+                    var cc = content.char_at(k2)
+                    var ok = (cc >= 97 && cc <= 122) || (cc >= 65 && cc <= 90) || (cc >= 48 && cc <= 57) || cc == 95
+                    if !ok {
+                        k2 = 0 - 1
+                        break
+                    }
+                    k2 = k2 + 1
+                }
+                if k2 == 0 - 1 {
+                    k2 = i + 1
+                    while k2 < n {
+                        var cc2 = content.char_at(k2)
+                        var ok2 = (cc2 >= 97 && cc2 <= 122) || (cc2 >= 65 && cc2 <= 90) || (cc2 >= 48 && cc2 <= 57) || cc2 == 95
+                        if !ok2 {
+                            break
+                        }
+                        k2 = k2 + 1
+                    }
+                }
+                var name = content.slice(i + 1, k2)
+                fmt = fmt + "{}"
+                if args != "" {
+                    args = args + ", "
+                }
+                args = args + name
+                i = k2
+            }
+        } else {
+            if c == 123 {
+                fmt = fmt + "{{"
+            } else if c == 125 {
+                fmt = fmt + "}}"
+            } else {
+                fmt = fmt + content.slice(i, i + 1)
+            }
+            i = i + 1
+        }
+    }
+    a.fstr_fmt = fmt
+    a.fstr_args = args
+}
+
+// 值位 f-string → format!(...)
+fn ar_fstr_value(mut a Ar, mut p P) str {
+    ar_fstr_parse(a, p)
+    var q = "\""
+    var out = "format!(" + q + ar_escape_str(a.fstr_fmt) + q
+    if a.fstr_args != "" {
+        out = out + ", " + a.fstr_args
+    }
+    return out + ")"
+}
+
+fn ar_all_digits(t str) int {
+    if t.len() == 0 {
+        return 0
+    }
+    var i = 0
+    while i < t.len() {
+        var c = t.char_at(i)
+        if c < '0' || c > '9' {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+fn ar_array_literal(mut a Ar, mut p P) str {
+    p_expect(p, "LSquare")
+    skip_empty_lines(p)
+    var parts List<str> = List.new()
+    var first_infer = 0
+    var first_ty = ""
+    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
+        var e = ar_expr(a, p, 0)
+        if parts.len() == 0 {
+            first_infer = a.infer
+            first_ty = a.ty
+        }
+        parts.push(e)
+        while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        }
+    }
+    p_expect(p, "RSquare")
+    var out = "vec!["
+    var i = 0
+    while i < parts.len() {
+        if i > 0 {
+            out = out + ", "
+        }
+        out = out + parts.get(i)
+        i = i + 1
+    }
+    // 元素类型注解素材(int/str 字面量等推导型)
+    if first_infer == 1 && first_ty != "" && first_ty != "array" {
+        a.arr_elem = ar_rust_ty(first_ty)
+    }
+    a.infer = 1
+    return out + "]"
+}
+
+// ── 方法调用映射 ──────────────────────────────────────────────
+
+fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
+    var place = 0
+    if word == "get" {
+        var save = p.pos
+        var depth = 1
+        var running = true
+        p_next(p)
+        while running && p_kind(p) != "EOF" {
+            if p_kind(p) == "LParen" {
+                depth = depth + 1
+            } else if p_kind(p) == "RParen" {
+                depth = depth - 1
+                if depth == 0 {
+                    running = false
+                }
+            }
+            p_next(p)
+        }
+        // 越过 .field 链再判赋值(get(...).f.g = ... 同为 place)
+        while p_kind(p) == "Dot" {
+            p_next(p)
+            p_next(p)
+        }
+        if ar_is_asn_kind(p_kind(p)) {
+            place = 1
+        }
+        p.pos = save
+    }
+    var args = ar_call_args_text(a, p, "")
+    var a0 = ""
+    var a1 = ""
+    if args.len() > 0 {
+        a0 = args.get(0)
+    }
+    if args.len() > 1 {
+        a1 = args.get(1)
+    }
+    if word == "len" {
+        a.ty = "int"
+        a.lenflag = 1
+        a.strk = 0
+        a.infer = 0
+        return recv + ".len() as i64"
+    }
+    if word == "str" {
+        a.infer = 0
+        a.ty = "str"
+        a.strk = 3
+        a.lenflag = 0
+        return recv + ".to_string()"
+    }
+    if word == "new" && recv == "List" {
+        a.infer = 0
+        a.ty = "List"
+        a.strk = 0
+        a.lenflag = 0
+        return "Vec::new()"
+    }
+    if word == "get" {
+        a.infer = 0
+        a.ty = ar_list_elem(recv_ty)
+        a.strk = 0
+        a.lenflag = 0
+        var lit = 0
+        if args.len() > 0 && ar_all_digits(a0) == 1 {
+            lit = 1
+        }
+        if place == 1 {
+            return recv + "[" + ar_usize_cast(a0, lit) + "]"
+        }
+        return recv + "[" + ar_usize_cast(a0, lit) + "].clone()"
+    }
+    if word == "set" && a.stmt_ctx == 1 {
+        a.infer = 0
+        a.ty = "void"
+        a.strk = 0
+        a.lenflag = 0
+        var lit2 = 0
+        if args.len() > 0 && ar_all_digits(a0) == 1 {
+            lit2 = 1
+        }
+        return recv + "[" + ar_usize_cast(a0, lit2) + "] = " + a1
+    }
+    if word == "char_at" {
+        a.infer = 0
+        a.ty = "int"
+        a.strk = 0
+        a.lenflag = 0
+        var lit3 = 0
+        if args.len() > 0 && ar_all_digits(a0) == 1 {
+            lit3 = 1
+        }
+        return recv + ".chars().nth(" + ar_usize_cast(a0, lit3) + ").unwrap_or('\\0') as i64"
+    }
+    if word == "slice" {
+        a.infer = 0
+        a.ty = "str"
+        a.strk = 3
+        a.lenflag = 0
+        var lit_a = 0
+        var lit_b = 0
+        if args.len() > 0 && ar_all_digits(a0) == 1 {
+            lit_a = 1
+        }
+        if args.len() > 1 && ar_all_digits(a1) == 1 {
+            lit_b = 1
+        }
+        return recv + "[" + ar_usize_cast(a0, lit_a) + ".." + ar_usize_cast(a1, lit_b) + "].to_string()"
+    }
+    if word == "replace" {
+        a.infer = 0
+        a.ty = "str"
+        a.strk = 3
+        a.lenflag = 0
+        return recv + ".replace(" + join_args(args) + ")"
+    }
+    if word == "trim" {
+        a.infer = 0
+        a.ty = "str"
+        a.strk = 3
+        a.lenflag = 0
+        return recv + ".trim().to_string()"
+    }
+    if word == "push" {
+        a.infer = 0
+        a.ty = "void"
+        a.strk = 0
+        a.lenflag = 0
+        var elem = ar_list_elem(recv_ty)
+        var v = ""
+        if args.len() > 0 {
+            v = args.get(args.len() - 1)
+        }
+        if ar_is_str_ty(elem) && (a.last_strk == 1 || a.last_strk == 2) {
+            v = v + ".to_string()"
+        }
+        return recv + ".push(" + v + ")"
+    }
+    a.infer = 0
+    a.ty = ""
+    a.strk = 0
+    a.lenflag = 0
+    return recv + "." + word + "(" + join_args(args) + ")"
+}
+
+fn join_args(args List<str>) str {
+    var out = ""
+    var i = 0
+    while i < args.len() {
+        if i > 0 {
+            out = out + ", "
+        }
+        out = out + args.get(i)
+        i = i + 1
+    }
+    return out
+}
+
+// ── 调用实参 ──────────────────────────────────────────────────
+
+fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
+    var out List<str> = List.new()
+    var fi = -1
+    if fn_name != "" {
+        fi = ar_fn_find(a, fn_name)
+    }
+    p_expect(p, "LParen")
+    skip_empty_lines(p)
+    var argi = 0
+    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+        var arg_pos = p.pos
+        var e = ar_expr(a, p, 0)
+        var ety = a.ty
+        var estrk = a.strk
+        var atom_mut_saved = a.atom_mut
+        a.last_strk = estrk
+        if a.lenflag == 1 {
+            e = "(" + e + ")"
+        }
+        if fi >= 0 {
+            var ps = a.fns.get(fi).params
+            if argi < ps.len() {
+                var prm = ps.get(argi)
+                var prmm2 = 0
+                var f3 = a.fns.get(fi)
+                var pj2 = 0
+                while pj2 < f3.mut_params.len() {
+                    if f3.mut_params.get(pj2) == prm.name {
+                        prmm2 = 1
+                    }
+                    pj2 = pj2 + 1
+                }
+                var eff_mode = prm.mode
+                if prmm2 == 1 {
+                    eff_mode = "mut"
+                }
+                e = ar_coerce_arg(a, e, ety, estrk, atom_mut_saved, prm.ty, eff_mode, arg_pos)
+            }
+        }
+        out.push(e)
+        argi = argi + 1
+        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if p_kind(p) != "RParen" {
+            ar_err(a, "expected arg separator ")
+            break
+        }
+    }
+    p_expect(p, "RParen")
+    return out
+}
+
+// 参数位强制转换(D33/D36 同族决策的 AA2R 口径)
+fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm_mode str, arg_pos int) str {
+    if prm_mode != "view" {
+        if atom_mut == 1 {
+            return "&mut *" + text
+        }
+        return "&mut " + text
+    }
+    if ar_is_str_ty(prm_ty) {
+        if strk == 3 {
+            return text + ".as_str()"
+        }
+        return text
+    }
+    if prm_ty != "" && !ar_is_int_ty(prm_ty) && !ar_is_str_ty(prm_ty) && !ar_is_float_ty(prm_ty) && prm_ty != "bool" && prm_ty != "void" {
+        if atom_mut == 1 {
+            return text + ".clone()"
+        }
+        // last-use:实参标识在本 fn 后续仍被引用 → 克隆(值语义 move 保持)
+        if e_is_simple_ident(text) == 1 && ar_lu_after(a, text, arg_pos) == true {
+            return text + ".clone()"
+        }
+    }
+    return text
+}
+
+// 简单标识符判定(无点/括号/索引)
+fn e_is_simple_ident(t str) int {
+    if t.len() == 0 {
+        return 0
+    }
+    var i = 0
+    while i < t.len() {
+        var c = t.char_at(i)
+        var ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95
+        if !ok {
+            return 0
+        }
+        i = i + 1
+    }
+    return 1
+}
+
+// ── print 与调用/构造器 ──────────────────────────────────────
+
+fn ar_call_tail(mut a Ar, mut p P, callee str) str {
+    if callee == "print" {
+        return ar_print_tail(a, p)
+    }
+    var ti = ar_ty_find(a, callee)
+    if ti >= 0 {
+        var args = ar_call_args_text(a, p, "")
+        var fields = a.tys.get(ti).fields
+        var out = callee + " {"
+        var i = 0
+        while i < args.len() && i < fields.len() {
+            var f = fields.get(i)
+            var v = args.get(i)
+            if ar_is_str_ty(f.ty) {
+                v = v + ".to_string()"
+            }
+            if i > 0 {
+                out = out + ","
+            }
+            out = out + " " + f.name + ": " + v
+            i = i + 1
+        }
+        a.infer = 0
+        a.ty = callee
+        a.strk = 0
+        a.prec = 100
+        a.lenflag = 0
+        return out + " }"
+    }
+    // 内建函数表子集(math 家族 → a2r_std::math,Plan 270 a2r_std_used)
+    if callee == "max" || callee == "min" {
+        var margs = ar_call_args_text(a, p, "")
+        a.std_used = 1
+        a.infer = 0
+        a.ty = "int"
+        a.strk = 0
+        a.prec = 100
+        a.lenflag = 0
+        return "a2r_std::math::" + callee + "(" + join_args(margs) + ")"
+    }
+    var args2 = ar_call_args_text(a, p, callee)
+    var fi = ar_fn_find(a, callee)
+    a.infer = 0
+    a.ty = ""
+    var ret_strk = 0
+    if fi >= 0 {
+        a.ty = a.fns.get(fi).ret
+        if a.ty == "void" {
+            a.ty = ""
+        }
+        if ar_is_str_ty(a.ty) {
+            ret_strk = 3
+        }
+    }
+    a.strk = ret_strk
+    a.prec = 100
+    a.lenflag = 0
+    return callee + "(" + join_args(args2) + ")"
+}
+
+fn ar_print_tail(mut a Ar, mut p P) str {
+    p_expect(p, "LParen")
+    skip_empty_lines(p)
+    var fmt = ""
+    var args_txt = ""
+    var n_args = 0
+    var first_is_lit = 0
+    var first_lit = ""
+    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+        var is_lit = 0
+        var piece = ""
+        if n_args == 0 && p_kind(p) == "FStrStart" {
+            ar_fstr_parse(a, p)
+            var q2 = "\""
+            var fout = "println!(" + q2 + ar_escape_str(a.fstr_fmt) + q2
+            if a.fstr_args != "" {
+                fout = fout + ", " + a.fstr_args
+            }
+            p_expect(p, "RParen")
+            a.ty = "void"
+            a.strk = 0
+            a.infer = 0
+            return fout + ")"
+        } else if n_args == 0 && p_kind(p) == "Str" {
+            first_lit = ar_escape_str(p_text(p))
+            p_next(p)
+            is_lit = 1
+            first_is_lit = 1
+        } else {
+            piece = ar_expr(a, p, 0)
+        }
+        if is_lit == 0 {
+            if args_txt != "" {
+                args_txt = args_txt + ", "
+            }
+            args_txt = args_txt + piece
+        }
+        n_args = n_args + 1
+        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if p_kind(p) != "RParen" {
+            ar_err(a, "expected arg separator in print ")
+            break
+        }
+    }
+    p_expect(p, "RParen")
+    var out = ""
+    if n_args == 0 {
+        out = "println!()"
+    } else if n_args == 1 && first_is_lit == 1 {
+        out = "println!(\"" + first_lit + "\")"
+    } else if first_is_lit == 1 {
+        // 首参字符串字面量作格式前缀,余参各占 " {}"(主 a2r output_call 规则)
+        fmt = first_lit
+        var i = 1
+        while i < n_args {
+            fmt = fmt + " {}"
+            i = i + 1
+        }
+        out = "println!(\"" + fmt + "\", " + args_txt + ")"
+    } else if n_args == 1 {
+        out = "println!(\"{}\", " + args_txt + ")"
+    } else {
+        fmt = ""
+        var k = 0
+        while k < n_args {
+            if k > 0 {
+                fmt = fmt + " "
+            }
+            fmt = fmt + "{}"
+            k = k + 1
+        }
+        out = "println!(\"" + fmt + "\", " + args_txt + ")"
+    }
+    a.infer = 0
+    a.ty = "void"
+    a.strk = 0
+    a.prec = 100
+    a.lenflag = 0
+    return out
+}
+
+// ── 语句发射 ──────────────────────────────────────────────────
+
+fn ar_stmts(mut a Ar, mut p P) {
+    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        ar_stmt(a, p)
+        if a.err != "" || p.err != "" {
+            return
+        }
+        var n = expect_eos(p)
+        if n > 1 {
+            var b = 0
+            while b < n - 1 {
+                ar_blank(a)
+                b = b + 1
+            }
+        }
+    }
+}
+
+fn ar_stmt(mut a Ar, mut p P) {
+    if a.err != "" || p.err != "" {
+        return
+    }
+    var k = p_kind(p)
+    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+        ar_store(a, p, k)
+        return
+    }
+    if k == "If" {
+        var if_pos = p.pos
+        var save_vif = a.value_if
+        if a.tail_no_semi == 1 && a.tail_start == if_pos {
+            a.value_if = 1
+        }
+        ar_if(a, p)
+        a.value_if = save_vif
+        return
+    }
+    if k == "For" {
+        ar_for(a, p)
+        return
+    }
+    if k == "While" {
+        ar_while(a, p)
+        return
+    }
+    if k == "Loop" {
+        p_next(p)
+        ar_line(a, "loop {")
+        ar_block_body(a, p)
+        ar_line(a, "}")
+        return
+    }
+    if k == "Break" {
+        p_next(p)
+        ar_line(a, "break;")
+        return
+    }
+    if k == "Continue" {
+        p_next(p)
+        ar_line(a, "continue;")
+        return
+    }
+    if k == "Return" {
+        ar_return(a, p)
+        return
+    }
+    if k == "LBrace" {
+        ar_line(a, "{")
+        ar_block_body(a, p)
+        ar_line(a, "}")
+        return
+    }
+    if k == "Fn" || k == "Type" || k == "Enum" || is_unsupported_stmt_kind(k) {
+        ar_err(a, "v2 unsupported stmt in body: " + k)
+        return
+    }
+    // 表达式语句
+    var stmt_pos = p.pos
+    a.stmt_ctx = 1
+    var e = ar_expr(a, p, 0)
+    a.stmt_ctx = 0
+    if a.err != "" || p.err != "" {
+        return
+    }
+    if a.tail_no_semi == 1 && a.tail_start == stmt_pos {
+        if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
+            e = e + ".to_string()"
+        }
+        ar_line(a, e)
+    } else {
+        ar_line(a, e + ";")
+    }
+}
+
+fn ar_store(mut a Ar, mut p P, kw str) {
+    p_next(p)
+    if p_kind(p) == "LParen" {
+        ar_err(a, "v2 unsupported: destructure store ")
+        return
+    }
+    if !is_name_kind(p_kind(p)) {
+        ar_err(a, "expected store name ")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    var src_ty = ""
+    if is_type_name(p) {
+        src_ty = ar_bare_type(p)
+    }
+    var has_init = 0
+    var init = ""
+    var init_ty = ""
+    var init_strk = 0
+    var init_len = 0
+    var init_infer = 0
+    var init_arr = ""
+    var init_pos = 0
+    if p_kind(p) == "Asn" {
+        p_next(p)
+        has_init = 1
+        init_pos = p.pos
+        init = ar_expr(a, p, 0)
+        init_ty = a.ty
+        init_strk = a.strk
+        init_len = a.lenflag
+        init_infer = a.infer
+        if a.arr_elem != "" {
+            init_arr = a.arr_elem
+        }
+        if a.err != "" {
+            return
+        }
+    } else if src_ty == "" {
+        ar_err(a, "store must have type or init: " + name)
+        return
+    }
+    var bind_ty = src_ty
+    if bind_ty == "" {
+        bind_ty = init_ty
+    }
+    ar_vpush(a, name, bind_ty, "view", 0)
+    var anno = ""
+    if src_ty != "" {
+        anno = ar_rust_ty(src_ty)
+    } else if init_infer == 1 && (init_ty == "int" || init_ty == "uint" || init_ty == "bool" || init_ty == "float" || init_ty == "str") {
+        anno = ar_rust_ty(init_ty)
+    } else if init_ty == "array" && init_arr != "" {
+        anno = "Vec<" + init_arr + ">"
+    } else if init_ty == "List" {
+        anno = "Vec<String>"
+    }
+    if has_init == 1 {
+        if init_len == 1 {
+            init = "(" + init + ")"
+        } else if init_ty == "str" && (init_strk == 1 || init_strk == 2) {
+            init = init + ".to_string()"
+        } else if a.ended_field == 1 && init_ty == "str" {
+            // 纯字段读(非 Copy:str)→ .clone()(owned 局部与引用参数同型)
+            init = init + ".clone()"
+        } else if init_ty == "str" && e_is_simple_ident(init) == 1 && has_init == 1 && ar_lu_after(a, init, init_pos) == true {
+            init = init + ".clone()"
+        }
+    }
+    var kw_txt = "let"
+    if kw == "Var" {
+        kw_txt = "let mut"
+    }
+    var line = kw_txt + " " + name
+    if anno != "" {
+        line = line + ": " + anno
+    }
+    if has_init == 1 {
+        line = line + " = " + init
+    }
+    ar_line(a, line + ";")
+}
+
+fn ar_if(mut a Ar, mut p P) {
+    p_next(p)
+    var cond = ar_expr(a, p, 0)
+    ar_line(a, "if " + cond + " {")
+    ar_branch_body(a, p)
+    var done = false
+    var had_else = 0
+    while done == false {
+        if p_kind(p) == "Else" {
+            p_next(p)
+            if p_kind(p) == "If" {
+                p_next(p)
+                var c2 = ar_expr(a, p, 0)
+                ar_line(a, "} else if " + c2 + " {")
+                ar_branch_body(a, p)
+            } else {
+                ar_line(a, "} else {")
+                ar_branch_body(a, p)
+                had_else = 1
+                done = true
+            }
+        } else {
+            done = true
+        }
+    }
+    ar_line(a, "}")
+    // 主 a2r 形状:else 收尾 "}\n" + 容器级分隔 "\n" → 空行;
+    // if 分支体内(经 ar_branch_body)容器不再叠加 → 无空行
+    if had_else == 1 && a.in_branch == 0 {
+        ar_blank(a)
+    }
+}
+
+// if 分支体:value_if 时预扫分支尾表达式(无分号 + str 强转);
+// in_branch 标记抑制嵌套 if-else 的尾空行
+fn ar_branch_body(mut a Ar, mut p P) {
+    var save_branch = a.in_branch
+    var save_vif = a.value_if
+    a.in_branch = 1
+    if a.value_if == 1 {
+        ar_fn_scan_tail(a, p)
+        if a.tail_is_expr == 1 && a.tail_start >= 0 {
+            a.tail_no_semi = 1
+        }
+        a.value_if = 0
+    }
+    ar_block_body(a, p)
+    a.tail_no_semi = 0
+    a.in_branch = save_branch
+    a.value_if = save_vif
+}
+
+fn ar_block_body(mut a Ar, mut p P) {
+    p_expect(p, "LBrace")
+    a.indent = a.indent + 1
+    ar_vscope(a)
+    skip_empty_lines(p)
+    ar_stmts(a, p)
+    p_expect(p, "RBrace")
+    ar_vunscope(a)
+    a.indent = a.indent - 1
+}
+
+fn ar_while(mut a Ar, mut p P) {
+    p_next(p)
+    var cond = ar_expr(a, p, 0)
+    ar_line(a, "while " + cond + " {")
+    ar_block_body(a, p)
+    ar_line(a, "}")
+}
+
+fn ar_for(mut a Ar, mut p P) {
+    p_next(p)
+    if p_kind(p) == "LBrace" {
+        ar_line(a, "loop {")
+        ar_block_body(a, p)
+        ar_line(a, "}")
+        return
+    }
+    if p_kind(p) == "Let" || p_kind(p) == "Var" {
+        ar_store(a, p, "Let")
+        p_expect(p, "Semi")
+        var c0 = ar_expr(a, p, 0)
+        ar_line(a, "while " + c0 + " {")
+        ar_block_body(a, p)
+        ar_line(a, "}")
+        return
+    }
+    if p_kind(p) == "Ident" && p_peek(p, 1) == "In" {
+        var name = p_text(p)
+        p_next(p)
+        p_next(p)
+        ar_vscope(a)
+        var it = ar_expr(a, p, 18)
+        var it_prec = a.prec
+        if p_kind(p) == "Range" || p_kind(p) == "RangeEq" {
+            var op = op_display(p_kind(p))
+            p_next(p)
+            var end = ar_expr(a, p, 0)
+            var end_prec = a.prec
+            var iter_txt = ar_paren_if(it, it_prec, 17) + op + ar_paren_if(end, end_prec, 18)
+            ar_line(a, "for " + name + " in " + iter_txt + " {")
+        } else {
+            ar_line(a, "for " + name + " in &" + it + " {")
+        }
+        ar_vpush(a, name, "", "view", 0)
+        ar_block_body(a, p)
+        ar_vunscope(a)
+        ar_line(a, "}")
+        return
+    }
+    var c1 = ar_expr(a, p, 0)
+    ar_line(a, "while " + c1 + " {")
+    ar_block_body(a, p)
+    ar_line(a, "}")
+}
+
+fn ar_return(mut a Ar, mut p P) {
+    p_next(p)
+    var k = p_kind(p)
+    if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
+        ar_line(a, "return;")
+        return
+    }
+    var e = ar_expr(a, p, 0)
+    if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
+        e = e + ".to_string()"
+    }
+    ar_line(a, "return " + e + ";")
+}
+
+// ── 声明发射 ──────────────────────────────────────────────────
+
+fn ar_struct_derive(a Ar, ti int) str {
+    var fields = a.tys.get(ti).fields
+    var full = 1
+    var i = 0
+    while i < fields.len() {
+        var t = fields.get(i).ty
+        if ar_is_float_ty(t) || ar_base_ty(t) == "List" || ar_base_ty(t) == "Map" {
+            full = 0
+        }
+        i = i + 1
+    }
+    if full == 1 {
+        return "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+    }
+    return "#[derive(Clone, Debug, PartialEq)]"
+}
+
+// 跳过源 type/enum 声明残余(发射查表完成,游标只需越过声明)
+fn ar_skip_decl(mut p P) {
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        ar_skip_stmt(p)
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+}
+
+fn ar_emit_type(mut a Ar, mut p P) {
+    ar_emit_type2(a, p, "")
+}
+
+fn ar_emit_type2(mut a Ar, mut p P, pubkw str) {
+    p_next(p)
+    var name = p_text(p)
+    p_next(p)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var ti = ar_ty_find(a, name)
+    var derive_txt = ar_struct_derive(a, ti)
+    ar_line(a, derive_txt)
+    ar_line(a, pubkw + "struct " + name + " {")
+    a.indent = a.indent + 1
+    var fields = a.tys.get(ti).fields
+    var i = 0
+    while i < fields.len() {
+        var f = fields.get(i)
+        if a.merge == 0 {
+            ar_line(a, "pub " + f.name + ": " + ar_rust_ty(f.ty) + ",")
+        } else {
+            ar_line(a, f.name + ": " + ar_rust_ty(f.ty) + ",")
+        }
+        i = i + 1
+    }
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    ar_skip_decl(p)
+}
+
+fn ar_char_str(c int) str {
+    var lower = "abcdefghijklmnopqrstuvwxyz"
+    var upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    var digits = "0123456789"
+    if c >= 'a' && c <= 'z' {
+        return lower.slice(c - 'a', c - 'a' + 1)
+    }
+    if c >= 'A' && c <= 'Z' {
+        return upper.slice(c - 'A', c - 'A' + 1)
+    }
+    if c >= '0' && c <= '9' {
+        return digits.slice(c - '0', c - '0' + 1)
+    }
+    return "_"
+}
+
+fn ar_lowercase(s str) str {
+    var out = ""
+    var i = 0
+    while i < s.len() {
+        var c = s.char_at(i)
+        if c >= 'A' && c <= 'Z' {
+            c = c + 32
+        }
+        out = out + ar_char_str(c)
+        i = i + 1
+    }
+    return out
+}
+
+fn ar_emit_enum(mut a Ar, mut p P) {
+    ar_emit_enum2(a, p, "")
+}
+
+fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
+    p_next(p)
+    var name = p_text(p)
+    p_next(p)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var ei = ar_enum_find(a, name)
+    var vs = a.ens.get(ei).variants
+    ar_line(a, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
+    ar_line(a, pubkw + "enum " + name + " {")
+    a.indent = a.indent + 1
+    var i = 0
+    while i < vs.len() {
+        ar_line(a, vs.get(i) + " = " + i.str() + ",")
+        i = i + 1
+    }
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    ar_blank(a)
+    ar_line(a, "impl std::fmt::Display for " + name + " {")
+    a.indent = a.indent + 1
+    ar_line(a, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {")
+    a.indent = a.indent + 1
+    ar_line(a, "match self {")
+    a.indent = a.indent + 1
+    var j = 0
+    while j < vs.len() {
+        ar_line(a, name + "::" + vs.get(j) + " => write!(f, \"" + vs.get(j) + "\"),")
+        j = j + 1
+    }
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    ar_line(a, "impl " + name + " {")
+    a.indent = a.indent + 1
+    ar_line(a, "pub fn from_id(id: &str) -> Self {")
+    a.indent = a.indent + 1
+    ar_line(a, "match id {")
+    a.indent = a.indent + 1
+    var m = 0
+    while m < vs.len() {
+        var v = vs.get(m)
+        ar_line(a, "\"" + v + "\" | \"" + ar_lowercase(v) + "\" => " + name + "::" + v + ",")
+        m = m + 1
+    }
+    ar_line(a, "_ => " + name + "::" + vs.get(0))
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    ar_skip_decl(p)
+}
+
+// fn 尾表达式扫描(cur 在 body `{` 前;记最后顶层 stmt 起点/是否表达式)
+fn ar_fn_scan_tail(mut a Ar, mut p P) {
+    var save = p.pos
+    p_next(p)
+    skip_empty_lines(p)
+    var last_start = -1
+    var last_is_expr = 0
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        var k = p_kind(p)
+        if k == "Let" || k == "Var" || k == "Const" || k == "Shared" || k == "For" || k == "While" || k == "Loop" || k == "Return" || k == "Break" || k == "Continue" || k == "LBrace" {
+            last_is_expr = 0
+        } else {
+            // If 亦可为值位尾(417-E4)
+            last_is_expr = 1
+        }
+        last_start = p.pos
+        ar_skip_stmt(p)
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    a.tail_start = last_start
+    a.tail_is_expr = last_is_expr
+    p.pos = save
+}
+
+// 签名跳过(cur 在 `(`)
+fn ar_skip_signature(mut p P) {
+    p_expect(p, "LParen")
+    var depth = 1
+    var running = true
+    while running && p_kind(p) != "EOF" {
+        if p_kind(p) == "LParen" {
+            depth = depth + 1
+        } else if p_kind(p) == "RParen" {
+            depth = depth - 1
+            if depth == 0 {
+                running = false
+            }
+        }
+        p_next(p)
+    }
+    if p_kind(p) == "Arrow" {
+        p_next(p)
+        ar_bare_type(p)
+        skip_empty_lines(p)
+    } else if is_type_name(p) {
+        ar_bare_type(p)
+        skip_empty_lines(p)
+    }
+}
+
+fn ar_emit_fn(mut a Ar, mut p P) {
+    ar_emit_fn2(a, p, "")
+}
+
+fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
+    p_next(p)
+    var name = p_text(p)
+    p_next(p)
+    var fi = ar_fn_find(a, name)
+    var f = a.fns.get(fi)
+    a.cur_fn = name
+    var empty List<str> = List.new()
+    a.mutated = empty
+    var sig = "fn " + name + "("
+    var i = 0
+    while i < f.params.len() {
+        var prm = f.params.get(i)
+        if i > 0 {
+            sig = sig + ", "
+        }
+        var pm = prm.mode
+        var f2 = a.fns.get(fi)
+        var pj = 0
+        var prmmut = 0
+        while pj < f2.mut_params.len() {
+            if f2.mut_params.get(pj) == prm.name {
+                prmmut = 1
+            }
+            pj = pj + 1
+        }
+        if pm != "view" || prmmut == 1 {
+            sig = sig + prm.name + ": &mut " + ar_rust_ty(prm.ty)
+        } else {
+            sig = sig + prm.name + ": " + ar_param_ty(prm.ty)
+        }
+        i = i + 1
+    }
+    sig = sig + ")"
+    var ret = ar_rust_ty(f.ret)
+    if ret != "" {
+        sig = sig + " -> " + ret
+    }
+    ar_line(a, pubkw + sig + " {")
+    a.indent = a.indent + 1
+    ar_vscope(a)
+    var j = 0
+    while j < f.params.len() {
+        var prm2 = f.params.get(j)
+        ar_vpush(a, prm2.name, prm2.ty, prm2.mode, 1)
+        j = j + 1
+    }
+    ar_skip_signature(p)
+    if p_kind(p) == "Semi" {
+        p_next(p)
+    } else {
+        ar_fn_scan_tail(a, p)
+        var body_save = p.pos
+        ar_scan_mutations(a, p)
+        p.pos = body_save
+        p_expect(p, "LBrace")
+        skip_empty_lines(p)
+        a.tail_no_semi = 0
+        if a.tail_is_expr == 1 && f.ret != "void" && a.tail_start >= 0 {
+            a.tail_no_semi = 1
+        }
+        ar_stmts(a, p)
+        a.tail_no_semi = 0
+        p_expect(p, "RBrace")
+    }
+    ar_vunscope(a)
+    a.indent = a.indent - 1
+    ar_line(a, "}")
+    a.cur_fn = ""
+}
+
+// ── 顶层发射(预扫描后) ──────────────────────────────────────
+
+fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains List<int>) {
+    if a.merge == 1 {
+        ar_emit(a, "#![allow(overflowing_literals)]")
+        ar_emit(a, "// Auto-generated by a2r transpiler")
+        ar_emit(a, "#![allow(dead_code, unreachable_code, unused_imports, unused_mut, unused_parens, unused_assignments, unused_variables)]")
+        ar_blank(a)
+    } else {
+        ar_emit(a, "// Auto-generated by a2r transpiler")
+        ar_blank(a)
+    }
+    var i = 0
+    while i < decls.len() {
+        p.pos = decls.get(i)
+        var k = p_kind(p)
+        var pubkw = ""
+        if pubfs.get(i) == 1 {
+            pubkw = "pub "
+        }
+        if k == "Fn" {
+            // 前导 /// 文档注释透传(紧邻块,越过单换行;空行断开)
+            var di = decls.get(i) - 1
+            var docs List<str> = List.new()
+            var nl_run = 0
+            var scanning = true
+            while scanning && di >= 0 {
+                var tk = p.toks.get(di).kind
+                if tk == "DocComment" {
+                    docs.push(p.toks.get(di).text)
+                    nl_run = 0
+                    di = di - 1
+                } else if tk == "Newline" {
+                    nl_run = nl_run + 1
+                    if nl_run > 1 {
+                        scanning = false
+                    }
+                    di = di - 1
+                } else {
+                    scanning = false
+                }
+            }
+            var d = docs.len() - 1
+            while d >= 0 {
+                ar_line(a, "/// " + docs.get(d))
+                d = d - 1
+            }
+            ar_emit_fn2(a, p, pubkw)
+        } else if k == "Type" {
+            ar_emit_type2(a, p, pubkw)
+        } else if k == "Enum" {
+            ar_emit_enum2(a, p, pubkw)
+        }
+        if a.err != "" || p.err != "" {
+            return
+        }
+        if i + 1 < decls.len() || mains.len() > 0 {
+            ar_blank(a)
+        }
+        i = i + 1
+    }
+    if mains.len() > 0 {
+        ar_line(a, "fn main() {")
+        a.indent = a.indent + 1
+        ar_vscope(a)
+        var m = 0
+        while m < mains.len() {
+            p.pos = mains.get(m)
+            ar_stmt(a, p)
+            if a.err != "" || p.err != "" {
+                return
+            }
+            var n = expect_eos(p)
+            if n > 1 && m + 1 < mains.len() {
+                var b = 0
+                while b < n - 1 {
+                    ar_blank(a)
+                    b = b + 1
+                }
+            }
+            m = m + 1
+        }
+        ar_vunscope(a)
+        a.indent = a.indent - 1
+        ar_line(a, "}")
+    }
+}
+
+// ── 驱动 ──────────────────────────────────────────────────────
+
+fn ar_run(source str, merge int) str {
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var a = ar_new()
+    a.merge = merge
+    var decls List<int> = List.new()
+    var pubfs List<int> = List.new()
+    var mains List<int> = List.new()
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "EOF" {
+        var k = p_kind(p)
+        var pubf = 0
+        if k == "Ident" && p_text(p) == "pub" {
+            pubf = 1
+            p_next(p)
+            k = p_kind(p)
+        }
+        if k == "Fn" {
+            var start = p.pos
+            p_next(p)
+            ar_prescan_fn(a, p)
+            decls.push(start)
+            pubfs.push(pubf)
+        } else if k == "Type" {
+            var start2 = p.pos
+            ar_prescan_type(a, p)
+            decls.push(start2)
+            pubfs.push(pubf)
+        } else if k == "Enum" {
+            var start3 = p.pos
+            ar_prescan_enum(a, p)
+            decls.push(start3)
+            pubfs.push(pubf)
+        } else if is_unsupported_stmt_kind(k) {
+            p_err(p, "v2 unsupported: " + k + " ")
+        } else {
+            mains.push(p.pos)
+        }
+        ar_skip_stmt(p)
+        expect_eos(p)
+        skip_empty_lines(p)
+    }
+    if a.err != "" {
+        return a.err
+    }
+    if p.err != "" {
+        return p.err
+    }
+    ar_emit_program(a, p, decls, pubfs, mains)
+    if a.err != "" {
+        return a.err
+    }
+    if p.err != "" {
+        return p.err
+    }
+    // Plan 270:a2r_std_used → 头块拼接(单文件模式;镜像主 a2r trans() 末位)
+    if a.std_used == 1 && a.merge == 0 && a.out.len() >= 2 {
+        var new_out List<str> = List.new()
+        new_out.push(a.out.get(0))
+        new_out.push(a.out.get(1))
+        new_out.push("// a2r Standard Library (from crate)")
+        new_out.push("#[allow(unused_imports)]")
+        new_out.push("use a2r_std;")
+        new_out.push("use a2r_std::*;")
+        new_out.push("")
+        var oi = 2
+        while oi < a.out.len() {
+            new_out.push(a.out.get(oi))
+            oi = oi + 1
+        }
+        a.out = new_out
+    }
+    return ar_result(a)
+}
+
+// 单文件转译(golden 口径:header + decls + 合成 main)
+fn aa2r_transpile(source str) str {
+    return ar_run(source, 0)
+}
+
+// 合并模式转译(lib 自举口径:allows 头)
+fn aa2r_transpile_merge(source str) str {
+    return ar_run(source, 1)
+}
