@@ -3,20 +3,12 @@
 // v1：圆环几何 Auto 内联（d3-arc 风格：外弧 A→内弧回程 Z，大弧标志
 // span>π）。渲染端 SVG 直通（442 A4）。
 //
-// 形态注记（§0.6.H）：几何为**顶层直线计算**——角度常量按 55/25/12/8
-// 分布手算（-π/2 起，2π 按占比累进），三角函数经用户函数包装 dc/ds
-// 在顶层语句调用。规避两个已立案的 VM 深层缺陷：① CALL_NAT 直接出现
-// 在 for 循环体内 → 后续浮点算术损坏（用户函数包装可救首次，同迭代
-// 多次调用仍坏）；② 循环内 if 分支重赋值 → 值损坏。循环化通用形态
-// 待根因修复后回归（测试钉着最小复现）。
-
-fn dc(x float) -> float {
-    math.cos(x)
-}
-
-fn ds(x float) -> float {
-    math.sin(x)
-}
+// 形态注记（§0.6.H 根因已修，2026-08-25）：math.cos/sin **直调**——
+// 原以用户函数包装 dc/ds 规避的"循环内 CALL_NAT 损坏浮点"三层缺陷
+// （decode_i64_full 兜底位读 / math 族目录返回类型 Void / "math" 缺席
+// 静态模块白名单 receiver 泄漏）已全部修复（见 437 §0.6.H）。包装形态
+// 另有 vue 轨硬伤：页面级模块 fn 不发射进 SFC（§0.6.E-3），dc/ds 在
+// 生成物中无定义。角度常量保持手算直线形态（视觉已验收）。
 
 widget DonutChartPage {
     msg Msg { Init }
@@ -49,10 +41,10 @@ widget DonutChartPage {
             var a1_3 float = 4.71238898038469
 
             // ---- 切片 0（Desktop 55%，大弧 laf=1）----
-            var c00 float = dc(a0_0)
-            var s00 float = ds(a0_0)
-            var c01 float = dc(a1_0)
-            var s01 float = ds(a1_0)
+            var c00 float = math.cos(a0_0)
+            var s00 float = math.sin(a0_0)
+            var c01 float = math.cos(a1_0)
+            var s01 float = math.sin(a1_0)
             var x00 float = 280.0 + 100.0 * c00
             var y00 float = 150.0 + 100.0 * s00
             var x01 float = 280.0 + 100.0 * c01
@@ -64,10 +56,10 @@ widget DonutChartPage {
             .s0 = f"M${x00} ${y00} A100 100 0 1 1 ${x01} ${y01} L${u01} ${v01} A62 62 0 1 0 ${u00} ${v00} Z"
 
             // ---- 切片 1（Mobile 25%，laf=0）----
-            var c10 float = dc(a0_1)
-            var s10 float = ds(a0_1)
-            var c11 float = dc(a1_1)
-            var s11 float = ds(a1_1)
+            var c10 float = math.cos(a0_1)
+            var s10 float = math.sin(a0_1)
+            var c11 float = math.cos(a1_1)
+            var s11 float = math.sin(a1_1)
             var x10 float = 280.0 + 100.0 * c10
             var y10 float = 150.0 + 100.0 * s10
             var x11 float = 280.0 + 100.0 * c11
@@ -79,10 +71,10 @@ widget DonutChartPage {
             .s1 = f"M${x10} ${y10} A100 100 0 0 1 ${x11} ${y11} L${u11} ${v11} A62 62 0 0 0 ${u10} ${v10} Z"
 
             // ---- 切片 2（Tablet 12%，laf=0）----
-            var c20 float = dc(a0_2)
-            var s20 float = ds(a0_2)
-            var c21 float = dc(a1_2)
-            var s21 float = ds(a1_2)
+            var c20 float = math.cos(a0_2)
+            var s20 float = math.sin(a0_2)
+            var c21 float = math.cos(a1_2)
+            var s21 float = math.sin(a1_2)
             var x20 float = 280.0 + 100.0 * c20
             var y20 float = 150.0 + 100.0 * s20
             var x21 float = 280.0 + 100.0 * c21
@@ -94,10 +86,10 @@ widget DonutChartPage {
             .s2 = f"M${x20} ${y20} A100 100 0 0 1 ${x21} ${y21} L${u21} ${v21} A62 62 0 0 0 ${u20} ${v20} Z"
 
             // ---- 切片 3（Wearable 8%，laf=0，终于 3π/2=正顶）----
-            var c30 float = dc(a0_3)
-            var s30 float = ds(a0_3)
-            var c31 float = dc(a1_3)
-            var s31 float = ds(a1_3)
+            var c30 float = math.cos(a0_3)
+            var s30 float = math.sin(a0_3)
+            var c31 float = math.cos(a1_3)
+            var s31 float = math.sin(a1_3)
             var x30 float = 280.0 + 100.0 * c30
             var y30 float = 150.0 + 100.0 * s30
             var x31 float = 280.0 + 100.0 * c31
@@ -126,7 +118,7 @@ widget DonutChartPage {
     view {
         col {
             h1 "DonutChart"
-            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），三角函数 math.cos/sin 经用户函数包装调用，大弧标志 span>π。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），三角函数 math.cos/sin 直调（§0.6.H 根因已修），大弧标志 span>π。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
 
             h2 "Basic"
             preview-card (id: "donut-chart-basic") {

@@ -420,7 +420,8 @@ impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible for 
 // ============================================================================
 
 use auto_val::{NanoValue, try_encode_i64, try_encode_u64, decode_i64, decode_u64,
-    decode_i32, encode_bigint, is_bigint, decode_bigint_handle, tag_of};
+    decode_i32, encode_bigint, is_bigint, decode_bigint_handle, tag_of,
+    is_nanboxed, decode_f32, decode_f64};
 use crate::vm::heap_object::{BigIntData, downcast};
 
 /// 将 i64 编码为单槽 NanoValue：48 位内联，否则堆装箱（TAG_BIGINT handle）。
@@ -449,6 +450,9 @@ pub fn encode_u64_with_heap(vm: &AutoVM, val: u64) -> NanoValue {
 
 /// 解码 NanoValue 为 i64：TAG_I64/U64/BIGINT/i32 全支持。
 /// BIGINT 时解引用堆对象读完整 64 位值。
+/// Plan 437 §0.6.H：兜底分支 tag-first（Plan 406）——f32/f64 tag 不做
+/// 位读（旧 decode_i32 会把 f32(280.0)=0x438C0000 读成 1133248512，
+/// I64_TO_F64 即得位模式垃圾），按数值截断。
 pub fn decode_i64_full(vm: &AutoVM, nv: NanoValue) -> i64 {
     match tag_of(nv) {
         t if t == 8 => decode_i64(nv),       // TAG_I64
@@ -464,7 +468,16 @@ pub fn decode_i64_full(vm: &AutoVM, nv: NanoValue) -> i64 {
             }
             0
         }
-        _ => decode_i32(nv) as i64,           // 兼容 i32
+        _ => {
+            // Plan 377：非 nanbox 的单槽 = f64 原始位。f32 tag=7。
+            if !is_nanboxed(nv) {
+                decode_f64(nv) as i64
+            } else if tag_of(nv) == 7 {
+                decode_f32(nv) as i64
+            } else {
+                decode_i32(nv) as i64
+            }
+        }
     }
 }
 
@@ -485,7 +498,16 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
             }
             0
         }
-        _ => decode_i32(nv) as u32 as u64,    // 兼容 i32
+        _ => {
+            // Plan 437 §0.6.H：同 decode_i64_full 兜底——f32/f64 数值截断。
+            if !is_nanboxed(nv) {
+                decode_f64(nv) as u64
+            } else if tag_of(nv) == 7 {
+                decode_f32(nv) as u64
+            } else {
+                decode_i32(nv) as u32 as u64
+            }
+        }
     }
 }
 

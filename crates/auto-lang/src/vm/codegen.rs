@@ -7830,7 +7830,13 @@ impl Codegen {
                                     false
                                 } else {
                                     let lower = obj_name.as_ref();
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host")
+                                    // Plan 437 §0.6.H③："math" 补入静态模块白名单——
+                                    // 此前缺位使 math.cos(a) 走实例路径，receiver 经
+                                    // Ident("math") 模块兜底推 const.i32 0 占位，
+                                    // math shim 只弹实参不消费占位 → 每次调用
+                                    // 泄漏 +1 槽（循环体内累积；还会顶高 sp 干扰
+                                    // list.new 族 bp+num_locals+2 有参判定启发式）。
+                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math")
                                         || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
                                 }
@@ -10199,6 +10205,28 @@ impl Codegen {
                     // Plan 378: method call `recv.method()` — return-type-aware slot
                     // hint so 2-slot u64/i64 results (e.g. s.to_uint()) aren't
                     // miscounted as 1 slot in BUILD_FSTR.
+                    // Plan 437 §0.6.H②续：先查 fn_return_types 的限定名
+                    // （"math.cos" 等 stdlib 模块函数——lookup_dot_method_type
+                    // 只看 receiver 变量类型，模块前缀查不到 → 误落 Int，
+                    // f64(1.0) 位模式按 int 格式化得 0）。目录键为 canonical
+                    // "auto.math.cos"，短名按 to_canonical 规则双查。
+                    let qualified = format!("{}.{}", self.expr_to_name(receiver), method);
+                    let canonical = if qualified.starts_with("auto.") || qualified.starts_with("rust.") || qualified.starts_with("py.") {
+                        None
+                    } else {
+                        qualified.split_once('.').map(|(p, r)| format!("auto.{}.{}", p.to_lowercase(), r))
+                    };
+                    let ret_ty = self.fn_return_types.get(&qualified)
+                        .or_else(|| canonical.as_ref().and_then(|c| self.fn_return_types.get(c)));
+                    if let Some(ret_ty) = ret_ty {
+                        return match ret_ty {
+                            Type::Double => FStrPartType::Float64,
+                            Type::U64 | Type::I64 | Type::USize | Type::Uint => FStrPartType::Uint64,
+                            Type::Float => FStrPartType::Float32,
+                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
+                            _ => FStrPartType::Int,
+                        };
+                    }
                     match self.lookup_dot_method_type(receiver.as_ref(), method.as_ref()) {
                         Some(Type::Double) => FStrPartType::Float64,
                         Some(Type::U64 | Type::I64 | Type::USize | Type::Uint) => FStrPartType::Uint64,

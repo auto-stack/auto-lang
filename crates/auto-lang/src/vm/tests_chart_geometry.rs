@@ -381,6 +381,8 @@ fn test_geo_donut_paths() {
 
 // §0.6.H 回归：CALL_NAT 直接在 for 循环体内 → 后续浮点算术损坏
 // （最小复现：循环内 math.cos 后 cx+c 得位模式垃圾；用户函数包装幸存）。
+// 根因修复后（见下方 test_geo_callnat_in_loop_regression），wrapper 与
+// direct 两版语义一致，此测试保留双路径等价性断言。
 #[test]
 fn test_geo_callnat_in_loop_workaround() {
     let code = r#"
@@ -398,4 +400,105 @@ fn test_geo_callnat_in_loop_workaround() {
     "#;
     let result = run(code).unwrap();
     assert_eq!(result, "280");
+}
+
+// §0.6.H 根因回归（Plan 437 Charts 阶段收尾）：
+// 三层缺陷修复——
+//   ① decode_i64_full/u64_full 兜底 tag-first：f32/f64 tag 不再位读
+//     （f32(280.0)=0x438C0000 被旧 decode_i32 读成 1133248512，
+//      I64_TO_F64 后得位模式垃圾 1133248511.9999957）；
+//   ② math 族目录返回类型 Void→Float：推断不再 Unknown 回退 int 路径；
+//   ③ "math" 补入静态模块白名单：qualified 调用不再发射 const.i32 0
+//     receiver 占位（shim 不消费 → 每次调用泄漏 +1 槽）。
+// 顺带修复：f-string 内联 math.* 的 part tag 落 Int 缺口（tags=[1,3]）。
+
+// ①引擎层单测：decode_i64_full 对 float tag 按数值截断，不做位读。
+#[test]
+fn test_geo_decode_i64_tag_first() {
+    use auto_val::{encode_f32, encode_f64, encode_i32};
+    // 需要一个 AutoVM 实例（BIGINT 分支才用堆；此处不触发）。
+    let vm = crate::vm::engine::AutoVM::new(crate::vm::virt_memory::VirtualFlash::new(64), 64);
+    assert_eq!(
+        crate::vm::ffi::decode_i64_full(&vm, encode_f32(280.0)),
+        280,
+        "f32(280.0) 不得被位读为 0x438C0000=1133248512"
+    );
+    assert_eq!(
+        crate::vm::ffi::decode_i64_full(&vm, encode_f64(-3.7)),
+        -3,
+        "f64 负值数值截断"
+    );
+    assert_eq!(
+        crate::vm::ffi::decode_i64_full(&vm, encode_i32(42)),
+        42,
+        "i32 兼容路径不变"
+    );
+}
+
+// ②+③端到端：循环体内直接 math.cos（无用户函数包装）——原失败用例。
+#[test]
+fn test_geo_callnat_in_loop_regression() {
+    let code = r#"
+        var cx float = 280.0
+        var data = [{ v: 55 }]
+        var out = ""
+        for d in data {
+            var a float = -1.57079632679
+            var c float = math.cos(a)
+            var x float = cx + 100.0 * c
+            out = f"${x}"
+        }
+        out
+    "#;
+    assert_eq!(run(code).unwrap(), "280");
+}
+
+// ③泄漏回归：每次迭代多次原生调用 + 多迭代，sp 不得漂移累积。
+#[test]
+fn test_geo_callnat_multi_call_multi_iter() {
+    let code = r#"
+        var total = 0
+        var last = ""
+        for i in 0..200 {
+            var c float = math.cos(0.0)
+            var s float = math.sin(0.0)
+            total = total + 1
+            last = f"${c}|${s}"
+        }
+        f"${total}|${last}"
+    "#;
+    assert_eq!(run(code).unwrap(), "200|1|0");
+}
+
+// ②顺带修复：f-string 内联 math.*（原 known gap：part tag 落 Int，需 var 中转）。
+#[test]
+fn test_geo_fstr_inline_math() {
+    let code = r#"f"cos0=${math.cos(0.0)} sin0=${math.sin(0.0)}""#;
+    assert_eq!(run(code).unwrap(), "cos0=1 sin0=0");
+}
+
+// §0.6.H 残余症状核销：if 分支重赋值在循环内（原观察"corrupts ints"）。
+#[test]
+fn test_geo_if_reassign_in_loop() {
+    let code = r#"
+        var total = 0
+        var data = [{ v: 1 }, { v: 2 }, { v: 3 }]
+        for d in data {
+            var n = d["v"]
+            if n > 1 {
+                n = n * 10
+            }
+            total = total + n
+        }
+        var acc float = 0.0
+        for i in 0..3 {
+            var x float = 1.5
+            if i > 0 {
+                x = x * 2.0
+            }
+            acc = acc + x
+        }
+        f"${total}|${acc}"
+    "#;
+    assert_eq!(run(code).unwrap(), "51|7.5");
 }
