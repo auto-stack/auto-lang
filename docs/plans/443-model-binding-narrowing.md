@@ -1,9 +1,30 @@
 # Plan 443 — defineModel 降级收窄（PLAN-037 T4 修正：深 mutation 响应性断裂）
 
-状态: in-progress
+状态: complete（worktree plan-443/model-binding，待合并 master）
 创建: 2026-08-24
 来源: auto-down DEBTS.md 015 阻断行 / plans/015-auto-lang-dsl-capability-debt.md Phase 4 PLAN-037 联动项上报
 基线: master 41e7985c（问题①TS2440 已在 73861f8d 修复；本计划修问题②）
+
+## 验证结果（2026-08-24，全部通过）
+
+- auto-lang：`cargo test -p auto-lang --lib` **3136 绿**（vm::ui_console ring
+  buffer 偶发 flaky 与本计划无关，单跑稳定绿）；`--test vue_capabilities`
+  **62 绿**（60 基线 + 新增 cap_model_channel_bound_downgrades_child /
+  cap_model_channel_unbound_keeps_ref；预存红 cap_widget_map_model_init
+  **自动回绿**，未改动该测试本身）；a2vue golden 10/10（8 例 defineModel 行
+  回翻 ref）。
+- auto-man：**227 绿**（新增 test_plan443_cross_file_bound_model_channels：
+  app.at 父绑定 panel.at 子的 doc channel → 子 defineModel + 工厂默认；
+  board.at 未绑定 → ref，全链路 from_workspace + generate 落盘断言）。
+- 三仓 regen（worktree auto.exe）：
+  - jade：regen OK（gen 树 vue-tsc 零错）+ **e2e 23/23**（白板 #21
+    "add note" 回绿——阻断解除）；WhiteboardPage.vue 回
+    `const doc = ref<any>({})`。
+  - demo：regen OK + **e2e 9/9**。
+  - editor：regen OK + **vue-tsc -b 零错**（exit 0）。
+- auto-down 侧三仓部署产物已随验证部署（工作树修改未提交，由 auto-down
+  侧决定收编时机）。
+
 
 ## 问题
 
