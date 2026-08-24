@@ -1920,6 +1920,85 @@ impl RustTrans {
         }
     }
 
+    /// Plan 433 A1: is this operand char-like — a char literal, or an ident
+    /// whose known type is char? Used by the Bina char-coercion below.
+    fn expr_is_char_like(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Char(_) => true,
+            Expr::Ident(n) => self.local_var_types.get(n.as_str())
+                .map(|t| matches!(t, Type::Char))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    /// Plan 433 A1: bare `.len` on a known struct with a `len` FIELD
+    /// (Tok.len) parses as a zero-arg method call but is a property read —
+    /// emit the field access instead of Vec::len(). Returns true when emitted.
+    fn try_emit_struct_len_field(
+        &mut self,
+        object: &Expr,
+        method_name: &Name,
+        arg_count: usize,
+        out: &mut impl Write,
+    ) -> AutoResult<bool> {
+        if method_name.as_str() != "len" || arg_count != 0 {
+            return Ok(false);
+        }
+        if let Expr::Ident(name) = object {
+            if let Some(Type::User(td)) = self.local_var_types.get(name.as_str()) {
+                let has_len_field = self.struct_field_types.get(td.name.as_str())
+                    .map(|fields| fields.iter().any(|(f, _)| f.as_str() == "len"))
+                    .unwrap_or(false);
+                if has_len_field {
+                    self.expr(object, out)?;
+                    write!(out, ".len")?;
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Plan 433 A1: does this expression denote an Auto `List` receiver — a
+    /// List-typed local/param, or a List-typed field of a known struct var
+    /// (`c.ins`, `p.toks`)? Auto List semantics (get=i-th element, set=in-place
+    /// element write) differ from HashMap's get/insert; without this check,
+    /// `list.get(i)` falls through to Vec::get → Option and `list.set(i,v)`
+    /// becomes insert (shifts elements instead of replacing).
+    fn is_auto_list_expr(&self, obj: &Expr) -> bool {
+        match obj {
+            Expr::Ident(name) => self.local_var_types.get(name.as_str())
+                .map(|ty| matches!(ty, Type::List(_)))
+                .unwrap_or(false),
+            Expr::Dot(inner, field) if matches!(inner.as_ref(), Expr::Ident(_)) => {
+                if let Expr::Ident(owner) = inner.as_ref() {
+                    if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
+                        if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
+                            return fields.iter().any(|(f, t)|
+                                f == field && matches!(t, Type::List(_)));
+                        }
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Plan 433 A1: the Auto VM coerces char literals to their code point
+    /// when mixed with int operands (`c >= '0'`, `char_at(i) - '0'`). Rust
+    /// char vs i64 is E0308 — when exactly one side of a binary op is
+    /// char-like and the other is not, cast the char side to i64. Both-char
+    /// operands keep the Rust char comparison (existing goldens unchanged).
+    fn bina_char_cast(&self, lhs: &Expr, rhs: &Expr) -> (bool, bool) {
+        match (self.expr_is_char_like(lhs), self.expr_is_char_like(rhs)) {
+            (true, false) => (true, false),
+            (false, true) => (false, true),
+            _ => (false, false),
+        }
+    }
+
     /// Check if a type implements Copy (primitive types, string slices, etc.).
     /// Non-Copy types (structs, enums, HashMap, Unknown) need .clone() when moved.
     /// Slice/Array/List are treated as Copy for call-site purposes (passed by reference in Rust).
@@ -2466,9 +2545,14 @@ impl RustTrans {
                             write!(out, ")")?;
                         } else {
                             // Default to numeric +
+                            let (cast_l, cast_r) = self.bina_char_cast(&lhs, &rhs);
+                            if cast_l { write!(out, "(")?; }
                             self.expr(&lhs, out)?;
+                            if cast_l { write!(out, ") as i64")?; }
                             write!(out, " + ")?;
+                            if cast_r { write!(out, "(")?; }
                             self.expr(&rhs, out)?;
+                            if cast_r { write!(out, ") as i64")?; }
                         }
                     }
                     Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
@@ -2567,12 +2651,18 @@ impl RustTrans {
                         if rhs_cast.is_some() || lhs_cast.is_some() {
                             self.len_i32_cast_suppressed = true;
                         }
+                        // Plan 433 A1: int vs char-literal mix → cast char side to i64
+                        let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
+                        if char_l { write!(out, "(")?; }
                         self.expr(lhs, out)?;
+                        if char_l { write!(out, ") as i64")?; }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
                         }
                         write!(out, " {} ", op_str)?;
+                        if char_r { write!(out, "(")?; }
                         self.expr(rhs, out)?;
+                        if char_r { write!(out, ") as i64")?; }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -2598,7 +2688,11 @@ impl RustTrans {
                         if rhs_cast.is_some() || lhs_cast.is_some() {
                             self.len_i32_cast_suppressed = true;
                         }
+                        // Plan 433 A1: int vs char-literal mix → cast char side to i64
+                        let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
+                        if char_l { write!(out, "(")?; }
                         self.expr(lhs, out)?;
+                        if char_l { write!(out, ") as i64")?; }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -2611,7 +2705,9 @@ impl RustTrans {
                             _ => op.op(),
                         };
                         write!(out, " {} ", op_str)?;
+                        if char_r { write!(out, "(")?; }
                         self.expr(rhs, out)?;
+                        if char_r { write!(out, ") as i64")?; }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -3667,7 +3763,17 @@ impl RustTrans {
 
                 self.expr(object, out)?;
                 write!(out, ".{}", field)?;
-                if is_rust_method {
+                // Plan 433 A1: a known struct with a field of this name (e.g.
+                // Tok.len) is a FIELD read — the method-call parens only apply
+                // to collection receivers (String/Vec property sugar).
+                let object_has_such_field = if let Expr::Ident(var_name) = object.as_ref() {
+                    if let Some(Type::User(td)) = self.local_var_types.get(var_name.as_str()) {
+                        self.struct_field_types.get(td.name.as_str())
+                            .map(|fields| fields.iter().any(|(f, _)| f.as_str() == field.as_str()))
+                            .unwrap_or(false)
+                    } else { false }
+                } else { false };
+                if is_rust_method && !object_has_such_field {
                     write!(out, "()")?;
                 }
                 Ok(())
@@ -5621,6 +5727,12 @@ impl RustTrans {
                         _ => {} // fall through to simple name-remap table
                     }
 
+                    // Plan 433 A1: struct `len` field read (Tok.len) — property,
+                    // not the collection-length method.
+                    if self.try_emit_struct_len_field(lhs, method_name, call.args.args.len(), out)? {
+                        return Ok(());
+                    }
+
                     // Simple name-remap table
                     // .len()/.length() returns usize, cast to i32 for Auto's int
                     let needs_i32_cast_1 = matches!(method_name.as_str(), "len" | "length");
@@ -5648,6 +5760,9 @@ impl RustTrans {
                         "retain" => Some("retain"),
                         // Type conversion
                         "to_string" => Some("to_string"),
+                        // Plan 433 A1: Auto's universal `.str()` stringify (VM native)
+                        // maps to Rust's Display to_string.
+                        "str" => Some("to_string"),
                         // Plan 384 A9: `.delete()` is no longer unconditionally
                         // remapped to `.remove()` — that breaks axum Router
                         // `.delete(handler)`. Auto code that wants HashMap
@@ -5743,26 +5858,16 @@ impl RustTrans {
                 "get" => {
                     if call.args.args.len() == 1 {
                         if let Some(Arg::Pos(arg)) = call.args.args.first() {
-                            let is_numeric = matches!(arg, Expr::Int(_) | Expr::Uint(_) | Expr::I8(_))
-                                || if let Expr::Ident(name) = arg {
-                                    self.local_var_types.get(name)
-                                        .map(|ty| matches!(ty, Type::Int | Type::Uint | Type::I64 | Type::U64))
-                                        .unwrap_or(true)
-                                } else if let Expr::Dot(_, field) = arg {
-                                    field.as_str().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                                        && !field.as_str().starts_with('"')
-                                } else { false };
-                            // Only replace for Auto List type, not Rust Vec
-                            let is_auto_list = if let Expr::Ident(var_name) = object.as_ref() {
-                                self.local_var_types.get(var_name)
-                                    .map(|ty| matches!(ty, Type::List(_)))
-                                    .unwrap_or(false)
-                            } else { false };
-                            if is_numeric && is_auto_list {
+                            // Plan 433 A1: resolve List-typed locals/params AND
+                            // List-typed struct fields (`c.ins.get(i)`). A List
+                            // .get index is always numeric in Auto semantics,
+                            // so any single-arg .get on a List receiver indexes.
+                            let is_auto_list = self.is_auto_list_expr(object);
+                            if is_auto_list {
                                 self.expr(object, out)?;
-                                write!(out, "[")?;
+                                write!(out, "[(")?;
                                 self.expr(arg, out)?;
-                                write!(out, " as usize]")?;
+                                write!(out, ") as usize]")?;
                                 // C11 (Plan 018 §12 a2r-11): on an assignment LHS
                                 // (in-place element mutation) skip `.clone()` —
                                 // writing to the clone would be a no-op.
@@ -5989,6 +6094,23 @@ impl RustTrans {
                     return Ok(());
                 }
                 "len" | "length" => {
+                    // Plan 433 A1: bare `.len` on a known struct with a `len`
+                    // FIELD (Tok.len) parses as a zero-arg method call but is a
+                    // property read — emit the field access, not Vec::len().
+                    if method_name.as_str() == "len" && call.args.args.is_empty() {
+                        if let Expr::Ident(name) = object.as_ref() {
+                            if let Some(Type::User(td)) = self.local_var_types.get(name.as_str()) {
+                                let has_len_field = self.struct_field_types.get(td.name.as_str())
+                                    .map(|fields| fields.iter().any(|(f, _)| f.as_str() == "len"))
+                                    .unwrap_or(false);
+                                if has_len_field {
+                                    self.expr(object, out)?;
+                                    write!(out, ".len")?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
                     // Skip if object is a known stdlib module — handled by Expr::Ident block below.
                     // But if the name is a known local variable (e.g. param named "json"), it's NOT a module.
                     let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
@@ -6188,6 +6310,25 @@ impl RustTrans {
                     return Ok(());
                 }
                 "set" => {
+                    // Plan 433 A1: list.set(i, v) -> list[i as usize] = v for
+                    // Auto List receivers (in-place element write). The HashMap
+                    // insert rewrite below shifts Vec elements instead of
+                    // replacing — wrong semantics for Auto List.set.
+                    if call.args.args.len() == 2 && self.is_auto_list_expr(object) {
+                        let mut args_iter = call.args.args.iter();
+                        let idx = args_iter.next();
+                        let val = args_iter.next();
+                        self.expr(object, out)?;
+                        write!(out, "[(")?;
+                        if let Some(Arg::Pos(a)) = idx {
+                            self.expr(a, out)?;
+                        }
+                        write!(out, ") as usize] = ")?;
+                        if let Some(Arg::Pos(a)) = val {
+                            self.expr(a, out)?;
+                        }
+                        return Ok(());
+                    }
                     // Plan 368: skip the Map.set -> HashMap::insert rewrite when the
                     // receiver is a known stdlib module identifier (env.set / fs.set /
                     // json.set / ...). Those are stdlib calls that must fall through
@@ -6858,6 +6999,12 @@ impl RustTrans {
                 }
             }
 
+            // Plan 433 A1: struct `len` field read (Tok.len) — property,
+            // not the collection-length method.
+            if self.try_emit_struct_len_field(object, method_name, call.args.args.len(), out)? {
+                return Ok(());
+            }
+
             // .len() and .length() return usize in Rust, cast to i32 for Auto's int
             let needs_i32_cast = matches!(method_name.as_str(), "len" | "length");
 
@@ -6929,6 +7076,9 @@ impl RustTrans {
                 "split" => Some("split"),
                 // Type conversion
                 "to_string" => Some("to_string"),
+                // Plan 433 A1: Auto's universal `.str()` stringify (VM native)
+                // maps to Rust's Display to_string.
+                "str" => Some("to_string"),
                 // Plan 013 (B16): pass-through so Map.get() reaches the
                 // auto-borrow handler below (rust_method is otherwise None,
                 // skipping the get-borrow path).
@@ -8131,7 +8281,14 @@ impl RustTrans {
                     .map(|pt| Self::is_merge_mut_type(pt))
                     .unwrap_or(false)
             } else { false };
-            let needs_clone = is_struct_param && !is_merge_mut && !needs_mut_borrow
+            // Plan 433 A1: passing an &mut param of the current fn to a
+            // BY-VALUE param (non-mut callee) must deref-clone (&mut Vec<T> →
+            // Vec<T>); a raw ident would move the reference (E0308).
+            let needs_mut_param_clone = is_already_mut_param && !is_mut_param
+                && !needs_mut_borrow && !is_merge_mut && !is_sb_param
+                && matches!(arg, Arg::Pos(Expr::Ident(_)));
+            let needs_clone = (is_struct_param || needs_mut_param_clone)
+                && !is_merge_mut && !needs_mut_borrow
                 && !is_mut_param
                 && !is_sb_param
                 && !needs_ref_borrow
@@ -8158,8 +8315,17 @@ impl RustTrans {
                 write!(out, "&mut ")?;
             }
             // C11 (Plan 018 §12 a2r-11): `mut p T` callee param → pass `&mut arg`.
+            // Plan 433 A1: when the arg ident is itself an &mut param of the
+            // current fn, re-borrow (`&mut *arg`) — `&mut arg` on a `p: &mut T`
+            // binding is E0596 (binding not declared mut) and would move the
+            // reference, killing later uses. The ident itself is emitted by
+            // arg() below, so only the `*` differs here.
             if is_mut_param {
-                write!(out, "&mut ")?;
+                if is_already_mut_param {
+                    write!(out, "&mut *")?;
+                } else {
+                    write!(out, "&mut ")?;
+                }
             }
             // Plan 384 A3: borrow owned arg for `&T` reference params.
             if needs_ref_borrow {
@@ -8304,12 +8470,32 @@ impl RustTrans {
                             Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
                             | Type::StrSlice))
                         .unwrap_or(false)
+                } else if let Expr::Dot(_, m) = c.name.as_ref() {
+                    // Plan 433 A1: `.str()` / `.to_string()` method calls return
+                    // an owned String — a &str param still needs the borrow.
+                    matches!(m.as_str(), "str" | "to_string")
                 } else {
                     false
                 }
             } else { false };
+            // Plan 433 A1: a struct-field read of a str field is an owned
+            // String (t.kind) — borrow it for &str params.
+            let arg_is_str_field = if let Arg::Pos(Expr::Dot(obj, field)) = arg {
+                // Plan 433 A1: field reads of str fields — the owner's type is
+                // often unavailable (chained/indexed objects), so accept the
+                // field name being a str field of ANY known struct. Borrowed
+                // loop-var fields are EXCLUDED — the defect-4 branch above
+                // already emits them raw (&String coerces to &str directly).
+                let is_borrowed_iter_field = matches!(obj.as_ref(),
+                    Expr::Ident(n) if self.borrowed_iter_vars.contains(n));
+                !is_borrowed_iter_field
+                    && self.struct_field_types.values()
+                        .any(|fields| fields.iter()
+                            .any(|(f, t)| f.as_str() == field.as_str()
+                                && matches!(t, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
-                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call) {
+                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call || arg_is_str_field) {
                 write!(out, ".as_str()")?;
             }
 
@@ -10543,7 +10729,15 @@ impl RustTrans {
         } else {
             store.ty.clone()
         };
-        self.local_var_types.insert(store.name.clone(), effective_ty.clone());
+        // Plan 433 A1: a prior fn-call-inferred entry (scan_call_init_bindings
+        // at fn_decl) is more precise than a fresh Unknown inference — keep it.
+        let keep_existing = matches!(effective_ty, Type::Unknown)
+            && self.local_var_types.get(store.name.as_str())
+                .map(|t| !matches!(t, Type::Unknown))
+                .unwrap_or(false);
+        if !keep_existing {
+            self.local_var_types.insert(store.name.clone(), effective_ty.clone());
+        }
 
         // Plan 387 follow-up: record `let h = Task.spawn("Counter", cap)` so
         // `h.send(Variant)` can resolve the message enum from the receiver's
@@ -11048,6 +11242,56 @@ impl RustTrans {
     /// method calls and `name = ...` assignments. Used to upgrade `let name` to
     /// `let mut name` so the mutation compiles (Auto's `let` allows mutation;
     /// Rust's doesn't).
+    /// Plan 433 A1: collect `let/var x = fn(...)` bindings (no type annotation)
+    /// whose callee has a known return type, recursively through control-flow
+    /// bodies. Feeds local_var_types at fn_decl entry (see fn_decl).
+    fn scan_call_init_bindings(
+        stmts: &[Stmt],
+        ret_types: &HashMap<AutoStr, Type>,
+        out: &mut Vec<(AutoStr, Type)>,
+    ) {
+        use crate::ast::Stmt;
+        fn visit(stmts: &[Stmt], ret_types: &HashMap<AutoStr, Type>, out: &mut Vec<(AutoStr, Type)>) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Store(store) => {
+                        if matches!(store.ty, Type::Unknown) {
+                            if let Expr::Call(call) = &store.expr {
+                                if let Expr::Ident(fname) = call.name.as_ref() {
+                                    if let Some(ret) = ret_types.get(fname.as_str()) {
+                                        if !matches!(ret, Type::Unknown | Type::Void) {
+                                            out.push((store.name.clone(), ret.clone()));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Stmt::If(if_) => {
+                        for br in &if_.branches {
+                            visit(&br.body.stmts, ret_types, out);
+                        }
+                        if let Some(e) = &if_.else_ {
+                            visit(&e.stmts, ret_types, out);
+                        }
+                    }
+                    Stmt::For(for_) => {
+                        if let Some(init) = &for_.init {
+                            visit(std::slice::from_ref(init.as_ref()), ret_types, out);
+                        }
+                        visit(&for_.body.stmts, ret_types, out);
+                    }
+                    Stmt::Try(t) => {
+                        visit(&t.body.stmts, ret_types, out);
+                    }
+                    Stmt::Block(b) => visit(&b.stmts, ret_types, out),
+                    _ => {}
+                }
+            }
+        }
+        visit(stmts, ret_types, out);
+    }
+
     fn scan_mutated_bindings(body: &crate::ast::Body) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
         let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain",
@@ -11106,6 +11350,20 @@ impl RustTrans {
         // later mutated (push/insert/extend/assign) — those need `let mut`.
         self.mutated_let_bindings.clear();
         self.mutated_let_bindings = Self::scan_mutated_bindings(&fn_decl.body);
+
+        // Plan 433 A1: pre-register local types for un-annotated `let/var x = fn()`
+        // bindings from the fn return-type cache, so later List.get/field/str-param
+        // resolution (is_auto_list_expr, struct_field_types lookups) can key off
+        // them. Mirrors what an annotated `let x T = ...` registers at store().
+        {
+            let mut locals: Vec<(AutoStr, Type)> = Vec::new();
+            Self::scan_call_init_bindings(&fn_decl.body.stmts, &self.fn_ret_types, &mut locals);
+            for (name, ty) in locals {
+                // Annotated stores already registered at store() emission time
+                // (later, in order); only fill gaps so we never clobber.
+                self.local_var_types.entry(name).or_insert(ty);
+            }
+        }
 
         // Plan 310 Phase 2: Set current function context for escape-tier queries.
         // The escape_results key matches how transpile_rust registers functions:
@@ -12116,6 +12374,13 @@ impl RustTrans {
                     Stmt::Return(ret) => {
                         sink.body.write(b"return ")?;
                         self.expr(ret, &mut sink.body)?;
+                        // Plan 433 A1: mirror stmt()'s Return arm — a
+                        // String-returning fn returning a &str expr in an
+                        // else branch needs the .to_string() coercion.
+                        if self.ret_type_needs_string_coercion()
+                            && self.expr_needs_string_coercion(ret) {
+                            sink.body.write(b".to_string()")?;
+                        }
                         sink.body.write(b";\n")?;
                     }
                     _ => {
@@ -18837,6 +19102,14 @@ pub fn transpile_rust_with_siblings(
     let mut out = Sink::new(name.clone());
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
+    // Plan 433 A1: pre-register fn return types for the whole file so
+    // `let x = fn()` bindings infer their type regardless of declaration
+    // order (see scan_call_init_bindings).
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::Fn(f) = stmt {
+            transpiler.fn_ret_types.insert(f.name.clone(), f.ret.clone());
+        }
+    }
     // Plan 376D: Share sibling TypeStore for cross-module type inference.
     transpiler.shared_type_store = sibling_store;
     // Plan 013 (B1/BUG3): local-type pre-scan lives in trans() so all entry
@@ -20055,6 +20328,38 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params), Some(&mut global_fn_param_types));
     }
 
+    // Plan 433 A1: cross-module C11 `mut p T` flags — a later module calling an
+    // earlier module's &mut-taking fn must pass `&mut *arg`, not `arg.clone()`.
+    let mut global_fn_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    for (_module, ast) in &parsed_modules {
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(f) = stmt {
+                let flags: Vec<bool> = f.params.iter()
+                    .map(|p| p.mode == crate::ast::ParamMode::Mut)
+                    .collect();
+                if flags.iter().any(|&b| b) {
+                    global_fn_mut_params.insert(f.name.clone(), flags);
+                }
+            }
+        }
+    }
+
+    // Plan 433 A1: cross-module fn return types (feeds let-binding type
+    // inference via scan_call_init_bindings — a `var c = cg_compile(s)` in a
+    // later module must know CG before its body emits).
+    let mut global_fn_ret_types: std::collections::HashMap<AutoStr, Type> = std::collections::HashMap::new();
+    for (_module, ast) in &parsed_modules {
+        for stmt in &ast.stmts {
+            if let Stmt::Fn(f) = stmt {
+                global_fn_ret_types.insert(f.name.clone(), f.ret.clone());
+                if let Some(parent) = &f.parent {
+                    let qualified: AutoStr = format!("{}.{}", parent, f.name).into();
+                    global_fn_ret_types.insert(qualified, f.ret.clone());
+                }
+            }
+        }
+    }
+
     // Phase 3: Transpile all modules into a single Sink with merge_mode
     let mut sink = Sink::new(AutoStr::from("merged"));
     let mut seen_structs: HashSet<String> = HashSet::new();
@@ -20102,6 +20407,18 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         for (name, flags) in &global_merge_mut_params {
             if !transpiler.fn_merge_mut_params.contains_key(name) {
                 transpiler.fn_merge_mut_params.insert(name.clone(), flags.clone());
+            }
+        }
+        // Plan 433 A1: cross-module fn return types (see collection above).
+        for (name, ret) in &global_fn_ret_types {
+            if !transpiler.fn_ret_types.contains_key(name) {
+                transpiler.fn_ret_types.insert(name.clone(), ret.clone());
+            }
+        }
+        // Plan 433 A1: cross-module C11 mut-param flags (see collection above).
+        for (name, flags) in &global_fn_mut_params {
+            if !transpiler.fn_mut_params.contains_key(name) {
+                transpiler.fn_mut_params.insert(name.clone(), flags.clone());
             }
         }
 
@@ -20403,7 +20720,11 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
         "fn lex_fstr_f(mut source: &str, mut pos: i32) -> Vec<Token> {",
     );
     // Add main() with basic self-test if missing
-    if !cached_regex(r"(?m)^fn main\(\)").unwrap().is_match(&content) {
+    // Plan 433 A1: only when the merged body actually provides run_eval/run_a2r
+    // (the v1 AAVM self-test entry points). A library-shaped merge (e.g. AAVM v2)
+    // would otherwise get a main referencing nonexistent functions.
+    if !cached_regex(r"(?m)^fn main\(\)").unwrap().is_match(&content)
+        && content.contains("fn run_eval") {
         content.push_str(concat!(
             "\nfn main() ",
             "{\n",

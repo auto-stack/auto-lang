@@ -38,7 +38,7 @@ type TFnSig {
 
 // fn 声明走查:镜像 parse_fn 的签名词法流(name/泛型拒绝/params 绑定/ret),
 // 但不构造 dump。体内语句交回 t_stmt_walk。
-fn t_fn_walk(p P, fns List, out List) {
+fn t_fn_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     p_next(p)
     if p_kind(p) == "Dot" || p_kind(p) == "Lt" {
         p_err(p, "typeinfo: unsupported fn form ")
@@ -108,7 +108,7 @@ fn t_fn_walk(p P, fns List, out List) {
 
 // fn 体:期望 LBrace,扁平遍历至配对 RBrace(嵌套块按平衡跳过,Missing:
 // 块级作用域)。
-fn t_body_walk(p P, fns List, out List) {
+fn t_body_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     p_expect(p, "LBrace")
     skip_empty_lines(p)
     while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
@@ -139,7 +139,7 @@ fn t_is_type_prop(p P) bool {
     return nk == "Ident" && p_text_at(p, 1) == "type"
 }
 
-fn t_try_print_query(p P, out List, fns List) int {
+fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
     if p_kind(p) != "Ident" || p_text(p) != "print" {
         return 0
     }
@@ -183,7 +183,7 @@ fn p_text_at(p P, n int) str {
 }
 
 // 语句分派:fn → 注册;let/var → 推断绑定;print 查询;其余表达式消费。
-fn t_stmt_walk(p P, fns List, out List) {
+fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     if p.err != "" {
         return
     }
@@ -306,7 +306,7 @@ fn t_binop_result(op str, l str, r str) str {
 }
 
 // 表达式推断:优先级爬升(镜像 expr_pratt 骨架,只产类型不产 dump)
-fn t_infer_expr(p P, min int, fns List) str {
+fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     if p.err != "" {
         return ""
     }
@@ -326,8 +326,9 @@ fn t_infer_expr(p P, min int, fns List) str {
         p_next(p)
         // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
         lhs = t_infer_expr(p, 0, fns)
-        var parts = List.new()
-        parts.push(lhs)
+        var parts List<str> = List.new()
+        var lh2 = lhs + ""
+        parts.push(lh2)
         while p_kind(p) == "Comma" {
             p_next(p)
             var e = t_infer_expr(p, 0, fns)
@@ -418,7 +419,7 @@ fn t_infer_expr(p P, min int, fns List) str {
     return lhs
 }
 
-fn t_join_types(parts List) str {
+fn t_join_types(parts List<str>) str {
     var out = "("
     var i = 0
     while i < parts.len() {
@@ -431,7 +432,7 @@ fn t_join_types(parts List) str {
     return out + ")"
 }
 
-fn t_fn_ret(fns List, name str) str {
+fn t_fn_ret(fns List<TFnSig>, name str) str {
     var i = fns.len() - 1
     while i >= 0 {
         if fns.get(i).name == name {
@@ -446,8 +447,8 @@ fn t_fn_ret(fns List, name str) str {
 fn typecheck_dump(source str) str {
     var toks = tokenize(source)
     var p = parse_new(toks)
-    var fns = List.new()
-    var out = List.new()
+    var fns List<TFnSig> = List.new()
+    var out List<str> = List.new()
     skip_empty_lines(p)
     while p.err == "" && p_kind(p) != "EOF" {
         t_stmt_walk(p, fns, out)

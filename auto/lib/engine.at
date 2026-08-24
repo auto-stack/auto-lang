@@ -18,21 +18,53 @@
 //            (负下标归一/OOB 推 0,镜像 engine.rs 4403)、set.elem
 //            (value 在栈底:idx,arr,value 逆序弹;引用语义原地写)、
 //            arr.len(List/str 动态分派,镜像 ARRAY_LEN 的两分支)
-// Missing:   浮点/对象/字符串下标(码点取值)/方法调用 native、
+// Missing:   浮点/对象/字符串下标(码点取值已含)/方法调用 native、
 //            闭包、全局变量、任务/调度/async(debugger/trace 按
 //            计划不移植)、值 RC(宿主 AutoVM 自管 .at 值生命周期)
 // DIVERGE:   D29: 字节码 Flash + ip 解码 → 指令 List 直译
 //            (ip=指令索引;jmp/call 目标即索引);print 输出 →
 //            out 字符串收集(run 返回);栈 = Auto List + 手记账 sp
-//            (ev_push 兼容 push/set);值 = Auto 原生值
-//            (int/str;nil 与 bool 以 0/1 整型承载——宿主 print 对
-//            bool 亦打 "1"/"0",可观察行为一致);RET 帧/参数槽位算术
+//            (ev_push 兼容 push/set);RET 帧/参数槽位算术
 //            与 engine.rs 逐条对齐(参数寻址 bp-n_args+rel-1)。
-//            D22 同款错误短路(ev_err)。
+//            D30(433 重构):负 int 偏置编码保留但收窄到 int 载荷
+//            域;D31(433 重构):值栈异构载体 → Val 判别器结构体
+//            (k/i/s/arr)——VM 侧 List 天然异构(行为不变),a2r 侧
+//            Vec<Val> 取代裸 List→Vec<String> 的错误映射;不用
+//            enum:VM 枚举载荷跨函数传参丢标签(242 挂账);
+//            布尔/nil 仍以 0/1 整型承载(宿主 print 对 bool 打
+//            "1"/"0",可观察行为一致)。
 
-// ── 栈助手(sp 手记账;List 只增不缩) ─────────────────────────
+// 值栈元素:异构值的显式载体(433:a2r 需要静态元素类型;VM 侧 List
+// 本就动态,行为不变)。判别器结构体而非 enum——VM 实证枚举载荷值
+// 跨函数传参会丢标签(probe20/22/23,E1 空/NONE/哨兵泄漏;结构体
+// S1-S3 全绿),挂 242 tracker。k:0=int 1=str 2=arr;未用载荷域取
+// 空值(i=0/s=""/arr=空表)。
+type Val {
+    k int
+    i int
+    s str
+    arr List<Val>
+}
 
-fn ev_push(stack List, sp int, v) int {
+fn ev_empty() List<Val> {
+    var e List<Val> = List.new()
+    return e
+}
+
+fn ev_vi(x int) Val {
+    return Val(0, x, "", ev_empty())
+}
+
+fn ev_vs(t str) Val {
+    return Val(1, 0, t, ev_empty())
+}
+
+fn ev_va(l List<Val>) Val {
+    return Val(2, 0, "", l)
+}
+
+// 栈写:sp 越界即 push,否则原地 set(镜像 ev_push)
+fn ev_push(mut stack List<Val>, sp int, v Val) int {
     if sp == stack.len() {
         stack.push(v)
     } else {
@@ -41,27 +73,124 @@ fn ev_push(stack List, sp int, v) int {
     return sp + 1
 }
 
-// 值显示(print 参数):镜像宿主 ADD-含字符串即拼接的语义;负 int
-// 先解偏置(D30 编码)
-fn ev_fmt(v) str {
-    return "" + ev_dec(v)
+// 数值视图:int 载荷;其余 0(镜像 VM 对非数值参与 ==0 判定的行为)
+fn ev_int(v Val) int {
+    if v.k == 0 {
+        return v.i
+    }
+    return 0
 }
 
-// v2 负 int 编码(D30):宿主无类型 List 的负值与字符串哨兵别名,
-// 负 int 偏置 -1e9 入栈(落在任何真实池界之外,配合宿主 push_tagged_
-// value_rc 的池界检查原样读回);非负与字符串原样穿透
-fn ev_enc(v) {
+// 显示串(print 参数):镜像宿主 ADD-含字符串即拼接的语义;负 int
+// 先解偏置(D30 编码);arr 为不可比载体(语料以元素/len 为观察
+// 通道,D31),占位输出
+fn ev_str(v Val) str {
+    if v.k == 1 {
+        return v.s
+    }
+    if v.k == 0 {
+        return ev_dec(v.i).str()
+    }
+    return "[arr:" + v.arr.len().str() + "]"
+}
+
+// 真值:int 按 !=0;其余(含 str)恒真(镜像 VM `v != 0` 的
+// 行为——字符串与 0 比较恒不等)
+fn ev_truthy(v Val) bool {
+    if v.k == 0 {
+        return v.i != 0
+    }
+    return true
+}
+
+// v2 负 int 编码(D30):负 int 偏置 -1e9 入栈(规避宿主无类型
+// List 的字符串哨兵别名);非负原样穿透
+fn ev_enc(v int) int {
     if v < 0 {
         return v - 1000000000
     }
     return v
 }
 
-fn ev_dec(v) {
+fn ev_dec(v int) int {
     if v <= -1000000000 {
         return v + 1000000000
     }
     return v
+}
+
+// 加法(host ADD 语义):任一侧字符串 → 拼接;双 int → 数值加
+// (str.cat 指令与 add 的宿主语义镜像,当前 codegen 仅对已知
+// 字符串操作数发 str.cat,双 int 分支为语义保真保留)
+fn ev_add(a Val, b Val) Val {
+    if a.k == 1 {
+        var bs = ev_str(b)
+        var t1 = a.s + bs
+        return ev_vs(t1)
+    }
+    if b.k == 1 {
+        var as2 = ev_str(a)
+        var t2 = as2 + b.s
+        return ev_vs(t2)
+    }
+    return ev_vi(a.i + b.i)
+}
+
+// 全序比较:int 域比较先解偏置;str 域字典序(VM "b" > "a" 实测);
+// 混合型/arr 不可比 → 2(eq 取 false、ne 取 true,镜像 VM "x" == 1
+// → false);返回 -1/0/1/2
+fn ev_cmp(a Val, b Val) int {
+    if a.k == 0 && b.k == 0 {
+        var dx = ev_dec(a.i)
+        var dy = ev_dec(b.i)
+        if dx < dy {
+            return -1
+        }
+        if dx > dy {
+            return 1
+        }
+        return 0
+    }
+    if a.k == 1 && b.k == 1 {
+        if a.s < b.s {
+            return -1
+        }
+        if a.s > b.s {
+            return 1
+        }
+        return 0
+    }
+    return 2
+}
+
+// arr 载荷提取(只读用途);非数组值返回空表(长度 0 → OOB 语义)
+fn ev_arr(v Val) List<Val> {
+    if v.k == 2 {
+        return v.arr
+    }
+    return ev_empty()
+}
+
+// set.elem 写通道:VM 引用语义原地写后返回同一引用(写回为
+// 无操作);a2r 值语义返回修改后的副本,调用方写回数组所在槽位
+fn ev_arr_write(v Val, idx int, val Val) Val {
+    if v.k == 2 {
+        var l2 = v.arr
+        l2.set(idx, val)
+        return ev_va(l2)
+    }
+    return v
+}
+
+// 数组/字符串长度动态分派(镜像 ARRAY_LEN 两分支)
+fn ev_len(v Val) int {
+    if v.k == 2 {
+        return v.arr.len()
+    }
+    if v.k == 1 {
+        return v.s.len()
+    }
+    return 0
 }
 
 // ── 执行循环 ──────────────────────────────────────────────────
@@ -84,16 +213,16 @@ fn ev_run_t(source str, trace int) str {
         }
         fi = fi + 1
     }
-    var stack = List.new()
+    var stack List<Val> = List.new()
     var sp = 0
     // 初始帧:[0=ret 哨兵, 0=oldbp 哨兵];bp=1;main 的 RET 触底即 halt
-    sp = ev_push(stack, sp, 0)
-    sp = ev_push(stack, sp, 0)
+    sp = ev_push(stack, sp, ev_vi(0))
+    sp = ev_push(stack, sp, ev_vi(0))
     var bp = 1
     var ip = entry
     var out = ""
     var cur_args = 0
-    var args_stack = List.new()
+    var args_stack List<int> = List.new()
     var args_depth = 0
     var running = true
     while running {
@@ -102,8 +231,7 @@ fn ev_run_t(source str, trace int) str {
         var op = ins.op
         if trace == 1 {
             if out != "" {
-                out = out + "
-"
+                out = out + "\n"
             }
             out = out + op + " sp=" + sp.str() + " bp=" + bp.str()
         }
@@ -119,7 +247,7 @@ fn ev_run_t(source str, trace int) str {
             var n = ins.n
             var k = 0
             while k < n + 1 {
-                sp = ev_push(stack, sp, 0)
+                sp = ev_push(stack, sp, ev_vi(0))
                 k = k + 1
             }
         } else if op == "jmp" {
@@ -127,36 +255,43 @@ fn ev_run_t(source str, trace int) str {
         } else if op == "jmp.z" {
             var v = stack.get(sp - 1)
             sp = sp - 1
-            if v == 0 {
+            if !ev_truthy(v) {
                 ip = ins.n
             }
         } else if op == "const.i32" {
-            sp = ev_push(stack, sp, ev_enc(ins.n))
+            sp = ev_push(stack, sp, ev_vi(ev_enc(ins.n)))
         } else if op == "push.bool" {
             // 布尔以 1/0 承载:与宿主 print(bool)→"1"/"0" 的可观察行为一致
             if ins.s == "true" {
-                sp = ev_push(stack, sp, 1)
+                sp = ev_push(stack, sp, ev_vi(1))
             } else {
-                sp = ev_push(stack, sp, 0)
+                sp = ev_push(stack, sp, ev_vi(0))
             }
         } else if op == "push.nil" {
-            sp = ev_push(stack, sp, 0)
+            sp = ev_push(stack, sp, ev_vi(0))
         } else if op == "load.str" {
-            sp = ev_push(stack, sp, c.pool.get(ins.n))
+            // D25-① 规避:原生调用(get)不得内联作枚举构造参数,先提升
+            var sv = c.pool.get(ins.n)
+            sp = ev_push(stack, sp, ev_vs(sv))
         } else if op == "load.loc.0" {
-            sp = ev_push(stack, sp, stack.get(bp + 1))
+            var v0 = stack.get(bp + 1)
+            sp = ev_push(stack, sp, v0)
         } else if op == "load.loc.1" {
-            sp = ev_push(stack, sp, stack.get(bp + 2))
+            var v1 = stack.get(bp + 2)
+            sp = ev_push(stack, sp, v1)
         } else if op == "load.loc.2" {
-            sp = ev_push(stack, sp, stack.get(bp + 3))
+            var v2 = stack.get(bp + 3)
+            sp = ev_push(stack, sp, v2)
         } else if op == "load.local" {
             if ins.n >= 128 {
                 // 参数:bp - n_args + rel - 1(engine.rs 7304 同式)
                 var rel = ins.n - 128
                 var slot = bp - cur_args + rel - 1
-                sp = ev_push(stack, sp, stack.get(slot))
+                var va = stack.get(slot)
+                sp = ev_push(stack, sp, va)
             } else {
-                sp = ev_push(stack, sp, stack.get(bp + 1 + ins.n))
+                var vb = stack.get(bp + 1 + ins.n)
+                sp = ev_push(stack, sp, vb)
             }
         } else if op == "store.loc.0" {
             sp = sp - 1
@@ -173,22 +308,23 @@ fn ev_run_t(source str, trace int) str {
                 stack.set(bp + 1 + ins.n, stack.get(sp))
             }
         } else if op == "dup" {
-            sp = ev_push(stack, sp, stack.get(sp - 1))
+            var vd = stack.get(sp - 1)
+            sp = ev_push(stack, sp, vd)
         } else if op == "pop" {
             sp = sp - 1
         } else if op == "call" {
             var fe = c.fns.get(ins.n)
             args_stack.push(cur_args)
             args_depth = args_depth + 1
-            sp = ev_push(stack, sp, ip)
-            sp = ev_push(stack, sp, bp)
+            sp = ev_push(stack, sp, ev_vi(ip))
+            sp = ev_push(stack, sp, ev_vi(bp))
             bp = sp - 1
             ip = fe.ins
         } else if op == "ret" {
             var result = stack.get(sp - 1)
             sp = sp - 1
-            var old_bp = stack.get(bp)
-            var ret_ip = stack.get(bp - 1)
+            var old_bp = ev_int(stack.get(bp))
+            var ret_ip = ev_int(stack.get(bp - 1))
             var n_args = ins.n
             var new_sp = bp - n_args
             stack.set(new_sp - 1, result)
@@ -208,12 +344,12 @@ fn ev_run_t(source str, trace int) str {
             if out != "" {
                 out = out + "\n"
             }
-            out = out + ev_fmt(stack.get(sp - 1))
+            out = out + ev_str(stack.get(sp - 1))
             sp = sp - 1
-            sp = ev_push(stack, sp, 0)
+            sp = ev_push(stack, sp, ev_vi(0))
         } else if op == "add" || op == "sub" || op == "mul" || op == "div" || op == "mod" {
-            var b = ev_dec(stack.get(sp - 1))
-            var a = ev_dec(stack.get(sp - 2))
+            var b = ev_dec(ev_int(stack.get(sp - 1)))
+            var a = ev_dec(ev_int(stack.get(sp - 2)))
             sp = sp - 1
             var r = 0
             if op == "add" {
@@ -227,100 +363,117 @@ fn ev_run_t(source str, trace int) str {
             } else {
                 r = a % b
             }
-            stack.set(sp - 1, ev_enc(r))
+            stack.set(sp - 1, ev_vi(ev_enc(r)))
         } else if op == "str.cat" {
             var b2 = stack.get(sp - 1)
             var a2 = stack.get(sp - 2)
             sp = sp - 1
-            stack.set(sp - 1, a2 + b2)
+            stack.set(sp - 1, ev_add(a2, b2))
         } else if op == "eq" || op == "ne" || op == "lt" || op == "gt" || op == "le" || op == "ge" {
-            var bv = ev_dec(stack.get(sp - 1))
-            var av = ev_dec(stack.get(sp - 2))
+            var bv = stack.get(sp - 1)
+            var av = stack.get(sp - 2)
             sp = sp - 1
+            var cr = ev_cmp(av, bv)
             var r2 = 0
-            var hit = true
             if op == "eq" {
-                hit = av == bv
+                if cr == 0 {
+                    r2 = 1
+                }
             } else if op == "ne" {
-                hit = av != bv
+                if cr != 0 {
+                    r2 = 1
+                }
             } else if op == "lt" {
-                hit = av < bv
+                if cr == -1 {
+                    r2 = 1
+                }
             } else if op == "gt" {
-                hit = av > bv
+                if cr == 1 {
+                    r2 = 1
+                }
             } else if op == "le" {
-                hit = av <= bv
+                if cr == 0 || cr == -1 {
+                    r2 = 1
+                }
             } else {
-                hit = av >= bv
+                if cr == 0 || cr == 1 {
+                    r2 = 1
+                }
             }
-            if hit {
-                r2 = 1
-            }
-            stack.set(sp - 1, r2)
+            stack.set(sp - 1, ev_vi(r2))
         } else if op == "and" || op == "or" {
             var b3 = stack.get(sp - 1)
             var a3 = stack.get(sp - 2)
             sp = sp - 1
             var r3 = 0
             if op == "and" {
-                if a3 != 0 && b3 != 0 {
+                if ev_truthy(a3) && ev_truthy(b3) {
                     r3 = 1
                 }
             } else {
-                if a3 != 0 || b3 != 0 {
+                if ev_truthy(a3) || ev_truthy(b3) {
                     r3 = 1
                 }
             }
-            stack.set(sp - 1, r3)
+            stack.set(sp - 1, ev_vi(r3))
         } else if op == "not" {
             var v4 = stack.get(sp - 1)
-            if v4 == 0 {
-                stack.set(sp - 1, 1)
+            if ev_truthy(v4) {
+                stack.set(sp - 1, ev_vi(0))
             } else {
-                stack.set(sp - 1, 0)
+                stack.set(sp - 1, ev_vi(1))
             }
         } else if op == "neg" {
-            var v10 = ev_dec(stack.get(sp - 1))
-            stack.set(sp - 1, ev_enc(-v10))
+            var v10 = ev_dec(ev_int(stack.get(sp - 1)))
+            stack.set(sp - 1, ev_vi(ev_enc(-v10)))
         } else if op == "create.arr" {
-            // 元素已按序压栈;自下而上读入新 List(引用值直存)
+            // 元素已按序压栈;自下而上读入新 List(VArr 载体)
             var n6 = ins.n
-            var arr6 = List.new()
+            var arr6 List<Val> = List.new()
             var i6 = 0
             while i6 < n6 {
                 arr6.push(stack.get(sp - n6 + i6))
                 i6 = i6 + 1
             }
             sp = sp - n6
-            sp = ev_push(stack, sp, arr6)
+            sp = ev_push(stack, sp, ev_va(arr6))
         } else if op == "get.elem" {
-            // 栈:[..., arr, idx];负下标归一,-1=末位;OOB 推 0(engine.rs 4403)
-            var idx7 = ev_dec(stack.get(sp - 1))
-            var arr7 = stack.get(sp - 2)
-            var len7 = arr7.len()
+            // 栈:[..., arr, idx];负下标归一,-1=末位;OOB 推 0
+            // (engine.rs 4403);str 接收者取码点(Missing→已含)
+            var idx7 = ev_dec(ev_int(stack.get(sp - 1)))
+            var arrv Val = stack.get(sp - 2)
+            var len7 = ev_len(arrv)
             var j7 = idx7
             if j7 < 0 {
                 j7 = len7 + j7
             }
-            var val7 = 0
+            var val7 = ev_vi(0)
             if j7 >= 0 && j7 < len7 {
-                val7 = arr7.get(j7)
+                if arrv.k == 2 {
+                    val7 = arrv.arr.get(j7)
+                } else if arrv.k == 1 {
+                    // D25-① 规避:char_at 原生调用先提升
+                    var cv = arrv.s.char_at(j7)
+                    val7 = ev_vi(cv)
+                }
             }
             sp = sp - 2
             sp = ev_push(stack, sp, val7)
         } else if op == "set.elem" {
-            // 栈:[..., value, arr, idx](value 展栈底,Rust quick-fix 栈序);
-            // List 引用语义原地写
-            var idx8 = ev_dec(stack.get(sp - 1))
+            // 栈:[..., value, arr, idx](value 展栈底,Rust quick-fix
+            // 栈序);写通道 = ev_arr_write + 写回数组槽位(VM 引用
+            // 语义下写回同一引用,无操作;a2r 值语义写回修改副本)
+            var idx8 = ev_dec(ev_int(stack.get(sp - 1)))
             var arr8 = stack.get(sp - 2)
             var val8 = stack.get(sp - 3)
-            arr8.set(idx8, val8)
+            stack.set(sp - 2, ev_arr_write(arr8, idx8, val8))
             sp = sp - 3
         } else if op == "arr.len" {
             // 动态分派:List→元素数,str→长度(镜像 ARRAY_LEN 两分支)
             var v9 = stack.get(sp - 1)
-            var l9 = v9.len()
+            var l9 = ev_len(v9)
             sp = sp - 1
-            sp = ev_push(stack, sp, l9)
+            sp = ev_push(stack, sp, ev_vi(l9))
         } else {
             return "ENGINE-ERROR:unknown op " + op
         }
