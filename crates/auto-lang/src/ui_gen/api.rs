@@ -502,7 +502,10 @@ pub fn generate_component_from_file(
 
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
-    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
+    // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
+    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
+        crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
+    all_validation_warnings.extend(store_warnings);
 
     // Plan 015 P1#8: R016 — view AST hard-keyword 撞名检查（strict 下经
     // has_blocking_warnings 让 build 失败；非 strict 只打警告）。

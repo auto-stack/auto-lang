@@ -789,8 +789,74 @@ fn build_alias_groups(
     out
 }
 
-/// tier 推导(组级):桌面实现 > web 组件 > 原生直通 > 未分类。
+/// P2 人工归类表(生成器 override):表成员资格推不出的 tier 在此声明。
+/// 依据:
+/// - builtin_widget:vb fallback 显式分支(nav-link→链接按钮 / toast-provider→
+///   View::Empty)或 VNodeKind 运行时词汇(list/list_item)
+/// - native_html:HTML 词汇直通(a/audio/video/canvas/tfoot/li/summary/code)
+/// - web_component:shadcn 家族子件(gallery 实际使用的 dialog-*/dropdown-menu-*/
+///   tooltip-*/avatar-*/skeleton/navigation-menu/radioitem 等)
+/// 未列出的 unclassified 仍是"待定词汇"(parser/a2ui 词汇无实现,P3 normalize_tag
+/// 收编或实现后归位)——保留 unclassified 比错误归类更诚实。
+const TIER_OVERRIDES: &[(&str, &str)] = &[
+    // builtin_widget(桌面有实现,机制在派发表之外)
+    ("nav-link", "builtin_widget"),
+    ("nav_link", "builtin_widget"),
+    ("toast-provider", "builtin_widget"),
+    ("toast_provider", "builtin_widget"),
+    ("list", "builtin_widget"),
+    ("list_item", "builtin_widget"),
+    // native_html(HTML 词汇)
+    ("a", "native_html"),
+    ("audio", "native_html"),
+    ("video", "native_html"),
+    ("canvas", "native_html"),
+    ("tfoot", "native_html"),
+    ("li", "native_html"),
+    ("summary", "native_html"),
+    ("code", "native_html"),
+    // web_component(shadcn 家族,gallery 在用)
+    ("avatar-fallback", "web_component"),
+    ("avatar-image", "web_component"),
+    ("card-action", "web_component"),
+    ("date-picker-trigger", "web_component"),
+    ("dialog", "web_component"),
+    ("dialog-close", "web_component"),
+    ("dialog-content", "web_component"),
+    ("dialog-description", "web_component"),
+    ("dialog-footer", "web_component"),
+    ("dialog-header", "web_component"),
+    ("dialog-title", "web_component"),
+    ("dialog-trigger", "web_component"),
+    ("dropdown-menu-content", "web_component"),
+    ("dropdown-menu-item", "web_component"),
+    ("dropdown-menu-separator", "web_component"),
+    ("dropdown-menu-trigger", "web_component"),
+    ("navigation-menu", "web_component"),
+    ("radioitem", "web_component"),
+    ("sheet-description", "web_component"),
+    ("skeleton", "web_component"),
+    ("switch", "web_component"),
+    ("tooltip-content", "web_component"),
+    ("tooltip-provider", "web_component"),
+    ("tooltip-trigger", "web_component"),
+    ("TabTrigger", "web_component"),
+    // badge 家族词汇(parser 归为 text-bearing badge 变体)
+    ("chip", "web_component"),
+    ("tag", "web_component"),
+    ("range", "web_component"),
+    ("date", "web_component"),
+    ("datetime", "web_component"),
+    ("datetimeinput", "web_component"),
+];
+
+/// tier 推导(组级):桌面实现 > web 组件 > 原生直通 > 未分类;override 优先。
 fn derive_tier(group: &BTreeSet<String>, inp: &AtGenInput) -> &'static str {
+    for (tag, tier) in TIER_OVERRIDES {
+        if group.contains(*tag) {
+            return tier;
+        }
+    }
     if group.iter().any(|t| inp.in_vb.contains(t)) {
         "builtin_widget"
     } else if group.iter().any(|t| inp.in_vue_shadcn.contains(t)) {
