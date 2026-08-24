@@ -33,6 +33,11 @@
 | 396 | 一致性遗漏 | a2r-std/src/*.rs 是 stdlib/auto/*.rs.at 的手抄副本，无生成/校验环——time.rs 曾漂移到 i32（§2.6 教训：stdlib 声明 i64）。建议后续由 stdlib 生成或加 CI 签名比对。 | `crates/a2r-std/src/time.rs` vs `stdlib/auto/time.rs.at` |
 | 396 | 绕道残留 | auto-ai 两处 sed 仍在（agent tier.rs `Some(m.clone())` 属 Plan 020、SOUL const `&str` 属 Plan 016 可选项）——396 §2 范围内 sed 已全部毕业，这两条按计划归属留在原计划。 | `auto-ai crates/auto-ai-agent/retranspile.sh:82` |
 | 417-E2 | a2r 后处理盲重写 | `fix_vec_i32_index` Pattern 2 把任意 `xxx.get(i)`（参数名 ∈ int_like 名单：i/j/k/idx/n/...）正则重写为 `xxx[i as usize]`，不看 receiver 类型——用户类型若有 `.get(int)` 方法且局部变量名不在 hash_map_names 白名单，产物编坏（E0608）。E2 parity wrapper 以变量名 `data`（白名单内）规避；根治需让该启发式感知类型。 | `trans/rust.rs fix_vec_i32_index` Pattern 2 |
+| 432 | SET_ELEM 栈序 quick-fix | 数组下标赋值编译为 rhs→arr→idx→`set.elem`（value 展栈底），源自 codegen.rs ~5954 的注释自述"quick fix"（原想 SWAP/ROTATE 未做）。操作数顺序反直觉且有 40 行困惑注释，理想为自然序编译或引入 ROTATE。v2 侧已镜像此序（divergences.md M4 扩语料节）。 | `vm/codegen.rs` SET_ELEM 发射段 |
+| 432 | .len() 发射依赖运行时注册表 | `.len()` 走 ARRAY_LEN 还是 CALL_NAT 取决于 BIGVM_NATIVES 全局注册表内容（str.len 已注册 → CALL_NAT；未注册类型 → ARRAY_LEN 兜底，codegen.rs 7217-7229）。字节码发射应是 AST+类型表的纯函数，全局注册表状态使其不可静态复现（v2 侧只能按"接收者==Array"闸镜像主路径）。 | `vm/codegen.rs` 7177/7222 |
+| 432 | 负 int/字符串哨兵池内别名（残留） | D30 已修越界哨兵（池界外回落裸 i32，native.rs push_tagged_value_rc），但**池界内**别名仍在：无类型 ListData<i32> 里存裸 -1 仍读回池字符串 pool[0]（实测 -1 → "len"）。.at 侧负 int 需偏置编码规避（engine.at ev_enc/ev_dec，−1e9）。根治需 ListData 值域带 tag 或 .at 侧类型化 List。 | `vm/native.rs push_tagged_value_rc` + divergences.md D30 |
+| 432 | 参数个数不匹配静默毁帧 | 调用方/被调方 n_args 不一致时宿主无诊断：RET 按 fn 声明弹参，帧逐调用蚀一槽（432 执行期实测，D25 留档）。已在 242 tracker 挂账；建议 codegen 或引擎加一致性检查。 | `vm/engine.rs` RET + divergences.md D25 |
+| 432 | bool 压无类型 List 别名 | bool 值经 decode_i32 成 i32::MIN，与字符串负哨兵编码别名（D29 留档，242 挂账）；v2 以 1/0 整型承载规避。 | `vm/native.rs` + divergences.md D29 |
 
 ---
 
@@ -95,6 +100,11 @@
 | 417-E2 | trait_checker 参数类型比对 | check_conformance 只比对参数个数不比对类型（代码内既有 TODO）。收紧=全量现存 spec 实现重新校准（str/String、i32/i64 映射边界的兼容规则需拿 stdlib/parity/上层项目实测定表），独立立项，勿混特性批。 | `trait_checker.rs check_conformance` |
 | 417-E2 | 关联类型 bound 语法 | `AssociatedType.bound: Option<Type>` 字段已预留（Display/atom 已留位），parser 不接受 `type Item has Bound`。零用例需求（Rust `type Item: Bound` 亦低频），YAGNI，先有需求再设计语法。 | `ast/spec.rs AssociatedType` |
 | 409 | CodeBlock/PreviewCard 混合模式 | widgets-gallery 的 CodeBlock/PreviewCard 仍为「Auto 声明壳 + codegen 硬编码 UI」（generate_codeblock_html/generate_previewcard_html），改纯 Auto widget 需先验证 codegen 转译浏览器 API 调用的能力，未立项。VM 侧识别已由 §10 组 E 补上。 | `ui_gen/vue.rs generate_codeblock_html` |
+| 432-A4 | parser.rs 拆分 | parser.rs 17.7k 行单文件——core/ui 混杂，理想拆分 `parser/{core,ui}.rs`。 | `parser.rs`（431 A4 #1） |
+| 432-A4 | 巨型 emit/run 分派外提 | codegen/engine 的巨型 emit/run 函数内嵌 UI 段——理想按 dispatch 表外提（v2 的指令 List 直译循环验证了该形态可行）。 | `vm/codegen.rs` / `vm/engine.rs`（431 A4 #2） |
+| 432-A4 | u128 族访问器目录化 | `Duration`/`Instant` 等手写臂已由 plan-430 生成段接管，引擎侧残留 u128 族访问器待目录化。 | `vm/engine.rs`（431 A4 #3） |
+| 432-A4 | native_catalog 分文件 | native_catalog 521 条单数组——核心/UI 分文件。 | `vm/native_catalog.rs`（431 A4 #4） |
+| 432-A4 | SHL/SHR 语法缺口 | opcode 仅声明 6 条中 SHL/SHR 是实际语法缺口（429-B3），实现后 431 处置表需更新。 | `vm/opcode.rs`（431 A4 #5） |
 
 ---
 

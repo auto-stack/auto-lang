@@ -1,0 +1,5 @@
+// same-source construction from test/vm/06_arrays/001_array_literal
+fn main() {
+    var a = [1, 2, 3]
+    print(a.len())
+}

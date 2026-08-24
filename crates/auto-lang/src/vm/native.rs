@@ -2028,7 +2028,14 @@ fn list_i32_elem_release(vm: &AutoVM, val: i32) {
 fn push_tagged_value_rc(vm: &AutoVM, task: &mut AutoTask, val: i32) {
     if val < 0 {
         let str_idx = (-(val) - 1) as u32;
-        vm.rc_push_str_idx(task, str_idx as usize);
+        // Plan 432 D30: 池界外的负值是裸 int 而非字符串哨兵 ——
+        // ListData<i32> 的负 int 元素经 .at get 需原样往返
+        // (此前越界哨兵产生悬垂 string tag,读回即坏)
+        if (str_idx as usize) < vm.strings.read().unwrap().len() {
+            vm.rc_push_str_idx(task, str_idx as usize);
+        } else {
+            task.ram.push_i32(val);
+        }
     } else {
         vm.rc_push_id(task, val as u64);
     }

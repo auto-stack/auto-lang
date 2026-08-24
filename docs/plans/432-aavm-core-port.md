@@ -102,15 +102,29 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
     **helloworld 与 fib(10)=55,输出与 Rust 参考一致**
     (test_aavm2_m3_milestone_fib);M5 行为闸门 corpus_m4 十文件全绿
     (复用语料即行为用例)。
-- [~] M4 扩 corpus:99_bootstrap 038-053 多依赖 List/数组/对象 native(超
-    S4/S5 语料子集),留后续扩闸逐例回收(引擎侧需先补对应 native)。
+- [x] M4 扩 corpus(2026-08-24 续,M4-corpus 切片):99_bootstrap
+    038-052+051a 的 run_eval 内层程序回收为 b11-b26(16 文件,顶层
+    语句形态);06_arrays 001-003 同源构造 + 组合为 b27-b30(数组
+    四件套)。038-052 均为简单 print/字符串/fn 调用(交接时以为的
+    native 依赖实在 run_eval 包装层,内层程序在既有能力面内);053
+    (List/Map native 建节点)超 v2 范围未回收,归因留档。配套:
+    codegen.at 补数组字面量/下标读写/.len()/一元负号/顶层非 fn 语句
+    发射,engine.at 补 create.arr/get.elem/set.elem/arr.len/neg 执行;
+    宿主 blocker 级修复 push_tagged_value_rc 池界检查(D30,负 int 经
+    无类型 List 往返)。**M4/M5 闸门 30 文件双绿**;全量 3248 过零
+    新增(基线 6 既有失败不变)。
 
 ### 收尾
 
-- [ ] 各 .at 文件 Snapshot/Coverage/Missing 回填；divergences.md 汇总定稿；
-  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。(主体已随各切片完成,
-  定稿与封存待 M4 扩闸收口)
-- [ ] Rust 侧重构建议（431 A4 清单 + 执行期新增）整理进债务簿。
+- [x] 各 .at 文件 Snapshot/Coverage/Missing 回填；divergences.md 汇总定稿；
+  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。(主体随各切片完成;
+  2026-08-24 M4-corpus 切片收口:divergences.md 定稿至 22 处(D30/D31
+  新增,含 M4 扩语料全节),lib-legacy README 更新为封存状态——v2 六层
+  主体在 auto/lib/,99_bootstrap 的 v1 归档消费路径有意保留)
+- [x] Rust 侧重构建议（431 A4 清单 + 执行期新增）整理进债务簿。
+  (KNOWN-DEBT-AND-RISKS.md:432-A4 五条 + 执行期五条——SET_ELEM 栈序
+  quick-fix、.len() 发射依赖运行时注册表、负 int/哨兵池内别名残留、
+  参数不匹配静默毁帧、bool 无类型 List 别名)
 
 ## 风险与缓解
 
@@ -214,3 +228,29 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   全管线)**。全量 3246 过零新增(基线 5 个既有 cookbook 行为失败不变);
   布尔压栈触发宿主 ListData<i32> 编码别名(bool→i32::MIN 哨兵取负溢出)
   与参数个数不匹配静默毁帧两项宿主缺陷挂 242(divergences D29 留档)。
+
+- **M4 扩语料切片**(2026-08-24 续,worktree 432-m4-corpus):
+  - **语料回收**:99_bootstrap 038-052+051a 的 run_eval 内层程序直取为
+    corpus_m4 b11-b26(16 文件——交接时以为的 List/对象 native 依赖实在
+    run_eval 包装层,内层全是 print/字符串/fn 调用);06_arrays 001-003
+    同源构造 + 组合为 b27-b30;053(empty_list/Param/fn_node/Map native
+    建节点)超 v2 范围未回收。corpus_m4 10 → 30 文件。
+  - **codegen.at**:数组字面量(elems+create.arr count=N)、下标读
+    (get.elem)、下标赋值(rhs→arr→idx→set.elem,游标快照两段步行
+    镜像 Rust quick-fix 栈序)、.len()→arr.len(仅数组接收者,
+    CGVar.arr 绑定跟踪镜像 Rust 7177 闸)、一元负号(operand+neg,
+    顺手把一元分支整合进原子链修正 `-x + 1` 形态漏中缀)、顶层非 fn
+    语句(wrapper 步行,不发 .line——Rust other_stmts 路径无行号发射)。
+  - **engine.at**:create.arr/get.elem(负下标归一、OOB 推 0)/
+    set.elem(List 引用语义原地写)/arr.len(动态分派)/neg。
+  - **宿主 blocker 级修复(已记录决策)**:native.rs push_tagged_value_rc
+    增池界检查——越界负哨兵回落裸 i32(此前悬垂 tag 读回
+    "<invalid string index: N>");v2 侧负 int 以 −1e9 偏置编码
+    (ev_enc/ev_dec)规避池界内别名。回归测试 repro_d30_negative_int_
+    roundtrip 常驻。
+  - **布尔编码实测澄清**:宿主 print 对 bool 一律打 "1"/"0"
+    (print(true)/print(1<2)/print(!false) 实测),v2 1/0 承载即正确;
+    曾据旧 run_eval 金样("r1:true" 为返回值格式化非 print 通道)反向
+    实施字符串化后依实测回退。
+  - **验证**:M1-M5 六道闸门全绿(M4/M5 30 文件);全量 3248 过零新增
+    (基线 6 既有失败不变:5 cookbook 行为 + charts 环境)。

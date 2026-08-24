@@ -1,0 +1,4 @@
+// recycled from 99_bootstrap/044_eval_string
+print(1)
+print(2)
+print(3)

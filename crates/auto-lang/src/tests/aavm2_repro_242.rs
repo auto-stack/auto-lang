@@ -39,3 +39,25 @@ fn repro_242_string_pool_uaf() {
     let (_r, stdout) = run_with_capture(REPRO).expect("repro should run");
     assert_eq!(stdout.trim_end(), "(s2)\nok");
 }
+
+// Plan 432 D30: ListData<i32> 负 int 元素经 .at get 原样往返。
+// 修复前:push_tagged_value_rc 把任何负值当字符串哨兵,越界索引
+// 读回 "<invalid string index: N>"(悬垂 tag);修复后池界外负值
+// 回落为裸 i32。v2 engine.at 的负 int 偏置编码(D30)依赖本行为。
+#[test]
+fn repro_d30_negative_int_roundtrip() {
+    let program = r#"fn main() {
+    var l = List.new()
+    l.push(-1)
+    l.push(0 - 7)
+    print(l.get(0))
+    print(l.get(1))
+    var m = -100
+    var boxed = List.new()
+    boxed.push(m)
+    print(boxed.get(0))
+}
+"#;
+    let (_r, stdout) = run_with_capture(program).expect("repro should run");
+    assert_eq!(stdout.trim_end(), "-1\n-7\n-100");
+}
