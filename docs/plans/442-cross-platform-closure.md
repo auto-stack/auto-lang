@@ -285,6 +285,15 @@
 ### Phase C — 后端 AutoVM 激活（auto-musk 动作）
 
 - C1 pac.at `api` 目标切换试验（rust→vm 路径），暴露的转译缺口登记回 auto-lang。
+  - **▶ 首轮试验发现（2026-08-25，musk 会话）**：`api: "vm"` 即刻暴露结构性
+    接线缺口——AutoVM server 模式要求 `api.at` 契约（本地 `src/back/` 或
+    pac.at `back.project` 外部后端），musk 两者皆无：后端是
+    `backend/crates/musk` 的 Rust 实现（hw 轨）+ 休眠 auto-src 镜像轨
+    （musk KNOWN-DEBT 018：tools/spec_tools/orch_tools/server_serve 手工
+    同步镜像，a2r 已知漂移）。C1 剩余动作 = 给 musk 落 `back.project`/
+    api.at 契约面指向 auto-src 镜像 + 镜像轨唤醒核对（018 的"维持不激活"
+    结论需在此翻转裁定），随后才是逐缺口转译登记。pac.at 已回退 `rust`
+    （试验不落库）。
 - C2 `musk serve` 以 VM 后端起服：HTTP/SSE 契约测试（复用既有 parity 测试面）
   对照 hw 后端全绿。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
