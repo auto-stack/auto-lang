@@ -535,6 +535,7 @@ impl RustGenerator {
                     name: "Init".to_string(),
                     quoted: false,
                     payload: vec![],
+                    payload_names: vec![],
                 });
             }
             // If Init calls an API function (async init), add __InitLoaded variant
@@ -550,6 +551,7 @@ impl RustGenerator {
                     name: "Tick".to_string(),
                     quoted: false,
                     payload: vec![],
+                    payload_names: vec![],
                 });
             }
         }
@@ -5354,8 +5356,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "Inc".to_string(), quoted: false, payload: vec![] },
-                    AuraMsgVariant { name: "Dec".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },
                 ],
             }],
             view_tree: AuraNode::element("col")
@@ -5430,6 +5432,7 @@ mod tests {
                 variants: vec![AuraMsgVariant {
                     name: "SourceChanged".to_string(),
                     payload: vec![Type::StrFixed(0)],
+                    payload_names: vec![],
                     quoted: false,
                 }],
             }],
@@ -5560,8 +5563,8 @@ mod tests {
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
                 variants: vec![
-                    AuraMsgVariant { name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
-                    AuraMsgVariant { name: "CursorMoved".to_string(), payload: vec![], quoted: false },
+                    AuraMsgVariant { payload_names: vec![], name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
+                    AuraMsgVariant { payload_names: vec![], name: "CursorMoved".to_string(), payload: vec![], quoted: false },
                 ],
             }],
             view_tree: element,
@@ -5674,7 +5677,7 @@ fn main() {{}}
             ],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Inc".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -5724,7 +5727,7 @@ fn main() {{}}
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -5764,7 +5767,7 @@ fn main() {{}}
             }],
             messages: vec![AuraMessage {
                 name: "Msg".to_string(),
-                variants: vec![AuraMsgVariant { name: "Tick".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -6011,14 +6014,15 @@ fn main() {{}}
     fn test_msg_multi_param_enum_output() {
         use crate::ast::Type;
         let widget = widget_with_msg(vec![
-            AuraMsgVariant { name: "Init".to_string(), quoted: false, payload: vec![] },
-            AuraMsgVariant { name: "Complete".to_string(), quoted: false, payload: vec![Type::StrSlice, Type::Int] },
+            AuraMsgVariant { payload_names: vec![], name: "Init".to_string(), quoted: false, payload: vec![] },
+            AuraMsgVariant { payload_names: vec![], name: "Complete".to_string(), quoted: false, payload: vec![Type::StrSlice, Type::Int] },
             AuraMsgVariant {
                 name: "RunSmart".to_string(),
                 quoted: false,
                 payload: vec![Type::Int, Type::StrSlice, Type::Unknown],
+                payload_names: vec![],
             },
-            AuraMsgVariant { name: "SetTag".to_string(), quoted: false, payload: vec![Type::StrSlice] },
+            AuraMsgVariant { payload_names: vec![], name: "SetTag".to_string(), quoted: false, payload: vec![Type::StrSlice] },
         ]);
 
         let mut gen = RustGenerator::new();

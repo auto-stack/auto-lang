@@ -11687,10 +11687,24 @@ impl VueGenerator {
                     .push((tag.to_string(), key.to_string()));
                 Ok(Some(format!("v-model:{}=\"{}\"", key, slot)))
             }
-            None => Err(crate::ui_gen::GenError::InvalidStateRef(format!(
-                "model channel `{}.{}` requires a writable state slot (e.g. `.field` or `store.field`); model channels cannot be fed expressions, props, or literals",
-                tag, key
-            ))),
+            None => {
+                // Plan 443 续(435 挂账②):通道收到非可写值(字面量/表达式/
+                // props 引用)时降级为单向 prop 绑定而非硬错 —— 记录绑定使
+                // 子件侧仍把该通道编译为 defineModel(值经 prop 流入;子件
+                // 变更 emit 无人监听,天然单向),与 443 '未绑定保持 ref' 的
+                // 降级哲学互补。gallery 官方组件大量使用字面量喂通道形态。
+                self.emitted_model_bindings
+                    .push((tag.to_string(), key.to_string()));
+                self.warn(
+                    "R016",
+                    crate::ui_gen::validators::Severity::Info,
+                    format!(
+                        "model channel `{}.{}` fed a non-writable value; degraded to one-way `:{}` prop binding",
+                        tag, key, key
+                    ),
+                );
+                Ok(None) // 走普通 prop 发射路径
+            }
         }
     }
 
@@ -18384,8 +18398,18 @@ widget App {
         let mut gen2 = VueGenerator::new_shadcn()
             .with_sub_widgets(vec!["BindChild".to_string()])
             .with_sub_widget_models(models2);
-        let err = gen2.generate_sfc(&widget2).expect_err("must fail");
-        assert!(format!("{}", err).contains("requires a writable state slot"), "err: {}", err);
+        // Plan 435 挂账②:非可写值不再硬错 —— 降级为单向 prop 绑定
+        // (值流入子件 defineModel),R016 Info 告警提示非双向。
+        let sfc2 = gen2.generate_sfc(&widget2).expect("degrade, not fail");
+        assert!(
+            sfc2.contains(":value=") ,
+            "one-way :value binding should be emitted: {}",
+            sfc2
+        );
+        assert!(
+            gen2.last_validation_warnings.iter().any(|w| w.rule == "R016"),
+            "R016 advisory should be raised"
+        );
     }
 
     fn gen_sfc_with_sub_widgets(src: &str, subs: &[&str]) -> String {

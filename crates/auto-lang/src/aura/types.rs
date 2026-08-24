@@ -723,6 +723,10 @@ pub struct AuraMsgVariant {
     /// `Option<Type>`; now `Vec<Type>` to support multi-param variants like
     /// `Complete(str, int)`.
     pub payload: Vec<Type>,
+
+    /// Plan 435 挂账②:命名参数形态的名字(ast MsgVariant.payload_names 透传),
+    /// 位置形态为 None。供 P4 组件包 API 文档面使用。
+    pub payload_names: Vec<Option<String>>,
 }
 
 // ============================================================================
@@ -1128,11 +1132,13 @@ mod tests {
                     name: "Inc".to_string(),
                     quoted: false,
                     payload: vec![],
+                payload_names: vec![],
                 },
                 AuraMsgVariant {
                     name: "Set".to_string(),
                     quoted: false,
                     payload: vec![Type::Int],
+                 payload_names: vec![None],
                 },
             ],
         };
