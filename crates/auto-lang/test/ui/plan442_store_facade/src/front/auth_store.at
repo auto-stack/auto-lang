@@ -1,0 +1,34 @@
+// auth_store.at — Plan 442 A2 regression corpus (auto-musk shape).
+// StoreDecl living in its own sibling file, consumed via the legacy
+// `use store: AuthStore` facade form (module name is literally "store",
+// so module resolution can never find store.at).
+
+use auth_util: guest_label
+
+store AuthStore {
+    model {
+        var token str = ""
+        var authenticated bool = false
+        var whoami str = ""
+    }
+
+    msg Msg { Init, Login, Logout }
+
+    on {
+        .Init -> {
+            .whoami = guest_label()
+        }
+
+        .Login -> {
+            .token = "t-ok"
+            .authenticated = true
+            .whoami = "user"
+        }
+
+        .Logout -> {
+            .token = ""
+            .authenticated = false
+            .whoami = guest_label()
+        }
+    }
+}

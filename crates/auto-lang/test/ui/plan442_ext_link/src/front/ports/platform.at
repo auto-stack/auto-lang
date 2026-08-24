@@ -1,0 +1,7 @@
+// platform.at — Plan 442 A3 regression corpus: platform domain PORT.
+// The use.web clause in app.at points here; the loader picks the target
+// adapter (platform.vm.at → platform.web.at) instead of this file.
+
+// Port surface (declarations only — consumed via the adapter chain).
+fn platformInjectStyles() {}
+fn platformKind() str { return "port" }

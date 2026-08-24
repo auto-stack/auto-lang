@@ -311,6 +311,19 @@ macro_rules! for_each_native {
             (1203, NATIVE_INSTANT_NOW, shim_instant_now, "auto.time.instant_now"),
             (1204, NATIVE_INSTANT_ELAPSED, shim_instant_elapsed, "auto.time.instant_elapsed"),
 
+            // === Scheduler (1206-1207) — Plan 442 A5: one-shot timers ===
+            (1206, NATIVE_SCHED_SET_TIMEOUT, shim_sched_set_timeout, "auto.sched.set_timeout"),
+            (1207, NATIVE_SCHED_CLEAR_TIMEOUT, shim_sched_clear_timeout, "auto.sched.clear_timeout"),
+
+            // === Plan 442 B-support: web-platform globals ===
+            // url.encode (2000) completes the ID-map-only entry with a shim;
+            // localStorage bridge uses the JS shape (getItem -> None when
+            // missing) over the Plan 401 session KV store.
+            (2000, NATIVE_URL_ENCODE, shim_url_encode, "auto.url.encode"),
+            (2771, NATIVE_LOCALSTORAGE_GET_ITEM, shim_localstorage_get_item, "auto.localstorage.get_item"),
+            (2772, NATIVE_LOCALSTORAGE_SET_ITEM, shim_localstorage_set_item, "auto.localstorage.set_item"),
+            (2773, NATIVE_LOCALSTORAGE_REMOVE_ITEM, shim_localstorage_remove_item, "auto.localstorage.remove_item"),
+
             // === OnceCell (2850-2852) — Plan 240 ===
             (2850, NATIVE_ONCE_NEW, shim_once_new, "auto.cell.once_new"),
             (2851, NATIVE_ONCE_SET, shim_once_set, "auto.cell.once_set"),
@@ -951,6 +964,15 @@ macro_rules! for_each_bigvm_native {
             ("auto.time.instant_elapsed", 1204, Void),
             ("auto.time.now", 1205, String),
             ("Time.now", 1205, String),
+
+            // === Scheduler (1206-1207) — Plan 442 A5 ===
+            ("auto.sched.set_timeout", 1206, I64),
+            ("auto.sched.clear_timeout", 1207, Bool),
+
+            // === Plan 442 B-support: web-platform globals ===
+            ("auto.localstorage.get_item", 2771, String),
+            ("auto.localstorage.set_item", 2772, Void),
+            ("auto.localstorage.remove_item", 2773, Void),
 
             // === IO (1150) ===
             ("auto.io.read_line", 1150, String),
@@ -2188,6 +2210,18 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // === Time (1200-1205) ===
     ("auto.time.now", 1205),
     ("Time.now", 1205),
+
+    // === Scheduler (1206-1207) — Plan 442 A5 ===
+    ("auto.sched.set_timeout", 1206),
+    ("auto.sched.clear_timeout", 1207),
+
+    // === Plan 442 B-support: web-platform globals ===
+    ("auto.localstorage.get_item", 2771),
+    ("auto.localstorage.set_item", 2772),
+    ("auto.localstorage.remove_item", 2773),
+    ("localStorage.getItem", 2771),
+    ("localStorage.setItem", 2772),
+    ("localStorage.removeItem", 2773),
 
     // === IO (1150) ===
     ("auto.io.read_line", 1150),

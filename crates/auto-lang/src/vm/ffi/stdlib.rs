@@ -498,6 +498,21 @@ pub fn shim_storage_remove(key: String) {
     STORAGE_MAP.lock().unwrap().remove(&key);
 }
 
+// Plan 442 B-support: raw accessors behind the JS-shaped localStorage
+// bridge (native.rs shims) — getItem returns None for a missing key (musk
+// sources test `saved != None`), unlike storage.get's "" default.
+pub(crate) fn storage_raw_get(key: &str) -> Option<String> {
+    STORAGE_MAP.lock().unwrap().get(key).cloned()
+}
+
+pub(crate) fn storage_raw_set(key: String, value: String) {
+    STORAGE_MAP.lock().unwrap().insert(key, value);
+}
+
+pub(crate) fn storage_raw_remove(key: &str) {
+    STORAGE_MAP.lock().unwrap().remove(key);
+}
+
 // ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────
 // TODO: Env.path_add/prepend/remove FFI deferred — #[rust_fn] registration
 // requires BIGVM_NATIVES updates in native.rs. The shell-side env.path

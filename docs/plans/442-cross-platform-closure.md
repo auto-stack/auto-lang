@@ -1,8 +1,11 @@
 # Plan 442: 跨平台合龙——musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活
 
 > **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2 ✅✅ 双侧复核含 musk
-> 环境）+ A4/A6（✅,A4 经 musk canary 重放复核）已落地；gated 主体
-> A1–A3/A5/B/C 仍等前置全满足）
+> 环境）+ A4/A6（✅,A4 经 musk canary 重放复核）已落地；**前置门已于 2026-08-25
+> 全满足**（429–434 complete/436 ✅/musk-038 execution_done/auto-down-008 COMPLETE），
+> gated 主体开工：**Phase A 全部完成** —— A1 ✅（server 核验回填 §2）/A2 ✅（store
+> facade）/A3 ✅（ext link 平台桩）/A5 ✅（sched 定时器）,均本仓 worktree plan-442；
+> 剩余 B（musk 五域 adapter 接线）/C（后端 AutoVM 激活）为 auto-musk 侧动作）
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -45,6 +48,18 @@
 - `#[api]` server 修复状态**待核验**（pac.at 注释可能已过时——auto-lang 429-434
   前进很多）；ag 轨休眠镜像清单见 auto-musk KNOWN-DEBT 018（tools/spec_tools/
   orch_tools/server_serve，已评估收益为零、不阻塞）。
+  - **回填（2026-08-25，A1 核验完毕）**：pac.at 头注"待 #[api] server 修复"**已过
+    时**——Rust 版 VM 的 `#[api]` server 路径已完整可用：015-notes（musk pac.at
+    引用的参照结构）`auto run --server=vm` 实测起服（8 路由，`vm/ffi/http_server.rs`
+    serve_async），GET/POST/DELETE 端点均返回正确数据（Plan 312–349 修复系列 +
+    Plan 061 外部后端契约定位补遗 8b3789556 之后链路全通）。剩余缺口登记：
+    ① **AAVM v2（Auto 版引擎）无 HTTP native**——431 移植规范明确剔除（66 条
+    UI/异步 native），若"激活"要求 Auto 版引擎跑后端需另行立项，当前工具链以
+    Rust VM 为准；② KNOWN-DEBT 346/317 两条 e2e flaky（端口竞态/serve_async
+    无受控 shutdown）不阻塞激活；③ musk `src/back/api.at` 是**契约桩**（fn body
+    全 `return None`，仅用于 codegen 前端客户端 + SSE 触发），真后端逻辑在
+    `backend/crates/musk`（hw Rust + ag auto-src a2r 产物）——C1 切换试验的
+    动作面是后端**实现面**的 .at 化，体量另计。
 - auto-down Plan 008 Phase 3 的调度端口（VM adapter）与本计划缺口 B 的调度原语
   是同一能力的两个消费面。
 
@@ -52,10 +67,10 @@
 
 | 前置 | 计划 | 状态 |
 |---|---|---|
-| AAVM v2 移植 + a2r 闭环 + AA2R | auto-lang 429–434 | draft |
-| setup 相位解释器/a2r | auto-lang 436 | draft |
+| AAVM v2 移植 + a2r 闭环 + AA2R | auto-lang 429–434 | ✅ complete（全部归档） |
+| setup 相位解释器/a2r | auto-lang 436 | ✅ 完成（2026-08-23） |
 | 第三方库 Auto 版（i18n/icons/渲染切换/高亮决策） | auto-musk 038 | execution_done（2026-08-23，15/16 任务 + T2 转责本计划 P0-1；待 /auto-plan:review） |
-| 渲染库 Auto 化 + markstream 消灭 + 编辑库定版 | auto-down 008 | 草稿 |
+| 渲染库 Auto 化 + markstream 消灭 + 编辑库定版 | auto-down 008 | ✅ COMPLETE（Phase 1-4 本仓侧全毕；验收 4 musk 端到端延期至 DEBTS.md） |
 
 > **Phase 0 不受上表前置门约束**——两项均为独立可执行的修复/瘦身（来自 musk 038
 > 执行期的用户裁定），gated 主体（Phase A/B/C）仍等前置全满足。
@@ -123,9 +138,40 @@
 
 - A1 核验 #[api] server 现状：AAVM 系列产物上重放 pac.at 后端激活路径，确认修复
   或登记剩余缺口（产出回填 §2）。
+  - **✅ 已核验（2026-08-25，worktree plan-442）**：015-notes `auto run --server=vm`
+    实测全通（起服/GET/POST/DELETE，见 §2 回填）。结论 = "待修复"注释过时，VM
+    server 链路可用；剩余缺口三条已登记 §2（AAVM v2 无 HTTP native / 两条 e2e
+    flaky / musk api.at 为契约桩、C1 动作面在后端实现面）。
 - A2 store facade：VM 渲染目标引入 store 合成物概念（或显式报错指引改写），消除
   Undefined variable 警告；musk 30 widget 源作回归语料。
+  - **✅ 已落地（2026-08-25，worktree plan-442）**：根因 = musk 的 legacy 形
+    `use store: AuthStore`（模块名字面即 "store"）在 VM 装载层按 模块→`store.at`
+    文件映射失败后**静默跳过**，StoreDecl 从未收集 → store 上下文为空 →
+    handler/view 的 `store.X` 裸标识漏进 codegen 报 "Undefined variable:
+    store"。修复 = `resolve_use_module` 公共解析函数（根 use 循环 +
+    `collect_module_imports` 递归 + 测试镜像三处共用）：直接解析失败且模块为
+    "store" 时,按命名约定（`snake_case(StoreName).at`,musk 九个 store 全命中）
+    + 有界目录扫描（跳过 gen/node_modules 等,400 文件上限）定位 StoreDecl 文件,
+    走既有 `collect_module_imports` → import_stmts StoreDecl → view-less child
+    WidgetDecl 转换管道（Plan 370 机制）,含 legacy+unified 混用去重。回归语料
+    `test/ui/plan442_store_facade/`（musk 形态：`store.Init()` 跨 widget 调用 +
+    无点 `store.authenticated` view 引用 + store 文件自身 `use` 依赖）×3 测试,
+    negativity 验证（禁用 fallback 即 3 FAILED）+ plan370 全组 18 绿。
 - A3 ext link：TS ext 依赖在 VM 目标的显式 link 错误改为可配置跳过/挂平台桩。
+  - **✅ 已落地（2026-08-25，worktree plan-442）**：根因 = VM 装载层对
+    `Stmt::UseWeb` 完全无处理（scanner 走通用路径产出垃圾模块名 → 解析失败静默
+    跳过）,纯 Auto 符号（`use.web platformInjectStyles from "…/platform.at"`）
+    无定义,handler 调用留下未解析 CALL reloc → 整个 VmBridge link 失败
+    （"Undefined symbol"）。修复 = `ui/ext_stubs.rs` + 生产公共函数
+    `load_ext_imports_for_vm`：① `.at` ext 源经**端口 adapter 链**装载
+    （`X.at → X.vm.at → X.web.at`,镜像 auto-man resolve_at_adapter 门控;项目根
+    相对路径向上探三级）,adapter 纯 Auto fn 成真实符号（按文件 stem 限定名 +
+    import_aliases 对齐调用点 reloc）,adapter 自身嵌套 use.web 递归收集;② 其余
+    ext 符号（TS/npm 源）默认挂**平台桩**——按调用点扫描推断元数合成 no-op fn
+    （VM RET 以 `bp - n_args` 展开,元数失配会坏调用者帧,必须精确）,warn 日志
+    逐条可见,`AUTO_VM_EXT_STUBS=0` 恢复严格硬错。语料
+    `test/ui/plan442_ext_link/`（port + web adapter + 嵌套 TS 依赖 + 直连 TS
+    composable）×3 测试,negativity 验证通过。
 - A4 svg 节点能力：按 musk 038 T9 canary 结论决定（语言层支持 / 挂账）。
   - **✅ 已落地（worktree plan-442：vue 轨原生直通 + 静态属性 / VM 轨 svgdoc
     文档渲染）+ ✅ musk 侧 canary 重放通过（2026-08-23,musk 会话）**：T9 同型
@@ -143,6 +189,21 @@
     text 子元素未支持（与 DSL text→span 冲突）。**musk 侧 T9 canary 重放 +
     icons 域解除条件验证待 auto-musk**。
 - A5 调度/定时器原语：按 musk 038 T16 与 auto-down 008 Phase 3 的需求面定接口。
+  - **✅ 已落地（2026-08-25，worktree plan-442）**：需求面收敛 = auto-down 008
+    Phase 3 的 `SchedulerTimer`（单发可取消延迟回调,16ms 批节奏;DSL 已有
+    `.Tick` interval,缺 one-shot）。接口定案 = `sched.set_timeout(callback,
+    delay_ms) -> id` + `sched.clear_timeout(id) -> bool`（stdlib 三件套之
+    sched.at/sched.vm.at;a2r 侧 rs.at 挂账待 B4 消费面明确后补）。实现：
+    AutoVM 新增 `timers` DashMap 注册表（set_timer/clear_timer/due_timers/
+    has_pending_timers,一次性语义 = 到期即取出）;native shim
+    `auto.sched.set_timeout`(1206)/`auto.sched.clear_timeout`(1207) 接受
+    **闭包值**（Int closure_id,满足 SchedulerTimer `setTimeout(fn,ms)` 契约;
+    仅 by-value 捕获——by-ref 捕获读创建者已亡帧）或**事件名字符串**（走
+    handler 派发,`.Tick` 相邻形态）;派发 = iced 渲染循环 `__timer_tick`
+    subscription（16ms,**仅在有 pending timer 时订阅**,镜像 __toast_tick 门控）
+    → `DynamicComponent::poll_timers`（事件→call_handler/闭包→call_closure,
+    出错 warn 不致命）。回归 `test/ui/plan442_sched/` ×3（事件形式状态可观察/
+    闭包形式计数可观察/clear_timeout 取消后永不触发）。
 - A6 只读高亮渲染原语（musk 038 T16 决策 (a) 的落地需求）：041 code_editor 的
   highlight.rs（syntect 5 + two-face 0.4 内核）暴露 highlight-only API 或
   code_editor 只读模式——消费面 = VM 渲染目标的 markdown code_block 只读渲染
@@ -157,8 +218,37 @@
 
 ### Phase B — 五域端口接线（auto-musk 动作，auto-lang 机制配合）
 
+> **B 前置探针（2026-08-25，worktree plan-442）**：musk 53 文件全量语料经
+> VM 渲染装载器 headless 探针实测——**全量走完 parse + codegen 直达 link
+> 阶段**（A2/A3 修复在真实语料生效：九个 store 的 handler 均在编译,
+> workspace_helpers 等 .at ext 源经 adapter 链装载）。据此本仓落地四项
+> B 配合机制（详见下列 ✅）并产出剩余阻塞清单（auto-musk 侧动作）：
+> ① `let` 重赋值 ×6（visual_store 的 initial/is_dark、workspace_helpers
+> 的 has_sep/chosen、specs_helpers 的 max_num、settings_forge_helpers 的
+> mode）——vue 轨语义宽松未暴露,VM 按语言语义正确报错,musk 源改 `var`
+> （specs_helpers 未修 = 当前 link 致命阻塞的唯一残因）;
+> ② `dom.focus_first/click_first`（app.at GlobalKeydown）与
+> `location.reload()`（workspace_selector）浏览器全局直呼——归
+> platform.vm.at adapter 桩;③ `self` 裸标识（specs_view SaveEditItem）
+> ——musk 源修;④ 五域 `.vm.at` adapter 本体（web 侧均为 re-export 壳,
+> i18n.at/icons_data.at 已是纯 .at 资产可直接直绑）。
+
+- **✅ B 配合（auto-lang 侧,2026-08-25,worktree plan-442）——web 平台
+  全局桥 ×4**：① `localStorage.getItem/setItem/removeItem` → Plan 401
+  会话 KV 存储（getItem 缺失返回 None,对齐 musk `saved != None` 判定,
+  native 2771-2773 + codegen localStorage 模块路由）;② `encodeURIComponent`
+  bare 全局 → `auto.url.encode`（urlencoding crate,补齐 ID-map-only 的
+  2000 条目缺 shim 绑定;此前是 musk 探针的 link 致命阻塞）;③ 子模块
+  文件顶层 `use.web`（如 specs_view.at 引 specs_helpers.at）此前只在根
+  AST 收集被漏——`load_ext_imports_for_vm` 对 visited 全部已装载模块做
+  UseWeb 扫掠;④ adapter 别名配对修复（按 (adapter, symbols) 配对而非
+  "任一 .at import",防符号误归属错误 adapter 限定名）。回归
+  `test/ui/plan442_webcompat/` ×2（localStorage 往返+None 语义/
+  encodeURIComponent JS 对齐）。
 - B1 platform 域：`ports/platform.rust.at`（inject_styles 空实现/去化、
   setup_auth_fetch→rust fetch 注入、relay_command_runner rust 版）+ 构建双目标验证。
+  （VM 轨：`ports/platform.vm.at`——dom/location 桩 + localStorage 已由
+  本仓全局桥承接。）
 - B2 composables 域：`ports/composables.rust.at`（useT→auto-i18n 直绑、gate_router
   rust 版）——依赖 musk 038 Phase 1 产物。
 - B3 icons 域：`ports/icons.rust.at`（auto-icons 数据层直绑；渲染层依 A4 结论）。

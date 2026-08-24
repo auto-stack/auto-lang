@@ -31,6 +31,9 @@ pub mod style;
 pub mod debug;
 pub mod vm_bridge;
 pub mod handler_codegen;
+// Plan 442 A3: web-ecosystem ext imports on the VM render target
+// (adapter-chain loading + platform stubs).
+pub mod ext_stubs;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod mcp_types;

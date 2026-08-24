@@ -2366,6 +2366,274 @@ fn resolve_module_path(
     None
 }
 
+/// Plan 442 A2: outcome of resolving one `use` statement's module in the
+/// VM-render loader.
+pub(crate) enum UseModuleResolution {
+    /// Direct module file (`{module}.at` / `{module}/mod.at`).
+    Module(std::path::PathBuf),
+    /// Legacy `use store: X` facade — resolved StoreDecl files by store name.
+    StoreFiles(std::collections::HashMap<String, std::path::PathBuf>),
+    /// Nothing resolvable.
+    None,
+}
+
+/// Resolve a use statement's module for the VM-render loader: direct module
+/// path first; on failure, the legacy store facade (`use store: X` — module
+/// name is literally "store", StoreDecls live in sibling files). Shared by
+/// the root use loop, the `collect_module_imports` recursion, and the
+/// plan370/plan442 test support so tests exercise the production logic.
+pub(crate) fn resolve_use_module(
+    base_dir: &std::path::Path,
+    use_stmt: &crate::use_scanner::UseStatement,
+) -> UseModuleResolution {
+    if let Some(p) = resolve_module_path(base_dir, &use_stmt.module) {
+        return UseModuleResolution::Module(p);
+    }
+    if use_stmt.module == "store" && !use_stmt.items.is_empty() {
+        return UseModuleResolution::StoreFiles(find_store_decl_files(base_dir, &use_stmt.items));
+    }
+    UseModuleResolution::None
+}
+
+/// Plan 442 A3 (ext link): load `use.web` ext imports for the VM render
+/// target. Previously UseWeb was ignored entirely — pure-Auto helpers
+/// imported via `use.web X from "…/port.at"` never got a definition, and any
+/// handler calling them left an unresolved CALL reloc that killed the whole
+/// VmBridge link ("Undefined symbol"). This function:
+///   1. loads `.at` ext sources through the port-adapter chain
+///      (X.at → X.vm.at → X.web.at) — their pure-Auto fns become real module
+///      symbols, aliased to the adapter module's qualified name (mirroring
+///      how scanner-resolved use imports alias their items);
+///   2. synthesizes no-op platform stubs for remaining ext symbols (TS/npm
+///      sources) with the arity observed at call sites — unless
+///      `AUTO_VM_EXT_STUBS=0` restores the strict hard-link-error behavior.
+/// Shared with the plan370/plan442 test support so tests exercise the
+/// production logic.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn load_ext_imports_for_vm(
+    base_dir: &std::path::Path,
+    ast: &crate::ast::Code,
+    root_decl: &crate::ast::ui::WidgetDecl,
+    all_child_decls: &[crate::ast::ui::WidgetDecl],
+    visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    import_stmts: &mut Vec<crate::ast::Stmt>,
+    seen_symbols: &mut std::collections::HashSet<String>,
+    import_session: &mut crate::compile::CompileSession,
+    override_scenario: Option<&crate::session::CompilerSession>,
+    import_aliases: &mut std::collections::HashMap<String, String>,
+) {
+    let mut ext_imports = crate::ui::ext_stubs::collect_useweb_imports(&ast.stmts);
+    ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
+        std::slice::from_ref(root_decl),
+    ));
+    ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(all_child_decls));
+    // Plan 442 B-support: child modules' own top-level `use.web` (e.g.
+    // specs_view.at's `use.web spec_next_id from ".../specs_helpers.at"`) —
+    // the root-AST walk above misses them; sweep every loaded module file.
+    for path in visited.iter() {
+        if let Ok(code) = std::fs::read_to_string(path) {
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            if let Ok(mod_ast) = parser.parse() {
+                ext_imports
+                    .extend(crate::ui::ext_stubs::collect_useweb_imports(&mod_ast.stmts));
+            }
+        }
+    }
+    if ext_imports.is_empty() {
+        return;
+    }
+    let (loaded_adapters, nested) = crate::ui::ext_stubs::load_at_ext_imports(
+        base_dir,
+        &ext_imports,
+        &mut |adapter_path| {
+            collect_module_imports(
+                adapter_path,
+                visited,
+                import_stmts,
+                seen_symbols,
+                import_session,
+                override_scenario,
+            );
+        },
+    );
+    // Alias each adapter-loaded symbol to ITS adapter's module-qualified
+    // name (collect_module_imports renames adapter fns by file stem) so call
+    // sites emit resolvable qualified relocs. Pairs come from the loader —
+    // aliasing by file, not by "any .at import" (which would mis-attribute
+    // symbols to the wrong adapter).
+    for (adapter, symbols) in &loaded_adapters {
+        let qualifier = adapter
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("ext");
+        for sym in symbols {
+            import_aliases
+                .entry(sym.clone())
+                .or_insert_with(|| format!("{}.{}", qualifier, sym));
+        }
+    }
+    ext_imports.extend(nested);
+
+    if !crate::ui::ext_stubs::ext_stubs_enabled() {
+        return;
+    }
+    // Symbols already defined (adapter fns, root/imported fns — qualified or
+    // plain) must not be stubbed.
+    let mut defined: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for stmt in import_stmts.iter() {
+        if let crate::ast::Stmt::Fn(f) = stmt {
+            defined.insert(f.name.to_string());
+            if let Some(pos) = f.name.as_str().rfind('.') {
+                defined.insert(f.name.as_str()[pos + 1..].to_string());
+            }
+        }
+    }
+    let mut targets = std::collections::HashSet::new();
+    for imp in &ext_imports {
+        for sym in &imp.symbols {
+            if !defined.contains(sym) {
+                targets.insert(sym.clone());
+            }
+        }
+    }
+    if targets.is_empty() {
+        return;
+    }
+    let mut arities = std::collections::HashMap::new();
+    crate::ui::ext_stubs::scan_call_arities(&ast.stmts, &targets, &mut arities);
+    crate::ui::ext_stubs::scan_call_arities(import_stmts, &targets, &mut arities);
+    crate::ui::ext_stubs::scan_decl_arities(all_child_decls, &targets, &mut arities);
+    let mut names: Vec<&String> = targets.iter().collect();
+    names.sort();
+    for name in names {
+        let arity = arities.get(name).copied().unwrap_or(0);
+        log::warn!(
+            "ext stub: `{}` has no VM-target implementation (web-ecosystem source) — no-op platform stub, arity {}",
+            name,
+            arity
+        );
+        import_stmts.push(crate::ui::ext_stubs::synthesize_stub_fn(name, arity));
+    }
+}
+
+/// PascalCase → snake_case (compact local variant of ui_gen::api's helper;
+/// `AuthStore` → `auth_store`, `AgentConfigs` → `agent_configs`).
+fn store_name_snake(name: &str) -> String {
+    let mut out = String::new();
+    let chars: Vec<char> = name.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                let prev = chars[i - 1];
+                let next_lower = chars.get(i + 1).map_or(false, |n| n.is_ascii_lowercase());
+                if prev.is_ascii_lowercase() || prev.is_ascii_digit() || next_lower {
+                    out.push('_');
+                }
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Plan 442 A2 (store facade): the legacy `use store: Name` form uses the
+/// literal module name "store", which never maps to a `store.at` file — the
+/// StoreDecl lives in a sibling file named after the store (musk convention:
+/// `AuthStore` → `auth_store.at`, `AgentConfigs` → `agent_configs.at`).
+/// Locate those files by naming convention first, then a bounded recursive
+/// scan of the source dir (parsing each .at and matching StoreDecl names).
+/// Returns store name → file path for every name that resolves.
+pub(crate) fn find_store_decl_files(
+    base_dir: &std::path::Path,
+    names: &[String],
+) -> std::collections::HashMap<String, std::path::PathBuf> {
+    use std::collections::HashMap;
+    let mut found: HashMap<String, std::path::PathBuf> = HashMap::new();
+    let mut missing: Vec<&String> = Vec::new();
+    // Convention probe: snake_case(Name).at (covers musk's nine stores) and
+    // the `_store` suffix variant (for stores whose decl name has no Store
+    // suffix, e.g. `store Notes` in notes_store.at).
+    for name in names {
+        let snake = store_name_snake(name);
+        let mut hit = None;
+        for cand in [format!("{}.at", snake), format!("{}_store.at", snake.trim_end_matches("_store"))] {
+            let p = base_dir.join(&cand);
+            if p.exists() {
+                hit = Some(p);
+                break;
+            }
+        }
+        match hit {
+            Some(p) => {
+                found.insert(name.clone(), p);
+            }
+            None => missing.push(name),
+        }
+    }
+    if missing.is_empty() {
+        return found;
+    }
+    // Bounded scan fallback: walk the source dir (and its parent, mirroring
+    // resolve_module_path's sibling layout) for .at files declaring the
+    // missing stores. Heavy dirs (gen output / node_modules / build caches)
+    // are skipped; the walk is capped so a stray huge tree cannot stall the
+    // loader.
+    let mut budget = 400usize;
+    let mut scan = |root: &std::path::Path,
+                    found: &mut HashMap<String, std::path::PathBuf>,
+                    missing: &[&String]| {
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let path = entry.path();
+                let fname = entry.file_name();
+                let fname = fname.to_string_lossy();
+                if path.is_dir() {
+                    if matches!(
+                        fname.as_ref(),
+                        "gen" | "node_modules" | "target" | "dist" | ".git" | "build"
+                    ) {
+                        continue;
+                    }
+                    stack.push(path);
+                } else if fname.ends_with(".at") && budget > 0 {
+                    budget -= 1;
+                    let Ok(code) = std::fs::read_to_string(&path) else { continue };
+                    let session = crate::session::CompilerSession::ui();
+                    let mut parser = Parser::from(code.as_str()).with_session(session);
+                    let Ok(ast) = parser.parse() else { continue };
+                    for stmt in &ast.stmts {
+                        if let crate::ast::Stmt::StoreDecl(sd) = stmt {
+                            let n = sd.name.as_str().to_string();
+                            if missing.iter().any(|m| *m == &n) && !found.contains_key(&n) {
+                                found.insert(n, path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    scan(base_dir, &mut found, &missing);
+    let still: Vec<&String> = missing
+        .iter()
+        .filter(|m| !found.contains_key(m.as_str()))
+        .copied()
+        .collect();
+    if !still.is_empty() {
+        if let Some(parent) = base_dir.parent() {
+            scan(parent, &mut found, &still);
+        }
+    }
+    found
+}
+
 /// Recursively collect ALL declarations (Fn/TypeDecl/EnumDecl/Ext/Store/Use)
 /// from a module and its transitive `use` dependencies, for VM-render
 /// compilation.
@@ -2529,8 +2797,21 @@ fn collect_module_imports(
         if dep.is_c_import || dep.is_rust_import {
             continue;
         }
-        if let Some(dep_path) = resolve_module_path(module_dir, &dep.module) {
-            collect_module_imports(&dep_path, visited, out, seen, session, override_scenario);
+        match resolve_use_module(module_dir, &dep) {
+            UseModuleResolution::Module(dep_path) => {
+                collect_module_imports(&dep_path, visited, out, seen, session, override_scenario);
+            }
+            UseModuleResolution::StoreFiles(found) => {
+                // Plan 442 A2: transitive `use store: X` (legacy facade form) —
+                // module name never maps to store.at; locate the StoreDecl's file
+                // by convention/scan so the store (and its own `use` deps)
+                // compile into the VM module. Without this, a child widget's
+                // store stays uncollected and its handlers fail at link time.
+                for (_, path) in found {
+                    collect_module_imports(&path, visited, out, seen, session, override_scenario);
+                }
+            }
+            UseModuleResolution::None => {}
         }
     }
 }
@@ -2712,9 +2993,46 @@ fn run_file_dynamic_ui_inner(
             // filesystem path: `back.api` → `back/api.at`, `calendar_util` →
             // `calendar_util.at`. Per the module rules (CLAUDE.md) a module is
             // either `{path}.at` or `{path}/mod.at`; try both.
-            let module_path = resolve_module_path(base_dir, &use_stmt.module);
-            let Some(module_path) = module_path else {
-                continue;
+            let module_path = match resolve_use_module(base_dir, use_stmt) {
+                UseModuleResolution::Module(p) => p,
+                UseModuleResolution::StoreFiles(found) => {
+                    // Plan 442 A2 (store facade): legacy `use store: Name` uses
+                    // the literal module name "store" — no store.at exists; the
+                    // StoreDecl lives in a sibling file named after the store.
+                    // Feed each located file through collect_module_imports so
+                    // the store's decl (→ view-less child WidgetDecl via the
+                    // import conversion below) and its own `use` deps compile
+                    // into the VM module. Without this the store context stays
+                    // empty and handlers/views referencing `store.X` fail with
+                    // "Undefined variable: store" (musk KNOWN-DEBT 028 ③).
+                    for (name, path) in &found {
+                        log::info!(
+                            "store facade: `use store: {}` resolved to {}",
+                            name,
+                            path.display()
+                        );
+                        collect_module_imports(
+                            path,
+                            &mut visited,
+                            &mut import_stmts,
+                            &mut seen_symbols,
+                            &mut import_session,
+                            override_scenario,
+                        );
+                    }
+                    for name in &use_stmt.items {
+                        if !found.contains_key(name) {
+                            log::warn!(
+                                "store facade: `use store: {}` — no StoreDecl file found under {} (looked for {}.at)",
+                                name,
+                                base_dir.display(),
+                                store_name_snake(name)
+                            );
+                        }
+                    }
+                    continue;
+                }
+                UseModuleResolution::None => continue,
             };
 
             // Register child widgets declared directly in this top-level module
@@ -2979,6 +3297,15 @@ fn run_file_dynamic_ui_inner(
     }
     // Merge store-as-child decls with actual child widget decls
     let mut all_child_decls = child_decls.clone();
+    // Plan 442 A2: also dedup against child decls — a store can reach
+    // child_decls directly (unified-form module branch above) AND via
+    // import_stmts (legacy store-facade fallback); compiling the same
+    // StoreDecl twice would collide in the single VM module.
+    let child_decl_names: std::collections::HashSet<String> = all_child_decls
+        .iter()
+        .map(|d| d.name.to_string())
+        .collect();
+    store_as_child_decls.retain(|d| !child_decl_names.contains(&d.name.to_string()));
     all_child_decls.extend(store_as_child_decls);
 
     // Plan 403: collect the root module's own top-level fn/type/enum
@@ -2992,6 +3319,26 @@ fn run_file_dynamic_ui_inner(
             }
             _ => {}
         }
+    }
+
+    // Plan 442 A3 (ext link): `use.web` ext imports on the VM render target
+    // (adapter-chain loading + platform stubs). See load_ext_imports_for_vm.
+    if let Some(file_path) = path {
+        let base_dir = std::path::Path::new(file_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        load_ext_imports_for_vm(
+            base_dir,
+            &ast,
+            &root_decl,
+            &all_child_decls,
+            &mut visited,
+            &mut import_stmts,
+            &mut seen_symbols,
+            &mut import_session,
+            override_scenario,
+            &mut import_aliases,
+        );
     }
 
     // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
@@ -5172,6 +5519,23 @@ mod plan370_test_support;
 
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan370_store_vm_tests;
+
+// Plan 442 A2: legacy `use store: X` facade regression corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_store_facade_tests;
+
+// Plan 442 A3: `use.web` ext link regression corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_ext_link_tests;
+
+// Plan 442 A5: one-shot scheduler primitives regression corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_sched_tests;
+
+// Plan 442 B-support: web-platform global bridges regression corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_webcompat_tests;
+
 
 #[cfg(test)]
 mod plan367_viewfn_tests;

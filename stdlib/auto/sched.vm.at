@@ -1,0 +1,12 @@
+/// VM function declarations for Sched operations (Plan 442 A5)
+/// These are implemented in Rust in crates/auto-lang/src/vm/native.rs
+
+/// Schedule a one-shot timer: the callback is a closure value (Int closure
+/// id on the VM stack) or an event-name string; fires on the render loop's
+/// timer tick (non-blocking — unlike time.sleep_ms nothing stalls).
+#[vm]
+fn set_timeout(callback fn(), delay_ms int) int
+
+/// Cancel a pending one-shot timer.
+#[vm]
+fn clear_timeout(timer_id int) bool

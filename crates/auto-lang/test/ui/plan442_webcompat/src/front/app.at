@@ -1,0 +1,50 @@
+// app.at — Plan 442 B-support regression corpus: web-platform globals on
+// the VM render target. musk sources call the browser's localStorage /
+// encodeURIComponent directly; the VM bridges them (localStorage.* over the
+// Plan 401 session KV store with getItem→None-on-miss semantics;
+// encodeURIComponent → percent-encoding native) so the same source runs in
+// both render modes.
+
+widget App {
+    msg Msg { Init, Save, Load, Drop, Url }
+
+    model {
+        var token str = ""
+        var restored bool = false
+        var url str = ""
+    }
+
+    on {
+        .Init -> {
+            let saved = localStorage.getItem("musk_probe_key")
+            if saved != None {
+                .restored = true
+            }
+        }
+
+        .Save -> {
+            localStorage.setItem("musk_probe_key", "t-ok")
+        }
+
+        .Load -> {
+            let saved = localStorage.getItem("musk_probe_key")
+            if saved != None {
+                .token = saved
+            }
+        }
+
+        .Drop -> {
+            localStorage.removeItem("musk_probe_key")
+        }
+
+        .Url -> {
+            .url = "/api/chats/session/" + encodeURIComponent("id 42/+") + "/stream"
+        }
+    }
+
+    view {
+        col {
+            text "webcompat corpus"
+        }
+    }
+}

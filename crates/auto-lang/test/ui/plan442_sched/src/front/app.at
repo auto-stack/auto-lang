@@ -1,0 +1,39 @@
+// app.at — Plan 442 A5 regression corpus: one-shot scheduler primitives
+// (set_timeout/clear_timeout) on the VM render target. Timers fire via
+// DynamicComponent::poll_timers (the iced loop's __timer_tick arm in
+// production; called directly in tests).
+
+widget App {
+    msg Msg { Init, Schedule, Cancel, Fired }
+
+    model {
+        var ticks int = 0
+        var cancelled bool = false
+        var pending int = -1
+    }
+
+    on {
+        .Init -> {
+            .pending = sched.set_timeout("Fired", 20)
+        }
+
+        .Schedule -> {
+            let t = sched.set_timeout(() => {}, 20)
+            .pending = t
+        }
+
+        .Cancel -> {
+            .cancelled = sched.clear_timeout(.pending)
+        }
+
+        .Fired -> {
+            .ticks = .ticks + 1
+        }
+    }
+
+    view {
+        col {
+            text "scheduler corpus"
+        }
+    }
+}

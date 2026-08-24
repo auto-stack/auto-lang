@@ -5974,6 +5974,19 @@ fn compare_pngs(
             return iced::Task::none();
         }
 
+        // Plan 442 A5: one-shot timer tick — fire every due set_timeout
+        // callback (event form → handler dispatch; closure form →
+        // call_closure). Marks the view dirty only when something fired;
+        // the subscription itself only exists while timers are pending
+        // (16ms cadence, matching the auto-down SchedulerTimer batch rate).
+        if msg.event == "__timer_tick" {
+            let fired = state.component.poll_timers();
+            if fired > 0 {
+                *state.view_dirty.borrow_mut() = true;
+            }
+            return iced::Task::none();
+        }
+
         // Plan 409 §10 续 19: preview-card 的 toggle/tab(局部 UI state,存 DynamicComponent)。
         if msg.event.starts_with("__preview_toggle")
             || msg.event.starts_with("__preview_tab")
@@ -7672,6 +7685,19 @@ fn compare_pngs(
                         IcedMessage {
                             widget: String::new(),
                             event: "__toast_tick".to_string(),
+                            input_value: None,
+                        }
+                    }),
+                );
+            }
+            // Plan 442 A5: one-shot timer tick — only while set_timeout timers
+            // are pending; due callbacks fire in update's __timer_tick arm.
+            if _state.component.has_pending_timers() {
+                subs.push(
+                    iced::time::every(std::time::Duration::from_millis(16)).map(|_| {
+                        IcedMessage {
+                            widget: String::new(),
+                            event: "__timer_tick".to_string(),
                             input_value: None,
                         }
                     }),

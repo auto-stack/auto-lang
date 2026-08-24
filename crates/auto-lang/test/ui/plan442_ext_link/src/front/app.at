@@ -1,0 +1,39 @@
+// app.at — Plan 442 A3 regression corpus: `use.web` ext imports on the VM
+// render target (mirrors auto-musk's app.at shape). Before the fix, both
+// imports were silently dropped and the .Init handler's call to
+// platformInjectStyles() killed the whole VmBridge link with
+// "Undefined symbol: platformInjectStyles".
+
+use.web platformInjectStyles, platformKind from "src/front/ports/platform.at"
+use.web useT from "src/front/composables.ts"
+
+widget App {
+    msg Msg { Init, Refresh }
+
+    model {
+        var adapter str = "none"
+        var styled bool = false
+    }
+
+    on {
+        .Init -> {
+            platformInjectStyles()
+            .adapter = platformKind()
+            .styled = true
+        }
+
+        .Refresh -> {
+            let t = useT()
+            .adapter = "refreshed"
+        }
+    }
+
+    view {
+        col {
+            text adapter
+            if styled {
+                text "styled"
+            }
+        }
+    }
+}
