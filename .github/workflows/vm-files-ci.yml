@@ -1,0 +1,66 @@
+name: VM file tests (test-vm-files)
+
+# 430 复审补网(2026-08-25):aavm2 六道闸门(M1 lexer/M2 AST/M3 .type/M4 字节码/
+# M5 行为/主里程碑)与 vm 文件级 golden 全部挂在 `test-vm-files` cargo feature 后,
+# 默认 `cargo test` 与其余 CI workflow 均不执行——"六道闸门全绿"此前完全依赖
+# 本地手动 `--features test-vm-files`。本 workflow 把这层守护接入 CI。
+#
+# 分层策略:
+#   - gates / goldens / ffi_dual / conformance:必须绿(确定性 golden 级断言);
+#   - cookbook:非阻断(continue-on-error)——其中 4-5 例为环境相关的既有失败
+#     (本地 Windows 与 CI ubuntu 均有波动),先收集信号不动基线;
+#   - nightly 工具链供 ffi_dual_013 的方法 shim 包管线真实执行
+#     (缺失时该用例自身会优雅跳过)。
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'crates/auto-lang/**'
+      - 'auto/lib/**'
+      - 'crates/auto-cache/**'
+      - 'crates/shim-metadata/**'
+      - '.github/workflows/vm-files-ci.yml'
+  pull_request:
+    paths:
+      - 'crates/auto-lang/**'
+      - 'auto/lib/**'
+      - 'crates/auto-cache/**'
+      - 'crates/shim-metadata/**'
+      - '.github/workflows/vm-files-ci.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  vm-files:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+
+      - name: aavm2 six gates (M1-M5 + milestone + compile corpus)
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          test_aavm2 --include-ignored --test-threads=1
+
+      - name: VM goldens + ffi_dual (incl. 014 std generated segment)
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          vm_file_tests ffi_dual --test-threads=1
+
+      - name: Conformance goldens
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          conformance_tests --test-threads=1
+
+      # 非阻断:收集 ubuntu 侧 cookbook 信号(既有环境相关失败不动基线)
+      - name: Cookbook VM (non-blocking signal)
+        continue-on-error: true
+        run: >
+          cargo test -p auto-lang --lib --features test-vm-files --
+          cookbook_vm_tests --test-threads=1
