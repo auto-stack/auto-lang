@@ -1,0 +1,19 @@
+/// Sched module — one-shot scheduler primitives (Plan 442 A5)
+///
+/// The render-loop timer port: `set_timeout(callback, delay_ms)` schedules a
+/// single delayed callback and returns a handle; `clear_timeout(handle)`
+/// cancels it. This is the Auto surface of the auto-down SchedulerTimer
+/// contract (`setTimeout(fn, ms)` / `clearTimeout(handle)` — batch/typewriter
+/// streaming cadence); the callback fires on the render loop's timer tick,
+/// so unlike `time.sleep_ms` nothing blocks the engine thread.
+///
+/// The callback takes two forms:
+/// - a closure value (by-value captures only): `set_timeout(() => { ... }, 16)`
+/// - a widget event-name string: `set_timeout("Refresh", 16)` (dispatched
+///   like any UI event — the `.Tick`-adjacent form for handler bodies).
+
+/// Schedule a one-shot timer; returns the timer id handle.
+pub fn set_timeout(callback fn(), delay_ms int) int;
+
+/// Cancel a pending one-shot timer; returns whether a timer was removed.
+pub fn clear_timeout(timer_id int) bool;

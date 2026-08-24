@@ -499,6 +499,23 @@ impl DynamicComponent {
         self.tick_interval
     }
 
+    /// Plan 442 A5: fire due one-shot timers (set_timeout). Called from the
+    /// iced render loop's `__timer_tick` update arm; marks the view dirty
+    /// when anything fired. Returns the number of callbacks fired.
+    pub fn poll_timers(&mut self) -> usize {
+        let fired = self.bridge.poll_timers();
+        if fired > 0 {
+            self.dirty = true;
+        }
+        fired
+    }
+
+    /// Plan 442 A5: whether any one-shot timer is pending — gates the render
+    /// loop's timer-tick subscription (no timers → no polling overhead).
+    pub fn has_pending_timers(&self) -> bool {
+        self.bridge.has_pending_timers()
+    }
+
     /// Find the source span for a specific element by kind and occurrence index.
     /// Traverses the AuraNode tree in DFS order, counting Element nodes by tag name.
     /// Returns the span of the `target_index`-th occurrence of `target_kind`.

@@ -5393,7 +5393,7 @@ impl Codegen {
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage")
+                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched")
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -7420,6 +7420,11 @@ impl Codegen {
                             ("time", "now_sec") => Some("auto.time.now_sec".to_string()),
                             ("time", "sleep_ms") => Some("auto.time.sleep_ms".to_string()),
                             ("time", "now") => Some("auto.time.now".to_string()),
+                            // Plan 442 A5: one-shot scheduler primitives
+                            // (set_timeout/clear_timeout; callback = closure or
+                            // event-name string, fires on the render tick).
+                            ("sched", "set_timeout") => Some("auto.sched.set_timeout".to_string()),
+                            ("sched", "clear_timeout") => Some("auto.sched.clear_timeout".to_string()),
                             ("io", "read_line") => Some("auto.io.read_line".to_string()),
                             ("io", "say") => Some("auto.print_str".to_string()),
                             ("process", "args") => Some("auto.process.args".to_string()),

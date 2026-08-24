@@ -1009,6 +1009,45 @@ impl VmBridge {
             .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
     }
 
+    /// Plan 442 A5: fire every due one-shot timer (set_timeout). Event-form
+    /// callbacks dispatch like a UI event on the root widget; closure-form
+    /// callbacks run via call_closure on a fresh task (by-value captures only
+    /// — by-reference captures read the long-gone creator frame). Returns
+    /// the number of callbacks fired; errors are logged, not fatal (a bad
+    /// timer must not take down the render loop).
+    pub fn poll_timers(&mut self) -> usize {
+        let due = self.vm.due_timers();
+        let mut fired = 0usize;
+        for (_id, callback) in due {
+            let result = match callback {
+                crate::vm::engine::TimerCallback::Event(event) => {
+                    self.call_handler(&event, &[])
+                }
+                crate::vm::engine::TimerCallback::Closure(closure_id) => {
+                    let mut task = AutoTask::new(0, 4096, 0);
+                    // call_closure pops closure_id + arg_count args off the stack.
+                    task.ram.push_i32(closure_id as i32);
+                    self.vm
+                        .call_closure(&mut task, closure_id, 0)
+                        .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+                }
+            };
+            match result {
+                Ok(()) => fired += 1,
+                Err(e) => {
+                    log::warn!("timer callback failed: {:?}", e);
+                }
+            }
+        }
+        fired
+    }
+
+    /// Plan 442 A5: whether any one-shot timer is pending (the iced render
+    /// loop gates its timer-tick subscription on this).
+    pub fn has_pending_timers(&self) -> bool {
+        self.vm.has_pending_timers()
+    }
+
     /// Legacy call_handler — calls handler on the ROOT widget (widget_name
     /// defaults to this bridge's widget name). Uses self.state_obj_id.
     pub fn call_handler(&mut self, event_name: &str, args: &[Value]) -> Result<()> {

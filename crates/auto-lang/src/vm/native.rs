@@ -7194,6 +7194,56 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     Ok(())
 }
 
+// ============================================================================
+// Plan 442 A5: one-shot scheduler primitives (set_timeout / clear_timeout)
+// ============================================================================
+
+/// `sched.set_timeout(callback, delay_ms) -> timer_id`
+/// Stack: callback, delay_ms -> timer_id.
+/// The callback is either a closure value (Int closure id — the CLOSURE
+/// opcode pushes exactly that) or a widget event-name string; the timer
+/// fires on the render loop's timer tick, so unlike `Time.sleep_ms` nothing
+/// stalls the engine thread.
+pub fn shim_sched_set_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let delay_ms = crate::vm::native::pop_arg_i32(task) as u64;
+        let cb_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_cb = crate::vm::native::StakeGuard::nv(vm, cb_nv);
+        let callback = if auto_val::is_string(cb_nv) {
+            let idx = auto_val::decode_string(cb_nv) as usize;
+            let s = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .ok_or_else(|| VMError::RuntimeError("set_timeout: bad callback string".into()))?;
+            crate::vm::engine::TimerCallback::Event(s)
+        } else if auto_val::is_i32(cb_nv) {
+            crate::vm::engine::TimerCallback::Closure(auto_val::decode_i32(cb_nv) as u32)
+        } else {
+            return Err(VMError::RuntimeError(
+                "set_timeout: callback must be a closure or an event-name string".into(),
+            ));
+        };
+        let timer_id = vm.set_timer(callback, delay_ms);
+        task.ram.push_i32(timer_id as i32);
+    }
+    Ok(())
+}
+
+/// `sched.clear_timeout(timer_id) -> bool`
+/// Stack: timer_id -> whether a pending timer was removed.
+pub fn shim_sched_clear_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let id = crate::vm::native::pop_arg_i32(task) as u32;
+        let removed = vm.clear_timer(id);
+        task.ram.push_nv(auto_val::encode_bool(removed));
+    }
+    Ok(())
+}
+
 // Plan 240: File I/O opaque shims
 
 /// Helper to pop a string from the stack

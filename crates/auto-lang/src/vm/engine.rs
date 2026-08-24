@@ -222,6 +222,27 @@ pub struct Closure {
     pub capture_slots: HashMap<String, (usize, usize)>,
 }
 
+/// Plan 442 A5: one-shot timer callback form. The event form dispatches a
+/// widget handler (the `__toast_tick` pattern — no frame-geometry concerns);
+/// the closure form satisfies the auto-down SchedulerTimer contract
+/// (`setTimeout(fn, ms) -> handle`) but only supports by-value captures —
+/// by-reference captures (capture_slots) read the creator's frame and are
+/// meaningless once that frame is gone.
+#[derive(Debug, Clone)]
+pub enum TimerCallback {
+    /// Closure registry id (a closure value on the VM stack is Int(id)).
+    Closure(u32),
+    /// Widget event name — dispatched like any UI event.
+    Event(String),
+}
+
+/// Plan 442 A5: a pending one-shot timer.
+#[derive(Debug, Clone)]
+pub struct TimerEntry {
+    pub deadline: std::time::Instant,
+    pub callback: TimerCallback,
+}
+
 #[derive(Debug)]
 pub enum VMError {
     StackOverflow,
@@ -331,6 +352,12 @@ pub struct AutoVM {
     // Stores pending futures with their body code offsets
     pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
     pub future_id_gen: AtomicU32,
+
+    // Plan 442 A5: one-shot timer registry (set_timeout/clear_timeout). The
+    // render loop polls due timers on its subscription tick and dispatches
+    // the callbacks (closure via call_closure, event via handler dispatch).
+    pub timers: DashMap<u32, TimerEntry>,
+    pub timer_id_gen: AtomicU32,
 
     // Plan 317 Phase 1: Per-task message queues for message-loop tasks.
     // Keyed by AutoVM task id (== the handle id returned by Task.spawn).
@@ -501,6 +528,9 @@ impl AutoVM {
             // Plan 124: Future registry for async/await
             futures: DashMap::new(),
             future_id_gen: AtomicU32::new(1),
+            // Plan 442 A5: one-shot timer registry
+            timers: DashMap::new(),
+            timer_id_gen: AtomicU32::new(1),
             task_mailboxes: DashMap::new(), // Plan 317 Phase 1
             globals: DashMap::new(), // Plan 317: module-level var storage
             // Plan 197 Task 9: Generic registry for runtime field name lookup
@@ -525,6 +555,55 @@ impl AutoVM {
     /// Plan 011: Remove the shell host (pure-AutoLang mode).
     pub fn clear_host(&mut self) {
         self.host = None;
+    }
+
+    /// Plan 442 A5: schedule a one-shot timer. Non-blocking — the callback
+    /// fires on the render loop's timer tick (16ms granularity, matching the
+    /// auto-down SchedulerTimer batch cadence). Returns the timer id handle.
+    pub fn set_timer(&self, callback: TimerCallback, delay_ms: u64) -> u32 {
+        let id = self.timer_id_gen.fetch_add(1, Ordering::Relaxed);
+        self.timers.insert(
+            id,
+            TimerEntry {
+                deadline: std::time::Instant::now()
+                    + std::time::Duration::from_millis(delay_ms.max(1)),
+                callback,
+            },
+        );
+        id
+    }
+
+    /// Plan 442 A5: cancel a one-shot timer. Returns whether a pending
+    /// timer was actually removed.
+    pub fn clear_timer(&self, id: u32) -> bool {
+        self.timers.remove(&id).is_some()
+    }
+
+    /// Plan 442 A5: remove and return the timers whose deadline has passed.
+    /// One-shot semantics: entries are taken out of the registry when they
+    /// fire (a timer that stays would keep the render tick subscribed
+    /// forever and could re-fire on every poll).
+    pub fn due_timers(&self) -> Vec<(u32, TimerCallback)> {
+        let now = std::time::Instant::now();
+        let due_ids: Vec<u32> = self
+            .timers
+            .iter()
+            .filter(|e| e.value().deadline <= now)
+            .map(|e| *e.key())
+            .collect();
+        let mut out = Vec::with_capacity(due_ids.len());
+        for id in due_ids {
+            if let Some((_, entry)) = self.timers.remove(&id) {
+                out.push((id, entry.callback));
+            }
+        }
+        out
+    }
+
+    /// Plan 442 A5: whether any one-shot timer is pending (render loop uses
+    /// this to decide whether to subscribe to the timer tick at all).
+    pub fn has_pending_timers(&self) -> bool {
+        !self.timers.is_empty()
     }
 
     /// Decode a tagged value from the VM stack.

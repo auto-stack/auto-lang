@@ -1,0 +1,14 @@
+// platform.web.at — Plan 442 A3 regression corpus: web adapter for the
+// platform port (mirrors auto-musk's ports/platform.web.at). Pure-Auto
+// wrapper fns re-exported via `use.web`; the inner TS import is the nested
+// ext dep that must become a platform stub on the VM target.
+
+use.web injectStyles from "src/front/inject_styles.ts"
+
+fn platformInjectStyles() {
+    injectStyles()
+}
+
+fn platformKind() str {
+    return "web-adapter"
+}

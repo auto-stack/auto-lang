@@ -1,0 +1,47 @@
+// app.at — Plan 442 A2 regression corpus: legacy store facade form
+// (`use store: AuthStore`), mirroring auto-musk's app.at shape. Before the
+// fix this form resolved no module, the store context stayed empty, and
+// handlers/views referencing `store.X` failed with "Undefined variable:
+// store" (musk KNOWN-DEBT 028 ③).
+
+use store: AuthStore
+
+widget App {
+    msg Msg { Init, Check, Login, Logout }
+
+    model { var status str = "boot" }
+
+    on {
+        .Init -> {
+            store.Init()
+            .status = "ready"
+        }
+
+        .Check -> {
+            if store.authenticated != true {
+                .status = "anonymous"
+            } else {
+                .status = "signed-in"
+            }
+        }
+
+        .Login -> {
+            store.Login()
+        }
+
+        .Logout -> {
+            store.Logout()
+        }
+    }
+
+    view {
+        col {
+            text store.whoami
+            if store.authenticated {
+                button "Sign out" { onclick: .Logout }
+            } else {
+                button "Sign in" { onclick: .Login }
+            }
+        }
+    }
+}

@@ -1,0 +1,7 @@
+// auth_util.at — Plan 442 A2 regression corpus.
+// Helper module used by auth_store.at; verifies the store file's own `use`
+// deps are collected through the legacy store-facade path.
+
+pub fn guest_label() str {
+    return "guest"
+}

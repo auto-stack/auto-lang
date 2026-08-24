@@ -64,8 +64,15 @@ pub(crate) fn build_015_component() -> Option<DynamicComponent> {
 #[cfg(feature = "ui-interpreter")]
 pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent> {
     let manifest = locate_example_app_at(example)?;
+    build_component_from_app(&manifest)
+}
+
+/// Path-based variant of `build_example_component` for fixtures outside
+/// examples/ (e.g. test/ui corpora).
+#[cfg(feature = "ui-interpreter")]
+pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicComponent> {
     let base_dir = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let code = fs::read_to_string(&manifest).unwrap();
+    let code = fs::read_to_string(manifest).unwrap();
 
     // 1. Parse + extract root widget
     let session = CompilerSession::ui();
@@ -101,9 +108,24 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
         if use_stmt.is_c_import || use_stmt.is_rust_import {
             continue;
         }
-        let module_path = match crate::resolve_module_path(&base_dir, &use_stmt.module) {
-            Some(p) => p,
-            None => continue,
+        let module_path = match crate::resolve_use_module(&base_dir, use_stmt) {
+            crate::UseModuleResolution::Module(p) => p,
+            crate::UseModuleResolution::StoreFiles(found) => {
+                // Plan 442 A2: legacy `use store: X` facade — production
+                // fallback shared via resolve_use_module.
+                for (_, path) in found {
+                    crate::collect_module_imports(
+                        &path,
+                        &mut visited,
+                        &mut import_stmts,
+                        &mut seen_symbols,
+                        &mut import_session,
+                        None,
+                    );
+                }
+                continue;
+            }
+            crate::UseModuleResolution::None => continue,
         };
         if let Ok(module_code) = fs::read_to_string(&module_path) {
             let mod_session = CompilerSession::ui();
@@ -168,8 +190,10 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
 
     // 3. Stores declared in the root AST → fake child widget decls (D-GAP-4)
     let mut store_as_child_decls = Vec::new();
+    let mut root_store_names = HashSet::new();
     for stmt in &ast.stmts {
         if let Stmt::StoreDecl(store_decl) = stmt {
+            root_store_names.insert(store_decl.name.to_string());
             store_as_child_decls.push(crate::ast::ui::WidgetDecl {
                 name: store_decl.name.clone(),
                 messages: store_decl.messages.clone(),
@@ -189,8 +213,63 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
             });
         }
     }
+    // Stores collected from imported modules (incl. the Plan 442 A2 legacy
+    // facade path) → view-less child decls, deduped against root + children
+    // (mirrors the production import_stmts conversion).
+    for stmt in &import_stmts {
+        if let Stmt::StoreDecl(store_decl) = stmt {
+            let sname = store_decl.name.to_string();
+            if !root_store_names.contains(&sname)
+                && !child_decls.iter().any(|d| d.name.to_string() == sname)
+            {
+                store_as_child_decls.push(crate::ast::ui::WidgetDecl {
+                    name: store_decl.name.clone(),
+                    messages: store_decl.messages.clone(),
+                    model: store_decl.model.clone(),
+                    computed: store_decl.computed.clone(),
+                    setup: None,
+                    view: None,
+                    on: store_decl.on.clone(),
+                    bind: None,
+                    props: Vec::new(),
+                    routes: None,
+                    lifecycle: Vec::new(),
+                    style: None,
+                    ext_imports: Vec::new(),
+                    watch: Vec::new(),
+                    expose: Vec::new(),
+                });
+            }
+        }
+    }
     let mut all_child_decls = child_decls.clone();
     all_child_decls.extend(store_as_child_decls.iter().cloned());
+
+    // Mirror of production Plan 403: root module's own top-level fn/type/enum
+    // declarations compile into the VM alongside imported ones.
+    for stmt in &ast.stmts {
+        match stmt {
+            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) => {
+                import_stmts.push(stmt.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Mirror of production Plan 442 A3: `use.web` ext imports (adapter-chain
+    // loading + platform stubs) via the shared production helper.
+    crate::load_ext_imports_for_vm(
+        &base_dir,
+        &ast,
+        &root_decl,
+        &all_child_decls,
+        &mut visited,
+        &mut import_stmts,
+        &mut seen_symbols,
+        &mut import_session,
+        None,
+        &mut import_aliases,
+    );
 
     let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
         &root_decl,
