@@ -706,6 +706,183 @@ impl<'a> CapturesExt<'a> for regex::Captures<'a> {
 }
 
 // ============================================================================
+// Plan 435 P2:schema 驱动的 view 校验
+// ============================================================================
+
+/// schema 校验的解析候选集:schema 元素 + 本项目 widget/子件名 + ext 组件名。
+pub struct SchemaResolveScope {
+    /// 折叠键(fold:剥 -/_ + 小写)集合,来自 widget 名与已知子件名
+    local_fold: std::collections::HashSet<String>,
+}
+
+fn fold(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_lowercase()
+}
+
+impl SchemaResolveScope {
+    pub fn from_widgets(
+        widgets: &[crate::aura::AuraWidget],
+        known_sub_widgets: &[String],
+    ) -> Self {
+        let mut local_fold = std::collections::HashSet::new();
+        for name in known_sub_widgets {
+            local_fold.insert(fold(name));
+        }
+        for w in widgets {
+            local_fold.insert(fold(&w.name));
+            // ext 组件(`use { component: X from "..." }`)是合法 tag 来源
+            for imp in &w.ext_imports {
+                if matches!(imp.kind, crate::ast::ExtImportKind::Component) {
+                    for s in &imp.symbols {
+                        local_fold.insert(fold(&s.to_string()));
+                    }
+                }
+            }
+        }
+        SchemaResolveScope { local_fold }
+    }
+
+    fn is_local(&self, tag: &str) -> bool {
+        self.local_fold.contains(&fold(tag))
+    }
+}
+
+/// 通用 prop(任何元素都可挂,不参与"未声明 prop"判定)。
+const UNIVERSAL_PROPS: &[&str] = &["class", "style", "id", "key", "if", "for"];
+
+/// Plan 435 P2:用 schema/aura.at 校验 widget 的 view 树。
+/// - 未知 tag(schema 未声明、非本地 widget/子件/ext 组件)→ Warning + 拼写建议
+/// - 已知元素(声明过 props)上出现未声明 prop → Info
+/// advisory:仅 --strict(`auto build --strict`)下 Warning 及以上会阻断。
+pub fn validate_aura_against_schema(
+    widgets: &[crate::aura::AuraWidget],
+    known_sub_widgets: &[String],
+) -> Vec<ValidationWarning> {
+    let schema = match crate::aura::load_default_schema() {
+        Ok(s) => s,
+        Err(_) => return Vec::new(), // schema 加载失败静默跳过(不阻塞构建)
+    };
+    let scope = SchemaResolveScope::from_widgets(widgets, known_sub_widgets);
+    let mut out = Vec::new();
+
+    for widget in widgets {
+        walk_node(
+            &widget.view_tree,
+            &widget.name,
+            &schema,
+            &scope,
+            &mut out,
+        );
+    }
+    out
+}
+
+fn walk_node(
+    node: &crate::aura::AuraNode,
+    widget_name: &str,
+    schema: &crate::aura::schema::AuraSchema,
+    scope: &SchemaResolveScope,
+    out: &mut Vec<ValidationWarning>,
+) {
+    use crate::aura::AuraNode;
+    match node {
+        AuraNode::Element { tag, props, children, .. } => {
+            if let Some((_canon, def)) = schema.resolve_tag(tag) {
+                // prop 校验:仅当元素声明过 props(空 props = P2 待补,跳过)
+                if !def.props.is_empty() {
+                    for p in props.keys() {
+                        let universal = UNIVERSAL_PROPS.contains(&p.as_str())
+                            || p.starts_with("on")
+                            || p.ends_with("-if");
+                        if !universal && def.get_prop(p).is_none() {
+                            out.push(
+                                ValidationWarning::new(
+                                    "S001",
+                                    Severity::Info,
+                                    widget_name,
+                                    format!(
+                                        "prop `{}` not declared on `<{}>` (schema declares: {})",
+                                        p,
+                                        tag,
+                                        def.props
+                                            .iter()
+                                            .map(|d| d.name)
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    ),
+                                )
+                                .with_hint(format!(
+                                    "查 schema/aura.at 的 `{}` 定义;确属新 prop 请更新 schema(SCHEMA_DRIFT_GENERATE_AT=1)",
+                                    _canon
+                                )),
+                            );
+                        }
+                    }
+                }
+            } else if !scope.is_local(tag) {
+                // 未知 tag:给拼写建议(折叠匹配已失败,levenshtein 兜底)
+                let suggestion = schema
+                    .all_tags()
+                    .into_iter()
+                    .min_by_key(|t| {
+                        levenshtein(fold(tag).as_bytes(), fold(t).as_bytes())
+                    })
+                    .filter(|t| {
+                        levenshtein(fold(tag).as_bytes(), fold(t).as_bytes()) <= 3
+                    });
+                let mut w = ValidationWarning::new(
+                    "S002",
+                    Severity::Warning,
+                    widget_name,
+                    format!("unknown element `<{}>` — not in schema, not a local widget/component", tag),
+                );
+                if let Some(s) = suggestion {
+                    w = w.with_hint(format!("did you mean `<{}>`? (schema/aura.at)", s));
+                }
+                out.push(w);
+            }
+            for c in children {
+                walk_node(c, widget_name, schema, scope, out);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for c in body {
+                walk_node(c, widget_name, schema, scope, out);
+            }
+        }
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            for c in then_body {
+                walk_node(c, widget_name, schema, scope, out);
+            }
+            if let Some(body) = else_body {
+                for c in body {
+                    walk_node(c, widget_name, schema, scope, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 小型 levenshtein(字节级;仅做建议,不追求 Unicode 精确)。
+fn levenshtein(a: &[u8], b: &[u8]) -> usize {
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for i in 1..=a.len() {
+        cur[0] = i;
+        for j in 1..=b.len() {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
+}
+
+// ============================================================================
 // 单元测试
 // ============================================================================
 
@@ -1043,6 +1220,94 @@ function Foo() { emit('Save'); emit('Cancel'); }"#,
         assert!(rules.contains(&"R002"), "should catch store w/o import");
         assert!(rules.contains(&"R003"), "should catch autodown info");
         assert!(rules.contains(&"R007"), "should catch dual editor");
+    }
+
+    #[test]
+    fn schema_validation_catches_unknown_tag_and_prop() {
+        // Plan 435 P2:未知 tag → S002(Warning,带建议);未声明 prop → S001(Info)。
+        // view { button (tex: "x") {} btton {} } —— button 有声明 props,
+        // tex 未声明;btton 无处可解析。
+        let code = r#"widget T {
+    msg M { Go }
+    model { n int = 0 }
+    on { .Go -> { } }
+    view {
+        col {
+            button (tex: "hi") {}
+            btton "click" {}
+        }
+    }
+}"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = crate::Parser::from(code);
+        parser = parser.with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = stmt {
+                if let Ok(w) = crate::aura::extract_widget_from_decl(d) {
+                    widgets.push(w);
+                }
+            }
+        }
+        assert_eq!(widgets.len(), 1);
+        let ws = validate_aura_against_schema(&widgets, &[]);
+        let unknown_tags: Vec<&ValidationWarning> =
+            ws.iter().filter(|w| w.rule == "S002").collect();
+        let unknown_props: Vec<&ValidationWarning> =
+            ws.iter().filter(|w| w.rule == "S001").collect();
+        assert_eq!(unknown_tags.len(), 1, "btton 应触发 S002: {ws:?}");
+        assert!(unknown_tags[0].message.contains("btton"));
+        assert!(
+            unknown_tags[0]
+                .fix_hint
+                .as_deref()
+                .unwrap_or("")
+                .contains("button"),
+            "S002 应建议 button: {:?}",
+            unknown_tags[0].fix_hint
+        );
+        assert_eq!(unknown_props.len(), 1, "tex 应触发 S001: {ws:?}");
+        assert!(unknown_props[0].message.contains("tex"));
+    }
+
+    #[test]
+    fn schema_validation_accepts_local_widgets_and_fold_aliases() {
+        // 本地 widget 名(CopyButton)与折叠别名(alert-dialog ≡ alert_dialog)
+        // 都不应触发 S002。
+        let code = r#"widget Demo {
+    msg M { Go }
+    model { n int = 0 }
+    on { .Go -> { } }
+    view {
+        col {
+            copy-button {}
+            alert-dialog-action {}
+        }
+    }
+}
+widget CopyButton {
+    msg M { Go }
+    model { n int = 0 }
+    on { .Go -> { } }
+    view { button "copy" {} }
+}"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = crate::Parser::from(code);
+        parser = parser.with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = stmt {
+                if let Ok(w) = crate::aura::extract_widget_from_decl(d) {
+                    widgets.push(w);
+                }
+            }
+        }
+        let ws = validate_aura_against_schema(&widgets, &[]);
+        let s002: Vec<&ValidationWarning> =
+            ws.iter().filter(|w| w.rule == "S002").collect();
+        assert!(s002.is_empty(), "本地 widget 与折叠别名不应告警: {s002:?}");
     }
 
     #[test]

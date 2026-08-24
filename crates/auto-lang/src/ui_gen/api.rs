@@ -491,7 +491,10 @@ pub fn generate_component_from_file(
 
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
-    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = store_warnings;
+    // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
+    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
+        crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
+    all_validation_warnings.extend(store_warnings);
 
     // pac.at `shadcn: off` (Plan 013): Plain mode keeps native HTML elements
     // and emits no `@/components/ui/*` imports; default stays Shadcn.

@@ -180,12 +180,85 @@ impl WidgetBlockSchema {
     }
 }
 
+/// 组件层级(Plan 435 P1 起在 schema/aura.at 声明):
+/// - NativeHtml:Web 原生直通(类比 Vue 的 HTML_TAGS 层)
+/// - BuiltinWidget:桌面(iced)有 Rust 实现
+/// - WebComponent:shadcn 家族生成映射
+/// - Unclassified:提取时尚无归属(P2 起逐步归类)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElementTier {
+    NativeHtml,
+    BuiltinWidget,
+    WebComponent,
+    Unclassified,
+}
+
+impl ElementTier {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "native_html" => Some(ElementTier::NativeHtml),
+            "builtin_widget" => Some(ElementTier::BuiltinWidget),
+            "web_component" => Some(ElementTier::WebComponent),
+            "unclassified" => Some(ElementTier::Unclassified),
+            _ => None,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ElementTier::NativeHtml => "native_html",
+            ElementTier::BuiltinWidget => "builtin_widget",
+            ElementTier::WebComponent => "web_component",
+            ElementTier::Unclassified => "unclassified",
+        }
+    }
+}
+
+/// 后端支持矩阵(Plan 435 P1 起;iced 级别语义对齐 render_support)。
+#[derive(Debug, Clone, Default)]
+pub struct BackendMatrix {
+    /// web: "native" | "component" | "none"
+    pub web: String,
+    /// iced: "full" | "partial" | "fallback" | "unsupported" | "unknown" | "none"
+    pub iced: String,
+    /// gpui: "unknown"(P1 未盘点)| 其他
+    pub gpui: String,
+}
+
+/// 元素侧信息(Plan 435 四新字段)。硬编码 fallback(AuraSchema::new)无 meta;
+/// schema_loader 从 schema/aura.at 填充。
+#[derive(Debug, Clone)]
+pub struct ElementMeta {
+    pub tier: ElementTier,
+    /// 拼写变体(含折叠变体;匹配另按折叠键兜底)
+    pub aliases: Vec<&'static str>,
+    pub backends: BackendMatrix,
+    /// 组件家族子件(web 家族按 vue import 路径推导;P4 官方包填 .at 家族)
+    pub sub_widgets: Vec<&'static str>,
+}
+
+impl Default for ElementMeta {
+    fn default() -> Self {
+        ElementMeta {
+            tier: ElementTier::Unclassified,
+            aliases: Vec::new(),
+            backends: BackendMatrix {
+                web: "unknown".to_string(),
+                iced: "unknown".to_string(),
+                gpui: "unknown".to_string(),
+            },
+            sub_widgets: Vec::new(),
+        }
+    }
+}
+
 /// The complete AURA schema
 pub struct AuraSchema {
     /// Element definitions by tag name
     pub elements: HashMap<&'static str, ElementDef>,
     /// Widget block constraints
     pub widget_blocks: WidgetBlockSchema,
+    /// Plan 435 meta(tier/aliases/backends/sub_widgets);fallback schema 为空表
+    pub meta: HashMap<&'static str, ElementMeta>,
 }
 
 impl AuraSchema {
@@ -220,12 +293,58 @@ impl AuraSchema {
                 required: vec!["msg", "model", "view"],
                 optional: vec!["computed", "on"],
             },
+            meta: HashMap::new(),
         }
     }
 
     /// Get an element definition by tag
     pub fn get_element(&self, tag: &str) -> Option<&ElementDef> {
         self.elements.get(tag)
+    }
+
+    /// Plan 435:解析 tag → 元素定义。三级匹配:精确 tag → 声明 aliases →
+    /// 折叠键(剥 `-`/`_` + 小写,如 alert-dialog-action ≡ alert_dialog_action)。
+    pub fn resolve_tag(&self, tag: &str) -> Option<(&'static str, &ElementDef)> {
+        if let Some(def) = self.elements.get(tag) {
+            // SAFETY-free:key 即元素自身的 tag;借用期不超过 self
+            return self
+                .elements
+                .get_key_value(tag)
+                .map(|(k, v)| (*k, v));
+        }
+        let fold = fold_key(tag);
+        // 1) 声明别名
+        for (k, meta) in &self.meta {
+            if meta.aliases.iter().any(|a| *a == tag) {
+                if let Some(def) = self.elements.get(*k) {
+                    return Some((*k, def));
+                }
+            }
+        }
+        // 2) 折叠键(tag 与 aliases 都折叠比一次)
+        for (k, def) in &self.elements {
+            if fold_key(k) == fold {
+                return Some((*k, def));
+            }
+        }
+        for (k, meta) in &self.meta {
+            if meta.aliases.iter().any(|a| fold_key(a) == fold) {
+                if let Some(def) = self.elements.get(*k) {
+                    return Some((*k, def));
+                }
+            }
+        }
+        None
+    }
+
+    /// Plan 435:元素的 meta(tier/aliases/backends/sub_widgets);无则默认。
+    pub fn element_meta(&self, tag: &str) -> ElementMeta {
+        self.meta.get(tag).cloned().unwrap_or_default()
+    }
+
+    /// 折叠键(公开给校验/补全共用)
+    pub fn fold_key_of(tag: &str) -> String {
+        fold_key(tag)
     }
 
     /// Check if a tag is a valid element
@@ -373,6 +492,12 @@ impl AuraSchema {
                 PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message to send when clicked" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
                 PropDef { name: "disabled", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("false"), description: "Whether button is disabled" },
+                // Plan 435 P2:variant/size/icon 是实现与 gallery 实际消费的 prop
+                // (convert_button 消费 variant;vue 生成器消费 size/variant),
+                // P1 审计"实现比声明多"的实证,自此声明。
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "secondary", "destructive", "outline", "ghost", "link"]), required: false, default: Some("default"), description: "Visual style variant" },
+                PropDef { name: "size", type_: PropType::OneOf(vec!["sm", "default", "lg", "icon"]), required: false, default: Some("default"), description: "Button size" },
+                PropDef { name: "icon", type_: PropType::String, required: false, default: None, description: "Icon name shown alongside the label" },
             ],
             allows_children: false,
             description: "A clickable button element",
@@ -2543,6 +2668,14 @@ impl AuraSchema {
             description: "Visual divider",
         });
     }
+}
+
+/// 折叠键:剥 `-`/`_` + 小写(Plan 435 别名匹配策略,见 schema/aura.at 头注释)。
+fn fold_key(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_lowercase()
 }
 
 impl Default for AuraSchema {

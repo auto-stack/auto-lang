@@ -96,6 +96,9 @@ element button {
         { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
         { name: "disabled", type: "union:bool,state_ref", default: "false", description: "Whether button is disabled" }
+        { name: "variant", type: "one_of:default,secondary,destructive,outline,ghost,link", default: "default", description: "Visual style variant" }
+        { name: "size", type: "one_of:sm,default,lg,icon", default: "default", description: "Button size" }
+        { name: "icon", type: "string", description: "Icon name shown alongside the label" }
     ]
     allows_children: false
     description: "A clickable button element"
@@ -330,6 +333,32 @@ element label {
     description: "Form label"
 }
 
+element list {
+    tag: "list"
+    category: "list"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Generic list container"
+}
+
+element list_item {
+    tag: "list_item"
+    category: "list"
+    tier: "builtin_widget"
+    aliases: ["list-item"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "onclick", type: "msg_ref", description: "Message when clicked" }
+    ]
+    allows_children: true
+    description: "List item"
+}
+
 element main {
     tag: "main"
     category: "unknown"
@@ -360,6 +389,17 @@ element nav {
     tier: "builtin_widget"
     aliases: ["Nav"]
     backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element nav-link {
+    tag: "nav-link"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["nav_link"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -542,6 +582,17 @@ element textarea {
     description: "Multi-line text input"
 }
 
+element toast-provider {
+    tag: "toast-provider"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["toast_provider"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element toolbar {
     tag: "toolbar"
     category: "unknown"
@@ -575,6 +626,37 @@ element - {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element a {
+    tag: "a"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element audio {
+    tag: "audio"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["Audio"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element canvas {
+    tag: "canvas"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element circle {
     tag: "circle"
     category: "unknown"
@@ -590,6 +672,16 @@ element clipPath {
     category: "unknown"
     tier: "native_html"
     backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element code {
+    tag: "code"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -683,6 +775,17 @@ element h6 {
     tier: "native_html"
     aliases: ["H6"]
     backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element li {
+    tag: "li"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["Li"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -810,6 +913,27 @@ element stop {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element summary {
+    tag: "summary"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["Summary"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element tfoot {
+    tag: "tfoot"
+    category: "unknown"
+    tier: "native_html"
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element tree {
     tag: "tree"
     category: "unknown"
@@ -842,82 +966,22 @@ element use {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element video {
+    tag: "video"
+    category: "unknown"
+    tier: "native_html"
+    aliases: ["Video"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 
 // ============ tier: unclassified ============
 
 element Change {
     tag: "Change"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element TabTrigger {
-    tag: "TabTrigger"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element a {
-    tag: "a"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element audio {
-    tag: "audio"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Audio"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element avatar-fallback {
-    tag: "avatar-fallback"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element avatar-image {
-    tag: "avatar-image"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element canvas {
-    tag: "canvas"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element card-action {
-    tag: "card-action"
     category: "unknown"
     tier: "unclassified"
     backends: { web: "none", iced: "none", gpui: "unknown" }
@@ -937,27 +1001,6 @@ element category-section {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element chip {
-    tag: "chip"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Chip"]
-    backends: { web: "none", iced: "partial", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element code {
-    tag: "code"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element component-card {
     tag: "component-card"
     category: "unknown"
@@ -967,167 +1010,6 @@ element component-card {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element date {
-    tag: "date"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element date-picker-trigger {
-    tag: "date-picker-trigger"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element datetime {
-    tag: "datetime"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element datetimeinput {
-    tag: "datetimeinput"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element dialog {
-    tag: "dialog"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Dialog"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element dialog-close {
-    tag: "dialog-close"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-content {
-    tag: "dialog-content"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-description {
-    tag: "dialog-description"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-footer {
-    tag: "dialog-footer"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-header {
-    tag: "dialog-header"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-title {
-    tag: "dialog-title"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dialog-trigger {
-    tag: "dialog-trigger"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dropdown-menu-content {
-    tag: "dropdown-menu-content"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dropdown-menu-item {
-    tag: "dropdown-menu-item"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dropdown-menu-separator {
-    tag: "dropdown-menu-separator"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element dropdown-menu-trigger {
-    tag: "dropdown-menu-trigger"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element field {
@@ -1158,43 +1040,6 @@ element grid-item {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element li {
-    tag: "li"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Li"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element list {
-    tag: "list"
-    category: "list"
-    tier: "unclassified"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Generic list container"
-}
-
-element list_item {
-    tag: "list_item"
-    category: "list"
-    tier: "unclassified"
-    aliases: ["list-item"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-        { name: "onclick", type: "msg_ref", description: "Message when clicked" }
-    ]
-    allows_children: true
-    description: "List item"
 }
 
 element loading {
@@ -1228,17 +1073,6 @@ element menu-item {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element nav-link {
-    tag: "nav-link"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["nav_link"]
-    backends: { web: "none", iced: "partial", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element nav_item {
     tag: "nav_item"
     category: "unknown"
@@ -1257,16 +1091,6 @@ element navigation {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element navigation-menu {
-    tag: "navigation-menu"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element notification {
@@ -1300,27 +1124,6 @@ element overlay {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element radioitem {
-    tag: "radioitem"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element range {
-    tag: "range"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Range"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element scroll_view {
     tag: "scroll_view"
     category: "unknown"
@@ -1331,63 +1134,10 @@ element scroll_view {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element sheet-description {
-    tag: "sheet-description"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element skeleton {
-    tag: "skeleton"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element stack {
     tag: "stack"
     category: "unknown"
     tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element summary {
-    tag: "summary"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Summary"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element switch {
-    tag: "switch"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Switch"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element tag {
-    tag: "tag"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Tag"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
@@ -1405,70 +1155,18 @@ element textinput {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element tfoot {
-    tag: "tfoot"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "partial", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element toast-provider {
-    tag: "toast-provider"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["toast_provider"]
-    backends: { web: "none", iced: "partial", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element tooltip-content {
-    tag: "tooltip-content"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element tooltip-provider {
-    tag: "tooltip-provider"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element tooltip-trigger {
-    tag: "tooltip-trigger"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
-}
-
-element video {
-    tag: "video"
-    category: "unknown"
-    tier: "unclassified"
-    aliases: ["Video"]
-    backends: { web: "none", iced: "fallback", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 
 // ============ tier: web_component ============
+
+element TabTrigger {
+    tag: "TabTrigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
 
 element accordion {
     tag: "accordion"
@@ -1750,6 +1448,26 @@ element autocomplete_list {
     description: "Autocomplete options list"
 }
 
+element avatar-fallback {
+    tag: "avatar-fallback"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element avatar-image {
+    tag: "avatar-image"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 element breadcrumb {
     tag: "breadcrumb"
     category: "navigation"
@@ -1870,6 +1588,16 @@ element card {
     ]
     allows_children: true
     description: "Card container with sections"
+}
+
+element card-action {
+    tag: "card-action"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element cardcontent {
@@ -2023,6 +1751,17 @@ element chart {
     ]
     allows_children: true
     description: "Chart container"
+}
+
+element chip {
+    tag: "chip"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Chip"]
+    backends: { web: "none", iced: "partial", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element collapsible {
@@ -2425,6 +2164,127 @@ element context_menu_trigger {
     description: "Context menu trigger (right-click area)"
 }
 
+element date {
+    tag: "date"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element date-picker-trigger {
+    tag: "date-picker-trigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element datetime {
+    tag: "datetime"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element datetimeinput {
+    tag: "datetimeinput"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dialog {
+    tag: "dialog"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Dialog"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element dialog-close {
+    tag: "dialog-close"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-content {
+    tag: "dialog-content"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-description {
+    tag: "dialog-description"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-footer {
+    tag: "dialog-footer"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-header {
+    tag: "dialog-header"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-title {
+    tag: "dialog-title"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dialog-trigger {
+    tag: "dialog-trigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 element drawer {
     tag: "drawer"
     category: "overlay"
@@ -2552,6 +2412,46 @@ element dropdown-menu {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element dropdown-menu-content {
+    tag: "dropdown-menu-content"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-item {
+    tag: "dropdown-menu-item"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-separator {
+    tag: "dropdown-menu-separator"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element dropdown-menu-trigger {
+    tag: "dropdown-menu-trigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element dropdown_content {
@@ -2992,6 +2892,16 @@ element nav_menu_trigger {
     description: "Navigation menu trigger"
 }
 
+element navigation-menu {
+    tag: "navigation-menu"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
 element number_field {
     tag: "number_field"
     category: "form"
@@ -3269,6 +3179,27 @@ element radio-group {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element radioitem {
+    tag: "radioitem"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element range {
+    tag: "range"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Range"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element range_calendar {
     tag: "range_calendar"
     category: "form"
@@ -3437,6 +3368,16 @@ element sheet {
     ]
     allows_children: true
     description: "Sheet (side drawer) container"
+}
+
+element sheet-description {
+    tag: "sheet-description"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element sheet_content {
@@ -3657,6 +3598,16 @@ element sidebar_trigger {
     description: "Sidebar trigger button"
 }
 
+element skeleton {
+    tag: "skeleton"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element slider {
     tag: "slider"
     category: "unknown"
@@ -3769,6 +3720,17 @@ element stepper_trigger {
     ]
     allows_children: true
     description: "Stepper trigger"
+}
+
+element switch {
+    tag: "switch"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Switch"]
+    backends: { web: "none", iced: "fallback", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element tab {
@@ -3911,6 +3873,17 @@ element tabstrigger {
     ]
     allows_children: true
     description: "Tab trigger button"
+}
+
+element tag {
+    tag: "tag"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Tag"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element tags_input {
@@ -4098,6 +4071,36 @@ element tooltip {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element tooltip-content {
+    tag: "tooltip-content"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element tooltip-provider {
+    tag: "tooltip-provider"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element tooltip-trigger {
+    tag: "tooltip-trigger"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
 element tr {

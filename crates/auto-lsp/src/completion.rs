@@ -64,6 +64,9 @@ fn complete_impl(
                 items.extend(generic_field_completions());
             }
         }
+        CompletionContext::UiElement => {
+            items.extend(ui_element_completions());
+        }
         CompletionContext::Keyword | CompletionContext::Unknown => {
             items.extend(keyword_completions());
         }
@@ -85,6 +88,8 @@ enum CompletionContext {
     FieldAccess,
     /// Default keyword context
     Keyword,
+    /// Plan 435 P2:view 块内的元素 tag 位(补全 schema/aura.at 声明的组件)
+    UiElement,
     /// Unknown context
     #[allow(dead_code)]
     Unknown,
@@ -93,9 +98,24 @@ enum CompletionContext {
 /// Determine the completion context from the code before the cursor
 fn determine_completion_context(
     before_cursor: &str,
-    _full_content: &str,
+    full_content: &str,
     _position: Position,
 ) -> CompletionContext {
+    // Plan 435 P2:view 块内元素位:当前行是缩进 + 孤立 tag 词(无 . : ( 等),
+    // 且上文出现过 `view {` —— 视为在写元素名,给 schema 补全。
+    {
+        let trimmed = before_cursor.trim_end();
+        let indent_len = trimmed.len() - trimmed.trim_start().len();
+        let word = &trimmed[indent_len..];
+        let at_element_position = !word.is_empty()
+            && word
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            && word.chars().next().map_or(false, |c| c.is_ascii_lowercase());
+        if at_element_position && full_content.contains("view {") {
+            return CompletionContext::UiElement;
+        }
+    }
     // Trim whitespace
     let trimmed = before_cursor.trim_end();
 
@@ -129,6 +149,65 @@ fn determine_completion_context(
 
     // Default to keyword completion
     CompletionContext::Keyword
+}
+
+/// Plan 435 P2:schema/aura.at 驱动的 UI 元素补全(330 元素,含 tier/detail)。
+/// 官方/自定义 widget 名由 workspace 补全层补充(与本层不同源)。
+fn ui_element_completions() -> Vec<CompletionItem> {
+    use auto_lang::aura::schema::{ElementCategory, ElementTier};
+    let schema = match auto_lang::aura::load_default_schema() {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let mut entries: Vec<(&'static str, u8, &'static str, &'static str)> = schema
+        .elements
+        .values()
+        .map(|def| {
+            let tier = schema
+                .meta
+                .get(def.tag)
+                .map(|m| m.tier)
+                .unwrap_or(ElementTier::Unclassified);
+            let rank = match tier {
+                ElementTier::BuiltinWidget => 0,
+                ElementTier::NativeHtml => 1,
+                ElementTier::WebComponent => 2,
+                ElementTier::Unclassified => 3,
+            };
+            let cat = match def.category {
+                ElementCategory::Layout => "layout",
+                ElementCategory::Content => "content",
+                ElementCategory::Typography => "typography",
+                ElementCategory::List => "list",
+                ElementCategory::Data => "data",
+                ElementCategory::Navigation => "navigation",
+                ElementCategory::Overlay => "overlay",
+                ElementCategory::Form => "form",
+                ElementCategory::Feedback => "feedback",
+                ElementCategory::Display => "display",
+                ElementCategory::Media => "media",
+                ElementCategory::Utility => "utility",
+            };
+            (def.tag, rank, def.description, cat)
+        })
+        .collect();
+    entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(b.0)));
+    entries
+        .into_iter()
+        .map(|(tag, _rank, desc, cat)| {
+            let tier = schema
+                .meta
+                .get(tag)
+                .map(|m| m.tier.as_str())
+                .unwrap_or("unclassified");
+            completion_item(
+                tag,
+                &format!("[{}] {} — {}", tier, cat, desc),
+                CompletionItemKind::STRUCT,
+                tag,
+            )
+        })
+        .collect()
 }
 
 /// Get all keyword completions

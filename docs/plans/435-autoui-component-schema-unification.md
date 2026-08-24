@@ -79,7 +79,7 @@
 
 - **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
 - **P1 基准提取与 schema 重建**(✅ 2026-08-24 落地,见文末执行结果):提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
-- **P2 schema 接入与校验**:loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
+- **P2 schema 接入与校验**(✅ 2026-08-24 落地,见文末执行结果):loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
 - **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
 - **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
 - **P5 文档与 Demo 系统(2026-08-24 复审新增)**:以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
@@ -189,3 +189,31 @@
      是真实运行时链路,只是终点目前只有测试调用;P1 重生成后其单测 `test_new_elements`
      (断言 Plan 098 旧内容,如 textarea cols)红 —— 已按新 schema 事实重写(props 断言
      限 rs 支撑元素,其余存在性断言)。include_str! 接线机制已在,P2 只差消费方接入。
+
+### P2 schema 接入与校验(2026-08-24,worktree `plan-435-schema-unification`)
+
+- **数据模型**:`ElementTier`/`BackendMatrix`/`ElementMeta` 落 schema.rs;`AuraSchema`
+  增 `meta` 侧表(硬编码 fallback 无 meta,loader 填充)——不动 192 个构造点。
+- **loader 解析四字段**:tier/aliases(引号列表)/backends(三元组)/sub_widgets;
+  `resolve_tag()` 三级匹配(精确 → 声明别名 → 折叠键)。
+- **数据源切换**:WidgetValidator 已走 load_default_schema(include_str!);P2 补
+  加载失败回落硬编码 fallback + 日志,不因 schema 损坏阻塞构建。
+- **校验接线**:`validate_aura_against_schema()` 进 ui_gen/validators ——
+  未知 tag → S002 Warning(levenshtein 建议,本地 widget/子件/ext 组件名折叠豁免);
+  已声明 props 元素上的未声明 prop → S001 Info(通用 prop 豁免:class/style/id/key/
+  on*/​*-if)。挂进 generate_component_from_file:`auto ui inspect` 与 `auto build`
+  同源展示,--strict 下 Warning 阻断。
+- **LSP**:completion 增 UiElement 上下文(view 块内元素位),330 元素按
+  tier(builtin→native→web→unclassified)排序,detail 带 tier/category/描述。
+- **unclassified 60→17**:TIER_OVERRIDES 归类表(生成器内,可再生)——
+  builtin_widget 6(nav-link/toast-provider=list 等,派发表外隐藏机制或 VNodeKind 词汇)、
+  native_html 8(a/audio/canvas/tfoot/li/summary/code/video)、web_component 29
+  (dialog-*/dropdown-menu-*/tooltip-*/avatar-*/skeleton/navigation-menu 等 shadcn 家族);
+  余 17 为待定词汇(a2ui concat 变体与 gallery 应用域 tag),保留 unclassified 比错分更诚实。
+- **验收(实测)**:gallery button.at 零告警;故意写错(btton/tex)→
+  S002"did you mean button?" + S001 列已声明 props;lib 3131 绿(+2 测试);LSP 17 测试绿。
+- **顺带修正**:button 的 variant/size/icon 自此声明(实现与 gallery 实际消费,
+  P1 审计"实现比声明多"的实证收口)。
+- **发现挂账**:view 顶层裸兄弟(UI scenario)解析失败(单词/连字符 tag 皆然,
+  嵌套 col 内正常)——gallery 全嵌套所以无感;疑与 plan-015 "顶层裸兄弟修复"
+  相关,待单独归因(不影响本计划)。

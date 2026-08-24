@@ -3,7 +3,10 @@
 //! This module loads the AutoLang-based schema file and converts it to
 //! the Rust schema structures used for validation.
 
-use crate::aura::schema::{AuraSchema, ElementCategory, ElementDef, PropDef, PropType, WidgetBlockSchema};
+use crate::aura::schema::{
+    AuraSchema, BackendMatrix, ElementCategory, ElementDef, ElementMeta, ElementTier,
+    PropDef, PropType, WidgetBlockSchema,
+};
 use std::collections::HashMap;
 
 /// Error type for schema loading
@@ -46,6 +49,27 @@ struct ElementDefData {
     props: Vec<PropDefData>,
     allows_children: bool,
     description: String,
+    /// Plan 435 四新字段(P2 起解析;缺省 = Unclassified/空)
+    tier: String,
+    aliases: Vec<String>,
+    backends: Option<(String, String, String)>, // (web, iced, gpui)
+    sub_widgets: Vec<String>,
+}
+
+/// 提取 `key: ["a", "b"]` 形态的引号串列表(Plan 435 aliases/sub_widgets)。
+fn extract_quoted_list(line: &str, key: &str) -> Option<Vec<String>> {
+    let t = line.trim();
+    let rest = t.strip_prefix(key)?.trim();
+    let inner = rest.strip_prefix('[')?.strip_suffix(']')?;
+    Some(
+        inner
+            .split(',')
+            .filter_map(|p| {
+                let p = p.trim();
+                p.strip_prefix('"')?.strip_suffix('"').map(|s| s.to_string())
+            })
+            .collect(),
+    )
 }
 
 /// Raw prop data from parsing
@@ -219,6 +243,11 @@ impl SchemaLoader {
         let mut props: Vec<PropDefData> = Vec::new();
         let mut allows_children = true;
         let mut description = String::new();
+        // Plan 435 四新字段
+        let mut tier = String::new();
+        let mut aliases: Vec<String> = Vec::new();
+        let mut backends: Option<(String, String, String)> = None;
+        let mut sub_widgets: Vec<String> = Vec::new();
 
         // Simple key-value parsing
         for line in content.lines() {
@@ -235,6 +264,17 @@ impl SchemaLoader {
                 allows_children = value;
             } else if let Some(value) = self.extract_string_value(line, "description:") {
                 description = value;
+            } else if let Some(value) = self.extract_string_value(line, "tier:") {
+                tier = value;
+            } else if let Some(list) = extract_quoted_list(line, "aliases:") {
+                aliases = list;
+            } else if let Some(list) = extract_quoted_list(line, "sub_widgets:") {
+                sub_widgets = list;
+            } else if line.starts_with("backends:") {
+                let web = self.extract_string_value(line, "web:").unwrap_or_default();
+                let iced = self.extract_string_value(line, "iced:").unwrap_or_default();
+                let gpui = self.extract_string_value(line, "gpui:").unwrap_or_default();
+                backends = Some((web, iced, gpui));
             } else if line.starts_with("props:") {
                 // Parse props array
                 props = self.parse_props_array(content)?;
@@ -247,6 +287,10 @@ impl SchemaLoader {
             props,
             allows_children,
             description,
+            tier,
+            aliases,
+            backends,
+            sub_widgets,
         })
     }
 
@@ -546,6 +590,7 @@ impl SchemaLoader {
     /// Build the final AuraSchema from parsed data
     fn build_schema(&self) -> Result<AuraSchema, SchemaLoadError> {
         let mut elements = HashMap::new();
+        let mut meta_map: HashMap<&'static str, ElementMeta> = HashMap::new();
 
         for elem_data in &self.elements {
             let category = match elem_data.category.as_str() {
@@ -583,6 +628,27 @@ impl SchemaLoader {
                 description: Box::leak(elem_data.description.clone().into_boxed_str()),
             };
 
+            // Plan 435 meta:tier/aliases/backends/sub_widgets
+            let meta = ElementMeta {
+                tier: ElementTier::parse(&elem_data.tier).unwrap_or(ElementTier::Unclassified),
+                aliases: elem_data
+                    .aliases
+                    .iter()
+                    .map(|a| Box::leak(a.clone().into_boxed_str()) as &'static str)
+                    .collect(),
+                backends: elem_data
+                    .backends
+                    .clone()
+                    .map(|(web, iced, gpui)| BackendMatrix { web, iced, gpui })
+                    .unwrap_or_default(),
+                sub_widgets: elem_data
+                    .sub_widgets
+                    .iter()
+                    .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
+                    .collect(),
+            };
+            meta_map.insert(element_def.tag, meta);
+
             elements.insert(element_def.tag, element_def);
         }
 
@@ -602,6 +668,7 @@ impl SchemaLoader {
         Ok(AuraSchema {
             elements,
             widget_blocks,
+            meta: meta_map,
         })
     }
 
