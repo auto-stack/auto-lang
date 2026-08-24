@@ -1499,6 +1499,7 @@ pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     "auto/lib/token.at",
     "auto/lib/lexer.at",
     "auto/lib/parser.at",
+    "auto/lib/typeinfo.at",
 ];
 
 /// Read and concatenate all auto/lib/*.at files for bootstrap tests.

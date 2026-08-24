@@ -68,9 +68,15 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S3：typeinfo 核心（P2，预估 1 周）
 
-- [ ] `typeinfo.at`：单一 TypeStore（类型/函数/spec 声明表）+ infer 核心传播 + 简化 unification。
-  不复刻历史 5 套 registry（TypeStore 一套到底）。
-- [ ] 闸门：类型相关现有测试语料（类型错误样例 + 推断样例）结果与 Rust 一致。
+- [x] `typeinfo.at`(D27: typecheck_dump):TFnSig 函数注册表(TypeStore 的 S3 裁剪,
+  类型/spec 声明表留 S4 按需)+ infer 核心传播(字面量全集/作用域查找/调用→注册表
+  返回/数组元素/二元运算/元组)+ 简化 unification(t_unify)。复用 lexer.at 的
+  tokenize 与 parser.at 的游标/类型解析/优先级表助手,不复刻历史 5 套 registry。
+- [x] 闸门 M3:corpus_m3 六文件(infer_tests.rs 同源样料:字面量/变量/fn 返回
+  传播/fn 参数/数组元素/二元运算)`.type` 输出与 Rust VM 真执行逐行一致,
+  diff=0(2026-08-24)。考古结论:解释器路径无独立 typeck pass,类型错误样例
+  通道归 M2 解析错误域;`.type` 行为通道(codegen infer_expr_type)为类型层
+  唯一含 fn 返回传播的可观察输出——规格见 m3-typecheck-format.md。
 
 ### S4：opcode 声明 + codegen 核心（P2，预估 1-2 周）
 
@@ -178,3 +184,12 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   - 发现并规避的 VM 缺陷(D25):构造参数内联原生调用返回值丢失、List.pop
     栈污染;全部以 .at 侧写法规避(提升变量 + depth 计数)。
   - AUTO_LIB_FILES_V2 已登记 parser.at;M1 闸门 + aavm2 smoke(001/002)全绿。
+
+- **S3**(2026-08-24 续,同会话):前置考古落盘 m3-typecheck-format.md(三个
+  可观察通道辨析:解析期 TypeError 归 M2、let 内联推断已进 M2、`.type` 行为
+  通道含 fn 返回传播为 S3 锚点);typeinfo.at(~430 行,D27)——TFnSig 注册表 +
+  语句级走查(fn 签名镜像 parse_fn 词法流、let/var 推断绑定、print(EXPR.type)
+  查询收集)+ 优先级爬升型推断器(复用 parser.at 的 infix_l/infix_r);未知型
+  输出 unknown 对齐 Type::Unknown。corpus_m3 六文件 ground truth 实测校准后
+  M3 闸门 diff=0(修两处:.type 关键字停走、body 前导换行跳过)。AUTO_LIB_
+  FILES_V2 已登记 typeinfo.at。

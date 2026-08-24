@@ -68,6 +68,8 @@ mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
 #[cfg(feature = "test-vm-files")]
 mod aavm2_m2; // Plan 432 S2: M2 parser AST dump 一致性闸门
 #[cfg(feature = "test-vm-files")]
+mod aavm2_m3; // Plan 432 S3: M3 typeinfo .type 一致性闸门
+#[cfg(feature = "test-vm-files")]
 mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
 #[cfg(feature = "test-vm-files")]
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/

@@ -98,3 +98,32 @@
 | lexer.at | 8(+S2 重构后 tokenize/lex_dump 包装,D13/D14 落地) |
 | parser.at | 7 |
 | 合计 | 17 |
+
+## auto/lib/typeinfo.at(S3)
+
+- **D27**: infer/expr.rs + codegen `.type` 属性 → `typecheck_dump(source) -> str`
+  行式输出(判据层)。AAVM 不建 AST:自带语句级走查 + 优先级爬升型推断器
+  (优先级表复用 parser.at 的 infix_l/infix_r/prefix_power/postfix_power,
+  游标/类型解析复用 p_kind/p_next/parse_type/is_type_name/p_bind/p_lookup,
+  不调用 parse_* 语句族避免 dump 副作用)——"解析与推断分离"(风险表
+  第 1 行的预设路径)。类型仍以 Display 字符串为载体(D23);数组型
+  "(array-type (elem T) (len n))" 与 Rust Array Display 同形,元素提取按
+  该形状解析。TFnSig 注册表 = TypeStore 的 S3 裁剪(仅 fn 签名;类型/spec
+  声明表 S4 按需)。未知型输出 "unknown" 对齐 Type::Unknown unique_name。
+- 闸门锚点考叝始末:解释器路径无独立 typeck pass(infer/stmt.rs check_body
+  仅 a2r 调用且丢弃、ParamChecker 零调用者),`.type` 行为通道(codegen
+  infer_expr_type → infer_expr)是类型层唯一含 fn 返回传播的可观察输出,
+  故 M3 = corpus_m3(可执行程序打印 .type)Rust 侧真执行 stdout vs AAVM
+  typecheck_dump 逐行对比。混合算术 coercion/块级作用域/显式注解冲突
+  检查 = Missing(语料未含,登记 typeinfo.at 头)。
+
+## 计数(S3 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 |
+| parser.at | 7 |
+| typeinfo.at | 1(+D23/D22 复用) |
+| 合计 | 18 |
+

@@ -1,0 +1,478 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM v2 Sync Snapshot                                     ║
+// ║ Component: typeinfo.at (Plan 432 S3 / D27: typecheck_dump)║
+// ║ Rust ref:  infer/expr.rs + codegen .type 属性 @ 432 基线  ║
+// ║ Gate:      M3 —— corpus_m3 `.type` 输出与 Rust VM 一致     ║
+// ╚═══════════════════════════════════════════════════════════╝
+// Coverage:  TFnSig 函数注册表(fn 名→ret Display 串,参数经 p_bind 入
+//            作用域)——"单一 TypeStore"的 S3 裁剪;infer 传播(字面量全集/
+//            标识符作用域查找/调用→注册表返回类型/数组元素提取/二元运算
+//            ——算术取操作数统一型、比较恒 bool/元组连接);未知型输出
+//            "unknown"(对齐 Type::Unknown 的 unique_name);语句级走查
+//            (fn 声明注册+体内 let/var 绑定+print(EXPR.type) 查询收集)
+// Missing:   混合算术 coercion(1 + 1.5 的数值提升,语料未含)、let 显式
+//            注解与推断冲突检查、块级作用域遮蔽(fn 体扁平遍历)、对象/
+//            方法调用/下标链推断、类型/spec 声明表(S4 按需)、类型错误
+//            样例通道(解释器路径无独立 typeck pass 可镜像,见
+//            m3-typecheck-format.md 考古结论)
+// DIVERGE:   D27: infer/expr.rs(infer_expr 枚举匹配)→ typecheck_dump
+//                 行式输出(判据层)——AAVM 不建 AST,自带轻量表达式型推
+//                 断器(优先级表复用 parser.at 的 infix_l/infix_r);
+//            D23 同款:类型以 Display 字符串为载体(数组型
+//                 "(array-type (elem T) (len n))" 与 Rust Array Display 同形,
+//                 元素提取按该形状解析);
+//            D22 同款:t.err 单槽短路,错误返回 "TYPE-ERROR:..." 使闸门爆红;
+//            复用契约:复用 lexer.at 的 tokenize 与 parser.at 的游标/类型
+//            解析助手(p_kind/p_next/p_expect/parse_type/is_type_name/
+//            p_bind/p_lookup),不调用 parse_* 语句族(避免 dump 副作用)
+
+// ── 函数签名注册表(TypeStore 的 S3 裁剪) ──────────────────────
+
+type TFnSig {
+    name str
+    ret str
+}
+
+// ── 语句级走查 ────────────────────────────────────────────────
+// 复用 parser.at 的 P(游标+作用域),外加 fn 注册表与输出行收集。
+
+// fn 声明走查:镜像 parse_fn 的签名词法流(name/泛型拒绝/params 绑定/ret),
+// 但不构造 dump。体内语句交回 t_stmt_walk。
+fn t_fn_walk(p P, fns List, out List) {
+    p_next(p)
+    if p_kind(p) == "Dot" || p_kind(p) == "Lt" {
+        p_err(p, "typeinfo: unsupported fn form ")
+        return
+    }
+    if p_kind(p) != "Ident" {
+        p_err(p, "typeinfo: expected fn name ")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    push_scope(p)
+    p_expect(p, "LParen")
+    // 参数:镜像 parse_fn_params 的词法流(mode 词/name/:类型/默认值),绑定入作用域
+    skip_empty_lines(p)
+    var running = true
+    while running && p.err == "" {
+        var k = p_kind(p)
+        if k == "View" || k == "Mut" || k == "Move" || k == "Take" || k == "Copy" {
+            p_next(p)
+        }
+        if p_kind(p) != "Ident" {
+            running = false
+        } else {
+            var pname = p_text(p)
+            p_next(p)
+            var ty = "int"
+            if p_kind(p) == "Colon" {
+                p_next(p)
+            }
+            if is_type_name(p) {
+                ty = parse_type(p)
+            }
+            if p_kind(p) == "Asn" {
+                p_next(p)
+                expr_pratt(p, 0)
+            }
+            p_bind(p, pname, ty)
+            if p_kind(p) == "Comma" {
+                p_next(p)
+            } else {
+                running = false
+            }
+        }
+    }
+    p_expect(p, "RParen")
+    var ret = ""
+    if p_kind(p) == "Arrow" {
+        p_next(p)
+        ret = parse_type(p)
+        skip_empty_lines(p)
+    } else if is_type_name(p) {
+        ret = parse_type(p)
+        skip_empty_lines(p)
+    } else if p_kind(p) == "LBrace" || p_kind(p) == "Semi" {
+        ret = "void"
+    }
+    fns.push(TFnSig(name, ret))
+    if p_kind(p) == "Semi" {
+        p_next(p)
+        pop_scope(p)
+        return
+    }
+    t_body_walk(p, fns, out)
+    pop_scope(p)
+}
+
+// fn 体:期望 LBrace,扁平遍历至配对 RBrace(嵌套块按平衡跳过,Missing:
+// 块级作用域)。
+fn t_body_walk(p P, fns List, out List) {
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        t_stmt_walk(p, fns, out)
+        if p.err == "" {
+            // expect_eos 直译(Semi/Newline/Comma 分隔;不产 nl 行)
+            var has_sep = false
+            while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+                has_sep = true
+                p_next(p)
+            }
+            if p_kind(p) != "EOF" && p_kind(p) != "RBrace" && !has_sep {
+                p_err(p, "typeinfo: expected end of statement ")
+            }
+        }
+    }
+    p_expect(p, "RBrace")
+}
+
+// print(EXPR.type) 查询收集:识别 print 调用且实参以 .type 收尾。
+// 返回 1 = 已处理(含非查询的普通 print:求值后跳过)。
+// pos+1 处是否 .type 属性词("type" 是关键字,lex 为 Type;亦容 Ident)
+fn t_is_type_prop(p P) bool {
+    var nk = p_peek(p, 1)
+    if nk == "Type" {
+        return true
+    }
+    return nk == "Ident" && p_text_at(p, 1) == "type"
+}
+
+fn t_try_print_query(p P, out List, fns List) int {
+    if p_kind(p) != "Ident" || p_text(p) != "print" {
+        return 0
+    }
+    if p_peek(p, 1) != "LParen" {
+        return 0
+    }
+    p_next(p)
+    p_next(p)
+    skip_empty_lines(p)
+    // 解析实参表达式;若随后是 .type 则收集该表达式的推断型
+    var ty = t_infer_expr(p, 0, fns)
+    if p_kind(p) == "Dot" && t_is_type_prop(p) {
+        p_next(p)
+        p_next(p)
+        if ty == "" {
+            ty = "unknown"
+        }
+        out.push(ty)
+    }
+    // 其余实参按分隔符消费至 RParen
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+        t_infer_expr(p, 0, fns)
+        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if p_kind(p) != "RParen" {
+            p_err(p, "typeinfo: expected argument separator ")
+        }
+    }
+    p_expect(p, "RParen")
+    return 1
+}
+
+// 前瞻读取 pos+n 处 token 文本(不推进)
+fn p_text_at(p P, n int) str {
+    var i = p.pos + n
+    if i >= p.toks.len() {
+        return ""
+    }
+    return p.toks.get(i).text
+}
+
+// 语句分派:fn → 注册;let/var → 推断绑定;print 查询;其余表达式消费。
+fn t_stmt_walk(p P, fns List, out List) {
+    if p.err != "" {
+        return
+    }
+    if t_try_print_query(p, out, fns) == 1 {
+        return
+    }
+    var k = p_kind(p)
+    if k == "Fn" {
+        t_fn_walk(p, fns, out)
+        return
+    }
+    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+        p_next(p)
+        if p_kind(p) != "Ident" {
+            p_err(p, "typeinfo: expected store name ")
+            return
+        }
+        var name = p_text(p)
+        p_next(p)
+        var ty = ""
+        if is_type_name(p) {
+            ty = parse_type(p)
+        }
+        if p_kind(p) == "Asn" {
+            p_next(p)
+            var ity = t_infer_expr(p, 0, fns)
+            if ty == "" {
+                ty = ity
+            }
+        }
+        p_bind(p, name, ty)
+        return
+    }
+    // 其余语句:按表达式消费(if/for/while 等控制流的条件部分会被消费,
+    // 体走查不递归——语料不含,Missing 登记)
+    t_infer_expr(p, 0, fns)
+}
+
+// ── 表达式类型推断(infer/expr.rs 核心子集,D27) ───────────────
+// 优先级表复用 parser.at 的 infix_l/infix_r/postfix_power/prefix_power。
+
+// 字面量 kind → 型
+fn t_literal_type(k str) str {
+    if k == "Int" || k == "I8" || k == "U8" {
+        return "int"
+    }
+    if k == "Uint" {
+        return "uint"
+    }
+    if k == "Float" {
+        return "float"
+    }
+    if k == "Double" {
+        return "double"
+    }
+    if k == "True" || k == "False" {
+        return "bool"
+    }
+    if k == "Char" {
+        return "char"
+    }
+    if k == "Str" {
+        return "str"
+    }
+    return ""
+}
+
+// 数组型 "(array-type (elem T) (len n))" → T;非该形状返回 ""
+fn t_array_elem(ty str) str {
+    var head = "(array-type (elem "
+    if ty.len() >= head.len() && ty.slice(0, head.len()) == head {
+        var rest = ty.slice(head.len(), ty.len())
+        var depth = 1
+        var i = 0
+        while i < rest.len() {
+            var c = rest.char_at(i)
+            if c == '(' {
+                depth = depth + 1
+            } else if c == ')' {
+                depth = depth - 1
+                if depth == 0 {
+                    return rest.slice(0, i)
+                }
+            }
+            i = i + 1
+        }
+    }
+    return ""
+}
+
+// unify 简式(D23):一方未知取另一方;相同取之;不匹配 → ""(Unknown)
+fn t_unify(a str, b str) str {
+    if a == "" {
+        return b
+    }
+    if b == "" {
+        return a
+    }
+    if a == b {
+        return a
+    }
+    return ""
+}
+
+// 二元运算结果型(infer_binop_type 直译)
+fn t_binop_result(op str, l str, r str) str {
+    if op == "Eq" || op == "Neq" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" {
+        return "bool"
+    }
+    if op == "Add" || op == "Sub" || op == "Star" || op == "Div" || op == "Mod" {
+        return t_unify(l, r)
+    }
+    if op == "AddEq" || op == "SubEq" || op == "MulEq" || op == "DivEq" || op == "ModEq" || op == "Asn" {
+        return t_unify(l, r)
+    }
+    if op == "And" || op == "Or" {
+        return "bool"
+    }
+    return ""
+}
+
+// 表达式推断:优先级爬升(镜像 expr_pratt 骨架,只产类型不产 dump)
+fn t_infer_expr(p P, min int, fns List) str {
+    if p.err != "" {
+        return ""
+    }
+    var k = p_kind(p)
+    var lhs = ""
+    // ── 前缀 ──
+    if k == "Add" || k == "Sub" || k == "Not" || k == "Star" {
+        var pow = prefix_power(k)
+        p_next(p)
+        var operand = t_infer_expr(p, pow, fns)
+        if k == "Not" {
+            lhs = "bool"
+        } else {
+            lhs = operand
+        }
+    } else if k == "LParen" {
+        p_next(p)
+        // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
+        lhs = t_infer_expr(p, 0, fns)
+        var parts = List.new()
+        parts.push(lhs)
+        while p_kind(p) == "Comma" {
+            p_next(p)
+            var e = t_infer_expr(p, 0, fns)
+            parts.push(e)
+        }
+        p_expect(p, "RParen")
+        if parts.len() > 1 {
+            lhs = t_join_types(parts)
+        }
+    } else if k == "LSquare" {
+        // 数组字面量:元素型取首元素,Display 同 Rust Array
+        p_next(p)
+        skip_empty_lines(p)
+        var first = ""
+        var n = 0
+        while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
+            var e = t_infer_expr(p, 0, fns)
+            if n == 0 {
+                first = e
+            }
+            n = n + 1
+            var has_sep = false
+            while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+                has_sep = true
+                p_next(p)
+            }
+            if p_kind(p) != "RSquare" && !has_sep {
+                p_err(p, "typeinfo: expected array separator ")
+            }
+        }
+        p_expect(p, "RSquare")
+        if n > 0 {
+            lhs = "(array-type (elem " + first + ") (len " + n.str() + "))"
+        }
+    } else {
+        // ── 原子:字面量 / 标识符(含调用/下标后缀) ──
+        var lit = t_literal_type(k)
+        if lit != "" {
+            lhs = lit
+            p_next(p)
+        } else if k == "Ident" {
+            var name = p_text(p)
+            p_next(p)
+            lhs = p_lookup(p, name)
+            // 调用后缀:注册表查返回类型
+            if p_kind(p) == "LParen" {
+                lhs = t_fn_ret(fns, name)
+                parse_args(p)
+            }
+            // 下标后缀:数组元素型
+            if p_kind(p) == "LSquare" {
+                p_next(p)
+                t_infer_expr(p, 0, fns)
+                p_expect(p, "RSquare")
+                lhs = t_array_elem(lhs)
+            }
+        } else {
+            p_err(p, "typeinfo: expected expression, got ")
+            return ""
+        }
+    }
+    // ── 中缀循环 ──
+    while p.err == "" {
+        var opk = p_kind(p)
+        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" {
+            break
+        }
+        // .type 属性:停走留给调用方(print 查询)消费——它是作用于整个
+        // 表达式的后缀属性,不是方法调用
+        if opk == "Dot" && t_is_type_prop(p) {
+            break
+        }
+        if !is_op_kind(opk) {
+            p_err(p, "typeinfo: expected infix operator, got ")
+            break
+        }
+        var l = infix_l(opk)
+        if l == 0 || l < min {
+            break
+        }
+        p_next(p)
+        if opk == "Or" || opk == "And" {
+            skip_empty_lines(p)
+        }
+        var rhs = t_infer_expr(p, infix_r(opk), fns)
+        lhs = t_binop_result(opk, lhs, rhs)
+    }
+    return lhs
+}
+
+fn t_join_types(parts List) str {
+    var out = "("
+    var i = 0
+    while i < parts.len() {
+        if i > 0 {
+            out = out + ", "
+        }
+        out = out + parts.get(i)
+        i = i + 1
+    }
+    return out + ")"
+}
+
+fn t_fn_ret(fns List, name str) str {
+    var i = fns.len() - 1
+    while i >= 0 {
+        if fns.get(i).name == name {
+            return fns.get(i).ret
+        }
+        i = i - 1
+    }
+    return ""
+}
+
+// ── M3 闸门入口:typecheck_dump(source) -> str ─────────────────
+fn typecheck_dump(source str) str {
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var fns = List.new()
+    var out = List.new()
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "EOF" {
+        t_stmt_walk(p, fns, out)
+        if p.err == "" {
+            var has_sep = false
+            while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+                has_sep = true
+                p_next(p)
+            }
+            if p_kind(p) != "EOF" && !has_sep {
+                p_err(p, "typeinfo: expected end of statement ")
+            }
+        }
+    }
+    if p.err != "" {
+        return p.err
+    }
+    var s = ""
+    var i = 0
+    while i < out.len() {
+        if i > 0 {
+            s = s + "\n"
+        }
+        s = s + out.get(i)
+        i = i + 1
+    }
+    return s
+}

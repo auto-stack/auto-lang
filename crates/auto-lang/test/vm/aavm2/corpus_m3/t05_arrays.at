@@ -1,0 +1,6 @@
+fn main() {
+    let arr = [1, 2, 3]
+    print(arr[0].type)
+    let strs = ["a", "b", "c"]
+    print(strs[1].type)
+}
