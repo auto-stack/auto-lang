@@ -291,11 +291,11 @@
   的逐文件 `// Auto-generated` 分隔注释未复刻;struct 派生三分派
   (float/List→3 派生)与 else-后空行规则等格式细节已对齐;`${expr}`
   内容原样直通(方法调用/复杂表达式形态的 f-string 插值不支持)。
-- **主 a2r 缺陷(不修,挂 242)**:a2r.at 在主 a2r 下转译 45 错——
-  `.get(i).field` 链在接收者类型推断失败时发射 `Option` 形(E0609)、
-  `x = a.field`(&mut 引用的 str 字段读)不补 clone(E0507)等。矩阵 ②
-  因此维持 433 六文件语义,⑤(AA2R)覆盖含 a2r.at 的七文件全塔;主 a2r
-  修复后 ② 可回归整目录。
+- **主 a2r 缺陷(已修,242 #18)**:a2r.at 曾在主 a2r 下转译 45 错——链式类型
+  推断缺口(Index 元素/clone 透传/Dot 泛化)致 `.get(i).field` 发射 Option 形
+  (E0609)、赋值位字段读/ident 重绑定缺 auto-clone(E0507/E0382)、str 型入
+  String 位缺 to_string。2026-08-24 修复后 ② 回归整目录(含 a2r.at 七文件),
+  五方矩阵全绿,golden 零回归;细节见 242 tracker #18。
 
 ## 计数(434 时点)
 

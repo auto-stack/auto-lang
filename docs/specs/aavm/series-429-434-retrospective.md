@@ -49,7 +49,7 @@ G2 演示(可复现):`helloworld.at → "hello, world!"`、`fib.at → 55`
 |---|---|---|
 | AA2R golden 覆盖:01/03 组大部分字节级一致;02/04/05 组部分;06+(is-match/闭包/spec/use/泛型)未移植 | 余量项 | 434 计划内 S1/S2 未尽部分,差异清单见 divergences.md D40 |
 | S2(use.rust 直通 + dep/Cargo.toml + a2r_std_used 完整版) | 未做 | 仅 math 内建(max/min)+ a2r_std_used 头块已实现 |
-| 主 a2r 对 a2r.at 的 45 错(`.get(i).field` 链 Option 化、&mut str 字段读无 clone) | 不修 | 242 tracker 新条目;修复后矩阵 ② 回归整目录 |
+| ~~主 a2r 对 a2r.at 的 45 错~~ | ✅ 已修(434 收官轮) | 242 #18 已修复;② 已回归整目录,五方矩阵全绿 |
 | VM 242 既有缺陷(枚举载荷跨 fn 丢标签等) | 挂账 | KNOWN-DEBT-AND-RISKS.md |
 | ③ 承载 AA2R 全量转译耗时(分钟级) | 已知 | 仅一次性构建成本(⑤ 二进制内容寻址缓存);VM 性能优化不在系列范围 |
 | 下一定位 | — | AA2R 扩覆盖(golden 全组 + is-match)或转入生产化评估;自举实验目标已达成,建议系列封版 |

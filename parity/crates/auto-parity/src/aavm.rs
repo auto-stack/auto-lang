@@ -143,20 +143,8 @@ fn run_aavm_vm(config: &AavmConfig, case: &Path) -> Result<String, String> {
 
 /// ② AAVM-Rust:auto trans --merge → main harness → cargo bin(内容寻址缓存)。
 fn build_aavm_rust_bin(config: &AavmConfig) -> Result<(PathBuf, String), String> {
-    // Plan 434:② 维持 433 语义(432 六文件 lib 经主 a2r 转译)。a2r.at
-    // 暂不并入 ②——主 a2r 对其 .get(i).field 链与 &mut str 字段读尚有
-    // 发射缺口(45 错,已按计划归因三分类记入 242 tracker);⑤(AA2R)
-    // 覆盖含 a2r.at 的七文件全塔。主 a2r 修复后 ② 可回归整目录。
-    let lib_dir = {
-        let staged = std::env::temp_dir().join(format!("aavm-parity-lib6-{}", std::process::id()));
-        std::fs::create_dir_all(&staged).map_err(|e| e.to_string())?;
-        for f in AUTO_LIB_FILES_V2.iter().take(6) {
-            let src = config.repo_root.join(f);
-            let dst = staged.join(f.rsplit('/').next().unwrap_or(f));
-            std::fs::copy(&src, &dst).map_err(|e| format!("{}: {}", src.display(), e))?;
-        }
-        staged
-    };
+    // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at 七文件全塔)。
+    let lib_dir = config.repo_root.join("auto/lib");
     // 经临时文件取 merge 产物(CLI 的 stdout 会带 [trans] 横幅,文件内容干净)
     let tmp = std::env::temp_dir().join(format!("aavm-parity-merged-{}.rs", std::process::id()));
     let out = Command::new(&config.auto_binary)

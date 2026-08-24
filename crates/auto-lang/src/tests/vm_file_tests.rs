@@ -762,23 +762,8 @@ fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwr
 fn build_aavm_rust_bin() -> PathBuf {
     use std::process::Command;
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-    // Plan 434: 2 (aavm_rust) maintains the 433 six-file scope — a2r.at still
-    // hits main-a2r emission gaps (242 #18: get-chain Option fallback,
-    // &mut str-field reads without clone, loop-carried owned moves).
-    // Restore the whole-directory transpile once 242 #18 is fixed. The
-    // seven-file tower (incl. a2r.at) is covered by the AA2R backend (5)
-    // in the parity five-way matrix.
-    let lib_dir = {
-        let staged = std::env::temp_dir().join(format!("aavm2-lib6-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&staged);
-        std::fs::create_dir_all(&staged).expect("stage dir");
-        for f in crate::AUTO_LIB_FILES_V2.iter().take(6) {
-            let src = root.join(f);
-            let name = f.rsplit('/').next().unwrap_or(f);
-            std::fs::copy(&src, staged.join(name)).expect("stage copy");
-        }
-        staged
-    };
+    // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at)。
+    let lib_dir = root.join("auto/lib");
     let merged = crate::trans::rust::transpile_rust_project_merged(
         lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");
 
