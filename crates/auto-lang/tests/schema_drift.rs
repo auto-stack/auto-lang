@@ -872,6 +872,8 @@ struct AtGenInput {
     registry_vue: Vec<RegistryVue>,
     /// P4-4:既有 aura.at 的 vue 行(手写退役后再生成的保留源)
     carried_vue: BTreeMap<String, RegistryVue>,
+    /// P4-5a:死表(ShadcnRegistry)独有元素的保留集(再生成不丢)
+    carried_elements: BTreeSet<String>,
     /// 臂组别名并查结果:tag → canonical
     canonical_of: BTreeMap<String, String>,
 }
@@ -1032,7 +1034,7 @@ fn derive_tier(group: &BTreeSet<String>, inp: &AtGenInput) -> &'static str {
     }
     if group.iter().any(|t| inp.in_vb.contains(t)) {
         "builtin_widget"
-    } else if group.iter().any(|t| inp.in_vue_shadcn.contains(t)) {
+    } else if group.iter().any(|t| inp.in_vue_shadcn.contains(&fold_key(t))) {
         "web_component"
     } else if group.iter().any(|t| inp.in_vue_native.contains(t)) {
         "native_html"
@@ -1124,7 +1126,7 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             .cloned()
             .collect();
         // web:组件映射优先于原生直通(map_tag 解析顺序)
-        let web = if members.iter().any(|t| inp.in_vue_shadcn.contains(t)) {
+        let web = if members.iter().any(|t| inp.in_vue_shadcn.contains(&fold_key(t))) {
             "component"
         } else if members.iter().any(|t| inp.in_vue_native.contains(t)) {
             "native"
@@ -1148,7 +1150,7 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
         let mut sub_widgets: BTreeSet<String> = BTreeSet::new();
         if let Some(own_path) = members
             .iter()
-            .find_map(|t| inp.vue_imports.get(t).cloned())
+            .find_map(|t| inp.vue_imports.get(&fold_key(t)).cloned())
         {
             let own_fold = fold_key(canonical);
             for (t, path) in &inp.vue_imports {
@@ -1168,7 +1170,9 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             .map(|d| d.description.clone())
             .filter(|d| !d.is_empty())
             .or_else(|| {
-                if inp.registry_only.contains(canonical) {
+                if inp.carried_elements.contains(canonical) {
+                    Some("P4-5a: carried from prior schema (retired dead-table entry)".to_string())
+                } else if inp.registry_only.contains(canonical) {
                     Some(
                         "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
                             .to_string(),
@@ -1314,15 +1318,17 @@ fn schema_drift_fence() {
         }
     }
     let at = scan_aura_at(&aura_at);
-    // vue.rs 的重复 insert 与 schema.rs 同罪:HashMap 后写覆盖,前者是死代码。
-    let vue_seq = scan_insert_tags(&vue_rs, "components");
-    let mut vue_shadcn: BTreeSet<String> = BTreeSet::new();
-    let mut vue_dup: BTreeSet<String> = BTreeSet::new();
-    for tag in &vue_seq {
-        if !vue_shadcn.insert(tag.clone()) {
-            vue_dup.insert(tag.clone());
-        }
-    }
+    // Plan 435 P4-5a:vue.rs ShadcnRegistry(死表)已删除 —— vue 成员资格与
+    // import 路径改从**当前 aura.at 的 vue 行**(carried_vue)取。这是自洽的:
+    // web 组件的 vue 行经 carried 保留,再生成不丢;tier/web 推导按折叠键比。
+    let carried_vue = scan_aura_at_vue(&aura_at);
+    // 键集提前物化(carried_vue 稍后 move 进 AtGenInput)
+    let carried_keys: BTreeSet<String> = carried_vue.keys().cloned().collect();
+    let vue_shadcn: BTreeSet<String> = carried_keys.clone();
+    let vue_imports: BTreeMap<String, String> = carried_vue
+        .iter()
+        .filter_map(|(f, rv)| rv.import.clone().map(|i| (f.clone(), i)))
+        .collect();
 
     let vb_tables = scan_match_tables(&vb_rs);
     assert_eq!(
@@ -1404,7 +1410,7 @@ fn schema_drift_fence() {
   {}",
         shadowed_arms.iter().cloned().collect::<Vec<_>>().join(", ")
     );
-    let vue_imports = scan_vue_imports(&vue_rs);
+
     let mut prod_union: BTreeSet<String> = BTreeSet::new();
     for set in [
         &rs,
@@ -1443,6 +1449,21 @@ fn schema_drift_fence() {
     let mut canonical_of = canonical_of;
     let mut gallery_only: BTreeSet<String> = BTreeSet::new();
     let mut registry_only: BTreeSet<String> = BTreeSet::new();
+    // P4-5a:死表退役后,仅存于当前 aura.at 的元素保留(如死表独有的
+    // combobox_anchor/select-separator 家族件)
+    let provenance_folds: BTreeSet<String> = prod_union
+        .iter()
+        .chain(gallery_tags.iter())
+        .chain(registry_names.iter())
+        .map(|x| fold_key(x))
+        .collect();
+    let mut carried_elements: BTreeSet<String> = BTreeSet::new();
+    for name in scan_aura_at(&aura_at) {
+        if !provenance_folds.contains(&fold_key(&name)) {
+            canonical_of.insert(name.clone(), name.clone());
+            carried_elements.insert(name);
+        }
+    }
     for g in &gallery_tags {
         if !prod_fold.contains(&fold_key(g)) {
             canonical_of.insert(g.clone(), g.clone());
@@ -1483,6 +1504,7 @@ fn schema_drift_fence() {
         registry_only,
         registry_vue,
         carried_vue,
+        carried_elements,
         canonical_of,
     };
 
@@ -1510,7 +1532,6 @@ fn schema_drift_fence() {
     let mut missing: Vec<(&str, Vec<String>)> = Vec::new();
     for (name, set) in [
         ("schema.rs", &rs),
-        ("vue.components", &vue_shadcn),
         ("vue.map_tag", vue_mt0),
         ("vue.pascal", vue_mt1),
         ("view_builder", &vb_union),
@@ -1574,15 +1595,35 @@ fn schema_drift_fence() {
     }
 
     // 幻影豁免按折叠键(第 10/11 源的 Pascal/kebab 成员形态都在许可折叠集内)
-    let allowed_folds: BTreeSet<String> = prod_union
+    let mut allowed_tags: Vec<String> = prod_union
         .iter()
         .chain(gallery_tags.iter())
         .chain(registry_names.iter())
-        .map(|t| fold_key(t))
+        .cloned()
         .collect();
+    // P4-5a:schema 自身的 vue 行是 sanctioned 源(死表退役后)
+    allowed_tags.extend(carried_keys.iter().cloned());
+    let allowed_folds: BTreeSet<String> =
+        allowed_tags.iter().map(|t| fold_key(t)).collect();
+    let allowed_folds: BTreeSet<String> =
+        allowed_tags.iter().map(|t| fold_key(t)).collect();
+    // 归约到 canonical 判 provenance:别名随 canonical 获得许可
+    // (P4-5a 后 carried vue 行的 canonical 是 sanctioned 源)
     let phantom: Vec<String> = only_in(&at_all, &prod_union)
         .into_iter()
-        .filter(|t| !allowed_folds.contains(&fold_key(t)))
+        .filter(|t| {
+            use auto_lang::aura::default_schema_cached;
+            let canon_ok = default_schema_cached()
+                .and_then(|s| s.resolve_tag(t))
+                .map(|(canon, _)| {
+                    allowed_folds.contains(&fold_key(canon))
+                        || inp.carried_elements.contains(canon)
+                })
+                .unwrap_or(false);
+            !allowed_folds.contains(&fold_key(t))
+                && !canon_ok
+                && !inp.carried_elements.contains(t)
+        })
         .collect();
     assert!(
         phantom.is_empty(),
@@ -1680,9 +1721,6 @@ fn schema_drift_fence() {
     // ---- 维度语义(新增漂移时随报错一起打印) ----
     let mut drift: Drift = BTreeMap::new();
     add(&mut drift, "rs_duplicate_insert", rs_dup);
-    add(&mut drift, "vue_duplicate_insert", vue_dup);
-    add(&mut drift, "vue_not_in_rs", only_in(&vue_shadcn, &rs));
-    add(&mut drift, "rs_not_in_vue", only_in(&rs, &vue_shadcn));
     add(&mut drift, "vb_not_in_rs", only_in(&vb_union, &rs));
     add(&mut drift, "rs_not_in_vb", only_in(&rs, &vb_union));
     add(&mut drift, "vb0_not_in_vb1", only_in(vb0, vb1));

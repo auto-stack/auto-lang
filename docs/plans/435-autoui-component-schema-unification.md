@@ -345,3 +345,23 @@
 - **待续(P4-5a)**:deprecated ShadcnRegistry 清退 —— vue.rs 245 条
   components.insert + ~6 测试改用 WidgetRegistry/schema;围栏 vue.components
   维度与 vue_imports 提取源同步改造(改从 schema vue 行取,carried 同源)。
+
+### P4-5a:ShadcnRegistry 清退(2026-08-25,死表终结)
+
+- **删除**:vue.rs 的 deprecated `ShadcnRegistry`(struct + 245 条 components.insert
+  map + Default impl,共 -648 行);五个 phase 测试重写为**活链路清单**
+  (schema/aura.at → overlay → WidgetRegistry:get_primary_component/backend API)。
+- **死数据显形**:死表 245 条中 ~64 条是活链路从未使用的死映射
+  (tab→TabsTrigger、divider→Separator、thead 家族、radio、spinner...)——
+  负断言存档(如 thead 家族按 Plan 408 P8 刻意保持原生 HTML)。
+- **围栏源改造**:vue 成员资格与 import 路径改从当前 aura.at 的 vue 行
+  (carried_vue)取;vue↔rs 交叉维度退役(baseline -277 行,两表已统一于
+  schema);幻影检查归约到 canonical 判 provenance(别名随 canonical 许可)。
+- **carried 元素保留**:死表独有元素(combobox_anchor/select-separator 家族件等
+  10 个)经 carried_elements 保留,再生成不丢(描述标注 retired dead-table entry)。
+- **发现修复**:loader 的 extras 解析首元素被 ` [` 前缀卡掉(bracket 剥离),
+  chart 家族 ChartTooltip 曾静默丢失。
+- **验证**:5 测试重写后绿;golden byte 稳定;P4 4/4;围栏绿;lib 3162 全绿。
+- **组件注册终态**:生产表三处(view_builder 两表 + vue map_tag 兜底表)+ registry
+  spec 名 + gallery 消费侧 + **schema 自身(carried)** —— 新增组件唯一入口 =
+  schema/aura.at(手写或经 registry spec 提取),运行时全部经 schema 重建。
