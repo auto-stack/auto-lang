@@ -116,6 +116,15 @@
 | ~~434~~ | ~~主 a2r 对 a2r.at/lexer.at 新模式的发射缺口~~ ✅ 已修(2026-08-24 plan-434 收官轮) | 242 #18 已修复:链式类型推断 + 赋值位 auto-clone 镜像 + str 型 to_string 家族;② 已回归整目录七文件,五方矩阵全绿,golden 零回归。 | 242-a2r-feature-gap-tracker.md #18(已修复) |
 | 434 | AA2R golden 覆盖不完整 | S1/S2 余量:01/03 组大部分字节级一致;02/04/05 组部分;06+(is-match/闭包/spec/use/泛型声明)未移植;S2(use.rust 直通/dep/Cargo.toml/a2r_std_used 完整版)未做(仅 math 内建 max/min + a2r_std_used 头块)。差异定位 divergences.md D40。 | `auto/lib/a2r.at` Missing 节 |
 | 434 | AA2R 输出与主 a2r 的格式残留差异 | ⑤ 产物与 ② 文本对比存在可解释级差异(mut-参数签名的绑定可变位、逐文件分隔注释、尾随空行等,行为等价;详见 divergences.md D40)。 | `auto/lib/a2r.at` DIVERGE 节 |
+| 429-434 | 复审发现:aavm2 六道闸门全部挂 `test-vm-files` feature,六个 CI workflow 零覆盖 | "六道闸门全绿"的守护依赖手动 `--features test-vm-files`;继承 Plan 289 既有门控非 432 弱化,但守护强度应显式可知。建议 CI 增 feature job。 | `crates/auto-lang/src/tests.rs:66-77` |
+| 429-434 | 复审发现:19_rust_std VM goldens 全部 `#[ignore]`,430 已迁 std 臂(Duration/Instant/PathBuf/Vec)无 VM 路径防回归网;uuid/semver/csv 端到端仅报告实录无自动化 | ffi_dual_013 只守护三方 path-dep 路径;17_rust_std 走 a2r 不经 dispatch 3000。建议补 ffi_dual_014(std 臂 VM 路径)或解除部分 ignore。 | `vm_file_tests.rs:437-448`、`a2r_tests.rs:636-643` |
+| 430 | 复审发现:compile_dep_methods 错误被静默吞掉(`.ok().flatten()` 无 else/日志) | rustdoc/编译失败细节全丢,用户只见"方法不可用"无因;与 methods_pack.rs 文档"调用方记日志后继续"矛盾。 | `crates/auto-lang/src/compile.rs:799-805` |
+| 430 | 复审发现:方法包版本指纹用声明版本(`uuid = "1"` 兜底字面量)而非解析版本,缓存快路径不重解析 | 半开区间版本声明下升级 crate 指纹不变 → C3"防签名漂移"对最常见形态失效,缓存永续陈旧。 | `crates/auto-cache/src/methods_pack.rs:169,101-116` |
+| 430 | 复审发现:rustc 剔环无轮次上限(430-f1 报告称"至多 4 轮"与代码不符)且肇事符号 `starts_with` 前缀匹配会误伤同名前缀方法 | `auto_Counter_newest_p_p` 会命中剔除 `new`;大 crate 最坏 O(plans) 轮全量 build 分钟级静默重试,误伤仅 warn。 | `methods_pack.rs:174-211,275-280` |
+| 430 | 复审发现:泛型自由函数不做 generic 过滤,Ty::Generic 映射 RetPlan::Void → 假 'v' 签名进 manifest 被 resolve_signature 采信 | `fn foo<T>(x: T) -> T` 以 ret:'v' 进类型推断链传导 codegen;free_fns 需补泛型跳过。 | `emit_cdylib.rs:170,232-239` + `ffi.rs:1133` |
+| 430 | 复审发现:as_millis/as_micros/as_nanos 手写臂仍是 u128→i32 有损截断(与已修的 as_secs 族对照),未标可疑 | B3"可疑臂逐条裁决"遗留;使用方应知毫秒值 >i32::MAX 即溢出。 | `vm/ffi/stdlib.rs:6927-6929` |
+| 432 | 复审发现:bool 哨兵防护不完整——shim_list_push 有 is_bool 规范化,set/insert 路径直接 decode_i32 | bool 元素经 set/insert 仍变 i32::MIN 别名(v2 侧以 1/0 承载规避不受影响);宿主侧待补。 | `vm/native.rs` set≈2165/insert≈2227 |
+| 432 | 复审发现:engine.at ev_add 双 int 分支偏置不对称(直接 a.i+b.i 无 dec/enc,当前不可达);codegen.at hex4 编址 16 位静默截断(>0xffff dump 错无诊断) | 前者若 str.cat 发射条件放宽即触发错值,至少补警示注释;后者补溢出诊断。 | `engine.at:121-133` / `codegen.at:864-876` |
 
 ---
 
@@ -127,4 +136,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-25（Plan 434 AA2R 合并入库:登记 3 条——主 a2r 发射缺口(242 #18 已修)/AA2R golden 覆盖不完整/⑤②格式残留差异;Plan 444 修复 auto-shell-057:vue codegen 五类缺陷+gen 模板缺口,下游 vue-tsc 0 错+build 绿;Plan 433 a2r 闭环:登记 4 条——VM 枚举传参缺陷/a2r is-绑定类型跟踪/后处理 as_str 归约/merge v1 遗留;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+*最后更新：2026-08-25（aavm 系列 429-434 复审+归档:新增复审条目 9 条——闸门 feature 门控无 CI/std 臂无 VM 回归网/compile_dep_methods 静默吞错/指纹声明版本陈旧/剔环无上限+前缀误伤/泛型自由函数假签名/as_millis 截断/bool set-insert 哨兵/ev_add+hex4;Plan 434 AA2R 合并入库:登记 3 条;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*

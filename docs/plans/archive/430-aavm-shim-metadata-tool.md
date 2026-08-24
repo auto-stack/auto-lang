@@ -2,7 +2,7 @@
 plan: 430
 title: aavm-shim-metadata-tool（shim 映射流程重构：rustdoc 元信息工具）
 affects: [docs/specs/auto-lang/runtime/design/ffi-bridges.md, auto-lang/vm]
-status: draft
+status: complete
 ---
 
 # Plan 430: shim 映射流程重构——rustdoc 元信息工具
@@ -75,19 +75,26 @@ status: draft
 
 ### Phase A：可行性验证（1-2 天）
 
-- [ ] A1 在当前工具链验证 `cargo doc --output-format json`（历史上需 nightly，确认现状）；
+- [x] A1 在当前工具链验证 `cargo doc --output-format json`（历史上需 nightly，确认现状）；
   若不稳定，备选方案：`cargo metadata` + syn 扫描 crate 源（对 std 用 rustup component 源码）。
-- [ ] A2 确定 rustdoc JSON 顶层结构的解析子集（我们只要：类型/方法/关联函数/签名/self 修饰/
+  （nightly rustdoc JSON v53 打通；stable 1.97 不支持——报告 430-a1，commit c0c8f50d）
+- [x] A2 确定 rustdoc JSON 顶层结构的解析子集（我们只要：类型/方法/关联函数/签名/self 修饰/
   可见性/泛型参数标记），写最小解析器原型，对 `std::collections` 跑通。
-- [ ] A3 元信息格式 v1 定稿（schema 放 `docs/specs/auto-lang/runtime/design/` 或工具目录 README）。
+  （crates/shim-metadata/src/rustdoc.rs，std 走手编目录的 v1 决策见执行结果）
+- [x] A3 元信息格式 v1 定稿（schema 放 `docs/specs/auto-lang/runtime/design/` 或工具目录 README）。
+  （格式定稿随报告 430-a1；ffi-bridges.md 存 C 阶段摘要）
 
 ### Phase B：分类器与例外表（2-3 天）
 
-- [ ] B1 实现 6 条签名分类规则（上表），输出"每方法的 marshalling 计划"（中间表示）。
-- [ ] B2 例外表格式与加载（mono 提示 / 跳过 / 句柄语义注记 三类条目）；
+- [x] B1 实现 6 条签名分类规则（上表），输出"每方法的 marshalling 计划"（中间表示）。
+  （classify.rs classify_with/classify_one）
+- [x] B2 例外表格式与加载（mono 提示 / 跳过 / 句柄语义注记 三类条目）；
   分类器默认值 + 例外覆盖，类似 a2r 的 companion trait 模式。
+  （格式与 CLI --rules 加载已落地；**生产 dep 管线尚未接入**，恒为空表——见收官注记）
 - [ ] B3 对照验证：用分类器跑现有 40 crate 的手写臂覆盖面，输出 diff 报告
   （哪些臂是纯规则可生成的、哪些靠例外、哪些手写臂本身可疑——如 u64→i32 截断）。
+  （未做——逐 crate diff 报告无产出；u64→i32 截断仅修了 from_secs 族，
+  as_millis 族仍有损截断，见 KNOWN-DEBT 复审条目）
 
 ### Phase C：shim 包生成器（3-5 天）
 
@@ -110,15 +117,21 @@ status: draft
 - [x] D2 `known_signature` 改为"先查元信息，未命中回退手写表"。
   （`ffi::resolve_signature`：方法包 manifest 自由函数签名优先 → known_signature 回退；
   compile.rs/lib.rs/codegen.rs 三处调用点已替换）
-- [ ] D3 迁移一个最简 crate（建议 `Box`/`RefCell` 这类臂极少的）端到端走通：生成包 →
+- [x] D3 迁移一个最简 crate（建议 `Box`/`RefCell` 这类臂极少的）端到端走通：生成包 →
   加载 → 查表调用 → 删除对应手写臂 → 测试全绿。
+  （以 std Duration 迁移替代完成——五臂迁生成段并删手写臂，顺手修正 u64→i32 截断）
 
 ### Phase E：首个正式交付——String/Vec/HashMap 子集（3-5 天）
 
-- [ ] E1 按 Plan 429 B1 盘点报告裁剪配置，生成三者的 shim 包（例外条目预计 ≤20）。
-- [ ] E2 用例验证：现有 golden `17_rust_std`/`18_pure_rust` + `test/ffi_dual/` 全绿；
+- [-] E1 按 Plan 429 B1 盘点报告裁剪配置，生成三者的 shim 包（例外条目预计 ≤20）。
+  （**E 阶段被实测驱动的设计裁定改道**，见执行结果：String→引擎 str 原生路径、
+  HashMap/HashSet→Auto 原生 Map 路径、Vec→生成 shim——三者不再各自出包）
+- [-] E2 用例验证：现有 golden `17_rust_std`/`18_pure_rust` + `test/ffi_dual/` 全绿；
   补 String/Vec/HashMap 方法级用例（目标：覆盖 AAVM 移植所需全集，清单引用 429 B1 报告）。
+  （432 移植的 shim 需求实际由 Vec 生成段+原生路径全量满足；但 19_rust_std VM goldens
+  全部 #[ignore]、uuid/semver/csv 端到端无自动化——复审登记 KNOWN-DEBT）
 - [ ] E3 删除三者对应的手写臂与 known_signature 行。
+  （Vec 手写臂仍残留为被生成段遮蔽的死代码，如 stdlib.rs "Vec","new" heapless 臂——复审登记）
 - **此阶段完成即解锁 Plan 432 的 shim 依赖**（432 可提前并行启动其 lexer 切片）。
 
 ### Phase F：40 crate 全量迁移（E 完成后排期，可跨版本）
@@ -240,3 +253,18 @@ status: draft
   - F2 前置：builtin crate 无 dep 声明时接入**已缓存**方法包（`register_builtin_
     cached_packs`，仅查缓存零网络零构建，无缓存零成本降级）；`BUILTIN_OPAQUE_CRATES`
     提升为模块级 pub 常量。csv 实测 dep-less ByteRecord 走通。
+
+## 收官注记（2026-08-25 归档复审）
+
+本计划与 432-434 并行收口，按"系列收官"口径判定 complete：核心目标（元数据驱动管线、
+三层 dispatch 混合查找、指纹、unwrap_ok、字段 getter/Display 合成、uuid 零手写即插即用）
+全部落地并有代码实证。**余量项明示**：
+
+- B3（40 crate 对照 diff 报告）、E3（删 Vec/String 遗留手写臂）、F1 主体（逐 crate 删
+  legacy 表）、F2 收尾（CI 预生成清单）与"例外表接入生产 dep 管线"未做——F 长尾本就
+  跨版本，全部登记于 KNOWN-DEBT-AND-RISKS.md；
+- 2026-08-25 复审新增 4 条风险登记：compile_dep_methods 错误静默吞掉、版本指纹用声明
+  版本（缓存陈旧）、剔环无上限+前缀误伤、泛型自由函数假 'v' 签名进 manifest——
+  详见 KNOWN-DEBT 430 复审条目；
+- 测试网缺口：19_rust_std VM goldens 全部 #[ignore]（已迁 std 臂无 VM 路径防回归网）、
+  uuid/semver/csv 端到端仅报告实录——复审登记，建议后续补 ffi_dual_014。

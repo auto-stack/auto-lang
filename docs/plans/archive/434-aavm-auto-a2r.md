@@ -56,7 +56,7 @@ status: complete
 - [x] 失败归因三分类:AA2R 移植 bug(D38d 作用域槽位/D17 continue 违例/place 前瞻等 10+ 处,均已修)/divergence 覆盖(D38a-c 扩展)/主 a2r 缺陷(242 #18 三类,不修挂账)：AA2R 移植 bug / 432 已记录 divergence 未覆盖转译侧 / 主 a2r 本身缺陷（进 242）。
 - [x] **闸门 G2 演示达成**:AA2R 转译七文件全塔 → cargo build → 该 VM 运行 helloworld.at → "hello, world!"、fib.at → fib(10)=55;corpus_m4 30/30：AA2R --(转译)--> AAVM-Rust'（≠ 433 的 ②，这次转译器是 Auto 的）-->
   编译 --> 该 VM 运行 helloworld.at 与 fib.at 成功。
-- [x] 五方矩阵接入(parity aavm.rs ⑤=aa2r backend,内容寻址缓存;② 维持 433 六文件语义,注释归因)（⑤=AA2R 产物 backend），稳定集上全绿。
+- [x] 五方矩阵接入(parity aavm.rs ⑤=aa2r backend,内容寻址缓存;② 初期维持 433 六文件语义,收官轮 fcb8789a2 升级七文件整目录)（⑤=AA2R 产物 backend），稳定集上全绿。
 
 ### S4：收尾
 
@@ -109,7 +109,7 @@ status: complete
   3. `aavm7_bin.exe <case.at>` 逐例对比 ①(`auto <case.at>` 剥横幅)
 - 五方矩阵(①②③④⑤):parity 下 `cargo run -p auto-parity --bin auto-parity
   -- --root . --auto-binary ../target/debug/auto.exe aavm --html matrix.html`
-  (② 维持六文件范围,归因见 divergences.md §434 主 a2r 缺口注)。
+  (② 初期维持六文件范围;收官轮 fcb8789a2 已升级七文件整目录,见遗留节 242 #18 条目)。
 
 ### S1 现状
 

@@ -108,6 +108,20 @@ status: complete
 
 ---
 
+## 执行结果（2026-08-25 归档复审时补记）
+
+- **Phase A**：A1 删 `parser.rs_helper.rs`、A2 删 `symbol.rs`（全仓零引用验证后直接删除，
+  优于计划的"pub use 转发一个周期"）、A3 `AUTO_LIB_FILES` 收敛为 lib.rs 单一 const
+  （vm_file_tests.rs 引用之）——三项均有 commit 与全量绿背书。
+- **Phase B**：三份报告落盘 `docs/plans/reports/`（429-b1-shim-inventory / 429-b2-perf /
+  429-b3-a2r-syntax-coverage）。B1 的"高频缺口当场补臂"经裁定**不再执行**（推迟给 430-E
+  生成段统一接管）；B2 发现 use.rust Vec VM 路径 heapless 错写 bug（430 修复）；
+  B3 产出 38✅/7⚠️/2❌ 能力表，4 项 blocker 候选进 242。
+- **Phase C**：v0.5 tag 未打，按临时基线 b3bd64f5 锚定（429-c1-baseline.md）；
+  系列后续（431/432）实际锚定同此基线。
+- **C2 补齐**：aavm-sync-guide.md 头部"已被 429-434 系列取代"注记于本次归档时补上
+  （复审发现的遗漏）；本节本身亦为复审补记——执行期成果原散于 reports/ 与 commit message。
+
 ## 附录 A：AAVM 自举系列总纲（429→434）
 
 | # | 计划 | 一句话 | 出口判据 |

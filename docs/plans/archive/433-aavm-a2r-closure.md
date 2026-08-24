@@ -90,4 +90,17 @@ status: complete
 
 ## 执行结果
 
-（待执行后回填）
+（2026-08-25 归档复审时补记——执行期本节未回填即归档，属文档纪律缺口；数据原散于
+plan-reports/13-self-hosting.md 与 commit message，此处补汇总指针）
+
+- **Phase A**（0bf542c42）：`auto trans --merge` 对 auto/lib v2 六文件全量转译，
+  rustc metadata **329→0 错**，零 a2r_std 依赖；a2r 修复 12 项（char 码点/`.str()` 双表/
+  `.get/.set` 结构体接收者/`&mut` reborrow/fn 返回预扫描等，详见该 commit body）。
+- **Phase B**（8cf3665f6）：AAVM-Rust(②) 组装，corpus_m4 30/30 与参考(①)一致
+  （0.1-2ms/例）。
+- **Phase C**（3a00d07fb）：parity 四向矩阵（①reference ②aavm_rust ③aavm_vm ④golden）
+  30/30 全绿，一条命令可复现（`auto-parity ... aavm --html`）；242 #16 / 415-D 回填。
+- **Phase D**：自举回路演示（Rust 版 a2r 转译 AAVM → AAVM-Rust VM 跑 .at）落档；
+  验证数据最全记录见 `docs/plan-reports/13-self-hosting.md`。
+- .at 改写六文件（divergences D32-D37）；债务 4 条落 KNOWN-DEBT-AND-RISKS.md
+  （VM 枚举传参/a2r is-绑定类型跟踪/as_str 后处理归约/merge 自测 main——末项已由 434 清退）。
