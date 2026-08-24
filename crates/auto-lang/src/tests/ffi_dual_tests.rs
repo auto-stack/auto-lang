@@ -166,3 +166,29 @@ let p = Config.parse("not-a-number")
 fn ffi_dual_014_std_generated_segment() {
     test_ffi_dual("014_std_generated_segment").unwrap();
 }
+
+// 跨测试路由污染回归(ffi_dual_014 发现,2026-08-25):BIGVM_NATIVES 惰性注册 +
+// "已有 native 优先"启发式,使 use.rust 的 String.from 路由取决于同进程内是否有
+// 先前程序用过原生 String API。本测试在**同一测试内**先跑原生(无 use.rust)
+// String.from——修复前第二条会 print 出裸堆 ID(4000011 形态)而非 "42"。
+#[test]
+fn ffi_dual_015_rust_type_route_not_hijacked_by_native_registry() {
+    // 1. 原生 String API(无 use.rust)——副作用:auto.str.from 惰性注册进全局表
+    let (_, out1) = crate::run_with_capture(r#"
+fn main() {
+    let s = String.from("native")
+    print(s.len())
+}
+"#).expect("native String.from runs");
+    assert_eq!(out1.trim(), "6");
+
+    // 2. use.rust 的 String.from——必须仍走 dispatch 3000 生成段,
+    //    不得被已注册的 auto.str.from 劫持
+    let (_, out2) = crate::run_with_capture(r#"
+use.rust std::string::String
+fn main() {
+    print(String.from("42"))
+}
+"#).expect("rust String.from runs");
+    assert_eq!(out2.trim(), "42", "rust type import must not be hijacked by lazily-registered auto.str native");
+}

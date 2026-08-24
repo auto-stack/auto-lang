@@ -7625,8 +7625,28 @@ impl Codegen {
                                 name.split('.').next().unwrap_or("")
                             )
                     {
-                        // Check if there's already a registered native with an actual shim
-                        let has_existing = {
+                        // Check if there's already a registered native with an actual shim.
+                        //
+                        // 跨测试污染修复(ffi_dual_014 发现,2026-08-25):"已有 native
+                        // 优先"只允许作用于 **crate/模块级导入**(首字母小写,如
+                        // toml.parse、json.parse)。**类型导入**(首字母大写,如
+                        // String/Duration/Vec)必须恒走 dispatch 3000——BIGVM_NATIVES
+                        // 是惰性注册的进程级全局,同进程里任何先前程序用过原生
+                        // API(如 dstr 测试的 String.from)就会把 auto.str.from
+                        // 注册进表,此后本进程内所有 use.rust 的 String.from 都被
+                        // 劫持到 native 路径,print 出裸堆 ID(4000011 形态)。
+                        // 路由决策不得依赖"之前跑过什么"。
+                        let matched_key = if self.rust_native_map.contains_key(name) {
+                            name.as_str()
+                        } else {
+                            name.split('.').next().unwrap_or("")
+                        };
+                        let is_type_import = matched_key
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false);
+                        let has_existing = !is_type_import && {
                             let reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified_to_canonical(name).is_some()
                                 && reg.get_id(name).is_some()
