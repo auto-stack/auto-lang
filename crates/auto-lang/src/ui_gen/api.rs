@@ -484,9 +484,69 @@ pub fn generate_component_from_file(
     // widget/component sees them as referenceable components.
     // Plan 425: same-file WidgetDecl names enter the list too — `component fn`
     // now sugars to WidgetDecl, and same-file widget references take the same
-    // component path (`<Name/>` + `@/components/Name.vue` import) the fragment
-    // track used to provide.
+    // Plan 435 P4:`use { package: x from "dir" }` —— 加载 .at 组件包,
+    // 包内 widget 名并入 sub_widgets(tag 走组件生成路径)。
+    // 加载失败/内置 shadow → S003/S004 告警(不阻塞生成)。
+    let mut package_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+    let mut sub_widgets_out: Vec<String> = Vec::new();
+    {
+        use crate::ui_gen::widget::ComponentRegistry;
+        let mut registry = ComponentRegistry::new();
+        let rejected = registry.register_local(&widgets);
+        for r in &rejected {
+            package_warnings.push(
+                crate::ui_gen::validators::ValidationWarning::new(
+                    "S004",
+                    // Info 而非 Warning:规则本身在解析层强制(builtin wins),
+                    // 告警咨询化 —— 既有生态存在合法 shadow(a2vue 语料的 Card),
+                    // Warning 会误伤 --strict。
+                    crate::ui_gen::validators::Severity::Info,
+                    r,
+                    format!(
+                        "local widget `{}` shadows builtin tag `{}` — builtin wins (Plan 408/435)",
+                        r, r.to_lowercase()
+                    ),
+                ),
+            );
+        }
+        let base = at_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
+        let mut package_names: Vec<String> = Vec::new();
+        for w in &widgets {
+            for imp in &w.ext_imports {
+                if matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                    let dir = std::path::Path::new(imp.path.as_str());
+                    match registry.load_package(dir, &base) {
+                        Ok(pkg) => {
+                            for name in pkg.widgets.values() {
+                                if !package_names.contains(name) {
+                                    package_names.push(name.clone());
+                                }
+                            }
+                        }
+                        Err(e) => package_warnings.push(
+                            crate::ui_gen::validators::ValidationWarning::new(
+                                "S003",
+                                crate::ui_gen::validators::Severity::Warning,
+                                &w.name,
+                                format!("package load failed: {}", e),
+                            ),
+                        ),
+                    }
+                }
+            }
+        }
+        // 存活的包名并入 sub_widgets(fenced below by all_sub_widgets dedup)
+        sub_widgets_out = package_names;
+    }
     let mut all_sub_widgets: Vec<String> = sub_widgets.clone();
+    for n in std::mem::take(&mut sub_widgets_out) {
+        if !all_sub_widgets.contains(&n) {
+            all_sub_widgets.push(n);
+        }
+    }
     for w in &widgets {
         if !all_sub_widgets.contains(&w.name) {
             all_sub_widgets.push(w.name.clone());
@@ -524,6 +584,8 @@ pub fn generate_component_from_file(
     // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
     let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
         crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
+    // Plan 435 P4:包加载/shadow 告警(S003/S004)
+    all_validation_warnings.extend(package_warnings);
     all_validation_warnings.extend(store_warnings);
 
     // Plan 015 P1#8: R016 — view AST hard-keyword 撞名检查（strict 下经

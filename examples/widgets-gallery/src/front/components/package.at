@@ -1,0 +1,8 @@
+// Plan 435 P4 —— 官方组件包清单(自举载体)
+// 第一个通过统一注册机制(ComponentRegistry)注册的 .at 组件包:
+// 官方库与未来第三方包走完全相同的 `use { package: ... from "..." }` 机制。
+// 格式与 pac.at 同约定(key: "value" 行);目录内其余 *.at 为组件源。
+name: "official"
+version: "0.1.0"
+namespace: "auto"
+description: "AutoUI official widget library (gallery components, .at source)"

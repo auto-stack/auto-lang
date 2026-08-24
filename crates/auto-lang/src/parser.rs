@@ -12216,6 +12216,8 @@ impl<'a> Parser<'a> {
                 "fn" => ExtImportKind::Fn,
                 "component" => ExtImportKind::Component,
                 "composable" => ExtImportKind::Composable,
+                // Plan 435 P4:包引用 —— `package: official from "../components"`
+                "package" => ExtImportKind::Package,
                 other => {
                     return Err(SyntaxError::Generic {
                         message: format!(
@@ -12324,6 +12326,7 @@ impl<'a> Parser<'a> {
                             ExtImportKind::Fn => "fn",
                             ExtImportKind::Composable => "composable",
                             ExtImportKind::Component => "component",
+                            ExtImportKind::Package => "package",
                         },
                         self.cur.text
                     ),

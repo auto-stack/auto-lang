@@ -104,6 +104,34 @@
 //! | `radio` | RadioGroupItem | value, id, disabled, label→slot |
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
+/// Plan 435 P4:折叠相等(剥 -/_ + 小写;schema 别名策略同源)。
+fn fold_eq(a: &str, b: &str) -> bool {
+    let f = |s: &str| {
+        s.chars()
+            .filter(|c| *c != '-' && *c != '_')
+            .collect::<String>()
+            .to_lowercase()
+    };
+    f(a) == f(b)
+}
+
+/// Plan 435 P4:tag 是否为内置(schema 三级折叠解析可命中)。
+/// 内置优先(Plan 408 推广):内置 tag 不参与子组件折叠桥接。
+fn tag_is_builtin(tag: &str) -> bool {
+    crate::aura::default_schema_cached()
+        .map(|s| s.resolve_tag(tag).is_some())
+        .unwrap_or(false)
+}
+
+/// Plan 435 P4:折叠桥接的命名空间形状守卫 —— 裸小写单词(pre/code/div)
+/// 属元素命名空间,即使折叠命中组件名也不桥接(否则 `pre {}` 会变成
+/// 自引用 `<Pre/>`);kebab(copy-button)或含大写(TabTrigger)才是组件形态。
+fn tag_has_component_shape(tag: &str) -> bool {
+    tag.contains('-')
+        || tag.contains('_')
+        || tag.chars().any(|c| c.is_uppercase())
+}
+
 /// Plan 435 P3:HashMap 迭代序跨进程不确定(RandomState),SFC 发射必须确定。
 /// 发射层统一经此取按 key 排序的条目(golden byte-identical 的前提)。
 fn sorted_entries<'a, K: std::cmp::Ord, V>(m: &'a std::collections::HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
@@ -1636,6 +1664,9 @@ impl VueGenerator {
             let specifier = Self::ext_import_specifier(&imp.path);
             let symbols: Vec<String> = imp.symbols.iter().map(|s| s.as_str().to_string()).collect();
             match imp.kind {
+                // Plan 435 P4:包引用不产 ES import —— 包组件经 ComponentRegistry
+                // 注册,tag 走 sub-widget 生成路径(api 层已并入 sub_widgets)。
+                crate::ast::ExtImportKind::Package => continue,
                 crate::ast::ExtImportKind::Fn | crate::ast::ExtImportKind::Composable => {
                     self.ext_import_lines.push((
                         symbols.clone(),
@@ -4156,7 +4187,12 @@ impl VueGenerator {
                 }
 
                 // Check if this is a known sub-widget (custom component, not shadcn)
-                let is_known_sub_widget = self.known_sub_widgets.contains(tag);
+                // Plan 435 P4:与 map_tag 同源的折叠桥接(kebab↔Pascal;
+                // 内置可解析的 tag 不桥接,builtin 优先)
+                let is_known_sub_widget = self.known_sub_widgets.contains(tag)
+                    || (!tag_is_builtin(tag)
+                        && tag_has_component_shape(tag)
+                        && self.known_sub_widgets.iter().any(|w| fold_eq(w, tag)));
 
                 // Check if this is an external component declared via the
                 // widget `use { component: ... }` block — bound generically
@@ -5857,11 +5893,24 @@ impl VueGenerator {
         // Priority: known sub-widgets > external (widget `use`) components >
         // shadcn components > HTML fallback
         // If tag matches a known sub-widget, treat as custom component reference
-        if self.known_sub_widgets.contains(tag) {
-            if !self.component_refs.contains(&tag.to_string()) {
-                self.component_refs.push(tag.to_string());
+        // Plan 435 P4:折叠桥接 —— kebab tag(copy-button)↔ Pascal widget 名
+        // (CopyButton),返回规范名保证 import/文件名大小写正确;
+        // 内置可解析的 tag 不桥接(builtin 优先)。
+        let sub_widget_canon: Option<String> = if self.known_sub_widgets.contains(tag) {
+            Some(tag.to_string())
+        } else if !tag_is_builtin(tag) && tag_has_component_shape(tag) {
+            self.known_sub_widgets
+                .iter()
+                .find(|w| fold_eq(w, tag))
+                .cloned()
+        } else {
+            None
+        };
+        if let Some(canon) = sub_widget_canon {
+            if !self.component_refs.contains(&canon) {
+                self.component_refs.push(canon.clone());
             }
-            return tag.to_string();
+            return canon;
         }
 
         // Widget-declared external components (`use { component: ... }`) win
@@ -13081,6 +13130,8 @@ export function cn(...inputs: ClassValue[]) {
             }
             let specifier = Self::ext_import_specifier(imp.path.as_str());
             match imp.kind {
+                // Plan 435 P4:包引用无模块转发语义(包组件按需生成)。
+                crate::ast::ui::ExtImportKind::Package => continue,
                 crate::ast::ui::ExtImportKind::Fn => {
                     // import:供本模块 wrapper fn 体内引用(仅实际使用的符号);
                     // export:纯转发(Plan 424)——把符号递给调用方。export-from

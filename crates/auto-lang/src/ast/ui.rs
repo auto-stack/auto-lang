@@ -154,6 +154,10 @@ pub enum ExtImportKind {
     /// `<script setup>` top level; its return value is bound to a local
     /// const (`useXxx` → `xxx`) reachable from `on` handlers.
     Composable,
+    /// Plan 435 P4:`package: name from "dir"` — 声明一个 .at 组件包引用,
+    /// 包内全部 widget 注册为可用 tag(ComponentRegistry,source=Package)。
+    /// path 为目录(相对源文件解析),内含可选 package.at 清单。
+    Package,
 }
 
 /// One external import entry inside a widget-level `use { ... }` block.

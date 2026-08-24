@@ -31,9 +31,14 @@
 //! spec.backends.insert("jet".to_string(), mapping);
 //! ```
 
+mod component_registry;
 mod registry;
 mod spec;
 
+pub use component_registry::{
+    ComponentRegistry, ComponentResolution, ComponentSource, LoadedPackage,
+    PackageManifest, ShadowViolation,
+};
 pub use registry::WidgetRegistry;
 pub use registry::AUTO_IMPORTED_WIDGETS;
 pub use spec::{BackendMapping, WidgetCategory, WidgetSpec};

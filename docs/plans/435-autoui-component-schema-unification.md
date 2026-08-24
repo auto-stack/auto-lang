@@ -292,3 +292,32 @@
   (`Change: [string]` 形态)。多会话并发下的基线采样必须在**合并后**的主仓做。
 - **操作教训**:Windows 增量构建指纹在高频提交下偶发陈旧(cargo 未重编),
   双树输出不一致时先 touch 强制重建再归因;本节排查曾因此绕路。
+
+### P4 核心:统一注册表 + 官方包自举 + 包引用(2026-08-25,P4-1/2/3 落地;P4-4/5 续)
+
+- **P4-1 ComponentRegistry**(`ui_gen/widget/component_registry.rs`):
+  `ComponentSource{Builtin,Local,Package}` + `resolve()` 优先级显式化
+  (**Builtin > Local > Package**,Plan 408 语义推广);内置折叠名冲突的注册被拒
+  并记 `ShadowViolation`(api 层 S004 Info 告警——Warning 会误伤既有合法
+  shadow 如 a2vue 语料的 Card widget,规则在解析层强制,告警咨询化)。
+- **P4-2 官方包自举**:gallery components 目录 + `package.at` 清单
+  (pac.at 同款 key:value 约定,不发明新语法)= 第一个 .at 组件包
+  "official@0.1.0";经与第三方**完全相同**的 load_package 机制注册(零特例)。
+- **P4-3 包引用语法与接线**:`use { package: official from "dir" }`
+  (ExtImportKind::Package);api 主链路加载包 → 组件名并入 sub_widgets
+  (tag 走组件生成路径);加载失败 S003 告警不阻塞。
+- **折叠桥接**(map_tag 两处 + 元素路径同源):kebab tag(copy-button)↔
+  Pascal widget 名(CopyButton),返回规范名保证 import/文件名大小写正确。
+  两道守卫:①内置可解析的 tag 不桥接(builtin 优先);②**命名空间形状守卫**
+  —— 裸小写单词(pre/code/div)属元素命名空间不桥接(否则 `pre {}` 变成
+  自引用 `<Pre/>`,实测抓到);kebab/含大写才是组件形态。
+- **发现:官方包组件名与 rs shadcn 家族折叠冲突**(carousel-content ↔ 内置
+  carousel_content)——builtin-first 下包组件被内置声明占用,正是 §3.1 补强④
+  "shadcn 长尾归宿"要解决的:组件改写为官方 .at 时应同步退役 schema 的
+  web_component 条目(P4-4/P5 期间逐族处理)。
+- **验收(测试 4/4)**:优先级链、shadow 拒绝(Button/AlertDialog)、
+  官方包自举(零特例)、e2e(use package + copy-button → SFC 引用 CopyButton)。
+  golden 重采样(唯一差异 = package.at 清单跳过);lib 3140;围栏绿。
+- **挂账**:① ring_caps 测试全量并行下偶发 flaky(单跑 3/3 绿,与本次无关,
+  待单独归因);② P4-4(registry.rs 181 vue 映射 schema 派生)与
+  P4-5(ShadcnRegistry 清退 + unclassified 17 清零)未动。

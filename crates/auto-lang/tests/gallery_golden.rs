@@ -26,6 +26,10 @@ fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
             if p.is_dir() {
                 collect_at_files(&p, out);
             } else if p.extension().map_or(false, |x| x == "at") {
+                // Plan 435 P4:包清单不是组件源(package.at 不含 widget)
+                if p.file_name().map_or(false, |n| n == "package.at") {
+                    continue;
+                }
                 out.push(p);
             }
         }
