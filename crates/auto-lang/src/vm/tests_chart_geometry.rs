@@ -265,3 +265,137 @@ fn test_geo_math_trig() {
 }
 
 
+
+// ---------- donut 几何（复算 /donut-chart 页 Init 的完整计算）----------
+
+#[test]
+fn test_geo_donut_paths() {
+    // 与 pages/donut-chart.at 的 Init 逐行同构（顶层直线形态，§0.6.H）：
+    // 4 片圆环路径 + 图例。断言结构性质（起点/弧参数/大弧标志/闭合）。
+    let code = r#"
+        fn dc(x float) -> float { math.cos(x) }
+        fn ds(x float) -> float { math.sin(x) }
+        var a0_0 float = -1.5707963267948966
+        var a1_0 float = 1.8849555921538763
+        var a0_1 float = 1.8849555921538763
+        var a1_1 float = 3.455751918948773
+        var a0_2 float = 3.455751918948773
+        var a1_2 float = 4.209734155810323
+        var a0_3 float = 4.209734155810323
+        var a1_3 float = 4.71238898038469
+
+        var c00 float = dc(a0_0)
+        var s00 float = ds(a0_0)
+        var c01 float = dc(a1_0)
+        var s01 float = ds(a1_0)
+        var x00 float = 280.0 + 100.0 * c00
+        var y00 float = 150.0 + 100.0 * s00
+        var x01 float = 280.0 + 100.0 * c01
+        var y01 float = 150.0 + 100.0 * s01
+        var u00 float = 280.0 + 62.0 * c00
+        var v00 float = 150.0 + 62.0 * s00
+        var u01 float = 280.0 + 62.0 * c01
+        var v01 float = 150.0 + 62.0 * s01
+        var p0 = f"M${x00} ${y00} A100 100 0 1 1 ${x01} ${y01} L${u01} ${v01} A62 62 0 1 0 ${u00} ${v00} Z"
+
+        var c10 float = dc(a0_1)
+        var s10 float = ds(a0_1)
+        var c11 float = dc(a1_1)
+        var s11 float = ds(a1_1)
+        var x10 float = 280.0 + 100.0 * c10
+        var y10 float = 150.0 + 100.0 * s10
+        var x11 float = 280.0 + 100.0 * c11
+        var y11 float = 150.0 + 100.0 * s11
+        var u10 float = 280.0 + 62.0 * c10
+        var v10 float = 150.0 + 62.0 * s10
+        var u11 float = 280.0 + 62.0 * c11
+        var v11 float = 150.0 + 62.0 * s11
+        var p1 = f"M${x10} ${y10} A100 100 0 0 1 ${x11} ${y11} L${u11} ${v11} A62 62 0 0 0 ${u10} ${v10} Z"
+
+        var c20 float = dc(a0_2)
+        var s20 float = ds(a0_2)
+        var c21 float = dc(a1_2)
+        var s21 float = ds(a1_2)
+        var x20 float = 280.0 + 100.0 * c20
+        var y20 float = 150.0 + 100.0 * s20
+        var x21 float = 280.0 + 100.0 * c21
+        var y21 float = 150.0 + 100.0 * s21
+        var u20 float = 280.0 + 62.0 * c20
+        var v20 float = 150.0 + 62.0 * s20
+        var u21 float = 280.0 + 62.0 * c21
+        var v21 float = 150.0 + 62.0 * s21
+        var p2 = f"M${x20} ${y20} A100 100 0 0 1 ${x21} ${y21} L${u21} ${v21} A62 62 0 0 0 ${u20} ${v20} Z"
+
+        var c30 float = dc(a0_3)
+        var s30 float = ds(a0_3)
+        var c31 float = dc(a1_3)
+        var s31 float = ds(a1_3)
+        var x30 float = 280.0 + 100.0 * c30
+        var y30 float = 150.0 + 100.0 * s30
+        var x31 float = 280.0 + 100.0 * c31
+        var y31 float = 150.0 + 100.0 * s31
+        var u30 float = 280.0 + 62.0 * c30
+        var v30 float = 150.0 + 62.0 * s30
+        var u31 float = 280.0 + 62.0 * c31
+        var v31 float = 150.0 + 62.0 * s31
+        var p3 = f"M${x30} ${y30} A100 100 0 0 1 ${x31} ${y31} L${u31} ${v31} A62 62 0 0 0 ${u30} ${v30} Z"
+
+        var traffic = [
+            { l: "Desktop", v: 55 },
+            { l: "Mobile", v: 25 },
+            { l: "Tablet", v: 12 },
+            { l: "Wearable", v: 8 }
+        ]
+        var lg = ""
+        for d in traffic {
+            var vf = d["v"]
+            var lbl = d["l"]
+            if lg == "" {
+                lg = f"${lbl} ${vf}%"
+            } else {
+                lg = lg + f"   ${lbl} ${vf}%"
+            }
+        }
+        p0 + "|" + p1 + "|" + p2 + "|" + p3 + "~" + lg
+    "#;
+    let result = run(code).unwrap();
+    let (paths, legend) = result.split_once('~').unwrap();
+    let slices: Vec<&str> = paths.split('|').collect();
+    assert_eq!(slices.len(), 4, "4 slices: {}", paths);
+
+    // 片 0（55%，span>π）：从正顶 (280,50) 起，大弧标志 1
+    let s0 = slices[0];
+    assert!(s0.starts_with("M280 50 A100 100 0 1 1 "), "s0 = {}", s0);
+    assert!(s0.ends_with("A62 62 0 1 0 280 88 Z"), "s0 tail = {}", s0);
+
+    // 小弧片：laf=0
+    assert!(slices[1].contains(" A100 100 0 0 1 "), "s1: {}", slices[1]);
+    assert!(slices[2].contains(" A100 100 0 0 1 "), "s2: {}", slices[2]);
+    assert!(slices[3].contains(" A100 100 0 0 1 "), "s3: {}", slices[3]);
+
+    // 图例（含 {lbl} 字面量 bug 的回归防护）
+    assert_eq!(legend, "Desktop 55%   Mobile 25%   Tablet 12%   Wearable 8%");
+}
+
+
+
+// §0.6.H 回归：CALL_NAT 直接在 for 循环体内 → 后续浮点算术损坏
+// （最小复现：循环内 math.cos 后 cx+c 得位模式垃圾；用户函数包装幸存）。
+#[test]
+fn test_geo_callnat_in_loop_workaround() {
+    let code = r#"
+        fn dc(x float) -> float { math.cos(x) }
+        var cx float = 280.0
+        var data = [{ v: 55 }]
+        var out = ""
+        for d in data {
+            var a float = -1.57079632679
+            var c float = dc(a)
+            var x float = cx + 100.0 * c
+            out = f"${x}"
+        }
+        out
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "280");
+}
