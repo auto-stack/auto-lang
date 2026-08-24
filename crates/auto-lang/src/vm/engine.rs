@@ -398,6 +398,23 @@ fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
     }
 }
 
+/// Plan 437: f32 算术的 tag 驱动操作数弹出——动态来源（Index/Dot/Call 等
+/// 推断不可知处）的 int 操作数按**值**转 f32，f32/f64 按 tag 解码。
+/// 盲 pop_f32 会把 int 位模式重解释成 denormal（int 80 → 1.12e-43），
+/// 与 extract_autovm_result 的 tag-first 修复同一哲学。
+fn pop_f32_operand(task: &mut AutoTask) -> f32 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv)
+    } else if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv) as f32
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f32
+    } else {
+        auto_val::decode_f32(nv)
+    }
+}
+
 /// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
 /// authoritative; null is falsy; everything else falls back to legacy i32
 /// truthiness (0 / i32::MIN+1 sentinels) for values pushed by older code
@@ -4393,8 +4410,12 @@ impl AutoVM {
                 // Plan 118 Phase 4: Also supports string indexing (str[index])
                 OpCode::GET_ELEM => {
                     // Stack: array_id/list_id/str_id, index
-                    // Pop index first (top of stack)
-                    let index_i32 = task.ram.pop_i32();
+                    // Pop index first (top of stack).
+                    // Plan 437: 保留原 nv tag —— record 动态字段访问 d[field_name]
+                    // 的 key 是 string-tagged；i32 路径行为不变（位模式解码同旧
+                    // pop_i32）。
+                    let index_nv = task.ram.pop_nv();
+                    let index_i32 = auto_val::decode_i32(index_nv);
                     // Pop array_id/list_id or str_id (tagged)
                     let obj_or_str_nv = task.ram.pop_nv();
 
@@ -4533,6 +4554,35 @@ impl AutoVM {
                                     }
                                 } else {
                                     task.ram.push_i32(0); // Out of bounds
+                                }
+                            }
+                            // Plan 437: 动态 record 字段访问 —— d[field_name]，
+                            // key 为 string-tagged（charts 的 index/categories
+                            // 按名取列语义）。镜像 GET_FIELD 的 ObjectData 臂
+                            // （含 intern_runtime_str / rc_push 的 RC 契约）。
+                            else if let Some(obj) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                                if auto_val::is_string(index_nv) {
+                                    let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                                    let field_name = self.strings.read().unwrap()
+                                        .get(key_pool_idx)
+                                        .map(|b| String::from_utf8_lossy(b).to_string())
+                                        .unwrap_or_default();
+                                    let value = obj.get(&auto_val::ValueKey::Str(field_name.into())).cloned();
+                                    match value {
+                                        Some(auto_val::Value::Int(i)) => { task.ram.push_i32(i); }
+                                        Some(auto_val::Value::Uint(u)) => { task.ram.push_i32(u as i32); }
+                                        Some(auto_val::Value::Float(f)) => { task.ram.push_f32(f as f32); }
+                                        Some(auto_val::Value::Double(d)) => { task.ram.push_f64(d); }
+                                        Some(auto_val::Value::Bool(b)) => { task.ram.push_nv(auto_val::encode_bool(b)); }
+                                        Some(auto_val::Value::Char(c)) => { task.ram.push_i32(c as i32); }
+                                        Some(auto_val::Value::Str(s)) => {
+                                            self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                        }
+                                        Some(auto_val::Value::VmRef(r)) => { self.rc_push(task, auto_val::encode_object(r.id as u32)); }
+                                        _ => { task.ram.push_i32(0); } // Nil / 缺字段
+                                    }
+                                } else {
+                                    task.ram.push_i32(0);
                                 }
                             } else {
                                 vm_debug!("DEBUG GET_ELEM: Unknown heap object type");
@@ -5151,26 +5201,26 @@ impl AutoVM {
 
                 // Plan 073 Stage A: Floating-point arithmetic (f32)
                 OpCode::ADD_F => {
-                    let b = task.ram.pop_f32();
-                    let a = task.ram.pop_f32();
+                    let b = pop_f32_operand(task);
+                    let a = pop_f32_operand(task);
                     task.ram.push_f32(a + b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::SUB_F => {
-                    let b = task.ram.pop_f32();
-                    let a = task.ram.pop_f32();
+                    let b = pop_f32_operand(task);
+                    let a = pop_f32_operand(task);
                     task.ram.push_f32(a - b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::MUL_F => {
-                    let b = task.ram.pop_f32();
-                    let a = task.ram.pop_f32();
+                    let b = pop_f32_operand(task);
+                    let a = pop_f32_operand(task);
                     task.ram.push_f32(a * b);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::DIV_F => {
-                    let b = task.ram.pop_f32();
-                    let a = task.ram.pop_f32();
+                    let b = pop_f32_operand(task);
+                    let a = pop_f32_operand(task);
                     if b == 0.0 {
                         return Err(VMError::DivisionByZero);
                     }
@@ -5178,7 +5228,7 @@ impl AutoVM {
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
                 OpCode::NEG_F => {
-                    let a = task.ram.pop_f32();
+                    let a = pop_f32_operand(task);
                     task.ram.push_f32(-a);
                     task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
                 }
