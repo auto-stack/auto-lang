@@ -1908,9 +1908,81 @@ export default router
             }
         }
 
+        // Plan 443 prescan — aggregate BOUND model channels across the whole
+        // workspace BEFORE any real generation. For each .at file we run the
+        // same `generate_component_from_file` pass it will really use (same
+        // sub-widget map: app.at + front siblings share the Phase-1 cross map,
+        // pages/ files are same-file only — mirroring the existing PLAN-037
+        // T5 visibility), discard the output, and harvest each file's
+        // `bound_model_channels` (the `v-model:x` emissions its parents
+        // produced). The union decides which child model vars downgrade to
+        // defineModel; everything else stays `ref` (deep reactivity).
+        let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> = Default::default();
+        {
+            fn collect_at_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
+                if let Ok(entries) = fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            collect_at_files_recursive(&path, out);
+                        } else if path.extension().map(|e| e == "at").unwrap_or(false) {
+                            out.push(path);
+                        }
+                    }
+                }
+            }
+            // Same file set the real pass below compiles: app.at, the direct
+            // .at siblings of front_dir, and pages/ recursively.
+            let mut prescan_files: Vec<PathBuf> = Vec::new();
+            if app_at.exists() {
+                prescan_files.push(app_at.clone());
+            }
+            if let Ok(entries) = fs::read_dir(&front_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                        if file_name != "app.at" && file_name != "pac.at" {
+                            prescan_files.push(path);
+                        }
+                    }
+                }
+            }
+            let pages_dir = front_dir.join("pages");
+            if pages_dir.exists() {
+                collect_at_files_recursive(&pages_dir, &mut prescan_files);
+            }
+            for path in &prescan_files {
+                // app.at + front siblings see the cross-file channel map;
+                // pages/ files are same-file only (T5 visibility parity).
+                let cross = !path.starts_with(&pages_dir);
+                let opts = if cross {
+                    auto_lang::ui_gen::ComponentGenOptions {
+                        sub_widgets: Some(sub_widget_names.clone()),
+                        sub_widget_models: Some(sub_widget_models.clone()),
+                        ..Default::default()
+                    }
+                } else {
+                    auto_lang::ui_gen::ComponentGenOptions::default()
+                };
+                if let Ok(result) =
+                    auto_lang::ui_gen::generate_component_from_file(path, opts)
+                {
+                    for (k, v) in result.bound_model_channels {
+                        let entry = bound_model_channels.entry(k).or_default();
+                        for c in v {
+                            if !entry.contains(&c) {
+                                entry.push(c);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Process app.at — generate each widget independently, with known sub-widget names
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone())) {
                 Ok((vue_code, widgets, stores)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     let components = detect_shadcn_components(&vue_code);
@@ -1944,7 +2016,10 @@ export default router
                             let mut gen = gen
                                 .with_default_classes(default_classes)
                                 .with_sub_widgets(sub_widget_names.clone())
-                                .with_sub_widget_models(sub_widget_models.clone());
+                                .with_sub_widget_models(sub_widget_models.clone())
+                                .with_bound_model_channels(
+                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                );
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }
@@ -1988,6 +2063,7 @@ export default router
             root_dir: &Path,
             shadcn: bool,
             default_classes: bool,
+            bound_model_channels: &std::collections::HashMap<String, Vec<String>>,
             all_components: &mut Vec<(String, String, String, String)>,
             all_shadcn_components: &mut HashSet<String>,
             all_routes: &mut Vec<AuraRoute>,
@@ -2001,7 +2077,7 @@ export default router
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, root_dir, shadcn, default_classes, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
+                    scan_pages_dir(&path, front_dir, root_dir, shadcn, default_classes, bound_model_channels, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_stem = path.file_stem()
                         .and_then(|s| s.to_str())
@@ -2011,7 +2087,7 @@ export default router
                         .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_all_widget_codes(path.to_str().unwrap(), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+                    match auto_lang::ui_build_shadcn_all_widget_codes_with_bound(path.to_str().unwrap(), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone())) {
                         Ok(result) => {
                             let vue_code = result.vue_code.clone();
                             let widgets = result.widgets.clone();
@@ -2054,7 +2130,7 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, root_dir, shadcn, default_classes, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
+            scan_pages_dir(&pages_dir, &front_dir, root_dir, shadcn, default_classes, &bound_model_channels, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
@@ -2099,7 +2175,10 @@ export default router
                             let mut gen = gen
                                 .with_default_classes(default_classes)
                                 .with_sub_widgets(sub_widget_names.clone())
-                                .with_sub_widget_models(sub_widget_models.clone());
+                                .with_sub_widget_models(sub_widget_models.clone())
+                                .with_bound_model_channels(
+                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                );
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
                             }
@@ -4524,4 +4603,81 @@ store BetaStore {
             err
         );
     }
+}
+
+/// Plan 443 fixture: cross-file model-channel binding. app.at's App binds
+/// Panel's `doc` channel (v-model:doc); Board — declared in a sibling file —
+/// is never bound (the jade whiteboard shape: local deep-mutated state).
+const PLAN443_APP_AT: &str = r#"
+widget App {
+    model { var doc map = {} }
+    view { col { Panel(doc: .doc) Board() text "hi" } }
+}
+"#;
+const PLAN443_PANEL_AT: &str = r#"
+widget Panel {
+    model {
+        var doc map = {}
+        var local int = 0
+    }
+    view { col { text "panel" } }
+}
+"#;
+const PLAN443_BOARD_AT: &str = r#"
+widget Board {
+    model { var doc map = {} }
+    view { col { text "board" } }
+}
+"#;
+
+/// Plan 443: the workspace prescan aggregates bound model channels across
+/// files — Panel's `doc` (bound by App via v-model) downgrades to
+/// defineModel with a factory default; Board's `doc` (never bound) keeps
+/// the plain ref so deep mutations stay reactive.
+#[test]
+fn test_plan443_cross_file_bound_model_channels() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    fs::write(root.join("pac.at"), "name: \"plan443\"\n").unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(front.join("app.at"), PLAN443_APP_AT).unwrap();
+    fs::write(front.join("panel.at"), PLAN443_PANEL_AT).unwrap();
+    fs::write(front.join("board.at"), PLAN443_BOARD_AT).unwrap();
+
+    let project = crate::vue::VueProject::from_workspace(root)
+        .expect("plan443 workspace must load");
+    project.generate().expect("plan443 generate must succeed");
+
+    let components = root
+        .join("gen").join("front").join("vue").join("src").join("components");
+    let app_vue = fs::read_to_string(
+        root.join("gen").join("front").join("vue").join("src").join("App.vue"),
+    )
+    .expect("App.vue written");
+    let panel_vue =
+        fs::read_to_string(components.join("Panel.vue")).expect("Panel.vue written");
+    let board_vue =
+        fs::read_to_string(components.join("Board.vue")).expect("Board.vue written");
+
+    assert!(
+        app_vue.contains("v-model:doc=\"doc\""),
+        "App binds Panel's channel:\n{app_vue}"
+    );
+    assert!(
+        panel_vue.contains("const doc = defineModel<any>(\"doc\", { default: () => ({}) })"),
+        "bound cross-file channel downgrades to defineModel (factory default):\n{panel_vue}"
+    );
+    assert!(
+        panel_vue.contains("const local = ref<number>(0)"),
+        "unbound sibling stays ref:\n{panel_vue}"
+    );
+    assert!(
+        board_vue.contains("const doc = ref<any>({})"),
+        "never-bound model var keeps plain ref (deep reactivity):\n{board_vue}"
+    );
+    assert!(
+        !board_vue.contains("defineModel"),
+        "Board must not use defineModel:\n{board_vue}"
+    );
 }

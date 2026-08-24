@@ -31,6 +31,12 @@
 
 约束:setup 中 `await` 明确报错（async setup 需 Suspense 边界,另立任务）;setup 绑定与 model 变量/prop 同名为编译错误;setup 绑定 = script-setup 顶层局部绑定（≠ model 变量,不进 defineModel/不可被父绑定;需要双向时用 model 声明 + setup 内初始化组合表达）。解释器侧（AutoUI 继承 AutoVM）的每实例执行约定登记后续（auto-ui interpreter 联动）。
 
+## model 变量编译语义（Plan 443 定版）
+
+- **未绑定 model var = `ref<T>(init)`**（深响应:`x.value.list.push(...)` 正常触发更新）。defineModel 未绑定态的 get 返回裸 localValue（useModel customRef）,不满足深 mutation 响应性——这是 PLAN-037 T4 无条件降级被推翻的原因（jade 白板回归,auto-down DEBTS 015）。
+- **被绑定 model channel = `defineModel<T>("name", { default })`**:"被绑定"指某父侧调用点实际发出 `v-model:name`（T5 call-site model addressing,writable slot 契约不变）。绑定信息由文件级双 pass 与 workspace 预扫描收集（`VueGenerator::emitted_model_bindings`,收集点=发射点,永不漂移）。
+- 绑定 channel 的对象/数组字面量默认值必须工厂包裹（`default: () => ({})`）——props default 语义,防跨实例共享。
+
 ## 不变量
 
 - core 场景下 `let widget = create_window()` 必须合法——UI 关键字零命名空间污染（ADR-03）。

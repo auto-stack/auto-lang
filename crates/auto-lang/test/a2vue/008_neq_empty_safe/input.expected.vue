@@ -1,8 +1,8 @@
 <!-- NeqEmptySafe component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 
-const x = defineModel<string>("x", { default: '' })
+const x = ref<string>('')
 
 const hasX = computed<boolean>(() => !!(x.value))
 const emptyX = computed<boolean>(() => !(x.value))

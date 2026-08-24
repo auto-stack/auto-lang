@@ -294,6 +294,12 @@ pub struct ComponentGenOptions {
     /// collected by the workspace prescan (auto-man from_workspace). Merged
     /// with the same-file widgets' state vars inside generate_component_from_file.
     pub sub_widget_models: Option<std::collections::HashMap<String, Vec<String>>>,
+    /// Plan 443: cross-file BOUND model channels (widget name -> channels
+    /// that some parent file actually binds via `v-model:x`), aggregated by
+    /// the workspace prescan from each file's `GeneratedComponent::
+    /// bound_model_channels`. Only these channels downgrade the child's
+    /// model var to defineModel; everything else stays `ref`.
+    pub bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
     /// Override API imports. When `None`, auto-detected from `use back.api:`.
     pub api_imports_override: Option<Vec<String>>,
     /// Override store dependencies. When `None`, auto-detected from `use store:`.
@@ -337,6 +343,11 @@ pub struct GeneratedComponent {
     pub detected_store_deps: Vec<String>,
     /// All extracted AURA widgets.
     pub widgets: Vec<crate::aura::AuraWidget>,
+    /// Plan 443: model-channel bindings discovered in THIS file
+    /// (widget name -> bound channels). Workspace drivers aggregate this
+    /// across all .at files and feed it back via
+    /// `ComponentGenOptions::bound_model_channels` on the real pass.
+    pub bound_model_channels: std::collections::HashMap<String, Vec<String>>,
     /// Validation warnings from the post-generation check.
     pub validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning>,
 }
@@ -511,13 +522,63 @@ pub fn generate_component_from_file(
     // Tailwind classes for non-layout-primitive tags; default stays on.
     let default_classes = opts.default_classes.unwrap_or(true);
 
+    // Plan 443 pass 1 — same-file binding scan. When this file's channel map
+    // is non-empty, generate every widget once WITHOUT bound-channel info and
+    // harvest the `v-model:x` emissions. Parent-side channel decisions read
+    // only sub_widget_models / known_sub_widgets (never the bound set), so
+    // pass 1's emission set equals the real one; the result decides which
+    // children downgrade their model var to defineModel in pass 2.
+    let mut same_file_bound: std::collections::HashMap<String, Vec<String>> =
+        Default::default();
+    let has_any_channel = sub_widget_models.values().any(|c| !c.is_empty());
+    if has_any_channel {
+        for widget in &widgets {
+            let mut gen = VueGenerator::new()
+                .with_mode(vue_mode)
+                .with_default_classes(default_classes)
+                .with_store_deps(store_deps.clone())
+                .with_sub_widgets(all_sub_widgets.clone())
+                .with_sub_widget_models(sub_widget_models.clone());
+            if !api_imports.is_empty() {
+                gen = gen.with_project_api_functions(api_imports.clone());
+            }
+            gen.generate(widget)
+                .map_err(|e| format!("Failed to generate {}: {}", widget.name, e))?;
+            for (tag, channel) in &gen.emitted_model_bindings {
+                let entry = same_file_bound.entry(tag.clone()).or_default();
+                if !entry.contains(channel) {
+                    entry.push(channel.clone());
+                }
+            }
+        }
+    }
+    // Effective bound set = cross-file (opts) ∪ same-file. The same-file
+    // subset is also reported back so workspace drivers can aggregate it
+    // across files before their real generation pass.
+    let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> =
+        opts.bound_model_channels.clone().unwrap_or_default();
+    for (k, v) in &same_file_bound {
+        let entry = bound_model_channels.entry(k.clone()).or_default();
+        for c in v {
+            if !entry.contains(c) {
+                entry.push(c.clone());
+            }
+        }
+    }
+
     for widget in &widgets {
         let mut gen = VueGenerator::new()
             .with_mode(vue_mode)
             .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
             .with_sub_widgets(all_sub_widgets.clone())
-            .with_sub_widget_models(sub_widget_models.clone());
+            .with_sub_widget_models(sub_widget_models.clone())
+            .with_bound_model_channels(
+                bound_model_channels
+                    .get(&widget.name)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
         if !api_imports.is_empty() {
             gen = gen.with_project_api_functions(api_imports.clone());
         }
@@ -557,6 +618,7 @@ pub fn generate_component_from_file(
         detected_api_imports: api_imports,
         detected_store_deps: store_deps,
         widgets,
+        bound_model_channels: same_file_bound,
         validation_warnings: all_validation_warnings,
     })
 }

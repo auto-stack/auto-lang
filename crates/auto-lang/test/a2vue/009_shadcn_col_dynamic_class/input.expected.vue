@@ -1,8 +1,8 @@
 <!-- ShadcnColDynamic component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 
-const isActive = defineModel<boolean>("isActive", { default: false })
+const isActive = ref<boolean>(false)
 
 const rowClass = computed<any>(() => (isActive.value ? 'row-active' : 'row-idle'))
 
