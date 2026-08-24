@@ -58,39 +58,58 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S2：AST + parser 核心（P1，预估 1-2 周，可按语句族拆子切片）
 
-- [ ] `ast.at`：按 431 A2 裁剪后的 Stmt/Expr 子集，per-kind 结构（拒绝上帝节点）；
-    `parser.at`：递归下降 + Pratt（优先级表直译）、闭包/f-string/is-match/use（含 use.rust）/
-    类型解析/泛型参数。UI/task/store 区不移植（解析到即报"v2 不支持"，报错含位置）。
-- [ ] 闸门 M2：核心语料 AST dump diff = 0（Rust 侧 dump 工具用 431 E2 的）。
-- [ ] 子切片建议：S2a 声明+表达式 / S2b 控制流+模式 / S2c 类型+use+泛型。
+- [x] `parser.at`(D20:parse_dump 直出,无独立 ast.at)：递归下降 + Pratt(优先级表
+    直译)、类型解析、fn 参数、let 内联推断、for/if/while 全形态。
+    闭包/f-string/is-match/use/泛型 = Missing(遇之报 v2 unsupported,corpus 无)。
+    UI/task/store 区解析到即报 "v2 不支持"(含行号)。
+- [x] 闸门 M2:**18 语料(corpus_m2 14 + corpus_m1 4)AST dump diff=0**
+    (2026-08-24,VM 字符串池 RC 回归修复后转绿,见 D26/执行结果)。
+- [x] 事实上的子切分:本切片一次落地声明+表达式+控制流+类型(语料所需全量)。
 
 ### S3：typeinfo 核心（P2，预估 1 周）
 
-- [ ] `typeinfo.at`：单一 TypeStore（类型/函数/spec 声明表）+ infer 核心传播 + 简化 unification。
-  不复刻历史 5 套 registry（TypeStore 一套到底）。
-- [ ] 闸门：类型相关现有测试语料（类型错误样例 + 推断样例）结果与 Rust 一致。
+- [x] `typeinfo.at`(D27: typecheck_dump):TFnSig 函数注册表(TypeStore 的 S3 裁剪,
+  类型/spec 声明表留 S4 按需)+ infer 核心传播(字面量全集/作用域查找/调用→注册表
+  返回/数组元素/二元运算/元组)+ 简化 unification(t_unify)。复用 lexer.at 的
+  tokenize 与 parser.at 的游标/类型解析/优先级表助手,不复刻历史 5 套 registry。
+- [x] 闸门 M3:corpus_m3 六文件(infer_tests.rs 同源样料:字面量/变量/fn 返回
+  传播/fn 参数/数组元素/二元运算)`.type` 输出与 Rust VM 真执行逐行一致,
+  diff=0(2026-08-24)。考古结论:解释器路径无独立 typeck pass,类型错误样例
+  通道归 M2 解析错误域;`.type` 行为通道(codegen infer_expr_type)为类型层
+  唯一含 fn 返回传播的可观察输出——规格见 m3-typecheck-format.md。
 
 ### S4：opcode 声明 + codegen 核心（P2，预估 1-2 周）
 
-- [ ] `opcode.at` 全量声明（编号对齐 Rust）；`codegen.at`：两遍编译（先收集符号/地址再发射）、
-  脚本 wrapper（FN_PROLOG + 顶层语句）语义对齐 Rust codegen、字符串池、跳转 patch。
-- [ ] 闸门：对 corpus 生成的字节码与 Rust codegen 产物**结构级**一致（序列化对比允许元数据差异，
-  指令流一致；差异逐条解释或修）。
+- [x] `codegen.at`(D28: codegen_dump/cg_compile 直出;无独立 opcode.at——指令以
+    助记符 List 承载,字节宽度表 i_size 对齐 Rust 编码):脚本 wrapper、每 fn jmp-over、
+    FN_PROLOG/RESERVE 占位回填(替代 Rust 的体后插入+平移)、语句族全发射
+    (let/赋值[纯+复合]/if 链/while/for-range/return)、表达式(优先级表复用
+    parser.at;调用/参数编址 0x80+rel;str.cat;load.loc.2)、字符串池去重、
+    .line、跳转 patch、槽释放组升序。
+- [x] 闸门 M4:corpus_m4 十文件字节码与 Rust codegen+链接产物**结构级** diff=0
+    (2026-08-24;Rust 侧 dumper 归一两类元数据差异:load.str 显内容、释放组
+    按 HashMap 乱序与 2B store 布局漂移归一——规格 m4-bytecode-format.md)。
 
 ### S5：engine 核心（P2，预估 1-2 周）
 
-- [ ] `engine.at`：栈机 + 任务最小核（单任务先行，调度只留接口）、堆对象（type struct + kind）、
-  native 子集（print/断言/String/Vec/HashMap 所需，走 430 生成的 shim 包）、函数调用/RET 帧、
-  JMP 家族。debugger/trace/并发/async 不移植（遇指令报 v2 不支持）。
-- [ ] **闸门 M3：AAVM 全管线在 AutoVM 内编译并运行 helloworld + fib(10)，
-  输出与 Rust 参考实现一致**。这是本计划的主里程碑，达成即恢复旧版成就水平。
-- [ ] M4 扩 corpus：99_bootstrap 038-053 回收语料 + test/vm 行为子集，逐例迁移进 `test/vm/aavm2/`，
-  失败例逐个归因（移植 bug / 已知 divergence / 语料超 v2 范围）。
+- [x] `engine.at`(D29: ev_run):栈机执行循环(指令 List 直译,单任务,调度不
+    移植)、函数调用/RET 帧(参数槽 bp-n_args+rel-1 逐条对齐 engine.rs;
+    cur_args 按帧保存恢复)、JMP 家族、main 入口查找(无 main 回落 wrapper)、
+    print native(输出行收集)。堆对象/native 子集(String/Vec/HashMap)留
+    M4 扩闸按需(语料未及);布尔以 1/0 整型承载规避宿主 List 编码别名。
+- [x] **闸门 M3 主里程碑达成**(2026-08-24):AAVM 全管线
+    (token→lexer→parser→typeinfo→codegen→engine)在 AutoVM 内编译并运行
+    **helloworld 与 fib(10)=55,输出与 Rust 参考一致**
+    (test_aavm2_m3_milestone_fib);M5 行为闸门 corpus_m4 十文件全绿
+    (复用语料即行为用例)。
+- [~] M4 扩 corpus:99_bootstrap 038-053 多依赖 List/数组/对象 native(超
+    S4/S5 语料子集),留后续扩闸逐例回收(引擎侧需先补对应 native)。
 
 ### 收尾
 
 - [ ] 各 .at 文件 Snapshot/Coverage/Missing 回填；divergences.md 汇总定稿；
-  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。
+  旧 `auto/lib-legacy` 正式封存（README 指向 v2）。(主体已随各切片完成,
+  定稿与封存待 M4 扩闸收口)
 - [ ] Rust 侧重构建议（431 A4 清单 + 执行期新增）整理进债务簿。
 
 ## 风险与缓解
@@ -136,3 +155,62 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
   (docs/specs/aavm/m2-ast-dump-format.md——顶层/语句/表达式/Op 的 S-expr
   逐字格式 + 来源行号,免下会话重做);实施决策 D20(parse_dump 直出)/
   D21(List.* sanctioned,C3 修正)预定;Pratt 表数值与 Branch 格式为开工首日项。
+
+- **S2**(2026-08-24 续,worktree 432-core-port-s2):
+  - **lexer.at 重构(D13/D14 落地)**:`tokenize(source) -> List<Token>` 直出
+    真实 Token 结构;`lex_dump` 降为 List 上的格式化包装;**M1 闸门保持 diff=0**。
+  - **parser.at(~1200 行)**:parse_dump 直出 S-expr。语句(let/var/const/shared、
+    fn、if/else-if、for 全七形态、while/loop 脱糖 `(for (cond)...)`、break/
+    continue/return、块语句);表达式(Pratt 表数值直译:asn 1/2 … dot 35/36、
+    一元 26/28、postfix pair 8/call 30/index 32;方法调用重写 `(call (dot o.m))`、
+    下标、Range、数组/元组/对象字面量、全字面量);类型解析(builtin 表+?T/!T);
+    fn 参数(mode view 缺省/类型缺省 int/默认值);**let 无注解时的 parser 内联
+    推断**(parse_store_stmt:7864 的 infer_type_expr 核心子集,经 E.ity 构造期
+    计算——Bina unify/Array/Tuple/作用域查找);EmptyLine(n)与 expect_eos 语义。
+  - **Rust 侧 dump 工具落地**(aavm2_m2.rs:rust_parse_dump = Parser::from +
+    format!("{}", code));**corpus_m2 14 文件**(99_bootstrap 009-021 构造同源,
+    未定义变量片段按 check_symbol 语义补绑定)+ corpus_m1 4 文件(全程序)
+    = 18 文件黄金输出全绿(含 `(type int)` 推断、`(ret void)`、`(mode view))`、
+    `(double 1)` 剥零、`(char '')` 原样、`(object (pair "k" ...))` 等 quirk)。
+  - **语料修正 2 处**(S1 自建语料的解析性问题,非闸门放宽):
+    c02 `print('')`(D19 转义收尾吞字符 quirk 使其不可解析)→ `print('\')`;
+    c04 `match_or_like:` label 前缀(Rust parser 报 "Expected term, got While")
+    → 去前缀。M1 为活对比,lexer 层覆盖不受影响。
+  - **VM 字符串池 RC 回归(D26)已修复,M2 转绿**(2026-08-24 续,本会话):
+    根因两层——①`ListData<i32>` 字符串负哨兵 -(idx+1) 的容器侧份额从未
+    retain(push/set/insert/clear 只记堆 id),调用方栈份额被死区结算后列表
+    持裸哨兵指向已回收池槽,读回复活墓碑;②`task.num_locals` RET 不恢复,
+    shim_list_new 的有参启发式读到被调者的局部数,sp 越界即偷弹兄弟表达
+    式的值当初始列表(D25-① 构造参数丢失同机制)。修复五处:native.rs
+    list_i32_elem_retain/release 记账(push/set/insert/clear/resize)、
+    pop/remove 改先+1回栈再释放(末次引用不自造悬垂,堆 id 分支同修)、
+    child_pool_idxs 随容器死亡释放(heap_object.rs/types.rs/rc.rs)、
+    engine.rs RET 恢复 num_locals、add_string dedup 命中墓碑防御。
+    复现测试 repro_242_string_pool_uaf 常驻转绿;**M2 闸门 18 语料
+    diff=0**;全量 3242 过零新增失败。**堆侧同族缺陷亦已修**(同会话续):
+    shim_list_map/filter 四处新建列表裸 push_i32 入栈(无 rc 份额),
+    经局部槽 copy-on-load/pop_arg 生命周期后 RETAIN-AFTER-FREE →
+    conformance_bootstrap + conformance_023 双双转绿;全量 3243 过,
+    剩余 6 败(5 cookbook 行为断言 + charts 环境)为无关存量。
+  - 发现并规避的 VM 缺陷(D25):构造参数内联原生调用返回值丢失、List.pop
+    栈污染;全部以 .at 侧写法规避(提升变量 + depth 计数)。
+  - AUTO_LIB_FILES_V2 已登记 parser.at;M1 闸门 + aavm2 smoke(001/002)全绿。
+
+- **S3**(2026-08-24 续,同会话):前置考古落盘 m3-typecheck-format.md(三个
+  可观察通道辨析:解析期 TypeError 归 M2、let 内联推断已进 M2、`.type` 行为
+  通道含 fn 返回传播为 S3 锚点);typeinfo.at(~430 行,D27)——TFnSig 注册表 +
+  语句级走查(fn 签名镜像 parse_fn 词法流、let/var 推断绑定、print(EXPR.type)
+  查询收集)+ 优先级爬升型推断器(复用 parser.at 的 infix_l/infix_r);未知型
+  输出 unknown 对齐 Type::Unknown。corpus_m3 六文件 ground truth 实测校准后
+  M3 闸门 diff=0(修两处:.type 关键字停走、body 前导换行跳过)。AUTO_LIB_
+  FILES_V2 已登记 typeinfo.at。
+
+- **S4/S5**(2026-08-24 续,同会话):前置考古落盘 m4-bytecode-format.md
+  (发射模式/规范化契约/宿主 HashMap 乱序与 2B store 布局漂移实测);
+  codegen.at(~640 行,D28)+ engine.at(~250 行,D29)落地;调试期修
+  八处 .at 侧发射缺陷与两处宿主归一缺口。**六道闸门全绿:M1(4 文件
+  token)/M2(18 文件 AST)/M3(6 文件 .type)/M4(10 文件字节码,
+  3 轮稳定)/M5(10 文件行为)/主里程碑(helloworld+fib(10)=55 VM 内
+  全管线)**。全量 3246 过零新增(基线 5 个既有 cookbook 行为失败不变);
+  布尔压栈触发宿主 ListData<i32> 编码别名(bool→i32::MIN 哨兵取负溢出)
+  与参数个数不匹配静默毁帧两项宿主缺陷挂 242(divergences D29 留档)。

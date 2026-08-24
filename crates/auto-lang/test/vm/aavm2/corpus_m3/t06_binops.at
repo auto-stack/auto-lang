@@ -1,0 +1,8 @@
+fn main() {
+    let sum = 1 + 2
+    print(sum.type)
+    let product = 3 * 4
+    print(product.type)
+    let cmp = 1 < 2
+    print(cmp.type)
+}

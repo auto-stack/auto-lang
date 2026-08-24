@@ -1,0 +1,1470 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM v2 Sync Snapshot                                     ║
+// ║ Component: parser.at (Plan 432 S2 / D20: parse_dump 直出) ║
+// ║ Rust ref:  crates/auto-lang/src/parser.rs @ b3bd64f5      ║
+// ║ Baseline:  b3bd64f5                                       ║
+// ║ Gate:      M2 —— corpus AST dump 与 Rust 侧逐字符一致      ║
+// ║ 状态:      实现完成;M2 闸门被 VM 字符串池 RC 回归阻断       ║
+// ║            (242 tracker,见 plan 432 D26——运行期字符串      ║
+// ║            List.push 后读回即 UAF,canary 实证)            ║
+// ╚═══════════════════════════════════════════════════════════╝
+// Coverage:  语句(let/var/const/shared、fn 声明、if/else-if、for 全形态、
+//            while/loop 脱糖、break/continue/return、表达式语句、块语句);
+//            表达式(Pratt 表直译:一元/二元全运算符、调用/命名参数、方法
+//            调用重写、下标、Range、数组/元组/对象字面量、组括号、字面量
+//            全集);类型解析(标量 builtin 表 + ?T/!T/*T 前后缀);fn 参数
+//            (mode view 缺省、类型缺省 int、默认值);let 无注解时的 parser
+//            内联推断(infer_type_expr 核心子集,经 E.ity 构造期计算);
+//            EmptyLine(n) 语义;expect_eos(Semi/Newline/Comma 分隔)
+// Missing:   闭包(x => / (a,b) => / fn(params){})、f-string、is/match、
+//            use(含 use.rust)、泛型参数/泛型实例、turbofish、node 实例与
+//            UI/task/store 方言(遇之报 v2 unsupported)、#[...] 注解、
+//            #section、三元 ?:、as/to/await/go、.view/.mut/.move/.take/.?、
+//            ::路径、下标切片、postfix !(collect!)、
+//            check_symbol(未定义变量报错——仅影响非法输入,不影响合法语料
+//            dump)、args 的 Arg::Name/Pos 区分(两者 Display 相同,corpus
+//            不可区分)、方法链合并(.method() 语句)、convert_last_block、
+//            一元表达式的 let 推断(E 不携带子节点,una.ity 仅 ! 为 bool)
+// DIVERGE:   D20: AST 结构 → parse_dump S-expr 直出(判据层;真实 AST 推迟
+//                 到 S4 codegen 需要时定);
+//            D21: token 流承载 = List.new()/push/get/len(sanctioned);
+//            D22: 错误处理 → p.err 单槽 + 全函数入口短路(Rust 是 Result
+//                 传播 + add_error 收集;v2 闸门只跑合法语料,错误路径仅求
+//                 响亮失败——parse_dump 返回 "PARSE-ERROR:..." 使 diff 显式
+//                 爆红);
+//            D23: 类型/推断以 Display 字符串为载体(Rust 是 Type 枚举;
+//                 StrFixed 恒显 "str" 使该折叠无损;unify 走 Unknown 传播
+//                 简式,coercion 分支语料未及);
+//            D24: float/double 值显示 = 字面量文本剥尾零(Rust 为 f32/f64
+//                 shortest-roundtrip Display;十进制文本字面量二者一致,
+//                 科学计数/大数留 Missing);
+//            D17 同款:循环体内一律不用 continue(VM 242 bug 规避);
+//            D25: VM 缺陷规避(probe 实证,挂 242):①原生调用(auto.list.*)
+//                 内联作结构体构造参数时返回值丢失(List.new() 使字段成垃圾,
+//                 提升为局部变量后恢复);②List.pop 目录签名 Void 而 shim 压
+//                 返回值,语句位调用即静默毁栈、消费位返回垃圾——一律不用,
+//                 作用域退栈改为 depth 计数(scopes 只增不减,越界层不读)
+
+// ── 状态与载体 ────────────────────────────────────────────────
+
+type Binding {
+    name str
+    ty str
+}
+
+type P {
+    toks List
+    pos int
+    err str
+    scopes List
+    globals List
+    depth int
+}
+
+// 表达式结果:dump=S-expr;word=标识符词/方法词/运算符 kind;name=name 的
+// 文本或 int/uint 值串或 str/bool 原文(pair key 用);args=call 的
+// "(args ...)" 段;ity=构造期推断类型(Display 串,""=Unknown)
+type E {
+    kind str
+    word str
+    name str
+    args str
+    dump str
+    ity str
+}
+
+fn parse_new(toks List) P {
+    var scs = List.new()
+    var glo = List.new()
+    var p = P(toks, 0, "", scs, glo, 0)
+    // Parser::from 的 cur 初始化含 skip_comments:起始位置跳过前导注释
+    var scanning = true
+    for scanning {
+        if p.pos >= p.toks.len() {
+            scanning = false
+        } else if is_comment_kind(p.toks.get(p.pos).kind) {
+            p.pos = p.pos + 1
+        } else {
+            scanning = false
+        }
+    }
+    return p
+}
+
+fn p_kind(p P) str {
+    if p.pos >= p.toks.len() {
+        return "EOF"
+    }
+    return p.toks.get(p.pos).kind
+}
+
+fn p_text(p P) str {
+    if p.pos >= p.toks.len() {
+        return ""
+    }
+    return p.toks.get(p.pos).text
+}
+
+fn p_line(p P) int {
+    if p.pos >= p.toks.len() {
+        return 0
+    }
+    return p.toks.get(p.pos).line
+}
+
+// 原始前瞻(不跳注释;与基线 lexer.pushback 前瞻同构,corpus 括号内无注释)
+fn p_peek(p P, n int) str {
+    var i = p.pos + n
+    if i >= p.toks.len() {
+        return "EOF"
+    }
+    return p.toks.get(i).kind
+}
+
+fn is_comment_kind(k str) bool {
+    return k == "DocComment" || k == "CommentLine" || k == "CommentStart" || k == "CommentContent" || k == "CommentEnd"
+}
+
+// Parser::next 直译:前进一 token 并跳过注释 token
+fn p_next(p P) {
+    p.pos = p.pos + 1
+    var scanning = true
+    for scanning {
+        if p.pos >= p.toks.len() {
+            scanning = false
+        } else if is_comment_kind(p.toks.get(p.pos).kind) {
+            p.pos = p.pos + 1
+        } else {
+            scanning = false
+        }
+    }
+}
+
+fn p_err(p P, msg str) {
+    if p.err == "" {
+        p.err = "PARSE-ERROR:" + p_line(p).str() + ":" + msg + " <" + p_kind(p) + ">"
+    }
+}
+
+fn p_expect(p P, k str) {
+    if p.err != "" {
+        return
+    }
+    if p_kind(p) == k {
+        p_next(p)
+    } else {
+        p_err(p, "expected " + k + ", got ")
+    }
+}
+
+fn skip_empty_lines(p P) int {
+    var count = 0
+    while p_kind(p) == "Newline" {
+        count = count + 1
+        p_next(p)
+    }
+    return count
+}
+
+// ── 作用域(仅服务 let 无注解时的内联推断,D23) ─────────────────
+
+fn push_scope(p P) {
+    var sc = List.new()
+    p.scopes.push(sc)
+    p.depth = p.depth + 1
+}
+
+fn pop_scope(p P) {
+    p.depth = p.depth - 1
+}
+
+fn p_bind(p P, name str, ty str) {
+    if p.depth > 0 {
+        p.scopes.get(p.depth - 1).push(Binding(name, ty))
+    } else {
+        p.globals.push(Binding(name, ty))
+    }
+}
+
+fn p_lookup(p P, name str) str {
+    var s = p.depth - 1
+    while s >= 0 {
+        var scope = p.scopes.get(s)
+        var i = scope.len() - 1
+        while i >= 0 {
+            if scope.get(i).name == name {
+                return scope.get(i).ty
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    var g = p.globals.len() - 1
+    while g >= 0 {
+        if p.globals.get(g).name == name {
+            return p.globals.get(g).ty
+        }
+        g = g - 1
+    }
+    return ""
+}
+
+// ── 数字/浮点值显示(D24) ─────────────────────────────────────
+
+fn digit_val(c int) int {
+    if c >= '0' && c <= '9' {
+        return c - '0'
+    }
+    if c >= 'a' && c <= 'f' {
+        return c - 'a' + 10
+    }
+    return c - 'A' + 10
+}
+
+// parse_int 直译:0x/0b 前缀 + 十进制(下划线 lexer 已剥离)
+fn int_val(text str) int {
+    var base = 10
+    var start = 0
+    if text.len() >= 2 && text.slice(0, 2) == "0x" {
+        base = 16
+        start = 2
+    } else if text.len() >= 2 && text.slice(0, 2) == "0b" {
+        base = 2
+        start = 2
+    }
+    var val = 0
+    var i = start
+    while i < text.len() {
+        val = val * base + digit_val(text.char_at(i))
+        i = i + 1
+    }
+    return val
+}
+
+// f32/f64 Display 近似:十进制文本剥分数尾零("1.0"→"1","3.14"→"3.14")
+fn float_display(text str) str {
+    var dot = -1
+    var i = 0
+    while i < text.len() {
+        if text.char_at(i) == '.' {
+            dot = i
+        }
+        i = i + 1
+    }
+    if dot < 0 {
+        return text
+    }
+    var int_part = text.slice(0, dot)
+    var frac = text.slice(dot + 1, text.len())
+    while frac.len() > 0 && frac.char_at(frac.len() - 1) == '0' {
+        frac = frac.slice(0, frac.len() - 1)
+    }
+    if frac.len() == 0 {
+        return int_part
+    }
+    return int_part + "." + frac
+}
+
+// ── 类型解析(D23:类型即 Display 串) ──────────────────────────
+
+fn builtin_type(name str) str {
+    if name == "int" {
+        return "int"
+    }
+    if name == "uint" {
+        return "uint"
+    }
+    if name == "usize" {
+        return "usize"
+    }
+    if name == "i64" {
+        return "i64"
+    }
+    if name == "u64" {
+        return "u64"
+    }
+    if name == "float" {
+        return "float"
+    }
+    if name == "double" {
+        return "double"
+    }
+    if name == "bool" {
+        return "bool"
+    }
+    if name == "char" {
+        return "char"
+    }
+    if name == "str" {
+        return "str"
+    }
+    if name == "String" {
+        return "String"
+    }
+    if name == "byte" {
+        return "byte"
+    }
+    if name == "cstr" {
+        return "cstr"
+    }
+    return ""
+}
+
+fn is_type_name(p P) bool {
+    var k = p_kind(p)
+    return k == "Ident" || k == "Question" || k == "Not" || k == "Tilde" || k == "LSquare" || k == "Star" || k == "At" || k == "Fn" || k == "Link" || k == "Type"
+}
+
+// parse_type 子集:标量/用户名 + ?T/!T/*T 前后缀;泛型/数组/fn 类型 Missing
+fn parse_type(p P) str {
+    if p.err != "" {
+        return ""
+    }
+    var ty = parse_type_base(p)
+    while p_kind(p) == "Question" {
+        p_next(p)
+        ty = "?" + ty
+    }
+    return ty
+}
+
+fn parse_type_base(p P) str {
+    var k = p_kind(p)
+    if k == "Question" {
+        p_next(p)
+        return "?" + parse_type(p)
+    }
+    if k == "Not" {
+        p_next(p)
+        if is_type_name(p) {
+            return "!" + parse_type(p)
+        }
+        return "!void"
+    }
+    if k == "Star" {
+        p_next(p)
+        return "*" + parse_type(p)
+    }
+    if k == "Ident" {
+        var name = p_text(p)
+        var b = builtin_type(name)
+        if b == "" {
+            b = name
+        }
+        p_next(p)
+        // 泛型实例 Missing:遇 < 即报(corpus 无)
+        if p_kind(p) == "Lt" {
+            p_err(p, "v2 unsupported: generic type ")
+            return ""
+        }
+        return b
+    }
+    p_err(p, "expected type, got ")
+    return ""
+}
+
+// ── Pratt 表直译(parser.rs:28-164) ──────────────────────────
+
+fn prefix_power(k str) int {
+    // sign(Add/Sub/Star)=2*13=26;Not=2*14=28
+    if k == "Add" || k == "Sub" || k == "Star" {
+        return 26
+    }
+    if k == "Not" {
+        return 28
+    }
+    return 0
+}
+
+fn postfix_power(k str) int {
+    // pair=2*4=8;call=2*15=30;index=2*16=32;bang=2*17=34
+    if k == "Colon" {
+        return 8
+    }
+    if k == "LParen" {
+        return 30
+    }
+    if k == "LSquare" {
+        return 32
+    }
+    if k == "Not" {
+        return 34
+    }
+    return 0
+}
+
+fn infix_l(k str) int {
+    if k == "Asn" {
+        return 1
+    }
+    if k == "AddEq" || k == "SubEq" {
+        return 3
+    }
+    if k == "MulEq" || k == "DivEq" || k == "ModEq" {
+        return 5
+    }
+    if k == "Or" || k == "QuestionQuestion" {
+        return 9
+    }
+    if k == "And" {
+        return 11
+    }
+    if k == "Eq" || k == "Neq" {
+        return 13
+    }
+    if k == "Lt" || k == "Gt" || k == "Le" || k == "Ge" {
+        return 15
+    }
+    if k == "Range" || k == "RangeEq" {
+        return 17
+    }
+    if k == "Add" || k == "Sub" {
+        return 19
+    }
+    if k == "Star" || k == "Div" || k == "Mod" {
+        return 21
+    }
+    if k == "Dot" {
+        return 35
+    }
+    return 0
+}
+
+fn infix_r(k str) int {
+    if k == "Asn" {
+        return 2
+    }
+    if k == "AddEq" || k == "SubEq" {
+        return 4
+    }
+    if k == "MulEq" || k == "DivEq" || k == "ModEq" {
+        return 6
+    }
+    if k == "Or" || k == "QuestionQuestion" {
+        return 10
+    }
+    if k == "And" {
+        return 12
+    }
+    if k == "Eq" || k == "Neq" {
+        return 14
+    }
+    if k == "Lt" || k == "Gt" || k == "Le" || k == "Ge" {
+        return 16
+    }
+    if k == "Range" || k == "RangeEq" {
+        return 18
+    }
+    if k == "Add" || k == "Sub" {
+        return 20
+    }
+    if k == "Star" || k == "Div" || k == "Mod" {
+        return 22
+    }
+    if k == "Dot" {
+        return 36
+    }
+    return 0
+}
+
+fn op_display(k str) str {
+    if k == "Add" {
+        return "+"
+    }
+    if k == "Sub" {
+        return "-"
+    }
+    if k == "Star" {
+        return "*"
+    }
+    if k == "Div" {
+        return "/"
+    }
+    if k == "Mod" {
+        return "%"
+    }
+    if k == "AddEq" {
+        return "+="
+    }
+    if k == "SubEq" {
+        return "-="
+    }
+    if k == "MulEq" {
+        return "*="
+    }
+    if k == "DivEq" {
+        return "/="
+    }
+    if k == "ModEq" {
+        return "%="
+    }
+    if k == "Not" {
+        return "!"
+    }
+    if k == "Asn" {
+        return "="
+    }
+    if k == "Eq" {
+        return "=="
+    }
+    if k == "Neq" {
+        return "!="
+    }
+    if k == "Lt" {
+        return "<"
+    }
+    if k == "Gt" {
+        return ">"
+    }
+    if k == "Le" {
+        return "<="
+    }
+    if k == "Ge" {
+        return ">="
+    }
+    if k == "Range" {
+        return ".."
+    }
+    if k == "RangeEq" {
+        return "..="
+    }
+    if k == "Dot" {
+        return "."
+    }
+    if k == "Colon" {
+        return ":"
+    }
+    if k == "And" {
+        return "&&"
+    }
+    if k == "Or" {
+        return "||"
+    }
+    if k == "QuestionQuestion" {
+        return "??"
+    }
+    return ""
+}
+
+// 运算符 token 是否可作 lhs 之后的运算符(infix 或 postfix)
+fn is_op_kind(k str) bool {
+    return op_display(k) != "" || k == "LParen" || k == "LSquare"
+}
+
+// ── 推断构造期辅助(infer_binop_type/infer_unary_op_type 直译) ─
+
+fn infer_unify(a str, b str) str {
+    if a == "" {
+        return b
+    }
+    if b == "" {
+        return a
+    }
+    if a == b {
+        return a
+    }
+    // 基线走 unify_with_coercion;类型不匹配的语料未及,按其错误路径
+    // Unknown 传播
+    return ""
+}
+
+fn binop_result(op str, l str, r str) str {
+    if op == "Eq" || op == "Neq" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" {
+        return "bool"
+    }
+    if op == "Add" || op == "Sub" || op == "Star" || op == "Div" || op == "Mod" {
+        return infer_unify(l, r)
+    }
+    if op == "AddEq" || op == "SubEq" || op == "MulEq" || op == "DivEq" || op == "ModEq" || op == "Asn" {
+        return infer_unify(l, r)
+    }
+    return ""
+}
+
+// ── 表达式(返回 E;错误短路见 D22) ──────────────────────────
+
+fn bad_e() E {
+    return E("bad", "", "", "", "", "")
+}
+
+fn expr_atom(p P) E {
+    if p.err != "" {
+        return bad_e()
+    }
+    var k = p_kind(p)
+    if k == "LParen" {
+        // group() 直译
+        p_next(p)
+        var inner = expr_pratt(p, 0)
+        p_expect(p, "RParen")
+        return inner
+    }
+    if k == "Int" {
+        var v = int_val(p_text(p)).str()
+        p_next(p)
+        return E("int", "", v, "", "(int " + v + ")", "int")
+    }
+    if k == "Uint" {
+        var v2 = int_val(p_text(p)).str()
+        p_next(p)
+        return E("uint", "", v2, "", "(uint " + v2 + ")", "uint")
+    }
+    if k == "I8" {
+        var v3 = int_val(p_text(p)).str()
+        p_next(p)
+        return E("i8", "", v3, "", "(i8 " + v3 + ")", "int")
+    }
+    if k == "U8" {
+        var v4 = int_val(p_text(p)).str()
+        p_next(p)
+        return E("u8", "", v4, "", "(u8 " + v4 + ")", "int")
+    }
+    if k == "Float" {
+        var f1 = float_display(p_text(p))
+        p_next(p)
+        return E("float", "", "", "", "(float " + f1 + ")", "float")
+    }
+    if k == "Double" {
+        var f2 = float_display(p_text(p))
+        p_next(p)
+        return E("double", "", "", "", "(double " + f2 + ")", "double")
+    }
+    if k == "True" {
+        p_next(p)
+        return E("bool", "", "true", "", "(true)", "bool")
+    }
+    if k == "False" {
+        p_next(p)
+        return E("bool", "", "false", "", "(false)", "bool")
+    }
+    if k == "Char" {
+        var c = p_text(p)
+        p_next(p)
+        return E("char", "", c, "", "(char '" + c + "')", "char")
+    }
+    if k == "Str" {
+        var s = p_text(p)
+        p_next(p)
+        return E("str", "", s, "", "(str \"" + s + "\")", "str")
+    }
+    if k == "Ident" {
+        var n = p_text(p)
+        p_next(p)
+        return E("name", n, n, "", "(name " + n + ")", p_lookup(p, n))
+    }
+    if k == "Nil" {
+        p_next(p)
+        return E("nil", "", "", "", "(nil)", "")
+    }
+    if k == "Null" {
+        p_next(p)
+        return E("null", "", "", "", "(null)", "")
+    }
+    p_err(p, "expected term, got ")
+    return bad_e()
+}
+
+// args() 直译:Pos/Name 显示相同(D22 备注),统一按 Display 输出
+fn parse_args(p P) str {
+    p_expect(p, "LParen")
+    skip_empty_lines(p)
+    var out = "(args"
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+        var a = expr_pratt(p, 0)
+        if a.kind == "pair" {
+            p_err(p, "v2 unsupported: named call arg ")
+            return ""
+        }
+        out = out + " " + a.dump
+        // sep_args
+        var k = p_kind(p)
+        if k == "Comma" || k == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if k != "RParen" {
+            p_err(p, "expected argument separator, got ")
+            return ""
+        }
+    }
+    p_expect(p, "RParen")
+    return out + ")"
+}
+
+// array() 直译(fmt_array:空数组 "(array )")
+fn parse_array(p P) E {
+    p_expect(p, "LSquare")
+    skip_empty_lines(p)
+    var elems = List.new()
+    var first_ity = ""
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
+        var e = expr_pratt(p, 0)
+        if elems.len() == 0 {
+            first_ity = e.ity
+        }
+        elems.push(e.dump)
+        // sep_array
+        var has_sep = false
+        while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            has_sep = true
+            p_next(p)
+        }
+        if p_kind(p) != "RSquare" && !has_sep {
+            p_err(p, "expected array separator, got ")
+        }
+    }
+    p_expect(p, "RSquare")
+    var dump = "(array "
+    var i = 0
+    while i < elems.len() {
+        if i > 0 {
+            dump = dump + " "
+        }
+        dump = dump + elems.get(i)
+        i = i + 1
+    }
+    var ity = ""
+    if elems.len() > 0 {
+        ity = "(array-type (elem " + first_ity + ") (len " + elems.len().str() + "))"
+    }
+    return E("array", "", "", "", dump + ")", ity)
+}
+
+// key() 直译:返回 key 的 Display 形式
+fn parse_key(p P) str {
+    var k = p_kind(p)
+    if k == "Ident" || k == "Type" || k == "Tag" || k == "Task" {
+        var n = p_text(p)
+        p_next(p)
+        return "(name " + n + ")"
+    }
+    if k == "Int" {
+        var v = int_val(p_text(p)).str()
+        p_next(p)
+        return v
+    }
+    if k == "True" {
+        p_next(p)
+        return "true"
+    }
+    if k == "False" {
+        p_next(p)
+        return "false"
+    }
+    if k == "Str" {
+        var s = p_text(p)
+        p_next(p)
+        return "\"" + s + "\""
+    }
+    p_err(p, "expected key, got ")
+    return ""
+}
+
+// object() 直译
+fn parse_object(p P) E {
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var dump = "(object "
+    var i = 0
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if i > 0 {
+            dump = dump + " "
+        }
+        var key = parse_key(p)
+        p_expect(p, "Colon")
+        var val = expr_pratt(p, 0)
+        dump = dump + "(pair " + key + " " + val.dump + ")"
+        i = i + 1
+        // sep_obj
+        var k = p_kind(p)
+        if k == "Comma" || k == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+        } else if k != "RBrace" {
+            p_err(p, "expected pair separator, got ")
+        }
+    }
+    p_expect(p, "RBrace")
+    return E("object", "", "", "", dump + ")", "")
+}
+
+fn join_dump_list(parts List, sep str) str {
+    var out = ""
+    var i = 0
+    while i < parts.len() {
+        if i > 0 {
+            out = out + sep
+        }
+        out = out + parts.get(i)
+        i = i + 1
+    }
+    return out
+}
+
+// 元组解析(( 已在 cur):elems 经 expr_pratt(0),ity 为元素 ity 的 ", " 连接
+fn tuple_rest(p P, first E) E {
+    var dumps = List.new()
+    var itys = List.new()
+    dumps.push(first.dump)
+    itys.push(first.ity)
+    while p_kind(p) == "Comma" {
+        p_next(p)
+        var e = expr_pratt(p, 0)
+        dumps.push(e.dump)
+        itys.push(e.ity)
+    }
+    p_expect(p, "RParen")
+    return E("tuple", "", "", "", "(tuple " + join_dump_list(dumps, " ") + ")", "(" + join_dump_list(itys, ", ") + ")")
+}
+
+// LParen 前缀的 group/tuple/closure 判定(expr_pratt_inner LParen 臂直译)
+fn paren_prefix(p P) E {
+    var k1 = p_peek(p, 1)
+    if k1 == "RParen" {
+        var k2 = p_peek(p, 2)
+        if k2 == "DoubleArrow" {
+            p_err(p, "v2 unsupported: zero-param closure ")
+            return bad_e()
+        }
+        // () 单元 → 空元组(fmt_tuple 空形态)
+        p_next(p)
+        p_next(p)
+        return E("tuple", "", "", "", "(tuple )", "()")
+    }
+    if k1 == "Ident" {
+        // 前瞻扫描闭包/元组判定:depth 追踪 + 闭括号后 => 前瞻
+        var found_comma = false
+        var found_arrow = false
+        var depth = 1
+        var i = p.pos + 1
+        var scanning = true
+        while scanning && i < p.toks.len() {
+            var tk = p.toks.get(i).kind
+            if tk == "LParen" || tk == "LSquare" || tk == "LBrace" {
+                depth = depth + 1
+            } else if tk == "RParen" || tk == "RSquare" || tk == "RBrace" {
+                depth = depth - 1
+                if depth == 0 {
+                    if i + 1 < p.toks.len() && p.toks.get(i + 1).kind == "DoubleArrow" {
+                        found_arrow = true
+                    }
+                    scanning = false
+                }
+            } else if tk == "Comma" && depth == 1 {
+                found_comma = true
+            } else if tk == "EOF" {
+                scanning = false
+            }
+            i = i + 1
+        }
+        if found_arrow {
+            p_err(p, "v2 unsupported: multi-param closure ")
+            return bad_e()
+        }
+        if found_comma {
+            // 元组:消费 (,首元素后按逗号续
+            p_next(p)
+            var first = expr_pratt(p, 0)
+            return tuple_rest(p, first)
+        }
+        // 普通 group
+        p_next(p)
+        var inner = expr_pratt(p, 0)
+        p_expect(p, "RParen")
+        return inner
+    }
+    // 非标识符起始:group 或元组
+    p_next(p)
+    var first2 = expr_pratt(p, 0)
+    if p_kind(p) == "Comma" {
+        return tuple_rest(p, first2)
+    }
+    p_expect(p, "RParen")
+    return first2
+}
+
+// expr_pratt_inner 直译:前缀分发 + with_left 循环
+fn expr_pratt(p P, min int) E {
+    if p.err != "" {
+        return bad_e()
+    }
+    var k = p_kind(p)
+    var lhs = bad_e()
+    if k == "If" {
+        // if 表达式:复用 if 解析(Display 同 If)
+        var d = if_contents(p)
+        lhs = E("other", "", "", "", d, "")
+    } else if k == "Add" || k == "Sub" || k == "Not" || k == "Star" {
+        var pow = prefix_power(k)
+        p_next(p)
+        var operand = expr_pratt(p, pow)
+        var ity = ""
+        if k == "Not" {
+            ity = "bool"
+        } else {
+            ity = operand.ity
+        }
+        lhs = E("una", k, "", "", "(una (op " + op_display(k) + ") " + operand.dump + ")", ity)
+    } else if k == "LParen" {
+        lhs = paren_prefix(p)
+    } else if k == "LSquare" {
+        lhs = parse_array(p)
+    } else if k == "LBrace" {
+        lhs = parse_object(p)
+    } else if k == "FStrStart" {
+        p_err(p, "v2 unsupported: f-string ")
+        lhs = bad_e()
+    } else {
+        lhs = expr_atom(p)
+    }
+    return expr_with_left(p, lhs, min)
+}
+
+// expr_pratt_with_left_inner 直译
+fn expr_with_left(p P, lhs E, min int) E {
+    if p.err != "" {
+        return lhs
+    }
+    // 单参闭包 x => e:Missing
+    if lhs.kind == "name" && p_kind(p) == "DoubleArrow" {
+        p_err(p, "v2 unsupported: single-param closure ")
+        return lhs
+    }
+    var cur = lhs
+    while p.err == "" {
+        var k = p_kind(p)
+        if k == "EOF" || k == "Newline" || k == "Semi" || k == "LBrace" || k == "RBrace" || k == "Comma" || k == "Arrow" || k == "DoubleArrow" || k == "VBar" || k == "RSquare" || k == "RParen" {
+            break
+        }
+        if !is_op_kind(k) {
+            p_err(p, "expected infix operator, got ")
+            break
+        }
+        var op = k
+        var post = postfix_power(op)
+        if post > 0 {
+            if post < min {
+                break
+            }
+            if op == "LSquare" {
+                // 下标(切片形态 Missing)
+                p_next(p)
+                var idx = expr_pratt(p, 18)
+                p_expect(p, "RSquare")
+                cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
+            } else if op == "LParen" {
+                // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
+                var args = parse_args(p)
+                var word = ""
+                if cur.kind == "name" {
+                    word = cur.word
+                }
+                var d = "(call " + cur.dump
+                if args != "(args)" {
+                    d = d + " " + args
+                }
+                cur = E("call", word, cur.dump, args, d + ")", "")
+            } else if op == "Colon" {
+                // pair:key 由 lhs 形态决定;直接返回(不回循环)
+                p_next(p)
+                var key = ""
+                if cur.kind == "name" {
+                    key = "(name " + cur.word + ")"
+                } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
+                    key = cur.name
+                } else if cur.kind == "str" {
+                    key = "\"" + cur.name + "\""
+                } else {
+                    p_err(p, "invalid pair key ")
+                    break
+                }
+                var val = expr_pratt(p, 0)
+                return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
+            } else {
+                // Not 后缀(collect!):Missing
+                p_err(p, "v2 unsupported: postfix bang ")
+                break
+            }
+        } else {
+            var l = infix_l(op)
+            if l == 0 || l < min {
+                break
+            }
+            p_next(p)
+            // || / && 换行续接
+            if op == "Or" || op == "And" {
+                skip_empty_lines(p)
+            }
+            var rhs = expr_pratt(p, infix_r(op))
+            if op == "Range" {
+                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq false))", "")
+            } else if op == "RangeEq" {
+                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq true))", "")
+            } else if op == "Dot" {
+                if rhs.kind == "name" {
+                    cur = E("dot", rhs.word, "", "", "(dot " + cur.dump + "." + rhs.word + ")", "")
+                } else if rhs.kind == "int" || rhs.kind == "uint" {
+                    cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
+                } else if rhs.kind == "call" {
+                    // 方法调用重写:Call(name=Dot(obj,method))
+                    var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
+                    if rhs.args != "(args)" {
+                        d2 = d2 + " " + rhs.args
+                    }
+                    cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
+                } else {
+                    p_err(p, "invalid field name after dot ")
+                    break
+                }
+            } else if op == "QuestionQuestion" {
+                cur = E("other", "", "", "", "(?? " + cur.dump + " " + rhs.dump + ")", "")
+            } else {
+                cur = E("bina", op, "", "", "(bina " + cur.dump + " (op " + op_display(op) + ") " + rhs.dump + ")", binop_result(op, cur.ity, rhs.ity))
+            }
+        }
+    }
+    return cur
+}
+
+// ── 语句 ──────────────────────────────────────────────────────
+
+fn store_kw_name(kw str) str {
+    if kw == "Var" {
+        return "var"
+    }
+    if kw == "Const" {
+        return "const"
+    }
+    if kw == "Shared" {
+        return "shared"
+    }
+    return "let"
+}
+
+fn parse_store(p P, kw str) str {
+    p_next(p)
+    // 元组解构 let (a, b) = expr:基础实现
+    if p_kind(p) == "LParen" {
+        p_next(p)
+        var names = ""
+        if p_kind(p) != "RParen" {
+            names = p_text(p)
+            p_next(p)
+            while p_kind(p) == "Comma" {
+                p_next(p)
+                names = names + " " + p_text(p)
+                p_next(p)
+            }
+        }
+        p_expect(p, "RParen")
+        p_expect(p, "Asn")
+        var de = expr_pratt(p, 0)
+        return "(destr (" + names + ") " + de.dump + ")"
+    }
+    var name = p_text(p)
+    p_next(p)
+    var ty = ""
+    if is_type_name(p) {
+        ty = parse_type(p)
+    }
+    var init = E("nil", "", "", "", "(nil)", "")
+    if p_kind(p) == "Asn" {
+        p_next(p)
+        init = expr_pratt(p, 0)
+        if ty == "" {
+            ty = init.ity
+        }
+    } else if ty == "" {
+        p_err(p, "store must have type annotation or initializer: " + name)
+        return ""
+    }
+    p_bind(p, name, ty)
+    if kw == "Var" {
+        return "(var (name " + name + ") " + init.dump + ")"
+    }
+    if ty == "" {
+        return "(" + store_kw_name(kw) + " (name " + name + ") " + init.dump + ")"
+    }
+    return "(" + store_kw_name(kw) + " (name " + name + ") (type " + ty + ") " + init.dump + ")"
+}
+
+fn parse_fn_params(p P) str {
+    var out = ""
+    var count = 0
+    skip_empty_lines(p)
+    var running = true
+    while running && p.err == "" {
+        var mode = "view"
+        var k = p_kind(p)
+        if k == "View" {
+            p_next(p)
+        } else if k == "Mut" {
+            mode = "mut"
+            p_next(p)
+        } else if k == "Move" {
+            mode = "move"
+            p_next(p)
+        } else if k == "Take" {
+            mode = "move"
+            p_next(p)
+        } else if k == "Copy" {
+            mode = "move"
+            p_next(p)
+        }
+        if p_kind(p) != "Ident" {
+            if mode != "view" {
+                p_err(p, "expected parameter name after mode ")
+            }
+            running = false
+        } else {
+            var pname = p_text(p)
+            p_next(p)
+            var ty = "int"
+            if p_kind(p) == "Colon" {
+                p_next(p)
+            }
+            if is_type_name(p) {
+                ty = parse_type(p)
+            }
+            var pdump = "(param (name " + pname + ") (type " + ty + ") (mode " + mode + ")"
+            if p_kind(p) == "Asn" {
+                p_next(p)
+                var def = expr_pratt(p, 0)
+                pdump = pdump + " (default " + def.dump + ")"
+            }
+            pdump = pdump + ")"
+            if count > 0 {
+                out = out + " "
+            }
+            out = out + pdump
+            count = count + 1
+            p_bind(p, pname, ty)
+            if p_kind(p) == "Comma" {
+                p_next(p)
+            } else {
+                running = false
+            }
+        }
+    }
+    return out
+}
+
+fn parse_fn(p P) str {
+    p_next(p)
+    if p_kind(p) == "Dot" {
+        p_err(p, "v2 unsupported: fn.c/fn.vm ")
+        return ""
+    }
+    if p_kind(p) != "Ident" {
+        p_err(p, "expected fn name, got ")
+        return ""
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) == "Dot" {
+        p_err(p, "v2 unsupported: dotted fn name ")
+        return ""
+    }
+    if p_kind(p) == "Lt" {
+        p_err(p, "v2 unsupported: fn generic params ")
+        return ""
+    }
+    push_scope(p)
+    p_expect(p, "LParen")
+    var params = parse_fn_params(p)
+    p_expect(p, "RParen")
+    var ret = ""
+    if p_kind(p) == "Arrow" {
+        p_next(p)
+        ret = parse_type(p)
+        skip_empty_lines(p)
+    } else if is_type_name(p) {
+        ret = parse_type(p)
+        skip_empty_lines(p)
+    } else if p_kind(p) == "LBrace" || p_kind(p) == "Semi" {
+        ret = "void"
+    }
+    var body = "(body )"
+    if p_kind(p) == "Semi" {
+        p_next(p)
+    } else {
+        body = parse_body(p)
+    }
+    var out = "(fn (name " + name + ")"
+    if params != "" {
+        out = out + " (params " + params + ")"
+    }
+    if ret != "" {
+        out = out + " (ret " + ret + ")"
+    }
+    pop_scope(p)
+    return out + " " + body + ")"
+}
+
+fn if_contents(p P) str {
+    p_next(p)
+    if p_kind(p) == "Let" {
+        p_err(p, "v2 unsupported: if-let ")
+        return ""
+    }
+    var out = "(if "
+    var cond = expr_pratt(p, 0)
+    var body = parse_body(p)
+    out = out + "(branch " + cond.dump + " " + body + ")"
+    while p_kind(p) == "Else" {
+        p_next(p)
+        if p_kind(p) == "If" {
+            p_next(p)
+            if p_kind(p) == "Let" {
+                p_err(p, "v2 unsupported: else-if-let ")
+                return ""
+            }
+            var c2 = expr_pratt(p, 0)
+            var b2 = parse_body(p)
+            out = out + "(branch " + c2.dump + " " + b2 + ")"
+        } else {
+            var eb = parse_body(p)
+            out = out + " (else " + eb + ")"
+            break
+        }
+    }
+    return out + ")"
+}
+
+fn parse_for(p P) str {
+    p_next(p)
+    if p_kind(p) == "LBrace" {
+        var b0 = parse_body(p)
+        return "(for (ever) (nil) " + b0 + ")"
+    }
+    if p_kind(p) == "Let" || p_kind(p) == "Var" {
+        // for let x = 0; cond { }:init 不入 For Display
+        parse_store(p, "Let")
+        p_expect(p, "Semi")
+        var c0 = expr_pratt(p, 0)
+        var b1 = parse_body(p)
+        return "(for (cond) " + c0.dump + " " + b1 + ")"
+    }
+    if p_kind(p) == "Mut" {
+        p_err(p, "'mut' is not supported as a storage modifier ")
+        return ""
+    }
+    if p_kind(p) == "LParen" {
+        // 解构 for (k, v) in expr:基础实现
+        p_next(p)
+        var kn = p_text(p)
+        p_next(p)
+        p_expect(p, "Comma")
+        var vn = p_text(p)
+        p_next(p)
+        p_expect(p, "RParen")
+        p_expect(p, "In")
+        push_scope(p)
+        p_bind(p, kn, "int")
+        p_bind(p, vn, "int")
+        var r1 = expr_pratt(p, 0)
+        var b2 = parse_body(p)
+        pop_scope(p)
+        return "(for ((name " + kn + ") (name " + vn + ")) " + r1.dump + " " + b2 + ")"
+    }
+    if p_kind(p) == "Ident" {
+        var name = p_text(p)
+        p_next(p)
+        if p_kind(p) == "In" {
+            p_next(p)
+            push_scope(p)
+            p_bind(p, name, "int")
+            var range = expr_pratt(p, 0)
+            var body = parse_body(p)
+            pop_scope(p)
+            return "(for (name " + name + ") " + range.dump + " " + body + ")"
+        }
+        if p_kind(p) == "Comma" {
+            p_next(p)
+            var name2 = p_text(p)
+            p_next(p)
+            p_expect(p, "In")
+            push_scope(p)
+            p_bind(p, name2, "int")
+            var range2 = expr_pratt(p, 0)
+            var body2 = parse_body(p)
+            pop_scope(p)
+            return "(for ((name " + name + ") (name " + name2 + ")) " + range2.dump + " " + body2 + ")"
+        }
+        if p_kind(p) == "LParen" {
+            // for call(args) { } 条件循环
+            var args = parse_args(p)
+            var calle = E("call", name, "(name " + name + ")", args, "(call (name " + name + ") " + args + ")", "")
+            if p_kind(p) == "Question" {
+                p_err(p, "v2 unsupported: for-iterator call ")
+                return ""
+            }
+            var cond = expr_with_left(p, calle, 0)
+            var b3 = parse_body(p)
+            return "(for (cond) " + cond.dump + " " + b3 + ")"
+        }
+        // for i < max { } / 一般条件式:以 Ident 为 lhs 续解析
+        var idente = E("name", name, name, "", "(name " + name + ")", p_lookup(p, name))
+        var cond2 = expr_with_left(p, idente, 0)
+        var b4 = parse_body(p)
+        return "(for (cond) " + cond2.dump + " " + b4 + ")"
+    }
+    var cond3 = expr_pratt(p, 0)
+    var b5 = parse_body(p)
+    return "(for (cond) " + cond3.dump + " " + b5 + ")"
+}
+
+fn parse_while(p P) str {
+    p_next(p)
+    var had_paren = false
+    if p_kind(p) == "LParen" {
+        p_next(p)
+        had_paren = true
+    }
+    skip_empty_lines(p)
+    var cond = expr_pratt(p, 0)
+    if had_paren {
+        p_expect(p, "RParen")
+    }
+    var body = parse_body(p)
+    return "(for (cond) " + cond.dump + " " + body + ")"
+}
+
+fn parse_return(p P) str {
+    p_next(p)
+    var k = p_kind(p)
+    if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
+        return "(return (nil))"
+    }
+    var e = expr_pratt(p, 0)
+    return "(return " + e.dump + ")"
+}
+
+fn is_unsupported_stmt_kind(k str) bool {
+    return k == "Use" || k == "Type" || k == "Enum" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Is" || k == "Yield" || k == "Reply" || k == "View"
+}
+
+fn parse_stmt(p P) str {
+    if p.err != "" {
+        return ""
+    }
+    var k = p_kind(p)
+    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+        return parse_store(p, k)
+    }
+    if k == "Mut" {
+        p_err(p, "'mut' is not supported as a storage modifier ")
+        return ""
+    }
+    if k == "Fn" {
+        return parse_fn(p)
+    }
+    if k == "If" {
+        return if_contents(p)
+    }
+    if k == "For" {
+        return parse_for(p)
+    }
+    if k == "While" {
+        return parse_while(p)
+    }
+    if k == "Loop" {
+        p_next(p)
+        var b = parse_body(p)
+        return "(for (ever) (nil) " + b + ")"
+    }
+    if k == "Break" {
+        p_next(p)
+        return "(break)"
+    }
+    if k == "Continue" {
+        p_next(p)
+        return "(continue)"
+    }
+    if k == "Return" {
+        return parse_return(p)
+    }
+    if k == "LBrace" {
+        return parse_body(p)
+    }
+    if is_unsupported_stmt_kind(k) {
+        p_err(p, "v2 unsupported: " + k + " ")
+        return ""
+    }
+    if k == "Ident" && p_text(p) == "pub" {
+        p_err(p, "v2 unsupported: pub ")
+        return ""
+    }
+    var e = expr_pratt(p, 0)
+    return e.dump
+}
+
+// parse_body_inner 直译(方法链合并 Missing;空 body → "(body )")
+fn parse_body(p P) str {
+    p_expect(p, "LBrace")
+    push_scope(p)
+    var stmts = List.new()
+    var nl = skip_empty_lines(p)
+    if nl > 1 {
+        stmts.push("(nl*" + (nl - 1).str() + ")")
+    }
+    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        var s = parse_stmt(p)
+        stmts.push(s)
+        var n = expect_eos(p)
+        if n > 1 {
+            stmts.push("(nl*" + (n - 1).str() + ")")
+        }
+    }
+    p_expect(p, "RBrace")
+    pop_scope(p)
+    return "(body " + join_dump_list(stmts, " ") + ")"
+}
+
+// expect_eos 直译(Semi/Newline/Comma 皆可分隔;返回 newline 数)
+fn expect_eos(p P) int {
+    var count = 0
+    var has_sep = false
+    while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+        has_sep = true
+        if p_kind(p) == "Newline" {
+            count = count + 1
+        }
+        p_next(p)
+    }
+    if p_kind(p) == "EOF" || p_kind(p) == "RBrace" {
+        return count
+    }
+    if !has_sep {
+        p_err(p, "expected end of statement, got ")
+        return 0
+    }
+    return count
+}
+
+// parse_impl 直译(#section/convert_last_block Missing;空 code → "(code )")
+fn parse_program(p P) str {
+    var stmts = List.new()
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "EOF" {
+        var s = parse_stmt(p)
+        stmts.push(s)
+        var n = expect_eos(p)
+        if n > 1 {
+            stmts.push("(nl*" + (n - 1).str() + ")")
+        }
+    }
+    return "(code " + join_dump_list(stmts, " ") + ")"
+}
+
+// M2 闸门入口:parse_dump(source) -> str
+// 注意:当前 VM 存在字符串池 RC 回归(运行期串 List.push 后读回 UAF,
+// 242 tracker)——本入口在 VM 修复前会在含 List push 的循环上 canary。
+fn parse_dump(source str) str {
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var dump = parse_program(p)
+    if p.err != "" {
+        return p.err
+    }
+    return dump
+}

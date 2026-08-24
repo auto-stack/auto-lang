@@ -1,0 +1,12 @@
+fn get_value() int {
+    42
+}
+fn get_name() str {
+    "hello"
+}
+fn main() {
+    let x = get_value()
+    print(x.type)
+    let name = get_name()
+    print(name.type)
+}

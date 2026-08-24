@@ -770,10 +770,15 @@ impl AutoVM {
     /// 复用既有索引,池规模稳定在低位。根治(索引 u32 化/池 GC)记
     /// 引擎债,见 docs/plans/060。
     pub fn add_string(&self, bytes: Vec<u8>) -> usize {
-        {
-            let dedup = self.string_dedup.lock().unwrap();
-            if let Some(&idx) = dedup.get(&bytes) {
-                // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
+        let dedup_hit = { self.string_dedup.lock().unwrap().get(&bytes).copied() };
+        if let Some(idx) = dedup_hit {
+            // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
+            // Plan 432 D26 加固:残键指向墓碑槽时不可复活(canary 按
+            // tombstone 判定而非 rc)——视作 miss 走 freelist/append 重建。
+            if !self.pool_is_tombstone(idx) {
+                if crate::pool_log_all() {
+                    eprintln!("[POOLLOG #{:>4}] intern-dedup-hit {} content={:?}", crate::pool_log_seq(), idx, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
+                }
                 return idx;
             }
         }
@@ -789,7 +794,10 @@ impl AutoVM {
                     pool.rc[slot] = std::sync::atomic::AtomicU32::new(0);
                     pool.tombstone[slot] = false;
                     drop(pool);
-                    self.string_dedup.lock().unwrap().insert(bytes, slot);
+                    self.string_dedup.lock().unwrap().insert(bytes.clone(), slot);
+                    if crate::pool_log_all() {
+                        eprintln!("[POOLLOG #{:>4}] intern-freelist {} content={:?}", crate::pool_log_seq(), slot, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
+                    }
                     return slot;
                 }
                 // strings 与 freelist 长度异常时兜底:还回槽位走追加。
@@ -802,6 +810,9 @@ impl AutoVM {
         drop(strings);
         self.pool_state.write().unwrap().ensure_len(idx + 1);
         self.string_dedup.lock().unwrap().insert(bytes, idx);
+        if crate::pool_log_all() {
+            eprintln!("[POOLLOG #{:>4}] intern-append {} (pool len {})", crate::pool_log_seq(), idx, idx + 1);
+        }
         idx
     }
 
@@ -1387,6 +1398,9 @@ impl AutoVM {
                     index
                 );
             }
+        }
+        if crate::pool_log_all() {
+            eprintln!("[POOLLOG #{:>4}] CANARY-READ {}", crate::pool_log_seq(), index);
         }
         let strings = self.strings.read().unwrap();
         strings.get(index as usize).cloned()
@@ -6615,6 +6629,12 @@ impl AutoVM {
                     if let Some(frame) = task.call_stack.pop() {
                         task.current_fn_n_args = frame.old_fn_n_args;
                         task.current_fn_n_locals = frame.old_fn_n_locals;
+                        // Plan 432 D26 修复:num_locals 随帧恢复——此前从不恢复,
+                        // 用户函数返回后 native shim 的帧几何启发式(shim_list_new
+                        // 的有参判定 bp+num_locals+2)读到被调者的局部数,sp 偶然
+                        // 越过错误阈值即偷弹栈值(List.new 返回被污染的初始列表,
+                        // 242:S2-432;构造参数内联调用丢失即 D25-① 同机制)。
+                        task.num_locals = task.current_fn_n_locals;
                     }
                 }
                 // Plan 377 §3.3: RET_D opcode 已删除（全值单槽化后恒用 RET）。

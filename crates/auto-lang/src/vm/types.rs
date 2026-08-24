@@ -282,6 +282,15 @@ impl HeapObject for ListData<i32> {
             })
             .collect()
     }
+    // Plan 432 D26: 字符串负哨兵 -(idx+1) 的容器侧池份额随容器死亡释放。
+    fn child_pool_idxs(&self) -> Vec<usize> {
+        self.elems
+            .iter()
+            .filter_map(|&e| {
+                if e < 0 { Some((-e - 1) as usize) } else { None }
+            })
+            .collect()
+    }
 }
 
 impl HeapObject for ListData<char> {

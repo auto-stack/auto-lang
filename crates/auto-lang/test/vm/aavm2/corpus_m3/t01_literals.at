@@ -1,0 +1,5 @@
+print(42.type)
+print(1.5.type)
+print("hello".type)
+print(true.type)
+print('x'.type)

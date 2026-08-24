@@ -1,0 +1,789 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║ AAVM v2 Sync Snapshot                                     ║
+// ║ Component: codegen.at (Plan 432 S4 / D28: codegen_dump)   ║
+// ║ Rust ref:  vm/codegen.rs(Stmt 发射)+ vm/loader.rs(链接) ║
+// ║ Gate:      M4 —— corpus_m4 字节码与 Rust codegen 结构一致  ║
+// ╚═══════════════════════════════════════════════════════════╝
+// Coverage:  脚本 wrapper(FN_PROLOG args=0 locals=16 + RESERVE 16);
+//            fn 编译(每 fn 一个 jmp-over、FN_PROLOG/RESERVE 占位回填、
+//            体块弹出的槽释放组、epilogue RET、jmp-over patch);
+//            语句(let/var 存储无 dup-pop、赋值表达式语句 load-rhs-op-
+//            dup-store-pop、复合赋值同型、if/else-if/else(含 return 后
+//            死 jmp)、while(back-jmp 不含语句 .line)、for-in-range
+//            增量循环(循环域弹出发释放)、return);表达式(Int/Str/bool
+//            字面量、标识符寻址[param 0x80+rel / loc.0 / loc.1 /
+//            local N]、二元算术/比较/逻辑、一元 !、用户 fn 调用(符号
+//            表解析)、print CALL_NAT nat#10、str.cat);字符串池内容
+//            寻址去重;.line 由语句步行者按语句首行发射;跳转 patch
+//            (目标指令索引 → 字节偏移)
+// Missing:   数组/对象/元组字面量与下标、方法调用(.str()/.len() 的
+//            CALL_NAT 家族)、闭包/捕获、浮点(CONST_F32/PROMOTE)、
+//            全局变量(LOAD_GLOBAL/STORE_GLOBAL)、顶层非 fn 语句、
+//            一元负号(NEG)、嵌套赋值、#[vm] stub、生成器、多模块链接
+// DIVERGE:   D28: Vec<u8> 字节码 + 链接重定位 → 指令 List(I{op,s,n})+
+//            序列化直出 —— 发射顺序/操作数逐字对齐;FN_PROLOG/RESERVE
+//            由 Rust 的"体后插入+地址平移"改为"占位+回填"(布局等价);
+//            CALL 的链接重定位改为符号表(FnEntry)序列化期解析;槽释放
+//            组按槽位升序(Rust pop_scope 按 HashMap 迭代序不定,m4 闸门
+//            Rust 侧 dumper 同步规范化)。作用域栈 depth 计数(List 只增
+//            不减,D25 写法)。D22 同款错误短路;复用 parser.at 的 token
+//            游标/优先级表与 typeinfo.at 的 p_text_at。
+
+// ── 载体 ──────────────────────────────────────────────────────
+
+// 指令:op=助记符(空=已删除占位);s=序列化操作数文本;n=patch 载荷
+// (jmp/jmp.z:目标指令索引;call:FnEntry 索引;load.str:池索引)
+type I {
+    op str
+    s str
+    n int
+}
+
+type FnEntry {
+    name str
+    ins int
+}
+
+type CGVar {
+    name str
+    idx int
+}
+
+type CG {
+    ins List
+    pool List
+    fns List
+    scopes List
+    depth int
+    n_args int
+    max_idx int
+    err str
+    str_flag int
+}
+
+fn cg_new() CG {
+    var scs = List.new()
+    var base = List.new()
+    scs.push(base)
+    var ins_l = List.new()
+    var pool = List.new()
+    var fns = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0)
+}
+
+fn cg_err(c CG, msg str) {
+    if c.err == "" {
+        c.err = "CODEGEN-ERROR:" + msg
+    }
+}
+
+// 指令字节宽度(与 Rust opcode 编码一致;S4 子集)
+fn i_size(op str) int {
+    if op == "fn.prolog" {
+        return 3
+    }
+    if op == "reserve" {
+        return 2
+    }
+    if op == "jmp" || op == "jmp.z" {
+        return 3
+    }
+    if op == ".line" {
+        return 3
+    }
+    if op == "load.str" {
+        return 5
+    }
+    if op == "call" {
+        return 5
+    }
+    if op == "call.nat" {
+        return 3
+    }
+    if op == "const.i32" {
+        return 5
+    }
+    if op == "push.bool" {
+        return 2
+    }
+    if op == "ret" {
+        return 2
+    }
+    if op == "load.local" || op == "store.local" {
+        return 2
+    }
+    return 1
+}
+
+// 发射一条指令,返回其指令索引
+fn emit(c CG, op str, s str, n int) int {
+    c.ins.push(I(op, s, n))
+    return c.ins.len() - 1
+}
+
+// ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
+
+fn cg_push_scope(c CG) {
+    var sc = List.new()
+    c.scopes.push(sc)
+    c.depth = c.depth + 1
+}
+
+// 弹出作用域:depth>2 时对栈顶域的槽按升序发 push.nil+store
+fn cg_pop_scope(c CG) {
+    if c.depth > 1 {
+        if c.depth > 2 {
+            var sc = c.scopes.get(c.depth - 1)
+            var slots = cg_sort_ints_of_vars(sc)
+            var m = 0
+            while m < slots.len() {
+                emit(c, "push.nil", "", 0)
+                cg_emit_store(c, slots.get(m))
+                m = m + 1
+            }
+        }
+        c.depth = c.depth - 1
+    }
+}
+
+// 域内变量 idx 升序收集
+fn cg_sort_ints_of_vars(sc List) List {
+    var out = List.new()
+    var k = 0
+    while k < sc.len() {
+        out.push(sc.get(k).idx)
+        k = k + 1
+    }
+    var a = 0
+    while a < out.len() {
+        var b = a + 1
+        while b < out.len() {
+            if out.get(b) < out.get(a) {
+                var t = out.get(a)
+                out.set(a, out.get(b))
+                out.set(b, t)
+            }
+            b = b + 1
+        }
+        a = a + 1
+    }
+    return out
+}
+
+fn cg_add_var(c CG, name str) int {
+    var next = c.max_idx + 1
+    c.max_idx = next
+    c.scopes.get(c.depth - 1).push(CGVar(name, next))
+    return next
+}
+
+fn cg_lookup(c CG, name str) int {
+    var s = c.depth - 1
+    while s >= 0 {
+        var sc = c.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).idx
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return -1
+}
+
+// ── 寻址发射(param:0x80+rel;局部 rel 0/1 → loc.0/loc.1,否则 local N) ──
+
+fn cg_emit_store(c CG, idx int) {
+    if idx < c.n_args {
+        emit(c, "store.local", (128 + idx).str(), 128 + idx)
+        return
+    }
+    var rel = idx - c.n_args
+    if rel == 0 {
+        emit(c, "store.loc.0", "0", 0)
+    } else if rel == 1 {
+        emit(c, "store.loc.1", "1", 1)
+    } else {
+        emit(c, "store.local", rel.str(), rel)
+    }
+}
+
+fn cg_emit_load(c CG, idx int) {
+    if idx < c.n_args {
+        emit(c, "load.local", (128 + idx).str(), 128 + idx)
+        return
+    }
+    var rel = idx - c.n_args
+    if rel == 0 {
+        emit(c, "load.loc.0", "0", 0)
+    } else if rel == 1 {
+        emit(c, "load.loc.1", "1", 1)
+    } else if rel == 2 {
+        emit(c, "load.loc.2", "2", 2)
+    } else {
+        emit(c, "load.local", rel.str(), rel)
+    }
+}
+
+// ── 字符串池(内容寻址去重) ────────────────────────────────────
+
+fn cg_pool_add(c CG, s str) int {
+    var i = 0
+    while i < c.pool.len() {
+        if c.pool.get(i) == s {
+            return i
+        }
+        i = i + 1
+    }
+    c.pool.push(s)
+    return c.pool.len() - 1
+}
+
+// ── 表达式发射 ────────────────────────────────────────────────
+
+fn cg_binop_mnem(k str) str {
+    if k == "Add" || k == "AddEq" {
+        return "add"
+    }
+    if k == "Sub" || k == "SubEq" {
+        return "sub"
+    }
+    if k == "Star" || k == "MulEq" {
+        return "mul"
+    }
+    if k == "Div" || k == "DivEq" {
+        return "div"
+    }
+    if k == "Mod" || k == "ModEq" {
+        return "mod"
+    }
+    if k == "Eq" {
+        return "eq"
+    }
+    if k == "Neq" {
+        return "ne"
+    }
+    if k == "Lt" {
+        return "lt"
+    }
+    if k == "Gt" {
+        return "gt"
+    }
+    if k == "Le" {
+        return "le"
+    }
+    if k == "Ge" {
+        return "ge"
+    }
+    if k == "And" {
+        return "and"
+    }
+    if k == "Or" {
+        return "or"
+    }
+    return ""
+}
+
+fn cg_is_assign_op(k str) bool {
+    return k == "Asn" || k == "AddEq" || k == "SubEq" || k == "MulEq" || k == "DivEq" || k == "ModEq"
+}
+
+// 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
+fn cg_expr(c CG, p P, min int) {
+    if c.err != "" {
+        return
+    }
+    var k = p_kind(p)
+    if k == "Not" {
+        p_next(p)
+        cg_expr(c, p, 28)
+        emit(c, "not", "", 0)
+        return
+    }
+    if k == "Sub" || k == "Add" {
+        cg_err(c, "unary sign unsupported in S4 subset")
+        return
+    }
+    if k == "Int" {
+        var t = p_text(p)
+        p_next(p)
+        emit(c, "const.i32", int_val(t).str(), int_val(t))
+    } else if k == "Str" {
+        var s = p_text(p)
+        p_next(p)
+        var idx = cg_pool_add(c, s)
+        emit(c, "load.str", "", idx)
+        c.str_flag = 1
+    } else if k == "True" {
+        p_next(p)
+        emit(c, "push.bool", "true", 0)
+    } else if k == "False" {
+        p_next(p)
+        emit(c, "push.bool", "false", 0)
+    } else if k == "Ident" {
+        var name = p_text(p)
+        p_next(p)
+        if name == "print" && p_kind(p) == "LParen" {
+            cg_call_args(c, p)
+            emit(c, "call.nat", "nat#10", 0)
+        } else if p_kind(p) == "LParen" {
+            var fe = -1
+            var fi = 0
+            while fi < c.fns.len() {
+                if c.fns.get(fi).name == name {
+                    fe = fi
+                }
+                fi = fi + 1
+            }
+            if fe < 0 {
+                cg_err(c, "unknown fn: " + name)
+                return
+            }
+            cg_call_args(c, p)
+            emit(c, "call", "", fe)
+        } else {
+            var idx = cg_lookup(c, name)
+            if idx < 0 {
+                cg_err(c, "unknown ident: " + name)
+                return
+            }
+            cg_emit_load(c, idx)
+        }
+    } else {
+        cg_err(c, "unsupported expr atom: " + k)
+        return
+    }
+    while c.err == "" {
+        var opk = p_kind(p)
+        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" {
+            break
+        }
+        if opk == "Dot" && t_is_type_prop(p) {
+            break
+        }
+        if !is_op_kind(opk) {
+            cg_err(c, "expected infix op, got " + opk)
+            break
+        }
+        var l = infix_l(opk)
+        if l == 0 || l < min {
+            break
+        }
+        if cg_is_assign_op(opk) {
+            cg_err(c, "nested assignment unsupported")
+            break
+        }
+        p_next(p)
+        if opk == "Or" || opk == "And" {
+            skip_empty_lines(p)
+        }
+        var lhs_str = c.str_flag
+        c.str_flag = 0
+        cg_expr(c, p, infix_r(opk))
+        var rhs_str = c.str_flag
+        var mn = cg_binop_mnem(opk)
+        if opk == "Add" && (lhs_str == 1 || rhs_str == 1) {
+            mn = "str.cat"
+            c.str_flag = 1
+        } else {
+            c.str_flag = 0
+        }
+        if mn != "" {
+            emit(c, mn, "", 0)
+        }
+    }
+}
+
+// 调用实参:( 已在 cur;消费至 RParen
+fn cg_call_args(c CG, p P) {
+    p_next(p)
+    skip_empty_lines(p)
+    if p_kind(p) != "RParen" {
+        cg_expr(c, p, 0)
+        while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            p_next(p)
+            skip_empty_lines(p)
+            cg_expr(c, p, 0)
+        }
+    }
+    p_expect(p, "RParen")
+}
+
+// ── 语句发射(.line 由语句步行者发,见 cg_stmts) ────────────────
+
+fn cg_stmt(c CG, p P) {
+    if c.err != "" {
+        return
+    }
+    var k = p_kind(p)
+    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+        p_next(p)
+        var name = p_text(p)
+        p_next(p)
+        if is_type_name(p) {
+            parse_type(p)
+        }
+        if p_kind(p) == "Asn" {
+            p_next(p)
+            cg_expr(c, p, 0)
+        }
+        var idx = cg_add_var(c, name)
+        cg_emit_store(c, idx)
+        return
+    }
+    if k == "Return" {
+        p_next(p)
+        var kk = p_kind(p)
+        if kk == "Newline" || kk == "Semi" || kk == "RBrace" || kk == "EOF" {
+            emit(c, "push.nil", "", 0)
+        } else {
+            cg_expr(c, p, 0)
+        }
+        emit(c, "ret", "n_args=" + c.n_args.str(), c.n_args)
+        return
+    }
+    if k == "If" {
+        cg_if(c, p)
+        return
+    }
+    if k == "While" {
+        cg_while(c, p)
+        return
+    }
+    if k == "For" {
+        cg_for(c, p)
+        return
+    }
+    if k == "Fn" {
+        cg_err(c, "nested fn unsupported")
+        return
+    }
+    // 表达式语句:赋值特判
+    if k == "Ident" {
+        var name = p_text(p)
+        var nk = p_peek(p, 1)
+        if cg_is_assign_op(nk) {
+            var idx = cg_lookup(c, name)
+            if idx < 0 {
+                cg_err(c, "unknown ident: " + name)
+                return
+            }
+            p_next(p)
+            var opk = p_kind(p)
+            p_next(p)
+            if opk != "Asn" {
+                cg_emit_load(c, idx)
+            }
+            cg_expr(c, p, 0)
+            var mn = cg_binop_mnem(opk)
+            if mn != "" {
+                emit(c, mn, "", 0)
+            }
+            emit(c, "dup", "", 0)
+            cg_emit_store(c, idx)
+            emit(c, "pop", "", 0)
+            return
+        }
+    }
+    cg_expr(c, p, 0)
+}
+
+// 语句序列步行:.line(语句首 token 行)→ cg_stmt → eos
+fn cg_stmts(c CG, p P) {
+    while c.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        emit(c, ".line", p_line(p).str(), 0)
+        cg_stmt(c, p)
+        if c.err == "" {
+            cg_eos(c, p)
+        }
+    }
+}
+
+// if/else-if/else:每分支 cond,jz→下一;体;jmp→end(含 return 后死 jmp)
+fn cg_if(c CG, p P) {
+    var jzs = List.new()
+    var jends = List.new()
+    var more = true
+    while more {
+        p_next(p)
+        cg_expr(c, p, 0)
+        var jz = emit(c, "jmp.z", "", -1)
+        jzs.push(jz)
+        cg_body_inline(c, p)
+        var je = emit(c, "jmp", "", -1)
+        jends.push(je)
+        if p_kind(p) == "Else" {
+            p_next(p)
+            if p_kind(p) != "If" {
+                var z = 0
+                while z < jzs.len() {
+                    c.ins.get(jzs.get(z)).n = c.ins.len()
+                    z = z + 1
+                }
+                cg_body_inline(c, p)
+                more = false
+            }
+        } else {
+            var z2 = 0
+            while z2 < jzs.len() {
+                c.ins.get(jzs.get(z2)).n = c.ins.len()
+                z2 = z2 + 1
+            }
+            more = false
+        }
+    }
+    var e = 0
+    while e < jends.len() {
+        c.ins.get(jends.get(e)).n = c.ins.len()
+        e = e + 1
+    }
+}
+
+// 分支/循环体(compile_body_inline:不推作用域)
+fn cg_body_inline(c CG, p P) {
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    cg_stmts(c, p)
+    p_expect(p, "RBrace")
+}
+
+fn cg_eos(c CG, p P) {
+    var has_sep = false
+    while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+        has_sep = true
+        p_next(p)
+    }
+    if p_kind(p) != "EOF" && p_kind(p) != "RBrace" && !has_sep {
+        cg_err(c, "expected eos, got " + p_kind(p))
+    }
+}
+
+// while:top(在语句 .line 之后):cond;jmp.z end;体;jmp top;end
+fn cg_while(c CG, p P) {
+    p_next(p)
+    var top = c.ins.len()
+    cg_expr(c, p, 0)
+    var jz = emit(c, "jmp.z", "", -1)
+    cg_body_inline(c, p)
+    emit(c, "jmp", "", top)
+    c.ins.get(jz).n = c.ins.len()
+}
+
+// for-in-range:start;store var;top:load var;end;lt;jmp.z end;
+// 体;load var;const 1;add;store var;jmp top;end;循环域弹出(释放)
+fn cg_for(c CG, p P) {
+    p_next(p)
+    if p_kind(p) != "Ident" {
+        cg_err(c, "for: expected ident")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    if p_kind(p) != "In" {
+        cg_err(c, "for: expected in")
+        return
+    }
+    p_next(p)
+    cg_push_scope(c)
+    // start 以 min=18 界定(不吞 .. 的中缀绑定);显式吃 Range/RangeEq 再取 end
+    cg_expr(c, p, 18)
+    if p_kind(p) == "Range" || p_kind(p) == "RangeEq" {
+        p_next(p)
+    } else {
+        cg_err(c, "for: expected range op")
+        return
+    }
+    var idx = cg_add_var(c, name)
+    cg_emit_store(c, idx)
+    var top = c.ins.len()
+    cg_emit_load(c, idx)
+    cg_expr(c, p, 0)
+    emit(c, "lt", "", 0)
+    var jz = emit(c, "jmp.z", "", -1)
+    cg_body_inline(c, p)
+    cg_emit_load(c, idx)
+    emit(c, "const.i32", "1", 1)
+    emit(c, "add", "", 0)
+    cg_emit_store(c, idx)
+    emit(c, "jmp", "", top)
+    c.ins.get(jz).n = c.ins.len()
+    cg_pop_scope(c)
+}
+
+// ── fn 编译 ──────────────────────────────────────────────────
+
+fn cg_fn(c CG, p P) {
+    p_next(p)
+    if p_kind(p) != "Ident" {
+        cg_err(c, "fn: expected name")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    var jover = emit(c, "jmp", "", -1)
+    var entry = c.ins.len()
+    c.fns.push(FnEntry(name, entry))
+    var saved_args = c.n_args
+    var saved_max = c.max_idx
+    c.max_idx = -1
+    cg_push_scope(c)
+    var prolog = emit(c, "fn.prolog", "", 0)
+    var reserve = emit(c, "reserve", "", 0)
+    var n_args = 0
+    p_expect(p, "LParen")
+    skip_empty_lines(p)
+    var running = true
+    while running && c.err == "" {
+        var k = p_kind(p)
+        if k == "View" || k == "Mut" || k == "Move" || k == "Take" || k == "Copy" {
+            p_next(p)
+        }
+        if p_kind(p) != "Ident" {
+            running = false
+        } else {
+            var pname = p_text(p)
+            p_next(p)
+            if p_kind(p) == "Colon" {
+                p_next(p)
+            }
+            if is_type_name(p) {
+                parse_type(p)
+            }
+            if p_kind(p) == "Asn" {
+                p_next(p)
+                expr_pratt(p, 0)
+            }
+            cg_add_var(c, pname)
+            n_args = n_args + 1
+            if p_kind(p) == "Comma" {
+                p_next(p)
+            } else {
+                running = false
+            }
+        }
+    }
+    p_expect(p, "RParen")
+    c.n_args = n_args
+    if p_kind(p) == "Arrow" {
+        p_next(p)
+        parse_type(p)
+        skip_empty_lines(p)
+    } else if is_type_name(p) {
+        parse_type(p)
+        skip_empty_lines(p)
+    }
+    // 体块(Stmt::Block:推作用域;语句 .line 由 cg_stmts 发)
+    cg_push_scope(c)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    cg_stmts(c, p)
+    p_expect(p, "RBrace")
+    cg_pop_scope(c)
+    // epilogue RET
+    emit(c, "ret", "n_args=" + n_args.str(), n_args)
+    // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
+    var n_locals = 0
+    if c.max_idx >= n_args {
+        n_locals = c.max_idx + 1 - n_args
+    }
+    c.ins.get(prolog).s = "args=" + n_args.str() + ", locals=" + n_locals.str()
+    c.ins.get(prolog).n = n_args
+    if n_locals > 0 {
+        c.ins.get(reserve).s = n_locals.str()
+        c.ins.get(reserve).n = n_locals
+    } else {
+        c.ins.get(reserve).op = ""
+    }
+    c.ins.get(jover).n = c.ins.len()
+    cg_pop_scope(c)
+    c.n_args = saved_args
+    c.max_idx = saved_max
+}
+
+// ── 序列化 ──────────────────────────────────────────────────
+
+fn hex4(n int) str {
+    var digits = "0123456789abcdef"
+    var out = ""
+    var v = n
+    var k = 0
+    while k < 4 {
+        var d = v % 16
+        out = digits.slice(d, d + 1) + out
+        v = v / 16
+        k = k + 1
+    }
+    return out
+}
+
+fn cg_serialize(c CG) str {
+    var offs = List.new()
+    var acc = 0
+    var i = 0
+    while i < c.ins.len() {
+        offs.push(acc)
+        var ii = c.ins.get(i)
+        if ii.op != "" {
+            acc = acc + i_size(ii.op)
+        }
+        i = i + 1
+    }
+    var out = ""
+    var j = 0
+    while j < c.ins.len() {
+        var ins = c.ins.get(j)
+        if ins.op != "" {
+            var ops = ins.s
+            if ins.op == "jmp" || ins.op == "jmp.z" {
+                ops = "-> 0x" + hex4(offs.get(ins.n))
+            } else if ins.op == "call" {
+                var fe = c.fns.get(ins.n)
+                ops = "0x" + hex4(offs.get(fe.ins))
+            } else if ins.op == "load.str" {
+                ops = "\"" + c.pool.get(ins.n) + "\""
+            }
+            if out != "" {
+                out = out + "\n"
+            }
+            out = out + hex4(offs.get(j)) + "  " + ins.op + " " + ops
+        }
+        j = j + 1
+    }
+    return out
+}
+
+// ── 编译入口(S5 engine 复用;返回 CG 结构) ────────────────────
+
+fn cg_compile(source str) CG {
+    var toks = tokenize(source)
+    var p = parse_new(toks)
+    var c = cg_new()
+    emit(c, "fn.prolog", "args=0, locals=16", 16)
+    emit(c, "reserve", "16", 16)
+    skip_empty_lines(p)
+    while c.err == "" && p_kind(p) != "EOF" {
+        if p_kind(p) == "Fn" {
+            cg_fn(c, p)
+        } else {
+            cg_err(c, "top-level non-fn stmt unsupported: " + p_kind(p))
+        }
+        if c.err == "" {
+            cg_eos(c, p)
+        }
+    }
+    if c.err == "" {
+        emit(c, "halt", "", 0)
+    }
+    return c
+}
+
+// M4 闸门入口
+fn codegen_dump(source str) str {
+    var c = cg_compile(source)
+    if c.err != "" {
+        return c.err
+    }
+    return cg_serialize(c)
+}

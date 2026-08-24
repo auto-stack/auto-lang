@@ -41,3 +41,130 @@
 | token.at | 2 |
 | lexer.at | 8 |
 | 合计 | 10 |
+
+
+## auto/lib/parser.at(S2)
+
+- **D20**: AST 结构(Stmt/Expr 枚举 + Box 树)→ `parse_dump(source) -> str`
+  S-expr 直出(判据层;真实 AST 推迟到 S4 codegen 需要时定)。dump 由各
+  parse_* 构造期拼装,E 载体 `{kind,word,name,args,dump,ity}`。
+- **D21**: token 流承载 `Vec<Token>` + pushback → `List.new()/push/get/len`
+  (sanctioned);前瞻 = 索引算术(p_peek / paren_prefix 扫描)。
+- **D22**: Result 错误传播 + add_error 收集 → `p.err` 单槽 + 全函数入口短路;
+  错误信息编码行号与 token kind,parse_dump 直返错误串使闸门显式爆红。
+- **D23**: Type 枚举 → Display 字符串载体(builtin 表折叠;StrFixed 恒显
+  "str" 使该折叠无损);let 无注解时的 parser 内联推断(infer_type_expr
+  核心子集:字面量/Ident 作用域查找/Bina unify 简式/Array/Tuple)在 E.ity
+  构造期完成。unify coercion 分支语料未及,按 Unknown 传播。
+- **D24**: float/double 值显示 = 字面量文本剥分数尾零("1.0"→"1");
+  Rust 为 f32/f64 shortest-roundtrip Display,十进制文本字面量二者一致,
+  科学计数/大数留 Missing。
+- **D25**(VM 缺陷规避,与 D26 同族,①仍有残留):
+  - ①原生调用(auto.list.new)内联作结构体构造参数时返回值丢失——根因
+    即 D26-②的 num_locals 启发式偷弹(sp 含兄弟表达式槽);RET 恢复修复
+    后语句位安全,但表达式位零参调用的歧义仍在(启发式无法区分兄弟槽与
+    参数),.at 侧维持"提升局部变量"写法规避。
+  - ②List.pop 语句位静默毁栈/返回垃圾——D26 修复中一并修好(先 +1 回栈
+    再释放,字符串哨兵保 TAG_STRING);.at 侧 depth 计数写法保留(更简)。
+- **D26**(**已修复**,2026-08-24,详见 plan 432 执行结果):VM 字符串池
+  RC 回归曾阻断 M2——循环体内以运行期字符串调 `List.push` 后读回即 UAF
+  (`[RC canary] string tombstone access`)。根因两层:①`ListData<i32>`
+  以负哨兵 -(idx+1) 存字符串(nano_value.rs encode_string 契约),但
+  push/set/insert/clear/pop/remove 只对堆 id 记容器份额,字符串哨兵从不
+  retain——调用方栈份额被 native 死区结算释放后,列表持裸哨兵指向已回收
+  池槽,读回 +1 即复活墓碑;②`task.num_locals` 由 RESERVE_STACK 设置但
+  RET 从不恢复,用户函数返回后 shim_list_new 的"有参"启发式
+  (sp > bp+num_locals+2 即偷弹)读到被调者的局部数,sp 偶然越界即把
+  兄弟表达式的值偷去当初始列表(len=4 幽灵元素)。修复:native.rs
+  list_i32_elem_retain/release 记账五处 + child_pool_idxs 随容器死亡
+  释放(types.rs/rc.rs/heap_object.rs)+ pop/remove 改"先 +1 回栈再释放"
+  (原顺序在末次引用时自造悬垂,堆 id 分支同修)+ RET 恢复 num_locals
+  + add_string dedup 命中墓碑防御。复现测试 repro_242_string_pool_uaf
+  常驻;**M2 闸门 18 语料 diff=0 转绿**。堆侧同族缺陷(242:S2-432 续)
+  亦已修:P419_UAF_TRACE=4000001 生死链显示 shim_list_map/filter 四处
+  新建列表 id 以裸 push_i32 入栈(违反"首次 rc_push 建条目"契约)——
+  栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份 → copy-on-load 的 +1
+  成"首次获取" → pop_arg 释放归零即对象在局部槽仍引用时死亡 → 槽位
+  复用后 LOAD_LOC_1 RETAIN-AFTER-FREE → canary。修复 = 四处改
+  rc_push_id;conformance_bootstrap 与 conformance_023(map/filter 行为)
+  双双转绿。剩余 6 个 master 存量失败(5 cookbook "Assertion failed"
+  行为断言 + charts 环境问题)与内存安全无关,另行处理。
+
+## 计数(S2 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8(+S2 重构后 tokenize/lex_dump 包装,D13/D14 落地) |
+| parser.at | 7 |
+| 合计 | 17 |
+
+## auto/lib/typeinfo.at(S3)
+
+- **D27**: infer/expr.rs + codegen `.type` 属性 → `typecheck_dump(source) -> str`
+  行式输出(判据层)。AAVM 不建 AST:自带语句级走查 + 优先级爬升型推断器
+  (优先级表复用 parser.at 的 infix_l/infix_r/prefix_power/postfix_power,
+  游标/类型解析复用 p_kind/p_next/parse_type/is_type_name/p_bind/p_lookup,
+  不调用 parse_* 语句族避免 dump 副作用)——"解析与推断分离"(风险表
+  第 1 行的预设路径)。类型仍以 Display 字符串为载体(D23);数组型
+  "(array-type (elem T) (len n))" 与 Rust Array Display 同形,元素提取按
+  该形状解析。TFnSig 注册表 = TypeStore 的 S3 裁剪(仅 fn 签名;类型/spec
+  声明表 S4 按需)。未知型输出 "unknown" 对齐 Type::Unknown unique_name。
+- 闸门锚点考叝始末:解释器路径无独立 typeck pass(infer/stmt.rs check_body
+  仅 a2r 调用且丢弃、ParamChecker 零调用者),`.type` 行为通道(codegen
+  infer_expr_type → infer_expr)是类型层唯一含 fn 返回传播的可观察输出,
+  故 M3 = corpus_m3(可执行程序打印 .type)Rust 侧真执行 stdout vs AAVM
+  typecheck_dump 逐行对比。混合算术 coercion/块级作用域/显式注解冲突
+  检查 = Missing(语料未含,登记 typeinfo.at 头)。
+
+## 计数(S3 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 |
+| parser.at | 7 |
+| typeinfo.at | 1(+D23/D22 复用) |
+| 合计 | 18 |
+
+## auto/lib/codegen.at(S4)
+
+- **D28**: Vec<u8> 字节码 + 链接器重定位(loader.rs)→ 指令 List
+  (I{op,s,n})+ codegen_dump 序列化直出 —— 发射顺序/操作数逐字对齐
+  Rust(考古见 m4-bytecode-format.md);FN_PROLOG/RESERVE 由 Rust 的
+  "体后插入+地址平移"改为"占位+回填"(布局等价,免平移);CALL 的
+  FuncCall reloc 改为 FnEntry 符号表序列化期解析;槽释放组按槽位升序
+  (Rust HashMap 迭代序不定,dumper 同步归一)。作用域 depth 计数
+  (List 只增不减,D25 写法)。
+- 实现期修正:.type 属性停走(借 typeinfo.at 的 t_is_type_prop)、
+  fn 体 { 后前导换行、纯赋值不预载 lhs、调用原子落入中缀环、
+  str.cat 字符串加法、load.loc.2 快操作码、for-range 的 start 以
+  min=18 界定不吞 `..`、I.n 载荷补齐(const/ret/prolog/local 编址)。
+
+## auto/lib/engine.at(S5)
+
+- **D29**: 字节码 Flash + ip 解码 + 任务调度 → 指令 List 直译
+  (ip=指令索引;jmp/call 目标即索引);print 输出 → out 字符串收集
+  (ev_run 返回,ev_run_t 带 trace 诊断模式);栈 = Auto List + 手记
+  账 sp(ev_push 兼容 push/set);值 = Auto 原生值,布尔以 1/0 整型
+  承载(规避宿主 ListData<i32> 的 bool nanbox 解码冲突——bool 值压入
+  无类型 List 会被 decode_i32 成 i32::MIN 触发哨兵取负溢出,挂 242
+  编码别名账);RET 帧/参数槽算术逐条对齐 engine.rs(参数
+  bp-n_args+rel-1;cur_args 按帧入栈/恢复);main 入口查找无 main
+  回落 wrapper=0(镜像 lib.rs 1183)。
+- 调试插曲(留档):.at 侧 cg_eos 漏传参(1 参调用 2 参 fn)曾致
+  宿主栈帧逐迭代蚀一槽——宿主对参数个数不匹配无任何诊断,静默毁帧,
+  挂 242 建议账(调用方/被调方 n_args 一致性检查)。
+
+## 计数(S4/S5 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8 |
+| parser.at | 7 |
+| typeinfo.at | 1 |
+| codegen.at | 1(+D22/D25 复用) |
+| engine.at | 1 |
+| 合计 | 20 |
+

@@ -1,0 +1,10 @@
+fn main() {
+    let x = 42
+    print(x.type)
+    let f = 1.5
+    print(f.type)
+    let s = "hello"
+    print(s.type)
+    let flag = true
+    print(flag.type)
+}

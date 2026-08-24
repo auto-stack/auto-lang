@@ -13,5 +13,5 @@ fn main() {
     print(m)
     let t = (1, "two", 3.0)
     print(t)
-    match_or_like: while true { break }
+    while true { break }
 }

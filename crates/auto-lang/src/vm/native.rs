@@ -1645,6 +1645,18 @@ pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task.bp + task.num_locals + 2
     };
 
+    if crate::pool_log_all() {
+        eprintln!(
+            "[POOLLOG #{:>4}] list.new bp={} nlocals={} sp={} target_sp={} has_arg_guess={}",
+            crate::pool_log_seq(),
+            task.bp,
+            task.num_locals,
+            task.ram.sp,
+            target_sp,
+            task.ram.sp > target_sp
+        );
+    }
+
     if task.ram.sp <= target_sp {
         // No arguments: empty ListData<i32>.
         let list: ListData<i32> = ListData::new();
@@ -1757,9 +1769,8 @@ pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             };
             // Plan 419: 裸 id 元素入容器 —— 容器获得持有一份(CALL_NAT 死区
             // 结算会释放被弹出的参数槽,retain 与之配平)。
-            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                vm.rc_retain_id(stored as u64);
-            }
+            // Plan 432 D26: 字符串负哨兵同入此契约(此前漏 retain → UAF)。
+            list_i32_elem_retain(vm, stored);
             list.push(stored);
             task.ram.push_i32(0);
             return Ok(());
@@ -1821,12 +1832,20 @@ pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             let elem = list.pop().unwrap_or(0);
-            // Plan 419: 元素离开容器 —— 容器 stake 死亡;裸 id 回栈为转移
-            // (push 不 +1,与容器侧 release 配平)。
+            // Plan 419: 元素离开容器 —— 容器 stake 死亡;回栈为转移。
+            // Plan 432 D26: ①先 +1 回栈再释放容器份额——原"先 release 后
+            // push"在末次引用时会把对象/池条目释放掉再让栈引用之(悬垂);
+            // ②字符串负哨兵此前被 push_i32 成裸 int(类型丢失 + 无池份额),
+            // 改走 rc_push_str_idx 保 TAG_STRING。
             if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_push_id(task, elem as u64);
                 vm.rc_release_id(elem as u64);
+            } else if elem < 0 {
+                vm.rc_push_str_idx(task, (-elem - 1) as usize);
+                vm.pool_release((-elem - 1) as usize);
+            } else {
+                task.ram.push_i32(elem);
             }
-            task.ram.push_i32(elem);
             return Ok(());
         }
         // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) — pop the
@@ -1938,10 +1957,9 @@ pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             // Plan 419: 被清空元素的容器 stake 逐个死亡。
+            // Plan 432 D26: 字符串负哨兵同入契约。
             for &e in &list.elems {
-                if (e as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                    vm.rc_release_id(e as u64);
-                }
+                list_i32_elem_release(vm, e);
             }
             list.clear();
         }
@@ -1976,6 +1994,32 @@ fn push_tagged_value(ram: &mut crate::vm::virt_memory::VirtualRAM, val: i32) {
         ram.push_nv(auto_val::encode_string(str_idx));
     } else {
         ram.push_i32(val);
+    }
+}
+
+/// Plan 432 D26 修复:ListData<i32> 元素的容器侧引用记账。
+/// 编码契约(nano_value.rs encode_string 注释):字符串以负哨兵 -(idx+1)
+/// 落在 i32 空间(decode_i32(encode_string(idx)) 即该负值);≥HEAP_ID_BASE
+/// 为裸堆 id;其余为纯 int。
+/// 缺陷:push/set/insert/clear 此前只对堆 id retain/release——负哨兵从不
+/// 获得池份额,调用方栈份额被 native 死区结算释放后,列表持裸哨兵指向
+/// 已回收池槽;读回 push_tagged_value_rc 的 +1 复活墓碑 → canary UAF
+/// (242:S2-432,复现 repro_242_string_pool_uaf:循环内 push 运行期串后读回)。
+#[inline]
+fn list_i32_elem_retain(vm: &AutoVM, val: i32) {
+    if (val as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_retain_id(val as u64);
+    } else if val < 0 {
+        vm.pool_retain((-val - 1) as usize);
+    }
+}
+
+#[inline]
+fn list_i32_elem_release(vm: &AutoVM, val: i32) {
+    if (val as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_release_id(val as u64);
+    } else if val < 0 {
+        vm.pool_release((-val - 1) as usize);
     }
 }
 
@@ -2117,15 +2161,12 @@ pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             // Plan 419: 旧元素释放;新值 retain(死区结算配平)。
+            // Plan 432 D26: 字符串负哨兵同入契约。
             if let Some(&old) = list.get(index) {
-                if (old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                    vm.rc_release_id(old as u64);
-                }
+                list_i32_elem_release(vm, old);
             }
             let stored = auto_val::decode_i32(elem_nv);
-            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                vm.rc_retain_id(stored as u64);
-            }
+            list_i32_elem_retain(vm, stored);
             list.set(index, stored);
             task.ram.push_i32(0);
             return Ok(());
@@ -2176,10 +2217,9 @@ pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             // Plan 419: 新值 retain(死区结算配平)。
+            // Plan 432 D26: 字符串负哨兵同入契约。
             let stored = auto_val::decode_i32(elem_nv);
-            if (stored as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
-                vm.rc_retain_id(stored as u64);
-            }
+            list_i32_elem_retain(vm, stored);
             list.insert(index, stored);
             task.ram.push_i32(0);
             return Ok(());
@@ -2225,10 +2265,16 @@ pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
             if let Some(elem) = list.remove(index) {
                 // Plan 419: 元素离开容器 —— 容器 stake 死亡;回栈为转移。
+                // Plan 432 D26: 先 +1 回栈再释放;字符串哨兵保 TAG_STRING。
                 if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    vm.rc_push_id(task, elem as u64);
                     vm.rc_release_id(elem as u64);
+                } else if elem < 0 {
+                    vm.rc_push_str_idx(task, (-elem - 1) as usize);
+                    vm.pool_release((-elem - 1) as usize);
+                } else {
+                    task.ram.push_i32(elem);
                 }
-                task.ram.push_i32(elem);
                 return Ok(());
             }
         }
@@ -2401,7 +2447,12 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             results.push(crate::vm::native::pop_arg_i32(task));
         }
         let new_id = create_list_from_i32(vm, results);
-        task.ram.push_i32(new_id as i32);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
         return Ok(());
     }
 
@@ -2417,7 +2468,8 @@ pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         results.push(nv_to_value(ret_nv));
     }
     let new_id = create_list_from_value(vm, results);
-    task.ram.push_i32(new_id as i32);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
     Ok(())
 }
 
@@ -2445,7 +2497,12 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             }
         }
         let new_id = create_list_from_i32(vm, results);
-        task.ram.push_i32(new_id as i32);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
         return Ok(());
     }
 
@@ -2463,7 +2520,8 @@ pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         }
     }
     let new_id = create_list_from_value(vm, results);
-    task.ram.push_i32(new_id as i32);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
     Ok(())
 }
 
@@ -5621,6 +5679,12 @@ pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     if let Some(obj) = vm.get_heap_object(arr_id) {
         let mut guard = obj.write().unwrap();
         if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 432 D26: 缩容时被丢弃元素的容器 stake 死亡(此前静默泄漏)。
+            if new_size < list.elems.len() {
+                for &e in &list.elems[new_size..] {
+                    list_i32_elem_release(vm, e);
+                }
+            }
             list.elems.resize(new_size, 0);
             drop(guard);
             task.ram.push_i32(arr_id as i32);
