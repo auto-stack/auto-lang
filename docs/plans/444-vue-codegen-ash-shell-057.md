@@ -1,10 +1,30 @@
 # Plan 444 — Vue codegen 五类缺陷修复（解锁 auto-shell ash-gui Vue 构建，auto-shell-057）
 
-状态: in_progress
+状态: complete（worktree plan-444-vue-emit-fixes，基于 fe2060b9 rebase，待合并 master）
 创建: 2026-08-24
 来源: KNOWN-DEBT-AND-RISKS.md `auto-shell-057`（41f4a7b7 登记）+ auto-shell DEBTS.md「Vue 产物构建引擎侧阻塞（Plan 057 Phase 5 T-B）」外部报告
-基线: master 8c2a2d4a
-验收: 下游 `ash-gui-auto` 复现流程 `auto gen && cd gen/front/vue && npx vue-tsc` **零错误**（无需 pnpm add / rm 手工补丁），`pnpm run build` 绿；本仓 lib / vue_capabilities / auto-man 测试全绿。
+基线: master 8c2a2d4a → rebase 至 fe2060b9（435 P3 合流后）
+
+## 验证结果（2026-08-24，全部通过）
+
+- **下游验收（复现流程零手工补丁）**：worktree auto.exe 重跑 `auto gen` →
+  `npx vue-tsc` **exit 0（原 13 错清零）** → `pnpm run build`（vue-tsc &&
+  vite build）**成功**；不再需要 `pnpm add @vueuse/core` / `rm CodeEditor.vue`
+  两步手工补丁。gen 期对约定破坏处发 **R044 警告**（App/BlockList 的
+  `on_delete` 透传，提示改名对齐）。
+- auto-lang：`--lib` **3138 绿**；`--test vue_capabilities` **70 绿**
+  （62 基线 + cap_444 新增 8 例）；`--test schema_drift` 绿；
+  `--test ui_snapshots` 实质差异已对齐入快照（App +21B / EditorPanel -93B
+  且警告 3→2；worktree 内的路径差异为主线既有形态，主检出形态不触发）。
+- auto-man：**229 绿**（227 基线 + plan_444 新增 2 例：@vueuse scaffold
+  检测 / CodeEditor 旧脚手架签名清理）。
+- 逐类现场抽查（重生成物）：`@DeleteBlock` 双层接线（App→BlockList→
+  BlockItem）、`{{ '#' + j.id }}`、`cell.Tagged!.text`(65/99)、
+  `Sort: [number, number]` + `function Sort(arg0: any, arg1: any)`、
+  `__vmOnly('fs.read_dir'/'File.is_dir', …)` + 声明 + `import { complete }`、
+  `(__sse_status.value as any).Failed`。
+- 未覆盖：examples/ui Playwright e2e 未跑（下游 Vue 目标验收已覆盖同类
+  生成路径；merged/VM 目标未动）。
 
 ## 问题（13 错 / 5 类 + 模板缺口，逐类根因）
 
@@ -107,18 +127,18 @@ Vue 走 `{{ "#" + j.id }}`。
 
 ## 任务
 
-- [ ] P1a prop_is_emitted_callback 放宽 + props.on_x 改写覆盖未匹配变体
-- [ ] P1b emits 名册接线（widget_emit_set / opts / 三绑定点 / auto-man 预扫描）
-- [ ] P1c text 拼接解析折叠
-- [ ] P2 变体字段访问非空断言
-- [ ] P3 emit payload 门控放开 + 未定义 handler 带参 emit 桥
-- [ ] P4 walker 补全（else/while/for）+ __vmOnly 桩 + R 警告
-- [ ] P5 str ref 点访问 any 通道
-- [ ] P6 @vueuse 检测扩展 + CodeEditor 鲁棒清理
-- [ ] 测试：vue_capabilities 新增各类 canary；auto-man 新增 444 依赖/清理测试
-- [ ] 下游复现验证（auto gen → vue-tsc 0 错 → pnpm build 绿，无手工补丁）
-- [ ] 全量回归：`-p auto-lang --lib` / `--test vue_capabilities` / `-p auto-man` / schema drift
-- [ ] KNOWN-DEBT-AND-RISKS.md auto-shell-057 标 ✅ + commit 号
+- [x] P1a prop_is_emitted_callback 放宽 + props.on_x 改写覆盖未匹配变体
+- [x] P1b emits 名册接线（widget_emit_set / opts / 三绑定点 / auto-man 预扫描）
+- [x] P1c text 拼接解析折叠
+- [x] P2 变体字段访问非空断言
+- [x] P3 emit payload 门控放开 + 未定义 handler 带参 emit 桥
+- [x] P4 walker 补全（else/while/for）+ __vmOnly 桩 + R 警告
+- [x] P5 str ref 点访问 any 通道
+- [x] P6 @vueuse 检测扩展 + CodeEditor 鲁棒清理
+- [x] 测试：vue_capabilities 新增各类 canary；auto-man 新增 444 依赖/清理测试
+- [x] 下游复现验证（auto gen → vue-tsc 0 错 → pnpm build 绿，无手工补丁）
+- [x] 全量回归：`-p auto-lang --lib` / `--test vue_capabilities` / `-p auto-man` / schema drift
+- [x] KNOWN-DEBT-AND-RISKS.md auto-shell-057 标 ✅ + commit 号
 
 ## 风险与边界
 
