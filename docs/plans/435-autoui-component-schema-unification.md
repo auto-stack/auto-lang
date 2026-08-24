@@ -323,3 +323,25 @@
   (plan-430 系);② P4-4(registry.rs 181 vue 映射 schema 派生)与
   P4-5(ShadcnRegistry 清退 + unclassified 17 清零)未动;③ 并发会话持续
   在 master 落 gallery 页(line-chart)——golden 基线已并入(72 文件)。
+
+### P4-4/P4-5(部分):registry vue 映射 schema 派生 + unclassified 清零(2026-08-25)
+
+- **P4-4 完成**:registry.rs 的 181 个手写 `backends.insert("vue")` 退役(-1389 行)。
+  数据链:生成器从 registry.rs 提取 → schema/aura.at 的 `vue: { component/import/
+  extras/npm }` 声明(191 条)→ loader 解析进 `ElementMeta.vue` →
+  `apply_schema_vue_mappings` overlay 重建(resolve_tag 三级折叠匹配)。
+  实测 vue 后端 181 映射中 props/events 重写为 0(ark/jet 才有),派生面干净。
+- **golden byte-identical 零回归** —— 派生翻转的核心验收达成。
+- **carried_vue 保留机制**:手写退役后再生成,存量 vue 行从当前 aura.at 保留
+  (防数据丢失);围栏三重守护:手写数==0 + schema vue 量>=160 守恒 + 迁移期对账。
+- **排障实录(挂账为操作教训)**:① 删除脚本的 needle 撞名把 overlay 自身函数体
+  吃掉 —— 修复:函数区间守卫删除;② carried 解析 needle 缺引号曾把 191 行写成
+  空(component: "")—— git 恢复 + needle 修正;③ 安全点提交时 overlay 已被早前
+  checkout 洗掉(手写数据掩盖了缺失)—— 分相位提交纪律。
+- **P4-5(部分)**:unclassified 17→15 —— grid-item/stack 归 web_component
+  (registry vue 映射可得);余 15 个无任何实现数据(parser/a2ui 词汇),
+  诚实保留待定(错分比待定更糟)。
+- **验证**:golden byte-identical + P4 4/4 + 围栏绿 + lib 3160 全绿。
+- **待续(P4-5a)**:deprecated ShadcnRegistry 清退 —— vue.rs 245 条
+  components.insert + ~6 测试改用 WidgetRegistry/schema;围栏 vue.components
+  维度与 vue_imports 提取源同步改造(改从 schema vue 行取,carried 同源)。

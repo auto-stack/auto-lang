@@ -1057,17 +1057,6 @@ element frame {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element grid-item {
-    tag: "grid-item"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "full", gpui: "unknown" }
-    vue: { component: "div" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element loading {
     tag: "loading"
     category: "unknown"
@@ -1155,17 +1144,6 @@ element scroll_view {
     category: "unknown"
     tier: "unclassified"
     backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element stack {
-    tag: "stack"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    vue: { component: "div" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -2897,6 +2875,17 @@ element form_message {
     description: "Form validation message"
 }
 
+element grid-item {
+    tag: "grid-item"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element hover_card {
     tag: "hover_card"
     category: "overlay"
@@ -4147,6 +4136,17 @@ element spinner {
     tier: "web_component"
     aliases: ["Spinner"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element stack {
+    tag: "stack"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    vue: { component: "div" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"

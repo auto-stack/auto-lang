@@ -980,6 +980,9 @@ const TIER_OVERRIDES: &[(&str, &str)] = &[
     ("li", "native_html"),
     ("summary", "native_html"),
     ("code", "native_html"),
+    // web_component(shadcn 家族,gallery 在用;P4-4:registry vue 映射可得者)
+    ("grid-item", "web_component"),
+    ("stack", "web_component"),
     // web_component(shadcn 家族,gallery 在用)
     ("avatar-fallback", "web_component"),
     ("avatar-image", "web_component"),
