@@ -273,12 +273,13 @@ fn delim_name(c int) str {
 
 // 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)。
 // 产出 Token List(词法语义与 M1 基线逐 token 一致)
-fn tokenize(source str) List {
+// DIVERGE(433): 返回 List → List<Token>(a2r 需元素类型;VM 语义不变)
+fn tokenize(source str) List<Token> {
     var line = 1
     var at = 0
     var p = 0
     var len = source.len()
-    var toks = List.new()
+    var toks List<Token> = List.new()
     for p < len {
         var c = cur_char(source, p)
         if c == ' ' || c == '\t' || c == '\r' {
@@ -510,7 +511,7 @@ fn lex_dump(source str) str {
     var out = ""
     var i = 0
     while i < toks.len() {
-        var t = toks.get(i)
+        var t Token = toks.get(i)
         out = out + t.kind + "|" + dump_escape(t.text) + "|" + t.line.str() + "|" + t.at.str() + "|" + t.len.str() + "\n"
         i = i + 1
     }

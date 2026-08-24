@@ -53,11 +53,11 @@ type Binding {
 }
 
 type P {
-    toks List
+    toks List<Token>
     pos int
     err str
-    scopes List
-    globals List
+    scopes List<List<Binding>>
+    globals List<Binding>
     depth int
 }
 
@@ -73,9 +73,9 @@ type E {
     ity str
 }
 
-fn parse_new(toks List) P {
-    var scs = List.new()
-    var glo = List.new()
+fn parse_new(toks List<Token>) P {
+    var scs List<List<Binding>> = List.new()
+    var glo List<Binding> = List.new()
     var p = P(toks, 0, "", scs, glo, 0)
     // Parser::from 的 cur 初始化含 skip_comments:起始位置跳过前导注释
     var scanning = true
@@ -126,7 +126,7 @@ fn is_comment_kind(k str) bool {
 }
 
 // Parser::next 直译:前进一 token 并跳过注释 token
-fn p_next(p P) {
+fn p_next(mut p P) {
     p.pos = p.pos + 1
     var scanning = true
     for scanning {
@@ -140,13 +140,13 @@ fn p_next(p P) {
     }
 }
 
-fn p_err(p P, msg str) {
+fn p_err(mut p P, msg str) {
     if p.err == "" {
         p.err = "PARSE-ERROR:" + p_line(p).str() + ":" + msg + " <" + p_kind(p) + ">"
     }
 }
 
-fn p_expect(p P, k str) {
+fn p_expect(mut p P, k str) {
     if p.err != "" {
         return
     }
@@ -157,7 +157,7 @@ fn p_expect(p P, k str) {
     }
 }
 
-fn skip_empty_lines(p P) int {
+fn skip_empty_lines(mut p P) int {
     var count = 0
     while p_kind(p) == "Newline" {
         count = count + 1
@@ -168,19 +168,23 @@ fn skip_empty_lines(p P) int {
 
 // ── 作用域(仅服务 let 无注解时的内联推断,D23) ─────────────────
 
-fn push_scope(p P) {
-    var sc = List.new()
+fn push_scope(mut p P) {
+    var sc List<Binding> = List.new()
     p.scopes.push(sc)
     p.depth = p.depth + 1
 }
 
-fn pop_scope(p P) {
+fn pop_scope(mut p P) {
     p.depth = p.depth - 1
 }
 
-fn p_bind(p P, name str, ty str) {
+fn p_bind(mut p P, name str, ty str) {
     if p.depth > 0 {
-        p.scopes.get(p.depth - 1).push(Binding(name, ty))
+        // 提升+写回:VM 引用语义下 set 写回同一引用(无操作);
+        // a2r 值语义下写回修改后的副本(VM/a2r 可观察状态一致)
+        var sc = p.scopes.get(p.depth - 1)
+        sc.push(Binding(name, ty))
+        p.scopes.set(p.depth - 1, sc)
     } else {
         p.globals.push(Binding(name, ty))
     }
@@ -189,7 +193,7 @@ fn p_bind(p P, name str, ty str) {
 fn p_lookup(p P, name str) str {
     var s = p.depth - 1
     while s >= 0 {
-        var scope = p.scopes.get(s)
+        var scope List<Binding> = p.scopes.get(s)
         var i = scope.len() - 1
         while i >= 0 {
             if scope.get(i).name == name {
@@ -310,13 +314,13 @@ fn builtin_type(name str) str {
     return ""
 }
 
-fn is_type_name(p P) bool {
+fn is_type_name(mut p P) bool {
     var k = p_kind(p)
     return k == "Ident" || k == "Question" || k == "Not" || k == "Tilde" || k == "LSquare" || k == "Star" || k == "At" || k == "Fn" || k == "Link" || k == "Type"
 }
 
 // parse_type 子集:标量/用户名 + ?T/!T/*T 前后缀;泛型/数组/fn 类型 Missing
-fn parse_type(p P) str {
+fn parse_type(mut p P) str {
     if p.err != "" {
         return ""
     }
@@ -328,7 +332,7 @@ fn parse_type(p P) str {
     return ty
 }
 
-fn parse_type_base(p P) str {
+fn parse_type_base(mut p P) str {
     var k = p_kind(p)
     if k == "Question" {
         p_next(p)
@@ -587,7 +591,7 @@ fn bad_e() E {
     return E("bad", "", "", "", "", "")
 }
 
-fn expr_atom(p P) E {
+fn expr_atom(mut p P) E {
     if p.err != "" {
         return bad_e()
     }
@@ -665,7 +669,7 @@ fn expr_atom(p P) E {
 }
 
 // args() 直译:Pos/Name 显示相同(D22 备注),统一按 Display 输出
-fn parse_args(p P) str {
+fn parse_args(mut p P) str {
     p_expect(p, "LParen")
     skip_empty_lines(p)
     var out = "(args"
@@ -691,10 +695,10 @@ fn parse_args(p P) str {
 }
 
 // array() 直译(fmt_array:空数组 "(array )")
-fn parse_array(p P) E {
+fn parse_array(mut p P) E {
     p_expect(p, "LSquare")
     skip_empty_lines(p)
-    var elems = List.new()
+    var elems List<str> = List.new()
     var first_ity = ""
     while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
         var e = expr_pratt(p, 0)
@@ -730,7 +734,7 @@ fn parse_array(p P) E {
 }
 
 // key() 直译:返回 key 的 Display 形式
-fn parse_key(p P) str {
+fn parse_key(mut p P) str {
     var k = p_kind(p)
     if k == "Ident" || k == "Type" || k == "Tag" || k == "Task" {
         var n = p_text(p)
@@ -760,7 +764,7 @@ fn parse_key(p P) str {
 }
 
 // object() 直译
-fn parse_object(p P) E {
+fn parse_object(mut p P) E {
     p_expect(p, "LBrace")
     skip_empty_lines(p)
     var dump = "(object "
@@ -787,7 +791,7 @@ fn parse_object(p P) E {
     return E("object", "", "", "", dump + ")", "")
 }
 
-fn join_dump_list(parts List, sep str) str {
+fn join_dump_list(parts List<str>, sep str) str {
     var out = ""
     var i = 0
     while i < parts.len() {
@@ -801,9 +805,9 @@ fn join_dump_list(parts List, sep str) str {
 }
 
 // 元组解析(( 已在 cur):elems 经 expr_pratt(0),ity 为元素 ity 的 ", " 连接
-fn tuple_rest(p P, first E) E {
-    var dumps = List.new()
-    var itys = List.new()
+fn tuple_rest(mut p P, first E) E {
+    var dumps List<str> = List.new()
+    var itys List<str> = List.new()
     dumps.push(first.dump)
     itys.push(first.ity)
     while p_kind(p) == "Comma" {
@@ -817,7 +821,7 @@ fn tuple_rest(p P, first E) E {
 }
 
 // LParen 前缀的 group/tuple/closure 判定(expr_pratt_inner LParen 臂直译)
-fn paren_prefix(p P) E {
+fn paren_prefix(mut p P) E {
     var k1 = p_peek(p, 1)
     if k1 == "RParen" {
         var k2 = p_peek(p, 2)
@@ -883,7 +887,7 @@ fn paren_prefix(p P) E {
 }
 
 // expr_pratt_inner 直译:前缀分发 + with_left 循环
-fn expr_pratt(p P, min int) E {
+fn expr_pratt(mut p P, min int) E {
     if p.err != "" {
         return bad_e()
     }
@@ -920,7 +924,7 @@ fn expr_pratt(p P, min int) E {
 }
 
 // expr_pratt_with_left_inner 直译
-fn expr_with_left(p P, lhs E, min int) E {
+fn expr_with_left(mut p P, lhs E, min int) E {
     if p.err != "" {
         return lhs
     }
@@ -1040,7 +1044,7 @@ fn store_kw_name(kw str) str {
     return "let"
 }
 
-fn parse_store(p P, kw str) str {
+fn parse_store(mut p P, kw str) str {
     p_next(p)
     // 元组解构 let (a, b) = expr:基础实现
     if p_kind(p) == "LParen" {
@@ -1087,7 +1091,7 @@ fn parse_store(p P, kw str) str {
     return "(" + store_kw_name(kw) + " (name " + name + ") (type " + ty + ") " + init.dump + ")"
 }
 
-fn parse_fn_params(p P) str {
+fn parse_fn_params(mut p P) str {
     var out = ""
     var count = 0
     skip_empty_lines(p)
@@ -1148,7 +1152,7 @@ fn parse_fn_params(p P) str {
     return out
 }
 
-fn parse_fn(p P) str {
+fn parse_fn(mut p P) str {
     p_next(p)
     if p_kind(p) == "Dot" {
         p_err(p, "v2 unsupported: fn.c/fn.vm ")
@@ -1200,7 +1204,7 @@ fn parse_fn(p P) str {
     return out + " " + body + ")"
 }
 
-fn if_contents(p P) str {
+fn if_contents(mut p P) str {
     p_next(p)
     if p_kind(p) == "Let" {
         p_err(p, "v2 unsupported: if-let ")
@@ -1230,7 +1234,7 @@ fn if_contents(p P) str {
     return out + ")"
 }
 
-fn parse_for(p P) str {
+fn parse_for(mut p P) str {
     p_next(p)
     if p_kind(p) == "LBrace" {
         var b0 = parse_body(p)
@@ -1313,7 +1317,7 @@ fn parse_for(p P) str {
     return "(for (cond) " + cond3.dump + " " + b5 + ")"
 }
 
-fn parse_while(p P) str {
+fn parse_while(mut p P) str {
     p_next(p)
     var had_paren = false
     if p_kind(p) == "LParen" {
@@ -1329,7 +1333,7 @@ fn parse_while(p P) str {
     return "(for (cond) " + cond.dump + " " + body + ")"
 }
 
-fn parse_return(p P) str {
+fn parse_return(mut p P) str {
     p_next(p)
     var k = p_kind(p)
     if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
@@ -1343,7 +1347,7 @@ fn is_unsupported_stmt_kind(k str) bool {
     return k == "Use" || k == "Type" || k == "Enum" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Is" || k == "Yield" || k == "Reply" || k == "View"
 }
 
-fn parse_stmt(p P) str {
+fn parse_stmt(mut p P) str {
     if p.err != "" {
         return ""
     }
@@ -1399,10 +1403,10 @@ fn parse_stmt(p P) str {
 }
 
 // parse_body_inner 直译(方法链合并 Missing;空 body → "(body )")
-fn parse_body(p P) str {
+fn parse_body(mut p P) str {
     p_expect(p, "LBrace")
     push_scope(p)
-    var stmts = List.new()
+    var stmts List<str> = List.new()
     var nl = skip_empty_lines(p)
     if nl > 1 {
         stmts.push("(nl*" + (nl - 1).str() + ")")
@@ -1421,7 +1425,7 @@ fn parse_body(p P) str {
 }
 
 // expect_eos 直译(Semi/Newline/Comma 皆可分隔;返回 newline 数)
-fn expect_eos(p P) int {
+fn expect_eos(mut p P) int {
     var count = 0
     var has_sep = false
     while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
@@ -1442,8 +1446,8 @@ fn expect_eos(p P) int {
 }
 
 // parse_impl 直译(#section/convert_last_block Missing;空 code → "(code )")
-fn parse_program(p P) str {
-    var stmts = List.new()
+fn parse_program(mut p P) str {
+    var stmts List<str> = List.new()
     skip_empty_lines(p)
     while p.err == "" && p_kind(p) != "EOF" {
         var s = parse_stmt(p)

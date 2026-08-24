@@ -38,6 +38,27 @@ library under test. Use `phase p0` to run `_dummy` explicitly.
 cargo run -- --root . list
 ```
 
+### AAVM four-way matrix (Plan 433)
+
+Runs the AAVM self-hosting matrix over the v2 execution-layer corpus
+(`crates/auto-lang/test/vm/aavm2/corpus_m4`, 30 cases):
+
+| col | backend | meaning |
+|---|---|---|
+| 1 reference | `auto <case.at>` | auto-lang native implementation (oracle) |
+| 2 aavm_rust | built binary | auto/lib v2 transpiled by a2r `--merge` + compiled (zero a2r_std) |
+| 3 aavm_vm | `auto` (merged lib + ev_run wrapper) | AutoVM interpreting the AAVM `.at` pipeline |
+| 4 golden | `<case>.expected.out` | corpus golden; falls back to 1 when absent (noted) |
+
+```
+cd parity
+cargo run -- --root . --auto-binary <abs path to auto.exe> aavm
+cargo run -- --root . --auto-binary <abs> aavm --html docs/aavm-matrix.html
+```
+The 2nd backend binary is built on demand (cargo, content-hash cached under
+the system temp dir). Exit code 0 iff the whole matrix is green. Requires a
+Rust toolchain.
+
 ## How to add a new library
 
 1. Create `libs/<name>/` with:

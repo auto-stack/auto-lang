@@ -105,6 +105,10 @@
 | 432-A4 | u128 族访问器目录化 | `Duration`/`Instant` 等手写臂已由 plan-430 生成段接管，引擎侧残留 u128 族访问器待目录化。 | `vm/engine.rs`（431 A4 #3） |
 | 432-A4 | native_catalog 分文件 | native_catalog 521 条单数组——核心/UI 分文件。 | `vm/native_catalog.rs`（431 A4 #4） |
 | 432-A4 | SHL/SHR 语法缺口 | opcode 仅声明 6 条中 SHL/SHR 是实际语法缺口（429-B3），实现后 431 处置表需更新。 | `vm/opcode.rs`（431 A4 #5） |
+| 433 | VM 枚举载荷跨函数传参丢标签 | VM 实证(probe20/22/23):enum 载荷值为运行期计算(拼接/算术)时,跨函数传参后 is-match 失败(NONE/空串/i32 哨兵泄漏);字面量构造或结构体载体不受影响。433 以 Val 判别器结构体绕过(divergences D34);根治需查 enum 值的参数编组(payload 池绑定)。 | `vm/native.rs`/编组路径;probe 复现件 tmp/p433/probe20-23.at(已失,可由 divergences D34 描述重建) |
+| 433 | a2r is-绑定变量无类型跟踪 | is-pattern 绑定的载荷变量不进 local_var_types——后续 `.get`/字段解析失效(433 以带标注局部+辅助函数绕过)。 | `trans/rust.rs` local_var_types + enum_tuple_field_types 联动 |
+| 433 | a2r 后处理归约 `.to_string().as_str()`→`.as_str()` | 17511 行的文本归约会吃掉 `.str()` 实参的正确借用链,数字接收者残留 `i64.as_str()` E0599(433 以 .at 侧提升局部绕过,D36-③);数字字面量剥离 regex 只兜 `(\d+)\.as_str` 形态。 | `trans/rust.rs:17511` + `fix_numeric_get_as_str` |
+| 433 | merge 模式 bootstrap 自测 main 遗留 | v1 遗留的 run_eval/run_a2r 自测 main 追加已加守卫(仅 run_eval 存在时);该 v1 路径(11 文件 dep_order、post_process 正则族)整体可在 434 后清退。 | `trans/rust.rs transpile_rust_project_merged` |
 
 ---
 
@@ -116,4 +120,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-22（Plan 417-E3 有界泛型落地:登记 417-E3-P4 调用点界校验延期；2026-08-20 Plan 308/317/364/399/404/407/409/410 归档复审后；398/406/408 finish-plan 归档）*
+*最后更新：2026-08-24（Plan 433 a2r 闭环:登记 4 条——VM 枚举传参缺陷/a2r is-绑定类型跟踪/后处理 as_str 归约/merge v1 遗留;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*

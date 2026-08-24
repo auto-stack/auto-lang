@@ -211,3 +211,47 @@
 | codegen.at | 2(D28 + 下标赋值游标快照两段步行;另复用 D22/D25) |
 | engine.at | 2(D29 + D30/D31) |
 | 合计 | 22 |
+
+## 433 a2r 闭环(.at 侧改写,六闸门保持绿)
+
+- **D32**(全库):裸 `List` → 类型化 `List<T>`(toks/ins/pool/fns/scopes/
+  args_stack/offs/jzs/jends/parts/stmts/dumps/itys/elems)。VM 动态语义
+  不变;a2r 需元素类型(Vec<Tok> 等),裸 List 会错映射为 Vec<String>。
+  类型标注声明点:struct 字段/fn 参数与返回/var 标注;由函数返回值初始化
+  的局部由 a2r 新增的 fn_ret_types 预扫描推断(433 a2r 修复)。
+- **D33**(parser/typeinfo/codegen):结构体引用语义 → `mut p P`/`mut c CG`
+  参数(a2r-11 机制:&mut 穿透 + 调用点 reborrow)。VM 忽略 mode 关键字,
+  行为不变。
+- **D34**(engine):值栈异构载体 → Val 判别器结构体 `{k, i, s}`
+  (k:0=int/1=str/2=arr)。不用 enum:VM 枚举载荷值跨函数传参丢标签
+  (probe20/22/23 实证:NONE/空串/i32 哨兵泄漏;结构体对照组全绿),
+  **挂 242 tracker**。
+- **D35**(engine,D31 续):数组值 = arena 侧表槽位,VArr 的 i 即 arena
+  索引(索引即引用,镜像宿主堆 id)。VM 引用语义与 a2r 值语义在
+  "arena 槽位 = 单一事实源"上对齐:set.elem 的唯一变异点 ev_arr_write
+  (VM 原地写 + 写回无操作;a2r 克隆修改 + 写回)。
+- **D36**(若干):VM 缺陷规避写法(与 D25 同族):
+  ①原生调用不入(枚举/结构体)构造参数——`Val.VStr(pool.get(i))` 载荷
+  丢失,先提升局部(load.str / get.elem str 分支);
+  ②`ev_push(stack, sp, stack.get(x))` 的借用冲突(a2r 侧 &mut stack 与
+  读 stack 并存)——读值先提升局部(load.loc.0/1/2、load.local、dup);
+  ③`.str()` 调用与 str 拼接不入 str 参数/拼接位——提升局部
+  (cg_emit_store/load、const.i32、.line、ret、ev_add);
+  ④`parts.push(lhs)` 后条件重赋值触发移动分析(possible-skip reinit)——
+  push 副本(`var lh2 = lhs + ""`,VM 语义等价)。
+- **D37**(a2r 侧修复配套,VM 无关):int 与 char 字面量混型比较/减法由
+  a2r 发射 `('x') as i64`(VM 码点语义对齐);`.len` 在含 len 字段的
+  结构体上是属性读而非方法(Tok.len);merge 模式跨模块 mut 参数表与
+  fn 返回类型表预扫描;bootstrap 自测 main 仅在 run_eval 存在时追加。
+
+## 计数(433 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| token.at | 2 |
+| lexer.at | 8(+D32 类型化/D37 char 由 a2r 消化) |
+| parser.at | 7(+D32/D33) |
+| typeinfo.at | 1(+D32/D33/D36-④) |
+| codegen.at | 2(+D32/D33/D36-③) |
+| engine.at | 3(D29 + D30/D31 重构 + D34/D35/D36) |
+| 合计 | 23 类(累计登记;433 新增 D32-D37 六类) |

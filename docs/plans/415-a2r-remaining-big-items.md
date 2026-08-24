@@ -42,11 +42,15 @@
   Plan 386 的启动条件式评估("≥3 个 COSMIC app 跑通")是否放宽;
   建议先出 1 天 spike(AURA → GPUI 映射层 PoC)再定 go/no-go。
 
-### 415-D 自举 Phase 2/E（242 #16,预估 ≥1 周）
+### 415-D 自举 Phase 2/E（242 #16,预估 ≥1 周）— ✅ 已收口(2026-08-24,Plan 433)
 
-- **现状**: Plan 355 完成 a2r 发射侧(#12),自举(用 Auto 写 Auto 工具链)
-  Phase 2(编译器自身)与 Phase E 待做。
-- **依赖**: 415-A/B 落地后再评估;自举对 stdlib 覆盖面敏感。
+- **现状**: ~~Plan 355 完成 a2r 发射侧(#12),自举(用 Auto 写 Auto 工具链)
+  Phase 2(编译器自身)与 Phase E 待做。~~
+- **收口**: Phase 2 = AAVM v2 六层管线(432,Auto 写的编译器+VM,AutoVM 内
+  自举);Phase E = 433(Rust 版 a2r 转译 AAVM → 纯 Rust 零 a2r_std,
+  rustc metadata 零错,corpus 30/30 与参考一致,四向矩阵全绿)。
+  纯 Auto 闭环(Auto 版 a2r 转译器,五向)→ Plan 434 余力项。
+- **依赖**: ~~415-A/B 落地后再评估~~(A 已落地;B/C 不阻塞)。
 
 ### 415-E dep cc + memmap2 FFI（242 #17,预估 2-3 天）
 

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8">
+<title>AAVM 四向对比矩阵(Plan 433)</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2rem; }
+table { border-collapse: collapse; }
+td, th { border: 1px solid #ccc; padding: 4px 12px; text-align: center; }
+td:first-child { text-align: left; font-family: monospace; }
+.ok { background: #e6f4e6; color: #1a5c1a; }
+.diff { background: #fde8e8; color: #a11; font-weight: bold; }
+.summary { margin: 1rem 0; font-size: 1.1rem; }
+</style></head><body>
+<h1>AAVM 四向对比矩阵(Plan 433)</h1>
+<p>① reference = auto-lang 原生实现(oracle) · ② aavm_rust = AAVM .at 经 a2r 转译编译后的
+编译器+VM · ③ aavm_vm = AutoVM 解释执行 AAVM .at · ④ golden = corpus .expected.out
+(无 golden 文件时回落 ①)。④golden 列在 golden 缺失时与 ① 同源,仅作占位。</p>
+<p class="summary">自举稳定集:30/30 全绿(C:\Users\zhaop\AppData\Local\Temp\aavm-parity-bin-c346b6c4fe6cbe9b\target/release/aavm2_bin.exe (cache hit (c346b6c4fe6cbe9b)))</p>
+<table>
+<tr><th>case</th><th>① reference</th><th>② aavm_rust</th><th>③ aavm_vm</th><th>④ golden</th></tr>
+<tr><td>b01_hello</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b02_let</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b03_assign</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b04_ifelse</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b05_while</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b06_forrange</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b07_fib</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b08_strcat</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b09_logic</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b10_multilet</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b11_eval_print_int</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b12_eval_print_int2</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b13_eval_print_true</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b14_eval_print_false</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b15_eval_print_int3</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b16_eval_print_zero</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b17_eval_print_seq</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b18_eval_print_seq2</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b19_eval_print_bools</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b20_eval_print_seq3</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b21_eval_print_str</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b22_eval_let_str</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b23_eval_strcat</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b24_eval_fn_arg_str</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b25_eval_fn_double</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b26_eval_fn_ret_str</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b27_arr_literal</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b28_arr_index</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b29_arr_update</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+<tr><td>b30_arr_loop</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td><td class="ok">ok</td></tr>
+
+</table>
+</body></html>

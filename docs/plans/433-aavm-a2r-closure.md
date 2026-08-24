@@ -2,7 +2,7 @@
 plan: 433
 title: aavm-a2r-closure（a2r 闭环：AAVM 转译为纯 Rust，四向对比）
 affects: [docs/plans/242-a2r-feature-gap-tracker.md]
-status: draft
+status: complete
 ---
 
 # Plan 433: a2r 闭环——AAVM 转译为纯 Rust 并与参考实现四向对比

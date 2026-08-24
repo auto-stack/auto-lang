@@ -58,10 +58,10 @@ type CGVar {
 }
 
 type CG {
-    ins List
-    pool List
-    fns List
-    scopes List
+    ins List<I>
+    pool List<str>
+    fns List<FnEntry>
+    scopes List<List<CGVar>>
     depth int
     n_args int
     max_idx int
@@ -71,16 +71,16 @@ type CG {
 }
 
 fn cg_new() CG {
-    var scs = List.new()
-    var base = List.new()
+    var scs List<List<CGVar>> = List.new()
+    var base List<CGVar> = List.new()
     scs.push(base)
-    var ins_l = List.new()
-    var pool = List.new()
-    var fns = List.new()
+    var ins_l List<I> = List.new()
+    var pool List<str> = List.new()
+    var fns List<FnEntry> = List.new()
     return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0)
 }
 
-fn cg_err(c CG, msg str) {
+fn cg_err(mut c CG, msg str) {
     if c.err == "" {
         c.err = "CODEGEN-ERROR:" + msg
     }
@@ -137,21 +137,21 @@ fn i_size(op str) int {
 }
 
 // 发射一条指令,返回其指令索引
-fn emit(c CG, op str, s str, n int) int {
+fn emit(mut c CG, op str, s str, n int) int {
     c.ins.push(I(op, s, n))
     return c.ins.len() - 1
 }
 
 // ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
 
-fn cg_push_scope(c CG) {
-    var sc = List.new()
+fn cg_push_scope(mut c CG) {
+    var sc List<CGVar> = List.new()
     c.scopes.push(sc)
     c.depth = c.depth + 1
 }
 
 // 弹出作用域:depth>2 时对栈顶域的槽按升序发 push.nil+store
-fn cg_pop_scope(c CG) {
+fn cg_pop_scope(mut c CG) {
     if c.depth > 1 {
         if c.depth > 2 {
             var sc = c.scopes.get(c.depth - 1)
@@ -168,8 +168,8 @@ fn cg_pop_scope(c CG) {
 }
 
 // 域内变量 idx 升序收集
-fn cg_sort_ints_of_vars(sc List) List {
-    var out = List.new()
+fn cg_sort_ints_of_vars(sc List<CGVar>) List<int> {
+    var out List<int> = List.new()
     var k = 0
     while k < sc.len() {
         out.push(sc.get(k).idx)
@@ -191,15 +191,18 @@ fn cg_sort_ints_of_vars(sc List) List {
     return out
 }
 
-fn cg_add_var(c CG, name str, arr int) int {
+fn cg_add_var(mut c CG, name str, arr int) int {
     var next = c.max_idx + 1
     c.max_idx = next
-    c.scopes.get(c.depth - 1).push(CGVar(name, next, arr))
+    // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
+    var sc = c.scopes.get(c.depth - 1)
+    sc.push(CGVar(name, next, arr))
+    c.scopes.set(c.depth - 1, sc)
     return next
 }
 
 // 按 idx 反查变量的数组性(.len() 接收者判定)
-fn cg_var_arr(c CG, idx int) int {
+fn cg_var_arr(mut c CG, idx int) int {
     var s = c.depth - 1
     while s >= 0 {
         var sc = c.scopes.get(s)
@@ -215,7 +218,7 @@ fn cg_var_arr(c CG, idx int) int {
     return 0
 }
 
-fn cg_lookup(c CG, name str) int {
+fn cg_lookup(mut c CG, name str) int {
     var s = c.depth - 1
     while s >= 0 {
         var sc = c.scopes.get(s)
@@ -233,9 +236,10 @@ fn cg_lookup(c CG, name str) int {
 
 // ── 寻址发射(param:0x80+rel;局部 rel 0/1 → loc.0/loc.1,否则 local N) ──
 
-fn cg_emit_store(c CG, idx int) {
+fn cg_emit_store(mut c CG, idx int) {
     if idx < c.n_args {
-        emit(c, "store.local", (128 + idx).str(), 128 + idx)
+        var sv = (128 + idx).str()
+        emit(c, "store.local", sv, 128 + idx)
         return
     }
     var rel = idx - c.n_args
@@ -244,13 +248,15 @@ fn cg_emit_store(c CG, idx int) {
     } else if rel == 1 {
         emit(c, "store.loc.1", "1", 1)
     } else {
-        emit(c, "store.local", rel.str(), rel)
+        var sv2 = rel.str()
+        emit(c, "store.local", sv2, rel)
     }
 }
 
-fn cg_emit_load(c CG, idx int) {
+fn cg_emit_load(mut c CG, idx int) {
     if idx < c.n_args {
-        emit(c, "load.local", (128 + idx).str(), 128 + idx)
+        var lv = (128 + idx).str()
+        emit(c, "load.local", lv, 128 + idx)
         return
     }
     var rel = idx - c.n_args
@@ -261,13 +267,14 @@ fn cg_emit_load(c CG, idx int) {
     } else if rel == 2 {
         emit(c, "load.loc.2", "2", 2)
     } else {
-        emit(c, "load.local", rel.str(), rel)
+        var lv2 = rel.str()
+        emit(c, "load.local", lv2, rel)
     }
 }
 
 // ── 字符串池(内容寻址去重) ────────────────────────────────────
 
-fn cg_pool_add(c CG, s str) int {
+fn cg_pool_add(mut c CG, s str) int {
     var i = 0
     while i < c.pool.len() {
         if c.pool.get(i) == s {
@@ -329,7 +336,7 @@ fn cg_is_assign_op(k str) bool {
 }
 
 // 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
-fn cg_expr(c CG, p P, min int) {
+fn cg_expr(mut c CG, mut p P, min int) {
     if c.err != "" {
         return
     }
@@ -355,7 +362,8 @@ fn cg_expr(c CG, p P, min int) {
     } else if k == "Int" {
         var t = p_text(p)
         p_next(p)
-        emit(c, "const.i32", int_val(t).str(), int_val(t))
+        var cv = int_val(t).str()
+        emit(c, "const.i32", cv, int_val(t))
     } else if k == "Str" {
         var s = p_text(p)
         p_next(p)
@@ -491,7 +499,7 @@ fn cg_expr(c CG, p P, min int) {
 }
 
 // 调用实参:( 已在 cur;消费至 RParen
-fn cg_call_args(c CG, p P) {
+fn cg_call_args(mut c CG, mut p P) {
     p_next(p)
     skip_empty_lines(p)
     if p_kind(p) != "RParen" {
@@ -507,7 +515,7 @@ fn cg_call_args(c CG, p P) {
 
 // ── 语句发射(.line 由语句步行者发,见 cg_stmts) ────────────────
 
-fn cg_stmt(c CG, p P) {
+fn cg_stmt(mut c CG, mut p P) {
     if c.err != "" {
         return
     }
@@ -537,7 +545,9 @@ fn cg_stmt(c CG, p P) {
         } else {
             cg_expr(c, p, 0)
         }
-        emit(c, "ret", "n_args=" + c.n_args.str(), c.n_args)
+        var na = c.n_args
+        var rs2 = "n_args=" + na.str()
+        emit(c, "ret", rs2, na)
         return
     }
     if k == "If" {
@@ -636,9 +646,10 @@ fn cg_stmt(c CG, p P) {
 }
 
 // 语句序列步行:.line(语句首 token 行)→ cg_stmt → eos
-fn cg_stmts(c CG, p P) {
+fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
-        emit(c, ".line", p_line(p).str(), 0)
+        var ln = p_line(p).str()
+        emit(c, ".line", ln, 0)
         cg_stmt(c, p)
         if c.err == "" {
             cg_eos(c, p)
@@ -647,9 +658,9 @@ fn cg_stmts(c CG, p P) {
 }
 
 // if/else-if/else:每分支 cond,jz→下一;体;jmp→end(含 return 后死 jmp)
-fn cg_if(c CG, p P) {
-    var jzs = List.new()
-    var jends = List.new()
+fn cg_if(mut c CG, mut p P) {
+    var jzs List<int> = List.new()
+    var jends List<int> = List.new()
     var more = true
     while more {
         p_next(p)
@@ -687,14 +698,14 @@ fn cg_if(c CG, p P) {
 }
 
 // 分支/循环体(compile_body_inline:不推作用域)
-fn cg_body_inline(c CG, p P) {
+fn cg_body_inline(mut c CG, mut p P) {
     p_expect(p, "LBrace")
     skip_empty_lines(p)
     cg_stmts(c, p)
     p_expect(p, "RBrace")
 }
 
-fn cg_eos(c CG, p P) {
+fn cg_eos(mut c CG, mut p P) {
     var has_sep = false
     while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
         has_sep = true
@@ -706,7 +717,7 @@ fn cg_eos(c CG, p P) {
 }
 
 // while:top(在语句 .line 之后):cond;jmp.z end;体;jmp top;end
-fn cg_while(c CG, p P) {
+fn cg_while(mut c CG, mut p P) {
     p_next(p)
     var top = c.ins.len()
     cg_expr(c, p, 0)
@@ -718,7 +729,7 @@ fn cg_while(c CG, p P) {
 
 // for-in-range:start;store var;top:load var;end;lt;jmp.z end;
 // 体;load var;const 1;add;store var;jmp top;end;循环域弹出(释放)
-fn cg_for(c CG, p P) {
+fn cg_for(mut c CG, mut p P) {
     p_next(p)
     if p_kind(p) != "Ident" {
         cg_err(c, "for: expected ident")
@@ -759,7 +770,7 @@ fn cg_for(c CG, p P) {
 
 // ── fn 编译 ──────────────────────────────────────────────────
 
-fn cg_fn(c CG, p P) {
+fn cg_fn(mut c CG, mut p P) {
     p_next(p)
     if p_kind(p) != "Ident" {
         cg_err(c, "fn: expected name")
@@ -827,7 +838,8 @@ fn cg_fn(c CG, p P) {
     p_expect(p, "RBrace")
     cg_pop_scope(c)
     // epilogue RET
-    emit(c, "ret", "n_args=" + n_args.str(), n_args)
+    var rs = "n_args=" + n_args.str()
+    emit(c, "ret", rs, n_args)
     // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
     var n_locals = 0
     if c.max_idx >= n_args {
@@ -863,8 +875,8 @@ fn hex4(n int) str {
     return out
 }
 
-fn cg_serialize(c CG) str {
-    var offs = List.new()
+fn cg_serialize(mut c CG) str {
+    var offs List<int> = List.new()
     var acc = 0
     var i = 0
     while i < c.ins.len() {

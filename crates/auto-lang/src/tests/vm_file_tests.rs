@@ -751,6 +751,115 @@ fn test_aavm2_001_smoke() { test_aavm2("aavm2/001_smoke").unwrap(); }
 #[test] #[ignore]
 fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwrap(); }
 
+// =============================================================================
+// Plan 433 B: AAVM-Rust(②)— auto/lib v2 经 a2r --merge 转译编译出的
+// 编译器+VM 二进制,对 corpus 执行层语料跑行为,与 ① Rust 参考
+// (run_with_capture live oracle)对齐。管线沿用 431-E3 骨架:
+// transpile_rust_project_merged → 临时 cargo bin(内容寻址缓存)→ 运行 → diff。
+
+/// Plan 433 B1: 组装 AAVM-Rust 二进制(merge 转译 + main harness)。
+/// 返回 exe 路径。产物按转译内容 hash 缓存,重跑不重建。
+fn build_aavm_rust_bin() -> PathBuf {
+    use std::process::Command;
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let lib_dir = root.join("auto/lib");
+    let merged = crate::trans::rust::transpile_rust_project_merged(
+        lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");
+
+    // 内容寻址缓存:同产物不重复 cargo build
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        merged.hash(&mut h);
+        format!("{:016x}", h.finish())
+    };
+    let proj = std::env::temp_dir().join(format!("aavm2-bin-{}", hash));
+    let exe = proj.join("target/release/aavm2_bin.exe");
+    if exe.exists() {
+        return exe;
+    }
+    let src_dir = proj.join("src");
+    std::fs::create_dir_all(&src_dir).expect("create src dir");
+    std::fs::write(proj.join("Cargo.toml"), "[package]\nname = \"aavm2_bin\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[dependencies]\n").unwrap();
+    // harness main:读 .at → ev_run → stdout
+    let harness = r#"
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("usage: aavm2 <file.at>");
+        std::process::exit(2);
+    }
+    let source = match std::fs::read_to_string(&args[1]) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("read error: {}", e); std::process::exit(2); }
+    };
+    let out = ev_run(&source);
+    print!("{}", out);
+}
+"#;
+    let mut full = merged.clone();
+    full.extend_from_slice(harness.as_bytes());
+    std::fs::write(src_dir.join("main.rs"), &full).unwrap();
+
+    let build = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&proj)
+        .output()
+        .expect("cargo spawn");
+    assert!(
+        build.status.success(),
+        "AAVM-Rust cargo build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    exe
+}
+
+/// Plan 433 B2: corpus 执行层语料上 ②(AAVM-Rust) vs ①(Rust 参考)
+/// 行为对齐。语料 = corpus_m4 全量(= 99_bootstrap 038-052 回收 +
+/// 数组四件套,M4/M5 双绿集)。#[ignore]]:需 cargo 工具链,按需跑:
+/// cargo test -p auto-lang --lib --features test-vm-files -- test_aavm2_compile_corpus -- --ignored
+#[test] #[ignore]
+fn test_aavm2_compile_corpus() {
+    let exe = build_aavm_rust_bin();
+    let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test/vm/aavm2/corpus_m4");
+    let mut entries: Vec<_> = std::fs::read_dir(&corpus)
+        .expect("corpus_m4 dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "at").unwrap_or(false))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty());
+    let mut mismatches: Vec<String> = Vec::new();
+    let mut checked = 0usize;
+    for path in &entries {
+        let code = std::fs::read_to_string(path).unwrap();
+        // ① Rust 参考(live oracle,与 M5 闸门同源)
+        let (_r, expected) = run_with_capture(&code).expect("rust reference run");
+        // ② AAVM-Rust
+        let out = std::process::Command::new(&exe)
+            .arg(path)
+            .output()
+            .expect("run aavm2 bin");
+        assert!(out.status.success(), "aavm2 bin failed on {}", path.display());
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        checked += 1;
+        if stdout.trim_end() != expected.trim_end() {
+            mismatches.push(format!(
+                "{}\n--- rust ---\n{}\n--- aavm-rust ---\n{}",
+                path.display(), expected, stdout
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "AAVM-Rust corpus mismatches ({} of {}):\n{}",
+        mismatches.len(), checked, mismatches.join("\n====\n")
+    );
+    eprintln!("AAVM-Rust corpus: {checked} files, outputs identical to Rust reference");
+}
+
 // Plan 233: AAVM Parser tests
 #[test] #[ignore] fn test_99_bootstrap_008_parser_hello() { test_aavm("99_bootstrap/008_parser_hello").unwrap(); }
 
