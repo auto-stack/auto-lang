@@ -777,6 +777,40 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             if try_transpile_builtin_field(obj, field.as_str(), ctx, out) {
                 return;
             }
+            // Plan 444 (ash-shell-057 ⑤): dynamic variant read on a str-typed
+            // state ref (`.____sse_status.Failed` — the runtime value is a
+            // bare string OR a {"Failed": msg} object; the VM evaluates the
+            // member access dynamically). TS sees `string` and errors TS2339,
+            // so route the member access through the any channel.
+            if let Expr::Dot(inner, base) = obj.as_ref() {
+                if matches!(inner.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
+                {
+                    if ctx.is_state(base.as_str()) && ctx.is_typed_string(base.as_str()) {
+                        write!(out, "({}.value as any).{}", base.as_str(), field.as_str()).ok();
+                        return;
+                    }
+                }
+            }
+            // Plan 444 (ash-shell-057 ②): member access on a variant payload
+            // field (`cell.Tagged.text`). api.ts types variant payloads as
+            // PascalCase optional members (`Tagged?: TaggedCell | null`); the
+            // .at variant invariant (a checked-else branch implies this
+            // variant is present) licenses a non-null assertion instead of
+            // TS18049. `?.` would widen to `T | undefined` and break the
+            // downstream strict assignment.
+            if let Expr::Dot(_, base_field) = obj.as_ref() {
+                if base_field
+                    .as_str()
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
+                {
+                    transpile_receiver(obj, ctx, out);
+                    write!(out, "!.{}", field.as_str()).ok();
+                    return;
+                }
+            }
             // Plan 408 P12 §10.4: composable facade ref 字段——当 object 解析为
             // facade local（裸 Ident 或 self.local）且 field 在 ref_fields 标注里
             // 时，注入 `.value`（composable 返回普通对象时 ref 不自动 unwrap）。
@@ -875,6 +909,29 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             match call.name.as_ref() {
                 // Method call: object.method(args)
                 Expr::Dot(object, method) => {
+                    // Plan 444 (ash-shell-057 ④): VM-only natives (`fs.*`,
+                    // `File.*` — the native-catalog whitelist) have no JS
+                    // counterpart; emitting them verbatim produces TS2304 /
+                    // TS2339 and dangling runtime identifiers. Degrade to the
+                    // explicit throwing stub `__vmOnly(...)` (declared by the
+                    // generator when any body uses it) — an honest runtime
+                    // error beats silently illegal code.
+                    if let crate::ast::Expr::Ident(recv) = object.as_ref() {
+                        if matches!(recv.as_str(), "fs" | "File") {
+                            let qualified = format!("{}.{}", recv.as_str(), method.as_str());
+                            ctx.note_warning(format!(
+                                "VM-only native `{}` has no Vue/JS build — emitted as a throwing __vmOnly stub",
+                                qualified
+                            ));
+                            write!(out, "__vmOnly('{}'", qualified).ok();
+                            for arg in &call.args.args {
+                                write!(out, ", ").ok();
+                                transpile_expr(&arg.get_expr(), ctx, out);
+                            }
+                            write!(out, ")").ok();
+                            return;
+                        }
+                    }
                     // Plan 043 store-codegen: container constructor
                     // `List<T>.new([...])` / `Array<T>.new(...)` → `[...]` (or `[]`).
                     // Without this the call falls through to the generic
@@ -1909,6 +1966,9 @@ pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
             Expr::Unary(_, e) => walk_expr(e, api_fns),
             Expr::Dot(obj, _) => walk_expr(obj, api_fns),
             Expr::Array(items) => items.iter().any(|e| walk_expr(e, api_fns)),
+            // Plan 444 (ash-shell-057 ④): index/coalesce operands too.
+            Expr::Index(a, i) => walk_expr(a, api_fns) || walk_expr(i, api_fns),
+            Expr::NullCoalesce(l, r) => walk_expr(l, api_fns) || walk_expr(r, api_fns),
             // Plan 408 P12 §10.7: `.await` expressions require an async handler.
             Expr::Await { .. } => true,
             _ => false,
@@ -1919,10 +1979,31 @@ pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
         stmts.iter().any(|s| match s {
             Stmt::Expr(expr) => walk_expr(expr, api_fns),
             Stmt::Store(store) => walk_expr(&store.expr, api_fns),
-            Stmt::If(if_stmt) => if_stmt
-                .branches
-                .iter()
-                .any(|b| walk_expr(&b.cond, api_fns) || check_stmts(&b.body.stmts, api_fns)),
+            Stmt::If(if_stmt) => {
+                if_stmt
+                    .branches
+                    .iter()
+                    .any(|b| walk_expr(&b.cond, api_fns) || check_stmts(&b.body.stmts, api_fns))
+                    // Plan 444 (ash-shell-057 ④): else branches hid api calls
+                    // (and `.await`s) from async detection — TS1308.
+                    || if_stmt
+                        .else_
+                        .as_ref()
+                        .map(|e| check_stmts(&e.stmts, api_fns))
+                        .unwrap_or(false)
+            }
+            // Plan 444 (ash-shell-057 ④): loop bodies (for / while-as
+            // Iter::Cond) and their init/range expressions too.
+            Stmt::For(f) => {
+                walk_expr(&f.range, api_fns)
+                    || f.init
+                        .as_ref()
+                        .map(|i| check_stmts(std::slice::from_ref(i), api_fns))
+                        .unwrap_or(false)
+                    || check_stmts(&f.body.stmts, api_fns)
+            }
+            Stmt::Block(b) => check_stmts(&b.stmts, api_fns),
+            Stmt::Return(e) => walk_expr(e, api_fns),
             // Plan 012 P2: api calls inside try/catch/finally must still mark
             // the handler async (gap 4 — save() wrapped in try).
             Stmt::Try(t) => {

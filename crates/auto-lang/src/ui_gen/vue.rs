@@ -933,6 +933,11 @@ pub struct VueGenerator {
     /// Whether CurveType from @unovis/ts is needed (for chart curve-type props)
     use_curve_type: bool,
 
+    /// Plan 444 (ash-shell-057 ④): a handler body referenced a VM-only
+    /// native (`fs.*` / `File.*`) — the SFC must declare the shared
+    /// `__vmOnly` throwing stub the ts_adapter rewrites those calls into.
+    needs_vm_only_helper: bool,
+
     /// Names of known sub-widgets in the same project (e.g. "Sidebar", "EditorPanel")
     /// When a tag matches one of these, skip shadcn component mapping and treat as custom component
     known_sub_widgets: HashSet<String>,
@@ -942,6 +947,13 @@ pub struct VueGenerator {
     /// is a writable state slot compiles to `v-model:name`; any other value
     /// shape is a hard error (model channels require writable slots).
     sub_widget_models: std::collections::HashMap<String, Vec<String>>,
+
+    /// Plan 444 (ash-shell-057 ①b): sub-widget name -> the emit names its
+    /// SFC actually fires ([`Self::widget_emit_set`]). Parent-side
+    /// `on_x: .Y` callback bindings consult it: prop-derived event when the
+    /// child declares it, else the bound handler's msg (the pass-through
+    /// idiom) when the child emits THAT.
+    sub_widget_msgs: std::collections::HashMap<String, Vec<String>>,
 
     /// Plan 443: the CURRENT widget's model channels that a parent call-site
     /// actually binds. Set via `with_bound_model_channels` (from the
@@ -1182,8 +1194,10 @@ impl VueGenerator {
             use_theme_toggle: false,
             needs_toast_import: false,
             use_curve_type: false,
+            needs_vm_only_helper: false,
             known_sub_widgets: HashSet::new(),
             sub_widget_models: std::collections::HashMap::new(),
+            sub_widget_msgs: std::collections::HashMap::new(),
             bound_model_channels: std::collections::HashSet::new(),
             emitted_model_bindings: Vec::new(),
             current_loop_var: None,
@@ -1246,6 +1260,98 @@ impl VueGenerator {
     pub fn with_store_deps(mut self, deps: Vec<String>) -> Self {
         self.store_deps = deps;
         self
+    }
+
+    /// Plan 444 (ash-shell-057 ①b): provide the sub-widget emit roster —
+    /// widget name → the event names that widget actually emits (see
+    /// [`Self::widget_emit_set`]). Parent-side `on_x: .Y` callback bindings
+    /// consult it to pick the event the child really fires.
+    pub fn with_sub_widget_msgs(
+        mut self,
+        msgs: std::collections::HashMap<String, Vec<String>>,
+    ) -> Self {
+        self.sub_widget_msgs = msgs;
+        self
+    }
+
+    /// Plan 444 (ash-shell-057 ①b): the full set of emit names a widget's
+    /// SFC can fire: its msg variant names plus the Pascal forms of every
+    /// `on_*: msg` callback prop its handlers invoke (`props.on_x()` /
+    /// bare `on_x()` — both rewrite to `emit('<Pascal>', ...)`). Drivers
+    /// harvest this per sub-widget and hand it to the parents' generators.
+    pub fn widget_emit_set(widget: &AuraWidget) -> Vec<String> {
+        use crate::ast::Expr;
+        let mut emits: Vec<String> = widget
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.clone()))
+            .collect();
+        let callback_props: Vec<String> = widget
+            .props
+            .iter()
+            .filter(|p| Self::prop_is_emitted_callback(p, widget))
+            .filter_map(|p| p.name.strip_prefix("on_").map(|s| s.to_string()))
+            .collect();
+        if callback_props.is_empty() {
+            return emits;
+        }
+
+        fn calls_callback(expr: &Expr, props: &[String]) -> bool {
+            match expr {
+                Expr::Call(call) => match call.name.as_ref() {
+                    Expr::Dot(obj, method) => {
+                        // `.on_x(...)` self-call
+                        (matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self")
+                            && method.as_str().starts_with("on_")
+                            && props.iter().any(|p| method.as_str() == format!("on_{}", p).as_str()))
+                            || call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props))
+                    }
+                    // bare `on_x(...)`
+                    Expr::Ident(name) => {
+                        (name.as_str().starts_with("on_")
+                            && props.iter().any(|p| name.as_str() == format!("on_{}", p).as_str()))
+                            || call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props))
+                    }
+                    _ => call.args.args.iter().any(|a| calls_callback(&a.get_expr(), props)),
+                },
+                Expr::Bina(l, _, r) => calls_callback(l, props) || calls_callback(r, props),
+                Expr::Unary(_, e) => calls_callback(e, props),
+                Expr::Dot(obj, _) => calls_callback(obj, props),
+                Expr::Array(items) => items.iter().any(|e| calls_callback(e, props)),
+                _ => false,
+            }
+        }
+        fn stmt_calls_callback(stmts: &[crate::ast::Stmt], props: &[String]) -> bool {
+            use crate::ast::Stmt;
+            stmts.iter().any(|s| match s {
+                Stmt::Expr(e) => calls_callback(e, props),
+                Stmt::Store(st) => calls_callback(&st.expr, props),
+                Stmt::If(i) => {
+                    i.branches.iter().any(|b| calls_callback(&b.cond, props) || stmt_calls_callback(&b.body.stmts, props))
+                        || i.else_.as_ref().map(|e| stmt_calls_callback(&e.stmts, props)).unwrap_or(false)
+                }
+                Stmt::For(f) => calls_callback(&f.range, props) || stmt_calls_callback(&f.body.stmts, props),
+                Stmt::Block(b) => stmt_calls_callback(&b.stmts, props),
+                Stmt::Try(t) => {
+                    stmt_calls_callback(&t.body.stmts, props)
+                        || stmt_calls_callback(&t.catch_body.stmts, props)
+                        || t.finally_body.as_ref().map(|fb| stmt_calls_callback(&fb.stmts, props)).unwrap_or(false)
+                }
+                _ => false,
+            })
+        }
+
+        for payload in widget.handlers.values() {
+            if let crate::aura::LogicPayload::AstStmts(stmts) = payload {
+                for snake in &callback_props {
+                    let pascal = Self::snake_to_pascal(snake);
+                    if !emits.contains(&pascal) && stmt_calls_callback(stmts, std::slice::from_ref(snake)) {
+                        emits.push(pascal);
+                    }
+                }
+            }
+        }
+        emits
     }
 
     /// Mark whether the project depends on @autodown/editor (Plan 361).
@@ -1417,6 +1523,7 @@ impl VueGenerator {
         self.has_accent_color = false;
         self.use_theme_toggle = false;
         self.needs_toast_import = false;
+        self.needs_vm_only_helper = false;
         self.global_listeners.clear();
         self.template_refs.clear();
         self.ext_components.clear();
@@ -1837,6 +1944,22 @@ impl VueGenerator {
                     if variant.quoted {
                         self.quoted_events.insert(variant.name.clone());
                     }
+                }
+            }
+        }
+        // Plan 444 (ash-shell-057 ①a): callback-contract channels whose
+        // Pascal name has no matching variant (017-chat `on_send` — Msg is
+        // `DoSend`; the child rewrites `on_send()`/`props.on_send()` to
+        // `emit('Send', ...)`) must still DECLARE that emit, or the rewrite
+        // targets an undeclared event (TS2345 on emit()).
+        if !self.callback_contract_events.is_empty() {
+            self.has_emit = true;
+            // Sorted for deterministic emission order (jade gap 56 lesson).
+            let mut contracts: Vec<&String> = self.callback_contract_events.iter().collect();
+            contracts.sort();
+            for contract in contracts {
+                if !self.emit_events.iter().any(|e| e == contract) {
+                    self.emit_events.push(contract.clone());
                 }
             }
         }
@@ -2520,14 +2643,15 @@ impl VueGenerator {
                         // Plan 015 P1#6: carry ALL payload types. The old
                         // first()-only truncation made "Resize(w, h)" declare
                         // [number] while the emit call forwarded both args —
-                        // a latent TS mismatch. Params gating as before:
-                        // QUOTED / callback-contract variants are exempt
-                        // (plan 013), plain variants need matching handler
-                        // params so emit() actually passes the args.
-                        let pattern_key = format!(".{}", variant.name);
-                        if variant.quoted
-                            || self.callback_contract_events.contains(&variant.name)
-                            || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
+                        // a latent TS mismatch.
+                        // Plan 444 (ash-shell-057 ③): the old handler-params
+                        // gate is dropped — a variant's payload IS the emit
+                        // contract. Template-referenced handlers without an
+                        // on-block entry (Sort(int,int)/Filter(str)) get
+                        // synthesized-arg emit bridges now, so the emit()
+                        // call always forwards the declared arity; gating on
+                        // declared params produced `Sort: []` + TS2554 at
+                        // the call site.
                         {
                             let types: Vec<String> = variant
                                 .payload
@@ -2683,6 +2807,11 @@ impl VueGenerator {
             } else {
                 self.generate_handler_body(payload)?
             };
+            // Plan 444 (ash-shell-057 ④): VM-only native rewrites need the
+            // shared __vmOnly stub declared in this SFC.
+            if body.contains("__vmOnly(") {
+                self.needs_vm_only_helper = true;
+            }
             // Auto-emit events for sub-widget handlers that match emit declarations.
             // Plan 367 P0-1: Skip emit if the handler already notifies the parent
             // via a callback prop (props.on_xxx()). In that case the emit is
@@ -2707,6 +2836,7 @@ impl VueGenerator {
             // `props.on_xxx(` is definitionally dangling and the `Pascal`
             // emit is definitionally declared (the variant), so the rewrite
             // closes the gap between the two mechanisms (k2 canary).
+            let mut callback_relayed = false;
             for cb_snake in Self::real_callback_prop_snakes(widget)
                 .into_iter()
                 .chain(Self::emitted_callback_prop_snakes(widget))
@@ -2716,12 +2846,28 @@ impl VueGenerator {
                     let pascal = Self::snake_to_pascal(&cb_snake);
                     let emit_call = format!("emit('{}', ", pascal);
                     body = body.replace(&props_call, &emit_call);
+                    callback_relayed = true;
+                }
+                // Plan 444 (ash-shell-057 ①a): the .at also allows BARE
+                // callback invocations (`on_typing("You")` — 017-chat; the
+                // VM routes them via DynamicMessage, handler_codegen strips
+                // them). In the SFC the prop no longer exists under any
+                // spelling, so rewrite the bare call to the Pascal emit too.
+                // Runs after the props. pass, which already consumed the
+                // `props.on_x(` spellings.
+                let bare_call = format!("on_{}(", cb_snake);
+                if body.contains(&bare_call) {
+                    let pascal = Self::snake_to_pascal(&cb_snake);
+                    let emit_call = format!("emit('{}', ", pascal);
+                    body = body.replace(&bare_call, &emit_call);
+                    callback_relayed = true;
                 }
             }
             if let Some(emit_name) = emit_name {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
-                let already_notifies_parent = body.contains(&callback_key);
+                let already_notifies_parent =
+                    callback_relayed || body.contains(&callback_key);
                 // Plan 053 M4 (P5-7 residual): internal helper handlers that are
                 // only self-called (`.DoContinuation()` from OnInput/OnEnter,
                 // `.DoTokenize()` from OnInput) skip the trailing emit('X') —
@@ -2765,9 +2911,31 @@ impl VueGenerator {
                             String::new()
                         }
                     } else {
-                        declared
+                        // Plan 444 (ash-shell-057 ③): when the on-block
+                        // declares no params but the msg variant carries a
+                        // payload, forward synthesized arg names — the
+                        // defineEmits type now always carries the variant's
+                        // payload arity, so an arg-less emit would TS2554.
+                        let declared_args = declared
                             .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
-                            .unwrap_or_default()
+                            .unwrap_or_default();
+                        if declared_args.is_empty() {
+                            let arity = self
+                                .msg_payload_arities
+                                .get(&handler_name)
+                                .cloned()
+                                .unwrap_or(0);
+                            if arity > 0 {
+                                (0..arity)
+                                    .map(|i| format!("arg{}", i))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            declared_args
+                        }
                     };
                     if emit_args.is_empty() {
                         body.push_str(&format!("\nemit('{}')", emit_name));
@@ -2804,6 +2972,25 @@ impl VueGenerator {
         // `expose { .X }` workaround for handler-to-handler calls.
         self.mark_self_called_handlers(widget);
 
+        // Plan 444 (ash-shell-057 ④): shared throwing stub for VM-only
+        // natives (`fs.*` / `File.*`) the ts_adapter rewrote to __vmOnly —
+        // declared before the handlers that call it. `never` return makes it
+        // usable in any expression position under strict TS. Lifecycle bodies
+        // (.Init/.Destroy) transpile after this point, so they are detected
+        // from the raw AST.
+        if self.needs_vm_only_helper
+            || widget.lifecycle.iter().any(|l| {
+                matches!(&l.payload, crate::aura::LogicPayload::AstStmts(stmts) if Self::stmts_call_vm_only(stmts))
+            })
+        {
+            self.needs_vm_only_helper = true;
+            if self.use_typescript {
+                script.push_str("function __vmOnly(name: string, ...args: any[]): never {\n  throw new Error('[auto-gen] VM-only primitive \"' + name + '\" has no Vue/JS build — this path only runs in VM mode')\n}\n\n");
+            } else {
+                script.push_str("function __vmOnly(name, ...args) {\n  throw new Error('[auto-gen] VM-only primitive \"' + name + '\" has no Vue/JS build — this path only runs in VM mode')\n}\n\n");
+            }
+        }
+
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
         // Plan 132: Add async keyword for handlers with API calls
@@ -2824,14 +3011,34 @@ impl VueGenerator {
             let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
                 format!("{}: any", loop_var)
             } else {
-                Self::get_handler_params(&widget.handler_params, &pattern_key)
+                let declared = Self::get_handler_params(&widget.handler_params, &pattern_key)
                     .map(|params| {
                         let param_names: Vec<String> = params.iter()
                             .map(|p| format!("{}: any", p))
                             .collect();
                         param_names.join(", ")
                     })
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                if declared.is_empty() {
+                    // Plan 444 (ash-shell-057 ③): mirror the synthesized
+                    // emit args — the bridge fn must accept (and forward)
+                    // the variant's payload arity.
+                    let arity = self
+                        .msg_payload_arities
+                        .get(handler_name)
+                        .cloned()
+                        .unwrap_or(0);
+                    if arity > 0 {
+                        (0..arity)
+                            .map(|i| format!("arg{}: any", i))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    declared
+                }
             };
 
             let async_kw = if *is_async { "async " } else { "" };
@@ -2883,13 +3090,47 @@ impl VueGenerator {
                 continue;
             }
             let return_type = if self.use_typescript { ": void" } else { "" };
-            // Check if this stub needs loop-param
-            let params_str = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
-                format!("{}: any", loop_var)
-            } else {
-                String::new()
+            // Plan 444 (ash-shell-057 ③): a template-referenced handler with
+            // NO on-block entry is the pass-through idiom — the widget wants
+            // the event re-emitted to the parent (e.g. Sort(int,int) called
+            // from a table header → store.SortTable). Bridge it explicitly:
+            // accept and forward the msg variant's payload arity instead of
+            // the old arg-less TODO stub (TS2554 at the call site).
+            // Loop-param handlers keep the loop-var param (the call site
+            // passes it) even when bridging — arity is 0 there by
+            // construction (payload variants bind $event instead).
+            let emit_event = self
+                .emit_events
+                .iter()
+                .find(|e| e.as_str() == handler_name.as_str() || Self::sanitize_ident(e.as_str()) == *handler_name)
+                .cloned();
+            let bridge_arity = emit_event
+                .as_ref()
+                .map(|_| {
+                    self.msg_payload_arities
+                        .get(handler_name)
+                        .cloned()
+                        .unwrap_or(0)
+                });
+            let bridge_params = match (&bridge_arity, self.loop_param_handlers.get(handler_name)) {
+                (_, Some(loop_var)) => format!("{}: any", loop_var),
+                (Some(arity), None) => (0..*arity)
+                    .map(|i| format!("arg{}: any", i))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                (None, None) => String::new(),
             };
-            let auto_body = if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
+            let auto_body = if let (Some(arity), Some(event)) = (&bridge_arity, &emit_event) {
+                let args = (0..*arity)
+                    .map(|i| format!("arg{}", i))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if args.is_empty() {
+                    Some(format!("emit('{}')", event))
+                } else {
+                    Some(format!("emit('{}', {})", event, args))
+                }
+            } else if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
                 if let Some(target_var) = self.find_active_id_var(handler_name) {
                     Some(format!("{}.value = {}", target_var, loop_var))
                 } else {
@@ -2899,9 +3140,9 @@ impl VueGenerator {
                 None
             };
             if let Some(body) = auto_body {
-                script.push_str(&format!("function {}({}){} {{\n  {}\n}}\n\n", handler_name, params_str, return_type, body));
+                script.push_str(&format!("function {}({}){} {{\n  {}\n}}\n\n", handler_name, bridge_params, return_type, body));
             } else {
-                script.push_str(&format!("function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, params_str, return_type));
+                script.push_str(&format!("function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, bridge_params, return_type));
             }
         }
 
@@ -4091,7 +4332,9 @@ impl VueGenerator {
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
                         }
-                        let vue_event = self.sub_widget_event_to_vue(event);
+                        // Plan 444 (①b): resolve against the child's emit
+                        // roster when available (pass-through fallback).
+                        let vue_event = self.sub_widget_callback_event_to_vue(tag, event, aura_event);
                         let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
                         // If inside a for-loop, pass the loop variable's .id as argument
@@ -4432,8 +4675,11 @@ impl VueGenerator {
                             // known_sub_widgets, so sibling sub-widgets land
                             // here). It emits its msg variant names, so `on_*`
                             // callback props must bind to `@Pascal` just like
-                            // known sub-widgets (Plan 043 M5 R4).
-                            self.sub_widget_event_to_vue(event)
+                            // known sub-widgets (Plan 043 M5 R4). Plan 444
+                            // (①b): resolve against the child's emit roster
+                            // when the driver provided one (pass-through
+                            // fallback for convention-broken prop names).
+                            self.sub_widget_callback_event_to_vue(tag, event, aura_event)
                         } else {
                             self.auto_event_to_vue(event)
                         };
@@ -7053,6 +7299,13 @@ impl VueGenerator {
                             walk_stmt(stmt, api_fns, used);
                         }
                     }
+                    // Plan 444 (ash-shell-057 ④): else-branch api calls must
+                    // also register for the '@/lib/api' import.
+                    if let Some(else_body) = &if_stmt.else_ {
+                        for stmt in &else_body.stmts {
+                            walk_stmt(stmt, api_fns, used);
+                        }
+                    }
                 }
                 Stmt::For(for_) => {
                     walk_expr(&for_.range, api_fns, used);
@@ -7106,9 +7359,57 @@ impl VueGenerator {
                 Stmt::Store(store) => walk_expr(&store.expr),
                 Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
                     walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
-                }),
+                })
+                // Plan 444 (ash-shell-057 ④): else-branch bodies hide calls
+                // from complete()/toast() detection — walk them too.
+                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
                 Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
                 Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                _ => false,
+            }
+        }
+        stmts.iter().any(|s| walk_stmt(s))
+    }
+
+    /// Plan 444 (ash-shell-057 ④): does this statement list call a VM-only
+    /// native (`fs.*` / `File.*`)? Mirrors the ts_adapter rewrite so lifecycle
+    /// bodies (transpiled AFTER the __vmOnly stub emission point) can flip
+    /// `needs_vm_only_helper` ahead of time.
+    fn stmts_call_vm_only(stmts: &[crate::ast::Stmt]) -> bool {
+        use crate::ast::{Expr, Stmt};
+        fn walk_expr(expr: &Expr) -> bool {
+            match expr {
+                Expr::Call(call) => {
+                    if let Expr::Dot(obj, _) = call.name.as_ref() {
+                        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "fs" || n.as_str() == "File") {
+                            return true;
+                        }
+                    }
+                    call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
+                }
+                Expr::Bina(l, _, r) => walk_expr(l) || walk_expr(r),
+                Expr::Unary(_, e) => walk_expr(e),
+                Expr::Dot(obj, _) => walk_expr(obj),
+                Expr::Array(items) => items.iter().any(|e| walk_expr(e)),
+                Expr::Index(a, i) => walk_expr(a) || walk_expr(i),
+                _ => false,
+            }
+        }
+        fn walk_stmt(stmt: &Stmt) -> bool {
+            match stmt {
+                Stmt::Expr(expr) => walk_expr(expr),
+                Stmt::Store(store) => walk_expr(&store.expr),
+                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
+                    walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
+                })
+                    || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
+                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
+                Stmt::Try(t) => {
+                    t.body.stmts.iter().any(|s| walk_stmt(s))
+                        || t.catch_body.stmts.iter().any(|s| walk_stmt(s))
+                        || t.finally_body.as_ref().map(|fb| fb.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false)
+                }
                 _ => false,
             }
         }
@@ -7150,7 +7451,10 @@ impl VueGenerator {
                 Stmt::Store(store) => walk_expr(&store.expr),
                 Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
                     walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
-                }),
+                })
+                // Plan 444 (ash-shell-057 ④): else-branch bodies hide calls
+                // from complete()/toast() detection — walk them too.
+                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
                 Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
                 Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
                 _ => false,
@@ -7474,6 +7778,14 @@ impl VueGenerator {
     /// Uses expr_to_vue_text_raw internally and wraps the final result.
     fn expr_to_vue_text(&self, expr: &crate::ast::Expr) -> GenResult<String> {
         use crate::ast::Expr;
+        // Plan 444 (ash-shell-057 ①c): a binary chain (`text "#" + j.id`) is
+        // a JS expression — emit it through the bound-value path (string
+        // quoting, operators). The text-raw concat used to drop both,
+        // producing `#j.id`.
+        if matches!(expr, Expr::Bina(..)) {
+            let js = self.expr_to_vue_bound_value(expr)?;
+            return Ok(format!("{{{{ {} }}}}", js));
+        }
         // For compound expressions that produce their own {{ }},
         // use the raw version and wrap at the end.
         let raw = self.expr_to_vue_text_raw(expr)?;
@@ -11653,6 +11965,68 @@ impl VueGenerator {
         self.auto_event_to_vue(event)
     }
 
+    /// Plan 444 (ash-shell-057 ①b): Vue event binding for a sub-widget
+    /// CALLBACK prop (`on_x: .Y`), resolving against the child's emit
+    /// roster (`sub_widget_msgs`) when the driver provided one:
+    ///
+    /// - `PascalOf(x)` is a declared child emit → `@PascalOf(x)` (the
+    ///   corpus convention: k2 `on_select` ↔ `Select`, 017 `on_send` —
+    ///   the child rewrites `on_send()` to `emit('Send')`). Also the
+    ///   fallback when the roster has no entry for the tag.
+    /// - else the bound handler names a child emit (`on_delete:
+    ///   .DeleteBlock`, child re-emits its own `DeleteBlock` via the
+    ///   empty-handler bridge — the ash-gui pass-through idiom) →
+    ///   `@<handler>` so the listener matches what the child fires.
+    /// - else keep the prop-derived name and warn (neither side fires it).
+    fn sub_widget_callback_event_to_vue(
+        &self,
+        tag: &str,
+        event: &str,
+        aura_event: &AuraEvent,
+    ) -> String {
+        let fallback = self.sub_widget_event_to_vue(event);
+        let base = match event.strip_prefix("on_") {
+            Some(b) => b,
+            None => return fallback,
+        };
+        let prop_pascal = Self::snake_to_pascal(base);
+        let emits = match self.sub_widget_msgs.get(tag) {
+            Some(e) if !e.is_empty() => e,
+            _ => return fallback,
+        };
+        if emits.iter().any(|e| e == &prop_pascal) {
+            return fallback;
+        }
+        let handler_name = Self::base_pattern(&aura_event.handler)
+            .trim_start_matches('.')
+            .trim_matches('"');
+        if !handler_name.is_empty()
+            && handler_name.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+            && emits.iter().any(|e| e == handler_name)
+        {
+            self.warn(
+                "R044",
+                crate::ui_gen::validators::Severity::Warning,
+                format!(
+                    "callback prop `{}` on `{}` does not match any child emit; binding to the child's `{}` emit instead (pass-through idiom). Rename the prop to `on_{}` (or add a `{}` msg variant) to follow the convention.",
+                    event, tag, handler_name,
+                    handler_name.to_lowercase(),
+                    prop_pascal
+                ),
+            );
+            return format!("@{}", handler_name);
+        }
+        self.warn(
+            "R045",
+            crate::ui_gen::validators::Severity::Warning,
+            format!(
+                "callback prop `{}` on `{}` matches no child emit (roster: {:?}); the binding will never fire",
+                event, tag, emits
+            ),
+        );
+        fallback
+    }
+
     /// Convert AutoUI event name (with optional `.modifier` chain) to a Vue
     /// template event binding, e.g. `onkeydown.up.prevent` → `@keydown.up.prevent`.
     ///
@@ -11989,30 +12363,28 @@ impl VueGenerator {
         Self::auto_type_to_ts_type(&prop.type_info)
     }
 
-    /// True when an `on_*: msg` callback prop has a matching msg VARIANT that
-    /// the child emits (`on_run` ↔ `Run`, `on_open_path` ↔ `OpenPath`).
+    /// True when an `on_*: msg` prop is a callback CHANNEL (delivered via
+    /// the parent's `@Pascal` emit binding, never bound as a data prop).
     ///
-    /// Plan 043 M5 R4: such callbacks are delivered parent→child through the
-    /// emit (`@Run="handler"` — Vue turns the listener into an `onRun`
+    /// Plan 043 M5 R4: callbacks with a matching msg variant
+    /// (`on_run` ↔ `Run`) are delivered parent→child through the emit
+    /// (`@Run="handler"` — Vue turns the listener into an `onRun`
     /// fallthrough), and the child's generated on-block never calls
-    /// `props.on_run`. Declaring the prop as REQUIRED makes the parent's
-    /// usage `{ ... , @Run }` miss `on_run` → TS2345. So skip it in
-    /// defineProps. `on_*` props with NO matching variant stay real props
-    /// (the parent binds them with `:on_xxx="..."`).
+    /// `props.on_run`. Declaring the prop as REQUIRED made the parent's
+    /// usage miss `on_run` → TS2345, so it was skipped from defineProps.
+    /// Plan 444 (ash-shell-057 ①a): ALL `on_*: msg` props are channels —
+    /// variants without a name match (ash-gui's `on_delete` with its Msg
+    /// `DeleteBlock`) kept a required snake_case prop that NO parent
+    /// binding can ever satisfy (`@Delete` delivers `onDelete`, never
+    /// `on_delete`). The child rewrites every `props.on_x()` / bare
+    /// `on_x()` call to `emit('<Pascal>', ...)` (musk-022 / PLAN-037 T3),
+    /// so the Pascal event is the one and only delivery channel.
     fn prop_is_emitted_callback(prop: &AuraProp, widget: &AuraWidget) -> bool {
         use crate::ast::Type;
+        let _ = widget;
         if let Type::User(decl) = &prop.type_info {
             if decl.name.as_str() == "msg" {
-                let variant_name = prop
-                    .name
-                    .strip_prefix("on_")
-                    .map(Self::snake_to_pascal)
-                    .unwrap_or_default();
-                return widget
-                    .messages
-                    .iter()
-                    .flat_map(|m| &m.variants)
-                    .any(|v| v.name == variant_name);
+                return prop.name.starts_with("on_");
             }
         }
         false
@@ -12988,6 +13360,13 @@ export function cn(...inputs: ClassValue[]) {
                 action_name, async_kw, params, body
             ));
             action_names.push(action_name);
+        }
+
+        // Plan 444 (ash-shell-057 ④): store actions with VM-only native
+        // rewrites (`fs.*` / `File.*`) need the shared throwing stub declared
+        // in this module (function declarations hoist above the actions).
+        if code.contains("__vmOnly(") {
+            code.push_str("function __vmOnly(name: string, ...args: any[]): never {\n  throw new Error('[auto-gen] VM-only primitive \"' + name + '\" has no Vue/JS build — this path only runs in VM mode')\n}\n\n");
         }
 
         // Plan 043 stream phase: wire the SSE stream into the store's

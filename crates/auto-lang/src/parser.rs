@@ -13701,10 +13701,29 @@ impl<'a> Parser<'a> {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
                 let is_fstr = self.is_kind(TokenKind::FStrStart);
 
+                // Plan 444 (ash-shell-057 ①c): `text "#" + j.id` — a Str
+                // followed by `+` opens a binary concat chain, not a
+                // standalone literal. Taking only the Str here dropped the
+                // `+ j.id` remainder onto sibling view nodes (a stray "+"
+                // text node plus a receiver-less `{{ id }}` interpolation).
+                let opens_concat_chain = !is_fstr && {
+                    if let Ok(next_token) = self.lexer.next() {
+                        let is_concat = next_token.kind == TokenKind::Add;
+                        self.lexer.push_token(next_token);
+                        is_concat
+                    } else {
+                        false
+                    }
+                };
+
                 // For f-strings, we need to parse the actual expression
                 let value = if is_fstr {
                     // Parse the f-string to get proper Expr::FStr with bindings
                     self.fstr()?
+                } else if opens_concat_chain {
+                    // parse_expr folds the whole chain (`"#" + j.id` →
+                    // Bina(Str, +, Dot)) and stops at the `{` props block.
+                    self.parse_expr()?
                 } else {
                     let content = self.cur.text.clone();
                     self.next();

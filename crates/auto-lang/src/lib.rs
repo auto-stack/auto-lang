@@ -4841,6 +4841,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     shadcn: Option<bool>,
     default_classes: Option<bool>,
     bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
+    sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
@@ -4854,6 +4855,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
         stream_endpoints,
         shadcn,
         default_classes,
+        sub_widget_msgs,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)

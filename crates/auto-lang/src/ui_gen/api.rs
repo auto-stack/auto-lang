@@ -326,6 +326,12 @@ pub struct ComponentGenOptions {
     /// layout doesn't collapse. For pixel-exact replica projects that bring
     /// their own styling.
     pub default_classes: Option<bool>,
+    /// Plan 444 (ash-shell-057 ①b): cross-file sub-widget emit roster
+    /// (widget name → event names its SFC actually fires), collected by the
+    /// workspace prescan. Merged with the same-file widgets' emit sets
+    /// inside generate_component_from_file so parent-side `on_x: .Y`
+    /// callback bindings can resolve the event the child really emits.
+    pub sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
 }
 
 /// Result of generating a component from an .at file.
@@ -500,6 +506,19 @@ pub fn generate_component_from_file(
         }
     }
 
+    // Plan 444 (ash-shell-057 ①b): same-file sub-widget emit roster, merged
+    // with the cross-file map from the workspace prescan.
+    let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> =
+        opts.sub_widget_msgs.clone().unwrap_or_default();
+    for w in &widgets {
+        let entry = sub_widget_msgs.entry(w.name.clone()).or_default();
+        for emit in VueGenerator::widget_emit_set(w) {
+            if !entry.contains(&emit) {
+                entry.push(emit);
+            }
+        }
+    }
+
     // Generate SFC for each widget
     let mut all_widget_codes: Vec<(String, String)> = Vec::new();
     // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
@@ -541,7 +560,8 @@ pub fn generate_component_from_file(
                 .with_default_classes(default_classes)
                 .with_store_deps(store_deps.clone())
                 .with_sub_widgets(all_sub_widgets.clone())
-                .with_sub_widget_models(sub_widget_models.clone());
+                .with_sub_widget_models(sub_widget_models.clone())
+                .with_sub_widget_msgs(sub_widget_msgs.clone());
             if !api_imports.is_empty() {
                 gen = gen.with_project_api_functions(api_imports.clone());
             }
@@ -576,6 +596,7 @@ pub fn generate_component_from_file(
             .with_store_deps(store_deps.clone())
             .with_sub_widgets(all_sub_widgets.clone())
             .with_sub_widget_models(sub_widget_models.clone())
+            .with_sub_widget_msgs(sub_widget_msgs.clone())
             .with_bound_model_channels(
                 bound_model_channels
                     .get(&widget.name)
