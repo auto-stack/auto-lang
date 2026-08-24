@@ -59,7 +59,6 @@ fn test_m2_corpus_file(path: &std::path::Path) -> AutoResult<()> {
 }
 
 #[test]
-#[ignore = "242/plan432-D26: VM 字符串池 RC 回归——运行期字符串 List.push 后读回即 UAF(canary),parse_dump 必经路径;修复后移除本 ignore"]
 fn test_aavm2_m2_parser_corpus() {
     let mut checked = 0;
     for dir in corpus_dirs() {

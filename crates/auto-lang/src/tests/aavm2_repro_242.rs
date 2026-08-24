@@ -33,10 +33,9 @@ fn main() {
 "#;
 
 #[test]
-#[ignore = "242/plan432-D26: 复现用——VM 修复后去 ignore,应输出 (s2)/ok 转绿"]
 fn repro_242_string_pool_uaf() {
-    let (r, stdout) = run_with_capture(REPRO)
-        .expect("当前 VM 上预期 canary panic 使此调用失败;若已修复则应成功");
+    // Plan 432 D26 修复(ListData<i32> 字符串哨兵容器侧份额)后的常驻回归:
+    // 修复前 canary panic,修复后输出 (s2)/ok。
+    let (_r, stdout) = run_with_capture(REPRO).expect("repro should run");
     assert_eq!(stdout.trim_end(), "(s2)\nok");
-    let _ = r;
 }

@@ -76,7 +76,19 @@ type E {
 fn parse_new(toks List) P {
     var scs = List.new()
     var glo = List.new()
-    return P(toks, 0, "", scs, glo, 0)
+    var p = P(toks, 0, "", scs, glo, 0)
+    // Parser::from 的 cur 初始化含 skip_comments:起始位置跳过前导注释
+    var scanning = true
+    for scanning {
+        if p.pos >= p.toks.len() {
+            scanning = false
+        } else if is_comment_kind(p.toks.get(p.pos).kind) {
+            p.pos = p.pos + 1
+        } else {
+            scanning = false
+        }
+    }
+    return p
 }
 
 fn p_kind(p P) str {

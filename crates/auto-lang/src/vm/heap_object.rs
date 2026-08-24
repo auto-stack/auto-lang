@@ -66,6 +66,15 @@ pub trait HeapObject: Any + Send + Sync {
     fn child_refs(&self) -> Vec<u64> {
         Vec::new()
     }
+
+    /// Plan 432 D26: 本对象直接持有的字符串池索引集合(容器侧份额)。
+    ///
+    /// ListData<i32> 以负哨兵 -(idx+1) 持有池条目(push/set 时 retain);
+    /// 容器 RC 归零时这些份额随之释放。默认空。与 child_refs 分离是因为
+    /// 池计数与堆计数走不同记账通道(pool_release vs rc_release_id)。
+    fn child_pool_idxs(&self) -> Vec<usize> {
+        Vec::new()
+    }
 }
 
 /// Type tags for all heap-allocated objects in AutoVM

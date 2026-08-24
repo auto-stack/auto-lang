@@ -213,6 +213,20 @@ pub fn pool_trace_idx() -> Option<usize> {
     })
 }
 
+/// Plan 432 D26 临时插桩(修复后移除):P419_POOL_LOG=1 —— 全池事件日志。
+/// 每事件带全局序号 + 池索引 + rc 变化 + 内容摘要,intern 路径可见。
+pub fn pool_log_all() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("P419_POOL_LOG").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+    })
+}
+
+pub fn pool_log_seq() -> u64 {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
     ($($arg:tt)*) => {

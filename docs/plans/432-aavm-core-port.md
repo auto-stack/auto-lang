@@ -58,12 +58,12 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 ### S2：AST + parser 核心（P1，预估 1-2 周，可按语句族拆子切片）
 
-- [~] `parser.at`(D20:parse_dump 直出,无独立 ast.at)：递归下降 + Pratt(优先级表
+- [x] `parser.at`(D20:parse_dump 直出,无独立 ast.at)：递归下降 + Pratt(优先级表
     直译)、类型解析、fn 参数、let 内联推断、for/if/while 全形态。
     闭包/f-string/is-match/use/泛型 = Missing(遇之报 v2 unsupported,corpus 无)。
     UI/task/store 区解析到即报 "v2 不支持"(含行号)。
-- [~] 闸门 M2:语料+Rust 侧 dump 工具均就绪(18 文件黄金输出全绿),
-    **但 AAVM 侧运行被 VM 字符串池 RC 回归阻断(D26)——闸门测试挂 ignore 待 VM 修复**。
+- [x] 闸门 M2:**18 语料(corpus_m2 14 + corpus_m1 4)AST dump diff=0**
+    (2026-08-24,VM 字符串池 RC 回归修复后转绿,见 D26/执行结果)。
 - [x] 事实上的子切分:本切片一次落地声明+表达式+控制流+类型(语料所需全量)。
 
 ### S3：typeinfo 核心（P2，预估 1 周）
@@ -159,12 +159,20 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
     c02 `print('')`(D19 转义收尾吞字符 quirk 使其不可解析)→ `print('\')`;
     c04 `match_or_like:` label 前缀(Rust parser 报 "Expected term, got While")
     → 去前缀。M1 为活对比,lexer 层覆盖不受影响。
-  - **M2 闸门被 VM 字符串池 RC 回归阻断(D26,挂 242:S2-432)**:循环内以
-    运行期字符串 `List.push` 后读回即 UAF canary(12 行最小复现,提升变量/
-    改 for 均不可绕);**master 的 conformance_bootstrap 同类 canary 已红**
-    (heap 4000001),99_bootstrap parser 系列测试 ignored——疑似 Plan 419/423
-    RC 改造存量回归,非本切片引入。M2 闸门测试挂 ignore 注明;**VM 修复后
-    移除 ignore 即可验闸**(parse_dump 逻辑侧已按黄金输出逐构造对齐)。
+  - **VM 字符串池 RC 回归(D26)已修复,M2 转绿**(2026-08-24 续,本会话):
+    根因两层——①`ListData<i32>` 字符串负哨兵 -(idx+1) 的容器侧份额从未
+    retain(push/set/insert/clear 只记堆 id),调用方栈份额被死区结算后列表
+    持裸哨兵指向已回收池槽,读回复活墓碑;②`task.num_locals` RET 不恢复,
+    shim_list_new 的有参启发式读到被调者的局部数,sp 越界即偷弹兄弟表达
+    式的值当初始列表(D25-① 构造参数丢失同机制)。修复五处:native.rs
+    list_i32_elem_retain/release 记账(push/set/insert/clear/resize)、
+    pop/remove 改先+1回栈再释放(末次引用不自造悬垂,堆 id 分支同修)、
+    child_pool_idxs 随容器死亡释放(heap_object.rs/types.rs/rc.rs)、
+    engine.rs RET 恢复 num_locals、add_string dedup 命中墓碑防御。
+    复现测试 repro_242_string_pool_uaf 常驻转绿;**M2 闸门 18 语料
+    diff=0**;全量 3242 过零新增失败。残留:conformance_bootstrap 堆侧
+    4000001 UAF(槽位复用 RETAIN-AFTER-FREE,P419_UAF_TRACE 全链留档)
+    为独立缺陷(master 同红),待另行修复。
   - 发现并规避的 VM 缺陷(D25):构造参数内联原生调用返回值丢失、List.pop
     栈污染;全部以 .at 侧写法规避(提升变量 + depth 计数)。
   - AUTO_LIB_FILES_V2 已登记 parser.at;M1 闸门 + aavm2 smoke(001/002)全绿。

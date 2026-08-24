@@ -59,22 +59,30 @@
 - **D24**: float/double 值显示 = 字面量文本剥分数尾零("1.0"→"1");
   Rust 为 f32/f64 shortest-roundtrip Display,十进制文本字面量二者一致,
   科学计数/大数留 Missing。
-- **D25**(VM 缺陷规避,probe 实证,挂 242:S2-432):
-  - ①原生调用(auto.list.*)内联作结构体构造参数时返回值丢失——
-    `Q(toks, List.new())` 的字段成垃圾;提升局部变量后恢复。
-  - ②`List.pop` 目录签名 Void 而 shim 压返回值:语句位调用即静默毁栈
-    (后续 print 消失),消费位返回垃圾(-2)。作用域退栈改为 depth 计数。
-- **D26**(blocker,挂 242:S2-432):**VM 字符串池 RC 回归阻断 M2**——
-  循环体内以运行期字符串(concat/函数返回值,字面量与循环外均正常)调
-  `List.push`,之后读回即 UAF:`[RC canary] string tombstone access`。
-  最小复现(~12 行):`while i < 3 { l.push("(s" + i.str() + ")"); i = i + 1 }`
-  后 `l.get(2)` → print 即 canary;P419_TRACE_POOL 追踪显示池槽
-  retain(0→1)/release(1→0)/FREE 循环复用后,复活的槽 tombstone 未清。
-  提升临时变量、改 for 循环均不可绕。**master 上 conformance_bootstrap
-  同类 canary 已红**(heap 4000001 UAF),99_bootstrap parser 系列 ignored,
-  疑似 Plan 419/423 RC 改造的存量回归。S2 的 parse_dump 必经
-  "循环内 push 语句串"路径,M2 闸门在 VM 修复前无法转绿(aavm2_m2
-  闸门测试已挂 ignore 并注明)。
+- **D25**(VM 缺陷规避,与 D26 同族,①仍有残留):
+  - ①原生调用(auto.list.new)内联作结构体构造参数时返回值丢失——根因
+    即 D26-②的 num_locals 启发式偷弹(sp 含兄弟表达式槽);RET 恢复修复
+    后语句位安全,但表达式位零参调用的歧义仍在(启发式无法区分兄弟槽与
+    参数),.at 侧维持"提升局部变量"写法规避。
+  - ②List.pop 语句位静默毁栈/返回垃圾——D26 修复中一并修好(先 +1 回栈
+    再释放,字符串哨兵保 TAG_STRING);.at 侧 depth 计数写法保留(更简)。
+- **D26**(**已修复**,2026-08-24,详见 plan 432 执行结果):VM 字符串池
+  RC 回归曾阻断 M2——循环体内以运行期字符串调 `List.push` 后读回即 UAF
+  (`[RC canary] string tombstone access`)。根因两层:①`ListData<i32>`
+  以负哨兵 -(idx+1) 存字符串(nano_value.rs encode_string 契约),但
+  push/set/insert/clear/pop/remove 只对堆 id 记容器份额,字符串哨兵从不
+  retain——调用方栈份额被 native 死区结算释放后,列表持裸哨兵指向已回收
+  池槽,读回 +1 即复活墓碑;②`task.num_locals` 由 RESERVE_STACK 设置但
+  RET 从不恢复,用户函数返回后 shim_list_new 的"有参"启发式
+  (sp > bp+num_locals+2 即偷弹)读到被调者的局部数,sp 偶然越界即把
+  兄弟表达式的值偷去当初始列表(len=4 幽灵元素)。修复:native.rs
+  list_i32_elem_retain/release 记账五处 + child_pool_idxs 随容器死亡
+  释放(types.rs/rc.rs/heap_object.rs)+ pop/remove 改"先 +1 回栈再释放"
+  (原顺序在末次引用时自造悬垂,堆 id 分支同修)+ RET 恢复 num_locals
+  + add_string dedup 命中墓碑防御。复现测试 repro_242_string_pool_uaf
+  常驻;**M2 闸门 18 语料 diff=0 转绿**。残留:conformance_bootstrap 的
+  堆侧 4000001 UAF(槽位复用后 RETAIN-AFTER-FREE,P419_UAF_TRACE 全链
+  已留档)为另一独立缺陷,master 上同样红,另行修复。
 
 ## 计数(S2 时点)
 

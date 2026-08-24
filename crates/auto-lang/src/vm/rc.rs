@@ -379,12 +379,16 @@ impl AutoVM {
             }
         }
         // 递归释放:子引用的 stakes 随父对象死亡。
-        let children = {
+        let (children, pool_children) = {
             let guard = arc.read().unwrap();
-            guard.child_refs()
+            (guard.child_refs(), guard.child_pool_idxs())
         };
         for child in children {
             self.rc_release_id(child);
+        }
+        // Plan 432 D26: 容器侧字符串池份额(ListData<i32> 负哨兵)同随死亡。
+        for idx in pool_children {
+            self.pool_release(idx);
         }
     }
 
@@ -396,12 +400,19 @@ impl AutoVM {
     pub fn pool_retain(&self, idx: usize) {
         let st = self.pool_state.read().unwrap();
         if idx >= st.rc.len() || st.pinned[idx] {
+            if crate::pool_log_all() && idx < st.rc.len() {
+                eprintln!("[POOLLOG #{:>4}] retain {} PINNED-SKIP", crate::pool_log_seq(), idx);
+            }
             return;
         }
         let cur = st.rc[idx].fetch_add(1, Ordering::Relaxed);
         // Plan 423 P5 续修(诊断设施):指定索引生死链 trace。
         if crate::pool_trace_idx() == Some(idx) {
             eprintln!("[P419POOL] retain {} (rc {} -> {})", idx, cur, cur + 1);
+        }
+        if crate::pool_log_all() {
+            let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();
+            eprintln!("[POOLLOG #{:>4}] retain {} (rc {} -> {}) content={:?}", crate::pool_log_seq(), idx, cur, cur + 1, content);
         }
         let _ = cur;
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
@@ -412,11 +423,18 @@ impl AutoVM {
         let zeroed = {
             let st = self.pool_state.read().unwrap();
             if idx >= st.rc.len() || st.pinned[idx] {
+                if crate::pool_log_all() && idx < st.rc.len() {
+                    eprintln!("[POOLLOG #{:>4}] release {} PINNED-SKIP", crate::pool_log_seq(), idx);
+                }
                 return;
             }
             let cur = st.rc[idx].fetch_sub(1, Ordering::AcqRel);
             if crate::pool_trace_idx() == Some(idx) {
                 eprintln!("[P419POOL] release {} (rc {} -> {})", idx, cur, cur - 1);
+            }
+            if crate::pool_log_all() {
+                let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();
+                eprintln!("[POOLLOG #{:>4}] release {} (rc {} -> {}) content={:?}", crate::pool_log_seq(), idx, cur, cur.wrapping_sub(1), content);
             }
             cur == 1
         };
@@ -439,6 +457,9 @@ impl AutoVM {
             }
             key
         };
+        if crate::pool_log_all() {
+            eprintln!("[POOLLOG #{:>4}] FREE {} key={:?}", crate::pool_log_seq(), idx, key.as_ref().map(|k| String::from_utf8_lossy(k).chars().take(12).collect::<String>()));
+        }
         if let Some(k) = key {
             self.string_dedup.lock().unwrap().remove(&k);
         }
