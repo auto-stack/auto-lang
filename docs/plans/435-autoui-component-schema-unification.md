@@ -1,6 +1,6 @@
 # Plan 435: AutoUI 组件统一声明 — schema 漂移治理与统一组件注册
 
-> **状态**: 📋 已立项待实施(2026-08-23 漂移审计会话产出)
+> **状态**: 🚧 实施中 —— P0 已落地(2026-08-24,分支 `plan-435-schema-unification`);P1-P4 待实施
 > **来源**: 2026-08-23 组件声明问题调查 + 漂移审计(脚本 `scratch/schema_drift_audit.py`,明细 `scratch/drift_*.txt`)
 > **关联**: 098(aura.at schema 初版)/ 280(render_support)/ 320(WidgetRegistry.all)/ 361(validators)/ 408(路由别名不 shadow 内置)/ 412(widgets-gallery Layout 分组)/ 422(弹层语义,碰 view_builder)
 > **基准原则**: **生产代码 + examples(widgets-gallery 62 页)是事实源**;`aura/schema.rs` 本身已漂移,仅作交叉参考,不作基准。
@@ -77,7 +77,7 @@
 
 ## 3. Phases
 
-- **P0 漂移围栏**:审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
+- **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
 - **P1 基准提取与 schema 重建**:提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
 - **P2 schema 接入与校验**:loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
 - **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
@@ -106,3 +106,30 @@
 - 脚本:`scratch/schema_drift_audit.py`(P0 的 Rust 化蓝本)
 - 明细:`scratch/drift_at.txt`(42)/ `scratch/drift_rs.txt`(192)/ `scratch/drift_vb0.txt`(51)/ `scratch/drift_vb1.txt`(48)
 - 关键代码位置:vue.rs `map_tag`(L5486,解析顺序)/ view_builder 两表(L873 tracked / L1657 untracked)/ schema_loader(孤儿)/ widget_registry(自定义组件地基)
+
+## 执行结果
+
+### P0 漂移围栏(2026-08-24,worktree `plan-435-schema-unification`)
+
+- **`crates/auto-lang/tests/schema_drift.rs`**:审计脚本 Rust 化,零新依赖。手写扫描器:
+  HashMap insert 表扫描(map 名精确匹配,排除 `shadcn_components_used.insert` 前缀撞名)+
+  `match tag` 派发表扫描(skeleton 剥离行注释与字符串内容后数括号深度,区分臂头/臂体,
+  `let x = match tag` 小表与 `match tag_lower` 刻意不收)。覆盖:
+  schema.rs `elements.insert`(192)/ vue.rs `components.insert`(245)+ map_tag 两表 /
+  view_builder 两张派发表(52/49;审计 51/48 之后 Plan 442 双侧加 svg)/
+  render_support(113),另带 aura.at(42)对照维度。共 14 个漂移维度 + 各文件表数量结构断言。
+- **围栏语义 = 只拦新增漂移**:审计当日孤项冻结为 baseline
+  (`tests/fixtures/schema_drift_baseline.txt`,980 行;`SCHEMA_DRIFT_UPDATE_BASELINE=1 cargo test -p auto-lang --test schema_drift` 再生成)。
+  与验收原文"复现孤项(红)"的偏差是**有意决策**:常红测试会破坏其他 agent 的
+  "全量绿"闸门;baseline 即孤项清单的可复核形态,围栏拦新增、P1-P3 收编时逐项裁剪。
+- **同表重复 insert 无 baseline 豁免,直接红**;顺带清除 schema.rs popover 死块
+  (L706 旧 Overlay 声明被 L2192 Plan 422 anchored popover 覆盖,HashMap 后写胜出,
+  删除零行为变更)。
+- **扫描器与审计 dump 交叉核对**:rs 集/at 集与 scratch/drift_*.txt 完全一致;
+  vb 镜像差集 = 审计的 {menubar, popover, toolbar}。
+- **负向验证**:render_support 注入假 tag → `[render_not_in_rs][render_not_in_vb]` 红;
+  回注 popover 死块 → `[rs_duplicate_insert] popover` 红;清理后均恢复绿。
+- lib 全量 3129 绿;围栏测试绿。**预存债(非本计划引入,已在 master 基线 c76011ec 复验,待另行归因)**:
+  ui_snapshots 三例(app/editor/sidebar)红——snap 内嵌绝对路径(换 worktree 必红)
+  + SFC 字节数漂移(app 2876→2920);vue_capabilities 一例 `cap_widget_map_model_init` 红
+  (widget map init 语义漂移)。

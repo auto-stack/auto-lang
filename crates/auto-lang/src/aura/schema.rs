@@ -702,18 +702,8 @@ impl AuraSchema {
             description: "Dropdown menu label",
         });
 
-        // === Popover ===
-        elements.insert("popover", ElementDef {
-            tag: "popover",
-            category: ElementCategory::Overlay,
-            props: vec![
-                PropDef { name: "open", type_: PropType::StateRef, required: false, default: None, description: "Open state binding" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Popover container",
-        });
-
+        // (popover 旧 Overlay 声明已删:被文件末尾 Plan 422 的 anchored popover
+        // insert 覆盖,HashMap 后写胜出,本块是死代码——Plan 435 P0 围栏禁双 insert。)
         elements.insert("popover_trigger", ElementDef {
             tag: "popover_trigger",
             category: ElementCategory::Overlay,
