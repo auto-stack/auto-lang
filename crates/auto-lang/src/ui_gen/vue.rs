@@ -2447,24 +2447,28 @@ impl VueGenerator {
                     // Plan 043 M5 #1: payload is now Vec<Type>; the TS event
                     // path carries a single payload type, so use the first
                     // (multi-param variants are a Rust-backend feature for now).
-                    if let Some(ty) = variant.payload.first() {
-                        // Only carry payload type if the handler actually has
-                        // matching params (otherwise the emit() call won't pass
-                        // args, causing a TS mismatch). QUOTED variants are
-                        // exempt (plan 013 Phase 2): they are contractual emit
-                        // names — a handler-less one is emitted from extension
-                        // code via getCurrentInstance().emit (untyped), so the
-                        // declared payload type is the faithful contract.
+                    if !variant.payload.is_empty() {
+                        // Plan 015 P1#6: carry ALL payload types. The old
+                        // first()-only truncation made "Resize(w, h)" declare
+                        // [number] while the emit call forwarded both args —
+                        // a latent TS mismatch. Params gating as before:
+                        // QUOTED / callback-contract variants are exempt
+                        // (plan 013), plain variants need matching handler
+                        // params so emit() actually passes the args.
                         let pattern_key = format!(".{}", variant.name);
                         if variant.quoted
                             || self.callback_contract_events.contains(&variant.name)
                             || Self::get_handler_params(&widget.handler_params, &pattern_key).is_some()
                         {
-                            event_payload_types.insert(variant.name.clone(), Self::auto_type_to_ts_type(ty));
-                            // Plan 043 M5 B-2: a custom payload type (e.g.
-                            // PickCompletion(CompletionItem)) must be imported
-                            // from api.ts just like a prop type.
-                            Self::collect_custom_types(ty, &mut custom_types);
+                            let types: Vec<String> = variant
+                                .payload
+                                .iter()
+                                .map(|ty| {
+                                    Self::collect_custom_types(ty, &mut custom_types);
+                                    Self::auto_type_to_ts_type(ty)
+                                })
+                                .collect();
+                            event_payload_types.insert(variant.name.clone(), types.join(", "));
                         }
                     }
                 }
@@ -2498,13 +2502,10 @@ impl VueGenerator {
                 // emits them via getCurrentInstance().emit with no handler,
                 // and undeclared listeners would fall through as native DOM
                 // listeners on the root element.
-                if !self.quoted_events.contains(event)
-                    && !self.callback_contract_events.contains(event)
-                    && !self.used_handlers.contains(event)
-                    && !self.used_handlers.contains(&Self::sanitize_ident(event))
-                {
-                    continue;
-                }
+                // Plan 015 P1#4: declare every declared event — the used_handlers
+                // gate dropped handlers that extensions emit/call directly,
+                // and undeclared listeners fall through as native DOM events.
+                let _ = (&self.quoted_events, &self.callback_contract_events);
                 // TS object-literal keys must be quoted when the emit name is
                 // not a plain identifier (e.g. 'update:modelValue').
                 let key = if event.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$') {
@@ -2737,13 +2738,12 @@ impl VueGenerator {
         // Output handler functions
         // Plan 100: Add return type annotation for TypeScript
         // Plan 132: Add async keyword for handlers with API calls
-        // Only output handlers that are actually used in the template
+        // Plan 015 P1#4: emit ALL on-block handlers. Handlers invoked only
+        // from extensions (no view binding) used to be silently dropped by
+        // the used_handlers filter, forcing inert event decoys and duplicated
+        // logic in the extensions (demo CustomScrollbar, jade panels).
         let mut generated_handlers: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (handler_name, handler_body, is_async) in &self.handlers {
-            // Skip unused handlers to avoid TypeScript warnings
-            if !self.used_handlers.contains(handler_name) {
-                continue;
-            }
             generated_handlers.insert(handler_name.clone());
 
             // Build params: check for loop-param handlers first, then user-defined params

@@ -1647,3 +1647,136 @@ widget EditorPage {
         "contextmenu handler signature:\n{sfc}"
     );
 }
+
+// Plan 015 P1#4: handlers never referenced from the view (called only by
+// extensions) are emitted as functions AND declared in defineEmits — the
+// old used_handlers gate silently dropped them (inert-decoy workaround).
+#[test]
+fn cap_unused_handler_still_emitted() {
+    let sfc = gen_sfc(
+        r#"
+widget Panel {
+    state {
+        var query str = ""
+    }
+    msg Msg { QueryInput(str), ExtOnly(str) }
+    view {
+        input (placeholder: "search") { oninput: .QueryInput($event) }
+    }
+    on {
+        .QueryInput(v) -> { .query = v }
+        .ExtOnly(v) -> { .query = v }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("function ExtOnly"),
+        "extension-only handler emitted as a function:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("ExtOnly: [string]"),
+        "extension-only handler declared in defineEmits:\n{sfc}"
+    );
+}
+
+// Plan 015 P1#5 (gap 37a): bool/float literals are valid view event args
+// (".HoverChange(true)") — previously a loud parse error (int 1/0 stand-ins).
+#[test]
+fn cap_event_arg_bool_and_float_literals() {
+    let sfc = gen_sfc(
+        r#"
+widget P {
+    state { var hover bool = false
+        var ratio float = 0.0 }
+    msg Msg { HoverChange(bool), SetRatio(float) }
+    view {
+        col {
+            div { onmouseenter: .HoverChange(true) }
+            div { onchange: .SetRatio(0.5) }
+        }
+    }
+    on {
+        .HoverChange(v) -> { .hover = v }
+        .SetRatio(v) -> { .ratio = v }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("HoverChange(true)"),
+        "bool literal passed through to the handler call:
+{sfc}"
+    );
+    assert!(
+        sfc.contains("SetRatio(0.5)"),
+        "float literal passed through to the handler call:
+{sfc}"
+    );
+}
+
+
+
+// Plan 015 P1#6: multi-payload msg variants declare the FULL tuple in
+// defineEmits — "(str, int)" used to declare only [string] while emit()
+// forwarded both args.
+#[test]
+fn cap_emit_tuple_all_payload_types() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    msg Msg { Resize(str, int) }
+    view {
+        col {
+            div { onclick: .Resize("x", 3) }
+        }
+    }
+    on {
+        .Resize(name, n) -> { }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("Resize: [string, number]"),
+        "full payload tuple declared:\n{sfc}"
+    );
+}
+
+// Plan 015 P1#7: `let x = nil` locals hold runtime objects (facade stores
+// etc.); `.contains` on them must pass through unchanged instead of being
+// mapped to the Auto collection semantics (.includes / splice).
+#[test]
+fn cap_null_init_local_contains_not_mapped() {
+    let sfc = gen_sfc(
+        r#"
+widget W {
+    use { composable: useTabsStore from "src/front/utils/x_ext.ts" }
+    state { var hits Array<str> = [] }
+    msg Msg { Go }
+    view {
+        col {
+            button "b" { onclick: .Go }
+        }
+    }
+    on {
+        .Go -> {
+            let ctx = nil
+            ctx = grabContext()
+            if ctx.contains("editor") {
+                .hits = ctx.listPaths()
+            }
+        }
+    }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("ctx.contains("),
+        "null-init local's .contains passes through unmapped:\n{sfc}"
+    );
+    assert!(
+        !sfc.contains("ctx.includes("),
+        "no mis-mapped .includes on null-init local:\n{sfc}"
+    );
+}

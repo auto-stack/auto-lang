@@ -53,6 +53,11 @@ pub struct AuraTsContext {
     /// unknown-type operands keep native JS float semantics
     /// (pre-c2f57577 behavior).
     typed_ints: HashSet<String>,
+    /// Plan 015 P1#7: handler-local `let x = nil` names. Their runtime value
+    /// comes from extensions/dynamic code, so `.contains`/`.remove` on them
+    /// must NOT be mapped to the Auto collection methods (the old legacy
+    /// "unknown local -> Map" branch mis-fired here).
+    null_init_locals: std::cell::RefCell<std::collections::HashSet<String>>,
     /// Plan 053 M5/P5-6: when Some(seq_var), this context is transpiling the
     /// body of a debounced complete-handler (wrapped in setTimeout). State-ref
     /// assignments (`.suggestions = x`) get guarded with
@@ -88,6 +93,7 @@ impl AuraTsContext {
             facade_names: HashSet::new(),
             facade_ref_fields: std::collections::HashMap::new(),
             typed_ints: HashSet::new(),
+            null_init_locals: std::cell::RefCell::new(Default::default()),
             debounce_seq_var: None,
             warnings: std::cell::RefCell::new(Vec::new()),
         }
@@ -170,6 +176,12 @@ impl AuraTsContext {
     /// Plan 014: proven int-typed state/prop (division lowers to Math.trunc).
     fn is_typed_int(&self, name: &str) -> bool {
         self.typed_ints.contains(name)
+    }
+
+    /// Plan 015 P1#7: a handler local declared `let x = nil` (no type) —
+    /// its methods pass through unchanged.
+    fn is_null_init_local(&self, name: &str) -> bool {
+        self.null_init_locals.borrow().contains(name)
     }
 
     /// Plan 012 Batch A (gap 19): declare facade/plain-object names (widget
@@ -288,6 +300,11 @@ fn method_map_decision(method: &str, object: &Expr, ctx: &AuraTsContext) -> Meth
                 }
                 if ctx.is_state(n) || ctx.is_prop(n) {
                     return MethodMapDecision::PassWarn;
+                }
+                // Plan 015 P1#7: `let x = nil` locals hold runtime objects
+                // (facade stores etc.) — never Auto collections.
+                if ctx.is_null_init_local(n) {
+                    return MethodMapDecision::Pass;
                 }
             }
             MethodMapDecision::Map // locals / nested data — legacy behavior
@@ -503,6 +520,15 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             // so annotating with e.g. `Block` would be a `Cannot find name`.
             if let Some(ty_str) = builtin_type_annotation(&store.ty) {
                 write!(out, ": {}", ty_str).ok();
+            }
+            // Plan 015 P1#7: track `let x = nil` locals so later
+            // `.contains`/`.remove` calls on them pass through unmapped.
+            let nil_init = matches!(store.ty, crate::ast::Type::Unknown)
+                && matches!(store.expr, crate::ast::Expr::Nil);
+            if nil_init {
+                ctx.null_init_locals
+                    .borrow_mut()
+                    .insert(store.name.as_str().to_string());
             }
             write!(out, " = ").ok();
             transpile_expr(&store.expr, ctx, out);

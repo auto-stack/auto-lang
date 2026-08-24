@@ -6,7 +6,12 @@ const count = defineModel<number>("count", { default: 0 })
 
 const emit = defineEmits<{
   Inc: []
+  Dec: []
 }>()
+
+function Dec(): void {
+  count.value = count.value - 1;
+}
 
 function Inc(): void {
   count.value = count.value + 1;
