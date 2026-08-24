@@ -148,12 +148,14 @@ pub struct ForgeMessage {
     pub tool_calls: Vec<String>,
     pub profession_id: String,
     pub thinking: String,
+    pub parent_id: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ForgeSession {
     pub id: String,
     pub project_path: String,
+    pub active_leaf: String,
     pub status: String,
     pub phase: String,
     pub messages: Vec<ForgeMessage>,

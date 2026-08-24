@@ -70,6 +70,12 @@ pub struct CreateAuthUserChatsCreateSessionInput {
 }
 
 #[derive(serde::Deserialize)]
+pub struct CreateAuthUserChatsForkSessionInput {
+    pub id: String,
+    pub message_id: String,
+}
+
+#[derive(serde::Deserialize)]
 pub struct CreateAuthUserChatsSendMessageInput {
     pub id: String,
     pub content: String,
@@ -394,6 +400,14 @@ pub async fn chats_delete_all_sessions(State(db): State<Db>) -> Result<StatusCod
 
 pub async fn chats_rename_session(State(db): State<Db>, Json(input): Json<UpdateAuthUserChatsRenameSessionInput>) -> StatusCode {
     StatusCode::OK
+}
+
+pub async fn chats_fork_session(State(db): State<Db>, Json(input): Json<CreateAuthUserChatsForkSessionInput>) -> JsonResponse<SessionDetailResponse> {
+    JsonResponse::<SessionDetailResponse>(Default::default())
+}
+
+pub async fn chats_navigate_session(State(db): State<Db>, Json(input): Json<CreateAuthUserChatsForkSessionInput>) -> JsonResponse<SessionDetailResponse> {
+    JsonResponse::<SessionDetailResponse>(Default::default())
 }
 
 pub async fn chats_send_message(State(db): State<Db>, Json(input): Json<CreateAuthUserChatsSendMessageInput>) -> StatusCode {

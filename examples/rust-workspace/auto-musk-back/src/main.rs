@@ -81,6 +81,8 @@ async fn main() {
         .route("/api/chats/session/{id}", axum::routing::delete(api::chats_delete_session))
         .route("/api/chats/sessions", axum::routing::delete(api::chats_delete_all_sessions))
         .route("/api/chats/session/{id}", axum::routing::patch(api::chats_rename_session))
+        .route("/api/chats/session/{id}/fork", axum::routing::post(api::chats_fork_session))
+        .route("/api/chats/session/{id}/navigate", axum::routing::post(api::chats_navigate_session))
         .route("/api/chats/session/{id}/message", axum::routing::post(api::chats_send_message))
         .route("/api/chats/session/{id}/approve/{index}", axum::routing::post(api::chats_approve))
         .route("/api/chats/session/{id}/reject-all", axum::routing::post(api::chats_reject_all))
