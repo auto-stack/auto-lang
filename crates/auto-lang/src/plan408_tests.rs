@@ -257,10 +257,12 @@ mod plan408_tests {
             "CollapseBtn emits must include ToggleCollapse: {}",
             btn_code
         );
-        // model → ref<boolean>(false)
+        // model → ref<boolean>(false) — plan 443: the channel is not bound
+        // by any parent (App passes only `label` + the toggle event), so the
+        // model var keeps its plain-ref compilation.
         assert!(
-            btn_code.contains("defineModel<boolean>(\"collapsed\", { default: false })"),
-            "CollapseBtn must emit `const collapsed = defineModel<boolean>(\"collapsed\", {{ default: false }})`: {}",
+            btn_code.contains("const collapsed = ref<boolean>(false)"),
+            "CollapseBtn must emit `const collapsed = ref<boolean>(false)`: {}",
             btn_code
         );
         // on handler → function body mutates state + emits

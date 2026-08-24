@@ -1,7 +1,8 @@
 <!-- NestedIfStyle component - Auto-generated from Auto language -->
 <script setup lang="ts">
+import { ref } from 'vue'
 
-const sid = defineModel<string>("sid", { default: '' })
+const sid = ref<string>('')
 
 
 </script>

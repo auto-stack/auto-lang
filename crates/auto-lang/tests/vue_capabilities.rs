@@ -1927,3 +1927,111 @@ widget W {
         "no mis-mapped .includes on null-init local:\n{sfc}"
     );
 }
+
+/// Plan 443 file-level helper: compile a multi-widget .at source through the
+/// real file driver (`generate_component_from_file`, temp file) and return
+/// (widget name → SFC). Needed because bound-channel downgrading is decided
+/// per FILE (two-pass), not per widget.
+fn gen_sfc_file(src: &str) -> std::collections::HashMap<String, String> {
+    let tmp = std::env::temp_dir().join(format!(
+        "cap443_{}_{:x}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let at_path = tmp.join("app.at");
+    std::fs::write(&at_path, src).unwrap();
+    let result = auto_lang::ui_gen::generate_component_from_file(
+        &at_path,
+        auto_lang::ui_gen::ComponentGenOptions::default(),
+    )
+    .expect("file must compile");
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
+        .all_widget_codes
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>()
+}
+
+/// Plan 443: a model channel some parent actually binds (`v-model:x` at the
+/// call site) downgrades the child's var to defineModel; a sibling unbound
+/// model var in the SAME child stays a plain ref. The bound channel's
+/// object-literal default is factory-wrapped (props-default semantics —
+/// a bare `{}` would be shared across child instances).
+#[test]
+fn cap_model_channel_bound_downgrades_child() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    model { var doc map = {} }
+    view { col { Child(doc: .doc) text "hi" } }
+}
+
+widget Child {
+    model {
+        var doc map = {}
+        var local int = 0
+    }
+    view { col { text "c" } }
+}
+"#,
+    );
+    let app = codes.get("App").expect("App SFC");
+    let child = codes.get("Child").expect("Child SFC");
+
+    assert!(
+        app.contains("v-model:doc=\"doc\""),
+        "parent folds the channel to v-model:\n{app}"
+    );
+    assert!(
+        child.contains("const doc = defineModel<any>(\"doc\", { default: () => ({}) })"),
+        "bound channel downgrades to defineModel with factory default:\n{child}"
+    );
+    assert!(
+        child.contains("const local = ref<number>(0)"),
+        "unbound sibling stays a plain ref:\n{child}"
+    );
+    assert!(
+        !child.contains("defineModel<any>(\"local\""),
+        "unbound sibling must NOT be a model:\n{child}"
+    );
+}
+
+/// Plan 443: with NO parent binding, the same shape as above keeps the
+/// pre-T4 ref semantics everywhere (deep reactivity — the jade whiteboard
+/// `doc.value.shapes.push` regression).
+#[test]
+fn cap_model_channel_unbound_keeps_ref() {
+    let codes = gen_sfc_file(
+        r#"
+widget App {
+    model { var doc map = {} }
+    view { col { Child(path: "x") text "hi" } }
+}
+
+widget Child {
+    model {
+        var doc map = {}
+        var local int = 0
+    }
+    view { col { text "c" } }
+}
+"#,
+    );
+    let child = codes.get("Child").expect("Child SFC");
+    assert!(
+        child.contains("const doc = ref<any>({})"),
+        "unbound channel stays ref (deep mutation reactivity):\n{child}"
+    );
+    assert!(
+        child.contains("const local = ref<number>(0)"),
+        "unbound sibling stays ref:\n{child}"
+    );
+    assert!(
+        !child.contains("defineModel"),
+        "no defineModel anywhere without a binding:\n{child}"
+    );
+}

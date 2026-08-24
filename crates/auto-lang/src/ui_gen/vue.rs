@@ -935,6 +935,18 @@ pub struct VueGenerator {
     /// shape is a hard error (model channels require writable slots).
     sub_widget_models: std::collections::HashMap<String, Vec<String>>,
 
+    /// Plan 443: the CURRENT widget's model channels that a parent call-site
+    /// actually binds. Set via `with_bound_model_channels` (from the
+    /// file-level / workspace-level binding scan) before `generate`.
+    bound_model_channels: std::collections::HashSet<String>,
+
+    /// Plan 443: every `(tag, channel)` pair for which THIS generator's
+    /// template actually emitted a `v-model:channel` binding. Harvested by
+    /// the two-pass driver (`generate_component_from_file`) to decide which
+    /// child channels are bound — recording at the emission point itself
+    /// keeps the scan byte-for-byte consistent with the codegen decision.
+    pub(crate) emitted_model_bindings: Vec<(String, String)>,
+
     /// Current for-loop variable name (e.g., "note") — used to pass loop var as event arg
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
@@ -1164,6 +1176,8 @@ impl VueGenerator {
             use_curve_type: false,
             known_sub_widgets: HashSet::new(),
             sub_widget_models: std::collections::HashMap::new(),
+            bound_model_channels: std::collections::HashSet::new(),
+            emitted_model_bindings: Vec::new(),
             current_loop_var: None,
             current_loop_var_is_index: false,
             widget_key_counter: 0,
@@ -1196,6 +1210,17 @@ impl VueGenerator {
     /// PLAN-037 T5: provide the sub-widget model-var map (name -> channels).
     pub fn with_sub_widget_models(mut self, models: std::collections::HashMap<String, Vec<String>>) -> Self {
         self.sub_widget_models = models;
+        self
+    }
+
+    /// Plan 443: names of the CURRENT widget's model channels that some
+    /// parent call-site actually binds (emits `v-model:name`). Only those
+    /// channels compile to `defineModel`; every other model var stays a
+    /// plain `ref` so unbound widgets keep deep reactivity
+    /// (`doc.value.shapes.push()` must track — defineModel's unbound get
+    /// returns the raw local value, not a reactive proxy).
+    pub fn with_bound_model_channels(mut self, channels: Vec<String>) -> Self {
+        self.bound_model_channels = channels.into_iter().collect();
         self
     }
 
@@ -1935,11 +1960,16 @@ impl VueGenerator {
         let mut script = String::new();
 
         // Determine needed imports
-        // plan 015: with PLAN-037 T4, model vars compile to defineModel (a
-        // macro — no `ref` usage), so state_vars no longer imply a `ref`
-        // import. The remaining ref() emitters are: template refs, the
-        // tick timer, and the previewcard/codeblock copy state.
-        let needs_ref = !self.template_refs.is_empty()
+        // plan 443: only BOUND model channels compile to defineModel (a
+        // macro — no import). Unbound model vars emit `ref(...)` again, so
+        // they imply the `ref` import. The other ref() emitters are:
+        // template refs, the tick timer, and the previewcard/codeblock
+        // copy state.
+        let needs_ref = widget
+            .state_vars
+            .iter()
+            .any(|s| !self.bound_model_channels.contains(&s.name))
+            || !self.template_refs.is_empty()
             || widget.tick_interval.is_some()
             || !self.previewcard_data.is_empty()
             || !self.codeblock_data.is_empty();
@@ -1950,10 +1980,6 @@ impl VueGenerator {
         if needs_ref {
             imports.push("ref");
         }
-        // PLAN-037 T4: model vars compile to defineModel. Unbound it behaves
-        // exactly like a local ref (same .value semantics, same template
-        // unwrap); when the parent binds the channel via call-site model
-        // addressing (v-model:name) it becomes two-way.
         // plan 015: defineModel is a <script setup> COMPILER MACRO — like
         // defineProps/defineEmits it must NOT be imported. Importing it
         // collides with Volar's injected macro shim (TS2440 "Import
@@ -2255,28 +2281,54 @@ impl VueGenerator {
         }
         script.push('\n');
 
-        // Generate state variables as ref()
+        // Generate state variables: bound model channels compile to
+        // defineModel; everything else stays a plain ref.
         for state in &widget.state_vars {
             if !self.state_names.contains(&state.name) {
                 self.state_names.push(state.name.clone());
             }
             let init = self.expr_to_js(&state.initial)?;
 
-            // PLAN-037 T4: `defineModel<T>('name', { default: init })` —
-            // the model-var-as-channel compilation. Unbound = local ref with
-            // the default (identical to the previous ref<T>(init)); bound via
-            // the parent's `v-model:name` it is the two-way contract.
-            if self.use_typescript {
-                let ts_type = self.expr_to_ts_type(&state.initial);
-                script.push_str(&format!(
-                    "const {} = defineModel<{}>(\"{}\", {{ default: {} }})\n",
-                    state.name, ts_type, state.name, init
-                ));
+            if self.bound_model_channels.contains(&state.name) {
+                // PLAN-037 T4 (plan 443 narrowing): a channel some parent
+                // call-site actually binds (`v-model:name`) compiles to
+                // `defineModel<T>('name', { default })`. Object/array
+                // LITERAL defaults must be factory-wrapped — defineModel
+                // defaults flow through Vue's props default machinery,
+                // where a literal `{}`/`[]` is shared across every
+                // component instance.
+                let default_expr = match &state.initial {
+                    crate::ast::Expr::Object(_) | crate::ast::Expr::Array(_) => {
+                        format!("() => ({})", init)
+                    }
+                    _ => init.clone(),
+                };
+                if self.use_typescript {
+                    let ts_type = self.expr_to_ts_type(&state.initial);
+                    script.push_str(&format!(
+                        "const {} = defineModel<{}>(\"{}\", {{ default: {} }})\n",
+                        state.name, ts_type, state.name, default_expr
+                    ));
+                } else {
+                    script.push_str(&format!(
+                        "const {} = defineModel(\"{}\", {{ default: {} }})\n",
+                        state.name, state.name, default_expr
+                    ));
+                }
             } else {
-                script.push_str(&format!(
-                    "const {} = defineModel(\"{}\", {{ default: {} }})\n",
-                    state.name, state.name, init
-                ));
+                // Plan 443: unbound model var = local state, pre-T4 shape.
+                // NOT defineModel — its unbound get returns the raw local
+                // value (useModel customRef), so deep mutations
+                // (`doc.value.shapes.push`) would lose reactivity.
+                if self.use_typescript {
+                    let ts_type = self.expr_to_ts_type(&state.initial);
+                    script.push_str(&format!(
+                        "const {} = ref<{}>({})\n",
+                        state.name, ts_type, init
+                    ));
+                } else {
+                    script.push_str(&format!("const {} = ref({})\n", state.name, init));
+                }
             }
         }
 
@@ -11297,7 +11349,7 @@ impl VueGenerator {
     /// non-writable value. Returns None when `key` is not a channel (normal
     /// prop path continues).
     fn try_model_channel_attr(
-        &self,
+        &mut self,
         tag: &str,
         key: &str,
         slot: Option<String>,
@@ -11307,7 +11359,14 @@ impl VueGenerator {
             _ => return Ok(None),
         }
         match slot {
-            Some(slot) => Ok(Some(format!("v-model:{}=\"{}\"", key, slot))),
+            Some(slot) => {
+                // Plan 443: a v-model emission IS the binding event — record
+                // it so the child-side scan knows this channel is bound (and
+                // may downgrade the child's model var to defineModel).
+                self.emitted_model_bindings
+                    .push((tag.to_string(), key.to_string()));
+                Ok(Some(format!("v-model:{}=\"{}\"", key, slot)))
+            }
             None => Err(crate::ui_gen::GenError::InvalidStateRef(format!(
                 "model channel `{}.{}` requires a writable state slot (e.g. `.field` or `store.field`); model channels cannot be fed expressions, props, or literals",
                 tag, key
@@ -14138,7 +14197,9 @@ widget Counter {
         assert!(sfc.contains(r#"<script setup lang="ts">"#));
         // plan 015: defineModel is a macro — never imported (TS2440 guard).
         assert!(!sfc.contains("defineModel } from 'vue'"));
-        assert!(sfc.contains("const count = defineModel<number>(\"count\", { default: 0 })"));
+        // plan 443: unbound model var stays a plain ref (deep reactivity);
+        // defineModel only for parent-bound channels.
+        assert!(sfc.contains("const count = ref<number>(0)"));
         assert!(sfc.contains("<template>"));
         assert!(sfc.contains("<style>"));
     }
@@ -16235,7 +16296,7 @@ widget App {
 }
 "#);
         let setup_pos = sfc.find("const greeting");
-        let state_pos = sfc.find("const count = defineModel");
+        let state_pos = sfc.find("const count = ref<number>(0)");
         assert!(setup_pos.is_some(), "setup statement emitted:\n{}", sfc);
         assert!(state_pos.is_some(), "state emitted:\n{}", sfc);
         assert!(setup_pos.unwrap() < state_pos.unwrap(),
@@ -16625,7 +16686,7 @@ widget SlashMenu {
 }
 "#);
         assert!(
-            sfc.contains("import { computed, watch } from 'vue'"),
+            sfc.contains("import { ref, computed, watch } from 'vue'"),
             "watch imported (defineModel is a macro, never imported — plan 015):\n{}",
             sfc
         );
@@ -16761,7 +16822,7 @@ widget Editor {
 }
 "#);
         assert!(
-            sfc.contains("const content = defineModel"),
+            sfc.contains("const content = ref<string>('')"),
             "state ref exists:\n{}",
             sfc
         );
@@ -21239,7 +21300,7 @@ widget ThemeApp {
             sfc
         );
         assert!(
-            sfc.contains("accent_color = defineModel"),
+            sfc.contains("accent_color = ref<string>"),
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
         );

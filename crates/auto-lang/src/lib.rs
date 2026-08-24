@@ -4768,6 +4768,20 @@ pub fn ui_build_shadcn_all_widget_codes(
     shadcn: Option<bool>,
     default_classes: Option<bool>,
 ) -> AutoResult<crate::ui_gen::GeneratedComponent> {
+    ui_build_shadcn_all_widget_codes_with_bound(
+        path, root_dir, shadcn, default_classes, None,
+    )
+}
+
+/// Plan 443: `ui_build_shadcn_all_widget_codes` + the workspace-aggregated
+/// bound-channel map (which model channels some parent actually binds).
+pub fn ui_build_shadcn_all_widget_codes_with_bound(
+    path: &str,
+    root_dir: Option<&str>,
+    shadcn: Option<bool>,
+    default_classes: Option<bool>,
+    bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
+) -> AutoResult<crate::ui_gen::GeneratedComponent> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
     let at_path = std::path::Path::new(path);
     let stream_endpoints = root_dir
@@ -4776,6 +4790,7 @@ pub fn ui_build_shadcn_all_widget_codes(
         stream_endpoints,
         shadcn,
         default_classes,
+        bound_model_channels,
         ..Default::default()
     };
     let result = generate_component_from_file(at_path, opts)
@@ -4825,6 +4840,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     root_dir: Option<&str>,
     shadcn: Option<bool>,
     default_classes: Option<bool>,
+    bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>, Vec<(String, String)>)> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
@@ -4834,6 +4850,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         sub_widget_models,
+        bound_model_channels,
         stream_endpoints,
         shadcn,
         default_classes,
