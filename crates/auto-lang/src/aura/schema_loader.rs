@@ -68,7 +68,9 @@ fn parse_vue_line(line: &str) -> Option<crate::aura::schema::VueBackendSpec> {
         .split("extras:")
         .nth(1)
         .and_then(|s| s.split(']').next())
-        .map(|inner| {
+        .map(|raw| {
+            // 剥残留的 [ 前缀(首元素带 ' [' 会导致 strip_prefix(""") 失败被丢)
+            let inner = raw.trim().strip_prefix('[').unwrap_or(raw);
             inner
                 .split(',')
                 .filter_map(|p| {

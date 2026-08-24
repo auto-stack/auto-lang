@@ -143,654 +143,6 @@ fn sorted_entries<'a, K: std::cmp::Ord, V>(m: &'a std::collections::HashMap<K, V
 use crate::aura::{AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
 use std::collections::{HashMap, HashSet};
 
-// ============================================================================
-// shadcn-vue Component Registry (DEPRECATED)
-// ============================================================================
-
-/// Maps AURA element tags to shadcn-vue component imports
-///
-/// **DEPRECATED**: Use `WidgetRegistry` instead. This registry is kept for
-/// backward compatibility and will be removed in a future version.
-#[deprecated(since = "0.2.0", note = "Use WidgetRegistry instead")]
-pub struct ShadcnRegistry {
-    /// Component imports needed: tag -> (module_path, component_names)
-    components: HashMap<&'static str, (&'static str, Vec<&'static str>)>,
-}
-
-#[allow(deprecated)]
-impl ShadcnRegistry {
-    /// Create registry with all shadcn-vue component mappings
-    #[allow(deprecated)]
-    pub fn new() -> Self {
-        let mut components = HashMap::new();
-
-        // === Content Elements ===
-        components.insert("button",
-            ("@/components/ui/button", vec!["Button"]));
-        components.insert("input",
-            ("@/components/ui/input", vec!["Input"]));
-        components.insert("textarea",
-            ("@/components/ui/textarea", vec!["Textarea"]));
-        // Plan 413: code_editor → scaffolded CodeMirror shell component.
-        components.insert("code_editor",
-            ("@/components/CodeEditor", vec!["CodeEditor"]));
-        components.insert("checkbox",
-            ("@/components/ui/checkbox", vec!["Checkbox"]));
-        components.insert("toggle",
-            ("@/components/ui/switch", vec!["Switch"]));
-        components.insert("select",
-            ("@/components/ui/select", vec!["Select", "SelectContent", "SelectItem", "SelectTrigger", "SelectValue"]));
-        components.insert("option",
-            ("@/components/ui/select", vec!["SelectItem"]));
-        // Select sub-components
-        components.insert("selecttrigger",
-            ("@/components/ui/select", vec!["SelectTrigger"]));
-        components.insert("select-trigger",
-            ("@/components/ui/select", vec!["SelectTrigger"]));
-        components.insert("selectvalue",
-            ("@/components/ui/select", vec!["SelectValue"]));
-        components.insert("select-value",
-            ("@/components/ui/select", vec!["SelectValue"]));
-        components.insert("selectcontent",
-            ("@/components/ui/select", vec!["SelectContent"]));
-        components.insert("select-content",
-            ("@/components/ui/select", vec!["SelectContent"]));
-        components.insert("selectitem",
-            ("@/components/ui/select", vec!["SelectItem"]));
-        components.insert("select-item",
-            ("@/components/ui/select", vec!["SelectItem"]));
-        components.insert("selectgroup",
-            ("@/components/ui/select", vec!["SelectGroup"]));
-        components.insert("select-group",
-            ("@/components/ui/select", vec!["SelectGroup"]));
-        components.insert("selectlabel",
-            ("@/components/ui/select", vec!["SelectLabel"]));
-        components.insert("select-label",
-            ("@/components/ui/select", vec!["SelectLabel"]));
-        components.insert("selectseparator",
-            ("@/components/ui/select", vec!["SelectSeparator"]));
-        components.insert("select-separator",
-            ("@/components/ui/select", vec!["SelectSeparator"]));
-        components.insert("selectscrollbutton",
-            ("@/components/ui/select", vec!["SelectScrollUpButton", "SelectScrollDownButton"]));
-
-        // === Navigation Elements ===
-        components.insert("tabs",
-            ("@/components/ui/tabs", vec!["Tabs", "TabsList", "TabsTrigger", "TabsContent"]));
-        components.insert("tabslist",
-            ("@/components/ui/tabs", vec!["TabsList"]));
-        components.insert("tabs-list",
-            ("@/components/ui/tabs", vec!["TabsList"]));
-        components.insert("tabstrigger",
-            ("@/components/ui/tabs", vec!["TabsTrigger"]));
-        components.insert("tabs-trigger",
-            ("@/components/ui/tabs", vec!["TabsTrigger"]));
-        components.insert("tabscontent",
-            ("@/components/ui/tabs", vec!["TabsContent"]));
-        components.insert("tabs-content",
-            ("@/components/ui/tabs", vec!["TabsContent"]));
-        components.insert("tab",
-            ("@/components/ui/tabs", vec!["TabsTrigger", "TabsContent"]));
-
-        // === Overlay Elements ===
-        components.insert("modal",
-            ("@/components/ui/dialog", vec!["Dialog", "DialogContent", "DialogTrigger", "DialogTitle", "DialogDescription"]));
-        components.insert("tooltip",
-            ("@/components/ui/tooltip", vec!["Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger"]));
-
-        // === Form Elements ===
-        components.insert("slider",
-            ("@/components/ui/slider", vec!["Slider"]));
-        components.insert("radio",
-            ("@/components/ui/radio-group", vec!["RadioGroup", "RadioGroupItem"]));
-        components.insert("radiogroup",
-            ("@/components/ui/radio-group", vec!["RadioGroup"]));
-        components.insert("radio-group",
-            ("@/components/ui/radio-group", vec!["RadioGroup"]));
-
-        // === Feedback Elements ===
-        components.insert("progress",
-            ("@/components/ui/progress", vec!["Progress"]));
-        components.insert("badge",
-            ("@/components/ui/badge", vec!["Badge"]));
-        components.insert("spinner",
-            ("@/components/ui/skeleton", vec!["Skeleton"]));
-
-        // === Display Elements ===
-        components.insert("card",
-            ("@/components/ui/card", vec!["Card", "CardHeader", "CardTitle", "CardDescription", "CardContent", "CardFooter"]));
-        components.insert("cardheader",
-            ("@/components/ui/card", vec!["CardHeader"]));
-        components.insert("card-header",
-            ("@/components/ui/card", vec!["CardHeader"]));
-        components.insert("cardtitle",
-            ("@/components/ui/card", vec!["CardTitle"]));
-        components.insert("card-title",
-            ("@/components/ui/card", vec!["CardTitle"]));
-        components.insert("carddescription",
-            ("@/components/ui/card", vec!["CardDescription"]));
-        components.insert("card-description",
-            ("@/components/ui/card", vec!["CardDescription"]));
-        components.insert("cardcontent",
-            ("@/components/ui/card", vec!["CardContent"]));
-        components.insert("card-content",
-            ("@/components/ui/card", vec!["CardContent"]));
-        components.insert("cardfooter",
-            ("@/components/ui/card", vec!["CardFooter"]));
-        components.insert("card-footer",
-            ("@/components/ui/card", vec!["CardFooter"]));
-        components.insert("avatar",
-            ("@/components/ui/avatar", vec!["Avatar", "AvatarImage", "AvatarFallback"]));
-
-        // === Display: AspectRatio ===
-        components.insert("aspectratio",
-            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
-        components.insert("aspect-ratio",
-            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
-
-        // === Data Elements ===
-        components.insert("table",
-            ("@/components/ui/table", vec!["Table", "TableHeader", "TableBody", "TableRow", "TableHead", "TableCell", "TableCaption"]));
-        components.insert("thead",
-            ("@/components/ui/table", vec!["TableHeader"]));
-        components.insert("tbody",
-            ("@/components/ui/table", vec!["TableBody"]));
-        components.insert("tr",
-            ("@/components/ui/table", vec!["TableRow"]));
-        components.insert("th",
-            ("@/components/ui/table", vec!["TableHead"]));
-        components.insert("td",
-            ("@/components/ui/table", vec!["TableCell"]));
-        components.insert("table_caption",
-            ("@/components/ui/table", vec!["TableCaption"]));
-        components.insert("table_header",
-            ("@/components/ui/table", vec!["TableHeader"]));
-        components.insert("table_body",
-            ("@/components/ui/table", vec!["TableBody"]));
-        components.insert("table_row",
-            ("@/components/ui/table", vec!["TableRow"]));
-        components.insert("table_head",
-            ("@/components/ui/table", vec!["TableHead"]));
-        components.insert("table_cell",
-            ("@/components/ui/table", vec!["TableCell"]));
-
-        // === Utility Elements ===
-        components.insert("divider",
-            ("@/components/ui/separator", vec!["Separator"]));
-        components.insert("separator",
-            ("@/components/ui/separator", vec!["Separator"]));
-        components.insert("scroll",
-            ("@/components/ui/scroll-area", vec!["ScrollArea"]));
-        components.insert("label",
-            ("@/components/ui/label", vec!["Label"]));
-
-        // === Feedback: Alert ===
-        components.insert("alert",
-            ("@/components/ui/alert", vec!["Alert", "AlertTitle", "AlertDescription"]));
-
-        // === Feedback: Toast (Sonner) ===
-        components.insert("toast",
-            ("@/components/ui/sonner", vec!["Toaster"]));
-        components.insert("toaster",
-            ("@/components/ui/sonner", vec!["Toaster"]));
-
-        // === Navigation: Dropdown Menu ===
-        components.insert("dropdown",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenu", "DropdownMenuTrigger", "DropdownMenuContent", "DropdownMenuItem", "DropdownMenuSeparator", "DropdownMenuLabel"]));
-        components.insert("dropdown_menu",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenu", "DropdownMenuTrigger", "DropdownMenuContent"]));
-        components.insert("dropdown_trigger",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenuTrigger"]));
-        components.insert("dropdown_content",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenuContent"]));
-        components.insert("dropdown_item",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenuItem"]));
-        components.insert("dropdown_separator",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenuSeparator"]));
-        components.insert("dropdown_label",
-            ("@/components/ui/dropdown-menu", vec!["DropdownMenuLabel"]));
-
-        // === Overlay: Popover ===
-        components.insert("popover",
-            ("@/components/ui/popover", vec!["Popover", "PopoverTrigger", "PopoverContent"]));
-        components.insert("popover_trigger",
-            ("@/components/ui/popover", vec!["PopoverTrigger"]));
-        components.insert("popover_content",
-            ("@/components/ui/popover", vec!["PopoverContent"]));
-
-        // === Overlay: Sheet (Side Drawer) ===
-        components.insert("sheet",
-            ("@/components/ui/sheet", vec!["Sheet", "SheetTrigger", "SheetContent", "SheetHeader", "SheetTitle", "SheetDescription", "SheetFooter"]));
-        components.insert("sheet_trigger",
-            ("@/components/ui/sheet", vec!["SheetTrigger"]));
-        components.insert("sheet_content",
-            ("@/components/ui/sheet", vec!["SheetContent"]));
-        components.insert("sheet_header",
-            ("@/components/ui/sheet", vec!["SheetHeader"]));
-        components.insert("sheet_title",
-            ("@/components/ui/sheet", vec!["SheetTitle"]));
-        components.insert("sheet_footer",
-            ("@/components/ui/sheet", vec!["SheetFooter"]));
-
-        // === Navigation: Breadcrumb ===
-        components.insert("breadcrumb",
-            ("@/components/ui/breadcrumb", vec!["Breadcrumb", "BreadcrumbList", "BreadcrumbItem", "BreadcrumbLink", "BreadcrumbSeparator", "BreadcrumbPage"]));
-        components.insert("breadcrumb_list",
-            ("@/components/ui/breadcrumb", vec!["BreadcrumbList"]));
-        components.insert("breadcrumb_item",
-            ("@/components/ui/breadcrumb", vec!["BreadcrumbItem"]));
-        components.insert("breadcrumb_link",
-            ("@/components/ui/breadcrumb", vec!["BreadcrumbLink"]));
-        components.insert("breadcrumb_separator",
-            ("@/components/ui/breadcrumb", vec!["BreadcrumbSeparator"]));
-        components.insert("breadcrumb_page",
-            ("@/components/ui/breadcrumb", vec!["BreadcrumbPage"]));
-
-        // === Data Display: Accordion ===
-        components.insert("accordion",
-            ("@/components/ui/accordion", vec!["Accordion", "AccordionItem", "AccordionTrigger", "AccordionContent"]));
-        components.insert("accordion_item",
-            ("@/components/ui/accordion", vec!["AccordionItem"]));
-        components.insert("accordion_trigger",
-            ("@/components/ui/accordion", vec!["AccordionTrigger"]));
-        components.insert("accordion_content",
-            ("@/components/ui/accordion", vec!["AccordionContent"]));
-
-        // === Overlay: Alert Dialog ===
-        components.insert("alert_dialog",
-            ("@/components/ui/alert-dialog", vec!["AlertDialog", "AlertDialogTrigger", "AlertDialogContent", "AlertDialogHeader", "AlertDialogFooter", "AlertDialogTitle", "AlertDialogDescription", "AlertDialogAction", "AlertDialogCancel"]));
-        components.insert("alert_dialog_trigger",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogTrigger"]));
-        components.insert("alert_dialog_content",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogContent"]));
-        components.insert("alert_dialog_header",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogHeader"]));
-        components.insert("alert_dialog_footer",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogFooter"]));
-        components.insert("alert_dialog_title",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogTitle"]));
-        components.insert("alert_dialog_description",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogDescription"]));
-        components.insert("alert_dialog_action",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogAction"]));
-        components.insert("alert_dialog_cancel",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogCancel"]));
-        // Hyphenated versions for AURA tag compatibility
-        components.insert("alert-dialog",
-            ("@/components/ui/alert-dialog", vec!["AlertDialog"]));
-        components.insert("alert-dialog-trigger",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogTrigger"]));
-        components.insert("alert-dialog-content",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogContent"]));
-        components.insert("alert-dialog-header",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogHeader"]));
-        components.insert("alert-dialog-footer",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogFooter"]));
-        components.insert("alert-dialog-title",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogTitle"]));
-        components.insert("alert-dialog-description",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogDescription"]));
-        components.insert("alert-dialog-action",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogAction"]));
-        components.insert("alert-dialog-cancel",
-            ("@/components/ui/alert-dialog", vec!["AlertDialogCancel"]));
-
-        // === Overlay: Command (Command Palette) ===
-        components.insert("command",
-            ("@/components/ui/command", vec!["Command", "CommandInput", "CommandList", "CommandEmpty", "CommandGroup", "CommandItem", "CommandShortcut", "CommandSeparator"]));
-        components.insert("command_input",
-            ("@/components/ui/command", vec!["CommandInput"]));
-        components.insert("command_list",
-            ("@/components/ui/command", vec!["CommandList"]));
-        components.insert("command_empty",
-            ("@/components/ui/command", vec!["CommandEmpty"]));
-        components.insert("command_group",
-            ("@/components/ui/command", vec!["CommandGroup"]));
-        components.insert("command_item",
-            ("@/components/ui/command", vec!["CommandItem"]));
-        components.insert("command_shortcut",
-            ("@/components/ui/command", vec!["CommandShortcut"]));
-        components.insert("command_separator",
-            ("@/components/ui/command", vec!["CommandSeparator"]));
-
-        // === Form: Form ===
-        components.insert("form",
-            ("@/components/ui/form", vec!["Form", "FormField", "FormItem", "FormLabel", "FormControl", "FormDescription", "FormMessage"]));
-        components.insert("form_field",
-            ("@/components/ui/form", vec!["FormField"]));
-        components.insert("form_item",
-            ("@/components/ui/form", vec!["FormItem"]));
-        components.insert("form_label",
-            ("@/components/ui/form", vec!["FormLabel"]));
-        components.insert("form_control",
-            ("@/components/ui/form", vec!["FormControl"]));
-        components.insert("form_description",
-            ("@/components/ui/form", vec!["FormDescription"]));
-        components.insert("form_message",
-            ("@/components/ui/form", vec!["FormMessage"]));
-
-        // === Navigation: Navigation Menu ===
-        components.insert("nav_menu",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenu", "NavigationMenuList", "NavigationMenuItem", "NavigationMenuLink", "NavigationMenuContent", "NavigationMenuTrigger", "NavigationMenuIndicator"]));
-        components.insert("nav_menu_list",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuList"]));
-        components.insert("nav_menu_item",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuItem"]));
-        components.insert("nav_menu_link",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuLink"]));
-        components.insert("nav_menu_content",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuContent"]));
-        components.insert("nav_menu_trigger",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuTrigger"]));
-        components.insert("nav_menu_indicator",
-            ("@/components/ui/navigation-menu", vec!["NavigationMenuIndicator"]));
-
-        // === Navigation: Sidebar ===
-        components.insert("sidebar",
-            ("@/components/ui/sidebar", vec!["Sidebar", "SidebarHeader", "SidebarContent", "SidebarFooter", "SidebarGroup", "SidebarGroupLabel", "SidebarGroupContent", "SidebarGroupAction", "SidebarMenu", "SidebarMenuItem", "SidebarMenuButton", "SidebarMenuAction", "SidebarMenuBadge", "SidebarMenuSub", "SidebarMenuSubItem", "SidebarMenuSubButton", "SidebarRail", "SidebarSeparator", "SidebarTrigger", "SidebarInset", "SidebarProvider"]));
-        components.insert("sidebar_header",
-            ("@/components/ui/sidebar", vec!["SidebarHeader"]));
-        components.insert("sidebar_content",
-            ("@/components/ui/sidebar", vec!["SidebarContent"]));
-        components.insert("sidebar_footer",
-            ("@/components/ui/sidebar", vec!["SidebarFooter"]));
-        components.insert("sidebar_group",
-            ("@/components/ui/sidebar", vec!["SidebarGroup"]));
-        components.insert("sidebar_group_label",
-            ("@/components/ui/sidebar", vec!["SidebarGroupLabel"]));
-        components.insert("sidebar_group_content",
-            ("@/components/ui/sidebar", vec!["SidebarGroupContent"]));
-        components.insert("sidebar_menu",
-            ("@/components/ui/sidebar", vec!["SidebarMenu"]));
-        components.insert("sidebar_menu_item",
-            ("@/components/ui/sidebar", vec!["SidebarMenuItem"]));
-        components.insert("sidebar_menu_button",
-            ("@/components/ui/sidebar", vec!["SidebarMenuButton"]));
-        components.insert("sidebar_trigger",
-            ("@/components/ui/sidebar", vec!["SidebarTrigger"]));
-        components.insert("sidebar_provider",
-            ("@/components/ui/sidebar", vec!["SidebarProvider"]));
-
-        // === Navigation: Stepper ===
-        components.insert("stepper",
-            ("@/components/ui/stepper", vec!["Stepper", "StepperItem", "StepperTrigger", "StepperIndicator", "StepperTitle", "StepperDescription", "StepperSeparator"]));
-        components.insert("stepper_item",
-            ("@/components/ui/stepper", vec!["StepperItem"]));
-        components.insert("stepper_trigger",
-            ("@/components/ui/stepper", vec!["StepperTrigger"]));
-        components.insert("stepper_indicator",
-            ("@/components/ui/stepper", vec!["StepperIndicator"]));
-        components.insert("stepper_title",
-            ("@/components/ui/stepper", vec!["StepperTitle"]));
-        components.insert("stepper_description",
-            ("@/components/ui/stepper", vec!["StepperDescription"]));
-        components.insert("stepper_separator",
-            ("@/components/ui/stepper", vec!["StepperSeparator"]));
-
-        // ========================================
-        // Medium Priority Components
-        // ========================================
-
-        // === Calendar ===
-        components.insert("calendar",
-            ("@/components/ui/calendar", vec!["Calendar", "CalendarCell", "CalendarCellTrigger", "CalendarGrid", "CalendarGridBody", "CalendarGridHead", "CalendarGridRow", "CalendarHeadCell", "CalendarHeader", "CalendarHeading", "CalendarNextButton", "CalendarPrevButton"]));
-
-        // === Carousel ===
-        components.insert("carousel",
-            ("@/components/ui/carousel", vec!["Carousel", "CarouselContent", "CarouselItem", "CarouselPrevious", "CarouselNext"]));
-        components.insert("carousel_content",
-            ("@/components/ui/carousel", vec!["CarouselContent"]));
-        components.insert("carousel_item",
-            ("@/components/ui/carousel", vec!["CarouselItem"]));
-        components.insert("carousel_previous",
-            ("@/components/ui/carousel", vec!["CarouselPrevious"]));
-        components.insert("carousel_prev",
-            ("@/components/ui/carousel", vec!["CarouselPrevious"]));
-        components.insert("carousel_next",
-            ("@/components/ui/carousel", vec!["CarouselNext"]));
-
-        // === Combobox ===
-        components.insert("combobox",
-            ("@/components/ui/combobox", vec!["Combobox", "ComboboxAnchor", "ComboboxInput", "ComboboxList", "ComboboxEmpty", "ComboboxGroup", "ComboboxItem", "ComboboxSeparator", "ComboboxTrigger"]));
-        components.insert("combobox_anchor",
-            ("@/components/ui/combobox", vec!["ComboboxAnchor"]));
-        components.insert("combobox_input",
-            ("@/components/ui/combobox", vec!["ComboboxInput"]));
-        components.insert("combobox_list",
-            ("@/components/ui/combobox", vec!["ComboboxList"]));
-        components.insert("combobox_empty",
-            ("@/components/ui/combobox", vec!["ComboboxEmpty"]));
-        components.insert("combobox_group",
-            ("@/components/ui/combobox", vec!["ComboboxGroup"]));
-        components.insert("combobox_item",
-            ("@/components/ui/combobox", vec!["ComboboxItem"]));
-        components.insert("combobox_trigger",
-            ("@/components/ui/combobox", vec!["ComboboxTrigger"]));
-
-        // === Context Menu ===
-        components.insert("context_menu",
-            ("@/components/ui/context-menu", vec!["ContextMenu", "ContextMenuTrigger", "ContextMenuContent", "ContextMenuGroup", "ContextMenuItem", "ContextMenuCheckboxItem", "ContextMenuRadioGroup", "ContextMenuRadioItem", "ContextMenuSeparator", "ContextMenuLabel", "ContextMenuShortcut", "ContextMenuSub", "ContextMenuSubContent", "ContextMenuSubTrigger"]));
-        components.insert("context_menu_trigger",
-            ("@/components/ui/context-menu", vec!["ContextMenuTrigger"]));
-        components.insert("context_menu_content",
-            ("@/components/ui/context-menu", vec!["ContextMenuContent"]));
-        components.insert("context_menu_item",
-            ("@/components/ui/context-menu", vec!["ContextMenuItem"]));
-        components.insert("context_menu_separator",
-            ("@/components/ui/context-menu", vec!["ContextMenuSeparator"]));
-        components.insert("context_menu_label",
-            ("@/components/ui/context-menu", vec!["ContextMenuLabel"]));
-        components.insert("context_menu_shortcut",
-            ("@/components/ui/context-menu", vec!["ContextMenuShortcut"]));
-        components.insert("context_menu_checkbox_item",
-            ("@/components/ui/context-menu", vec!["ContextMenuCheckboxItem"]));
-        components.insert("context_menu_radio_group",
-            ("@/components/ui/context-menu", vec!["ContextMenuRadioGroup"]));
-        components.insert("context_menu_radio_item",
-            ("@/components/ui/context-menu", vec!["ContextMenuRadioItem"]));
-        components.insert("context_menu_sub",
-            ("@/components/ui/context-menu", vec!["ContextMenuSub", "ContextMenuSubTrigger", "ContextMenuSubContent"]));
-        components.insert("context_menu_sub_trigger",
-            ("@/components/ui/context-menu", vec!["ContextMenuSubTrigger"]));
-        components.insert("context_menu_sub_content",
-            ("@/components/ui/context-menu", vec!["ContextMenuSubContent"]));
-
-        // === Drawer (Vaul) ===
-        components.insert("drawer",
-            ("@/components/ui/drawer", vec!["Drawer", "DrawerTrigger", "DrawerContent", "DrawerHeader", "DrawerFooter", "DrawerTitle", "DrawerDescription", "DrawerClose"]));
-        components.insert("drawer_trigger",
-            ("@/components/ui/drawer", vec!["DrawerTrigger"]));
-        components.insert("drawer_content",
-            ("@/components/ui/drawer", vec!["DrawerContent"]));
-        components.insert("drawer_header",
-            ("@/components/ui/drawer", vec!["DrawerHeader"]));
-        components.insert("drawer_footer",
-            ("@/components/ui/drawer", vec!["DrawerFooter"]));
-        components.insert("drawer_title",
-            ("@/components/ui/drawer", vec!["DrawerTitle"]));
-        components.insert("drawer_description",
-            ("@/components/ui/drawer", vec!["DrawerDescription"]));
-        components.insert("drawer_close",
-            ("@/components/ui/drawer", vec!["DrawerClose"]));
-
-        // === Hover Card ===
-        components.insert("hover_card",
-            ("@/components/ui/hover-card", vec!["HoverCard", "HoverCardTrigger", "HoverCardContent"]));
-        components.insert("hover_card_trigger",
-            ("@/components/ui/hover-card", vec!["HoverCardTrigger"]));
-        components.insert("hover_card_content",
-            ("@/components/ui/hover-card", vec!["HoverCardContent"]));
-
-        // === Number Field ===
-        components.insert("number_field",
-            ("@/components/ui/number-field", vec!["NumberField", "NumberFieldContent", "NumberFieldDecrement", "NumberFieldIncrement", "NumberFieldInput"]));
-        components.insert("number_field_input",
-            ("@/components/ui/number-field", vec!["NumberFieldInput"]));
-        components.insert("number_field_increment",
-            ("@/components/ui/number-field", vec!["NumberFieldIncrement"]));
-        components.insert("number_field_decrement",
-            ("@/components/ui/number-field", vec!["NumberFieldDecrement"]));
-
-        // === Pagination ===
-        // Plan 408: corrected component names to match shadcn-vue exports
-        // (PaginationList→PaginationContent, PaginationListItem→PaginationItem,
-        //  PaginationPrev→PaginationPrevious)
-        components.insert("pagination",
-            ("@/components/ui/pagination", vec!["Pagination", "PaginationContent", "PaginationItem", "PaginationEllipsis", "PaginationFirst", "PaginationPrevious", "PaginationNext", "PaginationLast"]));
-        components.insert("pagination_list",
-            ("@/components/ui/pagination", vec!["PaginationContent"]));
-        components.insert("pagination_item",
-            ("@/components/ui/pagination", vec!["PaginationItem"]));
-        components.insert("pagination_ellipsis",
-            ("@/components/ui/pagination", vec!["PaginationEllipsis"]));
-        components.insert("pagination_prev",
-            ("@/components/ui/pagination", vec!["PaginationPrevious"]));
-        components.insert("pagination_next",
-            ("@/components/ui/pagination", vec!["PaginationNext"]));
-        components.insert("pagination_first",
-            ("@/components/ui/pagination", vec!["PaginationFirst"]));
-        components.insert("pagination_last",
-            ("@/components/ui/pagination", vec!["PaginationLast"]));
-
-        // === Pin Input (OTP) ===
-        components.insert("pin_input",
-            ("@/components/ui/pin-input", vec!["PinInput", "PinInputGroup", "PinInputSeparator", "PinInputSlot"]));
-        components.insert("pin_input_group",
-            ("@/components/ui/pin-input", vec!["PinInputGroup"]));
-        components.insert("pin_input_slot",
-            ("@/components/ui/pin-input", vec!["PinInputSlot"]));
-        components.insert("pin_input_separator",
-            ("@/components/ui/pin-input", vec!["PinInputSeparator"]));
-
-        // === Tags Input ===
-        components.insert("tags_input",
-            ("@/components/ui/tags-input", vec!["TagsInput", "TagsInputInput", "TagsInputItem", "TagsInputItemDelete", "TagsInputItemText"]));
-        components.insert("tags_input_field",
-            ("@/components/ui/tags-input", vec!["TagsInputInput"]));
-        components.insert("tags_input_item",
-            ("@/components/ui/tags-input", vec!["TagsInputItem"]));
-        components.insert("tags_input_delete",
-            ("@/components/ui/tags-input", vec!["TagsInputItemDelete"]));
-
-        // === Toggle Group ===
-        components.insert("toggle_group",
-            ("@/components/ui/toggle-group", vec!["ToggleGroup", "ToggleGroupItem"]));
-        components.insert("toggle_group_item",
-            ("@/components/ui/toggle-group", vec!["ToggleGroupItem"]));
-
-        // ========================================
-        // Low Priority Components
-        // ========================================
-
-        // === Aspect Ratio ===
-        components.insert("aspect_ratio",
-            ("@/components/ui/aspect-ratio", vec!["AspectRatio"]));
-
-        // === Button Group ===
-        components.insert("button_group",
-            ("@/components/ui/button-group", vec!["ButtonGroup"]));
-
-        // === Chart ===
-        components.insert("chart",
-            ("@/components/ui/chart", vec!["ChartContainer", "ChartTooltip", "ChartLegend", "ChartStyle"]));
-
-        // === Collapsible ===
-        components.insert("collapsible",
-            ("@/components/ui/collapsible", vec!["Collapsible", "CollapsibleTrigger", "CollapsibleContent"]));
-        components.insert("collapsible_trigger",
-            ("@/components/ui/collapsible", vec!["CollapsibleTrigger"]));
-        components.insert("collapsible_content",
-            ("@/components/ui/collapsible", vec!["CollapsibleContent"]));
-
-        // === Input Group ===
-        components.insert("input_group",
-            ("@/components/ui/input-group", vec!["InputGroup", "InputGroupText"]));
-
-        // === Input OTP ===
-        components.insert("input_otp",
-            ("@/components/ui/input-otp", vec!["InputOTP", "InputGroup", "InputOTPSlot", "InputOTPSeparator"]));
-
-        // === Kbd (Keyboard) ===
-        components.insert("kbd",
-            ("@/components/ui/kbd", vec!["Kbd"]));
-
-        // === Menubar ===
-        components.insert("menubar",
-            ("@/components/ui/menubar", vec!["Menubar", "MenubarMenu", "MenubarTrigger", "MenubarContent", "MenubarItem", "MenubarSeparator", "MenubarLabel", "MenubarCheckboxItem", "MenubarRadioGroup", "MenubarRadioItem", "MenubarShortcut", "MenubarSub", "MenubarSubTrigger", "MenubarSubContent"]));
-        components.insert("menubar_menu",
-            ("@/components/ui/menubar", vec!["MenubarMenu"]));
-        components.insert("menubar_trigger",
-            ("@/components/ui/menubar", vec!["MenubarTrigger"]));
-        components.insert("menubar_content",
-            ("@/components/ui/menubar", vec!["MenubarContent"]));
-        components.insert("menubar_item",
-            ("@/components/ui/menubar", vec!["MenubarItem"]));
-        components.insert("menubar_separator",
-            ("@/components/ui/menubar", vec!["MenubarSeparator"]));
-        components.insert("menubar_label",
-            ("@/components/ui/menubar", vec!["MenubarLabel"]));
-
-        // === Native Select ===
-        components.insert("native_select",
-            ("@/components/ui/native-select", vec!["NativeSelect", "NativeSelectOption", "NativeSelectGroup", "NativeSelectLabel"]));
-
-        // === Range Calendar ===
-        components.insert("range_calendar",
-            ("@/components/ui/range-calendar", vec!["RangeCalendar", "RangeCalendarCell", "RangeCalendarCellTrigger", "RangeCalendarGrid", "RangeCalendarGridBody", "RangeCalendarGridHead", "RangeCalendarGridRow", "RangeCalendarHeadCell", "RangeCalendarHeader", "RangeCalendarHeading", "RangeCalendarNextButton", "RangeCalendarPrevButton"]));
-
-        // === Resizable ===
-        components.insert("resizable",
-            ("@/components/ui/resizable", vec!["ResizablePanelGroup", "ResizablePanel", "ResizableHandle"]));
-        components.insert("resizable_panel",
-            ("@/components/ui/resizable", vec!["ResizablePanel"]));
-        components.insert("resizable_handle",
-            ("@/components/ui/resizable", vec!["ResizableHandle"]));
-
-        // === Auto Complete ===
-        components.insert("autocomplete",
-            ("@/components/ui/auto-complete", vec!["AutoComplete", "AutoCompleteContent", "AutoCompleteEmpty", "AutoCompleteGroup", "AutoCompleteGroupHeading", "AutoCompleteItem", "AutoCompleteInput", "AutoCompleteList", "AutoCompleteTrigger"]));
-        components.insert("autocomplete_input",
-            ("@/components/ui/auto-complete", vec!["AutoCompleteInput"]));
-        components.insert("autocomplete_item",
-            ("@/components/ui/auto-complete", vec!["AutoCompleteItem"]));
-        components.insert("autocomplete_list",
-            ("@/components/ui/auto-complete", vec!["AutoCompleteList"]));
-        components.insert("autocomplete_empty",
-            ("@/components/ui/auto-complete", vec!["AutoCompleteEmpty"]));
-
-        Self { components }
-    }
-
-    /// Normalize tag name for lookup (convert kebab-case to snake_case)
-    fn normalize_tag(tag: &str) -> String {
-        tag.replace('-', "_")
-    }
-
-    /// Get shadcn-vue component info for a tag
-    pub fn get(&self, tag: &str) -> Option<(&'static str, &Vec<&'static str>)> {
-        let normalized = Self::normalize_tag(tag);
-        self.components.get(normalized.as_str()).map(|(path, names)| (*path, names))
-    }
-
-    /// Check if tag has a shadcn-vue component
-    pub fn has_component(&self, tag: &str) -> bool {
-        let normalized = Self::normalize_tag(tag);
-        self.components.contains_key(normalized.as_str())
-    }
-
-    /// Get the primary component name for a tag (first in the list)
-    pub fn primary_component(&self, tag: &str) -> Option<&'static str> {
-        let normalized = Self::normalize_tag(tag);
-        self.components.get(normalized.as_str()).and_then(|(_, names)| names.first().copied())
-    }
-}
-
-#[allow(deprecated)]
-impl Default for ShadcnRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 // ============================================================================
 // Vue Generator
@@ -15764,20 +15116,27 @@ widget W {
 
     #[test]
     fn test_shadcn_registry() {
-        let registry = ShadcnRegistry::new();
+        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
+        // 活链路从未使用 —— 负断言存档。
+        let registry = super::WidgetRegistry::with_defaults();
+        let has_component = |tag: &str| {
+            registry.get_primary_component("vue", tag).is_some()
+        };
+        let primary_component =
+            |tag: &str| registry.get_primary_component("vue", tag);
 
-        // Check component mappings exist
-        assert!(registry.has_component("button"));
-        assert!(registry.has_component("input"));
-        assert!(registry.has_component("checkbox"));
-        assert!(registry.has_component("modal"));
-        assert!(registry.has_component("tabs"));
-        assert!(registry.has_component("table"));
-
-        // Check primary component names
-        assert_eq!(registry.primary_component("button"), Some("Button"));
-        assert_eq!(registry.primary_component("input"), Some("Input"));
-        assert_eq!(registry.primary_component("toggle"), Some("Switch"));
+        // 活映射存在
+        for tag in ["button", "input", "checkbox", "tabs", "table", "card"] {
+            assert!(has_component(tag), "live mapping missing: {tag}");
+        }
+        // 主组件名(schema vue.component)
+        assert_eq!(primary_component("button"), Some("Button".to_string()));
+        assert_eq!(primary_component("input"), Some("Input".to_string()));
+        assert_eq!(primary_component("toggle"), Some("Switch".to_string()));
+        // 死表独有(活链路从未使用):tab/divider 走原生/家族路径
+        assert!(!has_component("tab"));
+        assert!(!has_component("divider"));
     }
 
     // NOTE (plan 012 batch C): the remaining literal-only
@@ -16070,33 +15429,31 @@ widget W {
 
     #[test]
     fn test_shadcn_registry_phase3_components() {
-        let registry = ShadcnRegistry::new();
+        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
+        // 活链路从未使用 —— 负断言存档。
+        let registry = super::WidgetRegistry::with_defaults();
+        let has_component = |tag: &str| {
+            registry.get_primary_component("vue", tag).is_some()
+        };
+        let primary_component =
+            |tag: &str| registry.get_primary_component("vue", tag);
 
-        // Check Phase 3 component mappings
-        assert!(registry.has_component("scroll"));
-        assert!(registry.has_component("tabs"));
-        assert!(registry.has_component("tab"));
-        assert!(registry.has_component("card"));
-        assert!(registry.has_component("divider"));
+        assert!(has_component("scroll"));
+        assert!(has_component("tabs"));
+        assert!(has_component("card"));
+        assert_eq!(primary_component("scroll"), Some("ScrollArea".to_string()));
+        assert_eq!(primary_component("card"), Some("Card".to_string()));
+        assert_eq!(primary_component("divider").is_none(), true);
 
-        // Check primary component names
-        assert_eq!(registry.primary_component("scroll"), Some("ScrollArea"));
-        assert_eq!(registry.primary_component("tabs"), Some("Tabs"));
-        assert_eq!(registry.primary_component("tab"), Some("TabsTrigger"));
-        assert_eq!(registry.primary_component("card"), Some("Card"));
-        assert_eq!(registry.primary_component("divider"), Some("Separator"));
-
-        // Check imports are returned correctly
-        let (module, components) = registry.get("scroll").unwrap();
-        assert!(module.contains("scroll-area"));
-        assert!(components.contains(&"ScrollArea"));
-
-        let (module, components) = registry.get("tabs").unwrap();
-        assert!(module.contains("tabs"));
-        assert!(components.contains(&"Tabs"));
-        assert!(components.contains(&"TabsList"));
-        assert!(components.contains(&"TabsTrigger"));
-        assert!(components.contains(&"TabsContent"));
+        // 导入路径与家族 extras(活链路:spec.backend("vue"))
+        let scroll = registry.get("scroll").unwrap();
+        let m = scroll.backend("vue").unwrap();
+        assert!(m.import.as_deref().unwrap_or("").contains("scroll-area"));
+        // 唯一带 extras 的家族:chart(ChartTooltip/ChartLegend/ChartStyle)
+        let chart = registry.get("chart").unwrap();
+        let mc = chart.backend("vue").unwrap();
+        assert!(mc.extra_components.iter().any(|c| c == "ChartTooltip"));
     }
 
     // ========================================
@@ -16205,17 +15562,21 @@ widget App {
 
     #[test]
     fn test_shadcn_registry_phase4_components() {
-        let registry = ShadcnRegistry::new();
+        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
+        // 活链路从未使用 —— 负断言存档。
+        let registry = super::WidgetRegistry::with_defaults();
+        let has_component = |tag: &str| {
+            registry.get_primary_component("vue", tag).is_some()
+        };
+        let primary_component =
+            |tag: &str| registry.get_primary_component("vue", tag);
 
-        // Check Phase 4 component mappings
-        assert!(registry.has_component("modal"));
-        assert!(registry.has_component("tooltip"));
-        assert!(registry.has_component("spinner"));
-
-        // Check primary component names
-        assert_eq!(registry.primary_component("modal"), Some("Dialog"));
-        assert_eq!(registry.primary_component("tooltip"), Some("Tooltip"));
-        assert_eq!(registry.primary_component("spinner"), Some("Skeleton"));
+        assert!(has_component("modal"));
+        assert!(has_component("tooltip"));
+        assert_eq!(primary_component("modal"), Some("Dialog".to_string()));
+        // spinner 死表独有;活链路无 vue 映射
+        assert!(!has_component("spinner"));
     }
 
     // ========================================
@@ -16277,25 +15638,21 @@ widget App {
 
     #[test]
     fn test_shadcn_registry_phase5_components() {
-        let registry = ShadcnRegistry::new();
+        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
+        // 活链路从未使用 —— 负断言存档。
+        let registry = super::WidgetRegistry::with_defaults();
+        let has_component = |tag: &str| {
+            registry.get_primary_component("vue", tag).is_some()
+        };
+        let primary_component =
+            |tag: &str| registry.get_primary_component("vue", tag);
 
-        // Check Phase 5 component mappings
-        assert!(registry.has_component("table"));
-        assert!(registry.has_component("thead"));
-        assert!(registry.has_component("tbody"));
-        assert!(registry.has_component("tr"));
-        assert!(registry.has_component("th"));
-        assert!(registry.has_component("td"));
-        assert!(registry.has_component("avatar"));
-
-        // Check primary component names
-        assert_eq!(registry.primary_component("table"), Some("Table"));
-        assert_eq!(registry.primary_component("thead"), Some("TableHeader"));
-        assert_eq!(registry.primary_component("tbody"), Some("TableBody"));
-        assert_eq!(registry.primary_component("tr"), Some("TableRow"));
-        assert_eq!(registry.primary_component("th"), Some("TableHead"));
-        assert_eq!(registry.primary_component("td"), Some("TableCell"));
-        assert_eq!(registry.primary_component("avatar"), Some("Avatar"));
+        assert!(has_component("table"));
+        // Plan 408 P8:table 家族原生 HTML 直通,不做 vue 映射(死表曾错误声明)
+        for tag in ["thead", "tbody", "tr", "th", "td"] {
+            assert!(!has_component(tag), "{tag} 应保持原生(Plan 408 P8)");
+        }
     }
 
     // ========================================
@@ -16352,23 +15709,22 @@ widget W {
 
     #[test]
     fn test_shadcn_registry_phase6_components() {
-        let registry = ShadcnRegistry::new();
+        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
+        // 活链路从未使用 —— 负断言存档。
+        let registry = super::WidgetRegistry::with_defaults();
+        let has_component = |tag: &str| {
+            registry.get_primary_component("vue", tag).is_some()
+        };
+        let primary_component =
+            |tag: &str| registry.get_primary_component("vue", tag);
 
-        // Check Phase 6 component mappings
-        assert!(registry.has_component("slider"));
-        assert!(registry.has_component("radio"));
-        assert!(registry.has_component("radiogroup"));
-
-        // Check primary component names
-        assert_eq!(registry.primary_component("slider"), Some("Slider"));
-        // radio maps to RadioGroup with RadioGroupItem as secondary
-        assert_eq!(registry.primary_component("radio"), Some("RadioGroup"));
-        assert_eq!(registry.primary_component("radiogroup"), Some("RadioGroup"));
-
-        // Verify both RadioGroup and RadioGroupItem are in the component list
-        let (_, components) = registry.get("radio").unwrap();
-        assert!(components.contains(&"RadioGroup"));
-        assert!(components.contains(&"RadioGroupItem"));
+        assert!(has_component("slider"));
+        assert!(has_component("radiogroup"));
+        assert_eq!(primary_component("slider"), Some("Slider".to_string()));
+        assert_eq!(primary_component("radiogroup"), Some("RadioGroup".to_string()));
+        // radio 死表独有(a2ui/原生路径)
+        assert!(!has_component("radio"));
     }
 
     // ========================================================================
