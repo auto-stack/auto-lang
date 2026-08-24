@@ -50,4 +50,5 @@ fn main() {
     //  修复后可加回。String 方法面走引擎 str 原生路径,由 ffi_dual_002/012 守护。)
     let p = PathBuf.from("src/main.rs")
     print(p)
+    print(String.from("42"))
 }
