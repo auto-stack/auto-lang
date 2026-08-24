@@ -2427,6 +2427,19 @@ pub(crate) fn load_ext_imports_for_vm(
         std::slice::from_ref(root_decl),
     ));
     ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(all_child_decls));
+    // Plan 442 B-support: child modules' own top-level `use.web` (e.g.
+    // specs_view.at's `use.web spec_next_id from ".../specs_helpers.at"`) —
+    // the root-AST walk above misses them; sweep every loaded module file.
+    for path in visited.iter() {
+        if let Ok(code) = std::fs::read_to_string(path) {
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            if let Ok(mod_ast) = parser.parse() {
+                ext_imports
+                    .extend(crate::ui::ext_stubs::collect_useweb_imports(&mod_ast.stmts));
+            }
+        }
+    }
     if ext_imports.is_empty() {
         return;
     }
@@ -2444,22 +2457,20 @@ pub(crate) fn load_ext_imports_for_vm(
             );
         },
     );
-    // Alias each adapter-loaded symbol to its module-qualified name
-    // (collect_module_imports renames adapter fns by file stem) so call
-    // sites emit resolvable qualified relocs.
-    for adapter in &loaded_adapters {
+    // Alias each adapter-loaded symbol to ITS adapter's module-qualified
+    // name (collect_module_imports renames adapter fns by file stem) so call
+    // sites emit resolvable qualified relocs. Pairs come from the loader —
+    // aliasing by file, not by "any .at import" (which would mis-attribute
+    // symbols to the wrong adapter).
+    for (adapter, symbols) in &loaded_adapters {
         let qualifier = adapter
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("ext");
-        for imp in &ext_imports {
-            if imp.path.ends_with(".at") {
-                for sym in &imp.symbols {
-                    import_aliases
-                        .entry(sym.clone())
-                        .or_insert_with(|| format!("{}.{}", qualifier, sym));
-                }
-            }
+        for sym in symbols {
+            import_aliases
+                .entry(sym.clone())
+                .or_insert_with(|| format!("{}.{}", qualifier, sym));
         }
     }
     ext_imports.extend(nested);
@@ -5520,6 +5531,11 @@ mod plan442_ext_link_tests;
 // Plan 442 A5: one-shot scheduler primitives regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_sched_tests;
+
+// Plan 442 B-support: web-platform global bridges regression corpus.
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan442_webcompat_tests;
+
 
 #[cfg(test)]
 mod plan367_viewfn_tests;

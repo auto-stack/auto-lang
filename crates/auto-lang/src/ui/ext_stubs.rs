@@ -120,13 +120,15 @@ pub(crate) fn resolve_vm_at_adapter(resolved: &Path) -> Option<PathBuf> {
 
 /// Load `.at` ext sources through the VM adapter chain; TS/npm sources are
 /// skipped (their symbols become stub candidates). Returns the adapter files
-/// loaded plus every ext import found inside them (for recursive stubbing).
+/// loaded PAIRED with the ext symbols each serves (the caller aliases those
+/// symbols to the adapter module's qualified name), plus every ext import
+/// found inside the loaded adapters (for recursive stubbing).
 pub(crate) fn load_at_ext_imports(
     base_dir: &Path,
     imports: &[ExtImportRef],
     load_module: &mut dyn FnMut(&Path),
-) -> (Vec<PathBuf>, Vec<ExtImportRef>) {
-    let mut loaded = Vec::new();
+) -> (Vec<(PathBuf, Vec<String>)>, Vec<ExtImportRef>) {
+    let mut loaded: Vec<(PathBuf, Vec<String>)> = Vec::new();
     let mut nested = Vec::new();
     for imp in imports {
         if !imp.path.ends_with(".at") {
@@ -150,7 +152,11 @@ pub(crate) fn load_at_ext_imports(
             }
         }
         load_module(&adapter);
-        loaded.push(adapter);
+        if let Some(entry) = loaded.iter_mut().find(|(p, _)| *p == adapter) {
+            entry.1.extend(imp.symbols.iter().cloned());
+        } else {
+            loaded.push((adapter, imp.symbols.clone()));
+        }
     }
     (loaded, nested)
 }

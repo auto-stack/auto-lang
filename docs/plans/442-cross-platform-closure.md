@@ -218,8 +218,37 @@
 
 ### Phase B — 五域端口接线（auto-musk 动作，auto-lang 机制配合）
 
+> **B 前置探针（2026-08-25，worktree plan-442）**：musk 53 文件全量语料经
+> VM 渲染装载器 headless 探针实测——**全量走完 parse + codegen 直达 link
+> 阶段**（A2/A3 修复在真实语料生效：九个 store 的 handler 均在编译,
+> workspace_helpers 等 .at ext 源经 adapter 链装载）。据此本仓落地四项
+> B 配合机制（详见下列 ✅）并产出剩余阻塞清单（auto-musk 侧动作）：
+> ① `let` 重赋值 ×6（visual_store 的 initial/is_dark、workspace_helpers
+> 的 has_sep/chosen、specs_helpers 的 max_num、settings_forge_helpers 的
+> mode）——vue 轨语义宽松未暴露,VM 按语言语义正确报错,musk 源改 `var`
+> （specs_helpers 未修 = 当前 link 致命阻塞的唯一残因）;
+> ② `dom.focus_first/click_first`（app.at GlobalKeydown）与
+> `location.reload()`（workspace_selector）浏览器全局直呼——归
+> platform.vm.at adapter 桩;③ `self` 裸标识（specs_view SaveEditItem）
+> ——musk 源修;④ 五域 `.vm.at` adapter 本体（web 侧均为 re-export 壳,
+> i18n.at/icons_data.at 已是纯 .at 资产可直接直绑）。
+
+- **✅ B 配合（auto-lang 侧,2026-08-25,worktree plan-442）——web 平台
+  全局桥 ×4**：① `localStorage.getItem/setItem/removeItem` → Plan 401
+  会话 KV 存储（getItem 缺失返回 None,对齐 musk `saved != None` 判定,
+  native 2771-2773 + codegen localStorage 模块路由）;② `encodeURIComponent`
+  bare 全局 → `auto.url.encode`（urlencoding crate,补齐 ID-map-only 的
+  2000 条目缺 shim 绑定;此前是 musk 探针的 link 致命阻塞）;③ 子模块
+  文件顶层 `use.web`（如 specs_view.at 引 specs_helpers.at）此前只在根
+  AST 收集被漏——`load_ext_imports_for_vm` 对 visited 全部已装载模块做
+  UseWeb 扫掠;④ adapter 别名配对修复（按 (adapter, symbols) 配对而非
+  "任一 .at import",防符号误归属错误 adapter 限定名）。回归
+  `test/ui/plan442_webcompat/` ×2（localStorage 往返+None 语义/
+  encodeURIComponent JS 对齐）。
 - B1 platform 域：`ports/platform.rust.at`（inject_styles 空实现/去化、
   setup_auth_fetch→rust fetch 注入、relay_command_runner rust 版）+ 构建双目标验证。
+  （VM 轨：`ports/platform.vm.at`——dom/location 桩 + localStorage 已由
+  本仓全局桥承接。）
 - B2 composables 域：`ports/composables.rust.at`（useT→auto-i18n 直绑、gate_router
   rust 版）——依赖 musk 038 Phase 1 产物。
 - B3 icons 域：`ports/icons.rust.at`（auto-icons 数据层直绑；渲染层依 A4 结论）。
