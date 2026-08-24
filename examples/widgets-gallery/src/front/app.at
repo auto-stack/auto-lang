@@ -34,6 +34,7 @@ widget App {
         "/line-chart" -> use line-chart
         "/bar-chart" -> use bar-chart
         "/area-chart" -> use area-chart
+        "/donut-chart" -> use donut-chart
         "/dialog" -> use dialog
         "/drawer" -> use drawer
         "/dropdownmenu" -> use dropdownmenu
@@ -195,6 +196,7 @@ widget App {
                         nav-link (to: "/line-chart", icon: "activity", label: "AutoLineChart") {}
                         nav-link (to: "/bar-chart", icon: "bar-chart-3", label: "BarChart") {}
                         nav-link (to: "/area-chart", icon: "area-chart", label: "AreaChart") {}
+                        nav-link (to: "/donut-chart", icon: "circle", label: "DonutChart") {}
 
                         // Display group
                         text "Display" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}

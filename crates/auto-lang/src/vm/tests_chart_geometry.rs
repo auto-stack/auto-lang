@@ -249,3 +249,19 @@ fn test_geo_path_probe() {
     let result = run(code).unwrap();
     assert_eq!(result, "[80|80|20]");
 }
+
+#[test]
+fn test_geo_math_trig() {
+    // donut 圆弧所需三角函数：sin/cos 调用语法与精度
+    let code = r#"
+        var pi float = 3.14159265358979
+        var half float = pi / 2.0
+        var s float = math.sin(half)
+        var c float = math.cos(0.0)
+        f"${s}-${c}"
+    "#;
+    let result = run(code).unwrap();
+    assert_eq!(result, "1-1");
+}
+
+

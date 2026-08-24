@@ -1,0 +1,116 @@
+// pages/donut-chart.at — DonutChart 页（Plan 437 Charts 分组 ④·四类图收尾）
+//
+// v1：圆环几何 Auto 内联（d3-arc 风格：外弧 A→内弧回程 Z，三角函数
+// math.cos/sin，大弧标志 span>π）。渲染端 SVG 直通（442 A4）。
+// 纪律（§0.6.D）：float 中间量显式声明；math.* 的 f64 结果经
+// pop_f32 tag 驱动解码（§0.6.G 修复）无缝进 f32 消费。
+
+widget DonutChartPage {
+    msg Msg { Init }
+
+    model {
+        traffic = [
+            { l: "Desktop", v: 55 },
+            { l: "Mobile", v: 25 },
+            { l: "Tablet", v: 12 },
+            { l: "Wearable", v: 8 }
+        ]
+        // ---- 几何（Init 计算：4 片路径）----
+        s0 str = ""
+        s1 str = ""
+        s2 str = ""
+        s3 str = ""
+        legend str = ""
+    }
+
+    on {
+        .Init -> {
+            var total int = 0
+            for d in .traffic {
+                total = total + d["v"]
+            }
+            var totalf float = total
+
+            var cx float = 280.0
+            var cy float = 150.0
+            var ro float = 100.0
+            var ri float = 62.0
+            var pi float = 3.14159265358979
+            var two_pi float = 6.28318530717959
+            var acc float = -1.57079632679
+
+            var i = 0
+            var lg = ""
+            for d in .traffic {
+                var vf float = d["v"]
+                var frac float = vf / totalf
+                var span float = frac * two_pi
+                var a0 float = acc
+                var a1 float = acc + span
+                acc = a1
+
+                // 外弧端点
+                var x0 float = cx + ro * math.cos(a0)
+                var y0 float = cy + ro * math.sin(a0)
+                var x1 float = cx + ro * math.cos(a1)
+                var y1 float = cy + ro * math.sin(a1)
+                // 内弧端点
+                var xi0 float = cx + ri * math.cos(a0)
+                var yi0 float = cy + ri * math.sin(a0)
+                var xi1 float = cx + ri * math.cos(a1)
+                var yi1 float = cy + ri * math.sin(a1)
+
+                var laf int = 0
+                if span > pi {
+                    laf = 1
+                }
+
+                var dstr = f"M${x0} ${y0} A${ro} ${ro} 0 ${laf} 1 ${x1} ${y1} L${xi1} ${yi1} A${ri} ${ri} 0 ${laf} 0 ${xi0} ${yi0} Z"
+                if i == 0 {
+                    .s0 = dstr
+                } else if i == 1 {
+                    .s1 = dstr
+                } else if i == 2 {
+                    .s2 = dstr
+                } else {
+                    .s3 = dstr
+                }
+                var lbl = d["l"]
+                if lg == "" {
+                    lg = f"${lbl} ${vf}%"
+                } else {
+                    lg = lg + f"   {lbl} ${vf}%"
+                }
+                i = i + 1
+            }
+            .legend = lg
+        }
+    }
+
+    view {
+        col {
+            h1 "DonutChart"
+            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），三角函数 math.cos/sin 全 Auto 调用，大弧标志 span>π。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+
+            h2 "Basic"
+            preview-card (id: "donut-chart-basic") {
+                col (style: "w-full items-center gap-3") {
+                    svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
+                        circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
+                        path (d: .s0, fill: "#2563eb") {}
+                        path (d: .s1, fill: "#16a34a") {}
+                        path (d: .s2, fill: "#d97706") {}
+                        path (d: .s3, fill: "#dc2626") {}
+                    }
+                    row (style: "gap-4") {
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#2563eb]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#16a34a]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#d97706]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#dc2626]") {}
+                    }
+                    text .legend { style: "text-xs text-muted-foreground" }
+                }
+            }
+        }
+    }
+}

@@ -450,10 +450,27 @@ fn shim_int_bit_flip(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Plan 240 VM-1: Math shims for f64 methods (sin/cos/tan/sqrt/pow etc.)
 // ============================================================================
 
+// Plan 437: f64 算术 shim 的 tag 驱动操作数弹出——调用方常以 f32 字面量/
+// 变量传参（lexer 默认 unsuffixed decimal 是 TAG_F32），盲 pop_f64 会把
+// f32 nv 当 f64 位读成 NaN 且位模式保留，sin(pi/2) 呈"参数回显"假象。
+// 与 engine::pop_f32_operand 同一 tag-first 哲学。
+fn pop_f64_operand(task: &mut AutoTask) -> f64 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv)
+    } else if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f64
+    } else {
+        auto_val::decode_f64(nv)
+    }
+}
+
 macro_rules! math_unary_shim {
     ($name:ident, $method:ident) => {
         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-            let n = task.ram.pop_f64();
+            let n = pop_f64_operand(task);
             task.ram.push_f64(n.$method());
             Ok(())
         }
@@ -463,8 +480,8 @@ macro_rules! math_unary_shim {
 macro_rules! math_binary_shim {
     ($name:ident, $method:ident) => {
         pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-            let exp = task.ram.pop_f64();
-            let base = task.ram.pop_f64();
+            let exp = pop_f64_operand(task);
+            let base = pop_f64_operand(task);
             task.ram.push_f64(base.$method(exp));
             Ok(())
         }
