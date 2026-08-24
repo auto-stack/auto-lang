@@ -78,7 +78,7 @@
 ## 3. Phases
 
 - **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
-- **P1 基准提取与 schema 重建**:提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
+- **P1 基准提取与 schema 重建**(✅ 2026-08-24 落地,见文末执行结果):提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
 - **P2 schema 接入与校验**:loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
 - **P3 派生翻转(行为零变更)**:render_support、vue.rs import 映射、别名归一改为 schema 驱动;**golden 验收:widgets-gallery vue 输出与翻转前 byte-identical**(`pnpm test:smoke` + `cargo test -p auto-lang -- ui_snapshots`)。
 - **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
@@ -155,3 +155,37 @@
   ui_snapshots 三例(app/editor/sidebar)红——snap 内嵌绝对路径(换 worktree 必红)
   + SFC 字节数漂移(app 2876→2920);vue_capabilities 一例 `cap_widget_map_model_init` 红
   (widget map init 语义漂移)。
+
+### P1 基准提取与 schema 重建(2026-08-24,worktree `plan-435-schema-unification`)
+
+- **生成器进围栏测试**(`SCHEMA_DRIFT_GENERATE_AT=1`,复核流程同 baseline):10 个提取源 ——
+  9 张生产表(schema.rs 192 元素含结构化 props 解析/vue components 245+import 路径/
+  vue map_tag 两表/view_builder 两表/render_support 113 含级别/parser/a2ui 双向)+
+  **widgets-gallery 消费侧扫描**(第 10 源:gallery 实际使用而任何生产表未登记的 tag,
+  按"生产代码 + examples 是事实源"以 unclassified 入册,如 dialog-* 全家、dropdown-menu-* 全名形态)。
+- **新 `schema/aura.at`**:330 元素(旧 42),四新字段齐备 ——
+  tier(builtin_widget 40/native_html 25/web_component 204/unclassified 60)、
+  aliases(臂组+折叠变体)、backends(web/iced/gpui 矩阵,iced 级别来自 render_support)、
+  sub_widgets(vue 同 import 路径 + 前缀规则,38 个家族,如 menubar→menubar_* )。
+- **别名归并规则(迭代出三道守卫)**:①臂组只收渲染行为派发表(vb/vue)——parser
+  get_primary_prop 是归类表(text 臂曾把 button 并进 alert 组)、a2ui 是序列化等价表
+  ("select"|"dropdown" 臂曾把 select 吞进 dropdown);②臂内 ≥2 个 rs 元素不合并
+  (text|h1|p|span 共用转换器≠别名);③臂 >4 成员不合并(svg 图元/HTML5 语义标签
+  各自成元素)。折叠键 = 剥 `-`/`_` + 小写(Card≡card,AlertDialog≡alert-dialog);
+  canonical 偏好:rs 声明 > kebab > 短。
+- **覆盖断言转硬闸(无 baseline 豁免)**:生产表 tag ⊆ aura.at(tags∪aliases),
+  新增组件必须重生成;反向幻影检查防手改漂移;旧 at↔rs 维度退役。
+  schema_loader 可解析性作为常驻断言(P2 接线前置)。
+- **验收**:widgets-gallery tag 覆盖缺口 0(折叠匹配策略下);围栏绿;loader 冒烟过。
+- **发现与挂账**:
+  1. **命名三套的实证**:gallery 写 kebab、生产表登记 underscore/concat、管线靠隐式
+     归一弥合 —— schema 将归一显式化为**折叠匹配策略**(写入文件头,P2 校验器实现)。
+  2. **隐藏机制第三形态**:vb 的 `is_svg_shape_tag` `matches!` 白名单(Plan 442)不在
+     任何派发表,svg 图元 iced 支持级报 none(实为 convert_svg_image 支持)——谓词式
+     知识入栏留 P2。
+  3. `+` 是 map_tag 真实 DSL 简写(→span),作为元素入册。
+  4. 60 个 unclassified 待 P2 人工归类(parser/a2ui-only 与隐式 fallback 家族)。
+  5. **aura.at 并非全孤儿**:`load_default_schema()`(include_str! 内嵌)→ `WidgetValidator`
+     是真实运行时链路,只是终点目前只有测试调用;P1 重生成后其单测 `test_new_elements`
+     (断言 Plan 098 旧内容,如 textarea cols)红 —— 已按新 schema 事实重写(props 断言
+     限 rs 支撑元素,其余存在性断言)。include_str! 接线机制已在,P2 只差消费方接入。
