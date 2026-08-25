@@ -285,15 +285,19 @@
 ### Phase C — 后端 AutoVM 激活（auto-musk 动作）
 
 - C1 pac.at `api` 目标切换试验（rust→vm 路径），暴露的转译缺口登记回 auto-lang。
-  - **▶ 首轮试验发现（2026-08-25，musk 会话）**：`api: "vm"` 即刻暴露结构性
-    接线缺口——AutoVM server 模式要求 `api.at` 契约（本地 `src/back/` 或
-    pac.at `back.project` 外部后端），musk 两者皆无：后端是
-    `backend/crates/musk` 的 Rust 实现（hw 轨）+ 休眠 auto-src 镜像轨
-    （musk KNOWN-DEBT 018：tools/spec_tools/orch_tools/server_serve 手工
-    同步镜像，a2r 已知漂移）。C1 剩余动作 = 给 musk 落 `back.project`/
-    api.at 契约面指向 auto-src 镜像 + 镜像轨唤醒核对（018 的"维持不激活"
-    结论需在此翻转裁定），随后才是逐缺口转译登记。pac.at 已回退 `rust`
-    （试验不落库）。
+  - **▶ 首轮试验发现（2026-08-25，musk 会话；同日勘误修正）**：`api: "vm"`
+    即刻暴露 auto-man 接线缺口——AutoVM server 模式要求 `api.at` 契约
+    （本地 `src/back/` 或 pac.at `back.project` 外部后端），musk 两者皆无。
+    **勘误**：初判"后端是 Rust 实现 + 休眠镜像轨"有误——实况是 musk 应用
+    后端与 auto-ai daemon 均**已 Auto 源化**（`auto-src/*.at` 经 use.rust
+    axum/tokio 直连 + a2r 转译,生产 router 即 `auto_generated::server::
+    build_router()`;daemon 侧 auto-ai Plan 025 ✅ 全 Auto 链 e2e 跑通）。
+    KNOWN-DEBT 018 是 hw/ag parity 残留债,非镜像休眠。因此 C 阶段语义
+    修正为**运行时切换**：同一 .at 源不经 a2r、直接由 AutoVM 运行
+    （VM+VM 形态;use.rust 符号在 VM 侧的 FFI 路径 = 429-434 AAVM 能力,
+    ffi_dual 回归族已有先例）。剩余动作 = 落 api.at 契约/back.project 接线
+    （musk 后端形态对齐 015-notes 的外部后端装载）,转译缺口按实跑逐条登记。
+    pac.at 已回退 `rust`（试验不落库）。
 - C2 `musk serve` 以 VM 后端起服：HTTP/SSE 契约测试（复用既有 parity 测试面）
   对照 hw 后端全绿。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
