@@ -1,0 +1,14 @@
+// Plan 447 probe p04: 枚举载荷携带运行期拼接值（绿件加固）
+// 构造参数位为运行期计算值（非字面量），is 解构读回
+enum Msg {
+    Text(str)
+    Quit
+}
+
+fn main() {
+    let m = Msg.Text("a" + "b")
+    is m {
+        Msg.Text(s) -> print(s)
+        else -> print("quit")
+    }
+}

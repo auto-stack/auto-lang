@@ -1171,3 +1171,23 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 // === 29_list_shims (Plan 335: List<T> 全 shim 双查修复) ===
 #[test] #[ignore] fn test_29_list_shims_001_int_list() { test_vm("29_list_shims/001_int_list").unwrap(); }
 #[test] #[ignore] fn test_29_list_shims_002_struct_list() { test_vm("29_list_shims/002_struct_list").unwrap(); }
+
+// === 99_idiom_probe (Plan 447 部分①: is-match/枚举/continue 惯用法探针常驻回归) ===
+// 绿件 + H 项复现件全量常驻(非 ignore):H1 or-臂/H2 continue/H3 内联载荷位
+// (当前基线已由 plan-442 RC 修复转绿)任何回退都会在此立即报警。
+#[test] fn test_99_idiom_probe_p01_is_string() { test_vm("99_idiom_probe/p01_is_string").unwrap(); }
+#[test] fn test_99_idiom_probe_p02b_enum_or_arm() { test_vm("99_idiom_probe/p02b_enum_or_arm").unwrap(); }
+#[test] fn test_99_idiom_probe_p03_enum_payload() { test_vm("99_idiom_probe/p03_enum_payload").unwrap(); }
+#[test] fn test_99_idiom_probe_p04_runtime_concat_payload() { test_vm("99_idiom_probe/p04_runtime_concat_payload").unwrap(); }
+#[test] fn test_99_idiom_probe_p05_double_match() { test_vm("99_idiom_probe/p05_double_match").unwrap(); }
+#[test] fn test_99_idiom_probe_p06_while_continue() { test_vm("99_idiom_probe/p06_while_continue").unwrap(); }
+#[test] fn test_99_idiom_probe_p07_cond_for_continue() { test_vm("99_idiom_probe/p07_cond_for_continue").unwrap(); }
+#[test] fn test_99_idiom_probe_p08_guard_arm() { test_vm("99_idiom_probe/p08_guard_arm").unwrap(); }
+#[test] fn test_99_idiom_probe_p09g_local_var_workaround() { test_vm("99_idiom_probe/p09g_local_var_workaround").unwrap(); }
+#[test] fn test_99_idiom_probe_p09h_inline_enum_payload() { test_vm("99_idiom_probe/p09h_inline_enum_payload").unwrap(); }
+#[test] fn test_99_idiom_probe_p10_enum_reassign_eq() { test_vm("99_idiom_probe/p10_enum_reassign_eq").unwrap(); }
+#[test] fn test_99_idiom_probe_p11_is_char() { test_vm("99_idiom_probe/p11_is_char").unwrap(); }
+#[test] fn test_99_idiom_probe_p12_is_binding_types() { test_vm("99_idiom_probe/p12_is_binding_types").unwrap(); }
+#[test] fn test_99_idiom_probe_p13a_struct_field_enum() { test_vm("99_idiom_probe/p13a_struct_field_enum").unwrap(); }
+#[test] fn test_99_idiom_probe_p13b_struct_literal_field() { test_vm("99_idiom_probe/p13b_struct_literal_field").unwrap(); }
+#[test] fn test_99_idiom_probe_p13c_struct_literal_literal_payload() { test_vm("99_idiom_probe/p13c_struct_literal_literal_payload").unwrap(); }

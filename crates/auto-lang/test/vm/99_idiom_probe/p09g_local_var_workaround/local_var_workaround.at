@@ -1,0 +1,19 @@
+// Plan 447 probe p09g: 枚举构造参数先提升局部（规避写法，绿件对照）
+// H3 的对照绿件：运行期值先绑定局部变量再入构造参数位
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn main() {
+    let s = "a" + "b"
+    let xs = List.new()
+    xs.push(Val.VS(s))
+    print(xs.len().str())
+    let got = xs.get(0)
+    is got {
+        Val.VS(v) -> print(v)
+        else -> print("not-vs")
+    }
+}

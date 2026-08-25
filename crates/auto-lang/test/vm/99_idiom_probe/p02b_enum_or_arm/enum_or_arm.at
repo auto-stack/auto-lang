@@ -1,0 +1,30 @@
+// H1: VM 枚举 or-臂仅第一个模式命中
+// 预期：multi(Uint) 返回 "num"（第二个模式匹配）
+// 实际（bug）：返回 "eof"（仅第一个模式可命中，后续模式永远落空）
+enum TokenKind {
+    Int
+    Uint
+    EOF
+}
+
+fn single(k TokenKind) str {
+    is k {
+        TokenKind.Int -> "num"
+        else -> "eof"
+    }
+}
+
+fn multi(k TokenKind) str {
+    is k {
+        TokenKind.Int | TokenKind.Uint -> "num"   // Uint 永远匹配不上，落 else
+        else -> "eof"
+    }
+}
+
+fn main() {
+    print(single(TokenKind.Int))     // expected: "num"
+    print(single(TokenKind.Uint))    // expected: "eof"  
+    print(multi(TokenKind.Int))     // expected: "num"
+    print(multi(TokenKind.Uint))    // expected: "num" (bug returns "eof")
+    print(multi(TokenKind.EOF))     // expected: "eof"
+}

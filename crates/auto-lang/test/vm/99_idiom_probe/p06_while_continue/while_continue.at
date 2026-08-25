@@ -1,0 +1,16 @@
+// H2: while 循环内 continue 穿透执行后续语句
+// 预期：只打印 "cond 1" 和 "cond 3"，跳过 "cond 2"
+// 实际（bug）：会打印 "cond 2"（穿透执行 continue 之后的语句）
+fn main() {
+    var i = 0
+    var acc = 0
+    while i < 4 {
+        i = i + 1
+        if i == 2 { 
+            continue 
+        }
+        acc = acc + 1  // bug: i=2 时仍然执行此行
+        print("cond " + i.str())
+    }
+    print("total: " + acc.str())  // expected: 3, (bug: 4)
+}

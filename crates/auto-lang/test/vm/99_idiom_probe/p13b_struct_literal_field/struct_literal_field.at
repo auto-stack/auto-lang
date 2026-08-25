@@ -1,0 +1,20 @@
+// Plan 447 probe p13b: 结构体字面量字段位内联运行期计算值（H3 复现件）
+// 原症状：[RC canary] string pool UAF 崩溃
+// 当前基线（plan-442 RC 修复后）已转绿：字段位内联枚举构造 + 运行期拼接均正确
+// 修正记录：初版误用 struct 关键字（Auto 用 type 声明具名结构体），
+// 曾表现为 E0201 "Variable 'Val' is not defined"（名字解析位，非 RC 位）
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+type Frame {
+    val: Val
+    name: str
+}
+
+fn main() {
+    let f = Frame { val: Val.VI(42), name: "frame_" + "test" }
+    print(f.name)
+}

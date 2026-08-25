@@ -1,0 +1,24 @@
+// H5: 同一枚举值二次 is 匹配 E0382
+// 当同一个枚举值在函数内被多次 is 匹配时，会触发 Rust E0382 借用错误
+// 解决方法: 在非末次使用时发射 `match &v` 而不是 `match v`
+
+enum Option {
+    Some(int)
+    None
+}
+
+fn main() {
+    let opt = Option.Some(42)
+    
+    // 第一次匹配 (使用值，可能触发 E0382)
+    is opt {
+        Option.Some(x) -> print(x)
+        _ -> print(-1)
+    }
+    
+    // 第二次匹配 (如果第一次是 move，这里会 E0382)
+    is opt {
+        Option.Some(x) -> print(x)
+        _ -> print(-2)
+    }
+}
