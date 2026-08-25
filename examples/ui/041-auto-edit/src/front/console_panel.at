@@ -1,0 +1,41 @@
+// console_panel.at — ConsolePanel 组件（Plan 449；日志面板，原 app.at 98-121 行）。
+//
+// 013-todo 形态：无 props，经 `use editor_store` 直读 .store.console/.store.edits，
+// 自有 msg，handler 直调 store（vm 已验证模式）。原顶部分隔线随组件内聚。
+// 注：组件子树对 MCP 快照不可见（vm 已知边界）——测试对 console 内容断言
+// 走 autoui_state，无快照定位依赖。
+
+use editor_store: EditorStore
+
+widget ConsolePanel {
+    msg { Clear }
+
+    view {
+        col (style: "w-full shrink-0") {
+            col (style: "h-px w-full bg-border")
+            row (style: "h-7 items-center bg-muted/30 shrink-0 gap-3 px-2") {
+                text "CONSOLE" {
+                    style: "text-[11px] font-bold text-zinc-400"
+                }
+                button (text: "Clear", variant: "text") {
+                    onclick: .Clear
+                    style: "text-[11px] h-5 px-1 text-zinc-400"
+                }
+                text "edits: ${.store.edits}" {
+                    style: "text-[11px] text-zinc-500 ml-auto"
+                }
+            }
+            scroll (style: "h-40 w-full bg-muted/10 shrink-0") {
+                col (style: "p-2") {
+                    text .store.console {
+                        style: "text-xs font-mono text-zinc-300"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Clear -> { store.ConsoleClear() }
+    }
+}

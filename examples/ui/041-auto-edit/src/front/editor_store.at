@@ -1,0 +1,342 @@
+// editor_store.at — auto-edit 的全部状态与业务逻辑（Plan 449 自 app.at 下沉）。
+//
+// 038-minesweeper / 013-todo 的 store-in-vm 先例：store 字段经 lib.rs 合并进
+// 根 state（无前缀），auto-edit.at 的 enabled-if/checked-if 表达式（.tab_count
+// 等）按原样继续求值；App 侧 on 薄委托 store.Xxx()，事件名与 auto-edit.at 的
+// handler 映射一一对应（Action=声明层，Event=执行层）。
+//
+// 派生标量（tab/tab_count/line/col/sel 等）仍由各 handler 就地重算——
+// VM view 不能调函数（Plan 402 约束），模板只读字段。
+// 重复逻辑收口（store handler 间经 store.Xxx() 互调，038/013 先例）：
+//   RemoveAt   —— 关闭 tab 的 remove + 索引修补 + 激活态重算
+//                 （原 CloseTab/ConfirmClose 各持一份，现合一）
+//   SyncCursor —— line/col/sel 三元组读回（原 5 处重复，现 1 处）
+store EditorStore {
+    model {
+        // Plan 420 P1: tabs 数组态 —— 每 tab = {key, title, path, dirty, src}。
+        // key 唯一(code_editor registry 按它保存实例);src 仅作初值/外部
+        // 重置(last_external 相等即 no-op,用户输入不会被 stale 值踩掉)。
+        var tabs list = [
+            {key: "tab-main", title: "main.at", path: "", dirty: false, src: "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常\nfn add(a int, b int) int {\n    return a + b\n}\n\n// 中文注释:你好世界\nprint(add(1, 2))\n"},
+            {key: "tab-util", title: "util.at", path: "", dirty: false, src: "// 工具模块 — 每个 tab 的编辑状态独立保存\nfn greet(name str) str {\n    return \"hello \" + name\n}\n\nfn farewell(name str) str {\n    return \"bye \" + name\n}\n"},
+        ]
+        var active_key str = "tab-main"
+        // 派生标量(索引镜像/空态判断/状态栏与矩阵断言面;结构变化时由
+        // 各 handler 就地重算,不在模板里调方法)。
+        var tab int = 0
+        var tab_count int = 2
+        var open_count int = 2
+        var title_active str = "main.at"
+        var path_active str = ""
+        var src_active str = "// 预填文本显示测试 — 如果你看到这行字,说明正文渲染正常
+fn add(a int, b int) int {
+    return a + b
+}
+
+// 中文注释:你好世界
+print(add(1, 2))
+"
+        var edits int = 0
+        var line int = 1
+        var col int = 1
+        var sel int = 0
+        var console_open bool = false
+        var console str = ""
+        // Plan 428: 折叠状态读数(隐藏行数;矩阵经 autoui_state 校验)
+        var fold_hidden int = 0
+        // Plan 422 P3: 右键菜单(contextmenu popover 的坐标锚状态)
+        var ctx_open bool = false
+        var ctx_x float = 0
+        var ctx_y float = 0
+        // Plan 420 P2: 关闭脏 tab 的确认弹层状态
+        var confirm_open bool = false
+        var confirm_idx int = -1
+    }
+
+    msg {
+        TabActivate(int), SrcChanged(int), CursorMoved(int),
+        CloseTab(int), RemoveAt(int),
+        ConfirmClose, ConfirmCancel, ConsoleClear, SyncCursor(str),
+        EditorCtx(float, float), CtxClose, CtxCut, CtxCopy, CtxSelectAll,
+        ActNew, ActOpen, ActSave, ActQuit, ActUndo, ActRedo,
+        ActSelectAll, ActCut, ActCopy, ActPaste, ActConsole,
+        ActSwitchTab, ActFold, ActAbout,
+    }
+
+    on {
+        // ---- 内部 helper：光标三元组读回 ----
+        .SyncCursor(key) -> {
+            .line = code_editor_cursor_line(key) + 1
+            .col = code_editor_cursor_col(key) + 1
+            .sel = code_editor_selection_len(key)
+        }
+
+        .TabActivate(i) -> {
+            .tab = i
+            .active_key = .tabs[i].key
+            .title_active = .tabs[i].title
+            .path_active = .tabs[i].path
+            .src_active = .tabs[i].src
+            store.SyncCursor(.tabs[i].key)
+            .console = console_lines()
+        }
+        // Plan 428: 切换激活编辑器第 2 行 fn 块的折叠态并读回隐藏行数。
+        .ActFold -> {
+            code_editor_fold_toggle(.active_key, 2)
+            .fold_hidden = code_editor_fold_hidden_count(.active_key)
+            .console = console_lines()
+        }
+        .SrcChanged(i) -> {
+            .edits = .edits + 1
+            .tabs[i].dirty = true
+            .console = console_lines()
+        }
+        .CursorMoved(i) -> {
+            store.SyncCursor(.tabs[i].key)
+            .console = console_lines()
+        }
+
+        // ---- 内部 helper：关闭 tab 的 remove + 索引修补 + 激活态重算 ----
+        // （原 CloseTab/ConfirmClose 两份重复合一；脏 tab 判定在 CloseTab）
+        .RemoveAt(i) -> {
+            .tabs.remove(i)
+            .tab_count = .tab_count - 1
+            if .tab_count > 0 {
+                if i == .tab {
+                    if i >= .tab_count {
+                        .tab = .tab_count - 1
+                    }
+                }
+                if i < .tab {
+                    .tab = .tab - 1
+                }
+                .active_key = .tabs[.tab].key
+                .title_active = .tabs[.tab].title
+                .path_active = .tabs[.tab].path
+                store.SyncCursor(.active_key)
+            } else {
+                .tab = -1
+                .active_key = ""
+                .title_active = ""
+                .path_active = ""
+                .line = 1
+                .col = 1
+                .sel = 0
+            }
+        }
+        .CloseTab(i) -> {
+            if .tabs[i].dirty {
+                .confirm_idx = i
+                .confirm_open = true
+            } else {
+                store.RemoveAt(i)
+                console_log("closed tab; open=" + .tab_count.str())
+            }
+            .console = console_lines()
+        }
+        .ConfirmClose -> {
+            .confirm_open = false
+            if .confirm_idx >= 0 {
+                store.RemoveAt(.confirm_idx)
+                console_log("closed dirty tab; open=" + .tab_count.str())
+            }
+            .confirm_idx = -1
+            .console = console_lines()
+        }
+        .ConfirmCancel -> {
+            .confirm_open = false
+            .confirm_idx = -1
+        }
+        .ConsoleClear -> {
+            console_clear()
+            .console = ""
+        }
+
+        // ---- Plan 422 P3: contextmenu popover ----
+        // 编辑器右键:坐标为视口系(renderer 侧已加 widget origin)。
+        .EditorCtx(x, y) -> {
+            .ctx_x = x
+            .ctx_y = y
+            .ctx_open = true
+            console_log("ctx menu opened")
+            .console = console_lines()
+        }
+        .CtxClose -> {
+            .ctx_open = false
+        }
+        .CtxCut -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_cut(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
+            }
+            console_log("ctx cut")
+            .console = console_lines()
+        }
+        .CtxCopy -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_copy(.active_key)
+            }
+            console_log("ctx copy")
+            .console = console_lines()
+        }
+        .CtxSelectAll -> {
+            .ctx_open = false
+            if .tab_count > 0 {
+                code_editor_select_all(.active_key)
+                .sel = code_editor_selection_len(.active_key)
+            }
+            console_log("ctx select all")
+            .console = console_lines()
+        }
+
+        // ---- Plan 418: semantic actions (menu / toolbar / shortcut 3-source) ----
+        .ActNew -> {
+            // code_editor_set_text 编译进 store handler 会产出坏字节码
+            // （virt_memory read_i32 越界 panic，Plan 449 调查结论）——该
+            // 内建调用留在 App 根 handler（widget 路径已验证），见 app.at。
+            if .tab_count > 0 {
+                .tabs[.tab].path = ""
+                .tabs[.tab].title = "untitled.at"
+                .tabs[.tab].dirty = false
+                .tabs[.tab].src = ""
+                .src_active = ""
+                .title_active = "untitled.at"
+                .path_active = ""
+            }
+            console_log("new: cleared active tab")
+            .console = console_lines()
+        }
+        .ActOpen -> {
+            // Plan 420 P2: AUTO_OPEN_PATH 环境变量旁路(测试构建语义,prod
+            // 忽略)—— 阻塞式 rfd 对话框无法被 MCP 驱动的盲区由此打通。
+            var p str = Env.get("AUTO_OPEN_PATH")
+            if p == "" {
+                p = dialog_open(".at, .au, .rs, .txt")
+            }
+            if p != "" {
+                let s = File.read_text(p)
+                .open_count = .open_count + 1
+                .tabs.push({key: "tab-" + .open_count.str(), title: file_basename(p), path: p, dirty: false, src: s})
+                .tab = .tab_count
+                .tab_count = .tab_count + 1
+                .active_key = .tabs[.tab].key
+                .title_active = .tabs[.tab].title
+                .path_active = p
+                .src_active = s
+                .line = 1
+                .col = 1
+                .sel = 0
+                console_log("open: " + p)
+            } else {
+                console_log("open: cancelled")
+            }
+            .console = console_lines()
+        }
+        .ActSave -> {
+            if .tab_count > 0 {
+                if .path_active == "" {
+                    // Plan 420 P2: AUTO_SAVE_PATH 旁路(与 AUTO_OPEN_PATH 同型)。
+                    var p str = Env.get("AUTO_SAVE_PATH")
+                    if p == "" {
+                        p = dialog_save("untitled.at")
+                    }
+                    if p != "" {
+                        .path_active = p
+                        .tabs[.tab].path = p
+                        .title_active = file_basename(p)
+                        .tabs[.tab].title = file_basename(p)
+                    }
+                }
+                if .path_active != "" {
+                    File.write_text(.path_active, code_editor_text(.active_key))
+                    .tabs[.tab].dirty = false
+                    console_log("saved: " + .path_active)
+                } else {
+                    console_log("save: cancelled")
+                }
+            }
+            .console = console_lines()
+        }
+        .ActQuit -> {
+            console_log("quit")
+            Process.exit(0)
+        }
+        .ActUndo -> {
+            if .tab_count > 0 {
+                code_editor_undo(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+            }
+            console_log("undo")
+            .console = console_lines()
+        }
+        .ActRedo -> {
+            if .tab_count > 0 {
+                code_editor_redo(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+            }
+            console_log("redo")
+            .console = console_lines()
+        }
+        .ActSelectAll -> {
+            if .tab_count > 0 {
+                code_editor_select_all(.active_key)
+                store.SyncCursor(.active_key)
+            }
+            console_log("select all")
+            .console = console_lines()
+        }
+        .ActCut -> {
+            if .tab_count > 0 {
+                code_editor_cut(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
+            }
+            console_log("cut")
+            .console = console_lines()
+        }
+        .ActCopy -> {
+            if .tab_count > 0 {
+                code_editor_copy(.active_key)
+            }
+            console_log("copy")
+            .console = console_lines()
+        }
+        .ActPaste -> {
+            if .tab_count > 0 {
+                code_editor_paste(.active_key)
+                .tabs[.tab].src = code_editor_text(.active_key)
+                .src_active = .tabs[.tab].src
+                .tabs[.tab].dirty = true
+            }
+            console_log("paste")
+            .console = console_lines()
+        }
+        .ActConsole -> {
+            .console_open = !.console_open
+            .console = console_lines()
+        }
+        .ActSwitchTab -> {
+            if .tab_count > 1 {
+                // 两 tab 演示语义保留(Ctrl+D 矩阵断言 0↔1 翻转)。
+                .tab = 1 - .tab
+                .active_key = .tabs[.tab].key
+                .title_active = .tabs[.tab].title
+                .path_active = .tabs[.tab].path
+                .src_active = .tabs[.tab].src
+                store.SyncCursor(.active_key)
+            }
+            .console = console_lines()
+        }
+        .ActAbout -> {
+            console_log("auto-edit 0.1 — AutoUI playground (plans 413/414/418/420)")
+            .console = console_lines()
+        }
+    }
+}

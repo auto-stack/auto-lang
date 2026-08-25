@@ -3,6 +3,10 @@
 // AUTO_VM_ACTION_CONFIG,渲染器按需加载。
 // 当前生效层:shortcut(键盘回退层,DSL onkeydown 之下);menubar/toolbar
 // 结构段已解析校验,渲染迁移为 Phase 2 P2-3(见计划 §4)。
+// Plan 449 注:本配置仅 vm 渲染器消费(vue 生成器未接入——快捷键失效/
+// menubar 空壳/toolbar 无映射);置于项目根与 pac.at 同级而非 src/,
+// 因 src/front/*.at 会被 vue 构建/auto test 当 DSL 源码收集,且文件名
+// stem=app id 被 OS 键位层与热重载依赖。
 auto-edit {
     // ---- 动作注册表 ----
     action { id : "file.new"        handler : ".ActNew"        title : "新建"   icon : "file-plus"   shortcut : "Ctrl+N" }
