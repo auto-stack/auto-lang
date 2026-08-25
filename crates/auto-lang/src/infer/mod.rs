@@ -140,6 +140,12 @@ fn types_are_compatible(expected: &Type, found: &Type) -> bool {
                 types_are_compatible(&a.args[0], b)
             }
         (Type::List(a), Type::List(b)) => types_are_compatible(a, b),
+        // Plan 442 C2: use.rust types (e.g. List<serde_json::Value> fields in
+        // the musk backend corpus) previously fell to the catch-all `_ => false`
+        // and failed field checks with identical printed types ("expects
+        // `List<serde_json::Value>`, found `List<serde_json::Value>`").
+        // Same full_path = compatible; different paths stay incompatible.
+        (Type::Rust(a), Type::Rust(b)) => a.full_path == b.full_path,
         (Type::Map(k1, v1), Type::Map(k2, v2)) => {
             types_are_compatible(k1, k2) && types_are_compatible(v1, v2)
         }

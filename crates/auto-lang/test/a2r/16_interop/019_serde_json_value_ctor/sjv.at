@@ -1,0 +1,27 @@
+// Plan 032 G4: serde_json::Value variant construction takes OWNED values —
+// String → .to_string() on &str payloads; Number → serde_json::Number::from
+// (int) / Number::from_f64(...).unwrap_or(...) (float literal or float-typed
+// binding). Pins the behavior auto-ai daemon relies on (37 sed sites retired).
+use.rust serde_json::Value
+
+fn mk_num(n int) {
+    let a = Value.Number(n)
+    print(a)
+}
+
+fn mk_temp(t float) {
+    let b = Value.Number(t)
+    print(b)
+}
+
+fn main() {
+    let s = "bob"
+    let v = Value.String(s)
+    let i = Value.Number(4096)
+    let f = Value.Number(0.7)
+    mk_num(1)
+    mk_temp(0.5)
+    print(v)
+    print(i)
+    print(f)
+}

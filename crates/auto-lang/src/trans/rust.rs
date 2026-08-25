@@ -4170,6 +4170,63 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        // Plan 032 G4 (auto-ai consumer): serde_json::Value variant
+        // construction (`Value.String(x)` / `Value.Number(n)` after
+        // `use.rust serde_json[::Value]`). The external enum's variants take
+        // OWNED values, which no later branch knows (no tuple_field_types):
+        // String needs `.to_string()` on &str payloads; Number needs a
+        // serde_json::Number (int → `Number::from`, float-typed →
+        // `Number::from_f64(...).unwrap_or(...)`). Handle before everything —
+        // later generic branches would emit invalid shapes (consumers
+        // sed-patched 37 such sites in daemon output).
+        if let Expr::Dot(obj, variant) = call.name.as_ref() {
+            if let Expr::Ident(tname) = obj.as_ref() {
+                if tname.as_str() == "Value"
+                    && matches!(variant.as_str(), "String" | "Number")
+                    && call.args.args.len() == 1
+                    && self.uses.iter().any(|u| {
+                        let s = u.as_str();
+                        s == "serde_json" || s == "serde_json::Value"
+                    })
+                {
+                    if let Some(Arg::Pos(e)) = call.args.args.first() {
+                        match variant.as_str() {
+                            "String" => {
+                                write!(out, "Value::String(")?;
+                                self.expr(e, out)?;
+                                write!(out, ".to_string())")?;
+                            }
+                            _ => {
+                                let is_float = match e {
+                                    Expr::Float(..) | Expr::Double(..) => true,
+                                    // Params are registered into local_var_types
+                                    // at fn_decl entry (typed float/Double decls).
+                                    Expr::Ident(n) => matches!(
+                                        self.local_var_types.get(n.as_str()),
+                                        Some(Type::Float | Type::Double)
+                                    ),
+                                    _ => false,
+                                };
+                                write!(out, "Value::Number(serde_json::Number::")?;
+                                if is_float {
+                                    write!(out, "from_f64(")?;
+                                } else {
+                                    write!(out, "from(")?;
+                                }
+                                self.expr(e, out)?;
+                                if is_float {
+                                    write!(out, ").unwrap_or(serde_json::Number::from(0))")?;
+                                } else {
+                                    write!(out, ")")?;
+                                }
+                                write!(out, ")")?;
+                            }
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        }
         // Detect Rust macro patterns: name!("...") was parsed as name.collect()("...")
         // because '!' is the eager collection operator in Auto.
         // Parser creates: Expr::Bina(lhs, Dot, "collect") then wraps in Call.
