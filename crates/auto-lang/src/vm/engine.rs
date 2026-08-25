@@ -6679,6 +6679,26 @@ impl AutoVM {
                                 self.rc_push_str_idx(task, idx as usize);
                             }
                         }
+                    } else if type_name == "None" {
+                        // PLAN-044: None-receiver protocol — Option 链的 VM 坍缩
+                        // 语义(musk Json body 缺字段 → null 后的 unwrap_or 链):
+                        //   None.unwrap_or(d) → d;None.clone()/.ok() → None 透传。
+                        match method_name.as_str() {
+                            "unwrap_or" if arg_count == 1 => {
+                                let arg = task.ram.pop_nv();
+                                task.ram.pop_nv(); // receiver (None)
+                                task.ram.push_nv(arg);
+                            }
+                            "clone" | "ok" => {
+                                // identity: receiver stays as the result
+                            }
+                            _ => {
+                                return Err(VMError::RuntimeError(format!(
+                                    "CALL_SPEC: no function '{}' for type 'None'",
+                                    method_name
+                                )));
+                            }
+                        }
                     } else {
                         return Err(VMError::RuntimeError(
                             format!("CALL_SPEC: no function '{}' for type '{}'", func_name, type_name)
