@@ -1926,6 +1926,9 @@ impl RustTrans {
                 // never a trait. Never prefix with `impl`.
                 if self.local_struct_types.contains(name.as_str())
                     || self.is_imported_concrete_type(name.as_str())
+                    // Plan 447 ③-P1: locally-declared ENUMS are concrete too
+                    // (p_kind/p_peek return TokenKind; `impl TokenKind` is E0404)
+                    || self.known_enum_names.contains(name.as_str())
                     || name == "None"
                     || name.starts_with("Self::")
                 {
@@ -15388,10 +15391,14 @@ impl RustTrans {
                 "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
             EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
+            // Plan 447 ③-P1: plain scalars are all-unit by definition —
+            // enum values passed by value to helpers then reused
+            // (op_display(op) + binop_result(op)) are E0382 without Copy
+            // (lib TokenKind/Op/OpCode are all this shape).
             EnumKind::Scalar { repr_type: None } if payload_is_eq_safe => {
-                "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
-            EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Debug, PartialEq)]",
+            EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Copy, Debug, PartialEq)]",
             _ if all_variants_empty && payload_is_eq_safe => {
                 "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
@@ -20718,6 +20725,11 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
         // Pre-populate tag_types with all known enum names for Err boxing detection
         transpiler.tag_types = all_enum_names.clone();
+        // Plan 447 ③-P1: cross-module enum names for the return-type
+        // concrete-check (p_kind -> TokenKind must not become impl TokenKind)
+        for en in &all_enum_names {
+            transpiler.known_enum_names.insert(en.clone());
+        }
 
         // Pre-populate fn_str_param_indices with cross-module function signatures
         for (name, flags) in &global_fn_str_params {
@@ -21458,6 +21470,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         };
         transpiler.current_module_name = cur_mod_name.clone();
         transpiler.tag_types = all_enum_names.clone();
+        // Plan 447 ③-P1: cross-module enum names for the return-type
+        // concrete-check (p_kind -> TokenKind must not become impl TokenKind)
+        for en in &all_enum_names {
+            transpiler.known_enum_names.insert(en.clone());
+        }
 
         // Pre-populate cross-module param indices
         for (name, flags) in &global_fn_str_params {

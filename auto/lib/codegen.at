@@ -367,51 +367,51 @@ fn cg_pool_add(mut c CG, s str) int {
 
 // ── 表达式发射 ────────────────────────────────────────────────
 
-fn cg_binop_mnem(k str) str {
-    if k == "Add" || k == "AddEq" {
+fn cg_binop_mnem(k TokenKind) str {
+    if k == TokenKind.Add || k == TokenKind.AddEq {
         return "add"
     }
-    if k == "Sub" || k == "SubEq" {
+    if k == TokenKind.Sub || k == TokenKind.SubEq {
         return "sub"
     }
-    if k == "Star" || k == "MulEq" {
+    if k == TokenKind.Star || k == TokenKind.MulEq {
         return "mul"
     }
-    if k == "Div" || k == "DivEq" {
+    if k == TokenKind.Div || k == TokenKind.DivEq {
         return "div"
     }
-    if k == "Mod" || k == "ModEq" {
+    if k == TokenKind.Mod || k == TokenKind.ModEq {
         return "mod"
     }
-    if k == "Eq" {
+    if k == TokenKind.Eq {
         return "eq"
     }
-    if k == "Neq" {
+    if k == TokenKind.Neq {
         return "ne"
     }
-    if k == "Lt" {
+    if k == TokenKind.Lt {
         return "lt"
     }
-    if k == "Gt" {
+    if k == TokenKind.Gt {
         return "gt"
     }
-    if k == "Le" {
+    if k == TokenKind.Le {
         return "le"
     }
-    if k == "Ge" {
+    if k == TokenKind.Ge {
         return "ge"
     }
-    if k == "And" {
+    if k == TokenKind.And {
         return "and"
     }
-    if k == "Or" {
+    if k == TokenKind.Or {
         return "or"
     }
     return ""
 }
 
-fn cg_is_assign_op(k str) bool {
-    return k == "Asn" || k == "AddEq" || k == "SubEq" || k == "MulEq" || k == "DivEq" || k == "ModEq"
+fn cg_is_assign_op(k TokenKind) bool {
+    return k == TokenKind.Asn || k == TokenKind.AddEq || k == TokenKind.SubEq || k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq
 }
 
 // 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
@@ -423,45 +423,45 @@ fn cg_expr(mut c CG, mut p P, min int) {
     // 每次表达式求值从干净 flag 起;原子按需置位(str/arr)
     c.str_flag = 0
     c.arr_flag = 0
-    if k == "Not" {
+    if k == TokenKind.Not {
         p_next(p)
         cg_expr(c, p, 28)
         emit(c, "not", "", 0)
         c.str_flag = 0
         c.arr_flag = 0
-    } else if k == "Sub" || k == "Add" {
+    } else if k == TokenKind.Sub || k == TokenKind.Add {
         // 一元符号:operand 后发 neg(镜像 Rust 6414;一元 + 为 no-op)
         p_next(p)
         cg_expr(c, p, 28)
-        if k == "Sub" {
+        if k == TokenKind.Sub {
             emit(c, "neg", "", 0)
         }
         c.str_flag = 0
         c.arr_flag = 0
-    } else if k == "Int" {
+    } else if k == TokenKind.Int {
         var t = p_text(p)
         p_next(p)
         var cv = int_val(t).str()
         emit(c, "const.i32", cv, int_val(t))
-    } else if k == "Str" {
+    } else if k == TokenKind.Str {
         var s = p_text(p)
         p_next(p)
         var idx = cg_pool_add(c, s)
         emit(c, "load.str", "", idx)
         c.str_flag = 1
-    } else if k == "True" {
+    } else if k == TokenKind.True {
         p_next(p)
         emit(c, "push.bool", "true", 0)
-    } else if k == "False" {
+    } else if k == TokenKind.False {
         p_next(p)
         emit(c, "push.bool", "false", 0)
-    } else if k == "Char" {
+    } else if k == TokenKind.Char {
         // Plan 447 部分②:字符字面量 → const.i32 码点(镜像宿主 Char 编译)
         var t = p_text(p)
         p_next(p)
         var cp = t.char_at(0)
         emit(c, "const.i32", cp.str(), cp)
-    } else if k == "Ident" {
+    } else if k == TokenKind.Ident {
         var name = p_text(p)
         // Plan 447 部分②:枚举路径前瞻判定(不消费)——注册命中才拦截,
         // 否则落回原标识符路径(方法调用 a.len() 等不受影响)。
@@ -470,7 +470,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         // construct.instance —— 镜像宿主 generic_registry 路径 5128-5147)
         var is_enum_path = false
         var variant = ""
-        if p_peek(p, 1) == "Dot" {
+        if p_peek(p, 1) == TokenKind.Dot {
             var seg = p_peek_text(p, 2)
             var dk = name + "." + seg
             if cg_const_lookup(c, dk) != -999999 || cg_ctor_lookup(c, dk) >= 0 {
@@ -483,7 +483,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
             p_next(p)
             p_next(p)
             var key = name + "." + variant
-            if p_kind(p) == "LParen" {
+            if p_kind(p) == TokenKind.LParen {
                 var fc = cg_ctor_lookup(c, key)
                 if fc < 0 {
                     cg_err(c, "unknown enum ctor: " + key)
@@ -501,10 +501,10 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
         } else {
         p_next(p)
-        if name == "print" && p_kind(p) == "LParen" {
+        if name == "print" && p_kind(p) == TokenKind.LParen {
             cg_call_args(c, p)
             emit(c, "call.nat", "nat#10", 0)
-        } else if p_kind(p) == "LParen" {
+        } else if p_kind(p) == TokenKind.LParen {
             var fe = -1
             var fi = 0
             while fi < c.fns.len() {
@@ -529,40 +529,40 @@ fn cg_expr(mut c CG, mut p P, min int) {
             c.arr_flag = cg_var_arr(c, idx)
         }
         }
-    } else if k == "LSquare" {
+    } else if k == TokenKind.LSquare {
         // 数组字面量:elems 依次入栈,create.arr count=N(Rust 4865)
         p_next(p)
         skip_empty_lines(p)
         var n = 0
-        if p_kind(p) != "RSquare" {
+        if p_kind(p) != TokenKind.RSquare {
             cg_expr(c, p, 0)
             n = 1
-            while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
                 p_next(p)
                 skip_empty_lines(p)
                 cg_expr(c, p, 0)
                 n = n + 1
             }
         }
-        p_expect(p, "RSquare")
+        p_expect(p, TokenKind.RSquare)
         emit(c, "create.arr", "count=" + n.str(), n)
         c.arr_flag = 1
     } else {
-        cg_err(c, "unsupported expr atom: " + k)
+        cg_err(c, "unsupported expr atom: " + kind_name(k))
         return
     }
     // 后缀链:下标读(get.elem);.len()(仅数组接收者,镜像 Rust 7177 闸)
-    while c.err == "" && p_kind(p) == "LSquare" {
+    while c.err == "" && p_kind(p) == TokenKind.LSquare {
         p_next(p)
         skip_empty_lines(p)
         cg_expr(c, p, 0)
         skip_empty_lines(p)
-        p_expect(p, "RSquare")
+        p_expect(p, TokenKind.RSquare)
         emit(c, "get.elem", "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     }
-    if c.err == "" && p_kind(p) == "Dot" && p_peek_text(p, 1) == "len" && p_peek(p, 2) == "LParen" && p_peek(p, 3) == "RParen" {
+    if c.err == "" && p_kind(p) == TokenKind.Dot && p_peek_text(p, 1) == "len" && p_peek(p, 2) == TokenKind.LParen && p_peek(p, 3) == TokenKind.RParen {
         if c.arr_flag != 1 {
             cg_err(c, ".len() receiver is not an array")
             return
@@ -577,18 +577,18 @@ fn cg_expr(mut c CG, mut p P, min int) {
     }
     while c.err == "" {
         var opk = p_kind(p)
-        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" {
+        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen {
             break
         }
-        if opk == "Dot" && t_is_type_prop(p) {
+        if opk == TokenKind.Dot && t_is_type_prop(p) {
             break
         }
-        if opk == "Dot" {
+        if opk == TokenKind.Dot {
             cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
             break
         }
         if !is_op_kind(opk) {
-            cg_err(c, "expected infix op, got " + opk)
+            cg_err(c, "expected infix op, got " + kind_name(opk))
             break
         }
         var l = infix_l(opk)
@@ -600,7 +600,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
             break
         }
         p_next(p)
-        if opk == "Or" || opk == "And" {
+        if opk == TokenKind.Or || opk == TokenKind.And {
             skip_empty_lines(p)
         }
         var lhs_str = c.str_flag
@@ -608,7 +608,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         cg_expr(c, p, infix_r(opk))
         var rhs_str = c.str_flag
         var mn = cg_binop_mnem(opk)
-        if opk == "Add" && (lhs_str == 1 || rhs_str == 1) {
+        if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
             mn = "str.cat"
             c.str_flag = 1
         } else {
@@ -625,15 +625,15 @@ fn cg_expr(mut c CG, mut p P, min int) {
 fn cg_call_args(mut c CG, mut p P) {
     p_next(p)
     skip_empty_lines(p)
-    if p_kind(p) != "RParen" {
+    if p_kind(p) != TokenKind.RParen {
         cg_expr(c, p, 0)
-        while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+        while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
             p_next(p)
             skip_empty_lines(p)
             cg_expr(c, p, 0)
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
 }
 
 // ── 语句发射(.line 由语句步行者发,见 cg_stmts) ────────────────
@@ -649,11 +649,11 @@ fn cg_enum_decl(mut c CG, mut p P) {
     }
     var name = p_text(p)
     p_next(p)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var next_val = 0
     var idx = 0
-    while c.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while c.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         if !is_name_kind(p_kind(p)) {
             cg_err(c, "expected variant name")
             return
@@ -663,16 +663,16 @@ fn cg_enum_decl(mut c CG, mut p P) {
         var key = name + "." + vname
         var nfields = 0
         var has_payload = false
-        if p_kind(p) == "LParen" {
+        if p_kind(p) == TokenKind.LParen {
             p_next(p)
             skip_empty_lines(p)
             has_payload = true
-            if p_kind(p) != "RParen" {
+            if p_kind(p) != TokenKind.RParen {
                 var more = true
                 while more {
                     parse_type(p)
                     nfields = nfields + 1
-                    if p_kind(p) == "Comma" {
+                    if p_kind(p) == TokenKind.Comma {
                         p_next(p)
                         skip_empty_lines(p)
                     } else {
@@ -680,29 +680,29 @@ fn cg_enum_decl(mut c CG, mut p P) {
                     }
                 }
             }
-            p_expect(p, "RParen")
-        } else if p_kind(p) == "LBrace" {
+            p_expect(p, TokenKind.RParen)
+        } else if p_kind(p) == TokenKind.LBrace {
             p_next(p)
             skip_empty_lines(p)
             has_payload = true
-            while c.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+            while c.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
                 if !is_name_kind(p_kind(p)) {
                     cg_err(c, "expected variant field name")
                     return
                 }
                 p_next(p)
-                if p_kind(p) == "Colon" {
+                if p_kind(p) == TokenKind.Colon {
                     p_next(p)
                 }
                 parse_type(p)
                 nfields = nfields + 1
-                if p_kind(p) == "Comma" {
+                if p_kind(p) == TokenKind.Comma {
                     p_next(p)
                     skip_empty_lines(p)
                 }
                 skip_empty_lines(p)
             }
-            p_expect(p, "RBrace")
+            p_expect(p, TokenKind.RBrace)
         }
         // 判别值:scalar 链(auto/显式 = N)或载荷变体按位序(镜像宿主
         // scalar_value.unwrap_or(i);载荷不入 Display 值链)
@@ -710,9 +710,9 @@ fn cg_enum_decl(mut c CG, mut p P) {
         if has_payload {
             val = idx
         }
-        if p_kind(p) == "Asn" {
+        if p_kind(p) == TokenKind.Asn {
             p_next(p)
-            if p_kind(p) != "Int" {
+            if p_kind(p) != TokenKind.Int {
                 cg_err(c, "unsupported enum value")
                 return
             }
@@ -728,12 +728,12 @@ fn cg_enum_decl(mut c CG, mut p P) {
         }
         idx = idx + 1
         // 变体间空行:静默跳过
-        while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+        while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
             p_next(p)
         }
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
 }
 
 // ── is 语句发射(Plan 447 部分② Phase 6:镜像宿主 Stmt::Is 3417-3800)──
@@ -741,15 +741,15 @@ fn cg_enum_decl(mut c CG, mut p P) {
 // 臂体:{...} 块(compile_body_inline,不推作用域);return 单语句;
 // 其余单表达式(无 pop,镜像 Stmt::Expr 语句)
 fn cg_is_arm_body(mut c CG, mut p P) {
-    if p_kind(p) == "LBrace" {
+    if p_kind(p) == TokenKind.LBrace {
         cg_body_inline(c, p)
         return
     }
-    if p_kind(p) == "Return" {
+    if p_kind(p) == TokenKind.Return {
         cg_stmt(c, p)
         return
     }
-    if p_kind(p) == "Break" || p_kind(p) == "Continue" {
+    if p_kind(p) == TokenKind.Break || p_kind(p) == TokenKind.Continue {
         cg_err(c, "break/continue in is arm unsupported")
         return
     }
@@ -789,23 +789,23 @@ fn cg_is(mut c CG, mut p P) {
     cg_expr(c, p, 0)
     var t = cg_add_var(c, "_is_target", 0)
     cg_emit_store(c, t)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var end_jmps List<int> = List.new()
-    while c.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+    while c.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
         var k = p_kind(p)
-        if k == "If" {
+        if k == TokenKind.If {
             p_next(p)
             cg_expr(c, p, 0)
             var jz = emit(c, "jmp.z", "", -1)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             cg_is_arm_body(c, p)
             var je = emit(c, "jmp", "", -1)
             end_jmps.push(je)
             c.ins.get(jz).n = c.ins.len()
-        } else if k == "Else" {
+        } else if k == TokenKind.Else {
             p_next(p)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             cg_is_arm_body(c, p)
             // 宿主 Else 臂体后同样发 jmp→end(end 即紧邻指令,无害跳转)
             var jej = emit(c, "jmp", "", -1)
@@ -813,14 +813,14 @@ fn cg_is(mut c CG, mut p P) {
         } else {
             var pat = is_pattern(p)
             var extras List<E> = List.new()
-            while c.err == "" && p_kind(p) == "VBar" {
+            while c.err == "" && p_kind(p) == TokenKind.VBar {
                 p_next(p)
                 skip_empty_lines(p)
                 var np = is_pattern(p)
                 extras.push(np)
                 skip_empty_lines(p)
             }
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             skip_empty_lines(p)
             var fc = -1
             if pat.kind == "tag-cover" {
@@ -901,7 +901,7 @@ fn cg_is(mut c CG, mut p P) {
                     end_jmps.push(je3)
                     c.ins.get(jmp_next).n = c.ins.len()
                     skip_empty_lines(p)
-                    if p_kind(p) == "Comma" {
+                    if p_kind(p) == TokenKind.Comma {
                         p_next(p)
                         skip_empty_lines(p)
                     }
@@ -916,13 +916,13 @@ fn cg_is(mut c CG, mut p P) {
                 c.ins.get(shared_jz).n = c.ins.len()
             }
         }
-        if p_kind(p) == "Comma" {
+        if p_kind(p) == TokenKind.Comma {
             p_next(p)
             skip_empty_lines(p)
         }
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     var e = 0
     while e < end_jmps.len() {
         c.ins.get(end_jmps.get(e)).n = c.ins.len()
@@ -935,15 +935,15 @@ fn cg_stmt(mut c CG, mut p P) {
         return
     }
     var k = p_kind(p)
-    if k == "Enum" {
+    if k == TokenKind.Enum {
         cg_enum_decl(c, p)
         return
     }
-    if k == "Is" {
+    if k == TokenKind.Is {
         cg_is(c, p)
         return
     }
-    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+    if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
         p_next(p)
         var name = p_text(p)
         p_next(p)
@@ -951,7 +951,7 @@ fn cg_stmt(mut c CG, mut p P) {
             parse_type(p)
         }
         var is_arr = 0
-        if p_kind(p) == "Asn" {
+        if p_kind(p) == TokenKind.Asn {
             p_next(p)
             cg_expr(c, p, 0)
             is_arr = c.arr_flag
@@ -960,10 +960,10 @@ fn cg_stmt(mut c CG, mut p P) {
         cg_emit_store(c, idx)
         return
     }
-    if k == "Return" {
+    if k == TokenKind.Return {
         p_next(p)
         var kk = p_kind(p)
-        if kk == "Newline" || kk == "Semi" || kk == "RBrace" || kk == "EOF" {
+        if kk == TokenKind.Newline || kk == TokenKind.Semi || kk == TokenKind.RBrace || kk == TokenKind.EOF {
             emit(c, "push.nil", "", 0)
         } else {
             cg_expr(c, p, 0)
@@ -973,26 +973,26 @@ fn cg_stmt(mut c CG, mut p P) {
         emit(c, "ret", rs2, na)
         return
     }
-    if k == "If" {
+    if k == TokenKind.If {
         cg_if(c, p)
         return
     }
-    if k == "While" {
+    if k == TokenKind.While {
         cg_while(c, p)
         return
     }
-    if k == "For" {
+    if k == TokenKind.For {
         cg_for(c, p)
         return
     }
-    if k == "Fn" {
+    if k == TokenKind.Fn {
         cg_err(c, "nested fn unsupported")
         return
     }
     // 下标赋值 a[idx] = rhs:Rust 发射序为 rhs→arr→idx→set.elem
     // (value 展栈底,Rust 5954 quick-fix 栈序);单遍步行以游标
     // 快照两段解析——先越前扫到匹配 ] 后的 Asn,先发 rhs 再回头发 arr/idx
-    if k == "Ident" && p_peek(p, 1) == "LSquare" {
+    if k == TokenKind.Ident && p_peek(p, 1) == TokenKind.LSquare {
         var arr_name = p_text(p)
         var aidx = cg_lookup(c, arr_name)
         if aidx < 0 {
@@ -1031,7 +1031,7 @@ fn cg_stmt(mut c CG, mut p P) {
             skip_empty_lines(p)
             cg_expr(c, p, 0)
             skip_empty_lines(p)
-            p_expect(p, "RSquare")
+            p_expect(p, TokenKind.RSquare)
             emit(c, "set.elem", "", 0)
             p.pos = end_pos
             return
@@ -1039,7 +1039,7 @@ fn cg_stmt(mut c CG, mut p P) {
         p.pos = start
     }
     // 表达式语句:赋值特判
-    if k == "Ident" {
+    if k == TokenKind.Ident {
         var name = p_text(p)
         var nk = p_peek(p, 1)
         if cg_is_assign_op(nk) {
@@ -1051,7 +1051,7 @@ fn cg_stmt(mut c CG, mut p P) {
             p_next(p)
             var opk = p_kind(p)
             p_next(p)
-            if opk != "Asn" {
+            if opk != TokenKind.Asn {
                 cg_emit_load(c, idx)
             }
             cg_expr(c, p, 0)
@@ -1070,7 +1070,7 @@ fn cg_stmt(mut c CG, mut p P) {
 
 // 语句序列步行:.line(语句首 token 行)→ cg_stmt → eos
 fn cg_stmts(mut c CG, mut p P) {
-    while c.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while c.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         var ln = p_line(p).str()
         emit(c, ".line", ln, 0)
         cg_stmt(c, p)
@@ -1093,9 +1093,9 @@ fn cg_if(mut c CG, mut p P) {
         cg_body_inline(c, p)
         var je = emit(c, "jmp", "", -1)
         jends.push(je)
-        if p_kind(p) == "Else" {
+        if p_kind(p) == TokenKind.Else {
             p_next(p)
-            if p_kind(p) != "If" {
+            if p_kind(p) != TokenKind.If {
                 var z = 0
                 while z < jzs.len() {
                     c.ins.get(jzs.get(z)).n = c.ins.len()
@@ -1122,20 +1122,20 @@ fn cg_if(mut c CG, mut p P) {
 
 // 分支/循环体(compile_body_inline:不推作用域)
 fn cg_body_inline(mut c CG, mut p P) {
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     cg_stmts(c, p)
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
 }
 
 fn cg_eos(mut c CG, mut p P) {
     var has_sep = false
-    while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+    while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
         has_sep = true
         p_next(p)
     }
-    if p_kind(p) != "EOF" && p_kind(p) != "RBrace" && !has_sep {
-        cg_err(c, "expected eos, got " + p_kind(p))
+    if p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace && !has_sep {
+        cg_err(c, "expected eos, got " + kind_name(p_kind(p)))
     }
 }
 
@@ -1154,13 +1154,13 @@ fn cg_while(mut c CG, mut p P) {
 // 体;load var;const 1;add;store var;jmp top;end;循环域弹出(释放)
 fn cg_for(mut c CG, mut p P) {
     p_next(p)
-    if p_kind(p) != "Ident" {
+    if p_kind(p) != TokenKind.Ident {
         cg_err(c, "for: expected ident")
         return
     }
     var name = p_text(p)
     p_next(p)
-    if p_kind(p) != "In" {
+    if p_kind(p) != TokenKind.In {
         cg_err(c, "for: expected in")
         return
     }
@@ -1168,7 +1168,7 @@ fn cg_for(mut c CG, mut p P) {
     cg_push_scope(c)
     // start 以 min=18 界定(不吞 .. 的中缀绑定);显式吃 Range/RangeEq 再取 end
     cg_expr(c, p, 18)
-    if p_kind(p) == "Range" || p_kind(p) == "RangeEq" {
+    if p_kind(p) == TokenKind.Range || p_kind(p) == TokenKind.RangeEq {
         p_next(p)
     } else {
         cg_err(c, "for: expected range op")
@@ -1195,7 +1195,7 @@ fn cg_for(mut c CG, mut p P) {
 
 fn cg_fn(mut c CG, mut p P) {
     p_next(p)
-    if p_kind(p) != "Ident" {
+    if p_kind(p) != TokenKind.Ident {
         cg_err(c, "fn: expected name")
         return
     }
@@ -1211,41 +1211,41 @@ fn cg_fn(mut c CG, mut p P) {
     var prolog = emit(c, "fn.prolog", "", 0)
     var reserve = emit(c, "reserve", "", 0)
     var n_args = 0
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     skip_empty_lines(p)
     var running = true
     while running && c.err == "" {
         var k = p_kind(p)
-        if k == "View" || k == "Mut" || k == "Move" || k == "Take" || k == "Copy" {
+        if k == TokenKind.View || k == TokenKind.Mut || k == TokenKind.Move || k == TokenKind.Take || k == TokenKind.Copy {
             p_next(p)
         }
-        if p_kind(p) != "Ident" {
+        if p_kind(p) != TokenKind.Ident {
             running = false
         } else {
             var pname = p_text(p)
             p_next(p)
-            if p_kind(p) == "Colon" {
+            if p_kind(p) == TokenKind.Colon {
                 p_next(p)
             }
             if is_type_name(p) {
                 parse_type(p)
             }
-            if p_kind(p) == "Asn" {
+            if p_kind(p) == TokenKind.Asn {
                 p_next(p)
                 expr_pratt(p, 0)
             }
             cg_add_var(c, pname, 0)
             n_args = n_args + 1
-            if p_kind(p) == "Comma" {
+            if p_kind(p) == TokenKind.Comma {
                 p_next(p)
             } else {
                 running = false
             }
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     c.n_args = n_args
-    if p_kind(p) == "Arrow" {
+    if p_kind(p) == TokenKind.Arrow {
         p_next(p)
         parse_type(p)
         skip_empty_lines(p)
@@ -1255,10 +1255,10 @@ fn cg_fn(mut c CG, mut p P) {
     }
     // 体块(Stmt::Block:推作用域;语句 .line 由 cg_stmts 发)
     cg_push_scope(c)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     cg_stmts(c, p)
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     cg_pop_scope(c)
     // epilogue RET
     var rs = "n_args=" + n_args.str()
@@ -1343,8 +1343,8 @@ fn cg_compile(source str) CG {
     emit(c, "fn.prolog", "args=0, locals=16", 16)
     emit(c, "reserve", "16", 16)
     skip_empty_lines(p)
-    while c.err == "" && p_kind(p) != "EOF" {
-        if p_kind(p) == "Fn" {
+    while c.err == "" && p_kind(p) != TokenKind.EOF {
+        if p_kind(p) == TokenKind.Fn {
             cg_fn(c, p)
         } else {
             // 顶层非 fn 语句:wrapper 内步行(镜像 Rust compile_and_link
