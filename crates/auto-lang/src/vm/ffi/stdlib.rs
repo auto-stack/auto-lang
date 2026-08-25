@@ -3726,6 +3726,23 @@ pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, 
     })
 }
 
+/// Plan 442 C2: allocate + store a structured HTTP response and return its
+/// handle. The http_server's response-object path (`lookup_http_response`)
+/// recognizes the handle and writes status/headers/body directly, instead of
+/// JSON-encoding the raw handle. Mirrors `shim_http_response_redirect`'s
+/// allocation convention (NET_HANDLE_COUNTER + thread-local HTTP_RESPONSES).
+pub fn insert_http_response(
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+) -> u64 {
+    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    HTTP_RESPONSES.with(|r| {
+        r.borrow_mut().insert(handle, HttpResponseData { status, headers, body });
+    });
+    handle
+}
+
 /// Plan 346 5e (B6): `http.rate_limit(max_requests, window_ms)` — enable the
 /// per-client-IP fixed-window rate limiter on the async HTTP server.
 /// Requests beyond `max_requests` within `window_ms` get 429 + Retry-After.
@@ -6866,6 +6883,43 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("io.read_text_async", shim_io_read_text_async);
     natives.register_shim_by_name("auto.io.write_text_async", shim_io_write_text_async);
     natives.register_shim_by_name("io.write_text_async", shim_io_write_text_async);
+
+    // Plan 442 C2: musk backend extern response-constructor shims. The bare
+    // names resolve via NATIVE_ID_MAP (native_catalog) → fixed ids here; the
+    // shims build HttpResponseData handles served by the response-object path.
+    use crate::vm::ffi::musk_response_ctor::*;
+    natives.register_shim_by_name("ok_response", shim_ok_response);
+    natives.register_shim_by_name("err_response", shim_err_response);
+    natives.register_shim_by_name("json_response", shim_json_response);
+    natives.register_shim_by_name("error_response", shim_error_response);
+    natives.register_shim_by_name("text_response", shim_text_response);
+    natives.register_shim_by_name("empty_response", shim_empty_response);
+    natives.register_shim_by_name("err_json_response", shim_err_json_response);
+    natives.register_shim_by_name("to_response", shim_to_response);
+    natives.register_shim_by_name("resp_is_err", shim_resp_is_err);
+    natives.register_shim_by_name("resp_err_code", shim_resp_err_code);
+    natives.register_shim_by_name("resp_err_message", shim_resp_err_message);
+    natives.register_shim_by_name("sse_named_event", shim_sse_named_event);
+    natives.register_shim_by_name("sse_event", shim_sse_event);
+    natives.register_shim_by_name("sse_plain_event", shim_sse_plain_event);
+
+    // Plan 442 C2 item ③ path (b): pure-logic value accessor externs.
+    natives.register_shim_by_name("value_get_str", shim_value_get_str);
+    natives.register_shim_by_name("value_get_bool", shim_value_get_bool);
+    natives.register_shim_by_name("value_is_null", shim_value_is_null);
+    natives.register_shim_by_name("value_get", shim_value_get);
+    natives.register_shim_by_name("value_get_array", shim_value_get_array);
+
+    // Pure utility externs (random IDs/hex).
+    natives.register_shim_by_name("new_id", shim_new_id);
+    natives.register_shim_by_name("random_hex", shim_random_hex);
+    natives.register_shim_by_name("hash_password", shim_hash_password);
+    natives.register_shim_by_name("path_inner", shim_path_inner);
+
+    // Data-source extern (path (a) forwarding; default = constant).
+    natives.register_shim_by_name("app_config_effective_daemon_url", shim_app_config_effective_daemon_url);
+    // Value-returning data extern (path (a) forwarding; default = empty store).
+    natives.register_shim_by_name("relay_runs_list", shim_relay_runs_list);
 }
 
 // ============================================================================
@@ -6947,6 +7001,23 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
         ("", "get") | ("", "post") | ("", "put") | ("", "delete") | ("", "patch") => {
             super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
+        }
+
+        // Plan 442 C2 item ②: axum SSE form — `Sse.new(stream)` →
+        // `.keep_alive(KeepAlive.new())` → `.into_response()`. `stream` is a
+        // generator's iterator id; `into_response()` returns it so the server's
+        // iterator→SSE branch streams the yielded `Event` frames.
+        ("Sse", "new") => {
+            super::musk_response_ctor::shim_sse_new(task, vm)?;
+        }
+        ("Sse", "keep_alive") => {
+            super::musk_response_ctor::shim_sse_keep_alive(task, vm)?;
+        }
+        ("Sse", "into_response") => {
+            super::musk_response_ctor::shim_sse_into_response(task, vm)?;
+        }
+        ("KeepAlive", "new") => {
+            super::musk_response_ctor::shim_keepalive_new(task, vm)?;
         }
 
         // std::time::Instant(now/elapsed 已迁 plan-430 生成段)

@@ -5,9 +5,15 @@
 > 轨依 §6.1 裁定递延）已落地。**Phase C：C1 语料面全清**——后端 auto-src
 > 32 文件 **31/32 VM-clean**（第 32 = extern_sigs 旁车设计不计，五批修复
 > 927909ef0/…/ea51316fc）；**C2 serve 适配层已落地**（1f2c0163e，axum →
-> AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）。剩余：C2 验收三件
-> （extern 响应构造器 VM 侧实现/SSE 形态/musk 侧 api.at 契约接线 + parity
-> 套跑）+ C3 观察期未动 → 本计划**未全部完成**。
+> AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）；**C2 ① extern 响应
+> 构造器 VM 侧已落地**（2f68ff62c）+ **C2 ② SSE 形态适配层已覆盖**（6b989c00d）+
+> **C2 ③ auto-lang 侧路径 (b) 纯 extern 已 VM 化**（500173bcf..5042fd96e）+
+> **路径 (a) extern→host_bridge 转发 + RC 死区 UAF 修复已就绪**（a9bc3356d/
+> d3c36d540，字符串与 Value extern 均可 forward）。**auto-lang 侧 item ③
+> 前置全部就绪**——验收 3/4 的剩余在 **auto-musk 侧**（backend cdylib:
+> auto_backend_register 逐 extern 打包成 HostCallFn + parity harness 适配
+> 起 `musk serve` VM 对照 hw）。故验收标准第 3/4 条仍**未达成**，计划保持
+> 🟡 执行中，C3 观察期未动。
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -441,6 +447,90 @@
     ② **SSE 形态**（run_events 的 Sse/Event/KeepAlive 提取器链）适配层
     未覆盖;③ **musk 侧 api.at 契约/back.project 接线**（C1 已登记的
     动作面）+ parity 契约套跑对照 hw 后端全绿（C2 验收本体）。
+  - **✅ C2 ① extern 响应构造器 VM 侧已落地（2026-08-26，worktree
+    plan-442；2f68ff62c）**：musk 后端 .at handler 经 extern_sigs 胶水
+    搭响应（ok_response/err_response/json_response/error_response/
+    text_response/empty_response/err_json_response/to_response +
+    resp_is_err/resp_err_code/resp_err_message + sse_named_event/
+    sse_event/sse_plain_event），VM 侧此前为空体 no-op → 响应恒 null。
+    落地 = 新 `vm/ffi/musk_response_ctor.rs`（nullish 处理：`null` 字面量
+    编译为 CONST_I32 -1,故 is_null 或 i32==-1 视为无值）+ `stdlib::
+    insert_http_response`（HttpResponseData 注册）+ `native_catalog`
+    for_each_bigvm_native/NATIVE_ID_ENTRIES 裸名固定 ID（3114-3127,codegen
+    native_id 决策在 auto_modules 阴影前命中 → CALL_NAT）+ `register_stdlib_
+    ffi` register_shim_by_name 绑定。回归 `e2e_musk_response_constructors`
+    （/ok 200 "hello"、/err 500 {"error":"boom"}、/text 404、/to(null,..)
+    500——取代此前统一 200 null）；plan442 + catalog_integrity + e2e_notes_
+    crud 绿。
+  - **✅ C2 ② SSE 形态适配层已覆盖（2026-08-26，worktree plan-442；
+    6b989c00d）**：`Sse.new(stream).keep_alive(KeepAlive.new()).into_
+    response()` 链在 VM 侧全通——`musk_response_ctor` 新增 Sse{iter_id,
+    keep_alive}/KeepAlive 堆对象 + shim_sse_new/keepalive_new/keep_alive/
+    into_response（into_response 返 generator 迭代器 id,serve_async 既有
+    iterator→SSE 臂接管流式；sse_frame_from_nv 把 yielded Event 格式化为
+    `event: <name>\ndata: <payload>`（或 Result.Ok 解包）,非事件原始值保持
+    `data: N` 旧路径）；`shim_rust_stdlib_dispatch` 补 ("Sse","new"/
+    "keep_alive"/"into_response") + ("KeepAlive","new") 臂;http_server
+    async SSE 环改 pop_nv + sse_frame_from_nv（i32 -1 done 哨兵保留）。
+    回归 `e2e_sse_named_event_frames`（yield sse_named_event → event:/
+    data: 帧）+ `e2e_sse_chain`（全链流式）；既有 e2e_sse_generator_handler/
+    indirect_generator/concurrent_sse 仍绿。
+  - **▶ C2 ③（剩余）——musk 侧 api.at 契约/back.project 接线 + parity
+    契约套跑**：auto-lang 侧 `back.project` 外部后端装载（config.rs
+    external_backend_dir/resolve_back_api,Plan 061）+ `vm/backend_abi.rs`
+    cdylib 插件 ABI（auto_backend_register/auto_backend_abi_version，
+    merged 模式 api.at 端点注册）机制均已存在;
+    阻塞项 = **VM 侧业务 extern 的全量实现/装载**——`relay_runs_list`/
+    `relay_start_run`/`specs_load` 等 ~250 个 extern_sigs 业务符号目前仍是
+    空体 no-op → 业务 extern 返回恒 null → handler `ok_response(null)`
+    恒 "null"。**关键证据（2026-08-26 worktree plan-442，junction 指向
+    sibling auto-musk）**：`musk_backend_server_router_run` 探针全通（真实
+    relay_api.at `relay_routes()` → 13 路由注册 + `GET /api/forge/relay/
+    runs` 200）；`musk_backend_gap_enumerator` **31/32 模块 VM-clean**（编译
+    + link 全清）。两点佐证：① 运行期路径（extractor 编组 + call_closure +
+    ①/② 响应构造器/SSE）已闭环，数据面是唯一残差；② 业务 extern 实现面
+    依赖 auto-musk 的 **Rust registry**（`ProfessionRegistry::load()`、
+    `auto_ai_agent::builtin_names()`、`builtin_flows()`），auto-lang 仓
+    **不可直接访问**，且 auto-musk **尚无 cdylib ABI 构建**
+    （auto_backend_register 全仓 grep 零命中）——故 ③ 需二选一：
+    (a) auto-musk 侧落 backend ABI cdylib（Plan 061）+ auto-lang 侧把业务
+    extern 调用路由到装载的 HostCallFn；或 (b) 在 auto-lang 侧把业务 extern
+    逐一实现为 VM native。两者均为成规模工作，需后续多轮推进。故验收标准
+    第 3/4 条仍未达成。
+  - **🟢 C2 ③ 路径 (b) 已起步（2026-08-26，worktree plan-442；
+    e8843265a..5042fd96e）**：纯逻辑/工具 extern 已 VM 化（无 Rust-registry
+    依赖）——`value_get_str`/`value_get_bool`/`value_is_null`/`value_get`/
+    `value_get_array`（读 `__json_object` 字段，含 push_vm_value 回推 Value）
+    + `new_id`/`random_hex`（fastrand+hex）+ `hash_password`（sha256(s||p)）+
+    `path_inner`（Path 提取器串恒等）。回归 `e2e_value_accessors`（8 端点：
+    /acc /isnull /arr /nested /hex /newid /hash /path 全绿）+ plan442 +
+    catalog_integrity + ffi_dual。数据源 extern（relay_runs_list/
+    relay_start_run/specs_load/app_config_load 等）仍待后续——它们依赖
+    auto-musk Rust registry/store（`ProfessionRegistry`/`MuskAppConfig::load`/
+    store），auto-lang 仓不可访问，路径 (a) 的 host_bridge/backend_abi
+    HostCallFn 路由需 auto-musk 侧 cdylib 包装（extern_impl 逐函数签名
+    → `fn(&str)->Result<String,String>`）才可用。
+  - **🟢 C2 ③ 路径 (a) auto-lang 侧路由已落地（2026-08-26，worktree
+    plan-442；a9bc3356d）+ RC 死区 UAF 修复（d3c36d540）**：`host_bridge` 补
+    `has_host_call(name)`；新 `try_host_forward(name, task, vm, args_json)`——
+    该 extern 名已注册 host call（backend cdylib 的 auto_backend_register 注册
+    进来）时即 call_host 并把 JSON 结果推栈，否则返回 false 由 extern 提供默认
+    值。此前 relay_runs_list（Value extern）因 **CALL_NAT 死区释放吞掉新推堆
+    id 结果**（shim pop>push 时死区 [sp_after,sp_before) 覆盖推入槽；rc_push
+    +1 被死区立即 -1→0,调用方读到已释放对象）触发 UAF —— 已修：新
+    `push_value_from_json` 在 json_to_vm_value 推栈后对顶层堆引用**额外 retain
+    +1**（补偿死区释放，调用方 StakeGuard 消费时才归零释放，净无泄漏）。
+    接入 extern：`app_config_effective_daemon_url`（字符串返回，默认常量
+    "http://127.0.0.1:17654"，host-forward）+ `relay_runs_list`（Value 返回，
+    默认 {runs: []}，host-forward）。回归（serial --test-threads=1 避
+    AUTO_HTTP_PORT env 竞态）：`e2e_host_forward_app_config_daemon` +
+    `e2e_host_forward_relay_runs`（默认→常量/空形；register_host_call 后
+    →转发值）；catalog_integrity/plan442/ffi_dual/e2e_value_accessors 全绿。
+    **auto-lang 侧 path (a) 就绪（字符串+Value extern 均可 forward；1475d31e2
+    起 relay_runs_list 转发时把 Query 提取器 marshall 进 args_json，后端 cdylib
+    可收到实际请求参数；State 为 opaque，由后端经 workspace registry 自取）；
+    auto-musk 侧 cdylib（auto_backend_register 逐 extern 打包）+ parity
+    harness 适配仍为跨仓余量。**
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 

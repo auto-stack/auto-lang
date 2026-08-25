@@ -1111,6 +1111,241 @@ fn stream_handler() ~Iter<int> {
             assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
         }
 
+        /// Plan 442 C2 item ②: the SSE form — a generator yielding
+        /// `sse_named_event(name, payload)` objects must stream proper
+        /// `event: <name>\ndata: <payload>` frames (not the raw heap handle).
+        /// The bare `sse_named_event` is resolved to a VM shim which builds an
+        /// opaque Event object; `sse_frame_from_nv` formats it.
+        #[test]
+        fn e2e_sse_named_event_frames() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/events")]
+fn events_handler() ~Iter<int> {
+    yield sse_named_event("e1", "hello")
+    yield sse_named_event("e2", "world")
+}
+"#, 18744);
+            let resp = http_get(port, "/api/events");
+            let body = body_of(&resp);
+            assert!(
+                body.contains("event: e1\ndata: \"hello\""),
+                "named SSE frame 1: body={:?}", body
+            );
+            assert!(
+                body.contains("event: e2\ndata: \"world\""),
+                "named SSE frame 2: body={:?}", body
+            );
+        }
+
+        /// Plan 442 C2 item ②: the full `Sse.new(stream).keep_alive(
+        /// KeepAlive.new()).into_response()` chain — `into_response()` returns
+        /// the generator's iterator id, so the server's iterator→SSE branch
+        /// streams the yielded Event frames through the dispatch-3000 SSE arms.
+        #[test]
+        fn e2e_sse_chain() {
+            let port = start_server(r#"
+dep axum
+use.rust axum::response::sse::{Event, KeepAlive, Sse}
+
+#[api(method = "GET", path = "/api/sse-chain")]
+fn chain_handler() int {
+    var sse = Sse.new(events_stream())
+    return sse.keep_alive(KeepAlive.new()).into_response()
+}
+
+fn events_stream() ~Iter<int> {
+    yield sse_named_event("tick", "42")
+}
+"#, 18746);
+            let resp = http_get(port, "/api/sse-chain");
+            let body = body_of(&resp);
+            assert!(
+                body.contains("event: tick\ndata: \"42\""),
+                "Sse chain SSE frame: body={:?}", body
+            );
+        }
+
+        /// Plan 442 C2 item ③ path (b): pure-logic value-accessor externs
+        /// (`value_get_str`/`value_get_bool`/`value_is_null`) read fields out of
+        /// a `Value` built by `json.to_value`. They resolve as bare natives.
+        #[test]
+        fn e2e_value_accessors() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/acc")]
+fn acc() str {
+    let obj = json.to_value("{\"msg\":\"hi\",\"ok\":true}")
+    let s = value_get_str(obj.view, "msg")
+    let b = value_get_bool(obj.view, "ok")
+    if b {
+        return s
+    } else {
+        return "no"
+    }
+}
+
+#[api(method = "GET", path = "/isnull")]
+fn isnull() str {
+    let obj = json.to_value("null")
+    if value_is_null(obj.view) {
+        return "yes"
+    } else {
+        return "no"
+    }
+}
+
+#[api(method = "GET", path = "/arr")]
+fn arrrt() int {
+    let obj = json.to_value("{\"items\":[1,2,3]}")
+    return ok_response(value_get_array(obj.view, "items"))
+}
+
+#[api(method = "GET", path = "/nested")]
+fn nested() int {
+    let obj = json.to_value("{\"nested\":{\"x\":7}}")
+    return ok_response(value_get(obj.view, "nested"))
+}
+
+#[api(method = "GET", path = "/hex")]
+fn hex() str {
+    return random_hex(4)
+}
+
+#[api(method = "GET", path = "/newid")]
+fn newid() str {
+    return new_id(8)
+}
+
+#[api(method = "GET", path = "/hash")]
+fn hash() str {
+    return hash_password("p", "salt")
+}
+
+#[api(method = "GET", path = "/path")]
+fn path() str {
+    return path_inner("seg/ment")
+}
+"#, 18747);
+
+            let acc = http_get(port, "/acc");
+            assert!(
+                acc.starts_with("HTTP/1.1 200"),
+                "value accessor status: {}", acc.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&acc), "\"hi\"",
+                "value_get_str/value_get_bool: full = {:?}", acc
+            );
+
+            let isnull = http_get(port, "/isnull");
+            assert_eq!(
+                body_of(&isnull), "\"yes\"",
+                "value_is_null on JSON null: full = {:?}", isnull
+            );
+
+            let arr = http_get(port, "/arr");
+            assert_eq!(
+                body_of(&arr), "[1, 2, 3]",
+                "value_get_array: full = {:?}", arr
+            );
+
+            let nested = http_get(port, "/nested");
+            assert_eq!(
+                body_of(&nested), r#"{"x": 7}"#,
+                "value_get nested object: full = {:?}", nested
+            );
+
+            // random_hex/new_id return a hex string of the request length.
+            let h = body_of(&http_get(port, "/hex")).trim_matches('"').to_string();
+            assert_eq!(h.len(), 8, "random_hex(4) should be 8 hex chars: {:?}", h);
+            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "random_hex not hex: {:?}", h);
+
+            let n = body_of(&http_get(port, "/newid")).trim_matches('"').to_string();
+            assert_eq!(n.len(), 16, "new_id(8) should be 16 hex chars: {:?}", n);
+
+            // hash_password = sha256(salt || p) hex (64 chars, deterministic).
+            let h = body_of(&http_get(port, "/hash")).trim_matches('"').to_string();
+            assert_eq!(h.len(), 64, "hash_password should be 64 hex chars: {:?}", h);
+            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "hash_password not hex: {:?}", h);
+
+            // path_inner on a string is identity (axum Path pushes a string).
+            assert_eq!(
+                body_of(&http_get(port, "/path")), "\"seg/ment\"",
+                "path_inner identity: full = {:?}", http_get(port, "/path")
+            );
+        }
+
+        /// Plan 442 C2 item ③ path (a): a data-source extern
+        /// (`app_config_effective_daemon_url`) forwards to a registered host call
+        /// (`host_bridge`) when one is present, else serves a default constant.
+        /// Proves the extern→backend routing mechanism works when a backend
+        /// registers the call (auto-musk cdylib). String-returning → no nested
+        /// object RC pitfalls.
+        #[test]
+        fn e2e_host_forward_app_config_daemon() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/daemon")]
+fn daemon() str {
+    return app_config_effective_daemon_url(0)
+}
+"#, 18748);
+
+            // Phase 1: no host call registered → default constant.
+            let d = http_get(port, "/daemon");
+            assert_eq!(
+                body_of(&d), "\"http://127.0.0.1:17654\"",
+                "app_config_effective_daemon_url default: full = {:?}", d
+            );
+
+            // Phase 2: register a host call → the VM extern forwards to it.
+            crate::vm::host_bridge::register_host_call(
+                "app_config_effective_daemon_url",
+                std::sync::Arc::new(move |_args: &str| -> Result<String, String> {
+                    Ok(r#""http://10.0.0.5:9999""#.to_string())
+                }),
+            );
+            let f = http_get(port, "/daemon");
+            assert_eq!(
+                body_of(&f), "\"http://10.0.0.5:9999\"",
+                "app_config_effective_daemon_url host-forwarded: full = {:?}", f
+            );
+        }
+
+        /// Plan 442 C2 item ③ path (a): a Value-returning data extern
+        /// (`relay_runs_list`) forwards to a registered host call, else serves a
+        /// default. Exercises the heap-ref dead-zone compensation: the fresh
+        /// `{runs: []}` object survives the CALL_NAT dead-zone release.
+        #[test]
+        fn e2e_host_forward_relay_runs() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/runs")]
+fn runs() int {
+    return ok_response(relay_runs_list(0, 0))
+}
+"#, 18749);
+
+            // Phase 1: no host call → empty-store default shape.
+            let d = http_get(port, "/runs");
+            assert_eq!(
+                body_of(&d), r#"{"runs": []}"#,
+                "relay_runs_list default (empty store): full = {:?}", d
+            );
+
+            // Phase 2: register host call → the VM extern forwards to it,
+            // passing the (marshalled) request args in args_json.
+            crate::vm::host_bridge::register_host_call("relay_runs_list", std::sync::Arc::new(
+                move |args: &str| -> Result<String, String> {
+                    Ok(format!(r#"{{"runs":[{{"run_id":"r1","arg":{}}}]}}"#, args))
+                },
+            ));
+            let f = http_get(port, "/runs");
+            let fbody = body_of(&f);
+            // The shim marshalled q (an int 0 in this test) → "0", and forwarded it.
+            assert!(
+                fbody.contains(r#""run_id": "r1""#) && fbody.contains(r#""arg": 0"#),
+                "relay_runs_list host-forwarded with args: full = {:?}", fbody
+            );
+        }
+
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,
         /// or `max_attempts` is exhausted. Returns the last body.
         ///
@@ -1206,6 +1441,82 @@ fn new_handler() str {
                 body_of(&follow).contains("arrived"),
                 "follow target should serve body, got: {:?}",
                 follow
+            );
+        }
+
+        /// Plan 442 C2: the musk backend's extern response-constructor shims
+        /// (`ok_response`/`err_response`/`text_response` …) must produce real
+        /// HttpResponseData objects served by the response-object path —
+        /// instead of the empty `extern_sigs` no-op that answered `200 null`.
+        /// Bare names resolve via BIGVM_NATIVES → CALL_NAT, so no `use
+        /// extern_sigs` is needed here.
+        #[test]
+        fn e2e_musk_response_constructors() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/ok")]
+fn ok_handler() int {
+    return ok_response("hello")
+}
+
+#[api(method = "GET", path = "/err")]
+fn err_handler() int {
+    return err_response("boom", 500)
+}
+
+#[api(method = "GET", path = "/text")]
+fn text_handler() int {
+    return text_response("not found", 404)
+}
+
+#[api(method = "GET", path = "/to")]
+fn to_handler() int {
+    return to_response(null, "failed", 500)
+}
+"#, 18745);
+
+            let ok = http_get(port, "/ok");
+            assert!(
+                ok.starts_with("HTTP/1.1 200"),
+                "ok_response status: {}",
+                ok.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&ok), "\"hello\"",
+                "ok_response JSON body: full = {:?}", ok
+            );
+
+            let err = http_get(port, "/err");
+            assert!(
+                err.starts_with("HTTP/1.1 500"),
+                "err_response status: {}",
+                err.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&err), r#"{"error":"boom"}"#,
+                "err_response body: full = {:?}", err
+            );
+
+            let text = http_get(port, "/text");
+            assert!(
+                text.starts_with("HTTP/1.1 404"),
+                "text_response status: {}",
+                text.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&text), "not found",
+                "text_response body: full = {:?}", text
+            );
+
+            // to_response with a null value degrades to err_response.
+            let to = http_get(port, "/to");
+            assert!(
+                to.starts_with("HTTP/1.1 500"),
+                "to_response(null,…) status: {}",
+                to.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&to), r#"{"error":"failed"}"#,
+                "to_response(null,…) body: full = {:?}", to
             );
         }
 
@@ -2325,17 +2636,26 @@ async fn handle_connection_async(
                         // worker thread).
                         loop {
                             let next_task_id = vm.spawn_task(0, 1024);
-                            let next_val = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                            let yielded = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
                                 let mut nt = nt_arc.try_lock().unwrap();
                                 nt.ram.push_i32(iter_id as i32);
                                 let _ = crate::vm::native::shim_iterator_next(&mut nt, vm);
-                                nt.ram.pop_i32()
-                            } else { -1 };
+                                nt.ram.pop_nv()
+                            } else { auto_val::encode_i32(-1) };
                             vm.tasks.remove(&next_task_id);
-                            if next_val == -1 { break; }
-                            let frame = format!("data: {}\n\n", next_val);
-                            let _ = stream.write_all(frame.as_bytes()).await;
-                            let _ = stream.flush().await;
+                            // Iterator done sentinel: i32 -1.
+                            if auto_val::is_i32(yielded) && auto_val::decode_i32(yielded) == -1 {
+                                break;
+                            }
+                            // Plan 442 C2 item ②: yielded `Event` objects (or
+                            // `Ok(event)`) format as `event:`/`data:` frames;
+                            // raw scalars keep the legacy `data: N` path.
+                            if let Some(frame) =
+                                crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(vm, yielded)
+                            {
+                                let _ = stream.write_all(frame.as_bytes()).await;
+                                let _ = stream.flush().await;
+                            }
                             // Cooperative yield: let other connections' tasks run.
                             tokio::task::yield_now().await;
                         }

@@ -43,6 +43,8 @@ pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
 pub mod websocket;   // Plan 350: WebSocket client
 // Plan 442 C2: axum → AutoVM serve adapter (Router/extractor marshalling)
 pub mod axum_adapter;
+// Plan 442 C2: musk backend extern response constructors (VM-side shims)
+pub mod musk_response_ctor;
 // Plan 216 Phase 2: C FFI runtime
 pub mod c_ffi;
 

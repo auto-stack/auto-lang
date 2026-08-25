@@ -1430,6 +1430,40 @@ macro_rules! for_each_bigvm_native {
             ("realloc_array", 191, Void),
             ("free_array", 192, Void),
 
+            // === Plan 442 C2: musk backend extern response constructors ===
+            // Bare extern_sigs names (no canonical prefix) — the handlers call
+            // them to build HTTP responses; constructors return an i32
+            // HttpResponseData handle, resp_* read the {"error":...} envelope.
+            ("ok_response", 3114, Int),
+            ("err_response", 3115, Int),
+            ("json_response", 3116, Int),
+            ("error_response", 3117, Int),
+            ("text_response", 3118, Int),
+            ("empty_response", 3119, Int),
+            ("err_json_response", 3120, Int),
+            ("to_response", 3121, Int),
+            ("resp_is_err", 3122, Bool),
+            ("resp_err_code", 3123, Int),
+            ("resp_err_message", 3124, String),
+            ("sse_named_event", 3125, Int),
+            ("sse_event", 3126, Int),
+            ("sse_plain_event", 3127, Int),
+            // Pure-logic value accessors (no Rust-registry dependency).
+            ("value_get_str", 3128, String),
+            ("value_get_bool", 3129, Bool),
+            ("value_is_null", 3130, Bool),
+            ("value_get", 3131, Int),
+            ("value_get_array", 3132, Int),
+            // Pure utility externs (auto-lang has fastrand + hex).
+            ("new_id", 3133, String),
+            ("random_hex", 3134, String),
+            ("hash_password", 3135, String),
+            ("path_inner", 3136, String),
+            // Data-source extern (path (a) forwarding; default = constant).
+            ("app_config_effective_daemon_url", 3137, String),
+            // Value-returning data extern (path (a) forwarding; default = empty).
+            ("relay_runs_list", 3138, Int),
+
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
             ("String.len", 171, Void),
@@ -2155,6 +2189,35 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("alloc_array", 190),
     ("realloc_array", 191),
     ("free_array", 192),
+    // === Plan 442 C2: musk backend extern response constructors ===
+    ("ok_response", 3114),
+    ("err_response", 3115),
+    ("json_response", 3116),
+    ("error_response", 3117),
+    ("text_response", 3118),
+    ("empty_response", 3119),
+    ("err_json_response", 3120),
+    ("to_response", 3121),
+    ("resp_is_err", 3122),
+    ("resp_err_code", 3123),
+    ("resp_err_message", 3124),
+    ("sse_named_event", 3125),
+    ("sse_event", 3126),
+    ("sse_plain_event", 3127),
+    // Pure-logic value accessors.
+    ("value_get_str", 3128),
+    ("value_get_bool", 3129),
+    ("value_is_null", 3130),
+    ("value_get", 3131),
+    ("value_get_array", 3132),
+    // Pure utility externs.
+    ("new_id", 3133),
+    ("random_hex", 3134),
+    ("hash_password", 3135),
+    ("path_inner", 3136),
+    // Data-source extern (path (a) forwarding).
+    ("app_config_effective_daemon_url", 3137),
+    ("relay_runs_list", 3138),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

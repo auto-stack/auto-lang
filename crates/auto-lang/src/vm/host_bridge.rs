@@ -45,3 +45,8 @@ pub fn call_host(name: &str, args_json: &str) -> Result<String, String> {
 pub fn has_host_calls() -> bool {
     !HOST_CALLS.lock().unwrap().is_empty()
 }
+
+/// 是否已注册某个具体名字的宿主桥函数(data-extern 转发用)。
+pub fn has_host_call(name: &str) -> bool {
+    HOST_CALLS.lock().unwrap().contains_key(name)
+}
