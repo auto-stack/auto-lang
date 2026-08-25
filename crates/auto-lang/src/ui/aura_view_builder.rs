@@ -1485,11 +1485,18 @@ impl<'a> AuraViewBuilder<'a> {
                     v
                 })
                 .collect();
+            // Plan 448 续 (center parity): Vue's `center` compiles to
+            // `flex flex-col items-center justify-center` — children are
+            // EACH horizontally centered, not left-packed inside a shrink
+            // column. iced Column defaults cross-axis children to start, so
+            // a narrow text above a wider row sat left of the row's center
+            // (002-counter VM vs Vue). Carrying ItemsCenter lets
+            // build_column's align_items mapping center them like Vue.
             View::Column {
                 children: views,
                 spacing: 0,
                 padding: 0,
-                style: None,
+                style: Some(Style::default().add(StyleClass::ItemsCenter)),
             }
         };
 
@@ -2966,11 +2973,13 @@ let tabs_inner = View::Row {
                 .iter()
                 .map(|n| self.convert_node_with(n, bindings))
                 .collect();
+            // Plan 448 续 (center parity): see convert_center_tracked_ctx —
+            // items-center so each child centers horizontally like Vue.
             View::Column {
                 children: views,
                 spacing: 0,
                 padding: 0,
-                style: None,
+                style: Some(Style::default().add(StyleClass::ItemsCenter)),
             }
         };
 

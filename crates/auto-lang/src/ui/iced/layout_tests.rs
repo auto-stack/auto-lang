@@ -24,7 +24,7 @@ fn styled_view(style: &str) -> View<()> {
     }
 }
 
-fn bounds_of(ui: &mut iced_test::Simulator<'_, (), iced::Theme, iced::Renderer>, needle: &str) -> (f32, f32, f32, f32) {
+fn bounds_of<M: Clone + std::fmt::Debug>(ui: &mut iced_test::Simulator<'_, M, iced::Theme, iced::Renderer>, needle: &str) -> (f32, f32, f32, f32) {
     let t = ui.find(needle).expect("text not found");
     let b = t.bounds();
     (b.x, b.y, b.width, b.height)
@@ -70,6 +70,111 @@ fn row_fill_child_keeps_sibling_visible() {
     assert!(x >= 0.0);
 }
 
+/// Plan 448 续 (center parity, END-TO-END): the REAL 002-counter source
+/// through parse → extract → DynamicComponent view → into_iced → headless
+/// layout. The counter text must sit at the button row's horizontal center
+/// (Vue `items-center` parity).
+#[test]
+fn center_parity_002_counter_end_to_end() {
+    let src = concat!(
+        "widget App {
+",
+        "    model { var count int = 0 }
+",
+        "    view {
+",
+        "        center {
+",
+        "            text `Counter: 0`
+",
+        "            row {
+",
+        "                button \"-\" { onclick: () => {.count -= 1} }
+",
+        "                button \"Reset\" { onclick: () => {.count = 0} }
+",
+        "                button \"+\" { onclick: () => {.count += 1} }
+",
+        "            }
+",
+        "        }
+",
+        "    }
+",
+        "}
+"
+    );
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::Parser::from(src).with_session(session);
+    let ast = parser.parse().expect("parse");
+    let decl = ast.stmts.iter().find_map(|s| match s {
+        crate::ast::Stmt::WidgetDecl(d) => Some(d),
+        _ => None,
+    }).expect("decl");
+    let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+    let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
+    let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+    let mut ui = simulator(view.into_iced());
+    let (tx, _ty, tw, _th) = bounds_of(&mut ui, "Counter: 0");
+    // button labels: find all three and take the row extent
+    let (b1x, _b1y, b1w, _b1h) = bounds_of(&mut ui, "-");
+    let (b3x, _b3y, b3w, _b3h) = bounds_of(&mut ui, "+");
+    let tc = tx + tw / 2.0;
+    let rc = (b1x + b1w / 2.0 + b3x + b3w / 2.0) / 2.0;
+    assert!(
+        (tc - rc).abs() < 1.5,
+        "text center {tc} must equal button-row center {rc} (center items parity)"
+    );
+}
+
+/// Plan 448 续 (center parity): `center { text; row{…} }` — the auto-wrapped
+/// multi-child column carries ItemsCenter, so every child is horizontally
+/// centered like Vue's `flex flex-col items-center`; a narrow text above a
+/// wider row must sit at the row's CENTER, not at its left edge (002-counter
+/// VM vs Vue divergence).
+#[test]
+fn center_column_items_center_centers_narrow_child() {
+    use crate::ui::style::{SizeValue, StyleClass};
+    let inner = View::<()>::Column {
+        children: vec![
+            View::Text {
+                content: "Counter: 0".to_string(),
+                style: None,
+            },
+            View::Row {
+                children: vec![View::Text {
+                    content: "AAAAAAAAAAAAAAAAAAAA".to_string(),
+                    style: None,
+                }],
+                spacing: 0,
+                padding: 0,
+                style: None,
+            },
+        ],
+        spacing: 0,
+        padding: 0,
+        style: Some(Style::default().add(StyleClass::ItemsCenter)),
+    };
+    let view = View::container(inner)
+        .center_x()
+        .center_y()
+        .with_style(
+            Style::default()
+                .add(StyleClass::Width(SizeValue::Full))
+                .add(StyleClass::Height(SizeValue::Full)),
+        )
+        .build();
+    let mut ui = simulator(view.into_iced());
+    let (tx, _ty, tw, _th) = bounds_of(&mut ui, "Counter: 0");
+    let (rx, _ry, rw, _rh) = bounds_of(&mut ui, "AAAAAAAAAAAAAAAAAAAA");
+    let tc = tx + tw / 2.0;
+    let rc = rx + rw / 2.0;
+    assert!(
+        (tc - rc).abs() < 1.0,
+        "text center {tc} must equal row center {rc} (items-center column)"
+    );
+}
+
 /// Plan 414 §7.2 (auto-margin variant) / 418 regression lock: `ml-auto`
 /// pushes the wrapped group to the RIGHT edge of the row — the toolbar
 /// right-alignment that 414 had to disable and 418 re-enabled.
@@ -112,6 +217,7 @@ fn nested_row_button_keeps_bounds() {
         children: vec![View::Button {
             label: "NESTEDBTN".to_string(),
             onclick: (),
+            disabled: false,
             style: Style::parse("h-7 w-7 px-0 py-0").ok(),
             on_right_click: None,
             content: None,
@@ -194,6 +300,7 @@ fn nested_row_icon_button_keeps_bounds() {
     let icon_btn = |label: &str| View::<()>::Button {
         label: label.to_string(),
         onclick: (),
+        disabled: false,
         style: crate::ui::style::Style::parse("h-7 w-7 px-0 py-0").ok(),
         on_right_click: None,
         content: None,
@@ -204,6 +311,7 @@ fn nested_row_icon_button_keeps_bounds() {
             View::Button {
                 label: "TB1".to_string(),
                 onclick: (),
+                disabled: false,
                 style: None,
                 on_right_click: None,
                 content: None,
@@ -239,6 +347,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
             anchor: PopoverAnchor::Widget(Box::new(View::Button {
                 label: "ANCHORBTN".to_string(),
                 onclick: (),
+                disabled: false,
                 style: Style::parse(anchor_style).ok(),
                 on_right_click: None,
                 content: None,
@@ -340,6 +449,7 @@ fn popover_closed_hides_panel() {
             anchor: PopoverAnchor::Widget(Box::new(View::Button {
                 label: "CLOSEDBTN".to_string(),
                 onclick: (),
+                disabled: false,
                 style: None,
                 on_right_click: None,
                 content: None,
@@ -378,6 +488,7 @@ fn popover_semantics_view() -> View<PopMsg> {
     let panel_item = |label: &str| View::<PopMsg>::Button {
         label: label.to_string(),
         onclick: PopMsg::Item,
+        disabled: false,
         style: None,
         on_right_click: None,
         content: None,
@@ -387,6 +498,7 @@ fn popover_semantics_view() -> View<PopMsg> {
             anchor: PopoverAnchor::Widget(Box::new(View::Button {
                 label: "TRIGBTN".to_string(),
                 onclick: PopMsg::Trig,
+                disabled: false,
                 style: None,
                 on_right_click: None,
                 content: None,
