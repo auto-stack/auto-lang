@@ -171,6 +171,12 @@ pub struct RustTrans {
     /// emit `.clone()` because `x` is `&T`. Cleared per function (function-scope
     /// set; nested loops just add to it).
     borrowed_iter_vars: std::collections::HashSet<AutoStr>,
+    /// Plan 032 G2-core: `Some(x)` is-arm bindings whose scrutinee is a
+    /// `.get(...)` call (Map/Vec/Value lookups — Rust returns `Option<&V>`).
+    /// The binding is `&V` in the emitted Rust: returning it / binding it to
+    /// an owned local must emit `.clone()`. Registered per-arm (saved/restored
+    /// around the arm body) at the is-arm pattern emitters.
+    get_ref_bindings: std::collections::HashSet<AutoStr>,
     /// Plan 396 §2.2: `Ok(x)` is-arm bindings whose scrutinee yields a
     /// BY-VALUE iterator (fs.read_dir → std::fs::ReadDir: IntoIterator is
     /// impl'd for ReadDir only, `&ReadDir` is not an iterator → E0277).
@@ -399,6 +405,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            get_ref_bindings: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
@@ -481,6 +488,7 @@ impl RustTrans {
             struct_fields: HashMap::new(),
             struct_field_types: HashMap::new(),
             borrowed_iter_vars: std::collections::HashSet::new(),
+            get_ref_bindings: std::collections::HashSet::new(),
             by_value_iter_bindings: std::collections::HashSet::new(),
             str_slice_pattern_bindings: std::collections::HashSet::new(),
             mutated_let_bindings: std::collections::HashSet::new(),
@@ -1295,6 +1303,49 @@ impl RustTrans {
                                 if add_semi { out.write(b";")?; }
                                 return Ok(());
                             }
+                        }
+                    }
+                }
+            }
+        }
+        // Plan 032 G2-core: `Some(v) => return v` over a `.get()` scrutinee —
+        // the binding is `&V`; returning the owned value needs `.clone()`
+        // (E0515/E0308 otherwise). Also the wrapped forms `return Ok(v)` /
+        // `return Some(v)` (dedicated Expr::Ok / Expr::Some nodes, plus a
+        // bare-Call shape for module-qualified constructors).
+        if let Expr::Ident(name) = expr {
+            if self.get_ref_bindings.contains(name) {
+                write!(out, "return {}.clone()", name)?;
+                if add_semi { out.write(b";")?; }
+                return Ok(());
+            }
+        }
+        if let Expr::Ok(inner) = expr {
+            if let Expr::Ident(name) = inner.as_ref() {
+                if self.get_ref_bindings.contains(name) {
+                    write!(out, "return Ok({}.clone())", name)?;
+                    if add_semi { out.write(b";")?; }
+                    return Ok(());
+                }
+            }
+        }
+        if let Expr::Some(inner) = expr {
+            if let Expr::Ident(name) = inner.as_ref() {
+                if self.get_ref_bindings.contains(name) {
+                    write!(out, "return Some({}.clone())", name)?;
+                    if add_semi { out.write(b";")?; }
+                    return Ok(());
+                }
+            }
+        }
+        if let Expr::Call(call) = expr {
+            if let Expr::Ident(callee) = call.name.as_ref() {
+                if matches!(callee.as_ref(), "Ok" | "Some") {
+                    if let Some(crate::ast::Arg::Pos(Expr::Ident(inner))) = call.args.args.first() {
+                        if self.get_ref_bindings.contains(inner) {
+                            write!(out, "return {}({}.clone())", callee, inner)?;
+                            if add_semi { out.write(b";")?; }
+                            return Ok(());
                         }
                     }
                 }
@@ -4169,6 +4220,10 @@ impl RustTrans {
                     if i > 0 { write!(out, " ")?; }
                     match branch {
                         crate::ast::IsBranch::EqBranch(patterns, body) => {
+                            let saved_get_refs = self.get_ref_bindings.clone();
+                            if Self::is_borrowing_get_scrutinee(&is.target) {
+                                self.register_get_ref_bindings(patterns);
+                            }
                             for (j, pat) in patterns.iter().enumerate() {
                                 if j > 0 { write!(out, " | ")?; }
                                 self.expr(pat, out)?;
@@ -4176,6 +4231,7 @@ impl RustTrans {
                             write!(out, " => ")?;
                             self.write_body_inline(body, out)?;
                             write!(out, ",")?;
+                            self.get_ref_bindings = saved_get_refs;
                         }
                         crate::ast::IsBranch::IfBranch(cond, body) => {
                             self.expr(cond, out)?;
@@ -7341,20 +7397,28 @@ impl RustTrans {
                                 // directly. Adding & makes &&str (E0277 trait bound).
                                 Expr::Str(_) | Expr::CStr(_) => false,
                                 Expr::Ident(name) => {
-                                // Owned String local, but NOT a str param
-                                // (params declared `str` are &str in Rust).
-                                // Plan 018 §14 W1: composite keys (Type::Tuple)
-                                // also need & — HashMap::get(&Q) where K:
-                                // Borrow<Q>; `&tuple` is the direct key ref
-                                // (no Display needed). Unknown types get &
-                                // conservatively (borrow is always safe for
-                                // HashMap lookups).
-                                !self.current_fn_str_params.contains(name)
-                                    && self.local_var_types.get(name)
-                                        .map(|ty| matches!(ty,
-                                            Type::StrOwned | Type::StrSlice | Type::StrFixed(_)
-                                            | Type::CStrLit | Type::Tuple(_)))
-                                        .unwrap_or(true)
+                                    // Owned String local, but NOT a str param
+                                    // (params declared `str` are &str in Rust).
+                                    // Plan 018 §14 W1: composite keys (Type::Tuple)
+                                    // also need & — HashMap::get(&Q) where K:
+                                    // Borrow<Q>; `&tuple` is the direct key ref
+                                    // (no Display needed). Unknown types get &
+                                    // conservatively (borrow is always safe for
+                                    // HashMap lookups).
+                                    // Plan 032 G2-core: non-primitive KEY types
+                                    // (enum/struct/tag/generic — e.g. a
+                                    // HashMap<ModelTier, _> lookup) also need
+                                    // `&`: `K: Borrow<K>` holds for every K, so
+                                    // borrowing is always safe. Int/Uint stay
+                                    // excluded (Vec::get takes usize by value).
+                                    !self.current_fn_str_params.contains(name)
+                                        && self.local_var_types.get(name)
+                                            .map(|ty| matches!(ty,
+                                                Type::StrOwned | Type::StrSlice | Type::StrFixed(_)
+                                                | Type::CStrLit | Type::Tuple(_)
+                                                | Type::User(_) | Type::Tag(_) | Type::Enum(_)
+                                                | Type::GenericInstance(_)))
+                                            .unwrap_or(true)
                                 }
                                 // Field access (cfg.default_provider) — a String
                                 // field; borrow it.
@@ -11522,6 +11586,17 @@ impl RustTrans {
             }
         }
 
+        // Plan 032 G2-core: init from a `Some(x)` is-arm binding over a
+        // `.get()` scrutinee — the binding is `&V`; the new local must OWN
+        // its value (often mutated right after: `var updated = x;
+        // updated.push(...)`) → emit `x.clone()`.
+        if let Expr::Ident(name) = &store.expr {
+            if self.get_ref_bindings.contains(name.as_str()) {
+                write!(out, "{}.clone()", Self::rust_ident(name.as_str()))?;
+                return Ok(());
+            }
+        }
+
         // Plan 159 6B-2.2: Wrap array elements in Box::new() for []Spec types
         let is_spec_slice = matches!(&store.ty, Type::Slice(slice) if matches!(&*slice.elem, Type::Spec(_)));
         if is_spec_slice {
@@ -12899,6 +12974,36 @@ impl RustTrans {
         Ok(())
     }
 
+    /// Plan 032 G2-core: is-arm body with mixed-arm normalization — when any
+    /// sibling arm is a multi-stmt block, a single value-bearing Expr arm
+    /// must be wrapped as `{ expr; }` (statement-position match, E0308
+    /// otherwise). Value-bearing = a METHOD CALL (`m.insert(...)` returns
+    /// Option, `tx.send(...)` …); println-style free-fn calls and literals
+    /// are unit/common and stay inline (wrapping them only churns goldens).
+    /// Return arms diverge and stay inline.
+    fn write_is_arm_body(
+        &mut self,
+        body: &Body,
+        sink: &mut Sink,
+        has_block_arm: bool,
+    ) -> AutoResult<()> {
+        let is_value_bearing_method_call = matches!(body.stmts.first(),
+            Some(Stmt::Expr(Expr::Call(c)))
+                if matches!(c.name.as_ref(),
+                    Expr::Dot(_, _) | Expr::Bina(_, Op::Dot, _)));
+        if has_block_arm
+            && body.stmts.len() == 1
+            && is_value_bearing_method_call
+        {
+            sink.body.write(b"{ ")?;
+            self.write_match_arm_body(body, sink)?;
+            sink.body.write(b"; }")?;
+            Ok(())
+        } else {
+            self.write_match_arm_body(body, sink)
+        }
+    }
+
     /// Write a match arm body: single expression inline, or block for multiple statements
     fn write_match_arm_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
         if body.stmts.is_empty() {
@@ -12980,6 +13085,58 @@ impl RustTrans {
             matches!(m, Some("strip_prefix") | Some("strip_suffix") | Some("to_str"))
         } else {
             false
+        }
+    }
+
+    /// Plan 032 G2-core: the is-scrutinee is `<expr>.get(...)` — Rust's
+    /// Map/Vec/Value `get` returns `Option<&V>`, so a `Some(x)` arm binds
+    /// `x: &V`. Covers both method-callee AST shapes (Dot and Bina-Dot).
+    /// No-arg `.get()` (e.g. slice windows) is excluded — requires ≥1 arg.
+    fn is_borrowing_get_scrutinee(target: &Expr) -> bool {
+        if let Expr::Call(call) = target {
+            if call.args.args.is_empty() {
+                return false;
+            }
+            let m = match call.name.as_ref() {
+                Expr::Dot(_, method) => Some(method.as_str()),
+                Expr::Bina(_, Op::Dot, method) => {
+                    if let Expr::Ident(m) = method.as_ref() { Some(m.as_str()) } else { None }
+                }
+                _ => None,
+            };
+            matches!(m, Some("get"))
+        } else {
+            false
+        }
+    }
+
+    /// Plan 032 G2-core: collect the `Some(x)` pattern binding names of an
+    /// is-arm's pattern list into `get_ref_bindings` (call only when the
+    /// scrutinee passed `is_borrowing_get_scrutinee`). Three pattern shapes:
+    /// OptionPattern (the parser's canonical Some(x)/None), Expr::Some, and a
+    /// Call named Some.
+    fn register_get_ref_bindings(&mut self, patterns: &[Expr]) {
+        for pat in patterns {
+            match pat {
+                Expr::OptionPattern(oc) => {
+                    if let Some(b) = &oc.binding {
+                        self.get_ref_bindings.insert(b.clone());
+                    }
+                }
+                Expr::Some(inner) => {
+                    if let Expr::Ident(b) = inner.as_ref() {
+                        self.get_ref_bindings.insert(b.clone());
+                    }
+                }
+                Expr::Call(c) if matches!(c.name.as_ref(),
+                    Expr::Ident(n) if n.as_str() == "Some") =>
+                {
+                    if let Some(crate::ast::Arg::Pos(Expr::Ident(b))) = c.args.args.first() {
+                        self.get_ref_bindings.insert(b.clone());
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -13090,6 +13247,18 @@ impl RustTrans {
         sink.body.write(b" {\n")?;
         self.indent();
 
+        // Plan 032 G2-core: statement-position is with MIXED arm shapes —
+        // one arm a multi-stmt block (unit type), another a bare
+        // value-bearing expression (e.g. `map.insert(...)` → Option) — is
+        // E0308 (arms have incompatible types). The match's value is
+        // discarded here (the dispatcher appends `;`), so wrap single-Expr
+        // arms in `{ ...; }` when any arm is a block.
+        let has_block_arm = is_stmt.branches.iter().any(|b| match b {
+            IsBranch::EqBranch(_, body)
+            | IsBranch::IfBranch(_, body)
+            | IsBranch::ElseBranch(body) => body.stmts.len() > 1,
+        });
+
         for branch in &is_stmt.branches {
             self.print_indent(&mut sink.body)?;
 
@@ -13198,18 +13367,27 @@ impl RustTrans {
                         }
                     }
                     sink.body.write(b" => ")?;
-                    self.write_match_arm_body(body, sink)?;
+                    // Plan 032 G2-core: register this arm's Some(x) bindings
+                    // when the scrutinee is a `.get()` (binding is `&V`), so
+                    // the body's return/let-init emitters can auto-clone.
+                    // Scoped to this arm only (restored after the body).
+                    let saved_get_refs = self.get_ref_bindings.clone();
+                    if Self::is_borrowing_get_scrutinee(&is_stmt.target) {
+                        self.register_get_ref_bindings(patterns);
+                    }
+                    self.write_is_arm_body(body, sink, has_block_arm)?;
+                    self.get_ref_bindings = saved_get_refs;
                     sink.body.write(b",\n")?;
                 }
                 IsBranch::IfBranch(expr, body) => {
                     self.expr(expr, &mut sink.body)?;
                     sink.body.write(b" if true => ")?;
-                    self.write_match_arm_body(body, sink)?;
+                    self.write_is_arm_body(body, sink, has_block_arm)?;
                     sink.body.write(b",\n")?;
                 }
                 IsBranch::ElseBranch(body) => {
                     sink.body.write(b"_ => ")?;
-                    self.write_match_arm_body(body, sink)?;
+                    self.write_is_arm_body(body, sink, has_block_arm)?;
                     sink.body.write(b",\n")?;
                 }
             }

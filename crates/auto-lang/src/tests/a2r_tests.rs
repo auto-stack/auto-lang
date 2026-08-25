@@ -437,6 +437,9 @@ ext Store {
 #[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
 #[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
 #[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }
+// Plan 032 G2-core: `.get()` ref bindings — key auto-borrow (enum keys),
+// return/Ok(v)/let-init auto-clone, mixed-arm `{ expr; }` normalization.
+#[test] fn test_07_ownership_026_get_ref_binding() { test_a2r("07_ownership/026_get_ref_binding").unwrap(); }
 
 // === 08_generics ===
 #[test] fn test_08_generics_001_type_alias() { test_a2r("08_generics/001_type_alias").unwrap(); }
