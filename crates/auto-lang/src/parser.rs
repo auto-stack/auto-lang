@@ -11807,13 +11807,32 @@ impl<'a> Parser<'a> {
         // A node instance never chains, so a paren followed by `.` is a call.
         let paren_chained = has_paren && self.is_kind(TokenKind::Dot);
         let is_dot_call = matches!(ident, Expr::Dot(_, _));
+        // Plan 442 C2 (Bug B, parser side): bare axum routing-fn calls
+        // (`patch(h)` WITHOUT a chained dot) must also parse as calls.
+        // use.rust items register as synthetic type decls
+        // (register_rust_type), so is_constructor is true for them and the
+        // node-instance gate below would swallow `(h)` as node args — the
+        // chained form is already covered by paren_chained above; this arm
+        // covers the standalone form.
+        let is_axum_routing_fn = match &ident {
+            Expr::Ident(n) => self
+                .type_store
+                .read()
+                .map(|s| {
+                    s.get_rust_type_path(n.as_str())
+                        .map(|p| p.starts_with("axum::routing::"))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false),
+            _ => false,
+        };
         let is_colon_pair = is_constructor && !is_dot_call
             && primary_prop.is_none()
             && !self.is_kind(TokenKind::LBrace)
             && self.is_kind(TokenKind::Colon);
         if (self.is_kind(TokenKind::LBrace)
             || primary_prop.is_some()
-            || (is_constructor && !is_dot_call && !paren_chained))
+            || (is_constructor && !is_dot_call && !paren_chained && !is_axum_routing_fn))
             && !is_colon_pair
         {
             // node instance

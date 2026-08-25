@@ -2234,11 +2234,57 @@ async fn handle_connection_async(
         return;
     }
 
-    // Dispatch to handler via call_fn_by_name (synchronous VM execution).
-    // Plan 346 stage 2: Request logging + error handling.
+    // Plan 442 C2: axum adapter detection — synthetic `__axum:<n>` names indicate
+    // the route was built via the adapter (Router::new + app.route(get/post)).
+    // For these routes, use extractor-based marshalling instead of the legacy
+    // positional convention, and dispatch via closure (Plan 383 zero-capture fn-ref).
     let request_start = std::time::Instant::now();
     let handler_task_id = vm.spawn_task(0, 65536);
-    let n_args = build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header, multipart_json.as_deref());
+    let axum_route = if route_match.fn_name.starts_with("__axum:") {
+        match crate::vm::ffi::axum_adapter::route_by_synthetic_name(&route_match.fn_name) {
+            Some(r) => Some(r),
+            None => {
+                eprintln!("[HTTP] {} {} → 500 (axum route lookup failed for {})",
+                    req_method, req_path, route_match.fn_name);
+                vm.tasks.remove(&handler_task_id);
+                let resp = format!("HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: 31\r\nConnection: close\r\n{}\r\n{{\"error\":\"route lookup failed\"}}", cors_headers());
+                let _ = stream.write_all(resp.as_bytes()).await;
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
+    let n_args = if let Some(ref axum_route) = axum_route {
+        // Axum adapter path: marshalling per param extractor shapes.
+        // Query JSON for the Query<T> extractor.
+        let query_json = if route_match.query_params.is_empty() {
+            "{}".to_string()
+        } else {
+            let pairs: Vec<String> = route_match.query_params.iter()
+                .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
+                .collect();
+            format!("{{{}}}", pairs.join(","))
+        };
+        let mut pushed = 0usize;
+        if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
+            if let Ok(mut t) = t_arc.try_lock() {
+                pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
+                    vm,
+                    &mut t,
+                    axum_route,
+                    &route_match.path_params,
+                    &query_json,
+                    &body,
+                );
+            }
+        }
+        pushed
+    } else {
+        // Legacy #[api] path: positional params (path, query, body, metadata).
+        build_handler_args(vm, handler_task_id, &route_match, &body, &content_type, &cookie_header, &auth_header, multipart_json.as_deref())
+    };
 
     let result_json = if let Some(_task_arc) = vm.tasks.get(&handler_task_id) {
         let mut ht = match _task_arc.try_lock() {
@@ -2252,7 +2298,15 @@ async fn handle_connection_async(
                 return;
             }
         };
-        match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
+
+        // Dispatch: axum routes use closure (Plan 383 fn-ref), legacy routes use fn-name.
+        let call_result = if let Some(ref axum_route) = axum_route {
+            vm.call_closure(&mut ht, axum_route.closure_id, n_args)
+        } else {
+            vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args)
+        };
+
+        match call_result {
             Ok(()) => {
                 let nv = ht.ram.pop_nv();
                 // SSE detection: generator/iterator return → stream frames.

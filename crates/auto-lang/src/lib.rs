@@ -708,6 +708,11 @@ async fn execute_autovm_with_path(
     use crate::vm::loader::Linker;
     use crate::vm::virt_memory::VirtualFlash;
 
+    // Plan 442 C2: axum serve adapter — fresh process-global state for this
+    // program (routes, param sigs, AppState). Must precede resolve_deps:
+    // dep-module Codegen instances publish param sigs during compilation.
+    crate::vm::ffi::axum_adapter::reset();
+
     // Plan 085: Pre-process use statements to load dependencies
     let mut session = compile::CompileSession::new();
     // Plan 327: seed source_dirs with the source file's directory so that
@@ -1364,6 +1369,9 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     use crate::vm::loader::Linker;
     use crate::vm::virt_memory::VirtualFlash;
     use std::time::Instant;
+
+    // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
+    crate::vm::ffi::axum_adapter::reset();
 
     // Compilation pipeline (same as execute_autovm)
     let mut session = compile::CompileSession::new();
@@ -3462,6 +3470,9 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     use crate::vm::virt_memory::VirtualFlash;
     use crate::vm::debugger::GdbController;
 
+    // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
+    crate::vm::ffi::axum_adapter::reset();
+
     // Same compilation pipeline as execute_autovm
     let mut session = compile::CompileSession::new();
     session.collect_rust_imports(code)?;
@@ -3681,6 +3692,9 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     use crate::vm::opcode::OpCode;
     use crate::vm::loader::Linker;
     use crate::vm::virt_memory::VirtualFlash;
+
+    // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
+    crate::vm::ffi::axum_adapter::reset();
 
     let mut session = compile::CompileSession::new();
     session.collect_rust_imports(code)?;

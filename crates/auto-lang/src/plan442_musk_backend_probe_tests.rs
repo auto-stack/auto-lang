@@ -217,6 +217,136 @@ mod plan442_musk_backend_probe {
         eprintln!("══════ end minimal repro ══════");
     }
 
+    /// C2 serve-adapter vertical: run the REAL relay_api.at `relay_routes()`
+    /// on the VM — axum Router.new + app.route(path, get(h).post(h2)) chains —
+    /// then drive a live HTTP request through the auto-started server.
+    /// Asserts the full adapter pipe: route install (methods/paths/extractor
+    /// shapes resolved from fn-ref closures) + extractor marshalling +
+    /// call_closure dispatch.
+    ///
+    /// Shares process-global adapter/HTTP state with the other probes — run
+    /// the probe batch serially: `-- --ignored --nocapture --test-threads=1`
+    /// (the gap enumerator's pipeline resets would race this server thread).
+    #[test]
+    #[ignore = "requires sibling auto-musk checkout; manual Phase-C gate"]
+    fn musk_backend_server_router_run() {
+        use crate::vm::ffi::axum_adapter::{self, ExtractorKind};
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+
+        let Some(src_dir) = locate_auto_src() else {
+            eprintln!("plan442 musk backend probe: SKIPPED — auto-musk not found");
+            return;
+        };
+        let deps = corpus_dep_lines(&src_dir);
+        let driver = src_dir.join("__plan442_driver_router.at");
+        let mut src = String::from("// Plan 442 C2 serve-adapter probe (generated; delete freely)\n");
+        for d in &deps {
+            src.push_str(d);
+            src.push('\n');
+        }
+        src.push_str("use extern_sigs\nuse relay_api\n\n\
+             fn main() {\n    let app = relay_routes()\n    print(\"router-built\")\n}\n");
+        std::fs::write(&driver, src).expect("write driver");
+
+        const PORT: u16 = 18442;
+        std::env::set_var("AUTO_HTTP_PORT", PORT.to_string());
+        crate::vm::ffi::stdlib::clear_http_routes();
+        let driver_path = driver.to_string_lossy().to_string();
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                match crate::run_file(&driver_path) {
+                    Ok(_) => eprintln!("plan442-c2-serve: run_file returned Ok"),
+                    Err(e) => eprintln!("plan442-c2-serve: run_file error: {e}"),
+                }
+            })
+            .expect("spawn server thread");
+
+        // Phase 1: wait for route registration (happens during main). The
+        // full-corpus driver compile can be slow — poll up to 120s with a
+        // heartbeat so a stuck compile is distinguishable from a fast error.
+        let mut routes = Vec::new();
+        for i in 0..1200 {
+            routes = axum_adapter::installed_routes();
+            if !routes.is_empty() {
+                break;
+            }
+            if i % 10 == 0 {
+                eprintln!(
+                    "plan442-c2-serve: waiting for routes... ({}s, stdlib table: {})",
+                    i / 10,
+                    crate::vm::ffi::stdlib::get_http_routes().len()
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let _ = std::fs::remove_file(&driver);
+
+        // Phase 2: assert the registered route table (real relay_routes
+        // registers 15 handlers over 9 paths; spot-check the shapes).
+        let find = |method: &str, path: &str| {
+            routes
+                .iter()
+                .find(|r| r.method == method && r.path == path)
+                .cloned()
+        };
+        let get_runs = find("GET", "/api/forge/relay/runs")
+            .expect("GET /api/forge/relay/runs registered");
+        assert_eq!(
+            get_runs.params,
+            vec![ExtractorKind::State, ExtractorKind::Query],
+            "list_runs(s State, q Query) extractor shapes"
+        );
+        let post_runs = find("POST", "/api/forge/relay/runs")
+            .expect("POST /api/forge/relay/runs registered (chained .post)");
+        assert_eq!(
+            post_runs.params,
+            vec![ExtractorKind::State, ExtractorKind::Query, ExtractorKind::Json],
+            "start_run(s State, q Query, body Json) extractor shapes"
+        );
+        assert!(
+            find("DELETE", "/api/forge/relay/runs/:run_id").is_some(),
+            "DELETE /api/forge/relay/runs/:run_id registered ({{run_id}} template conversion)"
+        );
+        eprintln!(
+            "plan442-c2-serve: {} route(s) installed; first three:",
+            routes.len()
+        );
+        for r in routes.iter().take(3) {
+            eprintln!("  {} {} (closure #{}, {:?})", r.method, r.path, r.closure_id, r.params);
+        }
+
+        // Phase 3: wait for the listener, then GET through the whole dispatch
+        // pipe (extractor marshalling + call_closure). Handler bodies call
+        // extern no-ops, so a 200 with any body proves the closure ran.
+        let mut stream = None;
+        for _ in 0..100 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", PORT)) {
+                stream = Some(s);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let mut stream = stream.expect("connect to axum-adapter test server");
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .ok();
+        write!(
+            stream,
+            "GET /api/forge/relay/runs HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut resp = String::new();
+        stream.read_to_string(&mut resp).ok();
+        eprintln!("plan442-c2-serve: GET /api/forge/relay/runs → {}", resp.lines().next().unwrap_or(""));
+        assert!(
+            resp.starts_with("HTTP/1.1 200"),
+            "axum-route dispatch must answer 200, got: {}",
+            resp.lines().next().unwrap_or("<empty>")
+        );
+    }
+
     /// C2 worklist generator: per-module first-blocker enumeration over the
     /// whole auto-src corpus. PASS = importable + init-clean on the VM.
     #[test]
@@ -271,5 +401,27 @@ mod plan442_musk_backend_probe {
             eprintln!("  BLOCKED {:<24} {}", m, lines.join(" | "));
         }
         // The enumerator is a report, not a gate — any state is a pass.
+    }
+
+    /// C2 minimal repro: `get(h1).post(h2)` chain on bare rust-imported
+    /// routing fns — no server, no routes, isolates dispatch shaping.
+    #[test]
+    fn plan442_axum_get_post_chain_minimal() {
+        let code = "dep axum\nuse.rust axum::Router\nuse.rust axum::routing::{get, post}\n\n\
+             fn h1() int { return 1 }\n\
+             fn h2() int { return 2 }\n\n\
+             fn main() {\n    var mr = get(h1).post(h2)\n    print(\"chain-ok\")\n}\n";
+        match crate::run_with_capture_and_bytecode(code) {
+            Ok((_, _, lines)) => {
+                for l in &lines {
+                    let s = l.to_string();
+                    if s.contains("CALL_NAT") || s.contains("CALL_SPEC") || s.contains("CLOSURE")
+                        || s.contains("LOAD_STR") || s.contains("FN_") {
+                        eprintln!("DISASM | {s}");
+                    }
+                }
+            }
+            Err(e) => panic!("get(h).post(h) chain failed: {e}"),
+        }
     }
 }

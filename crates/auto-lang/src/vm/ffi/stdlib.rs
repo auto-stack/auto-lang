@@ -6927,6 +6927,28 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     }
 
     match (type_name.as_str(), method.as_str()) {
+        // Plan 442 C2: axum serve adapter —— Router/MethodRouter 构建。
+        // 裸 `get(h)`/`post(h)`... 以空 type_name 到达(Ident 调用);链式
+        // `.post(h)` 以堆对象 tag "axum::MethodRouter"(短化后
+        // "MethodRouter")到达。Router.route 即时安装路由到 HTTP 注册表,
+        // 供 execute_autovm 的 auto-serve 检查接线。
+        ("Router", "new") => {
+            super::axum_adapter::shim_router_new(task, vm)?;
+        }
+        ("Router", "route") => {
+            super::axum_adapter::shim_router_route(task, vm)?;
+        }
+        ("Router", "serve") => {
+            super::axum_adapter::shim_router_serve(task, vm)?;
+        }
+        ("MethodRouter", "get") | ("MethodRouter", "post") | ("MethodRouter", "put")
+        | ("MethodRouter", "delete") | ("MethodRouter", "patch") => {
+            super::axum_adapter::shim_method_chain(task, vm, method.as_str())?;
+        }
+        ("", "get") | ("", "post") | ("", "put") | ("", "delete") | ("", "patch") => {
+            super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
+        }
+
         // std::time::Instant(now/elapsed 已迁 plan-430 生成段)
 
         // std::time::Duration(构造器与 as_secs/as_secs_f64 已迁 plan-430 生成段;

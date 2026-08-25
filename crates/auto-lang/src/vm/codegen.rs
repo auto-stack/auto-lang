@@ -1328,6 +1328,17 @@ impl Codegen {
                 self.fn_params
                     .insert(fn_decl.name.to_string(), param_infos.clone());
 
+                // Plan 442 C2: axum serve adapter — publish declared param
+                // type display strings (Type's Display: "State<AppState>",
+                // "Json<LoginRequest>", ...) directly to the adapter's
+                // process-global table. Dep-module Codegen instances publish
+                // here too, so extractor shapes resolve for cross-module
+                // fn-ref closures; the run pipeline resets the table up front.
+                crate::vm::ffi::axum_adapter::record_param_sig(
+                    &fn_decl.name.to_string(),
+                    fn_decl.params.iter().map(|p| p.ty.to_string()).collect(),
+                );
+
                 // Plan 087 Phase 3: Store function return type for .type property support
                 self.fn_return_types
                     .insert(fn_decl.name.to_string(), fn_decl.ret.clone());
@@ -6828,8 +6839,20 @@ impl Codegen {
                 if let Expr::Ident(type_name) = call.name.as_ref() {
                     let type_name_str = type_name.to_string();
 
+                    // Plan 442 C2 (Bug B): rust/py-FFI imports also register
+                    // synthetic type decls (register_rust_type), so a bare
+                    // routing-fn call like `get(h1)` would hit this branch and
+                    // construct a GenericInstanceData instead of dispatching
+                    // to the FFI path. FFI-imported names never construct
+                    // here — mirror of the var_types guard below.
+                    let is_ffi_import = self.rust_native_map.contains_key(&type_name_str)
+                        || self.py_native_map.contains_key(&type_name_str);
+
                     // Check if this type is registered
-                    if self.generic_registry.has_template(&type_name_str) || self.get_type(&type_name_str).is_some() {
+                    if !is_ffi_import
+                        && (self.generic_registry.has_template(&type_name_str)
+                            || self.get_type(&type_name_str).is_some())
+                    {
                         // This is a type constructor call - compile as type instance
                         vm_debug!("DEBUG: Compiling type constructor call for '{}'", type_name_str);
 
@@ -7723,6 +7746,17 @@ impl Codegen {
                             .next()
                             .map(|c| c.is_uppercase())
                             .unwrap_or(false);
+                        // Plan 442 C2: axum routing fns (get/post/put/delete/
+                        // patch from `use.rust axum::routing::{...}`) must
+                        // ALWAYS take dispatch 3000 — their lowercase names
+                        // collide with lazily-registered stdlib natives
+                        // (http.patch etc.), and the "existing native wins"
+                        // rule would hijack `patch(h)` to an HTTP-client shim.
+                        let is_axum_routing_import = self
+                            .rust_native_map
+                            .get(matched_key)
+                            .map(|(_, full)| full.starts_with("axum::routing::"))
+                            .unwrap_or(false);
                         // 注意:此处必须查**注册表**(真实注册过的 native),不能用
                         // peek_qualified 的静态表语义——auto.json.parse 在静态固定
                         // ID 表里但走 CALL_NAT 的返回编组与 dispatch 3000 不同
@@ -7730,7 +7764,7 @@ impl Codegen {
                         // dispatch 3000 的运行期兜底链会以正确编组转到同一 native,
                         // 故未注册时恒走 dispatch。toml.parse 这类启动即注册的
                         // native 仍按原语义被采用。
-                        let has_existing = !is_type_import && {
+                        let has_existing = !is_type_import && !is_axum_routing_import && {
                             let reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified_to_canonical(name).is_some()
                                 && reg.get_id(name).is_some()
