@@ -6,10 +6,14 @@
 > 32 文件 **31/32 VM-clean**（第 32 = extern_sigs 旁车设计不计，五批修复
 > 927909ef0/…/ea51316fc）；**C2 serve 适配层已落地**（1f2c0163e，axum →
 > AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）；**C2 ① extern 响应
-> 构造器 VM 侧已落地**（2f68ff62c）+ **C2 ② SSE 形态适配层已覆盖**（6b989c00d）。
-> 剩余：C2 ③（musk 侧 api.at 契约/back.project 接线 + parity 契约套跑，
-> 阻塞项 = VM 侧业务 extern 全量 FFI 覆盖）+ C3 观察期未动 → 本计划**未全部
-> 完成**（验收标准第 3/4 条未达成）。
+> 构造器 VM 侧已落地**（2f68ff62c）+ **C2 ② SSE 形态适配层已覆盖**（6b989c00d）+
+> **C2 ③ auto-lang 侧路径 (b) 纯 extern 已 VM 化**（500173bcf..5042fd96e）+
+> **路径 (a) extern→host_bridge 转发 + RC 死区 UAF 修复已就绪**（a9bc3356d/
+> d3c36d540，字符串与 Value extern 均可 forward）。**auto-lang 侧 item ③
+> 前置全部就绪**——验收 3/4 的剩余在 **auto-musk 侧**（backend cdylib:
+> auto_backend_register 逐 extern 打包成 HostCallFn + parity harness 适配
+> 起 `musk serve` VM 对照 hw）。故验收标准第 3/4 条仍**未达成**，计划保持
+> 🟡 执行中，C3 观察期未动。
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
