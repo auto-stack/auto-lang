@@ -591,6 +591,13 @@ impl RustTrans {
     ) -> AutoResult<Vec<String>> {
         self.local_var_types.clear();
         self.str_slice_pattern_bindings.clear();
+        // Plan 016 (auto-down R1): loop-var tracking sets are function-scoped
+        // too — a leaked `for a in ...` binding from an earlier fn shadows a
+        // same-named match binding in a later fn (e.g. attrDel's `a` vs
+        // applyOp's `Op::InsertText(a)`), suppressing call-site .as_str() on
+        // its field reads (E0308).
+        self.borrowed_iter_vars.clear();
+        self.by_value_iter_bindings.clear();
         for (name, ty) in params {
             self.local_var_types.insert(name.clone(), ty.clone());
         }
@@ -779,15 +786,31 @@ impl RustTrans {
                         "to_string" | "format" | "trim" | "replace"
                         | "to_lowercase" | "to_uppercase" | "read_to_string"
                         | "read_line" | "collect")
+                    // Plan 016 Phase 4: a user fn whose DECLARED return is
+                    // `str` renders as an owned String — `blockText(a) +
+                    // blockText(b)` must format!-concat (E0308 otherwise).
+                    || self.fn_ret_types.get(name.as_str())
+                        .map(|ty| matches!(ty,
+                            Type::StrOwned | Type::StrFixed(_) | Type::StrSlice
+                            | Type::CStrLit))
+                        .unwrap_or(false)
                 } else if let Expr::Dot(obj, m) = c.name.as_ref() {
                     // Plan 381 (Layer 2): bridged `json.to_string(v)` /
                     // `json.get_str(v, k)` return owned String — treat as
                     // string-containing so the &str-param auto-borrow appends
                     // .as_str() (E0308 `&str` vs `String` otherwise).
-                    if let Expr::Ident(o) = obj.as_ref() {
+                    let json_bridge_str = if let Expr::Ident(o) = obj.as_ref() {
                         o.as_str() == "json"
                             && matches!(m.as_str(), "to_string" | "get_str" | "as_string")
-                    } else { false }
+                    } else { false };
+                    // Plan 016 Phase 4: method-call string producers
+                    // (`x.to_string()`, `s.trim()`, ...) on ANY receiver
+                    // shape — `list[i].to_string() + a.text` parses the lhs
+                    // as Call(Dot(Index(..), to_string)), which the
+                    // json-only check above missed (E0308 String + String).
+                    json_bridge_str || matches!(m.as_str(),
+                        "to_string" | "trim" | "trim_start" | "trim_end"
+                        | "replace" | "to_lowercase" | "to_uppercase")
                 } else {
                     false
                 }
@@ -796,6 +819,15 @@ impl RustTrans {
                 matches!(method.as_str(),
                     "to_string" | "trim" | "replace" | "to_lowercase"
                     | "to_uppercase" | "display" | "format")
+                // Plan 016 Phase 4: a struct-field read of a str field
+                // (`a.text`) is an owned String — count it for string-concat
+                // detection. The owner's type is often unavailable (chained
+                // receivers), so accept the field name being a str field of
+                // ANY known struct (mirrors the Plan 433 A1 call-arg scan).
+                || self.struct_field_types.values()
+                    .any(|fields| fields.iter()
+                        .any(|(f, t)| f.as_str() == method.as_str()
+                            && matches!(t, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
             }
             Expr::Bina(inner_lhs, _, inner_rhs) => {
                 self.expr_contains_string(inner_lhs)
@@ -2016,6 +2048,19 @@ impl RustTrans {
         )
     }
 
+    /// Plan 016 Phase 4: does a by-value param of this type TAKE OWNERSHIP of
+    /// the argument in the emitted Rust? a2r maps Auto `List<T>` params to an
+    /// owned `Vec<T>` (NOT `&[T]`), so a List arg MOVES despite is_copy_type's
+    /// borrow convention (which models the `str` → `&str` param mapping).
+    /// Structs/enums/Maps (already !is_copy_type) move too. Used by the
+    /// call-site Dot-arg clone and the defect-4 borrowed-iter-field gate.
+    fn param_takes_ownership(ty: &Type) -> bool {
+        match ty {
+            Type::List(_) => true,
+            _ => !Self::is_copy_type(ty),
+        }
+    }
+
     /// Plan 310 Phase 2: Strict primitive-Copy check for escape-tier codegen.
     /// Only types that are genuinely Copy in Rust AND whose local_var_types
     /// entry reliably matches the generated Rust type. Excludes String/str
@@ -2819,6 +2864,19 @@ impl RustTrans {
                 write!(out, "vec![")?;
                 for (i, elem) in arr.iter().enumerate() {
                     self.expr(elem, out)?;
+                    // Plan 016 Phase 4: `vec![target]` MOVES a struct/enum
+                    // element out of its binding — a later use is E0382.
+                    // Clone aggregate-typed idents (mirrors the conservative
+                    // `.clone()` on non-range Index reads below). Str/List
+                    // elements keep the historical move behavior.
+                    if let Expr::Ident(name) = elem {
+                        let agg = self.local_var_types.get(name)
+                            .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_)))
+                            .unwrap_or(false);
+                        if agg {
+                            write!(out, ".clone()")?;
+                        }
+                    }
                     if i < arr.len() - 1 {
                         write!(out, ", ")?;
                     }
@@ -3262,6 +3320,36 @@ impl RustTrans {
                             }
                             _ => false,
                         };
+                        // Plan 016 Phase 4: same Dot-field-move guard as
+                        // struct_init — an owned non-Copy field fed by a
+                        // Dot-chain read (`parent.kind`, `parent.inlines`)
+                        // moves out of the source binding (E0382 on reuse).
+                        // Expr::Node is the parser's other struct-literal
+                        // form (e.g. as a method-call arg), so the fix must
+                        // live here too.
+                        let needs_field_clone = !needs_to_string && {
+                            let dot_nonborrowed = match arg {
+                                Arg::Pos(expr) | Arg::Pair(_, expr) => {
+                                    matches!(expr, Expr::Dot(_, _))
+                                        && !Self::is_self_dot(expr)
+                                        && !(if let Expr::Dot(obj, _) = expr {
+                                            matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
+                                        } else { false })
+                                }
+                                Arg::Name(_) => false,
+                            };
+                            let field_owned = match arg {
+                                Arg::Pos(_) => field_types.get(i).map(|(_, t)| t),
+                                Arg::Pair(key, _) => field_types.iter()
+                                    .find(|(n, _)| *n == *key)
+                                    .map(|(_, t)| t),
+                                Arg::Name(_) => None,
+                            };
+                            dot_nonborrowed && field_owned
+                                .map(|t| !Self::is_primitive_copy(t)
+                                    && !matches!(t, Type::Fn(_, _) | Type::Void))
+                                .unwrap_or(false)
+                        };
                         match arg {
                             Arg::Pos(expr) => {
                                 let field_name = if i < field_names.len() {
@@ -3282,6 +3370,8 @@ impl RustTrans {
                         }
                         if needs_to_string {
                             write!(out, ".to_string()")?;
+                        } else if needs_field_clone {
+                            write!(out, ".clone()")?;
                         }
                         if i < node.args.args.len() - 1 || !node.body.stmts.is_empty() {
                             write!(out, ", ")?;
@@ -7418,6 +7508,13 @@ impl RustTrans {
                                 if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
                             }
                             write!(out, " }}")?;
+                        } else if call.args.args.is_empty()
+                            && !self.enum_tuple_variants.contains_key(&key)
+                        {
+                            // Plan 016 Phase 4: zero-arg call on a variant with no
+                            // registered payload is a UNIT variant (Auto spells it
+                            // `Value.Null()` for a2ts parity) — `Type::Variant` is
+                            // already written; parens would be E0618.
                         } else {
                             // Tuple variant: Type::Variant(val1, val2, ...)
                             let tuple_field_types = self.enum_tuple_field_types.get(&key).cloned();
@@ -7448,6 +7545,21 @@ impl RustTrans {
                     }
                     // Static method: Type::method(args)
                     write!(out, "{}::{}", qualified_type, method_name)?;
+                    // Plan 016 Phase 4: `Value.Null()` — a zero-arg call on a
+                    // KNOWN ENUM whose CamelCase "method" is no registered
+                    // struct/tuple variant is a UNIT-variant construction
+                    // (Auto spells zero-payload variants as zero-arg calls for
+                    // a2ts parity). Emit `Enum::Variant` without parens —
+                    // calling a unit variant is E0618. The CamelCase gate
+                    // keeps real snake_case associated fns untouched.
+                    if call.args.args.is_empty()
+                        && method_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                        && self.known_enum_names.contains(type_name.as_str())
+                        && !self.enum_struct_variants.contains_key(&(type_name.clone(), method_name.clone()))
+                        && !self.enum_tuple_variants.contains_key(&(type_name.clone(), method_name.clone()))
+                    {
+                        return Ok(());
+                    }
                     write!(out, "(")?;
                     // Add `move` for thread::spawn closures (captured locals need 'static)
                     if method_name == "spawn"
@@ -8018,6 +8130,13 @@ impl RustTrans {
                         if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
                     }
                     write!(out, " }}")?;
+                } else if call.args.args.is_empty()
+                    && !self.enum_tuple_variants.contains_key(&key)
+                {
+                    // Plan 016 Phase 4: zero-arg call on a variant with no
+                    // registered payload is a UNIT variant (Auto spells it
+                    // `Value.Null()` for a2ts parity) — `Type::Variant` is
+                    // already written; parens would be E0618.
                 } else {
                     // Tuple variant: Type::Variant(val1, val2, ...)
                     let tuple_field_types = self.enum_tuple_field_types.get(&key).cloned();
@@ -8375,12 +8494,44 @@ impl RustTrans {
             let needs_mut_param_clone = is_already_mut_param && !is_mut_param
                 && !needs_mut_borrow && !is_merge_mut && !is_sb_param
                 && matches!(arg, Arg::Pos(Expr::Ident(_)));
-            let needs_clone = (is_struct_param || needs_mut_param_clone)
+            // Plan 016 (auto-down R4): passing an owned `Vec<T>` ident (e.g.
+            // the current fn's own `List` param, `repl` in a recursive tree
+            // walk) to a by-value `List` param MOVES it — inside a loop the
+            // move fires on the first iteration; outside, the second use is
+            // E0382 (e.g. `attrGet(ialAttrs, ..)` twice). Clone instead.
+            // Guarded to idents whose local type is itself an owned List (so
+            // &T/&mut params and iter vars are untouched).
+            let is_owned_list_arg = !is_struct_param
+                && param_types.as_ref()
+                    .and_then(|pts| pts.get(i))
+                    .map(|pt| matches!(pt, Type::List(_)))
+                    .unwrap_or(false)
+                && if let Arg::Pos(Expr::Ident(name)) = arg {
+                    self.local_var_types.get(name)
+                        .map(|ty| matches!(ty, Type::List(_)))
+                        .unwrap_or(false)
+                } else { false };
+            // Plan 016 Phase 4: a field-read (`s.marks`, `node.attrs`, `a.sel`)
+            // passed to a by-value OWNED param (Vec/struct/enum/Map — anything
+            // param_takes_ownership flags) MOVES the field out of its binding;
+            // the next use of the same path is E0382 (or E0507 when the source
+            // is behind a shared ref). Clone the field instead. Str params are
+            // excluded (the .as_str() borrow path handles them), as are
+            // borrowed-iter-var fields — the defect-4 branch below decides
+            // those first.
+            let dot_arg_owned_param = matches!(arg, Arg::Pos(Expr::Dot(_, _)))
+                && !needs_ref_borrow
+                && param_types.as_ref()
+                    .and_then(|pts| pts.get(i))
+                    .map(|pt| Self::param_takes_ownership(pt))
+                    .unwrap_or(false);
+            let needs_clone = (is_struct_param || needs_mut_param_clone || is_owned_list_arg
+                    || dot_arg_owned_param)
                 && !is_merge_mut && !needs_mut_borrow
                 && !is_mut_param
                 && !is_sb_param
                 && !needs_ref_borrow
-                && matches!(arg, Arg::Pos(Expr::Ident(_)))
+                && (matches!(arg, Arg::Pos(Expr::Ident(_))) || dot_arg_owned_param)
                 // Plan 380: spec-bound idents (`Some(prof)` from an Option<Spec>
                 // scrutinee) are `Box<dyn Trait>` — no Clone impl (E0599).
                 // Pass them by value (move) instead.
@@ -8480,9 +8631,14 @@ impl RustTrans {
                         } else { false };
                     iter_field
                         && match param_types.as_ref().and_then(|pts| pts.get(i)) {
-                            // Known callee signature: clone only for non-Copy
-                            // (owned) params.
-                            Some(pt) => Self::is_copy_type(pt),
+                            // Known callee signature: skip the clone only
+                            // when the param does NOT take ownership. Plan
+                            // 016 Phase 4: `List<T>` params are emitted as
+                            // owned `Vec<T>` (not `&[T]`), so a List field of
+                            // a borrowed loop var must clone (E0507) —
+                            // is_copy_type's List-is-borrowed convention does
+                            // not hold at fn boundaries.
+                            Some(pt) => !Self::param_takes_ownership(pt),
                             // Unknown callee (imported fn — single-file
                             // transpile can't see its signature): keep the
                             // pre-§2.1 shape (no clone), matching the sed
@@ -9068,6 +9224,28 @@ impl RustTrans {
                         "clone" => {
                             return self.infer_type_from_expr(obj);
                         }
+                        // Plan 016 Phase 4: `opt.unwrap_or(d)` /
+                        // `opt.unwrap_or_else(f)` yield the Option's inner
+                        // type (fall back to the default arg's type) — locals
+                        // bound from them (`let t = found.unwrap_or(missing())`)
+                        // were Unknown, so the struct/enum move guards (e.g.
+                        // the vec![t] element clone) missed them (E0382).
+                        "unwrap_or" => {
+                            if let Type::Option(inner) = self.infer_type_from_expr(obj) {
+                                return *inner;
+                            }
+                            if let Some(Arg::Pos(d)) = call.args.args.first() {
+                                let d_ty = self.infer_type_from_expr(d);
+                                if !matches!(d_ty, Type::Unknown) {
+                                    return d_ty;
+                                }
+                            }
+                        }
+                        "unwrap_or_else" => {
+                            if let Type::Option(inner) = self.infer_type_from_expr(obj) {
+                                return *inner;
+                            }
+                        }
                         "get" => {
                             if let Type::List(elem) = self.infer_type_from_expr(obj) {
                                 return *elem;
@@ -9110,6 +9288,15 @@ impl RustTrans {
                     // types (incl. TaskRef fields) instead of staying Unknown.
                     if self.struct_fields.contains_key(fn_name) {
                         return Type::User(crate::ast::TypeDecl::builtin(fn_name.as_str()));
+                    }
+                    // Plan 016 Phase 4: a user fn with a DECLARED return type
+                    // (`missing() -> Node`, `findBlock(..) -> BlockNode?`) —
+                    // the prescan registers every fn's ret, so locals bound
+                    // from such calls resolve instead of staying Unknown.
+                    if let Some(ret) = self.fn_ret_types.get(fn_name.as_str()) {
+                        if !matches!(ret, Type::Unknown | Type::Void) {
+                            return ret.clone();
+                        }
                     }
                 }
                 Type::Unknown
@@ -9460,6 +9647,37 @@ impl RustTrans {
                     (key.clone(), needs_ts)
                 }
             };
+            // Plan 016 Phase 4: a Dot-chain field read (`a.pos`,
+            // `a.sel.anchor`) as the value of an OWNED non-Copy struct field
+            // (String/Vec/struct/enum) MOVES out of the source binding — the
+            // next use of the same path is E0382. Clone it. Skipped when
+            // needs_to_string fired (that already produces an owned copy),
+            // for `self.field` / borrowed-iter-var roots (the inner
+            // write_expr_for_struct_field already clones those), and for
+            // shorthand `Type { field }` idents.
+            let needs_field_clone = !needs_to_string && {
+                let dot_nonborrowed = match arg {
+                    Arg::Pos(expr) | Arg::Pair(_, expr) => {
+                        matches!(expr, Expr::Dot(_, _))
+                            && !Self::is_self_dot(expr)
+                            && !(if let Expr::Dot(obj, _) = expr {
+                                matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
+                            } else { false })
+                    }
+                    Arg::Name(_) => false,
+                };
+                let field_owned = match arg {
+                    Arg::Pos(_) => field_types.get(i).map(|(_, t)| t),
+                    Arg::Pair(key, _) => field_types.iter()
+                        .find(|(n, _)| n == key)
+                        .map(|(_, t)| t),
+                    Arg::Name(_) => None,
+                };
+                dot_nonborrowed && field_owned
+                    .map(|t| !Self::is_primitive_copy(t)
+                        && !matches!(t, Type::Fn(_, _) | Type::Void))
+                    .unwrap_or(false)
+            };
             write!(out, "{}: ", field_name)?;
             match arg {
                 Arg::Pos(expr) | Arg::Pair(_, expr) => {
@@ -9472,6 +9690,8 @@ impl RustTrans {
             }
             if needs_to_string {
                 write!(out, ".to_string()")?;
+            } else if needs_field_clone {
+                write!(out, ".clone()")?;
             }
             if i < args.args.len() - 1 {
                 write!(out, ", ")?;
@@ -9641,6 +9861,18 @@ impl RustTrans {
             write!(out, "vec![")?;
             for (i, elem) in elems.iter().enumerate() {
                 self.expr(elem, out)?;
+                // Plan 016 Phase 4: `vec![target]` MOVES a struct/enum
+                // element out of its binding — a later use is E0382. Clone
+                // aggregate-typed idents (mirrors the Expr::Array arm in
+                // expr(), which this field-specific path bypasses).
+                if let Expr::Ident(name) = elem {
+                    let agg = self.local_var_types.get(name)
+                        .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_)))
+                        .unwrap_or(false);
+                    if agg {
+                        write!(out, ".clone()")?;
+                    }
+                }
                 if i < elems.len() - 1 {
                     write!(out, ", ")?;
                 }
@@ -11478,6 +11710,10 @@ impl RustTrans {
         // Plan 427: is-arm &str bindings are function-scoped (mirrors
         // local_var_types above).
         self.str_slice_pattern_bindings.clear();
+        // Plan 016 (auto-down R1): loop-var tracking sets are function-scoped
+        // as well; see transpile_body_stmts.
+        self.borrowed_iter_vars.clear();
+        self.by_value_iter_bindings.clear();
         for param in &fn_decl.params {
             self.local_var_types.insert(param.name.clone(), param.ty.clone());
         }
@@ -12938,7 +13174,7 @@ impl RustTrans {
             Ok(c) => c,
             Err(_) => return,
         };
-        for stmt in code.stmts {
+        for stmt in &code.stmts {
             if let crate::ast::Stmt::Fn(fn_decl) = stmt {
                 let wanted = use_stmt.is_wildcard
                     || use_stmt.items.iter().any(|i| i.as_str() == fn_decl.name.as_str());
@@ -12955,6 +13191,77 @@ impl RustTrans {
                     self.fn_str_param_indices.insert(fn_decl.name.clone(), str_flags);
                 }
                 self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+                // Plan 016 Phase 4: register the FULL signature, not just
+                // str/ret — the Dot-arg clone decision (param takes ownership)
+                // and the defect-4 borrowed-iter-field gate key off
+                // fn_param_types, which stayed None for imported fns.
+                let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+                let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| !Self::is_copy_type(&p.ty))
+                    .collect();
+                self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| matches!(p.ty, Type::Int))
+                    .collect();
+                self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+                let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                    .map(|p| p.mode == crate::ast::ParamMode::Mut)
+                    .collect();
+                self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags);
+            }
+            // Plan 016 Phase 4: imported STRUCT field types — the call-site
+            // str-field borrow (`node.id` → `node.id.as_str()`, Plan 433 A1)
+            // and iter-var field type resolution scan struct_field_types,
+            // which stayed empty for types from another module (E0308).
+            if let crate::ast::Stmt::TypeDecl(td) = &stmt {
+                let wanted = use_stmt.is_wildcard
+                    || use_stmt.items.iter().any(|i| i.as_str() == td.name.as_str());
+                if !wanted {
+                    continue;
+                }
+                let fields: Vec<(AutoStr, Type)> = td.members.iter()
+                    .map(|m| (m.name.clone(), m.ty.clone()))
+                    .collect();
+                if !fields.is_empty() {
+                    self.struct_field_types.insert(td.name.clone(), fields);
+                }
+            }
+            // Plan 016 Phase 4: imported ENUM variants — zero-payload variant
+            // construction (`Value.Null()`) needs the payload-variant maps to
+            // tell unit variants from tuple/struct ones (E0618), and String
+            // payload literals need the enum-ctor `.to_string()` (E0308).
+            if let crate::ast::Stmt::EnumDecl(ed) = &stmt {
+                let wanted = use_stmt.is_wildcard
+                    || use_stmt.items.iter().any(|i| i.as_str() == ed.name.as_str());
+                if !wanted {
+                    continue;
+                }
+                self.known_enum_names.insert(ed.name.clone());
+                for item in &ed.items {
+                    let item_key = (ed.name.clone(), item.name.clone());
+                    if item.has_fields() {
+                        let field_names: Vec<AutoStr> = item.fields.iter()
+                            .map(|f| f.name.clone())
+                            .collect();
+                        self.enum_struct_variants.insert(item_key, field_names);
+                    } else if item.has_tuple_payload() {
+                        self.enum_tuple_variants.insert(
+                            item_key.clone(),
+                            item.payload_types.len(),
+                        );
+                        self.enum_tuple_field_types.insert(
+                            item_key,
+                            item.payload_types.clone(),
+                        );
+                    } else if let Some(ref payload) = item.payload_type {
+                        self.enum_tuple_variants.insert(item_key.clone(), 1);
+                        self.enum_tuple_field_types.insert(
+                            item_key,
+                            vec![payload.clone()],
+                        );
+                    }
+                }
             }
         }
     }
