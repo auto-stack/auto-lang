@@ -6902,6 +6902,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("sse_named_event", shim_sse_named_event);
     natives.register_shim_by_name("sse_event", shim_sse_event);
     natives.register_shim_by_name("sse_plain_event", shim_sse_plain_event);
+
+    // Plan 442 C2 item ③ path (b): pure-logic value accessor externs.
+    natives.register_shim_by_name("value_get_str", shim_value_get_str);
+    natives.register_shim_by_name("value_get_bool", shim_value_get_bool);
+    natives.register_shim_by_name("value_is_null", shim_value_is_null);
 }
 
 // ============================================================================

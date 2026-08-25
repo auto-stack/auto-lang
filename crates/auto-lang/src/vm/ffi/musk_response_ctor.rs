@@ -543,3 +543,42 @@ pub fn sse_frame_from_nv(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<String>
         crate::vm::ffi::http_server::nv_to_json(vm, nv, 0).unwrap_or_else(|| "null".to_string())
     ))
 }
+
+// ── Pure-logic value accessors (Plan 442 C2 item ③ path (b) start) ───────────
+// These are the innermost extern helpers the backend corpus uses to read fields
+// out of a `Value` (a `__json_object` GenericInstanceData produced by the json
+// bridge / axum extractors). They need no Rust-registry access, so they are
+// staged ahead of the data-source externs (relay_runs_list etc.) that depend on
+// auto-musk's Rust side.
+
+/// `value_get_str(v, k)` → str. Stack: v, k -> str (k on top).
+pub fn shim_value_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let k = pop_string(task, vm, "value_get_str")?;
+    let nv = pop_value(task, vm);
+    let out = nv_heap_id(nv)
+        .and_then(|id| gid_field_str(vm, id, &k))
+        .unwrap_or_default();
+    let idx = vm.add_string(out.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `value_get_bool(v, k)` → bool. Stack: v, k -> bool (k on top).
+pub fn shim_value_get_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let k = pop_string(task, vm, "value_get_bool")?;
+    let nv = pop_value(task, vm);
+    let out = nv_heap_id(nv).and_then(|id| match gid_field(vm, id, &k)? {
+        auto_val::Value::Bool(b) => Some(b),
+        _ => None,
+    }).unwrap_or(false);
+    task.ram.push_nv(auto_val::encode_bool(out));
+    Ok(())
+}
+
+/// `value_is_null(v)` → bool. Stack: v -> bool.
+pub fn shim_value_is_null(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = pop_value(task, vm);
+    let out = is_nullish(nv);
+    task.ram.push_nv(auto_val::encode_bool(out));
+    Ok(())
+}

@@ -1448,6 +1448,10 @@ macro_rules! for_each_bigvm_native {
             ("sse_named_event", 3125, Int),
             ("sse_event", 3126, Int),
             ("sse_plain_event", 3127, Int),
+            // Pure-logic value accessors (no Rust-registry dependency).
+            ("value_get_str", 3128, String),
+            ("value_get_bool", 3129, Bool),
+            ("value_is_null", 3130, Bool),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2189,6 +2193,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("sse_named_event", 3125),
     ("sse_event", 3126),
     ("sse_plain_event", 3127),
+    // Pure-logic value accessors.
+    ("value_get_str", 3128),
+    ("value_get_bool", 3129),
+    ("value_is_null", 3130),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

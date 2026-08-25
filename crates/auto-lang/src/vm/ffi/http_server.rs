@@ -1165,6 +1165,52 @@ fn events_stream() ~Iter<int> {
             );
         }
 
+        /// Plan 442 C2 item ③ path (b): pure-logic value-accessor externs
+        /// (`value_get_str`/`value_get_bool`/`value_is_null`) read fields out of
+        /// a `Value` built by `json.to_value`. They resolve as bare natives.
+        #[test]
+        fn e2e_value_accessors() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/acc")]
+fn acc() str {
+    let obj = json.to_value("{\"msg\":\"hi\",\"ok\":true}")
+    let s = value_get_str(obj.view, "msg")
+    let b = value_get_bool(obj.view, "ok")
+    if b {
+        return s
+    } else {
+        return "no"
+    }
+}
+
+#[api(method = "GET", path = "/isnull")]
+fn isnull() str {
+    let obj = json.to_value("null")
+    if value_is_null(obj.view) {
+        return "yes"
+    } else {
+        return "no"
+    }
+}
+"#, 18747);
+
+            let acc = http_get(port, "/acc");
+            assert!(
+                acc.starts_with("HTTP/1.1 200"),
+                "value accessor status: {}", acc.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&acc), "\"hi\"",
+                "value_get_str/value_get_bool: full = {:?}", acc
+            );
+
+            let isnull = http_get(port, "/isnull");
+            assert_eq!(
+                body_of(&isnull), "\"yes\"",
+                "value_is_null on JSON null: full = {:?}", isnull
+            );
+        }
+
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,
         /// or `max_attempts` is exhausted. Returns the last body.
         ///
