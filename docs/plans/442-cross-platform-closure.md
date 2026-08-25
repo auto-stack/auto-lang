@@ -371,6 +371,24 @@
     机械）;枚举点分变体 ×3（feature_dev/task_plan/task_plan_parser——
     孤立解析净,管线层跨模块枚举注册问题,下一波）;relay_store 深层
     （undefined variable + Expected term ×20）;relay_flows panic。
+  - **▶ 第二批已落地（2026-08-25,auto-lang 会话；语料 21→27/32）**：①
+    **类型方法内 const 可见性**——`compile_module_to_bytecode` 的 pass 顺序
+    (TypeDecl 先于 Store)使方法编译时顶层 const 尚未注册进 global_vars;
+    修复 = TypeDecl pass 前做**只注册不发射**的 Store 名预注册(Store pass
+    照常发射;dep 模块不走 global_inits 主路径,无重复风险)——orch_tools/
+    spec_tools/tools 翻绿;② **未知枚举变体的 is 匹配**——use.rust 导入
+    枚举(AdvanceResult.ExecuteStep 形态)无 VM 模板,旧 else 分支把模式
+    当**表达式**编译撞 Cover 构造臂硬错("Unknown enum variant");修复 =
+    未知变体路由 IS_VARIANT 运行时检查(两处同构臂:Stmt::Is/is-expr),
+    绑定路径字段数缺省取绑定数——feature_dev/task_plan_parser 翻绿,
+    task_plan 编译过后转 panic(见下);③ musk 侧 extern_sigs 补
+    serve_listen(server_serve 翻绿)。**剩 5 模块深层尾部**:task_plan +
+    relay_flows panic 于 **函数值调用**(codegen 8745 unimplemented"Dynamic
+    call"——VM 无 CALLV 能力,真功能缺口非快修);relay_store 多错级联
+    (undefined variable ×20,首错细节待抓);workflow 的 comptime
+    `#{read_text}`(intrinsics 别名已挂但未达该调用路径,深层)。
+    **运维**:D 盘 100% 满(target/debug/incremental 独占 134GB),已清
+    增量缓存释放至 132G 空闲。
   - **▶ C2 剩余工作清单（18 模块五类，逐点归属）**：① **顶层 `let` 跨 fn
     可见性 ×5+**（orch_tools/spec_tools/tools/workflow/server_serve 及
     relay_store 部分——codegen 有意让顶层 let 保持局部（var/const 才入

@@ -456,6 +456,14 @@ impl Codegen {
         // Plan 442 B-support: JS web-compat alias — musk sources call the
         // browser global; route to the VM's percent-encoding native.
         intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
+        // Plan 442 C2: bare `read_text(path)` — musk backend's comptime
+        // `#{ read_text("../workflows/...") }` (workflow.at) compiles the
+        // inner expr as a runtime call on the VM path; route to the fs
+        // read native (a2r bakes the content at transpile time instead —
+        // the VM-side value is cwd-relative and may differ, documented).
+        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
+            intrinsics.insert("read_text".to_string(), id);
+        }
         // Plan 011 (MS3-B): shell-host bridge functions.
         intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
         intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
