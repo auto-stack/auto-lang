@@ -14,13 +14,18 @@ mod plan442_diag_dumper {
             eprintln!("diag: auto-src not found, skipping");
             return;
         }
-        let r = std::panic::catch_unwind(|| {
-            crate::run_file(src_dir.join("__repro.at").to_string_lossy().as_ref()).map(|_| String::new())
-        });
-        match r {
-            Ok(Ok(_)) => eprintln!("REPRO RUN CLEAN"),
-            Ok(Err(e)) => eprintln!("REPRO RUN ERR
+        // Full pipeline-style session setup (the missing piece: resolve_deps
+        // triggers compile_dep -> shim metadata registers imported fn
+        // signatures into the type store), then parse the minimal repro.
+        let code = std::fs::read_to_string(src_dir.join("__repro.at")).unwrap();
+        let mut session = crate::compile::CompileSession::new();
+        let _ = session.collect_rust_imports(&code);
+        let _ = session.resolve_deps(&code);
+        let _ = session.resolve_uses(&code);
+        let mut parser = crate::Parser::new_with_type_store(code.as_str(), session.type_store());
+        match parser.parse() {
+            Ok(ast) => eprintln!("FULLPIPE PARSE OK ({} stmts)", ast.stmts.len()),
+            Err(e) => eprintln!("FULLPIPE PARSE ERR
 {}", miette::Report::new(e)),
-            Err(_) => eprintln!("REPRO RUN PANIC"),
         }    }
 }

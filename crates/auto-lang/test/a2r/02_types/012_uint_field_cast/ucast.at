@@ -1,0 +1,17 @@
+// Plan 032 G4b: a `uint` (u32) struct field fed an i64-typed expr gets the
+// narrowing cast natively — int literals, i64 locals, and a2r-std
+// json.as_int(...) (the canonical i64 source). u32 literals pass through.
+type Stats {
+    hits uint
+    label str
+}
+
+fn main() {
+    let n = 42
+    let a = Stats(hits: 7, label: "lit")
+    let b = Stats(hits: n, label: "i64 local")
+    let c = Stats(hits: json.as_int(json.get(1, "k")), label: "as_int")
+    print(a.hits)
+    print(b.hits)
+    print(c.hits)
+}

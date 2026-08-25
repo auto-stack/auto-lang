@@ -5104,8 +5104,30 @@ fn update_block_in_state(
             Err(_) => return false,
         },
     };
+    // Plan 064: store-internal RunCommand submits (e.g. the boot-script
+    // dispatch inside Init) push VM-heap blocks — Value::VmRef elements the
+    // Obj-only match below can't finalize (block stuck Running). When no Obj
+    // matches, materialize VmRef elements ONE target at a time (same shape
+    // swap the renderer's own RunCommand interception performs on the tail
+    // block) and retry the match; only the matched element is replaced in the
+    // vec, other VmRef blocks keep their heap identity.
     let mut found = false;
     for b in &mut blocks_vec {
+        if !matches!(b, auto_val::Value::Obj(_)) {
+            let m = component.materialize_obj_value(b);
+            match m {
+                auto_val::Value::Obj(obj) => {
+                    let id_matches = obj.get("id")
+                        .map(|v| v.as_int() as i64 == block_id)
+                        .unwrap_or(false);
+                    if !id_matches {
+                        continue;
+                    }
+                    *b = auto_val::Value::Obj(obj);
+                }
+                _ => continue,
+            }
+        }
         if let auto_val::Value::Obj(obj) = b {
             let id_matches = obj.get("id")
                 .map(|v| v.as_int() as i64 == block_id)

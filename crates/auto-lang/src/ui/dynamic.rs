@@ -441,6 +441,16 @@ impl DynamicComponent {
         Ok(())
     }
 
+    /// Plan 064: materialize a VM-heap object reference (Value::VmRef /
+    /// Int(heap_id)) into a plain Value::Obj (field copy). Passes through
+    /// non-object values unchanged. Used by the iced renderer's block update
+    /// so store-internal pushes (e.g. the boot-script submit inside Init)
+    /// become matchable Obj blocks — same shape the renderer's own
+    /// RunCommand interception writes.
+    pub fn materialize_obj_value(&self, v: &auto_val::Value) -> auto_val::Value {
+        self.bridge.materialize_obj_ref(v)
+    }
+
     /// Read a state field that holds an array, returning the actual Vec<Value>.
     /// Handles both Value::Array and Value::Int(array_id) from [...] literals.
     /// Plan 289: Needed because [...] literals store array_id in state.

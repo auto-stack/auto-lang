@@ -9530,6 +9530,42 @@ impl RustTrans {
             if needs_to_string {
                 write!(out, ".to_string()")?;
             }
+            // Plan 032 G4 (auto-ai consumer): a `uint` (u32) struct field fed
+            // an i64-typed expr (int literal, i64 local, or a2r-std
+            // `json.as_int(...)` — the canonical i64 source) needs the
+            // narrowing cast. Consumers sed-patched 13 such Usage-token sites.
+            if let Some(expr) = match arg {
+                Arg::Pos(e) | Arg::Pair(_, e) => Some(e),
+                Arg::Name(_) => None,
+            } {
+                let field_ty = match arg {
+                    Arg::Pos(_) => field_types.get(i).map(|(_, t)| t.clone()),
+                    Arg::Pair(k, _) => field_types.iter()
+                        .find(|(n, _)| n == k).map(|(_, t)| t.clone()),
+                    Arg::Name(_) => None,
+                };
+                if matches!(field_ty, Some(Type::Uint)) {
+                    let expr_is_i64 = match expr {
+                        Expr::Uint(_) => false, // already u32
+                        Expr::Int(_) | Expr::I64(_) => true,
+                        // a2r-std json.as_int returns i64
+                        Expr::Call(c) => {
+                            matches!(c.name.as_ref(),
+                                Expr::Dot(obj, m)
+                                    if m.as_str() == "as_int"
+                                        && matches!(obj.as_ref(), Expr::Ident(o) if o.as_str() == "json"))
+                        }
+                        Expr::Ident(n) => matches!(
+                            self.local_var_types.get(n.as_str()),
+                            Some(Type::Int)
+                        ),
+                        _ => false,
+                    };
+                    if expr_is_i64 {
+                        write!(out, " as u32")?;
+                    }
+                }
+            }
             if i < args.args.len() - 1 {
                 write!(out, ", ")?;
             }
