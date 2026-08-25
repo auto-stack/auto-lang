@@ -29,6 +29,24 @@ registry，其余 10 个为空位。rust 端（iced 渲染、编辑壳）消费�
 - codegen 臂重定向：AutoDownEditor spec 消费 engine 出口。
 - crate 对拍：palette_map.at a2r 发射 + 对拍脚本。
 
+## 批次二调查结论（2026-08-26，本会话完成）
+
+- vue backend 的默认映射不走 WidgetSpec.backends，而走 **schema.meta 的 vue 元数据**
+  （registry.rs apply_default_vue_mappings：schema canonical 折叠键 → component/import/npm）。
+  markdown → MarkdownRender 的 import 现指 @autodown/vue——该包是 engine 的 re-export shim
+  （auto-down 017），**当前仍正确**；待 020 退役 shim 时统一切 @autodown/engine。
+- golden 链路：test/a2vue/002_markdown（input.at → expected.vue）锁定 markdown 臂行为。
+- 面板 widgets 的 vue component 映射**暂不登记**：engine 侧面板渲染器尚非具名 Vue 组件
+  （builtin-panels 是函数）；待面板组件化后经 schema.meta 补映射，避免假组件名进 codegen。
+
+## 后续批次的准确落点（省去考古）
+
+1. iced backend：面板 → iced widget 映射，落 ui_gen/rust.rs 渲染臂 + renderer.rs
+   （Codeblock 走 413 Rich span 关键字高亮经验）。
+2. codegen 臂重定向：AutoDownEditor spec 的 vue 消费确认经 uses_autodown 门
+   （pac.at npm_deps）；ark TextArea / jet OutlinedTextField 移动端降级不变。
+3. palette_map.at a2r 发射 + 对拍：auto-down 本仓侧职责（autodown-core crate 就位）。
+
 ## 验收（批次一）
 
 - `cargo check -p auto-lang` 绿；
