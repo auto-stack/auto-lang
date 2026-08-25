@@ -1457,6 +1457,8 @@ macro_rules! for_each_bigvm_native {
             // Pure utility externs (auto-lang has fastrand + hex).
             ("new_id", 3133, String),
             ("random_hex", 3134, String),
+            ("hash_password", 3135, String),
+            ("path_inner", 3136, String),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2207,6 +2209,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // Pure utility externs.
     ("new_id", 3133),
     ("random_hex", 3134),
+    ("hash_password", 3135),
+    ("path_inner", 3136),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

@@ -1214,6 +1214,16 @@ fn hex() str {
 fn newid() str {
     return new_id(8)
 }
+
+#[api(method = "GET", path = "/hash")]
+fn hash() str {
+    return hash_password("p", "salt")
+}
+
+#[api(method = "GET", path = "/path")]
+fn path() str {
+    return path_inner("seg/ment")
+}
 "#, 18747);
 
             let acc = http_get(port, "/acc");
@@ -1251,6 +1261,17 @@ fn newid() str {
 
             let n = body_of(&http_get(port, "/newid")).trim_matches('"').to_string();
             assert_eq!(n.len(), 16, "new_id(8) should be 16 hex chars: {:?}", n);
+
+            // hash_password = sha256(salt || p) hex (64 chars, deterministic).
+            let h = body_of(&http_get(port, "/hash")).trim_matches('"').to_string();
+            assert_eq!(h.len(), 64, "hash_password should be 64 hex chars: {:?}", h);
+            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "hash_password not hex: {:?}", h);
+
+            // path_inner on a string is identity (axum Path pushes a string).
+            assert_eq!(
+                body_of(&http_get(port, "/path")), "\"seg/ment\"",
+                "path_inner identity: full = {:?}", http_get(port, "/path")
+            );
         }
 
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,

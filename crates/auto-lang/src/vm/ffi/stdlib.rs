@@ -6913,6 +6913,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Pure utility externs (random IDs/hex).
     natives.register_shim_by_name("new_id", shim_new_id);
     natives.register_shim_by_name("random_hex", shim_random_hex);
+    natives.register_shim_by_name("hash_password", shim_hash_password);
+    natives.register_shim_by_name("path_inner", shim_path_inner);
 }
 
 // ============================================================================

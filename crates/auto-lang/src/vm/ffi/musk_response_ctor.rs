@@ -696,3 +696,37 @@ pub fn shim_random_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 pub fn shim_new_id(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     shim_random_hex(task, vm)
 }
+
+/// `hash_password(p, s)` → str: sha256(s || p) hex (extern_impl parity).
+/// Stack: p, s -> str (s on top).
+pub fn shim_hash_password(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = pop_string(task, vm, "hash_password")?;
+    let p = pop_string(task, vm, "hash_password")?;
+    use sha2::Digest;
+    let mut h = sha2::Sha256::new();
+    h.update(s.as_bytes());
+    h.update(p.as_bytes());
+    let hex = hex::encode(h.finalize());
+    let idx = vm.add_string(hex.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `path_inner(p)` → str: the Path extractor's inner segment string. On the VM
+/// the axum adapter pushes Path extractors directly as a string, so this is the
+/// identity for string args (empty for non-strings). Stack: p -> str.
+pub fn shim_path_inner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = crate::vm::native::pop_arg_nv(task);
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv) as usize;
+        if let Some(b) = vm.strings.read().unwrap().get(idx).cloned() {
+            let s = String::from_utf8_lossy(&b).to_string();
+            let nidx = vm.add_string(s.into_bytes());
+            vm.rc_push_str_idx(task, nidx as usize);
+            return Ok(());
+        }
+    }
+    let nidx = vm.add_string(Vec::new());
+    vm.rc_push_str_idx(task, nidx as usize);
+    Ok(())
+}
