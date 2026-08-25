@@ -5251,8 +5251,8 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let _ = bindings; // 字面量序列化;动态属性为后续项
-        let doc = Self::serialize_svg_element("svg", props, children);
+        // Plan 445 M3：动态 props（`d: .lineD` 等）经 bindings/state 解析。
+        let doc = self.serialize_svg_element("svg", props, children, bindings);
         let style = self
             .extract_string(props, "class")
             .and_then(|c| crate::ui::style::Style::parse(&c).ok());
@@ -5262,14 +5262,16 @@ let tabs_inner = View::Row {
         }
     }
 
-    /// Plan 442 A4: SVG 元素树 → SVG 文档字符串。字面量 props 原名透传为
-    /// attribute(viewBox/d/fill/...);class/style 不进文档(class 已由外层
-    /// View::Image 承载);动态 props 跳过(A4 消费面是静态图标数据,
-    /// musk 038 52-icon 数据层);非 SVG 子元素忽略。
+    /// Plan 442 A4: SVG 元素树 → SVG 文档字符串。props 经表达式解析器取值
+    /// （字面量行为不变；动态 props 见 Plan 445 M3——此前仅字面量透传，
+    /// A4 消费面是静态图标数据）;class/style 不进文档(class 已由外层
+    /// View::Image 承载);非 SVG 子元素忽略。
     fn serialize_svg_element(
+        &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
         children: &[AuraNode],
+        bindings: &Bindings,
     ) -> String {
         let escape = |v: &str| {
             v.replace('&', "&amp;")
@@ -5283,8 +5285,9 @@ let tabs_inner = View::Row {
                 continue;
             }
             if let AuraPropValue::Expr(expr) = value {
-                if let Some(lit) = svg_attr_literal(expr) {
-                    attrs.push_str(&format!(" {}=\"{}\"", key, escape(&lit)));
+                let resolved = self.resolve_expr_to_string_with(expr, bindings);
+                if !resolved.is_empty() {
+                    attrs.push_str(&format!(" {}=\"{}\"", key, escape(&resolved)));
                 }
             }
         }
@@ -5292,7 +5295,7 @@ let tabs_inner = View::Row {
         for child in children {
             if let AuraNode::Element { tag: ctag, props: cprops, children: cchildren, .. } = child {
                 if is_svg_shape_tag(ctag) {
-                    inner.push_str(&Self::serialize_svg_element(ctag, cprops, cchildren));
+                    inner.push_str(&self.serialize_svg_element(ctag, cprops, cchildren, bindings));
                 }
             }
         }

@@ -1,0 +1,2 @@
+tick_rate_per_sec=2.48
+labels="t16   t17   t18   t19   t20   t21   t22   t23   t24   t25   t26   t27"
