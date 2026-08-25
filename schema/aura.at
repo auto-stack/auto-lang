@@ -3630,7 +3630,7 @@ element markdown {
     category: "unknown"
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "MarkdownRender", import: "markstream-vue", npm: "markstream-vue@^0.0.14-beta.8" }
+    vue: { component: "MarkdownRender", import: "@autodown/vue", npm: "" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"

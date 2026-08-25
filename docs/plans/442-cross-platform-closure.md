@@ -298,6 +298,23 @@
     ffi_dual 回归族已有先例）。剩余动作 = 落 api.at 契约/back.project 接线
     （musk 后端形态对齐 015-notes 的外部后端装载）,转译缺口按实跑逐条登记。
     pac.at 已回退 `rust`（试验不落库）。
+  - **▶ C1 后半程 wave-1 已落地（2026-08-25,auto-lang 会话;全语料调用面
+    清单实测）**：静态普查结论——限定式 `::` 调用仅 5 处(env.var 已修/
+    tokio::spawn ×2/fs::write 已路由);模块点形式 `fs.*` 全部已有路由;
+    类型静态 `HashMap.new ×23/Arc.new ×21/HashSet.new ×7/Mutex.new ×3`
+    **dispatch 3000 既有臂已覆盖**(实测全通)。真缺口四臂已补:
+    `PathBuf.parent`(Option<PathBuf> 句柄/null)、`PathBuf.file_stem`
+    (Option<str>)、`SystemTime.now`(句柄)、`SystemTime.duration_since`
+    (Result 生产者坍缩→Duration 句柄;earlier 非有效句柄按 epoch 兜底,
+    UNIX_EPOCH 静态常量 VM 侧为占位值)——ffi_dual 015_musk_backend_wave1
+    回归锁定。**剩余 rust 符号面（wave-2+,归 430 工具链波次）**：
+    axum Sse/KeepAlive/Router ×16 站点 + tokio::spawn ×2 + 
+    `crate::server::AppState` ×7(= serve 适配层架构项,非逐符号 shim 可
+    解);auto_ai_agent/auto_atom 客户端 crate 面(430 cdylib shim 批量
+    构建)。**语义债登记**:PathBuf 句柄上 `.starts_with` 返回值错(0),
+    HashMap str 键 insert/get 往返空——marshalling 细节,handler 执行
+    波次前修。附带:修复并发会话遗留的 002_markdown 金标陈旧
+    (registry 已切 @autodown/vue,金标未同步,非本波引入)。
   - **▶ C1 缺口台账（首批实测,2026-08-25,musk 会话;探针
     `plan442_musk_backend_probe_tests.rs`,#[ignore] 手动门）**：VM 直跑
     最纯样板 app_config.at 的驱动即断于 ① `Undefined symbol: env.var`

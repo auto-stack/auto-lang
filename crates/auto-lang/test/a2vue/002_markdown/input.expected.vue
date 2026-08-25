@@ -1,7 +1,7 @@
 <!-- DocView component - Auto-generated from Auto language -->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { MarkdownRender } from 'markstream-vue'
+import { MarkdownRender } from '@autodown/vue'
 
 
 const body = ref<string>('')

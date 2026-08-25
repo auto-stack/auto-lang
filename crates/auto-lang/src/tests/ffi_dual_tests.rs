@@ -163,6 +163,11 @@ let p = Config.parse("not-a-number")
 // VM 模式的 19_rust_std goldens 当时全部 #[ignore],迁移主战场零活跃守护——
 // 本用例补上;19_rust_std 的陈旧 ignore 亦已解除。
 #[test]
+fn ffi_dual_015_musk_backend_wave1() {
+    test_ffi_dual("015_musk_backend_wave1").unwrap();
+}
+
+#[test]
 fn ffi_dual_014_std_generated_segment() {
     test_ffi_dual("014_std_generated_segment").unwrap();
 }

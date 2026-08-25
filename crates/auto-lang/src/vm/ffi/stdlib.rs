@@ -6972,6 +6972,84 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
         }
 
+        // Plan 442 C1 后半程 (musk backend corpus): PathBuf::parent ->
+        // Option<PathBuf> — Some 推新句柄,None 推 null(调用方 is Some(p)
+        // 匹配形态)。
+        ("PathBuf", "parent") => {
+            let self_handle = pop_rust_obj(task, vm, "PathBuf.parent")?;
+            let parent = vm
+                .get_heap_object(self_handle)
+                .and_then(|obj| {
+                    let guard = obj.read().unwrap();
+                    guard
+                        .as_any()
+                        .downcast_ref::<RustStdlibObject>()
+                        .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
+                        .and_then(|p| p.parent().map(|pp| pp.to_path_buf()))
+                });
+            match parent {
+                Some(p) => push_rust_obj(task, vm, "PathBuf", StdPathBuf::from(p))?,
+                None => task.ram.push_nv(auto_val::encode_null()),
+            }
+        }
+
+        // PathBuf::file_stem -> Option<str> — Some 推池字符串,None 推 null。
+        ("PathBuf", "file_stem") => {
+            let self_handle = pop_rust_obj(task, vm, "PathBuf.file_stem")?;
+            let stem = vm
+                .get_heap_object(self_handle)
+                .and_then(|obj| {
+                    let guard = obj.read().unwrap();
+                    guard
+                        .as_any()
+                        .downcast_ref::<RustStdlibObject>()
+                        .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
+                        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+                });
+            match stem {
+                Some(s) => {
+                    let idx = {
+                        let mut strings = vm.strings.write().unwrap();
+                        strings.push(s.into_bytes());
+                        strings.len() - 1
+                    };
+                    task.ram.push_nv(auto_val::encode_string(idx as u32));
+                }
+                None => task.ram.push_nv(auto_val::encode_null()),
+            }
+        }
+
+        // Plan 442 C1 后半程: std::time::SystemTime —— musk 后端的
+        // `SystemTime.now().duration_since(SystemTime.UNIX_EPOCH)` 时间戳
+        // 形态。Result 在生产者边界坍缩(约定同 env.var);earlier 参数不是
+        // 有效 SystemTime 句柄时按 epoch 兜底(UNIX_EPOCH 静态常量在 VM 侧
+        // 无独立表示,直呼点推的是占位值)。
+        ("SystemTime", "now") => {
+            push_rust_obj(task, vm, "std::time::SystemTime", SystemTime::now())?;
+        }
+        ("SystemTime", "duration_since") => {
+            let earlier_nv = task.ram.pop_nv();
+            let self_handle = pop_rust_obj(task, vm, "SystemTime.duration_since")?;
+            let read_time = |h: u64| -> Option<SystemTime> {
+                vm.get_heap_object(h).and_then(|obj| {
+                    let guard = obj.read().unwrap();
+                    guard
+                        .as_any()
+                        .downcast_ref::<RustStdlibObject>()
+                        .and_then(|ro| ro.downcast_ref::<SystemTime>())
+                        .cloned()
+                })
+            };
+            let now = read_time(self_handle).unwrap_or_else(SystemTime::now);
+            let earlier = if auto_val::is_i32(earlier_nv) {
+                read_time(auto_val::decode_i32(earlier_nv) as u64).unwrap_or(UNIX_EPOCH)
+            } else {
+                UNIX_EPOCH
+            };
+            let dur = now.duration_since(earlier).unwrap_or_default();
+            push_rust_obj(task, vm, "std::time::Duration", dur)?;
+        }
+
         // std::boxed::Box
         ("Box", "new") => {
             let val: i32 = i32::pop_from_stack(task, vm)
