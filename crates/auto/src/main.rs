@@ -94,10 +94,21 @@ fn output_success(ai_mode: bool, result: &str) {
     }
 }
 
+/// Full version: crate version + git stamp injected by build.rs
+/// (`git describe --always --dirty`). Two binaries both reporting `0.1.0`
+/// were indistinguishable until one misparsed the source (002-counter
+/// incident, plan 448); the stamp makes a stale PATH install visible at a
+/// glance via `auto --version`.
+const FULL_VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    "+",
+    env!("AUTO_BUILD_GIT_VERSION")
+);
+
 #[derive(Parser, Debug)]
 #[command(
     name = "auto",
-    version,
+    version = FULL_VERSION,
     about = "AutoNexus / Auto CLI\nThe Universal Build Coordinator & Language Environment",
     long_about = None
 )]
