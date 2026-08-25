@@ -1111,6 +1111,60 @@ fn stream_handler() ~Iter<int> {
             assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
         }
 
+        /// Plan 442 C2 item ②: the SSE form — a generator yielding
+        /// `sse_named_event(name, payload)` objects must stream proper
+        /// `event: <name>\ndata: <payload>` frames (not the raw heap handle).
+        /// The bare `sse_named_event` is resolved to a VM shim which builds an
+        /// opaque Event object; `sse_frame_from_nv` formats it.
+        #[test]
+        fn e2e_sse_named_event_frames() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/api/events")]
+fn events_handler() ~Iter<int> {
+    yield sse_named_event("e1", "hello")
+    yield sse_named_event("e2", "world")
+}
+"#, 18744);
+            let resp = http_get(port, "/api/events");
+            let body = body_of(&resp);
+            assert!(
+                body.contains("event: e1\ndata: \"hello\""),
+                "named SSE frame 1: body={:?}", body
+            );
+            assert!(
+                body.contains("event: e2\ndata: \"world\""),
+                "named SSE frame 2: body={:?}", body
+            );
+        }
+
+        /// Plan 442 C2 item ②: the full `Sse.new(stream).keep_alive(
+        /// KeepAlive.new()).into_response()` chain — `into_response()` returns
+        /// the generator's iterator id, so the server's iterator→SSE branch
+        /// streams the yielded Event frames through the dispatch-3000 SSE arms.
+        #[test]
+        fn e2e_sse_chain() {
+            let port = start_server(r#"
+dep axum
+use.rust axum::response::sse::{Event, KeepAlive, Sse}
+
+#[api(method = "GET", path = "/api/sse-chain")]
+fn chain_handler() int {
+    var sse = Sse.new(events_stream())
+    return sse.keep_alive(KeepAlive.new()).into_response()
+}
+
+fn events_stream() ~Iter<int> {
+    yield sse_named_event("tick", "42")
+}
+"#, 18746);
+            let resp = http_get(port, "/api/sse-chain");
+            let body = body_of(&resp);
+            assert!(
+                body.contains("event: tick\ndata: \"42\""),
+                "Sse chain SSE frame: body={:?}", body
+            );
+        }
+
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,
         /// or `max_attempts` is exhausted. Returns the last body.
         ///
@@ -2401,17 +2455,26 @@ async fn handle_connection_async(
                         // worker thread).
                         loop {
                             let next_task_id = vm.spawn_task(0, 1024);
-                            let next_val = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                            let yielded = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
                                 let mut nt = nt_arc.try_lock().unwrap();
                                 nt.ram.push_i32(iter_id as i32);
                                 let _ = crate::vm::native::shim_iterator_next(&mut nt, vm);
-                                nt.ram.pop_i32()
-                            } else { -1 };
+                                nt.ram.pop_nv()
+                            } else { auto_val::encode_i32(-1) };
                             vm.tasks.remove(&next_task_id);
-                            if next_val == -1 { break; }
-                            let frame = format!("data: {}\n\n", next_val);
-                            let _ = stream.write_all(frame.as_bytes()).await;
-                            let _ = stream.flush().await;
+                            // Iterator done sentinel: i32 -1.
+                            if auto_val::is_i32(yielded) && auto_val::decode_i32(yielded) == -1 {
+                                break;
+                            }
+                            // Plan 442 C2 item ②: yielded `Event` objects (or
+                            // `Ok(event)`) format as `event:`/`data:` frames;
+                            // raw scalars keep the legacy `data: N` path.
+                            if let Some(frame) =
+                                crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(vm, yielded)
+                            {
+                                let _ = stream.write_all(frame.as_bytes()).await;
+                                let _ = stream.flush().await;
+                            }
                             // Cooperative yield: let other connections' tasks run.
                             tokio::task::yield_now().await;
                         }

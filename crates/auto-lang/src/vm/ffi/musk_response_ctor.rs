@@ -382,3 +382,164 @@ pub fn shim_sse_plain_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         SseEvent { name: None, data },
     )
 }
+
+// ── Sse/KeepAlive/into_response chain (Plan 442 C2 item ②) ───────────────────
+// The backend SSE handlers build
+//   `Sse.new(stream).keep_alive(KeepAlive.new()).into_response()`
+// where `stream` is a generator's iterator id (`run_events_stream(...)`).
+// `into_response()` returns that iterator id so the server's existing
+// iterator→SSE branch streams it; the yielded `Event` objects are formatted
+// by `sse_frame_from_nv`.
+
+/// An `axum::response::sse::Sse` heap object wrapping the generator's iterator.
+#[derive(Debug, Clone)]
+pub struct Sse {
+    pub iter_id: u32,
+    pub keep_alive: bool,
+}
+
+/// An `axum::response::sse::KeepAlive` heap object (accepted, config stored).
+#[derive(Debug, Clone)]
+pub struct KeepAlive {
+    pub enabled: bool,
+}
+
+/// Pop a heap-object handle arg.
+fn pop_rust_handle(task: &mut AutoTask, ctx: &str) -> Result<u64, VMError> {
+    let nv = crate::vm::native::pop_arg_nv(task);
+    if auto_val::is_object(nv) {
+        Ok(auto_val::decode_object(nv) as u64)
+    } else if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if v <= 0 {
+            Err(VMError::RuntimeError(format!("{ctx}: expected heap object handle")))
+        } else {
+            Ok(v as u64)
+        }
+    } else {
+        Err(VMError::RuntimeError(format!("{ctx}: expected heap object handle")))
+    }
+}
+
+/// `Sse.new(stream_iter_id)` → Sse heap object. Stack: iter_id -> sse_handle
+pub fn shim_sse_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let iter_id = pop_i32(task) as u32;
+    crate::vm::ffi::stdlib::push_rust_obj(
+        task,
+        vm,
+        "axum::response::sse::Sse",
+        Sse { iter_id, keep_alive: false },
+    )
+}
+
+/// `KeepAlive.new()` → KeepAlive heap object. Stack: (none) -> keepalive_handle
+pub fn shim_keepalive_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    crate::vm::ffi::stdlib::push_rust_obj(
+        task,
+        vm,
+        "axum::response::sse::KeepAlive",
+        KeepAlive { enabled: true },
+    )
+}
+
+/// `sse.keep_alive(keep_alive)` → sse (mutated). Stack: sse_handle, ka_handle.
+pub fn shim_sse_keep_alive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ka_handle = pop_rust_handle(task, "Sse.keep_alive")?;
+    let sse_handle = pop_rust_handle(task, "Sse.keep_alive")?;
+    if let Some(obj) = vm.get_heap_object(sse_handle) {
+        let mut guard = obj.write().unwrap();
+        if let Some(ro) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(sse) = ro.downcast_mut::<Sse>() {
+                sse.keep_alive = true;
+            }
+        }
+    }
+    task.ram.push_i32(sse_handle as i32);
+    Ok(())
+}
+
+/// `sse.into_response()` → the generator iterator id the server streams.
+/// Stack: sse_handle -> iter_id
+pub fn shim_sse_into_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sse_handle = pop_rust_handle(task, "Sse.into_response")?;
+    let iter_id = if let Some(obj) = vm.get_heap_object(sse_handle) {
+        let guard = obj.read().unwrap();
+        guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            .and_then(|ro| ro.downcast_ref::<Sse>())
+            .map(|s| s.iter_id)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    task.ram.push_i32(iter_id as i32);
+    Ok(())
+}
+
+/// Read an `SseEvent` from a heap object handle if it is one.
+fn get_sse_event(vm: &AutoVM, handle: u64) -> Option<SseEvent> {
+    let obj = vm.get_heap_object(handle)?;
+    let guard = obj.read().unwrap();
+    guard
+        .as_any()
+        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .and_then(|ro| ro.downcast_ref::<SseEvent>())
+        .cloned()
+}
+
+/// Unwrap a `Result.Ok(...)` value to its single inner heap handle, if the
+/// value is a Result.Some/Ok GenericInstanceData with one field.
+fn result_ok_inner(vm: &AutoVM, handle: u64) -> Option<u64> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let obj = vm.get_heap_object(handle)?;
+    let guard = obj.read().unwrap();
+    let inst = guard.as_any().downcast_ref::<GenericInstanceData>()?;
+    if inst.mono_name.contains("Result.Ok") || inst.mono_name.contains("Option.Some") {
+        if let Some(auto_val::Value::VmRef(r)) = inst.get_field(0) {
+            return Some(r.id as u64);
+        }
+    }
+    None
+}
+
+/// Format one SSE frame from a yielded NanoValue. `None` = done/empty frame.
+/// - `SseEvent` → `event: <name>\ndata: <payload>\n\n` (name optional).
+/// - `Result.Ok(SseEvent)` → the same, unwrapped.
+/// - raw scalar → `data: <value>\n\n` (preserves the legacy numeric/string path).
+pub fn sse_frame_from_nv(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<String> {
+    // Try to render a heap value as a named/named-less SSE event frame.
+    if let Some(handle) = nv_heap_id(nv) {
+        let mut seen_handles = Vec::new();
+        let mut cur = handle;
+        loop {
+            if let Some(ev) = get_sse_event(vm, cur) {
+                let mut frame = String::new();
+                if let Some(name) = &ev.name {
+                    frame.push_str(&format!("event: {}\n", name));
+                }
+                frame.push_str(&format!("data: {}\n\n", ev.data));
+                return Some(frame);
+            }
+            if seen_handles.len() > 4 {
+                break; // do not chase chains indefinitely
+            }
+            match result_ok_inner(vm, cur) {
+                Some(inner) if !seen_handles.contains(&inner) => {
+                    seen_handles.push(cur);
+                    cur = inner;
+                }
+                _ => break,
+            }
+        }
+    }
+    // Raw value: `data: <json>`. Non-heap scalars (int/str/bool) and heap
+    // objects that aren't SSE events all land here, preserving the legacy path.
+    Some(format!(
+        "data: {}\n\n",
+        crate::vm::ffi::http_server::nv_to_json(vm, nv, 0).unwrap_or_else(|| "null".to_string())
+    ))
+}

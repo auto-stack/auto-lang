@@ -6985,6 +6985,23 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
         }
 
+        // Plan 442 C2 item ②: axum SSE form — `Sse.new(stream)` →
+        // `.keep_alive(KeepAlive.new())` → `.into_response()`. `stream` is a
+        // generator's iterator id; `into_response()` returns it so the server's
+        // iterator→SSE branch streams the yielded `Event` frames.
+        ("Sse", "new") => {
+            super::musk_response_ctor::shim_sse_new(task, vm)?;
+        }
+        ("Sse", "keep_alive") => {
+            super::musk_response_ctor::shim_sse_keep_alive(task, vm)?;
+        }
+        ("Sse", "into_response") => {
+            super::musk_response_ctor::shim_sse_into_response(task, vm)?;
+        }
+        ("KeepAlive", "new") => {
+            super::musk_response_ctor::shim_keepalive_new(task, vm)?;
+        }
+
         // std::time::Instant(now/elapsed 已迁 plan-430 生成段)
 
         // std::time::Duration(构造器与 as_secs/as_secs_f64 已迁 plan-430 生成段;
