@@ -147,52 +147,52 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 
 #### Phase 4:parser.at 前端(A 段)
 
-- [ ] 4.1 `parse_is` 直译(镜像宿主 parser.rs:7511-7644 的 parse_is/parse_is_branch
+- [x] 4.1 `parse_is` 直译(镜像宿主 parser.rs:7511-7644 的 parse_is/parse_is_branch
   决策:EqBranch 单模式/多模式 `|`、IfBranch 卫语句、ElseBranch;模式形态:字面量
   /字符/`Cover(Tag)` 枚举路径含 `Name(bound)` 绑定与 `_`);从
   `is_unsupported_stmt_kind` 摘除 "Is"。
-- [ ] 4.2 dump 形态对齐:is 语句/臂/模式的 S-expr 与 Rust 参考 m2 dump 逐字符一致
+- [x] 4.2 dump 形态对齐:is 语句/臂/模式的 S-expr 与 Rust 参考 m2 dump 逐字符一致
   (对照 m2-ast-dump-format.md;Rust 侧 dump 以 live 对比为唯一依据,发现宿主
   dump 漂移按 D18 quirk 照抄规则处理)。
-- [ ] 4.3 corpus_m2 新增 is 语料组(p15/p16 后续编号):is-on-string、is-on-char、
+- [x] 4.3 corpus_m2 新增 is 语料组(p15/p16 后续编号):is-on-string、is-on-char、
   or-臂、枚举载荷解构、卫语句、else、嵌套块体、值语义位;M2 全绿。
 
 #### Phase 5:typeinfo.at(B 段)
 
-- [ ] 5.1 `t_stmt_walk` 增 is 语句(臂体走查;绑定变量按枚举载荷表入局部作用域,
+- [x] 5.1 `t_stmt_walk` 增 is 语句(臂体走查;绑定变量按枚举载荷表入局部作用域,
   镜像宿主 infer 对 Uncover 的处理);`t_infer_expr` 若含 is 值语义位同口径。
-- [ ] 5.2 corpus_m3 扩 `.type` 查询语料(臂内绑定类型打印);M3 全绿。
+- [x] 5.2 corpus_m3 扩 `.type` 查询语料(臂内绑定类型打印);M3 全绿。
 
 #### Phase 6:codegen.at + engine.at(C 段)
 
-- [ ] 6.1 codegen.at 发射(镜像宿主 codegen.rs:3347-3735 决策,不照抄实现):
+- [x] 6.1 codegen.at 发射(镜像宿主 codegen.rs:3347-3735 决策,不照抄实现):
   `_is_target` 暂存局部;EqBranch——字面量/字符 → EQ;标量枚举 → 判别值 EQ;
   载荷枚举 → IS_VARIANT + GET_GENERIC_FIELD 逐字段绑定;or-臂 → 逐模式 EQ +
   短路或(宿主 H1 修后口径);IfBranch → 条件 + 条件跳转;臂尾 JMP 汇出(占位回填)。
-- [ ] 6.2 engine.at 执行:IS_VARIANT / GET_GENERIC_FIELD 两指令(aavm 指令集已含
+- [x] 6.2 engine.at 执行:IS_VARIANT / GET_GENERIC_FIELD 两指令(aavm 指令集已含
   声明,opcode.at;执行语义镜像宿主 engine.rs:3988-4130 但走 v2 自身值栈/arena
   模型 D29/D35);注意 v2 布尔 0/1 承载与负值编码(D30)在 EQ 上的口径。
-- [ ] 6.3 corpus_m4(反汇编)/corpus_m5(行为)扩 is 语料;M4/M5 全绿——这是
+- [x] 6.3 corpus_m4(反汇编)/corpus_m5(行为)扩 is 语料;M4/M5 全绿——这是
   aavm 对 is 的**端到端**判据。
 
 #### Phase 7:AA2R(a2r.at)发射(D 段;与 Phase 4-6 可并行,依赖部分① 的 H4/H5)
 
-- [ ] 7.1 **W1 is-match 发射**:`ar_stmt`(1690)加 `Is` 分支 → 新 `ar_is`:
+- [x] 7.1 **W1 is-match 发射**:`ar_stmt`(1690)加 `Is` 分支 → 新 `ar_is`:
   scrutinee 文本(任一臂 Str 字面量 → `.as_str()`,镜像主 a2r rust.rs:12781-12815);
   臂体三形态(单语句内联/多语句块/空块,镜像 write_match_arm_body 12631);
   `else ->` → `_ =>`;模式解析按 D39 token 游标直走(不能复用 ar_expr 的条件
   表达式语义)。
-- [ ] 7.2 **W2 or-臂**:模式组 `|` 分隔发射(`p1 | p2`)。
-- [ ] 7.3 **W3 枚举载荷**:`ArEnum`(62-65)增每变体载荷类型表;
+- [x] 7.2 **W2 or-臂**:模式组 `|` 分隔发射(`p1 | p2`)。
+- [x] 7.3 **W3 枚举载荷**:`ArEnum`(62-65)增每变体载荷类型表;
   `ar_prescan_enum`(673-719)解析 `Name(T)`/`Name{T1,T2}`/`Name{f T}`;
   `ar_emit_enum2`(2075-2132)按形态发元组/结构/单元变体 + **derive 三分派**
   (float/Map/嵌套枚举安全性,对齐主 a2r 14477-14543;现无条件全 derive,列入
   D40 差异清单修正);构造点 `ar_call_tail`/`ar_method_call`(1528/1270)加
   枚举变体构造判定 + str 载荷 `.to_string()`;**绑定名 `ar_vpush` 进作用域并查
   载荷表登记类型**(不复制主 a2r 的 DEBT-113 缺口)。
-- [ ] 7.4 文件头 Snapshot 更新:Missing 清单摘除 is-match/枚举载荷;**f-string
+- [x] 7.4 文件头 Snapshot 更新:Missing 清单摘除 is-match/枚举载荷;**f-string
   实际已支持(D38c),清单同步纠正**;D40 清单补 derive 三分派项。
-- [ ] 7.5 AA2R golden:06_pattern_matching 组(is-match/or-臂/枚举载荷)落盘,
+- [x] 7.5 AA2R golden:06_pattern_matching 组(is-match/or-臂/枚举载荷)落盘,
   文本对齐主 a2r(基线 = 已修 H4/H5 的 master);probe 文件(p01/p02b/p04/p05/
   p12)转译冒烟 + rustc 编译通过。
 
@@ -385,3 +385,51 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   并行负载下偶发);基线本身有 12 个 a2r golden + 3 个 cookbook_vm + 1 个
   vue gallery 遗留失败(与 447 无关,基线即红)。
 - aavm2 闸门 8/8 绿;99_idiom_probe 16/16 绿;p05/p08/卫语句提升件 rustc 零错。
+
+## 附录:部分② 执行记录(2026-08-25)
+
+### 完成项
+
+- **Phase 4(parser.at)**:parse_is/parse_is_branch/is_pattern/parse_expr_or_body
+  直译;is_pattern 的 Ident+Dot 点路径拦截(tag-cover 形),Some(x) 等
+  调用形照抄宿主走表达式机(两侧 lexer 均不产出 SomeKW);表达式位 is
+  出 `(is-expr target)`(分支弃置,quirk 照抄);parse_enum_decl 收编
+  载荷变体(载荷类型按 Enum.Variant.slot 登记,标量枚举不注册→参数位
+  (type-decl) 兜底,载荷枚举注册→参数位内联);"Is" 摘除 unsupported。
+  corpus_m2 增 p17-p22 六件(字面量/or-臂/载荷/卫语句/嵌套块/值位),
+  M2 逐字符绿。**VM quirk 发现**:调用结果链式取字段 `f(p).dump` 在
+  参数位求值异常(先落临时变量规避,挂观察)。
+- **Phase 5(typeinfo.at)**:t_is_walk/t_walk_is_arm_body(臂体走查+
+  载荷绑定按 slot 表入作用域);enum 声明直接复用 parse_enum_decl
+  (注册单一事实源)。corpus_m3 增 t07(命中臂内 .type 查询;未命中臂
+  不得含查询——静态走查收集全部而宿主只执行命中臂)。M3 绿。
+- **Phase 6(codegen.at/engine.at)**:cg_is 三路发射(载荷+绑定→
+  is.variant+get.generic.field+nop×3;载荷无绑定→is.variant+共享尾;
+  标量/字面量→单模式 eq+共享尾/or 链 jmp.nz);枚举构造(const 名长/
+  new.instance/const 字段数/construct.instance);cg_enum_decl 注册表;
+  engine 增 jmp.nz/new.instance/construct.instance/is.variant/
+  get.generic.field/nop(Val k=3 实例:i=arena 字段表槽,s=变体名)。
+  corpus_m4 增 b13-b15(载荷/标量 or/字面量+卫语句+字符)。M4/M5 绿。
+  **两枚潜伏 bug 首次暴露并修复**:①cg_push_scope 无条件 push 而弹栈
+  只减 depth——第二个 fn 复用前一 fn 残留作用域(其体内变量泄漏进
+  后续 fn 的释放组);②cg_add_var 同名追加而宿主 HashMap 按名覆盖
+  (多次 is 的 _is_target 旧槽不再释放)。get.generic.field 后 3×nop
+  为宿主 u32 操作数错位的既有形态,照抄。
+- **Phase 7(AA2R)**:ar_prescan_enum 收编载荷(每变体 Rust 载荷文本);
+  ar_emit_enum2 载荷分支(derive 三分派:浮点载荷去 Eq/Ord;不带
+  Display/from_id);构造拦截 ar_enum_try_ctor(str 载荷字面量补
+  .to_string());实参位枚举字面量(::路径非构造形)克隆;ar_is
+  (H5 收窄镜像 + str 模式 .as_str() + 尾值位无分号 + 臂体按 fn 返回
+  型收敛 + `_` 通配);is 模式前瞻 ar_is_has_str_pattern(体内字符串
+  不误报)。闸门:corpus_a2r g01-g03 与主 a2r live 逐字符一致;探针
+  冒烟 p01/p02b/p04/p05/p12 经 AA2R 后 rustc 零错。
+- **宿主侧修复(部分②发现)**:is_stmt 的 H5 `&` 前缀与 str 模式
+  `.as_str()` 叠加产生 `match &text.as_str()` 双重引用(E0308,主 a2r
+  自身产物即错)——`&` 改为仅在没有 str 模式臂时发射。
+
+### 闸门留档
+
+- aavm2 全闸门 11 绿(含新增 AA2R is 语料闸门 aavm2_a2r);probe 冒烟
+  (ignored,rustc)绿;全量 lib 测试相对基线零新增失败(15 a2r 红 =
+  12 遗留 + 3 个 plan-444 红,均已实证预先存在)。
+- 五方矩阵 ③④⑤(lib 未变)基线不动;①②由 M2-M5+AA2R 闸门覆盖。

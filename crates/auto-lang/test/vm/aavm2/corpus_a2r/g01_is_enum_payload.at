@@ -1,0 +1,19 @@
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn describe(v Val) str {
+    is v {
+        Val.VI(x) -> x.str()
+        Val.VS(s) -> s
+        else -> "none"
+    }
+}
+
+fn main() {
+    print(describe(Val.VI(42)))
+    print(describe(Val.VS("hello")))
+    print(describe(Val.VN))
+}

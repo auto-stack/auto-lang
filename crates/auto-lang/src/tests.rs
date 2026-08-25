@@ -64,6 +64,7 @@ mod vm_file_tests; // Plan 177: VM file-based test framework
 #[cfg(feature = "test-vm-files")]
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 #[cfg(feature = "test-vm-files")]
+mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
 mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
 #[cfg(feature = "test-vm-files")]
 mod aavm2_m2; // Plan 432 S2: M2 parser AST dump 一致性闸门

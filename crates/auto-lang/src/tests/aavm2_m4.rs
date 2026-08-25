@@ -205,3 +205,28 @@ fn test_aavm2_m4_codegen_corpus() {
     }
     eprintln!("M4 corpus: {checked} files, bytecode identical");
 }
+
+/// 诊断用:打印 Rust 参考侧对语料的规范化反汇编(--nocapture)。
+#[test]
+fn test_aavm2_m4_rust_disasm_print() {
+    let dir = corpus_dir();
+    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        .expect("corpus dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "at").unwrap_or(false))
+        .collect();
+    entries.sort();
+    for p in entries {
+        let code = std::fs::read_to_string(&p).unwrap();
+        match compile_and_link(&code) {
+            Ok((bc, strs)) => {
+                eprintln!("=== {} ===
+{}
+", p.display(), normalized_dump(&bc, &strs))
+            }
+            Err(e) => eprintln!("=== {} === COMPILE ERROR: {}
+", p.display(), e),
+        }
+    }
+}
