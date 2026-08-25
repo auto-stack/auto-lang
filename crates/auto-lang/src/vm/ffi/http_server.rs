@@ -1204,6 +1204,16 @@ fn nested() int {
     let obj = json.to_value("{\"nested\":{\"x\":7}}")
     return ok_response(value_get(obj.view, "nested"))
 }
+
+#[api(method = "GET", path = "/hex")]
+fn hex() str {
+    return random_hex(4)
+}
+
+#[api(method = "GET", path = "/newid")]
+fn newid() str {
+    return new_id(8)
+}
 "#, 18747);
 
             let acc = http_get(port, "/acc");
@@ -1233,6 +1243,14 @@ fn nested() int {
                 body_of(&nested), r#"{"x": 7}"#,
                 "value_get nested object: full = {:?}", nested
             );
+
+            // random_hex/new_id return a hex string of the request length.
+            let h = body_of(&http_get(port, "/hex")).trim_matches('"').to_string();
+            assert_eq!(h.len(), 8, "random_hex(4) should be 8 hex chars: {:?}", h);
+            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "random_hex not hex: {:?}", h);
+
+            let n = body_of(&http_get(port, "/newid")).trim_matches('"').to_string();
+            assert_eq!(n.len(), 16, "new_id(8) should be 16 hex chars: {:?}", n);
         }
 
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,

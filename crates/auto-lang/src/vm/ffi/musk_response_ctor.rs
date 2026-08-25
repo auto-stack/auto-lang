@@ -671,3 +671,28 @@ pub fn shim_value_get_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     }
     Ok(())
 }
+
+// ── Utility externs (pure; auto-lang has fastrand + hex) ─────────────────────
+
+fn push_hex_string(task: &mut AutoTask, vm: &AutoVM, bytes: &[u8]) {
+    let hex = hex::encode(bytes);
+    let idx = vm.add_string(hex.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+}
+
+/// `random_hex(n)` → str: `n` random bytes hex-encoded. Stack: n -> str.
+pub fn shim_random_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = pop_i32(task);
+    if n <= 0 {
+        push_hex_string(task, vm, &[]);
+        return Ok(());
+    }
+    let bytes: Vec<u8> = (0..n).map(|_| fastrand::u8(..)).collect();
+    push_hex_string(task, vm, &bytes);
+    Ok(())
+}
+
+/// `new_id(n)` → str (alias of random_hex). Stack: n -> str.
+pub fn shim_new_id(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    shim_random_hex(task, vm)
+}

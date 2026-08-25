@@ -1454,6 +1454,9 @@ macro_rules! for_each_bigvm_native {
             ("value_is_null", 3130, Bool),
             ("value_get", 3131, Int),
             ("value_get_array", 3132, Int),
+            // Pure utility externs (auto-lang has fastrand + hex).
+            ("new_id", 3133, String),
+            ("random_hex", 3134, String),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2201,6 +2204,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("value_is_null", 3130),
     ("value_get", 3131),
     ("value_get_array", 3132),
+    // Pure utility externs.
+    ("new_id", 3133),
+    ("random_hex", 3134),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

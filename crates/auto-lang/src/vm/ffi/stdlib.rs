@@ -6909,6 +6909,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("value_is_null", shim_value_is_null);
     natives.register_shim_by_name("value_get", shim_value_get);
     natives.register_shim_by_name("value_get_array", shim_value_get_array);
+
+    // Pure utility externs (random IDs/hex).
+    natives.register_shim_by_name("new_id", shim_new_id);
+    natives.register_shim_by_name("random_hex", shim_random_hex);
 }
 
 // ============================================================================
