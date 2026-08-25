@@ -245,7 +245,7 @@ AuraWidget { name: "EditorPanel", view_tree: ..., handlers: {...} }
 
 > trace handler ToggleDarkMode
 Handler ".ToggleDarkMode" found in:
-  - msg Msg { ..., ToggleDarkMode }
+  - msg { ..., ToggleDarkMode }
   - on { .ToggleDarkMode -> { store.ToggleDarkMode() } }
   - used in template: button "Dark Mode" onclick:.ToggleDarkMode
 ```

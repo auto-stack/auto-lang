@@ -6,7 +6,7 @@
 
 widget TodoApp {
     // Message declarations
-    msg Msg { Add, Clear }
+    msg { Add, Clear }
 
     // Model (state variables)
     model {

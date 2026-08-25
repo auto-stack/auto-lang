@@ -2,7 +2,7 @@
 source: crates/auto-lang/tests/ui_snapshots.rs
 expression: out
 ---
-File: D:\autostack\auto-lang\crates\auto-lang\..\..\examples/ui/015-notes/src/front/sidebar.at
+File: examples/ui/015-notes/src/front/sidebar.at
 Widget count: 1
 Widget: NavTree | props: 4 | state: 0 | handlers: 9 | messages: 1
   prop: active_folder (StrSlice)

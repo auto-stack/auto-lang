@@ -26,7 +26,7 @@
 
 ```auto
 widget App {
-    msg Msg { Digit0, Digit1, Add, Equals, Clear }
+    msg { Digit0, Digit1, Add, Equals, Clear }
     model { ... }
     view { ... }
 

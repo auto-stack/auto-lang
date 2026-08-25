@@ -3,7 +3,7 @@
 use article_store: ArticleStore
 
 widget profile {
-    msg Msg { Init, Follow, Unfollow, OpenArticle(str) }
+    msg { Init, Follow, Unfollow, OpenArticle(str) }
 
     model {
         var username str = ""

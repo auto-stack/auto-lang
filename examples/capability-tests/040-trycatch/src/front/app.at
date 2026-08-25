@@ -3,7 +3,7 @@ widget App {
         fn: saveDoc from "src/front/utils/io.ts"
     }
 
-    msg Msg { Save, SetText(str) }
+    msg { Save, SetText(str) }
 
     model {
         var text str = ""

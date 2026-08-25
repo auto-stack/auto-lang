@@ -5,7 +5,7 @@ widget App {
         fn: fireSlashOpen, fireSlashClose, firePoke from "src/front/utils/slash.ts"
     }
 
-    msg Msg { SimOpen, SimOpenFar, SimClose, OnOpen, OnClose, Poke, Poked }
+    msg { SimOpen, SimOpenFar, SimClose, OnOpen, OnClose, Poke, Poked }
 
     model {
         var query str = "(closed)"

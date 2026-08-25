@@ -18,7 +18,7 @@
 /// ```
 
 widget Combobox {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         value str = ""
@@ -39,7 +39,7 @@ widget Combobox {
 
 /// Combobox input field
 widget ComboboxInput {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         value str = ""
@@ -71,7 +71,7 @@ widget ComboboxEmpty {
 
 /// Combobox item/option
 widget ComboboxItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         value str = ""

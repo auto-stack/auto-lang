@@ -1,7 +1,7 @@
 // pages/datatable.at - DataTable component documentation page
 
 widget DatatablePage {
-    msg Msg {
+    msg {
         toggleSortStatus
         toggleSortEmail
         toggleSortAmount

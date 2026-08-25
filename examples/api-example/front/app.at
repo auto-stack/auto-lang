@@ -2,7 +2,7 @@
 // Demo: Load and display users from backend API
 
 widget App {
-    msg Msg { Click, Load }
+    msg { Click, Load }
 
     model {
         var users []User = []

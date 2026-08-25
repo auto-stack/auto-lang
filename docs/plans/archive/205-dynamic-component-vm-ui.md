@@ -56,7 +56,7 @@ AURA 的设计理念是 view 是纯结构（无逻辑）。因此 view() 直接�
 
 ### 2. Msg 枚举路由（非 Closure）
 
-AURA widget 定义 `msg Msg { Inc, Dec }`，所有事件在编译期就确定了枚举 variant。事件传递链路：
+AURA widget 定义 `msg { Inc, Dec }`，所有事件在编译期就确定了枚举 variant。事件传递链路：
 
 ```
 button click → DynamicMsg::Variant{widget:"Counter", variant:"Inc"}

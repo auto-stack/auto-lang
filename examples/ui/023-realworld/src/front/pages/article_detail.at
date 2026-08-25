@@ -5,7 +5,7 @@
 use article_store: ArticleStore
 
 widget article_detail {
-    msg Msg { Init, Back, Favorite, Unfavorite, CommentChanged, SubmitComment, DeleteComment(int) }
+    msg { Init, Back, Favorite, Unfavorite, CommentChanged, SubmitComment, DeleteComment(int) }
 
     model {
         var slug str = ""

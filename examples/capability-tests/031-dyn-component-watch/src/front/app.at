@@ -4,7 +4,7 @@ widget App {
         fn: menuItems, filterItems from "src/front/utils/menu.ts"
     }
 
-    msg Msg { QueryChanged, ZoomIn, ZoomOut }
+    msg { QueryChanged, ZoomIn, ZoomOut }
 
     model {
         var query str = ""

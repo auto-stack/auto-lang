@@ -219,7 +219,7 @@ generated-widget/
 ### Input (AURA)
 ```auto
 widget TextInput {
-    msg Msg { Input }
+    msg { Input }
     model { text str = "" }
     view {
         col {

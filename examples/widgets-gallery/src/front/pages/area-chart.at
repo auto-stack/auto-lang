@@ -5,7 +5,7 @@
 // 渲染端 SVG 直通（442 A4）。纪律（§0.6.D）：float 显式声明。
 
 widget AreaChartPage {
-    msg Msg { Init }
+    msg { Init }
 
     model {
         monthly = [

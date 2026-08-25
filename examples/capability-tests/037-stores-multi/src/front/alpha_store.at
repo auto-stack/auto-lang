@@ -9,7 +9,7 @@ store AlphaStore {
         var selected int = 0
     }
 
-    msg Msg { AddNote(str), SelectNote(int) }
+    msg { AddNote(str), SelectNote(int) }
 
     on {
         .AddNote(text) -> {

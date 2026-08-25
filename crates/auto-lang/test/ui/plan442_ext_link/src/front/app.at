@@ -8,7 +8,7 @@ use.web platformInjectStyles, platformKind from "src/front/ports/platform.at"
 use.web useT from "src/front/composables.ts"
 
 widget App {
-    msg Msg { Init, Refresh }
+    msg { Init, Refresh }
 
     model {
         var adapter str = "none"

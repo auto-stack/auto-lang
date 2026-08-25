@@ -4,7 +4,7 @@
 // tag cloud would crowd the list.
 
 widget SidebarNav {
-    msg Msg {
+    msg {
         SelectShortcut(str),
         SelectFolder(str),
         SelectTag(str)

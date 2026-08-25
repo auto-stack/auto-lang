@@ -7,7 +7,7 @@
 use store: AuthStore
 
 widget App {
-    msg Msg { Init, Check, Login, Logout }
+    msg { Init, Check, Login, Logout }
 
     model { var status str = "boot" }
 

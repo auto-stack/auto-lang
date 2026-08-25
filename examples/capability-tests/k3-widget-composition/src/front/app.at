@@ -10,7 +10,7 @@ use matrix: MatrixItem
 use bind: BindChild
 
 widget App {
-    msg Msg { ItemSelected(str) }
+    msg { ItemSelected(str) }
     model {
         var items List<str> = ["alpha", "beta", "gamma"]
         var last_selected str = "(none)"

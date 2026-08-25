@@ -22,7 +22,7 @@
 /// Textarea (value: .bio, rows: 6) {}
 /// ```
 widget Textarea {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         #[primary]

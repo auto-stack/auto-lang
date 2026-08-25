@@ -6,7 +6,7 @@ widget App {
         composable: useRecentFiles from "src/front/composables/useRecentFiles.ts"
     }
 
-    msg Msg { Del(int), FacadeDel(int), DoOpen, Search }
+    msg { Del(int), FacadeDel(int), DoOpen, Search }
 
     model {
         var items []str = ["one", "two", "three"]

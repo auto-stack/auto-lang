@@ -9,7 +9,7 @@
 /// - Filename display
 
 widget CodeBlock {
-    msg Msg {
+    msg {
         Copy
     }
 

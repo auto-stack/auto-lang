@@ -5,7 +5,7 @@
 use store: NotesStore
 
 widget NavTree(search: str, active_folder: str, active_tag: str, active_id: int) {
-    msg Msg {
+    msg {
         SelectAll, SelectPinned, SelectRecent,
         SelectFolder(str), SelectTag(str), SelectNote(int)
     }

@@ -1,7 +1,7 @@
 // Loop Demo - Complete runnable example
 
 widget LoopDemo {
-    msg Msg { Increment, Reset }
+    msg { Increment, Reset }
 
     model {
         count int = 0

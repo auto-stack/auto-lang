@@ -4597,7 +4597,7 @@ store AlphaStore {
     model {
         var items []str = []
     }
-    msg Msg { Touch }
+    msg { Touch }
     on {
         .Touch -> { }
     }
@@ -4609,7 +4609,7 @@ store BetaStore {
     model {
         var count int = 0
     }
-    msg Msg { Bump }
+    msg { Bump }
     on {
         .Bump -> { .count = .count + 1 }
     }

@@ -61,7 +61,7 @@ widget DropdownMenu {
 /// DropdownMenuTrigger (text: "Open Menu") {}
 /// ```
 widget DropdownMenuTrigger {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = "Open"
@@ -123,7 +123,7 @@ widget DropdownMenuContent {
 /// DropdownMenuItem (text: "Profile", disabled: false) {}
 /// ```
 widget DropdownMenuItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

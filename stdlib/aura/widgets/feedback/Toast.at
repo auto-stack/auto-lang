@@ -20,7 +20,7 @@
 /// }
 /// ```
 widget Toast {
-    msg Msg {
+    msg {
         Dismiss
         Action
     }
@@ -155,7 +155,7 @@ widget ToastDescription {
 /// ToastAction (text: "Undo", onclick: .Undo) {}
 /// ```
 widget ToastAction {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = "Action"
@@ -178,7 +178,7 @@ widget ToastAction {
 /// ToastClose { onclick: .Dismiss }
 /// ```
 widget ToastClose {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         button { style: "toast-close", variant: "ghost", size: "icon", onclick: .Click } {

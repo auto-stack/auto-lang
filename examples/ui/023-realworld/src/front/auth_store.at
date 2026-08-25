@@ -12,7 +12,7 @@ store AuthStore {
         var me User = User { id: 0, email: "", username: "", bio: "", image: "", token: "" }
     }
 
-    msg Msg { Init, Login(str, str), Register(str, str, str), Logout }
+    msg { Init, Login(str, str), Register(str, str, str), Logout }
 
     on {
         .Init -> {

@@ -76,7 +76,7 @@ Source skeleton:
 
 ```auto
 widget Counter {
-    msg Msg { Inc, Dec, Reset }
+    msg { Inc, Dec, Reset }
 
     model {
         var count int = 0

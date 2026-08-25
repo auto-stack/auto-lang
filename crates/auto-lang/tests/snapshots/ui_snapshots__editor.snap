@@ -2,7 +2,7 @@
 source: crates/auto-lang/tests/ui_snapshots.rs
 expression: out
 ---
-File: D:\autostack\auto-lang\crates\auto-lang\..\..\examples/ui/015-notes/src/front/editor.at
+File: examples/ui/015-notes/src/front/editor.at
 Widget count: 1
 Widget: EditorPanel | props: 4 | state: 5 | handlers: 11 | messages: 1
   prop: note (User(TypeDecl { name: "Note", kind: UserType, parent: None, has: [], specs: [], spec_impls: [], generic_params: [], members: [], delegations: [], methods: [], consts: [], attrs: [], impl_attrs: [], doc: None, is_pub: false }))

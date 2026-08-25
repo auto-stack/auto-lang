@@ -15,7 +15,7 @@ widget MatrixItem(label: str, on_select: msg) {
         shouted => matrixGreet(.label)
         upper => .shouted + "!"
     }
-    msg Msg { Select(str), Bump }
+    msg { Select(str), Bump }
     model {
         var clicks int = 0
         var started bool = false

@@ -1,5 +1,5 @@
 widget App {
-    msg Msg { CelsiusChanged, FahrenheitChanged }
+    msg { CelsiusChanged, FahrenheitChanged }
 
     model {
         var celsius double = 0.0

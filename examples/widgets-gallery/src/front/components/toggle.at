@@ -15,7 +15,7 @@
 /// ```
 
 widget Toggle {
-    msg Msg { Change(pressed: bool) }
+    msg { Change(pressed: bool) }
 
     model {
         pressed bool = false

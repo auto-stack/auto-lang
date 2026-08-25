@@ -2,7 +2,7 @@
 // callback (U21: on_send -> "Send" would collide with a Send variant).
 // Plan 399 §6: InputChanged also fires on_typing so App can signal typing.
 widget Composer(on_send: msg, on_typing: msg) {
-    msg Msg { DoSend, InputChanged }
+    msg { DoSend, InputChanged }
     model { var draft str = "" }
     view {
         row {

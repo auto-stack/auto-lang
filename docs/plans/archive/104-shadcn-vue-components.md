@@ -299,7 +299,7 @@ self.components.insert("card", ("@/components/ui/card", vec!["Card", "CardHeader
 // pages/card.at - Card component documentation page
 
 widget CardPage {
-    msg Msg { TabChange(tab: str) }
+    msg { TabChange(tab: str) }
 
     model {
         activeTab str = "preview"

@@ -7,7 +7,7 @@ widget App {
         "/" -> use board
     }
 
-    msg Msg { Init }
+    msg { Init }
 
     view {
         col {

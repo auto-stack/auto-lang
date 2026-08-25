@@ -6,7 +6,7 @@
 use auth_store: AuthStore
 
 widget settings {
-    msg Msg { Init, Logout }
+    msg { Init, Logout }
 
     model {
         var dummy str = ""

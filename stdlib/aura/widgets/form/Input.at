@@ -24,7 +24,7 @@
 /// Input (inputType: "password", placeholder: "Password") {}
 /// ```
 widget Input {
-    msg Msg {
+    msg {
         Change(value: str)
         Focus
         Blur

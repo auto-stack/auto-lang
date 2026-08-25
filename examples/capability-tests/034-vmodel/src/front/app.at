@@ -1,7 +1,7 @@
 use field: TextField
 
 widget App {
-    msg Msg {
+    msg {
         NameChanged(str)
         OpenDialog
         OpenConfirm

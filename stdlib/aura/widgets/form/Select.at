@@ -31,7 +31,7 @@
 /// }
 /// ```
 widget Select {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         #[primary]
@@ -172,7 +172,7 @@ widget SelectContent {
 /// SelectItem (value: "apple", text: "Apple") {}
 /// ```
 widget SelectItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         value str = ""

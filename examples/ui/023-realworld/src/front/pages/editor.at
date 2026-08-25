@@ -4,7 +4,7 @@
 use article_store: ArticleStore
 
 widget editor {
-    msg Msg { Init, SlugChanged, TitleChanged, DescChanged, BodyChanged, TagsChanged, Publish, Back }
+    msg { Init, SlugChanged, TitleChanged, DescChanged, BodyChanged, TagsChanged, Publish, Back }
 
     model {
         var slug str = ""

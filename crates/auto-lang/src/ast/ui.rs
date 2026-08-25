@@ -274,13 +274,15 @@ pub struct LifecycleMethod {
 /// Message declaration: defines message types for MVU pattern
 ///
 /// ```auto
-/// msg Msg { Inc, Dec, Set(int) }
+/// msg { Inc, Dec, Set(int) }
 /// ```
+///
+/// Plan 448 A: the declaration carries no type name — event lookup always
+/// resolves by variant (`.Inc` / `App.Inc` take the tail segment) and every
+/// backend derives the enum name from the widget name. A legacy
+/// `msg Msg { ... }` still parses with the name discarded.
 #[derive(Debug, Clone)]
 pub struct MsgDecl {
-    /// Message type name (e.g., "Msg")
-    pub name: Name,
-
     /// Message variants
     pub variants: Vec<MsgVariant>,
 }
@@ -910,7 +912,6 @@ mod tests {
     #[test]
     fn test_msg_decl() {
         let msg = MsgDecl {
-            name: AutoStr::from("Msg"),
             variants: vec![
                 MsgVariant {
                     name: AutoStr::from("Inc"),

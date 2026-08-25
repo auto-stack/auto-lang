@@ -121,7 +121,7 @@ widget NavigationMenuItem {
 /// NavigationMenuTrigger { text: "Products" }
 /// ```
 widget NavigationMenuTrigger {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""
@@ -152,7 +152,7 @@ widget NavigationMenuTrigger {
 /// NavigationMenuLink (text: "Home", href: "/", active: true) {}
 /// ```
 widget NavigationMenuLink {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

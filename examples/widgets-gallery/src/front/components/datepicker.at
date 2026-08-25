@@ -21,7 +21,7 @@
 /// ```
 
 widget DatePicker {
-    msg Msg {
+    msg {
         Select(date: str)
         Clear
     }

@@ -75,7 +75,7 @@ sidebar.at（commit `50307d51`）除上述 OOM 外，还有一个**独立的解�
 
 ```auto
 widget NavTree {
-    msg Msg { SelectTag(str) }          // ← 必须有 msg 声明
+    msg { SelectTag(str) }          // ← 必须有 msg 声明
     view {
         col {
             for tag in .all_tags {       // ← for 循环

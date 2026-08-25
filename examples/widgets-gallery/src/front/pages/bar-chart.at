@@ -6,7 +6,7 @@
 // 纪律（§0.6.D）：float 中间量显式声明；int→float 经存储强转。
 
 widget BarChartPage {
-    msg Msg { Init }
+    msg { Init }
 
     model {
         quarterly = [

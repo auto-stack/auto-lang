@@ -4,7 +4,7 @@
 // EDIT regions mark where per-app customization is expected.
 
 widget LoginForm {
-    msg Msg {
+    msg {
         Submit,
         EditEmail,
         EditPassword,

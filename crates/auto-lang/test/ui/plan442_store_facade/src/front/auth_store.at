@@ -12,7 +12,7 @@ store AuthStore {
         var whoami str = ""
     }
 
-    msg Msg { Init, Login, Logout }
+    msg { Init, Login, Logout }
 
     on {
         .Init -> {

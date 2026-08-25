@@ -4,7 +4,7 @@
 // init). Demonstrates the folder/tag filter bar, loading/error/empty branches.
 
 widget NoteList {
-    msg Msg {
+    msg {
         SearchChanged,
         SelectItem(int),
         ClearFolder,

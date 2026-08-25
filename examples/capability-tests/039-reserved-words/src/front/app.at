@@ -7,7 +7,7 @@ widget App {
         component: Teleport from "vue"
     }
 
-    msg Msg { Go }
+    msg { Go }
 
     model {
         var items list = []

@@ -19,7 +19,7 @@
 /// - `selected`: Currently selected date (ISO format string)
 /// - `onselect`: Callback when date is selected
 widget Calendar {
-    msg Msg {
+    msg {
         Select(date: str)
         PrevMonth
         NextMonth
@@ -80,7 +80,7 @@ widget Calendar {
 ///
 /// Contains prev/next buttons and current month display.
 widget CalendarHeader {
-    msg Msg {
+    msg {
         PrevMonth
         NextMonth
     }
@@ -167,7 +167,7 @@ widget CalendarDayHeader {
 /// - `today`: Whether this day is today
 /// - `disabled`: Whether this day is disabled (outside month)
 widget CalendarDay {
-    msg Msg {
+    msg {
         Select
     }
 

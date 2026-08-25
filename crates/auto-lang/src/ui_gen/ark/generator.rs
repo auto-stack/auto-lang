@@ -2154,7 +2154,6 @@ mod tests {
             }],
             computed: vec![],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant {
                         name: "Inc".to_string(),

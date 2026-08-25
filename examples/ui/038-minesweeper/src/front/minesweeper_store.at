@@ -30,7 +30,7 @@ store MinesweeperStore {
         var expert_class str = ""
     }
 
-    msg Msg {
+    msg {
         Reveal(int, int),
         Flag(int, int),
         SetDifficulty(str),

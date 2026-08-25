@@ -31,7 +31,7 @@
 /// }
 /// ```
 widget Form {
-    msg Msg { Submit }
+    msg { Submit }
 
     model {
         class str = ""

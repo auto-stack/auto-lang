@@ -3,7 +3,7 @@
 
 widget TodoApp {
     // Message declarations
-    msg Msg { Add, Delete, Toggle, Clear }
+    msg { Add, Delete, Toggle, Clear }
 
     // Model (state variables)
     model {

@@ -1,6 +1,6 @@
 // Minimal Button Test - with dot prefix for event handlers
 widget Test {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         x int = 0

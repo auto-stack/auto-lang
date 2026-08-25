@@ -279,7 +279,8 @@ fn inspect(path: &str) -> Result<()> {
         }
         println!("  │  messages: {}", w.messages.len());
         for m in &w.messages {
-            println!("  │    • {} ({} variants)", m.name, m.variants.len());
+            let variants: Vec<&str> = m.variants.iter().map(|v| v.name.as_str()).collect();
+            println!("  │    • {}", variants.join(", "));
         }
         println!("  └─");
     }

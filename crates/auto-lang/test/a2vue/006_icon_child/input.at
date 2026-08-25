@@ -15,6 +15,6 @@ widget IconChild {
             }
         }
     }
-    msg Msg { Add }
+    msg { Add }
     on { .Add -> { } }
 }

@@ -1,5 +1,5 @@
 widget home {
-    msg Msg { GoDetail }
+    msg { GoDetail }
     view {
         col {
             text "Home page" { }

@@ -756,7 +756,6 @@ fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> 
 /// Extract message declaration
 fn extract_msg_decl(msg: &MsgDecl) -> AuraMessage {
     AuraMessage {
-        name: msg.name.as_str().to_string(),
         variants: msg.variants.iter()
             .map(|v| AuraMsgVariant {
                 name: v.name.as_str().to_string(),

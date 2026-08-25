@@ -21,7 +21,7 @@
 // fixture pins the RUNTIME behavior — click the three buttons and every
 // line below must update in place (nothing here whole-replaces the model).
 widget App {
-    msg Msg { DeepSet, DeepPush, NestedSet }
+    msg { DeepSet, DeepPush, NestedSet }
 
     model {
         var doc map = { provider: { api_key: "orig", shapes: ["s1"] } }

@@ -7,7 +7,7 @@ store BetaStore {
         var count int = 0
     }
 
-    msg Msg { Bump, Reset }
+    msg { Bump, Reset }
 
     computed {
         double_count => .count * 2

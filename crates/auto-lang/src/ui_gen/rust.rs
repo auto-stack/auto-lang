@@ -5357,7 +5357,6 @@ mod tests {
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
                     AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },
@@ -5431,7 +5430,6 @@ mod tests {
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant {
                     name: "SourceChanged".to_string(),
                     payload: vec![Type::StrFixed(0)],
@@ -5564,7 +5562,6 @@ mod tests {
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant { payload_names: vec![], name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
                     AuraMsgVariant { payload_names: vec![], name: "CursorMoved".to_string(), payload: vec![], quoted: false },
@@ -5679,7 +5676,6 @@ fn main() {{}}
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5729,7 +5725,6 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5769,7 +5764,6 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5994,7 +5988,7 @@ fn main() {{}}
             name: "Shell".to_string(),
             state_vars: vec![],
             computed: vec![],
-            messages: vec![AuraMessage { name: "Msg".to_string(), variants }],
+            messages: vec![AuraMessage { variants }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
             props: vec![],

@@ -567,7 +567,7 @@ A sidebar showing categorized draggable component cards.
 
 ```auto
 widget Palette {
-    msg Msg {
+    msg {
         ComponentClicked(tag: str)
     }
 
@@ -633,7 +633,7 @@ The main drop area showing the composed UI tree.
 
 ```auto
 widget Canvas {
-    msg Msg {
+    msg {
         SelectNode(id: NodeId)
         AddChild(parent_id: NodeId, tag: str)
         RemoveNode(id: NodeId)
@@ -705,7 +705,7 @@ widget Inspector {
     prop selected_node: Option<ComposerNode>
     prop registry: Vec<RegistryEntry>
 
-    msg Msg {
+    msg {
         UpdateProp(node_id: NodeId, key: str, value: PropValue)
         UpdateEvent(node_id: NodeId, event: str, handler: str)
         DeleteNode(id: NodeId)
@@ -773,7 +773,7 @@ Top bar with actions.
 
 ```auto
 widget Toolbar {
-    msg Msg {
+    msg {
         ExportJSON
         ImportJSON
         ClearCanvas
@@ -819,7 +819,7 @@ auto build
 
 ```auto
 widget App {
-    msg Msg {
+    msg {
         // Palette
         AddComponent(tag: str)
 

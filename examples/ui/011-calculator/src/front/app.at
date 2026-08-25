@@ -10,7 +10,7 @@
 // adds parentheses + sin/cos/sqrt/etc; programmer adds hex/bin (display only).
 
 widget App {
-    msg Msg {
+    msg {
         Digit(int),
         Operator(str),
         Paren(str),       // "(" or ")"

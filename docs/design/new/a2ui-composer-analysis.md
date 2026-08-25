@@ -84,7 +84,7 @@ pub enum AuraNode {
 ### Auto Language Widget Syntax
 ```auto
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
     model { count int = 0 }
     view {
         col {
@@ -191,7 +191,7 @@ Since AURA is a superset of A2UI's capabilities (AURA has logic handlers), we ca
 2. Define data model (`composer.at`):
    ```auto
    widget Composer {
-       msg Msg { 
+       msg { 
            AddComponent(tag, parent_id)
            RemoveComponent(id)
            MoveComponent(id, new_parent_id, index)

@@ -36,7 +36,7 @@
 /// }
 /// ```
 widget Pagination {
-    msg Msg {
+    msg {
         Change(page: int)
         First
         Last
@@ -76,7 +76,7 @@ widget Pagination {
 /// PaginationFirst {}
 /// ```
 widget PaginationFirst {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         tag: "button"
@@ -104,7 +104,7 @@ widget PaginationFirst {
 /// PaginationPrevious {}
 /// ```
 widget PaginationPrevious {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         tag: "button"
@@ -132,7 +132,7 @@ widget PaginationPrevious {
 /// PaginationNext {}
 /// ```
 widget PaginationNext {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         tag: "button"
@@ -160,7 +160,7 @@ widget PaginationNext {
 /// PaginationLast {}
 /// ```
 widget PaginationLast {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         tag: "button"
@@ -188,7 +188,7 @@ widget PaginationLast {
 /// PaginationItem (text: "1", active: true) {}
 /// ```
 widget PaginationItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = "1"

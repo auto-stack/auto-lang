@@ -5,7 +5,7 @@ use composer: Composer
 use back.api: send_message, list_messages, set_typing
 
 widget App {
-    msg Msg { Init, SendMessage(str), Typing(str) }
+    msg { Init, SendMessage(str), Typing(str) }
     view {
         col {
             style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"

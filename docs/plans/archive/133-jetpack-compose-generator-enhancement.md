@@ -35,7 +35,7 @@
 
 ```auto
 widget Card {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         title str = "Card Title"
@@ -70,7 +70,7 @@ widget Card {
 | `class: "text-lg"` | CSS class | `TextStyle(fontSize = 18.sp)` |
 | `class: "rounded-lg"` | CSS class | `Modifier.clip(RoundedCornerShape(8.dp))` |
 | `slot` | `<slot />` | `content: @Composable () -> Unit` |
-| `msg Msg { Click }` | `emit('click')` | `onClick: () -> Unit` |
+| `msg { Click }` | `emit('click')` | `onClick: () -> Unit` |
 | `computed { ... }` | `computed(() => ...)` | `derivedStateOf { ... }` |
 
 ## 4. 架构设计

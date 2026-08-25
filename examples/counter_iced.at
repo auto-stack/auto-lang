@@ -1,6 +1,6 @@
 // Counter Widget for Iced Backend Test
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     model {
         var count int = 0

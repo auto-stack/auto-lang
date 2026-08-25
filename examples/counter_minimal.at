@@ -1,6 +1,6 @@
 // Minimal Counter Widget
 widget Counter {
-    msg Msg { Inc }
+    msg { Inc }
 
     model {
         count int = 0

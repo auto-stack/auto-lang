@@ -96,7 +96,7 @@ widget MenubarMenu {
 /// MenubarTrigger { text: "File" }
 /// ```
 widget MenubarTrigger {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""
@@ -157,7 +157,7 @@ widget MenubarContent {
 /// MenubarItem (text: "New File", disabled: false) {}
 /// ```
 widget MenubarItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

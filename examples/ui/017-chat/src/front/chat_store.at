@@ -16,7 +16,7 @@ store ChatStore {
         var loading bool = false
     }
 
-    msg Msg { Init, NewMessage(Message), Typing(TypingEvent), RefreshMessages }
+    msg { Init, NewMessage(Message), Typing(TypingEvent), RefreshMessages }
 
     on {
         .Init -> {

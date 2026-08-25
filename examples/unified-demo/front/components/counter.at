@@ -5,7 +5,7 @@
 /// A simple counter that can be incremented and decremented.
 
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     model { var count int = 0 }
 

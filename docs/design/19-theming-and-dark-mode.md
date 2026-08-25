@@ -226,7 +226,7 @@ button { style: "bg-primary text-primary-foreground px-4 py-2 rounded-lg" }
 
 ```auto
 widget App {
-    msg Msg { ..., ToggleDarkMode }
+    msg { ..., ToggleDarkMode }
     on {
         .ToggleDarkMode -> { store.ToggleDarkMode() }
     }
@@ -239,7 +239,7 @@ Vue 生成器检测到 `ToggleDarkMode` handler → 注入 `:class="{ dark: stor
 
 ```auto
 widget App {
-    msg Msg { ..., ToggleTheme }
+    msg { ..., ToggleTheme }
     on {
         .ToggleTheme -> { store.CycleTheme() }
     }

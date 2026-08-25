@@ -109,7 +109,7 @@ model {
 ### 3.3 消息(msg)
 
 ```auto
-msg Msg {
+msg {
     Reveal(int, int),      # 左键揭开 (x, y)
     Flag(int, int),        # 右键插旗/取消 (x, y)
     SetDifficulty(str),    # 切换难度 beginner/intermediate/expert

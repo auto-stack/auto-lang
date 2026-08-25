@@ -14,7 +14,7 @@ use.web composable useTick from "src/front/ports/symbols.at"
 use.web portLabel from "src/front/ports/symbols.at"
 
 widget App {
-    msg Msg { Picked(str) }
+    msg { Picked(str) }
     model {
         var last str = "(none)"
     }

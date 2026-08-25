@@ -27,7 +27,7 @@
 /// NavLink (text: "Messages", href: "/messages", badge: "3") {}
 /// ```
 widget NavLink {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

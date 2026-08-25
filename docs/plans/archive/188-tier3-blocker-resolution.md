@@ -66,7 +66,7 @@ view {
 
 ### B4: Typed msg variants not handled by generators
 
-**Symptom:** `msg Msg { AddItem(str) }` parses correctly, but Vue generator doesn't generate code to pass the payload from the event to the handler.
+**Symptom:** `msg { AddItem(str) }` parses correctly, but Vue generator doesn't generate code to pass the payload from the event to the handler.
 
 **Root Cause:** The Vue generator's event handler mapping only supports simple `@click="onMsgName"` without arguments. It doesn't generate the parameter-passing code for `on { .AddItem(text) -> { ... } }`.
 
@@ -221,7 +221,7 @@ Add real timer functionality to `012-stopwatch/src/front/app.at`.
 Create a test widget:
 ```auto
 widget App {
-    msg Msg { AddItem(str) }
+    msg { AddItem(str) }
     model { var items str = "" }
     view {
         input { placeholder: "Add item", oninput: .AddItem }

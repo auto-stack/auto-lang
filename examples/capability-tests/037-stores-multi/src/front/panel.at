@@ -3,7 +3,7 @@
 use beta_store: BetaStore
 
 widget BetaPanel {
-    msg Msg { Bump, Reset }
+    msg { Bump, Reset }
 
     view {
         col {

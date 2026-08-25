@@ -13102,8 +13102,14 @@ impl<'a> Parser<'a> {
     /// Parse msg declaration, returning the MsgDecl directly
     fn parse_msg_decl_inner(&mut self) -> AutoResult<MsgDecl> {
         self.expect_ident("msg")?;
-        let name = self.cur.text.clone();
-        self.next();
+        // Plan 448 A: the name token after `msg` was never semantic (event
+        // lookup always takes the tail segment; every backend derives the
+        // enum name from the widget name or hardcodes "Msg"). Canonical form
+        // is `msg { ... }`; a legacy `msg Name { ... }` still parses with the
+        // name read and discarded.
+        if !self.is_kind(TokenKind::LBrace) {
+            self.next();
+        }
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();  // Skip empty lines after opening brace
@@ -13179,7 +13185,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
 
-        Ok(MsgDecl { name, variants })
+        Ok(MsgDecl { variants })
     }
 
     /// Parse model block (UI scenario only)
@@ -16891,6 +16897,49 @@ exe hello {
         // some issues with handler variable resolution that are separate
         // from the button syntax changes
         assert!(true);
+    }
+
+    #[test]
+    fn test_msg_decl_unnamed_and_legacy_name() {
+        // Plan 448 A: canonical `msg { ... }` (no type name — the name was
+        // never semantic) plus legacy `msg Name { ... }` compat where the
+        // name token is read and discarded.
+        let code = concat!(
+            "widget Counter {\n",
+            "    msg { Inc, Dec, Set(int) }\n",
+            "    model { var count int = 0 }\n",
+            "    view { col { text \"hi\" } }\n",
+            "    on { .Inc -> { .count = .count + 1 } }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unnamed msg decl must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+        assert_eq!(w.messages.len(), 1);
+        let msg = &w.messages[0];
+        assert_eq!(msg.variants.len(), 3);
+        assert_eq!(msg.variants[0].name.as_str(), "Inc");
+        assert_eq!(msg.variants[2].name.as_str(), "Set");
+        assert_eq!(msg.variants[2].payload.len(), 1);
+
+        let legacy = concat!(
+            "widget Counter {\n",
+            "    msg Msg { Inc }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p2 = Parser::from(legacy).with_session(session);
+        let ast2 = p2.parse().expect("legacy named msg decl must still parse");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+        assert_eq!(w2.messages[0].variants.len(), 1);
+        assert_eq!(w2.messages[0].variants[0].name.as_str(), "Inc");
     }
 
     #[test]
