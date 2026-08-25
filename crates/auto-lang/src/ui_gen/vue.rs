@@ -105,6 +105,93 @@
 
 use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 /// Plan 435 P4:折叠相等(剥 -/_ + 小写;schema 别名策略同源)。
+/// Plan 008 (auto-os-config batch 4): find a `key:` prop on a loop body's
+/// children (or one conditional level down) and return its expression text —
+/// used to key the fallback v-for wrapper div (container-level keys are fine
+/// on vue but kill the vm subtree, so keys live on branch-first texts).
+fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
+    // depth-bounded recursive search: the key may sit on a text nested a few
+    // containers inside a conditional branch
+    fn search(node: &AuraNode, depth: usize) -> Option<String> {
+        if depth > 6 {
+            return None;
+        }
+        match node {
+            AuraNode::Element { props, children, .. } => {
+                for (k, v) in props {
+                    if k == "key" {
+                        if let AuraPropValue::Expr(crate::ast::Expr::Ident(n)) = v {
+                            return Some(n.to_string());
+                        }
+                        if let AuraPropValue::Expr(crate::ast::Expr::Str(sv)) = v {
+                            return Some(sv.to_string());
+                        }
+                        // key: e.key — Dot field access (Plan 008)
+                        if let AuraPropValue::Expr(crate::ast::Expr::Dot(inner, name)) = v {
+                            if let crate::ast::Expr::Ident(base) = inner.as_ref() {
+                                return Some(format!("{}.{}", base, name));
+                            }
+                        }
+                    }
+                }
+                for c in children {
+                    if let Some(k) = search(c, depth + 1) {
+                        return Some(k);
+                    }
+                }
+                None
+            }
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                for sub in then_body.iter().chain(else_body.iter().flatten()) {
+                    if let Some(k) = search(sub, depth + 1) {
+                        return Some(k);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn key_of(node: &AuraNode) -> Option<String> {
+        match node {
+            AuraNode::Element { props, .. } => {
+                for (k, v) in props {
+                    if k == "key" {
+                        if let AuraPropValue::Expr(crate::ast::Expr::Ident(n)) = v {
+                            return Some(n.to_string());
+                        }
+                        if let AuraPropValue::Expr(crate::ast::Expr::Str(sv)) = v {
+                            return Some(sv.to_string());
+                        }
+                    }
+                }
+                None
+            }
+            AuraNode::Component { props, .. } => {
+                for (k, v) in props {
+                    if k == "key" {
+                        if let crate::ast::Expr::Ident(n) = v {
+                            return Some(n.to_string());
+                        }
+                        if let crate::ast::Expr::Str(sv) = v {
+                            return Some(sv.to_string());
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+    for child in body {
+        if let Some(k) = search(child, 0) {
+            return Some(k);
+        }
+    }
+    None
+}
+
 fn fold_eq(a: &str, b: &str) -> bool {
     let f = |s: &str| {
         s.chars()
@@ -4388,7 +4475,14 @@ impl VueGenerator {
                 }
                 self.current_loop_var = prev_loop_var;
                 self.current_loop_var_is_index = prev_loop_var_is_index;
-                Ok(format!("{}<div {}>\n{}{}</div>\n", ind, v_for, body_html, ind))
+                // Plan 008 (auto-os-config batch 4): hoist a declared child key
+                // onto the v-for wrapper. Mixed-if loop bodies carry keys on
+                // branch-first texts (the vm-safe position — container keys
+                // kill the vm subtree) and R006 requires a keyed wrapper.
+                let key_attr = find_loop_child_key(body)
+                    .map(|k| format!(" :key=\"{}\"", k))
+                    .unwrap_or_default();
+                Ok(format!("{}<div {}{}>\n{}{}</div>\n", ind, v_for, key_attr, body_html, ind))
             }
 
             AuraNode::Conditional { .. } => {
@@ -16361,7 +16455,55 @@ widget Counter {
     // ====================================================================
 
     /// Parse a widget source and generate its Vue SFC (full pipeline).
-    fn gen_sfc_from_widget_src(src: &str) -> String {
+    /// Plan 008 (auto-os-config batch 4): mixed-if loop bodies carry keys on
+    /// branch-first texts — the fallback v-for wrapper must hoist one.
+    #[test]
+    fn test_plan008_loop_wrapper_hoists_child_key() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget Rows {
+    msg Msg { Go(str) }
+    model { var items Array<str> = [] }
+    view {
+        col {
+            for e in .items {
+                if e.kind == "text" {
+                    row {
+                        text (text: e.label, key: e.key) {}
+                        button (text: "Go") { onclick: .Go(e.key) }
+                    }
+                }
+                if e.kind == "toggle" {
+                    row {
+                        text (text: e.label, key: e.key) {}
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .Go(k) -> { }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("v-for=\"e in"),
+            "loop must emit v-for:
+{}",
+            sfc
+        );
+        let wrapper = sfc.lines().find(|l| l.contains("v-for=\"e in")).unwrap();
+        let keylines: Vec<&str> = sfc.lines().filter(|l| l.contains("key")).collect();
+        assert!(
+            wrapper.contains(":key="),
+            "fallback wrapper must hoist the child key:
+{}
+--- keylines: {:?}",
+            wrapper,
+            keylines
+        );
+    }
+
+        fn gen_sfc_from_widget_src(src: &str) -> String {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("widget source must parse");
