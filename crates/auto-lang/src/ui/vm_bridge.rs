@@ -1612,6 +1612,85 @@ widget SlideTest {
         assert_eq!(data2.len(), 3, "窗口稳定");
     }
 
+    /// Plan 445 M3：svgdoc 动态 props——`d: .p` 绑定在 view build 时经
+    /// bindings/state 解析进 SVG 文档（此前仅字面量透传，图表 path 在
+    /// VM 轨 svgdoc 通道整体丢失）。全保真载具（decl 路径 + view build）。
+    /// 若 resolve 链存在锁重入/死循环，此测试将挂起（对照：实机带改动
+    /// 曾冻窗，需以本测试钉死单线程可复现性）。
+    #[test]
+    fn plan445_m3_svgdoc_dynamic_props() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        let app_src = r##"
+widget SvgProbe {
+    msg Msg { Init }
+
+    model {
+        var p str = ""
+    }
+
+    on {
+        .Init -> { .p = "M 40 260 L 550 20" }
+    }
+
+    view {
+        col {
+            svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                path (d: .p, fill: "none", stroke: "#2563eb") {}
+            }
+        }
+    }
+}
+        "##;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src).with_session(session);
+        let ast = parser.parse().expect("parse app");
+        let (decl, widget) = ast
+            .stmts
+            .into_iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => {
+                    let w = crate::aura::extract_widget_from_decl(&d).expect("extract");
+                    Some((d, w))
+                }
+                _ => None,
+            })
+            .expect("widget decl");
+        let mut bridge = VmBridge::new_from_decls(
+            &decl,
+            &[],
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("bridge from decls");
+        let sid = bridge.state_obj_id();
+        bridge
+            .call_handler_for("SvgProbe", "Init", sid, &[])
+            .expect("init");
+        let builder = AuraViewBuilder::new(&bridge, "SvgProbe");
+        let view = builder.build(&widget.view_tree);
+        // 遍历找 View::Image 的 svgdoc src，断言动态 d 已解析进文档。
+        fn find_svgdoc(v: &crate::ui::View<crate::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match v {
+                View::Image { src, .. } => out.push(src.clone()),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children { find_svgdoc(c, out); }
+                }
+                _ => {}
+            }
+        }
+        let mut docs = Vec::new();
+        find_svgdoc(&view, &mut docs);
+        let doc = docs.iter().find(|s| s.starts_with("svgdoc:")).expect("svgdoc image");
+        assert!(
+            doc.contains("M 40 260 L 550 20"),
+            "动态 d 必须解析进 svgdoc（got: {doc}）"
+        );
+    }
+
     /// Helper to create a minimal AuraWidget for testing
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {

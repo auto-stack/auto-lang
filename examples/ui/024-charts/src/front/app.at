@@ -288,7 +288,8 @@ widget App {
         // （plan §6：donut 限静态分布展示）。几何重算与 Init 同式
         // （§0.6.E-3：模块 fn 不进 SFC，两份内联）。
         .Tick -> {
-            .tickN = .tickN + 1
+            if .running == "true" {
+                .tickN = .tickN + 1
             var nd = 150 + (.tickN * 37) % 120
             var nm = 100 + (.tickN * 53) % 130
             var nt = 50 + (.tickN * 29) % 90
@@ -402,6 +403,7 @@ widget App {
                 }
             }
             .axisLabels = labels
+            }
         }
     }
 
