@@ -117,7 +117,11 @@ fn param_shapes_for(fn_name: &str) -> Option<Vec<ExtractorKind>> {
 pub fn sig_entry(param_type_names: &[String]) -> Vec<ExtractorKind> {
     param_type_names
         .iter()
-        .map(|t| ExtractorKind::from_type_name(t))
+        .map(|t| {
+            let k = ExtractorKind::from_type_name(t);
+            eprintln!("[AXUMDBG] sig type {t:?} -> {k:?}");
+            k
+        })
         .collect()
 }
 
@@ -251,6 +255,7 @@ pub fn push_extractor_args(
     path_values: &[(String, String)],
     query_json: &str,
     body_json: &str,
+    headers_json: &str,
 ) -> usize {
     let mut n = 0usize;
     let mut path_iter = path_values.iter().map(|(_, v)| v.as_str());
@@ -280,11 +285,18 @@ pub fn push_extractor_args(
                 n += 1;
             }
             ExtractorKind::Headers => {
-                // Opaque HeaderMap placeholder — musk handlers forward it to
-                // extern accessors (stubbed in the VM world).
-                let obj = RustStdlibObject::new("axum::http::HeaderMap", ());
-                let handle = vm.insert_heap_object(obj);
-                vm.rc_push_id(task, handle);
+                eprintln!("[AXUMDBG] Headers arm, headers_json={headers_json:?}");
+                // PLAN-044: real-header marshalling — musk auth handlers
+                // forward the HeaderMap to externs (auth_token_from_headers
+                // etc.); the opaque placeholder carried no data, so bearer
+                // extraction was impossible. Marshal the connection-level
+                // header JSON (authorization/cookie) as the arg instead.
+                let parsed: serde_json::Value =
+                    serde_json::from_str(headers_json).unwrap_or(serde_json::Value::Null);
+                if let Err(e) = crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0) {
+                    eprintln!("[AXUM] extractor headers marshal failed: {e:?}");
+                    task.ram.push_nv(auto_val::encode_null());
+                }
                 n += 1;
             }
         }

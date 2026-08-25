@@ -2581,6 +2581,11 @@ async fn handle_connection_async(
         let mut pushed = 0usize;
         if let Some(t_arc) = vm.tasks.get(&handler_task_id) {
             if let Ok(mut t) = t_arc.try_lock() {
+                let headers_json = if auth_header.is_empty() {
+                    "{}".to_string()
+                } else {
+                    format!("{{\"authorization\":\"{}\"}}", auth_header.replace('"', ""))
+                };
                 pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
                     vm,
                     &mut t,
@@ -2588,6 +2593,7 @@ async fn handle_connection_async(
                     &route_match.path_params,
                     &query_json,
                     &body,
+                    &headers_json,
                 );
             }
         }
