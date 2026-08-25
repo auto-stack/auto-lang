@@ -9,6 +9,8 @@
 // Missing:  f-字符串(`/f")、raw/multi/c 字符串、#comptime、byte 字面量、
 //           .view/.mut/.take/.move/.? 属性词、}+换行 else 抑制、LexerState 快照回滚
 // DIVERGE:  D12: Peekable<Chars> → char_at(i)+p/at 游标(431 D1 变体,免 Vec 构造);
+//           D11b 已收账(447-③):主链/转义链 else-if → is-on-char;
+//           kind 载体 str → TokenKind(L1;token.at 增 Unknown 哨兵变体);
 //           D13: (S2 已落地)单遍局部变量 → tokenize() List + lex_dump() 包装;
 //           D14: (S2 已落地)dump 串直出 → 真实 Token 结构(五字段与 M1 行一致);
 //           D15: 注释 buffer 后继(CommentContent/End) → 同序 Token;
@@ -21,7 +23,7 @@
 
 // S2 起的公开 token 结构:五字段与 M1 dump 行一致(parser 只用 kind/text/line)
 type Token {
-    kind str
+    kind TokenKind
     text str
     line int
     at int
@@ -30,7 +32,7 @@ type Token {
 
 // lex_* 内部记账结构(len=dump 用长度,adv=推进量)
 type Tok {
-    kind str
+    kind TokenKind
     text str
     len int
     adv int
@@ -105,31 +107,31 @@ fn lex_number(source str, start int) Tok {
             }
         }
     }
-    var kind = "Int"
+    var kind = TokenKind.Int
     var c1 = cur_char(source, p)
     if c1 == 'f' {
         p = p + 1
-        kind = "Float"
+        kind = TokenKind.Float
     } else if c1 == 'd' {
         p = p + 1
-        kind = "Double"
+        kind = TokenKind.Double
     } else if c1 == 'u' {
         p = p + 1
         if cur_char(source, p) == '8' {
             p = p + 1
-            kind = "U8"
+            kind = TokenKind.U8
         } else {
-            kind = "Uint"
+            kind = TokenKind.Uint
         }
     } else if c1 == 'i' {
         p = p + 1
         if cur_char(source, p) == '8' {
             p = p + 1
-            kind = "I8"
+            kind = TokenKind.I8
         }
     }
-    if has_dot && kind == "Int" {
-        kind = "Float"
+    if has_dot && kind == TokenKind.Int {
+        kind = TokenKind.Float
     }
     return Tok(kind, digits, digits.len(), p - start)
 }
@@ -149,20 +151,14 @@ fn lex_string(source str, start int) Tok {
                 scanning = false
             } else if c == '\\' {
                 var esc = cur_char(source, p + 1)
-                if esc == 'n' {
-                    text = text + "\n"
-                } else if esc == 't' {
-                    text = text + "\t"
-                } else if esc == 'r' {
-                    text = text + "\r"
-                } else if esc == '0' {
-                    text = text + "\0"
-                } else if esc == '\\' {
-                    text = text + "\\"
-                } else if esc == '"' {
-                    text = text + "\""
-                } else {
-                    text = text + source.slice(p, p + 2)
+                is esc {
+                    'n' -> { text = text + "\n" }
+                    't' -> { text = text + "\t" }
+                    'r' -> { text = text + "\r" }
+                    '0' -> { text = text + "\0" }
+                    '\\' -> { text = text + "\\" }
+                    '"' -> { text = text + "\"" }
+                    else -> { text = text + source.slice(p, p + 2) }
                 }
                 p = p + 2
             } else {
@@ -171,7 +167,7 @@ fn lex_string(source str, start int) Tok {
             }
         }
     }
-    return Tok("Str", text, p - start, p - start)
+    return Tok(TokenKind.Str, text, p - start, p - start)
 }
 
 // char() 直译:常见转义 + 普通字符。
@@ -183,27 +179,21 @@ fn lex_char(source str, start int) Tok {
     var text = ""
     if c == '\\' {
         var esc = cur_char(source, p + 1)
-        if esc == 'n' {
-            text = "\n"
-        } else if esc == 't' {
-            text = "\t"
-        } else if esc == 'r' {
-            text = "\r"
-        } else if esc == '0' {
-            text = "\0"
-        } else if esc == '\\' {
-            text = "\\"
-        } else if esc == '\'' {
-            text = "'"
-        } else {
-            text = source.slice(p, p + 2)
+        is esc {
+            'n' -> { text = "\n" }
+            't' -> { text = "\t" }
+            'r' -> { text = "\r" }
+            '0' -> { text = "\0" }
+            '\\' -> { text = "\\" }
+            '\'' -> { text = "'" }
+            else -> { text = source.slice(p, p + 2) }
         }
         p = p + 3
     } else {
         text = source.slice(p, p + 1)
         p = p + 2
     }
-    return Tok("Char", text, p - start, p - start)
+    return Tok(TokenKind.Char, text, p - start, p - start)
 }
 
 // identifier() 直译:字母/_ 起始;连字符后随字母/_ 时并入(preview-card 规则)
@@ -225,7 +215,7 @@ fn lex_ident(source str, start int) Tok {
         }
     }
     var text = source.slice(start, p)
-    return Tok(kind_name(keyword_kind(text)), text, p - start, p - start)
+    return Tok(keyword_kind(text), text, p - start, p - start)
 }
 
 fn dump_escape(s str) str {
@@ -234,41 +224,6 @@ fn dump_escape(s str) str {
     t = t.replace("\t", "\\t")
     t = t.replace("\r", "\\r")
     return t
-}
-
-// 单字符定界符名(空串 = 非定界符)
-fn delim_name(c int) str {
-    if c == '(' {
-        return "LParen"
-    }
-    if c == ')' {
-        return "RParen"
-    }
-    if c == '[' {
-        return "LSquare"
-    }
-    if c == ']' {
-        return "RSquare"
-    }
-    if c == '{' {
-        return "LBrace"
-    }
-    if c == '}' {
-        return "RBrace"
-    }
-    if c == ',' {
-        return "Comma"
-    }
-    if c == ';' {
-        return "Semi"
-    }
-    if c == ':' {
-        return "Colon"
-    }
-    if c == '@' {
-        return "At"
-    }
-    return ""
 }
 
 // 主循环:next_step 的子集直译(else-if 链,无 continue;见 DIVERGE D17)。
@@ -286,10 +241,10 @@ fn lex_fstr_at(mut toks List<Token>, source str, start int, line int, at int) in
     var raw = 0
     if source.char_at(p) == '`' {
         raw = 1
-        toks.push(Token("FStrStart", "`", line, at, 1))
+        toks.push(Token(TokenKind.FStrStart, "`", line, at, 1))
         p = p + 1
     } else {
-        toks.push(Token("FStrStart", "f\"", line, at, 2))
+        toks.push(Token(TokenKind.FStrStart, "f\"", line, at, 2))
         p = p + 2
         if source.char_at(p) == '"' && source.char_at(p + 1) == '"' {
             triple = 1
@@ -317,20 +272,14 @@ fn lex_fstr_at(mut toks List<Token>, source str, start int, line int, at int) in
             scanning = false
         } else if raw == 0 && c == '\\' {
             var esc = source.char_at(p + 1)
-            if esc == 'n' {
-                text = text + "\n"
-            } else if esc == 't' {
-                text = text + "\t"
-            } else if esc == 'r' {
-                text = text + "\r"
-            } else if esc == '\\' {
-                text = text + "\\"
-            } else if esc == '"' {
-                text = text + "\""
-            } else if esc == '$' {
-                text = text + "$"
-            } else {
-                text = text + source.slice(p, p + 2)
+            is esc {
+                'n' -> { text = text + "\n" }
+                't' -> { text = text + "\t" }
+                'r' -> { text = text + "\r" }
+                '\\' -> { text = text + "\\" }
+                '"' -> { text = text + "\"" }
+                '$' -> { text = text + "$" }
+                else -> { text = text + source.slice(p, p + 2) }
             }
             if esc == '\n' {
                 nl = nl + 1
@@ -344,13 +293,13 @@ fn lex_fstr_at(mut toks List<Token>, source str, start int, line int, at int) in
             p = p + 1
         }
     }
-    toks.push(Token("FStrPart", text, line, at, text.len()))
+    toks.push(Token(TokenKind.FStrPart, text, line, at, text.len()))
     if triple == 1 {
-        toks.push(Token("FStrEnd", "\"\"\"", line, at, 3))
+        toks.push(Token(TokenKind.FStrEnd, "\"\"\"", line, at, 3))
     } else if raw == 1 {
-        toks.push(Token("FStrEnd", "`", line, at, 1))
+        toks.push(Token(TokenKind.FStrEnd, "`", line, at, 1))
     } else {
-        toks.push(Token("FStrEnd", "\"", line, at, 1))
+        toks.push(Token(TokenKind.FStrEnd, "\"", line, at, 1))
     }
     return p - start
 }
@@ -363,266 +312,337 @@ fn tokenize(source str) List<Token> {
     var toks List<Token> = List.new()
     for p < len {
         var c = cur_char(source, p)
-        if c == ' ' || c == '\t' || c == '\r' {
-            // skip_whitespace(非 \n)
-            p = p + 1
-            at = at + 1
-        } else if c == '\n' {
-            // '\n':line+=1, at=0 后 single→token.at=0、at=1
-            line = line + 1
-            at = 1
-            p = p + 1
-            toks.push(Token("Newline", "\n", line, 0, 1))
-        } else if is_digit(c) {
-            var t = lex_number(source, p)
-            toks.push(Token(t.kind, t.text, line, at, t.len))
-            p = p + t.adv
-            at = at + t.len
-        } else if is_alpha(c) {
-            // f-string 前瞻(Plan 434 / D38c:f"..." 与 f"""...""";
-            // 整段内容单 FStrPart——$name/${expr} 由 a2r.at 发射侧解析)
-            if c == 'f' && cur_char(source, p + 1) == '"' {
-                var fadv = lex_fstr_at(toks, source, p, line, at)
-                p = p + fadv
-                at = at + fadv
-            } else {
-                var t = lex_ident(source, p)
-                toks.push(Token(t.kind, t.text, line, at, t.len))
-                p = p + t.len
-                at = at + t.len
+        // next_step 直译:主链 is-on-char(D11b 收账,447-③);
+        // digit/alpha 为卫语臂(谓词不能作模式),序同基线 else-if 链
+        is c {
+            ' ' | '\t' | '\r' -> {
+                // skip_whitespace(非 \n)
+                p = p + 1
+                at = at + 1
             }
-        } else if c == '`' {
-            // 反引号原始 f-string(无转义处理)
-            var badv = lex_fstr_at(toks, source, p, line, at)
-            p = p + badv
-            at = at + badv
-        } else if c == '"' {
-            if cur_char(source, p + 1) == '"' && cur_char(source, p + 2) == '"' {
-                // 三引号多行字符串(Plan 434):到闭 """,内容实换行入 Str
-                var q3 = p + 3
-                var end3 = -1
-                var scanning3 = true
-                while scanning3 && q3 < len {
-                    if cur_char(source, q3) == '"' && cur_char(source, q3 + 1) == '"' && cur_char(source, q3 + 2) == '"' {
-                        end3 = q3
-                        scanning3 = false
-                    }
-                    q3 = q3 + 1
-                }
-                var text3 = source.slice(p + 3, end3)
-                var nl3 = 0
-                var k3 = 0
-                while k3 < text3.len() {
-                    if text3.char_at(k3) == '\n' {
-                        nl3 = nl3 + 1
-                    }
-                    k3 = k3 + 1
-                }
-                toks.push(Token("Str", text3, line, at, end3 + 3 - p))
-                line = line + nl3
-                p = end3 + 3
+            '\n' -> {
+                // '\n':line+=1, at=0 后 single→token.at=0、at=1
+                line = line + 1
                 at = 1
-            } else {
-                var t = lex_string(source, p)
+                p = p + 1
+                toks.push(Token(TokenKind.Newline, "\n", line, 0, 1))
+            }
+            if is_digit(c) -> {
+                var t = lex_number(source, p)
                 toks.push(Token(t.kind, t.text, line, at, t.len))
-                p = p + t.len
+                p = p + t.adv
                 at = at + t.len
             }
-        } else if c == '\'' {
-            var t = lex_char(source, p)
-            toks.push(Token(t.kind, t.text, line, at, t.len))
-            p = t.len + p
-            at = at + t.len
-        } else if c == '/' {
-            var n = cur_char(source, p + 1)
-            if n == '/' {
-                // 行注释:text 含第二个 '/'(Rust 未消费即读);/// → DocComment
-                var q = p + 2
-                var scanning = true
-                for scanning {
-                    if q >= len || cur_char(source, q) == '\n' {
-                        scanning = false
-                    } else {
-                        q = q + 1
-                    }
-                }
-                var text = source.slice(p + 1, q)
-                if text.len() >= 2 && text.slice(0, 2) == "//" {
-                    var doc = text.slice(2, text.len()).trim()
-                    toks.push(Token("DocComment", doc, line, at, text.len() + 2))
+            if is_alpha(c) -> {
+                // f-string 前瞻(Plan 434 / D38c:f"..." 与 f"""...""";
+                // 整段内容单 FStrPart——$name/${expr} 由 a2r.at 发射侧解析)
+                if c == 'f' && cur_char(source, p + 1) == '"' {
+                    var fadv = lex_fstr_at(toks, source, p, line, at)
+                    p = p + fadv
+                    at = at + fadv
                 } else {
-                    toks.push(Token("CommentLine", "//", line, at, 2))
-                    toks.push(Token("CommentContent", text, line, at + 2, text.len()))
+                    var t = lex_ident(source, p)
+                    toks.push(Token(t.kind, t.text, line, at, t.len))
+                    p = p + t.len
+                    at = at + t.len
                 }
-                at = at + 2 + text.len()
-                p = q
-            } else if n == '*' {
-                // 块注释:复刻基线 quirk——内容中 '*' 后一字符被吞不入 text
-                // (DIVERGE D18:基线 lexer 的 '*' 分支 push(c)+next() 连吞两字符,
-                //  M1 闸门以基线为唯一依据,照抄;上游修复会改 golden,挂账 432 债务簿)
-                var q = p + 1
-                var ctext = ""
-                var scanning = true
-                for scanning {
-                    if q >= len {
-                        scanning = false
-                    } else {
-                        var cc = cur_char(source, q)
-                        if cc == '*' {
-                            q = q + 1
-                            if cur_char(source, q) == '/' {
-                                q = q + 1
-                                scanning = false
-                            } else {
-                                ctext = ctext + "*"
-                                q = q + 1
-                            }
+            }
+            '`' -> {
+                // 反引号原始 f-string(无转义处理)
+                var badv = lex_fstr_at(toks, source, p, line, at)
+                p = p + badv
+                at = at + badv
+            }
+            '"' -> {
+                if cur_char(source, p + 1) == '"' && cur_char(source, p + 2) == '"' {
+                    // 三引号多行字符串(Plan 434):到闭 """,内容实换行入 Str
+                    var q3 = p + 3
+                    var end3 = -1
+                    var scanning3 = true
+                    while scanning3 && q3 < len {
+                        if cur_char(source, q3) == '"' && cur_char(source, q3 + 1) == '"' && cur_char(source, q3 + 2) == '"' {
+                            end3 = q3
+                            scanning3 = false
+                        }
+                        q3 = q3 + 1
+                    }
+                    var text3 = source.slice(p + 3, end3)
+                    var nl3 = 0
+                    var k3 = 0
+                    while k3 < text3.len() {
+                        if text3.char_at(k3) == '\n' {
+                            nl3 = nl3 + 1
+                        }
+                        k3 = k3 + 1
+                    }
+                    toks.push(Token(TokenKind.Str, text3, line, at, end3 + 3 - p))
+                    line = line + nl3
+                    p = end3 + 3
+                    at = 1
+                } else {
+                    var t = lex_string(source, p)
+                    toks.push(Token(t.kind, t.text, line, at, t.len))
+                    p = p + t.len
+                    at = at + t.len
+                }
+            }
+            '\'' -> {
+                var t = lex_char(source, p)
+                toks.push(Token(t.kind, t.text, line, at, t.len))
+                p = t.len + p
+                at = at + t.len
+            }
+            '/' -> {
+                var n = cur_char(source, p + 1)
+                if n == '/' {
+                    // 行注释:text 含第二个 '/'(Rust 未消费即读);/// → DocComment
+                    var q = p + 2
+                    var scanning = true
+                    for scanning {
+                        if q >= len || cur_char(source, q) == '\n' {
+                            scanning = false
                         } else {
-                            ctext = ctext + source.slice(q, q + 1)
                             q = q + 1
                         }
                     }
-                }
-                toks.push(Token("CommentStart", "/*", line, at, 2))
-                toks.push(Token("CommentContent", ctext, line, at + 2, ctext.len()))
-                toks.push(Token("CommentEnd", "*/", line, at + 2 + ctext.len(), 2))
-                at = at + 2 + ctext.len() + 2
-                p = q
-            } else if n == '=' {
-                toks.push(Token("DivEq", "/=", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token("Div", "/", line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if delim_name(c) != "" {
-            var nm = delim_name(c)
-            toks.push(Token(nm, source.slice(p, p + 1), line, at, 1))
-            p = p + 1
-            at = at + 1
-        } else if c == '+' || c == '*' || c == '%' || c == '!' || c == '>' || c == '<' {
-            var base = "Add"
-            var eqk = "AddEq"
-            var sym = "+"
-            if c == '*' {
-                base = "Star"
-                eqk = "MulEq"
-                sym = "*"
-            } else if c == '%' {
-                base = "Mod"
-                eqk = "ModEq"
-                sym = "%"
-            } else if c == '!' {
-                base = "Not"
-                eqk = "Neq"
-                sym = "!"
-            } else if c == '>' {
-                base = "Gt"
-                eqk = "Ge"
-                sym = ">"
-            } else if c == '<' {
-                base = "Lt"
-                eqk = "Le"
-                sym = "<"
-            }
-            if cur_char(source, p + 1) == '=' {
-                toks.push(Token(eqk, sym + "=", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token(base, sym, line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if c == '=' {
-            var n = cur_char(source, p + 1)
-            if n == '>' {
-                toks.push(Token("DoubleArrow", "=>", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else if n == '=' {
-                toks.push(Token("Eq", "==", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token("Asn", "=", line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if c == '-' {
-            var n = cur_char(source, p + 1)
-            if n == '>' {
-                toks.push(Token("Arrow", "->", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else if n == '=' {
-                toks.push(Token("SubEq", "-=", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token("Sub", "-", line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if c == '?' {
-            if cur_char(source, p + 1) == '?' {
-                toks.push(Token("QuestionQuestion", "??", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token("Question", "?", line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if c == '|' || c == '&' {
-            if c == '|' && cur_char(source, p + 1) == '|' {
-                toks.push(Token("Or", "||", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else if c == '&' && cur_char(source, p + 1) == '&' {
-                toks.push(Token("And", "&&", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else if c == '|' {
-                toks.push(Token("VBar", "|", line, at, 1))
-                p = p + 1
-                at = at + 1
-            } else {
-                toks.push(Token("Amp", "&", line, at, 1))
-                p = p + 1
-                at = at + 1
-            }
-        } else if c == '.' {
-            var n = cur_char(source, p + 1)
-            if n == '.' {
-                if cur_char(source, p + 2) == '=' {
-                    toks.push(Token("RangeEq", "..=", line, at, 3))
-                    p = p + 3
-                    at = at + 3
-                } else {
-                    toks.push(Token("Range", "..", line, at, 2))
+                    var text = source.slice(p + 1, q)
+                    if text.len() >= 2 && text.slice(0, 2) == "//" {
+                        var doc = text.slice(2, text.len()).trim()
+                        toks.push(Token(TokenKind.DocComment, doc, line, at, text.len() + 2))
+                    } else {
+                        toks.push(Token(TokenKind.CommentLine, "//", line, at, 2))
+                        toks.push(Token(TokenKind.CommentContent, text, line, at + 2, text.len()))
+                    }
+                    at = at + 2 + text.len()
+                    p = q
+                } else if n == '*' {
+                    // 块注释:复刻基线 quirk——内容中 '*' 后一字符被吞不入 text
+                    // (DIVERGE D18:基线 lexer 的 '*' 分支 push(c)+next() 连吞两字符,
+                    //  M1 闸门以基线为唯一依据,照抄;上游修复会改 golden,挂账 432 债务簿)
+                    var q = p + 1
+                    var ctext = ""
+                    var scanning = true
+                    for scanning {
+                        if q >= len {
+                            scanning = false
+                        } else {
+                            var cc = cur_char(source, q)
+                            if cc == '*' {
+                                q = q + 1
+                                if cur_char(source, q) == '/' {
+                                    q = q + 1
+                                    scanning = false
+                                } else {
+                                    ctext = ctext + "*"
+                                    q = q + 1
+                                }
+                            } else {
+                                ctext = ctext + source.slice(q, q + 1)
+                                q = q + 1
+                            }
+                        }
+                    }
+                    toks.push(Token(TokenKind.CommentStart, "/*", line, at, 2))
+                    toks.push(Token(TokenKind.CommentContent, ctext, line, at + 2, ctext.len()))
+                    toks.push(Token(TokenKind.CommentEnd, "*/", line, at + 2 + ctext.len(), 2))
+                    at = at + 2 + ctext.len() + 2
+                    p = q
+                } else if n == '=' {
+                    toks.push(Token(TokenKind.DivEq, "/=", line, at, 2))
                     p = p + 2
                     at = at + 2
+                } else {
+                    toks.push(Token(TokenKind.Div, "/", line, at, 1))
+                    p = p + 1
+                    at = at + 1
                 }
-            } else if n == '?' {
-                toks.push(Token("DotQuestion", "?.", line, at, 2))
-                p = p + 2
-                at = at + 2
-            } else {
-                toks.push(Token("Dot", ".", line, at, 1))
+            }
+            '(' -> {
+                toks.push(Token(TokenKind.LParen, source.slice(p, p + 1), line, at, 1))
                 p = p + 1
                 at = at + 1
             }
-        } else {
-            // 未覆盖字符:Unknown 前进(闸门 diff 暴露后逐个收编)
-            toks.push(Token("Unknown", source.slice(p, p + 1), line, at, 1))
-            p = p + 1
-            at = at + 1
+            ')' -> {
+                toks.push(Token(TokenKind.RParen, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            '[' -> {
+                toks.push(Token(TokenKind.LSquare, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            ']' -> {
+                toks.push(Token(TokenKind.RSquare, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            '{' -> {
+                toks.push(Token(TokenKind.LBrace, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            '}' -> {
+                toks.push(Token(TokenKind.RBrace, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            ',' -> {
+                toks.push(Token(TokenKind.Comma, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            ';' -> {
+                toks.push(Token(TokenKind.Semi, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            ':' -> {
+                toks.push(Token(TokenKind.Colon, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            '@' -> {
+                toks.push(Token(TokenKind.At, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
+            '+' | '*' | '%' | '!' | '>' | '<' -> {
+                var base = TokenKind.Add
+                var eqk = TokenKind.AddEq
+                var sym = "+"
+                is c {
+                    '*' -> {
+                        base = TokenKind.Star
+                        eqk = TokenKind.MulEq
+                        sym = "*"
+                    }
+                    '%' -> {
+                        base = TokenKind.Mod
+                        eqk = TokenKind.ModEq
+                        sym = "%"
+                    }
+                    '!' -> {
+                        base = TokenKind.Not
+                        eqk = TokenKind.Neq
+                        sym = "!"
+                    }
+                    '>' -> {
+                        base = TokenKind.Gt
+                        eqk = TokenKind.Ge
+                        sym = ">"
+                    }
+                    '<' -> {
+                        base = TokenKind.Lt
+                        eqk = TokenKind.Le
+                        sym = "<"
+                    }
+                    else -> {
+                    }
+                }
+                if cur_char(source, p + 1) == '=' {
+                    toks.push(Token(eqk, sym + "=", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else {
+                    toks.push(Token(base, sym, line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            '=' -> {
+                var n = cur_char(source, p + 1)
+                if n == '>' {
+                    toks.push(Token(TokenKind.DoubleArrow, "=>", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else if n == '=' {
+                    toks.push(Token(TokenKind.Eq, "==", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else {
+                    toks.push(Token(TokenKind.Asn, "=", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            '-' -> {
+                var n = cur_char(source, p + 1)
+                if n == '>' {
+                    toks.push(Token(TokenKind.Arrow, "->", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else if n == '=' {
+                    toks.push(Token(TokenKind.SubEq, "-=", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else {
+                    toks.push(Token(TokenKind.Sub, "-", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            '?' -> {
+                if cur_char(source, p + 1) == '?' {
+                    toks.push(Token(TokenKind.QuestionQuestion, "??", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else {
+                    toks.push(Token(TokenKind.Question, "?", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            '|' | '&' -> {
+                if c == '|' && cur_char(source, p + 1) == '|' {
+                    toks.push(Token(TokenKind.Or, "||", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else if c == '&' && cur_char(source, p + 1) == '&' {
+                    toks.push(Token(TokenKind.And, "&&", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else if c == '|' {
+                    toks.push(Token(TokenKind.VBar, "|", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                } else {
+                    toks.push(Token(TokenKind.Amp, "&", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            '.' -> {
+                var n = cur_char(source, p + 1)
+                if n == '.' {
+                    if cur_char(source, p + 2) == '=' {
+                        toks.push(Token(TokenKind.RangeEq, "..=", line, at, 3))
+                        p = p + 3
+                        at = at + 3
+                    } else {
+                        toks.push(Token(TokenKind.Range, "..", line, at, 2))
+                        p = p + 2
+                        at = at + 2
+                    }
+                } else if n == '?' {
+                    toks.push(Token(TokenKind.DotQuestion, "?.", line, at, 2))
+                    p = p + 2
+                    at = at + 2
+                } else {
+                    toks.push(Token(TokenKind.Dot, ".", line, at, 1))
+                    p = p + 1
+                    at = at + 1
+                }
+            }
+            else -> {
+                // 未覆盖字符:Unknown 前进(闸门 diff 暴露后逐个收编)
+                toks.push(Token(TokenKind.Unknown, source.slice(p, p + 1), line, at, 1))
+                p = p + 1
+                at = at + 1
+            }
         }
     }
-    toks.push(Token("EOF", "", line, at, 0))
+    toks.push(Token(TokenKind.EOF, "", line, at, 0))
     return toks
 }
 
@@ -633,7 +653,7 @@ fn lex_dump(source str) str {
     var i = 0
     while i < toks.len() {
         var t Token = toks.get(i)
-        out = out + t.kind + "|" + dump_escape(t.text) + "|" + t.line.str() + "|" + t.at.str() + "|" + t.len.str() + "\n"
+        out = out + kind_name(t.kind) + "|" + dump_escape(t.text) + "|" + t.line.str() + "|" + t.at.str() + "|" + t.len.str() + "\n"
         i = i + 1
     }
     return out

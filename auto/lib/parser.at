@@ -118,11 +118,13 @@ fn parse_new(toks List<Token>) P {
     return p
 }
 
+// 447-③9.2:Token.kind 载体已枚举化;p_kind 暂以 kind_name 维持 str 边界
+// (P1 步翻转返回 TokenKind 并参数化全部比较位)
 fn p_kind(p P) str {
     if p.pos >= p.toks.len() {
         return "EOF"
     }
-    return p.toks.get(p.pos).kind
+    return kind_name(p.toks.get(p.pos).kind)
 }
 
 fn p_text(p P) str {
@@ -145,11 +147,14 @@ fn p_peek(p P, n int) str {
     if i >= p.toks.len() {
         return "EOF"
     }
-    return p.toks.get(i).kind
+    return kind_name(p.toks.get(i).kind)
 }
 
-fn is_comment_kind(k str) bool {
-    return k == "DocComment" || k == "CommentLine" || k == "CommentStart" || k == "CommentContent" || k == "CommentEnd"
+fn is_comment_kind(k TokenKind) bool {
+    is k {
+        TokenKind.DocComment | TokenKind.CommentLine | TokenKind.CommentStart | TokenKind.CommentContent | TokenKind.CommentEnd -> true
+        else -> false
+    }
 }
 
 // Parser::next 直译:前进一 token 并跳过注释 token
@@ -917,13 +922,13 @@ fn paren_prefix(mut p P) E {
         var i = p.pos + 1
         var scanning = true
         while scanning && i < p.toks.len() {
-            var tk = p.toks.get(i).kind
+            var tk = kind_name(p.toks.get(i).kind)
             if tk == "LParen" || tk == "LSquare" || tk == "LBrace" {
                 depth = depth + 1
             } else if tk == "RParen" || tk == "RSquare" || tk == "RBrace" {
                 depth = depth - 1
                 if depth == 0 {
-                    if i + 1 < p.toks.len() && p.toks.get(i + 1).kind == "DoubleArrow" {
+                    if i + 1 < p.toks.len() && kind_name(p.toks.get(i + 1).kind) == "DoubleArrow" {
                         found_arrow = true
                     }
                     scanning = false
@@ -1677,7 +1682,7 @@ fn is_pattern(mut p P) E {
         // 仅当 Ident 后随 Dot 才按点路径拦截(裸名/调用形留给表达式机)
         var nxt = "EOF"
         if p.pos + 1 < p.toks.len() {
-            nxt = p.toks.get(p.pos + 1).kind
+            nxt = kind_name(p.toks.get(p.pos + 1).kind)
         }
         if nxt == "Dot" {
             var segs List<str> = List.new()

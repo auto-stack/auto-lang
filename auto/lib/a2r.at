@@ -785,7 +785,7 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
             depth = depth - 1
             p_next(p)
         } else if k == "Ident" {
-            if p.pos > 0 && p.toks.get(p.pos - 1).kind == "Dot" {
+            if p.pos > 0 && kind_name(p.toks.get(p.pos - 1).kind) == "Dot" {
                 // 字段名位(前一 token 为 Dot):不按绑定处理
                 p_next(p)
             } else {
@@ -800,7 +800,7 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                 var mut_found = false
                 var scanning = true
                 while scanning && j2 + 2 < p.toks.len() {
-                    var nk2 = p.toks.get(j2 + 2).kind
+                    var nk2 = kind_name(p.toks.get(j2 + 2).kind)
                     if nk2 == "Dot" {
                         j2 = j2 + 2
                     } else if ar_is_asn_kind(nk2) {
@@ -1369,6 +1369,11 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
         a.ty = "str"
         a.strk = 3
         a.lenflag = 0
+        // 447-③前置:接收者带 as i64 尾码(char_at/len 发射)时先括号
+        // ((... as i64).to_string();裸拼是 cast 后接方法调用,解析错)
+        if recv.len() >= 7 && recv.slice(recv.len() - 7, recv.len()) == " as i64" {
+            return "(" + recv + ").to_string()"
+        }
         return recv + ".to_string()"
     }
     if word == "new" && recv == "List" {
@@ -1854,11 +1859,11 @@ fn ar_scan_is_multi(mut a Ar, mut p P) {
         } else if k == "Is" {
             var n1 = "EOF"
             if p.pos + 1 < p.toks.len() {
-                n1 = p.toks.get(p.pos + 1).kind
+                n1 = kind_name(p.toks.get(p.pos + 1).kind)
             }
             var n2 = "EOF"
             if p.pos + 2 < p.toks.len() {
-                n2 = p.toks.get(p.pos + 2).kind
+                n2 = kind_name(p.toks.get(p.pos + 2).kind)
             }
             if n1 == "Ident" && n2 == "LBrace" {
                 var nm = p.toks.get(p.pos + 1).text
@@ -1934,7 +1939,7 @@ fn ar_is_has_str_pattern(mut p P) int {
 }
 
 // 模式 E → Rust 模式文本(tag-cover → Enum::Variant(binds);字面量直出)
-fn ar_is_pattern_text(a Ar, pat E) str {
+fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     if pat.kind == "tag-cover" {
         // 载荷变体 → Variant(binds);单元/标量变体 → 裸 Variant 路径
         var ei = ar_enum_find(a, pat.name)
@@ -1958,6 +1963,11 @@ fn ar_is_pattern_text(a Ar, pat E) str {
         return "\"" + ar_escape_str(pat.name) + "\""
     }
     if pat.kind == "char" {
+        // 447-③前置:int 型 scrutinee(码点局部,如 lexer 的 char_at 结果)——
+        // 字符模式发码点十进制(镜像主 a2r;'n' 模式对 i64 是 E0308)
+        if scrut_int == 1 {
+            return pat.name.char_at(0).str()
+        }
         return "'" + pat.name + "'"
     }
     if pat.kind == "int" {
@@ -1995,10 +2005,42 @@ fn ar_is_body_coerce(a Ar, body str) str {
     return body
 }
 
+// is 臂体三形态:单表达式内联 / 多语句块 / 空块(镜像主 a2r write_match_arm_body;
+// 447-③前置:lexer is 主链的块状臂体实证补齐——此前 corpus 全单表达式臂)
+fn ar_is_arm_body(mut a Ar, mut p P, head str, tail_is int) {
+    if p_kind(p) == "LBrace" {
+        p_next(p)
+        skip_empty_lines(p)
+        if p_kind(p) == "RBrace" {
+            p_next(p)
+            ar_line(a, head + " => {},")
+            return
+        }
+        ar_line(a, head + " => {")
+        a.indent = a.indent + 1
+        ar_stmts(a, p)
+        p_expect(p, "RBrace")
+        skip_empty_lines(p)
+        a.indent = a.indent - 1
+        ar_line(a, "},")
+        return
+    }
+    var body = ar_expr(a, p, 0)
+    if tail_is == 1 {
+        body = ar_is_body_coerce(a, body)
+    }
+    ar_line(a, head + " => " + body + ",")
+}
+
 // is 语句发射:match <scrut> { 模式臂..., };(语句位;尾值位无分号)
 fn ar_is(mut a Ar, mut p P, tail_is int) {
     p_next(p)
     var scrut = ar_expr(a, p, 0)
+    // 447-③前置:scrutinee 为 int 型标识符时字符模式发码点(ar_is_pattern_text)
+    var scrut_int = 0
+    if e_is_simple_ident(scrut) == 1 && ar_vty(a, scrut) == "int" {
+        scrut_int = 1
+    }
     // str 模式前瞻须在越过 { 之前(游标正落在 LBrace 上)
     var has_str_pat = ar_is_has_str_pattern(p)
     // H5:同 fn 内 ≥2 次 is 同一标识符 → match &v(str 模式臂除外:
@@ -2028,29 +2070,21 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
             var cond = ar_expr(a, p, 0)
             p_expect(p, "Arrow")
             skip_empty_lines(p)
-            var body = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body = ar_is_body_coerce(a, body)
-            }
-            ar_line(a, "_guard if " + cond + " => " + body + ",")
+            ar_is_arm_body(a, p, "_guard if " + cond, tail_is)
         } else if k == "Else" {
             p_next(p)
             p_expect(p, "Arrow")
             skip_empty_lines(p)
-            var body2 = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body2 = ar_is_body_coerce(a, body2)
-            }
-            ar_line(a, "_ => " + body2 + ",")
+            ar_is_arm_body(a, p, "_", tail_is)
         } else {
             var pat = is_pattern(p)
-            var ptxt = ar_is_pattern_text(a, pat)
+            var ptxt = ar_is_pattern_text(a, pat, scrut_int)
             // or-臂(W2):| 连接
             while a.err == "" && p.err == "" && p_kind(p) == "VBar" {
                 p_next(p)
                 skip_empty_lines(p)
                 var np = is_pattern(p)
-                ptxt = ptxt + " | " + ar_is_pattern_text(a, np)
+                ptxt = ptxt + " | " + ar_is_pattern_text(a, np, scrut_int)
                 skip_empty_lines(p)
             }
             p_expect(p, "Arrow")
@@ -2081,11 +2115,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
                     }
                 }
             }
-            var body3 = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body3 = ar_is_body_coerce(a, body3)
-            }
-            ar_line(a, ptxt + " => " + body3 + ",")
+            ar_is_arm_body(a, p, ptxt, tail_is)
         }
         if p_kind(p) == "Comma" {
             p_next(p)
@@ -2748,7 +2778,7 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             var nl_run = 0
             var scanning = true
             while scanning && di >= 0 {
-                var tk = p.toks.get(di).kind
+                var tk = kind_name(p.toks.get(di).kind)
                 if tk == "DocComment" {
                     docs.push(p.toks.get(di).text)
                     nl_run = 0

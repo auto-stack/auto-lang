@@ -248,26 +248,60 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 
 #### Phase 8:准备
 
-- [ ] 8.1 divergence-rules.md §4 补写法规范(基于 prereqs §7 实证语法备忘):
+- [x] 8.1 divergence-rules.md §4 补写法规范(基于 prereqs §7 实证语法备忘):
   ①单行枚举需逗号+显式值,无值变体逐行;②Auto 无"模式+guard"组合臂——Rust
   `VI(n) if n>10` 拆独立卫语臂或调臂序(**新增永久 DIVERGE 编号登记**);③同函数
   对同一枚举值多次 is 的写法约定(依赖 H5 已修);④枚举构造参数位暂不内联运行期
   计算值(若 H3 走了兜底路线,此条长期保留;若已根治,登记解除)。
-- [ ] 8.2 基线锚定:当前 master commit + 全量闸门跑绿留档(M1-M5 + 五方矩阵
+  落地:§4a-5~9 五条 + divergences.md D41 登记(H3 已实证不复发→④解除;
+  H5 已修→③放开;is 值语义仅函数尾位新增第 9 条)。
+- [x] 8.2 基线锚定:当前 master commit + 全量闸门跑绿留档(M1-M5 + 五方矩阵
   ①③④⑤ + .expected.out 双件);后续每个 γ 子步以此为对照。
+  **执行记录(2026-08-25/26)**:开工首跑发现五方矩阵 ②⑤ 列**并非绿**——
+  部分②合入后未复跑矩阵,lib 新代码暴露两侧转译缺口,先行修复后方锚定:
+  - 主 a2r(trans/rust.rs)三族:①`.str()` 入 &str 参数位被文本坍缩器
+    (fix_string_str_mismatches 的 `.to_string().as_str()→.as_str()`)错缩,
+    int 接收者 E0599——改为按接收者类型分流发射(str→直借,数值/未知→
+    `format!`);②`List<str>.get(i)` 参数位缺 `.as_str()` 借用(E0308);
+    ③链式接收者 `a.ens.get(i).pays.get(j)` 的 List 判定断链(E0277)——
+    is_auto_list_expr 递归推断回退。
+  - AA2R(a2r.at)两处:ar_coerce_arg 对 List.get 索引形(ty=str,strk=0)
+    补 `.as_str()`;ar_is_cur_mut_param 扩认逃逸分析提升参数(&mut *x
+    再借用,E0596)。
+  - 留档:aavm2 闸门 11 绿;a2r golden 15 失败与 a9e40360e 基线逐项一致
+    (零漂移,基线即红);五方矩阵 33/33 全绿(②列从 18 错、⑤列从 7 错修复);
+    001_smoke/002_hello_compile .expected.out 不动(M5 闸门覆盖)。
+  - 基线 commit:a9e40360e(master 分叉点)+ 本计划 bc468fd8b。
 
 #### Phase 9:γ1 样板先行——token.at + lexer.at(M1/M2 闸门保护下)
 
-- [ ] 9.1 token.at:T1 `keyword_kind` 58 臂 if 链 → `is text {...}`(is-on-string,
+- [x] 9.1 token.at:T1 `keyword_kind` 58 臂 if 链 → `is text {...}`(is-on-string,
   对齐 Rust token.rs:365-449 的 match &str);T2 `kind_name` 139 臂 → `is k {...}`
   (is-on-enum;D11 哨兵写法保留);头 Snapshot 与 divergences.md D11b 收账。
-- [ ] 9.2 lexer.at:L1 `Token.kind/Tok.kind: str → TokenKind`(构造点 34+2 处,
+- [x] 9.2 lexer.at:L1 `Token.kind/Tok.kind: str → TokenKind`(构造点 34+2 处,
   `lex_number` 的 kind 变量、`lex_dump`/p_err 输出位经 kind_name);L2 转义/定界
   else-if 链 → is-on-char(lex_string/lex_char/lex_fstr_at 对齐 Rust lexer.rs:462/
   386 的 match esc);L3 `delim_name` 9 臂并入主链(Rust 无此函数,臂内联于
   next_step)。
-- [ ] 9.3 闸门:M1(token dump 逐字符)/M2 全绿;②/⑤ 缓存重建后全绿;若 H3 未
+- [x] 9.3 闸门:M1(token dump 逐字符)/M2 全绿;②/⑤ 缓存重建后全绿;若 H3 未
   根治,kind 构造点保持提升局部写法。
+  **执行记录(2026-08-26)**:
+  - 主链整体翻转为 `is c` 形态(超出 L2/L3 字面范围):digit/alpha 以卫语臂与
+    模式臂**交错**(序同基线 else-if 链;单条 is 内交错此前无语料,lib 自身
+    成为首个实证);运算符 +*%!>< 共臂内嵌套 is 选 base/eqk/sym。
+  - **Unknown 第 140 变体**(aavm 侧补充,Rust 无):kind 载体枚举化后未收编
+    字符分支需哨兵值,kind_name 经 else 回 "Unknown" 对齐基线 str 行为。
+  - 边界:p_kind/p_peek 以 kind_name 维持 str 返回(P1 翻转);is_comment_kind
+    参数枚举化 + is-or 臂;parser/codegen/a2r 直接 .kind 读位经 kind_name 或
+    枚举比较(codegen b29 扫描环整段枚举化)。
+  - **两侧转译器缺口四项修复**(γ1 暴露):①主 a2r int scrutinee 的字符模式
+    → 码点十进制(int_match_scrutinee 旗标,模式循环内置位);②AA2R 同款
+    (ar_is_pattern_text 增 scrut_int 参);③主 a2r char_at/len 接收者后链
+    方法加括号(`(... as i64).to_string()`);④AA2R .str() 同款 as i64 尾码
+    括号。另 **AA2R ar_is 块状臂体补齐**(ar_is_arm_body 三形态:单表达式/
+    多语句块/空块——部分② W1 声称三形态但 corpus 全单表达式臂,块臂从未实证)。
+  - 闸门:M1-M5+AA2R 11 绿;a2r golden 15 失败与基线逐项一致(零漂移);
+    **五方矩阵 33/33 全绿**(②列 54 错→0、⑤列块臂 LBrace 错→0 迭代修复)。
 
 #### Phase 10:γ2 主干——parser/typeinfo/codegen/engine is 化 + 三枚举化
 

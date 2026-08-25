@@ -284,6 +284,11 @@ pub struct RustTrans {
     // Plan 447 H4: monotonic counter for hoisted guard-arm scrutinee temps
     // (`__is_0`, `__is_1`, ...). Never reset — uniqueness is all we need.
     is_hoist_counter: usize,
+    // Plan 447 ③-前置: set ONLY while emitting an is-arm's pattern list whose
+    // scrutinee is int-typed — char literal patterns then render as code-point
+    // decimals (Expr::Char). Bodies reset it (their char literals keep the
+    // D37 comparison bridge).
+    int_match_scrutinee: bool,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
     // Plan 016 Phase A A.4: when true, emit json::parse_opt instead of json::parse
@@ -450,6 +455,7 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
+            int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -535,6 +541,7 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
+            int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -2297,6 +2304,14 @@ impl RustTrans {
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => {
                 // In a2r, Auto char maps to Rust char (not i32)
+                // Plan 447 ③-前置: is-on-int scrutinee (codepoint locals like
+                // the lexer's char_at results) — char PATTERNS must match the
+                // i64, so emit the code point as a decimal literal
+                // (`match esc { 110 => ... }`; a `'n'` pattern is E0308).
+                if self.int_match_scrutinee {
+                    let code = *c as u32;
+                    return write!(out, "{}", code).map_err(Into::into);
+                }
                 if *c == '\n' {
                     write!(out, "'\\n'")
                 } else if *c == '\t' {
@@ -4277,10 +4292,17 @@ impl RustTrans {
                             if Self::is_borrowing_get_scrutinee(&is.target) {
                                 self.register_get_ref_bindings(patterns);
                             }
+                            // Plan 447 ③-前置: int-typed scrutinee — char
+                            // patterns as code-point decimals (pattern list only).
+                            let saved_int_scrut = self.int_match_scrutinee;
+                            self.int_match_scrutinee = matches!(
+                                self.infer_type_from_expr(&is.target),
+                                Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
                             for (j, pat) in patterns.iter().enumerate() {
                                 if j > 0 { write!(out, " | ")?; }
                                 self.expr(pat, out)?;
                             }
+                            self.int_match_scrutinee = saved_int_scrut;
                             write!(out, " => ")?;
                             self.write_body_inline(body, out)?;
                             write!(out, ",")?;
@@ -6092,7 +6114,7 @@ impl RustTrans {
                     if let Some(rust_name) = rust_method {
                         let lhs_parens = matches!(lhs.as_ref(),
                             Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                        );
+                        ) || Self::is_char_at_call(lhs.as_ref());
                         if lhs_parens { write!(out, "(")?; }
                         self.expr(lhs, out)?;
                         if lhs_parens { write!(out, ")")?; }
@@ -7410,7 +7432,8 @@ impl RustTrans {
                 // parses as `*(x.clone())` (wrong precedence).
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
+                ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _))
+                || Self::is_char_at_call(object.as_ref());
                 if needs_i32_cast && !self.len_i32_cast_suppressed { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
@@ -9777,6 +9800,15 @@ impl RustTrans {
             }
             _ => true,
         }
+    }
+
+    /// Plan 447 ③-前置: `x.char_at(i)` emits with a trailing `as i64` cast —
+    /// a method chained on it must parenthesize the receiver
+    /// (`(... as i64).to_string()`; bare `... as i64.to_string()` is a parse
+    /// error, "cast cannot be followed by a method call").
+    fn is_char_at_call(expr: &Expr) -> bool {
+        matches!(expr, Expr::Call(c) if matches!(c.name.as_ref(),
+            Expr::Dot(_, m) if m.as_str() == "char_at"))
     }
 
     /// True when `expr` is a call to a str-returning trim-like method
@@ -13515,6 +13547,13 @@ impl RustTrans {
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
                     // Multi-pattern: 1 | 2 | 3 => ...
+                    // Plan 447 ③-前置: int-typed scrutinee — char literal
+                    // patterns emit as code-point decimals; scoped to the
+                    // pattern list only (bodies keep the D37 char bridge).
+                    let saved_int_scrut = self.int_match_scrutinee;
+                    self.int_match_scrutinee = matches!(
+                        self.infer_type_from_expr(&is_stmt.target),
+                        Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
                     for (i, pat) in patterns.iter().enumerate() {
                         if i > 0 { sink.body.write(b" | ")?; }
                         // In match patterns, Some(ident) binds by value (Auto semantics)
@@ -13660,6 +13699,7 @@ impl RustTrans {
                             self.expr(pat, &mut sink.body)?;
                         }
                     }
+                    self.int_match_scrutinee = saved_int_scrut;
                     sink.body.write(b" => ")?;
                     // Plan 032 G2-core: register this arm's Some(x) bindings
                     // when the scrutinee is a `.get()` (binding is `&V`), so
