@@ -1,7 +1,8 @@
 # Plan 447: aavm-prerequisites 三合一——宿主加固 → aavm 语法能力 → lib 风格对译
 
-> **状态**: 🟦 已立项待执行(2026-08-25;aavm-prerequisites 三件套合并为单一计划,
-> 原 447/448/449 合并,序号 448/449 腾空)
+> **状态**: 🟨 部分①(Phase 1-3 宿主加固)已完成待合并;部分②(Phase 4-7)与
+> 部分③(Phase 8-11)未开工。部分① 执行记录见文末附录。(2026-08-25;
+> aavm-prerequisites 三件套合并为单一计划,原 447/448/449 合并,序号 448/449 腾空)
 > **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md)(2026-08-25
 > 实证调研:18 件 probe + rustc 实编译验证),§3 H1-H6、§4/§5/§6 语法面与改写点位。
 > **定位**: 把 aavm lib 从"类 C 最简风格"升回"与 Rust 参考一对一"的**完整前提**,按
@@ -46,22 +47,22 @@
 
 #### Phase 1:复现件常驻(随各修复项一并落,不留红 master)
 
-- [ ] 1.1 建 `test/vm/99_idiom_probe/`:p01/p02b/p06/p07/p08/p09h/p13b 等按
+- [x] 1.1 建 `test/vm/99_idiom_probe/`:p01/p02b/p06/p07/p08/p09h/p13b 等按
   `名称.at + 名称.expected.out` 平铺落盘(期望值 = **正确**语义输出),随对应
   H 项修复同 PR 落地;p03/p04/p05/p10/p13a/c 等绿件直接先落(纯加固回归)。
-- [ ] 1.2 `vm_file_tests` runner 确认新目录被自动发现(平铺文件惯例同
+- [x] 1.2 `vm_file_tests` runner 确认新目录被自动发现(平铺文件惯例同
   `10_types/020_struct_to_str.at`);跑 `cargo test -p auto-lang --lib
   --features test-vm-files -- test_aavm2` 基线留档。
 
 #### Phase 2:VM 三修(H1/H2/H3)
 
-- [ ] 2.1 **H1 枚举 or-臂**:`Stmt::Is` 的 EqBranch 处理(codegen.rs:3537 起)在
+- [x] 2.1 **H1 枚举 or-臂**:`Stmt::Is` 的 EqBranch 处理(codegen.rs:3537 起)在
   `patterns.len() > 1` 时改走多模式路径(逐模式 EQ + JMP_IF_NZ,枚举判别值可直用);
   **同步修 `Expr::Is` 副本(9348 起,两份代码逐段对照)**;p02b 进 99_idiom_probe。
-- [ ] 2.2 **H2 continue 回填**:照 2588 的 `patch_jump_to` 模式补齐 7 处变体
+- [x] 2.2 **H2 continue 回填**:照 2588 的 `patch_jump_to` 模式补齐 7 处变体
   (Cond=while、Ever、Named/Indexed/Call/Destructured 系);p06/p07 进常驻;
   全量 VM 语料回归(现状恰好零覆盖 while+continue,修复本身无 golden 波动)。
-- [ ] 2.3 **H3 根治(目标)或规避(兜底)**:
+- [x] 2.3 **H3 根治(目标)或规避(兜底)**:
   - 根治:CALL_NAT 携带显式 arg_count 替代 `shim_list_new` 的 `sp > bp+num_locals+2`
     猜测(一刀同时收 D25-①);审计 `pop_arg_i32` 族算术敏感 shim 改 `pop_arg_nv`
     + tag 分派;p09h/p13b 转绿(不提升局部也正确)。
@@ -76,13 +77,13 @@
 
 #### Phase 3:主 a2r 两修 + 一补(H4/H5/H6)
 
-- [ ] 3.1 **H4 卫语句臂**:IfBranch 发射改为 `<绑定> if <cond> =>`;scrutinee 为
+- [x] 3.1 **H4 卫语句臂**:IfBranch 发射改为 `<绑定> if <cond> =>`;scrutinee 为
   复杂表达式时先 `let __is_x = expr;` 再 `match __is_x`;p08 转译产物 rustc 零错。
   现有 golden 全仓零覆盖卫语句(零 golden 波动)。
-- [ ] 3.2 **H5 二次匹配 E0382**:scrutinee last-use 分析——非末次使用发
+- [x] 3.2 **H5 二次匹配 E0382**:scrutinee last-use 分析——非末次使用发
   `match &v`(臂绑定变引用,`format!`/`println!` 用法兼容);p05 产物零错;
   a2r golden 06 组回归。
-- [ ] 3.3 **H6(顺手)**:与 3.2 动同一片代码时,is 臂发射按枚举载荷表回填
+- [x] 3.3 **H6(顺手)**:与 3.2 动同一片代码时,is 臂发射按枚举载荷表回填
   `local_var_types`(数据源 `enum_tuple_field_types`,rust.rs:14735+),KNOWN-DEBT
   113 观察项收口或明确残留。
 
@@ -337,3 +338,50 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 3. divergences.md 收账完整性:风格类 DIVERGE 全部标注终态;
 4. 性能不回退:M5 corpus 30 例总耗时与基线同数量级(engine 循环 is 化后解释
    开销对比留档)。
+
+---
+
+## 附录:部分① 执行记录(2026-08-25)
+
+### 完成项
+
+- **H1**:新增 `emit_is_or_arm` 共享辅助(逐模式 EQ + JMP_IF_NZ 短路或 + 匹配标号
+  汇出),标量枚举 Cover::Tag 多模式与字面量多模式两路径同源调用;`Stmt::Is` 与
+  `Expr::Is` 双副本均已接入。p02b 转绿(`num eof num num eof`)。
+- **H2**:8 处循环变体(Cond/Ever/Named-Call/Indexed/Call/Destructured 系)continue
+  占位符照 2588 模式 `patch_jump_to` 回填。p06/p07 转绿;conformance
+  `017_loop_continue` 期望随修正语义更新(`1,3,5`;原 `1-6` 固化的是穿透 bug)。
+- **H3**:复现件在当前基线(plan-442 RC 死区修复 f81e18c8e 合入后)**已不复发**,
+  无需 arg_count 根治刀。p09h 强化(读回 payload 而非仅查 len)、p13b 修正语法
+  (`struct` 非 Auto 关键字,具名结构体声明用 `type`)后双双转绿;p09g/p13a 提升
+  局部对照件同落。Phase 10 的 H3 gating 视为已满足(Val 枚举化仍需
+  `repro_242_string_pool_uaf` 等 RC 回归护航)。
+- **H4**:IfBranch 发射 `<绑定> if <cond> =>`(标识符 scrutinee 用 `_guard`,
+  复杂 scrutinee 先 `let __is_N = expr;` 提升,绑定名入模式位);p08 产物 rustc
+  零错;提升仅在含卫语句臂时触发(golden 零覆盖卫语句,零波动)。
+- **H5**:`match &v` 收窄为"同函数内同一标识符 scrutinee ≥2 次 is"才发射
+  (`fn_is_scrutinee_counts` 预扫描,`fn_decl`/`transpile_body_stmts` 双入口);
+  单次匹配保持按值(臂内 payload 按值取用兼容)。a2r golden 全量回到基线
+  12 个遗留失败,零新增;p05 产物 rustc 零错。
+- **H6**:is 臂发射按 `enum_tuple_field_types` 回填 `local_var_types`
+  (Cover::Tag 绑定 + `Enum.Variant(bound)` 调用形两路径),DEBT-113 收口。
+- **Phase 1**:16 件探针(4 复现转绿 + 12 绿件)落 `crates/auto-lang/test/vm/
+  99_idiom_probe/`(注意:cargo runner 扫描 crate 内 test/vm,非仓库根),
+  `vm_file_tests` 16 条常驻断言(非 ignore)接入。
+
+### 新观察项(部分②/后续计划输入)
+
+1. **let 绑定位 is 值语义返回 0**:函数尾位 ✅,`let r = is x {...}` 位返回 0
+   (t11 复现)。不在 H1-H6 范围,部分② Phase 4 语料设计时需覆盖。
+2. **函数内嵌套 fn 静默失效**:`fn main() { fn inner() {...} inner() }` 调用
+   无输出(非报错)。探针一律用顶层 fn。
+3. `struct` 非 Auto 关键字(声明用 `type`),误用时报 E0201 名字解析错而非
+   语法错,易误导排查方向。
+
+### 闸门留档
+
+- 全量 `cargo test -p auto-lang --lib --features "test-trans test-vm-files"`:
+  与基线差异仅 `benchmark_downcast_performance`(性能阈值测试,单跑通过,
+  并行负载下偶发);基线本身有 12 个 a2r golden + 3 个 cookbook_vm + 1 个
+  vue gallery 遗留失败(与 447 无关,基线即红)。
+- aavm2 闸门 8/8 绿;99_idiom_probe 16/16 绿;p05/p08/卫语句提升件 rustc 零错。
