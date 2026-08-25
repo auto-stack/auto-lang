@@ -1459,6 +1459,8 @@ macro_rules! for_each_bigvm_native {
             ("random_hex", 3134, String),
             ("hash_password", 3135, String),
             ("path_inner", 3136, String),
+            // Data-source extern (path (a) forwarding; default = constant).
+            ("app_config_effective_daemon_url", 3137, String),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2211,6 +2213,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("random_hex", 3134),
     ("hash_password", 3135),
     ("path_inner", 3136),
+    // Data-source extern (path (a) forwarding).
+    ("app_config_effective_daemon_url", 3137),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

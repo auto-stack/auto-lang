@@ -1274,6 +1274,42 @@ fn path() str {
             );
         }
 
+        /// Plan 442 C2 item ③ path (a): a data-source extern
+        /// (`app_config_effective_daemon_url`) forwards to a registered host call
+        /// (`host_bridge`) when one is present, else serves a default constant.
+        /// Proves the extern→backend routing mechanism works when a backend
+        /// registers the call (auto-musk cdylib). String-returning → no nested
+        /// object RC pitfalls.
+        #[test]
+        fn e2e_host_forward_app_config_daemon() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/daemon")]
+fn daemon() str {
+    return app_config_effective_daemon_url(0)
+}
+"#, 18748);
+
+            // Phase 1: no host call registered → default constant.
+            let d = http_get(port, "/daemon");
+            assert_eq!(
+                body_of(&d), "\"http://127.0.0.1:17654\"",
+                "app_config_effective_daemon_url default: full = {:?}", d
+            );
+
+            // Phase 2: register a host call → the VM extern forwards to it.
+            crate::vm::host_bridge::register_host_call(
+                "app_config_effective_daemon_url",
+                std::sync::Arc::new(move |_args: &str| -> Result<String, String> {
+                    Ok(r#""http://10.0.0.5:9999""#.to_string())
+                }),
+            );
+            let f = http_get(port, "/daemon");
+            assert_eq!(
+                body_of(&f), "\"http://10.0.0.5:9999\"",
+                "app_config_effective_daemon_url host-forwarded: full = {:?}", f
+            );
+        }
+
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,
         /// or `max_attempts` is exhausted. Returns the last body.
         ///

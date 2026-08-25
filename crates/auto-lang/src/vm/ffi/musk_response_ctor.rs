@@ -730,3 +730,47 @@ pub fn shim_path_inner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     vm.rc_push_str_idx(task, nidx as usize);
     Ok(())
 }
+
+// ── Data-extern forwarding (Plan 442 C2 item ③ path (a)) ─────────────────────
+// The data-source externs (relay_*/specs_*/app_config_*) cannot be implemented
+// faithfully in auto-lang — they depend on auto-musk's Rust store/registry.
+// Path (a) is to load the backend (auto-musk) as a cdylib and have it register
+// name → HostCallFn (`host_bridge`/`backend_abi`); the VM extern then forwards
+// to that registered host call. This forwarding helper proves the routing: if a
+// host call is registered for `name`, forward `args_json` and push the JSON
+// result; otherwise return Ok(false) so the caller serves a default.
+
+fn try_host_forward(
+    name: &str,
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    args_json: &str,
+) -> Result<bool, VMError> {
+    if !crate::vm::host_bridge::has_host_call(name) {
+        return Ok(false);
+    }
+    let out = crate::vm::host_bridge::call_host(name, args_json)
+        .map_err(|e| VMError::RuntimeError(format!("host '{name}': {e}")))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&out).unwrap_or(serde_json::Value::Null);
+    crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0)?;
+    Ok(true)
+}
+
+/// `app_config_effective_daemon_url(cfg)` → str (default constant). Forwards to
+/// a registered host call (path (a)); without one, serves the default daemon URL
+/// (parity with extern_impl). String-returning, so it exercises the forwarding
+/// path without the nested-object RC pitfalls of a Value extern. Stack: cfg -> str.
+pub fn shim_app_config_effective_daemon_url(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    let _cfg = pop_value(task, vm); // config Value (unused for the default)
+    if try_host_forward("app_config_effective_daemon_url", task, vm, "{}")? {
+        return Ok(());
+    }
+    let s = "http://127.0.0.1:17654";
+    let idx = vm.add_string(s.as_bytes().to_vec());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}

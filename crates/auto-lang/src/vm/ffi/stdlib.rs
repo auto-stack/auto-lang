@@ -6915,6 +6915,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("random_hex", shim_random_hex);
     natives.register_shim_by_name("hash_password", shim_hash_password);
     natives.register_shim_by_name("path_inner", shim_path_inner);
+
+    // Data-source extern (path (a) forwarding; default = constant).
+    natives.register_shim_by_name("app_config_effective_daemon_url", shim_app_config_effective_daemon_url);
 }
 
 // ============================================================================
