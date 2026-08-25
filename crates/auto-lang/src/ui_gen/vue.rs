@@ -12803,6 +12803,13 @@ export function cn(...inputs: ClassValue[]) {
                         // Plan 055 Phase A.3: 作业控制事件(实时 jobs dispatch)。
                         ("event".to_string(), "job_started".to_string(), "JobStarted".to_string()),
                         ("event".to_string(), "job_done".to_string(), "JobDone".to_string()),
+                        // Plan 063 T4/T5: AI chat 抽屉事件族(无参 handler 读
+                        // __ai_* 预置字段,VM 轨由 renderer 直写不经 handler)。
+                        ("event".to_string(), "ai_turn".to_string(), "AiTurn".to_string()),
+                        ("event".to_string(), "ai_chunk".to_string(), "AiChunk".to_string()),
+                        ("event".to_string(), "ai_tool_call".to_string(), "AiToolCall".to_string()),
+                        ("event".to_string(), "ai_tool_result".to_string(), "AiToolResult".to_string()),
+                        ("event".to_string(), "chat_cleared".to_string(), "ChatCleared".to_string()),
                     ]
                 } else {
                     ep.variants.iter()
@@ -13371,6 +13378,41 @@ fn emit_preset_dispatch(
             // Plan 055 Phase A.3: job_done {event, job_id, exit_code, cmd}(flat)。
             code.push_str(&format!(
                 "                {kw} (data.{disc} === '{wire}') {{ __sse_job_id.value = data.job_id; __sse_job_exit.value = data.exit_code; JobDone(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "AiTurn" => {
+            // Plan 063 T4: ai_turn {event, block_id, turn, question}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __ai_block_id.value = data.block_id; __ai_turn.value = data.turn; __ai_question.value = data.question; AiTurn(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "AiChunk" => {
+            // Plan 063 T4: ai_chunk {event, block_id, turn, text}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __ai_block_id.value = data.block_id; __ai_turn.value = data.turn; __ai_text.value = data.text; AiChunk(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "AiToolCall" => {
+            // Plan 063 T4: ai_tool_call {event, block_id, turn, tool, args}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __ai_block_id.value = data.block_id; __ai_turn.value = data.turn; __ai_tool.value = data.tool; __ai_args.value = data.args; AiToolCall(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "AiToolResult" => {
+            // Plan 063 T4: ai_tool_result {event, block_id, turn, tool, result}(flat)。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ __ai_block_id.value = data.block_id; __ai_turn.value = data.turn; __ai_tool.value = data.tool; __ai_result.value = data.result; AiToolResult(); }}\n",
+                kw = kw, disc = disc_field, wire = wire_value,
+            ));
+        }
+        "ChatCleared" => {
+            // Plan 063 T4: chat_cleared {event, block_id} —— 无载荷,纯清空信号。
+            code.push_str(&format!(
+                "                {kw} (data.{disc} === '{wire}') {{ ChatCleared(); }}\n",
                 kw = kw, disc = disc_field, wire = wire_value,
             ));
         }
