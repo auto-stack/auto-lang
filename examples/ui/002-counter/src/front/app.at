@@ -14,3 +14,33 @@ widget App {
         }
     }
 }
+
+
+// 对照：同一计数器的显式 msg/on 写法（与上面的内联 lambda 简写等价）。
+// 简单回调直接用内联 lambda；当事件需要携带参数、或一处逻辑要被
+// 多处/多事件复用时，改用下面的显式声明更合适。
+//
+// widget App {
+//     msg { Inc, Dec, Reset }
+//
+//     model {
+//         var count int = 0
+//     }
+//
+//     view {
+//         center {
+//             text `Counter: ${.count}`
+//             row {
+//                 button "-" { onclick: .Dec }
+//                 button "Reset" { onclick: .Reset }
+//                 button "+" { onclick: .Inc }
+//             }
+//         }
+//     }
+//
+//     on {
+//         .Inc -> { .count = .count + 1 }
+//         .Dec -> { .count = .count - 1 }
+//         .Reset -> { .count = 0 }
+//     }
+// }
