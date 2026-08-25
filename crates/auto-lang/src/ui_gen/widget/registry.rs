@@ -859,18 +859,8 @@ impl WidgetRegistry {
         quote.has_children = true;
         self.register(quote);
 
-        // List — bullet/ordered/task list panel; `ordered` flips ul/ol.
-        let mut list = WidgetSpec::new("List", WidgetCategory::Display)
-            .with_alias("list");
-        list.primary_prop = Some("ordered".to_string());
-        list.has_children = true;
-        self.register(list);
-
-        // Table — table-node panel (header + rows + cells as children).
-        let mut table = WidgetSpec::new("Table", WidgetCategory::Display)
-            .with_alias("table");
-        table.has_children = true;
-        self.register(table);
+        // (palette List aligns with the pre-existing Data-category List
+        // widget below — bullet/ordered/task semantics ride its children)
 
         // Callout — `:::kind title` admonition container.
         let mut callout = WidgetSpec::new("Callout", WidgetCategory::Display)
@@ -2166,12 +2156,11 @@ mod tests {
         // plan 450 / auto-down 019: the document panel vocabulary from
         // PANEL-ALIGNMENT.md resolves by name and by snake_case alias
         let registry = WidgetRegistry::with_defaults();
+        // palette Table aligns with the pre-existing Data-category Table widget
         for (name, alias, primary) in [
             ("Heading", "heading", Some("level")),
             ("Codeblock", "codeblock", Some("language")),
             ("Quote", "quote", None),
-            ("List", "list", Some("ordered")),
-            ("Table", "table", None),
             ("Callout", "callout", Some("kind")),
             ("Details", "details", Some("summary")),
             ("MathBlock", "math_block", Some("source")),
@@ -2187,7 +2176,7 @@ mod tests {
         }
         // pre-existing palette counterparts stay intact
         for existing in ["Text", "Separator", "Mermaid"] {
-            assert!(registry.get(existing.to_lowercase()).is_some(), "{existing} still registered");
+            assert!(registry.get(&existing.to_lowercase()).is_some(), "{existing} still registered");
         }
     }
 
