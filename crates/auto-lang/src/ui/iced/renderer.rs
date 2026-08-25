@@ -5249,11 +5249,6 @@ fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
                 event: ev.event,
                 input_value: Some(ev.payload_json),
             }),
-            Ok(ev) => Some(IcedMessage {
-                    widget: "ShellStore".to_string(),
-                    event: ev.event,
-                    input_value: Some(ev.payload_json),
-            }),
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
         }
@@ -7750,7 +7745,19 @@ fn compare_pngs(
             }
             // Window resize + mouse move/release events for DevTools panel drag
             subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
-                iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
+                // Plan 065:自退排查打点 —— 会话中途 VM 干净退出 = iced 窗口被关
+            // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
+            // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
+            // 一次死亡现场直接看到 CloseRequested 的到达时刻。不改变行为
+            // (返回 None,与之前落入 `_ => None` 相同)。
+            iced::Event::Window(iced::window::Event::CloseRequested) => {
+                eprintln!(
+                    "[window] CloseRequested at {:?} (instrumentation: plan 065)",
+                    std::time::SystemTime::now()
+                );
+                None
+            }
+            iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
                     widget: String::new(),
                     event: "__window_resized".to_string(),
                     input_value: Some(format!("{}x{}", size.width, size.height)),

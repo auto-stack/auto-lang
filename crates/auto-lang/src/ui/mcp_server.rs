@@ -429,13 +429,31 @@ impl McpUiServer {
                 .route("/mcp", axum::routing::post(mcp_http_handler))
                 .with_state(shared);
             let addr = format!("127.0.0.1:{}", self.port);
-            let listener = match tokio::net::TcpListener::bind(&addr).await {
-                Ok(l) => {
-                    eprintln!("AutoUI MCP: listening on http://{}", addr);
-                    l
+            // Plan 065:bind 竞争(前一会话孤儿/TIME_WAIT)时有限重试。此前
+            // 失败即静默 return —— VM 无头续跑,测试端只见 startup 超时 skip,
+            // 死因不可见(auto-shell 065 排查:跨会话 flake 的一类)。
+            let mut listener = None;
+            for attempt in 0..10 {
+                match tokio::net::TcpListener::bind(&addr).await {
+                    Ok(l) => {
+                        eprintln!("AutoUI MCP: listening on http://{}", addr);
+                        listener = Some(l);
+                        break;
+                    }
+                    Err(e) => {
+                        if attempt == 0 {
+                            eprintln!("AutoUI MCP: bind {} failed: {} (retrying)", addr, e);
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    }
                 }
-                Err(e) => {
-                    eprintln!("AutoUI MCP: failed to bind {}: {}", addr, e);
+            }
+            let listener = match listener {
+                Some(l) => l,
+                None => {
+                    // Loud + distinctive: grep-able marker for "server never
+                    // started" post-mortems (tests capture VM stderr).
+                    eprintln!("AutoUI MCP: FATAL: failed to bind {} after retries — server NOT started", addr);
                     return;
                 }
             };
