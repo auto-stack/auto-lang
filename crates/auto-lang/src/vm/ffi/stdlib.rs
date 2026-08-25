@@ -7016,6 +7016,14 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             task.ram.push_i32(receiver);
         }
 
+        // PLAN-044: `to_value(x)` (serde_json::to_value) — VM 里 DTO 实例
+        // 本身即可序列化(heap_object_to_json),恒等透传;下游 sse_event/
+        // Json 构造自行 nv_to_json。
+        ("", "to_value") => {
+            let v = task.ram.pop_nv();
+            task.ram.push_nv(v);
+        }
+
         // PLAN-044 (musk vm_entry): bare `Json(d)` constructor (axum
         // `Json<T>` return form, e.g. musk health() -> ~Json<StatusOk>) —
         // same wire shape as json_response: 200 + application/json of d.

@@ -2630,11 +2630,15 @@ async fn handle_connection_async(
                         let sse_header = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n{}\r\n", cors_headers());
                         let _ = stream.write_all(sse_header.as_bytes()).await;
                         let _ = stream.flush().await;
+                        eprintln!("[SSED] headers flushed to wire");
                         // Pull generator values and write SSE frames. After each
                         // frame, yield_now so other connections get scheduled
                         // (Goroutine-style cooperative concurrency on the single
                         // worker thread).
+                        let mut sse_frame_no: u32 = 0;
                         loop {
+                            sse_frame_no += 1;
+                            eprintln!("[SSED] pulling frame #{}", sse_frame_no);
                             // PLAN-044: blocking-safe frame pull. Generator
                             // bodies call blocking host externs (musk mpsc_recv
                             // thread bridge); running iterator.next inline on
@@ -2670,6 +2674,7 @@ async fn handle_connection_async(
                                 .recv()
                                 .unwrap_or_else(|_| auto_val::encode_i32(-1));
                             let _ = puller.join();
+                            eprintln!("[SSED] frame #{} pulled", sse_frame_no);
                             vm.tasks.remove(&next_task_id);
                             // Iterator done sentinel: i32 -1.
                             if auto_val::is_i32(yielded) && auto_val::decode_i32(yielded) == -1 {
@@ -2678,11 +2683,14 @@ async fn handle_connection_async(
                             // Plan 442 C2 item ②: yielded `Event` objects (or
                             // `Ok(event)`) format as `event:`/`data:` frames;
                             // raw scalars keep the legacy `data: N` path.
-                            if let Some(frame) =
-                                crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(vm, yielded)
-                            {
+                            let frame_opt =
+                                crate::vm::ffi::musk_response_ctor::sse_frame_from_nv(vm, yielded);
+                            eprintln!("[SSED] frame #{} formatted: {:?}", sse_frame_no,
+                                frame_opt.as_deref().map(|f| f.chars().take(60).collect::<String>()));
+                            if let Some(frame) = frame_opt {
                                 let _ = stream.write_all(frame.as_bytes()).await;
                                 let _ = stream.flush().await;
+                                eprintln!("[SSED] frame #{} written+flushed", sse_frame_no);
                             }
                             // Cooperative yield: let other connections' tasks run.
                             tokio::task::yield_now().await;
