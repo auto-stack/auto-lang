@@ -1329,6 +1329,11 @@ impl RustTrans {
                 }
             }
         }
+        // NOTE: deliberately NOT extended to borrowed_iter_vars — that set is
+        // function-scoped and accumulates, so a later is-arm binding that
+        // shadowed an earlier same-named loop var would get a spurious
+        // `.clone()` (server.at `Some(m)`). Loop-var Some(c) clones are the
+        // consumer sources' explicit `.clone()` to write instead.
         if let Expr::Some(inner) = expr {
             if let Expr::Ident(name) = inner.as_ref() {
                 if self.get_ref_bindings.contains(name) {
