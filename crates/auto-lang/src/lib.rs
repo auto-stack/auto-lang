@@ -5542,6 +5542,11 @@ mod plan442_webcompat_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_musk_probe_tests;
 
+// Plan 442 Phase C1 probe: VM-direct run of the auto-musk backend corpus
+// (a2r sources). #[ignore] — manual-only, never in CI.
+#[cfg(test)]
+mod plan442_musk_backend_probe_tests;
+
 
 #[cfg(test)]
 mod plan367_viewfn_tests;

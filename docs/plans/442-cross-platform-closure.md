@@ -298,6 +298,17 @@
     ffi_dual 回归族已有先例）。剩余动作 = 落 api.at 契约/back.project 接线
     （musk 后端形态对齐 015-notes 的外部后端装载）,转译缺口按实跑逐条登记。
     pac.at 已回退 `rust`（试验不落库）。
+  - **▶ C1 缺口台账（首批实测,2026-08-25,musk 会话;探针
+    `plan442_musk_backend_probe_tests.rs`,#[ignore] 手动门）**：VM 直跑
+    最纯样板 app_config.at 的驱动即断于 ① `Undefined symbol: env.var`
+    ——后端 .at 是 rust 形态调用（`use.rust std::env` + `env::var()`）,
+    VM 侧目前只有 snake_case auto.* native 路由（env.get 等）,无
+    rust 形态别名;且 env::var 返回 Result 而 auto.env.get 返回 ?str,
+    别名不能纯映射（返回形状不同,`.ok()` 链路需 Result 语义）。
+    ② `Failed to register generic instance 'Option'` 告警。全量面:
+    32 文件 168 处 use.rust(axum/tokio/serde/reqwest 族)——VM 直跑
+    后端的真实前置 = Plan 430 shim-metadata 面对这些 crate 的覆盖,
+    属 auto-lang 侧成规模工作(ffi_dual 逐符号模式 or shim 批量构建)。
 - C2 `musk serve` 以 VM 后端起服：HTTP/SSE 契约测试（复用既有 parity 测试面）
   对照 hw 后端全绿。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
