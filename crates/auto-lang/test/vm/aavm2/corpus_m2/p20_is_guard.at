@@ -1,0 +1,15 @@
+fn bucket(n int) str {
+    is n {
+        if n > 100 -> "big"
+        if n > 10 -> "medium"
+        else -> "small"
+    }
+}
+
+fn sign(n int) str {
+    is n {
+        if n < 0 -> "neg"
+        if n == 0 -> "zero"
+        else -> "pos"
+    }
+}

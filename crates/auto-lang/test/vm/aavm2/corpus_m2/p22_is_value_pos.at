@@ -1,0 +1,12 @@
+fn main() {
+    let r = is "test" {
+        "test" -> "pass"
+        else -> "fail"
+    }
+    print(r)
+    let n = is 42 {
+        42 -> 1
+        else -> 0
+    }
+    print(n.str())
+}
