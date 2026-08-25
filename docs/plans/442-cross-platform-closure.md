@@ -526,7 +526,9 @@
     AUTO_HTTP_PORT env 竞态）：`e2e_host_forward_app_config_daemon` +
     `e2e_host_forward_relay_runs`（默认→常量/空形；register_host_call 后
     →转发值）；catalog_integrity/plan442/ffi_dual/e2e_value_accessors 全绿。
-    **auto-lang 侧 path (a) 就绪（字符串+Value extern 均可 forward）；
+    **auto-lang 侧 path (a) 就绪（字符串+Value extern 均可 forward；1475d31e2
+    起 relay_runs_list 转发时把 Query 提取器 marshall 进 args_json，后端 cdylib
+    可收到实际请求参数；State 为 opaque，由后端经 workspace registry 自取）；
     auto-musk 侧 cdylib（auto_backend_register 逐 extern 打包）+ parity
     harness 适配仍为跨仓余量。**
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
