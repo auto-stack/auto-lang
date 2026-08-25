@@ -295,7 +295,16 @@ impl VirtualRAM {
     pub fn pop_f32(&mut self) -> f32 {
         if self.sp == 0 { panic!("Stack Underflow"); }
         self.sp -= 1;
-        decode_f32(self.raw_nv[self.sp])
+        // Plan 437: tag 驱动解码——f32 槽位上可能是 f64 值（math.* 等 f64
+        // 返回值经 float 声明变量直通存储），按实际 tag 解码而非位重解释。
+        let nv = self.raw_nv[self.sp];
+        if auto_val::is_f64(nv) {
+            auto_val::decode_f64(nv) as f32
+        } else if auto_val::is_i32(nv) {
+            auto_val::decode_i32(nv) as f32
+        } else {
+            decode_f32(nv)
+        }
     }
 
     // Plan 073 Stage A: Double (f64) support

@@ -20,6 +20,49 @@ widget DatatablePage {
         currentPage int = 1
     }
 
+    // 修复（2026-08-25）：此 on 块原被误嵌在 view 树内部（与 h2/preview-card
+    // 同级），Aura 解析器将其视为元素树 → S002 unknown element 误报
+    // （<on>/<toggleSortStatus>/<->> 等）挡死 strict 再生。挖出至 widget
+    // 顶层并补 . 前缀（handler 内 model 字段访问惯例）。
+    on {
+        .toggleSortStatus -> {
+            if .sortColumn == "status" {
+                if .sortDirection == "asc" {
+                    .sortDirection = "desc"
+                } else {
+                    .sortDirection = "asc"
+                }
+            } else {
+                .sortColumn = "status"
+                .sortDirection = "asc"
+            }
+        }
+        .toggleSortEmail -> {
+            if .sortColumn == "email" {
+                if .sortDirection == "asc" {
+                    .sortDirection = "desc"
+                } else {
+                    .sortDirection = "asc"
+                }
+            } else {
+                .sortColumn = "email"
+                .sortDirection = "asc"
+            }
+        }
+        .toggleSortAmount -> {
+            if .sortColumn == "amount" {
+                if .sortDirection == "asc" {
+                    .sortDirection = "desc"
+                } else {
+                    .sortDirection = "asc"
+                }
+            } else {
+                .sortColumn = "amount"
+                .sortDirection = "asc"
+            }
+        }
+    }
+
     view {
         col {
             h1 "Data Table"
@@ -253,33 +296,6 @@ widget DatatablePage {
                                 table-cell (text: "$721.00", style: "text-right font-medium") {}
                             }
                         }
-                    }
-                }
-            }
-
-            on {
-                toggleSortStatus -> {
-                    if sortColumn == "status" {
-                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
-                    } else {
-                        sortColumn = "status"
-                        sortDirection = "asc"
-                    }
-                }
-                toggleSortEmail -> {
-                    if sortColumn == "email" {
-                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
-                    } else {
-                        sortColumn = "email"
-                        sortDirection = "asc"
-                    }
-                }
-                toggleSortAmount -> {
-                    if sortColumn == "amount" {
-                        sortDirection = if sortDirection == "asc" { "desc" } else { "asc" }
-                    } else {
-                        sortColumn = "amount"
-                        sortDirection = "asc"
                     }
                 }
             }

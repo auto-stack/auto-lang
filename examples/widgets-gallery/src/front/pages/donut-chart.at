@@ -1,0 +1,144 @@
+// pages/donut-chart.at — DonutChart 页（Plan 437 Charts 分组 ④·四类图收尾）
+//
+// v1：圆环几何 Auto 内联（d3-arc 风格：外弧 A→内弧回程 Z，大弧标志
+// span>π）。渲染端 SVG 直通（442 A4）。
+//
+// 形态注记（§0.6.H 根因已修，2026-08-25）：math.cos/sin **直调**——
+// 原以用户函数包装 dc/ds 规避的"循环内 CALL_NAT 损坏浮点"三层缺陷
+// （decode_i64_full 兜底位读 / math 族目录返回类型 Void / "math" 缺席
+// 静态模块白名单 receiver 泄漏）已全部修复（见 437 §0.6.H）。包装形态
+// 另有 vue 轨硬伤：页面级模块 fn 不发射进 SFC（§0.6.E-3），dc/ds 在
+// 生成物中无定义。角度常量保持手算直线形态（视觉已验收）。
+
+widget DonutChartPage {
+    msg Msg { Init }
+
+    model {
+        traffic = [
+            { l: "Desktop", v: 55 },
+            { l: "Mobile", v: 25 },
+            { l: "Tablet", v: 12 },
+            { l: "Wearable", v: 8 }
+        ]
+        // ---- 几何（Init 顶层直线计算：4 片路径）----
+        s0 str = ""
+        s1 str = ""
+        s2 str = ""
+        s3 str = ""
+        legend str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 切片角度（总 100；-π/2 起按占比累进；span>π 仅 s0）----
+            var a0_0 float = -1.5707963267948966
+            var a1_0 float = 1.8849555921538763
+            var a0_1 float = 1.8849555921538763
+            var a1_1 float = 3.455751918948773
+            var a0_2 float = 3.455751918948773
+            var a1_2 float = 4.209734155810323
+            var a0_3 float = 4.209734155810323
+            var a1_3 float = 4.71238898038469
+
+            // ---- 切片 0（Desktop 55%，大弧 laf=1）----
+            var c00 float = math.cos(a0_0)
+            var s00 float = math.sin(a0_0)
+            var c01 float = math.cos(a1_0)
+            var s01 float = math.sin(a1_0)
+            var x00 float = 280.0 + 100.0 * c00
+            var y00 float = 150.0 + 100.0 * s00
+            var x01 float = 280.0 + 100.0 * c01
+            var y01 float = 150.0 + 100.0 * s01
+            var u00 float = 280.0 + 62.0 * c00
+            var v00 float = 150.0 + 62.0 * s00
+            var u01 float = 280.0 + 62.0 * c01
+            var v01 float = 150.0 + 62.0 * s01
+            .s0 = f"M${x00} ${y00} A100 100 0 1 1 ${x01} ${y01} L${u01} ${v01} A62 62 0 1 0 ${u00} ${v00} Z"
+
+            // ---- 切片 1（Mobile 25%，laf=0）----
+            var c10 float = math.cos(a0_1)
+            var s10 float = math.sin(a0_1)
+            var c11 float = math.cos(a1_1)
+            var s11 float = math.sin(a1_1)
+            var x10 float = 280.0 + 100.0 * c10
+            var y10 float = 150.0 + 100.0 * s10
+            var x11 float = 280.0 + 100.0 * c11
+            var y11 float = 150.0 + 100.0 * s11
+            var u10 float = 280.0 + 62.0 * c10
+            var v10 float = 150.0 + 62.0 * s10
+            var u11 float = 280.0 + 62.0 * c11
+            var v11 float = 150.0 + 62.0 * s11
+            .s1 = f"M${x10} ${y10} A100 100 0 0 1 ${x11} ${y11} L${u11} ${v11} A62 62 0 0 0 ${u10} ${v10} Z"
+
+            // ---- 切片 2（Tablet 12%，laf=0）----
+            var c20 float = math.cos(a0_2)
+            var s20 float = math.sin(a0_2)
+            var c21 float = math.cos(a1_2)
+            var s21 float = math.sin(a1_2)
+            var x20 float = 280.0 + 100.0 * c20
+            var y20 float = 150.0 + 100.0 * s20
+            var x21 float = 280.0 + 100.0 * c21
+            var y21 float = 150.0 + 100.0 * s21
+            var u20 float = 280.0 + 62.0 * c20
+            var v20 float = 150.0 + 62.0 * s20
+            var u21 float = 280.0 + 62.0 * c21
+            var v21 float = 150.0 + 62.0 * s21
+            .s2 = f"M${x20} ${y20} A100 100 0 0 1 ${x21} ${y21} L${u21} ${v21} A62 62 0 0 0 ${u20} ${v20} Z"
+
+            // ---- 切片 3（Wearable 8%，laf=0，终于 3π/2=正顶）----
+            var c30 float = math.cos(a0_3)
+            var s30 float = math.sin(a0_3)
+            var c31 float = math.cos(a1_3)
+            var s31 float = math.sin(a1_3)
+            var x30 float = 280.0 + 100.0 * c30
+            var y30 float = 150.0 + 100.0 * s30
+            var x31 float = 280.0 + 100.0 * c31
+            var y31 float = 150.0 + 100.0 * s31
+            var u30 float = 280.0 + 62.0 * c30
+            var v30 float = 150.0 + 62.0 * s30
+            var u31 float = 280.0 + 62.0 * c31
+            var v31 float = 150.0 + 62.0 * s31
+            .s3 = f"M${x30} ${y30} A100 100 0 0 1 ${x31} ${y31} L${u31} ${v31} A62 62 0 0 0 ${u30} ${v30} Z"
+
+            // ---- 图例（纯字符串循环，无调用 → 安全）----
+            var lg = ""
+            for d in .traffic {
+                var vf = d["v"]
+                var lbl = d["l"]
+                if lg == "" {
+                    lg = f"${lbl} ${vf}%"
+                } else {
+                    lg = lg + f"   ${lbl} ${vf}%"
+                }
+            }
+            .legend = lg
+        }
+    }
+
+    view {
+        col {
+            h1 "DonutChart"
+            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），三角函数 math.cos/sin 直调（§0.6.H 根因已修），大弧标志 span>π。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+
+            h2 "Basic"
+            preview-card (id: "donut-chart-basic") {
+                col (style: "w-full items-center gap-3") {
+                    svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
+                        circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
+                        path (d: .s0, fill: "#2563eb") {}
+                        path (d: .s1, fill: "#16a34a") {}
+                        path (d: .s2, fill: "#d97706") {}
+                        path (d: .s3, fill: "#dc2626") {}
+                    }
+                    row (style: "gap-4") {
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#2563eb]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#16a34a]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#d97706]") {}
+                        span (style: "inline-block w-3 h-3 rounded-sm bg-[#dc2626]") {}
+                    }
+                    text .legend { style: "text-xs text-muted-foreground" }
+                }
+            }
+        }
+    }
+}
