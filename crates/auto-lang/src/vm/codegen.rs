@@ -3543,8 +3543,17 @@ impl Codegen {
                                 crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
                                     let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
                                     // Only use IS_VARIANT path for data variants (registered in generic_registry)
-                                    // Scalar enums (C-style, no payload) fall through to EQ comparison
-                                    let has_data_payload = self.generic_registry.has_template(&variant_mono);
+                                    // Scalar enums (C-style, no payload) fall through to EQ comparison.
+                                    // Plan 442 C2: variants UNKNOWN to the VM (use.rust-imported enums,
+                                    // e.g. musk backend's `AdvanceResult.ExecuteStep(sid, role)`) also take
+                                    // the IS_VARIANT path — the old fallback compiled the PATTERN as an
+                                    // expression and hit the Cover-construction arm's hard "Unknown enum
+                                    // variant" error. Runtime IS_VARIANT on a non-matching value simply
+                                    // falls through to the next branch (graceful); field count falls back
+                                    // to the binding arity when no template is registered.
+                                    let known_scalar = self.enum_values.contains_key(&variant_mono);
+                                    let has_data_payload = self.generic_registry.has_template(&variant_mono)
+                                        || !known_scalar;
 
                                     if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
                                         // Binding destructuring pattern: Atom.Int(n) -> ...
@@ -3567,7 +3576,9 @@ impl Codegen {
                                             let types: Vec<crate::ast::Type> = template.fields.iter().map(|f| f.field_type.clone()).collect();
                                             (template.fields.len(), types)
                                         } else {
-                                            (1, vec![]) // Default: single payload field
+                                            // Plan 442 C2: unregistered variant (use.rust enum) —
+                                            // trust the pattern's binding arity as the payload width.
+                                            (tag_cover.bindings.len().max(1), vec![])
                                         };
 
                                         // Extract each field and bind to variables
@@ -9459,7 +9470,11 @@ impl Codegen {
                                 // Cover::Tag destructuring for data-carrying enum variants
                                 crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
                                     let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
-                                    let has_data_payload = self.generic_registry.has_template(&variant_mono);
+                                    // Plan 442 C2: unknown variants (use.rust enums) — same IS_VARIANT
+                                    // routing as the Stmt::Is arm above.
+                                    let known_scalar = self.enum_values.contains_key(&variant_mono);
+                                    let has_data_payload = self.generic_registry.has_template(&variant_mono)
+                                        || !known_scalar;
 
                                     if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
                                         self.emit_load_loc(target_var);

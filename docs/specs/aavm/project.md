@@ -56,3 +56,8 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   ③ aavm_vm ④ golden ⑤ aa2r —— 稳定集 corpus_m4 全绿。
 - divergence 登记簿:docs/specs/aavm/divergences.md(判定规则见
   divergence-rules.md)。
+- 风格升级(类 C → 一对一 Rust 对译)前提条件调研:
+  idiom-upgrade-prereqs.md(2026-08-25;实证矩阵 + 宿主修复清单 H1-H6 +
+  AA2R 扩展 W1-W6 + lib 改写点位与波次建议);立项三件套:
+  plans/aavm-prerequisites-1(宿主加固)→ -2(aavm 新语法能力)→
+  -3(lib 风格升级)。

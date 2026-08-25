@@ -11522,7 +11522,7 @@ impl RustTrans {
 
     fn scan_mutated_bindings(body: &crate::ast::Body) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
-        let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain",
+        let mutating_methods = ["push", "insert", "extend", "pop", "remove", "retain", "next",
             "clear", "sort_by", "sort", "swap", "truncate", "drain", "splice", "resize"];
         fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &[&str]) {
             // `name.push(...)` etc → name is mutated
@@ -15723,7 +15723,7 @@ impl RustTrans {
             // self.field.push(...) / self.field.insert(...) / etc.
             Expr::Call(call) => {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
-                    let mut_methods = ["push", "pop", "insert", "remove", "clear",
+                    let mut_methods = ["push", "pop", "insert", "remove", "clear", "next",
                         "extend", "truncate", "retain", "sort", "sort_by", "reverse",
                         "dedup", "swap", "splice", "drain", "append", "resize"];
                     if mut_methods.contains(&method.as_str()) && Self::is_self_dot(obj) {
@@ -17153,7 +17153,7 @@ impl RustTrans {
                 let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
                 let direct_pat = format!(r"\b{}\s*=[^=]", var_name);
                 // Methods that take &mut self (require mut binding)
-                let mut_methods = ["push", "pop", "insert", "remove", "clear", "extend",
+                let mut_methods = ["push", "pop", "insert", "remove", "clear", "next", "extend",
                     "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice",
                     "drain", "append", "resize"];
                 if let Some(re) = cached_regex(&assign_pat) {
@@ -17232,7 +17232,7 @@ impl RustTrans {
     /// `names.push(..)`, `param.field = x`) is E0596. Detect mutated params
     /// and prefix the declaration with `mut `.
     fn fix_mutable_params(content: &mut String) {
-        let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear",
+        let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear", "next",
             "extend", "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap",
             "splice", "drain", "append", "resize", "set", "update", "merge"];
         let lines: Vec<&str> = content.lines().collect();

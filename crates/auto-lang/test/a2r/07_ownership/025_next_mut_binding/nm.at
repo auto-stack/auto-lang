@@ -1,0 +1,8 @@
+// Plan 032 G2.2: a let binding whose value gets .next()-ed must be `mut`
+// (iterator advances) — `next` joins the mutating-method scan lists.
+fn main() {
+    let stream = build()
+    if stream.next() {
+        print(1)
+    }
+}

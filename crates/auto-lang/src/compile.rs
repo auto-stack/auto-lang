@@ -1630,6 +1630,25 @@ impl CompileSession {
         // the module. The module's top-level var init code runs when __module_init
         // is called from execute_autovm_with_path (which spawns a task at the
         // module's code start address — Store code is at the top before Fn code).
+        // Plan 442 C2: pre-register top-level var/const NAMES as globals so
+        // methods compiled in the TypeDecl pass below (which runs BEFORE the
+        // Store pass) resolve module-level const/var references — musk
+        // backend's tool decls (`const spawn_relay_schema` referenced by
+        // `fn parameters()` inside the tool type). Registration-only: the
+        // Store pass still emits the init code (and global_inits recording is
+        // main-module-only, unused on the dep-module path).
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::Store(store) = stmt {
+                if matches!(
+                    store.kind,
+                    crate::ast::StoreKind::Var | crate::ast::StoreKind::Const
+                ) {
+                    codegen
+                        .global_vars
+                        .insert(store.name.as_str().to_string());
+                }
+            }
+        }
         for stmt in &ast.stmts {
             match stmt {
                 crate::ast::Stmt::TypeDecl(_)

@@ -155,12 +155,16 @@ mod plan442_musk_backend_probe {
         for (m, e) in &blocked {
             // Show up to 3 error lines — "aborting due to N" hides the real
             // compile errors listed before it.
-            let lines: Vec<&str> = e
+            let mut lines: Vec<&str> = e
                 .lines()
                 .filter(|l| l.trim_start_matches(' ').starts_with("error["))
                 .take(3)
                 .map(|l| l.trim_start())
                 .collect();
+            if lines.is_empty() {
+                // Single-error form (no MultipleErrors wrapper) — first line.
+                lines = vec![e.lines().next().unwrap_or("?")];
+            }
             eprintln!("  BLOCKED {:<24} {}", m, lines.join(" | "));
         }
         // The enumerator is a report, not a gate — any state is a pass.
