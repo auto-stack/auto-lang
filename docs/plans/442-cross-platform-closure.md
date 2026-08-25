@@ -352,6 +352,25 @@
     "yield 错"实为前一行 `to_value(frame).unwrap()` 链的级联;statement
     位置已随 Rust 臂修复,极简 driver 不触发参数位置形态——复现需真实
     模块前置类型注册态）。修复归属 = parser args 位置链式解析,下一波。
+  - **▶ Bug A 已修（2026-08-25,auto-lang 会话；语料 16→21/32）**：根因链
+    三段——① `resolve_uses` 对一切 use.rust 条目调 `register_rust_type`
+    （合成空 TypeDecl 入 type_decls），导入**函数**（get/put/to_string）
+    因而成"类型";② `args()` 把 Ident 开头的参数路由进
+    `node_or_call_expr`（非 pratt）;③ 其 `is_constructor` 启发式
+    （lookup_meta==Meta::Type）把 `get(h1).put(h2)` 送进 node 实例分支
+    ——括号被当 node 参数消费,链点裸露给 sep_args（"expected argument
+    separator, found Dot"）。修复 = 形态排除：**括号参数后随 `.` 的调用
+    不可能是 node 实例**（node 不链式）,gate 加 `!paren_chained` 落回
+    普通调用路径（pratt 续链）。复现关键 = `resolve_deps`（触发
+    compile_dep 签名注册;此前极简 driver 只调 resolve_uses 不触发）。
+    回归 ×2（args/stmt 位置,negativity 验证）。**伴生 musk 侧补遗**：
+    extern_sigs.at 补 11 个语料调用但漏登的 extern fn 签名
+    （ok_response/err_response/…,对齐 extern_impl.rs）——五模块 link 面
+    最后一环。翻绿：server/wiki/relay_api/server_stream/task_plan_engine。
+    **剩 11 模块三类**：顶层 let 跨 fn 可见性 ×5+（musk 源 let→const,
+    机械）;枚举点分变体 ×3（feature_dev/task_plan/task_plan_parser——
+    孤立解析净,管线层跨模块枚举注册问题,下一波）;relay_store 深层
+    （undefined variable + Expected term ×20）;relay_flows panic。
   - **▶ C2 剩余工作清单（18 模块五类，逐点归属）**：① **顶层 `let` 跨 fn
     可见性 ×5+**（orch_tools/spec_tools/tools/workflow/server_serve 及
     relay_store 部分——codegen 有意让顶层 let 保持局部（var/const 才入

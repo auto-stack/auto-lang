@@ -11709,6 +11709,15 @@ impl<'a> Parser<'a> {
         // NOTE: If ident is a Dot expression (e.g., TypeName.method), treat as call even if is_constructor=true
         // IMPORTANT: When is_constructor=true but no brace/primary_prop/paren, and next token is Colon,
         // this is a Pair expression (key: value), NOT a node instance.
+        // Plan 442 C2 (Bug A): a paren-arg call followed by `.` is a method
+        // CHAIN on the call's return value (e.g. musk backend's axum route
+        // builders `get(h1).put(h2)`). use.rust fn imports register as
+        // synthetic type decls (register_rust_type), so is_constructor is
+        // true for them and this gate would route the call into node-instance
+        // parsing — consuming `(h1)` as node args and leaving the chain dot
+        // dangling ("expected argument separator, found Dot" from args()).
+        // A node instance never chains, so a paren followed by `.` is a call.
+        let paren_chained = has_paren && self.is_kind(TokenKind::Dot);
         let is_dot_call = matches!(ident, Expr::Dot(_, _));
         let is_colon_pair = is_constructor && !is_dot_call
             && primary_prop.is_none()
@@ -11716,7 +11725,7 @@ impl<'a> Parser<'a> {
             && self.is_kind(TokenKind::Colon);
         if (self.is_kind(TokenKind::LBrace)
             || primary_prop.is_some()
-            || (is_constructor && !is_dot_call))
+            || (is_constructor && !is_dot_call && !paren_chained))
             && !is_colon_pair
         {
             // node instance

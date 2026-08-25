@@ -5537,9 +5537,10 @@ mod plan442_sched_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_webcompat_tests;
 
-// TEMPORARY plan-442 diagnostic dumper (removed before commit).
+// Plan 442 C2: parser regressions for the Bug A family (method chains on
+// use.rust-imported fn calls in argument position).
 #[cfg(test)]
-mod plan442_diag_dumper;
+mod plan442_parser_regress_tests;
 
 // Plan 442 Phase B gate: headless link probe against the real auto-musk
 // corpus (sibling checkout). #[ignore] — manual-only, never in CI.
