@@ -722,6 +722,23 @@ fn expr_atom(mut p P) E {
         p_next(p)
         return E("null", "", "", "", "(null)", "")
     }
+    if k == "Is" {
+        // 表达式位 is(Plan 447 部分②):参考 Expr::Is 的 Display 只出目标
+        // "(is-expr target)",分支解析后弃置(quirk 照抄,D18)
+        p_next(p)
+        var t = expr_pratt(p, 0)
+        p_expect(p, "LBrace")
+        skip_empty_lines(p)
+        while p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+            var discard = parse_is_branch(p)
+            if p_kind(p) == "Comma" {
+                p_next(p)
+                skip_empty_lines(p)
+            }
+        }
+        p_expect(p, "RBrace")
+        return E("other", "", "", "", "(is-expr " + t.dump + ")", "")
+    }
     p_err(p, "expected term, got ")
     return bad_e()
 }
@@ -1509,6 +1526,7 @@ fn parse_enum_decl(mut p P) str {
     var out = "(enum (name " + name + ") "
     var next_val = 0
     var first = true
+    var any_payload = false
     while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
         if p_kind(p) == "Fn" || p_kind(p) == "Static" {
             p_err(p, "v2 unsupported: method in enum ")
@@ -1524,11 +1542,60 @@ fn parse_enum_decl(mut p P) str {
         }
         var vname = p_text(p)
         p_next(p)
-        if p_kind(p) == "LParen" || p_kind(p) == "LBrace" {
-            p_err(p, "v2 unsupported: enum payload variant ")
-            return ""
+        // Plan 447 部分②:载荷变体 Name(T1, T2)/Name{ f T, ... }。Display 与
+        // 单元变体同形(载荷类型不入 dump,value 恒 0 不参与自增);载荷类型
+        // 按 Enum.Variant.slot 登记进 decls,供 is 臂绑定推断用
+        var has_payload = false
+        if p_kind(p) == "LParen" {
+            p_next(p)
+            skip_empty_lines(p)
+            if p_kind(p) != "RParen" {
+                var more_payload = true
+                var slot = 0
+                while more_payload {
+                    var pt = parse_type(p)
+                    p_decl_register(p, name + "." + vname + "." + slot.str(), pt)
+                    slot = slot + 1
+                    if p_kind(p) == "Comma" {
+                        p_next(p)
+                        skip_empty_lines(p)
+                    } else {
+                        more_payload = false
+                    }
+                }
+            }
+            p_expect(p, "RParen")
+            has_payload = true
+        } else if p_kind(p) == "LBrace" {
+            p_next(p)
+            skip_empty_lines(p)
+            var slot2 = 0
+            while p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+                if !is_name_kind(p_kind(p)) {
+                    p_err(p, "expected variant field name, got ")
+                    return ""
+                }
+                p_next(p)
+                if p_kind(p) == "Colon" {
+                    p_next(p)
+                }
+                var ft = parse_type(p)
+                p_decl_register(p, name + "." + vname + "." + slot2.str(), ft)
+                slot2 = slot2 + 1
+                if p_kind(p) == "Comma" {
+                    p_next(p)
+                    skip_empty_lines(p)
+                }
+                skip_empty_lines(p)
+            }
+            p_expect(p, "RBrace")
+            has_payload = true
         }
+        any_payload = any_payload || has_payload
         var val = next_val
+        if has_payload {
+            val = 0
+        }
         if p_kind(p) == "Asn" {
             p_next(p)
             if p_kind(p) != "Int" {
@@ -1538,7 +1605,10 @@ fn parse_enum_decl(mut p P) str {
             val = int_val(p_text(p))
             p_next(p)
         }
-        next_val = val + 1
+        // 载荷变体不推进自增基准(参考实证:Val{VI(int) VS(str) VN} 三项全 0)
+        if !has_payload {
+            next_val = val + 1
+        }
         if !first {
             out = out + " "
         }
@@ -1549,12 +1619,223 @@ fn parse_enum_decl(mut p P) str {
         skip_empty_lines(p)
     }
     p_expect(p, "RBrace")
-    p_decl_register(p, name, out + ")")
+    // 注册策略(镜像参考注册面):载荷枚举 → 参数位内联完整 enum 快照;
+    // 纯标量枚举 → 不注册,参数位落 (type-decl (name X)) 兜底
+    if any_payload {
+        p_decl_register(p, name, out + ")")
+    }
     return out + ")"
 }
 
+// ── is 语句(Plan 447 部分② Phase 4:镜像宿主 parser.rs parse_is/
+// parse_is_branch/is_branch_cond_expr 的决策,Display 对齐 ast/is.rs) ──
+
+// parse_expr_or_body 直译:{...} → parse_body;return/break/continue 单语句;
+// 其余单表达式 → "(body e)"
+fn parse_expr_or_body(mut p P) str {
+    if p_kind(p) == "LBrace" {
+        return parse_body(p)
+    }
+    if p_kind(p) == "Return" {
+        return "(body " + parse_return(p) + ")"
+    }
+    if p_kind(p) == "Break" {
+        p_next(p)
+        return "(body (break))"
+    }
+    if p_kind(p) == "Continue" {
+        p_next(p)
+        return "(body (continue))"
+    }
+    var e = expr_pratt(p, 0)
+    return "(body " + e.dump + ")"
+}
+
+// 逗号切分(char_at/slice 手写,载荷绑定列表解析用)
+fn split_commas(s str) List<str> {
+    var out List<str> = List.new()
+    var start = 0
+    var i = 0
+    while i < s.len() {
+        if s.char_at(i) == ',' {
+            out.push(s.slice(start, i))
+            start = i + 1
+        }
+        i = i + 1
+    }
+    out.push(s.slice(start, s.len()))
+    return out
+}
+
+// is_branch_cond_expr 直译(模式位不走表达式语义,D39):Ident 点路径 →
+// tag-cover;其余(字面量/裸名/调用形,含 Some(x)——两侧 lexer 均不产出
+// SomeKW,宿主同走 Call 路径)交给表达式机。E 复用约定:kind="tag-cover"
+// 时 name=枚举名、word=变体名、args=绑定逗号串
+fn is_pattern(mut p P) E {
+    var k = p_kind(p)
+    if k == "Ident" {
+        // 仅当 Ident 后随 Dot 才按点路径拦截(裸名/调用形留给表达式机)
+        var nxt = "EOF"
+        if p.pos + 1 < p.toks.len() {
+            nxt = p.toks.get(p.pos + 1).kind
+        }
+        if nxt == "Dot" {
+            var segs List<str> = List.new()
+            segs.push(p_text(p))
+            p_next(p)
+            while p.err == "" && p_kind(p) == "Dot" {
+                p_next(p)
+                if !is_name_kind(p_kind(p)) {
+                    p_err(p, "expected variant name after '.', got ")
+                    return bad_e()
+                }
+                segs.push(p_text(p))
+                p_next(p)
+            }
+            // 3 段路径剥模块前缀(镜像参考 Call 转换:kind 取倒数第二段)
+            var ek = segs.get(segs.len() - 2)
+            var tg = segs.get(segs.len() - 1)
+            var bind_list List<str> = List.new()
+            if p_kind(p) == "LParen" {
+                p_next(p)
+                skip_empty_lines(p)
+                if p_kind(p) != "RParen" {
+                    var more_bind = true
+                    while more_bind {
+                        if !is_name_kind(p_kind(p)) {
+                            p_err(p, "expected pattern binding, got ")
+                            return bad_e()
+                        }
+                        bind_list.push(p_text(p))
+                        p_next(p)
+                        if p_kind(p) == "Comma" {
+                            p_next(p)
+                            skip_empty_lines(p)
+                        } else {
+                            more_bind = false
+                        }
+                    }
+                }
+                p_expect(p, "RParen")
+            } else {
+                // 无括号单元变体 → bindings ["_"](参考 TagCover 约定)
+                bind_list.push("_")
+            }
+            var bj = ""
+            var aj = ""
+            var i = 0
+            while i < bind_list.len() {
+                if i > 0 {
+                    bj = bj + " "
+                    aj = aj + ","
+                }
+                bj = bj + bind_list.get(i)
+                aj = aj + bind_list.get(i)
+                i = i + 1
+            }
+            var d = "(tag-cover (kind " + ek + ") (tag " + tg + ") (bindings " + bj + "))"
+            return E("tag-cover", tg, ek, aj, d, "")
+        }
+    }
+    return expr_pratt(p, 0)
+}
+
+// parse_is_branch 直译:If → "(if cond body)";Else → "(else body)";
+// Eq → "(eq p1 [| p2]... body)";首模式 tag-cover 的载荷绑定入臂体作用域
+// (载荷类型查 Enum.Variant.slot 登记)
+fn parse_is_branch(mut p P) str {
+    var k = p_kind(p)
+    if k == "If" {
+        p_next(p)
+        var c = expr_pratt(p, 0)
+        p_expect(p, "Arrow")
+        var b = parse_expr_or_body(p)
+        skip_empty_lines(p)
+        return "(if " + c.dump + " " + b + ")"
+    }
+    if k == "Else" {
+        p_next(p)
+        p_expect(p, "Arrow")
+        var b2 = parse_expr_or_body(p)
+        skip_empty_lines(p)
+        return "(else " + b2 + ")"
+    }
+    var pat = is_pattern(p)
+    var extra List<str> = List.new()
+    while p.err == "" && p_kind(p) == "VBar" {
+        p_next(p)
+        skip_empty_lines(p)
+        var np = is_pattern(p)
+        extra.push(np.dump)
+        skip_empty_lines(p)
+    }
+    p_expect(p, "Arrow")
+    skip_empty_lines(p)
+    var body = ""
+    var scoped = false
+    if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
+        var binds = split_commas(pat.args)
+        var real = false
+        var i = 0
+        while i < binds.len() {
+            if binds.get(i) != "_" {
+                real = true
+            }
+            i = i + 1
+        }
+        if real {
+            push_scope(p)
+            scoped = true
+            var i2 = 0
+            while i2 < binds.len() {
+                if binds.get(i2) != "_" {
+                    var slot_ty = p_decl_lookup(p, pat.name + "." + pat.word + "." + i2.str())
+                    p_bind(p, binds.get(i2), slot_ty)
+                }
+                i2 = i2 + 1
+            }
+        }
+    }
+    body = parse_expr_or_body(p)
+    if scoped {
+        pop_scope(p)
+    }
+    var out = "(eq " + pat.dump + " "
+    var j = 0
+    while j < extra.len() {
+        out = out + "| " + extra.get(j) + " "
+        j = j + 1
+    }
+    skip_empty_lines(p)
+    return out + body + ")"
+}
+
+// parse_is 直译:语句位 "(is target br1 br2...)";臂间可选逗号
+fn parse_is(mut p P) str {
+    p_next(p)
+    var t = expr_pratt(p, 0)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var branches = ""
+    var first = true
+    while p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+        var b = parse_is_branch(p)
+        if !first {
+            branches = branches + " "
+        }
+        branches = branches + b
+        first = false
+        if p_kind(p) == "Comma" {
+            p_next(p)
+            skip_empty_lines(p)
+        }
+    }
+    p_expect(p, "RBrace")
+    return "(is " + t.dump + " " + branches + ")"
+}
+
 fn is_unsupported_stmt_kind(k str) bool {
-    return k == "Use" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Is" || k == "Yield" || k == "Reply" || k == "View"
+    return k == "Use" || k == "Spec" || k == "Tag" || k == "Union" || k == "Ext" || k == "Impl" || k == "Task" || k == "On" || k == "Dep" || k == "Hash" || k == "HashIf" || k == "HashFor" || k == "HashIs" || k == "HashBrace" || k == "HashIdent" || k == "Try" || k == "Yield" || k == "Reply" || k == "View"
 }
 
 fn parse_stmt(mut p P) str {
@@ -1583,6 +1864,9 @@ fn parse_stmt(mut p P) str {
     }
     if k == "For" {
         return parse_for(p)
+    }
+    if k == "Is" {
+        return parse_is(p)
     }
     if k == "While" {
         return parse_while(p)

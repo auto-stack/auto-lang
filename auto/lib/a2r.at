@@ -19,9 +19,12 @@
 //            下标赋值;let-init 纯字段读 owned 局部 → .clone();
 //            var→let mut;空行按 eos 换行数保留(注释行→空行);
 //            len 形态消费侧括号(二元左/构造器字段值/let-init)
-// Missing:   f-string/闭包/is-match/泛型声明/spec/ext/impl/use/dep/
+// Missing:   闭包/泛型声明/spec/ext/impl/use/dep/
 //            多目标/r2a/逃逸分析/post_process 正则族/生成器/task/
 //            命名构造参数/shared/static/宏/文档注释透传/元组/对象字面量
+//            (Plan 447 部分② W1-W3 收编:is-match/or-臂/卫语句/枚举
+//            载荷声明与构造/Some 模式缺席照抄宿主 Call 路径;f-string
+//            实际已支持(D38c 纠正,清单同步);is 块体臂/嵌套模式未含)
 // DIVERGE:   D39(Plan 434):AA2R 不经 parse_dump 的 S-expr(字符串字面量
 //                 内引号歧义),改以 token 游标直走(432 codegen.at
 //                 同款方法论),复用 parser.at 的 p_* 游标/优先级表与
@@ -62,6 +65,9 @@ type ArTy {
 type ArEnum {
     name str
     variants List<str>
+    // Plan 447 部分② W3:每变体 Rust 载荷文本(""=单元/标量,
+    // "i64"/"String"/"i64, i64"=元组载荷)
+    pays List<str>
 }
 
 type ArVar {
@@ -106,6 +112,8 @@ type Ar {
     lu_names List<str>
     lu_idx List<int>
     arg_lenflags List<int>
+    // Plan 447 部分② H5:当前 fn 内 is 次数 ≥2 的标识符 scrutinee 名单
+    multi_is List<str>
 }
 
 fn ar_new() Ar {
@@ -120,7 +128,8 @@ fn ar_new() Ar {
     var arglf List<int> = List.new()
     var lun List<str> = List.new()
     var lui List<int> = List.new()
-    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf)
+    var mis List<str> = List.new()
+    return Ar(out, 0, "", fns, tys, ens, scopes, 1, "", mutated, "", 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0, "", "", lun, lui, arglf, mis)
 }
 
 fn ar_err(mut a Ar, msg str) {
@@ -685,6 +694,8 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
     p_expect(p, "LBrace")
     skip_empty_lines(p)
     var vs List<str> = List.new()
+    // Plan 447 部分② W3:每变体载荷的 Rust 文本(""=单元/标量)
+    var pays List<str> = List.new()
     while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
         if p_kind(p) == "Fn" || p_kind(p) == "Static" || p_kind(p) == "Hash" {
             p_err(p, "v2 unsupported: enum body member ")
@@ -696,8 +707,29 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
         }
         var vname = p_text(p)
         p_next(p)
-        if p_kind(p) == "LParen" || p_kind(p) == "LBrace" {
-            p_err(p, "v2 unsupported: enum payload ")
+        // Plan 447 部分② W3:元组载荷 Name(T1, T2) → Rust 文本 "i64, String";
+        // 结构体载荷 Name{...} 暂不支持(语料不含)
+        var pay = ""
+        if p_kind(p) == "LParen" {
+            p_next(p)
+            skip_empty_lines(p)
+            var more = true
+            while more {
+                var at = parse_type(p)
+                if pay != "" {
+                    pay = pay + ", "
+                }
+                pay = pay + ar_rust_ty(at)
+                if p_kind(p) == "Comma" {
+                    p_next(p)
+                    skip_empty_lines(p)
+                } else {
+                    more = false
+                }
+            }
+            p_expect(p, "RParen")
+        } else if p_kind(p) == "LBrace" {
+            p_err(p, "v2 unsupported: enum struct payload ")
             return
         }
         if p_kind(p) == "Asn" {
@@ -709,11 +741,12 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
             p_next(p)
         }
         vs.push(vname)
+        pays.push(pay)
         expect_eos(p)
         skip_empty_lines(p)
     }
     p_expect(p, "RBrace")
-    a.ens.push(ArEnum(name, vs))
+    a.ens.push(ArEnum(name, vs, pays))
 }
 
 // ── fn 体再赋值预扫描(var → let mut 判定) ────────────────────
@@ -989,8 +1022,16 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                     cur = "(" + cur + ")"
                     cur_len = 0
                 }
-                var mres = ar_method_call(a, p, cur, cur_ty, word)
-                cur = mres
+                // Plan 447 部分② W3:枚举载荷变体构造 Enum.Variant(args)
+                // → Enum::Variant(args)(str 载荷槽字面量补 .to_string(),
+                // 镜像主 a2r 构造点);拦截须在方法调用之前
+                var ctor = ar_enum_try_ctor(a, p, cur, word)
+                if ctor != "" {
+                    cur = ctor
+                } else {
+                    var mres = ar_method_call(a, p, cur, cur_ty, word)
+                    cur = mres
+                }
                 cur_ty = a.ty
                 cur_strk = a.strk
                 cur_prec = 100
@@ -1427,6 +1468,88 @@ fn join_args(args List<str>) str {
 
 // ── 调用实参 ──────────────────────────────────────────────────
 
+// Plan 447 部分② W3:载荷文本首槽(截到逗号;"i64, String" → "i64")
+fn ar_pay_first(pay str) str {
+    var i = 0
+    while i < pay.len() {
+        if pay.char_at(i) == ',' {
+            return pay.slice(0, i)
+        }
+        i = i + 1
+    }
+    return pay
+}
+
+// 文本是否 str 字面量(以双引号开头)
+fn ar_text_is_str_lit(t str) int {
+    if t.len() > 0 && t.char_at(0) == 34 {
+        return 1
+    }
+    return 0
+}
+
+// 文本含 "::"(枚举变体路径判定)
+fn ar_text_has_dcolon(t str) int {
+    var i = 0
+    while i + 1 < t.len() {
+        if t.char_at(i) == ':' && t.char_at(i + 1) == ':' {
+            return 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// 文本以 ')' 收尾(构造调用形判定)
+fn ar_text_ends_paren(t str) int {
+    if t.len() > 0 && t.char_at(t.len() - 1) == 41 {
+        return 1
+    }
+    return 0
+}
+
+// 枚举载荷变体构造:Enum.Variant(args) → "Enum::Variant(args)";
+// 非构造形态(未注册枚举/变体无载荷)返回 "" 且不消费
+fn ar_enum_try_ctor(mut a Ar, mut p P, enum_name str, word str) str {
+    var eci = ar_enum_find(a, enum_name)
+    if eci < 0 {
+        return ""
+    }
+    var evis = a.ens.get(eci).variants
+    var vj = 0
+    var vidx = -1
+    while vj < evis.len() {
+        if evis.get(vj) == word {
+            vidx = vj
+        }
+        vj = vj + 1
+    }
+    if vidx < 0 || a.ens.get(eci).pays.get(vidx) == "" {
+        return ""
+    }
+    var cargs = ar_call_args_text(a, p, "")
+    var slot0 = ar_pay_first(a.ens.get(eci).pays.get(vidx))
+    var cout = ""
+    var aj = 0
+    while aj < cargs.len() {
+        var av = cargs.get(aj)
+        if aj == 0 && slot0 == "String" && ar_text_is_str_lit(av) == 1 {
+            av = av + ".to_string()"
+        }
+        if aj > 0 {
+            cout = cout + ", "
+        }
+        cout = cout + av
+        aj = aj + 1
+    }
+    a.ty = enum_name
+    a.strk = 0
+    a.prec = 100
+    a.lenflag = 0
+    a.infer = 0
+    return enum_name + "::" + word + "(" + cout + ")"
+}
+
 fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
     var out List<str> = List.new()
     var fi = -1
@@ -1500,6 +1623,11 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
         }
         // last-use:实参标识在本 fn 后续仍被引用 → 克隆(值语义 move 保持)
         if e_is_simple_ident(text) == 1 && ar_lu_after(a, text, arg_pos) == true {
+            return text + ".clone()"
+        }
+        // Plan 447 部分②:枚举变体字面量实参(::路径且非构造调用形)
+        // → 克隆(镜像主 a2r 枚举值实参位;构造临时不需要)
+        if ar_text_has_dcolon(text) == 1 && ar_text_ends_paren(text) == 0 {
             return text + ".clone()"
         }
     }
@@ -1687,6 +1815,275 @@ fn ar_stmts(mut a Ar, mut p P) {
     }
 }
 
+// ── is 语句(Plan 447 部分② W1/W2:is-match/or-臂/卫语句/else 发射,
+// 镜像主 a2r is_stmt 的语料子集)────────────────────────────────
+
+// fn 体 token 预扫描:is <Ident> { 形态计数;≥2 次的 scrutinee 名入
+// multi_is(H5 收窄口径);游标自恢复
+fn ar_scan_is_multi(mut a Ar, mut p P) {
+    var counts_n List<str> = List.new()
+    var counts_c List<int> = List.new()
+    var save = p.pos
+    p_next(p)
+    skip_empty_lines(p)
+    var depth = 1
+    while p.err == "" && p_kind(p) != "EOF" && depth > 0 {
+        var k = p_kind(p)
+        if k == "LBrace" {
+            depth = depth + 1
+        } else if k == "RBrace" {
+            depth = depth - 1
+        } else if k == "Is" {
+            var n1 = "EOF"
+            if p.pos + 1 < p.toks.len() {
+                n1 = p.toks.get(p.pos + 1).kind
+            }
+            var n2 = "EOF"
+            if p.pos + 2 < p.toks.len() {
+                n2 = p.toks.get(p.pos + 2).kind
+            }
+            if n1 == "Ident" && n2 == "LBrace" {
+                var nm = p.toks.get(p.pos + 1).text
+                var found = -1
+                var ci = 0
+                while ci < counts_n.len() {
+                    if counts_n.get(ci) == nm {
+                        found = ci
+                    }
+                    ci = ci + 1
+                }
+                if found < 0 {
+                    counts_n.push(nm)
+                    counts_c.push(1)
+                } else {
+                    counts_c.set(found, counts_c.get(found) + 1)
+                }
+            }
+        }
+        p_next(p)
+    }
+    p.pos = save
+    var out2 List<str> = List.new()
+    var xi = 0
+    while xi < counts_n.len() {
+        if counts_c.get(xi) >= 2 {
+            out2.push(counts_n.get(xi))
+        }
+        xi = xi + 1
+    }
+    a.multi_is = out2
+}
+
+// multi_is 名单判定
+fn ar_in_multi_is(a Ar, name str) int {
+    var i = 0
+    while i < a.multi_is.len() {
+        if a.multi_is.get(i) == name {
+            return 1
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// str 模式前瞻:当前位在 is 的 {;扫到配对 },深度 0 处、Arrow 之前的
+// Str 字面量(体内字符串不误报——g01 else 臂的 "none" 不触发)
+fn ar_is_has_str_pattern(mut p P) int {
+    var save = p.pos
+    p_next(p)
+    var depth = 1
+    var in_body = 0
+    var hit = 0
+    while p.err == "" && p_kind(p) != "EOF" && depth > 0 && hit == 0 {
+        var k = p_kind(p)
+        if k == "LBrace" {
+            depth = depth + 1
+        } else if k == "RBrace" {
+            depth = depth - 1
+        } else if depth == 1 {
+            if k == "Arrow" {
+                in_body = 1
+            } else if k == "Newline" || k == "Comma" {
+                in_body = 0
+            } else if k == "Str" && in_body == 0 {
+                hit = 1
+            }
+        }
+        p_next(p)
+    }
+    p.pos = save
+    return hit
+}
+
+// 模式 E → Rust 模式文本(tag-cover → Enum::Variant(binds);字面量直出)
+fn ar_is_pattern_text(a Ar, pat E) str {
+    if pat.kind == "tag-cover" {
+        // 载荷变体 → Variant(binds);单元/标量变体 → 裸 Variant 路径
+        var ei = ar_enum_find(a, pat.name)
+        var has_pay = 0
+        if ei >= 0 {
+            var evis = a.ens.get(ei).variants
+            var vj = 0
+            while vj < evis.len() {
+                if evis.get(vj) == pat.word && a.ens.get(ei).pays.get(vj) != "" {
+                    has_pay = 1
+                }
+                vj = vj + 1
+            }
+        }
+        if has_pay == 1 {
+            return pat.name + "::" + pat.word + "(" + pat.args + ")"
+        }
+        return pat.name + "::" + pat.word
+    }
+    if pat.kind == "str" {
+        return "\"" + ar_escape_str(pat.name) + "\""
+    }
+    if pat.kind == "char" {
+        return "'" + pat.name + "'"
+    }
+    if pat.kind == "int" {
+        return pat.name
+    }
+    if pat.kind == "name" && pat.name == "_" {
+        return "_"
+    }
+    ar_err(a, "unsupported is pattern: " + pat.kind)
+    return ""
+}
+
+// 载荷槽 Rust 类型 → AUTO 型名(绑定登记用;i64→int/String→str/f64→float)
+fn ar_pay_auto_ty(rust_ty str) str {
+    if rust_ty == "i64" || rust_ty == "i64" {
+        return "int"
+    }
+    if rust_ty == "String" {
+        return "str"
+    }
+    if rust_ty == "f64" {
+        return "float"
+    }
+    return ""
+}
+
+// is 臂体按 fn 返回型的 str 字面量收敛(尾值位;"none" → "none".to_string())
+fn ar_is_body_coerce(a Ar, body str) str {
+    if a.strk == 1 {
+        var fi = ar_fn_find(a, a.cur_fn)
+        if fi >= 0 && ar_is_str_ty(a.fns.get(fi).ret) {
+            return body + ".to_string()"
+        }
+    }
+    return body
+}
+
+// is 语句发射:match <scrut> { 模式臂..., };(语句位;尾值位无分号)
+fn ar_is(mut a Ar, mut p P, tail_is int) {
+    p_next(p)
+    var scrut = ar_expr(a, p, 0)
+    // str 模式前瞻须在越过 { 之前(游标正落在 LBrace 上)
+    var has_str_pat = ar_is_has_str_pattern(p)
+    // H5:同 fn 内 ≥2 次 is 同一标识符 → match &v(str 模式臂除外:
+    // .as_str() 已借用,叠 & 双重引用是 E0308)
+    if has_str_pat == 0 && e_is_simple_ident(scrut) == 1 && ar_in_multi_is(a, scrut) == 1 {
+        scrut = "&" + scrut
+    }
+    // str 字面量模式 → 局部 String 接收者 .as_str();str 参数本身是
+    // &str,加 .as_str() 是 E0658(str_as_str),跳过(镜像主 a2r 守卫)
+    if has_str_pat == 1 {
+        var scrut_is_str_param = 0
+        if e_is_simple_ident(scrut) == 1 && ar_vparam(a, scrut) == 1 && ar_vty(a, scrut) == "str" {
+            scrut_is_str_param = 1
+        }
+        if scrut_is_str_param == 0 {
+            scrut = scrut + ".as_str()"
+        }
+    }
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    ar_line(a, "match " + scrut + " {")
+    a.indent = a.indent + 1
+    while a.err == "" && p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+        var k = p_kind(p)
+        if k == "If" {
+            p_next(p)
+            var cond = ar_expr(a, p, 0)
+            p_expect(p, "Arrow")
+            skip_empty_lines(p)
+            var body = ar_expr(a, p, 0)
+            if tail_is == 1 {
+                body = ar_is_body_coerce(a, body)
+            }
+            ar_line(a, "_guard if " + cond + " => " + body + ",")
+        } else if k == "Else" {
+            p_next(p)
+            p_expect(p, "Arrow")
+            skip_empty_lines(p)
+            var body2 = ar_expr(a, p, 0)
+            if tail_is == 1 {
+                body2 = ar_is_body_coerce(a, body2)
+            }
+            ar_line(a, "_ => " + body2 + ",")
+        } else {
+            var pat = is_pattern(p)
+            var ptxt = ar_is_pattern_text(a, pat)
+            // or-臂(W2):| 连接
+            while a.err == "" && p.err == "" && p_kind(p) == "VBar" {
+                p_next(p)
+                skip_empty_lines(p)
+                var np = is_pattern(p)
+                ptxt = ptxt + " | " + ar_is_pattern_text(a, np)
+                skip_empty_lines(p)
+            }
+            p_expect(p, "Arrow")
+            skip_empty_lines(p)
+            // 载荷绑定登记(镜像 H6:按枚举载荷表入作用域)
+            if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
+                var ei = ar_enum_find(a, pat.name)
+                var vidx = -1
+                if ei >= 0 {
+                    var evis = a.ens.get(ei).variants
+                    var vj = 0
+                    while vj < evis.len() {
+                        if evis.get(vj) == pat.word {
+                            vidx = vj
+                        }
+                        vj = vj + 1
+                    }
+                }
+                if ei >= 0 && vidx >= 0 {
+                    var binds = split_commas(pat.args)
+                    var bi = 0
+                    while bi < binds.len() {
+                        if binds.get(bi) != "_" {
+                            var slot_rust = ar_pay_first(a.ens.get(ei).pays.get(vidx))
+                            ar_vpush(a, binds.get(bi), ar_pay_auto_ty(slot_rust), "view", 0)
+                        }
+                        bi = bi + 1
+                    }
+                }
+            }
+            var body3 = ar_expr(a, p, 0)
+            if tail_is == 1 {
+                body3 = ar_is_body_coerce(a, body3)
+            }
+            ar_line(a, ptxt + " => " + body3 + ",")
+        }
+        if p_kind(p) == "Comma" {
+            p_next(p)
+            skip_empty_lines(p)
+        }
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    a.indent = a.indent - 1
+    if tail_is == 1 {
+        ar_line(a, "}")
+    } else {
+        ar_line(a, "};")
+    }
+}
+
 fn ar_stmt(mut a Ar, mut p P) {
     if a.err != "" || p.err != "" {
         return
@@ -1708,6 +2105,15 @@ fn ar_stmt(mut a Ar, mut p P) {
     }
     if k == "For" {
         ar_for(a, p)
+        return
+    }
+    if k == "Is" {
+        var is_pos = p.pos
+        var tail_is = 0
+        if a.tail_no_semi == 1 && a.tail_start == is_pos {
+            tail_is = 1
+        }
+        ar_is(a, p, tail_is)
         return
     }
     if k == "While" {
@@ -2080,6 +2486,45 @@ fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
     skip_empty_lines(p)
     var ei = ar_enum_find(a, name)
     var vs = a.ens.get(ei).variants
+    // Plan 447 部分② W3:载荷枚举走独立形态——变体按载荷发射
+    // (Name(i64),/Name,)、derive 三分派(浮点载荷去 Eq/Ord)、不带
+    // Display/from_id(镜像主 a2r 载荷枚举路径);纯标量枚举保持原样
+    var pays = a.ens.get(ei).pays
+    var has_payload = 0
+    var has_float = 0
+    var pi = 0
+    while pi < pays.len() {
+        if pays.get(pi) != "" {
+            has_payload = 1
+            if pays.get(pi) == "f64" || pays.get(pi) == "f32" {
+                has_float = 1
+            }
+        }
+        pi = pi + 1
+    }
+    if has_payload == 1 {
+        if has_float == 1 {
+            ar_line(a, "#[derive(Clone, Debug, PartialEq)]")
+        } else {
+            ar_line(a, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
+        }
+        ar_line(a, pubkw + "enum " + name + " {")
+        a.indent = a.indent + 1
+        var qi = 0
+        while qi < vs.len() {
+            if pays.get(qi) != "" {
+                ar_line(a, vs.get(qi) + "(" + pays.get(qi) + "),")
+            } else {
+                ar_line(a, vs.get(qi) + ",")
+            }
+            qi = qi + 1
+        }
+        a.indent = a.indent - 1
+        ar_line(a, "}")
+        ar_blank(a)
+        ar_skip_decl(p)
+        return
+    }
     ar_line(a, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
     ar_line(a, pubkw + "enum " + name + " {")
     a.indent = a.indent + 1
@@ -2240,6 +2685,8 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
         var body_save = p.pos
         ar_scan_mutations(a, p)
         p.pos = body_save
+        // Plan 447 部分② H5:is scrutinee 计数预扫描(≥2 次者 match &v)
+        ar_scan_is_multi(a, p)
         p_expect(p, "LBrace")
         skip_empty_lines(p)
         a.tail_no_semi = 0

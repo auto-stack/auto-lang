@@ -13356,6 +13356,17 @@ impl RustTrans {
 
         sink.body.write(b"match ")?;
 
+        // Check if any arm pattern is a string literal — if so, match on &str
+        // (computed BEFORE the H5 `&`: `.as_str()` already borrows, prefixing
+        // `&` would double-reference — `match &text.as_str()` is E0308)
+        let has_str_pattern = is_stmt.branches.iter().any(|branch| {
+            if let IsBranch::EqBranch(patterns, _) = branch {
+                patterns.iter().any(|p| matches!(p, Expr::Str(_) | Expr::CStr(_)))
+            } else {
+                false
+            }
+        });
+
         if let Some(name) = &hoisted_scrutinee {
             sink.body.write(name.as_bytes())?;
         } else {
@@ -13363,8 +13374,9 @@ impl RustTrans {
         // identifier scrutinee is matched >= 2 times in this function (first
         // by-value match would move it). Single-use keeps plain `match v` so
         // arm payload bindings stay owned (and goldens stay stable).
+        // str-pattern arms borrow via .as_str() already — skip the `&`.
         let needs_ref_match = match &is_stmt.target {
-            Expr::Ident(name) => self
+            Expr::Ident(name) if !has_str_pattern => self
                 .fn_is_scrutinee_counts
                 .get(name.as_str())
                 .copied()
@@ -13375,15 +13387,6 @@ impl RustTrans {
         if needs_ref_match {
             sink.body.write(b"&")?;
         }
-
-        // Check if any arm pattern is a string literal — if so, match on &str
-        let has_str_pattern = is_stmt.branches.iter().any(|branch| {
-            if let IsBranch::EqBranch(patterns, _) = branch {
-                patterns.iter().any(|p| matches!(p, Expr::Str(_) | Expr::CStr(_)))
-            } else {
-                false
-            }
-        });
 
         // Check if scrutinee is self.field (needs .clone() in &self methods)
         let is_self_field = Self::is_self_dot(&is_stmt.target);

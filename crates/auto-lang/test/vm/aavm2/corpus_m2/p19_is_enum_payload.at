@@ -1,0 +1,25 @@
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn describe(v Val) str {
+    is v {
+        Val.VI(x) -> x.str()
+        Val.VS(s) -> s
+        Val.VN -> "none"
+    }
+}
+
+fn sum(v Val) int {
+    is v {
+        Val.VI(n) -> {
+            let doubled = n * 2
+            return doubled
+        }
+        else -> {
+            return 0
+        }
+    }
+}

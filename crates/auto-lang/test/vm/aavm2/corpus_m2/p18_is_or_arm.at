@@ -1,0 +1,26 @@
+enum TokenKind {
+    Int
+    Uint
+    EOF
+}
+
+fn single(k TokenKind) str {
+    is k {
+        TokenKind.Int -> "num"
+        else -> "eof"
+    }
+}
+
+fn multi(k TokenKind) str {
+    is k {
+        TokenKind.Int | TokenKind.Uint -> "num"
+        TokenKind.EOF -> "eof"
+    }
+}
+
+fn both(c char) str {
+    is c {
+        'x' | 'y' -> "xy"
+        else -> "other"
+    }
+}

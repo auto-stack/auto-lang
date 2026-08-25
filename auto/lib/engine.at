@@ -255,6 +255,61 @@ fn ev_run_t(source str, trace int) str {
             if !ev_truthy(v) {
                 ip = ins.n
             }
+        } else if op == "jmp.nz" {
+            // Plan 447 部分②:or 臂短路或(H1 修后口径)
+            var v0 = stack.get(sp - 1)
+            sp = sp - 1
+            if ev_truthy(v0) {
+                ip = ins.n
+            }
+        } else if op == "new.instance" {
+            // Plan 447 部分②:弹名长(const.i32 哨兵,名字在操作数);
+            // 建空字段表入 arena,推实例(k=3:s=变体名,i=arena 槽位)
+            sp = sp - 1
+            var nm = ins.s
+            if nm.len() >= 2 && nm.char_at(0) == '"' {
+                nm = nm.slice(1, nm.len() - 1)
+            }
+            var fl List<Val> = List.new()
+            arena.push(fl)
+            sp = ev_push(stack, sp, Val(3, arena.len() - 1, nm))
+        } else if op == "construct.instance" {
+            // 栈:[..., 字段值…, 实例, 字段数](镜像宿主弹序:count→
+            // instance→count 值);字段自底而上读入 arena 槽,实例回栈
+            var n9 = ev_dec(ev_int(stack.get(sp - 1)))
+            sp = sp - 1
+            var inst9 = stack.get(sp - 1)
+            sp = sp - 1
+            var fl9 List<Val> = arena.get(inst9.i)
+            var ci9 = 0
+            while ci9 < n9 {
+                fl9.push(stack.get(sp - n9 + ci9))
+                ci9 = ci9 + 1
+            }
+            sp = sp - n9
+            arena.set(inst9.i, fl9)
+            sp = ev_push(stack, sp, inst9)
+        } else if op == "is.variant" {
+            // 弹实例,推命中 bool;k=3 且变体名全等才命中(非实例恒假)
+            var v9 = stack.get(sp - 1)
+            sp = sp - 1
+            var nm9 = ins.s
+            if nm9.len() >= 2 && nm9.char_at(0) == '"' {
+                nm9 = nm9.slice(1, nm9.len() - 1)
+            }
+            var hit9 = 0
+            if v9.k == 3 && v9.s == nm9 {
+                hit9 = 1
+            }
+            sp = ev_push(stack, sp, ev_vi(hit9))
+        } else if op == "get.generic.field" {
+            // 弹实例,推第 n 槽字段(后续 3 条 nop 为 u32 残留形态,直通)
+            var v10 = stack.get(sp - 1)
+            sp = sp - 1
+            var fl10 List<Val> = arena.get(v10.i)
+            sp = ev_push(stack, sp, fl10.get(ins.n))
+        } else if op == "nop" {
+            // no-op(get.generic.field 的 u32 残留字节形态)
         } else if op == "const.i32" {
             sp = ev_push(stack, sp, ev_vi(ev_enc(ins.n)))
         } else if op == "push.bool" {

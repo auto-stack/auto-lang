@@ -68,6 +68,38 @@ type CG {
     err str
     str_flag int
     arr_flag int
+    // Plan 447 部分②:枚举注册表(镜像宿主 enum_values + generic_registry
+    // 载荷模板)。consts:"Enum.Variant"→判别值(scalar 链;载荷变体按
+    // 位序,镜像 scalar_value.unwrap_or(i));ctors:"Enum.Variant"→字段数
+    consts List<CGEnum>
+    ctors List<CGEnum>
+}
+
+type CGEnum {
+    key str
+    val int
+}
+
+fn cg_const_lookup(c CG, key str) int {
+    var i = 0
+    while i < c.consts.len() {
+        if c.consts.get(i).key == key {
+            return c.consts.get(i).val
+        }
+        i = i + 1
+    }
+    return -999999
+}
+
+fn cg_ctor_lookup(c CG, key str) int {
+    var i = 0
+    while i < c.ctors.len() {
+        if c.ctors.get(i).key == key {
+            return c.ctors.get(i).val
+        }
+        i = i + 1
+    }
+    return -999999
 }
 
 fn cg_new() CG {
@@ -77,7 +109,9 @@ fn cg_new() CG {
     var ins_l List<I> = List.new()
     var pool List<str> = List.new()
     var fns List<FnEntry> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0)
+    var consts_l List<CGEnum> = List.new()
+    var ctors_l List<CGEnum> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l)
 }
 
 fn cg_err(mut c CG, msg str) {
@@ -95,7 +129,9 @@ fn p_peek_text(p P, n int) str {
     return p.toks.get(i).text
 }
 
-// 指令字节宽度(与 Rust opcode 编码一致;S4 子集)
+// 指令字节宽度(与 Rust opcode 编码一致;S4 子集)。new.instance/
+// is.variant 的名字内联字节随名长(Plan 447 部分②);get.generic.field
+// 的 u32 操作数在 Rust 侧按 1B 操作数+3B 残留(nop)错位展示,照抄
 fn i_size(op str) int {
     if op == "fn.prolog" {
         return 3
@@ -103,7 +139,7 @@ fn i_size(op str) int {
     if op == "reserve" {
         return 2
     }
-    if op == "jmp" || op == "jmp.z" {
+    if op == "jmp" || op == "jmp.z" || op == "jmp.nz" {
         return 3
     }
     if op == ".line" {
@@ -133,7 +169,27 @@ fn i_size(op str) int {
     if op == "create.arr" {
         return 2
     }
+    if op == "get.generic.field" {
+        return 2
+    }
     return 1
+}
+
+// 名字内联指令的字节宽(new.instance=1+名长;is.variant=3+名长:
+// 操作码+u16 名长+名字节,镜像宿主 emit_u16 + bytes)
+fn i_size_named(op str, s str) int {
+    var name = s
+    // s 形如 "\"Val.VI\"" —— 剥引号
+    if name.len() >= 2 && name.char_at(0) == '"' {
+        name = name.slice(1, name.len() - 1)
+    }
+    if op == "new.instance" {
+        return 1 + name.len()
+    }
+    if op == "is.variant" {
+        return 3 + name.len()
+    }
+    return i_size(op)
 }
 
 // 发射一条指令,返回其指令索引
@@ -145,8 +201,17 @@ fn emit(mut c CG, op str, s str, n int) int {
 // ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
 
 fn cg_push_scope(mut c CG) {
-    var sc List<CGVar> = List.new()
-    c.scopes.push(sc)
+    // Plan 447 部分②修复:多 fn 复用槽位时必须换新空表——旧实现无条件
+    // push,第二個 fn 按深度取到前一 fn 的残留作用域(其体内变量泄漏进
+    // 后续 fn 的释放组/查找域;is 的 _is_target 首次暴露)。表长仍只增
+    // 不减(D25 写法保持)
+    if c.depth == c.scopes.len() {
+        var sc List<CGVar> = List.new()
+        c.scopes.push(sc)
+    } else {
+        var fresh List<CGVar> = List.new()
+        c.scopes.set(c.depth, fresh)
+    }
     c.depth = c.depth + 1
 }
 
@@ -196,7 +261,21 @@ fn cg_add_var(mut c CG, name str, arr int) int {
     c.max_idx = next
     // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
     var sc = c.scopes.get(c.depth - 1)
-    sc.push(CGVar(name, next, arr))
+    // Plan 447 部分②:同名重登记按名覆盖(镜像宿主 add_var 的 HashMap
+    // 按名 insert——旧槽从表中消失:不再释放也不被查找;多次 is 的
+    // _is_target 首次暴露该差异)。max_idx 单调计数 = 宿主高水位
+    var replaced = false
+    var ri = 0
+    while ri < sc.len() {
+        if sc.get(ri).name == name {
+            sc.set(ri, CGVar(name, next, arr))
+            replaced = true
+        }
+        ri = ri + 1
+    }
+    if !replaced {
+        sc.push(CGVar(name, next, arr))
+    }
     c.scopes.set(c.depth - 1, sc)
     return next
 }
@@ -376,8 +455,51 @@ fn cg_expr(mut c CG, mut p P, min int) {
     } else if k == "False" {
         p_next(p)
         emit(c, "push.bool", "false", 0)
+    } else if k == "Char" {
+        // Plan 447 部分②:字符字面量 → const.i32 码点(镜像宿主 Char 编译)
+        var t = p_text(p)
+        p_next(p)
+        var cp = t.char_at(0)
+        emit(c, "const.i32", cp.str(), cp)
     } else if k == "Ident" {
         var name = p_text(p)
+        // Plan 447 部分②:枚举路径前瞻判定(不消费)——注册命中才拦截,
+        // 否则落回原标识符路径(方法调用 a.len() 等不受影响)。
+        // Enum.Variant → const.i32 判别值;Enum.Variant(args) → 载荷
+        // 构造(值…, const 名长, new.instance, const 字段数,
+        // construct.instance —— 镜像宿主 generic_registry 路径 5128-5147)
+        var is_enum_path = false
+        var variant = ""
+        if p_peek(p, 1) == "Dot" {
+            var seg = p_peek_text(p, 2)
+            var dk = name + "." + seg
+            if cg_const_lookup(c, dk) != -999999 || cg_ctor_lookup(c, dk) >= 0 {
+                is_enum_path = true
+                variant = seg
+            }
+        }
+        if is_enum_path {
+            p_next(p)
+            p_next(p)
+            p_next(p)
+            var key = name + "." + variant
+            if p_kind(p) == "LParen" {
+                var fc = cg_ctor_lookup(c, key)
+                if fc < 0 {
+                    cg_err(c, "unknown enum ctor: " + key)
+                    return
+                }
+                cg_call_args(c, p)
+                var nm = key.len()
+                emit(c, "const.i32", nm.str(), nm)
+                emit(c, "new.instance", "\"" + key + "\"", 0)
+                emit(c, "const.i32", fc.str(), fc)
+                emit(c, "construct.instance", "", 0)
+            } else {
+                var dv = cg_const_lookup(c, key)
+                emit(c, "const.i32", dv.str(), dv)
+            }
+        } else {
         p_next(p)
         if name == "print" && p_kind(p) == "LParen" {
             cg_call_args(c, p)
@@ -405,6 +527,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
             cg_emit_load(c, idx)
             c.arr_flag = cg_var_arr(c, idx)
+        }
         }
     } else if k == "LSquare" {
         // 数组字面量:elems 依次入栈,create.arr count=N(Rust 4865)
@@ -515,11 +638,311 @@ fn cg_call_args(mut c CG, mut p P) {
 
 // ── 语句发射(.line 由语句步行者发,见 cg_stmts) ────────────────
 
+// ── 枚举声明注册(Plan 447 部分② Phase 6:镜像宿主 Stmt::EnumDecl 的
+// enum_values + generic_registry 注册,零字节码)────────────────
+
+fn cg_enum_decl(mut c CG, mut p P) {
+    p_next(p)
+    if !is_name_kind(p_kind(p)) {
+        cg_err(c, "expected enum name")
+        return
+    }
+    var name = p_text(p)
+    p_next(p)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var next_val = 0
+    var idx = 0
+    while c.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+        if !is_name_kind(p_kind(p)) {
+            cg_err(c, "expected variant name")
+            return
+        }
+        var vname = p_text(p)
+        p_next(p)
+        var key = name + "." + vname
+        var nfields = 0
+        var has_payload = false
+        if p_kind(p) == "LParen" {
+            p_next(p)
+            skip_empty_lines(p)
+            has_payload = true
+            if p_kind(p) != "RParen" {
+                var more = true
+                while more {
+                    parse_type(p)
+                    nfields = nfields + 1
+                    if p_kind(p) == "Comma" {
+                        p_next(p)
+                        skip_empty_lines(p)
+                    } else {
+                        more = false
+                    }
+                }
+            }
+            p_expect(p, "RParen")
+        } else if p_kind(p) == "LBrace" {
+            p_next(p)
+            skip_empty_lines(p)
+            has_payload = true
+            while c.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+                if !is_name_kind(p_kind(p)) {
+                    cg_err(c, "expected variant field name")
+                    return
+                }
+                p_next(p)
+                if p_kind(p) == "Colon" {
+                    p_next(p)
+                }
+                parse_type(p)
+                nfields = nfields + 1
+                if p_kind(p) == "Comma" {
+                    p_next(p)
+                    skip_empty_lines(p)
+                }
+                skip_empty_lines(p)
+            }
+            p_expect(p, "RBrace")
+        }
+        // 判别值:scalar 链(auto/显式 = N)或载荷变体按位序(镜像宿主
+        // scalar_value.unwrap_or(i);载荷不入 Display 值链)
+        var val = next_val
+        if has_payload {
+            val = idx
+        }
+        if p_kind(p) == "Asn" {
+            p_next(p)
+            if p_kind(p) != "Int" {
+                cg_err(c, "unsupported enum value")
+                return
+            }
+            val = int_val(p_text(p))
+            p_next(p)
+            next_val = val + 1
+        } else if !has_payload {
+            next_val = val + 1
+        }
+        c.consts.push(CGEnum(key, val))
+        if has_payload {
+            c.ctors.push(CGEnum(key, nfields))
+        }
+        idx = idx + 1
+        // 变体间空行:静默跳过
+        while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+            p_next(p)
+        }
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+}
+
+// ── is 语句发射(Plan 447 部分② Phase 6:镜像宿主 Stmt::Is 3417-3800)──
+
+// 臂体:{...} 块(compile_body_inline,不推作用域);return 单语句;
+// 其余单表达式(无 pop,镜像 Stmt::Expr 语句)
+fn cg_is_arm_body(mut c CG, mut p P) {
+    if p_kind(p) == "LBrace" {
+        cg_body_inline(c, p)
+        return
+    }
+    if p_kind(p) == "Return" {
+        cg_stmt(c, p)
+        return
+    }
+    if p_kind(p) == "Break" || p_kind(p) == "Continue" {
+        cg_err(c, "break/continue in is arm unsupported")
+        return
+    }
+    cg_expr(c, p, 0)
+}
+
+// 单模式比较发射:load t;<pattern 表达式>;eq —— 标量枚举判别值直接
+// const.i32,字面量按各自形态
+fn cg_is_pattern_expr(mut c CG, pat E) {
+    if pat.kind == "tag-cover" {
+        var dv = cg_const_lookup(c, pat.name + "." + pat.word)
+        if dv == -999999 {
+            cg_err(c, "unknown enum variant: " + pat.name + "." + pat.word)
+            return
+        }
+        emit(c, "const.i32", dv.str(), dv)
+    } else if pat.kind == "str" {
+        var idx = cg_pool_add(c, pat.name)
+        emit(c, "load.str", "", idx)
+    } else if pat.kind == "char" {
+        var cp = pat.name.char_at(0)
+        emit(c, "const.i32", cp.str(), cp)
+    } else if pat.kind == "int" {
+        emit(c, "const.i32", pat.name, int_val(pat.name))
+    } else {
+        cg_err(c, "unsupported is pattern: " + pat.kind)
+    }
+}
+
+// EqBranch 臂:模式收集(is_pattern 复用)→ 按形态三路发射:
+// ① 载荷变体+实绑定 → is.variant + jmp.z next + 逐槽 get.generic.field
+//   绑定 + 体 + jmp end(continue 式,无共享尾)
+// ② 载荷变体无绑定 → load t;is.variant;共享尾(jmp.z next;体;jmp end)
+// ③ 标量/字面量 → 单模式:load t;pat;eq;共享尾;多模式:or 链
+fn cg_is(mut c CG, mut p P) {
+    p_next(p)
+    cg_expr(c, p, 0)
+    var t = cg_add_var(c, "_is_target", 0)
+    cg_emit_store(c, t)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    var end_jmps List<int> = List.new()
+    while c.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+        var k = p_kind(p)
+        if k == "If" {
+            p_next(p)
+            cg_expr(c, p, 0)
+            var jz = emit(c, "jmp.z", "", -1)
+            p_expect(p, "Arrow")
+            cg_is_arm_body(c, p)
+            var je = emit(c, "jmp", "", -1)
+            end_jmps.push(je)
+            c.ins.get(jz).n = c.ins.len()
+        } else if k == "Else" {
+            p_next(p)
+            p_expect(p, "Arrow")
+            cg_is_arm_body(c, p)
+            // 宿主 Else 臂体后同样发 jmp→end(end 即紧邻指令,无害跳转)
+            var jej = emit(c, "jmp", "", -1)
+            end_jmps.push(jej)
+        } else {
+            var pat = is_pattern(p)
+            var extras List<E> = List.new()
+            while c.err == "" && p_kind(p) == "VBar" {
+                p_next(p)
+                skip_empty_lines(p)
+                var np = is_pattern(p)
+                extras.push(np)
+                skip_empty_lines(p)
+            }
+            p_expect(p, "Arrow")
+            skip_empty_lines(p)
+            var fc = -1
+            if pat.kind == "tag-cover" {
+                fc = cg_ctor_lookup(c, pat.name + "." + pat.word)
+            }
+            var has_real_bind = false
+            if fc >= 0 && pat.args != "" && pat.args != "_" {
+                var binds = split_commas(pat.args)
+                var bi = 0
+                while bi < binds.len() {
+                    if binds.get(bi) != "_" {
+                        has_real_bind = true
+                    }
+                    bi = bi + 1
+                }
+            }
+            if fc >= 0 && has_real_bind {
+                // ① 载荷 + 绑定
+                var key = pat.name + "." + pat.word
+                cg_emit_load(c, t)
+                emit(c, "is.variant", "\"" + key + "\"", 0)
+                var jz2 = emit(c, "jmp.z", "", -1)
+                var binds2 = split_commas(pat.args)
+                var si = 0
+                while si < binds2.len() {
+                    if binds2.get(si) != "_" {
+                        cg_emit_load(c, t)
+                        emit(c, "get.generic.field", "field=" + si.str(), si)
+                        emit(c, "nop", "", 0)
+                        emit(c, "nop", "", 0)
+                        emit(c, "nop", "", 0)
+                        var bidx = cg_add_var(c, binds2.get(si), 0)
+                        cg_emit_store(c, bidx)
+                    }
+                    si = si + 1
+                }
+                cg_is_arm_body(c, p)
+                var je2 = emit(c, "jmp", "", -1)
+                end_jmps.push(je2)
+                c.ins.get(jz2).n = c.ins.len()
+            } else {
+                var shared_jz = -1
+                if fc >= 0 {
+                    // ② 载荷无实绑定:is.variant 后走共享尾
+                    var key2 = pat.name + "." + pat.word
+                    cg_emit_load(c, t)
+                    emit(c, "is.variant", "\"" + key2 + "\"", 0)
+                } else if extras.len() == 0 {
+                    // ③a 单模式:load t;pat;eq
+                    cg_emit_load(c, t)
+                    cg_is_pattern_expr(c, pat)
+                    emit(c, "eq", "", 0)
+                } else {
+                    // ③b or 链:逐模式 eq + jmp.nz 匹配标号;全落空 jmp next
+                    var nz_jmps List<int> = List.new()
+                    cg_emit_load(c, t)
+                    cg_is_pattern_expr(c, pat)
+                    emit(c, "eq", "", 0)
+                    var nz = emit(c, "jmp.nz", "", -1)
+                    nz_jmps.push(nz)
+                    var ei = 0
+                    while ei < extras.len() {
+                        cg_emit_load(c, t)
+                        cg_is_pattern_expr(c, extras.get(ei))
+                        emit(c, "eq", "", 0)
+                        var nz2 = emit(c, "jmp.nz", "", -1)
+                        nz_jmps.push(nz2)
+                        ei = ei + 1
+                    }
+                    var jmp_next = emit(c, "jmp", "", -1)
+                    var mi = 0
+                    while mi < nz_jmps.len() {
+                        c.ins.get(nz_jmps.get(mi)).n = c.ins.len()
+                        mi = mi + 1
+                    }
+                    cg_is_arm_body(c, p)
+                    var je3 = emit(c, "jmp", "", -1)
+                    end_jmps.push(je3)
+                    c.ins.get(jmp_next).n = c.ins.len()
+                    skip_empty_lines(p)
+                    if p_kind(p) == "Comma" {
+                        p_next(p)
+                        skip_empty_lines(p)
+                    }
+                    skip_empty_lines(p)
+                    continue
+                }
+                // 共享尾:jmp.z next;体;jmp end;patch next
+                shared_jz = emit(c, "jmp.z", "", -1)
+                cg_is_arm_body(c, p)
+                var je4 = emit(c, "jmp", "", -1)
+                end_jmps.push(je4)
+                c.ins.get(shared_jz).n = c.ins.len()
+            }
+        }
+        if p_kind(p) == "Comma" {
+            p_next(p)
+            skip_empty_lines(p)
+        }
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+    var e = 0
+    while e < end_jmps.len() {
+        c.ins.get(end_jmps.get(e)).n = c.ins.len()
+        e = e + 1
+    }
+}
+
 fn cg_stmt(mut c CG, mut p P) {
     if c.err != "" {
         return
     }
     var k = p_kind(p)
+    if k == "Enum" {
+        cg_enum_decl(c, p)
+        return
+    }
+    if k == "Is" {
+        cg_is(c, p)
+        return
+    }
     if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
         p_next(p)
         var name = p_text(p)
@@ -883,7 +1306,7 @@ fn cg_serialize(mut c CG) str {
         offs.push(acc)
         var ii = c.ins.get(i)
         if ii.op != "" {
-            acc = acc + i_size(ii.op)
+            acc = acc + i_size_named(ii.op, ii.s)
         }
         i = i + 1
     }
@@ -893,7 +1316,7 @@ fn cg_serialize(mut c CG) str {
         var ins = c.ins.get(j)
         if ins.op != "" {
             var ops = ins.s
-            if ins.op == "jmp" || ins.op == "jmp.z" {
+            if ins.op == "jmp" || ins.op == "jmp.z" || ins.op == "jmp.nz" {
                 ops = "-> 0x" + hex4(offs.get(ins.n))
             } else if ins.op == "call" {
                 var fe = c.fns.get(ins.n)

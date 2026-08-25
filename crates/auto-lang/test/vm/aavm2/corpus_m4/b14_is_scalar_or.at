@@ -1,0 +1,18 @@
+enum TokenKind {
+    Int
+    Uint
+    EOF
+}
+
+fn pick(k TokenKind) str {
+    is k {
+        TokenKind.Int | TokenKind.Uint -> "num"
+        TokenKind.EOF -> "eof"
+    }
+}
+
+fn main() {
+    print(pick(TokenKind.Int))
+    print(pick(TokenKind.Uint))
+    print(pick(TokenKind.EOF))
+}

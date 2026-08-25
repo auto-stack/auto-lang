@@ -1,0 +1,32 @@
+enum Val {
+    VI(int)
+    VN
+}
+
+fn walk(v Val) int {
+    is v {
+        Val.VI(x) -> {
+            if x > 10 {
+                print("large")
+                return x
+            }
+            print("small")
+            return x
+        }
+        else -> {
+            print("none")
+            return 0
+        }
+    }
+}
+
+fn chain(s str) str {
+    is s {
+        "a" -> "A"
+        "b" -> {
+            let t = "B"
+            t
+        }
+        else -> "Z"
+    }
+}

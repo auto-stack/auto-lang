@@ -1,0 +1,22 @@
+fn classify(s str) str {
+    is s {
+        "hello" -> "greeting"
+        else -> "other"
+    }
+}
+
+fn check(n int) str {
+    is n {
+        0 -> "zero"
+        42 -> "answer"
+        else -> "many"
+    }
+}
+
+fn pick(c char) str {
+    is c {
+        'x' -> "ex"
+        'y' -> "why"
+        else -> "other"
+    }
+}
