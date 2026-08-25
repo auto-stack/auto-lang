@@ -316,10 +316,21 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   infix_r/prefix_power/postfix_power/op_display/binop_result 六链一步收编;P2
   Pratt/stmt 巨链 is 化(`expr_with_left` 33 处九连 break ↔ Rust match 臂合并
   parser.rs:2418-2426 等);P4 谓词函数(is_name_kind 等)消解进 is 臂。
+- [>回退] 10.2-Y1 + 10.1-P4 首试(2026-08-26):t_literal_type/is_name_kind/
+  is_unsupported_stmt_kind 三谓词 is 化——M1-M5+AA2R+golden 全绿,但⑤列
+  AA2R 自举转译自身时静默退空(整库 merge 产物 print 为空;同型小输入与
+  单文件 typeinfo 转译均正常;LEN 切片探针又正常)——疑宿主对超大字符串
+  print 出口的边界问题,非 is 形态本身缺陷。已回退保持塔绿(fce116fde 态),
+  谜题留待续作:先以 LEN 探针二分定位宿主 print/输出捕获的尺寸阈值。
 - [ ] 10.2 typeinfo.at:Y1 `t_literal_type/t_binop_result/t_unify` is 化;
   `t_array_elem` 的"(array-type ...)"字符串形状解析 → Type 载荷化(D23/D27 收账;
   枚举载荷跨函数已实证可用)。
-- [ ] 10.3 codegen.at:C1 `I.op: str → enum OpCode`(S4 子集 30 种助记符,编号
+- [x] 10.3 codegen.at(部分:C1+C2 已完成 2026-08-26 提交 fce116fde):
+  enum OpCode + op_name;I.op/emit/i_size 枚举化;cg_binop_mnem→OpCode;
+  10.4-E1 同批完成(engine 49 臂 → is op;矩阵 33/33 绿)。
+- [ ] 10.3-codegen.at 剩余:C3 cg_expr/cg_stmt p_kind 链 is 化(P2 同批)
+- [~] 10.4-engine.at:E1 完成;E2(Val 三载体枚举化)待做
+- [ ] 10.3.C1 `I.op: str → enum OpCode`(S4 子集 30 种助记符,编号
   对齐 opcode.rs);C2 `i_size`/`cg_binop_mnem`/`cg_is_assign_op` is 化(对齐
   opcode.rs:828 operand_size / codegen.rs:5856);C3 cg_expr/cg_stmt p_kind 链
   is 化(D28 行为位:下标赋值两段式游标、FN_PROLOG 占位回填等保留)。

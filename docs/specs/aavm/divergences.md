@@ -12,6 +12,15 @@
   or-臂、9 定界臂内联);lex_string/lex_char/lex_fstr_at 转义链 → `is esc`。
   **新增强化:is-on-int(码点局部)的字符模式**两侧转译器按码点十进制发射
   (主 a2r int_match_scrutinee 旗标 / AA2R ar_is_pattern_text scrut_int 参)。
+- **D11b·parser/typeinfo/codegen P1/P3 收账(2026-08-26 续)**:p_kind/p_peek
+  返回 TokenKind + p_expect 参数化,四文件 840+ 比较位枚举化;新增
+  `enum Op` + p_op()(Parser::op() 直译),六链(prefix_power/postfix_power/
+  infix_l/infix_r/op_display/binop_result)收编 is-on-Op 或臂链;
+  `enum OpCode`(47 助记符 + Blank 哨兵)——I.op 载体枚举化、op_name()
+  为 M4 序列化唯一口径、engine ev_run_t 49 臂分派巨链 is 化;
+  (Y1/P4 谓词 is 化首试因⑤列自举出口问题回退,见计划 10.2 注记。)
+  宿主配套:merge 跨模块枚举名传播;标量枚举 derive Copy(7 golden
+  derive 行合法更新)。
 - **D14 残余·lexer.at L1**:Token.kind/Tok.kind 载体 str → TokenKind
   (构造点 41+4;p_kind/p_peek 以 kind_name 维持 str 边界待 P1;is_comment_kind
   参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,
