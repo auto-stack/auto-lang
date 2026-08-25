@@ -22,3 +22,22 @@ widget App {
         .Reset -> { .count = 0 }
     }
 }
+
+
+// // 简写版：
+// widget App {
+//     model {
+//         var count int = 0
+//     }
+
+//     view {
+//         center {
+//             text `Counter: ${.count}`
+//             row {
+//                 button "-" { onclick: () => {.count -= 1} }
+//                 button "Reset" { onclick: () => {.count = 0} }
+//                 button "+" { onclick: () => {.count += 1} }
+//             }
+//         }
+//     }
+// }
