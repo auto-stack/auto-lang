@@ -4054,7 +4054,22 @@ impl VueGenerator {
                             // side effects (e.g. typing-signal InputChanged) run —
                             // v-model only handles the two-way value binding, not
                             // arbitrary handler logic. Vue allows v-model + @input.
-                            let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                            //
+                            // Plan 008 (auto-os-config dual-backend input contract):
+                            // a single-param input/textarea text handler receives
+                            // the typed TEXT on the vm backend — emit
+                            // $event.target.value so vue matches (multi-param and
+                            // map-literal bindings pass through untouched).
+                            let handler_fn = if matches!(html_tag.as_str(), "input" | "textarea")
+                                && (aura_event.params.is_empty()
+                                    || (aura_event.params.len() == 1
+                                        && !aura_event.params[0].trim().is_empty()
+                                        && aura_event.params[0].trim().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')))
+                            {
+                                format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler))
+                            } else {
+                                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params)
+                            };
                             let handler_name = self.handler_to_function_call(&aura_event.handler);
                             self.used_handlers.insert(handler_name);
                             attrs.push(format!("@input=\"{}\"", handler_fn));
@@ -4110,6 +4125,21 @@ impl VueGenerator {
                                     self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
                                 }
                             }
+                        }
+                        // Plan 008 (auto-os-config dual-backend input contract):
+                        // AFTER the loop-var pass — bare or single-simple-param
+                        // text handlers on input/textarea receive the typed
+                        // TEXT on vm; forward ($event.target as ...).value on
+                        // vue to match (explicit $event / multi-arg / map
+                        // bindings pass through untouched).
+                        if matches!(html_tag.as_str(), "input" | "textarea")
+                            && matches!(event.as_str(), "oninput" | "input" | "onInput" | "onchange" | "change")
+                            && (aura_event.params.is_empty()
+                                || (aura_event.params.len() == 1
+                                    && !aura_event.params[0].trim().is_empty()
+                                    && aura_event.params[0].trim().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')))
+                        {
+                            handler_fn = format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler));
                         }
                         self.used_handlers.insert(handler_name);
                         attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
