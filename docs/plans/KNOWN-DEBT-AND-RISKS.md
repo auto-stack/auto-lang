@@ -84,6 +84,9 @@
 | 428 | ~~阻塞式文件对话框冻结 UI~~ ✅ 已修(2026-08-23 set_parent 落地):`dialog_open/save` 经 Win32 EnumWindows 就地发现主窗口 HWND(本进程最大可见顶层窗口,OnceLock 缓存),rfd `set_parent` 挂属主(raw-window-handle 0.6 直依赖,与 rfd/iced 同实例)——对话框永远浮于应用窗口之上,异常路径的属主禁用态泄漏随之消除。E2E 实证:对话框 GW_OWNER==主窗口、WM_CLOSE 干净取消(handler 完整收尾)、关闭后真实键盘恢复。**未做(残留风险低)**:pick_file 仍同步阻塞 UI 线程(模态期主窗口输入死属正常模态语义,代理事件仍泵,VM/MCP 活);若未来要求模态期主窗口可交互,需异步 handler 框架。 | `vm/native.rs dialog_parent` + 428 计划 §7.5 |
 | 428 | 折叠区滚动按原文行数推进 | 折叠状态下滚轮仍按原始行数滚动——滚过大型折叠区需要"空滚"隐藏行数(视觉无变化但滚动条动)。修法:wheel 路径按 fold-map 跳跃隐藏段(unfold_y 已有反投影基建)。日常编辑器尺度(块 ≤ 数十行)无感知,大文件深折叠才可察觉。 | `core/mod.rs` 滚动路径 + `core/fold.rs` FoldMap |
 
+| 445 | .Tick 跨轨语义分歧 | vue 轨=setInterval 级 running 门控，VM 轨=Plan 402 handler 无条件派发自决——应用需在 handler 内自查 running 兼顾两轨（024 已如此），平台级统一待后续裁定。 | `ui/iced/renderer.rs:6650` / `ui_gen/vue.rs:3228` |
+| 445 | svgdoc 流式性能样本有限 | v1 SVG vs v2 canvas 裁决数据仅 12 点窗口/400ms 实测（2.49/s 无积压）；更大窗口/更高频（16ms/百点级）未测，v2 触发条件留待真实负载。 | `examples/ui/024-charts/tests/golden/stream_perf_sample.txt` |
+
 ## 📋 未来增强（非风险，记录为后续优化方向）
 
 | 计划 | 类别 | 描述 | 引用 |
@@ -97,6 +100,7 @@
 | 308 | a2gd documented gaps | 5 条 Godot demo 逆向翻译 sugar 差距（GDScript `$`/`&""`/三元 sugar、复杂 sub_resource、packed arrays、node metadata、is 工效）显式不实现，留档于归档计划附录。 | `docs/plans/archive/308-*.md` 附录 |
 | 364 | Try/深递归 deferred | a2r 的 `Stmt::Try` 降级 deferred（try 是运行时 catch 模型，不映射 Result）；F4 深递归栈溢出根因未根治（perf 测试用 16MB 线程为 interim 缓解）。 | `trans/rust.rs` / `perf_benchmark_tests.rs:169` |
 | 418 | menubar 估位偏移 | P2-3 菜单面板锚定用字符宽度估算（8+Σ(字符×12+28)）合成 absolute overlay——非测量值，字体/缩放变化时会偏；Plan 422 popover 原语（anchor 定位）落地后退役。 | `renderer.rs menubar 面板合成` |
+| 445 | 几何重算三份内联 | Init/.Tick/.Reset 三处 ~90 行同式几何重算（模块级 fn 不进 vue SFC 的 §0.6.E-3 约束所迫）；435 组件化收口后应收敛为单一渲染函数来源。 | `examples/ui/024-charts/src/front/app.at` |
 | 418 | 工具栏图标偶发变暗 | 观察项：最终构建 3 实例采样亮度一致（231/114）不复现，疑锁屏期 DWM 降级帧假象——复现再查，不主动处理。 | `041 toolbar svg 渲染` |
 | 418 | VM int 推断显示坑 | `File.write_text` 返回值在 handler 内 let 绑定后 `.str()` 显示类型区间（"0-2147483647"）而非字节数——041 ActSave 曾绕过（改语句调用丢弃返回值）；根因（int 字面量区间推断/str 化路径）未查，§7.4 声称"另立债务"但一直未登记，2026-08-23 finish-plan 复审补登。 | `041 src/front/app.at` ActSave + VM 推断路径 |
 | 417-E2 | uninit var 收紧 | `var x T` 无初始化器：VM 合法（Nil 起始）但 a2r 发射 `let mut x: i64 = None;` 死形状（任何类型，非关联类型特有）。2026-08-22 调查：全仓 .at 仅 2 处使用（a2c 11_methods/003，同文件 2 行）；语言规范从未文档化该形态（spec 示例全带初始化器）；bare `var x` 全仓 0 处；auto-man 生成器无此模板。**方向（用户倾向）：parser 要求必须初始化**——代价远小于先前评估，待办：①REPL 单条声明是否豁免需定夺；②上层仓（auto-ai/rust-workspace）.at 源合并前复扫；③a2c 测试改 2 行；④a2r 删 `= None` 分支。 | `parser.rs var/let 声明` + `trans/rust.rs store()` |

@@ -48,6 +48,7 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 407 | a2vue icon/text 表达式 | Complete | lucide 图标子节点 + text 节点 t() 函数调用表达式（golden 005/006 + auto-musk 回流完成） |
 | 403 | 011 计算器 MCP+Grid+多模式 | Complete | 需求全落地 + Phase 403-F 浮点修复；desktop_mcp.py 由 audit-A8 补齐（14/14） |
 | 409 | Widgets Gallery 三模式一致性 | Complete | §1-§10：link 子组件 VM 渲染/主题色/六残留差距全修复；CodeBlock 纯 Auto 化暂缓（登记债务簿） |
+| 445 | 024-charts 图表工坊 demo | Complete | 四类图切换+流式滑窗+双模式 Reset，vue+vm 双轨全链路（desktop_mcp 19/19+golden） |
 
 | 408 | view fn → Vue 组件合成 | Complete | P1–P12 全落地 + auto-musk 试点完成；P5-2 由 audit-A1 修复；P5-4 延期 |
 | 402 | 038 扫雷示例 | Complete | vue 完整 + VM 全流程;实机目视确认由 G3 闭环(desktop_mcp 21/0);rust 后端归 407 |
@@ -63,7 +64,7 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436, 444 (33 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436, 444, 445 (34 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -187,3 +188,4 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [428-code-folding-phase-b.md](../plans/archive/428-code-folding-phase-b.md)
 - [436-setup-interpreter-a2r.md](../plans/archive/436-setup-interpreter-a2r.md)
 - [444-vue-codegen-ash-shell-057.md](../plans/archive/444-vue-codegen-ash-shell-057.md)
+- [445-024-charts.md](../plans/archive/445-024-charts.md)

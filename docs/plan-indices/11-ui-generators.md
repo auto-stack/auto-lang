@@ -60,9 +60,10 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 428 | 代码折叠 Phase B（Route A 逐 run 自绘） | ✅ | fold.rs 区间发现+y 前缀和投影；正文 spans_iter 拆色 fill_text 替代 fill_raw；gutter 两态 chevron+列命中；光标/搜索入折叠区自动揭示；native 2932/2933；041 矩阵 T3b 4/4 + 实机验收通过；验收揪出三既有 bug 全根修（gutter 高度缓存/Ctrl 吞键/对话框无父） |
 | 443 | defineModel 降级收窄（PLAN-037 T4 修正） | ✅ | 仅父级实际绑定(v-model:x 发射点记录)的 model channel 编译 defineModel(对象/数组字面量默认值工厂包裹)，未绑定保持 ref(深响应)；文件级双 pass + auto-man from_workspace 预扫描聚合跨文件绑定；jade e2e 23/23(白板回绿)+demo 9/9+editor vue-tsc 零错；cap_widget_map_model_init 自动回绿（worktree plan-443/model-binding 待合并） |
 | 444 | Vue codegen 五类缺陷修复（auto-shell-057） | ✅ | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text "#"+expr 解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse 检测扩 progress/scroll-area/table+CodeEditor 旧脚手架清理；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
+| 445 | 024-charts 图表工坊 demo | ✅ | 四类图切换+流式滑窗+双模式 Reset，vue+vm 双轨全链路（desktop_mcp 19/19+golden） |
 
 ## Status Summary
-- Completed: 35 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 36 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL
