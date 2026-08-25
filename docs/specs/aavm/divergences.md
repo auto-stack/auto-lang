@@ -3,6 +3,20 @@
 格式:编号(定义见 divergence-rules.md §2 + 本册新增)× 文件 × 理由。
 433 四向对比以本册为"合法差异白名单"。
 
+## 447 部分③(γ 系列改写期收账;2026-08-26 起)
+
+- **D11b·token.at 收账**:keyword_kind 58 臂 if 链 → `is text`、kind_name
+  139 臂 → `is k`(一一对应 Rust match &str / match TokenKind)。D11 哨兵
+  (None→Ident)以 else 臂形态保留。
+- **D11b·lexer.at 收账**:主链 else-if → `is c`(含 digit/alpha 卫语臂交错、
+  or-臂、9 定界臂内联);lex_string/lex_char/lex_fstr_at 转义链 → `is esc`。
+  **新增强化:is-on-int(码点局部)的字符模式**两侧转译器按码点十进制发射
+  (主 a2r int_match_scrutinee 旗标 / AA2R ar_is_pattern_text scrut_int 参)。
+- **D14 残余·lexer.at L1**:Token.kind/Tok.kind 载体 str → TokenKind
+  (构造点 41+4;p_kind/p_peek 以 kind_name 维持 str 边界待 P1;is_comment_kind
+  参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,
+  kind_name 经 else 回 "Unknown" 对齐基线 str 载体行为;aavm 侧补充,Rust 无)。
+
 ## auto/lib/token.at(S1)
 
 - **D11**(×1):`Option<TokenKind>` 返回 → `Ident` 哨兵(keyword_kind 的 None 语义

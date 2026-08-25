@@ -40,64 +40,64 @@ type TFnSig {
 // 但不构造 dump。体内语句交回 t_stmt_walk。
 fn t_fn_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     p_next(p)
-    if p_kind(p) == "Dot" || p_kind(p) == "Lt" {
+    if p_kind(p) == TokenKind.Dot || p_kind(p) == TokenKind.Lt {
         p_err(p, "typeinfo: unsupported fn form ")
         return
     }
-    if p_kind(p) != "Ident" {
+    if p_kind(p) != TokenKind.Ident {
         p_err(p, "typeinfo: expected fn name ")
         return
     }
     var name = p_text(p)
     p_next(p)
     push_scope(p)
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     // 参数:镜像 parse_fn_params 的词法流(mode 词/name/:类型/默认值),绑定入作用域
     skip_empty_lines(p)
     var running = true
     while running && p.err == "" {
         var k = p_kind(p)
-        if k == "View" || k == "Mut" || k == "Move" || k == "Take" || k == "Copy" {
+        if k == TokenKind.View || k == TokenKind.Mut || k == TokenKind.Move || k == TokenKind.Take || k == TokenKind.Copy {
             p_next(p)
         }
-        if p_kind(p) != "Ident" {
+        if p_kind(p) != TokenKind.Ident {
             running = false
         } else {
             var pname = p_text(p)
             p_next(p)
             var ty = "int"
-            if p_kind(p) == "Colon" {
+            if p_kind(p) == TokenKind.Colon {
                 p_next(p)
             }
             if is_type_name(p) {
                 ty = parse_type(p)
             }
-            if p_kind(p) == "Asn" {
+            if p_kind(p) == TokenKind.Asn {
                 p_next(p)
                 expr_pratt(p, 0)
             }
             p_bind(p, pname, ty)
-            if p_kind(p) == "Comma" {
+            if p_kind(p) == TokenKind.Comma {
                 p_next(p)
             } else {
                 running = false
             }
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     var ret = ""
-    if p_kind(p) == "Arrow" {
+    if p_kind(p) == TokenKind.Arrow {
         p_next(p)
         ret = parse_type(p)
         skip_empty_lines(p)
     } else if is_type_name(p) {
         ret = parse_type(p)
         skip_empty_lines(p)
-    } else if p_kind(p) == "LBrace" || p_kind(p) == "Semi" {
+    } else if p_kind(p) == TokenKind.LBrace || p_kind(p) == TokenKind.Semi {
         ret = "void"
     }
     fns.push(TFnSig(name, ret))
-    if p_kind(p) == "Semi" {
+    if p_kind(p) == TokenKind.Semi {
         p_next(p)
         pop_scope(p)
         return
@@ -109,23 +109,23 @@ fn t_fn_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 // fn 体:期望 LBrace,扁平遍历至配对 RBrace(嵌套块按平衡跳过,Missing:
 // 块级作用域)。
 fn t_body_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         t_stmt_walk(p, fns, out)
         if p.err == "" {
             // expect_eos 直译(Semi/Newline/Comma 分隔;不产 nl 行)
             var has_sep = false
-            while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+            while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
                 has_sep = true
                 p_next(p)
             }
-            if p_kind(p) != "EOF" && p_kind(p) != "RBrace" && !has_sep {
+            if p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace && !has_sep {
                 p_err(p, "typeinfo: expected end of statement ")
             }
         }
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
 }
 
 // print(EXPR.type) 查询收集:识别 print 调用且实参以 .type 收尾。
@@ -133,17 +133,17 @@ fn t_body_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 // pos+1 处是否 .type 属性词("type" 是关键字,lex 为 Type;亦容 Ident)
 fn t_is_type_prop(p P) bool {
     var nk = p_peek(p, 1)
-    if nk == "Type" {
+    if nk == TokenKind.Type {
         return true
     }
-    return nk == "Ident" && p_text_at(p, 1) == "type"
+    return nk == TokenKind.Ident && p_text_at(p, 1) == "type"
 }
 
 fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
-    if p_kind(p) != "Ident" || p_text(p) != "print" {
+    if p_kind(p) != TokenKind.Ident || p_text(p) != "print" {
         return 0
     }
-    if p_peek(p, 1) != "LParen" {
+    if p_peek(p, 1) != TokenKind.LParen {
         return 0
     }
     p_next(p)
@@ -151,7 +151,7 @@ fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
     skip_empty_lines(p)
     // 解析实参表达式;若随后是 .type 则收集该表达式的推断型
     var ty = t_infer_expr(p, 0, fns)
-    if p_kind(p) == "Dot" && t_is_type_prop(p) {
+    if p_kind(p) == TokenKind.Dot && t_is_type_prop(p) {
         p_next(p)
         p_next(p)
         if ty == "" {
@@ -160,16 +160,16 @@ fn t_try_print_query(mut p P, mut out List<str>, mut fns List<TFnSig>) int {
         out.push(ty)
     }
     // 其余实参按分隔符消费至 RParen
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RParen {
         t_infer_expr(p, 0, fns)
-        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+        if p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
             p_next(p)
             skip_empty_lines(p)
-        } else if p_kind(p) != "RParen" {
+        } else if p_kind(p) != TokenKind.RParen {
             p_err(p, "typeinfo: expected argument separator ")
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     return 1
 }
 
@@ -189,20 +189,20 @@ fn p_text_at(p P, n int) str {
 
 // 臂体:{...} 块逐语句;return/break/continue 单语句;其余单表达式语句
 fn t_walk_is_arm_body(mut p P, mut fns List<TFnSig>, mut out List<str>) {
-    if p_kind(p) == "LBrace" {
+    if p_kind(p) == TokenKind.LBrace {
         t_body_walk(p, fns, out)
         return
     }
-    if p_kind(p) == "Return" {
+    if p_kind(p) == TokenKind.Return {
         p_next(p)
         var k = p_kind(p)
-        if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
+        if k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.RBrace || k == TokenKind.EOF {
             return
         }
         t_infer_expr(p, 0, fns)
         return
     }
-    if p_kind(p) == "Break" || p_kind(p) == "Continue" {
+    if p_kind(p) == TokenKind.Break || p_kind(p) == TokenKind.Continue {
         p_next(p)
         return
     }
@@ -212,30 +212,30 @@ fn t_walk_is_arm_body(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 fn t_is_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     p_next(p)
     t_infer_expr(p, 0, fns)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
-        if p_kind(p) == "If" {
+    while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
+        if p_kind(p) == TokenKind.If {
             p_next(p)
             t_infer_expr(p, 0, fns)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             t_walk_is_arm_body(p, fns, out)
-        } else if p_kind(p) == "Else" {
+        } else if p_kind(p) == TokenKind.Else {
             p_next(p)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             t_walk_is_arm_body(p, fns, out)
         } else {
             push_scope(p)
             // 模式复用 parser.at 的 is_pattern(游标推进 + tag-cover 绑定
             // 信息:name=枚举名/word=变体名/args=绑定逗号串)
             var pat = is_pattern(p)
-            while p.err == "" && p_kind(p) == "VBar" {
+            while p.err == "" && p_kind(p) == TokenKind.VBar {
                 p_next(p)
                 skip_empty_lines(p)
                 is_pattern(p)
                 skip_empty_lines(p)
             }
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             skip_empty_lines(p)
             if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
                 var binds = split_commas(pat.args)
@@ -251,13 +251,13 @@ fn t_is_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
             t_walk_is_arm_body(p, fns, out)
             pop_scope(p)
         }
-        if p_kind(p) == "Comma" {
+        if p_kind(p) == TokenKind.Comma {
             p_next(p)
             skip_empty_lines(p)
         }
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
 }
 
 fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
@@ -268,24 +268,24 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
         return
     }
     var k = p_kind(p)
-    if k == "Fn" {
+    if k == TokenKind.Fn {
         t_fn_walk(p, fns, out)
         return
     }
-    if k == "Enum" {
+    if k == TokenKind.Enum {
         // 枚举声明(Plan 447 部分② Phase 5):直接复用 parser.at 的
         // parse_enum_decl——载荷类型按 Enum.Variant.slot 入 decls 与
         // parser 侧单一事实源(返回的 dump 串弃置,无走查副作用)
         parse_enum_decl(p)
         return
     }
-    if k == "Is" {
+    if k == TokenKind.Is {
         t_is_walk(p, fns, out)
         return
     }
-    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+    if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
         p_next(p)
-        if p_kind(p) != "Ident" {
+        if p_kind(p) != TokenKind.Ident {
             p_err(p, "typeinfo: expected store name ")
             return
         }
@@ -295,7 +295,7 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
         if is_type_name(p) {
             ty = parse_type(p)
         }
-        if p_kind(p) == "Asn" {
+        if p_kind(p) == TokenKind.Asn {
             p_next(p)
             var ity = t_infer_expr(p, 0, fns)
             if ty == "" {
@@ -314,26 +314,26 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 // 优先级表复用 parser.at 的 infix_l/infix_r/postfix_power/prefix_power。
 
 // 字面量 kind → 型
-fn t_literal_type(k str) str {
-    if k == "Int" || k == "I8" || k == "U8" {
+fn t_literal_type(k TokenKind) str {
+    if k == TokenKind.Int || k == TokenKind.I8 || k == TokenKind.U8 {
         return "int"
     }
-    if k == "Uint" {
+    if k == TokenKind.Uint {
         return "uint"
     }
-    if k == "Float" {
+    if k == TokenKind.Float {
         return "float"
     }
-    if k == "Double" {
+    if k == TokenKind.Double {
         return "double"
     }
-    if k == "True" || k == "False" {
+    if k == TokenKind.True || k == TokenKind.False {
         return "bool"
     }
-    if k == "Char" {
+    if k == TokenKind.Char {
         return "char"
     }
-    if k == "Str" {
+    if k == TokenKind.Str {
         return "str"
     }
     return ""
@@ -377,17 +377,17 @@ fn t_unify(a str, b str) str {
 }
 
 // 二元运算结果型(infer_binop_type 直译)
-fn t_binop_result(op str, l str, r str) str {
-    if op == "Eq" || op == "Neq" || op == "Lt" || op == "Gt" || op == "Le" || op == "Ge" {
+fn t_binop_result(op TokenKind, l str, r str) str {
+    if op == TokenKind.Eq || op == TokenKind.Neq || op == TokenKind.Lt || op == TokenKind.Gt || op == TokenKind.Le || op == TokenKind.Ge {
         return "bool"
     }
-    if op == "Add" || op == "Sub" || op == "Star" || op == "Div" || op == "Mod" {
+    if op == TokenKind.Add || op == TokenKind.Sub || op == TokenKind.Star || op == TokenKind.Div || op == TokenKind.Mod {
         return t_unify(l, r)
     }
-    if op == "AddEq" || op == "SubEq" || op == "MulEq" || op == "DivEq" || op == "ModEq" || op == "Asn" {
+    if op == TokenKind.AddEq || op == TokenKind.SubEq || op == TokenKind.MulEq || op == TokenKind.DivEq || op == TokenKind.ModEq || op == TokenKind.Asn {
         return t_unify(l, r)
     }
-    if op == "And" || op == "Or" {
+    if op == TokenKind.And || op == TokenKind.Or {
         return "bool"
     }
     return ""
@@ -401,53 +401,53 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     var k = p_kind(p)
     var lhs = ""
     // ── 前缀 ──
-    if k == "Add" || k == "Sub" || k == "Not" || k == "Star" {
+    if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Not || k == TokenKind.Star {
         var pow = prefix_power(k)
         p_next(p)
         var operand = t_infer_expr(p, pow, fns)
-        if k == "Not" {
+        if k == TokenKind.Not {
             lhs = "bool"
         } else {
             lhs = operand
         }
-    } else if k == "LParen" {
+    } else if k == TokenKind.LParen {
         p_next(p)
         // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
         lhs = t_infer_expr(p, 0, fns)
         var parts List<str> = List.new()
         var lh2 = lhs + ""
         parts.push(lh2)
-        while p_kind(p) == "Comma" {
+        while p_kind(p) == TokenKind.Comma {
             p_next(p)
             var e = t_infer_expr(p, 0, fns)
             parts.push(e)
         }
-        p_expect(p, "RParen")
+        p_expect(p, TokenKind.RParen)
         if parts.len() > 1 {
             lhs = t_join_types(parts)
         }
-    } else if k == "LSquare" {
+    } else if k == TokenKind.LSquare {
         // 数组字面量:元素型取首元素,Display 同 Rust Array
         p_next(p)
         skip_empty_lines(p)
         var first = ""
         var n = 0
-        while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
+        while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RSquare {
             var e = t_infer_expr(p, 0, fns)
             if n == 0 {
                 first = e
             }
             n = n + 1
             var has_sep = false
-            while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+            while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
                 has_sep = true
                 p_next(p)
             }
-            if p_kind(p) != "RSquare" && !has_sep {
+            if p_kind(p) != TokenKind.RSquare && !has_sep {
                 p_err(p, "typeinfo: expected array separator ")
             }
         }
-        p_expect(p, "RSquare")
+        p_expect(p, TokenKind.RSquare)
         if n > 0 {
             lhs = "(array-type (elem " + first + ") (len " + n.str() + "))"
         }
@@ -457,20 +457,20 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         if lit != "" {
             lhs = lit
             p_next(p)
-        } else if k == "Ident" {
+        } else if k == TokenKind.Ident {
             var name = p_text(p)
             p_next(p)
             lhs = p_lookup(p, name)
             // 调用后缀:注册表查返回类型
-            if p_kind(p) == "LParen" {
+            if p_kind(p) == TokenKind.LParen {
                 lhs = t_fn_ret(fns, name)
                 parse_args(p)
             }
             // 下标后缀:数组元素型
-            if p_kind(p) == "LSquare" {
+            if p_kind(p) == TokenKind.LSquare {
                 p_next(p)
                 t_infer_expr(p, 0, fns)
-                p_expect(p, "RSquare")
+                p_expect(p, TokenKind.RSquare)
                 lhs = t_array_elem(lhs)
             }
         } else {
@@ -481,12 +481,12 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     // ── 中缀循环 ──
     while p.err == "" {
         var opk = p_kind(p)
-        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" {
+        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen {
             break
         }
         // .type 属性:停走留给调用方(print 查询)消费——它是作用于整个
         // 表达式的后缀属性,不是方法调用
-        if opk == "Dot" && t_is_type_prop(p) {
+        if opk == TokenKind.Dot && t_is_type_prop(p) {
             break
         }
         if !is_op_kind(opk) {
@@ -498,7 +498,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
             break
         }
         p_next(p)
-        if opk == "Or" || opk == "And" {
+        if opk == TokenKind.Or || opk == TokenKind.And {
             skip_empty_lines(p)
         }
         var rhs = t_infer_expr(p, infix_r(opk), fns)
@@ -538,15 +538,15 @@ fn typecheck_dump(source str) str {
     var fns List<TFnSig> = List.new()
     var out List<str> = List.new()
     skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != "EOF" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF {
         t_stmt_walk(p, fns, out)
         if p.err == "" {
             var has_sep = false
-            while p_kind(p) == "Semi" || p_kind(p) == "Newline" || p_kind(p) == "Comma" {
+            while p_kind(p) == TokenKind.Semi || p_kind(p) == TokenKind.Newline || p_kind(p) == TokenKind.Comma {
                 has_sep = true
                 p_next(p)
             }
-            if p_kind(p) != "EOF" && !has_sep {
+            if p_kind(p) != TokenKind.EOF && !has_sep {
                 p_err(p, "typeinfo: expected end of statement ")
             }
         }

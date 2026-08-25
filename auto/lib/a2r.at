@@ -398,13 +398,25 @@ fn ar_is_cur_mut_param(a Ar, name str) bool {
     if fi < 0 {
         return false
     }
-    var ps = a.fns.get(fi).params
+    var f = a.fns.get(fi)
+    var ps = f.params
     var i = 0
     while i < ps.len() {
         if ps.get(i).name == name && ps.get(i).mode == "mut" {
             return true
         }
         i = i + 1
+    }
+    // Plan 447 ③-前置(⑤列基线修复):逃逸分析提升的参数(ar_prescan_fn
+    // 的 mut_params——未声明 mut 但体内被突变)在 Rust 签名同是 &mut;
+    // 调用点同样需要 &mut *x 再借用,否则 E0596(ar_is_pattern_text 的
+    // ar_err(a, ...) 实证)。
+    var pj = 0
+    while pj < f.mut_params.len() {
+        if f.mut_params.get(pj) == name {
+            return true
+        }
+        pj = pj + 1
     }
     return false
 }
@@ -451,7 +463,7 @@ fn ar_is_mutated(a Ar, name str) bool {
 // ── 裸名类型解析(预扫描/签名用;D39:不经 D38b 内联 Display) ──
 
 fn ar_bare_type(mut p P) str {
-    if p_kind(p) != "Ident" {
+    if p_kind(p) != TokenKind.Ident {
         p_err(p, "expected type name ")
         return ""
     }
@@ -461,12 +473,12 @@ fn ar_bare_type(mut p P) str {
         b = name
     }
     p_next(p)
-    if p_kind(p) == "Lt" {
+    if p_kind(p) == TokenKind.Lt {
         p_next(p)
         skip_empty_lines(p)
         var args = ""
         var first = true
-        while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Gt" {
+        while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.Gt {
             var at = ar_bare_type(p)
             skip_empty_lines(p)
             if !first {
@@ -474,12 +486,12 @@ fn ar_bare_type(mut p P) str {
             }
             args = args + at
             first = false
-            if p_kind(p) == "Comma" {
+            if p_kind(p) == TokenKind.Comma {
                 p_next(p)
                 skip_empty_lines(p)
             }
         }
-        p_expect(p, "Gt")
+        p_expect(p, TokenKind.Gt)
         return name + "<" + args + ">"
     }
     return b
@@ -488,18 +500,18 @@ fn ar_bare_type(mut p P) str {
 // ── 语句/表达式 token 推进工具(括号平衡) ─────────────────────
 
 fn ar_skip_stmt(mut p P) {
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Newline" && p_kind(p) != "Semi" && p_kind(p) != "RBrace" {
-        if p_kind(p) == "LBrace" || p_kind(p) == "LParen" || p_kind(p) == "LSquare" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.Newline && p_kind(p) != TokenKind.Semi && p_kind(p) != TokenKind.RBrace {
+        if p_kind(p) == TokenKind.LBrace || p_kind(p) == TokenKind.LParen || p_kind(p) == TokenKind.LSquare {
             var open = p_kind(p)
-            var close = "RBrace"
-            if open == "LParen" {
-                close = "RParen"
-            } else if open == "LSquare" {
-                close = "RSquare"
+            var close = TokenKind.RBrace
+            if open == TokenKind.LParen {
+                close = TokenKind.RParen
+            } else if open == TokenKind.LSquare {
+                close = TokenKind.RSquare
             }
             var depth = 0
             var running = true
-            while running && p_kind(p) != "EOF" {
+            while running && p_kind(p) != TokenKind.EOF {
                 var k = p_kind(p)
                 if k == open {
                     depth = depth + 1
@@ -518,18 +530,18 @@ fn ar_skip_stmt(mut p P) {
 }
 
 fn ar_skip_expr_tokens(mut p P) {
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "Comma" && p_kind(p) != "RParen" && p_kind(p) != "Newline" {
-        if p_kind(p) == "LParen" || p_kind(p) == "LSquare" || p_kind(p) == "LBrace" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.Comma && p_kind(p) != TokenKind.RParen && p_kind(p) != TokenKind.Newline {
+        if p_kind(p) == TokenKind.LParen || p_kind(p) == TokenKind.LSquare || p_kind(p) == TokenKind.LBrace {
             var open = p_kind(p)
-            var close = "RParen"
-            if open == "LSquare" {
-                close = "RSquare"
-            } else if open == "LBrace" {
-                close = "RBrace"
+            var close = TokenKind.RParen
+            if open == TokenKind.LSquare {
+                close = TokenKind.RSquare
+            } else if open == TokenKind.LBrace {
+                close = TokenKind.RBrace
             }
             var depth = 0
             var running = true
-            while running && p_kind(p) != "EOF" {
+            while running && p_kind(p) != TokenKind.EOF {
                 var k = p_kind(p)
                 if k == open {
                     depth = depth + 1
@@ -557,22 +569,22 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
     var name = p_text(p)
     p_next(p)
     var ps List<ArParam> = List.new()
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     skip_empty_lines(p)
     var running = true
     while running && p.err == "" {
         var mode = "view"
         var k = p_kind(p)
-        if k == "View" || k == "Copy" {
+        if k == TokenKind.View || k == TokenKind.Copy {
             p_next(p)
-        } else if k == "Mut" {
+        } else if k == TokenKind.Mut {
             mode = "mut"
             p_next(p)
-        } else if k == "Move" || k == "Take" {
+        } else if k == TokenKind.Move || k == TokenKind.Take {
             mode = "mut"
             p_next(p)
         }
-        if p_kind(p) != "Ident" {
+        if p_kind(p) != TokenKind.Ident {
             if mode != "view" {
                 p_err(p, "expected param name ")
             }
@@ -581,18 +593,18 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
             var pname = p_text(p)
             p_next(p)
             var ty = "int"
-            if p_kind(p) == "Colon" {
+            if p_kind(p) == TokenKind.Colon {
                 p_next(p)
             }
             if is_type_name(p) {
                 ty = ar_bare_type(p)
             }
             ps.push(ArParam(pname, ty, mode))
-            if p_kind(p) == "Asn" {
+            if p_kind(p) == TokenKind.Asn {
                 p_next(p)
                 ar_skip_expr_tokens(p)
             }
-            if p_kind(p) == "Comma" {
+            if p_kind(p) == TokenKind.Comma {
                 p_next(p)
                 skip_empty_lines(p)
             } else {
@@ -600,9 +612,9 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
             }
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     var ret = "void"
-    if p_kind(p) == "Arrow" {
+    if p_kind(p) == TokenKind.Arrow {
         p_next(p)
         ret = ar_bare_type(p)
         skip_empty_lines(p)
@@ -611,7 +623,7 @@ fn ar_prescan_fn(mut a Ar, mut p P) {
         skip_empty_lines(p)
     }
     var mp List<str> = List.new()
-    if p_kind(p) == "LBrace" {
+    if p_kind(p) == TokenKind.LBrace {
         var save = p.pos
         var saved_mut List<str> = List.new()
         ar_scan_mutations(a, p)
@@ -645,15 +657,15 @@ fn ar_prescan_type(mut a Ar, mut p P) {
     }
     var name = p_text(p)
     p_next(p)
-    if p_kind(p) == "Lt" || p_kind(p) == "Asn" || p_kind(p) == "Is" || p_kind(p) == "As" || p_kind(p) == "Has" {
+    if p_kind(p) == TokenKind.Lt || p_kind(p) == TokenKind.Asn || p_kind(p) == TokenKind.Is || p_kind(p) == TokenKind.As || p_kind(p) == TokenKind.Has {
         p_err(p, "v2 unsupported: type decl modifier ")
         return
     }
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var fields List<ArField> = List.new()
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
-        if p_kind(p) == "Fn" || p_kind(p) == "Static" || p_kind(p) == "Hash" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+        if p_kind(p) == TokenKind.Fn || p_kind(p) == TokenKind.Static || p_kind(p) == TokenKind.Hash {
             p_err(p, "v2 unsupported: type body member ")
             return
         }
@@ -663,11 +675,11 @@ fn ar_prescan_type(mut a Ar, mut p P) {
         }
         var fname = p_text(p)
         p_next(p)
-        if p_kind(p) == "Colon" {
+        if p_kind(p) == TokenKind.Colon {
             p_next(p)
         }
         var fty = ar_bare_type(p)
-        if p_kind(p) == "Asn" {
+        if p_kind(p) == TokenKind.Asn {
             p_err(p, "v2 unsupported: member default ")
             return
         }
@@ -675,7 +687,7 @@ fn ar_prescan_type(mut a Ar, mut p P) {
         expect_eos(p)
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     a.tys.push(ArTy(name, fields))
 }
 
@@ -687,17 +699,17 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
     }
     var name = p_text(p)
     p_next(p)
-    if p_kind(p) == "Lt" {
+    if p_kind(p) == TokenKind.Lt {
         p_err(p, "v2 unsupported: enum generic ")
         return
     }
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var vs List<str> = List.new()
     // Plan 447 部分② W3:每变体载荷的 Rust 文本(""=单元/标量)
     var pays List<str> = List.new()
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
-        if p_kind(p) == "Fn" || p_kind(p) == "Static" || p_kind(p) == "Hash" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
+        if p_kind(p) == TokenKind.Fn || p_kind(p) == TokenKind.Static || p_kind(p) == TokenKind.Hash {
             p_err(p, "v2 unsupported: enum body member ")
             return
         }
@@ -710,7 +722,7 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
         // Plan 447 部分② W3:元组载荷 Name(T1, T2) → Rust 文本 "i64, String";
         // 结构体载荷 Name{...} 暂不支持(语料不含)
         var pay = ""
-        if p_kind(p) == "LParen" {
+        if p_kind(p) == TokenKind.LParen {
             p_next(p)
             skip_empty_lines(p)
             var more = true
@@ -720,21 +732,21 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
                     pay = pay + ", "
                 }
                 pay = pay + ar_rust_ty(at)
-                if p_kind(p) == "Comma" {
+                if p_kind(p) == TokenKind.Comma {
                     p_next(p)
                     skip_empty_lines(p)
                 } else {
                     more = false
                 }
             }
-            p_expect(p, "RParen")
-        } else if p_kind(p) == "LBrace" {
+            p_expect(p, TokenKind.RParen)
+        } else if p_kind(p) == TokenKind.LBrace {
             p_err(p, "v2 unsupported: enum struct payload ")
             return
         }
-        if p_kind(p) == "Asn" {
+        if p_kind(p) == TokenKind.Asn {
             p_next(p)
-            if p_kind(p) != "Int" {
+            if p_kind(p) != TokenKind.Int {
                 p_err(p, "v2 unsupported: enum value ")
                 return
             }
@@ -745,14 +757,14 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
         expect_eos(p)
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     a.ens.push(ArEnum(name, vs, pays))
 }
 
 // ── fn 体再赋值预扫描(var → let mut 判定) ────────────────────
 
-fn ar_is_asn_kind(k str) bool {
-    return k == "Asn" || k == "AddEq" || k == "SubEq" || k == "MulEq" || k == "DivEq" || k == "ModEq"
+fn ar_is_asn_kind(k TokenKind) bool {
+    return k == TokenKind.Asn || k == TokenKind.AddEq || k == TokenKind.SubEq || k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq
 }
 
 fn ar_is_mutating_method(name str) bool {
@@ -764,16 +776,16 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
     var depth = 1
     p_next(p)
     skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != "EOF" && depth > 0 {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && depth > 0 {
         var k = p_kind(p)
-        if k == "LBrace" {
+        if k == TokenKind.LBrace {
             depth = depth + 1
             p_next(p)
-        } else if k == "RBrace" {
+        } else if k == TokenKind.RBrace {
             depth = depth - 1
             p_next(p)
-        } else if k == "Ident" {
-            if p.pos > 0 && p.toks.get(p.pos - 1).kind == "Dot" {
+        } else if k == TokenKind.Ident {
+            if p.pos > 0 && p.toks.get(p.pos - 1).kind == TokenKind.Dot {
                 // 字段名位(前一 token 为 Dot):不按绑定处理
                 p_next(p)
             } else {
@@ -782,19 +794,19 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
             if ar_is_asn_kind(p_peek(p, 1)) {
                 a.mutated.push(name)
                 p_next(p)
-            } else if p_peek(p, 1) == "Dot" {
+            } else if p_peek(p, 1) == TokenKind.Dot {
                 var j2 = p.pos + 1
                 var asn_found = false
                 var mut_found = false
                 var scanning = true
                 while scanning && j2 + 2 < p.toks.len() {
                     var nk2 = p.toks.get(j2 + 2).kind
-                    if nk2 == "Dot" {
+                    if nk2 == TokenKind.Dot {
                         j2 = j2 + 2
                     } else if ar_is_asn_kind(nk2) {
                         asn_found = true
                         scanning = false
-                    } else if nk2 == "LParen" {
+                    } else if nk2 == TokenKind.LParen {
                         var mname = p.toks.get(j2 + 1).text
                         if ar_is_mutating_method(mname) {
                             mut_found = true
@@ -808,14 +820,14 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                     a.mutated.push(name)
                 }
                 p_next(p)
-            } else if p_peek(p, 1) == "LParen" {
+            } else if p_peek(p, 1) == TokenKind.LParen {
                 var fi = ar_fn_find(a, name)
                 p_next(p)
                 p_next(p)
                 var argi = 0
                 skip_empty_lines(p)
-                while p.err == "" && p_kind(p) != "RParen" && p_kind(p) != "EOF" {
-                    if p_kind(p) == "Ident" {
+                while p.err == "" && p_kind(p) != TokenKind.RParen && p_kind(p) != TokenKind.EOF {
+                    if p_kind(p) == TokenKind.Ident {
                         ar_lu_record(a, p_text(p), p.pos)
                         if fi >= 0 {
                             var ps = a.fns.get(fi).params
@@ -825,13 +837,13 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
                         }
                     }
                     ar_skip_expr_tokens(p)
-                    if p_kind(p) == "Comma" {
+                    if p_kind(p) == TokenKind.Comma {
                         p_next(p)
                         skip_empty_lines(p)
                         argi = argi + 1
                     }
                 }
-                p_expect(p, "RParen")
+                p_expect(p, TokenKind.RParen)
             } else {
                 p_next(p)
             }
@@ -877,68 +889,68 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
     ar_reset_expr(a)
     var k = p_kind(p)
     var cur = ""
-    if k == "Sub" || k == "Add" || k == "Not" || k == "Star" {
+    if k == TokenKind.Sub || k == TokenKind.Add || k == TokenKind.Not || k == TokenKind.Star {
         var pow = prefix_power(k)
         p_next(p)
         var operand = ar_expr(a, p, pow)
         if a.err != "" {
             return ""
         }
-        if k == "Sub" {
+        if k == TokenKind.Sub {
             cur = "-" + operand
-        } else if k == "Not" {
+        } else if k == TokenKind.Not {
             cur = "!" + operand
             a.ty = "bool"
-        } else if k == "Star" {
+        } else if k == TokenKind.Star {
             cur = "*" + operand
         } else {
             cur = "+" + operand
         }
         a.prec = 60
-    } else if k == "Int" {
+    } else if k == TokenKind.Int {
         cur = int_val(p_text(p)).str()
         p_next(p)
         a.ty = "int"
-    } else if k == "Uint" {
+    } else if k == TokenKind.Uint {
         cur = int_val(p_text(p)).str()
         p_next(p)
         a.ty = "uint"
-    } else if k == "Float" || k == "Double" {
+    } else if k == TokenKind.Float || k == TokenKind.Double {
         cur = p_text(p)
         p_next(p)
         a.ty = "float"
-    } else if k == "True" || k == "False" {
+    } else if k == TokenKind.True || k == TokenKind.False {
         cur = p_text(p)
         p_next(p)
         a.ty = "bool"
-    } else if k == "Char" {
+    } else if k == TokenKind.Char {
         cur = "'" + ar_escape_char(p_text(p)) + "'"
         p_next(p)
         a.ty = "char"
-    } else if k == "Str" {
+    } else if k == TokenKind.Str {
         cur = "\"" + ar_escape_str(p_text(p)) + "\""
         p_next(p)
         a.ty = "str"
         a.strk = 1
-    } else if k == "FStrStart" {
+    } else if k == TokenKind.FStrStart {
         cur = ar_fstr_value(a, p)
         a.ty = "str"
         a.strk = 3
         a.infer = 1
-    } else if k == "Nil" || k == "Null" {
+    } else if k == TokenKind.Nil || k == TokenKind.Null {
         p_next(p)
         cur = "None"
         a.ty = ""
-    } else if k == "LParen" {
+    } else if k == TokenKind.LParen {
         p_next(p)
         skip_empty_lines(p)
         cur = ar_expr(a, p, 0)
         skip_empty_lines(p)
-        p_expect(p, "RParen")
-    } else if k == "LSquare" {
+        p_expect(p, TokenKind.RParen)
+    } else if k == TokenKind.LSquare {
         cur = ar_array_literal(a, p)
         a.ty = "array"
-    } else if k == "Ident" {
+    } else if k == TokenKind.Ident {
         var name = p_text(p)
         cur = name
         p_next(p)
@@ -963,7 +975,7 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         }
         a.can_call = 1
     } else {
-        ar_err(a, "unsupported expr atom: " + k)
+        ar_err(a, "unsupported expr atom: " + kind_name(k))
         return ""
     }
     if a.err != "" || p.err != "" {
@@ -984,10 +996,10 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
     while a.err == "" && p.err == "" {
         var opk = p_kind(p)
         var is_post = 0
-        if opk == "EOF" || opk == "Newline" || opk == "Semi" || opk == "LBrace" || opk == "RBrace" || opk == "Comma" || opk == "Arrow" || opk == "DoubleArrow" || opk == "VBar" || opk == "RSquare" || opk == "RParen" || opk == "Colon" {
+        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen || opk == TokenKind.Colon {
             break
         }
-        if opk == "LParen" {
+        if opk == TokenKind.LParen {
             if can_call != 1 {
                 ar_err(a, "unexpected call target")
                 break
@@ -1002,12 +1014,12 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             can_call = 0
             is_post = 1
         }
-        if opk == "Dot" {
+        if opk == TokenKind.Dot {
             if t_is_type_prop(p) {
                 break
             }
             p_next(p)
-            if !is_name_kind(p_kind(p)) && p_kind(p) != "Int" && p_kind(p) != "Uint" {
+            if !is_name_kind(p_kind(p)) && p_kind(p) != TokenKind.Int && p_kind(p) != TokenKind.Uint {
                 ar_err(a, "invalid field after dot")
                 break
             }
@@ -1017,7 +1029,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 cur = "(" + cur + ")"
                 cur_prec = 100
             }
-            if p_kind(p) == "LParen" {
+            if p_kind(p) == TokenKind.LParen {
                 if cur_len == 1 {
                     cur = "(" + cur + ")"
                     cur_len = 0
@@ -1063,12 +1075,12 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             }
             is_post = 1
         }
-        if opk == "LSquare" {
+        if opk == TokenKind.LSquare {
             p_next(p)
             skip_empty_lines(p)
             var idx = ar_expr(a, p, 0)
             skip_empty_lines(p)
-            p_expect(p, "RSquare")
+            p_expect(p, TokenKind.RSquare)
             var idx_lit = 0
             if ar_all_digits(idx) == 1 {
                 idx_lit = 1
@@ -1084,7 +1096,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
         }
         if is_post == 0 {
         if !is_op_kind(opk) {
-            ar_err(a, "expected infix op, got " + opk)
+            ar_err(a, "expected infix op, got " + kind_name(opk))
             break
         }
         var l = infix_l(opk)
@@ -1092,7 +1104,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             break
         }
         p_next(p)
-        if opk == "Or" || opk == "And" {
+        if opk == TokenKind.Or || opk == TokenKind.And {
             skip_empty_lines(p)
         }
         var rhs_pos = p.pos
@@ -1103,13 +1115,13 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
         var rhs_infer = a.infer
         var rhs_len = a.lenflag
         var op_txt = op_display(opk)
-        if opk == "Range" || opk == "RangeEq" {
+        if opk == TokenKind.Range || opk == TokenKind.RangeEq {
             var lt = ar_paren_if(cur, cur_prec, l)
             var rt = ar_paren_if(rhs, rhs_prec, l + 1)
             cur = lt + op_txt + rt
             cur_ty = ""
             cur_infer = 0
-        } else if opk == "Add" && (cur_ty == "str" || rhs_ty == "str") {
+        } else if opk == TokenKind.Add && (cur_ty == "str" || rhs_ty == "str") {
             cur = "format!(\"{}{}\", " + cur + ", " + rhs + ")"
             cur_ty = "str"
             cur_strk = 3
@@ -1140,7 +1152,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             }
             var rhs_txt = ar_paren_if(rhs, rhs_prec, l + 1)
             cur = lhs_txt + " " + op_txt + " " + rhs_txt
-            if opk == "Eq" || opk == "Neq" || opk == "Lt" || opk == "Gt" || opk == "Le" || opk == "Ge" || opk == "And" || opk == "Or" {
+            if opk == TokenKind.Eq || opk == TokenKind.Neq || opk == TokenKind.Lt || opk == TokenKind.Gt || opk == TokenKind.Le || opk == TokenKind.Ge || opk == TokenKind.And || opk == TokenKind.Or {
                 cur_ty = "bool"
                 cur_infer = 1
             } else if cur_ty == "" && rhs_ty != "" {
@@ -1271,24 +1283,24 @@ fn ar_all_digits(t str) int {
 }
 
 fn ar_array_literal(mut a Ar, mut p P) str {
-    p_expect(p, "LSquare")
+    p_expect(p, TokenKind.LSquare)
     skip_empty_lines(p)
     var parts List<str> = List.new()
     var first_infer = 0
     var first_ty = ""
-    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RSquare" {
+    while a.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RSquare {
         var e = ar_expr(a, p, 0)
         if parts.len() == 0 {
             first_infer = a.infer
             first_ty = a.ty
         }
         parts.push(e)
-        while p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+        while p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
             p_next(p)
             skip_empty_lines(p)
         }
     }
-    p_expect(p, "RSquare")
+    p_expect(p, TokenKind.RSquare)
     var out = "vec!["
     var i = 0
     while i < parts.len() {
@@ -1315,10 +1327,10 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
         var depth = 1
         var running = true
         p_next(p)
-        while running && p_kind(p) != "EOF" {
-            if p_kind(p) == "LParen" {
+        while running && p_kind(p) != TokenKind.EOF {
+            if p_kind(p) == TokenKind.LParen {
                 depth = depth + 1
-            } else if p_kind(p) == "RParen" {
+            } else if p_kind(p) == TokenKind.RParen {
                 depth = depth - 1
                 if depth == 0 {
                     running = false
@@ -1327,7 +1339,7 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             p_next(p)
         }
         // 越过 .field 链再判赋值(get(...).f.g = ... 同为 place)
-        while p_kind(p) == "Dot" {
+        while p_kind(p) == TokenKind.Dot {
             p_next(p)
             p_next(p)
         }
@@ -1357,6 +1369,11 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
         a.ty = "str"
         a.strk = 3
         a.lenflag = 0
+        // 447-③前置:接收者带 as i64 尾码(char_at/len 发射)时先括号
+        // ((... as i64).to_string();裸拼是 cast 后接方法调用,解析错)
+        if recv.len() >= 7 && recv.slice(recv.len() - 7, recv.len()) == " as i64" {
+            return "(" + recv + ").to_string()"
+        }
         return recv + ".to_string()"
     }
     if word == "new" && recv == "List" {
@@ -1556,10 +1573,10 @@ fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
     if fn_name != "" {
         fi = ar_fn_find(a, fn_name)
     }
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     skip_empty_lines(p)
     var argi = 0
-    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+    while a.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RParen {
         var arg_pos = p.pos
         var e = ar_expr(a, p, 0)
         var ety = a.ty
@@ -1591,15 +1608,15 @@ fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
         }
         out.push(e)
         argi = argi + 1
-        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+        if p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
             p_next(p)
             skip_empty_lines(p)
-        } else if p_kind(p) != "RParen" {
+        } else if p_kind(p) != TokenKind.RParen {
             ar_err(a, "expected arg separator ")
             break
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     return out
 }
 
@@ -1613,6 +1630,12 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
     }
     if ar_is_str_ty(prm_ty) {
         if strk == 3 {
+            return text + ".as_str()"
+        }
+        // Plan 447 ③-前置(⑤列基线修复):List.get 索引形(ty=str,strk=0)
+        // 发射为 xs[i].clone()(owned String)——同样需要 .as_str() 借用,
+        // 否则 String 入 &str 参数位 E0308(镜像主 a2r 同族修复)。
+        if strk == 0 && ar_is_str_ty(ty) {
             return text + ".as_str()"
         }
         return text
@@ -1714,29 +1737,29 @@ fn ar_call_tail(mut a Ar, mut p P, callee str) str {
 }
 
 fn ar_print_tail(mut a Ar, mut p P) str {
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     skip_empty_lines(p)
     var fmt = ""
     var args_txt = ""
     var n_args = 0
     var first_is_lit = 0
     var first_lit = ""
-    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RParen" {
+    while a.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RParen {
         var is_lit = 0
         var piece = ""
-        if n_args == 0 && p_kind(p) == "FStrStart" {
+        if n_args == 0 && p_kind(p) == TokenKind.FStrStart {
             ar_fstr_parse(a, p)
             var q2 = "\""
             var fout = "println!(" + q2 + ar_escape_str(a.fstr_fmt) + q2
             if a.fstr_args != "" {
                 fout = fout + ", " + a.fstr_args
             }
-            p_expect(p, "RParen")
+            p_expect(p, TokenKind.RParen)
             a.ty = "void"
             a.strk = 0
             a.infer = 0
             return fout + ")"
-        } else if n_args == 0 && p_kind(p) == "Str" {
+        } else if n_args == 0 && p_kind(p) == TokenKind.Str {
             first_lit = ar_escape_str(p_text(p))
             p_next(p)
             is_lit = 1
@@ -1751,15 +1774,15 @@ fn ar_print_tail(mut a Ar, mut p P) str {
             args_txt = args_txt + piece
         }
         n_args = n_args + 1
-        if p_kind(p) == "Comma" || p_kind(p) == "Newline" {
+        if p_kind(p) == TokenKind.Comma || p_kind(p) == TokenKind.Newline {
             p_next(p)
             skip_empty_lines(p)
-        } else if p_kind(p) != "RParen" {
+        } else if p_kind(p) != TokenKind.RParen {
             ar_err(a, "expected arg separator in print ")
             break
         }
     }
-    p_expect(p, "RParen")
+    p_expect(p, TokenKind.RParen)
     var out = ""
     if n_args == 0 {
         out = "println!()"
@@ -1799,7 +1822,7 @@ fn ar_print_tail(mut a Ar, mut p P) str {
 // ── 语句发射 ──────────────────────────────────────────────────
 
 fn ar_stmts(mut a Ar, mut p P) {
-    while a.err == "" && p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while a.err == "" && p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         ar_stmt(a, p)
         if a.err != "" || p.err != "" {
             return
@@ -1827,22 +1850,22 @@ fn ar_scan_is_multi(mut a Ar, mut p P) {
     p_next(p)
     skip_empty_lines(p)
     var depth = 1
-    while p.err == "" && p_kind(p) != "EOF" && depth > 0 {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && depth > 0 {
         var k = p_kind(p)
-        if k == "LBrace" {
+        if k == TokenKind.LBrace {
             depth = depth + 1
-        } else if k == "RBrace" {
+        } else if k == TokenKind.RBrace {
             depth = depth - 1
-        } else if k == "Is" {
-            var n1 = "EOF"
+        } else if k == TokenKind.Is {
+            var n1 = TokenKind.EOF
             if p.pos + 1 < p.toks.len() {
                 n1 = p.toks.get(p.pos + 1).kind
             }
-            var n2 = "EOF"
+            var n2 = TokenKind.EOF
             if p.pos + 2 < p.toks.len() {
                 n2 = p.toks.get(p.pos + 2).kind
             }
-            if n1 == "Ident" && n2 == "LBrace" {
+            if n1 == TokenKind.Ident && n2 == TokenKind.LBrace {
                 var nm = p.toks.get(p.pos + 1).text
                 var found = -1
                 var ci = 0
@@ -1894,18 +1917,18 @@ fn ar_is_has_str_pattern(mut p P) int {
     var depth = 1
     var in_body = 0
     var hit = 0
-    while p.err == "" && p_kind(p) != "EOF" && depth > 0 && hit == 0 {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && depth > 0 && hit == 0 {
         var k = p_kind(p)
-        if k == "LBrace" {
+        if k == TokenKind.LBrace {
             depth = depth + 1
-        } else if k == "RBrace" {
+        } else if k == TokenKind.RBrace {
             depth = depth - 1
         } else if depth == 1 {
-            if k == "Arrow" {
+            if k == TokenKind.Arrow {
                 in_body = 1
-            } else if k == "Newline" || k == "Comma" {
+            } else if k == TokenKind.Newline || k == TokenKind.Comma {
                 in_body = 0
-            } else if k == "Str" && in_body == 0 {
+            } else if k == TokenKind.Str && in_body == 0 {
                 hit = 1
             }
         }
@@ -1916,7 +1939,7 @@ fn ar_is_has_str_pattern(mut p P) int {
 }
 
 // 模式 E → Rust 模式文本(tag-cover → Enum::Variant(binds);字面量直出)
-fn ar_is_pattern_text(a Ar, pat E) str {
+fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
     if pat.kind == "tag-cover" {
         // 载荷变体 → Variant(binds);单元/标量变体 → 裸 Variant 路径
         var ei = ar_enum_find(a, pat.name)
@@ -1940,6 +1963,11 @@ fn ar_is_pattern_text(a Ar, pat E) str {
         return "\"" + ar_escape_str(pat.name) + "\""
     }
     if pat.kind == "char" {
+        // 447-③前置:int 型 scrutinee(码点局部,如 lexer 的 char_at 结果)——
+        // 字符模式发码点十进制(镜像主 a2r;'n' 模式对 i64 是 E0308)
+        if scrut_int == 1 {
+            return pat.name.char_at(0).str()
+        }
         return "'" + pat.name + "'"
     }
     if pat.kind == "int" {
@@ -1977,10 +2005,42 @@ fn ar_is_body_coerce(a Ar, body str) str {
     return body
 }
 
+// is 臂体三形态:单表达式内联 / 多语句块 / 空块(镜像主 a2r write_match_arm_body;
+// 447-③前置:lexer is 主链的块状臂体实证补齐——此前 corpus 全单表达式臂)
+fn ar_is_arm_body(mut a Ar, mut p P, head str, tail_is int) {
+    if p_kind(p) == TokenKind.LBrace {
+        p_next(p)
+        skip_empty_lines(p)
+        if p_kind(p) == TokenKind.RBrace {
+            p_next(p)
+            ar_line(a, head + " => {},")
+            return
+        }
+        ar_line(a, head + " => {")
+        a.indent = a.indent + 1
+        ar_stmts(a, p)
+        p_expect(p, TokenKind.RBrace)
+        skip_empty_lines(p)
+        a.indent = a.indent - 1
+        ar_line(a, "},")
+        return
+    }
+    var body = ar_expr(a, p, 0)
+    if tail_is == 1 {
+        body = ar_is_body_coerce(a, body)
+    }
+    ar_line(a, head + " => " + body + ",")
+}
+
 // is 语句发射:match <scrut> { 模式臂..., };(语句位;尾值位无分号)
 fn ar_is(mut a Ar, mut p P, tail_is int) {
     p_next(p)
     var scrut = ar_expr(a, p, 0)
+    // 447-③前置:scrutinee 为 int 型标识符时字符模式发码点(ar_is_pattern_text)
+    var scrut_int = 0
+    if e_is_simple_ident(scrut) == 1 && ar_vty(a, scrut) == "int" {
+        scrut_int = 1
+    }
     // str 模式前瞻须在越过 { 之前(游标正落在 LBrace 上)
     var has_str_pat = ar_is_has_str_pattern(p)
     // H5:同 fn 内 ≥2 次 is 同一标识符 → match &v(str 模式臂除外:
@@ -1999,43 +2059,35 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
             scrut = scrut + ".as_str()"
         }
     }
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     ar_line(a, "match " + scrut + " {")
     a.indent = a.indent + 1
-    while a.err == "" && p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+    while a.err == "" && p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
         var k = p_kind(p)
-        if k == "If" {
+        if k == TokenKind.If {
             p_next(p)
             var cond = ar_expr(a, p, 0)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             skip_empty_lines(p)
-            var body = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body = ar_is_body_coerce(a, body)
-            }
-            ar_line(a, "_guard if " + cond + " => " + body + ",")
-        } else if k == "Else" {
+            ar_is_arm_body(a, p, "_guard if " + cond, tail_is)
+        } else if k == TokenKind.Else {
             p_next(p)
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             skip_empty_lines(p)
-            var body2 = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body2 = ar_is_body_coerce(a, body2)
-            }
-            ar_line(a, "_ => " + body2 + ",")
+            ar_is_arm_body(a, p, "_", tail_is)
         } else {
             var pat = is_pattern(p)
-            var ptxt = ar_is_pattern_text(a, pat)
+            var ptxt = ar_is_pattern_text(a, pat, scrut_int)
             // or-臂(W2):| 连接
-            while a.err == "" && p.err == "" && p_kind(p) == "VBar" {
+            while a.err == "" && p.err == "" && p_kind(p) == TokenKind.VBar {
                 p_next(p)
                 skip_empty_lines(p)
                 var np = is_pattern(p)
-                ptxt = ptxt + " | " + ar_is_pattern_text(a, np)
+                ptxt = ptxt + " | " + ar_is_pattern_text(a, np, scrut_int)
                 skip_empty_lines(p)
             }
-            p_expect(p, "Arrow")
+            p_expect(p, TokenKind.Arrow)
             skip_empty_lines(p)
             // 载荷绑定登记(镜像 H6:按枚举载荷表入作用域)
             if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
@@ -2063,19 +2115,15 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
                     }
                 }
             }
-            var body3 = ar_expr(a, p, 0)
-            if tail_is == 1 {
-                body3 = ar_is_body_coerce(a, body3)
-            }
-            ar_line(a, ptxt + " => " + body3 + ",")
+            ar_is_arm_body(a, p, ptxt, tail_is)
         }
-        if p_kind(p) == "Comma" {
+        if p_kind(p) == TokenKind.Comma {
             p_next(p)
             skip_empty_lines(p)
         }
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     a.indent = a.indent - 1
     if tail_is == 1 {
         ar_line(a, "}")
@@ -2089,11 +2137,11 @@ fn ar_stmt(mut a Ar, mut p P) {
         return
     }
     var k = p_kind(p)
-    if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
+    if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared {
         ar_store(a, p, k)
         return
     }
-    if k == "If" {
+    if k == TokenKind.If {
         var if_pos = p.pos
         var save_vif = a.value_if
         if a.tail_no_semi == 1 && a.tail_start == if_pos {
@@ -2103,11 +2151,11 @@ fn ar_stmt(mut a Ar, mut p P) {
         a.value_if = save_vif
         return
     }
-    if k == "For" {
+    if k == TokenKind.For {
         ar_for(a, p)
         return
     }
-    if k == "Is" {
+    if k == TokenKind.Is {
         var is_pos = p.pos
         var tail_is = 0
         if a.tail_no_semi == 1 && a.tail_start == is_pos {
@@ -2116,39 +2164,39 @@ fn ar_stmt(mut a Ar, mut p P) {
         ar_is(a, p, tail_is)
         return
     }
-    if k == "While" {
+    if k == TokenKind.While {
         ar_while(a, p)
         return
     }
-    if k == "Loop" {
+    if k == TokenKind.Loop {
         p_next(p)
         ar_line(a, "loop {")
         ar_block_body(a, p)
         ar_line(a, "}")
         return
     }
-    if k == "Break" {
+    if k == TokenKind.Break {
         p_next(p)
         ar_line(a, "break;")
         return
     }
-    if k == "Continue" {
+    if k == TokenKind.Continue {
         p_next(p)
         ar_line(a, "continue;")
         return
     }
-    if k == "Return" {
+    if k == TokenKind.Return {
         ar_return(a, p)
         return
     }
-    if k == "LBrace" {
+    if k == TokenKind.LBrace {
         ar_line(a, "{")
         ar_block_body(a, p)
         ar_line(a, "}")
         return
     }
-    if k == "Fn" || k == "Type" || k == "Enum" || is_unsupported_stmt_kind(k) {
-        ar_err(a, "v2 unsupported stmt in body: " + k)
+    if k == TokenKind.Fn || k == TokenKind.Type || k == TokenKind.Enum || is_unsupported_stmt_kind(k) {
+        ar_err(a, "v2 unsupported stmt in body: " + kind_name(k))
         return
     }
     // 表达式语句
@@ -2169,9 +2217,9 @@ fn ar_stmt(mut a Ar, mut p P) {
     }
 }
 
-fn ar_store(mut a Ar, mut p P, kw str) {
+fn ar_store(mut a Ar, mut p P, kw TokenKind) {
     p_next(p)
-    if p_kind(p) == "LParen" {
+    if p_kind(p) == TokenKind.LParen {
         ar_err(a, "v2 unsupported: destructure store ")
         return
     }
@@ -2193,7 +2241,7 @@ fn ar_store(mut a Ar, mut p P, kw str) {
     var init_infer = 0
     var init_arr = ""
     var init_pos = 0
-    if p_kind(p) == "Asn" {
+    if p_kind(p) == TokenKind.Asn {
         p_next(p)
         has_init = 1
         init_pos = p.pos
@@ -2240,7 +2288,7 @@ fn ar_store(mut a Ar, mut p P, kw str) {
         }
     }
     var kw_txt = "let"
-    if kw == "Var" {
+    if kw == TokenKind.Var {
         kw_txt = "let mut"
     }
     var line = kw_txt + " " + name
@@ -2261,9 +2309,9 @@ fn ar_if(mut a Ar, mut p P) {
     var done = false
     var had_else = 0
     while done == false {
-        if p_kind(p) == "Else" {
+        if p_kind(p) == TokenKind.Else {
             p_next(p)
-            if p_kind(p) == "If" {
+            if p_kind(p) == TokenKind.If {
                 p_next(p)
                 var c2 = ar_expr(a, p, 0)
                 ar_line(a, "} else if " + c2 + " {")
@@ -2306,12 +2354,12 @@ fn ar_branch_body(mut a Ar, mut p P) {
 }
 
 fn ar_block_body(mut a Ar, mut p P) {
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     a.indent = a.indent + 1
     ar_vscope(a)
     skip_empty_lines(p)
     ar_stmts(a, p)
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
     ar_vunscope(a)
     a.indent = a.indent - 1
 }
@@ -2326,29 +2374,29 @@ fn ar_while(mut a Ar, mut p P) {
 
 fn ar_for(mut a Ar, mut p P) {
     p_next(p)
-    if p_kind(p) == "LBrace" {
+    if p_kind(p) == TokenKind.LBrace {
         ar_line(a, "loop {")
         ar_block_body(a, p)
         ar_line(a, "}")
         return
     }
-    if p_kind(p) == "Let" || p_kind(p) == "Var" {
-        ar_store(a, p, "Let")
-        p_expect(p, "Semi")
+    if p_kind(p) == TokenKind.Let || p_kind(p) == TokenKind.Var {
+        ar_store(a, p, TokenKind.Let)
+        p_expect(p, TokenKind.Semi)
         var c0 = ar_expr(a, p, 0)
         ar_line(a, "while " + c0 + " {")
         ar_block_body(a, p)
         ar_line(a, "}")
         return
     }
-    if p_kind(p) == "Ident" && p_peek(p, 1) == "In" {
+    if p_kind(p) == TokenKind.Ident && p_peek(p, 1) == TokenKind.In {
         var name = p_text(p)
         p_next(p)
         p_next(p)
         ar_vscope(a)
         var it = ar_expr(a, p, 18)
         var it_prec = a.prec
-        if p_kind(p) == "Range" || p_kind(p) == "RangeEq" {
+        if p_kind(p) == TokenKind.Range || p_kind(p) == TokenKind.RangeEq {
             var op = op_display(p_kind(p))
             p_next(p)
             var end = ar_expr(a, p, 0)
@@ -2373,7 +2421,7 @@ fn ar_for(mut a Ar, mut p P) {
 fn ar_return(mut a Ar, mut p P) {
     p_next(p)
     var k = p_kind(p)
-    if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
+    if k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.RBrace || k == TokenKind.EOF {
         ar_line(a, "return;")
         return
     }
@@ -2405,12 +2453,12 @@ fn ar_struct_derive(a Ar, ti int) str {
 
 // 跳过源 type/enum 声明残余(发射查表完成,游标只需越过声明)
 fn ar_skip_decl(mut p P) {
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         ar_skip_stmt(p)
         expect_eos(p)
         skip_empty_lines(p)
     }
-    p_expect(p, "RBrace")
+    p_expect(p, TokenKind.RBrace)
 }
 
 fn ar_emit_type(mut a Ar, mut p P) {
@@ -2421,7 +2469,7 @@ fn ar_emit_type2(mut a Ar, mut p P, pubkw str) {
     p_next(p)
     var name = p_text(p)
     p_next(p)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var ti = ar_ty_find(a, name)
     var derive_txt = ar_struct_derive(a, ti)
@@ -2482,7 +2530,7 @@ fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
     p_next(p)
     var name = p_text(p)
     p_next(p)
-    p_expect(p, "LBrace")
+    p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
     var ei = ar_enum_find(a, name)
     var vs = a.ens.get(ei).variants
@@ -2525,7 +2573,9 @@ fn ar_emit_enum2(mut a Ar, mut p P, pubkw str) {
         ar_skip_decl(p)
         return
     }
-    ar_line(a, "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]")
+    // 447-③P1: all-unit variants → derive Copy (enum passed by value and then reused: op_display(op) then binop_result(op) is E0382;
+    // mirror main a2r's rule of the same period)
+    ar_line(a, "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]")
     ar_line(a, pubkw + "enum " + name + " {")
     a.indent = a.indent + 1
     var i = 0
@@ -2582,9 +2632,9 @@ fn ar_fn_scan_tail(mut a Ar, mut p P) {
     skip_empty_lines(p)
     var last_start = -1
     var last_is_expr = 0
-    while p.err == "" && p_kind(p) != "EOF" && p_kind(p) != "RBrace" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         var k = p_kind(p)
-        if k == "Let" || k == "Var" || k == "Const" || k == "Shared" || k == "For" || k == "While" || k == "Loop" || k == "Return" || k == "Break" || k == "Continue" || k == "LBrace" {
+        if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared || k == TokenKind.For || k == TokenKind.While || k == TokenKind.Loop || k == TokenKind.Return || k == TokenKind.Break || k == TokenKind.Continue || k == TokenKind.LBrace {
             last_is_expr = 0
         } else {
             // If 亦可为值位尾(417-E4)
@@ -2602,13 +2652,13 @@ fn ar_fn_scan_tail(mut a Ar, mut p P) {
 
 // 签名跳过(cur 在 `(`)
 fn ar_skip_signature(mut p P) {
-    p_expect(p, "LParen")
+    p_expect(p, TokenKind.LParen)
     var depth = 1
     var running = true
-    while running && p_kind(p) != "EOF" {
-        if p_kind(p) == "LParen" {
+    while running && p_kind(p) != TokenKind.EOF {
+        if p_kind(p) == TokenKind.LParen {
             depth = depth + 1
-        } else if p_kind(p) == "RParen" {
+        } else if p_kind(p) == TokenKind.RParen {
             depth = depth - 1
             if depth == 0 {
                 running = false
@@ -2616,7 +2666,7 @@ fn ar_skip_signature(mut p P) {
         }
         p_next(p)
     }
-    if p_kind(p) == "Arrow" {
+    if p_kind(p) == TokenKind.Arrow {
         p_next(p)
         ar_bare_type(p)
         skip_empty_lines(p)
@@ -2678,7 +2728,7 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
         j = j + 1
     }
     ar_skip_signature(p)
-    if p_kind(p) == "Semi" {
+    if p_kind(p) == TokenKind.Semi {
         p_next(p)
     } else {
         ar_fn_scan_tail(a, p)
@@ -2687,7 +2737,7 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
         p.pos = body_save
         // Plan 447 部分② H5:is scrutinee 计数预扫描(≥2 次者 match &v)
         ar_scan_is_multi(a, p)
-        p_expect(p, "LBrace")
+        p_expect(p, TokenKind.LBrace)
         skip_empty_lines(p)
         a.tail_no_semi = 0
         if a.tail_is_expr == 1 && f.ret != "void" && a.tail_start >= 0 {
@@ -2695,7 +2745,7 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
         }
         ar_stmts(a, p)
         a.tail_no_semi = 0
-        p_expect(p, "RBrace")
+        p_expect(p, TokenKind.RBrace)
     }
     ar_vunscope(a)
     a.indent = a.indent - 1
@@ -2723,7 +2773,7 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
         if pubfs.get(i) == 1 {
             pubkw = "pub "
         }
-        if k == "Fn" {
+        if k == TokenKind.Fn {
             // 前导 /// 文档注释透传(紧邻块,越过单换行;空行断开)
             var di = decls.get(i) - 1
             var docs List<str> = List.new()
@@ -2731,11 +2781,11 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
             var scanning = true
             while scanning && di >= 0 {
                 var tk = p.toks.get(di).kind
-                if tk == "DocComment" {
+                if tk == TokenKind.DocComment {
                     docs.push(p.toks.get(di).text)
                     nl_run = 0
                     di = di - 1
-                } else if tk == "Newline" {
+                } else if tk == TokenKind.Newline {
                     nl_run = nl_run + 1
                     if nl_run > 1 {
                         scanning = false
@@ -2751,9 +2801,9 @@ fn ar_emit_program(mut a Ar, mut p P, decls List<int>, pubfs List<int>, mains Li
                 d = d - 1
             }
             ar_emit_fn2(a, p, pubkw)
-        } else if k == "Type" {
+        } else if k == TokenKind.Type {
             ar_emit_type2(a, p, pubkw)
-        } else if k == "Enum" {
+        } else if k == TokenKind.Enum {
             ar_emit_enum2(a, p, pubkw)
         }
         if a.err != "" || p.err != "" {
@@ -2802,32 +2852,32 @@ fn ar_run(source str, merge int) str {
     var pubfs List<int> = List.new()
     var mains List<int> = List.new()
     skip_empty_lines(p)
-    while p.err == "" && p_kind(p) != "EOF" {
+    while p.err == "" && p_kind(p) != TokenKind.EOF {
         var k = p_kind(p)
         var pubf = 0
-        if k == "Ident" && p_text(p) == "pub" {
+        if k == TokenKind.Ident && p_text(p) == "pub" {
             pubf = 1
             p_next(p)
             k = p_kind(p)
         }
-        if k == "Fn" {
+        if k == TokenKind.Fn {
             var start = p.pos
             p_next(p)
             ar_prescan_fn(a, p)
             decls.push(start)
             pubfs.push(pubf)
-        } else if k == "Type" {
+        } else if k == TokenKind.Type {
             var start2 = p.pos
             ar_prescan_type(a, p)
             decls.push(start2)
             pubfs.push(pubf)
-        } else if k == "Enum" {
+        } else if k == TokenKind.Enum {
             var start3 = p.pos
             ar_prescan_enum(a, p)
             decls.push(start3)
             pubfs.push(pubf)
         } else if is_unsupported_stmt_kind(k) {
-            p_err(p, "v2 unsupported: " + k + " ")
+            p_err(p, "v2 unsupported: " + kind_name(k) + " ")
         } else {
             mains.push(p.pos)
         }

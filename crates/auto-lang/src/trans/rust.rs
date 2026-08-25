@@ -284,6 +284,11 @@ pub struct RustTrans {
     // Plan 447 H4: monotonic counter for hoisted guard-arm scrutinee temps
     // (`__is_0`, `__is_1`, ...). Never reset — uniqueness is all we need.
     is_hoist_counter: usize,
+    // Plan 447 ③-前置: set ONLY while emitting an is-arm's pattern list whose
+    // scrutinee is int-typed — char literal patterns then render as code-point
+    // decimals (Expr::Char). Bodies reset it (their char literals keep the
+    // D37 comparison bridge).
+    int_match_scrutinee: bool,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
     // Plan 016 Phase A A.4: when true, emit json::parse_opt instead of json::parse
@@ -450,6 +455,7 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
+            int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -535,6 +541,7 @@ impl RustTrans {
             local_var_types: HashMap::new(),
             fn_is_scrutinee_counts: HashMap::new(),
             is_hoist_counter: 0,
+            int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -1919,6 +1926,9 @@ impl RustTrans {
                 // never a trait. Never prefix with `impl`.
                 if self.local_struct_types.contains(name.as_str())
                     || self.is_imported_concrete_type(name.as_str())
+                    // Plan 447 ③-P1: locally-declared ENUMS are concrete too
+                    // (p_kind/p_peek return TokenKind; `impl TokenKind` is E0404)
+                    || self.known_enum_names.contains(name.as_str())
                     || name == "None"
                     || name.starts_with("Self::")
                 {
@@ -2074,13 +2084,29 @@ impl RustTrans {
             Expr::Ident(name) => self.local_var_types.get(name.as_str())
                 .map(|ty| matches!(ty, Type::List(_)))
                 .unwrap_or(false),
-            Expr::Dot(inner, field) if matches!(inner.as_ref(), Expr::Ident(_)) => {
+            Expr::Dot(inner, field) => {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
                         if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
-                            return fields.iter().any(|(f, t)|
-                                f == field && matches!(t, Type::List(_)));
+                            if fields.iter().any(|(f, t)|
+                                f == field && matches!(t, Type::List(_))) {
+                                return true;
+                            }
                         }
+                    }
+                    // fall through: the owner may be resolvable via inference
+                    // even when the direct local lookup missed
+                }
+                // Plan 447 ③-前置(②列基线修复): chained receivers —
+                // `a.ens.get(i).pays` — the inner expression's type resolves
+                // recursively (242 #18-1 machinery), so field-of-element
+                // lookups work instead of falling through to Vec::get
+                // (E0277 i64 index / Option compare downstream).
+                let inner_ty = self.infer_type_from_expr(inner);
+                if let Type::User(usr) = inner_ty {
+                    if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
+                        return fields.iter().any(|(f, t)|
+                            f == field && matches!(t, Type::List(_)));
                     }
                 }
                 false
@@ -2281,6 +2307,14 @@ impl RustTrans {
             Expr::Bool(b) => write!(out, "{}", b).map_err(Into::into),
             Expr::Char(c) => {
                 // In a2r, Auto char maps to Rust char (not i32)
+                // Plan 447 ③-前置: is-on-int scrutinee (codepoint locals like
+                // the lexer's char_at results) — char PATTERNS must match the
+                // i64, so emit the code point as a decimal literal
+                // (`match esc { 110 => ... }`; a `'n'` pattern is E0308).
+                if self.int_match_scrutinee {
+                    let code = *c as u32;
+                    return write!(out, "{}", code).map_err(Into::into);
+                }
                 if *c == '\n' {
                     write!(out, "'\\n'")
                 } else if *c == '\t' {
@@ -4261,10 +4295,17 @@ impl RustTrans {
                             if Self::is_borrowing_get_scrutinee(&is.target) {
                                 self.register_get_ref_bindings(patterns);
                             }
+                            // Plan 447 ③-前置: int-typed scrutinee — char
+                            // patterns as code-point decimals (pattern list only).
+                            let saved_int_scrut = self.int_match_scrutinee;
+                            self.int_match_scrutinee = matches!(
+                                self.infer_type_from_expr(&is.target),
+                                Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
                             for (j, pat) in patterns.iter().enumerate() {
                                 if j > 0 { write!(out, " | ")?; }
                                 self.expr(pat, out)?;
                             }
+                            self.int_match_scrutinee = saved_int_scrut;
                             write!(out, " => ")?;
                             self.write_body_inline(body, out)?;
                             write!(out, ",")?;
@@ -6076,7 +6117,7 @@ impl RustTrans {
                     if let Some(rust_name) = rust_method {
                         let lhs_parens = matches!(lhs.as_ref(),
                             Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                        );
+                        ) || Self::is_char_at_call(lhs.as_ref());
                         if lhs_parens { write!(out, "(")?; }
                         self.expr(lhs, out)?;
                         if lhs_parens { write!(out, ")")?; }
@@ -7394,7 +7435,8 @@ impl RustTrans {
                 // parses as `*(x.clone())` (wrong precedence).
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _));
+                ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _))
+                || Self::is_char_at_call(object.as_ref());
                 if needs_i32_cast && !self.len_i32_cast_suppressed { write!(out, "(")?; }
                 if obj_parens { write!(out, "(")?; }
                 self.expr(object, out)?;
@@ -8747,6 +8789,10 @@ impl RustTrans {
                     } else { None }
                 } else { None }
             } else { None };
+            // Plan 447 ③-前置: set when a branch below already emitted the arg
+            // WITH its `.as_str()` borrow — the generic borrow append at the end
+            // of the loop iteration must not fire again.
+            let mut str_stringified_here = false;
             if let Some(name) = bridge_box_ident {
                 // Rust method resolution: `(*ident).clone()` on a Box<T> still
                 // autorefs back to `Box::<T>::clone()` → returns Box<T>, not T.
@@ -8764,6 +8810,49 @@ impl RustTrans {
                 if is_str_param && trim_arg {
                     if let Arg::Pos(expr) = arg {
                         self.expr_as_str(expr, out)?;
+                    }
+                } else if is_str_param
+                    && matches!(arg, Arg::Pos(Expr::Call(c))
+                        if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "str")
+                            && c.args.args.is_empty())
+                {
+                    // Plan 447 ③-前置(②列基线修复): Auto's universal
+                    // `.str()` in a &str slot — emit by RECEIVER type. The
+                    // plain path wrote `x.to_string()` for both str and int
+                    // receivers, then the borrow append gave
+                    // `x.to_string().as_str()` — text-reducer
+                    // fix_string_str_mismatches collapses that to
+                    // `x.as_str()`, E0599 on i64/char/bool receivers
+                    // (codegen.at `emit("const.i32", cp.str(), cp)`).
+                    // Str receivers keep the collapsed form byte-for-byte;
+                    // known numeric receivers go through format! (same shape
+                    // fix_int_as_str produces).
+                    if let Arg::Pos(Expr::Call(c)) = arg {
+                        if let Expr::Dot(recv, _) = c.name.as_ref() {
+                            let recv_ty = self.infer_type_from_expr(recv);
+                            // Numeric AND unresolvable receivers go through
+                            // format! — the text reducer collapses the plain
+                            // `x.to_string().as_str()` form back to `x.as_str()`
+                            // (E0599 on i64). Str-typed receivers keep the
+                            // direct borrow (byte-identical to the collapsed
+                            // legacy form, zero golden drift).
+                            let borrow_direct = matches!(recv_ty,
+                                Type::StrOwned | Type::StrSlice
+                                | Type::StrFixed(_) | Type::CStrLit);
+                            let recv_parens = matches!(recv.as_ref(),
+                                Expr::Bina(_, op, _) if !matches!(op, Op::Dot));
+                            if borrow_direct {
+                                if recv_parens { write!(out, "(")?; }
+                                self.expr(recv, out)?;
+                                if recv_parens { write!(out, ")")?; }
+                                write!(out, ".as_str()")?;
+                            } else {
+                                write!(out, "format!(\"{{}}\", ")?;
+                                self.expr(recv, out)?;
+                                write!(out, ").as_str()")?;
+                            }
+                            str_stringified_here = true;
+                        }
                     }
                 } else if needs_ref_borrow && matches!(arg, Arg::Pos(Expr::Dot(_, _))) {
                     // Plan 018 §Phase 3.5: `&self.field` passed to a `@T` (&T)
@@ -8918,10 +9007,24 @@ impl RustTrans {
             let arg_is_explicit_to_string = if let Arg::Pos(Expr::Call(c)) = arg {
                 matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "to_string")
             } else { false };
+            // Plan 447 ③-前置(②列基线修复): `xs.get(i)` on a List<str> —
+            // the get→index conversion emits `xs[i as usize].clone()` (an
+            // owned String); a &str param slot needs the same borrow as
+            // plain str idents (E0308 otherwise). infer_type_from_expr's
+            // get-arm resolves the element type.
+            let arg_is_str_get = if let Arg::Pos(expr) = arg {
+                matches!(expr, Expr::Call(c)
+                    if c.args.args.len() == 1
+                        && matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
+                    && matches!(self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
                 && !arg_is_bare_refstr_method
                 && !(needs_borrow_unknown_callee && !needs_borrow && arg_is_explicit_to_string)
-                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call || arg_is_str_field) {
+                && !str_stringified_here
+                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call
+                    || arg_is_str_field || arg_is_str_get) {
                 write!(out, ".as_str()")?;
             }
 
@@ -9700,6 +9803,15 @@ impl RustTrans {
             }
             _ => true,
         }
+    }
+
+    /// Plan 447 ③-前置: `x.char_at(i)` emits with a trailing `as i64` cast —
+    /// a method chained on it must parenthesize the receiver
+    /// (`(... as i64).to_string()`; bare `... as i64.to_string()` is a parse
+    /// error, "cast cannot be followed by a method call").
+    fn is_char_at_call(expr: &Expr) -> bool {
+        matches!(expr, Expr::Call(c) if matches!(c.name.as_ref(),
+            Expr::Dot(_, m) if m.as_str() == "char_at"))
     }
 
     /// True when `expr` is a call to a str-returning trim-like method
@@ -13438,6 +13550,13 @@ impl RustTrans {
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
                     // Multi-pattern: 1 | 2 | 3 => ...
+                    // Plan 447 ③-前置: int-typed scrutinee — char literal
+                    // patterns emit as code-point decimals; scoped to the
+                    // pattern list only (bodies keep the D37 char bridge).
+                    let saved_int_scrut = self.int_match_scrutinee;
+                    self.int_match_scrutinee = matches!(
+                        self.infer_type_from_expr(&is_stmt.target),
+                        Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
                     for (i, pat) in patterns.iter().enumerate() {
                         if i > 0 { sink.body.write(b" | ")?; }
                         // In match patterns, Some(ident) binds by value (Auto semantics)
@@ -13583,6 +13702,7 @@ impl RustTrans {
                             self.expr(pat, &mut sink.body)?;
                         }
                     }
+                    self.int_match_scrutinee = saved_int_scrut;
                     sink.body.write(b" => ")?;
                     // Plan 032 G2-core: register this arm's Some(x) bindings
                     // when the scrutinee is a `.get()` (binding is `&V`), so
@@ -15271,10 +15391,14 @@ impl RustTrans {
                 "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
             EnumKind::Scalar { repr_type: Some(_) } => "#[derive(Clone, Debug, PartialEq, Copy)]",
+            // Plan 447 ③-P1: plain scalars are all-unit by definition —
+            // enum values passed by value to helpers then reused
+            // (op_display(op) + binop_result(op)) are E0382 without Copy
+            // (lib TokenKind/Op/OpCode are all this shape).
             EnumKind::Scalar { repr_type: None } if payload_is_eq_safe => {
-                "#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]"
+                "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
-            EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Debug, PartialEq)]",
+            EnumKind::Scalar { repr_type: None } => "#[derive(Clone, Copy, Debug, PartialEq)]",
             _ if all_variants_empty && payload_is_eq_safe => {
                 "#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]"
             }
@@ -20601,6 +20725,11 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
 
         // Pre-populate tag_types with all known enum names for Err boxing detection
         transpiler.tag_types = all_enum_names.clone();
+        // Plan 447 ③-P1: cross-module enum names for the return-type
+        // concrete-check (p_kind -> TokenKind must not become impl TokenKind)
+        for en in &all_enum_names {
+            transpiler.known_enum_names.insert(en.clone());
+        }
 
         // Pre-populate fn_str_param_indices with cross-module function signatures
         for (name, flags) in &global_fn_str_params {
@@ -21341,6 +21470,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         };
         transpiler.current_module_name = cur_mod_name.clone();
         transpiler.tag_types = all_enum_names.clone();
+        // Plan 447 ③-P1: cross-module enum names for the return-type
+        // concrete-check (p_kind -> TokenKind must not become impl TokenKind)
+        for en in &all_enum_names {
+            transpiler.known_enum_names.insert(en.clone());
+        }
 
         // Pre-populate cross-module param indices
         for (name, flags) in &global_fn_str_params {
