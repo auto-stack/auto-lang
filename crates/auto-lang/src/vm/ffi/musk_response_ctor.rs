@@ -784,6 +784,25 @@ fn push_value_from_json(
     Ok(())
 }
 
+/// `musk_extern_dispatch(name, args)` — PLAN-044 generic extern gate.
+/// Stack: name(str), args(list of VM values) -> forwarded value (or null).
+/// The musk `extern_sigs.at` stub bodies call this instead of hand-written
+/// per-name shims: args are marshalled to a JSON array (State params are
+/// simply not included by the caller side), forwarded to the host call
+/// registered under `name` (path (a)); without a host call the fallback is
+/// null — handlers' error envelopes treat it as empty data.
+pub fn shim_musk_extern_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let (args_nv, _args_stake) = pop_value_staked(task, vm);
+    let name = pop_string(task, vm, "musk_extern_dispatch")?;
+    let args_json = crate::vm::ffi::http_server::nv_to_json(vm, args_nv, 0)
+        .unwrap_or_else(|| "[]".to_string());
+    if try_host_forward(&name, task, vm, &args_json)? {
+        return Ok(());
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
 /// `relay_runs_list(s, q)` → `{runs: [...]}`. Forwards to a registered host call
 /// (path (a)) with the Query extractor marshalled into `args_json` (the State
 /// is opaque and carried by the backend via the workspace registry); without a

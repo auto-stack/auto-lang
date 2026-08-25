@@ -6920,6 +6920,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("app_config_effective_daemon_url", shim_app_config_effective_daemon_url);
     // Value-returning data extern (path (a) forwarding; default = empty store).
     natives.register_shim_by_name("relay_runs_list", shim_relay_runs_list);
+    // PLAN-044: generic gate for the whole musk extern surface — the
+    // extern_sigs.at stub bodies call musk_extern_dispatch(name, args).
+    natives.register_shim_by_name("musk_extern_dispatch", shim_musk_extern_dispatch);
 }
 
 // ============================================================================

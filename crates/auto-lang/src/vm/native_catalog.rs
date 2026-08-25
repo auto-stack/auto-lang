@@ -1450,6 +1450,10 @@ macro_rules! for_each_bigvm_native {
             ("sse_plain_event", 3127, Int),
             // Pure-logic value accessors (no Rust-registry dependency).
             ("value_get_str", 3128, String),
+            // PLAN-044: generic musk extern dispatcher — extern_sigs.at stub
+            // bodies call this with (name, [args]); forwards to a registered
+            // host call (path (a)) or pushes null as the no-host fallback.
+            ("musk_extern_dispatch", 3129, Void),
             ("value_get_bool", 3129, Bool),
             ("value_is_null", 3130, Bool),
             ("value_get", 3131, Int),
@@ -2206,6 +2210,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("sse_plain_event", 3127),
     // Pure-logic value accessors.
     ("value_get_str", 3128),
+    ("musk_extern_dispatch", 3129),
     ("value_get_bool", 3129),
     ("value_is_null", 3130),
     ("value_get", 3131),
