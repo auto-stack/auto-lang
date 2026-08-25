@@ -115,6 +115,108 @@ mod plan442_musk_backend_probe {
         }
     }
 
+    /// relay_store deep-dive: line-prefix bisection over the REAL file.
+    /// Hand-crafted minimal repros don't trigger its cascade, so scan the
+    /// real module at every brace-balanced cut point (top-level item
+    /// boundaries) and report the item whose addition flips in the first
+    /// parse error ("Expected end of statement, got Ident<编译期拦截>").
+    #[test]
+    #[ignore = "requires sibling auto-musk checkout; manual Phase-C gate"]
+    fn musk_backend_relay_store_bisect() {
+        let Some(src_dir) = locate_auto_src() else {
+            eprintln!("plan442 musk backend probe: SKIPPED — auto-musk not found");
+            return;
+        };
+        let code = std::fs::read_to_string(src_dir.join("relay_store.at")).expect("read");
+        let lines: Vec<&str> = code.lines().collect();
+        let mut depth = 0i32;
+        let mut cuts: Vec<usize> = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            for c in l.chars() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+            }
+            if depth == 0 {
+                cuts.push(i + 1);
+            }
+        }
+        let deps = corpus_dep_lines(&src_dir);
+        let bis_path = src_dir.join("__plan442_bisect.at");
+        let probe = |n: usize| -> Option<String> {
+            std::fs::write(&bis_path, lines[..n].join("\n")).expect("write bisect");
+            let r = run_driver(&src_dir, "__plan442_bisect", &deps);
+            let _ = std::fs::remove_file(&bis_path);
+            r.err()
+        };
+        let mut prev_err: Option<String> = None;
+        for (idx, &n) in cuts.iter().enumerate() {
+            let err = probe(n);
+            let flipped = match (&err, &prev_err) {
+                (Some(e), None) => Some(e.clone()),
+                (Some(e), Some(p)) if !p.contains("编译期拦截") && e.contains("编译期拦截") => {
+                    Some(e.clone())
+                }
+                _ => None,
+            };
+            if let Some(e) = flipped {
+                let last = cuts[idx.saturating_sub(1)];
+                eprintln!("═══ FLIP at cut {n} (prev cut {last}) — error: {e} ═══");
+                eprintln!("── added lines [{}..{}] ──", last, n - 1);
+                for l in &lines[last..n] {
+                    eprintln!("  | {l}");
+                }
+            }
+            prev_err = err;
+        }
+        eprintln!("═══ full-file error: {prev_err:?} ═══");
+
+        // Greedy item-level shrink: drop top-level items (cut-to-cut spans,
+        // from the front, never the last item) while the target error stays.
+        let target = |e: &Option<String>| matches!(e, Some(s) if s.contains("编译期拦截"));
+        let run_items = |keep: &[usize]| -> Option<String> {
+            let mut text = String::new();
+            for &i in keep {
+                let end = cuts.get(i + 1).copied().unwrap_or(lines.len());
+                text.push_str(&lines[cuts[i]..end].join("\n"));
+                text.push('\n');
+            }
+            std::fs::write(&bis_path, &text).expect("write bisect");
+            let r = run_driver(&src_dir, "__plan442_bisect", &deps);
+            let _ = std::fs::remove_file(&bis_path);
+            r.err()
+        };
+        let mut keep: Vec<usize> = (0..cuts.len()).collect();
+        let mut i = 0;
+        while i < keep.len().saturating_sub(1) {
+            let mut trial = keep.clone();
+            trial.remove(i);
+            if target(&run_items(&trial)) {
+                keep = trial;
+            } else {
+                i += 1;
+            }
+        }
+        eprintln!(
+            "═══ minimal item set ({}/{} items) — error: {:?} ═══",
+            keep.len(),
+            cuts.len(),
+            run_items(&keep)
+        );
+        let mut text = String::new();
+        for &i in &keep {
+            let end = cuts.get(i + 1).copied().unwrap_or(lines.len());
+            for l in &lines[cuts[i]..end] {
+                eprintln!("  | {l}");
+            }
+            text.push_str(&lines[cuts[i]..end].join("\n"));
+            text.push('\n');
+        }
+        eprintln!("══════ end minimal repro ══════");
+    }
+
     /// C2 worklist generator: per-module first-blocker enumeration over the
     /// whole auto-src corpus. PASS = importable + init-clean on the VM.
     #[test]

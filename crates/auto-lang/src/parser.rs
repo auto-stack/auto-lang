@@ -8240,7 +8240,16 @@ impl<'a> Parser<'a> {
                 if self.is_kind(TokenKind::Newline) {
                     self.next();
                 }
-                return Ok(ann);
+                // Plan 442 C2 (relay_store tail): keep looping over the whole
+                // RUN of `#` lines instead of returning after the first.
+                // Body loops (type/ext) fall through to member parsing in the
+                // SAME iteration after this returns — a lone `return` left
+                // cur on the next `#` line, which type_member then ate as a
+                // field name ("Expected end of statement, got Ident<…>" ×20
+                // cascade). A single `#` line before a field worked by
+                // accident (the fall-through parsed that field), which is why
+                // hand-crafted minimal repros never triggered.
+                continue;
             }
 
             self.next(); // skip #
