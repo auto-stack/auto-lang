@@ -612,21 +612,20 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         .map(|m| extract_msg_decl(m))
         .collect();
 
-    // Plan 448 B1: inline-lambda event pre-pass. `onclick: () => { ... }`
-    // values are minted into anonymous events here, before extraction: each
-    // ViewEvent with an inline body is rewritten in place to reference
-    // `.__evt_<event>_<n>` and its body collected for injection as an
-    // on-handler below. The shared counter walks depth-first in declaration
-    // order (direct view first, then view-fn fragments as extraction expands
-    // them), so minted names are stable across regens.
-    let mut view_owned = decl.view.clone();
+    // Plan 448 B1: widget-own inline lambdas (`onclick: () => { ... }`) are
+    // minted at PARSE time — the parser rewrites them into the decl's on-block
+    // and msg list (parser::mint_inline_event_handlers) so BOTH consumers stay
+    // in sync: this extraction path AND the decl-based VM synthesis path
+    // (VmBridge::new_from_decls compiles handlers straight from the decl's
+    // on-block; minting only here left the VM without the functions and clicks
+    // silently no-oped). The thread-local mint context below only serves
+    // view-fn fragment bodies, which expand during extraction (their expansion
+    // context exists only here) under the `__evtf_` prefix — deliberately
+    // distinct from the parser's `__evt_` so the two minters can never collide.
     reset_inline_mints();
-    if let Some(view) = view_owned.as_mut() {
-        collect_inline_events(&mut view.root)?;
-    }
 
     // Extract view tree
-    let view_tree = if let Some(view) = &view_owned {
+    let view_tree = if let Some(view) = &decl.view {
         extract_view_block(view)?
     } else {
         AuraNode::element("div")
@@ -830,14 +829,21 @@ fn take_inline_mints() -> Vec<(String, Vec<crate::ast::Stmt>)> {
     INLINE_MINTS.with(|c| std::mem::take(&mut c.borrow_mut().1))
 }
 
-/// Plan 448 B1: mint inline-lambda event handlers into anonymous events.
+/// Plan 448 B1: mint inline-lambda event handlers living in view-fn FRAGMENT
+/// bodies into anonymous events.
 ///
-/// Walks the view tree depth-first; every `ViewEvent` carrying `inline`
-/// statements (`onclick: () => { .count += 1 }`) is rewritten in place to a
-/// synthetic handler reference `.__evt_<event>_<n>` (n from the shared
-/// counter, so names are deterministic across regens) and its body pushed to
-/// the mint context. Parameterized lambdas are rejected — see the injection
-/// site in `extract_widget_from_decl`.
+/// Called at the two fragment-expansion sites in `extract_view_node`: the
+/// widget's own inline lambdas were already minted at parse time (parser::
+/// mint_inline_event_handlers — single source of truth shared with the
+/// decl-based VM synthesis path), so this only fires for fragment bodies,
+/// whose expansion context exists solely at extraction. Every `ViewEvent`
+/// carrying `inline` statements is rewritten to `.__evtf_<event>_<n>` (the
+/// `__evtf_` prefix deliberately differs from the parser's `__evt_` so the
+/// two minters can never collide) and its body pushed to the mint context,
+/// which the injection step in `extract_widget_from_decl` drains into the
+/// widget's handlers + msg variants. Note: fragment-minted handlers reach the
+/// Vue/Rust/a2ui paths via that injection but NOT the decl-based VM synthesis
+/// — fragment inline lambdas on the iced/VM route are a known v1 edge.
 fn collect_inline_events(node: &mut crate::ast::ViewNode) -> ExtractResult<()> {
     use crate::ast::ViewNode;
     match node {
@@ -894,7 +900,7 @@ fn rewrite_inline_events(events: &mut [ViewEvent]) -> ExtractResult<()> {
             let pattern = INLINE_MINTS.with(|c| {
                 let mut ctx = c.borrow_mut();
                 ctx.0 += 1;
-                format!(".__evt_{}_{}", base, ctx.0)
+                format!(".__evtf_{}_{}", base, ctx.0)
             });
             ev.handler = pattern.clone();
             ev.params.clear();
@@ -1681,11 +1687,11 @@ widget App {
         let mut evs = Vec::new();
         find_button(&widget.view_tree, &mut evs);
         assert_eq!(evs.len(), 1);
-        assert_eq!(evs[0].handler, ".__evt_onclick_1");
+        assert_eq!(evs[0].handler, ".__evtf_onclick_1");
 
-        assert!(widget.handlers.contains_key(".__evt_onclick_1"));
+        assert!(widget.handlers.contains_key(".__evtf_onclick_1"));
         let has_variant = widget.messages.iter()
-            .any(|m| m.variants.iter().any(|v| v.name == "__evt_onclick_1"));
+            .any(|m| m.variants.iter().any(|v| v.name == "__evtf_onclick_1"));
         assert!(has_variant, "variant injected: {:?}", widget.messages);
         clear_view_fragments();
     }

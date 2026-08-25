@@ -29,6 +29,21 @@
 
 首轮实施后逐条对照计划审计，发现并修复/补齐：
 
+0. **VM(iced) 模式点击无效（真 bug，第三轮修复——铸名提前到 parser）**：
+   iced 运行时经 `run_file_dynamic_ui_inner →
+   DynamicComponent::with_registry_and_imports_from_decls → VmBridge::new_from_decls`
+   从 **AST 声明（decl.on）** 合成 VM handler 函数，而首轮 desugar 只注入到
+   提取后的 AuraWidget——视图树带 `__evt_*` 名字但 VM 里没有对应函数，
+   `call_handler_for` 的 HandlerNotFound 被静默吞掉（仅 ASH_DEBUG_VM_LOG 可见）。
+   定位过程：库级复刻（extract/dispatch/view 全通）→ 插桩 update → MCP
+   autoui_action press 实证消息到达且 handler 识别正确但 count 不变 → 追到
+   decl-based 合成分裂。修复：**铸名移到 parser**
+   （`mint_inline_event_handlers`，widget 与 component fn 两个构造点），同时
+   改写事件引用、追加 OnHandler 到 decl.on、追加 MsgVariant 到 decl.messages
+   ——提取路径与 decl 合成路径从此同源。fragment 体内联 lambda 仍在提取期铸名
+   但改用 `__evtf_` 前缀（避免与 parser 铸名冲突；VM 路径不支持为已知 v1 边界，
+   Vue/Rust 路径经注入仍可用）。新增 `test_inline_lambda_event_decl_based_synthesis`
+   （真实应用路径）+ 真源冒烟；MCP e2e 实证 count 0→3→2。
 1. **view fn 片段内联 lambda 静默丢失（真 bug，已修）**：desugar 预pass只走
    `decl.view`，而 view fn 片段在 `extract_view_node` 内部从 thread-local
    注册表展开（Element/Component 两个调用点），完全绕过预pass——实证失败形态

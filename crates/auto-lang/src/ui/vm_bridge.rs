@@ -2269,6 +2269,56 @@ widget OpProbeOrig {
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(11));
     }
 
+    /// Plan 448 B1 follow-up: the REAL iced/VM runtime builds its bridge via
+    /// `new_from_decls` (decl-based synthesis — `run_file_dynamic_ui_inner` →
+    /// `DynamicComponent::with_registry_and_imports_from_decls`), compiling
+    /// handlers straight from the decl's on-block. Inline lambdas are minted
+    /// at PARSE time into that on-block, so this path must synthesize
+    /// `handler_<W>___evt_*` too — minting only at extraction left the VM
+    /// without the functions and clicks silently no-oped (002-counter VM
+    /// mode). call_handler_for mirrors the iced update dispatch exactly.
+    #[test]
+    fn test_inline_lambda_event_decl_based_synthesis() {
+        use crate::parser::Parser;
+
+        let src = concat!(
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    view {\n",
+            "        row {\n",
+            "            button \"+\" { onclick: () => {.count += 1} }\n",
+            "            button \"-\" { onclick: () => {.count -= 1} }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+            _ => None,
+        }).expect("widget decl");
+
+        let mut bridge = VmBridge::new_from_decls(&decl, &[], Vec::new(), &Default::default(), false)
+            .expect("decl-based bridge");
+        let state_obj_id = bridge.state_obj_id();
+
+        assert!(bridge.has_handler("__evt_onclick_1"), "+ handler synthesized from the decl");
+        assert!(bridge.has_handler("__evt_onclick_2"), "- handler synthesized from the decl");
+
+        bridge
+            .call_handler_for("App", "__evt_onclick_1", state_obj_id, &[])
+            .unwrap();
+        bridge
+            .call_handler_for("App", "__evt_onclick_1", state_obj_id, &[])
+            .unwrap();
+        bridge
+            .call_handler_for("App", "__evt_onclick_2", state_obj_id, &[])
+            .unwrap();
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(1));
+    }
+
     /// Plan 448 B1: inline-lambda event through the real pipeline — parse →
     /// extract (mints `__evt_*` handler + variant) → VmBridge synthesis →
     /// dispatch via the real VM. Proves the 002-counter shorthand shape runs

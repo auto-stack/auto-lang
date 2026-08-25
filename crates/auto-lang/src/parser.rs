@@ -12280,7 +12280,11 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::WidgetDecl(WidgetDecl {
+
+        // Plan 448 B1: mint widget-own inline lambda handlers right after the
+        // decl is complete — single source of truth for extraction AND the
+        // decl-based VM synthesis path (see mint_inline_event_handlers).
+        let mut decl = WidgetDecl {
             name,
             messages,
             model,
@@ -12296,7 +12300,142 @@ impl<'a> Parser<'a> {
             watch,
             setup,
             expose,
-        }))
+        };
+        Self::mint_inline_event_handlers(&mut decl)?;
+        Ok(Stmt::WidgetDecl(decl))
+    }
+
+    /// Plan 448 B1: mint `onclick: () => { … }` inline-lambda event handlers
+    /// into explicit msg/on form, in place, right after a widget-shaped decl
+    /// is parsed.
+    ///
+    /// Each ViewEvent carrying an `inline` body is rewritten to reference a
+    /// synthetic `__evt_<event>_<n>` (n counts depth-first in view order —
+    /// deterministic across parses), an `OnHandler` with the lambda body is
+    /// appended to the decl's `on` block (created if absent), and a unit
+    /// `MsgVariant` is appended to the msg list (created if absent).
+    ///
+    /// Minting HERE is load-bearing: extraction builds view/handlers/variants
+    /// from the decl (Vue/Rust/a2ui paths), while the iced VM runtime
+    /// synthesizes handlers STRAIGHT from the decl's on-block
+    /// (`VmBridge::new_from_decls`) — minting only at extraction left the VM
+    /// without the functions and clicks silently no-oped. View-fn fragments
+    /// cannot mint here (their expansion context only exists at extraction);
+    /// they mint there under the `__evtf_` prefix instead.
+    fn mint_inline_event_handlers(decl: &mut WidgetDecl) -> AutoResult<()> {
+        let Some(view) = decl.view.as_mut() else {
+            return Ok(());
+        };
+        let mut counter = 0u32;
+        let mut minted: Vec<(String, Vec<Stmt>)> = Vec::new();
+        Self::mint_view_inline(&mut view.root, &mut counter, &mut minted)?;
+        if minted.is_empty() {
+            return Ok(());
+        }
+        for (pattern, stmts) in minted {
+            let variant_name = pattern.trim_start_matches('.').to_string();
+            let declared = decl.messages.iter()
+                .any(|m| m.variants.iter().any(|v| v.name.as_str() == variant_name));
+            if !declared {
+                if decl.messages.is_empty() {
+                    decl.messages.push(MsgDecl { variants: Vec::new() });
+                }
+                decl.messages[0].variants.push(MsgVariant {
+                    name: Name::from(variant_name.as_str()),
+                    quoted: false,
+                    payload: Vec::new(),
+                    payload_names: Vec::new(),
+                });
+            }
+            let mut body = Body::new();
+            body.stmts = stmts;
+            let on = decl
+                .on
+                .get_or_insert_with(|| OnBlock { handlers: Vec::new() });
+            on.handlers.push(OnHandler {
+                pattern,
+                params: Vec::new(),
+                body,
+                stream: None,
+            });
+        }
+        Ok(())
+    }
+
+    fn mint_view_inline(
+        node: &mut ViewNode,
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+    ) -> AutoResult<()> {
+        match node {
+            ViewNode::Element { events, children, .. } => {
+                Self::mint_events_inline(events, counter, minted)?;
+                for c in children.iter_mut() {
+                    Self::mint_view_inline(c, counter, minted)?;
+                }
+            }
+            ViewNode::ForLoop { body, .. } => {
+                for c in body.iter_mut() {
+                    Self::mint_view_inline(c, counter, minted)?;
+                }
+            }
+            ViewNode::Conditional { then_body, else_body, .. } => {
+                for c in then_body.iter_mut() {
+                    Self::mint_view_inline(c, counter, minted)?;
+                }
+                if let Some(else_nodes) = else_body {
+                    for c in else_nodes.iter_mut() {
+                        Self::mint_view_inline(c, counter, minted)?;
+                    }
+                }
+            }
+            ViewNode::Component { events, .. } => {
+                Self::mint_events_inline(events, counter, minted)?;
+            }
+            ViewNode::Link { children, .. } => {
+                for c in children.iter_mut() {
+                    Self::mint_view_inline(c, counter, minted)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn mint_events_inline(
+        events: &mut [ViewEvent],
+        counter: &mut u32,
+        minted: &mut Vec<(String, Vec<Stmt>)>,
+    ) -> AutoResult<()> {
+        for ev in events.iter_mut() {
+            if let Some(stmts) = ev.inline.take() {
+                if !ev.params.is_empty() {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "inline event lambdas with parameters are not supported yet \
+                             (`{}: ({}) => …`); declare a msg variant and use `on`",
+                            ev.name,
+                            ev.params.join(", ")
+                        ),
+                        span: SourceSpan::new(0.into(), 0),
+                    }
+                    .into());
+                }
+                *counter += 1;
+                // Sanitize the event name (modifiers like `onclick.stop` and
+                // quoted customs like `on"x"` are not identifier-safe).
+                let base: String = ev
+                    .name
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect();
+                let pattern = format!(".__evt_{}_{}", base, counter);
+                ev.handler = pattern.clone();
+                ev.params.clear();
+                minted.push((pattern, stmts));
+            }
+        }
+        Ok(())
     }
 
     /// Parse a widget-level external import block (Vue backend escape hatch):
@@ -13613,7 +13752,9 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::WidgetDecl(WidgetDecl {
+        // Plan 448 B1: component fn is widget sugar — mint its inline lambda
+        // handlers exactly like parse_widget_decl does.
+        let mut decl = WidgetDecl {
             name,
             messages,
             model,
@@ -13635,7 +13776,9 @@ impl<'a> Parser<'a> {
             watch,
             setup,
             expose: Vec::new(),
-        }))
+        };
+        Self::mint_inline_event_handlers(&mut decl)?;
+        Ok(Stmt::WidgetDecl(decl))
     }
 
     /// Plan 425: fragment param type hint (raw token string) → `Type`.
@@ -16938,9 +17081,10 @@ exe hello {
     #[test]
     fn test_event_inline_lambda_parses() {
         // Plan 448 B1: `onclick: () => { ... }` — inline lambda event value.
-        // Both binding spellings (brace block and paren form) must produce a
-        // ViewEvent with an empty handler string, the closure params, and the
-        // lambda body statements; legacy `.Inc` / `.Dec(arg)` are untouched.
+        // Parsing mints each lambda into a synthetic `__evt_<event>_<n>`
+        // handler reference AND appends the matching on-handler + msg variant
+        // to the decl (single source of truth shared with the decl-based VM
+        // synthesis path). Legacy `.Inc` / `.Changed(value)` are untouched.
         let code = concat!(
             "widget App {\n",
             "    model { var count int = 0 }\n",
@@ -16988,19 +17132,31 @@ exe hello {
 
         let btns = events("button");
         assert_eq!(btns.len(), 3);
-        assert_eq!(btns[0].0, "", "inline handler string stays empty");
+        assert_eq!(btns[0].0, ".__evt_onclick_1", "minted handler reference");
         assert!(btns[0].1.is_empty());
-        assert_eq!(btns[0].2, Some(1), "one statement in lambda body");
-        assert_eq!(btns[1].0, "", "paren-form inline lambda");
-        assert_eq!(btns[1].2, Some(1));
+        assert!(btns[0].2.is_none(), "inline consumed by minting");
+        assert_eq!(btns[1].0, ".__evt_onclick_2", "paren-form minted too");
+        assert!(btns[1].2.is_none());
         assert_eq!(btns[2].0, ".Inc", "legacy dot handler untouched");
-        assert!(btns[2].2.is_none());
 
         let inputs = events("input");
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0].0, ".Changed");
         assert_eq!(inputs[0].1, vec!["value".to_string()]);
         assert!(inputs[0].2.is_none());
+
+        // The decl carries the minted on-handlers (bodies moved out of the
+        // view) and the msg variants — the decl-based VM synthesis path
+        // (VmBridge::new_from_decls) reads exactly these.
+        let on = w.on.as_ref().expect("on block injected");
+        let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
+        assert!(patterns.contains(&".__evt_onclick_1"));
+        assert!(patterns.contains(&".__evt_onclick_2"));
+        assert_eq!(on.handlers[0].body.stmts.len(), 1, "lambda body moved into the handler");
+        let variants: Vec<&str> =
+            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert!(variants.contains(&"__evt_onclick_1"));
+        assert!(variants.contains(&"__evt_onclick_2"));
     }
 
     #[test]
