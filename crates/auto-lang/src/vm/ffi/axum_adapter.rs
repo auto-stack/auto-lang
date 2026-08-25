@@ -48,7 +48,12 @@ pub enum ExtractorKind {
 
 impl ExtractorKind {
     fn from_type_name(ty: &str) -> Self {
-        let base = ty.split('<').next().unwrap_or(ty).trim();
+        let mut base = ty.split('<').next().unwrap_or(ty).trim();
+        // PLAN-044: 路径限定形态(axum::http::HeaderMap)取尾段——Type Display
+        // 带完整路径,裸名匹配漏判成 Plain(auth_me 的 headers 参数即此坑)。
+        if let Some(pos) = base.rfind("::") {
+            base = &base[pos + 2..];
+        }
         match base {
             "State" => ExtractorKind::State,
             "Json" => ExtractorKind::Json,
@@ -119,7 +124,6 @@ pub fn sig_entry(param_type_names: &[String]) -> Vec<ExtractorKind> {
         .iter()
         .map(|t| {
             let k = ExtractorKind::from_type_name(t);
-            eprintln!("[AXUMDBG] sig type {t:?} -> {k:?}");
             k
         })
         .collect()
@@ -285,7 +289,6 @@ pub fn push_extractor_args(
                 n += 1;
             }
             ExtractorKind::Headers => {
-                eprintln!("[AXUMDBG] Headers arm, headers_json={headers_json:?}");
                 // PLAN-044: real-header marshalling — musk auth handlers
                 // forward the HeaderMap to externs (auth_token_from_headers
                 // etc.); the opaque placeholder carried no data, so bearer
