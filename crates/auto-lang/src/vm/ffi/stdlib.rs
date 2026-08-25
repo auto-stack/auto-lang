@@ -3726,6 +3726,23 @@ pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, 
     })
 }
 
+/// Plan 442 C2: allocate + store a structured HTTP response and return its
+/// handle. The http_server's response-object path (`lookup_http_response`)
+/// recognizes the handle and writes status/headers/body directly, instead of
+/// JSON-encoding the raw handle. Mirrors `shim_http_response_redirect`'s
+/// allocation convention (NET_HANDLE_COUNTER + thread-local HTTP_RESPONSES).
+pub fn insert_http_response(
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+) -> u64 {
+    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
+    HTTP_RESPONSES.with(|r| {
+        r.borrow_mut().insert(handle, HttpResponseData { status, headers, body });
+    });
+    handle
+}
+
 /// Plan 346 5e (B6): `http.rate_limit(max_requests, window_ms)` — enable the
 /// per-client-IP fixed-window rate limiter on the async HTTP server.
 /// Requests beyond `max_requests` within `window_ms` get 429 + Retry-After.
@@ -6866,6 +6883,25 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("io.read_text_async", shim_io_read_text_async);
     natives.register_shim_by_name("auto.io.write_text_async", shim_io_write_text_async);
     natives.register_shim_by_name("io.write_text_async", shim_io_write_text_async);
+
+    // Plan 442 C2: musk backend extern response-constructor shims. The bare
+    // names resolve via NATIVE_ID_MAP (native_catalog) → fixed ids here; the
+    // shims build HttpResponseData handles served by the response-object path.
+    use crate::vm::ffi::musk_response_ctor::*;
+    natives.register_shim_by_name("ok_response", shim_ok_response);
+    natives.register_shim_by_name("err_response", shim_err_response);
+    natives.register_shim_by_name("json_response", shim_json_response);
+    natives.register_shim_by_name("error_response", shim_error_response);
+    natives.register_shim_by_name("text_response", shim_text_response);
+    natives.register_shim_by_name("empty_response", shim_empty_response);
+    natives.register_shim_by_name("err_json_response", shim_err_json_response);
+    natives.register_shim_by_name("to_response", shim_to_response);
+    natives.register_shim_by_name("resp_is_err", shim_resp_is_err);
+    natives.register_shim_by_name("resp_err_code", shim_resp_err_code);
+    natives.register_shim_by_name("resp_err_message", shim_resp_err_message);
+    natives.register_shim_by_name("sse_named_event", shim_sse_named_event);
+    natives.register_shim_by_name("sse_event", shim_sse_event);
+    natives.register_shim_by_name("sse_plain_event", shim_sse_plain_event);
 }
 
 // ============================================================================

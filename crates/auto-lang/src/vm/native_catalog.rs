@@ -1430,6 +1430,25 @@ macro_rules! for_each_bigvm_native {
             ("realloc_array", 191, Void),
             ("free_array", 192, Void),
 
+            // === Plan 442 C2: musk backend extern response constructors ===
+            // Bare extern_sigs names (no canonical prefix) — the handlers call
+            // them to build HTTP responses; constructors return an i32
+            // HttpResponseData handle, resp_* read the {"error":...} envelope.
+            ("ok_response", 3114, Int),
+            ("err_response", 3115, Int),
+            ("json_response", 3116, Int),
+            ("error_response", 3117, Int),
+            ("text_response", 3118, Int),
+            ("empty_response", 3119, Int),
+            ("err_json_response", 3120, Int),
+            ("to_response", 3121, Int),
+            ("resp_is_err", 3122, Bool),
+            ("resp_err_code", 3123, Int),
+            ("resp_err_message", 3124, String),
+            ("sse_named_event", 3125, Int),
+            ("sse_event", 3126, Int),
+            ("sse_plain_event", 3127, Int),
+
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
             ("String.len", 171, Void),
@@ -2155,6 +2174,21 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("alloc_array", 190),
     ("realloc_array", 191),
     ("free_array", 192),
+    // === Plan 442 C2: musk backend extern response constructors ===
+    ("ok_response", 3114),
+    ("err_response", 3115),
+    ("json_response", 3116),
+    ("error_response", 3117),
+    ("text_response", 3118),
+    ("empty_response", 3119),
+    ("err_json_response", 3120),
+    ("to_response", 3121),
+    ("resp_is_err", 3122),
+    ("resp_err_code", 3123),
+    ("resp_err_message", 3124),
+    ("sse_named_event", 3125),
+    ("sse_event", 3126),
+    ("sse_plain_event", 3127),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

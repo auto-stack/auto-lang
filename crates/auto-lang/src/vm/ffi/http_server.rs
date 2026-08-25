@@ -1209,6 +1209,82 @@ fn new_handler() str {
             );
         }
 
+        /// Plan 442 C2: the musk backend's extern response-constructor shims
+        /// (`ok_response`/`err_response`/`text_response` …) must produce real
+        /// HttpResponseData objects served by the response-object path —
+        /// instead of the empty `extern_sigs` no-op that answered `200 null`.
+        /// Bare names resolve via BIGVM_NATIVES → CALL_NAT, so no `use
+        /// extern_sigs` is needed here.
+        #[test]
+        fn e2e_musk_response_constructors() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/ok")]
+fn ok_handler() int {
+    return ok_response("hello")
+}
+
+#[api(method = "GET", path = "/err")]
+fn err_handler() int {
+    return err_response("boom", 500)
+}
+
+#[api(method = "GET", path = "/text")]
+fn text_handler() int {
+    return text_response("not found", 404)
+}
+
+#[api(method = "GET", path = "/to")]
+fn to_handler() int {
+    return to_response(null, "failed", 500)
+}
+"#, 18745);
+
+            let ok = http_get(port, "/ok");
+            assert!(
+                ok.starts_with("HTTP/1.1 200"),
+                "ok_response status: {}",
+                ok.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&ok), "\"hello\"",
+                "ok_response JSON body: full = {:?}", ok
+            );
+
+            let err = http_get(port, "/err");
+            assert!(
+                err.starts_with("HTTP/1.1 500"),
+                "err_response status: {}",
+                err.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&err), r#"{"error":"boom"}"#,
+                "err_response body: full = {:?}", err
+            );
+
+            let text = http_get(port, "/text");
+            assert!(
+                text.starts_with("HTTP/1.1 404"),
+                "text_response status: {}",
+                text.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&text), "not found",
+                "text_response body: full = {:?}", text
+            );
+
+            // to_response with a null value degrades to err_response.
+            let to = http_get(port, "/to");
+            assert!(
+                to.starts_with("HTTP/1.1 500"),
+                "to_response(null,…) status: {}",
+                to.lines().next().unwrap_or("")
+            );
+            assert_eq!(
+                body_of(&to), r#"{"error":"failed"}"#,
+                "to_response(null,…) body: full = {:?}", to
+            );
+        }
+
         /// Audit B1 (023-realworld real token auth): loads the REAL 023
         /// back-end sources (api.at types + db.at auth logic) and drives the
         /// full auth flow over HTTP. The VM server binds a POST body as ONE
