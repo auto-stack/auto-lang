@@ -2212,6 +2212,63 @@ widget OpProbeOrig {
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(3));
     }
 
+    /// Plan 448 B2: compound assignment on widget state inside a
+    /// VM-synthesized handler (`.count += 1` / `count -= 2`). handler_codegen
+    /// desugars `x op= e` to `x = x op e` before the state rewrite because
+    /// VM codegen's compound-assignment path only accepts Ident LHS — before
+    /// B2 either form aborted the whole widget's handler synthesis with
+    /// "Compound assignment requires a variable on left side".
+    #[test]
+    fn test_handler_compound_assignment_state() {
+        use crate::ast::{Expr, Name, Stmt};
+        use crate::aura::LogicPayload;
+        use auto_val::Op;
+
+        let mut widget = make_test_widget("Counter", vec![AuraStateDef {
+            name: "count".to_string(),
+            type_info: Type::Int,
+            initial: Expr::Int(10),
+            decorators: vec![],
+        }]);
+
+        // `.Inc -> { .count += 1 }` — dot-shorthand LHS: Dot(self, count).
+        let dot_body = vec![Stmt::Expr(Expr::Bina(
+            Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from("self"))),
+                Name::from("count"),
+            )),
+            Op::AddEq,
+            Box::new(Expr::Int(1)),
+        ))];
+        widget
+            .handlers
+            .insert(".Inc".to_string(), LogicPayload::AstStmts(dot_body));
+
+        // `.Dec -> { count -= 2 }` — bare state-field ident LHS.
+        let bare_body = vec![Stmt::Expr(Expr::Bina(
+            Box::new(Expr::Ident(Name::from("count"))),
+            Op::SubEq,
+            Box::new(Expr::Int(2)),
+        ))];
+        widget
+            .handlers
+            .insert(".Dec".to_string(), LogicPayload::AstStmts(bare_body));
+
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        assert!(bridge.has_handler("Inc"), "Inc synthesis must survive += ");
+        assert!(bridge.has_handler("Dec"), "Dec synthesis must survive -=");
+
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(10));
+
+        for _ in 0..3 {
+            bridge.call_handler("Inc", &[]).unwrap();
+        }
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(13));
+
+        bridge.call_handler("Dec", &[]).unwrap();
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(11));
+    }
+
     /// Plan 323 (Option B) full-pipeline proof against the REAL 016-calendar
     /// source: parse app.at + calendar_util.at → collect imported `Fn`s →
     /// `VmBridge::new_with_imports` → `call_handler("Init")` → the imported
