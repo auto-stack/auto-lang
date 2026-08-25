@@ -377,17 +377,17 @@ fn t_unify(a str, b str) str {
 }
 
 // 二元运算结果型(infer_binop_type 直译)
-fn t_binop_result(op TokenKind, l str, r str) str {
-    if op == TokenKind.Eq || op == TokenKind.Neq || op == TokenKind.Lt || op == TokenKind.Gt || op == TokenKind.Le || op == TokenKind.Ge {
+fn t_binop_result(op Op, l str, r str) str {
+    if op == Op.Eq || op == Op.Neq || op == Op.Lt || op == Op.Gt || op == Op.Le || op == Op.Ge {
         return "bool"
     }
-    if op == TokenKind.Add || op == TokenKind.Sub || op == TokenKind.Star || op == TokenKind.Div || op == TokenKind.Mod {
+    if op == Op.Add || op == Op.Sub || op == Op.Mul || op == Op.Div || op == Op.Mod {
         return t_unify(l, r)
     }
-    if op == TokenKind.AddEq || op == TokenKind.SubEq || op == TokenKind.MulEq || op == TokenKind.DivEq || op == TokenKind.ModEq || op == TokenKind.Asn {
+    if op == Op.AddEq || op == Op.SubEq || op == Op.MulEq || op == Op.DivEq || op == Op.ModEq || op == Op.Asn {
         return t_unify(l, r)
     }
-    if op == TokenKind.And || op == TokenKind.Or {
+    if op == Op.And || op == Op.Or {
         return "bool"
     }
     return ""
@@ -402,7 +402,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     var lhs = ""
     // ── 前缀 ──
     if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Not || k == TokenKind.Star {
-        var pow = prefix_power(k)
+        var pow = prefix_power(p_op(k))
         p_next(p)
         var operand = t_infer_expr(p, pow, fns)
         if k == TokenKind.Not {
@@ -493,7 +493,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
             p_err(p, "typeinfo: expected infix operator, got ")
             break
         }
-        var l = infix_l(opk)
+        var l = infix_l(p_op(opk))
         if l == 0 || l < min {
             break
         }
@@ -501,8 +501,8 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         if opk == TokenKind.Or || opk == TokenKind.And {
             skip_empty_lines(p)
         }
-        var rhs = t_infer_expr(p, infix_r(opk), fns)
-        lhs = t_binop_result(opk, lhs, rhs)
+        var rhs = t_infer_expr(p, infix_r(p_op(opk)), fns)
+        lhs = t_binop_result(p_op(opk), lhs, rhs)
     }
     return lhs
 }

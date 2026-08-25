@@ -367,51 +367,54 @@ fn cg_pool_add(mut c CG, s str) int {
 
 // ── 表达式发射 ────────────────────────────────────────────────
 
-fn cg_binop_mnem(k TokenKind) str {
-    if k == TokenKind.Add || k == TokenKind.AddEq {
+fn cg_binop_mnem(k Op) str {
+    if k == Op.Add || k == Op.AddEq {
         return "add"
     }
-    if k == TokenKind.Sub || k == TokenKind.SubEq {
+    if k == Op.Sub || k == Op.SubEq {
         return "sub"
     }
-    if k == TokenKind.Star || k == TokenKind.MulEq {
+    if k == Op.Mul || k == Op.MulEq {
         return "mul"
     }
-    if k == TokenKind.Div || k == TokenKind.DivEq {
+    if k == Op.Div || k == Op.DivEq {
         return "div"
     }
-    if k == TokenKind.Mod || k == TokenKind.ModEq {
+    if k == Op.Mod || k == Op.ModEq {
         return "mod"
     }
-    if k == TokenKind.Eq {
+    if k == Op.Eq {
         return "eq"
     }
-    if k == TokenKind.Neq {
+    if k == Op.Neq {
         return "ne"
     }
-    if k == TokenKind.Lt {
+    if k == Op.Lt {
         return "lt"
     }
-    if k == TokenKind.Gt {
+    if k == Op.Gt {
         return "gt"
     }
-    if k == TokenKind.Le {
+    if k == Op.Le {
         return "le"
     }
-    if k == TokenKind.Ge {
+    if k == Op.Ge {
         return "ge"
     }
-    if k == TokenKind.And {
+    if k == Op.And {
         return "and"
     }
-    if k == TokenKind.Or {
+    if k == Op.Or {
         return "or"
     }
     return ""
 }
 
-fn cg_is_assign_op(k TokenKind) bool {
-    return k == TokenKind.Asn || k == TokenKind.AddEq || k == TokenKind.SubEq || k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq
+fn cg_is_assign_op(k Op) bool {
+    is k {
+        Op.Asn | Op.AddEq | Op.SubEq | Op.MulEq | Op.DivEq | Op.ModEq -> true
+        else -> false
+    }
 }
 
 // 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
@@ -591,11 +594,11 @@ fn cg_expr(mut c CG, mut p P, min int) {
             cg_err(c, "expected infix op, got " + kind_name(opk))
             break
         }
-        var l = infix_l(opk)
+        var l = infix_l(p_op(opk))
         if l == 0 || l < min {
             break
         }
-        if cg_is_assign_op(opk) {
+        if cg_is_assign_op(p_op(opk)) {
             cg_err(c, "nested assignment unsupported")
             break
         }
@@ -605,9 +608,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
         }
         var lhs_str = c.str_flag
         c.str_flag = 0
-        cg_expr(c, p, infix_r(opk))
+        cg_expr(c, p, infix_r(p_op(opk)))
         var rhs_str = c.str_flag
-        var mn = cg_binop_mnem(opk)
+        var mn = cg_binop_mnem(p_op(opk))
         if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
             mn = "str.cat"
             c.str_flag = 1
@@ -1042,7 +1045,7 @@ fn cg_stmt(mut c CG, mut p P) {
     if k == TokenKind.Ident {
         var name = p_text(p)
         var nk = p_peek(p, 1)
-        if cg_is_assign_op(nk) {
+        if cg_is_assign_op(p_op(nk)) {
             var idx = cg_lookup(c, name)
             if idx < 0 {
                 cg_err(c, "unknown ident: " + name)
@@ -1055,7 +1058,7 @@ fn cg_stmt(mut c CG, mut p P) {
                 cg_emit_load(c, idx)
             }
             cg_expr(c, p, 0)
-            var mn = cg_binop_mnem(opk)
+            var mn = cg_binop_mnem(p_op(opk))
             if mn != "" {
                 emit(c, mn, "", 0)
             }

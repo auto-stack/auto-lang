@@ -890,7 +890,7 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
     var k = p_kind(p)
     var cur = ""
     if k == TokenKind.Sub || k == TokenKind.Add || k == TokenKind.Not || k == TokenKind.Star {
-        var pow = prefix_power(k)
+        var pow = prefix_power(p_op(k))
         p_next(p)
         var operand = ar_expr(a, p, pow)
         if a.err != "" {
@@ -1099,7 +1099,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             ar_err(a, "expected infix op, got " + kind_name(opk))
             break
         }
-        var l = infix_l(opk)
+        var l = infix_l(p_op(opk))
         if l == 0 || l < min {
             break
         }
@@ -1108,13 +1108,13 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
             skip_empty_lines(p)
         }
         var rhs_pos = p.pos
-        var rhs = ar_expr(a, p, infix_r(opk))
+        var rhs = ar_expr(a, p, infix_r(p_op(opk)))
         var rhs_ty = a.ty
         var rhs_strk = a.strk
         var rhs_prec = a.prec
         var rhs_infer = a.infer
         var rhs_len = a.lenflag
-        var op_txt = op_display(opk)
+        var op_txt = op_display(p_op(opk))
         if opk == TokenKind.Range || opk == TokenKind.RangeEq {
             var lt = ar_paren_if(cur, cur_prec, l)
             var rt = ar_paren_if(rhs, rhs_prec, l + 1)
@@ -2397,7 +2397,7 @@ fn ar_for(mut a Ar, mut p P) {
         var it = ar_expr(a, p, 18)
         var it_prec = a.prec
         if p_kind(p) == TokenKind.Range || p_kind(p) == TokenKind.RangeEq {
-            var op = op_display(p_kind(p))
+            var op = op_display(p_op(p_kind(p)))
             p_next(p)
             var end = ar_expr(a, p, 0)
             var end_prec = a.prec
