@@ -7003,6 +7003,13 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
         }
 
+        // PLAN-044 (musk vm_entry): bare `Json(d)` constructor (axum
+        // `Json<T>` return form, e.g. musk health() -> ~Json<StatusOk>) —
+        // same wire shape as json_response: 200 + application/json of d.
+        ("", "Json") => {
+            super::musk_response_ctor::shim_json_response(task, vm)?;
+        }
+
         // PLAN-044 (musk vm_entry): axum layer/constructor pass-throughs.
         // The VM emulation ignores layers (CORS/body-limit are handled by the
         // stdnet server per-request); `DefaultBodyLimit.max(n)` only feeds
