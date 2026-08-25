@@ -227,11 +227,23 @@ def run_tests(client):
             time.sleep(1.0)
             tp2 = int(client.state("tickN").get("tickN", "0"))
             result.check("pause stops ticks", tp == tp2, f"{tp}→{tp2}")
+
+            # ---- 6. 双模式：Reset 回到静态月度展示 ----
+            rst = client.find_button("Reset")
+            if rst:
+                client.press(rst)
+                time.sleep(0.5)
+                st = client.state("tickN", "axisLabels", "statsD")
+                result.check("reset tickN=0", st.get("tickN") == "0", st.get("tickN"))
+                result.check("reset labels back to Jan..Jun",
+                             st.get("axisLabels", "").startswith('"Jan'), st.get("axisLabels"))
+                result.check("reset stats back to seed",
+                             "last 214" in st.get("statsD", "") and "max 305" in st.get("statsD", ""),
+                             st.get("statsD"))
+            else:
+                result.check("Reset button found", False, "vnode not found")
     else:
         result.check("Play button found", False, "vnode not found")
-
-    # ---- 6. 几何 golden：lineD 初始路径（切回 line + Pause 后为 Init 值?）
-    # 流式后 lineD 是滑窗数据 —— golden 只钉 donut/legend（确定性）。
 
     return result
 

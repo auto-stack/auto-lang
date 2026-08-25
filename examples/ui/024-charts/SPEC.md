@@ -52,11 +52,14 @@ labels str（月份拼接）、donutLegend str、stats{D,M,T} str
 
 ## Known deferrals (do NOT try to add these — they need unbuilt features)
 
-- **流式更新**（M2 已落地）: `.Tick`（model `interval int = 400` 作周期 +
-  `running` str 门控）每 tick 追加一个数据点（纯整数算术锯齿波
+- **双模式展示**（已落地）: **静态模式** = 初始/Reset 展示种子月度数据
+  （Jan–Jun 三系列，`seed` 为不变式源）；**流式模式** = `.Tick`（model
+  `interval int = 400` 作周期 + `running` str 门控，handler 内自决——
+  Plan 402 语义）每 tick 追加一个数据点（纯整数算术锯齿波
   `150+(tickN*37)%120` 族——f64 值入 record 的比较链未验证，整数保平安）
-  并按 `windowLen`（8/12/20 可调）滑出旧点；line/bar/area 重算，donut
-  保持静态构成。Play/Pause 门控启停（012 惯例）。
+  并按 `windowLen`（8/12/20 可调）滑出旧点；line/bar/area/stats 重算，
+  donut 保持静态构成。Play/Pause/Reset 三键：Play 启动流式、Pause 停、
+  **Reset 重建 monthly=seed 并全量重算（回到静态展示，tickN 归零）**。
 - **数值编辑**（系列数值增删改）: 后续引入（整表重建模式，013 先例）。
 - **组件化渲染函数**（AutoLineChart 等）: 待 Plan 435 统一声明体系合入
   后由 437 收口，M1 页面内联形态。
