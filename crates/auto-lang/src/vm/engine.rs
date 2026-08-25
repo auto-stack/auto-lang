@@ -5594,6 +5594,18 @@ impl AutoVM {
                     };
                     let receiver_nv = receiver_nv;
 
+                    // PLAN-044: unwrap_or 的坍缩 Option 协议——非 null 接收者
+                    // 即 Some(v),unwrap_or(d) = 恒等(丢默认值参);null 接收者
+                    // 由 None 协议臂接管(mpsc/stream 失败前 intercept)。
+                    if method_name == "unwrap_or" && arg_count == 1
+                        && !auto_val::is_null(receiver_nv)
+                    {
+                        let _default_arg = task.ram.pop_nv();
+                        let recv = task.ram.pop_nv();
+                        task.ram.push_nv(recv);
+                        return Ok(StepResult::Continue);
+                    }
+
                     // Plan 442 C2: `.ok()` 恒等直通 —— rust 形态 Result 语义的
                     // VM-native 约定:返回 Result 的 stdlib shim(env.var 等)在
                     // 生产者边界坍缩为 Option 形状(None=TAG_NULL / Some(v)=v 本身),
