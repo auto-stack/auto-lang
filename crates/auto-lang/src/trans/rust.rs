@@ -276,6 +276,14 @@ pub struct RustTrans {
 
     // Track local variable types for string concat detection in Op::Add
     local_var_types: HashMap<AutoStr, Type>,
+    // Plan 447 H5: per-function count of `is` statements per identifier scrutinee.
+    // `match &v` (borrow instead of move) is only emitted when the same ident is
+    // matched >= 2 times in one function — narrower scope keeps a2r goldens stable
+    // and preserves by-value payload moves in single-match arms.
+    fn_is_scrutinee_counts: HashMap<AutoStr, usize>,
+    // Plan 447 H4: monotonic counter for hoisted guard-arm scrutinee temps
+    // (`__is_0`, `__is_1`, ...). Never reset — uniqueness is all we need.
+    is_hoist_counter: usize,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
     // Plan 016 Phase A A.4: when true, emit json::parse_opt instead of json::parse
@@ -440,6 +448,8 @@ impl RustTrans {
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
+            fn_is_scrutinee_counts: HashMap::new(),
+            is_hoist_counter: 0,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -523,6 +533,8 @@ impl RustTrans {
             current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
+            fn_is_scrutinee_counts: HashMap::new(),
+            is_hoist_counter: 0,
             json_value_vars: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
@@ -611,6 +623,9 @@ impl RustTrans {
         }
         self.mutated_let_bindings.clear();
         self.mutated_let_bindings = Self::scan_mutated_bindings(body);
+        // Plan 447 H5: same per-function is-scrutinee counts for the
+        // body-only transpile path (used by UI/excerpt pipelines).
+        self.fn_is_scrutinee_counts = Self::scan_is_scrutinee_uses(body);
         self.current_scope_depth = 0;
         let mut result = Vec::new();
         for stmt in &body.stmts {
@@ -4217,7 +4232,24 @@ impl RustTrans {
                 let prev = self.json_parse_as_opt;
                 self.json_parse_as_opt = parse_as_opt;
 
+                // Plan 447 H5: Fix double match E0382 — but only in the narrow case
+                // where the SAME identifier scrutinee is matched >= 2 times in this
+                // function (first by-value match would move it). Single-use idents
+                // keep plain `match v` so arm payload bindings stay owned values
+                // (and a2r goldens stay stable).
+                let needs_ref_match = match &is.target {
+                    Expr::Ident(name) => self
+                        .fn_is_scrutinee_counts
+                        .get(name.as_str())
+                        .copied()
+                        .unwrap_or(0) >= 2,
+                    _ => false,
+                };
+                
                 write!(out, "match ")?;
+                if needs_ref_match {
+                    write!(out, "&")?;
+                }
                 self.expr(&is.target, out)?;
                 self.json_parse_as_opt = prev;
                 write!(out, " {{ ")?;
@@ -4239,8 +4271,11 @@ impl RustTrans {
                             self.get_ref_bindings = saved_get_refs;
                         }
                         crate::ast::IsBranch::IfBranch(cond, body) => {
+                            // Plan 447 H4: 卫语句臂应生成 `<绑定> if <cond> =>`
+                            // 例如: `x if x > 100 => println!("large")`
+                            write!(out, "_guard if ")?;
                             self.expr(cond, out)?;
-                            write!(out, " if true => ")?;
+                            write!(out, " => ")?;
                             self.write_body_inline(body, out)?;
                             write!(out, ",")?;
                         }
@@ -11893,6 +11928,66 @@ impl RustTrans {
         out
     }
 
+    /// Plan 447 H5: count `is` statements per identifier scrutinee across one
+    /// function body (nested into if/for/try/block bodies and is-arm bodies).
+    /// A scrutinee matched >= 2 times can't be matched by value each time
+    /// (E0382 move), so is_stmt emits `match &v` for it instead.
+    fn scan_is_scrutinee_uses(body: &crate::ast::Body) -> HashMap<AutoStr, usize> {
+        fn visit_expr(expr: &crate::ast::Expr, out: &mut HashMap<AutoStr, usize>) {
+            if let crate::ast::Expr::Is(is_expr) = expr {
+                if let crate::ast::Expr::Ident(name) = &is_expr.target {
+                    *out.entry(name.clone()).or_insert(0) += 1;
+                }
+                for b in &is_expr.branches {
+                    let body = match b {
+                        crate::ast::IsBranch::EqBranch(_, body) => body,
+                        crate::ast::IsBranch::IfBranch(_, body) => body,
+                        crate::ast::IsBranch::ElseBranch(body) => body,
+                    };
+                    for s in &body.stmts { visit_stmt(s, out); }
+                }
+            }
+        }
+        fn visit_stmt(stmt: &Stmt, out: &mut HashMap<AutoStr, usize>) {
+            match stmt {
+                Stmt::Expr(expr) => visit_expr(expr, out),
+                Stmt::Is(is_stmt) => {
+                    if let crate::ast::Expr::Ident(name) = &is_stmt.target {
+                        *out.entry(name.clone()).or_insert(0) += 1;
+                    }
+                    for b in &is_stmt.branches {
+                        let body = match b {
+                            crate::ast::IsBranch::EqBranch(_, body) => body,
+                            crate::ast::IsBranch::IfBranch(_, body) => body,
+                            crate::ast::IsBranch::ElseBranch(body) => body,
+                        };
+                        for s in &body.stmts { visit_stmt(s, out); }
+                    }
+                }
+                Stmt::If(if_) => {
+                    for b in &if_.branches {
+                        visit_expr(&b.cond, out);
+                        for s in &b.body.stmts { visit_stmt(s, out); }
+                    }
+                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out); } }
+                }
+                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out); } }
+                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out); } }
+                Stmt::Try(t) => {
+                    for s in &t.body.stmts { visit_stmt(s, out); }
+                    for s in &t.catch_body.stmts { visit_stmt(s, out); }
+                    if let Some(f) = &t.finally_body { for s in &f.stmts { visit_stmt(s, out); } }
+                }
+                _ => {}
+            }
+        }
+        let mut out = HashMap::new();
+        for stmt in &body.stmts {
+            visit_stmt(stmt, &mut out);
+        }
+        out
+    }
+
     fn fn_decl(&mut self, fn_decl: &Fn, sink: &mut Sink) -> AutoResult<()> {
         // Skip C/VM function declarations (implemented externally)
         if matches!(fn_decl.kind, FnKind::CFunction | FnKind::VmFunction) {
@@ -11915,6 +12010,9 @@ impl RustTrans {
         // later mutated (push/insert/extend/assign) — those need `let mut`.
         self.mutated_let_bindings.clear();
         self.mutated_let_bindings = Self::scan_mutated_bindings(&fn_decl.body);
+        // Plan 447 H5: per-function is-scrutinee use counts drive the narrow
+        // `match &v` emission (>= 2 uses of the same ident only).
+        self.fn_is_scrutinee_counts = Self::scan_is_scrutinee_uses(&fn_decl.body);
 
         // Plan 433 A1: pre-register local types for un-annotated `let/var x = fn()`
         // bindings from the fn return-type cache, so later List.get/field/str-param
@@ -13231,7 +13329,52 @@ impl RustTrans {
         let prev = self.json_parse_as_opt;
         self.json_parse_as_opt = parse_as_opt;
 
+        // Plan 447 H4: complex scrutinee + guard arms — hoist to a temp local
+        // first (`let __is_N = expr; match __is_N { ... }`) so the scrutinee
+        // evaluates once and guard arms can bind it (`__is_N if <cond> =>`).
+        // Only when IfBranch arms exist: goldens cover zero guard arms, so
+        // this never touches existing emission.
+        let has_guard_arm = is_stmt
+            .branches
+            .iter()
+            .any(|b| matches!(b, IsBranch::IfBranch(_, _)));
+        let hoisted_scrutinee: Option<AutoStr> = if has_guard_arm
+            && !matches!(is_stmt.target, Expr::Ident(_))
+        {
+            let name: AutoStr = format!("__is_{}", self.is_hoist_counter).into();
+            self.is_hoist_counter += 1;
+            sink.body.write(b"let ")?;
+            sink.body.write(name.as_bytes())?;
+            sink.body.write(b" = ")?;
+            self.expr(&is_stmt.target, &mut sink.body)?;
+            sink.body.write(b";\n")?;
+            self.print_indent(&mut sink.body)?;
+            Some(name)
+        } else {
+            None
+        };
+
         sink.body.write(b"match ")?;
+
+        if let Some(name) = &hoisted_scrutinee {
+            sink.body.write(name.as_bytes())?;
+        } else {
+        // Plan 447 H5: Fix double match E0382 — `match &v` only when the same
+        // identifier scrutinee is matched >= 2 times in this function (first
+        // by-value match would move it). Single-use keeps plain `match v` so
+        // arm payload bindings stay owned (and goldens stay stable).
+        let needs_ref_match = match &is_stmt.target {
+            Expr::Ident(name) => self
+                .fn_is_scrutinee_counts
+                .get(name.as_str())
+                .copied()
+                .unwrap_or(0) >= 2,
+            _ => false,
+        };
+
+        if needs_ref_match {
+            sink.body.write(b"&")?;
+        }
 
         // Check if any arm pattern is a string literal — if so, match on &str
         let has_str_pattern = is_stmt.branches.iter().any(|branch| {
@@ -13269,6 +13412,7 @@ impl RustTrans {
             sink.body.write(b".clone()")?;
         } else {
             self.expr(&is_stmt.target, &mut sink.body)?;
+        }
         }
         sink.body.write(b" {\n")?;
         self.indent();
@@ -13340,6 +13484,35 @@ impl RustTrans {
                                         self.bridge_pattern_bound_idents.insert(name.clone());
                                     }
                                 }
+                                // Plan 447 H6 (DEBT-113): `Enum.Variant(bound)`
+                                // call-shaped payload patterns — backfill
+                                // local_var_types from enum_tuple_field_types.
+                                if let crate::ast::Expr::Bina(l, op, r) = call.name.as_ref() {
+                                    if let Op::Dot = op {
+                                        if let (Expr::Ident(kind), Expr::Ident(tag)) =
+                                            (l.as_ref(), r.as_ref())
+                                        {
+                                            if let Some(field_types) = self
+                                                .enum_tuple_field_types
+                                                .get(&(kind.clone(), tag.clone()))
+                                            {
+                                                for (arg, ty) in call
+                                                    .args
+                                                    .args
+                                                    .iter()
+                                                    .zip(field_types.iter())
+                                                {
+                                                    if let Arg::Pos(Expr::Ident(name)) = arg {
+                                                        if name.as_str() != "_" {
+                                                            self.local_var_types
+                                                                .insert(name.clone(), ty.clone());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 self.expr(pat, &mut sink.body)?;
                             }
                         } else if let Expr::OptionPattern(oc) = pat {
@@ -13389,6 +13562,21 @@ impl RustTrans {
                             // remaining pattern shape (e.g. a Dot-chain variant
                             // `auto_val.Kid.Node(child)`), so call-site auto-
                             // clone can deref Box<T> before cloning.
+                            // Plan 447 H6 (DEBT-113): enum-payload Cover::Tag
+                            // patterns — backfill local_var_types for arm
+                            // bindings from enum_tuple_field_types.
+                            if let Expr::Cover(crate::ast::Cover::Tag(tc)) = pat {
+                                if let Some(field_types) = self
+                                    .enum_tuple_field_types
+                                    .get(&(tc.kind.clone(), tc.tag.clone()))
+                                {
+                                    for (b, ty) in tc.bindings.iter().zip(field_types.iter()) {
+                                        if b.as_str() != "_" {
+                                            self.local_var_types.insert(b.clone(), ty.clone());
+                                        }
+                                    }
+                                }
+                            }
                             self.expr(pat, &mut sink.body)?;
                         }
                     }
@@ -13406,8 +13594,16 @@ impl RustTrans {
                     sink.body.write(b",\n")?;
                 }
                 IsBranch::IfBranch(expr, body) => {
+                    // Plan 447 H4: 卫语句臂生成 `<绑定> if <cond> =>`
+                    // — hoisted scrutinee binds __is_N, plain ident uses _guard.
+                    if let Some(name) = &hoisted_scrutinee {
+                        sink.body.write(name.as_bytes())?;
+                    } else {
+                        sink.body.write(b"_guard")?;
+                    }
+                    sink.body.write(b" if ")?;
                     self.expr(expr, &mut sink.body)?;
-                    sink.body.write(b" if true => ")?;
+                    sink.body.write(b" => ")?;
                     self.write_is_arm_body(body, sink, has_block_arm)?;
                     sink.body.write(b",\n")?;
                 }

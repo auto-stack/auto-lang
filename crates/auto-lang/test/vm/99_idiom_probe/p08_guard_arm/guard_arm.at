@@ -1,0 +1,13 @@
+// H4: 卫语句臂生成非法 Rust
+// Auto卫语句语法 (假设未来支持): if <condition> -> <body>
+// 应该被转译为 Rust: _ if <cond> => <body>
+// 注意: 当前Auto语言可能不支持卫语句，这是为未来功能准备的测试
+
+fn main() {
+    let n = 150
+    is n {
+        if n > 100 -> print("large")  // 卫语句: only if condition is true
+        if n > 50 -> print("medium")   // 第二个卫语句
+        _ -> print("small")
+    }
+}

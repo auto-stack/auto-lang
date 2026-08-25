@@ -1,0 +1,7 @@
+int: 42
+string: hello
+no payload
+param int: 42
+param str: hello
+param none
+returned: result

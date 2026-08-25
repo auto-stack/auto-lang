@@ -1,0 +1,55 @@
+// Plan 447 probe p03: 枚举载荷各形态（绿件回归）
+// 字面量构造 / is 解构绑定 / 跨函数传参 / 函数返回枚举值
+// 注：函数内嵌套 fn 当前静默失效，全部用顶层 fn
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn print_val(v Val) {
+    is v {
+        Val.VI(x) -> print("param int: " + x.str())
+        Val.VS(s) -> print("param str: " + s)
+        Val.VN -> print("param none")
+    }
+}
+
+fn make_val(i int) Val {
+    is i {
+        0 -> Val.VI(100)
+        1 -> Val.VS("result")
+        else -> Val.VN
+    }
+}
+
+fn main() {
+    let v1 = Val.VI(42)
+    let v2 = Val.VS("hello")
+    let v3 = Val.VN
+
+    is v1 {
+        Val.VI(x) -> print("int: " + x.str())
+        else -> {}
+    }
+
+    is v2 {
+        Val.VS(s) -> print("string: " + s)
+        else -> {}
+    }
+
+    is v3 {
+        Val.VN -> print("no payload")
+        else -> {}
+    }
+
+    print_val(v1)
+    print_val(v2)
+    print_val(v3)
+
+    let result = make_val(1)
+    is result {
+        Val.VS(s) -> print("returned: " + s)
+        else -> {}
+    }
+}

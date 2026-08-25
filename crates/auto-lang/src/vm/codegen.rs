@@ -2698,7 +2698,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to loop start (re-check iterator.next())
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, loop_start as usize);
+                            }
                         } else {
                             // Plan 089: Array-based for loop: for x in expr { ... }
                             // Supports any iterable expression: variable, field access, call, etc.
@@ -2831,7 +2835,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -2916,7 +2924,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Indexed array iteration: for i, x in array_var { ... }
                             let index_str = index_name.to_string();
@@ -3027,7 +3039,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         } else {
                             // For now, only support range and array identifier expressions
                             self.loop_exits.pop();
@@ -3130,34 +3146,38 @@ impl Codegen {
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
                         self.should_pop_expr_result = old_pop;
 
-                        // Continue: increment counter
-                        let continue_pos = self.code.len();
-                        if let Some(pos) = self.loop_continue_positions.last_mut() {
-                            *pos = continue_pos;
-                        }
-                        self.emit_load_loc(counter_index);
-                        self.emit(OpCode::CONST_I32);
-                        self.emit_i32(1);
-                        self.emit(OpCode::ADD);
-                        self.emit_store_loc(counter_index);
+                            // Continue: increment counter
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
+                            self.emit_load_loc(counter_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(counter_index);
 
-                        // JMP back
-                        self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos - 2);
+                            // JMP back
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos - 2);
 
-                        // Patch exit jump
-                        self.patch_jump(jump_to_end);
+                            // Patch exit jump
+                            self.patch_jump(jump_to_end);
 
-                        self.pop_scope();
+                            self.pop_scope();
 
-                        // Patch all break statements
-                        let exits = self.loop_exits.pop().unwrap();
-                        for exit_placeholder in exits {
-                            self.patch_jump(exit_placeholder);
-                        }
-                        self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
+                            self.loop_continue_positions.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
@@ -3217,7 +3237,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start (re-evaluate condition)
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start);
+                        }
                     }
                     Iter::Ever => {
                         // Infinite loop: for ever { ... }
@@ -3248,7 +3272,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start);
+                        }
                     }
                     Iter::Call(call) => {
                         // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
@@ -3328,7 +3356,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start as usize);
+                        }
                     }
                 }
             }
@@ -3582,6 +3614,8 @@ impl Codegen {
                                     // variant" error. Runtime IS_VARIANT on a non-matching value simply
                                     // falls through to the next branch (graceful); field count falls back
                                     // to the binding arity when no template is registered.
+                                    // Plan 447 H1 fix: For scalar enums with multiple patterns, let them
+                                    // fall through to multi-pattern handling below instead of early continue.
                                     let known_scalar = self.enum_values.contains_key(&variant_mono);
                                     let has_data_payload = self.generic_registry.has_template(&variant_mono)
                                         || !known_scalar;
@@ -3647,11 +3681,20 @@ impl Codegen {
                                         for &byte in name_bytes {
                                             self.code.push(byte);
                                         }
-                                    }
-                                    else {
+                                    } else if patterns.len() == 1 {
+                                        // Scalar enum, single pattern: one EQ,
+                                        // the shared JMP_IF_Z tail below handles it.
                                         self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
+                                    } else {
+                                        // Plan 447 H1: scalar enum multi-pattern arm
+                                        // (`A | B -> ...`) — per-pattern EQ with
+                                        // short-circuit OR, same emission as the
+                                        // literal multi-pattern path (formerly this
+                                        // case emitted nothing and the arm never matched).
+                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        continue;
                                     }
                                 }
                                 _ => {
@@ -3675,51 +3718,9 @@ impl Codegen {
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
                                     } else {
-                                        // Multi-pattern: compare each with short-circuit OR
-                                        let mut match_jumps = Vec::new();
-
-                                        // First pattern
-                                        self.emit_load_loc(target_var);
-                                        self.compile_expr(&patterns[0])?;
-                                        self.emit(OpCode::EQ);
-                                        self.emit(OpCode::JMP_IF_NZ);
-                                        match_jumps.push(self.emit_placeholder_i16());
-
-                                        // Subsequent patterns: if previous didn't match, try this one
-                                        for pat in &patterns[1..] {
-                                            self.emit_load_loc(target_var);
-                                            self.compile_expr(pat)?;
-                                            self.emit(OpCode::EQ);
-                                            self.emit(OpCode::JMP_IF_NZ);
-                                            match_jumps.push(self.emit_placeholder_i16());
-                                        }
-
-                                        // No pattern matched — jump to next branch
-                                        self.emit(OpCode::JMP);
-                                        let jump_to_next = self.emit_placeholder_i16();
-
-                                        // === Matched label ===
-                                        // Patch all JMP_IF_NZ to jump here
-                                        let matched_pos = self.code.len();
-                                        for j in &match_jumps {
-                                            let anchor = *j + 2;
-                                            let offset = (matched_pos as isize) - (anchor as isize);
-                                            let bytes = (offset as i16).to_le_bytes();
-                                            self.code[*j] = bytes[0];
-                                            self.code[*j + 1] = bytes[1];
-                                        }
-
-                                        // Compile branch body
-                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
-
-                                        // Jump to end of is statement
-                                        self.emit(OpCode::JMP);
-                                        let jump_to_end = self.emit_placeholder_i16();
-                                        end_jumps.push(jump_to_end);
-
-                                        // Patch jump to next branch (the fall-through JMP)
-                                        self.patch_jump(jump_to_next);
-
+                                        // Multi-pattern: per-pattern EQ + short-circuit OR
+                                        // (Plan 447 H1: via the shared emit_is_or_arm helper)
+                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
                                         continue; // Skip the default handling below
                                     }
                                 }
@@ -9545,6 +9546,7 @@ impl Codegen {
                                     let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
                                     // Plan 442 C2: unknown variants (use.rust enums) — same IS_VARIANT
                                     // routing as the Stmt::Is arm above.
+                                    // Plan 447 H1 fix: Same multi-pattern handling fix as Stmt::Is.
                                     let known_scalar = self.enum_values.contains_key(&variant_mono);
                                     let has_data_payload = self.generic_registry.has_template(&variant_mono)
                                         || !known_scalar;
@@ -9600,10 +9602,19 @@ impl Codegen {
                                         for &byte in name_bytes {
                                             self.code.push(byte);
                                         }
-                                    } else {
+                                    } else if patterns.len() == 1 {
+                                        // Scalar enum, single pattern: one EQ,
+                                        // the shared JMP_IF_Z tail below handles it.
                                         self.emit_load_loc(target_var);
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
+                                    } else {
+                                        // Plan 447 H1: scalar enum multi-pattern arm —
+                                        // per-pattern EQ + short-circuit OR via the shared
+                                        // emit_is_or_arm helper (keeps Expr::Is in lockstep
+                                        // with Stmt::Is; formerly emitted nothing here).
+                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        continue;
                                     }
                                 }
                                 _ => {
@@ -9623,41 +9634,9 @@ impl Codegen {
                                         self.compile_expr(pattern)?;
                                         self.emit(OpCode::EQ);
                                     } else {
-                                        let mut match_jumps = Vec::new();
-                                        self.emit_load_loc(target_var);
-                                        self.compile_expr(&patterns[0])?;
-                                        self.emit(OpCode::EQ);
-                                        self.emit(OpCode::JMP_IF_NZ);
-                                        match_jumps.push(self.emit_placeholder_i16());
-
-                                        for pat in &patterns[1..] {
-                                            self.emit_load_loc(target_var);
-                                            self.compile_expr(pat)?;
-                                            self.emit(OpCode::EQ);
-                                            self.emit(OpCode::JMP_IF_NZ);
-                                            match_jumps.push(self.emit_placeholder_i16());
-                                        }
-
-                                        self.emit(OpCode::JMP);
-                                        let jump_to_next = self.emit_placeholder_i16();
-
-                                        let matched_pos = self.code.len();
-                                        for j in &match_jumps {
-                                            let anchor = *j + 2;
-                                            let offset = (matched_pos as isize) - (anchor as isize);
-                                            let bytes = (offset as i16).to_le_bytes();
-                                            self.code[*j] = bytes[0];
-                                            self.code[*j + 1] = bytes[1];
-                                        }
-
-                                        // Compile body — last expr value stays on stack
-                                        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
-
-                                        self.emit(OpCode::JMP);
-                                        let jump_to_end = self.emit_placeholder_i16();
-                                        end_jumps.push(jump_to_end);
-
-                                        self.patch_jump(jump_to_next);
+                                        // Multi-pattern: per-pattern EQ + short-circuit OR
+                                        // (Plan 447 H1: via the shared emit_is_or_arm helper)
+                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
                                         continue;
                                     }
                                 }
@@ -11049,6 +11028,43 @@ impl Codegen {
         let bytes = (offset as i16).to_le_bytes();
         self.code[placeholder_idx] = bytes[0];
         self.code[placeholder_idx + 1] = bytes[1];
+    }
+
+    /// Plan 447 H1: multi-pattern (`A | B -> ...`) arm emission — per-pattern
+    /// EQ with short-circuit OR (each hit JMP_IF_NZs to the shared matched
+    /// label), then the arm body + end-jump. Single emission point shared by
+    /// the literal-pattern path and the scalar-enum Cover::Tag path so the
+    /// two stay in lockstep (双副本同源: Stmt::Is 与 Expr::Is 均经此)。
+    fn emit_is_or_arm(
+        &mut self,
+        target_var: usize,
+        patterns: &[crate::ast::Expr],
+        body: &crate::ast::Body,
+        end_jumps: &mut Vec<usize>,
+    ) -> AutoResult<()> {
+        let mut match_jumps = Vec::new();
+        for pat in patterns {
+            self.emit_load_loc(target_var);
+            self.compile_expr(pat)?;
+            self.emit(OpCode::EQ);
+            self.emit(OpCode::JMP_IF_NZ);
+            match_jumps.push(self.emit_placeholder_i16());
+        }
+        // No pattern matched — jump to next branch
+        self.emit(OpCode::JMP);
+        let jump_to_next = self.emit_placeholder_i16();
+        // === Matched label === — patch all JMP_IF_NZ to jump here
+        let matched_pos = self.code.len();
+        for j in &match_jumps {
+            self.patch_jump_to(*j, matched_pos);
+        }
+        self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+        // Jump to end of is statement
+        self.emit(OpCode::JMP);
+        let jump_to_end = self.emit_placeholder_i16();
+        end_jumps.push(jump_to_end);
+        self.patch_jump(jump_to_next);
+        Ok(())
     }
 
     // === Symbol Table Helpers ===

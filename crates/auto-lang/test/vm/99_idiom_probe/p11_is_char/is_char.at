@@ -1,0 +1,15 @@
+// Plan 447 probe p11: is-on-char（绿件加固）
+fn main() {
+    let c = 'x'
+    is c {
+        'x' -> print("ex")
+        'y' -> print("why")
+        else -> print("other")
+    }
+
+    let d = 'z'
+    is d {
+        'x' | 'y' -> print("xy")
+        else -> print("not xy")
+    }
+}

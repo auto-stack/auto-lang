@@ -1,0 +1,22 @@
+// Plan 447 probe p13a: 结构体字段位枚举——先提升局部（绿件对照）
+// H3 对照绿件：枚举构造先绑定局部变量再入结构体字面量字段位
+// 注：具名结构体声明用 type（struct 非关键字）
+enum Val {
+    VI(int)
+    VN
+}
+
+type Frame {
+    val: Val
+    name: str
+}
+
+fn main() {
+    let v = Val.VI(42)
+    let f = Frame { val: v, name: "hoisted" }
+    print(f.name)
+    is f.val {
+        Val.VI(n) -> print(n.str())
+        else -> print("unit")
+    }
+}

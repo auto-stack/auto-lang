@@ -1,0 +1,18 @@
+// Plan 447 probe p10: 枚举局部重赋值 + == 相等比较（V10 绿件）
+enum State {
+    On
+    Off
+}
+
+fn main() {
+    var s = State.On
+    if s == State.On {
+        print("on")
+    }
+    s = State.Off
+    if s == State.On {
+        print("still on")
+    } else {
+        print("off")
+    }
+}

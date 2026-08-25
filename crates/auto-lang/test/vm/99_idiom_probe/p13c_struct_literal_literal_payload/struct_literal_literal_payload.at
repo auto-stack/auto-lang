@@ -1,0 +1,17 @@
+// Plan 447 probe p13c: 结构体字面量字段位字面量载荷（V10 绿件）
+enum Val {
+    VI(int)
+    VN
+}
+
+type Frame {
+    val: Val
+}
+
+fn main() {
+    let f = Frame { val: Val.VI(7) }
+    is f.val {
+        Val.VI(n) -> print(n.str())
+        else -> print("unit")
+    }
+}

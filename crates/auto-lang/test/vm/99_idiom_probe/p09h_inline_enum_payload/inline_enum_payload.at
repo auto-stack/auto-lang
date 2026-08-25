@@ -1,0 +1,20 @@
+// Plan 447 probe p09h: 运行期值内联在枚举构造参数位（H3 复现件）
+// 原症状：[RC canary] string tombstone access 崩溃
+// 当前基线（plan-442 RC 修复后）已转绿：不提升局部也正确
+// 强化点：读回 payload 字符串（原版只查 len，canary 不触发）
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn main() {
+    let xs = List.new()
+    xs.push(Val.VS("a" + "b"))
+    print(xs.len().str())
+    let got = xs.get(0)
+    is got {
+        Val.VS(s) -> print(s)
+        else -> print("not-vs")
+    }
+}

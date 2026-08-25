@@ -1,0 +1,37 @@
+// Plan 447 probe p01: is-on-string 各形态（绿件回归）
+// 字面量臂 / or-臂 / 运行期拼接目标 / else 臂 / 函数尾值语义位
+// 注：let 绑定位的 is 值语义当前返回 0（登记为观察项），不入绿件
+fn classify(s str) str {
+    is s {
+        "hello" -> "greeting"
+        else -> "other"
+    }
+}
+
+fn main() {
+    let text = "hello"
+
+    is text {
+        "hello" -> print("exact match")
+        else -> print("no match")
+    }
+
+    is text {
+        "hello" | "world" -> print("or-arm match")
+        else -> print("unknown")
+    }
+
+    let target = "hel" + "lo"
+    is target {
+        "hello" -> print("runtime concat match")
+        else -> print("no match")
+    }
+
+    is text {
+        "goodbye" -> print("never")
+        else -> print("else branch")
+    }
+
+    print(classify("hello"))
+    print(classify("bye"))
+}
