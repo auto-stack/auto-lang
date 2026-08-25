@@ -18,6 +18,11 @@
 > 落地并回归通过；C3 观察期与验收 3/4 均**未达成**，计划保持 🟡 执行中。
 > （本计划 auto-lang 侧工作已合入 master：06360d8ef；数据面 parity 移交
 > 另开的 auto-musk 会话接力。）
+> **✅ 2026-08-27 对账闭环：验收 3 的 musk 侧条件达成（auto-musk
+> PLAN-044 T5/T6，见 §7.4）——`PARITY_TARGET=vm` 下 parity_relay_api
+> 6 用例全绿（5 无状态端点语义等价 + 1 条完整 SSE 流事件序 VM≡hw
+> ["turn_start","error"]，连跑 3 次稳定）。验收 4 随之生效：041 解挂
+> 条件达成。本计划转 C3 观察期（双后端并行，长度按 §6-4 默认 7 天）。**
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -545,7 +550,11 @@
 2. VM 渲染目标对 musk 30 widget 源零 Undefined variable 级报错（或每条有登记的
    能力缺口条目）。
 3. `musk serve` VM 后端通过既有 HTTP/SSE 契约测试（与 hw 后端对照）。
+   **✅ 2026-08-27 达成（PLAN-044 T5/T6）：MUSK_BACKEND=vm 起服 +
+   PARITY_TARGET=vm parity_relay_api 全绿（含 SSE 流对照）——见 §7.4。**
 4. 本计划完成 = musk PLAN-041 解挂条件达成（041 启动记录回填）。
+   **✅ 2026-08-27：随验收 3 生效，041 解挂条件达成（041 侧启动记录
+   待其会话回填）。**
 
 ## 6. 待澄清事项
 
@@ -598,3 +607,30 @@
 ABI，或接受大型 auto-lang 侧数据层重实现），且须跨仓协同裁定。auto-lang 侧前置
 已全部就绪并合入 master；此工作**移交另开的 auto-musk 会话接力**（见会话
 blocked 记录：objective 卡在同一架构性阻塞，已连续 7 轮确认）。
+
+### 7.4 接力闭环（auto-musk PLAN-044，2026-08-27）
+
+§7.2 三阻塞点全部解决，验收 3 musk 侧条件达成：
+
+1. **State<AppState> 不经 JSON ABI（阻塞点 1）**：状态闭包桥——宿主进程
+   构建一次 `Arc<AppState>`，数据 extern 注册为捕获 state 的 HostCallFn；
+   `.at` 侧 `extern_sigs.at` 196+25 桩体统一改调 auto-lang 新 native
+   `musk_extern_dispatch(name,args)`（3129），状态参（`_s/_ws @T`）不进
+   args。调用点零改动、a2r 轨零影响。
+2. **体量问题（阻塞点 2）转分期**：不整体重实现——extern_impl.rs 保持
+   Rust 岛经网关转发（桥接形态），数据层 Auto 化按域退役（auth →
+   specs/wiki → relay，PLAN-044 Phase 3 样板进行中）。
+3. **parity 换 VM（阻塞点 3）**：`tests/common/mod.rs` harness（隔离临时
+   态子进程 `MUSK_BACKEND=vm` serve）+ `PARITY_TARGET=vm` 门控——
+   parity_relay_api 6 用例全绿：professions/souls/flows/runs/task_plans
+   五端点 hw vs VM 语义等价 + DELETE 404 状态码；SSE 流对照用例双侧
+   完整消费（确定性错误路径），事件 type 序列 VM≡hw
+   ["turn_start","error"]，连跑 3 次稳定。
+4. **SSE 全链（C2 ②的 musk 消费面）**：真实 aaid 会话四帧全序列
+   （turn_start/delta/turn_end/done）wire 与 hw SseEventDto 一致——
+   配套 auto-lang 侧修复（extern 网关 native、None/unwrap_or 坍缩
+   Option 协议、缺字段→null、to_value 恒等、SSE 帧拉取线程化等，
+   worktree plan-044 系列提交已合 master）。
+
+**结论**：本计划 auto-lang 侧 + musk 侧接力均收口，转 **C3 双后端并行
+观察期**（§6-4 默认 7 天）；041 解挂条件达成。
