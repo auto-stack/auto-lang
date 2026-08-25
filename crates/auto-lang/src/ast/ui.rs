@@ -3,7 +3,7 @@
 //! These nodes are only parsed when the scenario is UI (contextual keywords).
 //! They represent widget, msg, model, view, and on blocks as first-class citizens.
 
-use super::{Body, Expr, Name, Type};
+use super::{Body, Expr, Name, Stmt, Type};
 use super::route::RoutesBlock;
 use auto_val::AutoStr;
 
@@ -564,6 +564,12 @@ pub struct ViewEvent {
 
     /// Optional parameters for the handler (e.g., ["todo.id"] for .Delete(todo.id))
     pub params: Vec<String>,
+
+    /// Plan 448 B1: inline lambda body for `onclick: () => { ... }`. The
+    /// handler field stays empty; extraction mints an anonymous event name
+    /// (`__evt_<event>_<n>`) and injects these statements as the matching
+    /// on-handler, so simple callbacks skip the msg/on round trip entirely.
+    pub inline: Option<Vec<Stmt>>,
 }
 
 /// View text content
@@ -707,6 +713,7 @@ impl ViewNode {
                 name: name.into(),
                 handler: handler.into(),
                 params: Vec::new(),
+                inline: None,
             });
         }
         self
@@ -719,6 +726,7 @@ impl ViewNode {
                 name: name.into(),
                 handler: handler.into(),
                 params,
+                inline: None,
             });
         }
         self

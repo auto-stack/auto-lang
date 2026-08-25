@@ -2269,6 +2269,48 @@ widget OpProbeOrig {
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(11));
     }
 
+    /// Plan 448 B1: inline-lambda event through the real pipeline — parse →
+    /// extract (mints `__evt_*` handler + variant) → VmBridge synthesis →
+    /// dispatch via the real VM. Proves the 002-counter shorthand shape runs
+    /// on the VM/iced route end to end (B2's compound-assignment desugar
+    /// included).
+    #[test]
+    fn test_inline_lambda_event_vm_dispatch() {
+        use crate::parser::Parser;
+
+        let src = concat!(
+            "widget Counter {\n",
+            "    model { var count int = 0 }\n",
+            "    view {\n",
+            "        row {\n",
+            "            button \"+\" { onclick: () => {.count += 1} }\n",
+            "            button \"-\" { onclick: () => {.count -= 1} }\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        assert!(bridge.has_handler("__evt_onclick_1"), "+ handler synthesized");
+        assert!(bridge.has_handler("__evt_onclick_2"), "- handler synthesized");
+
+        for _ in 0..3 {
+            bridge.call_handler("__evt_onclick_1", &[]).unwrap();
+        }
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(3));
+
+        bridge.call_handler("__evt_onclick_2", &[]).unwrap();
+        assert_eq!(bridge.read_state("count").unwrap(), Value::Int(2));
+    }
+
     /// Plan 323 (Option B) full-pipeline proof against the REAL 016-calendar
     /// source: parse app.at + calendar_util.at → collect imported `Fn`s →
     /// `VmBridge::new_with_imports` → `call_handler("Init")` → the imported
@@ -2620,9 +2662,11 @@ widget Store {
     }
 
     /// Plan 323 (Option B) regression smoke against the REAL 002-counter
-    /// source: parse → extract widget → VmBridge → dispatch Inc/Dec/Reset via
-    /// the real VM → read `.count`. Confirms the canonical handler-mutation
-    /// example works end-to-end through genuine Codegen/AutoVM dispatch.
+    /// source: parse → extract widget → VmBridge → dispatch the inline-lambda
+    /// handlers via the real VM → read `.count`. Confirms the canonical
+    /// handler-mutation example works end-to-end through genuine
+    /// Codegen/AutoVM dispatch (Plan 448 B1: the example is the shorthand
+    /// form, so this also covers anonymous-event minting on the VM route).
     #[test]
     fn test_counter_002_handlers_mutate_state() {
         use crate::parser::Parser;
@@ -2655,18 +2699,21 @@ widget Store {
             .expect("002-counter must declare a widget");
 
         let mut bridge = VmBridge::new(&widget).expect("bridge builds");
-        assert!(bridge.has_handler("Inc"));
-        assert!(bridge.has_handler("Dec"));
-        assert!(bridge.has_handler("Reset"));
+        // Plan 448 B1: the example now uses inline lambdas
+        // (`onclick: () => {.count ± 1}`), so the handlers are the minted
+        // anonymous events — declaration order: 1 = "-", 2 = "Reset", 3 = "+".
+        assert!(bridge.has_handler("__evt_onclick_1"));
+        assert!(bridge.has_handler("__evt_onclick_2"));
+        assert!(bridge.has_handler("__evt_onclick_3"));
 
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(0));
 
-        bridge.call_handler("Inc", &[]).unwrap();
-        bridge.call_handler("Inc", &[]).unwrap();
-        bridge.call_handler("Dec", &[]).unwrap();
+        bridge.call_handler("__evt_onclick_3", &[]).unwrap();
+        bridge.call_handler("__evt_onclick_3", &[]).unwrap();
+        bridge.call_handler("__evt_onclick_1", &[]).unwrap();
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(1));
 
-        bridge.call_handler("Reset", &[]).unwrap();
+        bridge.call_handler("__evt_onclick_2", &[]).unwrap();
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(0));
     }
 

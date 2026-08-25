@@ -2209,6 +2209,10 @@ impl VueGenerator {
             } else {
                 None
             };
+            // Plan 448 B1: inline-lambda handlers (`onclick: () => { … }`)
+            // are widget-internal sugar — no parent can listen for the
+            // synthetic `__evt_*` event, so never append the trailing emit.
+            let emit_name = emit_name.filter(|e| !e.as_str().starts_with("__evt_"));
             // Plan musk-022 callback-relay fix: rewrite any `props.on_xxx(args)`
             // calls in the body to `emit('<Pascal>', args)` for real callback
             // props. The parent binds `@Pascal` (never `:on_xxx`), so the raw
@@ -21045,6 +21049,44 @@ widget Guarded {
         assert!(
             sfc.contains("count.value += 1;"),
             "statements after the guard still emitted:\n{}",
+            sfc
+        );
+    }
+
+    /// Plan 448 B1: `onclick: () => { ... }` inline lambda — the template
+    /// binds the minted `__evt_*` function, the body transpiles like any
+    /// on-handler, and NO trailing `emit('__evt_...')` is appended (the
+    /// synthetic event is widget-internal; no parent can listen for it).
+    #[test]
+    fn test_inline_lambda_event_generates_handler_without_emit() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Counter {
+    model { var count int = 0 }
+    view {
+        row {
+            button "-" { onclick: () => {.count -= 1} }
+            button "+" { onclick: () => {.count += 1} }
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("@click=\"__evt_onclick_1\""),
+            "template binds the minted name:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function __evt_onclick_1()"),
+            "minted handler function emitted:\n{}",
+            sfc
+        );
+        assert!(sfc.contains("count.value -= 1;"), "body transpiled:\n{}", sfc);
+        assert!(sfc.contains("count.value += 1;"), "second body transpiled:\n{}", sfc);
+        assert!(
+            !sfc.contains("emit('__evt_"),
+            "no trailing emit for synthetic events:\n{}",
             sfc
         );
     }

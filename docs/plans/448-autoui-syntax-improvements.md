@@ -1,22 +1,55 @@
 # Plan 448: AutoUI 语法改进——msg 声明去名 + 事件内联 lambda 简写（滚动收集）
 
-> **状态**: 🟦 已立项待执行（2026-08-25 立项；需求 A/B 已完成代码级调研，
-> 调研结论与行号以基线 bcb6e139b 为准，实施时如有漂移按符号名重定位）
+> **状态**: 🟢 A/B2/B1 已实施待合并（worktree plan-448-autoui-syntax，2026-08-25；
+> C/D/… 继续按示例走查追加）
 > **来源**: examples/ui/002-counter/src/front/app.at 示例走查（文件注释区的"简写版"）
-> **基线**: master bcb6e139b
+> **基线**: master bcb6e139b（实施于 9e330123f 分叉的 worktree）
 > **性质**: **滚动收集计划**——逐个 UI 示例走查，收集 AutoUI 语法改进需求追加为
 > 需求 C/D/…；每条独立实施、独立验证、独立勾销，不必一次做完。
+
+## 验证结果（2026-08-25，worktree plan-448）
+
+- A（commit 5e43662bf）：`cargo test -p auto-lang --lib` 3181 绿；
+  vue_capabilities 72 / docs_gen 4 / gallery_golden 1（基线重生成）/
+  ui_snapshots 3（路径归一化后重生成）/ schema_drift 1 / component_registry 7 绿；
+  auto-man 6 绿；doctest 4 失败与 bench E0601 均为 master 预存（逐一对齐确认）。
+- B2（commit ddc028455）：`--features ui-iced` `ui::` 组 474 绿；全量 lib
+  （ui-iced）3678 绿；新增 vm_bridge 复合赋值全链路测试。
+- B1：全量 lib 3185（默认）/ 3683（ui-iced）绿；vue_capabilities 72、
+  gallery_golden 1、ui_snapshots 3、docs_gen 4、auto-man 229 绿
+  （auto-man `test_resolve_at_adapter` 与 `benchmark_downcast_performance`
+  为并行竞态/计时型 flaky，单跑稳定绿，与本计划无关）；002-counter 改简写版后
+  `auto build` regen 成功，产物 App.vue：`@click="__evt_onclick_N"` + 三个
+  minted 函数体（`count.value ±= 1;`），无尾部 emit，vue-tsc --noEmit exit 0，
+  vite build 绿。
+- 遗留（另行 housekeeping）：rust-workspace/counter 副本为 a2rust-ui 旧产物
+  （本就滞后于现行 codegen），无标准 regen 命令，未刷新。
 
 ## §0 条目总览
 
 | 条目 | 一句话 | 状态 |
 |---|---|---|
-| A | `msg Msg {…}` 去掉无用的名字 → `msg {…}` | 待实施 |
-| B | `onclick: () => {…}` 内联 lambda 简写（含 B2：VM 路径复合赋值修复） | 待实施 |
+| A | `msg Msg {…}` 去掉无用的名字 → `msg {…}` | ✅ 已实施 |
+| B | `onclick: () => {…}` 内联 lambda 简写（含 B2：VM 路径复合赋值修复） | ✅ 已实施 |
 | C+ | 后续从其他示例收集（占位） | — |
 
 条目 A/B 相互独立可分别实施；B 实施后简单 widget 可完全不写 msg/on
 （002-counter 目标形态即如此）。
+
+### 实施补遗（与原方案的差异）
+
+- **A**：`ui_gen/shared/state.rs` 的 `add_message` 未删——它属于 Vue
+  StateAnalyzer 的 `MessageDef`（独立结构），与 `MsgDecl.name` 无关；
+  顺带修复：ui_snapshots 快照路径归一化为 examples/ 相对路径（此前嵌入主仓
+  绝对路径，任何 worktree 运行必挂）；auto CLI cmd_ui 打印改列 variants；
+  gallery_vue_golden 基线随 .at 迁移重生成。
+- **B1**：事件值以 `(` 开头时**无需 lookahead**——旧语法没有任何以 `(` 开头的
+  值形态，直接分流进 `parse_closure`；带参 lambda `(e) => {…}` 在提取期显式
+  报错（Rust 枚举需要具体 payload 类型，v1 不支持）；Vue defineEmits 保留
+  合成 variant 声明（类型正确、无副作用），仅豁免尾部 `emit('__evt_*')`。
+- **B2**：desugar 条件覆盖 Dot LHS **与裸 state 字段 Ident**（后者经 Phase-1
+  重写同样变 Dot LHS，调研时未意识到）；toast 重写既有手工 Asn+Add 展开与
+  desugar 同型，互为印证。
 
 ---
 

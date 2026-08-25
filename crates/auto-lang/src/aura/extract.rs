@@ -608,23 +608,60 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     };
 
     // Extract messages
-    let messages: Vec<AuraMessage> = decl.messages.iter()
+    let mut messages: Vec<AuraMessage> = decl.messages.iter()
         .map(|m| extract_msg_decl(m))
         .collect();
 
+    // Plan 448 B1: inline-lambda event pre-pass. `onclick: () => { ... }`
+    // values are minted into anonymous events here, before extraction: each
+    // ViewEvent with an inline body is rewritten in place to reference
+    // `.__evt_<event>_<n>` and its body collected for injection as an
+    // on-handler below. The counter walks the tree depth-first in
+    // declaration order, so minted names are stable across regens.
+    let mut view_owned = decl.view.clone();
+    let mut inline_mints: Vec<(String, Vec<crate::ast::Stmt>)> = Vec::new();
+    let mut inline_counter = 0u32;
+    if let Some(view) = view_owned.as_mut() {
+        collect_inline_events(&mut view.root, &mut inline_counter, &mut inline_mints)?;
+    }
+
     // Extract view tree
-    let view_tree = if let Some(view) = &decl.view {
+    let view_tree = if let Some(view) = &view_owned {
         extract_view_block(view)?
     } else {
         AuraNode::element("div")
     };
 
     // Extract handlers
-    let (mut handlers, handler_params) = if let Some(on) = &decl.on {
+    let (mut handlers, mut handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
         (std::collections::BTreeMap::new(), HashMap::new())
     };
+
+    // Plan 448 B1: inject the minted inline handlers. The variant MUST also
+    // land in the msg list — the Rust backend silently skips match arms whose
+    // variant is missing from the generated enum, and Vue's handler/emit
+    // machinery keys off the same list. Zero-param lambdas only: a
+    // parameterized inline lambda is rejected in the pre-pass (the Rust enum
+    // would need payload types the sugar cannot infer).
+    for (pattern, stmts) in inline_mints {
+        let variant_name = pattern.trim_start_matches('.').to_string();
+        let declared = messages.iter()
+            .any(|m| m.variants.iter().any(|v| v.name == variant_name));
+        if !declared {
+            if messages.is_empty() {
+                messages.push(AuraMessage { variants: Vec::new() });
+            }
+            messages[0].variants.push(AuraMsgVariant {
+                name: variant_name,
+                quoted: false,
+                payload: Vec::new(),
+                payload_names: Vec::new(),
+            });
+        }
+        handlers.insert(pattern, LogicPayload::AstStmts(stmts));
+    }
 
     // Detect .Tick handler and extract interval from model vars
     let tick_interval = if handlers.keys().any(|k| k == ".Tick") {
@@ -773,6 +810,85 @@ fn extract_view_block(view: &ViewBlock) -> ExtractResult<AuraNode> {
 }
 
 /// Extract view node from parsed ViewNode
+/// Plan 448 B1: mint inline-lambda event handlers into anonymous events.
+///
+/// Walks the view tree depth-first; every `ViewEvent` carrying `inline`
+/// statements (`onclick: () => { .count += 1 }`) is rewritten in place to a
+/// synthetic handler reference `.__evt_<event>_<n>` (n from the shared
+/// counter, so names are deterministic across regens) and its body pushed to
+/// `out` as `(pattern, stmts)`. Parameterized lambdas are rejected — see the
+/// injection site in `extract_widget_from_decl`.
+fn collect_inline_events(
+    node: &mut crate::ast::ViewNode,
+    counter: &mut u32,
+    out: &mut Vec<(String, Vec<crate::ast::Stmt>)>,
+) -> ExtractResult<()> {
+    use crate::ast::ViewNode;
+    match node {
+        ViewNode::Element { events, children, .. } => {
+            rewrite_inline_events(events, counter, out)?;
+            for c in children.iter_mut() {
+                collect_inline_events(c, counter, out)?;
+            }
+        }
+        ViewNode::ForLoop { body, .. } => {
+            for c in body.iter_mut() {
+                collect_inline_events(c, counter, out)?;
+            }
+        }
+        ViewNode::Conditional { then_body, else_body, .. } => {
+            for c in then_body.iter_mut() {
+                collect_inline_events(c, counter, out)?;
+            }
+            if let Some(else_nodes) = else_body {
+                for c in else_nodes.iter_mut() {
+                    collect_inline_events(c, counter, out)?;
+                }
+            }
+        }
+        ViewNode::Component { events, .. } => {
+            rewrite_inline_events(events, counter, out)?;
+        }
+        ViewNode::Link { children, .. } => {
+            for c in children.iter_mut() {
+                collect_inline_events(c, counter, out)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn rewrite_inline_events(
+    events: &mut [ViewEvent],
+    counter: &mut u32,
+    out: &mut Vec<(String, Vec<crate::ast::Stmt>)>,
+) -> ExtractResult<()> {
+    for ev in events.iter_mut() {
+        if let Some(stmts) = ev.inline.take() {
+            if !ev.params.is_empty() {
+                return Err(ExtractError::UnsupportedExpr(format!(
+                    "inline event lambdas with parameters are not supported yet \
+                     (`{}: ({}) => …`); declare a msg variant and use `on`",
+                    ev.name,
+                    ev.params.join(", ")
+                )));
+            }
+            *counter += 1;
+            // Sanitize the event name (modifiers like `onclick.stop` and
+            // quoted customs like `on"x"` are not identifier-safe).
+            let base: String = ev.name.chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            let name = format!("__evt_{}_{}", base, counter);
+            ev.handler = format!(".{}", name);
+            ev.params.clear();
+            out.push((format!(".{}", name), stmts));
+        }
+    }
+    Ok(())
+}
+
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
         ViewNode::Element { tag, props, events, children, span } => {
@@ -1438,6 +1554,58 @@ mod tests {
             })
             .expect("widget decl");
         extract_widget_from_decl(decl).expect("extract widget")
+    }
+
+    /// Plan 448 B1: inline-lambda events (`onclick: () => { … }`) mint into
+    /// anonymous events at extraction: the AuraEvent references the minted
+    /// name, the body lands in the handlers map, and the variant is appended
+    /// to the msg list (created from scratch when the widget declares no
+    /// `msg` block at all) so Rust's enum/match generation and Vue's emit
+    /// machinery both see it.
+    #[test]
+    fn test_extract_inline_lambda_events() {
+        let widget = extract_widget_from_src(r#"
+widget Counter {
+    model { var count int = 0 }
+    view {
+        row {
+            button "-" { onclick: () => {.count -= 1} }
+            button "+" { onclick: () => {.count += 1} }
+        }
+    }
+}
+"#);
+        assert!(widget.messages.is_empty() == false);
+        let variants: Vec<&str> =
+            widget.messages[0].variants.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(variants.len(), 2);
+        assert!(variants.contains(&"__evt_onclick_1"));
+        assert!(variants.contains(&"__evt_onclick_2"));
+
+        // Handlers map carries the minted patterns with the lambda bodies.
+        assert!(widget.handlers.contains_key(".__evt_onclick_1"));
+        assert!(widget.handlers.contains_key(".__evt_onclick_2"));
+        match &widget.handlers[".__evt_onclick_1"] {
+            LogicPayload::AstStmts(stmts) => assert_eq!(stmts.len(), 1),
+            LogicPayload::Bytecode(_) => panic!("expected AstStmts payload"),
+        }
+
+        // The view tree references the minted names. Walk to the first button.
+        fn first_button<'a>(n: &'a AuraNode) -> Option<&'a AuraNode> {
+            match n {
+                AuraNode::Element { tag, children, .. } => {
+                    if tag == "button" { Some(n) } else { children.iter().find_map(first_button) }
+                }
+                _ => None,
+            }
+        }
+        let btn = first_button(&widget.view_tree).expect("button node");
+        if let AuraNode::Element { events, .. } = btn {
+            let ev = events.get("onclick").expect("onclick event");
+            assert_eq!(ev.handler, ".__evt_onclick_1");
+        } else {
+            panic!("not an element");
+        }
     }
 
     /// Event keys keep their modifiers in the extracted events map
