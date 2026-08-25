@@ -7003,6 +7003,23 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
         }
 
+        // PLAN-044 (musk vm_entry): axum layer/constructor pass-throughs.
+        // The VM emulation ignores layers (CORS/body-limit are handled by the
+        // stdnet server per-request); `DefaultBodyLimit.max(n)` only feeds
+        // `.layer(..)`, so both sides collapse to opaque no-ops.
+        ("DefaultBodyLimit", "max") => {
+            let _n = task.ram.pop_i32();
+            let obj = RustStdlibObject::new("axum::extract::DefaultBodyLimit", ());
+            let handle = vm.insert_heap_object(obj);
+            task.ram.push_i32(handle as i32);
+        }
+        ("Router", "layer") | ("Router", "with_state") | ("Router", "merge")
+        | ("MethodRouter", "layer") => {
+            let _layer_arg = task.ram.pop_i32();
+            let receiver = task.ram.pop_i32();
+            task.ram.push_i32(receiver);
+        }
+
         // Plan 442 C2 item ②: axum SSE form — `Sse.new(stream)` →
         // `.keep_alive(KeepAlive.new())` → `.into_response()`. `stream` is a
         // generator's iterator id; `into_response()` returns it so the server's
