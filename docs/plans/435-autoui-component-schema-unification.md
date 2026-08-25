@@ -415,3 +415,125 @@
   三修后 `variant` 正确返回 `OneOf(["default","secondary",...])`,
   core.md/kitchen-sink 同步产出正确类型。
 - **验证**:docs_gen 4/4 + golden(76 文件) + 围栏 + P4 4/4 + lib 3172 全绿。
+
+## 6. 全量复审发现的缺陷与修复 Phases(2026-08-25 审查产出)
+
+> 三路独立探针审查(围栏/数据质量、实现质量、确定性/安全)汇总,
+> 按严重程度分级为 P6(紧急)/P7(高优)/P8(中优)三个修复阶段。
+
+### 6.1 缺陷总览
+
+| # | 严重度 | 缺陷 | 根因 |
+|---|---|---|---|
+| D1 | 🔴 | vue 维度围栏自指——carried_vue 从当前 aura.at 读回,vue 映射可静默漂移无独立校验 | P4-5a 删死表后无替代交叉源 |
+| D2 | 🔴 | api_functions_used(HashSet)未排序,≥2 个 API 函数的 SFC 字节不确定 | P3 确定性修复遗漏此点 |
+| D3 | 🔴 | render_support 翻转缝隙:新 schema tag 有 iced 级别但静态详情表无臂 → Full level + "unknown tag" note 自相矛盾;反向围栏缺失 | P3 翻转只查静态→schema 方向 |
+| D4 | 🟡 | builtin-first 封锁 gallery 自己的 Carousel 全家(5 个子组件折叠名冲突),carousel 页渲染纯 div | 补强④(shadcn 条目退役)未执行 |
+| D5 | 🟡 | normalize_tag 统一入口(P4 顺手项)完全未做;vue.rs 和 jet/generator.rs 两份私有实现互相不一致 | P4 跳过了 |
+| D6 | 🟡 | ComponentRegistry 的 LoadedPackage 纯平 HashMap,无 sub_widgets 家族建模 | 补强①只做了 schema 侧 |
+| D7 | 🟡 | load_package 一坏全坏:单文件解析失败丢弃整个包(包括合法组件) | 无 reject-and-continue |
+| D8 | 🟡 | LSP UiElement 补全位置盲:全文 contains("view {") 子串匹配,非 view 块内裸标识符也触发 | 启发式非结构化 |
+| D9 | 🟡 | kitchen-sink 页生成但未路由;codeeditor canonical 拼写命中不了 vue.rs 特判(渲染 div);progress "0-100" 伪枚举 | 路由/拼写对齐/范围编码三个子问题 |
+| D10 | 🟠 | 44% web_component / 41% builtin_widget 元素零 props 声明;gallery 回填仅 15 元素/34 props | 回填覆盖不足 |
+| D11 | 🟠 | unclassified 103 个(不降反升:P2 时 17 → registry/gallery 源灌入后 103) | P4 提取源无分类步骤 |
+| D12 | 🟠 | DOC_TODO_BASELINE 33 条冻结不裁剪,≥4 条已有 gallery 页面 | prune 纯 println 不失败 |
+| D13 | 🟠 | 计划承诺未交付清单(见 §6.4) | 各阶段部分降级 |
+
+### 6.2 Phases
+
+#### P6:紧急修复(半天)
+
+- **P6-1 确定性漏洞**(D2):`vue.rs:1783` `api_functions_used` 加 `.sort()`
+  (同 L1622 lucide_icons 模式);删死代码 `sorted_entries` 助手(L137,零调用点,
+  doc 声称"统一经此"为假——更新注释指明各调用点内联排序的约定)。
+- **P6-2 vue 围栏去自指**(D1):为 schema 的 vue 映射引入独立交叉校验源。
+  方案(择一,推荐 a):
+  a. **import 路径文件存在性检查**:gallery 生成 SFC 后,提取全部
+     `import ... from '@/components/ui/...'` 行,对照 `packages/widgets/registry/`
+     + gallery gen 目录的文件存在性(golden 测试内即可做,不需要新基建);
+  b. gallery golden 的 import 集合快照:当前所有 import path 冻结为一个
+     集合,新增/删除 import 路径必须显式更新。
+  同时:P4-4 断言(scan_registry_vue ≡ schema)已空转,改为"schema vue 行的
+  component 名必须出现在对应 import 路径的包导出列表中"(packages/widgets
+  的 registry JSON 已有);失败消息清理过时的 `rs/vue_duplicate_insert` 维度名。
+- **P6-3 render_support 反向围栏**(D3):schema_drift.rs 增加反向断言——
+  schema 中每个有 `backends.iced != "unknown"` 的元素,其 resolve_tag canonical
+  必须在静态详情表有臂;否则红("新增 schema 元素须同步 render_support 详情")。
+  同时:get_support 的 note 在 schema overlay 生效时,如原 note 以 "unknown tag"
+  开头则清空(避免 Full + unknown 自相矛盾)。
+
+#### P7:高优修复(1-2 天)
+
+- **P7-1 shadcn 家族退役 / shadow 白名单**(D4):
+  对 gallery 已用 .at 组件实现的 shadcn 家族(carousel 全家 5 个),从
+  schema/aura.at 退役其 web_component 条目(或标记 `retired_by: "official"`),
+  使 builtin-first 不再与官方 .at 组件冲突。**退役 = 在生成器的
+  TIER_OVERRIDES 或 carried_elements 逻辑中加排除,再生成时不再发射**。
+  验收:gallery carousel 页生成的 SFC 引用 CarouselContent 组件(非 div),
+  golden 更新。同时处理 progress "0-100" 伪枚举:schema 生成器对
+  gallery 回填的 Values 列做合理性过滤(含 `-` 或纯数字范围的跳过 one_of)。
+- **P7-2 kitchen-sink 路由 + 拼写对齐**(D9):
+  a. `app.at` 加 kitchen-sink 路由(或 layout 分组),golden 重采样;
+  b. `codeeditor` 的 canonical 统一为 `code_editor`(修 schema 生成器的
+     canonical 选择逻辑:别名组内有下划线形态时优先下划线,与 vue.rs
+     map_tag 的 `"code_editor" | "codeEditor"` 特判对齐);
+  c. kitchen-sink 生成器对非 literal props 的元素跳过变体发射(codeeditor
+     的 key/content 在真实组件上不存在,目前靠 schema 正确但实际渲染 div)。
+- **P7-3 load_package 容错**(D7):`load_package` 逐文件 try-parse,失败的
+  文件记 warning 收集,不丢弃整个包(与 register_local 的 rejected Vec 模式
+  对齐);S003 告警列出具体失败文件路径。
+- **P7-4 normalize_tag 统一入口**(D5):
+  在 `crates/auto-lang/src/aura/schema.rs` 增加公开的
+  `pub fn normalize_tag(tag: &str, schema: &AuraSchema) -> Option<&'static str>`
+  (= resolve_tag 的 canonical 返回);vue.rs 和 jet/generator.rs 的私有
+  normalize_tag 改为薄包装调用此函数;两者的差异(col→column 等)由
+  schema aliases 驱动。**行为零变更**(golden 守护),只是入口统一。
+
+#### P8:中优修复(择机)
+
+- **P8-1 `auto docs` CLI 化**(D13):
+  将 docs_gen.rs 的 `generate_core_reference` + `generate_kitchen_sink` 提取
+  到 `crates/auto-lang/src/ui_gen/docs_gen.rs`(库代码);`crates/auto` 加
+  `auto docs gen` 子命令调用。测试继续走库路径。
+- **P8-2 ComponentRegistry 家族建模**(D6):
+  LoadedPackage 增 `families: HashMap<String /*parent*/, Vec<String> /*children*/>`;
+  解析包内 widget 时,通过 schema sub_widgets 折叠匹配推导家族关系。
+- **P8-3 unclassified 分批归类**(D11):
+  103 个 unclassified 按 registry/gallery 来源逐批给 TIER_OVERRIDES;
+  目标降至 <30(真正无实现数据的待定词汇)。
+- **P8-4 DOC_TODO_BASELINE 裁剪**(D12):
+  fence 改为"已覆盖的基线条目 = 红"(不再纯 println);首批裁掉
+  areachart/barchart/donutchart/navmenu(4 条已有 gallery 页)。
+- **P8-5 LSP 位置感知**(D8):
+  UiElement 上下文检测改为:从 cursor 位置向上扫描最近的 `{` 块头,
+  判定是否在 view 块内(需要 LSP 提供行级上下文,可能需要 AST 增量解析)。
+- **P8-6 web+vm 双端冒烟**(D13):
+  ComponentRegistry 的 resolve() 接入 vm_bridge / aura_view_builder 的
+  tag 分发路径(至少 web + iced 两端),确保包组件在桌面端也可用。
+- **P8-7 VitePress ↔ gallery 互链**(D13):
+  core.md 的每元素加 `[demo →](/examples/widgets-gallery/<tag>)` 链接;
+  gallery 页 Properties 段旁加 `[API →](/components/core#<tag>)` 反向链接。
+
+### 6.3 验收
+
+- **P6**:确定性漏洞修复后,golden 双跑 diff=0 含 API 函数场景;
+  vue 映射有独立校验源(不再自指);render_support 无自相矛盾诊断。
+- **P7**:gallery carousel 页 SFC 引用真实组件(非 div);
+  kitchen-sink 可通过 URL 访问;codeeditor 渲染正确;
+  load_package 容错(单文件失败不影响其他);normalize_tag 单一入口。
+- **P8**:`auto docs gen` CLI 可用;包家族可查询;
+  unclassified <30;基线自动裁剪;LSP 不误触;
+  双端冒烟通过;VitePress 双向链接上线。
+
+### 6.4 计划承诺未交付清单(原始承诺 → 实际状态)
+
+| 承诺 | 原文 | 实际 | 归属 |
+|---|---|---|---|
+| `auto docs gen` CLI | P5 | 测试内环境变量触发 | P8-1 |
+| Properties 段生成替换 | P5 | 仅对拍(检查不矛盾),未替换页内 | P8-7 顺带 |
+| kitchen-sink playwright | P5 | 页面生成但未路由/无 spec | P7-2 路由;playwright spec 待基建 |
+| VitePress ↔ gallery 互链 | P5 | core.md 单向 | P8-7 |
+| 多后端一致性冒烟 | §3.1 补强③ | 仅 web | P8-6 |
+| `syntax: special` 标记 | §5 风险 | 未实现(零出现) | —(低优,语法特判仍在 Rust) |
+| parser/vb 别名归一统一 | P4 顺手项 | 未实现(两份私有不一致) | P7-4 |
+| shadcn 长尾"核心集 props 全声明" | §5 风险 | 44% web_component 零 props | P8-3 顺带 |
