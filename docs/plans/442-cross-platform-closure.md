@@ -494,12 +494,18 @@
     逐一实现为 VM native。两者均为成规模工作，需后续多轮推进。故验收标准
     第 3/4 条仍未达成。
   - **🟢 C2 ③ 路径 (b) 已起步（2026-08-26，worktree plan-442；
-    500173bcf）**：纯逻辑 value-accessor extern 先行——`value_get_str`/
-    `value_get_bool`/`value_is_null` 已实现为 VM native（读 `__json_object`
-    字段、无 Rust-registry 依赖），回归 `e2e_value_accessors`（json.to_value
-    构建对象 → 逐字段解出 + value_is_null）。数据源 extern（relay_runs_list/
-    relay_start_run/specs_load 等）仍待后续波次（依赖 auto-musk Rust registry
-    或 backend ABI cdylib）。
+    e8843265a..5042fd96e）**：纯逻辑/工具 extern 已 VM 化（无 Rust-registry
+    依赖）——`value_get_str`/`value_get_bool`/`value_is_null`/`value_get`/
+    `value_get_array`（读 `__json_object` 字段，含 push_vm_value 回推 Value）
+    + `new_id`/`random_hex`（fastrand+hex）+ `hash_password`（sha256(s||p)）+
+    `path_inner`（Path 提取器串恒等）。回归 `e2e_value_accessors`（8 端点：
+    /acc /isnull /arr /nested /hex /newid /hash /path 全绿）+ plan442 +
+    catalog_integrity + ffi_dual。数据源 extern（relay_runs_list/
+    relay_start_run/specs_load/app_config_load 等）仍待后续——它们依赖
+    auto-musk Rust registry/store（`ProfessionRegistry`/`MuskAppConfig::load`/
+    store），auto-lang 仓不可访问，路径 (a) 的 host_bridge/backend_abi
+    HostCallFn 路由需 auto-musk 侧 cdylib 包装（extern_impl 逐函数签名
+    → `fn(&str)->Result<String,String>`）才可用。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 
