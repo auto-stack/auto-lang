@@ -2972,6 +2972,14 @@ fn run_file_dynamic_ui_inner(
     let widget = widget.ok_or("No widget declaration found")?;
     let root_decl = root_decl.ok_or("No widget declaration found")?;
 
+    // Plan 451: root widget 的 `actions {}` 块安装 DSL 动作配置（优先于
+    // auto-atom 外挂文件；热重载经 action_config::reload_action_config
+    // 重读本源文件）。消费点（键盘回退层/menubar·toolbar 合成/MCP 同源）
+    // 全部经 action_config() 取数，零改动。
+    if let Some(ref acts) = root_decl.actions {
+        crate::ui::action_config::set_dsl_action_config_from_block(acts, path);
+    }
+
     // 2b. Load child widgets + imported functions/types from `use` imports
     let mut registry = WidgetRegistry::new();
     // PR-3b Step 4: collect child WidgetDecls alongside child AuraWidgets so the
@@ -3109,6 +3117,7 @@ fn run_file_dynamic_ui_inner(
                                     watch: Vec::new(),
                                     expose: Vec::new(),
  setup: None,
+                    actions: None,
                                 });
                             }
                         }
@@ -3222,6 +3231,7 @@ fn run_file_dynamic_ui_inner(
                                     watch: Vec::new(),
                                     expose: Vec::new(),
  setup: None,
+                    actions: None,
                                 });
                             }
                         }
@@ -3268,6 +3278,7 @@ fn run_file_dynamic_ui_inner(
                 watch: Vec::new(),
                 expose: Vec::new(),
  setup: None,
+                    actions: None,
             };
             store_as_child_decls.push(fake_widget);
         }
@@ -3300,6 +3311,7 @@ fn run_file_dynamic_ui_inner(
                     watch: Vec::new(),
                     expose: Vec::new(),
  setup: None,
+                    actions: None,
                 });
             }
         }

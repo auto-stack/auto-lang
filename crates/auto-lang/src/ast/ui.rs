@@ -82,6 +82,78 @@ pub struct WidgetDecl {
     /// template ref on this component can call imperative methods or read
     /// exposed refs; other backends ignore them.
     pub expose: Vec<Name>,
+
+    /// Plan 451: `actions { ... }` 块——widget 内的动作注册表 + menubar/
+    /// toolbar 声明（auto-atom 外挂配置的 DSL 化形态）。vm 渲染器经
+    /// `action_config()` 消费（DSL 源优先，外挂文件兜底）；其他后端目前
+    /// 忽略（vue 侧消费见 Plan 451 P2）。
+    pub actions: Option<ActionsBlock>,
+}
+
+/// Plan 451: `actions { ... }` 声明块。
+///
+/// ```auto
+/// actions {
+///     action (id: "file.new", handler: .ActNew, title: "新建", shortcut: "Ctrl+N")
+///     menubar { menu (id: "file", title: "文件") { item (action: "file.new")  sep } }
+///     toolbar { item (action: "file.new") }
+/// }
+/// ```
+///
+/// `enabled_if`/`checked_if` 为引号包裹的条件表达式字符串，运行时经
+/// `eval_condition_with` 对合并根 state 求值（与 auto-atom 文件形态同语义，
+/// 如 ".store.tab_count > 0"）；升级为真 DSL 表达式 AST 随 P2 vue 编译一并做。
+#[derive(Debug, Clone)]
+pub struct ActionsBlock {
+    pub actions: Vec<ActionEntry>,
+    pub menubar: Option<MenubarBlock>,
+    pub toolbar: Option<ToolbarBlock>,
+}
+
+/// 单个 action 声明：`action (id: "...", handler: .ActXxx, ...)`。
+#[derive(Debug, Clone)]
+pub struct ActionEntry {
+    /// 点分动作 id（OS 用户键位层的跨版本契约，如 "file.new"）。
+    pub id: String,
+    /// 指向本 widget `on{}` 事件的 handler（含前导点，如 ".ActNew"）；
+    /// 解析期校验必须命中（Plan 451 编译期校验承诺）。
+    pub handler: String,
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub shortcut: Option<String>,
+    /// 条件表达式字符串（引号原样）。
+    pub enabled_if: Option<String>,
+    pub checked_if: Option<String>,
+}
+
+/// `menubar { ... }` 子块。
+#[derive(Debug, Clone)]
+pub struct MenubarBlock {
+    pub menus: Vec<MenuEntry>,
+}
+
+/// 单个菜单：`menu (id: "file", title: "文件") { ... }`。id 是开合内部消息
+/// `__menubar_toggle(id)` 的键，须稳定。
+#[derive(Debug, Clone)]
+pub struct MenuEntry {
+    pub id: String,
+    pub title: String,
+    pub items: Vec<MenuItemEntry>,
+}
+
+/// 菜单/工具栏条目：action 引用或分隔线。
+#[derive(Debug, Clone)]
+pub enum MenuItemEntry {
+    /// 引用 action id（须存在于注册表，转换期校验）。
+    Action(String),
+    /// `sep` 分隔线。
+    Sep,
+}
+
+/// `toolbar { ... }` 子块。
+#[derive(Debug, Clone)]
+pub struct ToolbarBlock {
+    pub items: Vec<MenuItemEntry>,
 }
 
 /// Plan 426: `setup { ... }` 前导槽——每实例同步执行、先于首渲染的通用
@@ -911,6 +983,7 @@ mod tests {
             ext_imports: Vec::new(),
             watch: Vec::new(),
             setup: None,
+            actions: None,
             expose: Vec::new(),
         };
 

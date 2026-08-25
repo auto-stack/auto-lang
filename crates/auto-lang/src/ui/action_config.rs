@@ -112,8 +112,69 @@ impl UiActionConfig {
         }
 
         // Validation: unique ids, menu/toolbar refs resolve, shortcuts normalize.
+        // (extend——保留 parse 循环已累积的 missing-handler/unknown-block 警告)
+        let mut warnings = { let mut w = warnings; w.extend(cfg.validate_refs()); w };
+        // Shortcut bindings: normalized key → handler (first action wins on
+        // collision, warning recorded).
+        for w in cfg.rebuild_shortcut_bindings() {
+            warnings.push(w);
+        }
+
+        Ok((cfg, warnings))
+    }
+
+    /// Plan 451: build from a widget decl's `actions {}` block (DSL form).
+    /// Same validation as the auto-atom parse (warnings, non-fatal).
+    pub fn from_actions_block(
+        b: &crate::ast::ui::ActionsBlock,
+    ) -> (UiActionConfig, Vec<String>) {
+        let map_item = |i: &crate::ast::ui::MenuItemEntry| match i {
+            crate::ast::ui::MenuItemEntry::Action(id) => MenuItem::Action(id.clone()),
+            crate::ast::ui::MenuItemEntry::Sep => MenuItem::Separator,
+        };
+        let mut cfg = UiActionConfig {
+            actions: b.actions.iter()
+                .map(|a| ActionDef {
+                    id: a.id.clone(),
+                    handler: a.handler.clone(),
+                    title: a.title.clone().unwrap_or_default(),
+                    icon: a.icon.clone(),
+                    shortcut: a.shortcut.clone(),
+                    checked_if: a.checked_if.clone(),
+                    enabled_if: a.enabled_if.clone(),
+                })
+                .collect(),
+            menus: b.menubar
+                .as_ref()
+                .map(|m| {
+                    m.menus.iter()
+                        .map(|me| MenuDef {
+                            id: me.id.clone(),
+                            title: me.title.clone(),
+                            items: me.items.iter().map(map_item).collect(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            toolbar: b.toolbar
+                .as_ref()
+                .map(|t| t.items.iter().map(map_item).collect())
+                .unwrap_or_default(),
+            shortcut_bindings: Vec::new(),
+        };
+        let mut warnings = cfg.validate_refs();
+        for w in cfg.rebuild_shortcut_bindings() {
+            warnings.push(w);
+        }
+        (cfg, warnings)
+    }
+
+    /// Shared validation of parse/from_actions_block results: unique non-empty
+    /// action ids, menu/toolbar references resolve.
+    fn validate_refs(&mut self) -> Vec<String> {
+        let mut warnings = Vec::new();
         let mut seen = HashMap::new();
-        for a in &cfg.actions {
+        for a in &self.actions {
             if a.id.is_empty() {
                 warnings.push("action with empty id — skipped".into());
             } else if seen.insert(a.id.clone(), ()).is_some() {
@@ -121,7 +182,7 @@ impl UiActionConfig {
             }
         }
         let exists = |id: &str| seen.contains_key(id);
-        for m in &cfg.menus {
+        for m in &self.menus {
             for item in &m.items {
                 if let MenuItem::Action(id) = item {
                     if !exists(id) {
@@ -130,21 +191,14 @@ impl UiActionConfig {
                 }
             }
         }
-        for item in &cfg.toolbar {
+        for item in &self.toolbar {
             if let MenuItem::Action(id) = item {
                 if !exists(id) {
                     warnings.push(format!("toolbar references unknown action {:?}", id));
                 }
             }
         }
-
-        // Shortcut bindings: normalized key → handler (first action wins on
-        // collision, warning recorded).
-        for w in cfg.rebuild_shortcut_bindings() {
-            warnings.push(w);
-        }
-
-        Ok((cfg, warnings))
+        warnings
     }
 
     /// Rebuild `shortcut_bindings` from the actions' current `shortcut`
@@ -280,17 +334,45 @@ pub fn normalize_shortcut(s: &str) -> String {
 static ACTION_CONFIG: std::sync::RwLock<Option<std::sync::Arc<UiActionConfig>>> =
     std::sync::RwLock::new(None);
 
+/// Plan 451: DSL 源（widget `actions {}` 块）提供的配置——优先于外挂文件。
+/// 由 vm UI 装载路径（run_file_dynamic_ui_inner）在解析根 widget 后设置；
+/// 热重载经 `reload_action_config()` 重读源 .at 文件重新提取。
+static DSL_ACTION_CONFIG: std::sync::RwLock<Option<std::sync::Arc<UiActionConfig>>> =
+    std::sync::RwLock::new(None);
+
+/// DSL 源 .at 文件路径（app.at）；None = 本进程未用 DSL actions。
+static DSL_SOURCE_PATH: OnceLock<Option<String>> = OnceLock::new();
+
 /// Resolved once from AUTO_VM_ACTION_CONFIG (injected by `auto run` from
 /// pac.at `ui_config:`); hot reloads re-read this path.
 static CONFIG_PATH: OnceLock<Option<String>> = OnceLock::new();
 
-/// App identity for the OS keymap layer: file stem of the config path
-/// (auto-edit.at → "auto-edit").
-static CONFIG_APP_ID: OnceLock<String> = OnceLock::new();
+/// App identity for the OS keymap layer: `AUTO_APP_ID` env (injected by
+/// `auto run` from pac.at `name` — DSL-only projects' id source) first, else
+/// the file stem of the config path (auto-edit.at → "auto-edit").
+fn resolve_app_id() -> Option<String> {
+    if let Ok(id) = std::env::var("AUTO_APP_ID") {
+        if !id.trim().is_empty() {
+            return Some(id.trim().to_string());
+        }
+    }
+    CONFIG_PATH
+        .get()
+        .and_then(|p| p.as_ref())
+        .and_then(|p| {
+            std::path::Path::new(p)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+        })
+}
 
 /// (mtime, len) of the app config + OS keymap layer at the last successful
 /// load — the mtime-poll change detector compares against this.
 static CONFIG_STAMP: Mutex<Option<(std::time::SystemTime, u64)>> = Mutex::new(None);
+
+/// Plan 451: DSL 源 .at 文件的上次成功加载戳（与 CONFIG_STAMP 分离——
+/// 两种源可并存于进程，只是 DSL 优先）。
+static DSL_STAMP: Mutex<Option<(std::time::SystemTime, u64)>> = Mutex::new(None);
 
 /// Bumped on every successful reload. The renderer's update closure compares
 /// its last-seen value on each message (heartbeat included) to force a
@@ -343,16 +425,112 @@ pub fn set_popover_open(v: Option<String>) {
 /// hit the read-lock fast path (Arc clone, no parse). Reloads swap the Arc
 /// under the write lock; a failed reload keeps the previous value.
 pub fn action_config() -> Option<std::sync::Arc<UiActionConfig>> {
+    // Plan 451: DSL 源（widget actions 块）优先于外挂文件。
+    if let Some(cfg) = DSL_ACTION_CONFIG.read().unwrap().clone() {
+        return Some(cfg);
+    }
     if let Some(cfg) = ACTION_CONFIG.read().unwrap().clone() {
         return Some(cfg);
     }
     reload_action_config()
 }
 
+/// Plan 451: 从根 widget 的 actions 块安装 DSL 源配置（vm UI 装载路径在
+/// 解析根 decl 后调用）：应用 OS 键位层、bump generation、记录 reload 摘要。
+/// source_path 是源 .at 文件路径，供热重载重读。
+pub fn set_dsl_action_config_from_block(
+    block: &crate::ast::ui::ActionsBlock,
+    source_path: Option<&str>,
+) -> Option<std::sync::Arc<UiActionConfig>> {
+    let _ = DSL_SOURCE_PATH.set(source_path.map(|s| s.to_string()));
+    if let Some(src) = source_path {
+        *DSL_STAMP.lock().unwrap() = config_stamp(src);
+    }
+    install_dsl_config(block.clone())
+}
+
+/// 校验 + 键位层 + 换装 + generation/reload-info 更新。
+fn install_dsl_config(
+    block: crate::ast::ui::ActionsBlock,
+) -> Option<std::sync::Arc<UiActionConfig>> {
+    let (mut cfg, warnings) = UiActionConfig::from_actions_block(&block);
+    for w in &warnings {
+        eprintln!("[ACTION-CONFIG] warning: {w}");
+    }
+    let os_overrides = apply_os_keymap_layer(&mut cfg);
+    let src = DSL_SOURCE_PATH
+        .get()
+        .and_then(|p| p.as_deref())
+        .unwrap_or("<widget actions>");
+    eprintln!(
+        "[ACTION-CONFIG] loaded DSL actions {src}: {} actions, {} menus, {} toolbar items, {} OS keymap overrides",
+        cfg.actions.len(),
+        cfg.menus.len(),
+        cfg.toolbar.len(),
+        os_overrides
+    );
+    let arc = std::sync::Arc::new(cfg);
+    *DSL_ACTION_CONFIG.write().unwrap() = Some(arc.clone());
+    *LAST_RELOAD_INFO.lock().unwrap() = Some(format!(
+        "{} actions, {} menus, {} toolbar items, {} OS keymap overrides",
+        arc.actions.len(),
+        arc.menus.len(),
+        arc.toolbar.len(),
+        os_overrides
+    ));
+    CONFIG_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    Some(arc)
+}
+
+/// Plan 451: 从 AutoLang 源码提取首个带 actions 块的 widget 的声明
+/// （DSL 热重载路径：重读源 .at → 此提取 → install）。
+pub fn extract_actions_from_source(
+    code: &str,
+) -> Result<crate::ast::ui::ActionsBlock, String> {
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::parser::Parser::from(code).with_session(session);
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("DSL source parse error: {e}"))?;
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+            if let Some(ref acts) = decl.actions {
+                return Ok(acts.clone());
+            }
+        }
+    }
+    Err("no widget with an `actions` block found in source".into())
+}
+
 /// Force a (re)load from disk. Degradation semantics (plan 423 P1): unreadable
 /// or unparseable input KEEPS the previously loaded config (logged); only a
 /// clean parse swaps it in and bumps the generation.
+///
+/// Plan 451: DSL 源路径存在时改为重读源 .at → 重新提取 actions（MCP 的
+/// action_config_reload 工具因此零改动获得 DSL 热重载）；否则走外挂
+/// auto-atom 文件兼容路径。
 pub fn reload_action_config() -> Option<std::sync::Arc<UiActionConfig>> {
+    if let Some(src) = DSL_SOURCE_PATH.get().and_then(|p| p.as_deref()) {
+        let code = match std::fs::read_to_string(src) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "[ACTION-CONFIG] cannot read DSL source {src}: {e} — keeping previous config"
+                );
+                return DSL_ACTION_CONFIG.read().unwrap().clone();
+            }
+        };
+        return match extract_actions_from_source(&code) {
+            Ok(block) => {
+                *DSL_STAMP.lock().unwrap() = config_stamp(src);
+                install_dsl_config(block)
+            }
+            Err(e) => {
+                eprintln!("[ACTION-CONFIG] {e} — keeping previous config ({src})");
+                DSL_ACTION_CONFIG.read().unwrap().clone()
+            }
+        };
+    }
     let path = CONFIG_PATH
         .get_or_init(|| {
             std::env::var("AUTO_VM_ACTION_CONFIG")
@@ -363,12 +541,6 @@ pub fn reload_action_config() -> Option<std::sync::Arc<UiActionConfig>> {
     let Some(path) = path else {
         return None; // no config wired — DSL-declared bindings only
     };
-    let _ = CONFIG_APP_ID.set(
-        std::path::Path::new(&path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default(),
-    );
     let doc = match std::fs::read_to_string(&path) {
         Ok(d) => d,
         Err(e) => {
@@ -420,8 +592,8 @@ fn config_stamp(path: &str) -> Option<(std::time::SystemTime, u64)> {
         mtime = meta.modified().ok();
         len += meta.len();
     }
-    if let Some(app_id) = CONFIG_APP_ID.get() {
-        if let Some(os) = os_keymap_path(app_id) {
+    if let Some(app_id) = resolve_app_id() {
+        if let Some(os) = os_keymap_path(app_id.as_str()) {
             if let Ok(meta) = std::fs::metadata(&os) {
                 if meta.modified().ok() > mtime || mtime.is_none() {
                     mtime = meta.modified().ok();
@@ -438,6 +610,16 @@ fn config_stamp(path: &str) -> Option<(std::time::SystemTime, u64)> {
 /// Writers should swap atomically (temp file + rename); a half-written file
 /// is caught by the parse-failure keep-previous path.
 pub fn check_action_config_changed() -> bool {
+    // Plan 451: DSL 源（widget actions 块）的 mtime 轮询——与文件形态同
+    // 语义（变更才真正重读；失败保旧值）。
+    if let Some(src) = DSL_SOURCE_PATH.get().and_then(|p| p.as_deref()) {
+        let stamp = config_stamp(src);
+        if stamp != *DSL_STAMP.lock().unwrap() {
+            let before = config_generation();
+            reload_action_config();
+            return config_generation() != before;
+        }
+    }
     let Some(path) = CONFIG_PATH.get().cloned().flatten() else {
         return false;
     };
@@ -474,10 +656,10 @@ fn os_keymap_path(app_id: &str) -> Option<std::path::PathBuf> {
 /// never copied. A bad OS layer logs and is ignored (app layer stands).
 /// Returns the number of overrides applied.
 fn apply_os_keymap_layer(cfg: &mut UiActionConfig) -> usize {
-    let Some(app_id) = CONFIG_APP_ID.get() else {
+    let Some(app_id) = resolve_app_id() else {
         return 0;
     };
-    let Some(path) = os_keymap_path(app_id) else {
+    let Some(path) = os_keymap_path(app_id.as_str()) else {
         return 0;
     };
     let Ok(doc) = std::fs::read_to_string(&path) else {

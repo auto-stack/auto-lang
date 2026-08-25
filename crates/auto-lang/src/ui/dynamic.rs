@@ -785,6 +785,15 @@ impl DynamicComponent {
     /// * `Ok(None)` - File has not changed or no source path is set
     /// * `Err(...)` - Could not read file metadata
     pub fn check_file_changed(&mut self) -> Result<Option<SystemTime>, String> {
+        // Plan 451: 多文件工程（store/子组件经 use 加载）的整源热重载路径
+        // （renderer 的 component.reload）只重建根 widget——use 模块与
+        // store 的状态/handler 会全部丢失（"field not found" + 派发失效，
+        // Plan 449/451 期间实机实证）。此形态下报告"无变化"跳过该路径；
+        // 动作配置层的热重载不受影响（action_config 的 DSL 源 mtime 轮询
+        // 独立于此，见 action_config::check_action_config_changed）。
+        if !self.import_stmts.is_empty() || !self.widget_registry.is_empty() {
+            return Ok(None);
+        }
         let path = match &self.source_path {
             Some(p) => p.clone(),
             None => return Ok(None),

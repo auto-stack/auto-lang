@@ -6,8 +6,11 @@
 //   console_panel.at  ConsolePanel 组件（同上）
 //   ctx_menu.at       EditorCtxMenu 组件（右键弹层锚态直读 .store）
 //
-// App 承担：view 组合 + on 薄委托 store.Xxx()（事件名与 auto-edit.at 的
-// handler 映射一一对应，Action=声明层，Event=执行层）。
+// App 承担：actions 声明（Plan 451：动作注册表 + menubar/toolbar 经 DSL
+// 声明，原 auto-edit.at 外挂配置并入）+ view 组合 + on 薄委托 store.Xxx()
+// （事件名与 actions 的 handler 映射一一对应，Action=声明层，Event=执行层；
+// handler 在解析期校验命中 on{} 事件）。热重载经 action_config_reload
+// 工具或 mtime 轮询重读本文件重新提取。
 // 以下交互必须留在根视图（MCP 矩阵的快照定位锚——vm 下组件子树对快照
 // 不可见，回调 props 更会使组件整体退化，view fn 片段的参数化条件亦不
 // 求值；均为 Plan 449 调查结论，详见 README「vm 组件边界」）：
@@ -22,6 +25,74 @@ use console_panel: ConsolePanel
 use ctx_menu: EditorCtxMenu
 
 widget App {
+    // ---- Plan 451: actions 声明块（原 auto-edit.at，DSL 化）----
+    // 三源绑定：shortcut（键盘回退层，DSL onkeydown 之下）、menubar/toolbar
+    // （view 中占位标签的配置合成）、MCP 自动化同源。enabled_if/checked_if
+    // 为条件表达式字符串，对合并根 state 求值（.tab_count 等，无前缀）。
+    // 注意：auto test 的 T10 热重载以 "actions {" / "menubar {" 行首字符串
+    // 为插入锚——保持这两个标记。
+    actions {
+        action (id: "file.new",        handler: .ActNew,        title: "新建",   icon: "file-plus",   shortcut: "Ctrl+N")
+        action (id: "file.open",       handler: .ActOpen,       title: "打开…",  icon: "folder-open", shortcut: "Ctrl+O")
+        action (id: "file.save",       handler: .ActSave,       title: "保存",   icon: "save",        shortcut: "Ctrl+S",
+                enabled_if: ".store.tab_count > 0")
+        action (id: "file.quit",       handler: .ActQuit,       title: "退出",   shortcut: "Alt+F4")
+        action (id: "edit.undo",       handler: .ActUndo,       title: "撤销",   icon: "undo-2",      shortcut: "Ctrl+Z",
+                checked_if: ".store.edits > 0")
+        action (id: "edit.redo",       handler: .ActRedo,       title: "重做",   icon: "redo-2",      shortcut: "Ctrl+Y")
+        action (id: "edit.cut",        handler: .ActCut,        title: "剪切",   icon: "scissors")
+        action (id: "edit.copy",       handler: .ActCopy,       title: "复制",   icon: "copy")
+        action (id: "edit.paste",      handler: .ActPaste,      title: "粘贴",   icon: "clipboard")
+        action (id: "edit.select-all", handler: .ActSelectAll,  title: "全选",   shortcut: "Ctrl+A")
+        action (id: "view.console",    handler: .ActConsole,    title: "切换 Console", icon: "terminal", shortcut: "Ctrl+J",
+                checked_if: ".store.console_open")
+        // 仅声明层快捷键(验证回退层):Ctrl+D 切换 tab
+        action (id: "view.switch-tab", handler: .ActSwitchTab,  title: "切换 Tab", shortcut: "Ctrl+D")
+        // Plan 428: 代码折叠(切换激活编辑器第 2 行的 fn 块)
+        action (id: "view.fold",       handler: .ActFold,       title: "折叠切换")
+        action (id: "help.about",      handler: .ActAbout,      title: "关于 auto-edit")
+
+        menubar {
+            menu (id: "file", title: "文件") {
+                item (action: "file.new")
+                item (action: "file.open")
+                item (action: "file.save")
+                sep
+                item (action: "file.quit")
+            }
+            menu (id: "edit", title: "编辑") {
+                item (action: "edit.undo")
+                item (action: "edit.redo")
+                sep
+                item (action: "edit.cut")
+                item (action: "edit.copy")
+                item (action: "edit.paste")
+                item (action: "edit.select-all")
+            }
+            menu (id: "view", title: "视图") {
+                item (action: "view.console")
+                item (action: "view.switch-tab")
+                item (action: "view.fold")
+            }
+            menu (id: "help", title: "帮助") {
+                item (action: "help.about")
+            }
+        }
+
+        toolbar {
+            item (action: "file.new")
+            item (action: "file.open")
+            item (action: "file.save")
+            sep
+            item (action: "edit.undo")
+            item (action: "edit.redo")
+            sep
+            item (action: "edit.cut")
+            item (action: "edit.copy")
+            item (action: "edit.paste")
+        }
+    }
+
     view {
         col (style: "h-full w-full") {
 
