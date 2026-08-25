@@ -2,7 +2,7 @@ widget App {
     view {
         center {
             h1 "Hello, World!" {
-                style: "text-[#6CB0DD]"
+                style: "text-primary"
             }
         }
     }
