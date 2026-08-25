@@ -38,6 +38,7 @@ cargo test -p auto-lang --features ui-iced,code-editor --lib
 - Always run `cargo test` after modifying VM-related code
 - Always run `cargo build` after modifying codegen or parser code
 - **CRITICAL: After EVERY edit session (before reporting completion to the user), ALWAYS run `cargo build -p auto` to rebuild `auto.exe`.** This ensures the latest binary is ready for immediate testing without the user having to wait for a rebuild. Do not skip this even for small changes — incremental builds are fast but the user should never have to compile manually.
+- **PATH 上的 `auto` 是 debug 构建的薄包装，不是安装副本（plan 448 约定）**：`~/.cargo/bin/auto`（Git Bash）/ `~/.cargo/bin/auto.cmd`（cmd/PowerShell）只 exec `target/debug/auto.exe`——`cargo build -p auto` 后全局任何目录立即用上新版。**禁止** `cargo install` 或把二进制复制进 `~/.cargo/bin`（曾因此出现新旧两个同版本号二进制难以分辨的排障事故）。`auto --version` 带 git 戳（`0.1.0+v0.4.1-2076-g<hash>[-dirty]`），可随时确认手头二进制对应哪个提交。
 
 ## Auto Code Generation Rules
 
