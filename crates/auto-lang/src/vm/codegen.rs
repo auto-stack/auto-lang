@@ -464,6 +464,10 @@ impl Codegen {
         if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
             intrinsics.insert("read_text".to_string(), id);
         }
+        // Plan 442 C2: bare `format(fmt, args...)` — the Rust macro form
+        // `format!(...)` (parser keeps the Ident, see the bang arm) routes to
+        // the fmt.sprintf native ({} placeholder replacement).
+        intrinsics.insert("format".to_string(), crate::vm::native::NATIVE_FMT_SPRINTF);
         // Plan 011 (MS3-B): shell-host bridge functions.
         intrinsics.insert("system".to_string(), NATIVE_SHELL_SYSTEM);
         intrinsics.insert("system_status".to_string(), NATIVE_SHELL_SYSTEM_STATUS);
@@ -834,6 +838,14 @@ impl Codegen {
         intrinsics.insert("dialog_save".to_string(), NATIVE_DIALOG_SAVE);
         intrinsics.insert("file_basename".to_string(), NATIVE_FILE_BASENAME);
 
+        // Plan 442 C2: keep in sync with Codegen::new()'s table (dep-module
+        // compiles go through THIS constructor — musk corpus bare-name
+        // aliases must exist here too).
+        intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
+        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP.get("auto.fs.read_text") {
+            intrinsics.insert("read_text".to_string(), id);
+        }
+        intrinsics.insert("format".to_string(), crate::vm::native::NATIVE_FMT_SPRINTF);
         // Register return types for native functions (used for type inference in let bindings)
         let mut fn_return_types = Self::build_fn_return_types();
         // Plan 198 Phase 1: Enrich with TypeStore-derived return types (authoritative)
@@ -8079,11 +8091,30 @@ impl Codegen {
                                 }
                                 _ => {
                                     // Arg::Name — compile as positional identifier (e.g., print(x))
-                                    let name = match arg {
-                                        crate::ast::Arg::Name(n) => n.clone(),
-                                        _ => unreachable!(),
-                                    };
-                                    self.compile_expr(&Expr::Ident(name))?;
+                                    // Plan 442 C2: Arg::Pair (named arg, e.g. relay_flows'
+                                    // variadic calls) previously hit unreachable here —
+                                    // compile the VALUE; the name carries no runtime
+                                    // slot in this variadic context.
+                                    match arg {
+                                        crate::ast::Arg::Name(n) => {
+                                            self.compile_expr(&Expr::Ident(n.clone()))?;
+                                        }
+                                        crate::ast::Arg::Pair(_, expr) => {
+                                            if !func_name_for_params.is_empty()
+                                                && self.fn_params
+                                                    .contains_key(func_name_for_params)
+                                            {
+                                                self.compile_call_arg(
+                                                    expr,
+                                                    func_name_for_params,
+                                                    i,
+                                                )?;
+                                            } else {
+                                                self.compile_expr(expr)?;
+                                            }
+                                        }
+                                        crate::ast::Arg::Pos(_) => unreachable!(),
+                                    }
                                 }
                             }
                         }
@@ -8750,7 +8781,7 @@ impl Codegen {
                     // qualified fallback (see resolved_func above).
                     let raw_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
                         Expr::Ident(name) => name.to_string(),
-                        _ => unimplemented!("Dynamic call (computed function name) not supported yet"),
+                        _ => unimplemented!("Dynamic call not supported: name expr = {:?}", call.name),
                     });
                     let reloc_name = self.resolve_call_symbol(&raw_name);
 

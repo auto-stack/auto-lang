@@ -165,6 +165,7 @@ mod plan442_musk_backend_probe {
                 // Single-error form (no MultipleErrors wrapper) — first line.
                 lines = vec![e.lines().next().unwrap_or("?")];
             }
+
             eprintln!("  BLOCKED {:<24} {}", m, lines.join(" | "));
         }
         // The enumerator is a report, not a gate — any state is a pass.

@@ -1388,6 +1388,18 @@ impl<'a> Lexer<'a> {
                         return self.identifier_or_special_block();
                     }
 
+                    // Plan 442 C2: non-ASCII, non-alphabetic characters (e.g.
+                    // the em-dash in musk relay_store's hand-written `# ...`
+                    // notes) previously errored here. Valid Auto identifiers
+                    // are ASCII, so such characters only occur in prose —
+                    // skip the character and continue lexing (the parser's
+                    // `#`-comment line skip consumes the surrounding tokens).
+                    if c as u32 >= 0x80 {
+                        self.chars.next();
+                        self.skip_whitespace();
+                        return self.next_step();
+                    }
+
                     let span = crate::error::span_from(self.pos, 1);
                     return Err(LexerError::UnknownCharacter {
                         character: c.to_string(),

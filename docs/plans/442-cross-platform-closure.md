@@ -389,6 +389,20 @@
     `#{read_text}`(intrinsics 别名已挂但未达该调用路径,深层)。
     **运维**:D 盘 100% 满(target/debug/incremental 独占 134GB),已清
     增量缓存释放至 132G 空闲。
+  - **▶ 第三批已落地（2026-08-25,auto-lang 会话；语料 27→30/32）**：①
+    `format!` 宏形态——parser bang 臂特判（`format`+`!` 不转 expr.collect
+    垃圾形状,保留 Ident 让后随括号按普通调用编译）+ intrinsics 裸名路由
+    fmt.sprintf（**并同步进 Codegen 第二构造器 new_with_type_store 的
+    intrinsics 表**——dep 模块编译走该构造器,此前 read_text/format 别名
+    只进了 new() 故不达路径,此为两症状同根）;② Arg::Pair（具名实参）
+    在变参调用编译臂的 unreachable 补齐（编译值）;③ 枚举变体字段 `#[...]`
+    属性跳过 + `parse_fn_annotations` 对 `#`-行注释容错 + 主语句循环
+    section 路径的散文判定 + 词法器跳过非 ASCII 非字母字符（relay_store
+    手写中文 `# PLAN-032` 笔记四件套）。翻绿：task_plan/workflow/relay_
+    flows。**剩 relay_store 1 个**：doc 注释内含 `#[serde(default)]` 文本
+    行 + 结构体字段属性的复合态仍级联（最小复现不触发,需真实上下文,
+    下一波）。附带修复：Enum 变体字段/结构体字段的 `#` 注释与散文容错
+    为通用语言面改进。
   - **▶ C2 剩余工作清单（18 模块五类，逐点归属）**：① **顶层 `let` 跨 fn
     可见性 ×5+**（orch_tools/spec_tools/tools/workflow/server_serve 及
     relay_store 部分——codegen 有意让顶层 let 保持局部（var/const 才入

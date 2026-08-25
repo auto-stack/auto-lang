@@ -1540,9 +1540,19 @@ impl<'a> Parser<'a> {
                     // This is #[...], let parse_stmt() handle it
                     // Don't process as section, continue to parse_stmt()
                 } else {
-                    // This is a #section declaration
+                    // This is a #section declaration — or a corpus-style
+                    // `# prose note ...` line (musk relay_store's hand-written
+                    // PLAN-032 notes): `#` + name + NON-newline continuation
+                    // means prose, skip the whole line (Plan 442 C2).
                     self.next();
                     let section = self.parse_name()?;
+                    if !self.is_kind(TokenKind::Newline)
+                        && !self.is_kind(TokenKind::EOF)
+                        && !self.is_kind(TokenKind::RBrace)
+                    {
+                        let _ = self.skip_line();
+                        continue;
+                    }
                     match section.as_str() {
                         "C" => {
                             current_section = CodeSection::C;
@@ -2608,6 +2618,18 @@ impl<'a> Parser<'a> {
                     // Bang operator (!) for eager collection
                     // Converts expr! into expr.collect()
                     Op::Not => {
+                        // Plan 442 C2: Rust 宏形态 `format!(...)` — musk 后端
+                        // 语料直用(conversation/relay_api/task_plan/_engine ×7)。
+                        // 不转 expr.collect()(那会把后随 (args) 的调用名变成
+                        // format.collect 垃圾形状,VM codegen 的 Dynamic-call
+                        // unimplemented 即由此来);保留 Ident(format),后随
+                        // 括号按普通调用编译,由 codegen 路由 fmt.sprintf。
+                        if let Expr::Ident(n) = &lhs {
+                            if n.as_str() == "format" {
+                                self.next(); // skip !
+                                continue;
+                            }
+                        }
                         self.next(); // skip !
                         let collect_name = crate::ast::Name::from("collect");
                         let collect_expr =
@@ -5587,6 +5609,38 @@ impl<'a> Parser<'a> {
         self.skip_empty_lines();
         let mut fields = Vec::new();
         while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            // Plan 442 C2: skip `#[...]` attributes on variant fields — musk
+            // backend's serde passthrough (#[serde(default, skip_serializing_if
+            // = "...")]) previously leaked its tokens into the field parse
+            // ("undefined variable: default" + RBrace cascade). The VM drops
+            // the attr text; a2r reads it from raw_attrs the same way struct
+            // fields do.
+            while self.is_kind(TokenKind::Hash) {
+                // `#` not followed by `[` → corpus-style line comment (musk
+                // relay_store's hand-written `# PLAN-032 ...` notes); skip to
+                // end of line instead of erroring.
+                let is_attr = if let Ok(tok) = self.lexer.next() {
+                    let a = tok.kind == TokenKind::LSquare;
+                    self.lexer.push_token(tok);
+                    a
+                } else {
+                    false
+                };
+                if is_attr {
+                    let _ = self.parse_fn_annotations()?;
+                } else {
+                    while !self.is_kind(TokenKind::Newline)
+                        && !self.is_kind(TokenKind::EOF)
+                        && !self.is_kind(TokenKind::RBrace)
+                    {
+                        self.next();
+                    }
+                }
+                self.skip_empty_lines();
+            }
+            if self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF) {
+                break;
+            }
             let name: AutoStr = self.cur.text.clone().into();
             self.next();
             // Plan 396/B11(b): accept both  and 
@@ -8164,6 +8218,31 @@ impl<'a> Parser<'a> {
 
         // Parse all annotation blocks: #[...] #[...] ...
         while self.is_kind(TokenKind::Hash) {
+            // Plan 442 C2: `#` NOT followed by `[` is a corpus-style line
+            // comment (musk relay_store's hand-written `# PLAN-032 ...`
+            // notes). Skip to end of line and return default annotations
+            // instead of erroring — struct/enum field loops route every
+            // field through this fn, so the tolerance lives here.
+            let next_is_attr = if let Ok(tok) = self.lexer.next() {
+                let a = tok.kind == TokenKind::LSquare;
+                self.lexer.push_token(tok);
+                a
+            } else {
+                false
+            };
+            if !next_is_attr {
+                while !self.is_kind(TokenKind::Newline)
+                    && !self.is_kind(TokenKind::EOF)
+                    && !self.is_kind(TokenKind::RBrace)
+                {
+                    self.next();
+                }
+                if self.is_kind(TokenKind::Newline) {
+                    self.next();
+                }
+                return Ok(ann);
+            }
+
             self.next(); // skip #
 
             if self.is_kind(TokenKind::LSquare) {
