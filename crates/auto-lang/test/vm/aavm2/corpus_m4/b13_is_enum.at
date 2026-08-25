@@ -1,0 +1,13 @@
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn main() {
+    let v = Val.VI(42)
+    is v {
+        Val.VI(x) -> print(x)
+        else -> print(0)
+    }
+}
