@@ -7245,8 +7245,8 @@ impl Codegen {
                                 };
                                 let native_name = format!("{}.{}", type_name, method);
 
-                                // Check if this native exists
-                                if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name).is_some() {
+                                // Check if this native exists(peek:决策点不得注册)
+                                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&native_name).is_some() {
                                     Some(native_name)
                                 } else if self.exports.contains_key(&format!("{}.{}", type_name, method.as_ref())) {
                                     // Plan 197 Task 3: User-defined method on chained result
@@ -7326,8 +7326,8 @@ impl Codegen {
                     ];
                     if !is_py_ffi && MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
                         let new_name = format!("auto.math.{}", method);
-                        let mut reg = BIGVM_NATIVES.lock().unwrap();
-                        if reg.resolve_qualified(&new_name).is_some() {
+                        let reg = BIGVM_NATIVES.lock().unwrap();
+                        if reg.peek_qualified(&new_name).is_some() {
                             func_name = Some(new_name);
                         }
                     }
@@ -7345,8 +7345,8 @@ impl Codegen {
                         ];
                         if INT_TYPE_PREFIXES.contains(&prefix) && !fname.starts_with("auto.int.") {
                             let new_name = "auto.int.or".to_string();
-                            let mut reg = BIGVM_NATIVES.lock().unwrap();
-                            if reg.resolve_qualified(&new_name).is_some() {
+                            let reg = BIGVM_NATIVES.lock().unwrap();
+                            if reg.peek_qualified(&new_name).is_some() {
                                 func_name = Some(new_name);
                             }
                         }
@@ -7354,8 +7354,8 @@ impl Codegen {
                         const BITWISE_METHODS: &[&str] = &["and", "not", "xor", "shl", "shr"];
                         if BITWISE_METHODS.contains(&method) && !fname.starts_with("auto.int.") {
                             let new_name = format!("auto.int.{}", method);
-                            let mut reg = BIGVM_NATIVES.lock().unwrap();
-                            if reg.resolve_qualified(&new_name).is_some() {
+                            let reg = BIGVM_NATIVES.lock().unwrap();
+                            if reg.peek_qualified(&new_name).is_some() {
                                 func_name = Some(new_name);
                             }
                         }
@@ -7675,6 +7675,13 @@ impl Codegen {
                             .next()
                             .map(|c| c.is_uppercase())
                             .unwrap_or(false);
+                        // 注意:此处必须查**注册表**(真实注册过的 native),不能用
+                        // peek_qualified 的静态表语义——auto.json.parse 在静态固定
+                        // ID 表里但走 CALL_NAT 的返回编组与 dispatch 3000 不同
+                        // (cb_encoding_json 实证:peek 劫持后 print 出裸堆 ID)。
+                        // dispatch 3000 的运行期兜底链会以正确编组转到同一 native,
+                        // 故未注册时恒走 dispatch。toml.parse 这类启动即注册的
+                        // native 仍按原语义被采用。
                         let has_existing = !is_type_import && {
                             let reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified_to_canonical(name).is_some()
@@ -8542,7 +8549,7 @@ impl Codegen {
                     None
                 });
                 let is_native = func_name.as_ref()
-                    .map(|name| BIGVM_NATIVES.lock().unwrap().resolve_qualified(name).is_some())
+                    .map(|name| BIGVM_NATIVES.lock().unwrap().peek_qualified(name).is_some())
                     .unwrap_or(false);
                 // Check if receiver is a known user-defined type (not spec, not unknown)
                 // If so, use direct CALL with relocation — the method export may just not be compiled yet
@@ -12150,7 +12157,7 @@ impl Codegen {
             other => {
                 let lower = other.to_lowercase();
                 let canonical = format!("auto.{}.{}", lower, method);
-                if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&canonical).is_some() {
+                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&canonical).is_some() {
                     vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
                     return Some(canonical);
                 }
@@ -12168,7 +12175,7 @@ impl Codegen {
                 let suffix = type_to_native_suffix(&type_args[type_args.len().saturating_sub(1)]);
                 if !suffix.is_empty() {
                     let typed = format!("{}.{}{}", native_module, dispatch_method, suffix);
-                    if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&typed).is_some() {
+                    if BIGVM_NATIVES.lock().unwrap().peek_qualified(&typed).is_some() {
                         vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, typed);
                         return Some(typed);
                     }
@@ -12178,7 +12185,7 @@ impl Codegen {
 
         // Fallback: generic canonical name
         let canonical = format!("{}.{}", native_module, method);
-        if BIGVM_NATIVES.lock().unwrap().resolve_qualified(&canonical).is_some() {
+        if BIGVM_NATIVES.lock().unwrap().peek_qualified(&canonical).is_some() {
             vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
             Some(canonical)
         } else {

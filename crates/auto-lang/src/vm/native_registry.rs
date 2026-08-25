@@ -104,6 +104,11 @@ impl AutoVMNativeRegistry {
     /// # Returns
     /// * `Some(id)` - Function is registered as native
     /// * `None` - Function is not a native function (user-defined)
+    /// 注册表条目数(测试用:验证 peek 不改变状态)。
+    pub fn registry_len(&self) -> usize {
+        self.registry.len()
+    }
+
     pub fn get_id(&self, name: &str) -> Option<u16> {
         self.registry.get(name).copied()
     }
@@ -172,6 +177,36 @@ impl AutoVMNativeRegistry {
     /// Used when the ID is already registered elsewhere (e.g., in qualified_registry).
     pub fn register_return_type(&mut self, name: &str, ret_type: NativeRetType) {
         self.return_types.insert(name.to_string(), ret_type);
+    }
+
+    /// 纯读探测(2026-08-25 半解耦):查注册表与静态固定 ID 表,**不写入**。
+    ///
+    /// codegen 的路由**决策点**必须用本函数而非 `resolve_qualified`——后者
+    /// 查询即注册(Plan 250 惰性注册,读操作带副作用),会让决策隐式依赖
+    /// 进程内查询历史(ffi_dual_014/015 的跨测试路由污染即此类)。
+    ///
+    /// 答案稳定性论证:惰性注册只会命中 `NATIVE_ID_MAP` 的固定 ID 项,而本
+    /// 函数对静态表做了同样的检查——因此对任何名字,本函数自进程启动起返回
+    /// 一致的答案(注册表只可能因显式/动态注册而**增加**条目,这类增量对
+    /// 决策语义本就是合法的新能力,而非查询历史的副产物)。
+    ///
+    /// 调用期解析(要发出 CALL_NAT 的 emit 点)仍应用 `resolve_qualified`
+    /// (那里的注册副作用是无害且预期的)。
+    pub fn peek_qualified(&self, path: &str) -> Option<u16> {
+        if let Some(id) = self.registry.get(path).copied() {
+            return Some(id);
+        }
+        if !path.starts_with("auto.") && !path.starts_with("rust.") && !path.starts_with("py.") {
+            if let Some(canonical) = Self::to_canonical(path) {
+                if let Some(id) = self.registry.get(&canonical).copied() {
+                    return Some(id);
+                }
+                if let Some(&fixed) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                    return Some(fixed);
+                }
+            }
+        }
+        NATIVE_ID_MAP.get(path).copied()
     }
 
     /// Resolve a qualified name to a native ID.
@@ -570,5 +605,32 @@ mod tests {
     fn test_to_canonical_bare() {
         assert_eq!(AutoVMNativeRegistry::to_canonical("sleep"), None);
         assert_eq!(AutoVMNativeRegistry::to_canonical("parse_sse"), None);
+    }
+
+    // 2026-08-25 半解耦:决策点必须用纯读探测,查询不得改变注册表状态。
+    #[test]
+    fn peek_does_not_mutate_registry() {
+        let mut reg = AutoVMNativeRegistry::new();
+        // 取一个在静态固定 ID 表里但(新实例)未注册的名字
+        let probe = "auto.int.or"; // NATIVE_ID_ENTRIES 固定 ID 211
+        let before = reg.registry_len();
+        let id1 = reg.peek_qualified(probe);
+        let id2 = reg.peek_qualified("Int.or"); // 经 canonical 归一
+        let after = reg.registry_len();
+        assert_eq!(before, after, "peek 必须不写入注册表");
+        assert!(id1.is_some(), "静态表条目应可探测");
+        assert_eq!(id1, id2, "canonical 归一后答案一致");
+        // resolve_qualified(写路径)此时才注册
+        let id3 = reg.resolve_qualified(probe);
+        assert!(reg.registry_len() > after, "resolve_qualified 注册(对照)");
+        assert_eq!(id1, id3);
+    }
+
+    #[test]
+    fn peek_unknown_returns_none_stably() {
+        let reg = AutoVMNativeRegistry::new();
+        assert_eq!(reg.peek_qualified("auto.no.such_native"), None);
+        assert_eq!(reg.peek_qualified("NoSuchType.method"), None);
+        assert_eq!(reg.peek_qualified("auto.no.such_native"), None, "答案稳定");
     }
 }
