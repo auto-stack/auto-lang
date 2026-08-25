@@ -373,3 +373,22 @@
   plan-442/musk 会话的 native 注册,与本计划 UI 链路无关,待该会话修复。
 - P4-5a 全闸门绿:golden 稳定 + P4 4/4 + 围栏绿 + lib 3161/3162
   (除上述并发红)。
+
+### P5(主体):schema 驱动文档系统 —— 生成器 + 三道围栏 + VitePress(2026-08-25)
+
+- **P5-1 核心参考生成器**(`tests/docs_gen.rs`):tier ∈ {builtin_widget,
+  native_html} 的元素生成 `docs/components/core.md`(tier/后端徽章 + props 表 +
+  别名/家族;`DOCS_GEN_UPDATE=1` 再生成);同步围栏保证与 schema 一致。
+  shadcn 家族(web_component)的活文档继续由 gallery 页承载 —— 分层与 tier 语义对齐。
+- **P5-2 文档覆盖围栏**:主组件(非 subwidget、tier ∈ {builtin,web})必须有
+  gallery 页;三层豁免 = 页面 ∪ 白名单(他处文档化,24 项:语义 HTML 在 Layout
+  组、form 家族件在 form 页等)∪ 基线(文档债冻结,34 项:autodown/chart 全家/
+  modal/toolbar/list/spacer...)。**新增未文档化组件即红** —— 与 P0 围栏同哲学。
+- **P5-3 Properties 对拍一致性**:gallery 页手写 Properties 表不得与 schema 矛盾
+  (手写 prop 必须 ∈ schema 声明;空 props 元素跳过)。实测通过 —— button 等
+  页与 schema 一致(P2 补声明的 variant/size 直接吃到红利)。
+- **P5-4 VitePress 接线**:prepare-content 的 DOCS_INCLUDE 增 `components`;
+  core.md 自动流入 website 并生成侧栏条目(产物 gitignored,源在 docs/)。
+- **验证**:docs_gen 3/3 + 围栏/golden/P4 全绿 + lib 3162。
+- **待续(P5b)**:kitchen-sink demo 页(schema 驱动全 props 展示 + playwright
+  视觉回归);gallery 空 props 元素的 schema 回填(文档表是现成数据源,反向生成)。
