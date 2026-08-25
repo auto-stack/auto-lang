@@ -452,7 +452,7 @@ def run_tests(mcp_url, proc):
                          f"paste did not round-trip clipboard")
             result.check("paste logged", "paste" in (state_str(mcp.state("console"), "console") or ""))
 
-    # T7: global shortcut — Ctrl+J now flows ONLY from auto-edit.at
+    # T7: global shortcut (actions decl, Plan 451) — Ctrl+J now flows ONLY from the actions block
     # (config fallback layer; the DSL onkeydown attrs were removed in P2-3c).
     print("\nT7: Global shortcut Ctrl+J")
     before = state_bool(mcp.state("console_open"), "console_open")
@@ -464,9 +464,9 @@ def run_tests(mcp_url, proc):
     except Exception as e:
         result.check("console_open flipped via Ctrl+J", False, f"keyboard tool error: {e}")
 
-    # T7b: config-layer shortcut — Ctrl+D exists ONLY in auto-edit.at
+    # T7b: actions-block shortcut — Ctrl+D exists ONLY in the actions block
     # (view.switch-tab); proves the P2-4 fallback fires under the DSL layer.
-    print("T7b: Config-layer shortcut Ctrl+D (auto-edit.at only)")
+    print("T7b: Actions-block shortcut Ctrl+D (actions decl only)")
     tab_before = state_int(mcp.state("tab"), "tab")
     try:
         mcp.call("autoui_keyboard", key="d", modifiers=["ctrl"])
@@ -611,7 +611,8 @@ def run_tests(mcp_url, proc):
             cwd=PROJECT,
             env={**os.environ, "AUTOUI_MCP_PORT": str(t10_port)},
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        config_file = os.path.join(PROJECT, "auto-edit.at")
+        # Plan 451: 动作配置 DSL 化——热重载对象改为 app.at 的 actions 块
+        config_file = os.path.join(PROJECT, "src", "front", "app.at")
         config_backup = open(config_file, encoding="utf-8").read()
         try:
             t10_url = f"http://127.0.0.1:{t10_port}/mcp"
@@ -669,17 +670,28 @@ def run_tests(mcp_url, proc):
             # 10.3 hot reload: append an action + a T10 menu INSIDE the root
             # block (auto-atom rejects trailing nodes after the closing brace),
             # reload via the MCP tool, expect it in the next snapshot.
-            modified = config_backup.rstrip()
-            assert modified.endswith("}"), "unexpected auto-edit.at shape"
-            modified = modified[:-1] + (
-                '\n    action { id : "help.t10" handler : ".ActAbout" title : "T10 重载项" }'
-                '\n    menubar { menu { id : "t10menu" title : "T10" item { action : "help.t10" } } }\n}\n'
+            modified = config_backup.replace(
+                "    actions {\n",
+                "    actions {\n        action (id: \"help.t10\", handler: .ActAbout, title: \"T10 重载项\")\n",
+                1,
+            ).replace(
+                "        menubar {\n",
+                "        menubar {\n            menu (id: \"t10menu\", title: \"T10\") { item (action: \"help.t10\") }\n",
+                1,
             )
+            assert "help.t10" in modified, "app.at actions-block anchors not found"
             with open(config_file, "w", encoding="utf-8") as f:
                 f.write(modified)
             try:
                 mcp10.call("action_config_reload")
-                time.sleep(1.5)  # heartbeat rebuild cadence
+                # Plan 451: 重建经 500ms tick -> gen-check -> view_dirty 链,
+                # 轮询等待(实测 ~2s)而非固定 sleep。
+                t10_seen = False
+                for _ in range(6):
+                    time.sleep(1)
+                    if '"T10"' in mcp10.snapshot():
+                        t10_seen = True
+                        break
                 open_menu(mcp10, [snap10], "T10")
                 item = find_button_by_text(mcp10.snapshot(), "T10 重载项")
                 result.check("T10 hot-reloaded menu item appears", item is not None,

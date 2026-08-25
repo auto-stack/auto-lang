@@ -343,6 +343,13 @@ impl Automan {
         self.pac.ui_config.as_ref().map(|t| t.to_string())
     }
 
+    /// Plan 451: app identity from pac.at `name: "..."` — the OS user keymap
+    /// layer's app id source for DSL-actions projects (no config file stem).
+    pub fn pac_name(&self) -> Option<String> {
+        let n = self.pac.name.to_string();
+        (!n.trim().is_empty()).then_some(n)
+    }
+
     /// Set --gen-only mode: build stops after code generation, skipping
     /// npm/gradle install+build steps (used by CI to gate generation only).
     pub fn set_gen_only(&mut self, gen_only: bool) {

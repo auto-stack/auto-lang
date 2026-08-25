@@ -967,6 +967,11 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("  VM action config: {} not found (from pac.at) — skipped", cfg);
                 }
             }
+            // Plan 451: app identity for the OS user keymap layer — pac.at
+            // `name` (the DSL-actions id source when no ui_config file exists).
+            if let Some(n) = am.pac_name() {
+                std::env::set_var("AUTO_APP_ID", &n);
+            }
             if !ai_mode {
                 info!("Running project ...");
                 println!();

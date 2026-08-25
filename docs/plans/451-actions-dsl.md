@@ -1,6 +1,8 @@
 # Plan 451: actions 声明 DSL 化——auto-edit.at 并入 widget DSL
 
-> **状态**: 🟡 实施中（2026-08-26 开工，worktree .worktree/plan-451）
+> **状态**: ✅ P1 已实施并合并（2026-08-26，worktree .worktree/plan-451 →
+> master）。desktop_mcp.py **50/0 全绿**（T10 热重载经 DSL 源路径转绿且
+> 根治了 Plan 449 期间的 mtime 轮询 flake）；P2/P3 见 §7。
 > **来源**: Plan 449 复盘讨论——auto-edit.at 是前端 UI 的声明（action 注册表/
 > menubar/toolbar/快捷键），长期归属应在 AutoUI DSL 内（类比 routes/router），
 > auto-atom 外挂文件是 Plan 418 的临时形态；工具链收集规则（vue build 按
@@ -79,14 +81,34 @@ widget App {
   偏好覆盖而非 app 代码；app id 解析加 `AUTO_APP_ID` 优先。
 - `pac.at` 的 `ui_config:` 字段保留语义（仍可指向文件配置），041 不再使用。
 
-## 5. 验证（P1 完成门禁）
+## 5. 验证（P1 完成门禁——2026-08-26 实测）
 
-1. `cargo build --features ui-iced --bin auto` + 新增单测绿。
-2. `desktop_mcp.py` ≥ 基线 48 项，且 **T10 热重载经新 DSL 源路径转绿**
-   （原文件路径的 T10 flake 不再涉及——改走 reload 工具重读源文件 +
-   generation bump，避开 renderer 心跳 mtime 轮询链）。
-3. T11 OS 键位层 e2e 保持绿（验证 AUTO_APP_ID 链路）。
-4. `auto build` exit 0；`auto gen`（vm 项目跳过）行为不变。
+1. `cargo build --features ui-iced --bin auto` ✓；新增 parser 单测
+   （test_actions_block_parse / test_actions_block_handler_validation）✓。
+2. `desktop_mcp.py` **50 passed / 0 failed**（两次复现，含撤销调试插桩后
+   的干净构建）——超过 Plan 449 基线（48/1），T10 热重载经 DSL 源路径
+   转绿且根治了原 mtime 轮询链的 flake（见 §5.1）。
+3. T11 OS 键位层 e2e 绿（AUTO_APP_ID 链路生效——pac.at name → auto run
+   注入 → keymap 层按 app id 命中）。
+4. `auto build` exit 0 ✓；`cargo test -p auto-lang --lib`（ui-iced）
+   **3692 passed / 0 failed** ✓（vm::ui_console 的 ring 测试偶发 flaky，
+   与本计划无关，重跑即绿；action_config 的 warnings 断言在实施中修复——
+   validate_refs 提取时误覆盖了 parse 循环已累积的警告，改回追加）。
+
+### 5.1 实施中的两个额外修复（调查结论）
+
+1. **多文件工程的整源热重载丢 store 状态**（dynamic.rs）：
+   renderer 的 HOT_RELOAD_EVENT 路径只重建根 widget（component.reload），
+   不重跑 use 模块加载——store/子组件的状态与 handler 全部丢失
+   （实测：T10 改 app.at 后主 app 出现 "field not found: tabs"、
+   T8 ActQuit 失效）。该路径在 Plan 418-449 期间从未被触发（T10 改的是
+   配置文件而非源码）。修复：`check_file_changed` 对多文件工程
+   （import_stmts/registry 非空）返回未变更，跳过该路径；动作配置层的
+   DSL 源 mtime 轮询（action_config::check_action_config_changed）独立
+   不受影响。单文件应用的热重载保持原行为。
+2. **T10 等待硬化**（desktop_mcp.py）：重建链实测 ~2s
+   （500ms tick → gen-check → view_dirty → view()），原固定 sleep 1.5s
+   是时序边缘——改为 6s 轮询 '"T10"' 出现。
 
 ## 6. 风险
 

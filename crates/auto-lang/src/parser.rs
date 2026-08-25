@@ -285,6 +285,13 @@ pub struct Parser<'a> {
     py_item_imports: Vec<AutoStr>,
 }
 
+/// Plan 451: 从 on-handler 模式串提取事件名——".ActNew" / ".AddItem(text)"
+/// → "ActNew" / "AddItem"（actions 块 handler 的编译期校验用）。
+fn on_handler_event_name(pattern: &str) -> String {
+    let p = pattern.trim_start_matches('.');
+    p.split('(').next().unwrap_or(p).to_string()
+}
+
 /// Damerau-Levenshtein distance == 1 test (insert/delete/substitute/adjacent
 /// transpose) — used for near-miss block-keyword warnings without allocating
 /// a full distance matrix.
@@ -12177,6 +12184,7 @@ impl<'a> Parser<'a> {
         let mut watch = Vec::new();
         let mut expose = Vec::new();
         let mut setup: Option<crate::ast::ui::SetupBlock> = None;
+        let mut actions: Option<crate::ast::ui::ActionsBlock> = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -12230,6 +12238,15 @@ impl<'a> Parser<'a> {
                 "expose" => {
                     expose.extend(self.parse_expose_block_inner()?);
                 }
+                // Plan 451: actions 声明块（动作注册表 + menubar/toolbar）。
+                "actions" => {
+                    if actions.replace(self.parse_actions_block_inner()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `actions` block in widget".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
                 _ => {
                     // Plan 425: view 可选化——widget 体以元素开头(无 view 块)
                     // 时体即视图:首个非块关键字标识符按视图元素解析并自动
@@ -12248,9 +12265,9 @@ impl<'a> Parser<'a> {
                     self.cur = saved_cur;
                     self.prev = saved_prev;
                     if next_is_brace {
-                        const BLOCK_KEYWORDS: [&str; 11] = [
+                        const BLOCK_KEYWORDS: [&str; 12] = [
                             "msg", "model", "computed", "view", "on", "style",
-                            "use", "watch", "expose", "routes", "setup",
+                            "use", "watch", "expose", "routes", "setup", "actions",
                         ];
                         if let Some(kw) = BLOCK_KEYWORDS
                             .iter()
@@ -12300,8 +12317,30 @@ impl<'a> Parser<'a> {
             watch,
             setup,
             expose,
+            actions,
         };
         Self::mint_inline_event_handlers(&mut decl)?;
+        // Plan 451: actions 块的 handler 必须命中本 widget 的 on{} 事件——
+        // 编译期校验（auto-atom 文件形态要运行时才对得上）。
+        if let Some(ref acts) = decl.actions {
+            let handler_names: std::collections::HashSet<String> = decl.on
+                .iter()
+                .flat_map(|o| o.handlers.iter())
+                .map(|h| on_handler_event_name(&h.pattern))
+                .collect();
+            for a in &acts.actions {
+                let target = on_handler_event_name(&a.handler);
+                if !handler_names.contains(&target) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "actions: handler '{}' has no matching `on` handler in widget {}",
+                            a.handler, decl.name
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+        }
         Ok(Stmt::WidgetDecl(decl))
     }
 
@@ -13600,6 +13639,275 @@ impl<'a> Parser<'a> {
         Ok(RoutesBlock { routes })
     }
 
+    /// Plan 451: `actions { ... }` 块——动作注册表 + menubar/toolbar 声明
+    /// （语法见 ast::ui::ActionsBlock 文档）。enabled_if/checked_if 为引号
+    /// 字符串（条件表达式，运行时 eval_condition_with 求值）。
+    fn parse_actions_block_inner(&mut self) -> AutoResult<crate::ast::ui::ActionsBlock> {
+        self.expect_ident("actions")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut actions: Vec<crate::ast::ui::ActionEntry> = Vec::new();
+        let mut menubar: Option<crate::ast::ui::MenubarBlock> = None;
+        let mut toolbar: Option<crate::ast::ui::ToolbarBlock> = None;
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let ident = self.cur.text.as_str().to_string();
+            match ident.as_str() {
+                "action" => {
+                    self.next();
+                    actions.push(self.parse_action_entry()?);
+                }
+                "menubar" => {
+                    if menubar.replace(self.parse_menubar_block()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `menubar` block in actions".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
+                "toolbar" => {
+                    if toolbar.replace(self.parse_toolbar_block()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `toolbar` block in actions".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "actions: unexpected `{}` (expected action / menubar / toolbar)",
+                            ident
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(crate::ast::ui::ActionsBlock { actions, menubar, toolbar })
+    }
+
+    /// `action (id: "...", handler: .ActXxx, title: "...", icon: "...",
+    ///          shortcut: "...", enabled_if: "...", checked_if: "...")`
+    /// id 与 handler 必填；其余可选；均为引号字符串（handler 例外，前导点
+    /// 事件引用）。
+    fn parse_action_entry(&mut self) -> AutoResult<crate::ast::ui::ActionEntry> {
+        self.expect(TokenKind::LParen)?;
+        let mut id: Option<String> = None;
+        let mut handler: Option<String> = None;
+        let mut title: Option<String> = None;
+        let mut icon: Option<String> = None;
+        let mut shortcut: Option<String> = None;
+        let mut enabled_if: Option<String> = None;
+        let mut checked_if: Option<String> = None;
+
+        while !self.is_kind(TokenKind::RParen) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RParen) {
+                break;
+            }
+            let key = self.cur.text.as_str().to_string();
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            match key.as_str() {
+                "id" => id = Some(self.parse_actions_string_attr()?),
+                "handler" => handler = Some(self.parse_actions_handler_attr()?),
+                "title" => title = Some(self.parse_actions_string_attr()?),
+                "icon" => icon = Some(self.parse_actions_string_attr()?),
+                "shortcut" => shortcut = Some(self.parse_actions_string_attr()?),
+                "enabled_if" => enabled_if = Some(self.parse_actions_string_attr()?),
+                "checked_if" => checked_if = Some(self.parse_actions_string_attr()?),
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "action: unexpected attribute `{}` (expected id/handler/title/icon/shortcut/enabled_if/checked_if)",
+                            key
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        let id = id.ok_or_else(|| SyntaxError::Generic {
+            message: "action: `id` is required".into(),
+            span: pos_to_span(self.cur.pos),
+        })?;
+        let handler = handler.ok_or_else(|| SyntaxError::Generic {
+            message: "action: `handler` is required".into(),
+            span: pos_to_span(self.cur.pos),
+        })?;
+        Ok(crate::ast::ui::ActionEntry {
+            id, handler, title, icon, shortcut, enabled_if, checked_if,
+        })
+    }
+
+    /// actions 块内 `key: "..."` 的引号字符串取值（去引号；text 带引号是
+    /// lexer 惯例，见 style name 解析）。
+    fn parse_actions_string_attr(&mut self) -> AutoResult<String> {
+        let s = self.cur.text.to_string();
+        self.expect(TokenKind::Str)?;
+        Ok(s.trim_matches('"').to_string())
+    }
+
+    /// actions 块内 `handler: .ActXxx`——前导点事件引用。前导点的词法
+    /// 形态两可（Dot token 或 text 为 "." 的标识符，parse_name 的 "." 特例
+    /// 同源），两者都接受。
+    fn parse_actions_handler_attr(&mut self) -> AutoResult<String> {
+        if self.is_kind(TokenKind::Dot) || self.cur.text.as_str() == "." {
+            self.next();
+        } else {
+            return Err(SyntaxError::Generic {
+                message: "action: `handler` expects a `.Event` reference".into(),
+                span: pos_to_span(self.cur.pos),
+            }.into());
+        }
+        let name = self.cur.text.to_string();
+        self.expect(TokenKind::Ident)?;
+        Ok(format!(".{}", name))
+    }
+
+    /// `menubar { menu (id: "...", title: "...") { ... } ... }`
+    fn parse_menubar_block(&mut self) -> AutoResult<crate::ast::ui::MenubarBlock> {
+        self.expect_ident("menubar")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut menus = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            self.expect_ident("menu")?;
+            menus.push(self.parse_menu_entry()?);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(crate::ast::ui::MenubarBlock { menus })
+    }
+
+    /// `menu (id: "...", title: "...") { item (action: "...") | sep ... }`
+    fn parse_menu_entry(&mut self) -> AutoResult<crate::ast::ui::MenuEntry> {
+        self.expect(TokenKind::LParen)?;
+        let mut id: Option<String> = None;
+        let mut title: Option<String> = None;
+        while !self.is_kind(TokenKind::RParen) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RParen) {
+                break;
+            }
+            let key = self.cur.text.as_str().to_string();
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            match key.as_str() {
+                "id" => id = Some(self.parse_actions_string_attr()?),
+                "title" => title = Some(self.parse_actions_string_attr()?),
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("menu: unexpected attribute `{}` (expected id/title)", key),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        let id = id.ok_or_else(|| SyntaxError::Generic {
+            message: "menu: `id` is required".into(),
+            span: pos_to_span(self.cur.pos),
+        })?;
+        let title = title.ok_or_else(|| SyntaxError::Generic {
+            message: "menu: `title` is required".into(),
+            span: pos_to_span(self.cur.pos),
+        })?;
+        let items = self.parse_menu_item_entries()?;
+        Ok(crate::ast::ui::MenuEntry { id, title, items })
+    }
+
+    /// `toolbar { item (action: "...") | sep ... }`
+    fn parse_toolbar_block(&mut self) -> AutoResult<crate::ast::ui::ToolbarBlock> {
+        self.expect_ident("toolbar")?;
+        // 开花括号由 parse_menu_item_entries 消费（与 menu 条目列表共用）。
+        let items = self.parse_menu_item_entries()?;
+        Ok(crate::ast::ui::ToolbarBlock { items })
+    }
+
+    /// menu/toolbar 共用的条目列表：`item (action: "...")` 或 `sep`，
+    /// 换行分隔（允许尾随逗号）。
+    fn parse_menu_item_entries(&mut self) -> AutoResult<Vec<crate::ast::ui::MenuItemEntry>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut items = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            let ident = self.cur.text.as_str().to_string();
+            match ident.as_str() {
+                "sep" => {
+                    self.next();
+                    items.push(crate::ast::ui::MenuItemEntry::Sep);
+                }
+                "item" => {
+                    self.next();
+                    self.expect(TokenKind::LParen)?;
+                    let mut action: Option<String> = None;
+                    while !self.is_kind(TokenKind::RParen) {
+                        self.skip_empty_lines();
+                        if self.is_kind(TokenKind::RParen) {
+                            break;
+                        }
+                        let key = self.cur.text.as_str().to_string();
+                        self.next();
+                        self.expect(TokenKind::Colon)?;
+                        if key == "action" {
+                            action = Some(self.parse_actions_string_attr()?);
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!("item: unexpected attribute `{}` (expected action)", key),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next();
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    let action = action.ok_or_else(|| SyntaxError::Generic {
+                        message: "item: `action` is required".into(),
+                        span: pos_to_span(self.cur.pos),
+                    })?;
+                    items.push(crate::ast::ui::MenuItemEntry::Action(action));
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("unexpected `{}` (expected item / sep)", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(items)
+    }
+
     /// Parse view block (UI scenario only)
     pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
         let view = self.parse_view_block_inner()?;
@@ -13776,6 +14084,7 @@ impl<'a> Parser<'a> {
             watch,
             setup,
             expose: Vec::new(),
+            actions: None,
         };
         Self::mint_inline_event_handlers(&mut decl)?;
         Ok(Stmt::WidgetDecl(decl))
@@ -15442,6 +15751,75 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 451: actions 块解析——注册表/menubar/toolbar 全字段。
+    #[test]
+    fn test_actions_block_parse() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {
+    actions {
+        action (id: \"file.new\", handler: .ActNew, title: \"新建\", icon: \"file-plus\", shortcut: \"Ctrl+N\")
+        action (id: \"file.save\", handler: .ActSave, title: \"保存\", shortcut: \"Ctrl+S\",
+                enabled_if: \".store.tab_count > 0\", checked_if: \".store.edits > 0\")
+        menubar {
+            menu (id: \"file\", title: \"文件\") { item (action: \"file.new\")  sep  item (action: \"file.save\") }
+        }
+        toolbar { item (action: \"file.new\")  sep  item (action: \"file.save\") }
+    }
+    on {
+        .ActNew -> { console_log(\"x\") }
+        .ActSave -> { console_log(\"x\") }
+    }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("actions block parses");
+        let decl = match ast.stmts.first() {
+            Some(crate::ast::Stmt::WidgetDecl(d)) => d,
+            _ => panic!("expected widget decl"),
+        };
+        let acts = decl.actions.as_ref().expect("actions block present");
+        assert_eq!(acts.actions.len(), 2);
+        assert_eq!(acts.actions[0].id, "file.new");
+        assert_eq!(acts.actions[0].handler, ".ActNew");
+        assert_eq!(acts.actions[0].shortcut.as_deref(), Some("Ctrl+N"));
+        assert!(acts.actions[0].enabled_if.is_none());
+        assert_eq!(
+            acts.actions[1].enabled_if.as_deref(),
+            Some(".store.tab_count > 0")
+        );
+        assert_eq!(
+            acts.actions[1].checked_if.as_deref(),
+            Some(".store.edits > 0")
+        );
+        let mb = acts.menubar.as_ref().expect("menubar");
+        assert_eq!(mb.menus.len(), 1);
+        assert_eq!(mb.menus[0].id, "file");
+        assert_eq!(mb.menus[0].title, "文件");
+        assert_eq!(mb.menus[0].items.len(), 3);
+        assert!(matches!(mb.menus[0].items[1], crate::ast::ui::MenuItemEntry::Sep));
+        let tb = acts.toolbar.as_ref().expect("toolbar");
+        assert_eq!(tb.items.len(), 3);
+    }
+
+    /// Plan 451: actions 块的 handler 必须命中本 widget 的 on{} 事件——
+    /// 编译期校验（未命中 = parse error）。
+    #[test]
+    fn test_actions_block_handler_validation() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {
+    actions {
+        action (id: \"file.new\", handler: .NoSuchHandler, title: \"x\")
+    }
+    on { .ActNew -> { console_log(\"x\") } }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        assert!(
+            parser.parse().is_err(),
+            "handler without matching on{{}} handler must fail to parse"
+        );
+    }
 
     /// Plan 425 复审债务修复:块关键字拼写近失(如 `veiw {}`)在 view 可选化
     /// 后会静默解析为视图元素——现在告警提示正确拼写;合法元素不误报。
