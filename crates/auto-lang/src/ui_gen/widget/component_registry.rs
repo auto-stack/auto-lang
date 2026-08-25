@@ -66,6 +66,9 @@ pub struct LoadedPackage {
     pub dir: PathBuf,
     /// 包内全部 widget(fold-name → widget 名)
     pub widgets: HashMap<String, String>,
+    /// Plan 435 P7-3(D7):逐文件 try-parse 的失败记录(路径 + 错误)。
+    /// 单文件解析失败不丢弃整个包 —— 合法组件照常注册,失败文件由此暴露。
+    pub parse_warnings: Vec<String>,
 }
 
 /// 注册被拒记录(与内置折叠名冲突 —— Plan 408 语义)。
@@ -147,6 +150,7 @@ impl ComponentRegistry {
 
         let manifest = Self::parse_manifest(&canonical)?;
         let mut widgets = HashMap::new();
+        let mut parse_warnings: Vec<String> = Vec::new();
         let entries = std::fs::read_dir(&canonical)
             .map_err(|e| format!("read package dir `{}`: {}", canonical.display(), e))?;
         for e in entries.flatten() {
@@ -159,17 +163,33 @@ impl ComponentRegistry {
             }
             let code = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read `{}`: {}", path.display(), e))?;
-            for w in parse_package_widgets(&code, &path)? {
-                widgets.insert(fold(&w.name), w.name.clone());
+            // Plan 435 P7-3(D7):逐文件 try-parse —— 单文件失败记 warning
+            // 继续加载其余文件,不再一坏全坏。
+            match parse_package_widgets(&code, &path) {
+                Ok(ws) => {
+                    for w in ws {
+                        widgets.insert(fold(&w.name), w.name.clone());
+                    }
+                }
+                Err(err) => parse_warnings.push(format!("`{}`: {}", path.display(), err)),
             }
         }
         if widgets.is_empty() {
-            return Err(format!("package `{}` has no widget .at files", canonical.display()));
+            return Err(format!(
+                "package `{}` has no loadable widget .at files{}",
+                canonical.display(),
+                if parse_warnings.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (all files failed to parse: {})", parse_warnings.join("; "))
+                }
+            ));
         }
         self.packages.push(LoadedPackage {
             manifest,
             dir: canonical,
             widgets,
+            parse_warnings,
         });
         Ok(self.packages.last().unwrap())
     }

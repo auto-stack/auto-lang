@@ -44,6 +44,7 @@ widget App {
         "/grid-span" -> use grid-span
         "/hovercard" -> use hovercard
         "/input" -> use input
+        "/kitchen-sink" -> use kitchen-sink
         "/label" -> use label
         "/menubar" -> use menubar
         "/navigationmenu" -> use navigationmenu

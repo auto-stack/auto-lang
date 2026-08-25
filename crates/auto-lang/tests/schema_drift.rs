@@ -32,7 +32,7 @@ const EXPECTED_VB_TABLES: usize = 2;
 const EXPECTED_RENDER_TABLES: usize = 1;
 /// vue.rs 的语句级 `match tag {` 表数量(map_tag 原生映射 + PascalCase 归一)。
 /// `match tag_lower.as_str() {` 这类小表刻意不收。
-const EXPECTED_VUE_TABLES: usize = 2;
+const EXPECTED_VUE_TABLES: usize = 1;
 /// parser.rs 的语句级 `match tag {` 表数量(get_primary_prop 的 tag 归类)。
 const EXPECTED_PARSER_TABLES: usize = 1;
 /// a2ui/export.rs 的语句级 `match tag {` 表数量(tag → A2UIComponentBody)。
@@ -914,6 +914,56 @@ fn quote_at(s: &str) -> String {
     format!("\"{}\"", s)
 }
 
+/// Plan 435 P6-2(D1):`auto/src/cmd_vue.rs::detect_shadcn_components` 安装表 ——
+/// 构建期 `shadcn-vue add` 可物化的 `@/components/ui/<pkg>` 路径集(vue 映射
+/// 的独立交叉源之一,不依赖 aura.at 自证)。
+fn scan_shadcn_install_table(src: &str) -> BTreeSet<String> {
+    let mut pkgs = BTreeSet::new();
+    for line in src.lines() {
+        let t = line.trim();
+        if !t.starts_with("(\"@/components/ui/") {
+            continue;
+        }
+        let q = quoted_strings_in(t);
+        if q.len() == 2 && q[0].starts_with("@/components/ui/") {
+            pkgs.insert(q[1].clone());
+        }
+    }
+    pkgs
+}
+
+/// Plan 435 P6-2(D1):官方包 `packages/widgets/registry/<pkg>/` 的导出面 ——
+/// index.ts 的 `export ... as <Name>` 名集 + 包内 `<Name>.vue` 文件名。
+/// schema vue 行引用的 component 名必须落在此面内,否则是幻影组件。
+fn scan_registry_pkg_exports(pkg_dir: &Path) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    if let Ok(src) = fs::read_to_string(pkg_dir.join("index.ts")) {
+        for line in src.lines() {
+            if let Some(rest) = line.split(" as ").nth(1) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+            }
+        }
+    }
+    if let Ok(rd) = fs::read_dir(pkg_dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.extension().map_or(false, |x| x == "vue") {
+                if let Some(stem) = p.file_stem() {
+                    names.insert(stem.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+    names
+}
+
+
 fn quoted_after(s: &str, needle: &str) -> Option<String> {
     let p = s.find(needle)?;
     let rest = &s[p + needle.len()..];
@@ -1105,6 +1155,93 @@ const TIER_OVERRIDES: &[(&str, &str)] = &[
     ("date", "web_component"),
     ("datetime", "web_component"),
     ("datetimeinput", "web_component"),
+    // Plan 435 P8-3(D11)批量归类:shadcn 家族件(gallery 在用,父族可经
+    // cmd_vue.rs 安装表或官方包解析;子件折叠拼写与父族同源)。归类依据
+    // = 家族面,不逐件判断 —— 与上文 dialog-*/dropdown-menu-* 条目同哲学。
+    ("toaster", "builtin_widget"), // toast-provider 同族(iced 有宿主实现)
+    ("autocomplete", "web_component"),
+    ("autocomplete_empty", "web_component"),
+    ("autocomplete_input", "web_component"),
+    ("autocomplete_item", "web_component"),
+    ("autocomplete_list", "web_component"),
+    ("button_group", "web_component"),
+    ("combobox", "web_component"),
+    ("combobox_anchor", "web_component"),
+    ("combobox_empty", "web_component"),
+    ("combobox_group", "web_component"),
+    ("combobox_input", "web_component"),
+    ("combobox_item", "web_component"),
+    ("combobox_list", "web_component"),
+    ("combobox_trigger", "web_component"),
+    ("command", "web_component"),
+    ("command_empty", "web_component"),
+    ("command_group", "web_component"),
+    ("command_input", "web_component"),
+    ("command_item", "web_component"),
+    ("command_list", "web_component"),
+    ("command_separator", "web_component"),
+    ("command_shortcut", "web_component"),
+    ("context-menu-shortcut", "web_component"),
+    ("context_menu_checkbox_item", "web_component"),
+    ("context_menu_label", "web_component"),
+    ("context_menu_radio_group", "web_component"),
+    ("context_menu_radio_item", "web_component"),
+    ("context_menu_separator", "web_component"),
+    ("context_menu_sub", "web_component"),
+    ("context_menu_sub_content", "web_component"),
+    ("context_menu_sub_trigger", "web_component"),
+    ("drawer_close", "web_component"),
+    ("dropdown", "web_component"),
+    ("dropdown_content", "web_component"),
+    ("dropdown_item", "web_component"),
+    ("dropdown_label", "web_component"),
+    ("dropdown_separator", "web_component"),
+    ("dropdown_trigger", "web_component"),
+    ("field", "web_component"),
+    ("form_item", "web_component"),
+    ("input_group", "web_component"),
+    ("input_otp", "web_component"),
+    ("kbd", "web_component"),
+    ("loading", "web_component"), // skeleton 同义
+    ("menubar_label", "web_component"),
+    ("menubar_separator", "web_component"),
+    ("native_select", "web_component"),
+    ("number_field", "web_component"),
+    ("number_field_decrement", "web_component"),
+    ("number_field_increment", "web_component"),
+    ("number_field_input", "web_component"),
+    ("number_input", "web_component"),
+    ("pagination_first", "web_component"),
+    ("pagination_last", "web_component"),
+    ("pagination_prev", "web_component"),
+    ("pin_input", "web_component"),
+    ("pin_input_group", "web_component"),
+    ("pin_input_separator", "web_component"),
+    ("pin_input_slot", "web_component"),
+    ("resizable", "web_component"),
+    ("resizable_handle", "web_component"),
+    ("resizable_panel", "web_component"),
+    ("scroll_view", "web_component"),
+    ("select-separator", "web_component"),
+    ("selectscrollbutton", "web_component"),
+    ("sidebar_group", "web_component"),
+    ("sidebar_group_content", "web_component"),
+    ("sidebar_group_label", "web_component"),
+    ("sidebar_provider", "web_component"),
+    ("sidebar_trigger", "web_component"),
+    ("stepper", "web_component"),
+    ("stepper_description", "web_component"),
+    ("stepper_indicator", "web_component"),
+    ("stepper_item", "web_component"),
+    ("stepper_separator", "web_component"),
+    ("stepper_title", "web_component"),
+    ("stepper_trigger", "web_component"),
+    ("tags_input", "web_component"),
+    ("tags_input_delete", "web_component"),
+    ("tags_input_field", "web_component"),
+    ("tags_input_item", "web_component"),
+    ("toggle_group", "web_component"),
+    ("toggle_group_item", "web_component"),
 ];
 
 /// tier 推导(组级):桌面实现 > web 组件 > 原生直通 > 未分类;override 优先。
@@ -1136,7 +1273,9 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
     for (tag, canonical) in &inp.canonical_of {
         groups.entry(canonical.clone()).or_default().insert(tag.clone());
     }
-    // rs 声明优先;否则偏好 kebab-case(命名规范),再短、字典序
+    // rs 声明优先;否则偏好带分隔符的形态(kebab 命名规范 > 下划线 > 无分隔
+    // 缩合 —— P7-2/D9:codeeditor 缩合拼写命中不了 vue.rs 的 code_editor|
+    // codeEditor 特判,有下划线形态时必须选下划线),再短、字典序
     let mut final_groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut final_of_root: BTreeMap<String, String> = BTreeMap::new();
     for (root, members) in &groups {
@@ -1148,7 +1287,14 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                 members
                     .iter()
                     .filter(|t| **t == t.to_lowercase())
-                    .min_by_key(|t| (!t.contains('-'), t.len(), t.to_string()))
+                    .min_by_key(|t| {
+                        (
+                            !t.contains('-') && !t.contains('_'),
+                            !t.contains('-'),
+                            t.len(),
+                            t.to_string(),
+                        )
+                    })
                     .cloned()
             })
             .unwrap_or_else(|| root.clone());
@@ -1197,6 +1343,10 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
 
     let mut current_tier = "";
     for (canonical, members) in ordered {
+        // Plan 435 P7-1(D4):官方 .at 家族退役 —— 不发射(见常量表注释)
+        if RETIRED_OFFICIAL_FAMILIES.contains(&fold_key(canonical).as_str()) {
+            continue;
+        }
         let tier = derive_tier(members, inp);
         if tier != current_tier {
             out.push_str(&format!("\n// ============ tier: {} ============\n\n", tier));
@@ -1378,7 +1528,7 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                 } else {
                     out.push_str("    props: [\n");
                     for (name, ty, default, values, desc) in &backfill {
-                        let type_str = if !values.is_empty() {
+                        let type_str = if plausible_enum_values(values) {
                             format!("one_of:{}", values.join(","))
                         } else {
                             ty.clone()
@@ -1406,6 +1556,27 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
         out.push_str("}\n\n");
     }
     out
+}
+
+/// Plan 435 P7-1(D4):官方 .at 家族退役表(折叠键)。gallery 已有官方 .at
+/// 组件实现的 shadcn 家族(carousel 全家,components/carousel.at)——这些 tag
+/// 一旦被 schema 收编,tag_is_builtin 即命中,builtin-first 会封锁折叠桥接,
+/// 页面反而渲染纯 div。退役 = 再生成时不发射这些元素,交还官方组件。
+const RETIRED_OFFICIAL_FAMILIES: &[&str] = &[
+    "carousel",
+    "carouselcontent",
+    "carouselitem",
+    "carouselnext",
+    "carouselprevious",
+    "carouselprev",
+];
+
+/// Plan 435 P7-1(D4):gallery 回填 Values 列的合理性过滤 —— 含 `-` 的区间
+/// ("0-100")或纯数字集合不是枚举面,不得发射 one_of(退回原类型)。
+fn plausible_enum_values(values: &[String]) -> bool {
+    !values.is_empty()
+        && !values.iter().any(|v| v.contains('-') || v.contains('~') || v.contains('…'))
+        && !values.iter().all(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
 }
 
 fn escape_at(s: &str) -> String {
@@ -1483,7 +1654,11 @@ fn schema_drift_fence() {
         EXPECTED_VUE_TABLES,
         vue_tables.len()
     );
-    let (vue_mt0, vue_mt1) = (&vue_tables[0], &vue_tables[1]);
+    // P7-4(D5):Pascal 归一表已退役(normalize_tag 走 schema 统一入口),
+    // 其拼写面由 carried_spellings(当前 aura.at aliases 自携带,P4-5a
+    // carried 先例)接管 —— 再生成不丢 Col/Column 等变体声明。
+    let vue_mt0 = &vue_tables[0];
+    let carried_spellings: BTreeSet<String> = scan_aura_at_aliases(&aura_at);
 
     let parser_rs = read("src/parser.rs");
     let parser_tables = scan_match_tables(&parser_rs);
@@ -1538,7 +1713,7 @@ fn schema_drift_fence() {
         &rs,
         &vue_shadcn,
         vue_mt0,
-        vue_mt1,
+        &carried_spellings,
         &vb_union,
         render,
         parser_tags,
@@ -1657,7 +1832,7 @@ fn schema_drift_fence() {
     for (name, set) in [
         ("schema.rs", &rs),
         ("vue.map_tag", vue_mt0),
-        ("vue.pascal", vue_mt1),
+        ("aura.at.aliases(自携带)", &carried_spellings),
         ("view_builder", &vb_union),
         ("render_support", render),
         ("parser", parser_tags),
@@ -1801,44 +1976,82 @@ fn schema_drift_fence() {
             mismatches.join("\n  ")
         );
     }
-    // P4-4:registry.rs 手写 vue 映射 ≡ schema vue 声明(overlay 数据源一致性;
-    // 手写退役前双向对账,退役后本断言保证 schema 不回退)
+    // P6-3(D3):render_support 反向围栏 —— P3 翻转只查了静态→schema 方向;
+    // schema 元素的 backends.iced 若解析为具体级别(full/partial/fallback/
+    // unsupported)而静态详情表无臂,get_support 会输出 Full + "unknown tag"
+    // note 的自相矛盾诊断。臂存在性按折叠键判定(与 resolve_tag 的折叠兜底
+    // 同语义;kebab 臂 code-pane 覆盖折叠 canonical codepane)。
     {
         use auto_lang::aura::default_schema_cached;
         let schema = default_schema_cached().expect("schema 应可加载");
-        let reg_vue = scan_registry_vue(&read("src/ui_gen/widget/registry.rs"));
-        let mut mism: Vec<String> = Vec::new();
-        for rv in &reg_vue {
-            let hit = rv.specs.iter().find_map(|s| {
-                schema
-                    .resolve_tag(s)
-                    .and_then(|(canon, _)| schema.meta.get(canon).map(|m| (canon, m)))
-                    .filter(|(_, m)| m.vue.is_some())
-            });
-            let Some((tag, meta)) = hit else {
-                mism.push(format!("{}: 手写有 vue 映射,schema 无", rv.specs.join("/")));
+        let levels = ["full", "partial", "fallback", "unsupported"];
+        let mut no_arm: Vec<String> = Vec::new();
+        for (canon, meta) in &schema.meta {
+            if !levels.contains(&meta.backends.iced.as_str()) {
                 continue;
-            };
-            let v = meta.vue.as_ref().unwrap();
-            if v.component != rv.component
-                || v.import != rv.import
-            {
-                mism.push(format!(
-                    "{}: component/import 不一致 (registry={},{} schema={},{})",
-                    tag,
-                    rv.component,
-                    rv.import.as_deref().unwrap_or("-"),
-                    v.component,
-                    v.import.as_deref().unwrap_or("-")
+            }
+            let cf = fold_key(canon);
+            if !render.iter().any(|t| fold_key(t) == cf) {
+                no_arm.push(format!("{}: iced={} 但静态详情表无臂", canon, meta.backends.iced));
+            }
+        }
+        assert!(
+            no_arm.is_empty(),
+            "P6-3:schema 元素有 iced 级别但 render_support 静态详情表无臂\
+             (新增 schema 元素须同步 render_support 详情):\n  {}",
+            no_arm.join("\n  ")
+        );
+    }
+    // P6-2(D1):vue 围栏去自指 —— 原 P4-4 的 registry≡schema 对账在手写 vue
+    // insert 退役后空转(两侧同源,永真)。改为独立交叉源校验:aura.at 每条带
+    // import 的 vue 行,其 `@/components/ui/<pkg>` 必须三源之一可解析:
+    //   1) 官方包 packages/widgets/registry/<pkg>/:component(含 extras)必须
+    //      真被该包导出(index.ts `as <N>` 或 <N>.vue 文件);
+    //   2) cmd_vue.rs detect_shadcn_components 安装表(构建期 shadcn-vue add
+    //      物化文件);
+    //   3) LOCAL_UI_PKGS 白名单(app 本地手写 ui 组件;新增 = 显式事件,
+    //      必须在此登记并给出实现位置)。
+    // 非 `@/components/ui/` 前缀的 import(app 本地组件/外部 npm 包)不在本闸。
+    {
+        use auto_lang::aura::default_schema_cached;
+        let schema = default_schema_cached().expect("schema 应可加载");
+        let local_ui_pkgs: BTreeSet<&str> =
+            ["data-table", "nav-link", "toast"].into_iter().collect();
+        let installable =
+            scan_shadcn_install_table(&read("../../crates/auto/src/cmd_vue.rs"));
+        let registry_root = repo_file("../../packages/widgets/registry");
+        let mut bad: Vec<String> = Vec::new();
+        for (canon, meta) in &schema.meta {
+            let Some(v) = &meta.vue else { continue };
+            let Some(path) = &v.import else { continue };
+            let Some(pkg) = path.strip_prefix("@/components/ui/") else { continue };
+            let pkg_dir = registry_root.join(pkg);
+            if pkg_dir.is_dir() {
+                let exports = scan_registry_pkg_exports(&pkg_dir);
+                for name in std::iter::once(v.component.as_str()).chain(v.extras.iter().copied()) {
+                    if !exports.contains(name) {
+                        bad.push(format!(
+                            "{}: vue component `{}` 不在官方包 registry/{pkg} 导出面 {:?}",
+                            canon,
+                            name,
+                            exports.iter().collect::<Vec<_>>()
+                        ));
+                    }
+                }
+            } else if !installable.contains(pkg) && !local_ui_pkgs.contains(&pkg) {
+                bad.push(format!(
+                    "{}: import `{}` 无独立来源(非官方包、不在 shadcn 安装表、\
+                     不在 LOCAL_UI_PKGS 白名单)—— vue 映射幻影?",
+                    canon, path
                 ));
             }
         }
         assert!(
-            mism.is_empty(),
-            "P4-4:registry 手写 vue 映射与 schema 不一致:
-  {}",
-            mism.join("
-  ")
+            bad.is_empty(),
+            "P6-2:aura.at vue import 无法被独立源解析(D1 去自指围栏):\n  {}\n\
+             修复三选一:官方包补导出;cmd_vue.rs 安装表补条目;LOCAL_UI_PKGS \
+             登记本地手写组件(写明实现位置)",
+            bad.join("\n  ")
         );
     }
 
@@ -1854,7 +2067,7 @@ fn schema_drift_fence() {
     add(&mut drift, "vb_not_in_render", only_in(&vb_union, render));
     add(&mut drift, "render_not_in_vb", only_in(render, &vb_union));
     add(&mut drift, "vue_mt0_not_in_rs", only_in(vue_mt0, &rs));
-    add(&mut drift, "vue_mt1_not_in_rs", only_in(vue_mt1, &rs));
+
     add(&mut drift, "parser_not_in_rs", only_in(parser_tags, &rs));
     add(&mut drift, "a2ui_export_not_in_rs", only_in(a2ui_export, &rs));
     add(&mut drift, "a2ui_import_not_in_rs", only_in(&a2ui_import, &rs));
@@ -1930,13 +2143,13 @@ fn schema_drift_fence() {
         let mut msg = String::from(
             "Plan 435 P0 漂移围栏:发现 baseline 之外的新增漂移(四表不同步)。\n\
              维度语义:\n\
-             - rs/vue_duplicate_insert: schema.rs / vue.rs 同一 tag insert 两次(HashMap 后写覆盖,前者是死代码)\n\
+             - rs_duplicate_insert: schema.rs 同一 tag insert 两次(HashMap 后写覆盖,前者是死代码;P4-4 后 vue.rs 已无 insert)\n\
              - *_not_in_rs / rs_not_in_*: 声明表(schema.rs)与各实现表的孤儿 tag\n\
              - parser_not_in_rs: parser.rs tag 特判表里的孤儿(含 PascalCase 变体)\n\
              - a2ui_export/import_not_in_rs: A2UI 互操作映射的孤儿 tag\n\
              - vb0/vb1_not_in_vb1/vb0: view_builder 两张派发表不镜像(D-GAP 纪律)\n\
              - vb/render_not_in_render/vb: 桌面实现与 iced 支持级表不同步\n\
-             - vue_mt0/1_not_in_rs: vue.rs map_tag 原生映射 / Pascal 归一表的孤儿\n\
+             - vue_mt0_not_in_rs: vue.rs map_tag 原生映射表的孤儿(P7-4 后 Pascal 归一表退役)\n\
              修复二选一:同步四表(推荐);或确属有意漂移,更新 baseline 并写明理由:\n\
              SCHEMA_DRIFT_UPDATE_BASELINE=1 cargo test -p auto-lang --test schema_drift\n\n",
         );

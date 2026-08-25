@@ -537,3 +537,90 @@
 | `syntax: special` 标记 | §5 风险 | 未实现(零出现) | —(低优,语法特判仍在 Rust) |
 | parser/vb 别名归一统一 | P4 顺手项 | 未实现(两份私有不一致) | P7-4 |
 | shadcn 长尾"核心集 props 全声明" | §5 风险 | 44% web_component 零 props | P8-3 顺带 |
+
+## 7. §6 缺陷修复执行结果(2026-08-25,worktree `plan-435-schema-unification`,P6/P7 全量 + P8-3/P8-4)
+
+### P6 紧急修复(D1/D2/D3)✅
+
+- **P6-1(D2)确定性**:`vue.rs` `api_functions_used` 发射前 `.sort()`(import 行与
+  deprecation warning 同源同序);删除零调用点的 `sorted_entries` 死代码,注释改为
+  "各发射点内联排序"约定。新增单测 `cap_435_p6_api_import_sorted_and_deterministic`
+  (≥2 API 函数,8 轮生成字节一致 + 字母序断言)。
+- **P6-2(D1)vue 围栏去自指**:
+  - `schema_drift.rs`:aura.at 每条 `@/components/ui/<pkg>` vue 行必须三源之一可解析
+    —— ①官方包 `packages/widgets/registry/<pkg>`(component+extras 必须真在导出面:
+    index.ts `as <N>` 或 `<N>.vue` 文件);②`cmd_vue.rs` `detect_shadcn_components`
+    安装表(构建期 shadcn-vue add 物化);③`LOCAL_UI_PKGS` 白名单(data-table/
+    nav-link/toast,app 本地手写,登记 = 显式事件)。原 P4-4 空转断言
+    (registry≡schema,两侧同源永真)由此替换;失败消息清理过时的
+    `rs/vue_duplicate_insert` 维度名。
+  - `gallery_golden.rs`:SFC 实际发射的全部 `@/components/ui/*` import 同款三源
+    校验(先于 UPDATE 采样执行)。
+  - **围栏落地即抓真缺陷**:官方包 `registry/dialog` 缺 DialogTrigger/DialogClose/
+    DialogTitle/DialogDescription 四个导出(schema 声明了但包里没有)。dialog 库模板
+    `extra_support_files` 补 4 个 reka-ui 薄包装(index.ts 自动重导出),重生成官方包
+    (顺带物化此前缺失的 `chat_message/` 目录,其余组件字节不变)。
+- **P6-3(D3)render_support 反向围栏**:schema 中 backends.iced 解析为具体级别
+  (full/partial/fallback/unsupported)的元素,其折叠键必须在静态详情表有臂
+  (首跑抓到 6 个缩合拼写违规 —— tabscontent/codepane/form_item/list_item 等,
+  与 baseline 既有 rs_not_in_render 漂移互为镜像,按 resolve_tag 折叠语义收敛);
+  `get_support` 在 schema overlay 生效时清空 "unknown tag" 兜底 note
+  (消灭 Full+unknown 自相矛盾)。
+
+### P7 高优修复(D4/D5/D7/D9)✅
+
+- **P7-1(D4)carousel 家族退役**:schema.rs 删 5 个 carousel ElementDef +
+  生成器 `RETIRED_OFFICIAL_FAMILIES` 排除 6 个折叠键 + aura.at 再生成。
+  gallery carousel 页 SFC 现发射真实组件
+  (`<CarouselContent>/<CarouselItem>/<CarouselPrevious>/<CarouselNext>` + import,
+  非 div)。附带:progress `one_of:0-100` 伪枚举过滤
+  (`plausible_enum_values`:含 `-`/`~`/`…` 或纯数字集合不发射 one_of,回退原类型)。
+- **P7-2(D9)kitchen-sink 路由 + 拼写对齐**:app.at 加 `/kitchen-sink` 路由;
+  canonical 选择规则改为"带分隔符形态优先(kebab > 下划线 > 无分隔缩合)"
+  —— codeeditor→`code_editor`(连带 autodown→`autodown_editor`、
+  numberinput→`number_input`,kebab 约定不受影响);kitchen-sink 生成器对 app 本地
+  命令式外壳组件(vue import 非 `@/components/ui/*`:CodeEditor/AutoDownEditor/
+  ChatMessage)跳过变体发射(key/content 在真实组件上不存在)。
+- **P7-3(D7)load_package 容错**:逐文件 try-parse,失败文件记
+  `LoadedPackage::parse_warnings`(路径+错误)继续加载;全部失败才报错(带文件清单);
+  api.rs 对 Ok 包逐文件发 S003 告警。新增单测 `load_package_survives_single_bad_file`。
+- **P7-4(D5)normalize_tag 统一入口**:`aura/schema.rs` 新增
+  `pub fn normalize_tag(tag, schema) -> Option<&'static str>`(= resolve_tag 的
+  canonical);vue.rs / jet/generator.rs 私有实现改薄包装。要点:
+  - 跨元素别名 **div/hr 保形**(div 是 container 的渲染等价别名,但类发射层历史
+    区分两者 —— 归一会让普通 div 吃到容器默认类,golden 曾红);
+  - jet 保留后端私有 Compose 词汇回退层(LazyColumn/TabRow/FlowRow 不在 schema);
+    jet 派发臂补 `img` 双拼写(Image 走回退表不变,Img 走 canonical);
+  - 围栏侧:Pascal 归一表退役 → `EXPECTED_VUE_TABLES=1`,其拼写面由
+    `carried_spellings`(当前 aura.at aliases 自携带,P4-5a carried 先例)接管,
+    Col/Column 等变体声明再生成不丢。
+
+### P8 择机执行(P8-3/P8-4 ✅,其余挂账)
+
+- **P8-4(D12)基线裁剪围栏硬化**:DOC_TODO_BASELINE 已被 gallery 页覆盖的条目
+  = 红(原纯 println 从未触发裁剪);首批裁 areachart/barchart/donutchart
+  (navmenu 经查为 nav_menu 元素别名,与 navigationmenu 页非同元素,诚实保留)
+  33 → 30 条。
+- **P8-3(D11)unclassified 分批归类:97 → 15(目标 <30 达成)**。85 个 shadcn
+  家族件经 `TIER_OVERRIDES` 批量归 web_component(toaster 归 builtin_widget 对齐
+  toast-provider;loading 归 web_component 对齐 skeleton);配套 DOC_EXCLUDE 按家族页
+  登记 83 条(折叠键形态,注明"何处文档化")。剩余 15 = 真待定词汇
+  (category-section/component-card/frame/media/menu-item/nav_item/navigation/
+  notification/overlay/text_input 等)。
+
+### 验收数据(全部绿)
+
+- `cargo test -p auto-lang`:**3174 passed**(含新增 D2/D7 单测);
+  `cargo test -p auto`:4 passed;`cargo test -p auto-man`:229+6 passed(复跑×2)。
+- gallery golden **双跑 diff=0**(终态复验;中途每阶段均双跑验证)。
+- 围栏全绿:schema_drift(含 D1 三源校验 + D3 反向围栏)/ docs_gen(4)/
+  gallery_golden(含 import 存在性)/ component_registry_test(5)。
+- drift baseline 顺带裁 71 行(carousel 退役 -10 条 + vue_mt1 维度退役 -61 行)。
+
+### 未竟事项
+
+- P8-1 `auto docs gen` CLI 化、P8-2 ComponentRegistry 家族建模、P8-5 LSP 位置感知、
+  P8-6 web+vm 双端冒烟、P8-7 VitePress↔gallery 互链(见 §6.4 承诺差距表)。
+- 预存(与本计划无关):`cargo test --workspace` 在 master 即有 E0080
+  (`renderer.rs:11058` iced Subscription 捕获闭包,lib test cfg 特定 feature 组合
+  触发)——按 crate 跑测试不受影响,待 iced 侧单独修。

@@ -36,6 +36,10 @@ struct ElemInfo {
     props: Vec<(String, String, String, String)>, // (name, type, default, desc)
     web: String,
     iced: String,
+    /// P7-2/D9:vue 组件 import 路径 —— 非 @/components/ui/* 的是 app 本地
+    /// 命令式外壳(CodeEditor/AutoDownEditor/ChatMessage),props 不按
+    /// 字面 prop 绑定,kitchen-sink 变体发射须跳过。
+    vue_import: Option<String>,
 }
 
 fn prop_type_str(t: &auto_lang::aura::schema::PropType) -> String {
@@ -95,6 +99,7 @@ fn load_elements() -> Vec<ElemInfo> {
                 .collect(),
             web,
             iced,
+            vue_import: meta.and_then(|m| m.vue.as_ref()).and_then(|v| v.import.clone()),
         });
     }
     out
@@ -186,13 +191,49 @@ const DOC_EXCLUDE: &[&str] = &[
     "dropdownmenuseparator", // dropdownmenu 页
     "toastprovider",     // toast 页
     "tabtrigger",        // tabs 页(Pascal 拼写变体)
+    // Plan 435 P8-3(D11)批量归类配套:家族件随家族页文档化(父族在
+    // cmd_vue.rs 安装表或官方包;tier 已归 web_component,文档面随页)。
+    "autocomplete", "autocompleteempty", "autocompleteinput", // combobox 页
+    "autocompleteitem", "autocompletelist",
+    "buttongroup",      // button 页(变体分组)
+    "combobox", "comboboxanchor", "comboboxempty", "comboboxgroup", // combobox 页
+    "comboboxinput", "comboboxitem", "comboboxlist", "comboboxtrigger",
+    "command", "commandempty", "commandgroup", "commandinput", // command 页
+    "commanditem", "commandlist", "commandseparator", "commandshortcut",
+    "contextmenushortcut", "contextmenucheckboxitem", "contextmenulabel", // contextmenu 页
+    "contextmenuradiogroup", "contextmenuradioitem", "contextmenuseparator",
+    "contextmenusub", "contextmenusubcontent", "contextmenusubtrigger",
+    "drawerclose",      // drawer 页
+    "dropdown", "dropdowncontent", "dropdownitem", "dropdownlabel", // dropdownmenu 页
+    "dropdownseparator", "dropdowntrigger",
+    "field", "formitem", // form 页
+    "inputgroup", "inputotp", "kbd", // input 页 / kbd(无页,键帽原语)
+    "loading",           // skeleton 页(同义)
+    "menubarlabel", "menubarseparator", // menubar 页
+    "nativeselect",     // select 页
+    "numberfield", "numberfielddecrement", "numberfieldincrement", // number-field 家族(无独立页,input 页提及)
+    "numberfieldinput", "numberinput",
+    "paginationfirst", "paginationlast", "paginationprev", // pagination 页
+    "pininput", "pininputgroup", "pininputseparator", "pininputslot", // pin-input 家族(无独立页)
+    "resizable", "resizablehandle", "resizablepanel", // resizable 家族(无独立页)
+    "scrollview",       // scrollarea 页
+    "selectseparator", "selectscrollbutton", // select 页
+    "sidebargroup", "sidebargroupcontent", "sidebargrouplabel", // sidebar 页
+    "sidebarprovider", "sidebartrigger",
+    "stepper", "stepperdescription", "stepperindicator", "stepperitem", // stepper 家族(无独立页)
+    "stepperseparator", "steppertitle", "steppertrigger",
+    "tagsinput", "tagsinputdelete", "tagsinputfield", "tagsinputitem", // tags-input 家族(无独立页)
+    "togglegroup", "togglegroupitem", // togglegroup 页
+    "toaster",           // toast 页(宿主)
 ];
 
 /// 基线:已知文档债(fold 键;冻结,新增即红)。
+/// P8-4:已覆盖条目 = 红(见 docs_coverage_fence 尾部断言;首批已裁
+/// areachart/barchart/donutchart —— area-chart/bar-chart/donut-chart 页)。
 const DOC_TODO_BASELINE: &[&str] = &[
-    "areachart", "autodown", "barchart", "box", "chart", "chatmessage",
+    "autodowneditor", "box", "chart", "chatmessage",
     "chip", "container", "date", "datetime", "datetimeinput", "divider",
-    "donutchart", "griditem", "icon", "image", "img", "list", "markdown",
+    "griditem", "icon", "image", "img", "list", "markdown",
     "mermaid", "modal", "navmenu", "radioitem", "range", "spacer", "square",
     "stack", "svg", "swiper", "tag", "toolbar", "listitem",
     "navdestination",
@@ -253,12 +294,20 @@ fn docs_coverage_fence() {
         fresh.join(", ")
     );
 
-    // 基线漂移提示(已覆盖的基线条目请裁剪)
+    // Plan 435 P8-4(D12):基线条目已被 gallery 页覆盖 = 红(冻结不腐化;
+    // 原 println 提示从未触发裁剪,33 条只增不减)。覆盖判定 = 折叠键相同。
+    let mut covered: Vec<String> = Vec::new();
     for b in &baseline {
         if pages.contains(b) {
-            println!("[docs] 基线条目已覆盖,请裁剪: {b}");
+            covered.push(b.clone());
         }
     }
+    assert!(
+        covered.is_empty(),
+        "Plan 435 P8-4:DOC_TODO_BASELINE 条目已有 gallery 页,请裁剪:\n  {}\n\
+         (文档债清偿后基线必须收缩,冻结不等于免检)",
+        covered.join(", ")
+    );
 }
 
 // ============================================================================
@@ -407,10 +456,17 @@ fn generate_kitchen_sink() -> String {
             at.push_str(&format!("                {} {{}}
 ", e.canonical));
         }
-        // 变体:每 prop 至多 2 个取值,总变体至多 4
+        // 变体:每 prop 至多 2 个取值,总变体至多 4。
+        // P7-2/D9:app 本地命令式外壳组件(import 非 @/components/ui/*)的
+        // props 不按字面绑定(如 code_editor 的 key/content 在真实组件上
+        // 不存在),只发射默认形态。
+        let shell_component = e
+            .vue_import
+            .as_deref()
+            .map_or(false, |p| !p.starts_with("@/components/ui/"));
         let mut variants = 0;
         for pr in &e.props {
-            if variants >= 4 { break; }
+            if shell_component || variants >= 4 { break; }
             for v in literal_prop_variants(pr).into_iter().take(2) {
                 if variants >= 4 { break; }
                 if pr.0 == "text" { continue; } // text 已用简写

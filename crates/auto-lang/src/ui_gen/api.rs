@@ -525,6 +525,18 @@ pub fn generate_component_from_file(
                                     package_names.push(name.clone());
                                 }
                             }
+                            // Plan 435 P7-3(D7):单文件解析失败不废包 ——
+                            // 合法组件照常并入,失败文件逐一 S003 告警。
+                            for pw in &pkg.parse_warnings {
+                                package_warnings.push(
+                                    crate::ui_gen::validators::ValidationWarning::new(
+                                        "S003",
+                                        crate::ui_gen::validators::Severity::Warning,
+                                        &w.name,
+                                        format!("package file failed to parse: {}", pw),
+                                    ),
+                                );
+                            }
                         }
                         Err(e) => package_warnings.push(
                             crate::ui_gen::validators::ValidationWarning::new(
