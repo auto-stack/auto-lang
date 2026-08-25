@@ -5125,6 +5125,11 @@ impl AutoVM {
                                 } else {
                                     task.ram.push_i32(0);
                                 }
+                            } else if inst.mono_name.starts_with("__json_object") {
+                                // PLAN-044: json-backed instance (axum Json/Query
+                                // extractor marshalling) — missing key reads as
+                                // null (Option.unwrap_or chains depend on it).
+                                task.ram.push_nv(auto_val::encode_null());
                             } else {
                                 return Err(VMError::RuntimeError(format!(
                                     "Field '{}' not found on type instance {} (fields: {:?})",
