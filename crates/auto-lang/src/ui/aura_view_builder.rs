@@ -5291,19 +5291,38 @@ let tabs_inner = View::Row {
                 }
             }
         }
-        let mut inner = String::new();
-        for child in children {
-            if let AuraNode::Element { tag: ctag, props: cprops, children: cchildren, .. } = child {
-                if is_svg_shape_tag(ctag) {
-                    inner.push_str(&self.serialize_svg_element(ctag, cprops, cchildren, bindings));
-                }
-            }
-        }
+        let mut inner = self.serialize_svg_children(children, bindings);
         if inner.is_empty() {
             format!("<{tag}{attrs}/>")
         } else {
             format!("<{tag}{attrs}>{inner}</{tag}>")
         }
+    }
+
+    /// Plan 445 后续修复：svg 子树的子节点序列化——Element 直出，
+    /// **Conditional 先评估条件取真/假分支再递归**（此前被静默跳过，
+    /// `if .dVisible { path … }` 一类条件包裹的数据 path 整体不出现在
+    /// svgdoc 文档 → VM 轨 bar/line/area 图表区无数据，只有字面量
+    /// 网格/轴线；runtime SVGDOC 打印实锤）。
+    fn serialize_svg_children(&self, children: &[AuraNode], bindings: &Bindings) -> String {
+        let mut inner = String::new();
+        for child in children {
+            match child {
+                AuraNode::Element { tag: ctag, props: cprops, children: cchildren, .. } => {
+                    if is_svg_shape_tag(ctag) {
+                        inner.push_str(&self.serialize_svg_element(ctag, cprops, cchildren, bindings));
+                    }
+                }
+                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                    let is_true = self.eval_condition_with(condition, bindings);
+                    let empty = Vec::new();
+                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    inner.push_str(&self.serialize_svg_children(body, bindings));
+                }
+                _ => {}
+            }
+        }
+        inner
     }
 
     fn extract_string(

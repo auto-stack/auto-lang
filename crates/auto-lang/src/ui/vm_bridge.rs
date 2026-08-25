@@ -1691,6 +1691,95 @@ widget SvgProbe {
         );
     }
 
+    /// Plan 445 后续诊断：fill-opacity 属性是否进 svgdoc 文档
+    /// （VM 实测带 fill-opacity 的 path 整根不渲染；变体探针锁定）。
+    #[test]
+    fn plan445_diag_fill_opacity_serialization() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        use crate::ui::aura_view_builder::AuraViewBuilder;
+        let app_src = r##"
+widget OpProbe {
+    msg Msg { Init }
+    model {
+        var barD str = ""
+        var barM str = ""
+        var dVisible bool = true
+        var mVisible bool = true
+    }
+    on {
+        .Init -> {
+            .barD = "M44 113 h19 v146 h-19 Z "
+            .barM = "M72 197 h19 v62 h-19 Z "
+        }
+    }
+    view {
+        col {
+            svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                path (d: "M40 80 H550 M40 140 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                if .dVisible {
+                    path (d: .barD, fill: "#2563eb", fill-opacity: "0.9") {}
+                }
+                if .mVisible {
+                    path (d: .barM, fill: "#16a34a", fill-opacity: "0.9") {}
+                }
+            }
+        }
+    }
+}
+        "##;
+        let _unused = r##"
+widget OpProbeOrig {
+    msg Msg { Init }
+    model { var p str = "" }
+    on { .Init -> { .p = "M120 260 h50 v-150 h-50 Z" } }
+    view {
+        col {
+            svg (viewBox: "0 0 400 300") {
+                path (d: "M40 260 h50 v-150 h-50 Z", fill: "#16a34a", fill-opacity: "0.9") {}
+            }
+        }
+    }
+}
+        "##;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let (decl, widget) = ast.stmts.into_iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => {
+                let w = crate::aura::extract_widget_from_decl(&d).expect("extract");
+                Some((d, w))
+            }
+            _ => None,
+        }).expect("decl");
+        let mut bridge = VmBridge::new_from_decls(&decl, &[], vec![],
+            &std::collections::HashMap::new(), false).expect("bridge");
+        let sid = bridge.state_obj_id();
+        bridge.call_handler_for("OpProbe", "Init", sid, &[]).expect("init");
+        let builder = AuraViewBuilder::new(&bridge, "OpProbe");
+        let view = builder.build(&widget.view_tree);
+        fn find_svgdoc(v: &crate::ui::View<crate::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::View;
+            match v {
+                View::Image { src, .. } => out.push(src.clone()),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children { find_svgdoc(c, out); }
+                }
+                _ => {}
+            }
+        }
+        let mut docs = Vec::new();
+        find_svgdoc(&view, &mut docs);
+        let doc = docs.iter().find(|s| s.starts_with("svgdoc:")).expect("doc");
+        eprintln!("SVGDOC: {doc}");
+        // Plan 445 后续回归钉：Conditional 包裹的 path 必须序列化进 svgdoc
+        // （此前 serializer 跳过 Conditional → VM 轨图表区无数据，仅字面量
+        // 网格/轴线；runtime SVGDOC 打印实锤）。
+        assert!(doc.contains("M44 113 h19 v146 h-19"), "if .dVisible 的 barD 必须进文档: {doc}");
+        assert!(doc.contains("M72 197 h19 v62 h-19"), "if .mVisible 的 barM 必须进文档: {doc}");
+        assert!(doc.contains("fill-opacity"), "fill-opacity 属性透传: {doc}");
+    }
+
     /// Helper to create a minimal AuraWidget for testing
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {

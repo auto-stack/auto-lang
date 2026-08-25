@@ -61,6 +61,11 @@ widget App {
         donutT str = ""
         axisLabels str = ""
         donutLegend str = ""
+        yLab0 str = ""
+        yLab1 str = ""
+        yLab2 str = ""
+        yLab3 str = ""
+        yLab4 str = ""
         statsD str = ""
         statsM str = ""
         statsT str = ""
@@ -254,6 +259,11 @@ widget App {
                     labels = labels + "   " + d["m"]
                 }
             }
+            .yLab0 = f"${vmax}"
+            .yLab1 = f"${vmax * 3 / 4}"
+            .yLab2 = f"${vmax / 2}"
+            .yLab3 = f"${vmax / 4}"
+            .yLab4 = "0"
             .axisLabels = labels
         }
 
@@ -420,6 +430,11 @@ widget App {
                     labels = labels + "   " + d["m"]
                 }
             }
+            .yLab0 = f"${vmax}"
+            .yLab1 = f"${vmax * 3 / 4}"
+            .yLab2 = f"${vmax / 2}"
+            .yLab3 = f"${vmax / 4}"
+            .yLab4 = "0"
             .axisLabels = labels
         }
 
@@ -564,6 +579,11 @@ widget App {
                     labels = labels + "   " + d["m"]
                 }
             }
+            .yLab0 = f"${vmax}"
+            .yLab1 = f"${vmax * 3 / 4}"
+            .yLab2 = f"${vmax / 2}"
+            .yLab3 = f"${vmax / 4}"
+            .yLab4 = "0"
             .axisLabels = labels
             }
         }
@@ -667,7 +687,16 @@ widget App {
                 // ---- 右：图表区 ----
                 col (style: "flex-1 rounded-lg border p-4 gap-2") {
                     if .chartType == "line" {
-                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                        row (style: "items-stretch w-full justify-center") {
+                        col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                            text .yLab0 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab1 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab2 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab3 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab4 { style: "text-[10px] text-muted-foreground" }
+                        }
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-2xl") {
+                            path (d: "M34 20 H40 M34 80 H40 M34 140 H40 M34 200 H40", stroke: "#94a3b8", stroke-width: "1") {}
                             path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
@@ -681,9 +710,19 @@ widget App {
                                 path (d: .lineT, fill: "none", stroke: "#d97706", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
                             }
                         }
+                        }
                     }
                     if .chartType == "bar" {
-                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                        row (style: "items-stretch w-full justify-center") {
+                        col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                            text .yLab0 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab1 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab2 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab3 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab4 { style: "text-[10px] text-muted-foreground" }
+                        }
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-2xl") {
+                            path (d: "M34 20 H40 M34 80 H40 M34 140 H40 M34 200 H40", stroke: "#94a3b8", stroke-width: "1") {}
                             path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
@@ -697,9 +736,19 @@ widget App {
                                 path (d: .barT, fill: "#d97706", fill-opacity: "0.9") {}
                             }
                         }
+                        }
                     }
                     if .chartType == "area" {
-                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                        row (style: "items-stretch w-full justify-center") {
+                        col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                            text .yLab0 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab1 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab2 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab3 { style: "text-[10px] text-muted-foreground" }
+                            text .yLab4 { style: "text-[10px] text-muted-foreground" }
+                        }
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-2xl") {
+                            path (d: "M34 20 H40 M34 80 H40 M34 140 H40 M34 200 H40", stroke: "#94a3b8", stroke-width: "1") {}
                             path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
@@ -722,6 +771,7 @@ widget App {
                                 path (d: .lineT, fill: "none", stroke: "#d97706", stroke-width: "2") {}
                             }
                         }
+                        }
                     }
                     if .chartType == "donut" {
                         svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
@@ -731,6 +781,20 @@ widget App {
                             path (d: .donutT, fill: "#d97706") {}
                         }
                         text .donutLegend { style: "text-xs text-muted-foreground text-center" }
+                    }
+                    row (style: "items-center justify-center gap-2 pt-1") {
+                        svg (viewBox: "0 0 12 12", style: "w-3 h-3") {
+                            rect (width: "12", height: "12", fill: "#2563eb") {}
+                        }
+                        text "Desktop" { style: "text-xs text-muted-foreground" }
+                        svg (viewBox: "0 0 12 12", style: "w-3 h-3") {
+                            rect (width: "12", height: "12", fill: "#16a34a") {}
+                        }
+                        text "Mobile" { style: "text-xs text-muted-foreground" }
+                        svg (viewBox: "0 0 12 12", style: "w-3 h-3") {
+                            rect (width: "12", height: "12", fill: "#d97706") {}
+                        }
+                        text "Tablet" { style: "text-xs text-muted-foreground" }
                     }
                     row (style: "justify-between px-10 pt-1") {
                         text .axisLabels { style: "text-xs text-muted-foreground" }
