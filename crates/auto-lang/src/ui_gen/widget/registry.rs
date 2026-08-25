@@ -111,6 +111,7 @@ impl WidgetRegistry {
         self.register_form_widgets();
         self.register_display_widgets();
         self.register_rich_text_widgets();
+        self.register_document_panel_widgets();
         self.register_chat_widgets();
         self.register_overlay_widgets();
         self.register_navigation_widgets();
@@ -828,6 +829,83 @@ impl WidgetRegistry {
         mermaid.primary_prop = Some("source".to_string());
         mermaid.has_children = false;
         self.register(mermaid);
+    }
+
+    /// Document panel widgets (plan 450 / auto-down plan 019): the AutoDown
+    /// unified document engine's panel vocabulary, registered from the
+    /// cross-repo alignment table (auto-down packages/engine/PANEL-ALIGNMENT.md).
+    /// Text / Separator / Mermaid already exist above; these fill the gaps.
+    /// vue/iced backend mappings land with the later 019 batches.
+    fn register_document_panel_widgets(&mut self) {
+        // Heading — palette H1..H6 map here via the `level` prop
+        // (primary_prop level: 1..6; serializer emits "#"*level).
+        let mut heading = WidgetSpec::new("Heading", WidgetCategory::Display)
+            .with_alias("heading");
+        heading.primary_prop = Some("level".to_string());
+        heading.has_children = false;
+        self.register(heading);
+
+        // Codeblock — fenced code panel; pre[data-language] contract on the
+        // vue side, Rich span keyword highlighting on iced (plan 413).
+        let mut codeblock = WidgetSpec::new("Codeblock", WidgetCategory::Display)
+            .with_alias("codeblock");
+        codeblock.primary_prop = Some("language".to_string());
+        codeblock.has_children = false;
+        self.register(codeblock);
+
+        // Quote — blockquote container panel.
+        let mut quote = WidgetSpec::new("Quote", WidgetCategory::Display)
+            .with_alias("quote");
+        quote.has_children = true;
+        self.register(quote);
+
+        // List — bullet/ordered/task list panel; `ordered` flips ul/ol.
+        let mut list = WidgetSpec::new("List", WidgetCategory::Display)
+            .with_alias("list");
+        list.primary_prop = Some("ordered".to_string());
+        list.has_children = true;
+        self.register(list);
+
+        // Table — table-node panel (header + rows + cells as children).
+        let mut table = WidgetSpec::new("Table", WidgetCategory::Display)
+            .with_alias("table");
+        table.has_children = true;
+        self.register(table);
+
+        // Callout — `:::kind title` admonition container.
+        let mut callout = WidgetSpec::new("Callout", WidgetCategory::Display)
+            .with_alias("callout");
+        callout.primary_prop = Some("kind".to_string());
+        callout.has_children = true;
+        self.register(callout);
+
+        // Details — `:::details Summary` collapsible container.
+        let mut details = WidgetSpec::new("Details", WidgetCategory::Display)
+            .with_alias("details");
+        details.primary_prop = Some("summary".to_string());
+        details.has_children = true;
+        self.register(details);
+
+        // MathBlock — `$$...$$` KaTeX display math panel.
+        let mut math_block = WidgetSpec::new("MathBlock", WidgetCategory::Display)
+            .with_alias("math_block");
+        math_block.primary_prop = Some("source".to_string());
+        math_block.has_children = false;
+        self.register(math_block);
+
+        // Query — `{{query ...}}` macro panel (consumer-implemented).
+        let mut query = WidgetSpec::new("Query", WidgetCategory::Display)
+            .with_alias("query_block");
+        query.primary_prop = Some("query".to_string());
+        query.has_children = false;
+        self.register(query);
+
+        // Embed — block reference embed panel.
+        let mut embed = WidgetSpec::new("Embed", WidgetCategory::Display)
+            .with_alias("embed_block");
+        embed.primary_prop = Some("target".to_string());
+        embed.has_children = false;
+        self.register(embed);
     }
 
     /// Chat widgets — ChatMessage (single message bubble with header).
@@ -2081,6 +2159,36 @@ mod tests {
     fn test_registry_creation() {
         let registry = WidgetRegistry::new();
         assert!(registry.get("button").is_none()); // Empty registry
+    }
+
+    #[test]
+    fn test_document_panel_widgets_registered() {
+        // plan 450 / auto-down 019: the document panel vocabulary from
+        // PANEL-ALIGNMENT.md resolves by name and by snake_case alias
+        let registry = WidgetRegistry::with_defaults();
+        for (name, alias, primary) in [
+            ("Heading", "heading", Some("level")),
+            ("Codeblock", "codeblock", Some("language")),
+            ("Quote", "quote", None),
+            ("List", "list", Some("ordered")),
+            ("Table", "table", None),
+            ("Callout", "callout", Some("kind")),
+            ("Details", "details", Some("summary")),
+            ("MathBlock", "math_block", Some("source")),
+            ("Query", "query_block", Some("query")),
+            ("Embed", "embed_block", Some("target")),
+        ] {
+            let spec = registry.get(alias).unwrap_or_else(|| panic!("{name} not found by alias"));
+            assert_eq!(spec.name, name, "alias {alias} resolved to wrong spec");
+            assert_eq!(spec.category, WidgetCategory::Display);
+            assert_eq!(spec.primary_prop.as_deref(), primary, "{name} primary_prop");
+            let by_name = registry.get(name).unwrap_or_else(|| panic!("{name} not found by name"));
+            assert_eq!(by_name.name, name);
+        }
+        // pre-existing palette counterparts stay intact
+        for existing in ["Text", "Separator", "Mermaid"] {
+            assert!(registry.get(existing.to_lowercase()).is_some(), "{existing} still registered");
+        }
     }
 
     #[test]
