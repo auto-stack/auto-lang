@@ -11,7 +11,7 @@
 // 生成物中无定义。角度常量保持手算直线形态（视觉已验收）。
 
 widget DonutChartPage {
-    msg Msg { Init }
+    msg { Init }
 
     model {
         traffic = [

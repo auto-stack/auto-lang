@@ -3,7 +3,7 @@
 // materialized). Consumer wires each provider button to its handler.
 
 widget LoginFormSso {
-    msg Msg {
+    msg {
         Submit,
         EditEmail,
         EditPassword,

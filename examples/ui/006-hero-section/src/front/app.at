@@ -1,5 +1,5 @@
 widget App {
-    msg Msg { GetStarted }
+    msg { GetStarted }
 
     view {
         col {

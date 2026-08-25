@@ -41,7 +41,7 @@ Auto 的 UI 子系统，围绕 **AURA**（Auto UI Representation Abstract，UI-I
 
 ```auto
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
     model { count int = 0 }
     view { col { button + { onclick: .Inc } h2 > Count: ${.count} } }
     on { .Inc => { .count += 1 } .Dec => { .count -= 1 } }

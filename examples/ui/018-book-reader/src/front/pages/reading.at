@@ -8,7 +8,7 @@ use back.api: get_book, get_chapter
 use store: BooksStore
 
 widget reading {
-    msg Msg { Init, Back, PrevChapter, NextChapter }
+    msg { Init, Back, PrevChapter, NextChapter }
 
     model {
         var book_id int = 0

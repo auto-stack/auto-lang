@@ -432,7 +432,7 @@ Run `auto run` on `examples/ui/006-hero-section` and verify:
 Create a temporary test .at file with `if`/`else` in an `on` block to verify delegation works:
 ```auto
 widget Test {
-    msg Msg { Click }
+    msg { Click }
     model { var count int = 0 }
     view {
         button "Click" { onclick: .Click }

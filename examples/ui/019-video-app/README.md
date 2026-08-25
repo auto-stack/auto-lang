@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { TabChanged, CategoryChanged }
+    msg { TabChanged, CategoryChanged }
 
     model {
         var chip1 str = "All"

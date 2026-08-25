@@ -645,7 +645,7 @@ git commit -m "feat(api-gen): generate Rust server with Axum routes"
 // Demo: Load and display users from backend API
 
 widget App {
-    msg Msg { Click, Load }
+    msg { Click, Load }
 
     model {
         var count int = 0

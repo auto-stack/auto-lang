@@ -43,7 +43,7 @@ widget App {
         "/book/:id/chapter/:ch" -> use reading
         "/settings" -> use settings
     }
-    msg Msg { Init }
+    msg { Init }
     view {
         row {
             col { /* sidebar: Library / Settings links + theme-toggle */ }

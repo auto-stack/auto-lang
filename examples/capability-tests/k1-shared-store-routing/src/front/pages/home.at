@@ -1,7 +1,7 @@
 use store: CounterStore
 
 widget home {
-    msg Msg { Inc }
+    msg { Inc }
     view {
         col {
             text "home"

@@ -75,8 +75,7 @@ fn serialize_widget(widget: &AuraWidget, output: &mut String, indent: usize) {
     if !widget.messages.is_empty() {
         output.push_str(&format!("{}    messages: [\n", ind));
         for msg in &widget.messages {
-            output.push_str(&format!("{}        {{ name: \"{}\", variants: [",
-                ind, msg.name));
+            output.push_str(&format!("{}        {{ variants: [", ind));
             for (i, variant) in msg.variants.iter().enumerate() {
                 if i > 0 {
                     output.push_str(", ");

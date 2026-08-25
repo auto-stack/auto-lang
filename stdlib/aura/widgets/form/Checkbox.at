@@ -21,7 +21,7 @@
 /// Checkbox (checked: .agreed) {}
 /// ```
 widget Checkbox {
-    msg Msg { Change(checked: bool) }
+    msg { Change(checked: bool) }
 
     model {
         #[primary]

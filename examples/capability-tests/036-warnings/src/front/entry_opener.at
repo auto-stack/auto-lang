@@ -4,7 +4,7 @@
 // silently resolved to the global `window.open` at runtime (R009 catches
 // any residual case).
 widget EntryOpener {
-    msg Msg { Open(str) }
+    msg { Open(str) }
 
     model {
         var last_opened str = ""

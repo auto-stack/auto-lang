@@ -5357,7 +5357,6 @@ mod tests {
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
                     AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },
@@ -5392,6 +5391,54 @@ mod tests {
         assert!(code.contains("pub struct Counter"), "got:\n{}", code);
         assert!(code.contains("pub count: i32"), "got:\n{}", code);
         assert!(code.contains("impl Component for Counter"), "got:\n{}", code);
+    }
+
+    /// Plan 448 B1: inline-lambda events through the real pipeline
+    /// (parse → extract → generate). The minted `__evt_*` variant must reach
+    /// the generated enum — generate_on_method silently skips handlers whose
+    /// variant is missing from the enum, so that is the load-bearing
+    /// assertion — the match arm carries the lambda body, and the view
+    /// builder dispatches the synthetic variant.
+    #[test]
+    fn test_inline_lambda_event_rust_codegen() {
+        let src = r#"
+widget Counter {
+    model { var count int = 0 }
+    view {
+        row {
+            button "+" { onclick: () => {.count += 1} }
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = RustGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+
+        assert!(
+            code.contains("__evt_onclick_1,"),
+            "minted variant in the enum:\n{}",
+            code
+        );
+        assert!(
+            code.contains("__evt_onclick_1 => {"),
+            "match arm for the minted variant:\n{}",
+            code
+        );
+        assert!(
+            code.contains("CounterMsg::__evt_onclick_1"),
+            "dispatch closure references the variant:\n{}",
+            code
+        );
+        assert!(code.contains("self.count += 1"), "lambda body:\n{}", code);
     }
 
     /// Plan 413 Phase 3: code_editor codegen — builder chain shape, payload
@@ -5431,7 +5478,6 @@ mod tests {
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant {
                     name: "SourceChanged".to_string(),
                     payload: vec![Type::StrFixed(0)],
@@ -5564,7 +5610,6 @@ mod tests {
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant { payload_names: vec![], name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
                     AuraMsgVariant { payload_names: vec![], name: "CursorMoved".to_string(), payload: vec![], quoted: false },
@@ -5679,7 +5724,6 @@ fn main() {{}}
                 },
             ],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5729,7 +5773,6 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5769,7 +5812,6 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
             }],
             view_tree: AuraNode::element("col"),
@@ -5994,7 +6036,7 @@ fn main() {{}}
             name: "Shell".to_string(),
             state_vars: vec![],
             computed: vec![],
-            messages: vec![AuraMessage { name: "Msg".to_string(), variants }],
+            messages: vec![AuraMessage { variants }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
             props: vec![],

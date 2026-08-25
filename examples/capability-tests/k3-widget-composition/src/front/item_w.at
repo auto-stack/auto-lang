@@ -7,7 +7,7 @@
 // exactly like the component fn variant.
 
 widget ItemRow(label: str, on_select: msg) {
-    msg Msg { Select(str), Bump }
+    msg { Select(str), Bump }
     model { var clicks int = 0 }
     view {
         row {

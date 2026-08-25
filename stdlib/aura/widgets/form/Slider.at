@@ -23,7 +23,7 @@
 /// Slider (value: .brightness) {}
 /// ```
 widget Slider {
-    msg Msg { Change(value: int) }
+    msg { Change(value: int) }
 
     model {
         #[primary]

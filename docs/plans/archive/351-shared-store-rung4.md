@@ -63,7 +63,7 @@ cd ../auto-lang-351
 
 **Files:** `examples/capability-tests/k1-shared-store-routing/{pac.at, src/front/app.at, src/front/stores/counter.at, src/front/pages/{home,settings}.at, README.md, .gitignore}`
 
-**Step 1:** `counter.at` 声明 `store CounterStore { state { var count int = 0 } msg Msg { Inc; Dec } on { .Inc -> { .count = .count + 1 } .Dec -> { .count = .count - 1 } } }`。
+**Step 1:** `counter.at` 声明 `store CounterStore { state { var count int = 0 } msg { Inc; Dec } on { .Inc -> { .count = .count + 1 } .Dec -> { .count = .count - 1 } } }`。
 **Step 2:** `app.at` = 路由 shell(`routes { "/" -> home; "/settings" -> settings }` + `outlet`)。
 **Step 3:** `home.at` 页 `use store: CounterStore`,显示 `store.count` + 增/减按钮。`settings.at` 页也 `use store: CounterStore`,显示同一 `store.count`(验证跨页共享 + 路由切换后值保留)。
 **Step 4:** `auto build` → 预期 RED(`store` 未实现,解析失败)。
@@ -79,7 +79,7 @@ cd ../auto-lang-351
 **Step 2:** 新 AST 节点 `StoreDecl { name, state(ModelBlock), messages(Vec<MsgDecl>), on(OnBlock) }`(复用现有 ModelBlock/MsgDecl/OnBlock 类型,不新造)。
 **Step 3:** `parse_store_decl()` —— 解析 `store Name { state{} msg{} on{} }`(复用 parse_model/parse_msg_decl/parse_on_block)。
 **Step 4:** 顶层 stmt 收集:在 parse 循环里识别 `store` → `parse_store_decl()` → `Stmt::StoreDecl`。
-**Step 5:** 单测:`store Foo { state { var x int = 0 } msg Msg { Inc } on { .Inc -> { .x = .x + 1 } } }` 解析成 StoreDecl,字段齐全。
+**Step 5:** 单测:`store Foo { state { var x int = 0 } msg { Inc } on { .Inc -> { .x = .x + 1 } } }` 解析成 StoreDecl,字段齐全。
 **Commit:** `feat(parser): 'store' declaration (scene:ui contextual keyword)`。
 
 ---

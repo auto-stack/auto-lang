@@ -1,6 +1,6 @@
 use counter: Counter
 widget App {
-    msg Msg { Selected(int) }
+    msg { Selected(int) }
     model { var active int = 0 }
     view { col { Counter(on_select: .Selected) text .active { } style: "p-4 gap-2" } }
     on { .Selected(i) -> { .active = i } }

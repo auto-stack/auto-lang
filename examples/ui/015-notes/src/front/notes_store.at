@@ -26,7 +26,7 @@ store NotesStore {
         var accent_color str = "indigo"
     }
 
-    msg Msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
+    msg { Init, Refresh, SelectNote(int), NewNote, NewNoteInFolder(str), DeleteNote(int),
               TogglePin(int), SetSort(str), Search(str),
               UpdateTags(int), ToggleDarkMode, SetAccent(str),
               SelectFolder(str), SelectTag(str), MoveNote(int) }

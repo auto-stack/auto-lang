@@ -4,7 +4,7 @@
 // `dataSource.save` fetcher the consumer binds to their API.
 
 widget NoteEditor {
-    msg Msg {
+    msg {
         TitleChanged,
         BodyChanged,
         AddTag,

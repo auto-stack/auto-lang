@@ -1,7 +1,7 @@
 use tab: Pane
 
 widget App {
-    msg Msg { Show(str), Init }
+    msg { Show(str), Init }
 
     model {
         var active str = "alpha"

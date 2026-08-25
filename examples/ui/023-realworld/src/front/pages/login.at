@@ -3,7 +3,7 @@
 use auth_store: AuthStore
 
 widget login {
-    msg Msg { Init, EmailChanged, PasswordChanged, Submit }
+    msg { Init, EmailChanged, PasswordChanged, Submit }
 
     model {
         var email str = "sarah@vercel.com"

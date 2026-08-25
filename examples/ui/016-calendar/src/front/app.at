@@ -1,7 +1,7 @@
 use calendar_util: build_month_grid, month_name, add_months_year, add_months_month
 
 widget App {
-    msg Msg { PrevMonth, NextMonth, Today, SelectDay(str) }
+    msg { PrevMonth, NextMonth, Today, SelectDay(str) }
 
     model {
         var year int = 2026

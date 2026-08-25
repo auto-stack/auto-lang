@@ -33,7 +33,15 @@ fn snapshot_widgets(path: &str, snapshot_name: &str) {
 
     // Build a stable representation: widget names + counts + validation warnings
     let mut out = String::new();
-    out.push_str(&format!("File: {}\n", path));
+    // Plan 448: print the path relative to the examples/ root so snapshots
+    // are identical across checkouts and git worktrees (the absolute path
+    // embedded before made every worktree run fail the assertion).
+    let normalized = path.replace('\\', "/");
+    let short = normalized
+        .rfind("examples/")
+        .map(|i| &normalized[i..])
+        .unwrap_or(&normalized);
+    out.push_str(&format!("File: {}\n", short));
     out.push_str(&format!("Widget count: {}\n", result.widgets.len()));
     for w in &result.widgets {
         out.push_str(&format!(

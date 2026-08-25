@@ -1,7 +1,7 @@
 // For loop and conditional test
 
 widget LoopTest {
-    msg Msg { Add }
+    msg { Add }
 
     model {
         count int = 0

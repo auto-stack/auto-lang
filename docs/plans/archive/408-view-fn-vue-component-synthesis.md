@@ -312,7 +312,7 @@ component fn 调用 tag 在 AuraNode 提取后是 `AuraNode::Component`，但 **
 
 **解决办法**（三选一，按复杂度）:
 
-- **方案 A（emit 完整支持，根治）**: `extract_widget_from_fragment` 接入 msg 块——component fn 声明 `msg Msg { Select }`，生成 `defineEmits<{ Select: [] }>()`；内部 `onclick` 绑定到 `$emit('Select')`。**这是 408 Task 2 的核心**，需 parser + extract + vue 三层改动。彻底解决 §3.1。
+- **方案 A（emit 完整支持，根治）**: `extract_widget_from_fragment` 接入 msg 块——component fn 声明 `msg { Select }`，生成 `defineEmits<{ Select: [] }>()`；内部 `onclick` 绑定到 `$emit('Select')`。**这是 408 Task 2 的核心**，需 parser + extract + vue 三层改动。彻底解决 §3.1。
 - **方案 B（prop-as-callback，轻量）**: component fn 内部识别"handler 名命中 prop 名"时，把 `onclick` 绑定为 `props.<propname>()`（`<button @click="props.onselect()">`）。不改 msg/emit 机制，复用现有 prop 透传。props 类型 `msg` → `() => void`（而非 `any`）。**最小改动**，覆盖 §3.1 的"传入回调"场景（但非标准 Vue emit，父组件需用 `:onselect` 而非 `@select`）。
 - **方案 C（登记，暂不修）**: 维持现状，§3.1 继续阻塞，component fn 仅用于纯展示组件。
 
@@ -500,7 +500,7 @@ component fn AgentAvatar(...) {
 **语法**（params → computed → msg → model → on → view body）:
 ```auto
 component fn CollapseBtn(label: str) {
-    msg Msg { ToggleCollapse }
+    msg { ToggleCollapse }
     model { var collapsed bool = false }
     on { .ToggleCollapse -> { .collapsed = !.collapsed } }
     button { text .label onclick: .ToggleCollapse }

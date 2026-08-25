@@ -16,7 +16,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { CelsiusChanged, FahrenheitChanged }
+    msg { CelsiusChanged, FahrenheitChanged }
 
     model {
         var celsius str = "0"

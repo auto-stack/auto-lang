@@ -1,7 +1,7 @@
 // pages/index.at - Documentation home page with Hero, search, and categorized component grid
 
 widget IndexPage {
-    msg Msg { Navigate }
+    msg { Navigate }
 
     model {
         searchQuery str = ""

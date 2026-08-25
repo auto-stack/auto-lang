@@ -14,7 +14,7 @@ widget App {
         "/profile/:username" -> use profile
     }
 
-    msg Msg { Init, Logout, GoProfile(str) }
+    msg { Init, Logout, GoProfile(str) }
 
     view {
         col {

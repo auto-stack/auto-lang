@@ -97,7 +97,7 @@ widget CommandGroup {
 
 /// Command item/option
 widget CommandItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

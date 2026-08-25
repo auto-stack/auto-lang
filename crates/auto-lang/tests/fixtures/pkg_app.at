@@ -1,7 +1,7 @@
 // Plan 435 P4 e2e —— use package 引用官方 .at 组件包
 widget PkgApp {
     use { package: official from "../../../../examples/widgets-gallery/src/front/components" }
-    msg M { Go }
+    msg { Go }
     model { n int = 0 }
     on { .Go -> { } }
     view {

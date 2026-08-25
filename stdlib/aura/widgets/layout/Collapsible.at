@@ -26,7 +26,7 @@
 /// }
 /// ```
 widget Collapsible {
-    msg Msg { Toggle }
+    msg { Toggle }
 
     model {
         open bool = false
@@ -76,7 +76,7 @@ widget Collapsible {
 /// }
 /// ```
 widget CollapsibleTrigger {
-    msg Msg { Click }
+    msg { Click }
 
     view {
         style: "collapsible-trigger"

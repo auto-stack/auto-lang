@@ -638,7 +638,7 @@ Generator 会正确地将其转换为 `Msg::Inc`。
 ```auto
 // examples/counter_full.at
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     model {
         count int = 0

@@ -3,7 +3,7 @@
 use store: BooksStore
 
 widget bookshelf {
-    msg Msg { Init, OpenBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
+    msg { Init, OpenBook(int), ShowAdd, CloseAdd, SubmitAdd, TitleChanged, AuthorChanged, DeleteBook(int) }
 
     model {
         var show_add bool = false

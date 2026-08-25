@@ -8,7 +8,7 @@ store BoardStore {
         var loading bool = false
     }
 
-    msg Msg { Init, AddCard(str), RemoveCard(int), MoveCard(int, str) }
+    msg { Init, AddCard(str), RemoveCard(int), MoveCard(int, str) }
 
     on {
         .Init -> {

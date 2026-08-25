@@ -15,7 +15,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { NameChanged, EmailChanged, MessageChanged, Submit }
+    msg { NameChanged, EmailChanged, MessageChanged, Submit }
 
     model {
         var name str = ""

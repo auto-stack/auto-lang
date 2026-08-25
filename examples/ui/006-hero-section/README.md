@@ -15,7 +15,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { GetStarted }
+    msg { GetStarted }
 
     view {
         col {

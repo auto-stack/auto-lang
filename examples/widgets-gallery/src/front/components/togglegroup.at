@@ -17,7 +17,7 @@
 /// ```
 
 widget ToggleGroup {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         value str = ""
@@ -38,7 +38,7 @@ widget ToggleGroup {
 
 /// ToggleGroup item
 widget ToggleItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         value str = ""

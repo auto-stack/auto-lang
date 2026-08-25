@@ -2107,6 +2107,36 @@ impl BackendGenerator for JetGenerator {
 mod tests {
     use super::*;
 
+    /// Plan 448 B1: inline-lambda events through the real pipeline
+    /// (parse → extract → generate). The minted `__evt_*` name must flow
+    /// through as a valid Kotlin identifier (sealed-class Msg object /
+    /// handler dispatch) — secondary-backend coverage for the shorthand.
+    #[test]
+    fn test_inline_lambda_event_jet_codegen() {
+        let src = concat!(
+            "widget Counter {\n",
+            "    model { var count int = 0 }\n",
+            "    view { col { button \"+\" { onclick: () => {.count += 1} } } }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut gen = JetGenerator::new();
+        let code = gen.generate(&widget).unwrap();
+        assert!(
+            code.contains("__evt_onclick_1"),
+            "minted handler name flows through Kotlin codegen:\n{}",
+            code
+        );
+    }
+
     #[test]
     fn test_generate_simple_composable() {
         let mut gen = JetGenerator::new();

@@ -3,7 +3,7 @@
 //! These nodes are only parsed when the scenario is UI (contextual keywords).
 //! They represent widget, msg, model, view, and on blocks as first-class citizens.
 
-use super::{Body, Expr, Name, Type};
+use super::{Body, Expr, Name, Stmt, Type};
 use super::route::RoutesBlock;
 use auto_val::AutoStr;
 
@@ -274,13 +274,15 @@ pub struct LifecycleMethod {
 /// Message declaration: defines message types for MVU pattern
 ///
 /// ```auto
-/// msg Msg { Inc, Dec, Set(int) }
+/// msg { Inc, Dec, Set(int) }
 /// ```
+///
+/// Plan 448 A: the declaration carries no type name — event lookup always
+/// resolves by variant (`.Inc` / `App.Inc` take the tail segment) and every
+/// backend derives the enum name from the widget name. A legacy
+/// `msg Msg { ... }` still parses with the name discarded.
 #[derive(Debug, Clone)]
 pub struct MsgDecl {
-    /// Message type name (e.g., "Msg")
-    pub name: Name,
-
     /// Message variants
     pub variants: Vec<MsgVariant>,
 }
@@ -562,6 +564,12 @@ pub struct ViewEvent {
 
     /// Optional parameters for the handler (e.g., ["todo.id"] for .Delete(todo.id))
     pub params: Vec<String>,
+
+    /// Plan 448 B1: inline lambda body for `onclick: () => { ... }`. The
+    /// handler field stays empty; extraction mints an anonymous event name
+    /// (`__evt_<event>_<n>`) and injects these statements as the matching
+    /// on-handler, so simple callbacks skip the msg/on round trip entirely.
+    pub inline: Option<Vec<Stmt>>,
 }
 
 /// View text content
@@ -705,6 +713,7 @@ impl ViewNode {
                 name: name.into(),
                 handler: handler.into(),
                 params: Vec::new(),
+                inline: None,
             });
         }
         self
@@ -717,6 +726,7 @@ impl ViewNode {
                 name: name.into(),
                 handler: handler.into(),
                 params,
+                inline: None,
             });
         }
         self
@@ -910,7 +920,6 @@ mod tests {
     #[test]
     fn test_msg_decl() {
         let msg = MsgDecl {
-            name: AutoStr::from("Msg"),
             variants: vec![
                 MsgVariant {
                     name: AutoStr::from("Inc"),

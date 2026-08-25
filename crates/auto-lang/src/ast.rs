@@ -305,7 +305,7 @@ impl fmt::Display for Stmt {
             Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
             Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
             Stmt::Try(_) => write!(f, "(try)"),
-            Stmt::MsgDecl(msg) => write!(f, "(msg {})", msg.name),
+            Stmt::MsgDecl(msg) => write!(f, "(msg {} variants)", msg.variants.len()),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
             Stmt::ViewBlock(_view) => write!(f, "(view)"),
             // Plan 306: Godot scene declaration
@@ -1182,7 +1182,7 @@ impl ToNode for Stmt {
             Stmt::Try(_) => AutoNode::new("try"),
             Stmt::MsgDecl(msg) => {
                 let mut node = AutoNode::new("msg");
-                node.add_arg(auto_val::Arg::Pos(Value::str(msg.name.as_str())));
+                node.set_prop("variants", Value::Int(msg.variants.len() as i32));
                 node
             }
             Stmt::ModelBlock(model) => {
@@ -1257,7 +1257,7 @@ impl ToAtom for Stmt {
             Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
             Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
             Stmt::Try(_) => "(try)".into(),
-            Stmt::MsgDecl(msg) => format!("(msg {})", msg.name).into(),
+            Stmt::MsgDecl(msg) => format!("(msg {} variants)", msg.variants.len()).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
             Stmt::ViewBlock(_) => "(view)".into(),
             // Plan 306: Godot scene declaration

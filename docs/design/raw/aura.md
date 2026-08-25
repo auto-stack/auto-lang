@@ -40,7 +40,7 @@ AURA 的生成完全由工程上下文（`pac.at`）驱动，避免污染 Auto �
 // 文件: Counter.at
 widget Counter {
     // 1. 局部事件枚举 (编译后展开为 Counter_Msg)
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     // 2. 状态/属性声明 (外部可通过 Counter(initial_count: 0) 传入)
     model {

@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { SelectContact, SendMessage, InputChanged }
+    msg { SelectContact, SendMessage, InputChanged }
 
     model {
         var input str = ""

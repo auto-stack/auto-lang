@@ -1,5 +1,5 @@
 widget App {
-    msg Msg { ToggleText, ToggleButton, ToggleInput, ToggleRow, ToggleCol, ClearAll, ExportJSON }
+    msg { ToggleText, ToggleButton, ToggleInput, ToggleRow, ToggleCol, ClearAll, ExportJSON }
 
     model {
         var has_text bool = false

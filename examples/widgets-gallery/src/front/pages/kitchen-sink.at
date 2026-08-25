@@ -3,7 +3,7 @@
 // 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 23 个)。
 
 widget KitchenSinkPage {
-    msg Msg { Go }
+    msg { Go }
     model { dummy int = 0 }
     on { .Go -> { } }
     view {

@@ -7,7 +7,7 @@
 use back.api: get_book, list_chapters
 
 widget book_detail {
-    msg Msg { Init, Back, ReadChapter(int), ContinueReading }
+    msg { Init, Back, ReadChapter(int), ContinueReading }
 
     model {
         var book_id int = 0

@@ -2,7 +2,7 @@
 // Font size is persisted to localStorage (storage.get/set) and applied to the
 // reading view. Theme (light/dark) is handled by the ThemeToggle escape hatch.
 widget settings {
-    msg Msg { Init, SetFont(str) }
+    msg { Init, SetFont(str) }
 
     model {
         var font_size str = "medium"

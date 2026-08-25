@@ -399,7 +399,7 @@ widget Counter {
         count int = 0
     }
 
-    msg Msg {
+    msg {
         Inc
         Dec
     }

@@ -20,7 +20,7 @@
 /// Switch (checked: .notifications) {}
 /// ```
 widget Switch {
-    msg Msg { Change(checked: bool) }
+    msg { Change(checked: bool) }
 
     model {
         #[primary]

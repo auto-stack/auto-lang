@@ -4,7 +4,7 @@
 // init). Three sections separated by `separator`s: shortcuts, folders, tags.
 
 widget SidebarNav {
-    msg Msg {
+    msg {
         SelectShortcut(str),
         SelectFolder(str),
         SelectTag(str)

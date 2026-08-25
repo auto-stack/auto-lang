@@ -8,7 +8,7 @@ store BooksStore {
         var loading bool = false
     }
 
-    msg Msg { Init, AddBook(str, str), RemoveBook(int), SetProgress(int, int) }
+    msg { Init, AddBook(str, str), RemoveBook(int), SetProgress(int, int) }
 
     on {
         .Init -> {

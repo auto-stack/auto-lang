@@ -701,9 +701,6 @@ pub struct AuraComputed {
 /// Message type definition (for MVU pattern)
 #[derive(Debug, Clone)]
 pub struct AuraMessage {
-    /// Message type name (e.g., "Msg")
-    pub name: String,
-
     /// Message variants
     pub variants: Vec<AuraMsgVariant>,
 }
@@ -1126,7 +1123,6 @@ mod tests {
     #[test]
     fn test_aura_message() {
         let msg = AuraMessage {
-            name: "Msg".to_string(),
             variants: vec![
                 AuraMsgVariant {
                     name: "Inc".to_string(),

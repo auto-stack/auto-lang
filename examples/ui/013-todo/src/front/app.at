@@ -7,7 +7,7 @@ use todo_store: TodoStore
 use todo_list: TodoList
 
 widget App {
-    msg Msg {
+    msg {
         Init, AddTodo, EditInputChanged, ToggleAll
     }
 

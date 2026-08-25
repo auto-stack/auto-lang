@@ -15,7 +15,7 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { ToggleYearly }
+    msg { ToggleYearly }
 
     model {
         var is_yearly bool = false

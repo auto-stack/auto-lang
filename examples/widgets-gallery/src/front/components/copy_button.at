@@ -8,7 +8,7 @@
 /// - Error handling for clipboard access
 
 widget CopyButton {
-    msg Msg {
+    msg {
         Copy
         ResetCopyState
     }
@@ -48,7 +48,7 @@ widget CopyButton {
 
 /// Copy button with icon only
 widget CopyIconButton {
-    msg Msg { Copy }
+    msg { Copy }
 
     model {
         text str = ""

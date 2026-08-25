@@ -200,7 +200,7 @@ pub fn build_month_grid(year int, month int, today str, selected str, events []E
 
 **app.at 改造要点：**
 - `model` 改成上面的动态字段；删掉 d1..d7 和写死的日期。
-- `msg Msg { Init, PrevMonth, NextMonth, Today, SelectDay(str) }`
+- `msg { Init, PrevMonth, NextMonth, Today, SelectDay(str) }`
 - `on`：
   - `.Init` → `today = DateTime.today_str()`；纯 Auto split today 出 year/month；`days = build_month_grid(...)`。
   - `.PrevMonth` → `let (y, m) = add_months_ym(.year, .month, -1); .year = y; .month = m;` → 重建 days（Phase 4 再接事件/节假日，先空）。

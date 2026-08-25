@@ -21,7 +21,7 @@
 /// ```
 
 widget Carousel {
-    msg Msg {
+    msg {
         Next
         Previous
     }

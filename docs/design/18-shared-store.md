@@ -63,7 +63,7 @@ store NotesStore {
         var error str = ""
     }
 
-    msg Msg { Load; Add(Note); Select(int); ClearError }
+    msg { Load; Add(Note); Select(int); ClearError }
 
     on {
         .Load -> {

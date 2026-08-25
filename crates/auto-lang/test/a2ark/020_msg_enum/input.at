@@ -3,7 +3,7 @@ widget TestMsg {
         count int = 0
     }
 
-    msg Msg {
+    msg {
         Increment
         Decrement
         Reset

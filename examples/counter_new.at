@@ -11,7 +11,7 @@
 
 widget Counter {
     // Message declarations
-    msg Msg { Inc, Dec, Reset }
+    msg { Inc, Dec, Reset }
 
     // Model (state variables)
     // Plan 130: var keyword makes the field mutable

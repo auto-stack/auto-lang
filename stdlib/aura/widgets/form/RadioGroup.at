@@ -26,7 +26,7 @@
 /// }
 /// ```
 widget RadioGroup {
-    msg Msg { Change(value: str) }
+    msg { Change(value: str) }
 
     model {
         #[primary]
@@ -72,7 +72,7 @@ widget RadioGroup {
 /// RadioItem (value: "apple", text: "Apple") {}
 /// ```
 widget RadioItem {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         value str = ""

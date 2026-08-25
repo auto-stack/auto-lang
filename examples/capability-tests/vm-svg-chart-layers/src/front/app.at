@@ -15,7 +15,7 @@
 // 既有回归先例：主仓二进制旧于修复合入 17 分钟 → ③ 丢失（2026-08-25）。
 
 widget App {
-    msg Msg { Init }
+    msg { Init }
 
     model {
         p str = ""

@@ -6,7 +6,7 @@
 // both render modes.
 
 widget App {
-    msg Msg { Init, Save, Load, Drop, Url }
+    msg { Init, Save, Load, Drop, Url }
 
     model {
         var token str = ""

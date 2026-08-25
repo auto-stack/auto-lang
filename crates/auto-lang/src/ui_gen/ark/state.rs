@@ -592,7 +592,6 @@ mod tests {
             state_vars: vec![],
             computed: vec![],
             messages: vec![AuraMessage {
-                name: "Msg".to_string(),
                 variants: vec![
                     AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
                     AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },

@@ -132,7 +132,7 @@ use note_item: NoteItem
 use editor: EditorPanel
 
 widget App {
-    msg Msg {
+    msg {
         LoadNotes                           // 初始化: 从后端加载
         SelectNote(id int)                  // 选中笔记
         NewNote                             // 新建笔记
@@ -220,7 +220,7 @@ widget App {
 use note_item: NoteItem
 
 widget Sidebar {
-    msg Msg {
+    msg {
         SelectNote(id int)
         SearchChanged(query str)
     }
@@ -257,7 +257,7 @@ widget Sidebar {
 
 ```auto
 widget NoteItem {
-    msg Msg {
+    msg {
         Select
         Delete
     }
@@ -291,7 +291,7 @@ widget NoteItem {
 
 ```auto
 widget EditorPanel {
-    msg Msg {
+    msg {
         Edit
         Save
         Cancel

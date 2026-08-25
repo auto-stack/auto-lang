@@ -3,7 +3,7 @@
 use article_store: ArticleStore
 
 widget home {
-    msg Msg { Init, SetTag(str), ClearTag, OpenArticle(str) }
+    msg { Init, SetTag(str), ClearTag, OpenArticle(str) }
 
     model {
         // Popular tags (stage 1: static list matching seed articles; avoids

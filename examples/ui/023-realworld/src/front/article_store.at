@@ -18,7 +18,7 @@ store ArticleStore {
         var following []str = []
     }
 
-    msg Msg {
+    msg {
         Init, LoadFeed, OpenArticle(str), SetTag(str), ClearTag,
         CreateArticle(str, str, str, str, str), UpdateArticle(str, str, str, str),
         DeleteArticle(str), CreateComment(str, str), DeleteComment(int),

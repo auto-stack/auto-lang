@@ -15,7 +15,7 @@ store TodoStore {
         var edit_text str = ""
     }
 
-    msg Msg { Init, Refresh, AddTodo, SetInput(str), ToggleTodo(int), DeleteTodo(int),
+    msg { Init, Refresh, AddTodo, SetInput(str), ToggleTodo(int), DeleteTodo(int),
               ToggleAll, ClearCompleted,
               StartEdit(int), SetEditText(str), CommitEdit, CancelEdit }
 

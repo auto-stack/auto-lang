@@ -163,6 +163,49 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
+    // Plan 448 B2: compound assignment whose LHS is (or will become) a field
+    // access desugars to `lhs = lhs op rhs` BEFORE the state rewrite. VM
+    // codegen's compound-assignment path only accepts Ident LHS, while plain
+    // `=` already handles Dot LHS via GET_FIELD/SET_FIELD — and the Phase-1
+    // rewrite below turns every state reference (`.count`, bare `count`)
+    // into `__state.count`, so without this desugar any `+=` on state in a
+    // VM-synthesized handler aborts the whole widget's handler synthesis
+    // ("Compound assignment requires a variable on left side"). Same
+    // expansion shape the toast rewrite below builds by hand (Asn + Add).
+    let compound: Option<(Expr, Expr, auto_val::Op)> = match e {
+        Expr::Bina(lhs, op, rhs) => {
+            let compound_op = match *op {
+                auto_val::Op::AddEq => Some(auto_val::Op::Add),
+                auto_val::Op::SubEq => Some(auto_val::Op::Sub),
+                auto_val::Op::MulEq => Some(auto_val::Op::Mul),
+                auto_val::Op::DivEq => Some(auto_val::Op::Div),
+                auto_val::Op::ModEq => Some(auto_val::Op::Mod),
+                _ => None,
+            };
+            let lhs_is_field = match lhs.as_ref() {
+                Expr::Dot(..) => true,
+                Expr::Ident(n) => state_fields.contains(n.as_str()),
+                _ => false,
+            };
+            match (compound_op, lhs_is_field) {
+                (Some(plain), true) => {
+                    Some(((**lhs).clone(), (**rhs).clone(), plain))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    if let Some((lhs, rhs, plain)) = compound {
+        let read = lhs.clone();
+        *e = Expr::Bina(
+            Box::new(lhs),
+            auto_val::Op::Asn,
+            Box::new(Expr::Bina(Box::new(read), plain, Box::new(rhs))),
+        );
+        rewrite_expr(e, state_fields);
+        return;
+    }
     // Plan 412 续(toast VM 化):toast()/toast.success()/… 不再是 vue-only
     // escape hatch。重写为 `__state.__toast += "\x1E" + "kind\x1Fmsg\x1Fposition\x1Fduration"`
     // (追加式赋值,VM handler 可执行):同一 handler 连发多条 toast 时逐条

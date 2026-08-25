@@ -23,7 +23,7 @@
 /// Button (text: "Cancel", variant: "outline") {}
 /// ```
 widget Button {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         #[primary]

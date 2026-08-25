@@ -7,7 +7,7 @@
 // the same way. The compiler sanitizes the handler FN name
 // (update_modelValue) but keeps the emit name verbatim.
 widget TextField(label: str, modelValue: str) {
-    msg Msg { "update:modelValue"(str) }
+    msg { "update:modelValue"(str) }
 
     view {
         col {

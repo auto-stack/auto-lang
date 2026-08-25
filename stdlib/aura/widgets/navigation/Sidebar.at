@@ -34,7 +34,7 @@
 /// }
 /// ```
 widget Sidebar {
-    msg Msg {
+    msg {
         Navigate(page: str)
         ToggleSection(section: str)
         Search(query: str)
@@ -73,7 +73,7 @@ widget Sidebar {
 /// }
 /// ```
 widget SidebarSection {
-    msg Msg { Toggle }
+    msg { Toggle }
 
     model {
         title str = ""
@@ -108,7 +108,7 @@ widget SidebarSection {
 /// SidebarLink (text: "Button", href: "/button", active: true) {}
 /// ```
 widget SidebarLink {
-    msg Msg { Click }
+    msg { Click }
 
     model {
         text str = ""

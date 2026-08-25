@@ -1,7 +1,7 @@
 // front/counter.at - Simple Counter widget for Rust UI backend
 
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     model { var count int = 0 }
 

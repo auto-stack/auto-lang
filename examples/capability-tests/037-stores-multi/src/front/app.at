@@ -4,7 +4,7 @@ use alpha_store: AlphaStore
 use panel: BetaPanel
 
 widget App {
-    msg Msg { AddNote }
+    msg { AddNote }
 
     view {
         col {

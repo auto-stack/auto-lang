@@ -16,7 +16,7 @@ The top-level `widget` block has strict child requirements:
 
 ```auto
 widget WidgetName {
-    msg Msg { ... }        // REQUIRED: exactly one
+    msg { ... }        // REQUIRED: exactly one
     model { ... }          // REQUIRED: exactly one
     computed { ... }       // OPTIONAL: at most one
     view { ... }           // REQUIRED: exactly one

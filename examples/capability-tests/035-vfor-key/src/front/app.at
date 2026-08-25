@@ -6,7 +6,7 @@ widget App {
         fn: initialTabs from "src/front/utils/tabs.ts"
     }
 
-    msg Msg { Init }
+    msg { Init }
 
     model {
         var tabs list = []

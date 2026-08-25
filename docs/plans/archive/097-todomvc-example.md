@@ -501,7 +501,7 @@ widget TodoItem {
         todo Todo
     }
 
-    msg Msg { Toggle, Delete, Edit }
+    msg { Toggle, Delete, Edit }
 
     view {
         row (class: { "completed": .todo.done }) {

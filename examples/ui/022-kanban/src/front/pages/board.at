@@ -4,7 +4,7 @@
 use store: BoardStore
 
 widget board {
-    msg Msg { Init, AddCard, TitleChanged, RemoveCard(int), MoveCard(int, str), DragStart(int), AllowDrop, Drop(str) }
+    msg { Init, AddCard, TitleChanged, RemoveCard(int), MoveCard(int, str), DragStart(int), AllowDrop, Drop(str) }
 
     model {
         var new_title str = ""

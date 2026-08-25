@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { TabDaily, TabHourly, Refresh }
+    msg { TabDaily, TabHourly, Refresh }
 
     model {
         var tab str = "daily"

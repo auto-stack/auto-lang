@@ -35,7 +35,7 @@ AURA is the official UI intermediate representation -- the "UI-IR" layer that si
 
 ```auto
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
     model { count int = 0 }
     view {
         col {

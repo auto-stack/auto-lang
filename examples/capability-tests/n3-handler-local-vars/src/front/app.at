@@ -19,7 +19,7 @@
 // Workaround today: use a state field (`.i`) — works but pollutes state.
 
 widget App {
-    msg Msg { Sum }
+    msg { Sum }
     model {
         var ns []int = [1, 2, 3, 4]
         var total int = 0

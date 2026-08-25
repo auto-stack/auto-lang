@@ -1,5 +1,5 @@
 widget PanCanvas {
-    msg Msg { Fit, Reset }
+    msg { Fit, Reset }
 
     model {
         var zoom int = 30

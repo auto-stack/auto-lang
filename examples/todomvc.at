@@ -3,7 +3,7 @@
 
 widget TodoApp {
     // Message declarations
-    msg Msg { Add, Clear }
+    msg { Add, Clear }
 
     // Model (state variables)
     // Plan 130: Use var for mutable fields

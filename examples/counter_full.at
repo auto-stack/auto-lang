@@ -1,6 +1,6 @@
 // Counter Widget - Full example with dot-prefix event handlers and state interpolation
 widget Counter {
-    msg Msg { Inc, Dec }
+    msg { Inc, Dec }
 
     model {
         count int = 0

@@ -62,7 +62,7 @@ arkts/
 **AURA Input:**
 ```auto
 widget App {
-    msg Msg { Click }
+    msg { Click }
     model {
         var count int = 0
     }
@@ -127,7 +127,7 @@ struct App {
 
 Following the jet backend pattern:
 
-1. **Msg sealed class** - Generated from `msg Msg { ... }` block
+1. **Msg sealed class** - Generated from `msg { ... }` block
 2. **dispatch function** - Handles all messages with `when` statement
 3. **Event handlers** - Call `this.dispatch(Msg.VariantName)`
 

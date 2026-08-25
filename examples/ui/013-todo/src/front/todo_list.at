@@ -6,7 +6,7 @@
 use todo_store: TodoStore
 
 widget TodoList() {
-    msg Msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
+    msg { FilterAll, FilterActive, FilterCompleted, ToggleTodo(int), DeleteTodo(int),
               StartEdit(int), CommitEdit, CancelEdit, EditInputChanged(str), ClearCompleted }
 
     model {

@@ -10,7 +10,7 @@
 // float 字面量混合。
 
 widget App {
-    msg Msg { Init, SetLine, SetBar, SetArea, SetDonut, ToggleDesktop, ToggleMobile, ToggleTablet, Play, Pause, Reset, SetWin8, SetWin12, SetWin20 }
+    msg { Init, SetLine, SetBar, SetArea, SetDonut, ToggleDesktop, ToggleMobile, ToggleTablet, Play, Pause, Reset, SetWin8, SetWin12, SetWin20 }
 
     model {
         // ---- 状态 ----

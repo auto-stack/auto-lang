@@ -13102,8 +13102,14 @@ impl<'a> Parser<'a> {
     /// Parse msg declaration, returning the MsgDecl directly
     fn parse_msg_decl_inner(&mut self) -> AutoResult<MsgDecl> {
         self.expect_ident("msg")?;
-        let name = self.cur.text.clone();
-        self.next();
+        // Plan 448 A: the name token after `msg` was never semantic (event
+        // lookup always takes the tail segment; every backend derives the
+        // enum name from the widget name or hardcodes "Msg"). Canonical form
+        // is `msg { ... }`; a legacy `msg Name { ... }` still parses with the
+        // name read and discarded.
+        if !self.is_kind(TokenKind::LBrace) {
+            self.next();
+        }
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();  // Skip empty lines after opening brace
@@ -13179,7 +13185,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
 
-        Ok(MsgDecl { name, variants })
+        Ok(MsgDecl { variants })
     }
 
     /// Parse model block (UI scenario only)
@@ -13965,8 +13971,8 @@ impl<'a> Parser<'a> {
                     let key = self.parse_event_modifiers(key)?;
                     self.expect(TokenKind::Colon)?;
                     // Parse handler with optional parameters: .Inc or .Delete(todo.id)
-                    let (handler, params) = self.parse_event_handler()?;
-                    events.push(ViewEvent { name: key, handler, params });
+                    let (handler, params, inline) = self.parse_event_value()?;
+                    events.push(ViewEvent { name: key, handler, params, inline });
                 } else {
                     self.expect(TokenKind::Colon)?;
 
@@ -14121,8 +14127,8 @@ impl<'a> Parser<'a> {
 
                     // Check if it's an event (onclick, etc.)
                     if key.starts_with("on") {
-                        let (handler, params) = self.parse_event_handler()?;
-                        events.push(ViewEvent { name: key, handler, params });
+                        let (handler, params, inline) = self.parse_event_value()?;
+                        events.push(ViewEvent { name: key, handler, params, inline });
                     } else if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
@@ -14643,6 +14649,42 @@ impl<'a> Parser<'a> {
             key.push_str(&modifier);
         }
         Ok(key)
+    }
+
+    /// Plan 448 B1: parse the value of an `on*` event binding.
+    ///
+    /// Legacy forms (`.Inc`, `.Delete(todo.id)`, `nav("route", data)`) go
+    /// through `parse_event_handler`. A value starting with `(` can only be
+    /// an inline lambda (`onclick: () => { .count += 1 }`) — no legacy form
+    /// starts with a paren — so it parses via `parse_closure` and returns the
+    /// lambda's statements with an empty handler string; extraction mints the
+    /// anonymous event name and injects the matching on-handler.
+    fn parse_event_value(
+        &mut self,
+    ) -> AutoResult<(String, Vec<String>, Option<Vec<Stmt>>)> {
+        if self.is_kind(TokenKind::LParen) {
+            let closure = self.parse_closure()?;
+            if let Expr::Closure(c) = &closure {
+                let params = c
+                    .params
+                    .iter()
+                    .map(|p| p.name.to_string())
+                    .collect::<Vec<_>>();
+                let body_stmts = match c.body.as_ref() {
+                    Expr::Block(b) => b.stmts.clone(),
+                    // Expression body: keep it as an expression statement.
+                    other => vec![Stmt::Expr(other.clone())],
+                };
+                return Ok((String::new(), params, Some(body_stmts)));
+            }
+            return Err(SyntaxError::Generic {
+                message: "expected a closure after `(` in event handler".to_string(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let (handler, params) = self.parse_event_handler()?;
+        Ok((handler, params, None))
     }
 
     fn parse_event_handler(&mut self) -> AutoResult<(String, Vec<String>)> {
@@ -16891,6 +16933,117 @@ exe hello {
         // some issues with handler variable resolution that are separate
         // from the button syntax changes
         assert!(true);
+    }
+
+    #[test]
+    fn test_event_inline_lambda_parses() {
+        // Plan 448 B1: `onclick: () => { ... }` — inline lambda event value.
+        // Both binding spellings (brace block and paren form) must produce a
+        // ViewEvent with an empty handler string, the closure params, and the
+        // lambda body statements; legacy `.Inc` / `.Dec(arg)` are untouched.
+        let code = concat!(
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    view {\n",
+            "        row {\n",
+            "            button \"-\" { onclick: () => {.count -= 1} }\n",
+            "            button \"=\" (onclick: () => {.count = 0})\n",
+            "            button \"+\" { onclick: .Inc }\n",
+            "            input (oninput: .Changed(value))\n",
+            "        }\n",
+            "    }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("inline lambda event must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+
+        let events = |tag: &str| -> Vec<(String, Vec<String>, Option<usize>)> {
+            fn walk(node: &ViewNode, tag: &str, out: &mut Vec<(String, Vec<String>, Option<usize>)>) {
+                match node {
+                    ViewNode::Element { tag: t, events, children, .. } => {
+                        if t == tag {
+                            for e in events {
+                                out.push((
+                                    e.handler.clone(),
+                                    e.params.clone(),
+                                    e.inline.as_ref().map(|b| b.len()),
+                                ));
+                            }
+                        }
+                        for c in children { walk(c, tag, out); }
+                    }
+                    ViewNode::Component { .. } => {}
+                    _ => {}
+                }
+            }
+            let mut out = Vec::new();
+            if let Some(v) = &w.view { walk(&v.root, tag, &mut out); }
+            out
+        };
+
+        let btns = events("button");
+        assert_eq!(btns.len(), 3);
+        assert_eq!(btns[0].0, "", "inline handler string stays empty");
+        assert!(btns[0].1.is_empty());
+        assert_eq!(btns[0].2, Some(1), "one statement in lambda body");
+        assert_eq!(btns[1].0, "", "paren-form inline lambda");
+        assert_eq!(btns[1].2, Some(1));
+        assert_eq!(btns[2].0, ".Inc", "legacy dot handler untouched");
+        assert!(btns[2].2.is_none());
+
+        let inputs = events("input");
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs[0].0, ".Changed");
+        assert_eq!(inputs[0].1, vec!["value".to_string()]);
+        assert!(inputs[0].2.is_none());
+    }
+
+    #[test]
+    fn test_msg_decl_unnamed_and_legacy_name() {
+        // Plan 448 A: canonical `msg { ... }` (no type name — the name was
+        // never semantic) plus legacy `msg Name { ... }` compat where the
+        // name token is read and discarded.
+        let code = concat!(
+            "widget Counter {\n",
+            "    msg { Inc, Dec, Set(int) }\n",
+            "    model { var count int = 0 }\n",
+            "    view { col { text \"hi\" } }\n",
+            "    on { .Inc -> { .count = .count + 1 } }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p = Parser::from(code).with_session(session);
+        let ast = p.parse().expect("unnamed msg decl must parse");
+        let w = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+        assert_eq!(w.messages.len(), 1);
+        let msg = &w.messages[0];
+        assert_eq!(msg.variants.len(), 3);
+        assert_eq!(msg.variants[0].name.as_str(), "Inc");
+        assert_eq!(msg.variants[2].name.as_str(), "Set");
+        assert_eq!(msg.variants[2].payload.len(), 1);
+
+        let legacy = concat!(
+            "widget Counter {\n",
+            "    msg Msg { Inc }\n",
+            "}\n"
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut p2 = Parser::from(legacy).with_session(session);
+        let ast2 = p2.parse().expect("legacy named msg decl must still parse");
+        let w2 = ast2.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget");
+        assert_eq!(w2.messages[0].variants.len(), 1);
+        assert_eq!(w2.messages[0].variants[0].name.as_str(), "Inc");
     }
 
     #[test]

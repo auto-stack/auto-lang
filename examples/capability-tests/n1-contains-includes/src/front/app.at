@@ -4,7 +4,7 @@
 // GREEN when codegen emits `.includes(...)` for both.
 
 widget App {
-    msg Msg { CheckStr(str), CheckList(str) }
+    msg { CheckStr(str), CheckList(str) }
     model {
         var haystack str = "hello world"
         var tags []str = ["work", "intro"]

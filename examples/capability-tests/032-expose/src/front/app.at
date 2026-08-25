@@ -1,5 +1,5 @@
 widget App {
-    msg Msg { DoFit, DoReset, ReadZoom }
+    msg { DoFit, DoReset, ReadZoom }
 
     model {
         var zoom_seen int = 0

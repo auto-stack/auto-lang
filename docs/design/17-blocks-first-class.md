@@ -157,7 +157,7 @@ use widgets: Table, Pagination, EmptyState, ErrorState
 use back.api: Note   // 仅类型,不绑具体端点
 
 widget DataTableBlock[T](items []T, columns []Column, on_select msg) {
-    msg Msg { PageChanged(int), SortChanged(str), Retry }
+    msg { PageChanged(int), SortChanged(str), Retry }
     model { var loading bool = true; var error str = ""; var page int = 0 }
     view {
         // ── EDIT: toolbar(扩展点:工具条)──

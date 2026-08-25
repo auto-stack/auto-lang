@@ -22,7 +22,7 @@ view fn NoteItem(note: Note, active: bool, indent: str) {
 }
 
 widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str) {
-    msg Msg {
+    msg {
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),
         NewNote, NewNoteInFolder(str),

@@ -224,7 +224,7 @@ pub fn generate_kitchen_sink() -> String {
     at.push_str(&format!("{}", elems.len()));
     at.push_str(" 个)。\n\n");
     at.push_str("widget KitchenSinkPage {\n");
-    at.push_str("    msg Msg { Go }\n");
+    at.push_str("    msg { Go }\n");
     at.push_str("    model { dummy int = 0 }\n");
     at.push_str("    on { .Go -> { } }\n");
     at.push_str("    view {\n");

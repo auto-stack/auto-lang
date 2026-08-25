@@ -9,7 +9,7 @@ store BlockStore {
     model {
         var blocks List<BlockItem> = List<BlockItem>.new([])
     }
-    msg Msg { Init }
+    msg { Init }
     on {
         .Init -> {
             var b1 BlockItem = BlockItem{}

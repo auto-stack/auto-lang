@@ -36,7 +36,7 @@
 **根因推测（修复前的原始分析，保留存档）**：
 - `generate_script` 扫描 view 树寻找 handler 绑定时，遇到 `for` + `style:if` 组合，可能对每个迭代变体展开 handler 代码
 - 或者 `extract_classes` 处理 `Expr::If` 时与 handler 扫描产生笛卡尔积
-- 精确触发条件：`for tag in .all_tags { button { style:if tag == "a" { ... } else { ... } } }` + widget 有 `msg Msg { ... }` 和 `on { ... }`
+- 精确触发条件：`for tag in .all_tags { button { style:if tag == "a" { ... } else { ... } } }` + widget 有 `msg { ... }` 和 `on { ... }`
 
 **架构方案**：
 - **分离模板生成与 handler 分析为两阶段**：
