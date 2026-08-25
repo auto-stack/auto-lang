@@ -12,8 +12,12 @@
 > d3c36d540，字符串与 Value extern 均可 forward）。**auto-lang 侧 item ③
 > 前置全部就绪**——验收 3/4 的剩余在 **auto-musk 侧**（backend cdylib:
 > auto_backend_register 逐 extern 打包成 HostCallFn + parity harness 适配
-> 起 `musk serve` VM 对照 hw）。故验收标准第 3/4 条仍**未达成**，计划保持
-> 🟡 执行中，C3 观察期未动。
+> 起 `musk serve` VM 对照 hw）。
+> **❗ 2026-08-26 收口：验收标准第 3/4 条未通过——数据面 parity 阻塞于
+> auto-musk 侧**（详见 §7 记录）。auto-lang 侧 items ①②③(path a/b) 已全部
+> 落地并回归通过；C3 观察期与验收 3/4 均**未达成**，计划保持 🟡 执行中。
+> （本计划 auto-lang 侧工作已合入 master：06360d8ef；数据面 parity 移交
+> 另开的 auto-musk 会话接力。）
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -552,3 +556,45 @@
 3. **C 阶段 ag 轨休眠镜像**（KNOWN-DEBT 018：tools/spec_tools/orch_tools/
    server_serve）维持"不激活"结论还是借机激活——建议维持（收益为零结论仍成立）。
 4. **观察期与回滚策略**：C3 的并行观察期长度与回滚开关形态。
+
+## 7. 验收标准第 3/4 条未通过的说明（2026-08-26 收口记录）
+
+本计划在 auto-lang 侧的全部前置工作已落地（见上各节 ✅/🟢 记录），但**验收
+标准第 3 条（`musk serve` VM 后端通过既有 HTTP/SSE 契约测试、与 hw 后端对照
+全绿）与第 4 条（musk PLAN-041 解挂条件达成）均未达成**。原因如下：
+
+### 7.1 已完成的 auto-lang 侧前置（master 06360d8ef）
+- **C2 ① extern 响应构造器**：`ok_response`/`err_response`/`json_response`/
+  `error_response`/`text_response`/`empty_response`/`err_json_response`/
+  `to_response` + `resp_*` + SSE 事件构造器全部 VM 化（不再空体 no-op，响应
+  不再恒 null）。
+- **C2 ② SSE 形态**：`Sse.new(stream).keep_alive(KeepAlive.new()).into_response()`
+  全链适配（dispatch-3000 臂 + `sse_frame_from_nv` 格式化 `event:`/`data:` 帧）。
+- **C2 ③ path (b)**：9 个纯逻辑/工具 extern VM 化（`value_get*`/`value_is_null`/
+  `new_id`/`random_hex`/`hash_password`/`path_inner`）。
+- **C2 ③ path (a)**：`host_bridge` 转发机制（`has_host_call`/`try_host_forward`）
+  + **RC 死区 UAF 修复**（`push_value_from_json` 对顶层堆引用额外 retain 补偿
+  CALL_NAT 死区释放，Value extern 亦可安全 forward）+ 转发时把 Query 请求参数
+  marshall 进 `args_json`（1475d31e2）。
+- 验证：6 个 item e2e 测试 + `catalog_integrity`/`plan442`/`ffi_dual` 全绿；
+  真实语料 `musk_backend_gap_enumerator` 仍 **31/32 VM-clean**；`auto.exe` 构建绿。
+
+### 7.2 阻塞点（数据面 parity，跨仓 auto-musk）
+1. **`State<AppState>` 无法经 JSON ABI 传送**：数据 extern（`relay_*`/`specs_*`/
+   `auth_*`）的参数含 Rust 类型 `State<AppState>`（持 `Arc<Client>` +
+   `WorkspaceRegistry`，不可序列化）；现有 `backend_abi`/`host_bridge` 的
+   HostCallFn 契约为 JSON in/out（`fn(&str)->Result<String,String>`），
+   **无法承载 AppState**。auto-lang 侧已把 Query/请求参数 marshal 进 args_json
+   送达主机，但 State 无法经该 JSON ABI 到达后端。
+2. **忠实重实现（path b）体量巨大**：需完整复刻 auto-musk 的 Rust 数据层
+   （`RelayStore`/`WorkspaceStores`/`ProfessionRegistry`/`AuthStore`），且易
+   与 hw/ag 的 wire 形状分歧。
+3. **既有 parity 测试未用 VM**：`parity_relay_api` 等用 a2r `ag` Rust router
+   （tower `oneshot`），非 VM；须在 auto-musk 侧改为起 `musk serve`（VM）并注册
+   extern HostCallFn 对照 hw。
+
+### 7.3 结论与接力
+数据面 parity 需要 **auto-musk 侧新的桥接设计/实现**（改用可承载 Rust 句柄的
+ABI，或接受大型 auto-lang 侧数据层重实现），且须跨仓协同裁定。auto-lang 侧前置
+已全部就绪并合入 master；此工作**移交另开的 auto-musk 会话接力**（见会话
+blocked 记录：objective 卡在同一架构性阻塞，已连续 7 轮确认）。
