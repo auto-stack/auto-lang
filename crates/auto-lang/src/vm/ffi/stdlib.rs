@@ -6907,6 +6907,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("value_get_str", shim_value_get_str);
     natives.register_shim_by_name("value_get_bool", shim_value_get_bool);
     natives.register_shim_by_name("value_is_null", shim_value_is_null);
+    natives.register_shim_by_name("value_get", shim_value_get);
+    natives.register_shim_by_name("value_get_array", shim_value_get_array);
 }
 
 // ============================================================================

@@ -1452,6 +1452,8 @@ macro_rules! for_each_bigvm_native {
             ("value_get_str", 3128, String),
             ("value_get_bool", 3129, Bool),
             ("value_is_null", 3130, Bool),
+            ("value_get", 3131, Int),
+            ("value_get_array", 3132, Int),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2197,6 +2199,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("value_get_str", 3128),
     ("value_get_bool", 3129),
     ("value_is_null", 3130),
+    ("value_get", 3131),
+    ("value_get_array", 3132),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

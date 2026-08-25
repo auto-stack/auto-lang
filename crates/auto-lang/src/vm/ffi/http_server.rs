@@ -1192,6 +1192,18 @@ fn isnull() str {
         return "no"
     }
 }
+
+#[api(method = "GET", path = "/arr")]
+fn arrrt() int {
+    let obj = json.to_value("{\"items\":[1,2,3]}")
+    return ok_response(value_get_array(obj.view, "items"))
+}
+
+#[api(method = "GET", path = "/nested")]
+fn nested() int {
+    let obj = json.to_value("{\"nested\":{\"x\":7}}")
+    return ok_response(value_get(obj.view, "nested"))
+}
 "#, 18747);
 
             let acc = http_get(port, "/acc");
@@ -1208,6 +1220,18 @@ fn isnull() str {
             assert_eq!(
                 body_of(&isnull), "\"yes\"",
                 "value_is_null on JSON null: full = {:?}", isnull
+            );
+
+            let arr = http_get(port, "/arr");
+            assert_eq!(
+                body_of(&arr), "[1, 2, 3]",
+                "value_get_array: full = {:?}", arr
+            );
+
+            let nested = http_get(port, "/nested");
+            assert_eq!(
+                body_of(&nested), r#"{"x": 7}"#,
+                "value_get nested object: full = {:?}", nested
             );
         }
 

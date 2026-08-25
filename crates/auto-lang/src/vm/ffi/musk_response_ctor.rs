@@ -582,3 +582,92 @@ pub fn shim_value_is_null(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     task.ram.push_nv(auto_val::encode_bool(out));
     Ok(())
 }
+
+/// Push an `auto_val::Value` (a GenericInstanceData field payload) onto the
+/// stack as a NanoValue, mirroring the container layouts the json bridge uses:
+/// VmRef → heap-object handle, scalars → encoded tags, strings → pool index,
+/// Nil/Null → nano null.
+fn push_vm_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) -> Result<(), VMError> {
+    use auto_val::Value;
+    match val {
+        Value::VmRef(r) => {
+            vm.rc_push(task, auto_val::encode_object(r.id as u32));
+        }
+        Value::Int(i) => task.ram.push_nv(auto_val::encode_i32(*i)),
+        Value::Uint(u) => task.ram.push_nv(auto_val::encode_i32(*u as i32)),
+        Value::I8(i) => task.ram.push_nv(auto_val::encode_i32(*i as i32)),
+        Value::I64(i) => task.ram.push_nv(auto_val::encode_i32(*i as i32)),
+        Value::U8(u) => task.ram.push_nv(auto_val::encode_i32(*u as i32)),
+        Value::USize(u) => task.ram.push_nv(auto_val::encode_i32(*u as i32)),
+        Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
+        Value::Float(f) => task.ram.push_f64(*f as f64),
+        Value::Double(d) => task.ram.push_f64(*d),
+        Value::Str(s) => {
+            let idx = vm.add_string(s.to_string().into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        Value::String(s) => {
+            let idx = vm.add_string(s.to_string().into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        Value::StrSlice(s) => {
+            let idx = vm.add_string(s.to_string().into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        Value::CStr(s) => {
+            let idx = vm.add_string(s.to_string().into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        Value::Char(c) => {
+            let idx = vm.add_string(c.to_string().into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        Value::Nil | Value::Null => task.ram.push_nv(auto_val::encode_null()),
+        _ => task.ram.push_nv(auto_val::encode_null()),
+    }
+    Ok(())
+}
+
+/// Is an `auto_val::Value` a heap array (ListData<Value>)?
+fn value_is_array(vm: &AutoVM, val: &auto_val::Value) -> bool {
+    if let auto_val::Value::VmRef(r) = val {
+        if let Some(obj) = vm.get_heap_object(r.id as u64) {
+            return obj
+                .read()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                .is_some();
+        }
+    }
+    false
+}
+
+/// `value_get(v, k)` → Value (field value). Stack: v, k -> value (k on top).
+pub fn shim_value_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let k = pop_string(task, vm, "value_get")?;
+    let nv = pop_value(task, vm);
+    let field = nv_heap_id(nv).and_then(|id| gid_field(vm, id, &k));
+    match field {
+        Some(val) => push_vm_value(task, vm, &val)?,
+        None => task.ram.push_nv(auto_val::encode_null()),
+    }
+    Ok(())
+}
+
+/// `value_get_array(v, k)` → Value (field array, default []). Stack: v, k -> value.
+pub fn shim_value_get_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let k = pop_string(task, vm, "value_get_array")?;
+    let nv = pop_value(task, vm);
+    let field = nv_heap_id(nv).and_then(|id| gid_field(vm, id, &k));
+    match field {
+        Some(val) if value_is_array(vm, &val) => push_vm_value(task, vm, &val)?,
+        _ => {
+            // Empty array default.
+            use crate::vm::types::ListData;
+            let id = vm.insert_heap_object(ListData::<auto_val::Value>::new());
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+    }
+    Ok(())
+}
