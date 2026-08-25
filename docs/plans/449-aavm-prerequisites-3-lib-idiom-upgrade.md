@@ -1,13 +1,14 @@
-# Plan aavm-prerequisites-3: lib 风格升级——从类 C 最简子集到与 Rust 一对一对译
+# Plan 449: lib 风格升级——从类 C 最简子集到与 Rust 一对一对译(aavm-prerequisites 3/3)
 
-> **状态**: 🟦 已立项待执行(2026-08-25;三件套之 ③,硬依赖 ① 全部 + ② 全部)
+> **状态**: 🟦 已立项待执行(2026-08-25;aavm-prerequisites 三件套之 ③,硬依赖
+> Plan 447 全部 + Plan 448 全部)
 > **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md) §5/§6/§7。
 > **定位**: 用户既定长期路线——aavm 长期锚定"与 Rust 参考实现函数级/块级一对一
 > 对译";更远的"脱离 Rust 参考的纯 Auto 风格自研实现"不在本计划范围。本计划把
 > 432/434 因当时宿主缺陷而降级的写法(if 链替代 match、kind 字符串载体、判别器
 > 结构体)**还原为一对一形态**,行为零变化。
-> **硬前提**: prerequisites-1(H1 or-臂 / H3 内联载荷参数 / H4 卫语句 / H5 二次
-> 匹配)+ prerequisites-2(aavm 与 AA2R 已具备 is/枚举载荷能力)全部合入;开工时
+> **硬前提**: Plan 447(H1 or-臂 / H3 内联载荷参数 / H4 卫语句 / H5 二次
+> 匹配)+ Plan 448(aavm 与 AA2R 已具备 is/枚举载荷能力)全部合入;开工时
 > 五方矩阵基线全绿。
 > **总判据**: **行为不变,风格变**——M1-M5 语料闸门、五方矩阵 ①③④⑤、实体 golden
   (.expected.out)全部保持绿;唯一允许的 diff 来源是 divergences.md 的新增/收账登记。
@@ -23,7 +24,7 @@
 - 杠杆点:parser.at 新增 `enum Op` + `p_op()`,一步收编 infix_l/infix_r/op_display/
   binop_result 及 typeinfo/codegen 下游共 6 个长链函数;
 - 行为层 DIVERGE(D12 游标/D16 char 计长/D18/D19 quirk 照抄/D28 布局等价/D30/D31
-  编码语义/D17 保留位——若 prerequisites-1 已根治 D17 则可回写 continue)**不在
+  编码语义/D17 保留位——若 Plan 447 已根治 D17 则可回写 continue)**不在
   本轮范围**,继续保留。
 
 ## 2. 任务
@@ -71,7 +72,7 @@
   eq/lt/ge 子链一并收编,对齐宿主 run_one_instruction 的 match op);**E2
   `Val{k,i,s} → enum Val{VInt(i) VStr(s) VArr(idx)}`**——8 个 ev_* 函数的
   `v.k==` 分派还原(对齐 auto-val value.rs 的 Value 枚举各 match;D34 核心目标
-  收账;D35 arena 槽位语义保持;D36①② 规避写法回退;**gating:prerequisites-1
+  收账;D35 arena 槽位语义保持;D36①② 规避写法回退;**gating:Plan 447 的
   H3 已根治**,否则 Val 作为 List 元素/实参高频流经构造位与 native 位不安全)。
 - [ ] 2.5 每 2.x 一步一闸门:M2-M5 + 五方矩阵全绿再进下一步;E 载体(D20)与
   E.kind 字符串比较保持 dump 判据层现状不扩。
@@ -81,9 +82,9 @@
 - [ ] 3.1 a2r.at:A1 `ar_method_call/ar_is_mutating_method/ar_rust_ty` 等词法链
   is 化(is-on-string,匹配对象本就是方法名/类型名,对齐 Rust 377 处 match
   name.as_str());A2 p_kind 链 is 化(前置 2.1)。**顺序约束:本步只能用
-  prerequisites-2 已具备发射能力的语法面**(AA2R 已能转译 is/or-臂/枚举载荷)。
+  Plan 448 已具备发射能力的语法面**(AA2R 已能转译 is/or-臂/枚举载荷)。
 - [ ] 3.2 f-string 全量:338 处 `+ "` 拼接按 Rust 参考的 format!/write! 位逐点
-  还原(前置:prerequisites-2 Phase A 已让 parser.at 具备 FStr 解析,a2r.at 发射
+  还原(前置:Plan 448 Phase A 已让 parser.at 具备 FStr 解析,a2r.at 发射
   已就绪 D38c);转义/花括号口径对齐主 a2r(3350-3389 的 `{{`/`}}` 规则)。
 - [ ] 3.3 收账:divergences.md——D11b/D14 残留/D23/D27/D28(op 载体部分)/D34/
   D36①② 风格类条目逐条标注"已还原/保留原因";新增"模式+guard 拆臂"永久条目;
@@ -105,9 +106,9 @@
 ## 4. Out of Scope
 
 - ext/impl/spec/闭包/泛型声明进入 lib(Rust 参考对应位若需要 impl 形态,先评估
-  是否立项 prerequisites-2 二期 W5,再动 lib;当前一对一以顶层 fn 对译为主);
+  是否立项 Plan 448 二期 W5,再动 lib;当前一对一以顶层 fn 对译为主);
 - 真实 AST 取代 S-expr dump(D20 判据层重构,另立计划);
-- 行为层 DIVERGE 还原(D12/D16/D18/D19/D28/D30/D31;D17 视 prerequisites-1
+- 行为层 DIVERGE 还原(D12/D16/D18/D19/D28/D30/D31;D17 视 Plan 447
   结果决定是否顺手回写 continue);
 - aavm 特性面扩展(UI/task 等,维持 431 边界)。
 

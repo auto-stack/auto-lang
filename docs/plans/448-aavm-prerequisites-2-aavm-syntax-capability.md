@@ -1,16 +1,17 @@
-# Plan aavm-prerequisites-2: aavm 新语法能力——is 解析/编译/执行 + AA2R 发射扩展
+# Plan 448: aavm 新语法能力——is 解析/编译/执行 + AA2R 发射扩展(aavm-prerequisites 2/3)
 
-> **状态**: 🟦 已立项待执行(2026-08-25;三件套之 ②,依赖 ① 的 H1/H4/H5 先落)
+> **状态**: 🟦 已立项待执行(2026-08-25;aavm-prerequisites 三件套之 ②,依赖
+> Plan 447 的 H1/H4/H5 先落)
 > **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md) §4/§5/§6;
 > Plan 434 遗留"AA2R 扩覆盖(golden 全组 + is-match)"的承接。
 > **定位**: 让 aavm(auto/lib 七文件)**自身获得 is-match 与枚举载荷的完整处理
 > 能力**——前端解析(dump 判据层)、类型面、编译执行、以及 AA2R(a2r.at)的
-> Rust 发射。这是 prerequisites-3 风格改写的**自举塔硬前提**:lib 用什么语法,
+> Rust 发射。这是 Plan 449 风格改写的**自举塔硬前提**:lib 用什么语法,
 > a2r.at 必须先能发射什么。
 > **纪律**: 本计划全部新代码仍用**现有最简子集**书写(if 链/无 is/无载荷枚举);
-> 风格化属于 prerequisites-3。塔式爬升,顺序不可倒置。
-> **关联**: aavm-prerequisites-1(前置:H1 or-臂宿主正确性、H4/H5 a2r 发射正确性
-> ——golden 文本的对齐基准)、aavm-prerequisites-3(后继)。
+> 风格化属于 Plan 449。塔式爬升,顺序不可倒置。
+> **关联**: Plan 447(前置:H1 or-臂宿主正确性、H4/H5 a2r 发射正确性——golden
+> 文本的对齐基准)、Plan 449(后继)。
 > **判据文档**: [m2-ast-dump-format.md](../specs/aavm/m2-ast-dump-format.md)、
 > [divergence-rules.md](../specs/aavm/divergence-rules.md) §4 纯 Rust 模式编码规范。
 
@@ -90,15 +91,15 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 |---|---|
 | is 的 S-expr dump 与 Rust 参考存在格式历史 quirk | A2 以 live 对比为唯一依据;quirk 按 D18 模式登记照抄,不擅自"修好" |
 | C 段把宿主 codegen 的复制粘贴双副本问题带进 v2 | C1 只镜像**决策**,实现走 v2 单遍步行 + 游标快照方法论(432 先例);语句/表达式两入口写同一辅助函数族 |
-| AA2R golden 对齐基线漂移(H4/H5 未合入) | D5 明确 gating 在 prerequisites-1 Phase 2 合入之后 |
+| AA2R golden 对齐基线漂移(H4/H5 未合入) | D5 明确 gating 在 Plan 447 Phase 2 合入之后 |
 | D39 token 直走在模式位与表达式位歧义 | 模式解析独立函数,不碰 ar_expr;语料带足 `a - 1 ->`、`'x' ->`、`A.B(c) ->` 歧义形 |
 
 ## 4. Out of Scope
 
-- lib 自身的风格化改写(→ prerequisites-3;本计划 lib 语法面不变);
+- lib 自身的风格化改写(→ Plan 449;本计划 lib 语法面不变);
 - spec/ext/impl/use/dep/闭包/泛型声明的 AA2R 发射(§5 二期,只有 γ 计划用到
   impl 时再立项);r2a/多目标/post_process 正则族(Plan 434 永久 Out of Scope);
-- 宿主缺陷修复(→ prerequisites-1)。
+- 宿主缺陷修复(→ Plan 447)。
 
 ## 5. Verification
 

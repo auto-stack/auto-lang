@@ -1,13 +1,14 @@
-# Plan aavm-prerequisites-1: 宿主加固——VM is/enum/continue 缺陷修复 + 主 a2r 发射修复
+# Plan 447: 宿主加固——VM is/enum/continue 缺陷修复 + 主 a2r 发射修复(aavm-prerequisites 1/3)
 
-> **状态**: 🟦 已立项待执行(2026-08-25;三件套之 ①,先行)
+> **状态**: 🟦 已立项待执行(2026-08-25;aavm-prerequisites 三件套之 ①,先行)
 > **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md)(2026-08-25
 > 实证调研:18 件 probe + rustc 实编译验证),§3 H1-H6。
 > **定位**: aavm lib 从"类 C 最简风格"升回"与 Rust 参考一对一"的**宿主前提**。
 > 做aavm 的目的之一就是在自举路径上暴露宿主缺陷——本计划就是把这批暴露出的问题
 > 在宿主侧修掉,而不是继续绕开。
-> **关联**: aavm-prerequisites-2(aavm 新语法能力,建议在本计划完成后开工,Phase D
-> 可并行)、aavm-prerequisites-3(lib 风格升级,硬依赖本计划 H1/H3);
+> **关联**: Plan 448(aavm-prerequisites-② aavm 新语法能力,建议在本计划完成后
+> 开工,其 Phase D 可并行)、Plan 449(aavm-prerequisites-③ lib 风格升级,硬依赖
+> 本计划 H1/H3);
 > [divergences.md](../specs/aavm/divergences.md) D11b/D17/D25-①/D34/D36-① 收账对象;
 > KNOWN-DEBT-AND-RISKS.md:112-113。
 > **基线**: master `c3ee519d0` + 2026-08-25 构建;aavm2 闸门当前 10 项全绿。
@@ -53,7 +54,7 @@
     猜测(一刀同时收 D25-①);审计 `pop_arg_i32` 族算术敏感 shim 改 `pop_arg_nv`
     + tag 分派;p09h/p13b 转绿(不提升局部也正确)。
   - 兜底(若根治涉及面过大单独分期):H3 降级为写法规范(lib 永远提升局部),
-    但 **prerequisites-3 的 engine.at Val 枚举化(γ2-E2)前必须完成根治**,本项
+    但 **Plan 449 的 engine.at Val 枚举化(γ2-E2)前必须完成根治**,本项
     不得以兜底状态进入 γ2。
   - 回归:`repro_242_string_pool_uaf`/`repro_d30_negative_int_roundtrip` 及既有
     RC 用例零变化;aavm2 闸门全绿。
@@ -84,8 +85,8 @@
 
 ## 4. Out of Scope
 
-- AA2R(a2r.at)的任何改动(→ prerequisites-2);
-- lib 风格改写(→ prerequisites-3);
+- AA2R(a2r.at)的任何改动(→ Plan 448);
+- lib 风格改写(→ Plan 449);
 - ext/spec/闭包/f-string 等其它特性面(当前实证非阻断);
 - VM 性能优化。
 
