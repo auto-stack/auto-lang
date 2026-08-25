@@ -214,14 +214,15 @@ quirk 照抄、D28 布局等价、D30/D31 编码语义)**不在本轮范围**,�
 ## 6. 建议波次(已立项,见 docs/plans/ 三件套)
 
 ```text
-Plan 447(aavm-prerequisites-1)宿主加固:H1 + H2 + H3 + H4/H5(+H6 顺手)
-  验收 = §2.3 复现件常驻 test/vm/ 全绿 + 全量回归零变化
-Plan 448(aavm-prerequisites-2)aavm 新语法能力:parser/typeinfo/codegen/engine
-  的 is 解析-编译-执行 + AA2R 发射 W1+W2+W3(f-string 已就绪)
-  验收 = aavm2 闸门全绿 + AA2R golden 06 组落盘
-Plan 449(aavm-prerequisites-3)lib 风格升级:γ1 token/lexer → γ2 主干 is 化 +
-  三枚举化(Val/I.op/Op)→ γ3 a2r.at 自身 + 338 处 f-string 化 + divergences 收账
-  每步五方矩阵 ①③④⑤ 必须保持全绿(判据 = 行为不变,风格变)
+Plan 447(aavm-prerequisites;三份合并为一,顺序推进):
+  ① 宿主加固(原 Plan 447):H1 + H2 + H3 + H4/H5(+H6 顺手)
+    验收 = §2.3 复现件常驻 test/vm/ 全绿 + 全量回归零变化
+  ② aavm 新语法能力(原 Plan 448):parser/typeinfo/codegen/engine
+    的 is 解析-编译-执行 + AA2R 发射 W1+W2+W3(f-string 已就绪)
+    验收 = aavm2 闸门全绿 + AA2R golden 06 组落盘
+  ③ lib 风格升级(原 Plan 449):γ1 token/lexer → γ2 主干 is 化 +
+    三枚举化(Val/I.op/Op)→ γ3 a2r.at 自身 + 338 处 f-string 化 + divergences 收账
+    每步五方矩阵 ①③④⑤ 必须保持全绿(判据 = 行为不变,风格变)
 ```
 
 ## 7. 语法面备忘(升级期写法规范,补入 divergence-rules.md §4)

@@ -58,9 +58,6 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   divergence-rules.md)。
 - 风格升级(类 C → 一对一 Rust 对译)前提条件调研:
   idiom-upgrade-prereqs.md(2026-08-25;实证矩阵 + 宿主修复清单 H1-H6 +
-  AA2R 扩展 W1-W6 + lib 改写点位与波次建议);立项三件套:
-  [Plan 447](../../plans/447-aavm-prerequisites-1-host-hardening.md)(宿主加固)→
-  [Plan 448](../../plans/448-aavm-prerequisites-2-aavm-syntax-capability.md)
-  (aavm 新语法能力)→
-  [Plan 449](../../plans/449-aavm-prerequisites-3-lib-idiom-upgrade.md)
-  (lib 风格升级)。
+  AA2R 扩展 W1-W6 + lib 改写点位与波次建议);立项(三份合并为一,顺序推进):
+  [Plan 447](../../plans/447-aavm-prerequisites.md)(aavm-prerequisites:
+  ① 宿主加固 → ② aavm 新语法能力 → ③ lib 风格升级)。
