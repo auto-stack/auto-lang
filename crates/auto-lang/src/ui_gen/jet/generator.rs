@@ -500,7 +500,21 @@ fun {}Preview() {{
 
     /// Normalize tag name to lowercase for comparison
     /// Supports both PascalCase (Widget style) and lowercase (primitive style)
+    ///
+    /// Plan 435 P7-4(D5):统一入口 —— schema canonical 优先(aliases 驱动
+    /// Col/Column 等差异拼写;派发臂均双拼写容错;跨元素别名 div≡container/
+    /// hr≡divider 保形,与 vue.rs 同规);下表降级为 schema 未登记拼写
+    /// (后端私有 Compose 词汇 LazyColumn/TabRow/FlowRow 及用户组件)的
+    /// 回退层。
     fn normalize_tag(tag: &str) -> &str {
+        const KEEP_AS_IS: &[&str] = &["div", "hr"];
+        if !KEEP_AS_IS.contains(&tag) {
+            if let Some(schema) = crate::aura::default_schema_cached() {
+                if let Some(canon) = crate::aura::schema::normalize_tag(tag, schema) {
+                    return canon;
+                }
+            }
+        }
         match tag {
             "Col" | "Column" => "column",
             "Row" => "row",
@@ -547,7 +561,7 @@ fun {}Preview() {{
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image" | "badge" | "radio" | "radiobutton" | "listitem")
+        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image" | "img" | "badge" | "radio" | "radiobutton" | "listitem")
     }
 
     /// Check if tag is a list element
@@ -650,7 +664,7 @@ fun {}Preview() {{
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "progress" => self.form_generator.generate_progress(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
-            "image" => self.form_generator.generate_image(props)
+            "image" | "img" => self.form_generator.generate_image(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
             "badge" => self.form_generator.generate_badge(props)
                     .map(|s| format!("{}{}\n", ind, s.trim())),
@@ -1456,7 +1470,7 @@ fun {}Preview() {{
             "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center" => {
                 return self.layout_element_to_compose(tag, props, events, children, indent);
             }
-            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" | "badge" | "radio" | "radiobutton" | "listitem" => {
+            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" | "img" | "badge" | "radio" | "radiobutton" | "listitem" => {
                 return self.form_element_to_compose(tag, props, events, children, indent);
             }
             "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column" => {
@@ -2875,9 +2889,11 @@ mod tests {
         assert!(JetGenerator::is_layout_tag("Column"), "Column should be a layout tag");
 
         // Test normalize_tag
-        assert_eq!(JetGenerator::normalize_tag("Col"), "column");
+        // Plan 435 P7-4(D5):统一入口 —— Col/Column 归一为 schema canonical
+        // `col`(派发臂 col|column 双拼写,行为不变)。
+        assert_eq!(JetGenerator::normalize_tag("Col"), "col");
         assert_eq!(JetGenerator::normalize_tag("col"), "col");
-        assert_eq!(JetGenerator::normalize_tag("Column"), "column");
+        assert_eq!(JetGenerator::normalize_tag("Column"), "col");
 
         // Test H1 is NOT a layout tag (it's a text tag)
         assert!(!JetGenerator::is_layout_tag("H1"), "H1 should not be a layout tag");
@@ -3205,9 +3221,12 @@ widget TestCardVariant {
 #[test]
 fn test_image_tag_normalization() {
     // Test that Image tag is correctly normalized
+    // Plan 435 P7-4(D5):统一入口后,Img(schema 别名)归一为 canonical
+    // `img`;Image(未登记拼写)走后端回退表仍为 `image`。
     assert_eq!(JetGenerator::normalize_tag("Image"), "image");
-    assert_eq!(JetGenerator::normalize_tag("Img"), "image");
+    assert_eq!(JetGenerator::normalize_tag("Img"), "img");
     assert_eq!(JetGenerator::normalize_tag("image"), "image");
+    assert_eq!(JetGenerator::normalize_tag("img"), "img");
 
     // Test that is_form_tag returns true for Image
     assert!(JetGenerator::is_form_tag("Image"));

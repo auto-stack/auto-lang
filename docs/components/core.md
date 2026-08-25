@@ -33,13 +33,13 @@ _props 待声明_
 
 ---
 
-### `autodown`
+### `autodown_editor`
 
-`builtin_widget` · `autodown` · web: `component` · iced: `unknown` · category: `content`
+`builtin_widget` · `autodown_editor` · web: `component` · iced: `unknown` · category: `content`
 
 P1 extracted from production tables; props TBD
 
-别名:`autodown_editor` `autodowneditor` `markdown_editor`
+别名:`autodown` `autodowneditor` `markdown_editor`
 
 _props 待声明_
 
@@ -128,13 +128,13 @@ Checkbox control
 
 ---
 
-### `codeeditor`
+### `code_editor`
 
-`builtin_widget` · `codeeditor` · web: `component` · iced: `full` · category: `content`
+`builtin_widget` · `code_editor` · web: `component` · iced: `full` · category: `content`
 
 P1 extracted from production tables; props TBD
 
-别名:`codeEditor` `code_editor`
+别名:`codeEditor` `codeeditor`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -480,7 +480,7 @@ P1 extracted from production tables; props TBD
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `value` | `one_of: 0-100` | 0 | Progress percentage |
+| `value` | `float` | 0 | Progress percentage |
 | `max` | `float` | 100 | Maximum value |
 
 ---
@@ -638,6 +638,18 @@ P1 extracted from production tables; props TBD
 别名:`toast_provider` `toastprovider`
 
 _props 待声明_
+
+---
+
+### `toaster`
+
+`builtin_widget` · `toaster` · web: `none` · iced: `partial` · category: `content`
+
+Toast notification container (alias)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `position` | `one_of: top-left|top-center|top-right|bottom-left|bottom-center|bottom-right` | bottom-right | Toast position |
 
 ---
 

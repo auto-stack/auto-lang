@@ -72,7 +72,8 @@ impl TagSupport {
 /// Plan 435 P3 数据流翻转:**级别以 schema/aura.at 的 backends.iced 为权威**
 /// (三级折叠解析:精确→别名→折叠键);本文件静态表降级为详情来源
 /// (ignored_props/note,这些不在 schema 里)与 schema 缺失时的回退。
-/// 围栏测试保证静态表与 schema 级别一致(schema 即从本表提取,再生成闭环)。
+/// 围栏测试保证静态表与 schema 级别一致(schema 即从本表提取,再生成闭环),
+/// 以及反向:schema 有 iced 级别的元素必须在静态表有臂(P6-3/D3)。
 pub fn get_support(tag: &str) -> TagSupport {
     let mut support = get_support_details(tag);
     if let Some(schema) = crate::aura::default_schema_cached() {
@@ -80,6 +81,12 @@ pub fn get_support(tag: &str) -> TagSupport {
             if let Some(meta) = schema.meta.get(canonical) {
                 if let Some(level) = SupportLevel::parse_name(&meta.backends.iced) {
                     support.level = level;
+                    // Plan 435 P6-3(D3):overlay 生效时,静态兜底臂的
+                    // "unknown tag" note 与覆盖后的级别自相矛盾
+                    // (Full + unknown),清空。
+                    if support.note.starts_with("unknown tag") {
+                        support.note = "";
+                    }
                 }
             }
         }

@@ -70,9 +70,10 @@ fn resolution_priority_builtin_local_package() {
         }
         other => panic!("expected Package CopyButton, got {:?}", other),
     }
-    // 冲突者归内置(Plan 408/435:builtin wins)
+    // 冲突者归内置(Plan 408/435:builtin wins;P7-1 carousel 家族已退役
+    // 交还官方 .at 组件 —— 换 dialog-content 验证同一语义)
     assert!(matches!(
-        reg.resolve("carousel-content"),
+        reg.resolve("dialog-content"),
         ComponentResolution::Builtin { .. }
     ));
     // 4) Unknown
@@ -153,4 +154,52 @@ fn e2e_use_package_generates_component() {
             .filter(|w| w.rule == "S003")
             .collect::<Vec<_>>()
     );
+}
+
+/// Plan 435 P7-3(D7):load_package 逐文件容错 —— 单个坏文件只记
+/// parse_warning,不废整个包;合法组件照常注册。全坏才报错(带文件清单)。
+#[test]
+fn load_package_survives_single_bad_file() {
+    let tmp = std::env::temp_dir().join(format!("p7pkg_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("good.at"),
+        "widget GoodThing {\n    view { col { text \"x\" {} } }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(tmp.join("bad.at"), "this is :: not valid autolang {{{\n").unwrap();
+
+    let mut reg = ComponentRegistry::new();
+    let pkg = reg
+        .load_package(&tmp, std::path::Path::new("."))
+        .expect("单文件失败不应废包");
+    assert!(
+        pkg.widgets.values().any(|n| n == "GoodThing"),
+        "合法组件应注册: {:?}",
+        pkg.widgets
+    );
+    assert_eq!(
+        pkg.parse_warnings.len(),
+        1,
+        "坏文件应恰好记录一条 warning: {:?}",
+        pkg.parse_warnings
+    );
+    assert!(
+        pkg.parse_warnings[0].contains("bad.at"),
+        "warning 应含失败文件路径: {}",
+        pkg.parse_warnings[0]
+    );
+
+    // 全坏 → 报错,错误信息带文件清单
+    let tmp2 = std::env::temp_dir().join(format!("p7pkg2_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp2);
+    std::fs::create_dir_all(&tmp2).unwrap();
+    std::fs::write(tmp2.join("bad1.at"), "}}} garbage\n").unwrap();
+    let err = reg
+        .load_package(&tmp2, std::path::Path::new("."))
+        .expect_err("全坏应报错");
+    assert!(err.contains("bad1.at"), "错误应列出失败文件: {err}");
+    let _ = std::fs::remove_dir_all(&tmp);
+    let _ = std::fs::remove_dir_all(&tmp2);
 }

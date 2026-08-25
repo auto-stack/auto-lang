@@ -77,6 +77,58 @@ fn generate(at: &Path) -> String {
         .replace(&root_fwd, "<ROOT>")
 }
 
+/// Plan 435 P6-2(D1,方案 a):gallery SFC 实际发射的 `@/components/ui/<pkg>`
+/// import 必须能被独立源解析 —— 官方包目录(packages/widgets/registry/<pkg>)、
+/// cmd_vue.rs 的 shadcn 安装表、或 LOCAL_UI_PKGS 本地手写白名单。
+/// 覆盖 vue.rs 一切发射路径(含绕过 schema 的硬编码 import),schema 侧
+/// 同款校验见 schema_drift.rs。
+fn assert_ui_imports_resolve(full_text: &str) {
+    use std::collections::BTreeSet;
+    let prefix = "'@/components/ui/";
+    let mut pkgs: BTreeSet<String> = BTreeSet::new();
+    let mut rest = full_text;
+    while let Some(pos) = rest.find(prefix) {
+        rest = &rest[pos + prefix.len()..];
+        if let Some(end) = rest.find('\'') {
+            if end > 0 {
+                pkgs.insert(rest[..end].to_string());
+            }
+        }
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let registry_root = root.join("packages/widgets/registry");
+    let cmd_vue = fs::read_to_string(root.join("crates/auto/src/cmd_vue.rs"))
+        .expect("read cmd_vue.rs");
+    // 安装表行形如 ("@/components/ui/button", "button"),
+    let mut installable: BTreeSet<String> = BTreeSet::new();
+    for line in cmd_vue.lines() {
+        let t = line.trim();
+        if t.starts_with("(\"@/components/ui/") {
+            let q: Vec<usize> = t.match_indices('"').map(|(i, _)| i).collect();
+            if q.len() >= 4 {
+                let name = &t[q[2] + 1..q[3]];
+                installable.insert(name.to_string());
+            }
+        }
+    }
+    let local_ui_pkgs = ["data-table", "nav-link", "toast"];
+    let bad: Vec<String> = pkgs
+        .iter()
+        .filter(|p| {
+            !registry_root.join(p.as_str()).is_dir()
+                && !installable.contains(*p)
+                && !local_ui_pkgs.contains(&p.as_str())
+        })
+        .cloned()
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "P6-2:gallery SFC 发射了无独立来源的 ui import(D1 去自指围栏):\n  {}\n\
+         修复三选一:官方包补目录;cmd_vue.rs 安装表补条目;本地手写组件登记",
+        bad.join(", ")
+    );
+}
+
 #[test]
 fn gallery_vue_golden() {
     let mut files: Vec<PathBuf> = Vec::new();
@@ -106,6 +158,10 @@ fn gallery_vue_golden() {
     let mut fh = DefaultHasher::new();
     full_text.hash(&mut fh);
     report.push_str(&format!("TOTAL\t{}\t{:016x}\n", full_text.len(), fh.finish()));
+
+    // P6-2(D1):golden 顺带做 import 存在性围栏(先于 UPDATE 采样执行,
+    // 采样本身也不允许带出幻影 import)
+    assert_ui_imports_resolve(&full_text);
 
     // 调试:GALLERY_GOLDEN_DUMP=<path> 导出全文,供两次运行 diff 定位非确定性
     if let Ok(dump) = std::env::var("GALLERY_GOLDEN_DUMP") {

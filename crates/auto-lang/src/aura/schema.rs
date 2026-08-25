@@ -1616,56 +1616,10 @@ impl AuraSchema {
         });
 
         // === Carousel ===
-        elements.insert("carousel", ElementDef {
-            tag: "carousel",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "align", type_: PropType::OneOf(vec!["start", "center", "end"]), required: false, default: Some("center"), description: "Slide alignment" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Carousel container",
-        });
-
-        elements.insert("carousel_content", ElementDef {
-            tag: "carousel_content",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Carousel content wrapper",
-        });
-
-        elements.insert("carousel_item", ElementDef {
-            tag: "carousel_item",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Carousel slide item",
-        });
-
-        elements.insert("carousel_prev", ElementDef {
-            tag: "carousel_prev",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Carousel previous button",
-        });
-
-        elements.insert("carousel_next", ElementDef {
-            tag: "carousel_next",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
-            allows_children: true,
-            description: "Carousel next button",
-        });
+        // Plan 435 P7-1(D4):退役 —— carousel 全家有官方 .at 组件实现
+        // (widgets-gallery components/carousel.at)。schema 收编会命中
+        // tag_is_builtin,封锁 builtin-first 折叠桥接,页面反而渲染纯 div。
+        // 交还官方组件;再生成围栏侧见 RETIRED_OFFICIAL_FAMILIES。
 
         // === Combobox ===
         elements.insert("combobox", ElementDef {
@@ -2691,6 +2645,15 @@ fn fold_key(s: &str) -> String {
         .filter(|c| *c != '-' && *c != '_')
         .collect::<String>()
         .to_lowercase()
+}
+
+/// Plan 435 P7-4(D5):tag 归一统一入口 —— resolve_tag 的 canonical 返回。
+/// vue.rs / jet/generator.rs 的私有 normalize_tag 是本函数的薄包装:
+/// col/Column/CardHeader 等差异拼写由 schema aliases(及折叠键)驱动,
+/// 后端私有词汇(LazyColumn/TabRow 等)由各自的回退层兜住。
+/// 未登记拼写返回 None,调用方回退原 tag(用户自定义组件)。
+pub fn normalize_tag(tag: &str, schema: &AuraSchema) -> Option<&'static str> {
+    schema.resolve_tag(tag).map(|(canon, _)| canon)
 }
 
 impl Default for AuraSchema {

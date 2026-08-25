@@ -2345,3 +2345,36 @@ fn zz_plan444_debug_015_app() {
         std::fs::write(tmp.join(format!("{}.vue", name)), code).unwrap();
     }
 }
+
+/// Plan 435 P6-1(D2):`api_functions_used` 是 HashSet,≥2 个 API 函数的 SFC
+/// import 行若不排序则字节不确定(跨进程 RandomState)。修复后必须:多轮生成
+/// 字节一致,且 import 列表按字母序发射。
+#[test]
+fn cap_435_p6_api_import_sorted_and_deterministic() {
+    let src = r#"
+widget App {
+    msg Msg { Load }
+    model { var out str = "" }
+    view { col { button "load" { onclick: .Load } text .out } }
+    on {
+        .Load -> {
+            .out = listusers()
+            .out = createUser("a", "b")
+        }
+    }
+}
+"#;
+    let mut outputs: Vec<String> = Vec::new();
+    for _ in 0..8 {
+        let codes = gen_sfc_file(src);
+        outputs.push(codes.get("App").expect("App SFC").clone());
+    }
+    let first = &outputs[0];
+    assert!(
+        first.contains("import { createUser, listusers } from '@/lib/api'"),
+        "api import 必须按字母序发射:\n{first}"
+    );
+    for (i, out) in outputs.iter().enumerate() {
+        assert_eq!(out, first, "run #{i} 与首跑字节不一致(D2 确定性回归)");
+    }
+}
