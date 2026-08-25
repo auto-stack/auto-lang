@@ -1330,16 +1330,19 @@ fn runs() int {
                 "relay_runs_list default (empty store): full = {:?}", d
             );
 
-            // Phase 2: register host call → the VM extern forwards to it.
+            // Phase 2: register host call → the VM extern forwards to it,
+            // passing the (marshalled) request args in args_json.
             crate::vm::host_bridge::register_host_call("relay_runs_list", std::sync::Arc::new(
-                move |_args: &str| -> Result<String, String> {
-                    Ok(r#"{"runs":[{"run_id":"r1","status":"idle"}]}"#.to_string())
+                move |args: &str| -> Result<String, String> {
+                    Ok(format!(r#"{{"runs":[{{"run_id":"r1","arg":{}}}]}}"#, args))
                 },
             ));
             let f = http_get(port, "/runs");
-            assert_eq!(
-                body_of(&f), r#"{"runs": [{"run_id": "r1", "status": "idle"}]}"#,
-                "relay_runs_list host-forwarded: full = {:?}", f
+            let fbody = body_of(&f);
+            // The shim marshalled q (an int 0 in this test) → "0", and forwarded it.
+            assert!(
+                fbody.contains(r#""run_id": "r1""#) && fbody.contains(r#""arg": 0"#),
+                "relay_runs_list host-forwarded with args: full = {:?}", fbody
             );
         }
 

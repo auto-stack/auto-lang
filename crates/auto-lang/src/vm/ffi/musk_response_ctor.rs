@@ -780,17 +780,18 @@ fn push_value_from_json(
 }
 
 /// `relay_runs_list(s, q)` → `{runs: [...]}`. Forwards to a registered host call
-/// (path (a)); without one, serves the empty-store shape `{runs: []}` (parity
-/// default). A Value extern — exercises the heap-ref dead-zone compensation.
-/// Stack: s, q -> value.
+/// (path (a)) with the Query extractor marshalled into `args_json` (the State
+/// is opaque and carried by the backend via the workspace registry); without a
+/// host call, serves the empty-store shape `{runs: []}`. Stack: s, q -> value.
 pub fn shim_relay_runs_list(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let q = pop_value(task, vm); // Query<WorkspaceQuery> (GenericInstanceData, top)
     let _s = pop_value(task, vm); // State<AppState> (opaque)
-    let _q = pop_value(task, vm); // Query<WorkspaceQuery> (GenericInstanceData)
-    if try_host_forward("relay_runs_list", task, vm, "{}")? {
+    let args_json =
+        crate::vm::ffi::http_server::nv_to_json(vm, q, 0).unwrap_or_else(|| "{}".to_string());
+    if try_host_forward("relay_runs_list", task, vm, &args_json)? {
         return Ok(());
     }
-    let parsed = serde_json::json!({ "runs": [] });
-    push_value_from_json(task, vm, &parsed)?;
+    push_value_from_json(task, vm, &serde_json::json!({ "runs": [] }))?;
     Ok(())
 }
 
