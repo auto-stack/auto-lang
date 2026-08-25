@@ -6918,6 +6918,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // Data-source extern (path (a) forwarding; default = constant).
     natives.register_shim_by_name("app_config_effective_daemon_url", shim_app_config_effective_daemon_url);
+    // Value-returning data extern (path (a) forwarding; default = empty store).
+    natives.register_shim_by_name("relay_runs_list", shim_relay_runs_list);
 }
 
 // ============================================================================

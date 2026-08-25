@@ -1461,6 +1461,8 @@ macro_rules! for_each_bigvm_native {
             ("path_inner", 3136, String),
             // Data-source extern (path (a) forwarding; default = constant).
             ("app_config_effective_daemon_url", 3137, String),
+            // Value-returning data extern (path (a) forwarding; default = empty).
+            ("relay_runs_list", 3138, Int),
 
             // === ID-conflicting short names ===
             ("str.len", 170, Void),
@@ -2215,6 +2217,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("path_inner", 3136),
     // Data-source extern (path (a) forwarding).
     ("app_config_effective_daemon_url", 3137),
+    ("relay_runs_list", 3138),
     ("str.len", 170),
     ("String.len", 171),
     ("str.upper", 175),

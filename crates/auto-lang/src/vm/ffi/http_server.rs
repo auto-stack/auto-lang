@@ -1310,6 +1310,39 @@ fn daemon() str {
             );
         }
 
+        /// Plan 442 C2 item ③ path (a): a Value-returning data extern
+        /// (`relay_runs_list`) forwards to a registered host call, else serves a
+        /// default. Exercises the heap-ref dead-zone compensation: the fresh
+        /// `{runs: []}` object survives the CALL_NAT dead-zone release.
+        #[test]
+        fn e2e_host_forward_relay_runs() {
+            let port = start_server(r#"
+#[api(method = "GET", path = "/runs")]
+fn runs() int {
+    return ok_response(relay_runs_list(0, 0))
+}
+"#, 18749);
+
+            // Phase 1: no host call → empty-store default shape.
+            let d = http_get(port, "/runs");
+            assert_eq!(
+                body_of(&d), r#"{"runs": []}"#,
+                "relay_runs_list default (empty store): full = {:?}", d
+            );
+
+            // Phase 2: register host call → the VM extern forwards to it.
+            crate::vm::host_bridge::register_host_call("relay_runs_list", std::sync::Arc::new(
+                move |_args: &str| -> Result<String, String> {
+                    Ok(r#"{"runs":[{"run_id":"r1","status":"idle"}]}"#.to_string())
+                },
+            ));
+            let f = http_get(port, "/runs");
+            assert_eq!(
+                body_of(&f), r#"{"runs": [{"run_id": "r1", "status": "idle"}]}"#,
+                "relay_runs_list host-forwarded: full = {:?}", f
+            );
+        }
+
         /// Fetch `path` repeatedly until the body contains all `need_fragments`,
         /// or `max_attempts` is exhausted. Returns the last body.
         ///

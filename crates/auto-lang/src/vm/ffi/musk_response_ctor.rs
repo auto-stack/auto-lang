@@ -753,8 +753,45 @@ fn try_host_forward(
         .map_err(|e| VMError::RuntimeError(format!("host '{name}': {e}")))?;
     let parsed: serde_json::Value =
         serde_json::from_str(&out).unwrap_or(serde_json::Value::Null);
-    crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0)?;
+    push_value_from_json(task, vm, &parsed)?;
     Ok(true)
+}
+
+/// Push a serde_json Value onto the stack via `json_to_vm_value`, then give a
+/// *fresh* heap-ref result one extra retain. The CALL_NAT dead-zone release
+/// frees the slots the shim consumed (pop count > push count leaves the pushed
+/// result inside the released range); an extra retain keeps a heap-ref result
+/// alive until the caller pops it via its own StakeGuard — balancing so the
+/// object is freed only after the caller is done reading it.
+fn push_value_from_json(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    value: &serde_json::Value,
+) -> Result<(), VMError> {
+    crate::vm::ffi::stdlib::json_to_vm_value(task, vm, value, 0)?;
+    let sp = task.ram.sp;
+    if sp > 0 {
+        let top = task.ram.raw_nv[sp - 1];
+        if let Some(id) = crate::vm::rc::heap_ref_id(top) {
+            vm.rc_retain_id(id);
+        }
+    }
+    Ok(())
+}
+
+/// `relay_runs_list(s, q)` → `{runs: [...]}`. Forwards to a registered host call
+/// (path (a)); without one, serves the empty-store shape `{runs: []}` (parity
+/// default). A Value extern — exercises the heap-ref dead-zone compensation.
+/// Stack: s, q -> value.
+pub fn shim_relay_runs_list(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _s = pop_value(task, vm); // State<AppState> (opaque)
+    let _q = pop_value(task, vm); // Query<WorkspaceQuery> (GenericInstanceData)
+    if try_host_forward("relay_runs_list", task, vm, "{}")? {
+        return Ok(());
+    }
+    let parsed = serde_json::json!({ "runs": [] });
+    push_value_from_json(task, vm, &parsed)?;
+    Ok(())
 }
 
 /// `app_config_effective_daemon_url(cfg)` → str (default constant). Forwards to
