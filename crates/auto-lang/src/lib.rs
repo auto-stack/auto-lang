@@ -3296,6 +3296,45 @@ fn run_file_dynamic_ui_inner(
             }
         }
     }
+    // Plan 435 P8-6(D13):包组件接入桌面端(iced)—— `use { package: x from
+    // "dir" }` 的 widget:视图注册进 WidgetRegistry(fold 桥接见
+    // WidgetRegistry::get),decl 并入 child_decls 使 handler 编入单 VM。
+    // 与 vue 侧(api.rs SFC 生成)同源同机制;加载失败仅告警不阻塞。
+    {
+        let base_dir = path
+            .map(|p| {
+                std::path::Path::new(p)
+                    .parent()
+                    .unwrap_or(std::path::Path::new("."))
+            })
+            .unwrap_or(std::path::Path::new("."));
+        let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
+        let mut seen_dirs: std::collections::HashSet<std::path::PathBuf> = Default::default();
+        let mut sources: Vec<crate::aura::AuraWidget> = vec![widget.clone()];
+        sources.extend(registry.all());
+        for w in &sources {
+            for imp in &w.ext_imports {
+                if !matches!(imp.kind, crate::ast::ui::ExtImportKind::Package) {
+                    continue;
+                }
+                let dir = std::path::PathBuf::from(imp.path.as_str());
+                if !seen_dirs.insert(dir.clone()) {
+                    continue;
+                }
+                match pkg_reg.load_package(&dir, base_dir) {
+                    Ok(pkg) => {
+                        for (d, aw) in &pkg.full_widgets {
+                            child_decls.push(d.clone());
+                            registry.register(aw.clone());
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("package `{}` load failed (VM): {}", imp.path, e)
+                    }
+                }
+            }
+        }
+    }
     // Merge store-as-child decls with actual child widget decls
     let mut all_child_decls = child_decls.clone();
     // Plan 442 A2: also dedup against child decls — a store can reach

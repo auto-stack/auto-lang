@@ -624,3 +624,66 @@
 - 预存(与本计划无关):`cargo test --workspace` 在 master 即有 E0080
   (`renderer.rs:11058` iced Subscription 捕获闭包,lib test cfg 特定 feature 组合
   触发)——按 crate 跑测试不受影响,待 iced 侧单独修。
+
+## 8. P8 剩余项执行结果(2026-08-25 续,worktree `plan-435-schema-unification`)
+
+### P8-1 `auto docs gen` CLI 化(D13)✅
+
+生成器本体提取到库 `crates/auto-lang/src/ui_gen/docs_gen.rs`
+(`generate_core_reference(root)` / `generate_kitchen_sink()` / `load_elements()`,
+root 参数为 P8-7 的 demo 链接服务);tests/docs_gen.rs 降为纯围栏
+(覆盖/对拍/同步),生成走库路径;`crates/auto` 新增 `auto docs gen`
+子命令(`--only core|kitchen-sink` 可选),产物头部提示同步更新。
+两产物 CLI 一键再生成,围栏绿。
+
+### P8-2 ComponentRegistry 家族建模(D6)✅
+
+`LoadedPackage` 增 `families: BTreeMap<parent, Vec<children>>`:
+①schema sub_widgets 折叠匹配;②包内严格前缀兜底(Carousel ←
+CarouselContent/…)。访问器 `family_children_of()`。单测验证 gallery
+components 包的 Carousel(5 子件,含 CarouselDemo)/Combobox 家族。
+
+### P8-5 LSP 位置感知(D8)✅
+
+UiElement 补全上下文从全文 `contains("view {")` 改为**块头栈扫描**:
+`full_prefix_upto`(全文到 cursor)→ `{`/`}` 维护开放块头栈,任一栈帧
+首词为 `view` 才触发。on/model 块内裸标识符不再误触(单测三场景钉住:
+view 内触发 / on 内不触发 / model 内不触发)。字符串内花括号属可容忍
+启发式噪声,AST 化留待增量解析基建。
+
+### P8-6 桌面端接入(D13)✅
+
+- `WidgetRegistry::get` 折叠桥接兜底:kebab/大小写变体 tag(copy-button)
+  在 iced 端命中 CopyButton(与 vue.rs map_tag 同语义;组件形态守卫防
+  缩合小写误聚;内置优先不受影响 —— 派发表先查内置臂)。
+- VM 运行时包加载:lib.rs 渲染启动路径处理 `use { package: x from "dir" }`
+  —— `LoadedPackage.full_widgets`(P8-6 扩展 parse_package_widgets 返回
+  (decl, widget) 对)视图注册进 WidgetRegistry、decl 并入 child_decls
+  编入单 VM;加载失败 log::warn 不阻塞。与 vue 侧同源同机制。
+- 单测:折叠桥接 + full_widgets 完整性(ui-iced 特性门控下验证)。
+
+### P8-7 VitePress ↔ gallery 互链(D13)✅(正向)
+
+core.md 每元素徽章行下加 `[demo →](/examples/widgets-gallery/<page>)`
+(18 个有 gallery 页的核心元素;`gallery_page_stems(root)` 库助手)。
+**反向链接(gallery 页 → core.md)未按原文实现**:gallery 是独立 AutoUI
+应用(pac.at render: vm,3024 端口),不是 VitePress 宿主;页内
+`/components/core#tag` 路由必然 404,且 pages/*.at 是手写源(70+ 文件),
+机械插入跨应用死链得不偿失。若 website 侧后续挂 gallery 反代,再加反向。
+
+### 验收数据(全部绿)
+
+- `cargo test -p auto-lang`:3175 passed;`--features ui-iced`:
+  component_registry(7)+ desktop_behavior(8)passed;
+  `auto-lsp`:10;`auto`:2+2;`auto-man`:229+6。
+- gallery golden 双跑 diff=0(终态)。
+- `auto docs gen` CLI 实跑产出与围栏一致。
+
+### §6 缺陷清单终态
+
+| 缺陷 | 状态 |
+|---|---|
+| D1-D5, D7-D9, D11, D12 | ✅(P6/P7/P8-3/P8-4) |
+| D6 | ✅ P8-2 |
+| D8 | ✅ P8-5 |
+| D13 | ✅ P8-1/P8-6/P8-7(正向);playwright spec 待基建(原计划即标注) |

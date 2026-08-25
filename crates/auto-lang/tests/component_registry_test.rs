@@ -203,3 +203,66 @@ fn load_package_survives_single_bad_file() {
     let _ = std::fs::remove_dir_all(&tmp);
     let _ = std::fs::remove_dir_all(&tmp2);
 }
+
+/// Plan 435 P8-2(D6):LoadedPackage 家族建模 —— schema sub_widgets 折叠匹配
+/// + 包内严格前缀兜底。gallery components 包:Carousel 全家、Combobox 全家。
+#[test]
+fn package_families_modeled() {
+    let mut reg = ComponentRegistry::new();
+    let pkg = reg
+        .load_package(&gallery_components_dir(), std::path::Path::new("."))
+        .expect("gallery components load");
+    let carousel = pkg.families.get("Carousel").expect("Carousel 家族");
+    for child in ["CarouselContent", "CarouselItem", "CarouselNext", "CarouselPrevious"] {
+        assert!(
+            carousel.contains(&child.to_string()),
+            "Carousel 子件缺 {child}: {carousel:?}"
+        );
+    }
+    let combobox = pkg.families.get("Combobox").expect("Combobox 家族");
+    assert!(
+        combobox.iter().any(|c| c == "ComboboxItem"),
+        "Combobox 子件: {combobox:?}"
+    );
+    // 访问器:未知 widget 返回空
+    assert!(reg.family_children_of("NoSuchWidget").is_empty());
+    // 第 5 个子件是 CarouselDemo(同文件 demo widget,前缀推导合理收入)
+    assert_eq!(reg.family_children_of("Carousel").len(), 5);
+    assert!(reg.family_children_of("Carousel").contains(&"CarouselDemo".to_string()));
+}
+
+/// Plan 435 P8-6(D13):桌面端接入 —— ①WidgetRegistry 折叠桥接(kebab tag
+/// 命中 Pascal widget,与 vue map_tag 同语义);②包组件可经
+/// load_package 的 full_widgets 注册进 WidgetRegistry(视图 + decl)。
+#[test]
+fn desktop_registry_bridges_package_components() {
+    #[cfg(feature = "ui-interpreter")]
+    use auto_lang::ui::widget_registry::WidgetRegistry;
+
+    // ① 折叠桥接(ui feature 门控:WidgetRegistry 在 iced 后端)
+    #[cfg(feature = "ui-interpreter")]
+    {
+        let mut reg_ui = WidgetRegistry::new();
+    reg_ui.register(minimal_widget("CopyButton"));
+    assert!(reg_ui.get("CopyButton").is_some(), "精确命中");
+    assert!(reg_ui.get("copy-button").is_some(), "kebab 折叠命中");
+    assert!(reg_ui.get("Copy-Button").is_some(), "混合折叠命中");
+    }
+
+    // ② 包组件全量对:视图 + decl 齐备
+    let mut reg = ComponentRegistry::new();
+    let pkg = reg
+        .load_package(&gallery_components_dir(), std::path::Path::new("."))
+        .expect("gallery components load");
+    assert!(
+        pkg.full_widgets.iter().any(|(_, w)| w.name == "Carousel"),
+        "full_widgets 应含 Carousel: {:?}",
+        pkg.full_widgets.iter().map(|(_, w)| w.name.clone()).collect::<Vec<_>>()
+    );
+    assert!(
+        pkg.full_widgets
+            .iter()
+            .all(|(d, w)| d.name.as_str() == w.name),
+        "decl 与 widget 名一致"
+    );
+}

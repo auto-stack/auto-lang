@@ -99,10 +99,12 @@ enum CompletionContext {
 fn determine_completion_context(
     before_cursor: &str,
     full_content: &str,
-    _position: Position,
+    position: Position,
 ) -> CompletionContext {
     // Plan 435 P2:view 块内元素位:当前行是缩进 + 孤立 tag 词(无 . : ( 等),
-    // 且上文出现过 `view {` —— 视为在写元素名,给 schema 补全。
+    // 且 cursor 处于 view 块内 —— 视为在写元素名,给 schema 补全。
+    // Plan 435 P8-5(D8):块判定用**全文前缀**(before_cursor 只是当前行,
+    // 块头栈需要上文),原 contains("view {") 全文匹配是位置盲。
     {
         let trimmed = before_cursor.trim_end();
         let indent_len = trimmed.len() - trimmed.trim_start().len();
@@ -112,7 +114,8 @@ fn determine_completion_context(
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
             && word.chars().next().map_or(false, |c| c.is_ascii_lowercase());
-        if at_element_position && full_content.contains("view {") {
+        let full_prefix = full_prefix_upto(full_content, position);
+        if at_element_position && cursor_in_view_block(&full_prefix) {
             return CompletionContext::UiElement;
         }
     }
@@ -149,6 +152,41 @@ fn determine_completion_context(
 
     // Default to keyword completion
     CompletionContext::Keyword
+}
+
+/// Plan 435 P8-5(D8):全文前缀(cut 到 cursor 的 LSP 字符位)。
+fn full_prefix_upto(content: &str, position: Position) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = String::new();
+    for l in lines.iter().take(position.line as usize) {
+        out.push_str(l);
+        out.push('\n');
+    }
+    if let Some(l) = lines.get(position.line as usize) {
+        out.push_str(&crate::position::slice_line_before_char(l, position.character));
+    }
+    out
+}
+
+/// Plan 435 P8-5(D8):位置感知 —— 从 cursor 向上扫描开放块头栈,判定是否
+/// 处于 view 块内。原全文 `contains("view {")` 子串匹配是位置盲:on/model
+/// 块内的裸标识符(如 `goto` 误拼)也会触发元素补全。块头 = 自上一个
+/// 未匹配 `}`/`{` 起累计的文本,首词为 `view` 即 view 块(字符串内的花括号
+/// 属启发式可容忍噪声,AST 化留待增量解析基建)。
+fn cursor_in_view_block(before_cursor: &str) -> bool {
+    let mut stack: Vec<String> = Vec::new();
+    let mut head = String::new();
+    for c in before_cursor.chars() {
+        match c {
+            '{' => stack.push(std::mem::take(&mut head)),
+            '}' => {
+                stack.pop();
+                head.clear();
+            }
+            _ => head.push(c),
+        }
+    }
+    stack.iter().any(|h| h.split_whitespace().next() == Some("view"))
 }
 
 /// Plan 435 P2:schema/aura.at 驱动的 UI 元素补全(330 元素,含 tier/detail)。
@@ -1206,4 +1244,38 @@ pub fn complete_workspace(
     }
 
     items
+}
+
+#[cfg(test)]
+mod p8_tests {
+    use super::*;
+
+    /// Plan 435 P8-5(D8):UiElement 补全位置感知 —— 只在 view 块内的元素位
+    /// 触发;on/model 块内的裸标识符不触发(原 contains("view {") 全文匹配
+    /// 位置盲)。
+    #[test]
+    fn ui_element_completion_is_position_aware() {
+        // view 块内元素位(line 3, "but" 词尾):触发。
+        // before_cursor 语义 = 当前行到 cursor(见 completion() 调用点);
+        // 块判定在函数内用全文前缀补足。
+        let src = "widget App {\n    view {\n        col {\n            but";
+        let ctx = determine_completion_context("            but", src, Position { line: 3, character: 16 });
+        assert!(matches!(ctx, CompletionContext::UiElement), "view 内元素位应触发: {ctx:?}");
+
+        // on 块内裸小写标识符:不触发(即使全文含 view {)
+        let on_src = "widget App {\n    view {\n        col {\n            button \"x\" {}\n        }\n    }\n    on {\n        .Go -> {\n            goto";
+        let ctx = determine_completion_context("            goto", on_src, Position { line: 8, character: 16 });
+        assert!(
+            !matches!(ctx, CompletionContext::UiElement),
+            "on 块内裸标识符不应触发元素补全: {ctx:?}"
+        );
+
+        // model 块内变量名:不触发
+        let model_src = "widget App {\n    view {\n        col {\n            text \"x\" {}\n        }\n    }\n    model {\n        cou";
+        let ctx = determine_completion_context("        cou", model_src, Position { line: 8, character: 15 });
+        assert!(
+            !matches!(ctx, CompletionContext::UiElement),
+            "model 块内变量名不应触发: {ctx:?}"
+        );
+    }
 }

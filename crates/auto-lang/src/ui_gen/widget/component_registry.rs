@@ -69,6 +69,13 @@ pub struct LoadedPackage {
     /// Plan 435 P7-3(D7):逐文件 try-parse 的失败记录(路径 + 错误)。
     /// 单文件解析失败不丢弃整个包 —— 合法组件照常注册,失败文件由此暴露。
     pub parse_warnings: Vec<String>,
+    /// Plan 435 P8-2(D6):包内家族建模 —— parent widget 名 → children
+    /// widget 名(序)。推导:①schema sub_widgets 折叠匹配(父元素声明了
+    /// 家族面);②包内严格前缀兜底(Carousel ← CarouselContent/CarouselItem)。
+    pub families: std::collections::BTreeMap<String, Vec<String>>,
+    /// Plan 435 P8-6(D13):全量 (decl, widget) 对 —— 桌面端(VM/iced)接入用:
+    /// 视图注册进 WidgetRegistry,decl 并入 child_decls 编入单 VM。
+    pub full_widgets: Vec<(crate::ast::ui::WidgetDecl, AuraWidget)>,
 }
 
 /// 注册被拒记录(与内置折叠名冲突 —— Plan 408 语义)。
@@ -150,6 +157,7 @@ impl ComponentRegistry {
 
         let manifest = Self::parse_manifest(&canonical)?;
         let mut widgets = HashMap::new();
+        let mut full_widgets: Vec<(crate::ast::ui::WidgetDecl, AuraWidget)> = Vec::new();
         let mut parse_warnings: Vec<String> = Vec::new();
         let entries = std::fs::read_dir(&canonical)
             .map_err(|e| format!("read package dir `{}`: {}", canonical.display(), e))?;
@@ -166,9 +174,10 @@ impl ComponentRegistry {
             // Plan 435 P7-3(D7):逐文件 try-parse —— 单文件失败记 warning
             // 继续加载其余文件,不再一坏全坏。
             match parse_package_widgets(&code, &path) {
-                Ok(ws) => {
-                    for w in ws {
+                Ok(parsed) => {
+                    for (d, w) in parsed {
                         widgets.insert(fold(&w.name), w.name.clone());
+                        full_widgets.push((d, w));
                     }
                 }
                 Err(err) => parse_warnings.push(format!("`{}`: {}", path.display(), err)),
@@ -185,13 +194,75 @@ impl ComponentRegistry {
                 }
             ));
         }
+        let families = Self::derive_families(&widgets);
         self.packages.push(LoadedPackage {
             manifest,
             dir: canonical,
             widgets,
             parse_warnings,
+            families,
+            full_widgets,
         });
         Ok(self.packages.last().unwrap())
+    }
+
+    /// Plan 435 P8-2(D6):包内家族推导。输入 fold-key → widget 名表。
+    /// ①schema sub_widgets:父 widget 折叠键命中某元素的 canonical 折叠,
+    ///   其 sub_widgets 折叠集内的包内成员归为子件(schema 声明的家族面);
+    /// ②严格前缀兜底:widget 名以另一更长…更短 widget 名为真前缀
+    ///   (Carousel ← CarouselContent),且短者是长子件名时才认定 ——
+    ///   避免任意字符串前缀误聚。
+    fn derive_families(widgets: &HashMap<String, String>) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut families: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        let add = |families: &mut std::collections::BTreeMap<String, Vec<String>>, parent: &str, child: &str| {
+            let entry = families.entry(parent.to_string()).or_default();
+            if !entry.contains(&child.to_string()) {
+                entry.push(child.to_string());
+                entry.sort();
+            }
+        };
+        // ① schema sub_widgets 折叠匹配
+        if let Some(schema) = crate::aura::default_schema_cached() {
+            for (pf, parent) in widgets {
+                let Some((canon, _)) = schema.resolve_tag(parent) else { continue };
+                let Some(meta) = schema.meta.get(canon) else { continue };
+                if meta.sub_widgets.is_empty() {
+                    continue;
+                }
+                let sub_folds: std::collections::BTreeSet<String> =
+                    meta.sub_widgets.iter().map(|s| fold(s)).collect();
+                for (cf, child) in widgets {
+                    if cf != pf && sub_folds.contains(cf) {
+                        add(&mut families, parent, child);
+                    }
+                }
+            }
+        }
+        // ② 严格前缀兜底
+        let mut names: Vec<&String> = widgets.values().collect();
+        names.sort_by_key(|n| std::cmp::Reverse(n.len()));
+        for child in &names {
+            // 最长的真前缀 widget 名为父(唯一认定)
+            let parent = names
+                .iter()
+                .find(|p| p.as_str() != child.as_str() && child.starts_with(p.as_str()));
+            if let Some(parent) = parent {
+                add(&mut families, parent, child);
+            }
+        }
+        // 单亲子件只做父 → 子方向;无子件的父不产生空条目
+        families.retain(|_, v| !v.is_empty());
+        families
+    }
+
+    /// Plan 435 P8-2(D6):某 widget 名的家族子件(无家族返回空切片)。
+    pub fn family_children_of(&self, widget: &str) -> &[String] {
+        for p in &self.packages {
+            if let Some(children) = p.families.get(widget) {
+                return children;
+            }
+        }
+        &[]
     }
 
     /// 解析 package.at 清单(pac.at 同款 key: "value" 行;文件可缺省)。
@@ -292,7 +363,11 @@ impl ComponentRegistry {
 }
 
 /// 解析一段 .at 源里的全部 widget(UI scenario;与生成主路径同配置)。
-fn parse_package_widgets(code: &str, path: &Path) -> Result<Vec<AuraWidget>, String> {
+/// P8-6:同时返回 WidgetDecl(桌面端 handler 编译需要)与 AuraWidget(视图)。
+fn parse_package_widgets(
+    code: &str,
+    path: &Path,
+) -> Result<Vec<(crate::ast::ui::WidgetDecl, AuraWidget)>, String> {
     let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
     let mut parser = crate::Parser::from(code);
     parser = parser.with_session(session);
@@ -304,7 +379,7 @@ fn parse_package_widgets(code: &str, path: &Path) -> Result<Vec<AuraWidget>, Str
         if let crate::ast::Stmt::WidgetDecl(d) = stmt {
             let w = crate::aura::extract_widget_from_decl(d)
                 .map_err(|e| format!("extract `{}`: {}", path.display(), e))?;
-            out.push(w);
+            out.push((d.clone(), w));
         }
     }
     Ok(out)

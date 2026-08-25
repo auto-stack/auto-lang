@@ -9,6 +9,7 @@ use std::path::PathBuf;
 mod cmd_a2c_stdlib;
 mod cmd_block;
 mod cmd_ui;
+mod cmd_docs;
 mod cmd_watch;
 
 // Helper to convert AutoError to miette Report - this preserves all diagnostic info
@@ -590,6 +591,13 @@ enum Commands {
         json: bool,
         /// Auto code to evaluate
         code: Option<String>,
+    },
+
+    // ========== Schema Docs (Plan 435 P8-1) ==========
+    #[command(about = "Schema-driven docs generation (core.md / kitchen-sink.at)")]
+    Docs {
+        #[command(subcommand)]
+        action: cmd_docs::DocsAction,
     },
 }
 
@@ -1539,6 +1547,11 @@ fn real_main(cli: Cli) -> Result<()> {
         // ========== AutoUI Blocks (Plan 343, Design 17) ==========
         Some(Commands::Block { action }) => {
             cmd_block::run(action)?;
+        }
+
+        // ========== Schema Docs (Plan 435 P8-1) ==========
+        Some(Commands::Docs { action }) => {
+            cmd_docs::run(action)?;
         }
 
         // ========== Legacy / Dev Tools ==========

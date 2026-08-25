@@ -47,8 +47,34 @@ impl WidgetRegistry {
     }
 
     /// Look up a widget by name.
+    ///
+    /// Plan 435 P8-6(D13):精确未命中时按折叠键兜底(剥 `-`/`_` + 小写,
+    /// 与 vue.rs map_tag 的折叠桥接同语义)—— kebab tag(copy-button)在
+    /// iced 端也能命中 CopyButton,不再落 `<copy-button />` 文本占位。
+    /// 内置优先不受影响:调用方(aura_view_builder 派发)先查内置臂,
+    /// 折叠兜底只在未知 tag 分支生效。
     pub fn get(&self, name: &str) -> Option<&AuraWidget> {
-        self.widgets.get(name)
+        if let Some(w) = self.widgets.get(name) {
+            return Some(w);
+        }
+        let fold = |s: &str| -> String {
+            s.chars()
+                .filter(|c| *c != '-' && *c != '_')
+                .collect::<String>()
+                .to_lowercase()
+        };
+        // 组件形态守卫(与 vue.rs tag_has_component_shape 同规):无分隔符
+        // 且无大写的缩合小写词不是组件形态,不做折叠兜底(避免误聚 + O(n) 全扫)。
+        if !name.contains('-')
+            && !name.contains('_')
+            && !name.chars().any(|c| c.is_uppercase())
+        {
+            return None;
+        }
+        let want = fold(name);
+        self.widgets
+            .values()
+            .find(|w| fold(&w.name) == want)
     }
 
     /// Check if a widget with the given name is registered.

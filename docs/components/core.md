@@ -3,7 +3,7 @@ title: 核心组件参考(Core Components)
 ---
 
 > 本页由 schema/aura.at 生成(Plan 435 P5)—— **勿手改**;再生成:
-> `DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen`
+> `auto docs gen`(推荐;测试内等价 `DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen`)
 > tier 语义:`builtin_widget`=桌面有实现;`native_html`=Web 原生直通。
 > shadcn 家族组件的活文档/Demo 见 widgets-gallery(本页仅收核心层)。
 
@@ -49,6 +49,8 @@ _props 待声明_
 
 `builtin_widget` · `avatar` · web: `component` · iced: `partial` · category: `content`
 
+[demo →](/examples/widgets-gallery/avatar)
+
 P1 extracted from production tables; props TBD
 
 别名:`Avatar`
@@ -67,6 +69,8 @@ P1 extracted from production tables; props TBD
 
 `builtin_widget` · `badge` · web: `component` · iced: `partial` · category: `feedback`
 
+[demo →](/examples/widgets-gallery/badge)
+
 Badge for status or labels
 
 别名:`Badge`
@@ -82,6 +86,8 @@ Badge for status or labels
 ### `button`
 
 `builtin_widget` · `button` · web: `component` · iced: `full` · category: `content`
+
+[demo →](/examples/widgets-gallery/button)
 
 A clickable button element
 
@@ -103,6 +109,8 @@ A clickable button element
 
 `builtin_widget` · `center` · web: `component` · iced: `full` · category: `content`
 
+[demo →](/examples/widgets-gallery/center)
+
 P1 extracted from production tables; props TBD
 
 别名:`Center`
@@ -114,6 +122,8 @@ _props 待声明_
 ### `checkbox`
 
 `builtin_widget` · `checkbox` · web: `component` · iced: `full` · category: `content`
+
+[demo →](/examples/widgets-gallery/checkbox)
 
 Checkbox control
 
@@ -131,6 +141,8 @@ Checkbox control
 ### `code_editor`
 
 `builtin_widget` · `code_editor` · web: `component` · iced: `full` · category: `content`
+
+[demo →](/examples/widgets-gallery/code-editor)
 
 P1 extracted from production tables; props TBD
 
@@ -152,6 +164,8 @@ P1 extracted from production tables; props TBD
 ### `col`
 
 `builtin_widget` · `col` · web: `component` · iced: `full` · category: `layout`
+
+[demo →](/examples/widgets-gallery/col)
 
 Vertical layout container
 
@@ -212,6 +226,8 @@ _props 待声明_
 ### `grid`
 
 `builtin_widget` · `grid` · web: `component` · iced: `partial` · category: `layout`
+
+[demo →](/examples/widgets-gallery/grid)
 
 Grid layout container
 
@@ -322,6 +338,8 @@ _props 待声明_
 
 `builtin_widget` · `input` · web: `component` · iced: `partial` · category: `content`
 
+[demo →](/examples/widgets-gallery/input)
+
 Text input field
 
 别名:`Input`
@@ -341,6 +359,8 @@ Text input field
 ### `label`
 
 `builtin_widget` · `label` · web: `component` · iced: `full` · category: `form`
+
+[demo →](/examples/widgets-gallery/label)
 
 Form label
 
@@ -397,6 +417,8 @@ _props 待声明_
 
 `builtin_widget` · `menubar` · web: `component` · iced: `unknown` · category: `navigation`
 
+[demo →](/examples/widgets-gallery/menubar)
+
 Menubar container
 
 | Prop | Type | Default | Description |
@@ -422,6 +444,8 @@ _props 待声明_
 ### `nav-link`
 
 `builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `content`
+
+[demo →](/examples/widgets-gallery/navlink)
 
 P1 extracted from production tables; props TBD
 
@@ -453,6 +477,8 @@ Paragraph text
 
 `builtin_widget` · `popover` · web: `component` · iced: `fallback` · category: `navigation`
 
+[demo →](/examples/widgets-gallery/popover)
+
 Anchored popover (overlay)
 
 别名:`Popover`
@@ -474,6 +500,8 @@ Anchored popover (overlay)
 
 `builtin_widget` · `progress` · web: `component` · iced: `full` · category: `content`
 
+[demo →](/examples/widgets-gallery/progress)
+
 P1 extracted from production tables; props TBD
 
 别名:`Progress`
@@ -488,6 +516,8 @@ P1 extracted from production tables; props TBD
 ### `row`
 
 `builtin_widget` · `row` · web: `component` · iced: `full` · category: `layout`
+
+[demo →](/examples/widgets-gallery/row)
 
 Horizontal layout container
 
@@ -505,6 +535,8 @@ Horizontal layout container
 ### `scroll`
 
 `builtin_widget` · `scroll` · web: `component` · iced: `partial` · category: `layout`
+
+[demo →](/examples/widgets-gallery/scroll)
 
 Scrollable container
 
@@ -534,6 +566,8 @@ _props 待声明_
 ### `separator`
 
 `builtin_widget` · `separator` · web: `component` · iced: `unknown` · category: `utility`
+
+[demo →](/examples/widgets-gallery/separator)
 
 Visual divider
 
@@ -614,6 +648,8 @@ _props 待声明_
 ### `textarea`
 
 `builtin_widget` · `textarea` · web: `component` · iced: `partial` · category: `form`
+
+[demo →](/examples/widgets-gallery/textarea)
 
 Multi-line text input
 

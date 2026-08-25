@@ -1,5 +1,5 @@
 // Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
-// 再生成:KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen
+// 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)
 // 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 23 个)。
 
 widget KitchenSinkPage {

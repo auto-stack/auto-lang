@@ -24,6 +24,7 @@ pub mod kotlin_adapter;
 pub mod widget;
 pub mod api;
 pub mod validators;
+pub mod docs_gen;
 
 // Re-export main types
 pub use vue::VueGenerator;
