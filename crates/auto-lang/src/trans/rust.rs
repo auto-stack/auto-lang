@@ -2074,13 +2074,29 @@ impl RustTrans {
             Expr::Ident(name) => self.local_var_types.get(name.as_str())
                 .map(|ty| matches!(ty, Type::List(_)))
                 .unwrap_or(false),
-            Expr::Dot(inner, field) if matches!(inner.as_ref(), Expr::Ident(_)) => {
+            Expr::Dot(inner, field) => {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
                         if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
-                            return fields.iter().any(|(f, t)|
-                                f == field && matches!(t, Type::List(_)));
+                            if fields.iter().any(|(f, t)|
+                                f == field && matches!(t, Type::List(_))) {
+                                return true;
+                            }
                         }
+                    }
+                    // fall through: the owner may be resolvable via inference
+                    // even when the direct local lookup missed
+                }
+                // Plan 447 ③-前置(②列基线修复): chained receivers —
+                // `a.ens.get(i).pays` — the inner expression's type resolves
+                // recursively (242 #18-1 machinery), so field-of-element
+                // lookups work instead of falling through to Vec::get
+                // (E0277 i64 index / Option compare downstream).
+                let inner_ty = self.infer_type_from_expr(inner);
+                if let Type::User(usr) = inner_ty {
+                    if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
+                        return fields.iter().any(|(f, t)|
+                            f == field && matches!(t, Type::List(_)));
                     }
                 }
                 false
@@ -8747,6 +8763,10 @@ impl RustTrans {
                     } else { None }
                 } else { None }
             } else { None };
+            // Plan 447 ③-前置: set when a branch below already emitted the arg
+            // WITH its `.as_str()` borrow — the generic borrow append at the end
+            // of the loop iteration must not fire again.
+            let mut str_stringified_here = false;
             if let Some(name) = bridge_box_ident {
                 // Rust method resolution: `(*ident).clone()` on a Box<T> still
                 // autorefs back to `Box::<T>::clone()` → returns Box<T>, not T.
@@ -8764,6 +8784,49 @@ impl RustTrans {
                 if is_str_param && trim_arg {
                     if let Arg::Pos(expr) = arg {
                         self.expr_as_str(expr, out)?;
+                    }
+                } else if is_str_param
+                    && matches!(arg, Arg::Pos(Expr::Call(c))
+                        if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "str")
+                            && c.args.args.is_empty())
+                {
+                    // Plan 447 ③-前置(②列基线修复): Auto's universal
+                    // `.str()` in a &str slot — emit by RECEIVER type. The
+                    // plain path wrote `x.to_string()` for both str and int
+                    // receivers, then the borrow append gave
+                    // `x.to_string().as_str()` — text-reducer
+                    // fix_string_str_mismatches collapses that to
+                    // `x.as_str()`, E0599 on i64/char/bool receivers
+                    // (codegen.at `emit("const.i32", cp.str(), cp)`).
+                    // Str receivers keep the collapsed form byte-for-byte;
+                    // known numeric receivers go through format! (same shape
+                    // fix_int_as_str produces).
+                    if let Arg::Pos(Expr::Call(c)) = arg {
+                        if let Expr::Dot(recv, _) = c.name.as_ref() {
+                            let recv_ty = self.infer_type_from_expr(recv);
+                            // Numeric AND unresolvable receivers go through
+                            // format! — the text reducer collapses the plain
+                            // `x.to_string().as_str()` form back to `x.as_str()`
+                            // (E0599 on i64). Str-typed receivers keep the
+                            // direct borrow (byte-identical to the collapsed
+                            // legacy form, zero golden drift).
+                            let borrow_direct = matches!(recv_ty,
+                                Type::StrOwned | Type::StrSlice
+                                | Type::StrFixed(_) | Type::CStrLit);
+                            let recv_parens = matches!(recv.as_ref(),
+                                Expr::Bina(_, op, _) if !matches!(op, Op::Dot));
+                            if borrow_direct {
+                                if recv_parens { write!(out, "(")?; }
+                                self.expr(recv, out)?;
+                                if recv_parens { write!(out, ")")?; }
+                                write!(out, ".as_str()")?;
+                            } else {
+                                write!(out, "format!(\"{{}}\", ")?;
+                                self.expr(recv, out)?;
+                                write!(out, ").as_str()")?;
+                            }
+                            str_stringified_here = true;
+                        }
                     }
                 } else if needs_ref_borrow && matches!(arg, Arg::Pos(Expr::Dot(_, _))) {
                     // Plan 018 §Phase 3.5: `&self.field` passed to a `@T` (&T)
@@ -8918,10 +8981,24 @@ impl RustTrans {
             let arg_is_explicit_to_string = if let Arg::Pos(Expr::Call(c)) = arg {
                 matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "to_string")
             } else { false };
+            // Plan 447 ③-前置(②列基线修复): `xs.get(i)` on a List<str> —
+            // the get→index conversion emits `xs[i as usize].clone()` (an
+            // owned String); a &str param slot needs the same borrow as
+            // plain str idents (E0308 otherwise). infer_type_from_expr's
+            // get-arm resolves the element type.
+            let arg_is_str_get = if let Arg::Pos(expr) = arg {
+                matches!(expr, Expr::Call(c)
+                    if c.args.args.len() == 1
+                        && matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
+                    && matches!(self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
                 && !arg_is_bare_refstr_method
                 && !(needs_borrow_unknown_callee && !needs_borrow && arg_is_explicit_to_string)
-                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call || arg_is_str_field) {
+                && !str_stringified_here
+                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call
+                    || arg_is_str_field || arg_is_str_get) {
                 write!(out, ".as_str()")?;
             }
 

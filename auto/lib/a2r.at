@@ -398,13 +398,25 @@ fn ar_is_cur_mut_param(a Ar, name str) bool {
     if fi < 0 {
         return false
     }
-    var ps = a.fns.get(fi).params
+    var f = a.fns.get(fi)
+    var ps = f.params
     var i = 0
     while i < ps.len() {
         if ps.get(i).name == name && ps.get(i).mode == "mut" {
             return true
         }
         i = i + 1
+    }
+    // Plan 447 ③-前置(⑤列基线修复):逃逸分析提升的参数(ar_prescan_fn
+    // 的 mut_params——未声明 mut 但体内被突变)在 Rust 签名同是 &mut;
+    // 调用点同样需要 &mut *x 再借用,否则 E0596(ar_is_pattern_text 的
+    // ar_err(a, ...) 实证)。
+    var pj = 0
+    while pj < f.mut_params.len() {
+        if f.mut_params.get(pj) == name {
+            return true
+        }
+        pj = pj + 1
     }
     return false
 }
@@ -1613,6 +1625,12 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
     }
     if ar_is_str_ty(prm_ty) {
         if strk == 3 {
+            return text + ".as_str()"
+        }
+        // Plan 447 ③-前置(⑤列基线修复):List.get 索引形(ty=str,strk=0)
+        // 发射为 xs[i].clone()(owned String)——同样需要 .as_str() 借用,
+        // 否则 String 入 &str 参数位 E0308(镜像主 a2r 同族修复)。
+        if strk == 0 && ar_is_str_ty(ty) {
             return text + ".as_str()"
         }
         return text
