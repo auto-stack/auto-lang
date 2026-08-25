@@ -1,0 +1,12 @@
+// pac.at - Charts 图表工坊（App 轨道填洞 ①·Plan 445）
+//
+// 编辑数据/切换类型/观察渲染的交互式图表 demo——AutoOS 系统监视器与
+// 图表应用的孵化形态。M1 vue 先行；M3 补 vm 实机（038 双后端惯例）。
+
+name: "charts"
+version: "0.1.0"
+description: "Charts playground - edit series, switch chart type, watch geometry recompute (vue/vm)"
+
+scene: "ui"
+render: "vue"
+front_port: 4024
