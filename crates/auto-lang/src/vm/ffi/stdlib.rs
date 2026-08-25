@@ -7006,6 +7006,16 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             super::axum_adapter::shim_method_bare(task, vm, method.as_str())?;
         }
 
+        // PLAN-044 (musk vm_entry): opaque AppState accessor pass-through.
+        // musk handlers write `specs_load(s.view, q)` — on the VM side `s` is
+        // the opaque app_state_handle; `.view` (and any sibling accessor)
+        // yields the same handle (the host closure captures the real state).
+        ("AppState", "view") | ("AppState", "registry") | ("AppState", "auth")
+        | ("AppState", "client") => {
+            let receiver = task.ram.pop_i32();
+            task.ram.push_i32(receiver);
+        }
+
         // PLAN-044 (musk vm_entry): bare `Json(d)` constructor (axum
         // `Json<T>` return form, e.g. musk health() -> ~Json<StatusOk>) —
         // same wire shape as json_response: 200 + application/json of d.
