@@ -4056,15 +4056,14 @@ impl VueGenerator {
                             // arbitrary handler logic. Vue allows v-model + @input.
                             //
                             // Plan 008 (auto-os-config dual-backend input contract):
-                            // a single-param input/textarea text handler receives
-                            // the typed TEXT on the vm backend — emit
-                            // $event.target.value so vue matches (multi-param and
-                            // map-literal bindings pass through untouched).
+                            // a handler DECLARING exactly one param receives the
+                            // typed TEXT on the vm backend — emit
+                            // $event.target.value so vue matches. 0-param handlers
+                            // read bound state (v-model) and stay bare calls
+                            // (DEBTS 引擎窗口 #6: arity comes from the handler's
+                            // declared params, not the binding site).
                             let handler_fn = if matches!(html_tag.as_str(), "input" | "textarea")
-                                && (aura_event.params.is_empty()
-                                    || (aura_event.params.len() == 1
-                                        && !aura_event.params[0].trim().is_empty()
-                                        && aura_event.params[0].trim().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')))
+                                && self.input_text_handler_wants_text_arg(aura_event)
                             {
                                 format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler))
                             } else {
@@ -4127,17 +4126,15 @@ impl VueGenerator {
                             }
                         }
                         // Plan 008 (auto-os-config dual-backend input contract):
-                        // AFTER the loop-var pass — bare or single-simple-param
-                        // text handlers on input/textarea receive the typed
-                        // TEXT on vm; forward ($event.target as ...).value on
-                        // vue to match (explicit $event / multi-arg / map
-                        // bindings pass through untouched).
+                        // AFTER the loop-var pass — text handlers on
+                        // input/textarea whose DECLARED arity is exactly 1
+                        // receive the typed TEXT on vm; forward
+                        // ($event.target as ...).value on vue to match
+                        // (0-param / explicit-$event / multi-arg / map bindings
+                        // pass through untouched — DEBTS 引擎窗口 #6 root fix).
                         if matches!(html_tag.as_str(), "input" | "textarea")
                             && matches!(event.as_str(), "oninput" | "input" | "onInput" | "onchange" | "change")
-                            && (aura_event.params.is_empty()
-                                || (aura_event.params.len() == 1
-                                    && !aura_event.params[0].trim().is_empty()
-                                    && aura_event.params[0].trim().chars().all(|c| c.is_ascii_alphanumeric() || c == '_')))
+                            && self.input_text_handler_wants_text_arg(aura_event)
                         {
                             handler_fn = format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler));
                         }
@@ -11933,6 +11930,36 @@ impl VueGenerator {
             .map(|(_, v)| v)
     }
 
+    /// Plan 008 (auto-os-config dual-backend input contract) + DEBTS 引擎窗口
+    /// #6 root fix: decide whether an input/textarea text handler should be
+    /// CALLED with the typed TEXT on the vue backend. The vm backend hands the
+    /// text to handlers that declare exactly one parameter (`.OnInput(t)`);
+    /// handlers that declare zero parameters read the bound state instead
+    /// (v-model keeps it in sync — HistorySearch's `.OnQuery -> {}` is the
+    /// canonical case) and must stay bare calls: passing
+    /// `($event.target as HTMLInputElement).value` to a 0-param function is
+    /// TS2554. Explicit argument shapes (map literals, $event forwarding,
+    /// multi-arg) always keep their bound arguments; handlers with no
+    /// on-block entry (0-param synthesized stubs) only take the text via an
+    /// explicit single-identifier binding.
+    fn input_text_handler_wants_text_arg(&self, aura_event: &AuraEvent) -> bool {
+        let bare_or_simple = aura_event.params.is_empty()
+            || (aura_event.params.len() == 1
+                && !aura_event.params[0].trim().is_empty()
+                && aura_event.params[0]
+                    .trim()
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        if !bare_or_simple {
+            return false;
+        }
+        let base = Self::base_pattern(&aura_event.handler);
+        match Self::get_handler_params(&self.handler_params, base) {
+            Some(declared) => declared.len() == 1,
+            None => !aura_event.params.is_empty(),
+        }
+    }
+
     /// Convert handler pattern to function name
     ///
     /// The result must be a valid JS identifier: emit names may contain
@@ -16974,6 +17001,65 @@ widget SearchBar {
         assert!(
             sfc.contains("@input=\"Search({ q: query, e: $event })\""),
             "state field in map-literal arg must emit the bare binding:\n{}",
+            sfc
+        );
+    }
+
+    /// DEBTS 引擎窗口 #6 (plan-066 发现,plan-008 契约收口): a bare
+    /// `oninput: .H` binding forwards the typed text ONLY when the handler
+    /// DECLARES exactly one param. HistorySearch's `.OnQuery -> {}` (0 params,
+    /// reads the v-model-synced state) must stay a bare call —
+    /// `OnQuery(($event.target as HTMLInputElement).value)` was TS2554 against
+    /// the generated 0-param function; the plan-008 single-param contract
+    /// (`.Draft(v str)`) keeps the wrap.
+    #[test]
+    fn test_input_text_arg_follows_declared_handler_arity() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget QueryProbe {
+    model { var query str = "" }
+    view {
+        col {
+            input (value: .query) {
+                oninput: .OnQuery
+            }
+        }
+    }
+    on {
+        .OnQuery -> {
+            var q str = .query.trim().to_lower()
+            if q != "" {
+                .query = q
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@input=\"OnQuery\""),
+            "0-param handler must stay a bare call (typed-text arg is TS2554):\n{}",
+            sfc
+        );
+
+        let sfc = gen_sfc_from_widget_src(r#"
+widget DraftProbe {
+    model { var draft str = "" }
+    view {
+        col {
+            input (value: .draft) {
+                oninput: .Draft
+            }
+        }
+    }
+    on {
+        .Draft(v str) -> {
+            .draft = v
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("@input=\"Draft(($event.target as HTMLInputElement).value)\""),
+            "single-param handler receives the typed text (plan-008 contract):\n{}",
             sfc
         );
     }
