@@ -8864,7 +8864,28 @@ impl RustTrans {
                             .any(|(f, t)| f.as_str() == field.as_str()
                                 && matches!(t, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
             } else { false };
+            // Plan 032 第七批合并后复验发现的 plan 016 Phase 4 试点缺口（两处，
+            // auto-ai 轨暴露，autodown-core 无此形态）：
+            // (a) 裸 `x.trim()` 家族方法调用本来就产 `&str`——Phase 4 把 trim 加进
+            //     expr_contains_string（concat 检测用）后，arg_is_concat 复用同一
+            //     函数误borrow，`f(x.trim().as_str())` 触发 E0658（str_as_str）。
+            //     排除 trim 家族与 to_str（产 &str 的方法）；to_string/to_lowercase
+            //     等产 owned String 的不在此列。
+            // (b) 未知被调者的 .as_str() 兜底不能叠在 .at 显式 `X.to_string()` 上
+            //     ——作者已显式物化 owned String（如 fn-pointer 字段
+            //     `handler: fn(String)`），兜底假定「&str 更常见」会反转意图
+            //     （auto-ai agent driver.at `handler(step_id.to_string())`）。
+            let arg_is_bare_refstr_method = if let Arg::Pos(Expr::Call(c)) = arg {
+                matches!(c.name.as_ref(), Expr::Dot(_, m)
+                    if matches!(m.as_str(),
+                        "trim" | "trim_start" | "trim_end" | "trim_matches" | "to_str"))
+            } else { false };
+            let arg_is_explicit_to_string = if let Arg::Pos(Expr::Call(c)) = arg {
+                matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "to_string")
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
+                && !arg_is_bare_refstr_method
+                && !(needs_borrow_unknown_callee && !needs_borrow && arg_is_explicit_to_string)
                 && (arg_is_ident || arg_is_concat || arg_is_str_returning_call || arg_is_str_field) {
                 write!(out, ".as_str()")?;
             }
