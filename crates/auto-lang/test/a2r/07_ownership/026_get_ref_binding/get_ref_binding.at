@@ -1,0 +1,60 @@
+// Plan 032 G2-core: `.get()` returns Option<&V> — the key arg must borrow
+// (enum/struct keys too: K: Borrow<K>), and `Some(x)` binds `x: &V`, so
+// returning it / binding it to an owned local needs `.clone()`; a bare
+// value-bearing expression arm next to a block arm needs `{ ...; }`
+// (statement-position match, E0308 otherwise).
+// Consumers: auto-ai daemon tier_router/tracker/provider retranspile seds.
+
+use.rust std::collections::HashMap
+
+#[derive(Debug, Clone)]
+pub type TierCandidate {
+    provider str
+    model str
+}
+
+enum ModelTier {
+    Fast = 0
+    Balanced = 1
+    Deep = 2
+}
+
+// Form 1: enum-typed key borrow + bare ref-binding return.
+pub fn candidates(routing HashMap<ModelTier, List<TierCandidate>>, tier ModelTier) List<TierCandidate> {
+    is routing.get(tier) {
+        Some(v) -> return v,
+        None -> return []
+    }
+    return []
+}
+
+// Form 2: wrapped return Ok(v).
+pub fn find_chain(routing HashMap<ModelTier, List<TierCandidate>>, tier ModelTier) Result<List<TierCandidate>, str> {
+    is routing.get(tier) {
+        Some(v) -> return Ok(v),
+        None -> return Err("missing")
+    }
+    return Err("missing")
+}
+
+// Form 3: owned local from a ref binding + mixed-arm block normalization
+// (None arm's insert returns Option; block arm is unit → `{ ...; }`).
+pub fn grow(routing HashMap<ModelTier, List<TierCandidate>>, tier ModelTier, tc TierCandidate) void {
+    is routing.get(tier) {
+        Some(list) -> {
+            var updated = list
+            updated.push(tc)
+            routing.insert(tier, updated.clone())
+        },
+        None -> routing.insert(tier, [tc])
+    }
+}
+
+// Form 4: str key (str param — no & added) + ref-binding return.
+pub fn lookup(routing HashMap<str, List<TierCandidate>>, key str) List<TierCandidate> {
+    is routing.get(key) {
+        Some(v) -> return v,
+        None -> return []
+    }
+    return []
+}
