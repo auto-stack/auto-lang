@@ -53,7 +53,11 @@ P1 extracted from production tables; props TBD
 
 别名:`Avatar`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `src` | `string` | — | Image source URL |
+| `alt` | `string` | — | Alt text for accessibility |
+| `fallback` | `string` | — | Fallback text when image fails |
 
 子件:`avatarfallback` `avatarimage`
 
@@ -70,8 +74,8 @@ Badge for status or labels
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `text` | `string` | — | Badge text |
-| `variant` | `string` | default | Badge variant |
-| `class` | `string` | — | CSS class(es) |
+| `variant` | `one_of: default|secondary|destructive|outline` | default | Badge variant |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -87,10 +91,10 @@ A clickable button element
 |------|------|---------|-------------|
 | `text` | `string` | — | Button label text |
 | `onclick` | `msg_ref` | — | Message to send when clicked |
-| `class` | `string` | — | CSS class(es) |
-| `disabled` | `string` | false | Whether button is disabled |
-| `variant` | `string` | default | Visual style variant |
-| `size` | `string` | default | Button size |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `union: bool|state_ref` | false | Whether button is disabled |
+| `variant` | `one_of: default|secondary|destructive|outline|ghost|link` | default | Visual style variant |
+| `size` | `one_of: sm|default|lg|icon` | default | Button size |
 | `icon` | `string` | — | Icon name shown alongside the label |
 
 ---
@@ -117,10 +121,10 @@ Checkbox control
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `checked` | `string` | false | Checked state |
+| `checked` | `union: bool|state_ref` | false | Checked state |
 | `onchange` | `msg_ref` | — | Message on toggle |
-| `class` | `string` | — | CSS class(es) |
-| `disabled` | `string` | false | Whether checkbox is disabled |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `union: bool|state_ref` | false | Whether checkbox is disabled |
 
 ---
 
@@ -132,7 +136,16 @@ P1 extracted from production tables; props TBD
 
 别名:`codeEditor` `code_editor`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | — | Stable state key (required for value persistence) |
+| `content` | `string` | — | External value; only rewritten on diff |
+| `lang` | `one_of: rust|python|auto|none|...` | none | Syntax highlighting language |
+| `line_numbers` | `one_of: true|false` | true | Show the line-number gutter |
+| `wrap` | `one_of: true|false` | false | Soft wrap long lines |
+| `vi` | `one_of: true|false` | false | Vi mode (iced only; the vue CodeMirror shell ignores :vi) |
+| `search` | `one_of: regex` | — | Live regex highlight + jump (search-as-you-type) |
+| `tab_width` | `int` | 4 | Tab width in columns |
 
 ---
 
@@ -146,10 +159,10 @@ Vertical layout container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `gap` | `int` | 0 | Spacing between children |
-| `padding` | `string` | 0 | Inner padding |
-| `align` | `string` | start | Cross-axis alignment |
+| `padding` | `union: int|string` | 0 | Inner padding |
+| `align` | `one_of: start|center|end|stretch` | start | Cross-axis alignment |
 
 ---
 
@@ -163,9 +176,9 @@ Generic container with optional constraints
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `max_width` | `int` | — | Maximum width in pixels |
-| `padding` | `string` | — | Inner padding |
+| `padding` | `union: int|string` | — | Inner padding |
 
 ---
 
@@ -179,8 +192,8 @@ Horizontal or vertical divider line
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
-| `direction` | `string` | horizontal | Divider direction |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `direction` | `one_of: horizontal|vertical` | horizontal | Divider direction |
 
 ---
 
@@ -206,7 +219,7 @@ Grid layout container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `columns` | `int` | 1 | Number of columns |
 | `gap` | `int` | 0 | Cell spacing |
 
@@ -271,7 +284,7 @@ Icon display
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `name` | `string` | — | Icon name |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `size` | `int` | 24 | Icon size in pixels |
 
 ---
@@ -288,8 +301,8 @@ Image display
 |------|------|---------|-------------|
 | `src` | `string` | — | Image URL |
 | `alt` | `string` |  | Alt text |
-| `class` | `string` | — | CSS class(es) |
-| `fit` | `string` | cover | Object fit mode |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `fit` | `one_of: cover|contain|fill|none` | cover | Object fit mode |
 
 ---
 
@@ -317,11 +330,11 @@ Text input field
 |------|------|---------|-------------|
 | `value` | `state_ref` | — | Bound value (two-way binding) |
 | `placeholder` | `string` | — | Placeholder text |
-| `type` | `string` | text | Input type |
+| `type` | `one_of: text|password|email|number` | text | Input type |
 | `onchange` | `msg_ref` | — | Message on value change |
 | `onenter` | `msg_ref` | — | Message on Enter key |
-| `class` | `string` | — | CSS class(es) |
-| `disabled` | `string` | false | Whether input is disabled |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `union: bool|state_ref` | false | Whether input is disabled |
 
 ---
 
@@ -337,7 +350,7 @@ Form label
 |------|------|---------|-------------|
 | `for` | `string` | — | Associated form control ID |
 | `text` | `string` | — | Label text |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -349,7 +362,7 @@ Generic list container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -363,7 +376,7 @@ List item
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `onclick` | `msg_ref` | — | Message when clicked |
 
 ---
@@ -388,7 +401,7 @@ Menubar container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 子件:`menubar_content` `menubar_item` `menubar_menu` `menubar_trigger`
 
@@ -414,7 +427,10 @@ P1 extracted from production tables; props TBD
 
 别名:`nav_link` `navlink`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `one_of: href` | Link label text | string |
+| `icon` | `one_of: badge` | Lucide icon name | string |
 
 ---
 
@@ -429,7 +445,7 @@ Paragraph text
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `text` | `string` | — | Paragraph text |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -446,9 +462,9 @@ Anchored popover (overlay)
 | `open` | `expr` | — | Open state (state binding, e.g. .ctx_open) |
 | `x` | `expr` | — | Coordinate anchor x (viewport px, contextmenu form) |
 | `y` | `expr` | — | Coordinate anchor y (viewport px, contextmenu form) |
-| `placement` | `string` | bottom-start | Panel placement relative to anchor |
+| `placement` | `one_of: bottom|bottom-start|bottom-end|top|top-start|top-end|left|right` | bottom-start | Panel placement relative to anchor |
 | `ondismiss` | `msg_ref` | — | Fired on outside click / anchor click / Esc / focus loss |
-| `class` | `string` | — | Panel chrome classes (bg/border/shadow land on the panel) |
+| `class` | `union: string|class_binding` | — | Panel chrome classes (bg/border/shadow land on the panel) |
 
 子件:`popover_content` `popover_trigger`
 
@@ -462,7 +478,10 @@ P1 extracted from production tables; props TBD
 
 别名:`Progress`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `value` | `one_of: 0-100` | 0 | Progress percentage |
+| `max` | `float` | 100 | Maximum value |
 
 ---
 
@@ -476,10 +495,10 @@ Horizontal layout container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `gap` | `int` | 0 | Spacing between children |
-| `padding` | `string` | 0 | Inner padding |
-| `align` | `string` | center | Cross-axis alignment |
+| `padding` | `union: int|string` | 0 | Inner padding |
+| `align` | `one_of: start|center|end|stretch` | center | Cross-axis alignment |
 
 ---
 
@@ -493,8 +512,8 @@ Scrollable container
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
-| `direction` | `string` | vertical | Scroll direction |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `direction` | `one_of: vertical|horizontal|both` | vertical | Scroll direction |
 
 子件:`scrollarea` `scrollareascrollbar` `scrollareathumb` `scrollareaviewport`
 
@@ -522,9 +541,9 @@ Visual divider
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `orientation` | `string` | horizontal | Separator orientation |
+| `orientation` | `one_of: horizontal|vertical` | horizontal | Separator orientation |
 | `label` | `string` | — | Optional label for separator |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -538,7 +557,7 @@ Flexible or fixed space
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 | `size` | `int` | — | Spacer size in pixels (or flex if omitted) |
 
 ---
@@ -554,7 +573,7 @@ Inline text span
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `text` | `string` | — | Span text |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -603,10 +622,10 @@ Multi-line text input
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `placeholder` | `string` | — | Placeholder text |
-| `value` | `string` | — | Textarea value |
+| `value` | `union: string|state_ref` | — | Textarea value |
 | `disabled` | `bool` | false | Disabled state |
 | `rows` | `int` | — | Number of rows |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -728,7 +747,7 @@ Code block with syntax highlighting
 |------|------|---------|-------------|
 | `lang` | `string` | text | Programming language for syntax highlighting |
 | `code` | `string` | — | Code content |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -744,7 +763,7 @@ Tabbed code block showing Auto and Vue code side by side
 |------|------|---------|-------------|
 | `auto` | `string` | — | Auto (AURA) source code |
 | `vue` | `string` | — | Generated Vue.js code |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -858,7 +877,7 @@ Hyperlink
 |------|------|---------|-------------|
 | `href` | `string` | — | Link URL |
 | `text` | `string` | — | Link text |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -928,7 +947,7 @@ Preview card with collapsible code section - like shadcn-vue docs
 | `title` | `string` | Preview | Section title |
 | `auto` | `string` | — | Auto (AURA) source code |
 | `vue` | `string` | — | Generated Vue.js code |
-| `class` | `string` | — | CSS class(es) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 

@@ -725,6 +725,91 @@ fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) 
     (names, vue_mappings, imported)
 }
 
+/// Plan 435 P5b:gallery 页面 Properties 表提取(反向回填源)。
+/// 行 = 5 个 td(Property/Type/Default/Values/Description);表头行跳过。
+/// 返回 元素折叠键 → Vec<(name, type, default, one_of_values, desc)>。
+fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/widgets-gallery/src/front/pages");
+    let mut out: BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> =
+        BTreeMap::new();
+    let Ok(rd) = fs::read_dir(&dir) else { return out };
+    let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+    files.sort();
+    for path in files {
+        if path.extension().map_or(true, |x| x != "at") {
+            continue;
+        }
+        let Ok(src) = fs::read_to_string(&path) else { continue };
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+        let mut cells: Vec<String> = Vec::new();
+        // 深度计数:table { thead { tr { ... } } tbody { ... } } —— 首个 }
+        // 只是闭合内层 tr,不能断
+        let mut depth: i32 = 0;
+        for line in src.lines() {
+            let l = line.trim();
+            if depth == 0 && l.starts_with("table") && l.ends_with('{') {
+                depth = 1;
+                continue;
+            }
+            if depth > 0 {
+                if l.ends_with('{') && !l.starts_with("td") {
+                    depth += 1;
+                } else if l == "}" {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                    continue;
+                }
+                if l.starts_with("td \"") && l.ends_with('"') {
+                    let val = &l[4..l.len() - 1];
+                    cells.push(val.to_string());
+                }
+            }
+        }
+        // 按 5 分组(Property/Type/Default/Values/Description)。表头在部分页是
+        // th(button 页)、部分页无表头(select 页)—— td 只收数据行;
+        // 第二列必须是类型词,防页面内 demo 数据表(td 内容)混入。
+        let type_words = ["string", "str", "boolean", "bool", "number",
+            "float", "int", "integer", "color", "msg_ref", "state_ref",
+            "expr", "closure", "any", "String"];
+        let rows: Vec<[String; 5]> = cells
+            .chunks(5)
+            .filter_map(|c| {
+                if c.len() == 5 && type_words.contains(&c[1].as_str()) {
+                    Some([c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone(), c[4].clone()])
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if rows.is_empty() {
+            continue;
+        }
+        let fold_key_val = fold_key(&stem);
+        out.entry(fold_key_val).or_default().extend(
+            rows.into_iter().map(|r| {
+                let ty = match r[1].as_str() {
+                    "boolean" | "bool" => "bool".to_string(),
+                    "str" | "string" | "String" => "string".to_string(),
+                    "number" | "float" => "float".to_string(),
+                    "int" | "integer" => "int".to_string(),
+                    other => other.to_string(),
+                };
+                let default = if r[2] == "-" || r[2].is_empty() { None } else { Some(r[2].clone()) };
+                let values: Vec<String> = if r[3] == "-" || r[3].is_empty() {
+                    Vec::new()
+                } else {
+                    r[3].split(',').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect()
+                };
+                (r[0].clone(), ty, default, values, r[4].clone())
+            }),
+        );
+    }
+    out
+}
+
 /// Plan 435 P4-4:解析既有 schema/aura.at 的 vue: { .. } 行(按元素折叠键)。
 /// 手写 vue insert 退役后,再生成时以此**保留**存量数据(手写源已删)。
 fn scan_aura_at_vue(src: &str) -> BTreeMap<String, RegistryVue> {
@@ -874,6 +959,8 @@ struct AtGenInput {
     carried_vue: BTreeMap<String, RegistryVue>,
     /// P4-5a:死表(ShadcnRegistry)独有元素的保留集(再生成不丢)
     carried_elements: BTreeSet<String>,
+    /// P5b:gallery 页 Properties 表提取(rs 未声明 props 的元素回填源)
+    gallery_props: BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>>,
     /// 臂组别名并查结果:tag → canonical
     canonical_of: BTreeMap<String, String>,
 }
@@ -1277,7 +1364,42 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                 }
                 out.push_str("    ]\n");
             }
-            _ => out.push_str("    props: []\n"),
+            // Plan 435 P5b:rs 未声明时回填 gallery 页 Properties 表数据
+            // (文档表是现成声明源;类型归一,Values 列 "a, b" → one_of)
+            _ => {
+                let backfill = members
+                    .iter()
+                    .filter_map(|m| inp.gallery_props.get(&fold_key(m)))
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
+                if backfill.is_empty() {
+                    out.push_str("    props: []\n");
+                } else {
+                    out.push_str("    props: [\n");
+                    for (name, ty, default, values, desc) in &backfill {
+                        let type_str = if !values.is_empty() {
+                            format!("one_of:{}", values.join(","))
+                        } else {
+                            ty.clone()
+                        };
+                        let mut entry = format!(
+                            "        {{ name: \"{}\", type: \"{}\"",
+                            name, type_str
+                        );
+                        if let Some(d) = default {
+                            entry.push_str(&format!(", default: \"{}\"", d));
+                        }
+                        if !desc.is_empty() {
+                            entry.push_str(&format!(", description: \"{}\"", escape_at(desc)));
+                        }
+                        entry.push_str(" }");
+                        out.push_str(&entry);
+                        out.push('\n');
+                    }
+                    out.push_str("    ]\n");
+                }
+            }
         }
         out.push_str(&format!("    allows_children: {}\n", rs_def.map(|d| d.allows_children).unwrap_or(true)));
         out.push_str(&format!("    description: \"{}\"\n", escape_at(&description)));
@@ -1435,6 +1557,7 @@ fn schema_drift_fence() {
     // 第 10 源:widgets-gallery 消费侧 tag —— 折叠匹配后仍无生产表登记的,
     // 各自成组入册(unclassified;隐式 fallback / ext 组件路径,P2 告警收编)
     let gallery_tags = scan_gallery_tags();
+    let gallery_props = scan_gallery_props();
     let mut prod_fold: BTreeSet<String> =
         prod_union.iter().map(|t| fold_key(t)).collect();
     // 第 11 源:活注册表 spec(ui_gen/widget/registry.rs)—— 其他表未登记的
@@ -1505,6 +1628,7 @@ fn schema_drift_fence() {
         registry_vue,
         carried_vue,
         carried_elements,
+        gallery_props,
         canonical_of,
     };
 
@@ -1822,3 +1946,4 @@ fn schema_drift_fence() {
         panic!("{}", msg);
     }
 }
+

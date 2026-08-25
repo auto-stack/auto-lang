@@ -1,0 +1,173 @@
+// Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
+// 再生成:KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen
+// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 22 个)。
+
+widget KitchenSinkPage {
+    msg Msg { Go }
+    model { dummy int = 0 }
+    on { .Go -> { } }
+    view {
+        col (style: "p-6 space-y-8") {
+            h1 "Kitchen Sink"
+            text "核心组件全量示例 —— schema 生成页,展示每个组件的 props 取值。" { style: "text-muted-foreground" }
+
+            h2 "avatar"
+            row (style: "gap-2 flex-wrap items-center") {
+                avatar {}
+                avatar (src: "sample") {}
+                avatar (alt: "sample") {}
+                avatar (fallback: "sample") {}
+            }
+
+            h2 "badge"
+            row (style: "gap-2 flex-wrap items-center") {
+                badge "sample" {}
+                badge (variant: "default") {}
+                badge (variant: "secondary") {}
+            }
+
+            h2 "button"
+            row (style: "gap-2 flex-wrap items-center") {
+                button "sample" {}
+                button (variant: "default") {}
+                button (variant: "secondary") {}
+                button (size: "sm") {}
+                button (size: "default") {}
+            }
+
+            h2 "codeeditor"
+            row (style: "gap-2 flex-wrap items-center") {
+                codeeditor {}
+                codeeditor (key: "sample") {}
+                codeeditor (content: "sample") {}
+                codeeditor (lang: "rust") {}
+                codeeditor (lang: "python") {}
+            }
+
+            h2 "col"
+            row (style: "gap-2 flex-wrap items-center") {
+                col {}
+                col (gap: 1) {}
+                col (align: "start") {}
+                col (align: "center") {}
+            }
+
+            h2 "container"
+            row (style: "gap-2 flex-wrap items-center") {
+                container {}
+                container (max_width: 1) {}
+            }
+
+            h2 "divider"
+            row (style: "gap-2 flex-wrap items-center") {
+                divider {}
+                divider (direction: "horizontal") {}
+                divider (direction: "vertical") {}
+            }
+
+            h2 "grid"
+            row (style: "gap-2 flex-wrap items-center") {
+                grid {}
+                grid (columns: 1) {}
+                grid (gap: 1) {}
+            }
+
+            h2 "icon"
+            row (style: "gap-2 flex-wrap items-center") {
+                icon {}
+                icon (name: "sample") {}
+                icon (size: 1) {}
+            }
+
+            h2 "image"
+            row (style: "gap-2 flex-wrap items-center") {
+                image {}
+                image (src: "sample") {}
+                image (alt: "sample") {}
+                image (fit: "cover") {}
+                image (fit: "contain") {}
+            }
+
+            h2 "input"
+            row (style: "gap-2 flex-wrap items-center") {
+                input {}
+                input (placeholder: "sample") {}
+                input (type: "text") {}
+                input (type: "password") {}
+            }
+
+            h2 "label"
+            row (style: "gap-2 flex-wrap items-center") {
+                label "sample" {}
+                label (for: "sample") {}
+            }
+
+            h2 "nav-link"
+            row (style: "gap-2 flex-wrap items-center") {
+                nav-link "sample" {}
+                nav-link (icon: "badge") {}
+            }
+
+            h2 "p"
+            row (style: "gap-2 flex-wrap items-center") {
+                p "sample" {}
+            }
+
+            h2 "popover"
+            row (style: "gap-2 flex-wrap items-center") {
+                popover {}
+                popover (placement: "bottom") {}
+                popover (placement: "bottom-start") {}
+            }
+
+            h2 "progress"
+            row (style: "gap-2 flex-wrap items-center") {
+                progress {}
+                progress (value: "0-100") {}
+                progress (max: 1) {}
+            }
+
+            h2 "row"
+            row (style: "gap-2 flex-wrap items-center") {
+                row {}
+                row (gap: 1) {}
+                row (align: "start") {}
+                row (align: "center") {}
+            }
+
+            h2 "scroll"
+            row (style: "gap-2 flex-wrap items-center") {
+                scroll {}
+                scroll (direction: "vertical") {}
+                scroll (direction: "horizontal") {}
+            }
+
+            h2 "separator"
+            row (style: "gap-2 flex-wrap items-center") {
+                separator {}
+                separator (orientation: "horizontal") {}
+                separator (orientation: "vertical") {}
+                separator (label: "sample") {}
+            }
+
+            h2 "spacer"
+            row (style: "gap-2 flex-wrap items-center") {
+                spacer {}
+                spacer (size: 1) {}
+            }
+
+            h2 "span"
+            row (style: "gap-2 flex-wrap items-center") {
+                span "sample" {}
+            }
+
+            h2 "textarea"
+            row (style: "gap-2 flex-wrap items-center") {
+                textarea {}
+                textarea (placeholder: "sample") {}
+                textarea (disabled: true) {}
+                textarea (rows: 1) {}
+            }
+        }
+    }
+}

@@ -68,7 +68,11 @@ element avatar {
     backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Avatar", import: "@/components/ui/avatar" }
     sub_widgets: ["avatarfallback", "avatarimage"]
-    props: []
+    props: [
+        { name: "src", type: "string", description: "Image source URL" }
+        { name: "alt", type: "string", description: "Alt text for accessibility" }
+        { name: "fallback", type: "string", description: "Fallback text when image fails" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -145,7 +149,16 @@ element codeeditor {
     aliases: ["codeEditor", "code_editor"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CodeEditor", import: "@/components/CodeEditor" }
-    props: []
+    props: [
+        { name: "key", type: "string", description: "Stable state key (required for value persistence)" }
+        { name: "content", type: "string", description: "External value; only rewritten on diff" }
+        { name: "lang", type: "one_of:rust,python,auto,none,...", default: "none", description: "Syntax highlighting language" }
+        { name: "line_numbers", type: "one_of:true,false", default: "true", description: "Show the line-number gutter" }
+        { name: "wrap", type: "one_of:true,false", default: "false", description: "Soft wrap long lines" }
+        { name: "vi", type: "one_of:true,false", default: "false", description: "Vi mode (iced only; the vue CodeMirror shell ignores :vi)" }
+        { name: "search", type: "one_of:regex", description: "Live regex highlight + jump (search-as-you-type)" }
+        { name: "tab_width", type: "int", default: "4", description: "Tab width in columns" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -417,7 +430,10 @@ element nav-link {
     aliases: ["nav_link", "navlink"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "NavLink", import: "@/components/ui/nav-link" }
-    props: []
+    props: [
+        { name: "text", type: "one_of:href", default: "Link label text", description: "string" }
+        { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -463,7 +479,10 @@ element progress {
     aliases: ["Progress"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "Progress", import: "@/components/ui/progress" }
-    props: []
+    props: [
+        { name: "value", type: "one_of:0-100", default: "0", description: "Progress percentage" }
+        { name: "max", type: "float", default: "100", description: "Maximum value" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -3187,7 +3206,11 @@ element dialog {
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Dialog", import: "@/components/ui/dialog" }
     sub_widgets: ["dialogclose", "dialogcontent", "dialogdescription", "dialogfooter", "dialogheader", "dialogtitle", "dialogtrigger"]
-    props: []
+    props: [
+        { name: "open", type: "one_of:true,false", default: "false", description: "Controls dialog visibility" }
+        { name: "title", type: "string", description: "Dialog title" }
+        { name: "description", type: "string", description: "Dialog description" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -3391,7 +3414,11 @@ element dropdown-menu {
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "DropdownMenu", import: "@/components/ui/dropdown-menu" }
     sub_widgets: ["dropdownmenucontent", "dropdownmenuitem", "dropdownmenutrigger"]
-    props: []
+    props: [
+        { name: "text", type: "string", description: "Menu item text" }
+        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the menu item" }
+        { name: "shortcut", type: "string", description: "Keyboard shortcut hint" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -3803,7 +3830,10 @@ element navigationmenu {
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "NavigationMenu", import: "@/components/ui/navigation-menu" }
     sub_widgets: ["navigationmenucontent", "navigationmenuitem", "navigationmenulink", "navigationmenulist", "navigationmenutrigger"]
-    props: []
+    props: [
+        { name: "text", type: "string", description: "Link text" }
+        { name: "href", type: "string", description: "Link destination" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4000,7 +4030,9 @@ element radio-group {
     aliases: ["RadioGroup", "radiogroup"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "RadioGroup", import: "@/components/ui/radio-group" }
-    props: []
+    props: [
+        { name: "value", type: "one_of:Selected radio value", description: "disabled" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4034,7 +4066,9 @@ element scrollarea {
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "ScrollArea", import: "@/components/ui/scroll-area" }
     sub_widgets: ["scrollareascrollbar", "scrollareathumb", "scrollareaviewport"]
-    props: []
+    props: [
+        { name: "class", type: "string", description: "Additional CSS classes" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4080,7 +4114,10 @@ element select {
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Select", import: "@/components/ui/select" }
     sub_widgets: ["selectcontent", "selectgroup", "selectitem", "selectlabel", "selecttrigger", "selectvalue"]
-    props: []
+    props: [
+        { name: "placeholder", type: "string", description: "Placeholder text for select-value" }
+        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the select" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4363,7 +4400,9 @@ element skeleton {
     tier: "web_component"
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Skeleton", import: "@/components/ui/skeleton" }
-    props: []
+    props: [
+        { name: "class", type: "string", description: "Tailwind classes for sizing" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4375,7 +4414,11 @@ element slider {
     aliases: ["Slider"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Slider", import: "@/components/ui/slider" }
-    props: []
+    props: [
+        { name: "min", type: "float", default: "0", description: "Minimum value" }
+        { name: "max", type: "float", default: "100", description: "Maximum value" }
+        { name: "step", type: "float", default: "1", description: "Step increment" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4386,7 +4429,9 @@ element sonner {
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "Sonner", import: "@/components/ui/sonner" }
-    props: []
+    props: [
+        { name: "position", type: "one_of:richColors", default: "Toast position", description: "boolean" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4420,7 +4465,9 @@ element switch {
     aliases: ["Switch"]
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Switch", import: "@/components/ui/switch" }
-    props: []
+    props: [
+        { name: "checked", type: "one_of:true,false", default: "false", description: "Switch state" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -4685,7 +4732,9 @@ element tooltip {
     backends: { web: "component", iced: "fallback", gpui: "unknown" }
     vue: { component: "Tooltip", import: "@/components/ui/tooltip" }
     sub_widgets: ["tooltipcontent", "tooltipprovider", "tooltiptrigger"]
-    props: []
+    props: [
+        { name: "side", type: "one_of:delay-duration", default: "Which side the tooltip appears", description: "number" }
+    ]
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }

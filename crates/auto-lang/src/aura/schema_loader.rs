@@ -429,7 +429,9 @@ impl SchemaLoader {
 
             if let Some(value) = self.extract_string_value(part, "name:") {
                 name = value;
-            } else if let Some(value) = self.extract_value(part, "type:") {
+            } else if let Some(value) = self.extract_string_value(part, "type:")
+                .or_else(|| self.extract_value(part, "type:"))
+            {
                 // Resolve constant reference if needed
                 type_str = self.resolve_type(&value);
             } else if let Some(value) = self.extract_bool_value(part, "required:") {
@@ -590,9 +592,22 @@ impl SchemaLoader {
         let mut parts = Vec::new();
         let mut current = String::new();
         let mut depth = 0;
+        // Plan 435 P5b 修复:引号内的逗号不是分隔符 —— type: "one_of:a,b,c"
+        // 与含逗号的 description 此前被腰斩(one_of 降级为 string、描述丢尾)。
+        let mut in_str = false;
 
         for ch in content.chars() {
             match ch {
+                c if in_str => {
+                    if c == '"' {
+                        in_str = false;
+                    }
+                    current.push(c);
+                }
+                '"' => {
+                    in_str = true;
+                    current.push(ch);
+                }
                 '{' | '[' | '(' => {
                     depth += 1;
                     current.push(ch);

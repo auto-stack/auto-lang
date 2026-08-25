@@ -337,6 +337,112 @@ fn gallery_properties_conform_to_schema() {
 }
 
 // ============================================================================
+// 4) kitchen-sink demo 页生成(gallery pages/kitchen-sink.at)
+//    schema 驱动的核心组件示例:每个「builtin_widget 且含可字面化 props」的
+//    元素一节(默认 + 每 one_of 取值一个变体,至多 3)。
+// ============================================================================
+
+fn literal_prop_variants(prop: &(String, String, String, String)) -> Vec<String> {
+    // 返回该 prop 的示例取值(字面可写的);空 = 跳过
+    let (name, ty, _default, _desc) = prop;
+    if name == "class" || name == "style" || name.starts_with("on") {
+        return Vec::new();
+    }
+    if let Some(opts) = ty.strip_prefix("one_of:") {
+        // prop_type_str 用 | 连接 OneOf 取值
+        return opts.split('|').take(3).map(|v| v.trim().to_string()).collect();
+    }
+    match ty.as_str() {
+        "string" => vec!["sample".to_string()],
+        "bool" => vec!["true".to_string()],
+        "int" | "float" | "color" => vec!["1".to_string()],
+        _ => Vec::new(), // state_ref/msg_ref/expr/closure/union —— 需状态,跳过
+    }
+}
+
+fn generate_kitchen_sink() -> String {
+    let mut elems = load_elements();
+    elems.retain(|e| {
+        e.tier == "builtin_widget" && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
+    });
+    elems.sort_by(|a, b| a.canonical.cmp(&b.canonical));
+
+    let mut at = String::new();
+    at.push_str("// Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)
+");
+    at.push_str("// 再生成:KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen
+");
+    at.push_str("// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 ");
+    at.push_str(&format!("{}", elems.len()));
+    at.push_str(" 个)。
+
+");
+    at.push_str("widget KitchenSinkPage {
+");
+    at.push_str("    msg Msg { Go }
+");
+    at.push_str("    model { dummy int = 0 }
+");
+    at.push_str("    on { .Go -> { } }
+");
+    at.push_str("    view {
+");
+    at.push_str("        col (style: \"p-6 space-y-8\") {
+");
+    at.push_str("            h1 \"Kitchen Sink\"
+");
+    at.push_str("            text \"核心组件全量示例 —— schema 生成页,展示每个组件的 props 取值。\" { style: \"text-muted-foreground\" }
+");
+    for e in &elems {
+        at.push_str(&format!("
+            h2 \"{}\"
+", e.canonical));
+        at.push_str("            row (style: \"gap-2 flex-wrap items-center\") {
+");
+        // 默认形态(裸标签或 text 简写)
+        if e.props.iter().any(|pr| pr.0 == "text") {
+            at.push_str(&format!("                {} \"sample\" {{}}
+", e.canonical));
+        } else {
+            at.push_str(&format!("                {} {{}}
+", e.canonical));
+        }
+        // 变体:每 prop 至多 2 个取值,总变体至多 4
+        let mut variants = 0;
+        for pr in &e.props {
+            if variants >= 4 { break; }
+            for v in literal_prop_variants(pr).into_iter().take(2) {
+                if variants >= 4 { break; }
+                if pr.0 == "text" { continue; } // text 已用简写
+                at.push_str(&format!(
+                    "                {} ({}: {}) {{}}
+",
+                    e.canonical, pr.0, quote_if_str(&v, &pr.1)
+                ));
+                variants += 1;
+            }
+        }
+        at.push_str("            }
+");
+    }
+    at.push_str("        }
+");
+    at.push_str("    }
+");
+    at.push_str("}
+");
+    at
+}
+
+fn quote_if_str(v: &str, ty: &str) -> String {
+    if ty.starts_with("one_of:") || ty == "string" || ty == "color" {
+        format!("\"{}\"", v)
+    } else {
+        v.to_string()
+    }
+}
+
+// ============================================================================
 // 生成物同步围栏(core.md 与 schema 同步)
 // ============================================================================
 
@@ -363,5 +469,28 @@ fn core_reference_in_sync() {
         committed, generated,
         "docs/components/core.md 与 schema 不同步 —— 再生成:\n\
          DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen"
+    );
+}
+
+#[test]
+fn kitchen_sink_page_in_sync() {
+    let path = repo_root().join("examples/widgets-gallery/src/front/pages/kitchen-sink.at");
+    let generated = generate_kitchen_sink();
+    if std::env::var("KITCHEN_SINK_UPDATE").is_ok() {
+        fs::write(&path, &generated).expect("write kitchen-sink.at");
+        panic!(
+            "kitchen-sink.at 已重写 —— 复核 diff 后重跑(不带环境变量)确认绿(golden 需同步重采样)"
+        );
+    }
+    let committed = fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!(
+            "kitchen-sink.at 缺失 —— 先生成:
+KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
+        )
+    });
+    assert_eq!(
+        committed, generated,
+        "kitchen-sink.at 与 schema 不同步 —— 再生成:
+KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen"
     );
 }

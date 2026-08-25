@@ -392,3 +392,26 @@
 - **验证**:docs_gen 3/3 + 围栏/golden/P4 全绿 + lib 3162。
 - **待续(P5b)**:kitchen-sink demo 页(schema 驱动全 props 展示 + playwright
   视觉回归);gallery 空 props 元素的 schema 回填(文档表是现成数据源,反向生成)。
+
+### P5b:尾巴 —— gallery props 回填 + kitchen-sink demo + loader 类型修复(2026-08-25)
+
+- **gallery props 回填(P5b-1)**:生成器新源 `scan_gallery_props()` 从 gallery 页
+  手写 Properties 表(td 五列:Property/Type/Default/Values/Description)提取,
+  为 rs 未声明的空 props 元素回填(当前 15 元素/34 props;类型归一
+  boolean→bool/str→string,Values 列→one_of,深度计数的表解析器防 thead 嵌套
+  误断)。**props 从此有三个来源的优先级:rs > gallery 回填 > 空**。
+- **kitchen-sink demo 页(P5b-2)**:`generate_kitchen_sink()` 生成 gallery
+  `pages/kitchen-sink.at`(23 个 builtin_widget 含字面化 props 的元素,每元素
+  默认 + 每取值一变体至多 3;one_of 拆分为独立变体,bool 不加引号);
+  同步围栏 `kitchen_sink_page_in_sync`。golden 基线重采样(75→76 文件)。
+- **loader 类型解析修复(P5b 排障副产物)**:
+  1. `split_by_comma` 不感知引号 → `type: "one_of:a,b,c"` 在首个逗号被腰斩,
+     one_of/union 静默降级为 string(description 含逗号也丢尾)→ 加 `in_str`
+     状态跟踪;
+  2. `extract_value(part, "type:")` 同样在逗号截断 → 改 `extract_string_value`
+     优先(引号内不截断);
+  3. **`Q` 绑定模式陷阱**:Rust `match ch { Q => ... }` 中裸 `Q` 是变量绑定
+     (匹配一切),不是字符字面量 —— 状态机失灵且不报错;改 `'\"'` 字面量。
+  三修后 `variant` 正确返回 `OneOf(["default","secondary",...])`,
+  core.md/kitchen-sink 同步产出正确类型。
+- **验证**:docs_gen 4/4 + golden(76 文件) + 围栏 + P4 4/4 + lib 3172 全绿。

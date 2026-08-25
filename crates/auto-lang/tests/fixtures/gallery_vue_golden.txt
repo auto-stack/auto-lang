@@ -1,4 +1,4 @@
-front/app.at	24880	8e8405b821000de4
+front/app.at	25588	6c7707f01f95f326
 front/components/carousel.at	2652	457a80d51bd3b925
 front/components/code_block.at	3147	cef46bbff14bb00a
 front/components/combobox.at	4152	846e504bf467f7ae
@@ -11,9 +11,11 @@ front/pages/accordion.at	11976	c4e1a245f5ab5356
 front/pages/alert.at	13520	367a9a7138bcfdab
 front/pages/alertdialog.at	11678	dc42f5a4d94fe0c4
 front/pages/alignment.at	37571	e6c91739d4bbae10
+front/pages/area-chart.at	9746	01298a25eec6fb5b
 front/pages/aspectratio.at	19222	bf8cb0ba7845940b
 front/pages/avatar.at	9670	b6b4b6f712362fed
 front/pages/badge.at	13871	7410ac3a93034678
+front/pages/bar-chart.at	15579	753da5f8db3d815c
 front/pages/breadcrumb.at	10862	a64d83909c36c342
 front/pages/button.at	24944	952e13afc24738df
 front/pages/calendar.at	9430	e51b73e7b289ea6a
@@ -27,9 +29,10 @@ front/pages/collapsible.at	10939	bafab1ccad27c98a
 front/pages/combobox.at	10524	43c7a7c12590ed41
 front/pages/command.at	10626	7bd16ce9d2055f79
 front/pages/contextmenu.at	13215	06779d6d3ab49f85
-front/pages/datatable.at	135877	c7c7fe9cddbf2e6e
+front/pages/datatable.at	135084	7af47337870dfaa6
 front/pages/datepicker.at	10326	ea96ff3d52203897
 front/pages/dialog.at	11006	3162030faf8dec33
+front/pages/donut-chart.at	11348	6c92a3b835ba102f
 front/pages/drawer.at	10482	3d5d07860b9f0b94
 front/pages/dropdownmenu.at	11988	93a70595bc40dbbb
 front/pages/flex.at	32266	e7fd8f8d3ee0c0f6
@@ -39,6 +42,7 @@ front/pages/grid.at	29811	7054d87fb204760e
 front/pages/hovercard.at	12122	52ac954530465257
 front/pages/index.at	67498	5d285b0bfbabcfaa
 front/pages/input.at	28256	880746035b9d3b7d
+front/pages/kitchen-sink.at	8015	3988bbbd64413829
 front/pages/label.at	13292	b1559357a7f893a3
 front/pages/line-chart.at	19248	7252f431c03dda43
 front/pages/menubar.at	8959	c476c7702f3f12a0
@@ -70,4 +74,4 @@ front/pages/toast.at	38118	39ec2c7cb1a6156c
 front/pages/toggle.at	10194	26b1af2380ce5074
 front/pages/togglegroup.at	10794	cbc1ce2d626fd7f5
 front/pages/tooltip.at	10410	eee44c7a6785549f
-TOTAL	1361620	96150319820a43e3
+TOTAL	1406227	d6f5174cabc5c7e4
