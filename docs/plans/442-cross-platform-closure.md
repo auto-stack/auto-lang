@@ -5,9 +5,11 @@
 > 轨依 §6.1 裁定递延）已落地。**Phase C：C1 语料面全清**——后端 auto-src
 > 32 文件 **31/32 VM-clean**（第 32 = extern_sigs 旁车设计不计，五批修复
 > 927909ef0/…/ea51316fc）；**C2 serve 适配层已落地**（1f2c0163e，axum →
-> AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）。剩余：C2 验收三件
-> （extern 响应构造器 VM 侧实现/SSE 形态/musk 侧 api.at 契约接线 + parity
-> 套跑）+ C3 观察期未动 → 本计划**未全部完成**。
+> AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）；**C2 ① extern 响应
+> 构造器 VM 侧已落地**（2f68ff62c）+ **C2 ② SSE 形态适配层已覆盖**（6b989c00d）。
+> 剩余：C2 ③（musk 侧 api.at 契约/back.project 接线 + parity 契约套跑，
+> 阻塞项 = VM 侧业务 extern 全量 FFI 覆盖）+ C3 观察期未动 → 本计划**未全部
+> 完成**（验收标准第 3/4 条未达成）。
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -441,6 +443,43 @@
     ② **SSE 形态**（run_events 的 Sse/Event/KeepAlive 提取器链）适配层
     未覆盖;③ **musk 侧 api.at 契约/back.project 接线**（C1 已登记的
     动作面）+ parity 契约套跑对照 hw 后端全绿（C2 验收本体）。
+  - **✅ C2 ① extern 响应构造器 VM 侧已落地（2026-08-26，worktree
+    plan-442；2f68ff62c）**：musk 后端 .at handler 经 extern_sigs 胶水
+    搭响应（ok_response/err_response/json_response/error_response/
+    text_response/empty_response/err_json_response/to_response +
+    resp_is_err/resp_err_code/resp_err_message + sse_named_event/
+    sse_event/sse_plain_event），VM 侧此前为空体 no-op → 响应恒 null。
+    落地 = 新 `vm/ffi/musk_response_ctor.rs`（nullish 处理：`null` 字面量
+    编译为 CONST_I32 -1,故 is_null 或 i32==-1 视为无值）+ `stdlib::
+    insert_http_response`（HttpResponseData 注册）+ `native_catalog`
+    for_each_bigvm_native/NATIVE_ID_ENTRIES 裸名固定 ID（3114-3127,codegen
+    native_id 决策在 auto_modules 阴影前命中 → CALL_NAT）+ `register_stdlib_
+    ffi` register_shim_by_name 绑定。回归 `e2e_musk_response_constructors`
+    （/ok 200 "hello"、/err 500 {"error":"boom"}、/text 404、/to(null,..)
+    500——取代此前统一 200 null）；plan442 + catalog_integrity + e2e_notes_
+    crud 绿。
+  - **✅ C2 ② SSE 形态适配层已覆盖（2026-08-26，worktree plan-442；
+    6b989c00d）**：`Sse.new(stream).keep_alive(KeepAlive.new()).into_
+    response()` 链在 VM 侧全通——`musk_response_ctor` 新增 Sse{iter_id,
+    keep_alive}/KeepAlive 堆对象 + shim_sse_new/keepalive_new/keep_alive/
+    into_response（into_response 返 generator 迭代器 id,serve_async 既有
+    iterator→SSE 臂接管流式；sse_frame_from_nv 把 yielded Event 格式化为
+    `event: <name>\ndata: <payload>`（或 Result.Ok 解包）,非事件原始值保持
+    `data: N` 旧路径）；`shim_rust_stdlib_dispatch` 补 ("Sse","new"/
+    "keep_alive"/"into_response") + ("KeepAlive","new") 臂;http_server
+    async SSE 环改 pop_nv + sse_frame_from_nv（i32 -1 done 哨兵保留）。
+    回归 `e2e_sse_named_event_frames`（yield sse_named_event → event:/
+    data: 帧）+ `e2e_sse_chain`（全链流式）；既有 e2e_sse_generator_handler/
+    indirect_generator/concurrent_sse 仍绿。
+  - **▶ C2 ③（剩余）——musk 侧 api.at 契约/back.project 接线 + parity
+    契约套跑**：auto-lang 侧 `back.project` 外部后端装载（config.rs
+    external_backend_dir/resolve_back_api,Plan 061）机制已存在;
+    阻塞项 = VM 侧 **业务 extern 全量 FFI 覆盖**（relay_start_run/
+    specs_load/… ~250 个 extern_sigs 符号,当前空体 no-op → 业务 extern
+    返回值恒 null → ok_response(null) 恒 "null"）。+ musk serve 以 VM 起服
+    后 parity 契约（parity_relay_api 等 HTTP 面）对照 hw 后端全绿。
+    属 auto-lang 侧成规模工作（ffi_dual 逐符号 or shim 批量构建）,
+    非本批①/②可单独解锁——故验收标准第 3/4 条仍未达成。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 
