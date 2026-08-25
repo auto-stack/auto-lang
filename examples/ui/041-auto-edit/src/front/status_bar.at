@@ -1,0 +1,53 @@
+// status_bar.at — StatusBar 组件（Plan 449；状态栏，原 app.at 159-187 行）。
+//
+// 013-todo 的 TodoList 形态：无 props（标量状态经 `use editor_store` 直读
+// .store.*），自有 msg，handler 直调 store（vm 已验证模式）。
+// 原顶部分隔线随组件内聚；terminal 切换按钮保持双分支（括号属性内多行
+// if 不解析，图标着色差异是唯一分支差异）。
+// 注：组件子树对 MCP 快照不可见（vm 已知边界）——测试对状态栏断言走
+// autoui_state（line/col/sel/fold_hidden），无快照定位依赖。
+
+use editor_store: EditorStore
+
+widget StatusBar {
+    msg { ToggleConsole }
+
+    view {
+        col (style: "w-full shrink-0") {
+            col (style: "h-px w-full bg-border")
+            row (style: "h-6 items-center bg-muted/30 shrink-0 w-full gap-3 px-2") {
+                text "Auto" { style: "text-[11px] text-zinc-400" }
+                text "UTF-8" { style: "text-[11px] text-zinc-400" }
+                text "Spaces: 4" { style: "text-[11px] text-zinc-400" }
+
+                text "${.store.line}:${.store.col}" {
+                    style: "text-[11px] text-zinc-300 ml-auto"
+                }
+                if .store.sel > 0 {
+                    text "Sel ${.store.sel}" { style: "text-[11px] text-zinc-300" }
+                }
+                if .store.fold_hidden > 0 {
+                    text "Fold ${.store.fold_hidden}" { style: "text-[11px] text-zinc-300" }
+                }
+                if .store.console_open == false {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-400") {}
+                        onclick: .ToggleConsole
+                        style: "h-6 w-9 px-0 py-0"
+                    }
+                }
+                if .store.console_open == true {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-zinc-200") {}
+                        onclick: .ToggleConsole
+                        style: "h-6 w-9 px-0 py-0"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .ToggleConsole -> { store.ActConsole() }
+    }
+}

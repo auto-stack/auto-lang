@@ -1,0 +1,39 @@
+// ctx_menu.at — EditorCtxMenu 组件（Plan 449；Plan 422 P3 右键菜单）。
+//
+// 坐标锚 popover：open/x/y 锚态经 `use editor_store` 直读（浮点状态，
+// 无对应 props 先例）；菜单项交互走自有 msg，handler 直调 store 的
+// .CtxCut/.CtxCopy/.CtxSelectAll/.CtxClose（013 形态）。
+// ondismiss 覆盖点击外部/Esc；三个菜单项为同款按钮（样式内聚）。
+// 注：组件子树对 MCP 快照不可见（vm 已知边界）——测试矩阵不触碰右键菜单
+// （Ctx* 仅人工路径），无快照定位依赖。
+
+use editor_store: EditorStore
+
+widget EditorCtxMenu {
+    msg { Cut, Copy, SelectAll, Dismiss }
+
+    view {
+        popover (open: .store.ctx_open, x: .store.ctx_x, y: .store.ctx_y, ondismiss: .Dismiss,
+                 class: "w-40 bg-[#16171B] border border-zinc-700 shadow-md py-1") {
+            button (text: "剪切", variant: "text") {
+                onclick: .Cut
+                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+            }
+            button (text: "复制", variant: "text") {
+                onclick: .Copy
+                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+            }
+            button (text: "全选", variant: "text") {
+                onclick: .SelectAll
+                style: "h-7 w-full justify-start px-2 text-[12px] text-zinc-200"
+            }
+        }
+    }
+
+    on {
+        .Cut -> { store.CtxCut() }
+        .Copy -> { store.CtxCopy() }
+        .SelectAll -> { store.CtxSelectAll() }
+        .Dismiss -> { store.CtxClose() }
+    }
+}
