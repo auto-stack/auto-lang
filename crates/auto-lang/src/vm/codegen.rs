@@ -1888,12 +1888,18 @@ impl Codegen {
                                 // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
                                 Expr::Array(elems) => {
                                     if elems.is_empty() {
-                                        // Empty array literal defaults to Array<Int>
+                                        // Plan 445 M3：空数组字面量默认**动态 List**——
+                                        // 此前落静态 Array{Int, len:0}，decl 路径（vm_bridge
+                                        // new_from_decls，即 `auto run -r vm` 实机）的
+                                        // `out.push(x)` 按静态数组/字符串方法解析到
+                                        // auto.str.push(178)（应为 auto.list.push=101），
+                                        // push 静默失效 → 滑窗重建列表恒空 → 024-charts
+                                        // 实机 monthly=[] → 重算 510/0 DivisionByZero
+                                        // 中止（ASH_DEBUG_VM_LOG 实锤）。与
+                                        // synthesize_state_type 的 "var days = [] →
+                                        // dynamic array" 语义对齐。
                                         if matches!(store.ty, Type::Unknown) {
-                                            Type::Array(crate::ast::ArrayType {
-                                                elem: Box::new(Type::Int),
-                                                len: 0,
-                                            })
+                                            Type::List(Box::new(Type::Unknown))
                                         } else {
                                             store.ty.clone()
                                         }
@@ -4905,6 +4911,13 @@ impl Codegen {
                 let elem_count = elems.len() as u8;
                 self.emit(OpCode::CREATE_ARRAY);
                 self.code.push(elem_count);
+                // Plan 445 M3：数组字面量必须设置 last_expr_type —— 此前残留
+                // 前一表达式的类型（如 f-string 的 String），紧随的
+                // `var out = []` 经 store 推断（last_expr_type==String →
+                // StrFixed(0)）把 out 记成字符串，后续 out.push 按
+                // str.push(178) 解析而静默失效（024-charts 实机 .Tick 滑窗
+                // 重建列表恒空 → 重算 DivisionByZero 中止）。
+                self.last_expr_type = ObjectType::Array;
             }
             // Plan 200: Tuple literal (expr1, expr2, ...)
             Expr::Tuple(elems) => {

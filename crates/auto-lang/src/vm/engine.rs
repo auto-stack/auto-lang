@@ -4663,8 +4663,41 @@ impl AutoVM {
                                 } else {
                                     task.ram.push_i32(0);
                                 }
+                            }
+                            // Plan 445 M3: GenericInstanceData 同语义 —— vm_bridge
+                            // 把 model 字面量物化为 GenericInstanceData
+                            // (eval_expr_to_value 的 Object 臂)，UI 运行时
+                            // (`auto run -r vm`) 的 d[field_name] 全落此表示
+                            // (024-charts 实机探针：落 Unknown → push 0)。
+                            // 按名查 field_names → fields；Value 分发镜像
+                            // ObjectData 臂（RC 契约一致）。
+                            else if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                if auto_val::is_string(index_nv) {
+                                    let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                                    let field_name = self.strings.read().unwrap()
+                                        .get(key_pool_idx)
+                                        .map(|b| String::from_utf8_lossy(b).to_string())
+                                        .unwrap_or_default();
+                                    let fidx = inst.field_names.iter().position(|n| *n == field_name);
+                                    let value = fidx.and_then(|i| inst.get_field(i)).cloned();
+                                    match value {
+                                        Some(auto_val::Value::Int(i)) => { task.ram.push_i32(i); }
+                                        Some(auto_val::Value::Uint(u)) => { task.ram.push_i32(u as i32); }
+                                        Some(auto_val::Value::Float(f)) => { task.ram.push_f32(f as f32); }
+                                        Some(auto_val::Value::Double(d)) => { task.ram.push_f64(d); }
+                                        Some(auto_val::Value::Bool(b)) => { task.ram.push_nv(auto_val::encode_bool(b)); }
+                                        Some(auto_val::Value::Char(c)) => { task.ram.push_i32(c as i32); }
+                                        Some(auto_val::Value::Str(s)) => {
+                                            self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                        }
+                                        Some(auto_val::Value::VmRef(r)) => { self.rc_push(task, auto_val::encode_object(r.id as u32)); }
+                                        _ => { task.ram.push_i32(0); } // Nil / 缺字段
+                                    }
+                                } else {
+                                    task.ram.push_i32(0);
+                                }
                             } else {
-                                vm_debug!("DEBUG GET_ELEM: Unknown heap object type");
+                                vm_debug!("DEBUG GET_ELEM: Unknown heap object type: {:?}", guard.type_tag());
                                 task.ram.push_i32(0); // Unknown heap object type
                             }
                         } else {
