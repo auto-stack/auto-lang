@@ -1,0 +1,31 @@
+enum Val {
+    VI(int)
+    VS(str)
+    VN
+}
+
+fn main() {
+    let v = Val.VI(42)
+    is v {
+        Val.VI(x) -> print(x.type)
+        else -> 0
+    }
+    let s = Val.VS("txt")
+    is s {
+        Val.VS(t) -> print(t.type)
+        else -> 1
+    }
+    let u = Val.VN
+    is u {
+        Val.VN -> {
+            let n = 7
+            print(n.type)
+        }
+        else -> 2
+    }
+    let m = 5
+    is m {
+        if m > 3 -> print(m.type)
+        else -> 3
+    }
+}

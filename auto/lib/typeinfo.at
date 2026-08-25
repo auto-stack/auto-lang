@@ -183,6 +183,83 @@ fn p_text_at(p P, n int) str {
 }
 
 // 语句分派:fn → 注册;let/var → 推断绑定;print 查询;其余表达式消费。
+// ── is 语句走查(Plan 447 部分② Phase 5)───────────────────────
+// 臂体走查 + 载荷绑定按 Enum.Variant.slot 入局部作用域(镜像宿主 infer
+// 对 is 臂绑定的处理);print(EXPR.type) 查询在臂体内照常收集。
+
+// 臂体:{...} 块逐语句;return/break/continue 单语句;其余单表达式语句
+fn t_walk_is_arm_body(mut p P, mut fns List<TFnSig>, mut out List<str>) {
+    if p_kind(p) == "LBrace" {
+        t_body_walk(p, fns, out)
+        return
+    }
+    if p_kind(p) == "Return" {
+        p_next(p)
+        var k = p_kind(p)
+        if k == "Newline" || k == "Semi" || k == "RBrace" || k == "EOF" {
+            return
+        }
+        t_infer_expr(p, 0, fns)
+        return
+    }
+    if p_kind(p) == "Break" || p_kind(p) == "Continue" {
+        p_next(p)
+        return
+    }
+    t_stmt_walk(p, fns, out)
+}
+
+fn t_is_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
+    p_next(p)
+    t_infer_expr(p, 0, fns)
+    p_expect(p, "LBrace")
+    skip_empty_lines(p)
+    while p.err == "" && p_kind(p) != "RBrace" && p_kind(p) != "EOF" {
+        if p_kind(p) == "If" {
+            p_next(p)
+            t_infer_expr(p, 0, fns)
+            p_expect(p, "Arrow")
+            t_walk_is_arm_body(p, fns, out)
+        } else if p_kind(p) == "Else" {
+            p_next(p)
+            p_expect(p, "Arrow")
+            t_walk_is_arm_body(p, fns, out)
+        } else {
+            push_scope(p)
+            // 模式复用 parser.at 的 is_pattern(游标推进 + tag-cover 绑定
+            // 信息:name=枚举名/word=变体名/args=绑定逗号串)
+            var pat = is_pattern(p)
+            while p.err == "" && p_kind(p) == "VBar" {
+                p_next(p)
+                skip_empty_lines(p)
+                is_pattern(p)
+                skip_empty_lines(p)
+            }
+            p_expect(p, "Arrow")
+            skip_empty_lines(p)
+            if pat.kind == "tag-cover" && pat.args != "" && pat.args != "_" {
+                var binds = split_commas(pat.args)
+                var i = 0
+                while i < binds.len() {
+                    if binds.get(i) != "_" {
+                        var slot_ty = p_decl_lookup(p, pat.name + "." + pat.word + "." + i.str())
+                        p_bind(p, binds.get(i), slot_ty)
+                    }
+                    i = i + 1
+                }
+            }
+            t_walk_is_arm_body(p, fns, out)
+            pop_scope(p)
+        }
+        if p_kind(p) == "Comma" {
+            p_next(p)
+            skip_empty_lines(p)
+        }
+        skip_empty_lines(p)
+    }
+    p_expect(p, "RBrace")
+}
+
 fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     if p.err != "" {
         return
@@ -193,6 +270,17 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
     var k = p_kind(p)
     if k == "Fn" {
         t_fn_walk(p, fns, out)
+        return
+    }
+    if k == "Enum" {
+        // 枚举声明(Plan 447 部分② Phase 5):直接复用 parser.at 的
+        // parse_enum_decl——载荷类型按 Enum.Variant.slot 入 decls 与
+        // parser 侧单一事实源(返回的 dump 串弃置,无走查副作用)
+        parse_enum_decl(p)
+        return
+    }
+    if k == "Is" {
+        t_is_walk(p, fns, out)
         return
     }
     if k == "Let" || k == "Var" || k == "Const" || k == "Shared" {
