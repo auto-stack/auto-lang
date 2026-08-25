@@ -334,6 +334,7 @@ const DOCS_INCLUDE = new Set([
   'features',
   'tour',  // Plan 244: Auto Language Tour
   'script-to-ship',  // Plan 358: Script-to-Ship workflow tour
+  'components',  // Plan 435 P5: schema 生成的组件 API 参考(core.md)
 ])
 
 function shouldIncludeDoc(relPath) {
