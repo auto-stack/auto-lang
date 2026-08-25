@@ -15,6 +15,7 @@ Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 | `n2-routing-codegen-paths/` | N2 | 🟢 GREEN | route page-module paths exist |
 | `n3-handler-local-vars/` | N3 | 🟢 GREEN | local mutable vars in handler blocks |
 | `oom-event-binop-arg/` | OOM | 🟢 GREEN | binop in msg-call event arg (parser OOM fix) |
+| `vm-svg-chart-layers/` | VM-render | 🟢 GREEN | VM 轨 svg 图表绘制三层（字面量透传/静态路径/动态绑定路径，Plan 445 M3 渲染端 canary） |
 
 Each canary's `src/front/app.at` documents the desired behavior and the
 specific codegen/parser change needed ("What's needed" header comment).

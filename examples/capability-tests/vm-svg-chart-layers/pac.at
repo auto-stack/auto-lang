@@ -1,0 +1,12 @@
+// pac.at - VM 轨 svg 图表绘制分层探针（capability fixture）
+//
+// 最小 barchart 静态用例，逐层隔离 VM 轨 chart 绘制链路的三层：
+//   ① 静态字面量属性（坐标轴 line）—— svgdoc 字面量透传层
+//   ② 字面量 path（蓝柱）—— SVG 路径静态层
+//   ③ 动态绑定 path（绿柱，Init 计算赋值）—— 绑定解析层（Plan 445 M3）
+// 任一层缺失即指认对应环节回归（序列化器 / 表达式解析 / svg::Handle 渲染）。
+
+name: "vm-svg-chart-layers"
+version: "0.1.0"
+scene: "ui"
+render: "vm"

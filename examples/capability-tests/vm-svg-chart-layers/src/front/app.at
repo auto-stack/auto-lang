@@ -1,0 +1,40 @@
+// front/app.at — VM 轨 svg 图表绘制分层探针（最小 barchart 静态用例）
+//
+// 一屏三根元素，各钉一层（2026-08-25 诊断主仓二进制过期时建立；序列化
+// 格式另有仓库内单测 plan445_m3_svgdoc_dynamic_props 钉死，本夹具钉
+// **渲染端**——svg::Handle 是否真把文档画到 iced 窗口）：
+//
+//   ① 灰色横线   = 坐标轴（静态字面量属性透传）
+//   ② 蓝柱(左)   = 字面量 d 路径（svg 路径静态层）
+//   ③ 绿柱(右)   = .p 绑定 d 路径（Init 计算的动态绑定层，Plan 445 M3）
+//
+// 预期：三层全部画出。缺 ①② = 序列化/渲染回归；缺 ③ = 动态绑定解析
+// 回归（或运行二进制早于 445 M3 修复——先确认 auto.exe 已重建）。
+//
+// 验证：auto run -r vm，肉眼或 autoui_screenshot 核对三元素。
+// 既有回归先例：主仓二进制旧于修复合入 17 分钟 → ③ 丢失（2026-08-25）。
+
+widget App {
+    msg Msg { Init }
+
+    model {
+        p str = ""
+    }
+
+    on {
+        .Init -> {
+            .p = "M180 260 h60 v-120 h-60 Z"
+        }
+    }
+
+    view {
+        col (style: "p-6 gap-2") {
+            text "VM svg chart layers: axis / static bar / dynamic bar" {}
+            svg (viewBox: "0 0 400 300", style: "w-full h-auto") {
+                line (x1: "40", y1: "260", x2: "360", y2: "260", stroke: "#888888", stroke-width: "2") {}
+                path (d: "M60 260 h60 v-200 h-60 Z", fill: "#2563eb") {}
+                path (d: .p, fill: "#16a34a") {}
+            }
+        }
+    }
+}
