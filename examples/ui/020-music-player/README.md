@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { PlayPause, NextTrack, PrevTrack, SeekChanged }
+    msg { PlayPause, NextTrack, PrevTrack, SeekChanged }
 
     model {
         var is_playing str = "Playing"

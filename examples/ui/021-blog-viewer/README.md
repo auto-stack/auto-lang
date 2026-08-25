@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { SelectArticle, BackToList }
+    msg { SelectArticle, BackToList }
 
     model {
         var view_mode str = "list"

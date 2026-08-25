@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { PrevMonth, NextMonth }
+    msg { PrevMonth, NextMonth }
 
     model {
         var month str = "April"

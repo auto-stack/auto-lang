@@ -48,7 +48,7 @@ model {
 ### Messages
 
 ```auto
-msg Msg {
+msg {
     Init,
     AddTodo,
     ToggleTodo(int),

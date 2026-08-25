@@ -16,7 +16,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { NewNote, SearchChanged }
+    msg { NewNote, SearchChanged }
 
     model {
         var search str = ""

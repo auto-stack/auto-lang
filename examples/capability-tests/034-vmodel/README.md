@@ -27,7 +27,7 @@ identifier:
 
 ```auto
 widget TextField(label: str, modelValue: str) {
-    msg Msg { "update:modelValue"(str) }
+    msg { "update:modelValue"(str) }
     view {
         input { value: .modelValue, oninput: ."update:modelValue" }
     }

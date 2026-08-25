@@ -15,7 +15,7 @@ See `src/front/app.at`:
 
 ```auto
 widget App {
-    msg Msg { Start, Stop, Reset, Lap }
+    msg { Start, Stop, Reset, Lap }
 
     model {
         var running str = "false"

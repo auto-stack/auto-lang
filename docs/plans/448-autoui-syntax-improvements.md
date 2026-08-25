@@ -25,6 +25,46 @@
 - 遗留（另行 housekeeping）：rust-workspace/counter 副本为 a2rust-ui 旧产物
   （本就滞后于现行 codegen），无标准 regen 命令，未刷新。
 
+## 审计补漏（2026-08-25 第二轮，实施后全面自查）
+
+首轮实施后逐条对照计划审计，发现并修复/补齐：
+
+1. **view fn 片段内联 lambda 静默丢失（真 bug，已修）**：desugar 预pass只走
+   `decl.view`，而 view fn 片段在 `extract_view_node` 内部从 thread-local
+   注册表展开（Element/Component 两个调用点），完全绕过预pass——实证失败形态
+   为 onclick 空字符串、handler 体丢弃且无任何报错。修复：铸名上下文改为
+   thread-local `INLINE_MINTS`（与 `VIEW_FRAGMENTS` 同型，每 widget 重置），
+   两个展开点对展开后节点补跑 `collect_inline_events`；新增回归测试
+   `test_extract_inline_lambda_in_view_fn_fragment`。注意：片段参数替换不进入
+   inline 体（与旧字符串 handler 同限制），体应引用 widget state。
+2. **examples/blocks 的 README 迁移遗漏（已补）**：首轮文档迁移只扫了 docs/
+   与 website/，漏 examples/**/README.md、blocks/**/README.md（~30 文件）；
+   002-counter README 整体重写为简写版形态（含"何时改用显式 msg/on"指引）。
+3. **regen 冒烟补齐**：003-converter、002-counter 构建干净（正向通过）；
+   013-todo / 015-notes / 011-calculator 构建失败系 master 预存
+   （R006/R007 v-for :key 校验、eval_expr 缺导入），与 master 的 auto.exe
+   逐字节同错——非本计划引入，建议另行立项修复。
+4. **ark/jet 次要后端补用例**：新增 from-source 内联 lambda 代码生成测试
+   （parse→extract→generate），铸名 `__evt_onclick_1` 在 Kotlin/ArkTS 产物中
+   直通验证。
+
+第二轮验证：全量 lib 3188（默认）/ 3686（ui-iced）绿；vue_capabilities 72、
+gallery_golden 1、ui_snapshots 3、auto-man 229 绿。
+
+### 仍开放的遗留（明示）
+
+- 带参 inline lambda `(e) => {…}` 提取期显式报错（v1 范围，Rust 枚举需具体
+  payload 类型）。
+- B2 方案 (b)（vm/codegen 原生 Dot 左侧复合赋值）递延——UI handler 之外的
+  一般 VM 代码 `obj.field += 1` 仍报错。
+- Rust 内嵌测试源码仍用旧写法 `msg Msg`（有意保留作兼容路径覆盖；关闭兼容
+  窗口时统一迁移）。
+- atom IR 去 name 键的仓外消费者假设未验证（仓内无消费者已确认）。
+- parser 测试未钉住：多语句 lambda 体、表达式体 `() => expr`、`onclick.stop:`
+  修饰符与内联组合（解析路径存在，无测试）。
+- rust-workspace/counter 副本未刷新（a2rust-ui 旧产物，无标准 regen 命令）。
+- 013/015/011 的预存构建失败（R006/R007/eval_expr，master 同错，非本计划）。
+
 ## §0 条目总览
 
 | 条目 | 一句话 | 状态 |
