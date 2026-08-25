@@ -5229,6 +5229,79 @@ fn update_block_in_state(
     found
 }
 
+/// Plan 063 T4: append chat-drawer lines to `chat_events`. Same ownership
+/// model as job_list: the store-declared `List<ChatEvent>` is a VM-heap VmRef
+/// that `write_state_vec` can't write back, so the renderer owns the field as
+/// a `Value::Array` unconditionally (read-as-vec → extend → write_state).
+fn append_chat_events(component: &mut DynamicComponent, lines: Vec<auto_val::Value>) {
+    let mut cur: Vec<auto_val::Value> = match component.read_state("chat_events") {
+        Ok(auto_val::Value::Array(arr)) => arr.values.clone(),
+        Ok(auto_val::Value::Nil) | Err(_) => Vec::new(),
+        Ok(_) => component.read_state_as_vec("chat_events").unwrap_or_default(),
+    };
+    cur.extend(lines);
+    let _ = component.write_state(
+        "chat_events",
+        auto_val::Value::Array(auto_val::Array { values: cur }),
+    );
+}
+
+/// Plan 063 T5: write the chat turn number onto the matching block's `turn`
+/// field (block header banner "· 第 N 轮"). Mirrors update_block_in_state's
+/// Obj-first / materialize-VmRef-on-miss match; only the matched element is
+/// replaced. Non-chat blocks keep turn = 0.
+fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
+    let raw = match component.read_state("blocks") {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let mut blocks_vec: Vec<auto_val::Value> = match &raw {
+        auto_val::Value::Array(arr) => arr.values.clone(),
+        auto_val::Value::Nil => Vec::new(),
+        _ => match component.read_state_as_vec("blocks") {
+            Ok(v) => v,
+            Err(_) => return,
+        },
+    };
+    let mut found = false;
+    for b in &mut blocks_vec {
+        if !matches!(b, auto_val::Value::Obj(_)) {
+            let m = component.materialize_obj_value(b);
+            match m {
+                auto_val::Value::Obj(obj) => {
+                    let id_matches = obj.get("id")
+                        .map(|v| v.as_int() as i64 == block_id)
+                        .unwrap_or(false);
+                    if !id_matches {
+                        continue;
+                    }
+                    *b = auto_val::Value::Obj(obj);
+                }
+                _ => continue,
+            }
+        }
+        if let auto_val::Value::Obj(obj) = b {
+            let id_matches = obj.get("id")
+                .map(|v| v.as_int() as i64 == block_id)
+                .unwrap_or(false);
+            if !id_matches {
+                continue;
+            }
+            obj.set("turn", auto_val::Value::Int(turn as i32));
+            found = true;
+            break;
+        }
+    }
+    if found {
+        let _ = match &raw {
+            auto_val::Value::Array(_) | auto_val::Value::Nil => {
+                component.write_state("blocks", auto_val::Value::Array(auto_val::Array { values: blocks_vec }))
+            }
+            _ => component.write_state_vec("blocks", blocks_vec),
+        };
+    }
+}
+
 /// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
 /// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
 fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
@@ -6706,6 +6779,11 @@ fn compare_pngs(
             || msg.event == "job_started"
             || msg.event == "job_done"
             || msg.event == "job_list"
+            || msg.event == "ai_turn"
+            || msg.event == "ai_chunk"
+            || msg.event == "ai_tool_call"
+            || msg.event == "ai_tool_result"
+            || msg.event == "chat_cleared"
         {
             if let Some(json) = &msg.input_value {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
@@ -6750,6 +6828,65 @@ fn compare_pngs(
                             let _ = state.component.write_state(
                                 "job_list",
                                 auto_val::Value::Array(auto_val::Array { values: jobs_vec }),
+                            );
+                            *state.view_dirty.borrow_mut() = true;
+                        }
+                        "ai_turn" | "ai_chunk" | "ai_tool_call" | "ai_tool_result" | "chat_cleared" => {
+                            // Plan 063 T4/T5:AI chat 抽屉事件族。chat_events 由
+                            // renderer 直接用 Rust 维护(job_list 同款所有权模型:
+                            // store 声明的 List 是 VM 堆 VmRef,write_state_vec
+                            // 写不回;无条件写 renderer-owned Value::Array)。
+                            // vue 端走 .at 无参 handler 读 __ai_* 预置字段。
+                            // ai_turn 另把回合号写进块头横幅字段 block.turn。
+                            let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
+                            if msg.event == "chat_cleared" {
+                                let _ = state.component.write_state(
+                                    "chat_events",
+                                    auto_val::Value::Array(auto_val::Array { values: Vec::new() }),
+                                );
+                                *state.view_dirty.borrow_mut() = true;
+                                return iced::Task::none();
+                            }
+                            let turn = v.get("turn").and_then(|x| x.as_i64()).unwrap_or(0);
+                            let (kind, text) = match msg.event.as_str() {
+                                "ai_turn" => {
+                                    let q = v.get("question").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let mut lines: Vec<auto_val::Value> = Vec::new();
+                                    let mut sep = auto_val::Obj::new();
+                                    sep.set("kind", auto_val::Value::str("turn"));
+                                    sep.set("text", auto_val::Value::str(&format!("── 第 {turn} 轮 ──")));
+                                    lines.push(auto_val::Value::Obj(sep));
+                                    let mut u = auto_val::Obj::new();
+                                    u.set("kind", auto_val::Value::str("user"));
+                                    u.set("text", auto_val::Value::str(&q));
+                                    lines.push(auto_val::Value::Obj(u));
+                                    append_chat_events(&mut state.component, lines);
+                                    set_block_turn(&mut state.component, bid, turn);
+                                    *state.view_dirty.borrow_mut() = true;
+                                    return iced::Task::none();
+                                }
+                                "ai_chunk" => {
+                                    let t = v.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    ("text".to_string(), t)
+                                }
+                                "ai_tool_call" => {
+                                    let tool = v.get("tool").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let args = v.get("args").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    ("tool".to_string(), format!("⚙ {tool} {args}"))
+                                }
+                                _ => {
+                                    // ai_tool_result
+                                    let tool = v.get("tool").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let res = v.get("result").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    ("result".to_string(), format!("← {tool}: {res}"))
+                                }
+                            };
+                            let mut ev = auto_val::Obj::new();
+                            ev.set("kind", auto_val::Value::str(&kind));
+                            ev.set("text", auto_val::Value::str(&text));
+                            append_chat_events(
+                                &mut state.component,
+                                vec![auto_val::Value::Obj(ev)],
                             );
                             *state.view_dirty.borrow_mut() = true;
                         }
@@ -7128,6 +7265,8 @@ fn compare_pngs(
                     block.set("table_sort_col", auto_val::Value::Int(-1));
                     block.set("table_sort_dir", auto_val::Value::Int(1));
                     block.set("table_filter_q", auto_val::Value::str(""));
+                    // Plan 063 T5: chat 回合号(非 chat 块恒 0)。
+                    block.set("turn", auto_val::Value::Int(0));
                     if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                         let store_pushed_this = blocks.len() > blocks_before;
                         if store_pushed_this {
@@ -7251,6 +7390,8 @@ fn compare_pngs(
                         block.set("table_sort_col", auto_val::Value::Int(-1));
                         block.set("table_sort_dir", auto_val::Value::Int(1));
                         block.set("table_filter_q", auto_val::Value::str(""));
+                        // Plan 063 T5: chat 回合号(非 chat 块恒 0)。
+                        block.set("turn", auto_val::Value::Int(0));
                         // store 的 RunCommand 已 push 同 id 的块,但 VM List 里的
                         // 元素是堆引用(非 Value::Obj),update_block_in_state 按
                         // Obj 匹配会失败 → 块永远停在 Running。这里用完整 Rust 块
@@ -7345,6 +7486,8 @@ fn compare_pngs(
                 block.set("table_sort_col", auto_val::Value::Int(-1));
                 block.set("table_sort_dir", auto_val::Value::Int(1));
                 block.set("table_filter_q", auto_val::Value::str(""));
+                // Plan 063 T5: chat 回合号(非 chat 块恒 0)。
+                block.set("turn", auto_val::Value::Int(0));
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                     blocks.push(auto_val::Value::Obj(block));
                     let _ = state.component.write_state_vec("blocks", blocks);
