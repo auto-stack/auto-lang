@@ -796,8 +796,14 @@ pub fn shim_musk_extern_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let name = pop_string(task, vm, "musk_extern_dispatch")?;
     let args_json = crate::vm::ffi::http_server::nv_to_json(vm, args_nv, 0)
         .unwrap_or_else(|| "[]".to_string());
+    if std::env::var("MUSK_VM_DEBUG").is_ok() {
+        eprintln!("[VMDISP] {name} args={args_json}");
+    }
     if try_host_forward(&name, task, vm, &args_json)? {
         return Ok(());
+    }
+    if std::env::var("MUSK_VM_DEBUG").is_ok() {
+        eprintln!("[VMDISP] {name} -> no host, fallback null");
     }
     task.ram.push_nv(auto_val::encode_null());
     Ok(())
