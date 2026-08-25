@@ -1000,6 +1000,24 @@ fn generate_index_css() -> String {
     @apply bg-background text-foreground;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
+  h1 {
+    @apply text-4xl font-bold tracking-tight text-primary mb-4;
+  }
+  h2 {
+    @apply text-3xl font-bold tracking-tight text-primary mt-8 mb-4;
+  }
+  h3 {
+    @apply text-xl font-semibold text-primary mb-3;
+  }
+  h4 {
+    @apply text-lg font-semibold mb-2;
+  }
+  h5 {
+    @apply text-base font-semibold mb-1;
+  }
+  h6 {
+    @apply text-sm font-semibold mb-1;
+  }
 }
 
 /* Plan 053 后续: AutoUI 风格(细 / 半透明 / 圆角)的原生滚动条。

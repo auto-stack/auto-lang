@@ -5620,10 +5620,13 @@ impl VueGenerator {
 
                 // Typography. Plan 409 §8: headings / links use the theme
                 // color (text-primary) so page titles & nav are accent-driven.
-                "h1" => classes.push("text-3xl font-bold tracking-tight mb-4 text-primary".to_string()),
-                "h2" => classes.push("text-2xl font-semibold tracking-tight mt-8 mb-4 text-primary".to_string()),
+                "h1" => classes.push("text-4xl font-bold tracking-tight mb-4 text-primary".to_string()),
+                "h2" => classes.push("text-3xl font-bold tracking-tight mt-8 mb-4 text-primary".to_string()),
                 "h3" => classes.push("text-xl font-semibold mb-3 text-primary".to_string()),
-                "text" => classes.push("text-muted-foreground leading-7".to_string()),
+                "h4" => classes.push("text-lg font-semibold mb-2".to_string()),
+                "h5" => classes.push("text-base font-semibold mb-1".to_string()),
+                "h6" => classes.push("text-sm font-semibold mb-1".to_string()),
+                "text" | "p" => classes.push("text-muted-foreground leading-7".to_string()),
 
                 // Content
                 "button" => classes.push("px-4 py-2 rounded".to_string()),
@@ -12379,6 +12382,24 @@ export function cn(...inputs: ClassValue[]) {
     /* Plan 360: smooth dark mode transitions */
     transition: background-color 0.3s ease, color 0.3s ease;
   }
+  h1 {
+    @apply text-4xl font-bold tracking-tight text-primary mb-4;
+  }
+  h2 {
+    @apply text-3xl font-bold tracking-tight text-primary mt-8 mb-4;
+  }
+  h3 {
+    @apply text-xl font-semibold text-primary mb-3;
+  }
+  h4 {
+    @apply text-lg font-semibold mb-2;
+  }
+  h5 {
+    @apply text-base font-semibold mb-1;
+  }
+  h6 {
+    @apply text-sm font-semibold mb-1;
+  }
 }
 "#.to_string()
     }
@@ -15274,6 +15295,13 @@ widget W {
         let base_css = VueGenerator::generate_base_css();
         assert!(base_css.contains("--background"));
         assert!(base_css.contains("--primary"));
+        assert!(base_css.contains("h1 {"));
+        assert!(base_css.contains("@apply text-4xl font-bold tracking-tight text-primary mb-4;"));
+        assert!(base_css.contains("h2 {"));
+        assert!(base_css.contains("h3 {"));
+        assert!(base_css.contains("h4 {"));
+        assert!(base_css.contains("h5 {"));
+        assert!(base_css.contains("h6 {"));
     }
 
     // ========================================

@@ -1822,6 +1822,24 @@ fn generate_index_css() -> String {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  h1 {
+    @apply text-4xl font-bold tracking-tight text-primary mb-4;
+  }
+  h2 {
+    @apply text-3xl font-bold tracking-tight text-primary mt-8 mb-4;
+  }
+  h3 {
+    @apply text-xl font-semibold text-primary mb-3;
+  }
+  h4 {
+    @apply text-lg font-semibold mb-2;
+  }
+  h5 {
+    @apply text-base font-semibold mb-1;
+  }
+  h6 {
+    @apply text-sm font-semibold mb-1;
+  }
   /* Smooth theme transitions */
   html {
     transition: background-color 0.3s ease, color 0.3s ease;

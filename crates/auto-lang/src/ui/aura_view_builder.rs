@@ -1605,11 +1605,14 @@ impl<'a> AuraViewBuilder<'a> {
         // Apply default heading styles, merging with user-provided styles.
         // Plan 409 §8: headings carry the theme color (text-primary) so page
         // titles / section headers use the accent — "主要操作和显眼的内容".
-        if matches!(tag, "h1" | "h2" | "h3") {
+        if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
                 "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
                 "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
-                "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
+                "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
+                "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
+                "h5" => Style::parse("text-base font-semibold mb-1").ok(),
+                "h6" => Style::parse("text-sm font-semibold mb-1").ok(),
                 _ => None,
             };
             if let Some(mut default) = default {
@@ -3719,11 +3722,14 @@ let tabs_inner = View::Row {
         // Apply default heading styles, merging with user-provided styles.
         // Plan 409 §8: headings carry the theme color (text-primary) so page
         // titles / section headers use the accent — "主要操作和显眼的内容".
-        if matches!(tag, "h1" | "h2" | "h3") {
+        if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
                 "h1" => Style::parse("text-4xl font-bold text-primary mb-4").ok(),
                 "h2" => Style::parse("text-3xl font-bold text-primary mt-8 mb-4").ok(),
-                "h3" => Style::parse("text-xl font-semibold text-primary").ok(),
+                "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
+                "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
+                "h5" => Style::parse("text-base font-semibold mb-1").ok(),
+                "h6" => Style::parse("text-sm font-semibold mb-1").ok(),
                 _ => None,
             };
             if let Some(mut default) = default {
@@ -3736,9 +3742,7 @@ let tabs_inner = View::Row {
 
         // Map heading tags to styled text
         let styled_content = match tag {
-            "h1" => content,
-            "h2" => content,
-            "h3" => content,
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => content,
             _ => content,
         };
 

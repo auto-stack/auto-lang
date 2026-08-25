@@ -3437,6 +3437,9 @@ impl RustGenerator {
             "h1" => Some("text-4xl font-bold"),
             "h2" => Some("text-3xl font-bold"),
             "h3" => Some("text-xl font-semibold"),
+            "h4" => Some("text-lg font-semibold"),
+            "h5" => Some("text-base font-semibold"),
+            "h6" => Some("text-sm font-semibold"),
             _ => None,
         }
     }

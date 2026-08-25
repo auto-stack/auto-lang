@@ -1582,7 +1582,7 @@ fn cap_default_classes_on_keeps_doc_theme_defaults() {
         "default on: col keeps layout classes:\n{sfc}"
     );
     assert!(
-        sfc.contains("text-3xl font-bold"),
+        sfc.contains("text-4xl font-bold"),
         "default on: h1 keeps doc-theme defaults:\n{sfc}"
     );
     assert!(
@@ -1603,7 +1603,7 @@ fn cap_default_classes_off_skips_defaults_but_keeps_layout() {
         "default_classes off: col (layout primitive) must keep flex classes:\n{sfc}"
     );
     assert!(
-        !sfc.contains("text-3xl"),
+        !sfc.contains("text-4xl"),
         "default_classes off: h1 must not get doc-theme defaults:\n{sfc}"
     );
     assert!(
