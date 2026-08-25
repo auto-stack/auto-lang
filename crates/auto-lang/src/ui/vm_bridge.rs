@@ -1533,6 +1533,84 @@ mod tests {
         assert!(msg.contains("strings"), "growth detail in message: {msg}");
     }
 
+    /// Plan 445 M3：滑窗重建（024-charts .Tick 的核心形态）——
+    /// **全保真载具**：WidgetDecl 解析 + new_from_decls + call_handler_for
+    /// （与 dynamic.rs on_with_input_for 实机 dispatch 逐步一致）。此前用
+    /// VmBridge::new（AuraWidget 路径）无法复现实机 `.monthly = out` 不落
+    /// 地 → 重算 DivisionByZero 的失败链（ASH_DEBUG_VM_LOG 实机实锤）。
+    #[test]
+    fn plan445_m3_slide_window_rebuild() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let app_src = r#"
+widget SlideTest {
+    msg Msg { Init }
+
+    model {
+        var data = [{ m: "A", v: 1 }, { m: "B", v: 2 }, { m: "C", v: 3 }]
+        var windowLen int = 3
+        var tickN int = 0
+    }
+
+    on {
+        .Init -> { .tickN = 0 }
+        .Tick -> {
+            .tickN = .tickN + 1
+            var nd = 150 + (.tickN * 37) % 120
+            var lbl = f"t${.tickN}"
+            var out = []
+            var first = true
+            var over = .data.len() >= .windowLen
+            for d in .data {
+                if over && first {
+                    first = false
+                } else {
+                    out.push(d)
+                }
+            }
+            out.push({ m: lbl, v: nd })
+            .data = out
+        }
+    }
+}
+        "#;
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(app_src).with_session(session);
+        let ast = parser.parse().expect("parse app");
+        let decl = ast
+            .stmts
+            .into_iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let mut bridge = VmBridge::new_from_decls(
+            &decl,
+            &[],
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("bridge from decls");
+        let sid = bridge.state_obj_id();
+        // 与实机一致的 Init dispatch。
+        bridge
+            .call_handler_for("SlideTest", "Init", sid, &[])
+            .expect("init");
+        bridge
+            .call_handler_for("SlideTest", "Tick", sid, &[])
+            .expect("tick 1");
+        let data = bridge.read_state_as_vec("data").expect("data");
+        assert_eq!(data.len(), 3, "满窗时追加必须滑出最旧一点（.data = out 必须落地）");
+        let tick_n = bridge.read_state("tickN").expect("tickN");
+        assert_eq!(tick_n, Value::Int(1), "tickN 递增");
+        bridge
+            .call_handler_for("SlideTest", "Tick", sid, &[])
+            .expect("tick 2");
+        let data2 = bridge.read_state_as_vec("data").expect("data2");
+        assert_eq!(data2.len(), 3, "窗口稳定");
+    }
 
     /// Helper to create a minimal AuraWidget for testing
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
