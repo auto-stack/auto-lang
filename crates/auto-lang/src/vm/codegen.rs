@@ -7412,6 +7412,10 @@ impl Codegen {
                             ("env", "remove") => Some("auto.env.remove".to_string()),
                             ("env", "local_data_dir") => Some("auto.env.local_data_dir".to_string()),
                             ("env", "home_dir") => Some("auto.env.home_dir".to_string()),
+                            // Plan 442 C2: rust-form env::var bridge (Option-
+                            // shaped at the producer; caller's .ok() is the
+                            // engine's identity passthrough).
+                            ("env", "var") => Some("auto.env.var".to_string()),
                             // Plan 401: localStorage-style key/value store for the
                             // VM/iced path (no browser in iced; back it by an
                             // in-process HashMap so settings persist for the
@@ -8616,7 +8620,20 @@ impl Codegen {
                         source_pos: None,
                     });
                     return Ok(());
-                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
+                } else if is_user_type_method
+                    && matches!(call.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "clone")
+                    && resolved_func.is_none()
+                    && call.args.args.is_empty()
+                {
+                    // Plan 442 C2: `.clone()` on a user-type/enum value with no
+                    // declared clone method — transparent passthrough, mirroring
+                    // the .unwrap()/.expect() opaque passthrough below. The
+                    // receiver (already compiled onto the stack) IS the result.
+                    // Enum values are scalar-like on the VM; heap instances share
+                    // by reference (documented C2-probe semantics — musk backend
+                    // corpus's User/AgentMode/Profession/SpecsDocument.clone).
+                    return Ok(());
+                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static)) {
                     // Plan 249: Transparent unwrap for opaque handle values.
                     // If this is .unwrap()/.expect() on an opaque Rust crate value,
                     // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.

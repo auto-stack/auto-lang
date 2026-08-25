@@ -5556,6 +5556,18 @@ impl AutoVM {
                     };
                     let receiver_nv = receiver_nv;
 
+                    // Plan 442 C2: `.ok()` 恒等直通 —— rust 形态 Result 语义的
+                    // VM-native 约定:返回 Result 的 stdlib shim(env.var 等)在
+                    // 生产者边界坍缩为 Option 形状(None=TAG_NULL / Some(v)=v 本身),
+                    // 调用方的 Rust 式 `.ok()` 链步因此是纯透传(与 codegen 侧
+                    // .unwrap()/.expect() 的 opaque 透明直通同构)。任何接收者形
+                    // 态一致透传;未知方法在别处的既有行为不变。
+                    if arg_count == 0 && method_name == "ok" {
+                        let nv = task.ram.pop_nv();
+                        task.ram.push_nv(nv);
+                        return Ok(StepResult::Continue);
+                    }
+
                     // 2026-08-22(方法链修复):标量接收者的内建方法兜底。
                     // 链式调用 `l.len().str()` 中前一方法返回普通 i32/f64/bool
                     // 标量;此前 i32>0 被一律按堆对象 id 解析(heap 无此 id →
