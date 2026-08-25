@@ -473,13 +473,26 @@
     indirect_generator/concurrent_sse 仍绿。
   - **▶ C2 ③（剩余）——musk 侧 api.at 契约/back.project 接线 + parity
     契约套跑**：auto-lang 侧 `back.project` 外部后端装载（config.rs
-    external_backend_dir/resolve_back_api,Plan 061）机制已存在;
-    阻塞项 = VM 侧 **业务 extern 全量 FFI 覆盖**（relay_start_run/
-    specs_load/… ~250 个 extern_sigs 符号,当前空体 no-op → 业务 extern
-    返回值恒 null → ok_response(null) 恒 "null"）。+ musk serve 以 VM 起服
-    后 parity 契约（parity_relay_api 等 HTTP 面）对照 hw 后端全绿。
-    属 auto-lang 侧成规模工作（ffi_dual 逐符号 or shim 批量构建）,
-    非本批①/②可单独解锁——故验收标准第 3/4 条仍未达成。
+    external_backend_dir/resolve_back_api,Plan 061）+ `vm/backend_abi.rs`
+    cdylib 插件 ABI（auto_backend_register/auto_backend_abi_version，
+    merged 模式 api.at 端点注册）机制均已存在;
+    阻塞项 = **VM 侧业务 extern 的全量实现/装载**——`relay_runs_list`/
+    `relay_start_run`/`specs_load` 等 ~250 个 extern_sigs 业务符号目前仍是
+    空体 no-op → 业务 extern 返回恒 null → handler `ok_response(null)`
+    恒 "null"。**关键证据（2026-08-26 worktree plan-442，junction 指向
+    sibling auto-musk）**：`musk_backend_server_router_run` 探针全通（真实
+    relay_api.at `relay_routes()` → 13 路由注册 + `GET /api/forge/relay/
+    runs` 200）；`musk_backend_gap_enumerator` **31/32 模块 VM-clean**（编译
+    + link 全清）。两点佐证：① 运行期路径（extractor 编组 + call_closure +
+    ①/② 响应构造器/SSE）已闭环，数据面是唯一残差；② 业务 extern 实现面
+    依赖 auto-musk 的 **Rust registry**（`ProfessionRegistry::load()`、
+    `auto_ai_agent::builtin_names()`、`builtin_flows()`），auto-lang 仓
+    **不可直接访问**，且 auto-musk **尚无 cdylib ABI 构建**
+    （auto_backend_register 全仓 grep 零命中）——故 ③ 需二选一：
+    (a) auto-musk 侧落 backend ABI cdylib（Plan 061）+ auto-lang 侧把业务
+    extern 调用路由到装载的 HostCallFn；或 (b) 在 auto-lang 侧把业务 extern
+    逐一实现为 VM native。两者均为成规模工作，需后续多轮推进。故验收标准
+    第 3/4 条仍未达成。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 
