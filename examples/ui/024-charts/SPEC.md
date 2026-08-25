@@ -52,9 +52,12 @@ labels str（月份拼接）、donutLegend str、stats{D,M,T} str
 
 ## Known deferrals (do NOT try to add these — they need unbuilt features)
 
-- **流式更新**（.Tick 追加 + 窗口滑动）: M2 辖区（性能试金石，svgdoc
-  vs canvas v2 裁决数据源）。
-- **数值编辑**（系列数值增删改）: M2 随整表重建模式引入。
+- **流式更新**（M2 已落地）: `.Tick`（model `interval int = 400` 作周期 +
+  `running` str 门控）每 tick 追加一个数据点（纯整数算术锯齿波
+  `150+(tickN*37)%120` 族——f64 值入 record 的比较链未验证，整数保平安）
+  并按 `windowLen`（8/12/20 可调）滑出旧点；line/bar/area 重算，donut
+  保持静态构成。Play/Pause 门控启停（012 惯例）。
+- **数值编辑**（系列数值增删改）: 后续引入（整表重建模式，013 先例）。
 - **组件化渲染函数**（AutoLineChart 等）: 待 Plan 435 统一声明体系合入
   后由 437 收口，M1 页面内联形态。
 - **vm 实机/desktop_mcp/golden**: M3 辖区。

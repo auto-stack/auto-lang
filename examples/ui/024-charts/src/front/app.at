@@ -10,7 +10,7 @@
 // float 字面量混合。
 
 widget App {
-    msg Msg { Init, SetLine, SetBar, SetArea, SetDonut, ToggleDesktop, ToggleMobile, ToggleTablet }
+    msg Msg { Init, SetLine, SetBar, SetArea, SetDonut, ToggleDesktop, ToggleMobile, ToggleTablet, Play, Pause, SetWin8, SetWin12, SetWin20 }
 
     model {
         // ---- 状态 ----
@@ -19,7 +19,15 @@ widget App {
         mVisible bool = true
         tVisible bool = false
 
-        // ---- 数据（gallery 契约形状：月度 x 三系列）----
+        // ---- 流式（M2）：interval 被 .Tick 机制取走作 setInterval 周期；
+        // running（str "true"/"false"）门控启停（012 惯例）；windowLen 为
+        // 滑窗长度；tickN 为数据点序号（整数波形输入）。----
+        interval int = 400
+        running str = "false"
+        windowLen int = 12
+        tickN int = 0
+
+        // ---- 数据（gallery 契约形状：月度 x 三系列；流式时滑窗替换）----
         monthly = [
             { m: "Jan", desktop: 186, mobile: 80,  tablet: 40 },
             { m: "Feb", desktop: 305, mobile: 200, tablet: 90 },
@@ -266,6 +274,135 @@ widget App {
                 .tVisible = true
             }
         }
+
+        // ---- 流式控制（M2）：running str 门控 setInterval（012 惯例）----
+        .Play -> { .running = "true" }
+        .Pause -> { .running = "false" }
+        .SetWin8 -> { .windowLen = 8 }
+        .SetWin12 -> { .windowLen = 12 }
+        .SetWin20 -> { .windowLen = 20 }
+
+        // ---- .Tick：追数据点 + 滑出旧点 + line/bar/area 重算 ----
+        // 波形用纯整数算术（(tickN*k)%r 锯齿）——f64 值入 record 后
+        // vmax 的 int 比较链未验证，整数保平安。donut 不随流式重算
+        // （plan §6：donut 限静态分布展示）。几何重算与 Init 同式
+        // （§0.6.E-3：模块 fn 不进 SFC，两份内联）。
+        .Tick -> {
+            .tickN = .tickN + 1
+            var nd = 150 + (.tickN * 37) % 120
+            var nm = 100 + (.tickN * 53) % 130
+            var nt = 50 + (.tickN * 29) % 90
+            var lbl = f"t${.tickN}"
+            var out = []
+            var first = true
+            var over = .monthly.len() >= .windowLen
+            for d in .monthly {
+                if over && first {
+                    first = false
+                } else {
+                    out.push(d)
+                }
+            }
+            out.push({ m: lbl, desktop: nd, mobile: nm, tablet: nt })
+            .monthly = out
+
+            // ---- 重算：vmax → line/area → bar → labels ----
+            var vmax int = 0
+            for d in .monthly {
+                var a = d["desktop"]
+                if a > vmax {
+                    vmax = a
+                }
+                var b = d["mobile"]
+                if b > vmax {
+                    vmax = b
+                }
+                var c = d["tablet"]
+                if c > vmax {
+                    vmax = c
+                }
+            }
+            var vmaxf float = vmax
+            var n int = .monthly.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = 510.0 / nf
+            }
+            var ld = ""
+            var lm = ""
+            var lt = ""
+            var i = 0
+            for d in .monthly {
+                var dv = d["desktop"]
+                var mv = d["mobile"]
+                var tv = d["tablet"]
+                var x float = 40.0 + i * stepf
+                var fd float = dv
+                var fm float = mv
+                var ft float = tv
+                var yd float = 260.0 - fd / vmaxf * 240.0
+                var ym float = 260.0 - fm / vmaxf * 240.0
+                var yt float = 260.0 - ft / vmaxf * 240.0
+                if i == 0 {
+                    ld = f"M ${x} ${yd}"
+                    lm = f"M ${x} ${ym}"
+                    lt = f"M ${x} ${yt}"
+                } else {
+                    ld = ld + f" L ${x} ${yd}"
+                    lm = lm + f" L ${x} ${ym}"
+                    lt = lt + f" L ${x} ${yt}"
+                }
+                i = i + 1
+            }
+            .lineD = ld
+            .lineM = lm
+            .lineT = lt
+            .areaD = ld + " L 550 260 L 40 260 Z"
+            .areaM = lm + " L 550 260 L 40 260 Z"
+            .areaT = lt + " L 550 260 L 40 260 Z"
+
+            var nn float = n
+            var slot float = 510.0 / nn
+            var third float = slot / 3.0
+            var barw float = third * 0.7
+            var bd = ""
+            var bm = ""
+            var bt = ""
+            var j = 0
+            for d in .monthly {
+                var xb float = 40.0 + j * slot
+                var fd2 float = d["desktop"]
+                var fm2 float = d["mobile"]
+                var ft2 float = d["tablet"]
+                var yd2 float = 260.0 - fd2 / vmaxf * 240.0
+                var ym2 float = 260.0 - fm2 / vmaxf * 240.0
+                var yt2 float = 260.0 - ft2 / vmaxf * 240.0
+                var hd float = 260.0 - yd2
+                var hm float = 260.0 - ym2
+                var ht float = 260.0 - yt2
+                var o0 float = xb + third * 0.15
+                var o1 float = xb + third + third * 0.15
+                var o2 float = xb + third * 2.0 + third * 0.15
+                bd = bd + f"M${o0} ${yd2} h${barw} v${hd} h-${barw} Z "
+                bm = bm + f"M${o1} ${ym2} h${barw} v${hm} h-${barw} Z "
+                bt = bt + f"M${o2} ${yt2} h${barw} v${ht} h-${barw} Z "
+                j = j + 1
+            }
+            .barD = bd
+            .barM = bm
+            .barT = bt
+
+            var labels = ""
+            for d in .monthly {
+                if labels == "" {
+                    labels = d["m"]
+                } else {
+                    labels = labels + "   " + d["m"]
+                }
+            }
+            .axisLabels = labels
+        }
     }
 
     view {
@@ -331,8 +468,35 @@ widget App {
                     }
                     text .statsT { style: "text-xs text-muted-foreground pl-5" }
 
+                    text "Streaming" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    row (style: "gap-2") {
+                        if .running == "true" {
+                            button "⏸ Pause" { onclick: .Pause, style: "px-3 py-2 text-sm rounded-md bg-red-500 text-white flex-1" }
+                        } else {
+                            button "▶ Play" { onclick: .Play, style: "px-3 py-2 text-sm rounded-md bg-green-600 text-white flex-1" }
+                        }
+                    }
+                    row (style: "gap-2") {
+                        if .windowLen == 8 {
+                            button "8 ●" { onclick: .SetWin8, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "8" { onclick: .SetWin8, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                        if .windowLen == 12 {
+                            button "12 ●" { onclick: .SetWin12, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "12" { onclick: .SetWin12, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                        if .windowLen == 20 {
+                            button "20 ●" { onclick: .SetWin20, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "20" { onclick: .SetWin20, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                    }
+                    text "每 400ms 追加点并滑出旧点（窗口左上）。流式驱动 line/bar/area；donut 保持静态构成。" { style: "text-xs text-muted-foreground" }
+
                     text "Data" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
-                    text "6 个月 · 三系列（内存态）。流式追加与数值编辑见 M2。" { style: "text-xs text-muted-foreground" }
+                    text "初始 6 个月 · 三系列（内存态），流式替换为 t 序列。" { style: "text-xs text-muted-foreground" }
                 }
 
                 // ---- 右：图表区 ----
