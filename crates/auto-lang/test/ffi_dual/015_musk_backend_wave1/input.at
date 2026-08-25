@@ -1,0 +1,18 @@
+// FFI Dual Test: Plan 442 C1 后半程 wave-1 — musk backend corpus rust-form
+// symbols on the VM: PathBuf.parent/file_stem, SystemTime.now/duration_since,
+// Arc/Mutex construction (dispatch-3000 arms + Plan 430 generated section).
+use.rust std::path::PathBuf
+use.rust std::time::SystemTime
+use.rust std::sync::Arc
+use.rust std::sync::Mutex
+
+let p = PathBuf.from("a/b.at")
+print(p.file_stem())
+print(p.parent())
+let t = SystemTime.now()
+let d = t.duration_since(SystemTime.UNIX_EPOCH)
+print(d.as_secs() > 0u)
+let a = Arc.new(7)
+print("arc-ok")
+let m = Mutex.new(1)
+print("mutex-ok")
