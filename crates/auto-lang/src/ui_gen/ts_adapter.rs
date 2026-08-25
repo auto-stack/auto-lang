@@ -1188,6 +1188,23 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             }
                         }
                     }
+                    // Plan 065(对齐 vue.rs map_method_to_js):.substr 是
+                    // (start, LEN) 语义(VM shim_str_substr + 测试钉死),
+                    // .slice/.sub 是 (start, END)。JS substring 是 END 语义
+                    // → substr 双参换算 substring(start, start+len),单参/
+                    // 其余两名走下方映射透传。此前三名统一直译致 substr(i,1)
+                    // 恒空串(vue 轨 chips/括号配平解析全灭)。
+                    if method == "substr" && call.args.args.len() == 2 {
+                        let mut a0: Vec<u8> = Vec::new();
+                        transpile_expr(&call.args.args[0].get_expr(), ctx, &mut a0);
+                        let mut a1: Vec<u8> = Vec::new();
+                        transpile_expr(&call.args.args[1].get_expr(), ctx, &mut a1);
+                        let a0 = String::from_utf8_lossy(&a0);
+                        let a1 = String::from_utf8_lossy(&a1);
+                        transpile_receiver(object, ctx, out);
+                        write!(out, ".substring({}, ({}) + ({}))", a0, a0, a1).ok();
+                        return;
+                    }
                     // Handle common method call conversions
                     match method.as_str() {
                         "to_int" | "parse_int" => {

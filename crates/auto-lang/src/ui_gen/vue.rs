@@ -6029,8 +6029,23 @@ impl VueGenerator {
             }
             // find 返回 index 或 -1：
             "find" => format!("{}.indexOf({})", object_js, a),
-            // substr/sub/slice 同一 native，均为 start..end 子串：
-            "substr" | "sub" | "slice" => format!("{}.substring({})", object_js, a),
+            // substr 是 (start, LEN) 语义、slice/sub 是 (start, END) 语义
+            // (VM 双 shim + vm_slice_sub_end_substr_len 测试钉死)。JS substring
+            // 是 END 语义 → substr 双参必须换算 substring(start, start+len)
+            // (实参括号包裹防表达式优先级),单参与 slice/sub 直接透传。
+            // Plan 065:此前三名统一直译,substr(i,1) 双参恒取空串 —— vue 轨
+            // chips(ai_next 引号扫描)/OnEnter 括号配平等解析全灭的根因。
+            "substr" => {
+                if args_js.len() == 2 {
+                    format!(
+                        "{}.substring({}, ({}) + ({}))",
+                        object_js, args_js[0], args_js[0], args_js[1]
+                    )
+                } else {
+                    format!("{}.substring({})", object_js, a)
+                }
+            }
+            "sub" | "slice" => format!("{}.substring({})", object_js, a),
             // Rust str::replace 替换所有 → replaceAll：
             "replace" => format!("{}.replaceAll({})", object_js, a),
             "repeat" => format!("{}.repeat({})", object_js, a),
@@ -12803,11 +12818,23 @@ export function cn(...inputs: ClassValue[]) {
                 // 数据驱动流(如 forge)走原带参透传路径,不受影响。
                 let preset_mode = store.state_vars.iter()
                     .any(|s| s.name.starts_with("__sse_"));
+                // Plan 065:command_result 后跟随 RefreshContext —— VM 轨由
+                // 引擎侧触发(renderer.rs command_result 分支),vue 轨此前无人
+                // 补位,store 的 ai_pending/ai_next/ai_steps 拉取链整条不跑
+                // (chips/分步行全灭)。仅当 store 声明了 RefreshContext handler
+                // 时跟随(无参语义,与引擎触发一致)。
+                let follow_refresh_ctx = store.handlers.iter().any(|(p, _)| {
+                    p.trim_start_matches('.')
+                        .split('(')
+                        .next()
+                        .map_or(false, |n| n == "RefreshContext")
+                });
                 for (i, (disc_field, wire_value, action)) in chain.iter().enumerate() {
                     let kw = if i == 0 { "if" } else { "else if" };
                     if preset_mode {
                         emit_preset_dispatch(
                             &mut code, kw, disc_field, wire_value, action,
+                            follow_refresh_ctx,
                         );
                     } else {
                         code.push_str(&format!(
@@ -13298,6 +13325,7 @@ fn emit_preset_dispatch(
     disc_field: &str,
     wire_value: &str,
     action: &str,
+    follow_refresh_ctx: bool,
 ) {
     match action {
         "RunOutput" => {
@@ -13319,9 +13347,17 @@ fn emit_preset_dispatch(
             // Plan 052: __sse_output.value = r.output ?? {} 透传整个 RenderedOutput
             // 对象(可能是 Table/Record/Code/Error/Text/"Empty"),store 的 RunResult
             // 据此赋 b.output。保留 __sse_output_text(只取 .Text)供兼容/调试。
+            //
+            // Plan 065:RunResult 后跟随 RefreshContext()(store 声明了该
+            // handler 时)—— 对齐 VM 轨引擎侧触发,拉 git 标签/历史/ai 槽。
+            let follow = if follow_refresh_ctx {
+                " RefreshContext();"
+            } else {
+                ""
+            };
             code.push_str(&format!(
-                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; __sse_exit_code.value = r.exit_code; RunResult(); }}\n",
-                kw = kw, disc = disc_field, wire = wire_value,
+                "                {kw} (data.{disc} === '{wire}') {{ const r = data.CommandResult ?? data; __sse_block_id.value = r.block_id; __sse_cwd.value = r.cwd; __sse_status.value = r.status; __sse_output.value = r.output ?? {{}}; __sse_output_text.value = (r.output && r.output.Text) ? r.output.Text : ''; __sse_duration_ms.value = r.duration_ms; __sse_exit_code.value = r.exit_code; RunResult();{follow} }}\n",
+                kw = kw, disc = disc_field, wire = wire_value, follow = follow,
             ));
         }
         "JobStarted" => {
