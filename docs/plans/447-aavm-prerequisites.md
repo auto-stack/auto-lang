@@ -305,9 +305,13 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 
 #### Phase 10:γ2 主干——parser/typeinfo/codegen/engine is 化 + 三枚举化
 
-- [ ] 10.1 parser.at:P1 `p_kind → TokenKind`、`p_expect(p, k)` 参数化(kind 位
+- [~] 10.1 parser.at:P1 `p_kind → TokenKind`、`p_expect(p, k)` 参数化(kind 位
   字符串比较 ≈330 处、31 个函数;错误消息 kind 名经 kind_name,对齐 Rust
-  `format!("{:?}")` 口径);P3 **新增 `enum Op` + `p_op()`**(镜像 Rust
+  `format!("{:?}")` 口径)——**P1 已完成(2026-08-26,提交 624a2f008)**:
+  四文件 840+ 比较位翻转 + 16 个帮助函数签名枚举化;宿主三修(merge 跨模块
+  枚举名传播/标量枚举 derive Copy+7 golden derive 行合法更新/arm 调序);
+  五方矩阵 33/33 全绿。P3/P2/P4(Op 枚举杠杆/Pratt 巨链/谓词消解)待续。
+  P3 **新增 `enum Op` + `p_op()`**(镜像 Rust
   Parser::op() parser.rs:2897-2939 与 auto-val/value.rs:515-554)——infix_l/
   infix_r/prefix_power/postfix_power/op_display/binop_result 六链一步收编;P2
   Pratt/stmt 巨链 is 化(`expr_with_left` 33 处九连 break ↔ Rust match 臂合并
