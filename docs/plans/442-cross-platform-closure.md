@@ -507,18 +507,24 @@
     HostCallFn 路由需 auto-musk 侧 cdylib 包装（extern_impl 逐函数签名
     → `fn(&str)->Result<String,String>`）才可用。
   - **🟢 C2 ③ 路径 (a) auto-lang 侧路由已落地（2026-08-26，worktree
-    plan-442；a9bc3356d）**：`host_bridge` 补 `has_host_call(name)`；新
-    `try_host_forward(name, task, vm, args_json)`——该 extern 名已注册 host
-    call（backend cdylib 的 auto_backend_register 注册进来）时即 call_host
-    并把 JSON 结果推栈（json_to_vm_value），否则返回 false 由 extern 提供
-    默认值；首个接入 extern = `app_config_effective_daemon_url`（默认常量
-    "http://127.0.0.1:17654"，注册 host call 后转发）。用字符串返回的数据
-    extern 演示转发路径，规避 Value extern 嵌套对象的 RC 死区 UAF
-    （relay_runs_list 原型曾触发，另记 plan 442）。回归
-    `e2e_host_forward_app_config_daemon`（默认→常量；register_host_call 后
-    →转发值）。**auto-lang 侧 path (a) 就绪；auto-musk 侧 cdylib
-    （auto_backend_register 逐 extern 打包）+ parity harness 适配仍为跨仓
-    余量。**
+    plan-442；a9bc3356d）+ RC 死区 UAF 修复（d3c36d540）**：`host_bridge` 补
+    `has_host_call(name)`；新 `try_host_forward(name, task, vm, args_json)`——
+    该 extern 名已注册 host call（backend cdylib 的 auto_backend_register 注册
+    进来）时即 call_host 并把 JSON 结果推栈，否则返回 false 由 extern 提供默认
+    值。此前 relay_runs_list（Value extern）因 **CALL_NAT 死区释放吞掉新推堆
+    id 结果**（shim pop>push 时死区 [sp_after,sp_before) 覆盖推入槽；rc_push
+    +1 被死区立即 -1→0,调用方读到已释放对象）触发 UAF —— 已修：新
+    `push_value_from_json` 在 json_to_vm_value 推栈后对顶层堆引用**额外 retain
+    +1**（补偿死区释放，调用方 StakeGuard 消费时才归零释放，净无泄漏）。
+    接入 extern：`app_config_effective_daemon_url`（字符串返回，默认常量
+    "http://127.0.0.1:17654"，host-forward）+ `relay_runs_list`（Value 返回，
+    默认 {runs: []}，host-forward）。回归（serial --test-threads=1 避
+    AUTO_HTTP_PORT env 竞态）：`e2e_host_forward_app_config_daemon` +
+    `e2e_host_forward_relay_runs`（默认→常量/空形；register_host_call 后
+    →转发值）；catalog_integrity/plan442/ffi_dual/e2e_value_accessors 全绿。
+    **auto-lang 侧 path (a) 就绪（字符串+Value extern 均可 forward）；
+    auto-musk 侧 cdylib（auto_backend_register 逐 extern 打包）+ parity
+    harness 适配仍为跨仓余量。**
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 
