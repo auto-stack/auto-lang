@@ -2698,7 +2698,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to loop start (re-check iterator.next())
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, loop_start as usize);
+                            }
                         } else {
                             // Plan 089: Array-based for loop: for x in expr { ... }
                             // Supports any iterable expression: variable, field access, call, etc.
@@ -2831,7 +2835,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         }
                     }
                     Iter::Indexed(index_name, iter_name) => {
@@ -2916,7 +2924,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         } else if let Expr::Ident(_) = &for_stmt.range {
                             // Plan 089: Indexed array iteration: for i, x in array_var { ... }
                             let index_str = index_name.to_string();
@@ -3027,7 +3039,11 @@ impl Codegen {
                                 self.patch_jump(exit_placeholder);
                             }
                             self.loop_continue_positions.pop();
-                            let _ = self.loop_continues.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                         } else {
                             // For now, only support range and array identifier expressions
                             self.loop_exits.pop();
@@ -3130,34 +3146,38 @@ impl Codegen {
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
                         self.should_pop_expr_result = old_pop;
 
-                        // Continue: increment counter
-                        let continue_pos = self.code.len();
-                        if let Some(pos) = self.loop_continue_positions.last_mut() {
-                            *pos = continue_pos;
-                        }
-                        self.emit_load_loc(counter_index);
-                        self.emit(OpCode::CONST_I32);
-                        self.emit_i32(1);
-                        self.emit(OpCode::ADD);
-                        self.emit_store_loc(counter_index);
+                            // Continue: increment counter
+                            let continue_pos = self.code.len();
+                            if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                *pos = continue_pos;
+                            }
+                            self.emit_load_loc(counter_index);
+                            self.emit(OpCode::CONST_I32);
+                            self.emit_i32(1);
+                            self.emit(OpCode::ADD);
+                            self.emit_store_loc(counter_index);
 
-                        // JMP back
-                        self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos - 2);
+                            // JMP back
+                            self.emit(OpCode::JMP);
+                            let current_pos = self.code.len() as i16;
+                            self.emit_i16(loop_start - current_pos - 2);
 
-                        // Patch exit jump
-                        self.patch_jump(jump_to_end);
+                            // Patch exit jump
+                            self.patch_jump(jump_to_end);
 
-                        self.pop_scope();
+                            self.pop_scope();
 
-                        // Patch all break statements
-                        let exits = self.loop_exits.pop().unwrap();
-                        for exit_placeholder in exits {
-                            self.patch_jump(exit_placeholder);
-                        }
-                        self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                            // Patch all break statements
+                            let exits = self.loop_exits.pop().unwrap();
+                            for exit_placeholder in exits {
+                                self.patch_jump(exit_placeholder);
+                            }
+                            self.loop_continue_positions.pop();
+                            // Plan 447 H2 fix: Patch continue statements to increment position
+                            let continues = self.loop_continues.pop().unwrap();
+                            for continue_placeholder in continues {
+                                self.patch_jump_to(continue_placeholder, continue_pos);
+                            }
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
@@ -3217,7 +3237,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start (re-evaluate condition)
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start);
+                        }
                     }
                     Iter::Ever => {
                         // Infinite loop: for ever { ... }
@@ -3248,7 +3272,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start);
+                        }
                     }
                     Iter::Call(call) => {
                         // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
@@ -3328,7 +3356,11 @@ impl Codegen {
                             self.patch_jump(exit_placeholder);
                         }
                         self.loop_continue_positions.pop();
-                        let _ = self.loop_continues.pop();
+                        // Plan 447 H2 fix: Patch continue statements to loop start
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, loop_start as usize);
+                        }
                     }
                 }
             }
