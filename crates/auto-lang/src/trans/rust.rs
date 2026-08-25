@@ -17217,8 +17217,29 @@ impl RustTrans {
                 if name.is_empty() || name == "self" { continue; }
 
                 let mut is_mut = false;
+                // Plan 032 G2.1 (auto-ai consumer debt): any method call on an
+                // OWNED non-primitive param conservatively needs `mut` — whether
+                // the method takes `&mut self` is unknowable at transpile time
+                // (custom types like `eng.push_gate_feedback(...)` never hit the
+                // builtin mutating-method list). Only for owned value params:
+                // uppercase type name (local struct/String/Vec/Box<dyn>…),
+                // excluding references (&T) and shared handles (Arc/Rc), where a
+                // mut binding could never help and would only add noise.
+                let owned_value_type = {
+                    let t = p.split_once(':').map(|(_, t)| t.trim()).unwrap_or("");
+                    t.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                        && !t.starts_with('&')
+                        && !t.starts_with("Arc<")
+                        && !t.starts_with("Rc<")
+                };
                 for bl in body {
                     let fl = bl.trim();
+                    if owned_value_type {
+                        let any_call = format!(r"\b{}\.\w+\s*\(", name);
+                        if let Some(re) = cached_regex(&any_call) {
+                            if re.is_match(fl) { is_mut = true; break; }
+                        }
+                    }
                     // name.push/insert/... (mutating method calls)
                     for m in mut_methods {
                         let pat = format!(r"\b{}\.{}\s*\(", name, m);

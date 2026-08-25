@@ -311,6 +311,31 @@
     属 auto-lang 侧成规模工作(ffi_dual 逐符号模式 or shim 批量构建)。
 - C2 `musk serve` 以 VM 后端起服：HTTP/SSE 契约测试（复用既有 parity 测试面）
   对照 hw 后端全绿。
+  - **▶ 第一批已落地（2026-08-25，worktree/主仓；C1 探针升级为 C2 工作清单
+    生成器）**：driver 自动预置语料级 `dep` 声明（镜像 a2r nativeize 构建
+    配置面——dep 声明门 16 模块整类消除）+ extern_sigs 旁车导入（胶水层
+    符号获得链接面，空体；运行语义属后续 shim 波次）。三类通用修复：
+    ①`env.var` rust 形态桥（auto.env.var=2795，Option 形态生产者——Result
+    语义在 shim 边界坍缩）；②CALL_SPEC `.ok()` 恒等直通（与①配套，镜像
+    .unwrap()/.expect() opaque 直通先例）；③用户类型/枚举 `.clone()` 无
+    声明方法时透明直通（五模块通杀）。**C1 垂直复验：app_config.at VM
+    直跑全通**。语料就绪度 6→**14/32 模块 VM-clean**（探针
+    `plan442_musk_backend_probe_tests`，#[ignore] 手动门，逐模块首错分类
+    报告）。
+  - **▶ C2 剩余工作清单（18 模块五类，逐点归属）**：① **顶层 `let` 跨 fn
+    可见性 ×5+**（orch_tools/spec_tools/tools/workflow/server_serve 及
+    relay_store 部分——codegen 有意让顶层 let 保持局部（var/const 才入
+    globals，Plan 348 E1），**musk 源改 `const` 即通**，同 B0 的 let→var
+    机械修复，归 musk 侧）；② **解析分歧 "unexpected token" ×4**（relay_api/
+    server/server_stream/task_plan_engine——VM parser 不接受某构造而 a2r
+    接受，需逐站点定位，归 auto-lang）；③ **类型检查分歧 "field type
+    mismatch" ×4**（handoff_store/relay_api/task_plan_registry/wiki，同上
+    逐站点，归 auto-lang）；④ **"Unknown enum variant: X.Y" ×3**
+    （feature_dev/task_plan/task_plan_parser——点分变体引用形态，归
+    auto-lang）；⑤ relay_flows panic（运行期，细节待抓）。**serve/parity
+    形态项（模块清零之后的前置）**：server.at handler 层 axum 提取器
+    （State<AppState>/Json/Query/HeaderMap）→ AutoVM http_server `#[api]`
+    派发的适配层 + AppState 的 VM 侧表示——架构级，属 C2 后半程。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 

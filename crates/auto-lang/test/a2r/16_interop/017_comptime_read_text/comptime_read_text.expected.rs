@@ -11,3 +11,5 @@ fn answer() -> i64 {
 fn tag() -> String {
     return "comptime";
 }
+
+const SOUL: &str = "Hello from comptime!";

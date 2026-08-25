@@ -1,0 +1,577 @@
+// front/app.at — Charts 图表工坊（Plan 445 M1·App 轨道填洞 ①）
+//
+// 布局：左数据面板（类型切换 + 系列可见性 + 统计）+ 右图表区。
+// 几何（437 §0.6.E/F/G 已验证模式）：**Init 一次算全四类**，类型切换与
+// 系列开关均为单行 handler（零重算）——模块级 fn 不进 vue SFC
+// （§0.6.E-3），handler 间无法互调，M1 取"算全 + view 分支"形态。
+// donut 为末月构成、循环累进角度 math.cos/sin 直调——§0.6.H 根因修复
+// 的真实应用落地验证。
+// 纪律（§0.6.D）：float 中间量显式声明；int→float 经存储强转或与
+// float 字面量混合。
+
+widget App {
+    msg Msg { Init, SetLine, SetBar, SetArea, SetDonut, ToggleDesktop, ToggleMobile, ToggleTablet, Play, Pause, SetWin8, SetWin12, SetWin20 }
+
+    model {
+        // ---- 状态 ----
+        chartType str = "line"
+        dVisible bool = true
+        mVisible bool = true
+        tVisible bool = false
+
+        // ---- 流式（M2）：interval 被 .Tick 机制取走作 setInterval 周期；
+        // running（str "true"/"false"）门控启停（012 惯例）；windowLen 为
+        // 滑窗长度；tickN 为数据点序号（整数波形输入）。----
+        interval int = 400
+        running str = "false"
+        windowLen int = 12
+        tickN int = 0
+
+        // ---- 数据（gallery 契约形状：月度 x 三系列；流式时滑窗替换）----
+        monthly = [
+            { m: "Jan", desktop: 186, mobile: 80,  tablet: 40 },
+            { m: "Feb", desktop: 305, mobile: 200, tablet: 90 },
+            { m: "Mar", desktop: 237, mobile: 120, tablet: 60 },
+            { m: "Apr", desktop: 73,  mobile: 190, tablet: 110 },
+            { m: "May", desktop: 209, mobile: 130, tablet: 70 },
+            { m: "Jun", desktop: 214, mobile: 140, tablet: 85 }
+        ]
+
+        // ---- 几何（Init 一次算全四类）----
+        lineD str = ""
+        lineM str = ""
+        lineT str = ""
+        areaD str = ""
+        areaM str = ""
+        areaT str = ""
+        barD str = ""
+        barM str = ""
+        barT str = ""
+        donutD str = ""
+        donutM str = ""
+        donutT str = ""
+        axisLabels str = ""
+        donutLegend str = ""
+        statsD str = ""
+        statsM str = ""
+        statsT str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 刻度：全系列 max（M1 固定刻度，隐藏不触发重算）----
+            var vmax int = 0
+            for d in .monthly {
+                var a = d["desktop"]
+                if a > vmax {
+                    vmax = a
+                }
+                var b = d["mobile"]
+                if b > vmax {
+                    vmax = b
+                }
+                var c = d["tablet"]
+                if c > vmax {
+                    vmax = c
+                }
+            }
+            var vmaxf float = vmax
+            var n int = .monthly.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = 510.0 / nf
+            }
+
+            // ---- line（每系列 M/L；area = line + 底边闭合）----
+            var ld = ""
+            var lm = ""
+            var lt = ""
+            var maxd = 0
+            var maxm = 0
+            var maxt = 0
+            var lastd = 0
+            var lastm = 0
+            var lastt = 0
+            var i = 0
+            for d in .monthly {
+                var dv = d["desktop"]
+                var mv = d["mobile"]
+                var tv = d["tablet"]
+                lastd = dv
+                lastm = mv
+                lastt = tv
+                if dv > maxd {
+                    maxd = dv
+                }
+                if mv > maxm {
+                    maxm = mv
+                }
+                if tv > maxt {
+                    maxt = tv
+                }
+                var x float = 40.0 + i * stepf
+                var fd float = dv
+                var fm float = mv
+                var ft float = tv
+                var yd float = 260.0 - fd / vmaxf * 240.0
+                var ym float = 260.0 - fm / vmaxf * 240.0
+                var yt float = 260.0 - ft / vmaxf * 240.0
+                if i == 0 {
+                    ld = f"M ${x} ${yd}"
+                    lm = f"M ${x} ${ym}"
+                    lt = f"M ${x} ${yt}"
+                } else {
+                    ld = ld + f" L ${x} ${yd}"
+                    lm = lm + f" L ${x} ${ym}"
+                    lt = lt + f" L ${x} ${yt}"
+                }
+                i = i + 1
+            }
+            .lineD = ld
+            .lineM = lm
+            .lineT = lt
+            .areaD = ld + " L 550 260 L 40 260 Z"
+            .areaM = lm + " L 550 260 L 40 260 Z"
+            .areaT = lt + " L 550 260 L 40 260 Z"
+            .statsD = f"last ${lastd} · max ${maxd}"
+            .statsM = f"last ${lastm} · max ${maxm}"
+            .statsT = f"last ${lastt} · max ${maxt}"
+
+            // ---- bar（band scale：槽 = 内宽/月数，槽内三等分）----
+            var nn float = n
+            var slot float = 510.0 / nn
+            var third float = slot / 3.0
+            var barw float = third * 0.7
+            var bd = ""
+            var bm = ""
+            var bt = ""
+            var j = 0
+            for d in .monthly {
+                var xb float = 40.0 + j * slot
+                var fd2 float = d["desktop"]
+                var fm2 float = d["mobile"]
+                var ft2 float = d["tablet"]
+                var yd2 float = 260.0 - fd2 / vmaxf * 240.0
+                var ym2 float = 260.0 - fm2 / vmaxf * 240.0
+                var yt2 float = 260.0 - ft2 / vmaxf * 240.0
+                var hd float = 260.0 - yd2
+                var hm float = 260.0 - ym2
+                var ht float = 260.0 - yt2
+                var o0 float = xb + third * 0.15
+                var o1 float = xb + third + third * 0.15
+                var o2 float = xb + third * 2.0 + third * 0.15
+                bd = bd + f"M${o0} ${yd2} h${barw} v${hd} h-${barw} Z "
+                bm = bm + f"M${o1} ${ym2} h${barw} v${hm} h-${barw} Z "
+                bt = bt + f"M${o2} ${yt2} h${barw} v${ht} h-${barw} Z "
+                j = j + 1
+            }
+            .barD = bd
+            .barM = bm
+            .barT = bt
+
+            // ---- donut（末月构成：循环累进角度，math 直调）----
+            var lastD2 = 0
+            var lastM2 = 0
+            var lastT2 = 0
+            for d in .monthly {
+                lastD2 = d["desktop"]
+                lastM2 = d["mobile"]
+                lastT2 = d["tablet"]
+            }
+            var meta = [
+                { k: "desktop", v: lastD2 },
+                { k: "mobile", v: lastM2 },
+                { k: "tablet", v: lastT2 }
+            ]
+            var total int = lastD2 + lastM2 + lastT2
+            var totalf float = total
+            var pi2 float = 6.283185307179586
+            var a0 float = -1.5707963267948966
+            var pD = ""
+            var pM = ""
+            var pT = ""
+            var legend = ""
+            for s in meta {
+                var vf float = s["v"]
+                var frac float = vf / totalf
+                var a1 float = a0 + pi2 * frac
+                var laf = 0
+                if frac > 0.5 {
+                    laf = 1
+                }
+                var c0 float = math.cos(a0)
+                var s0 float = math.sin(a0)
+                var c1 float = math.cos(a1)
+                var s1 float = math.sin(a1)
+                var x0 float = 280.0 + 100.0 * c0
+                var y0 float = 150.0 + 100.0 * s0
+                var x1 float = 280.0 + 100.0 * c1
+                var y1 float = 150.0 + 100.0 * s1
+                var u0 float = 280.0 + 62.0 * c0
+                var v0 float = 150.0 + 62.0 * s0
+                var u1 float = 280.0 + 62.0 * c1
+                var v1 float = 150.0 + 62.0 * s1
+                var pth = f"M${x0} ${y0} A100 100 0 ${laf} 1 ${x1} ${y1} L${u1} ${v1} A62 62 0 ${laf} 0 ${u0} ${v0} Z"
+                var kk = s["k"]
+                if kk == "desktop" {
+                    pD = pth
+                }
+                if kk == "mobile" {
+                    pM = pth
+                }
+                if kk == "tablet" {
+                    pT = pth
+                }
+                var pct float = math.round(frac * 100.0)
+                if legend == "" {
+                    legend = f"${kk} ${pct}%"
+                } else {
+                    legend = legend + f"   ${kk} ${pct}%"
+                }
+                a0 = a1
+            }
+            .donutD = pD
+            .donutM = pM
+            .donutT = pT
+            .donutLegend = legend
+
+            // ---- x 轴标签 ----
+            var labels = ""
+            for d in .monthly {
+                if labels == "" {
+                    labels = d["m"]
+                } else {
+                    labels = labels + "   " + d["m"]
+                }
+            }
+            .axisLabels = labels
+        }
+
+        // ---- 类型切换/系列开关：单行（几何已算全，view 分支）----
+        .SetLine -> { .chartType = "line" }
+        .SetBar -> { .chartType = "bar" }
+        .SetArea -> { .chartType = "area" }
+        .SetDonut -> { .chartType = "donut" }
+        .ToggleDesktop -> {
+            if .dVisible {
+                .dVisible = false
+            } else {
+                .dVisible = true
+            }
+        }
+        .ToggleMobile -> {
+            if .mVisible {
+                .mVisible = false
+            } else {
+                .mVisible = true
+            }
+        }
+        .ToggleTablet -> {
+            if .tVisible {
+                .tVisible = false
+            } else {
+                .tVisible = true
+            }
+        }
+
+        // ---- 流式控制（M2）：running str 门控 setInterval（012 惯例）----
+        .Play -> { .running = "true" }
+        .Pause -> { .running = "false" }
+        .SetWin8 -> { .windowLen = 8 }
+        .SetWin12 -> { .windowLen = 12 }
+        .SetWin20 -> { .windowLen = 20 }
+
+        // ---- .Tick：追数据点 + 滑出旧点 + line/bar/area 重算 ----
+        // 波形用纯整数算术（(tickN*k)%r 锯齿）——f64 值入 record 后
+        // vmax 的 int 比较链未验证，整数保平安。donut 不随流式重算
+        // （plan §6：donut 限静态分布展示）。几何重算与 Init 同式
+        // （§0.6.E-3：模块 fn 不进 SFC，两份内联）。
+        .Tick -> {
+            .tickN = .tickN + 1
+            var nd = 150 + (.tickN * 37) % 120
+            var nm = 100 + (.tickN * 53) % 130
+            var nt = 50 + (.tickN * 29) % 90
+            var lbl = f"t${.tickN}"
+            var out = []
+            var first = true
+            var over = .monthly.len() >= .windowLen
+            for d in .monthly {
+                if over && first {
+                    first = false
+                } else {
+                    out.push(d)
+                }
+            }
+            out.push({ m: lbl, desktop: nd, mobile: nm, tablet: nt })
+            .monthly = out
+
+            // ---- 重算：vmax → line/area → bar → labels ----
+            var vmax int = 0
+            for d in .monthly {
+                var a = d["desktop"]
+                if a > vmax {
+                    vmax = a
+                }
+                var b = d["mobile"]
+                if b > vmax {
+                    vmax = b
+                }
+                var c = d["tablet"]
+                if c > vmax {
+                    vmax = c
+                }
+            }
+            var vmaxf float = vmax
+            var n int = .monthly.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = 510.0 / nf
+            }
+            var ld = ""
+            var lm = ""
+            var lt = ""
+            var i = 0
+            for d in .monthly {
+                var dv = d["desktop"]
+                var mv = d["mobile"]
+                var tv = d["tablet"]
+                var x float = 40.0 + i * stepf
+                var fd float = dv
+                var fm float = mv
+                var ft float = tv
+                var yd float = 260.0 - fd / vmaxf * 240.0
+                var ym float = 260.0 - fm / vmaxf * 240.0
+                var yt float = 260.0 - ft / vmaxf * 240.0
+                if i == 0 {
+                    ld = f"M ${x} ${yd}"
+                    lm = f"M ${x} ${ym}"
+                    lt = f"M ${x} ${yt}"
+                } else {
+                    ld = ld + f" L ${x} ${yd}"
+                    lm = lm + f" L ${x} ${ym}"
+                    lt = lt + f" L ${x} ${yt}"
+                }
+                i = i + 1
+            }
+            .lineD = ld
+            .lineM = lm
+            .lineT = lt
+            .areaD = ld + " L 550 260 L 40 260 Z"
+            .areaM = lm + " L 550 260 L 40 260 Z"
+            .areaT = lt + " L 550 260 L 40 260 Z"
+
+            var nn float = n
+            var slot float = 510.0 / nn
+            var third float = slot / 3.0
+            var barw float = third * 0.7
+            var bd = ""
+            var bm = ""
+            var bt = ""
+            var j = 0
+            for d in .monthly {
+                var xb float = 40.0 + j * slot
+                var fd2 float = d["desktop"]
+                var fm2 float = d["mobile"]
+                var ft2 float = d["tablet"]
+                var yd2 float = 260.0 - fd2 / vmaxf * 240.0
+                var ym2 float = 260.0 - fm2 / vmaxf * 240.0
+                var yt2 float = 260.0 - ft2 / vmaxf * 240.0
+                var hd float = 260.0 - yd2
+                var hm float = 260.0 - ym2
+                var ht float = 260.0 - yt2
+                var o0 float = xb + third * 0.15
+                var o1 float = xb + third + third * 0.15
+                var o2 float = xb + third * 2.0 + third * 0.15
+                bd = bd + f"M${o0} ${yd2} h${barw} v${hd} h-${barw} Z "
+                bm = bm + f"M${o1} ${ym2} h${barw} v${hm} h-${barw} Z "
+                bt = bt + f"M${o2} ${yt2} h${barw} v${ht} h-${barw} Z "
+                j = j + 1
+            }
+            .barD = bd
+            .barM = bm
+            .barT = bt
+
+            var labels = ""
+            for d in .monthly {
+                if labels == "" {
+                    labels = d["m"]
+                } else {
+                    labels = labels + "   " + d["m"]
+                }
+            }
+            .axisLabels = labels
+        }
+    }
+
+    view {
+        col (style: "min-h-screen bg-background p-6 gap-4") {
+            col (style: "gap-1") {
+                h1 "图表工坊" { style: "text-2xl font-bold tracking-tight" }
+                text "切换类型 → 开关系列 → 观察渲染。几何全部 Auto 内联计算（d3-scale/d3-arc 风格），渲染端 SVG 直通。" { style: "text-sm text-muted-foreground" }
+            }
+
+            row (style: "gap-6 items-start flex-1") {
+                // ---- 左：数据面板 ----
+                col (style: "w-72 shrink-0 rounded-lg border p-4 gap-4") {
+                    text "Chart type" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    col (style: "grid grid-cols-2 gap-2") {
+                        if .chartType == "line" {
+                            button "Line ●" { onclick: .SetLine, style: "px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground" }
+                        } else {
+                            button "Line" { onclick: .SetLine, style: "px-3 py-2 text-sm rounded-md border bg-background hover:bg-accent" }
+                        }
+                        if .chartType == "bar" {
+                            button "Bar ●" { onclick: .SetBar, style: "px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground" }
+                        } else {
+                            button "Bar" { onclick: .SetBar, style: "px-3 py-2 text-sm rounded-md border bg-background hover:bg-accent" }
+                        }
+                        if .chartType == "area" {
+                            button "Area ●" { onclick: .SetArea, style: "px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground" }
+                        } else {
+                            button "Area" { onclick: .SetArea, style: "px-3 py-2 text-sm rounded-md border bg-background hover:bg-accent" }
+                        }
+                        if .chartType == "donut" {
+                            button "Donut ●" { onclick: .SetDonut, style: "px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground" }
+                        } else {
+                            button "Donut" { onclick: .SetDonut, style: "px-3 py-2 text-sm rounded-md border bg-background hover:bg-accent" }
+                        }
+                    }
+
+                    text "Series" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    row (style: "items-center gap-2") {
+                        span (style: "w-3 h-3 rounded-sm bg-[#2563eb] shrink-0") {}
+                        text "Desktop" { style: "text-sm font-medium flex-1" }
+                        checkbox {
+                            checked: .dVisible,
+                            onclick: .ToggleDesktop
+                        }
+                    }
+                    text .statsD { style: "text-xs text-muted-foreground pl-5" }
+                    row (style: "items-center gap-2") {
+                        span (style: "w-3 h-3 rounded-sm bg-[#16a34a] shrink-0") {}
+                        text "Mobile" { style: "text-sm font-medium flex-1" }
+                        checkbox {
+                            checked: .mVisible,
+                            onclick: .ToggleMobile
+                        }
+                    }
+                    text .statsM { style: "text-xs text-muted-foreground pl-5" }
+                    row (style: "items-center gap-2") {
+                        span (style: "w-3 h-3 rounded-sm bg-[#d97706] shrink-0") {}
+                        text "Tablet" { style: "text-sm font-medium flex-1" }
+                        checkbox {
+                            checked: .tVisible,
+                            onclick: .ToggleTablet
+                        }
+                    }
+                    text .statsT { style: "text-xs text-muted-foreground pl-5" }
+
+                    text "Streaming" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    row (style: "gap-2") {
+                        if .running == "true" {
+                            button "⏸ Pause" { onclick: .Pause, style: "px-3 py-2 text-sm rounded-md bg-red-500 text-white flex-1" }
+                        } else {
+                            button "▶ Play" { onclick: .Play, style: "px-3 py-2 text-sm rounded-md bg-green-600 text-white flex-1" }
+                        }
+                    }
+                    row (style: "gap-2") {
+                        if .windowLen == 8 {
+                            button "8 ●" { onclick: .SetWin8, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "8" { onclick: .SetWin8, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                        if .windowLen == 12 {
+                            button "12 ●" { onclick: .SetWin12, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "12" { onclick: .SetWin12, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                        if .windowLen == 20 {
+                            button "20 ●" { onclick: .SetWin20, style: "px-2 py-1.5 text-xs rounded-md bg-primary text-primary-foreground flex-1" }
+                        } else {
+                            button "20" { onclick: .SetWin20, style: "px-2 py-1.5 text-xs rounded-md border bg-background flex-1" }
+                        }
+                    }
+                    text "每 400ms 追加点并滑出旧点（窗口左上）。流式驱动 line/bar/area；donut 保持静态构成。" { style: "text-xs text-muted-foreground" }
+
+                    text "Data" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    text "初始 6 个月 · 三系列（内存态），流式替换为 t 序列。" { style: "text-xs text-muted-foreground" }
+                }
+
+                // ---- 右：图表区 ----
+                col (style: "flex-1 rounded-lg border p-4 gap-2") {
+                    if .chartType == "line" {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                            path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                            line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            if .dVisible {
+                                path (d: .lineD, fill: "none", stroke: "#2563eb", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                            if .mVisible {
+                                path (d: .lineM, fill: "none", stroke: "#16a34a", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                            if .tVisible {
+                                path (d: .lineT, fill: "none", stroke: "#d97706", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                        }
+                    }
+                    if .chartType == "bar" {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                            path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                            line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            if .dVisible {
+                                path (d: .barD, fill: "#2563eb", fill-opacity: "0.9") {}
+                            }
+                            if .mVisible {
+                                path (d: .barM, fill: "#16a34a", fill-opacity: "0.9") {}
+                            }
+                            if .tVisible {
+                                path (d: .barT, fill: "#d97706", fill-opacity: "0.9") {}
+                            }
+                        }
+                    }
+                    if .chartType == "area" {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                            path (d: "M40 80 H550 M40 140 H550 M40 200 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                            line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            if .tVisible {
+                                path (d: .areaT, fill: "#d97706", fill-opacity: "0.25") {}
+                            }
+                            if .mVisible {
+                                path (d: .areaM, fill: "#16a34a", fill-opacity: "0.25") {}
+                            }
+                            if .dVisible {
+                                path (d: .areaD, fill: "#2563eb", fill-opacity: "0.25") {}
+                            }
+                            if .dVisible {
+                                path (d: .lineD, fill: "none", stroke: "#2563eb", stroke-width: "2") {}
+                            }
+                            if .mVisible {
+                                path (d: .lineM, fill: "none", stroke: "#16a34a", stroke-width: "2") {}
+                            }
+                            if .tVisible {
+                                path (d: .lineT, fill: "none", stroke: "#d97706", stroke-width: "2") {}
+                            }
+                        }
+                    }
+                    if .chartType == "donut" {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
+                            circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
+                            path (d: .donutD, fill: "#2563eb") {}
+                            path (d: .donutM, fill: "#16a34a") {}
+                            path (d: .donutT, fill: "#d97706") {}
+                        }
+                        text .donutLegend { style: "text-xs text-muted-foreground text-center" }
+                    }
+                    row (style: "justify-between px-10 pt-1") {
+                        text .axisLabels { style: "text-xs text-muted-foreground" }
+                    }
+                }
+            }
+        }
+    }
+}

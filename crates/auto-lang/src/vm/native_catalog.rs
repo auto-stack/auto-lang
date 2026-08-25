@@ -323,6 +323,8 @@ macro_rules! for_each_native {
             (2771, NATIVE_LOCALSTORAGE_GET_ITEM, shim_localstorage_get_item, "auto.localstorage.get_item"),
             (2772, NATIVE_LOCALSTORAGE_SET_ITEM, shim_localstorage_set_item, "auto.localstorage.set_item"),
             (2773, NATIVE_LOCALSTORAGE_REMOVE_ITEM, shim_localstorage_remove_item, "auto.localstorage.remove_item"),
+            // Plan 442 C2: rust-form env::var bridge (Option-shaped producer).
+            (2795, NATIVE_ENV_VAR, shim_env_var, "auto.env.var"),
             // === Plan 442 Phase B: `dom.*` / `location.reload()` web globals ===
             // The iced VM renderer is dark-fixed, so prefers_dark -> true and
             // set_dark/set_css_var are recorded no-ops; focus/click/reload are
@@ -984,6 +986,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.localstorage.get_item", 2771, String),
             ("auto.localstorage.set_item", 2772, Void),
             ("auto.localstorage.remove_item", 2773, Void),
+            ("auto.env.var", 2795, String),
 
             // === Plan 442 Phase B: dom/location web globals ===
             ("auto.dom.set_dark", 2774, Void),
@@ -2247,6 +2250,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("localStorage.getItem", 2771),
     ("localStorage.setItem", 2772),
     ("localStorage.removeItem", 2773),
+    ("auto.env.var", 2795),
 
     // === Plan 442 Phase B: dom/location web globals ===
     ("auto.dom.set_dark", 2774),

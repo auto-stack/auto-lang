@@ -7376,6 +7376,44 @@ pub fn shim_localstorage_set_item(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     Ok(())
 }
 
+/// `env.var(key) -> value or None` — rust-form `env::var` bridge (Plan 442
+/// C2; musk backend .at sources call std::env::var via use.rust). Rust's
+/// env::var returns Result; the VM-native convention collapses
+/// Result-returning stdlib shims to Option shape at the producer boundary,
+/// so the caller's `.ok()` chain step is the engine's identity passthrough.
+pub fn shim_env_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let key_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, key_nv);
+        let key = if auto_val::is_string(key_nv) {
+            let idx = auto_val::decode_string(key_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(key_nv).to_string()
+        };
+        match std::env::var(&key) {
+            Ok(v) => {
+                let idx = {
+                    let mut strings = vm.strings.write().unwrap();
+                    strings.push(v.into_bytes());
+                    strings.len() - 1
+                };
+                task.ram.push_nv(auto_val::encode_string(idx as u32));
+            }
+            Err(_) => {
+                task.ram.push_nv(auto_val::encode_null());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `localStorage.removeItem(key)` — Stack: key -> (void).
 pub fn shim_localstorage_remove_item(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     {
