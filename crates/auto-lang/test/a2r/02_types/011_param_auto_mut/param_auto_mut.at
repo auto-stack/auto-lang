@@ -1,0 +1,27 @@
+// Plan 032 G2.1: owned non-primitive params auto-gain `mut` when any method
+// is called on them — whether the method takes &mut self is unknowable at
+// transpile time (custom types like push_gate_feedback never hit the builtin
+// mutating-method list, so the by-value param failed to compile as E0596).
+type Engine {
+    n int
+}
+
+impl Engine {
+    fn new() Engine {
+        return Engine(0)
+    }
+
+    mut fn bump() void {
+        .n = .n + 1
+    }
+}
+
+fn record(eng Engine) void {
+    eng.bump()
+}
+
+fn main() {
+    let e = Engine.new()
+    record(e)
+    print(e.n)
+}

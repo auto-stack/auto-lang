@@ -471,7 +471,24 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         }
         // Plan 095: Compile-time expression #{ expr }
         // Infer the type of the inner expression (it will be evaluated at compile time)
-        Expr::Comptime(hash_brace) => infer_expr(ctx, &hash_brace.expr),
+        // Plan 032 G1 (auto-ai consumer debt): comptime file-reading builtins
+        // embed the file contents as a string literal at transpile time.
+        // Delegating to the call infers Unknown (read_text has no decl in the
+        // infer context), which leaves const decls as `const X: /* unknown */`
+        // — invalid Rust. Type them as string slices directly.
+        Expr::Comptime(hash_brace) => {
+            if let Expr::Call(call) = &hash_brace.expr {
+                if let Expr::Ident(name) = call.name.as_ref() {
+                    match name.to_string().as_str() {
+                        "read_text" | "read_to_string" | "include_str" => {
+                            return Type::StrSlice
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            infer_expr(ctx, &hash_brace.expr)
+        }
         // Type cast: expr.as(Type) — the result type is the target type
         Expr::Cast { target_type, .. } => target_type.clone(),
         // Explicit type conversion: expr.to(Type) — the result type is the target type
