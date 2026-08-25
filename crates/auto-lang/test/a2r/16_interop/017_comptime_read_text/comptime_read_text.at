@@ -14,3 +14,8 @@ fn answer() int {
 fn tag() str {
     return #{"comptime"}
 }
+
+// 测试4：comptime 嵌入作 const 初始化器——类型必须推断为 &str
+//（Plan 032 G1：曾推断 Unknown，发射 `const X: /* unknown */` 非法 Rust，
+//  消费端 auto-ai 靠 sed 兜底改 &str）
+const SOUL = #{read_text("test/a2r/16_interop/017_comptime_read_text/greeting.txt")}
