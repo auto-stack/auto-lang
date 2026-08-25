@@ -2635,13 +2635,41 @@ async fn handle_connection_async(
                         // (Goroutine-style cooperative concurrency on the single
                         // worker thread).
                         loop {
+                            // PLAN-044: blocking-safe frame pull. Generator
+                            // bodies call blocking host externs (musk mpsc_recv
+                            // thread bridge); running iterator.next inline on
+                            // the async worker starves the I/O reactor (SSE
+                            // headers written but never flushed). Pull each
+                            // frame on a dedicated thread (same pointer
+                            // laundering as the connection loop's vp).
+                            // Send-launder via usize (AutoVM is Sync; the raw
+                            // pointer type itself isn't Send — same pattern as
+                            // the connection loop's vp: usize handoff).
+                            let vm_ptr: usize = vm as *const crate::vm::engine::AutoVM as usize;
                             let next_task_id = vm.spawn_task(0, 1024);
-                            let yielded = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
-                                let mut nt = nt_arc.try_lock().unwrap();
-                                nt.ram.push_i32(iter_id as i32);
-                                let _ = crate::vm::native::shim_iterator_next(&mut nt, vm);
-                                nt.ram.pop_nv()
-                            } else { auto_val::encode_i32(-1) };
+                            let (ftx, frx) =
+                                std::sync::mpsc::channel::<auto_val::NanoValue>();
+                            let puller = std::thread::spawn(move || {
+                                let vm: &crate::vm::engine::AutoVM =
+                                    unsafe { &*(vm_ptr as *const crate::vm::engine::AutoVM) };
+                                let yielded = if let Some(nt_arc) =
+                                    vm.tasks.get(&next_task_id)
+                                {
+                                    let mut nt = nt_arc.try_lock().unwrap();
+                                    nt.ram.push_i32(iter_id as i32);
+                                    let _ = crate::vm::native::shim_iterator_next(
+                                        &mut nt, vm,
+                                    );
+                                    nt.ram.pop_nv()
+                                } else {
+                                    auto_val::encode_i32(-1)
+                                };
+                                let _ = ftx.send(yielded);
+                            });
+                            let yielded = frx
+                                .recv()
+                                .unwrap_or_else(|_| auto_val::encode_i32(-1));
+                            let _ = puller.join();
                             vm.tasks.remove(&next_task_id);
                             // Iterator done sentinel: i32 -1.
                             if auto_val::is_i32(yielded) && auto_val::decode_i32(yielded) == -1 {
