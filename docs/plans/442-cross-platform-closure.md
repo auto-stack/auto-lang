@@ -1,11 +1,13 @@
 # Plan 442: 跨平台合龙——musk 五域端口接线 + VM 渲染能力补缺 + 后端 AutoVM 激活
 
-> **状态**: 🟡 执行中（2026-08-23 立项；Phase 0（P0-1/P0-2 ✅✅ 双侧复核含 musk
-> 环境）+ A4/A6（✅,A4 经 musk canary 重放复核）已落地；**前置门已于 2026-08-25
-> 全满足**（429–434 complete/436 ✅/musk-038 execution_done/auto-down-008 COMPLETE），
-> gated 主体开工：**Phase A 全部完成** —— A1 ✅（server 核验回填 §2）/A2 ✅（store
-> facade）/A3 ✅（ext link 平台桩）/A5 ✅（sched 定时器）,均本仓 worktree plan-442；
-> 剩余 B（musk 五域 adapter 接线）/C（后端 AutoVM 激活）为 auto-musk 侧动作）
+> **状态**: 🟡 执行中——Phase C 收尾中（2026-08-23 立项；Phase 0（P0-1/P0-2
+> ✅✅）+ Phase A（A1–A6 全 ✅）+ Phase B（B 配合+B1–B5 VM 轨全 ✅，rust/a2r
+> 轨依 §6.1 裁定递延）已落地。**Phase C：C1 语料面全清**——后端 auto-src
+> 32 文件 **31/32 VM-clean**（第 32 = extern_sigs 旁车设计不计，五批修复
+> 927909ef0/…/ea51316fc）；**C2 serve 适配层已落地**（1f2c0163e，axum →
+> AutoVM 派发全链路，垂直验证 13 路由 + HTTP 200）。剩余：C2 验收三件
+> （extern 响应构造器 VM 侧实现/SSE 形态/musk 侧 api.at 契约接线 + parity
+> 套跑）+ C3 观察期未动 → 本计划**未全部完成**。
 > **来源**: auto-musk PLAN-038 待澄清 #7（接线边界划出后无人承接）+ PLAN-041 裁定
 > （web 轨退役等迁移完成）+ auto-musk KNOWN-DEBT-AND-RISKS 028 ③（VM 渲染目标
 > "归 VM 渲染目标立项"）+ auto-musk pac.at 头注（"后端用 AutoVM 脚本运行"激活线）。
@@ -403,20 +405,42 @@
     行 + 结构体字段属性的复合态仍级联（最小复现不触发,需真实上下文,
     下一波）。附带修复：Enum 变体字段/结构体字段的 `#` 注释与散文容错
     为通用语言面改进。
-  - **▶ C2 剩余工作清单（18 模块五类，逐点归属）**：① **顶层 `let` 跨 fn
-    可见性 ×5+**（orch_tools/spec_tools/tools/workflow/server_serve 及
-    relay_store 部分——codegen 有意让顶层 let 保持局部（var/const 才入
-    globals，Plan 348 E1），**musk 源改 `const` 即通**，同 B0 的 let→var
-    机械修复，归 musk 侧）；② **解析分歧 "unexpected token" ×4**（relay_api/
-    server/server_stream/task_plan_engine——VM parser 不接受某构造而 a2r
-    接受，需逐站点定位，归 auto-lang）；③ **类型检查分歧 "field type
-    mismatch" ×4**（handoff_store/relay_api/task_plan_registry/wiki，同上
-    逐站点，归 auto-lang）；④ **"Unknown enum variant: X.Y" ×3**
-    （feature_dev/task_plan/task_plan_parser——点分变体引用形态，归
-    auto-lang）；⑤ relay_flows panic（运行期，细节待抓）。**serve/parity
-    形态项（模块清零之后的前置）**：server.at handler 层 axum 提取器
-    （State<AppState>/Json/Query/HeaderMap）→ AutoVM http_server `#[api]`
-    派发的适配层 + AppState 的 VM 侧表示——架构级，属 C2 后半程。
+  - **▶ 第四批已落地（2026-08-25,auto-lang 会话,ea51316fc；语料 30→31/32=
+    全清）**：relay_store 最后阻塞根因 = `parse_fn_annotations` 的 `#` 行容错
+    臂跳过一行+换行后即 return,类型体/ext 体循环同一迭代 fall-through 到
+    type_member,cur 落在下一行 `#` 上被当字段名吃掉（单个 `#` 行不触发
+    ——即"最小复现已试不触发"的原因）;修复 = return 改 continue,`#` 行
+    run 整体消费完才返回。定位手段 = 探针 `musk_backend_relay_store_bisect`
+    （真实文件括号平衡切面线性扫描 + 顶层项贪心收缩,最小复现 = 14 行裸
+    RunMetadata 块,doc 注释/derive 均非必要,"复合态"假设证伪）。第 32
+    模块 = extern_sigs 旁车（driver 显式导入的空体签名文件,设计使然）不计。
+  - **▶ serve 适配层已落地（2026-08-25,auto-lang 会话,1f2c0163e；下方清单
+    "架构级"项闭环）**：axum 提取器 → AutoVM `#[api]` 派发适配,新
+    `vm/ffi/axum_adapter.rs`。垂直验证 = 真实 `relay_routes()` 在 VM 上
+    **13 路由注册**（方法/路径/`{x}`→`:x` 模板转换/参数形状
+    `[State,Query]`·`[State,Query,Json]` 全断言）+ auto-serve 起服 +
+    `GET /api/forge/relay/runs` **200 OK**。机制：① Router/MethodRouter
+    堆对象（tag `axum::Router` 含 `::`,经 CALL_SPEC 漏斗回 dispatch 3000）,
+    `get(h).post(h2)` 链式同对象累加方法槽;② `app.route()` **即时安装**
+    进 stdlib HTTP 注册表（合成名 `__axum:N`——extern serve_listen 在 VM
+    侧本为 no-op,auto-serve 检查在 main 返回后自然接管,`.merge` 无需
+    VM 语义）;③ `push_extractor_args` 按参数形状编组（State→AppState
+    单例/Json·Query→json_to_vm_value/Path→段字符串/HeaderMap→opaque 桩）;
+    ④ 参数形状解析 = 闭包 func_addr 反演 exports_by_name 得 fn 名 →
+    PARAM_SIGS（codegen 编译期直发,跨模块 Codegen 实例共享）。配套三层
+    修复:codegen 类型构造分支排除 FFI 导入名（use.rust 条目注册成合成
+    TypeDecl,裸 `get(h)` 被截胡成 GenericInstanceData）/`axum::routing::`
+    导入恒走 dispatch 3000（防 http.patch 惰性 native 劫持）/parser 裸
+    routing fn 调用（无链式点）不进 Node 门。测试:最小复现
+    `plan442_axum_get_post_chain_minimal`（非 ignore）+ 垂直测试升级
+    （注册/形状/200 三断言,须与 probe 批串行）;全量回归 3180/3180 绿。
+  - **▶ C2 剩余工作清单（验收达成前）**：① **handler 体内 extern 响应
+    构造器**（json_response/error_response/ok_response/sse_named_event/
+    text_response 等,extern_sigs 空体 + extern_impl.rs 真实现）VM 侧
+    no-op → 响应恒 null——需 VM 侧 shim 波次或 extern 实现面装载;
+    ② **SSE 形态**（run_events 的 Sse/Event/KeepAlive 提取器链）适配层
+    未覆盖;③ **musk 侧 api.at 契约/back.project 接线**（C1 已登记的
+    动作面）+ parity 契约套跑对照 hw 后端全绿（C2 验收本体）。
 - C3 双后端并行观察期与切换/回滚开关（env 级），收口后 pac.at 头注的
   "待激活"改为已激活记录。
 
