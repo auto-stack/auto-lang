@@ -230,39 +230,47 @@ fn ev_run_t(source str, trace int) str {
             if out != "" {
                 out = out + "\n"
             }
-            out = out + op + " sp=" + sp.str() + " bp=" + bp.str()
+            out = out + op_name(op) + " sp=" + sp.str() + " bp=" + bp.str()
         }
-        if op == "" {
+        is op {
+            OpCode.Blank -> {
             // 已删除的占位指令(如 n_locals=0 时的 reserve)——跳过
-        } else if op == "halt" {
+        }
+        OpCode.Halt -> {
             running = false
-        } else if op == ".line" || op == "fn.prolog" {
-            if op == "fn.prolog" {
+        }
+        OpCode.Line | OpCode.FnProlog -> {
+            if op == OpCode.FnProlog {
                 cur_args = ins.n
             }
-        } else if op == "reserve" {
+        }
+        OpCode.Reserve -> {
             var n = ins.n
             var k = 0
             while k < n + 1 {
                 sp = ev_push(stack, sp, ev_vi(0))
                 k = k + 1
             }
-        } else if op == "jmp" {
+        }
+        OpCode.Jmp -> {
             ip = ins.n
-        } else if op == "jmp.z" {
+        }
+        OpCode.JmpZ -> {
             var v = stack.get(sp - 1)
             sp = sp - 1
             if !ev_truthy(v) {
                 ip = ins.n
             }
-        } else if op == "jmp.nz" {
+        }
+        OpCode.JmpNz -> {
             // Plan 447 部分②:or 臂短路或(H1 修后口径)
             var v0 = stack.get(sp - 1)
             sp = sp - 1
             if ev_truthy(v0) {
                 ip = ins.n
             }
-        } else if op == "new.instance" {
+        }
+        OpCode.NewInstance -> {
             // Plan 447 部分②:弹名长(const.i32 哨兵,名字在操作数);
             // 建空字段表入 arena,推实例(k=3:s=变体名,i=arena 槽位)
             sp = sp - 1
@@ -273,7 +281,8 @@ fn ev_run_t(source str, trace int) str {
             var fl List<Val> = List.new()
             arena.push(fl)
             sp = ev_push(stack, sp, Val(3, arena.len() - 1, nm))
-        } else if op == "construct.instance" {
+        }
+        OpCode.ConstructInstance -> {
             // 栈:[..., 字段值…, 实例, 字段数](镜像宿主弹序:count→
             // instance→count 值);字段自底而上读入 arena 槽,实例回栈
             var n9 = ev_dec(ev_int(stack.get(sp - 1)))
@@ -289,7 +298,8 @@ fn ev_run_t(source str, trace int) str {
             sp = sp - n9
             arena.set(inst9.i, fl9)
             sp = ev_push(stack, sp, inst9)
-        } else if op == "is.variant" {
+        }
+        OpCode.IsVariant -> {
             // 弹实例,推命中 bool;k=3 且变体名全等才命中(非实例恒假)
             var v9 = stack.get(sp - 1)
             sp = sp - 1
@@ -302,39 +312,49 @@ fn ev_run_t(source str, trace int) str {
                 hit9 = 1
             }
             sp = ev_push(stack, sp, ev_vi(hit9))
-        } else if op == "get.generic.field" {
+        }
+        OpCode.GetGenericField -> {
             // 弹实例,推第 n 槽字段(后续 3 条 nop 为 u32 残留形态,直通)
             var v10 = stack.get(sp - 1)
             sp = sp - 1
             var fl10 List<Val> = arena.get(v10.i)
             sp = ev_push(stack, sp, fl10.get(ins.n))
-        } else if op == "nop" {
+        }
+        OpCode.Nop -> {
             // no-op(get.generic.field 的 u32 残留字节形态)
-        } else if op == "const.i32" {
+        }
+        OpCode.ConstI32 -> {
             sp = ev_push(stack, sp, ev_vi(ev_enc(ins.n)))
-        } else if op == "push.bool" {
+        }
+        OpCode.PushBool -> {
             // 布尔以 1/0 承载:与宿主 print(bool)→"1"/"0" 的可观察行为一致
             if ins.s == "true" {
                 sp = ev_push(stack, sp, ev_vi(1))
             } else {
                 sp = ev_push(stack, sp, ev_vi(0))
             }
-        } else if op == "push.nil" {
+        }
+        OpCode.PushNil -> {
             sp = ev_push(stack, sp, ev_vi(0))
-        } else if op == "load.str" {
+        }
+        OpCode.LoadStr -> {
             // D25-① 规避:原生调用(get)不得内联作枚举构造参数,先提升
             var sv = c.pool.get(ins.n)
             sp = ev_push(stack, sp, ev_vs(sv))
-        } else if op == "load.loc.0" {
+        }
+        OpCode.LoadLoc0 -> {
             var v0 = stack.get(bp + 1)
             sp = ev_push(stack, sp, v0)
-        } else if op == "load.loc.1" {
+        }
+        OpCode.LoadLoc1 -> {
             var v1 = stack.get(bp + 2)
             sp = ev_push(stack, sp, v1)
-        } else if op == "load.loc.2" {
+        }
+        OpCode.LoadLoc2 -> {
             var v2 = stack.get(bp + 3)
             sp = ev_push(stack, sp, v2)
-        } else if op == "load.local" {
+        }
+        OpCode.LoadLocal -> {
             if ins.n >= 128 {
                 // 参数:bp - n_args + rel - 1(engine.rs 7304 同式)
                 var rel = ins.n - 128
@@ -345,13 +365,16 @@ fn ev_run_t(source str, trace int) str {
                 var vb = stack.get(bp + 1 + ins.n)
                 sp = ev_push(stack, sp, vb)
             }
-        } else if op == "store.loc.0" {
+        }
+        OpCode.StoreLoc0 -> {
             sp = sp - 1
             stack.set(bp + 1, stack.get(sp))
-        } else if op == "store.loc.1" {
+        }
+        OpCode.StoreLoc1 -> {
             sp = sp - 1
             stack.set(bp + 2, stack.get(sp))
-        } else if op == "store.local" {
+        }
+        OpCode.StoreLocal -> {
             sp = sp - 1
             if ins.n >= 128 {
                 var rel2 = ins.n - 128
@@ -359,12 +382,15 @@ fn ev_run_t(source str, trace int) str {
             } else {
                 stack.set(bp + 1 + ins.n, stack.get(sp))
             }
-        } else if op == "dup" {
+        }
+        OpCode.Dup -> {
             var vd = stack.get(sp - 1)
             sp = ev_push(stack, sp, vd)
-        } else if op == "pop" {
+        }
+        OpCode.Pop -> {
             sp = sp - 1
-        } else if op == "call" {
+        }
+        OpCode.Call -> {
             var fe = c.fns.get(ins.n)
             args_stack.push(cur_args)
             args_depth = args_depth + 1
@@ -372,7 +398,8 @@ fn ev_run_t(source str, trace int) str {
             sp = ev_push(stack, sp, ev_vi(bp))
             bp = sp - 1
             ip = fe.ins
-        } else if op == "ret" {
+        }
+        OpCode.Ret -> {
             var result = stack.get(sp - 1)
             sp = sp - 1
             var old_bp = ev_int(stack.get(bp))
@@ -391,7 +418,8 @@ fn ev_run_t(source str, trace int) str {
                     cur_args = args_stack.get(args_depth)
                 }
             }
-        } else if op == "call.nat" {
+        }
+        OpCode.CallNat -> {
             // nat#10 = print:弹 1 参入输出
             if out != "" {
                 out = out + "\n"
@@ -399,51 +427,54 @@ fn ev_run_t(source str, trace int) str {
             out = out + ev_str(stack.get(sp - 1))
             sp = sp - 1
             sp = ev_push(stack, sp, ev_vi(0))
-        } else if op == "add" || op == "sub" || op == "mul" || op == "div" || op == "mod" {
+        }
+        OpCode.Add | OpCode.Sub | OpCode.Mul | OpCode.Div | OpCode.Mod -> {
             var b = ev_dec(ev_int(stack.get(sp - 1)))
             var a = ev_dec(ev_int(stack.get(sp - 2)))
             sp = sp - 1
             var r = 0
-            if op == "add" {
+            if op == OpCode.Add {
                 r = a + b
-            } else if op == "sub" {
+            } else if op == OpCode.Sub {
                 r = a - b
-            } else if op == "mul" {
+            } else if op == OpCode.Mul {
                 r = a * b
-            } else if op == "div" {
+            } else if op == OpCode.Div {
                 r = a / b
             } else {
                 r = a % b
             }
             stack.set(sp - 1, ev_vi(ev_enc(r)))
-        } else if op == "str.cat" {
+        }
+        OpCode.StrCat -> {
             var b2 = stack.get(sp - 1)
             var a2 = stack.get(sp - 2)
             sp = sp - 1
             stack.set(sp - 1, ev_add(a2, b2))
-        } else if op == "eq" || op == "ne" || op == "lt" || op == "gt" || op == "le" || op == "ge" {
+        }
+        OpCode.Eq | OpCode.Ne | OpCode.Lt | OpCode.Gt | OpCode.Le | OpCode.Ge -> {
             var bv = stack.get(sp - 1)
             var av = stack.get(sp - 2)
             sp = sp - 1
             var cr = ev_cmp(av, bv)
             var r2 = 0
-            if op == "eq" {
+            if op == OpCode.Eq {
                 if cr == 0 {
                     r2 = 1
                 }
-            } else if op == "ne" {
+            } else if op == OpCode.Ne {
                 if cr != 0 {
                     r2 = 1
                 }
-            } else if op == "lt" {
+            } else if op == OpCode.Lt {
                 if cr == -1 {
                     r2 = 1
                 }
-            } else if op == "gt" {
+            } else if op == OpCode.Gt {
                 if cr == 1 {
                     r2 = 1
                 }
-            } else if op == "le" {
+            } else if op == OpCode.Le {
                 if cr == 0 || cr == -1 {
                     r2 = 1
                 }
@@ -453,12 +484,13 @@ fn ev_run_t(source str, trace int) str {
                 }
             }
             stack.set(sp - 1, ev_vi(r2))
-        } else if op == "and" || op == "or" {
+        }
+        OpCode.And | OpCode.Or -> {
             var b3 = stack.get(sp - 1)
             var a3 = stack.get(sp - 2)
             sp = sp - 1
             var r3 = 0
-            if op == "and" {
+            if op == OpCode.And {
                 if ev_truthy(a3) && ev_truthy(b3) {
                     r3 = 1
                 }
@@ -468,17 +500,20 @@ fn ev_run_t(source str, trace int) str {
                 }
             }
             stack.set(sp - 1, ev_vi(r3))
-        } else if op == "not" {
+        }
+        OpCode.Not -> {
             var v4 = stack.get(sp - 1)
             if ev_truthy(v4) {
                 stack.set(sp - 1, ev_vi(0))
             } else {
                 stack.set(sp - 1, ev_vi(1))
             }
-        } else if op == "neg" {
+        }
+        OpCode.Neg -> {
             var v10 = ev_dec(ev_int(stack.get(sp - 1)))
             stack.set(sp - 1, ev_vi(ev_enc(-v10)))
-        } else if op == "create.arr" {
+        }
+        OpCode.CreateArr -> {
             // 元素已按序压栈;自下而上读入新 List,入 arena 后以索引
             // 为载体(索引即引用,镜像宿主堆 id)
             var n6 = ins.n
@@ -492,7 +527,8 @@ fn ev_run_t(source str, trace int) str {
             arena.push(arr6)
             var ai6 = arena.len() - 1
             sp = ev_push(stack, sp, ev_va(ai6))
-        } else if op == "get.elem" {
+        }
+        OpCode.GetElem -> {
             // 栈:[..., arr, idx];负下标归一,-1=末位;OOB 推 0
             // (engine.rs 4403);str 接收者取码点(Missing→已含)
             var idx7 = ev_dec(ev_int(stack.get(sp - 1)))
@@ -515,7 +551,8 @@ fn ev_run_t(source str, trace int) str {
             }
             sp = sp - 2
             sp = ev_push(stack, sp, val7)
-        } else if op == "set.elem" {
+        }
+        OpCode.SetElem -> {
             // 栈:[..., value, arr, idx](value 展栈底,Rust quick-fix
             // 栈序);写通道 = ev_arr_write + 写回数组槽位(VM 引用
             // 语义下写回同一引用,无操作;a2r 值语义写回修改副本)
@@ -526,14 +563,17 @@ fn ev_run_t(source str, trace int) str {
                 ev_arr_write(arena, arr8.i, idx8, val8)
             }
             sp = sp - 3
-        } else if op == "arr.len" {
+        }
+        OpCode.ArrLen -> {
             // 动态分派:List→元素数,str→长度(镜像 ARRAY_LEN 两分支)
             var v9 = stack.get(sp - 1)
             var l9 = ev_len(arena, v9)
             sp = sp - 1
             sp = ev_push(stack, sp, ev_vi(l9))
-        } else {
-            return "ENGINE-ERROR:unknown op " + op
+        }
+        else -> {
+            return "ENGINE-ERROR:unknown op " + op_name(op)
+        }
         }
     }
     return out
