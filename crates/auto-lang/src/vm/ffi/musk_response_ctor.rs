@@ -67,13 +67,18 @@ fn pop_i32(task: &mut AutoTask) -> i32 {
     crate::vm::native::pop_arg_i32(task)
 }
 
-/// Pop a raw NanoValue argument with an RC stake so the underlying heap
-/// object stays alive while the shim reads it.
-fn pop_value(task: &mut AutoTask, vm: &AutoVM) -> auto_val::NanoValue {
+/// Pop a raw NanoValue argument WITH its RC stake — the caller must keep the
+/// returned guard alive for the whole read (PLAN-044 fix: the old form scoped
+/// the stake inside pop_value, so a last-ref heap object (fresh struct
+/// literal) was freed before the caller serialized it — musk health() →
+/// `Json(StatusOk(..))` hit the canary at rc.rs:503).
+fn pop_value_staked<'v>(
+    task: &mut AutoTask,
+    vm: &'v AutoVM,
+) -> (auto_val::NanoValue, crate::vm::native::StakeGuard<'v>) {
     let nv = crate::vm::native::pop_arg_nv(task);
-    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
-    let _ = _stake;
-    nv
+    let stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    (nv, stake)
 }
 
 /// Pop a string argument (pool-indexed scalar string).
@@ -96,7 +101,7 @@ fn pop_string(task: &mut AutoTask, vm: &AutoVM, ctx: &str) -> Result<String, VME
 /// `ok_response(v)` → 200 JSON of `v`.
 /// Stack: v -> response_handle
 pub fn shim_ok_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let body = nv_to_json_or_null(vm, nv).into_bytes();
     push_response(
         task,
@@ -110,7 +115,7 @@ pub fn shim_ok_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// `json_response(d)` → 200 JSON of `d` (server_serve settings_link form).
 /// Stack: d -> response_handle
 pub fn shim_json_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let body = nv_to_json_or_null(vm, nv).into_bytes();
     push_response(
         task,
@@ -124,7 +129,7 @@ pub fn shim_json_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// `error_response(code, d)` → `code` JSON of `d` (server_serve form).
 /// Stack: code, d -> response_handle (d on top)
 pub fn shim_error_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let status = pop_i32(task) as u16;
     let body = nv_to_json_or_null(vm, nv).into_bytes();
     push_response(
@@ -156,7 +161,7 @@ pub fn shim_err_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 /// Stack: d, code -> response_handle (code on top)
 pub fn shim_err_json_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status = pop_i32(task) as u16;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let body = nv_to_json_or_null(vm, nv).into_bytes();
     push_response(
         task,
@@ -194,7 +199,7 @@ pub fn shim_empty_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_to_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status = pop_i32(task) as u16;
     let msg = pop_string(task, vm, "to_response")?;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     if is_nullish(nv) {
         let body = format!(r#"{{"error":{}}}"#, serde_json::to_string(&msg).unwrap_or_default())
             .into_bytes();
@@ -284,7 +289,7 @@ fn gid_field_str(vm: &AutoVM, heap_id: u64, key: &str) -> Option<String> {
 /// `resp_is_err(v)` → bool: `v` is an `{"error":{...}}` envelope.
 /// Stack: v -> bool
 pub fn shim_resp_is_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let err = nv_heap_id(nv)
         .and_then(|id| gid_field(vm, id, "error"))
         .map(|e| value_is_object(vm, &e))
@@ -296,7 +301,7 @@ pub fn shim_resp_is_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// `resp_err_code(v)` → int: `v["error"]["code"]`, default 500.
 /// Stack: v -> int
 pub fn shim_resp_err_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let code = nv_heap_id(nv)
         .and_then(|id| {
             let err = gid_field(vm, id, "error")?;
@@ -314,7 +319,7 @@ pub fn shim_resp_err_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// `resp_err_message(v)` → str: `v["error"]["message"]`, default "request failed".
 /// Stack: v -> str
 pub fn shim_resp_err_message(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let msg = nv_heap_id(nv)
         .and_then(|id| {
             let err = gid_field(vm, id, "error")?;
@@ -345,7 +350,7 @@ pub struct SseEvent {
 /// `sse_named_event(name, dto)` → Event with a name.
 /// Stack: name, dto -> event_handle (dto on top)
 pub fn shim_sse_named_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let name = pop_string(task, vm, "sse_named_event")?;
     let data = nv_to_json_or_null(vm, nv);
     crate::vm::ffi::stdlib::push_rust_obj(
@@ -359,7 +364,7 @@ pub fn shim_sse_named_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// `sse_event(name, dto)` → Event with a name (server_stream alias).
 /// Stack: name, dto -> event_handle (dto on top)
 pub fn shim_sse_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let name = pop_string(task, vm, "sse_event")?;
     let data = nv_to_json_or_null(vm, nv);
     crate::vm::ffi::stdlib::push_rust_obj(
@@ -373,7 +378,7 @@ pub fn shim_sse_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `sse_plain_event(dto)` → Event without a name.
 /// Stack: dto -> event_handle
 pub fn shim_sse_plain_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let data = nv_to_json_or_null(vm, nv);
     crate::vm::ffi::stdlib::push_rust_obj(
         task,
@@ -554,7 +559,7 @@ pub fn sse_frame_from_nv(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<String>
 /// `value_get_str(v, k)` → str. Stack: v, k -> str (k on top).
 pub fn shim_value_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let k = pop_string(task, vm, "value_get_str")?;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let out = nv_heap_id(nv)
         .and_then(|id| gid_field_str(vm, id, &k))
         .unwrap_or_default();
@@ -566,7 +571,7 @@ pub fn shim_value_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// `value_get_bool(v, k)` → bool. Stack: v, k -> bool (k on top).
 pub fn shim_value_get_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let k = pop_string(task, vm, "value_get_bool")?;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let out = nv_heap_id(nv).and_then(|id| match gid_field(vm, id, &k)? {
         auto_val::Value::Bool(b) => Some(b),
         _ => None,
@@ -577,7 +582,7 @@ pub fn shim_value_get_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 
 /// `value_is_null(v)` → bool. Stack: v -> bool.
 pub fn shim_value_is_null(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let out = is_nullish(nv);
     task.ram.push_nv(auto_val::encode_bool(out));
     Ok(())
@@ -646,7 +651,7 @@ fn value_is_array(vm: &AutoVM, val: &auto_val::Value) -> bool {
 /// `value_get(v, k)` → Value (field value). Stack: v, k -> value (k on top).
 pub fn shim_value_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let k = pop_string(task, vm, "value_get")?;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let field = nv_heap_id(nv).and_then(|id| gid_field(vm, id, &k));
     match field {
         Some(val) => push_vm_value(task, vm, &val)?,
@@ -658,7 +663,7 @@ pub fn shim_value_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// `value_get_array(v, k)` → Value (field array, default []). Stack: v, k -> value.
 pub fn shim_value_get_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let k = pop_string(task, vm, "value_get_array")?;
-    let nv = pop_value(task, vm);
+    let (nv, _stake) = pop_value_staked(task, vm);
     let field = nv_heap_id(nv).and_then(|id| gid_field(vm, id, &k));
     match field {
         Some(val) if value_is_array(vm, &val) => push_vm_value(task, vm, &val)?,
@@ -784,8 +789,8 @@ fn push_value_from_json(
 /// is opaque and carried by the backend via the workspace registry); without a
 /// host call, serves the empty-store shape `{runs: []}`. Stack: s, q -> value.
 pub fn shim_relay_runs_list(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let q = pop_value(task, vm); // Query<WorkspaceQuery> (GenericInstanceData, top)
-    let _s = pop_value(task, vm); // State<AppState> (opaque)
+    let (q, _q_stake) = pop_value_staked(task, vm); // Query<WorkspaceQuery> (GenericInstanceData, top)
+    let (_s, _s_stake) = pop_value_staked(task, vm); // State<AppState> (opaque)
     let args_json =
         crate::vm::ffi::http_server::nv_to_json(vm, q, 0).unwrap_or_else(|| "{}".to_string());
     if try_host_forward("relay_runs_list", task, vm, &args_json)? {
@@ -803,7 +808,7 @@ pub fn shim_app_config_effective_daemon_url(
     task: &mut AutoTask,
     vm: &AutoVM,
 ) -> Result<(), VMError> {
-    let _cfg = pop_value(task, vm); // config Value (unused for the default)
+    let (_cfg, _stake__cfg) = pop_value_staked(task, vm); // config Value (unused for the default)
     if try_host_forward("app_config_effective_daemon_url", task, vm, "{}")? {
         return Ok(());
     }
