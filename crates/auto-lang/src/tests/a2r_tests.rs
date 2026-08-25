@@ -397,6 +397,9 @@ ext Store {
 #[test] fn test_04_strings_006_multi_fstr() { test_a2r("04_strings/006_multi_fstr").unwrap(); }
 #[test] fn test_04_strings_007_char_at_infer() { test_a2r("04_strings/007_char_at_infer").unwrap(); }
 #[test] fn test_04_strings_008_str_param_borrow() { test_a2r("04_strings/008_str_param_borrow").unwrap(); }
+// Plan 032 第七批合并后复验:Phase 4 试点缺口守卫——裸 trim() 族不加 .as_str()
+// (E0658)+ 未知被调者不叠显式 to_string()(E0308)。
+#[test] fn test_04_strings_009_asstr_arg_guards() { test_a2r("04_strings/009_asstr_arg_guards").unwrap(); }
 
 // === 05_expressions ===
 #[test] fn test_05_expressions_001_arithmetic() { test_a2r("05_expressions/001_arithmetic").unwrap(); }

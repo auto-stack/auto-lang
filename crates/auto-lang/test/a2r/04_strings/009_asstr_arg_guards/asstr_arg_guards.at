@@ -1,0 +1,26 @@
+// Plan 032 第七批合并后复验钉桩（plan 016 Phase 4 试点缺口两处）：
+// 1. 裸 `x.trim()` 族实参产 &str —— 传给 str 参数不得再叠 .as_str()（E0658）。
+// 2. 未知被调者（is 臂 fn-pointer 绑定）+ .at 显式 X.to_string() ——
+//    兜底 .as_str() 不得反转作者物化 owned String 的意图（E0308）。
+
+enum Decision { Approve = 0, Deny = 1 }
+
+pub type Gate {
+    handler ?fn(str) Decision
+}
+
+fn decide(gate Gate, step_id str) Decision {
+    is gate.handler {
+        Some(handler) -> return handler(step_id.to_string()),
+        None -> return Decision.Approve
+    }
+    return Decision.Approve
+}
+
+fn needs_val(val str) bool {
+    return val.len() > 0
+}
+
+pub fn trim_guard(raw str) bool {
+    return needs_val(raw.trim())
+}
