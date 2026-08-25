@@ -57,7 +57,7 @@ pub fn grow(mut routing: HashMap<ModelTier, Vec<TierCandidate>>, tier: ModelTier
             updated.push(tc.clone());
             routing.insert(tier, updated.clone());
         },
-        None => { routing.insert(tier, vec![tc]); },
+        None => { routing.insert(tier, vec![tc.clone()]); },
     };
 }
 
