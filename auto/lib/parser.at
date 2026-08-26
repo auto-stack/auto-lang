@@ -433,190 +433,161 @@ fn parse_type_base(mut p P) str {
 
 // ── Pratt 表直译(parser.rs:28-164) ──────────────────────────
 
-fn prefix_power(k TokenKind) int {
+// 运算符枚举(镜像 auto-val value.rs Op 的 lib 子集;447-③P3 杠杆点——
+// 六链函数一步收编为 is-on-Op)。NoOp = 非运算符哨兵(镜像 Parser::op 的兜底)
+enum Op {
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    AddEq
+    SubEq
+    MulEq
+    DivEq
+    ModEq
+    Not
+    And
+    Or
+    LSquare
+    LParen
+    Asn
+    Eq
+    Neq
+    Lt
+    Gt
+    Le
+    Ge
+    Range
+    RangeEq
+    Dot
+    Colon
+    QuestionQuestion
+    NoOp
+}
+
+// Parser::op() 直译(parser.rs:2897):TokenKind → Op;非运算符 → NoOp
+fn p_op(k TokenKind) Op {
+    is k {
+        TokenKind.Add -> Op.Add
+        TokenKind.Sub -> Op.Sub
+        TokenKind.Star -> Op.Mul
+        TokenKind.Div -> Op.Div
+        TokenKind.Mod -> Op.Mod
+        TokenKind.AddEq -> Op.AddEq
+        TokenKind.SubEq -> Op.SubEq
+        TokenKind.MulEq -> Op.MulEq
+        TokenKind.DivEq -> Op.DivEq
+        TokenKind.ModEq -> Op.ModEq
+        TokenKind.LSquare -> Op.LSquare
+        TokenKind.LParen -> Op.LParen
+        TokenKind.Not -> Op.Not
+        TokenKind.Asn -> Op.Asn
+        TokenKind.Eq -> Op.Eq
+        TokenKind.Neq -> Op.Neq
+        TokenKind.Lt -> Op.Lt
+        TokenKind.Gt -> Op.Gt
+        TokenKind.Le -> Op.Le
+        TokenKind.Ge -> Op.Ge
+        TokenKind.Range -> Op.Range
+        TokenKind.RangeEq -> Op.RangeEq
+        TokenKind.Dot -> Op.Dot
+        TokenKind.Colon -> Op.Colon
+        TokenKind.And -> Op.And
+        TokenKind.Or -> Op.Or
+        TokenKind.QuestionQuestion -> Op.QuestionQuestion
+        else -> Op.NoOp
+    }
+}
+
+fn prefix_power(op Op) int {
     // sign(Add/Sub/Star)=2*13=26;Not=2*14=28
-    if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Star {
-        return 26
+    is op {
+        Op.Add | Op.Sub | Op.Mul -> 26
+        Op.Not -> 28
+        else -> 0
     }
-    if k == TokenKind.Not {
-        return 28
-    }
-    return 0
 }
 
-fn postfix_power(k TokenKind) int {
+fn postfix_power(op Op) int {
     // pair=2*4=8;call=2*15=30;index=2*16=32;bang=2*17=34
-    if k == TokenKind.Colon {
-        return 8
+    is op {
+        Op.Colon -> 8
+        Op.LParen -> 30
+        Op.LSquare -> 32
+        Op.Not -> 34
+        else -> 0
     }
-    if k == TokenKind.LParen {
-        return 30
-    }
-    if k == TokenKind.LSquare {
-        return 32
-    }
-    if k == TokenKind.Not {
-        return 34
-    }
-    return 0
 }
 
-fn infix_l(k TokenKind) int {
-    if k == TokenKind.Asn {
-        return 1
+fn infix_l(op Op) int {
+    is op {
+        Op.Asn -> 1
+        Op.AddEq | Op.SubEq -> 3
+        Op.MulEq | Op.DivEq | Op.ModEq -> 5
+        Op.Or | Op.QuestionQuestion -> 9
+        Op.And -> 11
+        Op.Eq | Op.Neq -> 13
+        Op.Lt | Op.Gt | Op.Le | Op.Ge -> 15
+        Op.Range | Op.RangeEq -> 17
+        Op.Add | Op.Sub -> 19
+        Op.Mul | Op.Div | Op.Mod -> 21
+        Op.Dot -> 35
+        else -> 0
     }
-    if k == TokenKind.AddEq || k == TokenKind.SubEq {
-        return 3
-    }
-    if k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq {
-        return 5
-    }
-    if k == TokenKind.Or || k == TokenKind.QuestionQuestion {
-        return 9
-    }
-    if k == TokenKind.And {
-        return 11
-    }
-    if k == TokenKind.Eq || k == TokenKind.Neq {
-        return 13
-    }
-    if k == TokenKind.Lt || k == TokenKind.Gt || k == TokenKind.Le || k == TokenKind.Ge {
-        return 15
-    }
-    if k == TokenKind.Range || k == TokenKind.RangeEq {
-        return 17
-    }
-    if k == TokenKind.Add || k == TokenKind.Sub {
-        return 19
-    }
-    if k == TokenKind.Star || k == TokenKind.Div || k == TokenKind.Mod {
-        return 21
-    }
-    if k == TokenKind.Dot {
-        return 35
-    }
-    return 0
 }
 
-fn infix_r(k TokenKind) int {
-    if k == TokenKind.Asn {
-        return 2
+fn infix_r(op Op) int {
+    is op {
+        Op.Asn -> 2
+        Op.AddEq | Op.SubEq -> 4
+        Op.MulEq | Op.DivEq | Op.ModEq -> 6
+        Op.Or | Op.QuestionQuestion -> 10
+        Op.And -> 12
+        Op.Eq | Op.Neq -> 14
+        Op.Lt | Op.Gt | Op.Le | Op.Ge -> 16
+        Op.Range | Op.RangeEq -> 18
+        Op.Add | Op.Sub -> 20
+        Op.Mul | Op.Div | Op.Mod -> 22
+        Op.Dot -> 36
+        else -> 0
     }
-    if k == TokenKind.AddEq || k == TokenKind.SubEq {
-        return 4
-    }
-    if k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq {
-        return 6
-    }
-    if k == TokenKind.Or || k == TokenKind.QuestionQuestion {
-        return 10
-    }
-    if k == TokenKind.And {
-        return 12
-    }
-    if k == TokenKind.Eq || k == TokenKind.Neq {
-        return 14
-    }
-    if k == TokenKind.Lt || k == TokenKind.Gt || k == TokenKind.Le || k == TokenKind.Ge {
-        return 16
-    }
-    if k == TokenKind.Range || k == TokenKind.RangeEq {
-        return 18
-    }
-    if k == TokenKind.Add || k == TokenKind.Sub {
-        return 20
-    }
-    if k == TokenKind.Star || k == TokenKind.Div || k == TokenKind.Mod {
-        return 22
-    }
-    if k == TokenKind.Dot {
-        return 36
-    }
-    return 0
 }
 
-fn op_display(k TokenKind) str {
-    if k == TokenKind.Add {
-        return "+"
+fn op_display(op Op) str {
+    is op {
+        Op.Add -> "+"
+        Op.Sub -> "-"
+        Op.Mul -> "*"
+        Op.Div -> "/"
+        Op.Mod -> "%"
+        Op.AddEq -> "+="
+        Op.SubEq -> "-="
+        Op.MulEq -> "*="
+        Op.DivEq -> "/="
+        Op.ModEq -> "%="
+        Op.Not -> "!"
+        Op.Asn -> "="
+        Op.Eq -> "=="
+        Op.Neq -> "!="
+        Op.Lt -> "<"
+        Op.Gt -> ">"
+        Op.Le -> "<="
+        Op.Ge -> ">="
+        Op.Range -> ".."
+        Op.RangeEq -> "..="
+        Op.Dot -> "."
+        Op.Colon -> ":"
+        Op.And -> "&&"
+        Op.Or -> "||"
+        Op.QuestionQuestion -> "??"
+        else -> ""
     }
-    if k == TokenKind.Sub {
-        return "-"
-    }
-    if k == TokenKind.Star {
-        return "*"
-    }
-    if k == TokenKind.Div {
-        return "/"
-    }
-    if k == TokenKind.Mod {
-        return "%"
-    }
-    if k == TokenKind.AddEq {
-        return "+="
-    }
-    if k == TokenKind.SubEq {
-        return "-="
-    }
-    if k == TokenKind.MulEq {
-        return "*="
-    }
-    if k == TokenKind.DivEq {
-        return "/="
-    }
-    if k == TokenKind.ModEq {
-        return "%="
-    }
-    if k == TokenKind.Not {
-        return "!"
-    }
-    if k == TokenKind.Asn {
-        return "="
-    }
-    if k == TokenKind.Eq {
-        return "=="
-    }
-    if k == TokenKind.Neq {
-        return "!="
-    }
-    if k == TokenKind.Lt {
-        return "<"
-    }
-    if k == TokenKind.Gt {
-        return ">"
-    }
-    if k == TokenKind.Le {
-        return "<="
-    }
-    if k == TokenKind.Ge {
-        return ">="
-    }
-    if k == TokenKind.Range {
-        return ".."
-    }
-    if k == TokenKind.RangeEq {
-        return "..="
-    }
-    if k == TokenKind.Dot {
-        return "."
-    }
-    if k == TokenKind.Colon {
-        return ":"
-    }
-    if k == TokenKind.And {
-        return "&&"
-    }
-    if k == TokenKind.Or {
-        return "||"
-    }
-    if k == TokenKind.QuestionQuestion {
-        return "??"
-    }
-    return ""
 }
 
 // 运算符 token 是否可作 lhs 之后的运算符(infix 或 postfix)
 fn is_op_kind(k TokenKind) bool {
-    return op_display(k) != "" || k == TokenKind.LParen || k == TokenKind.LSquare
+    return op_display(p_op(k)) != "" || k == TokenKind.LParen || k == TokenKind.LSquare
 }
 
 // ── 推断构造期辅助(infer_binop_type/infer_unary_op_type 直译) ─
@@ -636,17 +607,13 @@ fn infer_unify(a str, b str) str {
     return ""
 }
 
-fn binop_result(op TokenKind, l str, r str) str {
-    if op == TokenKind.Eq || op == TokenKind.Neq || op == TokenKind.Lt || op == TokenKind.Gt || op == TokenKind.Le || op == TokenKind.Ge {
-        return "bool"
+fn binop_result(op Op, l str, r str) str {
+    is op {
+        Op.Eq | Op.Neq | Op.Lt | Op.Gt | Op.Le | Op.Ge -> "bool"
+        Op.Add | Op.Sub | Op.Mul | Op.Div | Op.Mod -> infer_unify(l, r)
+        Op.AddEq | Op.SubEq | Op.MulEq | Op.DivEq | Op.ModEq | Op.Asn -> infer_unify(l, r)
+        else -> ""
     }
-    if op == TokenKind.Add || op == TokenKind.Sub || op == TokenKind.Star || op == TokenKind.Div || op == TokenKind.Mod {
-        return infer_unify(l, r)
-    }
-    if op == TokenKind.AddEq || op == TokenKind.SubEq || op == TokenKind.MulEq || op == TokenKind.DivEq || op == TokenKind.ModEq || op == TokenKind.Asn {
-        return infer_unify(l, r)
-    }
-    return ""
 }
 
 // ── 表达式(返回 E;错误短路见 D22) ──────────────────────────
@@ -979,7 +946,7 @@ fn expr_pratt(mut p P, min int) E {
         var d = if_contents(p)
         lhs = E("other", "", "", "", d, "")
     } else if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Not || k == TokenKind.Star {
-        var pow = prefix_power(k)
+        var pow = prefix_power(p_op(k))
         p_next(p)
         var operand = expr_pratt(p, pow)
         var ity = ""
@@ -988,7 +955,7 @@ fn expr_pratt(mut p P, min int) E {
         } else {
             ity = operand.ity
         }
-        lhs = E("una", k, "", "", "(una (op " + op_display(k) + ") " + operand.dump + ")", ity)
+        lhs = E("una", k, "", "", "(una (op " + op_display(p_op(k)) + ") " + operand.dump + ")", ity)
     } else if k == TokenKind.LParen {
         lhs = paren_prefix(p)
     } else if k == TokenKind.LSquare {
@@ -1017,93 +984,99 @@ fn expr_with_left(mut p P, lhs E, min int) E {
     var cur = lhs
     while p.err == "" {
         var k = p_kind(p)
-        if k == TokenKind.EOF || k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.LBrace || k == TokenKind.RBrace || k == TokenKind.Comma || k == TokenKind.Arrow || k == TokenKind.DoubleArrow || k == TokenKind.VBar || k == TokenKind.RSquare || k == TokenKind.RParen {
-            break
-        }
-        if !is_op_kind(k) {
-            p_err(p, "expected infix operator, got ")
-            break
-        }
-        var op = k
-        var post = postfix_power(op)
-        if post > 0 {
-            if post < min {
+        // P2:循环顶 token 分派(镜像 Rust parser.rs:2425 的 match kind:
+        // 11 种界符 break;其余走算符链)
+        is k {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen -> {
                 break
             }
-            if op == TokenKind.LSquare {
-                // 下标(切片形态 Missing)
-                p_next(p)
-                var idx = expr_pratt(p, 18)
-                p_expect(p, TokenKind.RSquare)
-                cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
-            } else if op == TokenKind.LParen {
-                // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
-                var args = parse_args(p)
-                var word = ""
-                if cur.kind == "name" {
-                    word = cur.word
-                }
-                var d = "(call " + cur.dump
-                if args != "(args)" {
-                    d = d + " " + args
-                }
-                cur = E("call", word, cur.dump, args, d + ")", "")
-            } else if op == TokenKind.Colon {
-                // pair:key 由 lhs 形态决定;直接返回(不回循环)
-                p_next(p)
-                var key = ""
-                if cur.kind == "name" {
-                    key = "(name " + cur.word + ")"
-                } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
-                    key = cur.name
-                } else if cur.kind == "str" {
-                    key = "\"" + cur.name + "\""
-                } else {
-                    p_err(p, "invalid pair key ")
+            else -> {
+                if !is_op_kind(k) {
+                    p_err(p, "expected infix operator, got ")
                     break
                 }
-                var val = expr_pratt(p, 0)
-                return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
-            } else {
-                // Not 后缀(collect!):Missing
-                p_err(p, "v2 unsupported: postfix bang ")
-                break
-            }
-        } else {
-            var l = infix_l(op)
-            if l == 0 || l < min {
-                break
-            }
-            p_next(p)
-            // || / && 换行续接
-            if op == TokenKind.Or || op == TokenKind.And {
-                skip_empty_lines(p)
-            }
-            var rhs = expr_pratt(p, infix_r(op))
-            if op == TokenKind.Range {
-                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq false))", "")
-            } else if op == TokenKind.RangeEq {
-                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq true))", "")
-            } else if op == TokenKind.Dot {
-                if rhs.kind == "name" {
-                    cur = E("dot", rhs.word, "", "", "(dot " + cur.dump + "." + rhs.word + ")", "")
-                } else if rhs.kind == "int" || rhs.kind == "uint" {
-                    cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
-                } else if rhs.kind == "call" {
-                    // 方法调用重写:Call(name=Dot(obj,method))
-                    var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
-                    if rhs.args != "(args)" {
-                        d2 = d2 + " " + rhs.args
+                var op = p_op(k)
+                var post = postfix_power(op)
+                if post > 0 {
+                    if post < min {
+                        break
                     }
-                    cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
+                    if op == Op.LSquare {
+                        // 下标(切片形态 Missing)
+                        p_next(p)
+                        var idx = expr_pratt(p, 18)
+                        p_expect(p, TokenKind.RSquare)
+                        cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
+                    } else if op == Op.LParen {
+                        // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
+                        var args = parse_args(p)
+                        var word = ""
+                        if cur.kind == "name" {
+                            word = cur.word
+                        }
+                        var d = "(call " + cur.dump
+                        if args != "(args)" {
+                            d = d + " " + args
+                        }
+                        cur = E("call", word, cur.dump, args, d + ")", "")
+                    } else if op == Op.Colon {
+                        // pair:key 由 lhs 形态决定;直接返回(不回循环)
+                        p_next(p)
+                        var key = ""
+                        if cur.kind == "name" {
+                            key = "(name " + cur.word + ")"
+                        } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
+                            key = cur.name
+                        } else if cur.kind == "str" {
+                            key = "\"" + cur.name + "\""
+                        } else {
+                            p_err(p, "invalid pair key ")
+                            break
+                        }
+                        var val = expr_pratt(p, 0)
+                        return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
+                    } else {
+                        // Not 后缀(collect!):Missing
+                        p_err(p, "v2 unsupported: postfix bang ")
+                        break
+                    }
                 } else {
-                    p_err(p, "invalid field name after dot ")
-                    break
+                    var l = infix_l(op)
+                    if l == 0 || l < min {
+                        break
+                    }
+                    p_next(p)
+                    // || / && 换行续接
+                    if op == Op.Or || op == Op.And {
+                        skip_empty_lines(p)
+                    }
+                    var rhs = expr_pratt(p, infix_r(op))
+                    if op == Op.Range {
+                        cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq false))", "")
+                    } else if op == Op.RangeEq {
+                        cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq true))", "")
+                    } else if op == Op.Dot {
+                        if rhs.kind == "name" {
+                            cur = E("dot", rhs.word, "", "", "(dot " + cur.dump + "." + rhs.word + ")", "")
+                        } else if rhs.kind == "int" || rhs.kind == "uint" {
+                            cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
+                        } else if rhs.kind == "call" {
+                            // 方法调用重写:Call(name=Dot(obj,method))
+                            var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
+                            if rhs.args != "(args)" {
+                                d2 = d2 + " " + rhs.args
+                            }
+                            cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
+                        } else {
+                            p_err(p, "invalid field name after dot ")
+                            break
+                        }
+                    } else if op == Op.QuestionQuestion {
+                        cur = E("other", "", "", "", "(?? " + cur.dump + " " + rhs.dump + ")", "")
+                    } else {
+                        cur = E("bina", op, "", "", "(bina " + cur.dump + " (op " + op_display(op) + ") " + rhs.dump + ")", binop_result(op, cur.ity, rhs.ity))
+                    }
                 }
-            } else if op == TokenKind.QuestionQuestion {
-                cur = E("other", "", "", "", "(?? " + cur.dump + " " + rhs.dump + ")", "")
-            } else {
-                cur = E("bina", op, "", "", "(bina " + cur.dump + " (op " + op_display(op) + ") " + rhs.dump + ")", binop_result(op, cur.ity, rhs.ity))
             }
         }
     }
@@ -1427,10 +1400,10 @@ fn parse_return(mut p P) str {
 // 可作名字的 token(对齐 parse_name 盲取文本;结构性分隔符除外——
 // 成员/变体名可为关键字,如 UI 方言的 grid)
 fn is_name_kind(k TokenKind) bool {
-    if k == TokenKind.EOF || k == TokenKind.RBrace || k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.Comma || k == TokenKind.Colon || k == TokenKind.Asn || k == TokenKind.LParen || k == TokenKind.LBrace || k == TokenKind.LSquare || k == TokenKind.RParen || k == TokenKind.RSquare || k == TokenKind.Arrow || k == TokenKind.Dot || k == TokenKind.Lt || k == TokenKind.Gt {
-        return false
+    is k {
+        TokenKind.EOF | TokenKind.RBrace | TokenKind.Newline | TokenKind.Semi | TokenKind.Comma | TokenKind.Colon | TokenKind.Asn | TokenKind.LParen | TokenKind.LBrace | TokenKind.LSquare | TokenKind.RParen | TokenKind.RSquare | TokenKind.Arrow | TokenKind.Dot | TokenKind.Lt | TokenKind.Gt -> false
+        else -> true
     }
-    return true
 }
 
 // type 声明(Plan 434:AA2R 转译 lib 自身需要)。Display 对齐 ast/types.rs
@@ -1841,7 +1814,10 @@ fn parse_is(mut p P) str {
 }
 
 fn is_unsupported_stmt_kind(k TokenKind) bool {
-    return k == TokenKind.Use || k == TokenKind.Spec || k == TokenKind.Tag || k == TokenKind.Union || k == TokenKind.Ext || k == TokenKind.Impl || k == TokenKind.Task || k == TokenKind.On || k == TokenKind.Dep || k == TokenKind.Hash || k == TokenKind.HashIf || k == TokenKind.HashFor || k == TokenKind.HashIs || k == TokenKind.HashBrace || k == TokenKind.HashIdent || k == TokenKind.Try || k == TokenKind.Yield || k == TokenKind.Reply || k == TokenKind.View
+    is k {
+        TokenKind.Use | TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Ext | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
+        else -> false
+    }
 }
 
 fn parse_stmt(mut p P) str {

@@ -12,6 +12,42 @@
   or-臂、9 定界臂内联);lex_string/lex_char/lex_fstr_at 转义链 → `is esc`。
   **新增强化:is-on-int(码点局部)的字符模式**两侧转译器按码点十进制发射
   (主 a2r int_match_scrutinee 旗标 / AA2R ar_is_pattern_text scrut_int 参)。
+- **D11b·parser/typeinfo/codegen P1/P3 收账(2026-08-26 续)**:p_kind/p_peek
+  返回 TokenKind + p_expect 参数化,四文件 840+ 比较位枚举化;新增
+  `enum Op` + p_op()(Parser::op() 直译),六链(prefix_power/postfix_power/
+  infix_l/infix_r/op_display/binop_result)收编 is-on-Op 或臂链;
+  `enum OpCode`(47 助记符 + Blank 哨兵)——I.op 载体枚举化、op_name()
+  为 M4 序列化唯一口径、engine ev_run_t 49 臂分派巨链 is 化。
+  宿主配套:merge 跨模块枚举名传播;标量枚举 derive Copy(7 golden
+  derive 行合法更新)。
+- **D11b·Y1/P4 谓词收账(2026-08-26 二次,首试回退翻案)**:typeinfo
+  t_literal_type/t_binop_result/t_unify、parser is_name_kind/
+  is_unsupported_stmt_kind 五函数 is 化(or 臂/卫语臂交错/函数尾值语义)。
+  连带三修:①AA2R ar_is_body_coerce 补 Ident-str-参数分支(`"" -> b`
+  → `"" => b` E0308;镜像主 a2r expr_needs_string_coercion);②AA2R
+  ar_branch_body 的 tail_no_semi 改保存/恢复(无条件清零冲掉外层
+  函数尾标记,early-return 后尾位 is 失锚);③主 a2r fix_mutable_params
+  等三处文本后处理正则 `=[^=]` → `=[^=>]`(match 臂箭头 `<param> =>`
+  误读为赋值的 `mut` 噪声;golden 零漂移)。语料 g04_is_arm_value_str
+  落盘。首试⑤列"print 超大串退空"结案为环境相关异常终止(宿主 print
+  无尺寸阈值已证伪;循环逐字符拼接 >20 万字符崩/挂为 u16 池截断家族,
+  以 List+join 写法规范规避)。
+- **D34·Val 三载体枚举化收账(2026-08-26,E2)**:engine.at 的 Val
+  判别器结构体 {k,i,s} → `enum Val{VInt(int) VStr(str) VArr(int)
+  VInst(int,str)}`(部分② 的 k=3 实例形态并入 VInst 双载荷);8 个
+  ev_* 函数的 `v.k==` 分派还原为 is-绑定分派(对齐 auto-val Value
+  的 match 形态;ev_cmp 嵌套 is 镜像 Rust 元组 match 的 D41 拆臂)。
+  433 期"枚举载荷跨函数传参丢标签"规避(H3 家族)解除;D36①② 规避
+  写法(构造参数提升/读值提升)保留——非枚举化障碍,风格回退另行。
+  **宿主修复(push_value 漏 retain)**:engine.rs push_value 的 Str
+  分支 add_string 后直推无 +1 stake,GET_GENERIC_FIELD 读运行期
+  字符串载荷后任意 pop/槽释放即超额释放(RC canary;v21 最小复现
+  `fn内构造运行期串实例→返回→is 绑定读→print`)——统一走
+  rc_push_str_idx,8 个调用点(字段读/原生返回)同族潜伏一并修复;
+  此前全库载荷均为 pinned 常量故未暴露。多元组载荷三件语料护航:
+  p23(M2 dump)/g05(②⑤逐字符对齐,连带 AA2R 三修:模式绑定
+  ", " 连接/ar_pay_slot 按位 str 槽 .to_string()/枚举 ident 实参
+  无条件 clone 镜像主 a2r struct_flags)/b31(M4/M5 行为 + 矩阵)。
 - **D14 残余·lexer.at L1**:Token.kind/Tok.kind 载体 str → TokenKind
   (构造点 41+4;p_kind/p_peek 以 kind_name 维持 str 边界待 P1;is_comment_kind
   参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,

@@ -41,7 +41,7 @@
 // 指令:op=助记符(空=已删除占位);s=序列化操作数文本;n=patch 载荷
 // (jmp/jmp.z:目标指令索引;call:FnEntry 索引;load.str:池索引)
 type I {
-    op str
+    op OpCode
     s str
     n int
 }
@@ -73,6 +73,14 @@ type CG {
     // 位序,镜像 scalar_value.unwrap_or(i));ctors:"Enum.Variant"→字段数
     consts List<CGEnum>
     ctors List<CGEnum>
+    // P2:循环 break/continue 占位回填(镜像宿主 H2 patch_jump_to;aavm
+    // 侧首实现)。帧按层深 append-only(engine.at args_stack 同款,无
+    // List.pop opcode);cont_tg 为各层 continue 落点(while=条件顶,
+    // for=步进位)
+    brk_js List<List<int>>
+    cont_js List<List<int>>
+    cont_tg List<int>
+    loop_depth int
 }
 
 type CGEnum {
@@ -111,7 +119,61 @@ fn cg_new() CG {
     var fns List<FnEntry> = List.new()
     var consts_l List<CGEnum> = List.new()
     var ctors_l List<CGEnum> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l)
+    var brk_l List<List<int>> = List.new()
+    var cont_l List<List<int>> = List.new()
+    var ctg_l List<int> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0)
+}
+
+// P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
+// 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
+fn cg_loop_enter(mut c CG, cont_target int) {
+    var bl List<int> = List.new()
+    c.brk_js.push(bl)
+    var cl List<int> = List.new()
+    c.cont_js.push(cl)
+    c.cont_tg.push(cont_target)
+    c.loop_depth = c.loop_depth + 1
+}
+
+// P2:出循环层——continue 占位 → 本层落点;break 占位 → 循环后
+fn cg_loop_exit(mut c CG, brk_target int) {
+    var d = c.loop_depth - 1
+    if d < 0 {
+        cg_err(c, "loop exit without enter")
+        return
+    }
+    var cj = c.cont_js.get(d)
+    var j = 0
+    while j < cj.len() {
+        c.ins.get(cj.get(j)).n = c.cont_tg.get(d)
+        j = j + 1
+    }
+    var bj = c.brk_js.get(d)
+    var b = 0
+    while b < bj.len() {
+        c.ins.get(bj.get(b)).n = brk_target
+        b = b + 1
+    }
+    c.loop_depth = d
+}
+
+// P2:break/continue 语句发射(占位 Jmp 入本层帧;层外报错)
+fn cg_loop_jump(mut c CG, k TokenKind) {
+    if c.loop_depth == 0 {
+        cg_err(c, "break/continue outside loop")
+        return
+    }
+    var j = emit(c, OpCode.Jmp, "", -1)
+    if k == TokenKind.Continue {
+        var fr = c.cont_js.get(c.loop_depth - 1)
+        fr.push(j)
+        c.cont_js.set(c.loop_depth - 1, fr)
+    } else {
+        var fr2 = c.brk_js.get(c.loop_depth - 1)
+        fr2.push(j)
+        c.brk_js.set(c.loop_depth - 1, fr2)
+    }
 }
 
 fn cg_err(mut c CG, msg str) {
@@ -132,68 +194,151 @@ fn p_peek_text(p P, n int) str {
 // 指令字节宽度(与 Rust opcode 编码一致;S4 子集)。new.instance/
 // is.variant 的名字内联字节随名长(Plan 447 部分②);get.generic.field
 // 的 u32 操作数在 Rust 侧按 1B 操作数+3B 残留(nop)错位展示,照抄
-fn i_size(op str) int {
-    if op == "fn.prolog" {
-        return 3
+enum OpCode {
+    Line
+    Add
+    Sub
+    Mul
+    Div
+    Mod
+    Eq
+    Ne
+    Lt
+    Gt
+    Le
+    Ge
+    And
+    Or
+    Not
+    Neg
+    StrCat
+    ConstI32
+    LoadStr
+    LoadLoc0
+    LoadLoc1
+    LoadLoc2
+    LoadLocal
+    StoreLoc0
+    StoreLoc1
+    StoreLocal
+    FnProlog
+    Reserve
+    Ret
+    Call
+    CallNat
+    Jmp
+    JmpZ
+    JmpNz
+    PushBool
+    PushNil
+    Dup
+    Pop
+    ArrLen
+    CreateArr
+    GetElem
+    SetElem
+    IsVariant
+    NewInstance
+    ConstructInstance
+    GetGenericField
+    Halt
+    Nop
+    Blank
+}
+
+// 助记符文本(M4 dump 序列化的唯一口径;447-③C1:载体 str → OpCode)
+fn op_name(op OpCode) str {
+    is op {
+        OpCode.Line -> ".line"
+        OpCode.Add -> "add"
+        OpCode.Sub -> "sub"
+        OpCode.Mul -> "mul"
+        OpCode.Div -> "div"
+        OpCode.Mod -> "mod"
+        OpCode.Eq -> "eq"
+        OpCode.Ne -> "ne"
+        OpCode.Lt -> "lt"
+        OpCode.Gt -> "gt"
+        OpCode.Le -> "le"
+        OpCode.Ge -> "ge"
+        OpCode.And -> "and"
+        OpCode.Or -> "or"
+        OpCode.Not -> "not"
+        OpCode.Neg -> "neg"
+        OpCode.StrCat -> "str.cat"
+        OpCode.ConstI32 -> "const.i32"
+        OpCode.LoadStr -> "load.str"
+        OpCode.LoadLoc0 -> "load.loc.0"
+        OpCode.LoadLoc1 -> "load.loc.1"
+        OpCode.LoadLoc2 -> "load.loc.2"
+        OpCode.LoadLocal -> "load.local"
+        OpCode.StoreLoc0 -> "store.loc.0"
+        OpCode.StoreLoc1 -> "store.loc.1"
+        OpCode.StoreLocal -> "store.local"
+        OpCode.FnProlog -> "fn.prolog"
+        OpCode.Reserve -> "reserve"
+        OpCode.Ret -> "ret"
+        OpCode.Call -> "call"
+        OpCode.CallNat -> "call.nat"
+        OpCode.Jmp -> "jmp"
+        OpCode.JmpZ -> "jmp.z"
+        OpCode.JmpNz -> "jmp.nz"
+        OpCode.PushBool -> "push.bool"
+        OpCode.PushNil -> "push.nil"
+        OpCode.Dup -> "dup"
+        OpCode.Pop -> "pop"
+        OpCode.ArrLen -> "arr.len"
+        OpCode.CreateArr -> "create.arr"
+        OpCode.GetElem -> "get.elem"
+        OpCode.SetElem -> "set.elem"
+        OpCode.IsVariant -> "is.variant"
+        OpCode.NewInstance -> "new.instance"
+        OpCode.ConstructInstance -> "construct.instance"
+        OpCode.GetGenericField -> "get.generic.field"
+        OpCode.Halt -> "halt"
+        OpCode.Nop -> "nop"
+        else -> ""
     }
-    if op == "reserve" {
-        return 2
+}
+
+fn i_size(op OpCode) int {
+    is op {
+        OpCode.FnProlog -> 3
+        OpCode.Reserve -> 2
+        OpCode.Jmp | OpCode.JmpZ | OpCode.JmpNz -> 3
+        OpCode.Line -> 3
+        OpCode.LoadStr -> 5
+        OpCode.Call -> 5
+        OpCode.CallNat -> 3
+        OpCode.ConstI32 -> 5
+        OpCode.PushBool -> 2
+        OpCode.Ret -> 2
+        OpCode.LoadLocal | OpCode.StoreLocal -> 2
+        OpCode.CreateArr -> 2
+        OpCode.GetGenericField -> 2
+        else -> 1
     }
-    if op == "jmp" || op == "jmp.z" || op == "jmp.nz" {
-        return 3
-    }
-    if op == ".line" {
-        return 3
-    }
-    if op == "load.str" {
-        return 5
-    }
-    if op == "call" {
-        return 5
-    }
-    if op == "call.nat" {
-        return 3
-    }
-    if op == "const.i32" {
-        return 5
-    }
-    if op == "push.bool" {
-        return 2
-    }
-    if op == "ret" {
-        return 2
-    }
-    if op == "load.local" || op == "store.local" {
-        return 2
-    }
-    if op == "create.arr" {
-        return 2
-    }
-    if op == "get.generic.field" {
-        return 2
-    }
-    return 1
 }
 
 // 名字内联指令的字节宽(new.instance=1+名长;is.variant=3+名长:
 // 操作码+u16 名长+名字节,镜像宿主 emit_u16 + bytes)
-fn i_size_named(op str, s str) int {
+fn i_size_named(op OpCode, s str) int {
     var name = s
     // s 形如 "\"Val.VI\"" —— 剥引号
     if name.len() >= 2 && name.char_at(0) == '"' {
         name = name.slice(1, name.len() - 1)
     }
-    if op == "new.instance" {
+    if op == OpCode.NewInstance {
         return 1 + name.len()
     }
-    if op == "is.variant" {
+    if op == OpCode.IsVariant {
         return 3 + name.len()
     }
     return i_size(op)
 }
 
 // 发射一条指令,返回其指令索引
-fn emit(mut c CG, op str, s str, n int) int {
+fn emit(mut c CG, op OpCode, s str, n int) int {
     c.ins.push(I(op, s, n))
     return c.ins.len() - 1
 }
@@ -223,7 +368,7 @@ fn cg_pop_scope(mut c CG) {
             var slots = cg_sort_ints_of_vars(sc)
             var m = 0
             while m < slots.len() {
-                emit(c, "push.nil", "", 0)
+                emit(c, OpCode.PushNil, "", 0)
                 cg_emit_store(c, slots.get(m))
                 m = m + 1
             }
@@ -318,36 +463,36 @@ fn cg_lookup(mut c CG, name str) int {
 fn cg_emit_store(mut c CG, idx int) {
     if idx < c.n_args {
         var sv = (128 + idx).str()
-        emit(c, "store.local", sv, 128 + idx)
+        emit(c, OpCode.StoreLocal, sv, 128 + idx)
         return
     }
     var rel = idx - c.n_args
     if rel == 0 {
-        emit(c, "store.loc.0", "0", 0)
+        emit(c, OpCode.StoreLoc0, "0", 0)
     } else if rel == 1 {
-        emit(c, "store.loc.1", "1", 1)
+        emit(c, OpCode.StoreLoc1, "1", 1)
     } else {
         var sv2 = rel.str()
-        emit(c, "store.local", sv2, rel)
+        emit(c, OpCode.StoreLocal, sv2, rel)
     }
 }
 
 fn cg_emit_load(mut c CG, idx int) {
     if idx < c.n_args {
         var lv = (128 + idx).str()
-        emit(c, "load.local", lv, 128 + idx)
+        emit(c, OpCode.LoadLocal, lv, 128 + idx)
         return
     }
     var rel = idx - c.n_args
     if rel == 0 {
-        emit(c, "load.loc.0", "0", 0)
+        emit(c, OpCode.LoadLoc0, "0", 0)
     } else if rel == 1 {
-        emit(c, "load.loc.1", "1", 1)
+        emit(c, OpCode.LoadLoc1, "1", 1)
     } else if rel == 2 {
-        emit(c, "load.loc.2", "2", 2)
+        emit(c, OpCode.LoadLoc2, "2", 2)
     } else {
         var lv2 = rel.str()
-        emit(c, "load.local", lv2, rel)
+        emit(c, OpCode.LoadLocal, lv2, rel)
     }
 }
 
@@ -367,51 +512,54 @@ fn cg_pool_add(mut c CG, s str) int {
 
 // ── 表达式发射 ────────────────────────────────────────────────
 
-fn cg_binop_mnem(k TokenKind) str {
-    if k == TokenKind.Add || k == TokenKind.AddEq {
-        return "add"
+fn cg_binop_mnem(k Op) OpCode {
+    if k == Op.Add || k == Op.AddEq {
+        return OpCode.Add
     }
-    if k == TokenKind.Sub || k == TokenKind.SubEq {
-        return "sub"
+    if k == Op.Sub || k == Op.SubEq {
+        return OpCode.Sub
     }
-    if k == TokenKind.Star || k == TokenKind.MulEq {
-        return "mul"
+    if k == Op.Mul || k == Op.MulEq {
+        return OpCode.Mul
     }
-    if k == TokenKind.Div || k == TokenKind.DivEq {
-        return "div"
+    if k == Op.Div || k == Op.DivEq {
+        return OpCode.Div
     }
-    if k == TokenKind.Mod || k == TokenKind.ModEq {
-        return "mod"
+    if k == Op.Mod || k == Op.ModEq {
+        return OpCode.Mod
     }
-    if k == TokenKind.Eq {
-        return "eq"
+    if k == Op.Eq {
+        return OpCode.Eq
     }
-    if k == TokenKind.Neq {
-        return "ne"
+    if k == Op.Neq {
+        return OpCode.Ne
     }
-    if k == TokenKind.Lt {
-        return "lt"
+    if k == Op.Lt {
+        return OpCode.Lt
     }
-    if k == TokenKind.Gt {
-        return "gt"
+    if k == Op.Gt {
+        return OpCode.Gt
     }
-    if k == TokenKind.Le {
-        return "le"
+    if k == Op.Le {
+        return OpCode.Le
     }
-    if k == TokenKind.Ge {
-        return "ge"
+    if k == Op.Ge {
+        return OpCode.Ge
     }
-    if k == TokenKind.And {
-        return "and"
+    if k == Op.And {
+        return OpCode.And
     }
-    if k == TokenKind.Or {
-        return "or"
+    if k == Op.Or {
+        return OpCode.Or
     }
-    return ""
+    return OpCode.Blank
 }
 
-fn cg_is_assign_op(k TokenKind) bool {
-    return k == TokenKind.Asn || k == TokenKind.AddEq || k == TokenKind.SubEq || k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq
+fn cg_is_assign_op(k Op) bool {
+    is k {
+        Op.Asn | Op.AddEq | Op.SubEq | Op.MulEq | Op.DivEq | Op.ModEq -> true
+        else -> false
+    }
 }
 
 // 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
@@ -426,7 +574,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
     if k == TokenKind.Not {
         p_next(p)
         cg_expr(c, p, 28)
-        emit(c, "not", "", 0)
+        emit(c, OpCode.Not, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     } else if k == TokenKind.Sub || k == TokenKind.Add {
@@ -434,7 +582,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         p_next(p)
         cg_expr(c, p, 28)
         if k == TokenKind.Sub {
-            emit(c, "neg", "", 0)
+            emit(c, OpCode.Neg, "", 0)
         }
         c.str_flag = 0
         c.arr_flag = 0
@@ -442,25 +590,25 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var t = p_text(p)
         p_next(p)
         var cv = int_val(t).str()
-        emit(c, "const.i32", cv, int_val(t))
+        emit(c, OpCode.ConstI32, cv, int_val(t))
     } else if k == TokenKind.Str {
         var s = p_text(p)
         p_next(p)
         var idx = cg_pool_add(c, s)
-        emit(c, "load.str", "", idx)
+        emit(c, OpCode.LoadStr, "", idx)
         c.str_flag = 1
     } else if k == TokenKind.True {
         p_next(p)
-        emit(c, "push.bool", "true", 0)
+        emit(c, OpCode.PushBool, "true", 0)
     } else if k == TokenKind.False {
         p_next(p)
-        emit(c, "push.bool", "false", 0)
+        emit(c, OpCode.PushBool, "false", 0)
     } else if k == TokenKind.Char {
         // Plan 447 部分②:字符字面量 → const.i32 码点(镜像宿主 Char 编译)
         var t = p_text(p)
         p_next(p)
         var cp = t.char_at(0)
-        emit(c, "const.i32", cp.str(), cp)
+        emit(c, OpCode.ConstI32, cp.str(), cp)
     } else if k == TokenKind.Ident {
         var name = p_text(p)
         // Plan 447 部分②:枚举路径前瞻判定(不消费)——注册命中才拦截,
@@ -491,19 +639,19 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 }
                 cg_call_args(c, p)
                 var nm = key.len()
-                emit(c, "const.i32", nm.str(), nm)
-                emit(c, "new.instance", "\"" + key + "\"", 0)
-                emit(c, "const.i32", fc.str(), fc)
-                emit(c, "construct.instance", "", 0)
+                emit(c, OpCode.ConstI32, nm.str(), nm)
+                emit(c, OpCode.NewInstance, "\"" + key + "\"", 0)
+                emit(c, OpCode.ConstI32, fc.str(), fc)
+                emit(c, OpCode.ConstructInstance, "", 0)
             } else {
                 var dv = cg_const_lookup(c, key)
-                emit(c, "const.i32", dv.str(), dv)
+                emit(c, OpCode.ConstI32, dv.str(), dv)
             }
         } else {
         p_next(p)
         if name == "print" && p_kind(p) == TokenKind.LParen {
             cg_call_args(c, p)
-            emit(c, "call.nat", "nat#10", 0)
+            emit(c, OpCode.CallNat, "nat#10", 0)
         } else if p_kind(p) == TokenKind.LParen {
             var fe = -1
             var fi = 0
@@ -518,7 +666,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 return
             }
             cg_call_args(c, p)
-            emit(c, "call", "", fe)
+            emit(c, OpCode.Call, "", fe)
         } else {
             var idx = cg_lookup(c, name)
             if idx < 0 {
@@ -545,7 +693,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
             }
         }
         p_expect(p, TokenKind.RSquare)
-        emit(c, "create.arr", "count=" + n.str(), n)
+        emit(c, OpCode.CreateArr, "count=" + n.str(), n)
         c.arr_flag = 1
     } else {
         cg_err(c, "unsupported expr atom: " + kind_name(k))
@@ -558,7 +706,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         cg_expr(c, p, 0)
         skip_empty_lines(p)
         p_expect(p, TokenKind.RSquare)
-        emit(c, "get.elem", "", 0)
+        emit(c, OpCode.GetElem, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     }
@@ -571,52 +719,58 @@ fn cg_expr(mut c CG, mut p P, min int) {
         p_next(p)
         p_next(p)
         p_next(p)
-        emit(c, "arr.len", "", 0)
+        emit(c, OpCode.ArrLen, "", 0)
         c.str_flag = 0
         c.arr_flag = 0
     }
     while c.err == "" {
         var opk = p_kind(p)
-        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen {
-            break
-        }
-        if opk == TokenKind.Dot && t_is_type_prop(p) {
-            break
-        }
-        if opk == TokenKind.Dot {
-            cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
-            break
-        }
-        if !is_op_kind(opk) {
-            cg_err(c, "expected infix op, got " + kind_name(opk))
-            break
-        }
-        var l = infix_l(opk)
-        if l == 0 || l < min {
-            break
-        }
-        if cg_is_assign_op(opk) {
-            cg_err(c, "nested assignment unsupported")
-            break
-        }
-        p_next(p)
-        if opk == TokenKind.Or || opk == TokenKind.And {
-            skip_empty_lines(p)
-        }
-        var lhs_str = c.str_flag
-        c.str_flag = 0
-        cg_expr(c, p, infix_r(opk))
-        var rhs_str = c.str_flag
-        var mn = cg_binop_mnem(opk)
-        if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
-            mn = "str.cat"
-            c.str_flag = 1
-        } else {
-            c.str_flag = 0
-        }
-        c.arr_flag = 0
-        if mn != "" {
-            emit(c, mn, "", 0)
+        // P2:循环顶 token 分派 is 化(11 种界符臂内 break;镜像 Rust
+        // parser.rs:2425 的 match kind)
+        is opk {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen -> {
+                break
+            }
+            else -> {
+                if opk == TokenKind.Dot && t_is_type_prop(p) {
+                    break
+                }
+                if opk == TokenKind.Dot {
+                    cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
+                    break
+                }
+                if !is_op_kind(opk) {
+                    cg_err(c, "expected infix op, got " + kind_name(opk))
+                    break
+                }
+                var l = infix_l(p_op(opk))
+                if l == 0 || l < min {
+                    break
+                }
+                if cg_is_assign_op(p_op(opk)) {
+                    cg_err(c, "nested assignment unsupported")
+                    break
+                }
+                p_next(p)
+                if opk == TokenKind.Or || opk == TokenKind.And {
+                    skip_empty_lines(p)
+                }
+                var lhs_str = c.str_flag
+                c.str_flag = 0
+                cg_expr(c, p, infix_r(p_op(opk)))
+                var rhs_str = c.str_flag
+                var mn = cg_binop_mnem(p_op(opk))
+                if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
+                    mn = OpCode.StrCat
+                    c.str_flag = 1
+                } else {
+                    c.str_flag = 0
+                }
+                c.arr_flag = 0
+                if mn != OpCode.Blank {
+                    emit(c, mn, "", 0)
+                }
+            }
         }
     }
 }
@@ -750,7 +904,7 @@ fn cg_is_arm_body(mut c CG, mut p P) {
         return
     }
     if p_kind(p) == TokenKind.Break || p_kind(p) == TokenKind.Continue {
-        cg_err(c, "break/continue in is arm unsupported")
+        cg_stmt(c, p)
         return
     }
     cg_expr(c, p, 0)
@@ -765,15 +919,15 @@ fn cg_is_pattern_expr(mut c CG, pat E) {
             cg_err(c, "unknown enum variant: " + pat.name + "." + pat.word)
             return
         }
-        emit(c, "const.i32", dv.str(), dv)
+        emit(c, OpCode.ConstI32, dv.str(), dv)
     } else if pat.kind == "str" {
         var idx = cg_pool_add(c, pat.name)
-        emit(c, "load.str", "", idx)
+        emit(c, OpCode.LoadStr, "", idx)
     } else if pat.kind == "char" {
         var cp = pat.name.char_at(0)
-        emit(c, "const.i32", cp.str(), cp)
+        emit(c, OpCode.ConstI32, cp.str(), cp)
     } else if pat.kind == "int" {
-        emit(c, "const.i32", pat.name, int_val(pat.name))
+        emit(c, OpCode.ConstI32, pat.name, int_val(pat.name))
     } else {
         cg_err(c, "unsupported is pattern: " + pat.kind)
     }
@@ -797,10 +951,10 @@ fn cg_is(mut c CG, mut p P) {
         if k == TokenKind.If {
             p_next(p)
             cg_expr(c, p, 0)
-            var jz = emit(c, "jmp.z", "", -1)
+            var jz = emit(c, OpCode.JmpZ, "", -1)
             p_expect(p, TokenKind.Arrow)
             cg_is_arm_body(c, p)
-            var je = emit(c, "jmp", "", -1)
+            var je = emit(c, OpCode.Jmp, "", -1)
             end_jmps.push(je)
             c.ins.get(jz).n = c.ins.len()
         } else if k == TokenKind.Else {
@@ -808,7 +962,7 @@ fn cg_is(mut c CG, mut p P) {
             p_expect(p, TokenKind.Arrow)
             cg_is_arm_body(c, p)
             // 宿主 Else 臂体后同样发 jmp→end(end 即紧邻指令,无害跳转)
-            var jej = emit(c, "jmp", "", -1)
+            var jej = emit(c, OpCode.Jmp, "", -1)
             end_jmps.push(jej)
         } else {
             var pat = is_pattern(p)
@@ -841,24 +995,24 @@ fn cg_is(mut c CG, mut p P) {
                 // ① 载荷 + 绑定
                 var key = pat.name + "." + pat.word
                 cg_emit_load(c, t)
-                emit(c, "is.variant", "\"" + key + "\"", 0)
-                var jz2 = emit(c, "jmp.z", "", -1)
+                emit(c, OpCode.IsVariant, "\"" + key + "\"", 0)
+                var jz2 = emit(c, OpCode.JmpZ, "", -1)
                 var binds2 = split_commas(pat.args)
                 var si = 0
                 while si < binds2.len() {
                     if binds2.get(si) != "_" {
                         cg_emit_load(c, t)
-                        emit(c, "get.generic.field", "field=" + si.str(), si)
-                        emit(c, "nop", "", 0)
-                        emit(c, "nop", "", 0)
-                        emit(c, "nop", "", 0)
+                        emit(c, OpCode.GetGenericField, "field=" + si.str(), si)
+                        emit(c, OpCode.Nop, "", 0)
+                        emit(c, OpCode.Nop, "", 0)
+                        emit(c, OpCode.Nop, "", 0)
                         var bidx = cg_add_var(c, binds2.get(si), 0)
                         cg_emit_store(c, bidx)
                     }
                     si = si + 1
                 }
                 cg_is_arm_body(c, p)
-                var je2 = emit(c, "jmp", "", -1)
+                var je2 = emit(c, OpCode.Jmp, "", -1)
                 end_jmps.push(je2)
                 c.ins.get(jz2).n = c.ins.len()
             } else {
@@ -867,37 +1021,37 @@ fn cg_is(mut c CG, mut p P) {
                     // ② 载荷无实绑定:is.variant 后走共享尾
                     var key2 = pat.name + "." + pat.word
                     cg_emit_load(c, t)
-                    emit(c, "is.variant", "\"" + key2 + "\"", 0)
+                    emit(c, OpCode.IsVariant, "\"" + key2 + "\"", 0)
                 } else if extras.len() == 0 {
                     // ③a 单模式:load t;pat;eq
                     cg_emit_load(c, t)
                     cg_is_pattern_expr(c, pat)
-                    emit(c, "eq", "", 0)
+                    emit(c, OpCode.Eq, "", 0)
                 } else {
                     // ③b or 链:逐模式 eq + jmp.nz 匹配标号;全落空 jmp next
                     var nz_jmps List<int> = List.new()
                     cg_emit_load(c, t)
                     cg_is_pattern_expr(c, pat)
-                    emit(c, "eq", "", 0)
-                    var nz = emit(c, "jmp.nz", "", -1)
+                    emit(c, OpCode.Eq, "", 0)
+                    var nz = emit(c, OpCode.JmpNz, "", -1)
                     nz_jmps.push(nz)
                     var ei = 0
                     while ei < extras.len() {
                         cg_emit_load(c, t)
                         cg_is_pattern_expr(c, extras.get(ei))
-                        emit(c, "eq", "", 0)
-                        var nz2 = emit(c, "jmp.nz", "", -1)
+                        emit(c, OpCode.Eq, "", 0)
+                        var nz2 = emit(c, OpCode.JmpNz, "", -1)
                         nz_jmps.push(nz2)
                         ei = ei + 1
                     }
-                    var jmp_next = emit(c, "jmp", "", -1)
+                    var jmp_next = emit(c, OpCode.Jmp, "", -1)
                     var mi = 0
                     while mi < nz_jmps.len() {
                         c.ins.get(nz_jmps.get(mi)).n = c.ins.len()
                         mi = mi + 1
                     }
                     cg_is_arm_body(c, p)
-                    var je3 = emit(c, "jmp", "", -1)
+                    var je3 = emit(c, OpCode.Jmp, "", -1)
                     end_jmps.push(je3)
                     c.ins.get(jmp_next).n = c.ins.len()
                     skip_empty_lines(p)
@@ -909,9 +1063,9 @@ fn cg_is(mut c CG, mut p P) {
                     continue
                 }
                 // 共享尾:jmp.z next;体;jmp end;patch next
-                shared_jz = emit(c, "jmp.z", "", -1)
+                shared_jz = emit(c, OpCode.JmpZ, "", -1)
                 cg_is_arm_body(c, p)
-                var je4 = emit(c, "jmp", "", -1)
+                var je4 = emit(c, OpCode.Jmp, "", -1)
                 end_jmps.push(je4)
                 c.ins.get(shared_jz).n = c.ins.len()
             }
@@ -939,6 +1093,11 @@ fn cg_stmt(mut c CG, mut p P) {
         cg_enum_decl(c, p)
         return
     }
+    if k == TokenKind.Break || k == TokenKind.Continue {
+        p_next(p)
+        cg_loop_jump(c, k)
+        return
+    }
     if k == TokenKind.Is {
         cg_is(c, p)
         return
@@ -964,13 +1123,13 @@ fn cg_stmt(mut c CG, mut p P) {
         p_next(p)
         var kk = p_kind(p)
         if kk == TokenKind.Newline || kk == TokenKind.Semi || kk == TokenKind.RBrace || kk == TokenKind.EOF {
-            emit(c, "push.nil", "", 0)
+            emit(c, OpCode.PushNil, "", 0)
         } else {
             cg_expr(c, p, 0)
         }
         var na = c.n_args
         var rs2 = "n_args=" + na.str()
-        emit(c, "ret", rs2, na)
+        emit(c, OpCode.Ret, rs2, na)
         return
     }
     if k == TokenKind.If {
@@ -1032,7 +1191,7 @@ fn cg_stmt(mut c CG, mut p P) {
             cg_expr(c, p, 0)
             skip_empty_lines(p)
             p_expect(p, TokenKind.RSquare)
-            emit(c, "set.elem", "", 0)
+            emit(c, OpCode.SetElem, "", 0)
             p.pos = end_pos
             return
         }
@@ -1042,7 +1201,7 @@ fn cg_stmt(mut c CG, mut p P) {
     if k == TokenKind.Ident {
         var name = p_text(p)
         var nk = p_peek(p, 1)
-        if cg_is_assign_op(nk) {
+        if cg_is_assign_op(p_op(nk)) {
             var idx = cg_lookup(c, name)
             if idx < 0 {
                 cg_err(c, "unknown ident: " + name)
@@ -1055,13 +1214,13 @@ fn cg_stmt(mut c CG, mut p P) {
                 cg_emit_load(c, idx)
             }
             cg_expr(c, p, 0)
-            var mn = cg_binop_mnem(opk)
-            if mn != "" {
+            var mn = cg_binop_mnem(p_op(opk))
+            if mn != OpCode.Blank {
                 emit(c, mn, "", 0)
             }
-            emit(c, "dup", "", 0)
+            emit(c, OpCode.Dup, "", 0)
             cg_emit_store(c, idx)
-            emit(c, "pop", "", 0)
+            emit(c, OpCode.Pop, "", 0)
             return
         }
     }
@@ -1072,7 +1231,7 @@ fn cg_stmt(mut c CG, mut p P) {
 fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         var ln = p_line(p).str()
-        emit(c, ".line", ln, 0)
+        emit(c, OpCode.Line, ln, 0)
         cg_stmt(c, p)
         if c.err == "" {
             cg_eos(c, p)
@@ -1088,10 +1247,10 @@ fn cg_if(mut c CG, mut p P) {
     while more {
         p_next(p)
         cg_expr(c, p, 0)
-        var jz = emit(c, "jmp.z", "", -1)
+        var jz = emit(c, OpCode.JmpZ, "", -1)
         jzs.push(jz)
         cg_body_inline(c, p)
-        var je = emit(c, "jmp", "", -1)
+        var je = emit(c, OpCode.Jmp, "", -1)
         jends.push(je)
         if p_kind(p) == TokenKind.Else {
             p_next(p)
@@ -1144,10 +1303,18 @@ fn cg_while(mut c CG, mut p P) {
     p_next(p)
     var top = c.ins.len()
     cg_expr(c, p, 0)
-    var jz = emit(c, "jmp.z", "", -1)
+    var jz = emit(c, OpCode.JmpZ, "", -1)
+    // P2:continue 落点 = 条件顶(while 语义:重判条件);体作用域与
+    // for 同构(体内变量每迭代释放,cg_pop_scope depth>2 发释放组)
+    cg_push_scope(c)
+    cg_loop_enter(c, top)
     cg_body_inline(c, p)
-    emit(c, "jmp", "", top)
-    c.ins.get(jz).n = c.ins.len()
+    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
+    cg_pop_scope(c)
+    emit(c, OpCode.Jmp, "", top)
+    var end = c.ins.len()
+    c.ins.get(jz).n = end
+    cg_loop_exit(c, end)
 }
 
 // for-in-range:start;store var;top:load var;end;lt;jmp.z end;
@@ -1179,15 +1346,20 @@ fn cg_for(mut c CG, mut p P) {
     var top = c.ins.len()
     cg_emit_load(c, idx)
     cg_expr(c, p, 0)
-    emit(c, "lt", "", 0)
-    var jz = emit(c, "jmp.z", "", -1)
+    emit(c, OpCode.Lt, "", 0)
+    var jz = emit(c, OpCode.JmpZ, "", -1)
+    // P2:continue 落点 = 步进位(循环变量自增;宿主 range-for 同口径)
+    cg_loop_enter(c, 0)
     cg_body_inline(c, p)
+    c.cont_tg.set(c.loop_depth - 1, c.ins.len())
     cg_emit_load(c, idx)
-    emit(c, "const.i32", "1", 1)
-    emit(c, "add", "", 0)
+    emit(c, OpCode.ConstI32, "1", 1)
+    emit(c, OpCode.Add, "", 0)
     cg_emit_store(c, idx)
-    emit(c, "jmp", "", top)
-    c.ins.get(jz).n = c.ins.len()
+    emit(c, OpCode.Jmp, "", top)
+    var end = c.ins.len()
+    c.ins.get(jz).n = end
+    cg_loop_exit(c, end)
     cg_pop_scope(c)
 }
 
@@ -1201,15 +1373,15 @@ fn cg_fn(mut c CG, mut p P) {
     }
     var name = p_text(p)
     p_next(p)
-    var jover = emit(c, "jmp", "", -1)
+    var jover = emit(c, OpCode.Jmp, "", -1)
     var entry = c.ins.len()
     c.fns.push(FnEntry(name, entry))
     var saved_args = c.n_args
     var saved_max = c.max_idx
     c.max_idx = -1
     cg_push_scope(c)
-    var prolog = emit(c, "fn.prolog", "", 0)
-    var reserve = emit(c, "reserve", "", 0)
+    var prolog = emit(c, OpCode.FnProlog, "", 0)
+    var reserve = emit(c, OpCode.Reserve, "", 0)
     var n_args = 0
     p_expect(p, TokenKind.LParen)
     skip_empty_lines(p)
@@ -1262,7 +1434,7 @@ fn cg_fn(mut c CG, mut p P) {
     cg_pop_scope(c)
     // epilogue RET
     var rs = "n_args=" + n_args.str()
-    emit(c, "ret", rs, n_args)
+    emit(c, OpCode.Ret, rs, n_args)
     // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
     var n_locals = 0
     if c.max_idx >= n_args {
@@ -1274,7 +1446,7 @@ fn cg_fn(mut c CG, mut p P) {
         c.ins.get(reserve).s = n_locals.str()
         c.ins.get(reserve).n = n_locals
     } else {
-        c.ins.get(reserve).op = ""
+        c.ins.get(reserve).op = OpCode.Blank
     }
     c.ins.get(jover).n = c.ins.len()
     cg_pop_scope(c)
@@ -1305,7 +1477,7 @@ fn cg_serialize(mut c CG) str {
     while i < c.ins.len() {
         offs.push(acc)
         var ii = c.ins.get(i)
-        if ii.op != "" {
+        if ii.op != OpCode.Blank {
             acc = acc + i_size_named(ii.op, ii.s)
         }
         i = i + 1
@@ -1314,20 +1486,20 @@ fn cg_serialize(mut c CG) str {
     var j = 0
     while j < c.ins.len() {
         var ins = c.ins.get(j)
-        if ins.op != "" {
+        if ins.op != OpCode.Blank {
             var ops = ins.s
-            if ins.op == "jmp" || ins.op == "jmp.z" || ins.op == "jmp.nz" {
+            if ins.op == OpCode.Jmp || ins.op == OpCode.JmpZ || ins.op == OpCode.JmpNz {
                 ops = "-> 0x" + hex4(offs.get(ins.n))
-            } else if ins.op == "call" {
+            } else if ins.op == OpCode.Call {
                 var fe = c.fns.get(ins.n)
                 ops = "0x" + hex4(offs.get(fe.ins))
-            } else if ins.op == "load.str" {
+            } else if ins.op == OpCode.LoadStr {
                 ops = "\"" + c.pool.get(ins.n) + "\""
             }
             if out != "" {
                 out = out + "\n"
             }
-            out = out + hex4(offs.get(j)) + "  " + ins.op + " " + ops
+            out = out + hex4(offs.get(j)) + "  " + op_name(ins.op) + " " + ops
         }
         j = j + 1
     }
@@ -1340,8 +1512,8 @@ fn cg_compile(source str) CG {
     var toks = tokenize(source)
     var p = parse_new(toks)
     var c = cg_new()
-    emit(c, "fn.prolog", "args=0, locals=16", 16)
-    emit(c, "reserve", "16", 16)
+    emit(c, OpCode.FnProlog, "args=0, locals=16", 16)
+    emit(c, OpCode.Reserve, "16", 16)
     skip_empty_lines(p)
     while c.err == "" && p_kind(p) != TokenKind.EOF {
         if p_kind(p) == TokenKind.Fn {
@@ -1357,7 +1529,7 @@ fn cg_compile(source str) CG {
         }
     }
     if c.err == "" {
-        emit(c, "halt", "", 0)
+        emit(c, OpCode.Halt, "", 0)
     }
     return c
 }
