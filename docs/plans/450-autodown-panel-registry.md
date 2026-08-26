@@ -86,7 +86,11 @@ renderer.rs 零改动；Codeblock 的 Rich span 高亮沿用 442 的
 
 **裁定**：registry 不登记 iced BackendMapping（与批次二 vue 裁定同理——
 无消费者，假组件名进 codegen 是噪音）；映射的实现落点即渲染行为本身。
-schema/aura.at 面板 elements 仍不新增（等面板组件化，同批次二）。
+schema 面板 elements **后补登记**（57b55e8d9，schema_drift P3 收口）：
+7 元素声明面不带 vue meta（vue 组件映射仍等面板组件化，同批次二），
+Query/Embed 两 PascalCase 名由生成器自旋 P3 存根（nav-destination/
+swiper 先例）；if-arm 实现形态走 rs_not_in_vb/render baseline 通道
+（041a 原生元素同款）。
 
 **验证**：VM 5 测（heading 样式/钳位、quote 结构、callout tint、details
 Accordion、注册位三面板内容可见）+ a2r 3 测（heading 静态/dynamic match、
