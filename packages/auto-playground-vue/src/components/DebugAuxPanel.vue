@@ -1,5 +1,5 @@
 <template>
-  <div class="debug-aux-panel">
+  <ScrollArea class="debug-aux-panel">
     <!-- Variables -->
     <div class="aux-section">
       <div class="aux-title">Variables</div>
@@ -74,13 +74,16 @@
     <!-- Stdout -->
     <div class="aux-section stdout-section" v-if="state?.stdout">
       <div class="aux-title">Output</div>
-      <pre class="stdout-content">{{ state.stdout }}</pre>
+      <ScrollArea class="stdout-scroll">
+        <pre class="stdout-text">{{ state.stdout }}</pre>
+      </ScrollArea>
     </div>
-  </div>
+  </ScrollArea>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import ScrollArea from './ScrollArea.vue';
 import type { DebugState } from '../types';
 
 const props = defineProps<{
@@ -151,10 +154,6 @@ function formatHex(n: number | undefined): string {
   background: #1e1e1e;
   color: #d4d4d4;
   font-size: 12px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
 }
 
 .aux-section {
@@ -266,22 +265,21 @@ function formatHex(n: number | undefined): string {
 
 /* Stdout */
 .stdout-section {
-  flex: 1;
   min-height: 60px;
-  display: flex;
-  flex-direction: column;
 }
 
-.stdout-content {
-  flex: 1;
-  margin: 0;
-  padding: 4px;
+.stdout-scroll {
+  height: 180px;
   background: #252526;
   border-radius: 3px;
+}
+
+.stdout-text {
+  margin: 0;
+  padding: 4px;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 11px;
   color: #ccc;
-  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }

@@ -9,6 +9,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, Decoration, type 
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autoLanguage } from '../lang/auto';
+import { attachFloatingScrollbar, type FloatingScrollHandle } from '../utils/floatingScroll';
 
 const props = defineProps<{
   modelValue: string;
@@ -31,6 +32,7 @@ const emit = defineEmits<{
 
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
+let fsbHandle: FloatingScrollHandle | null = null;
 const debugCompartment = new Compartment();
 
 // ============================================================================
@@ -273,6 +275,9 @@ onMounted(() => {
     parent: editorContainer.value,
   });
 
+  // Floating scrollbar over the CM scroller (native one hidden via CSS)
+  fsbHandle = attachFloatingScrollbar(editorView.scrollDOM, editorContainer.value!);
+
   // Hover line highlight
   let hoverLine = 0;
   editorContainer.value.addEventListener('mousemove', (event) => {
@@ -353,6 +358,8 @@ watch(() => props.breakpoints, (bps) => {
 }, { deep: true });
 
 onUnmounted(() => {
+  fsbHandle?.destroy();
+  fsbHandle = null;
   editorView?.destroy();
 });
 </script>
@@ -369,6 +376,10 @@ onUnmounted(() => {
 }
 .editor-container :deep(.cm-scroller) {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  scrollbar-width: none; /* Firefox */
+}
+.editor-container :deep(.cm-scroller)::-webkit-scrollbar {
+  display: none;
 }
 .editor-container :deep(.cm-gutters) {
   cursor: default;
