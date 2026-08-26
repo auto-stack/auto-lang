@@ -13661,9 +13661,10 @@ impl<'a> Parser<'a> {
     }
 
     /// Plan 451: `actions { ... }` 块——动作注册表 + menubar/toolbar 声明
-    /// （语法见 ast::ui::ActionsBlock 文档）。enabled_if/checked_if 为引号
-    /// 字符串（条件表达式，运行时 eval_condition_with 求值）。
-    fn parse_actions_block_inner(&mut self) -> AutoResult<crate::ast::ui::ActionsBlock> {        self.expect_ident("actions")?;
+    /// （语法见 ast::ui::ActionsBlock 文档）。enabled_if/checked_if 支持
+    /// 引号字符串与裸表达式两种拼写（parse_actions_cond_attr）。
+    fn parse_actions_block_inner(&mut self) -> AutoResult<crate::ast::ui::ActionsBlock> {
+        self.expect_ident("actions")?;
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
