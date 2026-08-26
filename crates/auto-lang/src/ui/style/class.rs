@@ -39,6 +39,36 @@ impl SizeValue {
     }
 }
 
+/// Border radius size for rounded-* and directional rounded-*
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoundedSize {
+    None,    // 0px (rounded-none)
+    Sm,      // 2px (rounded-sm)
+    Default, // 4px (rounded)
+    Md,      // 6px (rounded-md)
+    Lg,      // 8px (rounded-lg)
+    Xl,      // 12px (rounded-xl)
+    Xxl,     // 16px (rounded-2xl)
+    Xxxl,    // 24px (rounded-3xl)
+    Full,    // 9999px (rounded-full)
+}
+
+impl RoundedSize {
+    pub fn to_pixels(&self) -> f32 {
+        match self {
+            RoundedSize::None => 0.0,
+            RoundedSize::Sm => 2.0,
+            RoundedSize::Default => 4.0,
+            RoundedSize::Md => 6.0,
+            RoundedSize::Lg => 8.0,
+            RoundedSize::Xl => 12.0,
+            RoundedSize::Xxl => 16.0,
+            RoundedSize::Xxxl => 24.0,
+            RoundedSize::Full => 9999.0,
+        }
+    }
+}
+
 /// Gradient direction for bg-gradient-to-{dir}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GradientDir {
@@ -214,6 +244,36 @@ pub enum StyleClass {
 
     /// Border radius: rounded-full (L2)
     RoundedFull,
+
+    /// Border radius: rounded-none (0px)
+    RoundedNone,
+
+    // ========== Directional Border Radius ==========
+    /// Top border radius: rounded-t[-size]
+    RoundedT(Option<RoundedSize>),
+    /// Bottom border radius: rounded-b[-size]
+    RoundedB(Option<RoundedSize>),
+    /// Left border radius: rounded-l[-size]
+    RoundedL(Option<RoundedSize>),
+    /// Right border radius: rounded-r[-size]
+    RoundedR(Option<RoundedSize>),
+    /// Top-left border radius: rounded-tl[-size]
+    RoundedTL(Option<RoundedSize>),
+    /// Top-right border radius: rounded-tr[-size]
+    RoundedTR(Option<RoundedSize>),
+    /// Bottom-left border radius: rounded-bl[-size]
+    RoundedBL(Option<RoundedSize>),
+    /// Bottom-right border radius: rounded-br[-size]
+    RoundedBR(Option<RoundedSize>),
+
+    // ========== Negative Margins ==========
+    NegativeMargin(SizeValue),
+    NegativeMarginX(SizeValue),
+    NegativeMarginY(SizeValue),
+    NegativeMarginTop(SizeValue),
+    NegativeMarginBottom(SizeValue),
+    NegativeMarginLeft(SizeValue),
+    NegativeMarginRight(SizeValue),
 
     // ========== Border (L2) ==========
     /// Border: border (default width and color)
@@ -691,6 +751,36 @@ impl StyleClass {
             return Ok(StyleClass::MarginRight(size));
         }
 
+        // Parse negative margin: -m-, -mx-, -my-, -mt-, -mb-, -ml-, -mr-
+        if let Some(rest) = class.strip_prefix("-mx-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginX(size));
+        }
+        if let Some(rest) = class.strip_prefix("-my-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginY(size));
+        }
+        if let Some(rest) = class.strip_prefix("-mt-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginTop(size));
+        }
+        if let Some(rest) = class.strip_prefix("-mb-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginBottom(size));
+        }
+        if let Some(rest) = class.strip_prefix("-ml-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginLeft(size));
+        }
+        if let Some(rest) = class.strip_prefix("-mr-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMarginRight(size));
+        }
+        if let Some(rest) = class.strip_prefix("-m-") {
+            let size = parse_size_value_arbitrary(rest, arbitrary_value)?;
+            return Ok(StyleClass::NegativeMargin(size));
+        }
+
         // Plan 412: gap-x-/gap-y- MUST be matched before the bare `gap-`
         // prefix below, otherwise "gap-x-4" would strip to "x-4" and error.
         if let Some(rest) = class.strip_prefix("gap-x-") {
@@ -1064,16 +1154,64 @@ impl StyleClass {
         // ========== Border Radius (L1 + L2) ==========
 
         // Parse rounded-*
-        match class {
-            "rounded" => return Ok(StyleClass::Rounded),
-            "rounded-sm" => return Ok(StyleClass::RoundedSm),
-            "rounded-md" => return Ok(StyleClass::RoundedMd),
-            "rounded-lg" => return Ok(StyleClass::RoundedLg),
-            "rounded-xl" => return Ok(StyleClass::RoundedXl),
-            "rounded-2xl" => return Ok(StyleClass::Rounded2Xl),
-            "rounded-3xl" => return Ok(StyleClass::Rounded3Xl),
-            "rounded-full" => return Ok(StyleClass::RoundedFull),
-            _ => {}
+        if class == "rounded" {
+            return Ok(StyleClass::Rounded);
+        }
+        if class == "rounded-none" {
+            return Ok(StyleClass::RoundedNone);
+        }
+        if let Some(rest) = class.strip_prefix("rounded-") {
+            match rest {
+                "sm" => return Ok(StyleClass::RoundedSm),
+                "md" => return Ok(StyleClass::RoundedMd),
+                "lg" => return Ok(StyleClass::RoundedLg),
+                "xl" => return Ok(StyleClass::RoundedXl),
+                "2xl" => return Ok(StyleClass::Rounded2Xl),
+                "3xl" => return Ok(StyleClass::Rounded3Xl),
+                "full" => return Ok(StyleClass::RoundedFull),
+                "none" => return Ok(StyleClass::RoundedNone),
+                _ => {}
+            }
+            if let Some(sub) = rest.strip_prefix("tl") {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedTL(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix("tr") {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedTR(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix("bl") {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedBL(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix("br") {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedBR(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix('t') {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedT(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix('b') {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedB(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix('l') {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedL(Some(sz)));
+            }
+            if let Some(sub) = rest.strip_prefix('r') {
+                let sz_str = sub.strip_prefix('-').unwrap_or(sub);
+                let sz = parse_rounded_size(sz_str)?;
+                return Ok(StyleClass::RoundedR(Some(sz)));
+            }
         }
 
         // ========== Border (L2) ==========
@@ -1412,6 +1550,22 @@ fn parse_size_value_arbitrary(input: &str, arbitrary: Option<&str>) -> Result<Si
     parse_size_value(input)
 }
 
+/// Parse rounded size suffix (e.g. "", "none", "sm", "md", "lg", "xl", "2xl", "3xl", "full")
+fn parse_rounded_size(s: &str) -> Result<RoundedSize, String> {
+    match s {
+        "" => Ok(RoundedSize::Default),
+        "none" => Ok(RoundedSize::None),
+        "sm" => Ok(RoundedSize::Sm),
+        "md" => Ok(RoundedSize::Md),
+        "lg" => Ok(RoundedSize::Lg),
+        "xl" => Ok(RoundedSize::Xl),
+        "2xl" => Ok(RoundedSize::Xxl),
+        "3xl" => Ok(RoundedSize::Xxxl),
+        "full" => Ok(RoundedSize::Full),
+        _ => Err(format!("Unknown rounded size: {}", s)),
+    }
+}
+
 /// Parse a gap-like value (gap/gap-x/gap-y/space-x/space-y): named sizes,
 /// arbitrary [Npx], integers (Tailwind units) or fractional (0.5/1.5/2.5…).
 /// Plan 412: extracted from the gap- branch so gap-x-/gap-y-/space-* share it.
@@ -1613,6 +1767,7 @@ mod tests {
 
     #[test]
     fn test_parse_rounded_variants() {
+        assert_eq!(StyleClass::parse_single("rounded-none"), Ok(StyleClass::RoundedNone));
         assert_eq!(StyleClass::parse_single("rounded-sm"), Ok(StyleClass::RoundedSm));
         assert_eq!(StyleClass::parse_single("rounded-md"), Ok(StyleClass::RoundedMd));
         assert_eq!(StyleClass::parse_single("rounded-lg"), Ok(StyleClass::RoundedLg));
@@ -1620,6 +1775,16 @@ mod tests {
         assert_eq!(StyleClass::parse_single("rounded-2xl"), Ok(StyleClass::Rounded2Xl));
         assert_eq!(StyleClass::parse_single("rounded-3xl"), Ok(StyleClass::Rounded3Xl));
         assert_eq!(StyleClass::parse_single("rounded-full"), Ok(StyleClass::RoundedFull));
+        assert_eq!(StyleClass::parse_single("rounded-t-lg"), Ok(StyleClass::RoundedT(Some(RoundedSize::Lg))));
+        assert_eq!(StyleClass::parse_single("rounded-b-sm"), Ok(StyleClass::RoundedB(Some(RoundedSize::Sm))));
+        assert_eq!(StyleClass::parse_single("rounded-tl-md"), Ok(StyleClass::RoundedTL(Some(RoundedSize::Md))));
+    }
+
+    #[test]
+    fn test_parse_negative_margins() {
+        assert_eq!(StyleClass::parse_single("-mt-10"), Ok(StyleClass::NegativeMarginTop(SizeValue::Fixed(10))));
+        assert_eq!(StyleClass::parse_single("-mb-4"), Ok(StyleClass::NegativeMarginBottom(SizeValue::Fixed(4))));
+        assert_eq!(StyleClass::parse_single("-mx-2"), Ok(StyleClass::NegativeMarginX(SizeValue::Fixed(2))));
     }
 
     #[test]
