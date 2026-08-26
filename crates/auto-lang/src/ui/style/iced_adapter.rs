@@ -53,6 +53,7 @@ fn warn_layout_degradation(class_name: &str) {
 /// This adapter converts StyleClass IR into Iced-compatible structures.
 ///
 /// NOTE: Iced does not support margin - margin-related classes will be ignored
+#[derive(Clone)]
 pub struct IcedStyle {
     // Spacing (L1 + L2)
     pub padding: Option<f32>,
@@ -93,6 +94,10 @@ pub struct IcedStyle {
     // Border Radius (L1 + L2)
     pub rounded: bool,
     pub border_radius: Option<f32>,
+    pub border_radius_tl: Option<f32>,
+    pub border_radius_tr: Option<f32>,
+    pub border_radius_br: Option<f32>,
+    pub border_radius_bl: Option<f32>,
 
     // Border (L2)
     pub border: bool,
@@ -284,6 +289,10 @@ impl IcedStyle {
             max_height: None,
             rounded: false,
             border_radius: None,
+            border_radius_tl: None,
+            border_radius_tr: None,
+            border_radius_br: None,
+            border_radius_bl: None,
             border: false,
             border_width: None,
             border_color: None,
@@ -367,6 +376,31 @@ impl IcedStyle {
         // mt-* into their internal padding.
 
         iced_style
+    }
+
+    /// Calculate the effective 4-corner iced border radius
+    pub fn effective_border_radius(&self) -> iced::border::Radius {
+        let base = self.border_radius.unwrap_or(if self.rounded { 4.0 } else { 0.0 });
+        let tl = self.border_radius_tl.unwrap_or(base);
+        let tr = self.border_radius_tr.unwrap_or(base);
+        let br = self.border_radius_br.unwrap_or(base);
+        let bl = self.border_radius_bl.unwrap_or(base);
+        iced::border::Radius {
+            top_left: tl,
+            top_right: tr,
+            bottom_right: br,
+            bottom_left: bl,
+        }
+    }
+
+    /// Check if any corner radius is active
+    pub fn has_border_radius(&self) -> bool {
+        self.rounded
+            || self.border_radius.map_or(false, |r| r > 0.0)
+            || self.border_radius_tl.map_or(false, |r| r > 0.0)
+            || self.border_radius_tr.map_or(false, |r| r > 0.0)
+            || self.border_radius_br.map_or(false, |r| r > 0.0)
+            || self.border_radius_bl.map_or(false, |r| r > 0.0)
     }
 
     /// Apply a single StyleClass to this IcedStyle
@@ -481,6 +515,14 @@ impl IcedStyle {
             }
 
             // ========== Border Radius (L1 + L2) ==========
+            StyleClass::RoundedNone => {
+                self.rounded = false;
+                self.border_radius = Some(0.0);
+                self.border_radius_tl = Some(0.0);
+                self.border_radius_tr = Some(0.0);
+                self.border_radius_br = Some(0.0);
+                self.border_radius_bl = Some(0.0);
+            }
             StyleClass::Rounded => {
                 self.rounded = true;
                 self.border_radius = Some(4.0);
@@ -512,6 +554,73 @@ impl IcedStyle {
             StyleClass::RoundedFull => {
                 self.rounded = true;
                 self.border_radius = Some(9999.0); // Effectively full
+            }
+            StyleClass::RoundedT(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+                self.border_radius_tr = Some(r);
+            }
+            StyleClass::RoundedB(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_bl = Some(r);
+                self.border_radius_br = Some(r);
+            }
+            StyleClass::RoundedL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+                self.border_radius_bl = Some(r);
+            }
+            StyleClass::RoundedR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tr = Some(r);
+                self.border_radius_br = Some(r);
+            }
+            StyleClass::RoundedTL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+            }
+            StyleClass::RoundedTR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tr = Some(r);
+            }
+            StyleClass::RoundedBL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_bl = Some(r);
+            }
+            StyleClass::RoundedBR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_br = Some(r);
+            }
+
+            // ========== Negative Margin ==========
+            StyleClass::NegativeMargin(size) => {
+                self.margin = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginX(size) => {
+                self.margin_x = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginY(size) => {
+                self.margin_y = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginTop(size) => {
+                self.margin_top = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginBottom(size) => {
+                self.margin_bottom = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginLeft(size) => {
+                self.margin_left = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginRight(size) => {
+                self.margin_right = Some(-size.to_pixels_f32());
             }
 
             // ========== Border (L2) ==========

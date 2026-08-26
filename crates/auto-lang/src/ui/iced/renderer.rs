@@ -1036,30 +1036,35 @@ fn effective_spacing(legacy: u16, style: Option<&Style>, horizontal: bool) -> f3
 
 /// Compute iced Padding (per-axis) from style, falling back to legacy u16.
 /// Handles px/py separately from uniform padding.
+fn iced_padding_from_is(is: &IcedStyle, legacy: u16) -> iced::Padding {
+    // Uniform padding
+    if let Some(p) = is.padding {
+        return iced::Padding::new(p);
+    }
+    // Per-axis or per-side padding
+    let has_per_side = is.padding_top.is_some() || is.padding_bottom.is_some()
+        || is.padding_left.is_some() || is.padding_right.is_some();
+    if has_per_side || is.padding_x.is_some() || is.padding_y.is_some() {
+        let px = is.padding_x.unwrap_or(0.0);
+        let py = is.padding_y.unwrap_or(0.0);
+        let top = is.padding_top.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
+        let bottom = is.padding_bottom.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
+        let left = is.padding_left.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
+        let right = is.padding_right.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
+        return iced::Padding {
+            top,
+            bottom,
+            left,
+            right,
+        };
+    }
+    iced::Padding::new(legacy as f32)
+}
+
 fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
     if let Some(s) = style {
         let is = IcedStyle::from_style(s);
-        // Uniform padding
-        if let Some(p) = is.padding {
-            return iced::Padding::new(p);
-        }
-        // Per-axis or per-side padding
-        let has_per_side = is.padding_top.is_some() || is.padding_bottom.is_some()
-            || is.padding_left.is_some() || is.padding_right.is_some();
-        if has_per_side || is.padding_x.is_some() || is.padding_y.is_some() {
-            let px = is.padding_x.unwrap_or(0.0);
-            let py = is.padding_y.unwrap_or(0.0);
-            let top = is.padding_top.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
-            let bottom = is.padding_bottom.or(if py > 0.0 { Some(py) } else { None }).unwrap_or(0.0);
-            let left = is.padding_left.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
-            let right = is.padding_right.or(if px > 0.0 { Some(px) } else { None }).unwrap_or(0.0);
-            return iced::Padding {
-                top,
-                bottom,
-                left,
-                right,
-            };
-        }
+        return iced_padding_from_is(&is, legacy);
     }
     iced::Padding::new(legacy as f32)
 }
@@ -1067,8 +1072,8 @@ fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
 /// Build an Iced container::Style from IcedStyle, covering background, border, shadow, text_color.
 fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
     use iced::Background;
-    let radius = is.border_radius.unwrap_or(0.0);
-    let border = if is.rounded || is.border || radius > 0.0 || is.border_width.map_or(false, |w| w > 0.0) {
+    let has_radius = is.has_border_radius();
+    let border = if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
         let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
         let color = is.border_color.unwrap_or_else(|| {
             let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
@@ -1077,7 +1082,7 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         iced::Border {
             color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
             width,
-            radius: radius.into(),
+            radius: is.effective_border_radius(),
         }
     } else {
         iced::Border::default()
@@ -1218,8 +1223,8 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
 
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
-    let radius = is.border_radius.unwrap_or(0.0);
-    let border = if is.rounded || is.border || radius > 0.0 || is.border_width.map_or(false, |w| w > 0.0) {
+    let has_radius = is.has_border_radius();
+    let border = if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
         let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
         let color = is.border_color.unwrap_or_else(|| {
             let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
@@ -1228,7 +1233,7 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
         iced::Border {
             color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
             width,
-            radius: radius.into(),
+            radius: is.effective_border_radius(),
         }
     } else {
         iced::Border::default()
@@ -1270,7 +1275,7 @@ fn needs_visual_wrap(is: &IcedStyle) -> bool {
     is.background_color.is_some()
         || is.border
         || is.rounded
-        || is.border_radius.is_some()
+        || is.has_border_radius()
         || is.shadow
         || is.text_color.is_some()
 }
@@ -1322,13 +1327,13 @@ fn wrap_with_margin<M: Clone + Debug + 'static>(
     let bottom = is.margin_bottom.unwrap_or(0.0);
     let left = is.margin_left.unwrap_or(0.0);
     let right = is.margin_right.unwrap_or(0.0);
-    let needs_wrap = top > 0.0 || bottom > 0.0 || left > 0.0 || right > 0.0
+    let needs_wrap = top != 0.0 || bottom != 0.0 || left != 0.0 || right != 0.0
         || is.margin_left_auto || is.margin_right_auto;
     if !needs_wrap {
         return el;
     }
     let mut cont = container(el);
-    if top > 0.0 || bottom > 0.0 || left > 0.0 || right > 0.0 {
+    if top != 0.0 || bottom != 0.0 || left != 0.0 || right != 0.0 {
         cont = cont.padding(iced::Padding {
             top,
             right,
@@ -1413,7 +1418,9 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     let needs_wrap = justify_center || justify_end || has_visual;
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
     let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
-    let needs_margin_wrap = mt > 0.0 || mb > 0.0
+    let ml = iced_style.as_ref().and_then(|is| is.margin_left).unwrap_or(0.0);
+    let mr = iced_style.as_ref().and_then(|is| is.margin_right).unwrap_or(0.0);
+    let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
 
     let el = if needs_wrap {
@@ -1461,8 +1468,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 
     if needs_margin_wrap {
         let mut cont = container(el);
-        if mt > 0.0 || mb > 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: mb, left: 0.0 });
+        if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
         }
         // Handle mx-auto / ml-auto / mr-auto
         if let Some(ref is) = iced_style {
@@ -1577,12 +1584,14 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     // Apply external margin_top/margin_bottom and mx-auto/ml-auto/mr-auto
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
     let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
-    let needs_margin_wrap = mt > 0.0 || mb > 0.0
+    let ml = iced_style.as_ref().and_then(|is| is.margin_left).unwrap_or(0.0);
+    let mr = iced_style.as_ref().and_then(|is| is.margin_right).unwrap_or(0.0);
+    let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
     if needs_margin_wrap {
         let mut cont = container(el);
-        if mt > 0.0 || mb > 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: mb, left: 0.0 });
+        if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
         }
         if let Some(ref is) = iced_style {
             if is.margin_left_auto && is.margin_right_auto {
@@ -2386,6 +2395,31 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .width(iced::Length::Fill)
                         .clip(true)
                         .into()
+                } else if let Some(ref s) = style {
+                    let iced_style = IcedStyle::from_style(s);
+                    let has_box_style = iced_style.background_color.is_some()
+                        || iced_style.border
+                        || iced_style.has_border_radius()
+                        || iced_style.border_width.map_or(false, |w| w > 0.0)
+                        || iced_style.padding.is_some()
+                        || iced_style.padding_x.is_some()
+                        || iced_style.padding_y.is_some()
+                        || iced_style.padding_top.is_some()
+                        || iced_style.padding_bottom.is_some()
+                        || iced_style.padding_left.is_some()
+                        || iced_style.padding_right.is_some()
+                        || iced_style.shadow;
+
+                    if has_box_style {
+                        let pad = iced_padding_from_is(&iced_style, 0);
+                        let cs = build_container_style(&iced_style);
+                        let cont = iced::widget::container(text_widget)
+                            .padding(pad)
+                            .style(move |_| cs);
+                        cont.into()
+                    } else {
+                        text_widget.into()
+                    }
                 } else {
                     text_widget.into()
                 };
@@ -2513,20 +2547,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else if label.contains('\n') {
                     let lines: Vec<&str> = label.split('\n').collect();
                     let mut col = iced::widget::Column::<M>::with_capacity(lines.len());
+                    let default_size = font_size_to_f32(&IcedFontSize::Sm);
+                    let default_weight = font_weight_to_iced(&IcedFontWeight::Medium);
                     for (i, line) in lines.iter().enumerate() {
                         let mut tw = text(line.to_string());
                         // Apply the button's own text styles to the first line (title).
                         if i == 0 {
                             if let Some(ref is) = iced_style {
-                                if let Some(ref font_size) = is.font_size {
-                                    tw = tw.size(font_size_to_f32(font_size));
-                                }
+                                tw = tw.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
                                 if let Some(color) = is.text_color {
                                     tw = tw.color(color);
                                 }
-                                if let Some(ref weight) = is.font_weight {
-                                    tw = tw.font(font_weight_to_iced(weight));
-                                }
+                                tw = tw.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                            } else {
+                                tw = tw.size(default_size).font(default_weight);
                             }
                         } else {
                             // Metadata lines: smaller (12px) + muted gray.
@@ -2537,16 +2571,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     col.into()
                 } else {
                     let mut text_widget = text(label.clone());
+                    let default_size = font_size_to_f32(&IcedFontSize::Sm);
+                    let default_weight = font_weight_to_iced(&IcedFontWeight::Medium);
                     if let Some(ref is) = iced_style {
-                        if let Some(ref font_size) = is.font_size {
-                            text_widget = text_widget.size(font_size_to_f32(font_size));
-                        }
+                        text_widget = text_widget.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
                         if let Some(color) = is.text_color {
                             text_widget = text_widget.color(color);
                         }
-                        if let Some(ref weight) = is.font_weight {
-                            text_widget = text_widget.font(font_weight_to_iced(weight));
-                        }
+                        text_widget = text_widget.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
                         // Plan 411: text-center/left/right on button labels — wide
                         // buttons (e.g. preview-card tabs) need horizontal alignment.
                         // Unlike the Text arm, ALWAYS Fill the label: is.width is the
