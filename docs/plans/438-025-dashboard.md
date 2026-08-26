@@ -1,6 +1,6 @@
 # Plan 438: 025-dashboard 系统监视器（App 轨道填洞 ②）
 
-> **状态**: 🟡 M1 已完成（2026-08-26，分支 plan-438，worktree .worktree/plan-438）；M2 待做（消费 437 Phase 2 组件化，437 复审确认其未做）。M1 执行记录见 §7。
+> **状态**: 🟡 M1 + M1-fix 已完成（2026-08-26，分支 plan-438，worktree .worktree/plan-438）；M2 待做（消费 437 Phase 2 组件化，437 复审确认其未做）。M1 执行记录见 §7，两处 vue 生成器缺口根治见 §8。
 > **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 2 项。
 > **关联**: [Plan 437](437-024-charts.md)（chart 组件上游，弱依赖）、012-stopwatch（.Tick 先例）、Plan 386（golden）、姊妹计划 437/439–441
 > **目录**: `examples/ui/025-dashboard/`（编号 025 原为 notes-extended，2026-08-23 已删除、能力并入 015-notes）｜pac `name: "dashboard"`｜端口 4025
@@ -80,3 +80,61 @@
 ### 未竟（M2 范畴）
 
 - vm 模式（消费 437 Phase 2 vm 图表组件——437 复审 2026-08-26 确认该组件化未做）；面板配置持久化（storage，018 先例）；`tests/desktop_mcp.py`（013 惯例，VM 轨）。
+
+## 8. M1-fix：vue 轨生成器两缺口根治（2026-08-26，同分支追加）
+
+> M1 落地时绕开的两个 `ui_gen` 缺口（原 SPEC「已知边界」①②），经用户
+> 裁定升级为本计划 phase 直接修复（打破"纯 app 层"约束的一次性破例，
+> 修复面收敛在 ts_adapter 单文件）。
+
+### 缺陷与根因
+
+| # | 缺陷 | 根因（代码级） |
+|---|---|---|
+| F-1 | handler 内 `f"${.cpu}"` 发出 `` `${cpu}` `` 而非 `` `${cpu.value}` ``（vue-tsc TS2362；运行时是 Ref 对象） | `ts_adapter::transpile_expr` **没有 `Expr::FStr` 臂**——整个表达式兜底委托 a2ts 打印器（`trans/ts_expr.rs fstr()`），后者不认识 Vue ref，模型引用印成裸名 |
+| F-2 | 局部变量整除语义缺失：`var m = .intState` 后 `m / 10` 无 `Math.trunc`（与 VM `DIV`=wrapping_div 整除**跨后端语义分歧**）；用户写 `var g int = …` 标注也不被识别 | `expr_proven_int` 只认 int 字面量与 int 声明的 state/prop（`typed_ints` 表）——**handler 局部变量完全不在类型表里**（澄清：M1 时怀疑的"构建间翻转"系误读，实际是首帧显示了 model 初始值，截断从未发生过） |
+
+### 修复（crates/auto-lang/src/ui_gen/ts_adapter.rs，+4 处）
+
+1. **F-1**：`transpile_expr` 补 `Expr::FStr` 臂——反引号模板字面量，插值
+   部分递归走 `transpile_expr`（AURA 感知，`.x` → `x.value`）；字面量
+   部分沿用 a2ts 转义规则（`` ` `` 与 `${`）。
+2. **F-2**：`AuraTsContext` 增 `int_locals: RefCell<HashSet>`（与既有
+   `null_init_locals` 同款扁平 per-handler 模型）；`Stmt::Store` 声明时
+   注册（显式 int 族类型标注 **或** `expr_proven_int(initializer)` 双路
+   径）；`expr_proven_int` 的 `Ident` 臂并入 `is_local_int` 查询；
+   `Op::Asn` 臂对"int 局部 ← 非证整右值"的重赋值做**失效摘除**。
+3. 语义边界（有意保守，保持 Plan 014 规则）：record 字段（any）与动态
+   调用结果不注册——对实际浮点值截断是静默正确性 bug；复合赋值
+   （`+=` 等）不追踪失效（正字法上 int 局部不做混合浮点复合赋值）。
+
+### 回归测试（vue_capabilities.rs，4 例）
+
+- `cap_438_fstr_model_ref_unwraps_value`：`f"cpu=${.cpu} pct"` →
+  `` label.value = `cpu=${cpu.value} pct` ``（F-1 主断言）
+- `cap_438_fstr_escapes_literal_parts`：字面量 `` ` ``/`${` 转义、局部
+  插值保持裸名
+- `cap_438_local_int_division_trunc`：`var fromState = .memT` 与
+  `var g int = 100` 两条路径的 `/` 均降 `Math.trunc`
+- `cap_438_local_int_tracking_invalidation`：int 局部被 record 字段
+  （any）重赋值后失去 trunc（失效路径）
+
+### 验证（全部绿）
+
+- `--test vue_capabilities` **76/76**（72 既有 + 4 新增，零回归）；
+- **gallery golden 零漂移**（1/1 过）——修复只影响此前坏掉的模式，
+  gallery 全用局部变量习语故不变；
+- schema_drift 1/1、docs_gen 4/4、`--lib` **3211/0**、auto-man **229+6**；
+- 025-dashboard 端到端：worktree exe 重生成后 `auto build`（含 vue-tsc）
+  全绿——Tick 标签已改回**直插形态** `f"${.cpu} %"`（正是修复前 TS2362
+  报错点，现类型检查通过）；生成物直查 `` cpuLabel.value = `${cpu.value} %` ``
+  与 `` memLabel.value = `${mTf / 10} / 32 GB` ``（float 局部量，无 trunc）。
+  浏览器实机复核因 IAB webview 会话不可用未做，以 单测+生成物+类型检查
+  三层证据替代（M1 首轮实机 6/6 已覆盖交互面）。
+
+### 确立的数值显示正字法（SPEC 同步修订）
+
+int `/` 是整除（VM/vue 同语义）——**小数显示必须走 float 局部量**
+（`var x float = …` + `/ 10.0`，437 §0.6.D 纪律的 vue 侧对偶）。
+M1 时的"十分位存储 + any 浮除"是修复前的侥幸路径，已在 SPEC 标注
+不得再依赖。

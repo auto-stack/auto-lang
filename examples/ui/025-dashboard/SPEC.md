@@ -84,16 +84,17 @@ poll_system() -> {
   `dash.speed_div` / `dash.sort_column` / `dash.sort_dir` /
   `dash.show_{cpu,mem,net}`。
 
-## 已知边界（M1 记账，vue 轨生成器缺口）
+## 已知边界（①② 已由 M1-fix 根治，见 plan 438 §8）
 
-1. **f-string 模型引用直插**：`f"${.cpu}"` 发出 `` `${cpu}` `` 而非
-   `` `${cpu.value}` ``（vue-tsc TS2362）。规避：先提升局部变量
-   （`var cL = .cpu`）。
-2. **any/int 除法的 Math.trunc 发射不稳定**：record 字段（any）参与
-   `/`、`%` 不加 `Math.trunc`（12.109375 直出）；且观察到同源代码
-   不同构建间局部 int 推断的截断行为翻转。规避：**数值显示一律
-   "十分位整数存储 + 单次 /10"**（JS 浮点精确到一位小数）或纯整数
-   运算；不做 `%.十` 拼接小数。
+1. ~~**f-string 模型引用直插**~~ → **已修复**（M1-fix①）：ts_adapter 补
+   FStr 臂，插值走 AURA 感知路径，`.cpu` 发出 `` `${cpu.value}` ``；
+   本应用 Tick 标签已改回直插形态（`f"${.cpu} %"`）。
+2. ~~**any/int 除法的 Math.trunc 发射**~~ → **已按语义修正**（M1-fix②）：
+   int 局部变量（显式标注或 int 初始化）的 `/` 与 VM 整除对齐
+   （Math.trunc），any 来源保持浮点、非整右值重赋值即失效。**由此确立
+   的数值显示正字法**：小数显示必须走 float 局部量（`var x float = …`
+   + `/ 10.0`，437 §0.6.D 纪律）——int `/` 是整除，"十分位存储 +
+   any 浮除"是修复前的侥幸路径，不得再依赖。
 
 ## Verification
 

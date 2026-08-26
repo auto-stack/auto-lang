@@ -207,8 +207,8 @@ widget App {
             // ---- 进程显示串 ----
             var np0 = []
             for p in .procsView {
-                var g = p["mem"]
-                var memL = f"${g / 10} GB"
+                var gf float = p["mem"]
+                var memL = f"${gf / 10.0} GB"
                 if p["mem"] < 100 {
                     memL = f"${p["mem"] * 10} MB"
                 }
@@ -290,8 +290,8 @@ widget App {
             }
             var npN = []
             for p in .procsView {
-                var gN = p["mem"]
-                var memLN = f"${gN / 10} GB"
+                var gNf float = p["mem"]
+                var memLN = f"${gNf / 10.0} GB"
                 if p["mem"] < 100 {
                     memLN = f"${p["mem"] * 10} MB"
                 }
@@ -362,8 +362,8 @@ widget App {
             }
             var npC = []
             for p in out {
-                var gC = p["mem"]
-                var memLC = f"${gC / 10} GB"
+                var gCf float = p["mem"]
+                var memLC = f"${gCf / 10.0} GB"
                 if p["mem"] < 100 {
                     memLC = f"${p["mem"] * 10} MB"
                 }
@@ -434,8 +434,8 @@ widget App {
             }
             var npM = []
             for p in out {
-                var gM = p["mem"]
-                var memLM = f"${gM / 10} GB"
+                var gMf float = p["mem"]
+                var memLM = f"${gMf / 10.0} GB"
                 if p["mem"] < 100 {
                     memLM = f"${p["mem"] * 10} MB"
                 }
@@ -466,19 +466,16 @@ widget App {
                     if .procCount < 142 { .procCount = 142 }
                     if .procCount > 158 { .procCount = 158 }
 
-                    // f-string 插值限局部变量（模型引用直插会发出
-                    // `${cpu}` 而非 `${cpu.value}`——已知生成器缺口，
-                    // 见 SPEC.md 已知边界）。十分位 /10 为 JS 精确浮点
-                    //（"14.2"），不做 %.十 拼接（any/int 除法的
-                    // Math.trunc 发射不稳定，见 SPEC 已知边界②）
-                    var cL = .cpu
-                    var mT = .memT
-                    var nT = .netT
-                    var pC = .procCount
-                    .cpuLabel = f"${cL} %"
-                    .memLabel = f"${mT / 10} / 32 GB"
-                    .netLabel = f"${nT / 10} MB/s"
-                    .procLabel = f"${pC}"
+                    // Plan 438 M1-fix①② 落地后的正字法：模型引用可直插
+                    // f-string（`${cpu.value}`）；十分位显示用 float 局部量
+                    // 除以 10.0（int `/` 是整除——VM/wue 同语义，小数显示
+                    // 必须走 float，437 §0.6.D 纪律）
+                    var mTf float = .memT
+                    var nTf float = .netT
+                    .cpuLabel = f"${.cpu} %"
+                    .memLabel = f"${mTf / 10.0} / 32 GB"
+                    .netLabel = f"${nTf / 10.0} MB/s"
+                    .procLabel = f"${.procCount}"
 
                     // ---- 进程值游走（记录重建，无原地写）----
                     var np = []
@@ -635,8 +632,8 @@ widget App {
                         }
                         var npV = []
                         for p in out {
-                            var gV = p["mem"]
-                            var memLV = f"${gV / 10} GB"
+                            var gVf float = p["mem"]
+                            var memLV = f"${gVf / 10.0} GB"
                             if p["mem"] < 100 {
                                 memLV = f"${p["mem"] * 10} MB"
                             }
