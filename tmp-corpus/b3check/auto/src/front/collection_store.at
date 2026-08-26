@@ -1,0 +1,327 @@
+// collection_store.at — collection entity state (Plan 006 Phase 3; Plan 007
+// vm-safe rewrite). Port of composables/useCollection.ts. Singleton store is
+// correct here: only one collection view is active at a time and
+// Init(module_id) resets per view (AppShell keys the component by module id).
+//
+// Plan 007 vm-safe rewrite notes:
+//  - flat api surface only (VG12/VG13): text + per-item getters, editField
+//    text-in/text-out; `body_text` is the authoritative body, `entries` is
+//    the D4 display projection rebuilt after every edit (whole-replace, D5);
+//  - stores cannot self-dispatch actions — Init/Reload inline the reload
+//    logic, Create inlines the Select body;
+//  - the fm entity object stays flattened into three str fields.
+use back.api: fetchCollectionListRaw, collectionCount, collectionAt, fetchEntityFlat, createEntitySafe, putEntitySafe, deleteEntitySafe, entriesCount, entryAt, editField, fieldDisplayOf
+
+store Collection {
+    model {
+        var module_id str = ""
+        var list Array<str> = []
+        // Plan 007: parallel plain-string names (vm event args must be
+        // scalars; field access on store-list loop vars kills the MCP channel)
+        var names Array<str> = []
+        var selected_name ?str = None
+        var entries Array<str> = []
+        // Plan 007: parallel entry key strings (vm event args must be scalars)
+        var entry_keys Array<str> = []
+        var sidecar str = ""
+        // Plan 007: authoritative atom body text (edits go text-in/text-out)
+        var body_text str = ""
+        // frontmatter-md entity (read-only), flattened
+        var fm_name str = ""
+        var fm_description str = ""
+        var fm_body str = ""
+        var is_read_only bool = false
+        var list_loading bool = false
+        var loading bool = false
+        var saving bool = false
+        var error str = ""
+        var dirty bool = false
+    }
+
+    msg Msg {
+        Open(str),
+        Pick(str),
+        NewEntity(str),
+        SaveEntity,
+        DelEntity(str),
+        FieldEdited(map),
+        SetSidecar(str),
+
+        MarkDirty,
+        Reload
+    }
+
+    on {
+        .Open(mid) -> {
+            .module_id = mid
+            .error = ""
+            .list_loading = true
+            var r = fetchCollectionListRaw(mid)
+            if r.ok {
+                var items = []
+                var nm = []
+                let n = collectionCount(r.text)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    let e = collectionAt(r.text, i)
+                    items.push({ name: e.name, description: e.description })
+                    nm.push(e.name)
+                    i = i + 1
+                }
+                .list = items
+                .names = nm
+            }
+            if r.ok == false {
+                .error = r.error
+                .list = []
+                .names = []
+            }
+            .list_loading = false
+        }
+
+        .Reload -> {
+            .list_loading = true
+            var r = fetchCollectionListRaw(.module_id)
+            if r.ok {
+                var items = []
+                var nm = []
+                let n = collectionCount(r.text)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    let e = collectionAt(r.text, i)
+                    items.push({ name: e.name, description: e.description })
+                    nm.push(e.name)
+                    i = i + 1
+                }
+                .list = items
+                .names = nm
+            }
+            if r.ok == false {
+                .error = r.error
+            }
+            .list_loading = false
+            if .selected_name != nil {
+                .loading = true
+                .error = ""
+                var e = fetchEntityFlat(.module_id, .selected_name)
+                if e.ok {
+                    if e.is_atom {
+                        .is_read_only = false
+                        .body_text = e.value
+                        .sidecar = e.sidecar
+                        var es = []
+                        var ek = []
+                        let n2 = entriesCount(e.value)
+                        var i2 = 0
+                        loop {
+                            if i2 >= n2 {
+                                break
+                            }
+                            let d = entryAt(e.value, i2, .module_id)
+                            es.push(d)
+                            ek.push(d.key)
+                            i2 = i2 + 1
+                        }
+                        .entries = es
+                        .entry_keys = ek
+                    }
+                    if e.is_atom == false {
+                        .is_read_only = true
+                        .fm_name = e.fm_name
+                        .fm_description = e.fm_description
+                        .fm_body = e.fm_body
+                    }
+                }
+                if e.ok == false {
+                    .error = e.error
+                }
+                .loading = false
+            }
+        }
+
+        .Pick(name) -> {
+            .selected_name = name
+            .loading = true
+            .error = ""
+            .entries = []
+            .sidecar = ""
+            .body_text = ""
+            .fm_name = ""
+            .fm_description = ""
+            .fm_body = ""
+            .dirty = false
+            var r = fetchEntityFlat(.module_id, name)
+            if r.ok {
+                if r.is_atom {
+                    // atom entity: text-authoritative body + display entries
+                    .is_read_only = false
+                    .body_text = r.value
+                    .sidecar = r.sidecar
+                    var es = []
+                    var ek = []
+                    let n = entriesCount(r.value)
+                    var i = 0
+                    loop {
+                        if i >= n {
+                            break
+                        }
+                        let d = entryAt(r.value, i, .module_id)
+                        es.push(d)
+                        ek.push(d.key)
+                        i = i + 1
+                    }
+                    .entries = es
+                    .entry_keys = ek
+                }
+                if r.is_atom == false {
+                    // frontmatter-md (skill): read-only
+                    .is_read_only = true
+                    .fm_name = r.fm_name
+                    .fm_description = r.fm_description
+                    .fm_body = r.fm_body
+                }
+            }
+            if r.ok == false {
+                .error = r.error
+            }
+            .loading = false
+        }
+
+        .NewEntity(name) -> {
+            .saving = true
+            .error = ""
+            var r = createEntitySafe(.module_id, name)
+            if r.ok {
+                .list_loading = true
+                var lr = fetchCollectionListRaw(.module_id)
+                if lr.ok {
+                    var items = []
+                    var nm = []
+                    let n = collectionCount(lr.text)
+                    var i = 0
+                    loop {
+                        if i >= n {
+                            break
+                        }
+                        let e = collectionAt(lr.text, i)
+                        items.push({ name: e.name, description: e.description })
+                        nm.push(e.name)
+                        i = i + 1
+                    }
+                    .list = items
+                    .names = nm
+                }
+                .list_loading = false
+                .Pick(name)
+            }
+            if r.ok == false {
+                .error = r.error
+            }
+            .saving = false
+        }
+
+        .SaveEntity -> {
+            if .selected_name != nil && .body_text != "" {
+                .saving = true
+                .error = ""
+                var r = putEntitySafe(.module_id, .selected_name, .body_text, .sidecar)
+                if r.ok {
+                    .dirty = false
+                    .list_loading = true
+                    var lr = fetchCollectionListRaw(.module_id)
+                    if lr.ok {
+                        var items = []
+                        var nm = []
+                        let n = collectionCount(lr.text)
+                        var i = 0
+                        loop {
+                            if i >= n {
+                                break
+                            }
+                            let e = collectionAt(lr.text, i)
+                            items.push({ name: e.name, description: e.description })
+                            nm.push(e.name)
+                            i = i + 1
+                        }
+                        .list = items
+                        .names = nm
+                    }
+                    .list_loading = false
+                }
+                if r.ok == false {
+                    .error = r.error
+                }
+                .saving = false
+            }
+        }
+
+        .DelEntity(name) -> {
+            .error = ""
+            var r = deleteEntitySafe(.module_id, name)
+            if r.ok {
+                if .selected_name == name {
+                    .selected_name = None
+                    .entries = []
+                    .body_text = ""
+                }
+                .list_loading = true
+                var lr = fetchCollectionListRaw(.module_id)
+                if lr.ok {
+                    var items = []
+                    var nm = []
+                    let n = collectionCount(lr.text)
+                    var i = 0
+                    loop {
+                        if i >= n {
+                            break
+                        }
+                        let e = collectionAt(lr.text, i)
+                        items.push({ name: e.name, description: e.description })
+                        nm.push(e.name)
+                        i = i + 1
+                    }
+                    .list = items
+                    .names = nm
+                }
+                .list_loading = false
+            }
+            if r.ok == false {
+                .error = r.error
+            }
+        }
+
+        // Controls emit update:modelValue with {path, value}; edit the
+        // authoritative body text and re-project the display entries (D5).
+        .FieldEdited(args) -> {
+            .body_text = editField(.body_text, args.path, args.value)
+            var es = []
+            var ek = []
+            let n = entriesCount(.body_text)
+            var i = 0
+            loop {
+                if i >= n {
+                    break
+                }
+                let d = entryAt(.body_text, i, .module_id)
+                es.push(d)
+                ek.push(d.key)
+                i = i + 1
+            }
+            .entries = es
+            .entry_keys = ek
+            .dirty = true
+        }
+
+        .SetSidecar(v) -> {
+            .sidecar = v
+            .dirty = true
+        }
+        .MarkDirty -> { .dirty = true }
+    }
+}

@@ -2663,6 +2663,59 @@ pub(crate) fn find_store_decl_files(
 /// fails to parse with "undefined variable: Note", dropping all of db.at's
 /// functions and breaking `db.func()` linking. This mirrors the script path
 /// (`execute_autovm_with_path`), which already does this.
+/// Plan 446 批一 (C1-3): UI 模块 parse 失败的进程级登记表。收集侧
+/// (`collect_module_imports`) 保持非致命(投机解析路径安全),`VmBridge` 构造时
+/// 检查本表并升级为致命错误 —— 消除"WARN + 静默空渲染"(os-config C1 现场)。
+pub fn ui_module_parse_failures() -> &'static std::sync::Mutex<Vec<String>> {
+    static REG: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
+    REG.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Plan 446 批一 (C1-2): 把 AutoError 的 miette span 偏移对照源码换算为
+/// `line:col` 定位。AutoError 的 Display 链不含位置;`Diagnostic::labels()`
+/// 给出字节偏移。MultipleErrors 递归展开(上限 20 条,与 parser 恢复上限一致)。
+fn positioned_parse_errors(e: &crate::error::AutoError, source: &str) -> String {
+    use miette::Diagnostic;
+    fn walk(
+        e: &crate::error::AutoError,
+        source: &str,
+        out: &mut Vec<String>,
+        depth: usize,
+    ) {
+        if out.len() >= 20 || depth > 4 {
+            return;
+        }
+        if let crate::error::AutoError::MultipleErrors { errors, .. } = e {
+            for sub in errors {
+                walk(sub, source, out, depth + 1);
+            }
+            return;
+        }
+        let msg = e.to_string();
+        let mut line_col = None;
+        if let Some(span) = e.labels().and_then(|mut ls| ls.next()) {
+            let offset = span.inner().offset();
+            if offset <= source.len() {
+                let until = &source[..offset];
+                let line = until.matches('\n').count() + 1;
+                let col = until.rsplit('\n').next().map(|l| l.chars().count()).unwrap_or(0) + 1;
+                line_col = Some((line, col));
+            }
+        }
+        out.push(match line_col {
+            Some((l, c)) => format!("  error at {l}:{c}: {msg}"),
+            None => format!("  error (no span): {msg}"),
+        });
+    }
+    let mut out = Vec::new();
+    walk(e, source, &mut out, 0);
+    if out.is_empty() {
+        e.to_string()
+    } else {
+        out.join("\n")
+    }
+}
+
 fn collect_module_imports(
     module_path: &std::path::Path,
     visited: &mut std::collections::HashSet<std::path::PathBuf>,
@@ -2727,7 +2780,24 @@ fn collect_module_imports(
             // symbols (e.g. every `api.*` fn) to vanish from the VM module,
             // producing misleading "Undefined symbol: api.X" link errors far
             // downstream. Log so the real .at parse issue is visible.
+            //
+            // Plan 446 批一 (C1-2/C1-3): (1) 诊断带 文件:行:列 —— Display 链不含
+            // 位置,这里从 miette Diagnostic 的 labels 提取 span 偏移,对照手边的
+            // 源码换算行列;(2) 记入全局注册表,VmBridge 构造时升级为致命错误
+            // (此前 WARN + 静默空渲染,os-config C1 现场"模块丢弃极难定位")。
+            // 本函数保持非致命返回(投机解析路径安全),致命化在桥接层统一执行。
+            let detail = positioned_parse_errors(&e, &code);
+            eprintln!(
+                "\n════ module parse failed (fatal at boot, plan-446 C1) ════\n  file: {}\n{}\n════════════════════════════════════════════════════════",
+                module_path.display(),
+                detail
+            );
             log::warn!("collect_module_imports: parse failed for {}: {}", module_path.display(), e);
+            ui_module_parse_failures().lock().unwrap().push(format!(
+                "{}: {}",
+                module_path.display(),
+                detail.lines().next().unwrap_or("(no detail)").trim()
+            ));
             return;
         }
     };
@@ -5668,6 +5738,9 @@ mod plan409_tests;
 mod plan412_tests;
 
 #[cfg(test)]
+mod plan446_j1_repro_tests;
+
+#[cfg(test)]
 mod plan352_tests;
 
 #[cfg(test)]
@@ -5703,3 +5776,42 @@ pub use ui::{
 
 #[cfg(feature = "ui-iced")]
 pub use ui::iced::{IntoIcedElement, ComponentIced};
+// =============================================================================
+// Plan 446 批一 (C1-2): parse 错误定位换算回归
+// =============================================================================
+#[cfg(test)]
+mod plan446_batch1_tests {
+    use super::*;
+
+    #[test]
+    fn positioned_parse_errors_reports_line_col() {
+        // 第 2 行制造语法错误(`let` 缺名) —— 诊断必须带 2:N 行列,而非裸消息。
+        let src = "fn ok() int {\n    let = 1\n    return 1\n}\n";
+        let mut cs = crate::compile::CompileSession::new();
+        let mut parser = Parser::new_with_type_store(src, cs.type_store())
+            .with_session(crate::session::CompilerSession::ui());
+        let err = parser.parse().expect_err("broken source must fail");
+        let detail = positioned_parse_errors(&err, src);
+        assert!(
+            detail.contains("at 2:"),
+            "expected line-2 position in: {detail}"
+        );
+    }
+
+    #[test]
+    fn positioned_parse_errors_multi_error_cap() {
+        // 多错误(MultipleErrors)展开且不超过 20 条。
+        let mut src = String::new();
+        for i in 0..30 {
+            src.push_str(&format!("let broken{i} =\n")); // 每行一个残缺 stmt
+        }
+        let mut cs = crate::compile::CompileSession::new();
+        let mut parser = Parser::new_with_type_store(src.as_str(), cs.type_store())
+            .with_session(crate::session::CompilerSession::ui());
+        if let Err(err) = parser.parse() {
+            let detail = positioned_parse_errors(&err, &src);
+            let count = detail.lines().filter(|l| l.contains("error")).count();
+            assert!(count >= 1 && count <= 20, "cap violated: {count}\n{detail}");
+        }
+    }
+}

@@ -1,0 +1,67 @@
+// daemon_view.at — unified Daemon test-connection card (Plan 008 Phase 3
+// batch 2). ONE view source for BOTH backends (vue regen + vm interpret).
+// Replaces the vue named-class DaemonView (Plan 006) and vm_daemon.at
+// (Plan 007).
+//
+// The embedded ConfigEditor child moved OUT to the roots (vue AppShell /
+// vm App render DaemonView + editor siblings) — the two editors converge in
+// batch 3, the roots in batch 6. Vocabulary per auto/README §共享样式词汇;
+// the button is pushed right with a flex-1 spacer (ml-auto is unreliable in
+// vm). Known deviations: no latency ms on vm (api.at returns 0), no italic
+// for the offline hint (no font-style in vm), hover/disabled opacity is
+// web-only polish.
+use back.api: testDaemon
+
+widget DaemonView(module_id: str) {
+    msg Msg { Test }
+
+    model {
+        var status str = "idle"
+        var test_error str = ""
+    }
+
+    view {
+        col (style: "daemon-view test-card bg-white border border-[#e0e0e0] rounded-lg px-[18px] py-[14px] gap-2 max-w-[820px]") {
+            row (style: "test-row flex items-center gap-[14px]") {
+                span (text: "Daemon connection", style: "test-label font-semibold text-sm text-[#1a1a1a]") {}
+                span (style: "test-status text-xs") {
+                    if .status == "idle" {
+                        text (text: "not tested", style: "text-[#8a8a8a]") {}
+                    }
+                    if .status == "checking" {
+                        text (text: "testing…", style: "text-[#8a8a8a]") {}
+                    }
+                    if .status == "ok" {
+                        text (text: "✓ online", style: "font-medium text-[#107c10]") {}
+                    }
+                    if .status == "unreachable" {
+                        text (text: "offline", style: "text-[#8a8a8a]") {}
+                    }
+                    if .status == "fail" {
+                        text (text: "✗ failed", style: "font-medium text-[#c42b1c]") {}
+                    }
+                }
+                div (style: "flex-1") {}
+                button (text: "Test", style: "btn px-[14px] py-1 rounded text-xs border border-[#e0e0e0] bg-white text-[#1a1a1a] hover:bg-[#ededed]") {
+                    onclick: .Test
+                }
+            }
+            if .status == "fail" && .test_error != "" {
+                text (text: .test_error, style: "test-err text-xs font-mono text-[#c42b1c]") {}
+            }
+            if .status == "unreachable" {
+                text (text: "The AI Daemon (aaid, :17654) is offline. Start it with cargo run -p auto-ai-daemon. Config fields below can still be edited — they're written to ai-daemon.at directly.", style: "test-hint text-xs text-[#616161]") {}
+            }
+        }
+    }
+
+    on {
+        .Test -> {
+            .status = "checking"
+            .test_error = ""
+            var r = testDaemon()
+            .status = r.status
+            .test_error = r.error
+        }
+    }
+}

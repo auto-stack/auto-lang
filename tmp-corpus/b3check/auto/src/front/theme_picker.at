@@ -1,0 +1,39 @@
+// theme_picker.at — unified accent picker (Plan 008 Phase 3 batch 1).
+// Single source for BOTH backends (vue regen → ThemePicker.vue; vm child
+// widget of Sidebar). The 5-accent palette is a fixed constant, so the chips
+// are hardcoded with P1-proven style forms only (literal + if-literal) — no
+// per-item class strings needed from the store. Marker class `swatch` is an
+// inert test hook (.theme-picker .swatch is asserted by test-theme-switch).
+use theme_store: Theme
+
+widget ThemePicker {
+    msg Msg { Pick(str) }
+
+    view {
+        col (style: "theme-picker shrink-0 pt-3 pb-4 px-5 gap-2") {
+            div (style: "h-px bg-[#e0e0e0] mb-1") {}
+            text (text: "Accent color", style: "theme-label text-xs font-semibold text-[#8a8a8a]") {}
+            row (style: "swatches flex items-center gap-2") {
+                button (text: "Indigo", style: if .store.current == "indigo" { "swatch active px-3 py-1 rounded-full text-xs text-white bg-[#6366f1] shadow-md border-2 border-white" } else { "swatch px-3 py-1 rounded-full text-xs text-white bg-[#6366f1]" }) {
+                    onclick: .Pick("indigo")
+                }
+                button (text: "Coral", style: if .store.current == "coral" { "swatch active px-3 py-1 rounded-full text-xs text-white bg-[#e85d75] shadow-md border-2 border-white" } else { "swatch px-3 py-1 rounded-full text-xs text-white bg-[#e85d75]" }) {
+                    onclick: .Pick("coral")
+                }
+                button (text: "Ocean", style: if .store.current == "ocean" { "swatch active px-3 py-1 rounded-full text-xs text-white bg-[#3b82f6] shadow-md border-2 border-white" } else { "swatch px-3 py-1 rounded-full text-xs text-white bg-[#3b82f6]" }) {
+                    onclick: .Pick("ocean")
+                }
+                button (text: "Sage", style: if .store.current == "sage" { "swatch active px-3 py-1 rounded-full text-xs text-white bg-[#10b981] shadow-md border-2 border-white" } else { "swatch px-3 py-1 rounded-full text-xs text-white bg-[#10b981]" }) {
+                    onclick: .Pick("sage")
+                }
+                button (text: "Amber", style: if .store.current == "amber" { "swatch active px-3 py-1 rounded-full text-xs text-white bg-[#f59e0b] shadow-md border-2 border-white" } else { "swatch px-3 py-1 rounded-full text-xs text-white bg-[#f59e0b]" }) {
+                    onclick: .Pick("amber")
+                }
+            }
+        }
+    }
+
+    on {
+        .Pick(name) -> { store.SetAccent(name) }
+    }
+}

@@ -1,0 +1,112 @@
+// app_shell.at — the deployed root (Plan 006 Phase 2). Port of the
+// hand-written src/App.vue: layout + module-kind dispatch. `custom`-kind
+// modules render a removal notice (Plan 006 §1: the createComponent(Vue)
+// protocol is retired).
+//
+// The :key on each content component forces a fresh instance per module so
+// per-module state (loaded config / collection) rebinds on switch — same
+// trick the hand-written shell used.
+widget AppShell {
+    use {
+        composable: useModulesStore from "src/front/utils/modules_store_ext.ts"
+        component: ConfigEditor from "src/front/utils/app_shell_ext.ts"
+    }
+
+    msg Msg { Init }
+
+    view {
+        div {
+            class: "layout"
+            Sidebar { }
+            main {
+                class: "content"
+                header {
+                    class: "content-header"
+                    h1 {
+                        text modulesStore.title
+                    }
+                }
+                div {
+                    class: "content-body"
+
+                    if modulesStore.loading {
+                        div {
+                            class: "state-msg"
+                            p { text "Loading configuration..." }
+                        }
+                    } else if modulesStore.error != "" {
+                        div {
+                            class: "state-msg error"
+                            p { text f"⚠️ ${modulesStore.error}" }
+                        }
+                    } else if modulesStore.active_kind == "" {
+                        div {
+                            class: "state-msg"
+                            p { text "Select a module from the left to configure it." }
+                        }
+                    } else if modulesStore.active_kind == "file" {
+                        if modulesStore.active_id == "ai-daemon" {
+                            DaemonView(module_id: modulesStore.active_id, key: modulesStore.active_id)
+                            ConfigEditor(module_id: modulesStore.active_id, key: "aaid-cfg")
+                        } else {
+                            ConfigEditor(module_id: modulesStore.active_id, key: modulesStore.active_id)
+                        }
+                    } else if modulesStore.active_kind == "collection" {
+                        CollectionBrowser(module_id: modulesStore.active_id, read_only: modulesStore.read_only, key: modulesStore.active_id)
+                    } else {
+                        div {
+                            class: "state-msg"
+                            p { text "Custom remote modules were removed in Plan 006 (createComponent(Vue) protocol retired)." }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { modulesStore.Init() }
+    }
+
+    style {
+        .layout {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .content-header {
+            height: var(--header-height);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card);
+        }
+        .content-header h1 {
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+        }
+        .content-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        .state-msg {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-size: var(--font-size-lg);
+        }
+        .state-msg.error {
+            color: var(--danger);
+        }
+    }
+}

@@ -262,6 +262,50 @@ plan-446-try-rewrite）：九处回跳位点改 isize 域相减再收窄；顺�
 **32KB/模块 i16 偏移上限**为后续大应用的架构性约束（ widening 到 i32 或
 分模块为长期项）。
 
+## L. 批一实施记录（2026-08-26，auto-lang worktree plan-446-batch1）
+
+按 §I 切分的第一批（诊断性）+ J1/J2 攻坚，全部落地：
+
+**C1-2 parse 错误带定位**：`collect_module_imports` 的 parse 失败分支新增
+`positioned_parse_errors`——从 miette `Diagnostic::labels()` 取 span 偏移对照
+手边源码换算 `line:col`（MultipleErrors 递归展开，上限 20）。回归
+`plan446_batch1_tests`（positioned_parse_errors_reports_line_col /
+multi_error_cap）。
+
+**C1-3 模块 parse 失败致命化**：全局登记表 `ui_module_parse_failures()` +
+stderr 醒目块；`VmBridge::new_with_children` 构造时检查并升级为 Err（收集侧
+保持非致命——投机解析路径安全）。效果：入口/被引用模块 parse 失败 = boot
+失败非零退出，不再静默空渲染。
+
+**F1 handler 崩溃诊断**：dynamic.rs 三处吞错位（dispatch 主路径/850 简路径/
+fire_init）从 env 门控升级为无条件 stderr `[VM-HANDLER] Widget.Msg failed`；
+vm_bridge 两处 call 位附加 `crash ip=0x.. in handler_X`（VMError 无位置信息，
+task.ip 指向失败指令附近）。
+
+**J1 根因修复（本批最大收获）**：J1/J4 时代的"空壳"三症状（子 widget 裸引用/
+详情循环不建/旧工程退化）**全部是 MCP 快照层假象**——styled_vtree 仅在
+`__bounds_collected` 回路后设置，而 bounds 仅在 view() 脏重建时请求；boot 后
+无重建则 styled 永不落盘，快照首问必走源树回退（子 widget 裸标签、for 未展开
+= 观感"空壳"）。视图构建与窗口渲染实际一直正常（headless 全展开实证）。
+修复：dynamic_view 的每帧 MCP 同步块直接推送
+`view_to_vtree_with_paths` 快照（bounds/计算样式注释仍由原回路后补）。
+**验证**：os-config 两尖信号双绿——`vm-b3-check`（b955004 导出重建于
+worktree tmp-corpus，roles/load/assistant true + inputs 7/Apply 4）与
+`vm-detail-dump`（b3 与 HEAD 语料：6-7 inputs/4 Apply，详情区全渲染）。
+e2e-vm 剩余败项属 446 在册的 harness 自身问题（按压错位/门禁待修）+ 首问
+时序，归 os-config 侧。附带快照格式修复：input/textarea 的 placeholder 构成
+节点 body（此前仅 class/events 开体，无样式 input 打裸行丢 placeholder——
+e2e findInputByPlaceholder 断言面）。
+
+**J2 验证解除**：`for` 内 keyed 容器（col/row/div 带 key）当前 master +
+本批 = 子树正常渲染（j2check 探针：keyed-alpha/beta 双子树全出）。原"致死"
+症状为快照回退时代观察。**下游绕行可撤**（os-config 侧 VG 清单相应条目 +
+vue key 提升的配对验证由其自行安排）。
+
+**回归**：lib+ui-iced+test-vm-files 全量——失败集 = cookbook_vm ×3（447 附录
+在案基线红）+ benchmark_downcast（在案负载偶发）+ md_hidden_classes（master
+同红）；charts_gallery 负载偶发复跑绿。musk 探针（plan442）1 passed。
+
 ## J. Plan 008 批 4 增补（2026-08-26，os-config 视图统一现场报告）
 
 来源：auto-os-config Plan 008（vue/vm 视图统一）批 4 调试实证；

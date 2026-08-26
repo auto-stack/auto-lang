@@ -1,0 +1,6 @@
+name: "auto-os-config-front"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+shadcn: off
+default_classes: off

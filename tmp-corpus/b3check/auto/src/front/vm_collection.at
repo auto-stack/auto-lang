@@ -1,0 +1,260 @@
+// vm_collection.at — CollectionBrowserVm: master-detail collection editor
+// (Plan 007 Phase 4). VG16: Collection store only (methods renamed unique:
+// Open/Pick/NewEntity/SaveEntity/DelEntity — vm disambiguates store calls by
+// method name across ALL project stores).
+//
+// vm rules baked in (Phase 1/2 gotchas): entity buttons loop over the store's
+// parallel `names` string array (field access on store-list loop vars in
+// event args kills the MCP channel); inputs are single-param (draft) + Apply
+// buttons; nil-able store fields compared against ""; no popover (parse
+// poison on this build — confirm is a plain if-block).
+//
+// v1 deviations (registered): no list filter (VG13); markdown sidecar is a
+// single-line input; select fields accept free text; tables/subforms render
+// as read-only JSON text.
+use collection_store: Collection
+use back.api: fieldDisplayOf
+
+widget CollectionBrowserVm(module_id: str, read_only: bool) {
+    model {
+        var new_name str = ""
+        var draft str = ""
+        var confirm_open bool = false
+    }
+
+    view {
+        row (style: "h-full") {
+            col (style: "w-72 shrink-0 border-r") {
+                row (style: "gap-2 p-2") {
+                    input (placeholder: "new entity name") {
+                        oninput: .NewName
+                    }
+                    button (text: "＋") { onclick: .NewEntity }
+                    button (text: "Load") { onclick: .Boot }
+                }
+                scroll (style: "flex-1") {
+                    col (style: "gap-1 p-2") {
+                        for n in .store.names {
+                            button (text: n, style: "w-full text-left px-2 py-1 rounded") {
+                                key: n
+                                onclick: .Pick(n)
+                            }
+                        }
+                        if .store.names.len() == 0 {
+                            text (text: "(no entities)", style: "text-xs text-gray-400") {}
+                        }
+                    }
+                }
+            }
+            col (style: "flex-1") {
+                if .store.selected_name == "" {
+                    text (text: "Select an entity from the left, or create a new one.", style: "p-4 text-gray-400") {}
+                }
+                if .store.selected_name != "" {
+                    if .store.is_read_only {
+                        scroll (style: "flex-1 p-4") {
+                            col (style: "gap-2") {
+                                text (text: .store.fm_name, style: "font-bold text-lg") {}
+                                text (text: .store.fm_description, style: "text-sm text-gray-500") {}
+                                text (text: .store.fm_body, style: "text-xs") {}
+                                text (text: "read-only (frontmatter-md)", style: "text-xs text-gray-400") {}
+                            }
+                        }
+                    }
+                    if .store.is_read_only == false {
+                        col (style: "h-full") {
+                            row (style: "gap-3 items-center p-3 border-b") {
+                                text (text: .store.selected_name, style: "font-bold") {}
+                                if .store.dirty {
+                                    text (text: "unsaved", style: "text-xs text-amber-500") {}
+                                }
+                                button (text: "Save") { onclick: .SaveNow }
+                                button (text: "Delete") { onclick: .AskDelete }
+                            }
+                            if .confirm_open {
+                                row (style: "gap-2 p-2 border-b") {
+                                    text (text: "Delete this entity? (.bak kept)", style: "text-xs") {}
+                                    button (text: "Yes, delete") { onclick: .ConfirmYes }
+                                    button (text: "Cancel") { onclick: .ConfirmNo }
+                                }
+                            }
+                            scroll (style: "flex-1 p-4") {
+                                col (style: "gap-3") {
+                                    for i, e in .store.entries {
+                                        div (class: "contents") {
+                                            key: e.key
+                                            if e.is_table {
+                                            col (style: "border rounded p-2 gap-1") {
+                                                text (text: e.label, style: "font-medium") {}
+                                                text (text: e.frag, style: "text-xs text-gray-500") {}
+                                            }
+                                        }
+                                        if e.kind == "subform" {
+                                            col (style: "border rounded p-2 gap-1") {
+                                                text (text: e.label, style: "font-medium") {}
+                                                text (text: e.frag, style: "text-xs text-gray-500") {}
+                                            }
+                                        }
+                                        if e.kind == "toggle" {
+                                            checkbox (id: e.key, checked: e.value, label: e.label) {
+                                                onclick: .Toggle(i)
+                                            }
+                                        }
+                                        if e.kind == "number" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: e.label, value: e.value) {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Apply") { onclick: .ApplyEntry(i) }
+                                                }
+                                            }
+                                        }
+                                        if e.kind == "text" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: e.label, value: e.value) {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Apply") { onclick: .ApplyEntry(i) }
+                                                }
+                                            }
+                                        }
+                                        if e.kind == "select" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: e.label, value: e.value) {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Apply") { onclick: .ApplyEntry(i) }
+                                                }
+                                                text (text: "(select — free text accepted)", style: "text-xs text-gray-400") {}
+                                            }
+                                        }
+                                        if e.kind == "password" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: e.label, value: e.value) {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Apply") { onclick: .ApplyEntry(i) }
+                                                }
+                                            }
+                                        }
+                                        if e.kind == "tags" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                text (text: e.value, style: "text-xs text-gray-500") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: "add value") {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Add") { onclick: .ApplyEntry(i) }
+                                                }
+                                            }
+                                        }
+                                        if e.kind == "multiselect" {
+                                            col (style: "gap-1") {
+                                                text (text: e.label, style: "text-sm") {}
+                                                text (text: e.value, style: "text-xs text-gray-500") {}
+                                                row (style: "gap-2") {
+                                                    input (placeholder: "add value") {
+                                                        oninput: .Draft
+                                                    }
+                                                    button (text: "Add") { onclick: .ApplyEntry(i) }
+                                                }
+                                            }
+                                            }
+                                        }
+                                    }
+                                    col (style: "gap-1") {
+                                        text (text: "Soul (markdown sidecar)", style: "text-sm") {}
+                                        input (placeholder: "sidecar markdown") {
+                                            oninput: .Sidecar
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if .store.error != "" {
+                    text (text: "error", style: "p-2 text-red-500") {}
+                }
+            }
+        }
+    }
+
+    on {
+        .Boot -> {
+            store.Open(.module_id)
+        }
+        .NewName(v str) -> {
+            .new_name = v
+        }
+        .NewEntity -> {
+            if .new_name != "" {
+                store.NewEntity(.new_name)
+                .new_name = ""
+            }
+        }
+        .Pick(n) -> {
+            store.Pick(n)
+        }
+        .Draft(v str) -> {
+            .draft = v
+        }
+        .ApplyEntry(i) -> {
+            var k = ""
+            var j = 0
+            for x in .store.entry_keys {
+                if j == i {
+                    k = x
+                }
+                j = j + 1
+            }
+            if .draft != "" && k != "" {
+                store.FieldEdited({ path: k, value: .draft })
+                .draft = ""
+            }
+        }
+        .Toggle(i) -> {
+            var k = ""
+            var j = 0
+            for x in .store.entry_keys {
+                if j == i {
+                    k = x
+                }
+                j = j + 1
+            }
+            var nv = "false"
+            if k != "" {
+                let cur = fieldDisplayOf(.store.body_text, k)
+                if cur == "false" || cur == "" {
+                    nv = "true"
+                }
+            }
+            store.FieldEdited({ path: k, value: nv })
+        }
+        .Sidecar(v str) -> {
+            store.SetSidecar(v)
+        }
+        .SaveNow -> {
+            store.SaveEntity()
+        }
+        .AskDelete -> {
+            .confirm_open = true
+        }
+        .ConfirmYes -> {
+            .confirm_open = false
+            store.DelEntity(.store.selected_name)
+        }
+        .ConfirmNo -> {
+            .confirm_open = false
+        }
+    }
+}

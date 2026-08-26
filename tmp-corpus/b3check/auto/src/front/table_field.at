@@ -1,0 +1,227 @@
+// table_field.at — table editor for arrays of homogeneous objects (Plan 006
+// Phase 4). Port of src/editor/controls/TableField.vue. Columns/specs come
+// from the ext tableInfo projection (computed over the modelValue prop);
+// select-column enum options load at Init. Cell edits carry the raw $event in
+// the payload map (event args can't be expressions) and rebuild the row
+// immutably, re-emitting the whole array (D5).
+
+widget TableField(modelValue: map, module_id: str, path: str, on_value: msg) {
+    use {
+        fn: tableInfo, setCell, loadColumnOptions, blankRow, mergeCols, removeRowAt from "src/front/utils/controls_ext.ts"
+    }
+    msg Msg {
+        Value(map),
+        Init,
+        SetCell(map),
+        AddRow,
+        RemoveRow(int)
+    }
+
+    model {
+        // { col: [{value,label}...] } for select columns
+        var col_options Array<str> = {}
+    }
+
+    computed {
+        info => tableInfo(.modelValue, .module_id)
+        view_cols => mergeCols(.info, .col_options)
+    }
+
+    view {
+        div {
+            class: "table-wrap"
+            table {
+                class: "tbl"
+                thead {
+                    tr {
+                        for c in .info.cols {
+                            th {
+                                key: c
+                                text c
+                            }
+                        }
+                        th { class: "row-act" }
+                    }
+                }
+                tbody {
+                    for i, row in .modelValue {
+                        tr {
+                            key: i
+                            for c in .view_cols {
+                                td {
+                                    key: c.name
+                                    if c.kind == "select" {
+                                        select {
+                                            class: "cell-select"
+                                            value: .row[c.name]
+                                            onchange: .SetCell({ i: i, c: c.name, e: $event, sel: true })
+                                            for o in c.options {
+                                                option {
+                                                    key: o.value
+                                                    value: o.value
+                                                    text o.label
+                                                }
+                                            }
+                                            option {
+                                                value: .row[c.name]
+                                                text .row[c.name]
+                                            }
+                                        }
+                                    } else if c.kind == "number" {
+                                        input {
+                                            class: "cell-input"
+                                            "type": "number"
+                                            value: .row[c.name]
+                                            oninput: .SetCell({ i: i, c: c.name, e: $event, num: true })
+                                        }
+                                    } else {
+                                        input {
+                                            class: "cell-input"
+                                            "type": "text"
+                                            value: .row[c.name]
+                                            oninput: .SetCell({ i: i, c: c.name, e: $event })
+                                        }
+                                    }
+                                }
+                            }
+                            td {
+                                class: "row-act"
+                                button {
+                                    class: "del-row"
+                                    title: "Remove row"
+                                    onclick: .RemoveRow(i)
+                                    text "×"
+                                }
+                            }
+                        }
+                    }
+                    if .modelValue.len() == 0 {
+                        tr {
+                            td {
+                                class: "empty"
+                                text "(empty — click + Row)"
+                            }
+                        }
+                    }
+                }
+            }
+            button {
+                class: "add-row"
+                onclick: .AddRow
+                text "+ Row"
+            }
+        }
+    }
+
+    on {
+
+
+        .Init -> {
+            var p = loadColumnOptions(.info.enumUrls)
+            p.then((opts) => {
+                .col_options = opts
+            })
+        }
+
+        .SetCell(args) -> {
+            var v = args.e.target.value
+            if args.num { v = args.e.target.value.to_int() }
+            on_value({ path: .path, value: setCell(.modelValue, args.i, args.c, v) })
+        }
+        .AddRow -> {
+            on_value({ path: .path, value: .modelValue.concat([blankRow(.info.cols)]) })
+        }
+        .RemoveRow(i) -> {
+            if .modelValue != nil {
+                on_value({ path: .path, value: removeRowAt(.modelValue, i) })
+            }
+        }
+    }
+
+    style {
+        .table-wrap {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 6px);
+            overflow: hidden;
+            max-width: 720px;
+        }
+        .tbl {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: var(--font-size-sm);
+        }
+        .tbl th,
+        .tbl td {
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border);
+            border-right: 1px solid var(--border);
+        }
+        .tbl th:last-child,
+        .tbl td:last-child {
+            border-right: none;
+        }
+        .tbl th {
+            background: var(--bg-hover);
+            font-weight: 600;
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            text-transform: none;
+        }
+        .tbl tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .cell-input,
+        .cell-select {
+            width: 100%;
+            border: 1px solid transparent;
+            background: transparent;
+            font-size: var(--font-size-sm);
+            padding: 3px 6px;
+            border-radius: 3px;
+            outline: none;
+            font-family: inherit;
+        }
+        .cell-input:focus,
+        .cell-select:focus {
+            border-color: var(--accent);
+            background: var(--bg-input);
+            box-shadow: 0 0 0 2px var(--ring);
+        }
+        .row-act {
+            width: 32px;
+            text-align: center;
+        }
+        .del-row {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .del-row:hover {
+            color: var(--danger);
+        }
+        .empty {
+            color: var(--text-muted);
+            text-align: center;
+            padding: 12px;
+            font-style: italic;
+        }
+        .add-row {
+            margin-top: 6px;
+            border: 1px dashed var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            padding: 4px 12px;
+            border-radius: var(--radius-sm, 4px);
+            cursor: pointer;
+            font-size: var(--font-size-sm);
+        }
+        .add-row:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+    }
+}

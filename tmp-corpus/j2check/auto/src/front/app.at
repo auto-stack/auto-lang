@@ -1,0 +1,21 @@
+// J2 probe: keyed container inside for — does the subtree survive on VM?
+widget App {
+    model {
+        var items list = []
+    }
+    msg Msg { Init }
+    on {
+        .Init -> {
+            .items = [{ n: "alpha" }, { n: "beta" }]
+        }
+    }
+    view {
+        col {
+            for it in .items {
+                col (key: it.n) {
+                    text (text: "keyed-" + it.n)
+                }
+            }
+        }
+    }
+}

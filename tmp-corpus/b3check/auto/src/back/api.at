@@ -1,0 +1,989 @@
+// api.at — VM-side implementation of the `back.api` surface (Plan 007).
+//
+// The same `use back.api: fn` import line resolves per backend:
+//   vue codegen → @/lib/api (TS, unchanged, the web implementation)
+//   vm interpreter → THIS file (in-process direct calls)
+//
+// Everything here follows the probe-V1/V3 text recipes:
+//   - GET via http.get_json (raw JSON text); errors judged by json.type_of
+//   - PUT/POST/DELETE via http.put/post/delete; success verified by GET
+//   - NEVER res.status() / builder chain / res.body() (VG3)
+//   - no `use auto.str` (VG1 — string methods only)
+//   - JSON values travel as serialized text fragments; display strings unquoted
+//   - no array concat (VG5): rebuilds are loop+push
+//   - fn-module map reads are fine (Phase 1 L1-L3); handlers stay thin
+
+// ─── transport base ─────────────────────────────────────────────────────────
+
+pub fn daemon_base() str {
+    let override = Env.get("AUTOOS_DAEMON")
+    if override != "" {
+        return override
+    }
+    return "http://127.0.0.1:17701"
+}
+
+/// GET returning raw JSON text, or "" when the response is not valid JSON of
+/// any kind (daemon down returns an {"error":...} object — still text).
+fn get_text(url str) str {
+    let t = http.get_json(url)
+    let ttype = json.type_of(t)
+    if ttype == "invalid" {
+        return ""
+    }
+    return t
+}
+
+/// An {"error": ...} transport-failure body (daemon down) — shape-verified.
+fn is_transport_error(t str) bool {
+    if t == "" {
+        return true
+    }
+    let ttype = json.type_of(t)
+    if ttype != "object" {
+        return false
+    }
+    let ks = json.keys(t)
+    if ks.len() != 1 {
+        return false
+    }
+    for k in ks {
+        if k == "error" {
+            return true
+        }
+    }
+    return false
+}
+
+// ─── string helpers ─────────────────────────────────────────────────────────
+
+pub fn unquote(v str) str {
+    let n = v.len()
+    if n >= 2 {
+        let head = v.substr(0, 1)
+        let tail = v.substr(n - 1, n)
+        if head == "\"" && tail == "\"" {
+            return v.substr(1, n - 2)
+        }
+    }
+    return v
+}
+
+/// JSON-escape a user string and wrap it as a serialized fragment.
+fn quote_json(s str) str {
+    let esc = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
+    return "\"" + esc + "\""
+}
+
+/// A user-entered string as a value fragment, preserving numeric type when
+/// the old fragment was a number and the new text is all digits.
+fn new_value_fragment(old_frag str, new_str str) str {
+    let old_type = json.type_of(old_frag)
+    let digits = "0123456789-."
+    var all_digits = new_str != ""
+    var ci = 0
+    loop {
+        if ci >= new_str.len() {
+            break
+        }
+        let c = new_str.substr(ci, ci + 1)
+        if digits.contains(c) == false {
+            all_digits = false
+        }
+        ci = ci + 1
+    }
+    if old_type == "number" && all_digits {
+        return new_str
+    }
+    if old_type == "bool" {
+        if new_str == "true" || new_str == "false" {
+            return new_str
+        }
+    }
+    return quote_json(new_str)
+}
+
+pub fn humanize(key str) str {
+    let parts = key.split("_")
+    var out = ""
+    for p in parts {
+        if p != "" {
+            if out != "" {
+                out = out + " "
+            }
+            out = out + p.substr(0, 1).to_upper() + p.substr(1, p.len())
+        }
+    }
+    return out
+}
+
+/// SECRET_RE word-segment equivalent: (^|_)(api_key|key|secret|token|password)(_|$)
+fn is_secret_key(k str) bool {
+    let lower = k.to_lower()
+    let parts = lower.split("_")
+    for p in parts {
+        if p == "api_key" || p == "key" || p == "secret" || p == "token" || p == "password" {
+            return true
+        }
+    }
+    return false
+}
+
+// ─── inference engine (types.ts port, text edition) ─────────────────────────
+
+/// FieldSpec: { key, kind, label, ek ("",tiers,dir,self-providers,self-models),
+///              ew (dir which), ep (provider) } — optionsFrom flattened.
+pub fn inferField(key str, frag str, module_id str, provider_ctx str) any {
+    let label = humanize(key)
+    let t = json.type_of(frag)
+    // 1. structural
+    if t == "array" {
+        if json.len(frag) > 0 && json.type_of(json.get_at(frag, 0)) == "object" {
+            return { key: key, kind: "table", label: label, ek: "", ew: "", ep: "" }
+        }
+        if key == "roles" || key == "skills" || key == "modes" {
+            return { key: key, kind: "multiselect", label: label, ek: "dir", ew: key, ep: "" }
+        }
+        return { key: key, kind: "tags", label: label, ek: "", ew: "", ep: "" }
+    }
+    if t == "object" {
+        return { key: key, kind: "subform", label: label, ek: "", ew: "", ep: "" }
+    }
+    // 2. scalar conventions
+    if t == "bool" {
+        return { key: key, kind: "toggle", label: label, ek: "", ew: "", ep: "" }
+    }
+    if t == "number" {
+        return { key: key, kind: "number", label: label, ek: "", ew: "", ep: "" }
+    }
+    if is_secret_key(key) {
+        return { key: key, kind: "password", label: label, ek: "", ew: "", ep: "" }
+    }
+    if key == "tier" || key == "model_tier" {
+        return { key: key, kind: "select", label: label, ek: "tiers", ew: "", ep: "" }
+    }
+    if key == "default_provider" {
+        return { key: key, kind: "select", label: label, ek: "self-providers", ew: "", ep: "" }
+    }
+    if key == "default_mode" {
+        return { key: key, kind: "select", label: label, ek: "dir", ew: "modes", ep: "" }
+    }
+    if key == "default_model" && provider_ctx != "" {
+        return { key: key, kind: "select", label: label, ek: "self-models", ew: "", ep: provider_ctx }
+    }
+    return { key: key, kind: "text", label: label, ek: "", ew: "", ep: "" }
+}
+
+/// Display value for an input bound in the view: unquoted scalar.
+pub fn displayOf(frag str) str {
+    let t = json.type_of(frag)
+    if t == "string" {
+        return unquote(frag)
+    }
+    if t == "null" {
+        return ""
+    }
+    return frag
+}
+
+pub fn enumUrlOfEk(ek str, ew str, module_id str, provider str) str {
+    if ek == "tiers" {
+        return daemon_base() + "/api/enums/tiers"
+    }
+    if ek == "dir" {
+        return daemon_base() + "/api/enums/dir/" + ew
+    }
+    if ek == "self-providers" {
+        return daemon_base() + "/api/enums/self/" + module_id + "/providers"
+    }
+    if ek == "self-models" {
+        return daemon_base() + "/api/enums/self/" + module_id + "/models/" + provider
+    }
+    return ""
+}
+
+/// Options list [{value,label}] from an enum URL (fail-soft → []).
+pub fn loadEnum(url str) []any {
+    var out = []
+    if url == "" {
+        return out
+    }
+    let t = get_text(url)
+    if is_transport_error(t) {
+        return out
+    }
+    if json.type_of(t) != "array" {
+        return out
+    }
+    let n = json.len(t)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let opt = json.get_at(t, i)
+        let v = unquote(json.get(opt, "value"))
+        let l = unquote(json.get(opt, "label"))
+        out.push({ value: v, label: l })
+        i = i + 1
+    }
+    return out
+}
+
+// ─── modules (modules_store surface) ────────────────────────────────────────
+
+fn module_entry(ent str) any {
+    return {
+        id: unquote(json.get(ent, "id")),
+        kind: unquote(json.get(ent, "kind")),
+        name: unquote(json.get(ent, "name")),
+        icon: unquote(json.get(ent, "icon")),
+        description: unquote(json.get(ent, "description")),
+        group: unquote(json.get(ent, "group")),
+        format: unquote(json.get(ent, "format")),
+    }
+}
+
+
+pub fn getHash() str {
+    // no URL hash on the desktop; deep-link branch skips naturally
+    return ""
+}
+
+pub fn expandGroupFor(expanded []any, groups []any, id str) []any {
+    var out = []
+    for x in expanded {
+        out.push(x)
+    }
+    for grp in groups {
+        var hit = false
+        for m in grp.members {
+            if m.id == id {
+                hit = true
+            }
+        }
+        if hit {
+            var already = false
+            for x in out {
+                if x == grp.id {
+                    already = true
+                }
+            }
+            if already == false {
+                out.push(grp.id)
+            }
+        }
+    }
+    return out
+}
+
+// ─── file-config (config_editor surface, vm widgets) ────────────────────────
+
+pub fn fetchConfigSafe(id str) any {
+    let t = get_text(daemon_base() + "/api/config/" + id)
+    if is_transport_error(t) {
+        return { ok: false, error: "Failed to load config" }
+    }
+    return { ok: true, value: json.get(t, "value"), meta: json.get(t, "meta") }
+}
+
+pub fn putConfigSafe(id str, body str) any {
+    let payload = "{\"value\":" + body + "}"
+    let put = http.put(daemon_base() + "/api/config/" + id, payload)
+    let verify = get_text(daemon_base() + "/api/config/" + id)
+    if is_transport_error(verify) {
+        return { ok: false, error: "Save failed (config unreadable after PUT)" }
+    }
+    return { ok: true }
+}
+
+
+
+
+/// Replace (or insert) a top-level or one-level-nested field, whole-replace.
+/// path is "a" or "a.b" (D5 projection depth covers exactly these).
+pub fn setBodyField(body str, path str, frag str) str {
+    let parts = path.split(".")
+    if parts.len() == 1 {
+        return set_obj_field(body, path, frag)
+    }
+    let head = parts[0]
+    let tail = parts[1]
+    let old = json.get(body, head)
+    if json.type_of(old) != "object" {
+        return body
+    }
+    let next = set_obj_field(old, tail, frag)
+    return set_obj_field(body, head, next)
+}
+
+/// Set one key in a JSON object TEXT, preserving key order; append when new.
+fn set_obj_field(obj str, key str, frag str) str {
+    let ks = json.keys(obj)
+    var out = "{"
+    var first = true
+    var wrote = false
+    for k in ks {
+        let ku = unquote(k)
+        if first == false {
+            out = out + ","
+        }
+        first = false
+        if ku == key {
+            out = out + quote_json(ku) + ":" + frag
+            wrote = true
+        }
+        if ku != key {
+            out = out + quote_json(ku) + ":" + json.get(obj, ku)
+        }
+    }
+    if wrote == false {
+        if first == false {
+            out = out + ","
+        }
+        out = out + quote_json(key) + ":" + frag
+    }
+    return out + "}"
+}
+
+/// Remove a top-level key from a JSON object text.
+pub fn remove_obj_field(obj str, key str) str {
+    let ks = json.keys(obj)
+    var out = "{"
+    var first = true
+    for k in ks {
+        let ku = unquote(k)
+        if ku != key {
+            if first == false {
+                out = out + ","
+            }
+            first = false
+            out = out + quote_json(ku) + ":" + json.get(obj, ku)
+        }
+    }
+    return out + "}"
+}
+
+
+// ─── projections (D4 descriptors, text fragments embedded) ──────────────────
+
+
+
+/// Rebuild the atom body text from entries (inverse of bodyEntries).
+pub fn entriesBody(entries []any) str {
+    var out = "{"
+    var first = true
+    for e in entries {
+        if first == false {
+            out = out + ","
+        }
+        first = false
+        out = out + quote_json(e.key) + ":" + e.frag
+    }
+    return out + "}"
+}
+
+/// Set one tag/element of a string-array fragment (tags control).
+pub fn setEntryTag(frag str, add str, remove str) str {
+    var items = []
+    let n = json.len(frag)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let el = json.get_at(frag, i)
+        let eld = displayOf(el)
+        if remove == "" || eld != remove {
+            items.push(eld)
+        }
+        i = i + 1
+    }
+    if add != "" {
+        var dup = false
+        for x in items {
+            if x == add {
+                dup = true
+            }
+        }
+        if dup == false {
+            items.push(add)
+        }
+    }
+    var out = "["
+    var first = true
+    for x in items {
+        if first == false {
+            out = out + ","
+        }
+        first = false
+        out = out + quote_json(x)
+    }
+    return out + "]"
+}
+
+
+// ─── tables ─────────────────────────────────────────────────────────────────
+
+fn is_object_array(frag str) bool {
+    if json.type_of(frag) != "array" {
+        return false
+    }
+    let n = json.len(frag)
+    if n == 0 {
+        return false
+    }
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        if json.type_of(json.get_at(frag, i)) != "object" {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+
+fn infer_column(key str, frag str, module_id str) any {
+    let spec = inferField(key, frag, module_id, "")
+    if spec.kind == "table" || spec.kind == "subform" {
+        return { key: key, kind: "text", label: spec.label }
+    }
+    return spec
+}
+
+
+
+
+
+// ─── collection (collection_store surface) ──────────────────────────────────
+
+pub fn fetchCollectionListSafe(mid str) any {
+    let t = get_text(daemon_base() + "/api/collection/" + mid)
+    if is_transport_error(t) || json.type_of(t) != "array" {
+        return { ok: false, error: "Failed to load collection" }
+    }
+    var list = []
+    let n = json.len(t)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let ent = json.get_at(t, i)
+        list.push({
+            name: unquote(json.get(ent, "name")),
+            description: unquote(json.get(ent, "description")),
+        })
+        i = i + 1
+    }
+    return { ok: true, list: list }
+}
+
+/// atom → {ok, atom:{value(text), sidecar}, fm:nil}; frontmatter-md → fm fields.
+pub fn fetchEntitySafe(mid str, name str) any {
+    let t = get_text(daemon_base() + "/api/collection/" + mid + "/" + name)
+    if is_transport_error(t) {
+        return { ok: false, error: "Failed to load entity" }
+    }
+    let value = json.get(t, "value")
+    if value != "" && value != "null" {
+        return { ok: true, atom: { value: value, sidecar: unquote(json.get(t, "sidecar")) }, fm: nil }
+    }
+    return {
+        ok: true,
+        atom: nil,
+        fm: {
+            name: unquote(json.get(t, "name")),
+            description: unquote(json.get(t, "description")),
+            body: unquote(json.get(t, "body")),
+        },
+    }
+}
+
+pub fn createEntitySafe(mid str, name str) any {
+    let payload = "{\"name\":" + quote_json(name) + "}"
+    let post = http.post(daemon_base() + "/api/collection/" + mid, payload)
+    let verify = get_text(daemon_base() + "/api/collection/" + mid + "/" + name)
+    if is_transport_error(verify) {
+        return { ok: false, error: "Create failed" }
+    }
+    return { ok: true }
+}
+
+pub fn putEntitySafe(mid str, name str, body str, sidecar str) any {
+    let payload = "{\"value\":" + body + ",\"sidecar\":" + quote_json(sidecar) + "}"
+    let put = http.put(daemon_base() + "/api/collection/" + mid + "/" + name, payload)
+    let verify = get_text(daemon_base() + "/api/collection/" + mid + "/" + name)
+    if is_transport_error(verify) {
+        return { ok: false, error: "Save failed" }
+    }
+    return { ok: true }
+}
+
+pub fn deleteEntitySafe(mid str, name str) any {
+    let del = http.delete(daemon_base() + "/api/collection/" + mid + "/" + name)
+    let verify = get_text(daemon_base() + "/api/collection/" + mid)
+    if is_transport_error(verify) {
+        return { ok: false, error: "Delete failed" }
+    }
+    return { ok: true }
+}
+
+/// CollectionBrowser list filter (name/description substring).
+pub fn filterEntities(list []any, q str) []any {
+    let s = q.trim().to_lower()
+    var out = []
+    for e in list {
+        if s == "" {
+            out.push(e)
+        }
+        if s != "" {
+            let nm = e.name.to_lower()
+            let ds = e.description.to_lower()
+            if nm.contains(s) || ds.contains(s) {
+                out.push(e)
+            }
+        }
+    }
+    return out
+}
+
+// ─── theme (D7: file persistence on the desktop) ────────────────────────────
+
+fn ui_state_path() str {
+    return Env.local_data_dir() + "/autoos-ui.json"
+}
+
+pub fn loadAccent() str {
+    let t = File.read_text(ui_state_path())
+    if json.type_of(t) == "object" {
+        let v = unquote(json.get(t, "accent"))
+        if v == "indigo" || v == "coral" || v == "ocean" || v == "sage" || v == "amber" {
+            return v
+        }
+    }
+    return "indigo"
+}
+
+pub fn applyAccent(name str) {
+    let t = File.read_text(ui_state_path())
+    var next = "{\"accent\":" + quote_json(name) + "}"
+    if json.type_of(t) == "object" {
+        next = set_obj_field(t, "accent", quote_json(name))
+    }
+    File.write_text(ui_state_path(), next)
+}
+
+// ─── daemon connection test (DaemonView surface) ────────────────────────────
+
+pub fn testDaemon() any {
+    let t = http.post_json(daemon_base() + "/api/action/test-daemon", "{\"use_default\":true}")
+    if is_transport_error(t) {
+        return { status: "unreachable", latency: 0, error: "" }
+    }
+    if json.type_of(t) != "object" {
+        return { status: "fail", latency: 0, error: "bad response" }
+    }
+    let success = json.get(t, "success")
+    let err = unquote(json.get(t, "error"))
+    if success == "true" {
+        return { status: "ok", latency: 0, error: "" }
+    }
+    return { status: "fail", latency: 0, error: err }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ─── flat list surface (VG12/VG13-safe: text + count + per-item getters) ────
+
+pub fn fetchModulesRaw() any {
+    let t = get_text(daemon_base() + "/api/modules")
+    if is_transport_error(t) || json.type_of(t) != "array" {
+        return { ok: false, error: "Failed to load modules: bad response", text: "" }
+    }
+    return { ok: true, error: "", text: t }
+}
+
+pub fn modulesCount(text str) int {
+    return json.len(text)
+}
+
+pub fn moduleAt(text str, i int) any {
+    return module_entry(json.get_at(text, i))
+}
+
+/// Unique group labels, insertion order (index into this list = group index).
+pub fn groupCount(text str) int {
+    var labels = []
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let g = unquote(json.get(json.get_at(text, i), "group"))
+        if g != "" {
+            var dup = false
+            for x in labels {
+                if x == g {
+                    dup = true
+                }
+            }
+            if dup == false {
+                labels.push(g)
+            }
+        }
+        i = i + 1
+    }
+    return labels.len()
+}
+
+pub fn groupAt(text str, gi int) any {
+    var labels = []
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let g = unquote(json.get(json.get_at(text, i), "group"))
+        if g != "" {
+            var dup = false
+            for x in labels {
+                if x == g {
+                    dup = true
+                }
+            }
+            if dup == false {
+                labels.push(g)
+            }
+        }
+        i = i + 1
+    }
+    var lab = ""
+    var i2 = 0
+    for x in labels {
+        if i2 == gi {
+            lab = x
+        }
+        i2 = i2 + 1
+    }
+    return { id: lab.to_lower().replace(" ", "-"), label: lab }
+}
+
+fn group_label_at(text str, gi int) str {
+    let g = groupAt(text, gi)
+    return g.label
+}
+
+pub fn groupMemberCount(text str, gi int) int {
+    let lab = group_label_at(text, gi)
+    var n_out = 0
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let g = unquote(json.get(json.get_at(text, i), "group"))
+        if g == lab {
+            n_out = n_out + 1
+        }
+        i = i + 1
+    }
+    return n_out
+}
+
+pub fn groupMemberAt(text str, gi int, mi int) any {
+    let lab = group_label_at(text, gi)
+    var hits = 0
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let ent = json.get_at(text, i)
+        let g = unquote(json.get(ent, "group"))
+        if g == lab {
+            if hits == mi {
+                return module_entry(ent)
+            }
+            hits = hits + 1
+        }
+        i = i + 1
+    }
+    return { id: "", kind: "", name: "", icon: "", description: "", group: "", format: "" }
+}
+
+pub fn standaloneCount(text str) int {
+    var n_out = 0
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let g = unquote(json.get(json.get_at(text, i), "group"))
+        if g == "" {
+            n_out = n_out + 1
+        }
+        i = i + 1
+    }
+    return n_out
+}
+
+pub fn standaloneAt(text str, si int) any {
+    var hits = 0
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let ent = json.get_at(text, i)
+        let g = unquote(json.get(ent, "group"))
+        if g == "" {
+            if hits == si {
+                return module_entry(ent)
+            }
+            hits = hits + 1
+        }
+        i = i + 1
+    }
+    return { id: "", kind: "", name: "", icon: "", description: "", group: "", format: "" }
+}
+
+/// Flat module selection (VG14: find-closure unavailable on vm).
+pub fn selectInfo(text str, id str) any {
+    let n = json.len(text)
+    var i = 0
+    loop {
+        if i >= n {
+            break
+        }
+        let ent = json.get_at(text, i)
+        let mid = unquote(json.get(ent, "id"))
+        if mid == id {
+            let fmt = unquote(json.get(ent, "format"))
+            return {
+                found: true,
+                id: mid,
+                kind: unquote(json.get(ent, "kind")),
+                name: unquote(json.get(ent, "name")),
+                read_only: fmt == "frontmatter-md",
+            }
+        }
+        i = i + 1
+    }
+    return { found: false, id: "", kind: "", name: "", read_only: false }
+}
+
+
+// ─── collection flat surface ────────────────────────────────────────────────
+
+pub fn fetchCollectionListRaw(mid str) any {
+    let t = get_text(daemon_base() + "/api/collection/" + mid)
+    if is_transport_error(t) || json.type_of(t) != "array" {
+        return { ok: false, error: "Failed to load collection", text: "" }
+    }
+    return { ok: true, error: "", text: t }
+}
+
+pub fn collectionCount(text str) int {
+    return json.len(text)
+}
+
+pub fn collectionAt(text str, i int) any {
+    let ent = json.get_at(text, i)
+    return { name: unquote(json.get(ent, "name")), description: unquote(json.get(ent, "description")) }
+}
+
+/// Flat entity fetch (VG12: no nested atom/fm maps).
+pub fn fetchEntityFlat(mid str, name str) any {
+    let t = get_text(daemon_base() + "/api/collection/" + mid + "/" + name)
+    if is_transport_error(t) {
+        return { ok: false, error: "Failed to load entity", is_atom: false, value: "", sidecar: "", fm_name: "", fm_description: "", fm_body: "" }
+    }
+    let value = json.get(t, "value")
+    if value != "" && value != "null" {
+        return { ok: true, error: "", is_atom: true, value: value, sidecar: unquote(json.get(t, "sidecar")), fm_name: "", fm_description: "", fm_body: "" }
+    }
+    return { ok: true, error: "", is_atom: false, value: "", sidecar: "", fm_name: unquote(json.get(t, "name")), fm_description: unquote(json.get(t, "description")), fm_body: unquote(json.get(t, "body")) }
+}
+
+/// entries count of an atom body text.
+pub fn entriesCount(body str) int {
+    return json.len(body)
+}
+
+/// entryAt with full descriptor (flat): k/ckind/label/display/frag/is_table/ek/ew/ep/url
+pub fn entryAt(body str, i int, module_id str) any {
+    let ks = json.keys(body)
+    var ku = ""
+    var i2 = 0
+    for k in ks {
+        if i2 == i {
+            ku = unquote(k)
+        }
+        i2 = i2 + 1
+    }
+    let frag = json.get(body, ku)
+    let spec = inferField(ku, frag, module_id, "")
+    return {
+        key: ku,
+        kind: spec.kind,
+        label: spec.label,
+        value: displayOf(frag),
+        frag: frag,
+        is_table: is_object_array(frag),
+        ek: spec.ek,
+        ew: spec.ew,
+        ep: spec.ep,
+        url: enumUrlOfEk(spec.ek, spec.ew, module_id, spec.ep),
+        depth: 0,
+    }
+}
+
+
+/// The group id (expanded-form) of the module `id`, "" when standalone.
+pub fn groupOfModule(text str, id str) str {
+    let gc = groupCount(text)
+    var gi = 0
+    loop {
+        if gi >= gc {
+            break
+        }
+        let lab = group_label_at(text, gi)
+        let mc = groupMemberCount(text, gi)
+        var mi = 0
+        loop {
+            if mi >= mc {
+                break
+            }
+            let m = groupMemberAt(text, gi, mi)
+            if m.id == id {
+                return lab.to_lower().replace(" ", "-")
+            }
+            mi = mi + 1
+        }
+        gi = gi + 1
+    }
+    return ""
+}
+
+/// Whole edit: old fragment lookup + typed re-fragment + body text rebuild.
+pub fn editField(body str, path str, new_str str) str {
+    let parts = path.split(".")
+    var old_frag = ""
+    if parts.len() == 1 {
+        old_frag = json.get(body, path)
+    }
+    if parts.len() == 2 {
+        let head = parts[0]
+        let tail = parts[1]
+        old_frag = json.get(json.get(body, head), tail)
+    }
+    let frag = new_value_fragment(old_frag, new_str)
+    return setBodyField(body, path, frag)
+}
+
+
+/// Tags control edit: add/remove one element of the string-array at `key`.
+pub fn editTagField(body str, key str, add str, remove str) str {
+    let frag = json.get(body, key)
+    let frag2 = setEntryTag(frag, add, remove)
+    return set_obj_field(body, key, frag2)
+}
+
+
+
+/// ── Plan 008 batch 3: unified config editor contract (text pipeline) ──────
+
+/// Field count of a subform object (one nesting level).
+pub fn subCount(frag str) int {
+    return json.len(frag)
+}
+
+/// Flat descriptor of a subform's j-th field; `head` is the subform key and
+/// doubles as the provider context (vue cfgProvider semantics). The key is
+/// the dotted path editField understands.
+pub fn subAt(body str, head str, j int, module_id str) any {
+    let sub = json.get(body, head)
+    let ks = json.keys(sub)
+    var ku = ""
+    var j2 = 0
+    for k in ks {
+        if j2 == j {
+            ku = unquote(k)
+        }
+        j2 = j2 + 1
+    }
+    let frag = json.get(sub, ku)
+    let spec = inferField(ku, frag, module_id, head)
+    return {
+        key: head + "." + ku,
+        kind: spec.kind,
+        label: spec.label,
+        value: displayOf(frag),
+        frag: frag,
+        is_table: is_object_array(frag),
+        url: enumUrlOfEk(spec.ek, spec.ew, module_id, head),
+        depth: 1,
+    }
+}
+
+/// Meta file path of a fetchConfigSafe result (input is the meta fragment).
+pub fn metaFile(meta str) str {
+    return unquote(json.get(meta, "file"))
+}
+
+/// Insert an empty top-level block (Plan 005 add-block, text surgery).
+pub fn addBlockText(body str, name str) str {
+    if json.len(body) == 0 {
+        return "{" + quote_json(name) + ": {}}"
+    }
+    let inner = body.substr(1, body.len() - 2)
+    return "{" + quote_json(name) + ": {}," + inner + ")"
+}
+
+/// Does the top level already contain `name`?
+pub fn bodyHasText(body str, name str) bool {
+    let ks = json.keys(body)
+    for k in ks {
+        if unquote(k) == name {
+            return true
+        }
+    }
+    return false
+}
+
+/// DELETE /api/config/:id/blocks/:name (mirrors api.ts deleteBlockSafe).
+pub fn deleteBlockSafe(id str, name str) any {
+    let del = http.delete(daemon_base() + "/api/config/" + id + "/blocks/" + name, "")
+    if is_transport_error(del) {
+        return { ok: false, error: "Delete request failed" }
+    }
+    return { ok: true }
+}
+
+/// Display value of one top-level field (toggle flip logic in child handlers).
+pub fn fieldDisplayOf(body str, key str) str {
+    return displayOf(json.get(body, key))
+}
