@@ -1,6 +1,6 @@
 # Plan 450：AutoDown 面板 widget 登记（019 批次一，跨仓互链）
 
-> 状态：**执行中（2026-08-26 立项）**。上游互链：auto-down 仓
+> 状态：**执行中（2026-08-26 立项；批次三完成）**。上游互链：auto-down 仓
 > [docs/plans/archive/019-rust-platform.md](../../../../auto-down/docs/plans/archive/019-rust-platform.md)
 > （若未归档则在 plans/ 下）与 `packages/engine/PANEL-ALIGNMENT.md`——本计划即其对齐表
 > "registry 待登记" 空位的 auto-lang 侧落地。
@@ -42,10 +42,37 @@ registry，其余 10 个为空位。rust 端（iced 渲染、编辑壳）消费�
 ## 后续批次的准确落点（省去考古）
 
 1. iced backend：面板 → iced widget 映射，落 ui_gen/rust.rs 渲染臂 + renderer.rs
-   （Codeblock 走 413 Rich span 关键字高亮经验）。
+   （Codeblock 走 413 Rich span 关键字高亮经验）。——**批次三完成（见下）**
 2. codegen 臂重定向：AutoDownEditor spec 的 vue 消费确认经 uses_autodown 门
    （pac.at npm_deps）；ark TextArea / jet OutlinedTextField 移动端降级不变。
 3. palette_map.at a2r 发射 + 对拍：auto-down 本仓侧职责（autodown-core crate 就位）。
+
+## 批次三：iced backend 面板映射（2026-08-26，本会话完成）
+
+**实现**（分解为既有 View 变体——Plan 319 单臂规则，不新增 View 变体，
+renderer.rs 零改动；Codeblock 的 Rich span 高亮沿用 442 的
+`StyleClass::CodeLang` → `highlight_code` 路径，无需新做）：
+
+- VM 链路（iced 主消费路径）`ui/aura_view_builder.rs` `convert_element` 兜底区
+  七面板臂：heading（level 钳位 1..6 → h1..h6 同源样式）、quote/blockquote
+  （border-l 容器）、callout（kind→tint 五档配色 + title 头）、details
+  （→`View::Accordion` 单项默认展开，对齐表"可对齐 Accordion 族"裁定；
+  VM 降级无 toggle 回写）、math_block/query_block/embed_block（注册位面板
+  → 可见源码/引用文本，不再静默丢内容）。tracked 链路经既有委托复用。
+- a2r 链路 `ui_gen/rust.rs` `generate_view_tree` 同 tag 族特例：字面量
+  level/kind 静态选样式，动态表达式发射全臂 match（生成代码保持纯表达式）；
+  details 发射 `auto_lang::ui::view::AccordionItem::new(..).with_children(..)
+  .with_expanded(true)`。tag 族此前落 `tag_to_view_fn` 的 `_ => "col"`
+  fallback——内容静默丢弃，现已消除。
+
+**裁定**：registry 不登记 iced BackendMapping（与批次二 vue 裁定同理——
+无消费者，假组件名进 codegen 是噪音）；映射的实现落点即渲染行为本身。
+schema/aura.at 面板 elements 仍不新增（等面板组件化，同批次二）。
+
+**验证**：VM 5 测（heading 样式/钳位、quote 结构、callout tint、details
+Accordion、注册位三面板内容可见）+ a2r 3 测（heading 静态/dynamic match、
+quote/callout、details/AccordionItem/embed 发射串）；
+`cargo test -p auto-lang --features ui-iced,code-editor --lib` 全绿。
 
 ## 验收（批次一）
 
