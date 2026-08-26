@@ -2071,6 +2071,138 @@ let tabs_inner = View::Row {
                         style: Style::parse(cell_style).ok(),
                     };
                 }
+                // Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级渲染。
+                // registry 登记见 widget/registry.rs register_document_panel_widgets;
+                // 这里分解为既有 View 变体(Plan 319 单臂规则 —— 不新增 View 变体,
+                // renderer 零改动)。tracked 链路经 convert_element_tracked_ctx 的
+                // 委托到达这里(与 codeblock/table 同款:纯展示组件,无 probe 需求)。
+                // tag 集与 registry 别名对齐:heading/quote/callout/details/
+                // math_block/query_block/embed_block(codeblock/table/list/h1..h6/
+                // separator 已有各自臂)。
+                if tag == "heading" {
+                    let level = self.extract_u16(props, "level").unwrap_or(1).clamp(1, 6);
+                    // 与上方 h1..h6 默认样式同源(text-primary + 页边距,plan 409 §8)。
+                    let style = match level {
+                        1 => "text-4xl font-bold text-primary mb-4",
+                        2 => "text-3xl font-bold text-primary mt-8 mb-4",
+                        3 => "text-xl font-semibold text-primary mb-3",
+                        4 => "text-lg font-semibold mb-2",
+                        5 => "text-base font-semibold mb-1",
+                        _ => "text-sm font-semibold mb-1",
+                    };
+                    let content = self.extract_children_text(children, bindings)
+                        .or_else(|| self.extract_string(props, "text"))
+                        .unwrap_or_default();
+                    return View::Text {
+                        content,
+                        style: Style::parse(style).ok(),
+                    };
+                }
+                if tag == "quote" || tag == "blockquote" {
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    let inner = if views.is_empty() {
+                        View::Text { content: String::new(), style: None }
+                    } else if views.len() == 1 {
+                        views.into_iter().next().unwrap()
+                    } else {
+                        View::Column { children: views, spacing: 4, padding: 0, style: None }
+                    };
+                    return View::Container {
+                        child: Box::new(inner),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").ok(),
+                    };
+                }
+                if tag == "callout" {
+                    let kind = self.extract_string(props, "kind").unwrap_or_default();
+                    let title = self.extract_string(props, "title").unwrap_or_default();
+                    let (tint_cls, title_style) = match kind.as_str() {
+                        "tip" | "success" => ("border-emerald-500/40 bg-emerald-500/10", "text-sm font-medium text-emerald-400"),
+                        "warning" | "warn" => ("border-amber-500/40 bg-amber-500/10", "text-sm font-medium text-amber-400"),
+                        "danger" | "error" | "caution" => ("border-red-500/40 bg-red-500/10", "text-sm font-medium text-red-400"),
+                        "note" | "info" => ("border-blue-500/40 bg-blue-500/10", "text-sm font-medium text-blue-400"),
+                        _ => ("border-zinc-500/40 bg-zinc-500/10", "text-sm font-medium text-zinc-400"),
+                    };
+                    let mut kids: Vec<View<DynamicMessage>> = Vec::new();
+                    if !title.is_empty() {
+                        kids.push(View::Text {
+                            content: title,
+                            style: Style::parse(title_style).ok(),
+                        });
+                    }
+                    kids.extend(children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)));
+                    return View::Container {
+                        child: Box::new(View::Column {
+                            children: kids, spacing: 8, padding: 0, style: None,
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse(&format!("rounded-lg border {tint_cls} p-4 w-full")).ok(),
+                    };
+                }
+                if tag == "details" {
+                    // Details → Accordion 单项(对齐表"可对齐 Accordion 族"裁定)。
+                    // VM 降级无 toggle 回写,on_toggle 留 None → 静态展开式折叠头。
+                    use crate::ui::view::AccordionItem;
+                    let summary = self.extract_string(props, "summary")
+                        .unwrap_or_else(|| "Details".to_string());
+                    let views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    return View::Accordion {
+                        items: vec![AccordionItem {
+                            title: summary,
+                            icon: None,
+                            children: views,
+                            expanded: true,
+                        }],
+                        allow_multiple: false,
+                        on_toggle: None,
+                        style: None,
+                    };
+                }
+                // 以下三面板是"注册位"面板(消费方注册渲染器,plan 017 待澄清 #2):
+                // iced 侧无专用渲染器,降级为可见的源码/引用文本,避免内容静默丢弃。
+                if tag == "math_block" || tag == "mathblock" || tag == "math-block" {
+                    let source = self.extract_string(props, "source")
+                        .or_else(|| self.extract_children_text(children, bindings))
+                        .unwrap_or_default();
+                    return View::Container {
+                        child: Box::new(View::Text {
+                            content: source,
+                            style: Style::parse("font-mono text-sm").ok(),
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("rounded-lg border bg-card p-4 w-full").ok(),
+                    };
+                }
+                if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
+                    let query = self.extract_string(props, "query")
+                        .or_else(|| self.extract_children_text(children, bindings))
+                        .unwrap_or_default();
+                    return View::Container {
+                        child: Box::new(View::Text {
+                            content: query,
+                            style: Style::parse("font-mono text-xs text-muted-foreground").ok(),
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("rounded-lg border p-3 w-full").ok(),
+                    };
+                }
+                if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
+                    let target = self.extract_string(props, "target").unwrap_or_default();
+                    return View::Container {
+                        child: Box::new(View::Text {
+                            content: format!("↪ {target}"),
+                            style: Style::parse("text-sm text-muted-foreground").ok(),
+                        }),
+                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        style: Style::parse("rounded-lg border bg-muted p-3 w-full").ok(),
+                    };
+                }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 // Plan 409 §10 续 15: 完整卡片样式(对齐 vue index.vue:52-60):
                 // icon box(h-10 w-10 rounded-lg border bg-{color}-500/10) + 文字列
@@ -5746,6 +5878,152 @@ mod tests {
                 assert_eq!(content, "Hello World");
             }
             _ => panic!("Expected View::Text"),
+        }
+    }
+
+    /// Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级(View 分解)。
+    /// heading/quote/callout/details 的 VM 转换;codeblock/table 走既有臂。
+    #[test]
+    fn test_autodown_panel_heading() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        // level 2 → h2 默认样式(text-primary + mt-8 mb-4,与 h1..h6 臂同源)。
+        let node = AuraNode::element("heading")
+            .with_prop("level", Expr::Int(2))
+            .with_child(AuraNode::text("Title"));
+        match builder.build(&node) {
+            View::Text { content, style } => {
+                assert_eq!(content, "Title");
+                let expected = Style::parse("text-3xl font-bold text-primary mt-8 mb-4").unwrap();
+                assert_eq!(style.expect("heading style").classes, expected.classes);
+            }
+            _ => panic!("Expected View::Text for heading"),
+        }
+
+        // level 钳位:0 → 1 档,9 → 6 档。
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("heading")
+            .with_prop("level", Expr::Int(9))
+            .with_child(AuraNode::text("small"));
+        match builder.build(&node) {
+            View::Text { style, .. } => {
+                let expected = Style::parse("text-sm font-semibold mb-1").unwrap();
+                assert_eq!(style.unwrap().classes, expected.classes);
+            }
+            _ => panic!("Expected View::Text for clamped heading"),
+        }
+    }
+
+    #[test]
+    fn test_autodown_panel_quote() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("quote")
+            .with_child(AuraNode::text("first"))
+            .with_child(AuraNode::text("second"));
+        match builder.build(&node) {
+            View::Container { child, style, .. } => {
+                let expected = Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
+                assert_eq!(style.expect("quote style").classes, expected.classes);
+                // 多子包 Column,Empty 子被过滤。
+                match *child {
+                    View::Column { children, .. } => assert_eq!(children.len(), 2),
+                    _ => panic!("Expected View::Column inside quote"),
+                }
+            }
+            _ => panic!("Expected View::Container for quote"),
+        }
+    }
+
+    #[test]
+    fn test_autodown_panel_callout() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("callout")
+            .with_prop("kind", Expr::Str("warning".into()))
+            .with_prop("title", Expr::Str("小心".into()))
+            .with_child(AuraNode::text("body"));
+        match builder.build(&node) {
+            View::Container { child, style, .. } => {
+                // 颜色 class 解析为 Rgba;amber-500 = rgb(245,158,11)。
+                let style_dbg = format!("{:?}", style.expect("callout style"));
+                assert!(style_dbg.contains("r: 245, g: 158, b: 11"), "warning tint: {style_dbg}");
+                match *child {
+                    View::Column { children, .. } => {
+                        // title 头 + 1 个内容子
+                        assert_eq!(children.len(), 2);
+                        match &children[0] {
+                            View::Text { content, style } => {
+                                assert_eq!(content, "小心");
+                                // 无 alpha 的 text-amber-400 保持色板枚举形态
+                                // (容器 border-amber-500/40 带 alpha 才转 Rgba)。
+                                assert!(format!("{:?}", style).contains("Amber(400)"), "title tint");
+                            }
+                            _ => panic!("Expected title Text"),
+                        }
+                    }
+                    _ => panic!("Expected View::Column inside callout"),
+                }
+            }
+            _ => panic!("Expected View::Container for callout"),
+        }
+    }
+
+    #[test]
+    fn test_autodown_panel_details() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("details")
+            .with_prop("summary", Expr::Str("展开".into()))
+            .with_child(AuraNode::text("hidden body"));
+        match builder.build(&node) {
+            View::Accordion { items, on_toggle, .. } => {
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0].title, "展开");
+                assert!(items[0].expanded, "VM 降级默认展开");
+                assert_eq!(items[0].children.len(), 1);
+                assert!(on_toggle.is_none(), "无 toggle 回写");
+            }
+            _ => panic!("Expected View::Accordion for details"),
+        }
+    }
+
+    /// 注册位面板(math/query/embed):降级为可见源码/引用文本,不静默丢内容。
+    #[test]
+    fn test_autodown_panel_registry_slots() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+
+        let cases: Vec<(&str, &str, &str)> = vec![
+            ("math_block", "source", "E = mc^2"),
+            ("query_block", "query", "{{query todo}}"),
+            ("embed_block", "target", "((blk-1))"),
+        ];
+        for (tag, prop, value) in cases {
+            let builder = AuraViewBuilder::new(&bridge, "Test");
+            let node = AuraNode::element(tag).with_prop(prop, Expr::Str(value.into()));
+            // embed 面板带 "↪ " 引用前缀;math/query 原文显示。
+            let expected_content = if tag == "embed_block" { format!("↪ {value}") } else { value.to_string() };
+            match builder.build(&node) {
+                View::Container { child, style, .. } => {
+                    assert!(style.is_some(), "{tag} needs a boxed style");
+                    match *child {
+                        View::Text { content, .. } => {
+                            assert_eq!(content, expected_content, "{tag} content must be visible");
+                        }
+                        _ => panic!("Expected inner View::Text for {tag}"),
+                    }
+                }
+                _ => panic!("Expected View::Container for {tag}"),
+            }
         }
     }
 

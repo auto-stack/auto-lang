@@ -2034,6 +2034,127 @@ impl RustGenerator {
                     }
                 }
 
+                // Plan 450 / 019 批次三: AutoDown 面板词汇 a2r 发射 —— 与 VM 侧
+                // aura_view_builder 的面板臂同款降级(分解为既有 View 变体,Plan 319
+                // 单臂规则,renderer 零改动),样式串两处保持一致。heading 的 level /
+                // callout 的 kind 为字面量时静态选样式;动态表达式则发射 match(全臂
+                // 覆盖,未知值落 zinc 档)——生成代码保持纯表达式形态。
+                if tag == "heading" {
+                    let content_expr = props.get("text").or_else(|| props.get("content"))
+                        .map(|v| self.autodown_panel_prop_expr(v))
+                        .unwrap_or_else(|| "\"\".to_string()".to_string());
+                    // level: Int 或可 parse 的 Str 字面量 → 静态选样式(grid 特例
+                    // 同款 parse);其他表达式 → 发射全臂 match(纯表达式形态)。
+                    let level_static = props.get("level").and_then(|v| match v {
+                        AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n),
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<i32>().ok(),
+                        _ => None,
+                    });
+                    let style_expr = if let Some(n) = level_static {
+                        format!("\"{}\"", Self::autodown_heading_style(n))
+                    } else if let Some(AuraPropValue::Expr(expr)) = props.get("level") {
+                        let lvl = self.ast_expr_to_rust_no_to_string(expr);
+                        format!(
+                            "match {lvl} {{ 1 => \"{}\", 2 => \"{}\", 3 => \"{}\", 4 => \"{}\", 5 => \"{}\", _ => \"{}\" }}",
+                            Self::autodown_heading_style(1), Self::autodown_heading_style(2),
+                            Self::autodown_heading_style(3), Self::autodown_heading_style(4),
+                            Self::autodown_heading_style(5), Self::autodown_heading_style(6),
+                        )
+                    } else {
+                        format!("\"{}\"", Self::autodown_heading_style(1))
+                    };
+                    return format!("View::text_styled({}, {})", content_expr, style_expr);
+                }
+                if tag == "quote" || tag == "blockquote" {
+                    let inner = self.autodown_panel_children_col(children)
+                        .unwrap_or_else(|| {
+                            props.get("text").or_else(|| props.get("content"))
+                                .map(|v| self.autodown_panel_prop_expr(v))
+                                .map(|e| format!("View::text_styled({}, \"text-sm\")", e))
+                                .unwrap_or_else(|| "View::text(\"\".to_string())".to_string())
+                        });
+                    return format!(
+                        "View::container({}).style(\"border-l-4 pl-4 py-2 w-full text-muted-foreground\").build()",
+                        inner
+                    );
+                }
+                if tag == "callout" {
+                    let kind_static = props.get("kind")
+                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None });
+                    // (容器 tint, 标题样式) —— 与 VM 侧面板臂同表。
+                    let tint_of = |k: &str| match k {
+                        "tip" | "success" => ("border-emerald-500/40 bg-emerald-500/10", "text-sm font-medium text-emerald-400"),
+                        "warning" | "warn" => ("border-amber-500/40 bg-amber-500/10", "text-sm font-medium text-amber-400"),
+                        "danger" | "error" | "caution" => ("border-red-500/40 bg-red-500/10", "text-sm font-medium text-red-400"),
+                        "note" | "info" => ("border-blue-500/40 bg-blue-500/10", "text-sm font-medium text-blue-400"),
+                        _ => ("border-zinc-500/40 bg-zinc-500/10", "text-sm font-medium text-zinc-400"),
+                    };
+                    let (tint_expr, title_style) = match (&kind_static, props.get("kind")) {
+                        (Some(k), _) => (format!("\"{}\"", tint_of(k).0), tint_of(k).1.to_string()),
+                        (None, Some(AuraPropValue::Expr(expr))) => {
+                            // 动态 kind:容器样式走 match,标题样式退中性色。
+                            let k = self.ast_expr_to_rust(expr);
+                            let arms = format!(
+                                "match {k}.as_str() {{ \"tip\" | \"success\" => \"{}\", \"warning\" | \"warn\" => \"{}\", \"danger\" | \"error\" | \"caution\" => \"{}\", \"note\" | \"info\" => \"{}\", _ => \"{}\" }}",
+                                tint_of("tip").0, tint_of("warning").0, tint_of("danger").0, tint_of("note").0, tint_of("").0,
+                            );
+                            (arms, "text-sm font-medium".to_string())
+                        }
+                        _ => (format!("\"{}\"", tint_of("").0), tint_of("").1.to_string()),
+                    };
+                    let mut col = "View::col()".to_string();
+                    if let Some(AuraPropValue::Expr(expr)) = props.get("title") {
+                        let title_expr = self.ast_expr_to_rust(expr);
+                        let title_expr = if title_expr.starts_with("self.") { format!("{}.clone()", title_expr) } else { title_expr };
+                        col = format!("{}.child(View::text_styled({}, \"{}\"))", col, title_expr, title_style);
+                    }
+                    for c in children {
+                        col = format!("{}.child({})", col, self.generate_view_tree(c));
+                    }
+                    return format!(
+                        "View::container({}.build()).style(&format!(\"rounded-lg border {{}} p-4 w-full\", {})).build()",
+                        col, tint_expr
+                    );
+                }
+                if tag == "details" {
+                    let summary_expr = props.get("summary")
+                        .map(|v| self.autodown_panel_prop_expr(v))
+                        .unwrap_or_else(|| "\"Details\".to_string()".to_string());
+                    let mut item = format!("auto_lang::ui::view::AccordionItem::new({})", summary_expr);
+                    if !children.is_empty() {
+                        let kids: Vec<String> = children.iter().map(|c| self.generate_view_tree(c)).collect();
+                        item = format!("{}.with_children(vec![{}])", item, kids.join(", "));
+                    }
+                    item = format!("{}.with_expanded(true)", item);
+                    return format!("View::accordion().items(vec![{}]).build()", item);
+                }
+                // 注册位面板(消费方注册渲染器,plan 017 待澄清 #2):iced 侧降级为
+                // 可见的源码/引用文本,避免内容静默丢弃。tag 族与 VM 侧一致。
+                if tag == "math_block" || tag == "mathblock" || tag == "math-block" {
+                    let source = props.get("source").map(|v| self.autodown_panel_prop_expr(v))
+                        .unwrap_or_else(|| "\"\".to_string()".to_string());
+                    return format!(
+                        "View::container(View::text_styled({}, \"font-mono text-sm\")).style(\"rounded-lg border bg-card p-4 w-full\").build()",
+                        source
+                    );
+                }
+                if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
+                    let query = props.get("query").map(|v| self.autodown_panel_prop_expr(v))
+                        .unwrap_or_else(|| "\"\".to_string()".to_string());
+                    return format!(
+                        "View::container(View::text_styled({}, \"font-mono text-xs text-muted-foreground\")).style(\"rounded-lg border p-3 w-full\").build()",
+                        query
+                    );
+                }
+                if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
+                    let target = props.get("target").map(|v| self.autodown_panel_prop_expr(v))
+                        .unwrap_or_else(|| "\"\".to_string()".to_string());
+                    return format!(
+                        "View::container(View::text_styled(format!(\"↪ {{}}\", {}), \"text-sm text-muted-foreground\")).style(\"rounded-lg border bg-muted p-3 w-full\").build()",
+                        target
+                    );
+                }
+
                 // grid → View::grid() builder. iced has no native grid; the
                 // col-of-rows decomposition (final-row padding + w-full rows)
                 // now lives in ONE place — the shared generic `build_grid`
@@ -3442,6 +3563,49 @@ impl RustGenerator {
             "h6" => Some("text-sm font-semibold"),
             _ => None,
         }
+    }
+
+    /// Plan 450 / 019 批次三: AutoDown Heading 面板(level prop)的默认样式。
+    /// 与 aura_view_builder 面板臂的 h1..h6 同源样式(text-primary + 页边距,
+    /// plan 409 §8 一致);level 钳位 1..6(palette_map.at panelHeading 同款)。
+    fn autodown_heading_style(level: i32) -> &'static str {
+        match level.clamp(1, 6) {
+            1 => "text-4xl font-bold text-primary mb-4",
+            2 => "text-3xl font-bold text-primary mt-8 mb-4",
+            3 => "text-xl font-semibold text-primary mb-3",
+            4 => "text-lg font-semibold mb-2",
+            5 => "text-base font-semibold mb-1",
+            _ => "text-sm font-semibold mb-1",
+        }
+    }
+
+    /// 面板 prop 值 → Rust 表达式。text_styled 按值收 content,self.* 字段
+    /// 引用加 .clone() 防 E0507(markdown 特例同款处理);非 Expr 值落空串。
+    fn autodown_panel_prop_expr(&self, v: &AuraPropValue) -> String {
+        if let AuraPropValue::Expr(expr) = v {
+            let e = self.ast_expr_to_rust(expr);
+            if e.starts_with("self.") {
+                return format!("{}.clone()", e);
+            }
+            return e;
+        }
+        "\"\".to_string()".to_string()
+    }
+
+    /// 面板子节点 → 发射表达式:单子直接用,多子包 col;无子返回 None
+    /// (由调用方决定 content prop 降级路径)。
+    fn autodown_panel_children_col(&mut self, children: &[AuraNode]) -> Option<String> {
+        if children.is_empty() {
+            return None;
+        }
+        if children.len() == 1 {
+            return Some(self.generate_view_tree(&children[0]));
+        }
+        let mut col = "View::col()".to_string();
+        for c in children {
+            col = format!("{}.child({})", col, self.generate_view_tree(c));
+        }
+        Some(format!("{}.build()", col))
     }
 
     /// Map tag to View builder function
@@ -5391,6 +5555,109 @@ mod tests {
         assert!(code.contains("pub struct Counter"), "got:\n{}", code);
         assert!(code.contains("pub count: i32"), "got:\n{}", code);
         assert!(code.contains("impl Component for Counter"), "got:\n{}", code);
+    }
+
+    /// Plan 450 / 019 批次三: AutoDown 面板词汇 a2r 发射断言。面板 tag 此前
+    /// 落 tag_to_view_fn 的 `_ => "col"` fallback —— 内容静默丢弃;现在发射
+    /// 组合 View(与 VM 侧 aura_view_builder 面板臂同款降级)。
+    fn autodown_panel_widget(view_tree: AuraNode) -> AuraWidget {
+        AuraWidget {
+            name: "PanelDoc".to_string(),
+            state_vars: vec![],
+            messages: vec![],
+            view_tree,
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            computed: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        }
+    }
+
+    #[test]
+    fn test_autodown_panel_heading_codegen() {
+        // 字面量 level → 静态样式。
+        let widget = autodown_panel_widget(
+            AuraNode::element("heading")
+                .with_prop("level", crate::ast::Expr::Int(2))
+                .with_prop("text", crate::ast::Expr::Str("Title".into())),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(
+            code.contains("View::text_styled(\"Title\".to_string(), \"text-3xl font-bold text-primary mt-8 mb-4\")"),
+            "got:\n{}", code
+        );
+
+        // Str 数字 level 同样走静态(parse);动态表达式 → 全臂 match。
+        let widget = autodown_panel_widget(
+            AuraNode::element("heading")
+                .with_prop("level", crate::ast::Expr::Ident("lvl".into()))
+                .with_prop("text", crate::ast::Expr::Str("T".into())),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(code.contains("match lvl {"), "got:\n{}", code);
+        assert!(code.contains("_ => \"text-sm font-semibold mb-1\""), "got:\n{}", code);
+    }
+
+    #[test]
+    fn test_autodown_panel_quote_callout_codegen() {
+        let widget = autodown_panel_widget(
+            AuraNode::element("quote").with_child(AuraNode::text("cited")),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(code.contains("View::container("), "got:\n{}", code);
+        assert!(
+            code.contains(".style(\"border-l-4 pl-4 py-2 w-full text-muted-foreground\")"),
+            "got:\n{}", code
+        );
+
+        let widget = autodown_panel_widget(
+            AuraNode::element("callout")
+                .with_prop("kind", crate::ast::Expr::Str("warning".into()))
+                .with_prop("title", crate::ast::Expr::Str("小心".into()))
+                .with_child(AuraNode::text("body")),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(code.contains("View::container(View::col()"), "got:\n{}", code);
+        assert!(code.contains("border-amber-500/40 bg-amber-500/10"), "got:\n{}", code);
+        assert!(code.contains("text-amber-400"), "got:\n{}", code);
+    }
+
+    #[test]
+    fn test_autodown_panel_details_and_registry_slots_codegen() {
+        let widget = autodown_panel_widget(
+            AuraNode::element("details")
+                .with_prop("summary", crate::ast::Expr::Str("展开".into()))
+                .with_child(AuraNode::text("hidden")),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(
+            code.contains("auto_lang::ui::view::AccordionItem::new(\"展开\".to_string())"),
+            "got:\n{}", code
+        );
+        assert!(code.contains(".with_expanded(true)"), "got:\n{}", code);
+        assert!(code.contains("View::accordion().items(vec!["), "got:\n{}", code);
+
+        let widget = autodown_panel_widget(
+            AuraNode::element("embed_block")
+                .with_prop("target", crate::ast::Expr::Str("blk-1".into())),
+        );
+        let code = RustGenerator::new().generate(&widget).unwrap();
+        assert!(
+            code.contains("format!(\"↪ {}\", \"blk-1\".to_string())"),
+            "got:\n{}", code
+        );
+        assert!(code.contains(".style(\"rounded-lg border bg-muted p-3 w-full\")"), "got:\n{}", code);
     }
 
     /// Plan 448 B1: inline-lambda events through the real pipeline
