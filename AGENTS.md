@@ -33,7 +33,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
 - Ensure all relevant test suites pass:
   - Unit tests: `cargo test -p auto-lang --lib`
   - Docs & schema consistency: `cargo test -p auto-lang --test docs_gen`
-  - End-to-end / multi-backend: `auto run` (Vue) vs `auto run -r vm` (Iced), `auto build --gen-only`.
+  - End-to-end / multi-backend AutoUI verification:
+    - Vue mode: `auto run` (or `auto gen && cd src/front && npx vite`)
+    - VM mode: `auto run -r vm`
+    - Automated dual-backend parity testing: invoke `autoui-verifier` skill (`.agents/skills/autoui-verifier`).
+
 
 ---
 
