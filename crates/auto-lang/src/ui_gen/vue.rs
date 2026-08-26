@@ -1319,7 +1319,7 @@ impl VueGenerator {
             let mut seen: HashSet<String> = HashSet::new();
             for a in &acts.actions {
                 let Some(sc) = a.shortcut.as_deref() else { continue };
-                let key = crate::ui::action_config::normalize_shortcut(sc);
+                let key = crate::ui_gen::normalize_shortcut(sc);
                 if key.is_empty() || !seen.insert(key.clone()) {
                     continue;
                 }
@@ -7513,6 +7513,9 @@ impl VueGenerator {
     /// For dynamic values (StateRef, FieldAccess): produces `"name"` (caller must prefix with `:`)
     fn prop_to_attr_value(&self, value: &AuraPropValue) -> GenResult<String> {
         use crate::ast::Expr;
+        if let Some(state_ref) = self.extract_state_ref(value) {
+            return Ok(format!("\"{}\"", state_ref));
+        }
         match value {
             AuraPropValue::Expr(expr) => {
                 match expr {
@@ -7522,7 +7525,12 @@ impl VueGenerator {
                     }
                     Expr::Dot(object, field) => {
                         let obj_str = self.expr_to_vue_text(object)?;
-                        Ok(format!("\"{}.{}\"", obj_str.trim_matches(|c| c == '{' || c == '}'), field))
+                        let clean_obj = obj_str.trim().trim_matches(|c| c == '{' || c == '}').trim();
+                        if clean_obj == "self" || clean_obj == "." || clean_obj.is_empty() {
+                            Ok(format!("\"{}\"", field))
+                        } else {
+                            Ok(format!("\"{}.{}\"", clean_obj, field))
+                        }
                     }
                     _ => Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?)),
                 }
@@ -11099,17 +11107,17 @@ impl VueGenerator {
             "image" | "img" => {
                 for key in &["src", "alt"] {
                     if let Some(value) = props.get(*key) {
-                        match value {
-                            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
-                                attrs.push(format!(":{}=\"{}\"", key, name));
-                            }
-                            AuraPropValue::Expr(crate::ast::Expr::Dot(..)) => {
-                                if let Ok(val) = self.prop_to_attr_value(value) {
+                        if let Some(state_ref) = self.extract_state_ref(value) {
+                            attrs.push(format!(":{}=\"{}\"", key, state_ref));
+                        } else if let Ok(val) = self.prop_to_attr_value(value) {
+                            match value {
+                                AuraPropValue::Expr(crate::ast::Expr::Lit(crate::ast::Lit::Str(_))) => {
+                                    attrs.push(format!("{}={}", key, val));
+                                }
+                                AuraPropValue::Expr(_) => {
                                     attrs.push(format!(":{}={}", key, val));
                                 }
-                            }
-                            _ => {
-                                if let Ok(val) = self.prop_to_attr_value(value) {
+                                _ => {
                                     attrs.push(format!("{}={}", key, val));
                                 }
                             }

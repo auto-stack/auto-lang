@@ -300,36 +300,11 @@ impl UiActionConfig {
 /// listener's lookup form: `Ctrl+`/`Alt+` prefixes + key. Single alpha
 /// chars are lowercased (the OS reports the base character with Ctrl/Alt
 /// held); named keys (F4, Enter…) pass through as-is.
-pub fn normalize_shortcut(s: &str) -> String {
-    let mut ctrl = false;
-    let mut alt = false;
-    let mut key = String::new();
-    for part in s.split('+') {
-        let raw = part.trim();
-        match raw.to_ascii_lowercase().as_str() {
-            "ctrl" | "control" => ctrl = true,
-            "alt" => alt = true,
-            "shift" => {} // Shift is expressed by the shifted character itself
-            "" => {}
-            _ => key = raw.to_string(),
-        }
-    }
-    if key.is_empty() {
-        return String::new();
-    }
-    if key.len() == 1 {
-        key = key.to_lowercase();
-    }
-    let mut out = String::new();
-    if ctrl {
-        out.push_str("Ctrl+");
-    }
-    if alt {
-        out.push_str("Alt+");
-    }
-    out.push_str(&key);
-    out
-}
+///
+/// Implementation lives in `ui_gen` (ungated) so non-`ui` builds can use it;
+/// re-exported here to keep the `ui::action_config::normalize_shortcut`
+/// path stable.
+pub use crate::ui_gen::normalize_shortcut;
 
 static ACTION_CONFIG: std::sync::RwLock<Option<std::sync::Arc<UiActionConfig>>> =
     std::sync::RwLock::new(None);
