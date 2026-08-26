@@ -6084,7 +6084,7 @@ fn compare_pngs(
         }
     };
 
-    let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+    let update_inner = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
         // Plan 453 T3c-consumer：每个 update 周期头部消化 Opened 待登记通道
         // （producer 在 listen_with 回调），去重登记至过渡表；T4 扇出接线时
         // 本表整体转正为 DesktopSession.windows。
@@ -7941,6 +7941,23 @@ fn compare_pngs(
             return iced::Task::batch(tail_tasks);
         }
         scroll_task.unwrap_or_else(iced::Task::none)
+    };
+
+    // Plan 453 T6：panic 边界 —— 单 App 的 update panic 不再带走整个桌面进程
+    // （Design 23 §3 会话层承诺的第一步；A 形态缓冲，真隔离在 386 进程外形态）。
+    // RefCell 无中毒语义、RAII Guard 随 unwind 释放；std Mutex 中毒风险归入
+    // 施工图 T6 审计项。view 侧边界为残留项（T4 接管 AppSession 时同法包裹）。
+    let update = move |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| update_inner(state, msg)))
+        {
+            Ok(task) => task,
+            Err(payload) => {
+                eprintln!(
+                    "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
+                );
+                iced::Task::none()
+            }
+        }
     };
 
     let title_fn = move |_state: &DynamicState| -> String {
