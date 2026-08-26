@@ -56,7 +56,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             input_values: HashMap::new(),
             todos: Vec::new(),
@@ -121,7 +121,7 @@ pub struct DevToolsState {
 }
 
 impl DevToolsState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             debug_mode: false,
             hovered_widget: RefCell::new(None),
@@ -182,7 +182,7 @@ pub struct DesktopState {
 }
 
 impl DesktopState {
-    fn new(mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>) -> Self {
+    pub(crate) fn new(mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>) -> Self {
         Self {
             current_modifiers: RefCell::new(iced::keyboard::Modifiers::empty()),
             keyboard_bindings: Arc::new(Mutex::new(HashMap::new())),
