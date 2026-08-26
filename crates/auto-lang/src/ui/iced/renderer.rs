@@ -8009,7 +8009,14 @@ fn compare_pngs(
                 subs.push(mcp_heartbeat_subscription());
             }
             // Window resize + mouse move/release events for DevTools panel drag
-            subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
+            subs.push(iced::event::listen_with(|e, _status, window_id| match e {
+                // Plan 453 T3c：Opened 捕获真实窗口 id（0.14 shell 丢弃 boot 期
+                // id，spike 输入①）。落入 session 层待登记通道，T4 扇出接线后由
+                // update 头部 drain 至 DesktopSession.windows。
+                iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
+                    crate::ui::session::record_pending_window_open(window_id, size);
+                    None
+                }
                 // Plan 065:自退排查打点 —— 会话中途 VM 干净退出 = iced 窗口被关
             // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
             // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
