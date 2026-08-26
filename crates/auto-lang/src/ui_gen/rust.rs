@@ -5583,6 +5583,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
+            actions: None,
         }
     }
 
