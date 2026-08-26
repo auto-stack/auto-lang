@@ -1,6 +1,8 @@
 # Plan 450：AutoDown 面板 widget 登记（019 批次一，跨仓互链）
 
-> 状态：**执行中（2026-08-26 立项；批次三完成）**。上游互链：auto-down 仓
+> 状态：**完成（2026-08-26；批次一 registry 登记 → 批次二 vue 调查 → 批次三
+> iced 面板映射 → 批次四 codegen 臂确认 → P3 schema 声明面收口 57b55e8d9；
+> 对拍落点在 auto-down 侧 plan 019 批次五 77a2eaf）**。上游互链：auto-down 仓
 > [docs/plans/archive/019-rust-platform.md](../../../../auto-down/docs/plans/archive/019-rust-platform.md)
 > （若未归档则在 plans/ 下）与 `packages/engine/PANEL-ALIGNMENT.md`——本计划即其对齐表
 > "registry 待登记" 空位的 auto-lang 侧落地。
