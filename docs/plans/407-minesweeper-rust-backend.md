@@ -1,6 +1,6 @@
 # Plan 407: 扫雷 render=rust 版完整支持
 
-> **状态（2026-08-20 核查更新）**: 🟡 Phase 1–2 完成 + Phase 3 部分，均已合并 master（merge `f863be5e`）：Phase 1 render=rust 启动成功（acb6c759 + 2268a67b R1/R2/R4/store-on + 83dbb259 语句支持 + f7318259 LCG 溢出修复）、Phase 2 计时器（a130512a tick_msg + 871b4226 tick_interval_ms）、Phase 3 的 R6 右键 oncontextmenu（2fc6c562）与 R9 grid 居中（fb4870c2）已落地。**未做**：R7 动态窗口 resize（difficulty 切换→窗口尺寸，ui_gen/rust.rs 无 resize 逻辑，生成 main.rs 固定 370×506）、Phase 4（三后端对比验证 + 015/011 回归）。
+> **状态（2026-08-26 finish-plan 复审）**: 🟡 Phase 1–2 完成 + Phase 3 大部（R6/R8/R9），均已合并 master（merge `f863be5e`）：Phase 1 render=rust 启动成功（acb6c759 + 2268a67b R1/R2/R4/store-on + 83dbb259 语句支持 + f7318259 LCG 溢出修复）、Phase 2 计时器（a130512a tick_msg + 871b4226 tick_interval_ms，R8 一并解决）、Phase 3 的 R6 右键 oncontextmenu（2fc6c562）与 R9 grid 居中（fb4870c2）。**未做（2026-08-26 复核仍确认）**：R7 动态窗口 resize（difficulty 切换→窗口尺寸——ui_gen/rust.rs 零 resize 逻辑，生成 main.rs 固定 `window_width: 370, window_height: 506`）、Phase 4（三后端对比验证 + 015/011 回归，无执行记录）。两项均可执行，无阻塞。
 > **优先级**: 中 — vue 版和 VM 版已可用，rust 版是第三后端
 > **目标**: 038 扫雷 render=rust 版达到与 VM 版完全一致的功能（左键展开、右键插旗、计时、难度切换、动态窗口）
 
@@ -67,47 +67,47 @@ a2r（Auto-to-Rust）codegen 生成的 Rust 代码有 **37 个编译错误**，�
 
 ## 3. 任务分解
 
-### Phase 1: 编译通过（修复 37 个编译错误）⚪
+### Phase 1: 编译通过（修复 37 个编译错误）✅（2026-08-26 复审回填——R1/R2/R3/R4 全修并合并）
 **目标**: `auto run --render rust` 能编译并显示初始窗口
 
-- [ ] **R1: 运算优先级** — 修复 parser 或 a2r 对 `(expr).method()` 的处理
+- [x] **R1: 运算优先级** — 修复 parser 或 a2r 对 `(expr).method()` 的处理
   - 确认根因在 parser 还是 codegen
   - 如果在 parser：修复方法调用 vs 算术运算的优先级
   - 如果在 codegen：在 ast_expr_to_rust 的 Bina 分支正确处理子表达式的方法调用
   - 临时 workaround：store .at 里拆成变量
 
-- [ ] **R2: String clone** — view 引用 store String 字段时自动 clone
+- [x] **R2: String clone** — view 引用 store String 字段时自动 clone
   - 在 generate_view_tree 里，引用 `self.store.xxx`（String）的地方加 `.clone()` 或传 `&`
   - 影响：mines_label, timer_label, cell_class, number_class 等
 
-- [ ] **R3: store 消息调用** — 修复 `store.XXX()` 的 Rust 转译
+- [x] **R3: store 消息调用** — 修复 `store.XXX()` 的 Rust 转译
   - 确认 store handler 在 rust mode 如何调用（直接方法？消息枚举？）
   - 修复 generate_handler_body 里的 store 调用语法
 
-- [ ] **R4: Obj 字段访问** — 修复 board 元素的 HashMap/serde_json 字段访问
+- [x] **R4: Obj 字段访问** — 修复 board 元素的 HashMap/serde_json 字段访问
   - 统一 Obj 字面量在 Rust 里的表示（serde_json::Value::Object）
   - 修复字段读取：`cell["display"].as_str().unwrap_or_default().to_string()`
   - 修复字段写入：`cell["mine"] = json!(true)` 等
 
-- [ ] **R5: 验证编译通过** — `cargo build` 无错误
+- [x] **R5: 验证编译通过** — `cargo build` 无错误
 
-### Phase 2: 基础功能（左键展开 + 计时）⚪
+### Phase 2: 基础功能（左键展开 + 计时）✅（2026-08-26 复审回填——计时器/信息栏/难度切换合并 f863be5e）
 **目标**: 能开始游戏、点击展开、计时器走动
 
-- [ ] 左键 Reveal 正确触发布雷 + flood-fill
-- [ ] 计时器 Tick 正常更新 elapsed
-- [ ] 信息栏（💣数/⏱时间）正确显示
-- [ ] 难度切换重建棋盘
+- [x] 左键 Reveal 正确触发布雷 + flood-fill
+- [x] 计时器 Tick 正常更新 elapsed
+- [x] 信息栏（💣数/⏱时间）正确显示
+- [x] 难度切换重建棋盘
 
-### Phase 3: 完整功能（右键 + 布局 + 窗口）⚪
+### Phase 3: 完整功能（右键 + 布局 + 窗口）🟡（R6/R8/R9 ✅；R7 未做）
 **目标**: rust 版与 VM 版功能完全一致
 
-- [ ] **R6: 右键插旗** — 确认 oncontextmenu → on_right_click 在 rust mode 生效
+- [x] **R6: 右键插旗** — 确认 oncontextmenu → on_right_click 在 rust mode 生效
 - [ ] **R7: 动态窗口 resize** — rust mode 也支持 difficulty→窗口大小
-- [ ] **R8: 计时器** — 确认 rust mode 的 Tick 机制
-- [ ] **R9: grid 布局** — 确认紧凑网格 + 居中 + gap 一致
+- [x] **R8: 计时器** — 确认 rust mode 的 Tick 机制
+- [x] **R9: grid 布局** — 确认紧凑网格 + 居中 + gap 一致
 
-### Phase 4: 验证与回归 ⚪
+### Phase 4: 验证与回归 ⬜（未做）
 - [ ] 三后端功能对比（vue / VM / rust）
 - [ ] 015-notes 回归（确保 a2r 修改不破坏其他示例）
 - [ ] 011-calculator 回归（已有 rust mode 示例）

@@ -1,6 +1,6 @@
 # Plan 443 — defineModel 降级收窄（PLAN-037 T4 修正：深 mutation 响应性断裂）
 
-状态: complete（worktree plan-443/model-binding，待合并 master）
+状态: complete ✅（已合并 master `38adb1ef4`，2026-08-26 finish-plan 复审通过并归档）
 创建: 2026-08-24
 来源: auto-down DEBTS.md 015 阻断行 / plans/015-auto-lang-dsl-capability-debt.md Phase 4 PLAN-037 联动项上报
 基线: master 41e7985c（问题①TS2440 已在 73861f8d 修复；本计划修问题②）
@@ -24,6 +24,19 @@
   - editor：regen OK + **vue-tsc -b 零错**（exit 0）。
 - auto-down 侧三仓部署产物已随验证部署（工作树修改未提交，由 auto-down
   侧决定收编时机）。
+
+## finish-plan 复审（2026-08-26）
+
+- 交付物核验：A（vue.rs:443/450/736 `bound_model_channels`+`emitted_model_bindings`+三分支发射）、
+  B（api.rs:302/356 双 pass 选项与聚合）、D（auto-man vue.rs:1958 "Plan 443 prescan"）、
+  E（scenario-dialect.md:36-37 语义行）全部在 master 落地；运行时 canary
+  `examples/capability-tests/041-model-deep-reactivity/` 存在（ab34fa9f4）。
+- 验证重跑（2026-08-26，master `779b2db87`+）：`--test vue_capabilities` **72 绿**
+  （含 cap_model_channel_bound_downgrades_child / unbound_keeps_ref，超集于声称的 62）；
+  a2vue golden **10/10**（与声称一致）；`cargo test -p auto-man` **229+6 绿**（超集于声称的 227）。
+- 判定：**A 类全完成**，无遗漏子项、无 workaround（双 pass 成本风险 §风险 已按构造排除）。
+  遗留边界（增量路径/pages 跨文件 channel、widgets-gallery 存量 gen 产物刷新）均为
+  计划 §边界与不做 中明示的范围外项，其中后者无测试守卫不影响门禁。
 
 
 ## 问题

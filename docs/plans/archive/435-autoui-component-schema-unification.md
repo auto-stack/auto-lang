@@ -1,6 +1,6 @@
 # Plan 435: AutoUI 组件统一声明 — schema 漂移治理与统一组件注册
 
-> **状态**: 🚧 实施中 —— P0 已落地并复审通过(2026-08-24,分支 `plan-435-schema-unification`);P1-P4 待实施,P5 新增(见 §3.1 需求映射与补强);P0 分支尚未合并 master
+> **状态**: ✅ complete —— P0-P8 全部落地并合并 master（P0-P3 `0555c819c`、P6-P8 `f7502d231`/`a6656876c` 等）；2026-08-26 finish-plan 复审通过并归档（复审记录见 §9，两项延期登记 DEBTS.md）
 > **来源**: 2026-08-23 组件声明问题调查 + 漂移审计(脚本 `scratch/schema_drift_audit.py`,明细 `scratch/drift_*.txt`)
 > **关联**: 098(aura.at schema 初版)/ 280(render_support)/ 320(WidgetRegistry.all)/ 361(validators)/ 408(路由别名不 shadow 内置)/ 412(widgets-gallery Layout 分组)/ 422(弹层语义,碰 view_builder)
 > **基准原则**: **生产代码 + examples(widgets-gallery 62 页)是事实源**;`aura/schema.rs` 本身已漂移,仅作交叉参考,不作基准。
@@ -80,9 +80,9 @@
 - **P0 漂移围栏**(✅ 2026-08-24 落地,见文末执行结果):审计脚本 Rust 化为 drift test(进 auto-lang 测试套),比对 schema.rs ↔ vue.rs 映射 ↔ view_builder 两表 ↔ render_support,任一方孤立项即红。**先于一切统一工作落地。**
 - **P1 基准提取与 schema 重建**(✅ 2026-08-24 落地,见文末执行结果):提取工具(一次性)从生产代码生成新 `schema/aura.at`;schema.rs 交叉核对;widgets-gallery 全部 tag 必须有声明;P0 测试在"新 schema vs 生产代码"维度转绿。
 - **P2 schema 接入与校验**(✅ 2026-08-24 落地,见文末执行结果):loader 扩展四字段 + include_str! 内嵌 + AuraSchema 切换数据源;`auto build`/`auto ui inspect`/LSP 接入 schema 驱动告警与补全。
-- **P3 派生翻转**(🟡 2026-08-24 部分落地,见文末执行结果;vue import 翻转经第五表发现重定向 P4):render_support 已 schema 驱动;确定性修复 + golden 闸门建立;**golden 验收:widgets-gallery vue 输出 byte-identical(跨进程确定性从无到有)**。
-- **P4 统一注册表与第三方**:ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
-- **P5 文档与 Demo 系统(2026-08-24 复审新增)**:以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
+- **P3 派生翻转**(✅ render_support P3 落地 + vue 映射经 P4-4/P4-5a 完成,见文末执行结果):render_support 已 schema 驱动;确定性修复 + golden 闸门建立;**golden 验收:widgets-gallery vue 输出 byte-identical(跨进程确定性从无到有)**。
+- **P4 统一注册表与第三方**(✅ P4-1/2/3 + P4-4 + P4-5a,见文末执行结果):ComponentRegistry(source 判别)+ 解析优先级显式化 + `use` 包源解析 + packages/widgets 生成链打通第三方组件。
+- **P5 文档与 Demo 系统**(✅ 主体 + P5b,见文末执行结果;playwright spec 延期 → DEBTS.md):以 widgets-gallery 为唯一载体扩展,不另做一套——Properties/Installation 段从 schema 生成(`auto docs gen`),叙述段保留手写;每组件一张 schema 驱动的 kitchen-sink demo 页接入 playwright 视觉回归;VitePress 加 schema 生成的静态 API 参考(`website/docs/components/*.md`,tier/backends 徽章 + 链接部署版 gallery 活 demo);**文档覆盖围栏**:每个注册组件(内置/Local/Package)必须有 gallery 页面,新增未文档化组件即红(与 P0 围栏同哲学)。
 
 ## 3.1 需求映射(2026-08-24 复审,目标形态三层声明体系)
 
@@ -687,3 +687,14 @@ core.md 每元素徽章行下加 `[demo →](/examples/widgets-gallery/<page>)`
 | D6 | ✅ P8-2 |
 | D8 | ✅ P8-5 |
 | D13 | ✅ P8-1/P8-6/P8-7(正向);playwright spec 待基建(原计划即标注) |
+
+## 9. finish-plan 复审（2026-08-26，master 基准）
+
+- **交付物核验**：四道围栏测试文件俱在且可跑（schema_drift/docs_gen/gallery_golden/component_registry_test + desktop_behavior）；`auto docs gen` CLI 在 main.rs:607-611（标注 Plan 435 P8-1）；合并链完整（P0-P3 `0555c819c`、缺陷修复 `f7502d231`、P8 收尾 `a6656876c`）。
+- **验证重跑（全部绿）**：schema_drift 1/1、docs_gen 4/4、gallery_golden 1/1（重采样后，见下）、component_registry 7/7、desktop_behavior 8/8（ui-iced）；vue_capabilities 72 绿（含 cap_435_p6_api_import_sorted_and_deterministic）。
+- **golden 重采样（1 例，已复核）**：`0f94fb8c4`（plan450 019批一）把 Code/Pre 登记进 widget registry 后，code_block.at 组件内 `widget Code`/`widget Pre` 从 `<div>` 兜底变为真实 `<code>`/`<pre>` 标签（+2 字节，dump diff 定位）——合法修复，基线按协议重采样并复跑绿。**该会话合并后未重采样基线，属流程遗漏；围栏行为符合设计**。
+- **延期登记（DEBTS.md，Type=延期）**：
+  1. kitchen-sink playwright 视觉回归 spec——gallery 应用无 playwright 基建，原计划即标注"待基建"；
+  2. D10 长尾 props 覆盖——44% web_component 元素零 props 声明，回填机制已建（P5b-1 三源优先级），属渐进数据积累，无一次性收口点。
+- **设计决议（非债，不登记）**：P8-7 反向链接不做（gallery 是独立 VM 应用非 VitePress 宿主，跨应用死链无意义）；unclassified 15 真待定词汇诚实保留（错分比待定更糟）；`syntax: special` 标记未实现（低优，语法特判留 Rust 白名单）。
+- **判定**：**A 类（延期项已登记）**，归档。
