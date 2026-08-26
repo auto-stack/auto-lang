@@ -242,6 +242,19 @@ auto-os-config vm 轨为规避上述问题付出的常设成本：
 
 ---
 
+## K. 批一首个落地（2026-08-26，auto-musk 045 现场根因修复）
+
+**K0 handler 重写器不走查 try/catch 体（新发现，A/F 族根因之一）**：`rewrite_stmt`
+的 match 无 `Stmt::Try` 臂——handler 体内 `try { .error = ... } catch { .x = ... }`
+的状态引用漏成裸 `self`，VM 合成报 "Undefined variable: self"，handler 整体毒化。
+auto-musk 七个 try/catch 形态 HTTP handler（AgentConfigs.Init + RelayStore 六件）
+全体中招；此前被 let-重赋值错掩蔽，源清理后暴露。**已修**（分支
+plan-446-try-rewrite，3429e3432）：补 Try 三体（body/catch/finally）走查镜像
+Block + 回归测试 `rewrites_state_refs_inside_try_catch`。附带同款现场发现的
+未登记缺口（musk 侧已规避、上游待议）：obj 接收者方法族零 VM native
+（`obj.slice`/`obj.find` 链接死；`list.join` 经 `[]str` 类型注解可绕）、
+普通 fn 直读 store state 不可链接（`ensureAssistantMsg` 类，需拆纯 fn）。
+
 ## J. Plan 008 批 4 增补（2026-08-26，os-config 视图统一现场报告）
 
 来源：auto-os-config Plan 008（vue/vm 视图统一）批 4 调试实证；
