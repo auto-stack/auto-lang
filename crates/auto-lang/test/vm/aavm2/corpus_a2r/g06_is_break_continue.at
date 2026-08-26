@@ -1,0 +1,40 @@
+// P2 prep: break/continue inside is-arm (block form) must target the
+// enclosing while; arm fall-through continues the loop body.
+// ASCII-only (D16). Known-gap dodges (pre-existing, filed for Phase 11):
+// assignment as single-expression arm value (aavm cg), List-typed fn
+// params (.len() in aavm cg), single-statement block arm inlining
+// (AA2R arm-body emission), list args at call sites.
+enum K {
+    A
+    B
+    C
+}
+
+fn classify(n int) K {
+    if n == 1 {
+        return K.B
+    }
+    if n == 2 {
+        return K.C
+    }
+    return K.A
+}
+
+fn main() {
+    var total = 0
+    var i = 0
+    while i < 10 {
+        var k = classify(i)
+        is k {
+            K.A -> {
+                total = total + i
+                i = i + 1
+            }
+            K.B -> {
+                i = i + 1
+                continue
+            } else -> { break }
+        }
+    }
+    print(total)
+}

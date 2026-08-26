@@ -73,6 +73,14 @@ type CG {
     // 位序,镜像 scalar_value.unwrap_or(i));ctors:"Enum.Variant"→字段数
     consts List<CGEnum>
     ctors List<CGEnum>
+    // P2:循环 break/continue 占位回填(镜像宿主 H2 patch_jump_to;aavm
+    // 侧首实现)。帧按层深 append-only(engine.at args_stack 同款,无
+    // List.pop opcode);cont_tg 为各层 continue 落点(while=条件顶,
+    // for=步进位)
+    brk_js List<List<int>>
+    cont_js List<List<int>>
+    cont_tg List<int>
+    loop_depth int
 }
 
 type CGEnum {
@@ -111,7 +119,61 @@ fn cg_new() CG {
     var fns List<FnEntry> = List.new()
     var consts_l List<CGEnum> = List.new()
     var ctors_l List<CGEnum> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l)
+    var brk_l List<List<int>> = List.new()
+    var cont_l List<List<int>> = List.new()
+    var ctg_l List<int> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0)
+}
+
+// P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
+// 与 a2r 值语义两可;镜像 ev_arr_write 写回注释)
+fn cg_loop_enter(mut c CG, cont_target int) {
+    var bl List<int> = List.new()
+    c.brk_js.push(bl)
+    var cl List<int> = List.new()
+    c.cont_js.push(cl)
+    c.cont_tg.push(cont_target)
+    c.loop_depth = c.loop_depth + 1
+}
+
+// P2:出循环层——continue 占位 → 本层落点;break 占位 → 循环后
+fn cg_loop_exit(mut c CG, brk_target int) {
+    var d = c.loop_depth - 1
+    if d < 0 {
+        cg_err(c, "loop exit without enter")
+        return
+    }
+    var cj = c.cont_js.get(d)
+    var j = 0
+    while j < cj.len() {
+        c.ins.get(cj.get(j)).n = c.cont_tg.get(d)
+        j = j + 1
+    }
+    var bj = c.brk_js.get(d)
+    var b = 0
+    while b < bj.len() {
+        c.ins.get(bj.get(b)).n = brk_target
+        b = b + 1
+    }
+    c.loop_depth = d
+}
+
+// P2:break/continue 语句发射(占位 Jmp 入本层帧;层外报错)
+fn cg_loop_jump(mut c CG, k TokenKind) {
+    if c.loop_depth == 0 {
+        cg_err(c, "break/continue outside loop")
+        return
+    }
+    var j = emit(c, OpCode.Jmp, "", -1)
+    if k == TokenKind.Continue {
+        var fr = c.cont_js.get(c.loop_depth - 1)
+        fr.push(j)
+        c.cont_js.set(c.loop_depth - 1, fr)
+    } else {
+        var fr2 = c.brk_js.get(c.loop_depth - 1)
+        fr2.push(j)
+        c.brk_js.set(c.loop_depth - 1, fr2)
+    }
 }
 
 fn cg_err(mut c CG, msg str) {
@@ -663,46 +725,52 @@ fn cg_expr(mut c CG, mut p P, min int) {
     }
     while c.err == "" {
         var opk = p_kind(p)
-        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen {
-            break
-        }
-        if opk == TokenKind.Dot && t_is_type_prop(p) {
-            break
-        }
-        if opk == TokenKind.Dot {
-            cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
-            break
-        }
-        if !is_op_kind(opk) {
-            cg_err(c, "expected infix op, got " + kind_name(opk))
-            break
-        }
-        var l = infix_l(p_op(opk))
-        if l == 0 || l < min {
-            break
-        }
-        if cg_is_assign_op(p_op(opk)) {
-            cg_err(c, "nested assignment unsupported")
-            break
-        }
-        p_next(p)
-        if opk == TokenKind.Or || opk == TokenKind.And {
-            skip_empty_lines(p)
-        }
-        var lhs_str = c.str_flag
-        c.str_flag = 0
-        cg_expr(c, p, infix_r(p_op(opk)))
-        var rhs_str = c.str_flag
-        var mn = cg_binop_mnem(p_op(opk))
-        if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
-            mn = OpCode.StrCat
-            c.str_flag = 1
-        } else {
-            c.str_flag = 0
-        }
-        c.arr_flag = 0
-        if mn != OpCode.Blank {
-            emit(c, mn, "", 0)
+        // P2:循环顶 token 分派 is 化(11 种界符臂内 break;镜像 Rust
+        // parser.rs:2425 的 match kind)
+        is opk {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen -> {
+                break
+            }
+            else -> {
+                if opk == TokenKind.Dot && t_is_type_prop(p) {
+                    break
+                }
+                if opk == TokenKind.Dot {
+                    cg_err(c, "unsupported dot access: ." + p_peek_text(p, 1))
+                    break
+                }
+                if !is_op_kind(opk) {
+                    cg_err(c, "expected infix op, got " + kind_name(opk))
+                    break
+                }
+                var l = infix_l(p_op(opk))
+                if l == 0 || l < min {
+                    break
+                }
+                if cg_is_assign_op(p_op(opk)) {
+                    cg_err(c, "nested assignment unsupported")
+                    break
+                }
+                p_next(p)
+                if opk == TokenKind.Or || opk == TokenKind.And {
+                    skip_empty_lines(p)
+                }
+                var lhs_str = c.str_flag
+                c.str_flag = 0
+                cg_expr(c, p, infix_r(p_op(opk)))
+                var rhs_str = c.str_flag
+                var mn = cg_binop_mnem(p_op(opk))
+                if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
+                    mn = OpCode.StrCat
+                    c.str_flag = 1
+                } else {
+                    c.str_flag = 0
+                }
+                c.arr_flag = 0
+                if mn != OpCode.Blank {
+                    emit(c, mn, "", 0)
+                }
+            }
         }
     }
 }
@@ -836,7 +904,7 @@ fn cg_is_arm_body(mut c CG, mut p P) {
         return
     }
     if p_kind(p) == TokenKind.Break || p_kind(p) == TokenKind.Continue {
-        cg_err(c, "break/continue in is arm unsupported")
+        cg_stmt(c, p)
         return
     }
     cg_expr(c, p, 0)
@@ -1023,6 +1091,11 @@ fn cg_stmt(mut c CG, mut p P) {
     var k = p_kind(p)
     if k == TokenKind.Enum {
         cg_enum_decl(c, p)
+        return
+    }
+    if k == TokenKind.Break || k == TokenKind.Continue {
+        p_next(p)
+        cg_loop_jump(c, k)
         return
     }
     if k == TokenKind.Is {
@@ -1231,9 +1304,17 @@ fn cg_while(mut c CG, mut p P) {
     var top = c.ins.len()
     cg_expr(c, p, 0)
     var jz = emit(c, OpCode.JmpZ, "", -1)
+    // P2:continue 落点 = 条件顶(while 语义:重判条件);体作用域与
+    // for 同构(体内变量每迭代释放,cg_pop_scope depth>2 发释放组)
+    cg_push_scope(c)
+    cg_loop_enter(c, top)
     cg_body_inline(c, p)
+    // 宿主布局:体 → 体内变量释放组 → 回跳;break 越过释放组直达 end
+    cg_pop_scope(c)
     emit(c, OpCode.Jmp, "", top)
-    c.ins.get(jz).n = c.ins.len()
+    var end = c.ins.len()
+    c.ins.get(jz).n = end
+    cg_loop_exit(c, end)
 }
 
 // for-in-range:start;store var;top:load var;end;lt;jmp.z end;
@@ -1267,13 +1348,18 @@ fn cg_for(mut c CG, mut p P) {
     cg_expr(c, p, 0)
     emit(c, OpCode.Lt, "", 0)
     var jz = emit(c, OpCode.JmpZ, "", -1)
+    // P2:continue 落点 = 步进位(循环变量自增;宿主 range-for 同口径)
+    cg_loop_enter(c, 0)
     cg_body_inline(c, p)
+    c.cont_tg.set(c.loop_depth - 1, c.ins.len())
     cg_emit_load(c, idx)
     emit(c, OpCode.ConstI32, "1", 1)
     emit(c, OpCode.Add, "", 0)
     cg_emit_store(c, idx)
     emit(c, OpCode.Jmp, "", top)
-    c.ins.get(jz).n = c.ins.len()
+    var end = c.ins.len()
+    c.ins.get(jz).n = end
+    cg_loop_exit(c, end)
     cg_pop_scope(c)
 }
 

@@ -459,28 +459,34 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     // ── 中缀循环 ──
     while p.err == "" {
         var opk = p_kind(p)
-        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen {
-            break
+        // P2:循环顶 token 分派 is 化(11 种界符臂内 break;镜像 Rust
+        // parser.rs:2425 的 match kind)
+        is opk {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen -> {
+                break
+            }
+            else -> {
+                // .type 属性:停走留给调用方(print 查询)消费——它是作用于整个
+                // 表达式的后缀属性,不是方法调用
+                if opk == TokenKind.Dot && t_is_type_prop(p) {
+                    break
+                }
+                if !is_op_kind(opk) {
+                    p_err(p, "typeinfo: expected infix operator, got ")
+                    break
+                }
+                var l = infix_l(p_op(opk))
+                if l == 0 || l < min {
+                    break
+                }
+                p_next(p)
+                if opk == TokenKind.Or || opk == TokenKind.And {
+                    skip_empty_lines(p)
+                }
+                var rhs = t_infer_expr(p, infix_r(p_op(opk)), fns)
+                lhs = t_binop_result(p_op(opk), lhs, rhs)
+            }
         }
-        // .type 属性:停走留给调用方(print 查询)消费——它是作用于整个
-        // 表达式的后缀属性,不是方法调用
-        if opk == TokenKind.Dot && t_is_type_prop(p) {
-            break
-        }
-        if !is_op_kind(opk) {
-            p_err(p, "typeinfo: expected infix operator, got ")
-            break
-        }
-        var l = infix_l(p_op(opk))
-        if l == 0 || l < min {
-            break
-        }
-        p_next(p)
-        if opk == TokenKind.Or || opk == TokenKind.And {
-            skip_empty_lines(p)
-        }
-        var rhs = t_infer_expr(p, infix_r(p_op(opk)), fns)
-        lhs = t_binop_result(p_op(opk), lhs, rhs)
     }
     return lhs
 }

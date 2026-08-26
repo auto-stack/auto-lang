@@ -346,7 +346,25 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
 - [x] 10.3 codegen.at(部分:C1+C2 已完成 2026-08-26 提交 fce116fde):
   enum OpCode + op_name;I.op/emit/i_size 枚举化;cg_binop_mnem→OpCode;
   10.4-E1 同批完成(engine 49 臂 → is op;矩阵 33/33 绿)。
-- [ ] 10.3-codegen.at 剩余:C3 cg_expr/cg_stmt p_kind 链 is 化(P2 同批)
+- [~] 10.3-codegen.at 剩余:C3 cg_expr/cg_stmt p_kind 链 is 化(P2 同批)
+  **P2 四条 Pratt 巨链已完成(2026-08-26)**:parser/typeinfo/codegen/a2r
+  各自中缀循环顶的 11/12 元 `k == A || k == B || ...` 界符链 →
+  `is k { 11 种 or 臂 → 臂内 break; else → 循环体 }`(镜像 Rust
+  parser.rs:2425 的 match kind 臂合并;臂内 break 语义四列实证——
+  宿主/主 a2r 产物 rustc 零错运行正确,aavm cg 首次实现 break/continue:
+  循环占位回填镜像宿主 H2 patch_jump_to,brk_js/cont_js/cont_tg 按
+  层深 append-only 帧栈(engine.at args_stack 同款,无 List.pop
+  opcode),while continue=条件顶/for continue=步进位,while 体作用域
+  与 for 同构(体内变量每迭代释放组,b32 反汇编与宿主逐字符一致);
+  语料 b32_is_break_continue(M4/M5/矩阵第 35 例)+ g06_is_break_
+  continue(②⑤文本对齐)。C3 的 cg_expr/cg_stmt 语句位 p_kind 链与
+  parse_stmt 小链(≤4 元)留 Phase 11 顺带。
+  **语料暴露的既有缺口登记(Phase 11 收账)**:①aavm cg 对 List 型
+  fn 参数的 .len() 报 "receiver is not an array"(类型跟踪缺口);
+  ②AA2R 单语句块臂不内联(主 a2r write_match_arm_body 单语句内联);
+  ③List 实参调用位克隆(主 a2r is_owned_list_arg 无条件 clone,AA2R
+  仅 last-use);④臂值位赋值表达式 aavm cg 不支持(值位须纯表达式,
+  写法规范)。b32/g06 以绕开形态落盘。
 - [x] 10.4-engine.at E2 完成(2026-08-26):`Val{k,i,s}` 判别器结构体 →
   `enum Val{VInt(int) VStr(str) VArr(int) VInst(int,str)}`(部分② 的
   k=3 实例形态并入 VInst 双载荷);15 处 `v.k==` 判别位 + 4 个构造点

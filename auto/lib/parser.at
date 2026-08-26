@@ -984,93 +984,99 @@ fn expr_with_left(mut p P, lhs E, min int) E {
     var cur = lhs
     while p.err == "" {
         var k = p_kind(p)
-        if k == TokenKind.EOF || k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.LBrace || k == TokenKind.RBrace || k == TokenKind.Comma || k == TokenKind.Arrow || k == TokenKind.DoubleArrow || k == TokenKind.VBar || k == TokenKind.RSquare || k == TokenKind.RParen {
-            break
-        }
-        if !is_op_kind(k) {
-            p_err(p, "expected infix operator, got ")
-            break
-        }
-        var op = p_op(k)
-        var post = postfix_power(op)
-        if post > 0 {
-            if post < min {
+        // P2:循环顶 token 分派(镜像 Rust parser.rs:2425 的 match kind:
+        // 11 种界符 break;其余走算符链)
+        is k {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen -> {
                 break
             }
-            if op == Op.LSquare {
-                // 下标(切片形态 Missing)
-                p_next(p)
-                var idx = expr_pratt(p, 18)
-                p_expect(p, TokenKind.RSquare)
-                cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
-            } else if op == Op.LParen {
-                // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
-                var args = parse_args(p)
-                var word = ""
-                if cur.kind == "name" {
-                    word = cur.word
-                }
-                var d = "(call " + cur.dump
-                if args != "(args)" {
-                    d = d + " " + args
-                }
-                cur = E("call", word, cur.dump, args, d + ")", "")
-            } else if op == Op.Colon {
-                // pair:key 由 lhs 形态决定;直接返回(不回循环)
-                p_next(p)
-                var key = ""
-                if cur.kind == "name" {
-                    key = "(name " + cur.word + ")"
-                } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
-                    key = cur.name
-                } else if cur.kind == "str" {
-                    key = "\"" + cur.name + "\""
-                } else {
-                    p_err(p, "invalid pair key ")
+            else -> {
+                if !is_op_kind(k) {
+                    p_err(p, "expected infix operator, got ")
                     break
                 }
-                var val = expr_pratt(p, 0)
-                return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
-            } else {
-                // Not 后缀(collect!):Missing
-                p_err(p, "v2 unsupported: postfix bang ")
-                break
-            }
-        } else {
-            var l = infix_l(op)
-            if l == 0 || l < min {
-                break
-            }
-            p_next(p)
-            // || / && 换行续接
-            if op == Op.Or || op == Op.And {
-                skip_empty_lines(p)
-            }
-            var rhs = expr_pratt(p, infix_r(op))
-            if op == Op.Range {
-                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq false))", "")
-            } else if op == Op.RangeEq {
-                cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq true))", "")
-            } else if op == Op.Dot {
-                if rhs.kind == "name" {
-                    cur = E("dot", rhs.word, "", "", "(dot " + cur.dump + "." + rhs.word + ")", "")
-                } else if rhs.kind == "int" || rhs.kind == "uint" {
-                    cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
-                } else if rhs.kind == "call" {
-                    // 方法调用重写:Call(name=Dot(obj,method))
-                    var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
-                    if rhs.args != "(args)" {
-                        d2 = d2 + " " + rhs.args
+                var op = p_op(k)
+                var post = postfix_power(op)
+                if post > 0 {
+                    if post < min {
+                        break
                     }
-                    cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
+                    if op == Op.LSquare {
+                        // 下标(切片形态 Missing)
+                        p_next(p)
+                        var idx = expr_pratt(p, 18)
+                        p_expect(p, TokenKind.RSquare)
+                        cur = E("index", "", "", "", "(index " + cur.dump + " " + idx.dump + ")", "")
+                    } else if op == Op.LParen {
+                        // 调用:fmt_call —— args 非空才带 args 段;调用 ity=Unknown
+                        var args = parse_args(p)
+                        var word = ""
+                        if cur.kind == "name" {
+                            word = cur.word
+                        }
+                        var d = "(call " + cur.dump
+                        if args != "(args)" {
+                            d = d + " " + args
+                        }
+                        cur = E("call", word, cur.dump, args, d + ")", "")
+                    } else if op == Op.Colon {
+                        // pair:key 由 lhs 形态决定;直接返回(不回循环)
+                        p_next(p)
+                        var key = ""
+                        if cur.kind == "name" {
+                            key = "(name " + cur.word + ")"
+                        } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
+                            key = cur.name
+                        } else if cur.kind == "str" {
+                            key = "\"" + cur.name + "\""
+                        } else {
+                            p_err(p, "invalid pair key ")
+                            break
+                        }
+                        var val = expr_pratt(p, 0)
+                        return E("pair", "", "", "", "(pair " + key + " " + val.dump + ")", "")
+                    } else {
+                        // Not 后缀(collect!):Missing
+                        p_err(p, "v2 unsupported: postfix bang ")
+                        break
+                    }
                 } else {
-                    p_err(p, "invalid field name after dot ")
-                    break
+                    var l = infix_l(op)
+                    if l == 0 || l < min {
+                        break
+                    }
+                    p_next(p)
+                    // || / && 换行续接
+                    if op == Op.Or || op == Op.And {
+                        skip_empty_lines(p)
+                    }
+                    var rhs = expr_pratt(p, infix_r(op))
+                    if op == Op.Range {
+                        cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq false))", "")
+                    } else if op == Op.RangeEq {
+                        cur = E("range", "", "", "", "(range (start " + cur.dump + ") (end " + rhs.dump + ") (eq true))", "")
+                    } else if op == Op.Dot {
+                        if rhs.kind == "name" {
+                            cur = E("dot", rhs.word, "", "", "(dot " + cur.dump + "." + rhs.word + ")", "")
+                        } else if rhs.kind == "int" || rhs.kind == "uint" {
+                            cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
+                        } else if rhs.kind == "call" {
+                            // 方法调用重写:Call(name=Dot(obj,method))
+                            var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
+                            if rhs.args != "(args)" {
+                                d2 = d2 + " " + rhs.args
+                            }
+                            cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
+                        } else {
+                            p_err(p, "invalid field name after dot ")
+                            break
+                        }
+                    } else if op == Op.QuestionQuestion {
+                        cur = E("other", "", "", "", "(?? " + cur.dump + " " + rhs.dump + ")", "")
+                    } else {
+                        cur = E("bina", op, "", "", "(bina " + cur.dump + " (op " + op_display(op) + ") " + rhs.dump + ")", binop_result(op, cur.ity, rhs.ity))
+                    }
                 }
-            } else if op == Op.QuestionQuestion {
-                cur = E("other", "", "", "", "(?? " + cur.dump + " " + rhs.dump + ")", "")
-            } else {
-                cur = E("bina", op, "", "", "(bina " + cur.dump + " (op " + op_display(op) + ") " + rhs.dump + ")", binop_result(op, cur.ity, rhs.ity))
             }
         }
     }

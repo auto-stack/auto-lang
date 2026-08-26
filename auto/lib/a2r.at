@@ -996,181 +996,187 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
     while a.err == "" && p.err == "" {
         var opk = p_kind(p)
         var is_post = 0
-        if opk == TokenKind.EOF || opk == TokenKind.Newline || opk == TokenKind.Semi || opk == TokenKind.LBrace || opk == TokenKind.RBrace || opk == TokenKind.Comma || opk == TokenKind.Arrow || opk == TokenKind.DoubleArrow || opk == TokenKind.VBar || opk == TokenKind.RSquare || opk == TokenKind.RParen || opk == TokenKind.Colon {
-            break
-        }
-        if opk == TokenKind.LParen {
-            if can_call != 1 {
-                ar_err(a, "unexpected call target")
+        // P2:循环顶 token 分派 is 化(12 种界符臂内 break,含 Colon;
+        // 镜像 Rust parser.rs:2425 的 match kind)
+        is opk {
+            TokenKind.EOF | TokenKind.Newline | TokenKind.Semi | TokenKind.LBrace | TokenKind.RBrace | TokenKind.Comma | TokenKind.Arrow | TokenKind.DoubleArrow | TokenKind.VBar | TokenKind.RSquare | TokenKind.RParen | TokenKind.Colon -> {
                 break
             }
-            cur = ar_call_tail(a, p, cur)
-            cur_ty = a.ty
-            cur_strk = a.strk
-            cur_prec = 100
-            cur_len = 0
-            cur_infer = a.infer
-            ended_field = 0
-            can_call = 0
-            is_post = 1
-        }
-        if opk == TokenKind.Dot {
-            if t_is_type_prop(p) {
-                break
-            }
-            p_next(p)
-            if !is_name_kind(p_kind(p)) && p_kind(p) != TokenKind.Int && p_kind(p) != TokenKind.Uint {
-                ar_err(a, "invalid field after dot")
-                break
-            }
-            var word = p_text(p)
-            p_next(p)
-            if cur_prec < 90 {
-                cur = "(" + cur + ")"
-                cur_prec = 100
-            }
-            if p_kind(p) == TokenKind.LParen {
-                if cur_len == 1 {
-                    cur = "(" + cur + ")"
-                    cur_len = 0
+            else -> {
+            if opk == TokenKind.LParen {
+                if can_call != 1 {
+                    ar_err(a, "unexpected call target")
+                    break
                 }
-                // Plan 447 部分② W3:枚举载荷变体构造 Enum.Variant(args)
-                // → Enum::Variant(args)(str 载荷槽字面量补 .to_string(),
-                // 镜像主 a2r 构造点);拦截须在方法调用之前
-                var ctor = ar_enum_try_ctor(a, p, cur, word)
-                if ctor != "" {
-                    cur = ctor
-                } else {
-                    var mres = ar_method_call(a, p, cur, cur_ty, word)
-                    cur = mres
-                }
+                cur = ar_call_tail(a, p, cur)
                 cur_ty = a.ty
                 cur_strk = a.strk
                 cur_prec = 100
-                cur_len = a.lenflag
+                cur_len = 0
                 cur_infer = a.infer
                 ended_field = 0
                 can_call = 0
-            } else {
-                if ar_enum_has_variant(a, cur, word) {
-                    cur = cur + "::" + word
-                    cur_ty = ""
-                    cur_infer = 0
-                } else {
-                    cur = cur + "." + word
-                    if cur_ty != "" {
-                        cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), word)
-                    }
-                    if cur_ty == "str" {
-                        cur_strk = 3
-                    } else {
-                        cur_strk = 0
-                    }
-                    cur_infer = 0
+                is_post = 1
+            }
+            if opk == TokenKind.Dot {
+                if t_is_type_prop(p) {
+                    break
                 }
+                p_next(p)
+                if !is_name_kind(p_kind(p)) && p_kind(p) != TokenKind.Int && p_kind(p) != TokenKind.Uint {
+                    ar_err(a, "invalid field after dot")
+                    break
+                }
+                var word = p_text(p)
+                p_next(p)
+                if cur_prec < 90 {
+                    cur = "(" + cur + ")"
+                    cur_prec = 100
+                }
+                if p_kind(p) == TokenKind.LParen {
+                    if cur_len == 1 {
+                        cur = "(" + cur + ")"
+                        cur_len = 0
+                    }
+                    // Plan 447 部分② W3:枚举载荷变体构造 Enum.Variant(args)
+                    // → Enum::Variant(args)(str 载荷槽字面量补 .to_string(),
+                    // 镜像主 a2r 构造点);拦截须在方法调用之前
+                    var ctor = ar_enum_try_ctor(a, p, cur, word)
+                    if ctor != "" {
+                        cur = ctor
+                    } else {
+                        var mres = ar_method_call(a, p, cur, cur_ty, word)
+                        cur = mres
+                    }
+                    cur_ty = a.ty
+                    cur_strk = a.strk
+                    cur_prec = 100
+                    cur_len = a.lenflag
+                    cur_infer = a.infer
+                    ended_field = 0
+                    can_call = 0
+                } else {
+                    if ar_enum_has_variant(a, cur, word) {
+                        cur = cur + "::" + word
+                        cur_ty = ""
+                        cur_infer = 0
+                    } else {
+                        cur = cur + "." + word
+                        if cur_ty != "" {
+                            cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), word)
+                        }
+                        if cur_ty == "str" {
+                            cur_strk = 3
+                        } else {
+                            cur_strk = 0
+                        }
+                        cur_infer = 0
+                    }
+                    cur_prec = 100
+                    cur_len = 0
+                    ended_field = 1
+                    can_call = 0
+                }
+                is_post = 1
+            }
+            if opk == TokenKind.LSquare {
+                p_next(p)
+                skip_empty_lines(p)
+                var idx = ar_expr(a, p, 0)
+                skip_empty_lines(p)
+                p_expect(p, TokenKind.RSquare)
+                var idx_lit = 0
+                if ar_all_digits(idx) == 1 {
+                    idx_lit = 1
+                }
+                cur = cur + "[" + ar_usize_cast(idx, idx_lit) + "]"
+                cur_ty = ""
                 cur_prec = 100
                 cur_len = 0
-                ended_field = 1
+                cur_infer = 0
+                ended_field = 0
                 can_call = 0
+                is_post = 1
             }
-            is_post = 1
-        }
-        if opk == TokenKind.LSquare {
+            if is_post == 0 {
+            if !is_op_kind(opk) {
+                ar_err(a, "expected infix op, got " + kind_name(opk))
+                break
+            }
+            var l = infix_l(p_op(opk))
+            if l == 0 || l < min {
+                break
+            }
             p_next(p)
-            skip_empty_lines(p)
-            var idx = ar_expr(a, p, 0)
-            skip_empty_lines(p)
-            p_expect(p, TokenKind.RSquare)
-            var idx_lit = 0
-            if ar_all_digits(idx) == 1 {
-                idx_lit = 1
+            if opk == TokenKind.Or || opk == TokenKind.And {
+                skip_empty_lines(p)
             }
-            cur = cur + "[" + ar_usize_cast(idx, idx_lit) + "]"
-            cur_ty = ""
-            cur_prec = 100
+            var rhs_pos = p.pos
+            var rhs = ar_expr(a, p, infix_r(p_op(opk)))
+            var rhs_ty = a.ty
+            var rhs_strk = a.strk
+            var rhs_prec = a.prec
+            var rhs_infer = a.infer
+            var rhs_len = a.lenflag
+            var op_txt = op_display(p_op(opk))
+            if opk == TokenKind.Range || opk == TokenKind.RangeEq {
+                var lt = ar_paren_if(cur, cur_prec, l)
+                var rt = ar_paren_if(rhs, rhs_prec, l + 1)
+                cur = lt + op_txt + rt
+                cur_ty = ""
+                cur_infer = 0
+            } else if opk == TokenKind.Add && (cur_ty == "str" || rhs_ty == "str") {
+                cur = "format!(\"{}{}\", " + cur + ", " + rhs + ")"
+                cur_ty = "str"
+                cur_strk = 3
+                cur_infer = 1
+            } else if ar_is_asn_kind(opk) {
+                if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
+                    rhs = rhs + ".to_string()"
+                } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && ar_lu_after(a, rhs, rhs_pos) == true {
+                    rhs = rhs + ".clone()"
+                } else if rhs_ty == "str" && a.ended_field == 1 {
+                    rhs = rhs + ".clone()"
+                }
+                cur = cur + " " + op_txt + " " + rhs
+                cur_ty = rhs_ty
+                cur_infer = 0
+            } else {
+                if cur_ty == "char" {
+                    cur = "(" + cur + ") as i64"
+                    cur_ty = "int"
+                }
+                if rhs_ty == "char" {
+                    rhs = "(" + rhs + ") as i64"
+                    rhs_ty = "int"
+                }
+                var lhs_txt = ar_paren_if(cur, cur_prec, l)
+                if cur_len == 1 {
+                    lhs_txt = "(" + cur + ")"
+                }
+                var rhs_txt = ar_paren_if(rhs, rhs_prec, l + 1)
+                cur = lhs_txt + " " + op_txt + " " + rhs_txt
+                if opk == TokenKind.Eq || opk == TokenKind.Neq || opk == TokenKind.Lt || opk == TokenKind.Gt || opk == TokenKind.Le || opk == TokenKind.Ge || opk == TokenKind.And || opk == TokenKind.Or {
+                    cur_ty = "bool"
+                    cur_infer = 1
+                } else if cur_ty == "" && rhs_ty != "" {
+                    cur_ty = rhs_ty
+                    cur_infer = rhs_infer
+                }
+                if cur_infer == 1 && rhs_infer == 0 {
+                    cur_infer = 0
+                }
+                if cur_len == 1 || rhs_len == 1 {
+                    cur_infer = 1
+                }
+                cur_strk = 0
+            }
+            cur_prec = l
             cur_len = 0
-            cur_infer = 0
             ended_field = 0
             can_call = 0
-            is_post = 1
+            }
         }
-        if is_post == 0 {
-        if !is_op_kind(opk) {
-            ar_err(a, "expected infix op, got " + kind_name(opk))
-            break
-        }
-        var l = infix_l(p_op(opk))
-        if l == 0 || l < min {
-            break
-        }
-        p_next(p)
-        if opk == TokenKind.Or || opk == TokenKind.And {
-            skip_empty_lines(p)
-        }
-        var rhs_pos = p.pos
-        var rhs = ar_expr(a, p, infix_r(p_op(opk)))
-        var rhs_ty = a.ty
-        var rhs_strk = a.strk
-        var rhs_prec = a.prec
-        var rhs_infer = a.infer
-        var rhs_len = a.lenflag
-        var op_txt = op_display(p_op(opk))
-        if opk == TokenKind.Range || opk == TokenKind.RangeEq {
-            var lt = ar_paren_if(cur, cur_prec, l)
-            var rt = ar_paren_if(rhs, rhs_prec, l + 1)
-            cur = lt + op_txt + rt
-            cur_ty = ""
-            cur_infer = 0
-        } else if opk == TokenKind.Add && (cur_ty == "str" || rhs_ty == "str") {
-            cur = "format!(\"{}{}\", " + cur + ", " + rhs + ")"
-            cur_ty = "str"
-            cur_strk = 3
-            cur_infer = 1
-        } else if ar_is_asn_kind(opk) {
-            if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
-                rhs = rhs + ".to_string()"
-            } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && ar_lu_after(a, rhs, rhs_pos) == true {
-                rhs = rhs + ".clone()"
-            } else if rhs_ty == "str" && a.ended_field == 1 {
-                rhs = rhs + ".clone()"
-            }
-            cur = cur + " " + op_txt + " " + rhs
-            cur_ty = rhs_ty
-            cur_infer = 0
-        } else {
-            if cur_ty == "char" {
-                cur = "(" + cur + ") as i64"
-                cur_ty = "int"
-            }
-            if rhs_ty == "char" {
-                rhs = "(" + rhs + ") as i64"
-                rhs_ty = "int"
-            }
-            var lhs_txt = ar_paren_if(cur, cur_prec, l)
-            if cur_len == 1 {
-                lhs_txt = "(" + cur + ")"
-            }
-            var rhs_txt = ar_paren_if(rhs, rhs_prec, l + 1)
-            cur = lhs_txt + " " + op_txt + " " + rhs_txt
-            if opk == TokenKind.Eq || opk == TokenKind.Neq || opk == TokenKind.Lt || opk == TokenKind.Gt || opk == TokenKind.Le || opk == TokenKind.Ge || opk == TokenKind.And || opk == TokenKind.Or {
-                cur_ty = "bool"
-                cur_infer = 1
-            } else if cur_ty == "" && rhs_ty != "" {
-                cur_ty = rhs_ty
-                cur_infer = rhs_infer
-            }
-            if cur_infer == 1 && rhs_infer == 0 {
-                cur_infer = 0
-            }
-            if cur_len == 1 || rhs_len == 1 {
-                cur_infer = 1
-            }
-            cur_strk = 0
-        }
-        cur_prec = l
-        cur_len = 0
-        ended_field = 0
-        can_call = 0
         }
     }
     a.ty = cur_ty
