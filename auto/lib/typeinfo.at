@@ -407,6 +407,13 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
             lhs = t_join_types(parts)
         }
         }
+        TokenKind.FStrStart -> {
+            // 447-③ 11.2a:f-string 类型恒 str(镜像宿主 ObjectType::String)
+            lhs = "str"
+            p_next(p)
+            p_next(p)
+            p_next(p)
+        }
         TokenKind.LSquare -> {
         // 数组字面量:元素型取首元素,Display 同 Rust Array
         p_next(p)
