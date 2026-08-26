@@ -17985,7 +17985,7 @@ impl RustTrans {
                 if trimmed.contains("std::rc::Rc::new(std::cell::RefCell::new(") { continue; }
                 // Look ahead for assignments to this variable
                 let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
-                let direct_pat = format!(r"\b{}\s*=[^=]", var_name);
+                let direct_pat = format!(r"\b{}\s*=[^=>]", var_name);
                 // Methods that take &mut self (require mut binding)
                 let mut_methods = ["push", "pop", "insert", "remove", "clear", "next", "extend",
                     "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice",
@@ -18035,7 +18035,7 @@ impl RustTrans {
                         }
                         if re.is_match(fl) && !fl.starts_with(&format!("let {}", var_name)) {
                             // Exclude == and !=
-                            if let Some(eq_check) = cached_regex(&format!(r"\b{}\s*=[^=]", var_name)) {
+                            if let Some(eq_check) = cached_regex(&format!(r"\b{}\s*=[^=>]", var_name)) {
                                 if eq_check.is_match(fl) {
                                     needs_mut.insert(i);
                                     break;
@@ -18185,8 +18185,11 @@ impl RustTrans {
                     if let Some(re) = cached_regex(&idx_assign) {
                         if re.is_match(fl) { is_mut = true; break; }
                     }
-                    // name = ... (direct reassignment; exclude == and `let name`)
-                    let direct = format!(r"\b{}\s*=[^=]", name);
+                    // name = ... (direct reassignment; exclude == and `let name`;
+                    // also `=>` — match-arm arrows like `_guard if a == b =>`
+                    // end with `<param> =>` and falsely read as assignment,
+                    // 447-③ Y1 t_unify `mut b` 噪声实证)
+                    let direct = format!(r"\b{}\s*=[^=>]", name);
                     if let Some(re) = cached_regex(&direct) {
                         if re.is_match(fl) && !fl.starts_with("let ") {
                             is_mut = true; break;

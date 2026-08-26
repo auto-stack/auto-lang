@@ -315,28 +315,16 @@ fn t_stmt_walk(mut p P, mut fns List<TFnSig>, mut out List<str>) {
 
 // 字面量 kind → 型
 fn t_literal_type(k TokenKind) str {
-    if k == TokenKind.Int || k == TokenKind.I8 || k == TokenKind.U8 {
-        return "int"
+    is k {
+        TokenKind.Int | TokenKind.I8 | TokenKind.U8 -> "int"
+        TokenKind.Uint -> "uint"
+        TokenKind.Float -> "float"
+        TokenKind.Double -> "double"
+        TokenKind.True | TokenKind.False -> "bool"
+        TokenKind.Char -> "char"
+        TokenKind.Str -> "str"
+        else -> ""
     }
-    if k == TokenKind.Uint {
-        return "uint"
-    }
-    if k == TokenKind.Float {
-        return "float"
-    }
-    if k == TokenKind.Double {
-        return "double"
-    }
-    if k == TokenKind.True || k == TokenKind.False {
-        return "bool"
-    }
-    if k == TokenKind.Char {
-        return "char"
-    }
-    if k == TokenKind.Str {
-        return "str"
-    }
-    return ""
 }
 
 // 数组型 "(array-type (elem T) (len n))" → T;非该形状返回 ""
@@ -364,33 +352,23 @@ fn t_array_elem(ty str) str {
 
 // unify 简式(D23):一方未知取另一方;相同取之;不匹配 → ""(Unknown)
 fn t_unify(a str, b str) str {
-    if a == "" {
-        return b
+    is a {
+        "" -> b
+        if b == "" -> a
+        if a == b -> a
+        else -> ""
     }
-    if b == "" {
-        return a
-    }
-    if a == b {
-        return a
-    }
-    return ""
 }
 
 // 二元运算结果型(infer_binop_type 直译)
 fn t_binop_result(op Op, l str, r str) str {
-    if op == Op.Eq || op == Op.Neq || op == Op.Lt || op == Op.Gt || op == Op.Le || op == Op.Ge {
-        return "bool"
+    is op {
+        Op.Eq | Op.Neq | Op.Lt | Op.Gt | Op.Le | Op.Ge -> "bool"
+        Op.Add | Op.Sub | Op.Mul | Op.Div | Op.Mod -> t_unify(l, r)
+        Op.AddEq | Op.SubEq | Op.MulEq | Op.DivEq | Op.ModEq | Op.Asn -> t_unify(l, r)
+        Op.And | Op.Or -> "bool"
+        else -> ""
     }
-    if op == Op.Add || op == Op.Sub || op == Op.Mul || op == Op.Div || op == Op.Mod {
-        return t_unify(l, r)
-    }
-    if op == Op.AddEq || op == Op.SubEq || op == Op.MulEq || op == Op.DivEq || op == Op.ModEq || op == Op.Asn {
-        return t_unify(l, r)
-    }
-    if op == Op.And || op == Op.Or {
-        return "bool"
-    }
-    return ""
 }
 
 // 表达式推断:优先级爬升(镜像 expr_pratt 骨架,只产类型不产 dump)

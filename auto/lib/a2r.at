@@ -2002,6 +2002,15 @@ fn ar_is_body_coerce(a Ar, body str) str {
             return body + ".to_string()"
         }
     }
+    // 镜像主 a2r expr_needs_string_coercion 的 Ident 分支:裸标识符为
+    // str 参数时值是 &str(strk 只标记字面量,此位不置位),String 返回
+    // 型下须补 .to_string()(t_unify "" -> b 形,E0308)
+    if e_is_simple_ident(body) == 1 && ar_vparam(a, body) == 1 && ar_vty(a, body) == "str" {
+        var fi2 = ar_fn_find(a, a.cur_fn)
+        if fi2 >= 0 && ar_is_str_ty(a.fns.get(fi2).ret) {
+            return body + ".to_string()"
+        }
+    }
     return body
 }
 
@@ -2335,10 +2344,13 @@ fn ar_if(mut a Ar, mut p P) {
 }
 
 // if 分支体:value_if 时预扫分支尾表达式(无分号 + str 强转);
-// in_branch 标记抑制嵌套 if-else 的尾空行
+// in_branch 标记抑制嵌套 if-else 的尾空行。tail_no_semi 保存/恢复:
+// 无条件清零会冲掉外层函数尾标记(early-return if 之后的尾位 is/is
+// 语句失锚,t_unify 形 g04 实证)——分支体内临时置位只作用于本分支。
 fn ar_branch_body(mut a Ar, mut p P) {
     var save_branch = a.in_branch
     var save_vif = a.value_if
+    var save_no_semi = a.tail_no_semi
     a.in_branch = 1
     if a.value_if == 1 {
         ar_fn_scan_tail(a, p)
@@ -2348,7 +2360,7 @@ fn ar_branch_body(mut a Ar, mut p P) {
         a.value_if = 0
     }
     ar_block_body(a, p)
-    a.tail_no_semi = 0
+    a.tail_no_semi = save_no_semi
     a.in_branch = save_branch
     a.value_if = save_vif
 }

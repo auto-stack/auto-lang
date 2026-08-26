@@ -1394,10 +1394,10 @@ fn parse_return(mut p P) str {
 // 可作名字的 token(对齐 parse_name 盲取文本;结构性分隔符除外——
 // 成员/变体名可为关键字,如 UI 方言的 grid)
 fn is_name_kind(k TokenKind) bool {
-    if k == TokenKind.EOF || k == TokenKind.RBrace || k == TokenKind.Newline || k == TokenKind.Semi || k == TokenKind.Comma || k == TokenKind.Colon || k == TokenKind.Asn || k == TokenKind.LParen || k == TokenKind.LBrace || k == TokenKind.LSquare || k == TokenKind.RParen || k == TokenKind.RSquare || k == TokenKind.Arrow || k == TokenKind.Dot || k == TokenKind.Lt || k == TokenKind.Gt {
-        return false
+    is k {
+        TokenKind.EOF | TokenKind.RBrace | TokenKind.Newline | TokenKind.Semi | TokenKind.Comma | TokenKind.Colon | TokenKind.Asn | TokenKind.LParen | TokenKind.LBrace | TokenKind.LSquare | TokenKind.RParen | TokenKind.RSquare | TokenKind.Arrow | TokenKind.Dot | TokenKind.Lt | TokenKind.Gt -> false
+        else -> true
     }
-    return true
 }
 
 // type 声明(Plan 434:AA2R 转译 lib 自身需要)。Display 对齐 ast/types.rs
@@ -1808,7 +1808,10 @@ fn parse_is(mut p P) str {
 }
 
 fn is_unsupported_stmt_kind(k TokenKind) bool {
-    return k == TokenKind.Use || k == TokenKind.Spec || k == TokenKind.Tag || k == TokenKind.Union || k == TokenKind.Ext || k == TokenKind.Impl || k == TokenKind.Task || k == TokenKind.On || k == TokenKind.Dep || k == TokenKind.Hash || k == TokenKind.HashIf || k == TokenKind.HashFor || k == TokenKind.HashIs || k == TokenKind.HashBrace || k == TokenKind.HashIdent || k == TokenKind.Try || k == TokenKind.Yield || k == TokenKind.Reply || k == TokenKind.View
+    is k {
+        TokenKind.Use | TokenKind.Spec | TokenKind.Tag | TokenKind.Union | TokenKind.Ext | TokenKind.Impl | TokenKind.Task | TokenKind.On | TokenKind.Dep | TokenKind.Hash | TokenKind.HashIf | TokenKind.HashFor | TokenKind.HashIs | TokenKind.HashBrace | TokenKind.HashIdent | TokenKind.Try | TokenKind.Yield | TokenKind.Reply | TokenKind.View -> true
+        else -> false
+    }
 }
 
 fn parse_stmt(mut p P) str {

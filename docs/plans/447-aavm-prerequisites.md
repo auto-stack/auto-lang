@@ -310,21 +310,39 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   `format!("{:?}")` 口径)——**P1 已完成(2026-08-26,提交 624a2f008)**:
   四文件 840+ 比较位翻转 + 16 个帮助函数签名枚举化;宿主三修(merge 跨模块
   枚举名传播/标量枚举 derive Copy+7 golden derive 行合法更新/arm 调序);
-  五方矩阵 33/33 全绿。P3/P2/P4(Op 枚举杠杆/Pratt 巨链/谓词消解)待续。
+  五方矩阵 33/33 全绿。P3/P4 已完成(见 10.2 二次记录;P3 提交
+  19c1e7b11,P4 谓词 is 化含 is_name_kind/is_unsupported_stmt_kind),
+  P2(Pratt 巨链)待续。
   P3 **新增 `enum Op` + `p_op()`**(镜像 Rust
   Parser::op() parser.rs:2897-2939 与 auto-val/value.rs:515-554)——infix_l/
   infix_r/prefix_power/postfix_power/op_display/binop_result 六链一步收编;P2
   Pratt/stmt 巨链 is 化(`expr_with_left` 33 处九连 break ↔ Rust match 臂合并
   parser.rs:2418-2426 等);P4 谓词函数(is_name_kind 等)消解进 is 臂。
-- [>回退] 10.2-Y1 + 10.1-P4 首试(2026-08-26):t_literal_type/is_name_kind/
-  is_unsupported_stmt_kind 三谓词 is 化——M1-M5+AA2R+golden 全绿,但⑤列
-  AA2R 自举转译自身时静默退空(整库 merge 产物 print 为空;同型小输入与
-  单文件 typeinfo 转译均正常;LEN 切片探针又正常)——疑宿主对超大字符串
-  print 出口的边界问题,非 is 形态本身缺陷。已回退保持塔绿(fce116fde 态),
-  谜题留待续作:先以 LEN 探针二分定位宿主 print/输出捕获的尺寸阈值。
-- [ ] 10.2 typeinfo.at:Y1 `t_literal_type/t_binop_result/t_unify` is 化;
-  `t_array_elem` 的"(array-type ...)"字符串形状解析 → Type 载荷化(D23/D27 收账;
-  枚举载荷跨函数已实证可用)。
+- [x] 10.2-Y1 + 10.1-P4 完成(2026-08-26 二次;首试回退已翻案):五函数
+  is 化——typeinfo `t_literal_type/t_binop_result/t_unify`(or 臂/卫语臂
+  交错/函数尾值语义)与 parser `is_name_kind/is_unsupported_stmt_kind`。
+  二次执行连带修复三处(首试失败的真机制逐步剥离):
+  ①AA2R `ar_is_body_coerce` 缺 Ident-str-参数分支——`"" -> b` 臂值发射
+  `"" => b`(E0308),镜像主 a2r expr_needs_string_coercion 补齐,发射与
+  主 a2r 逐字符一致;②AA2R `ar_branch_body` 无条件清零 `tail_no_semi`
+  冲掉外层函数尾标记——early-return if 之后的尾位 is 失锚(带分号+
+  字面量臂不收敛),改保存/恢复;③主 a2r `fix_mutable_params` 正则
+  `\s*=[^=]` 把 match 臂箭头 `<param> =>` 误读为赋值(`mut b` 噪声,
+  t_unify 卫语臂 `_guard if a == b =>` 实证)——三处文本后处理同修
+  `=[^=>]`,a2r golden 15 失败与基线逐项一致零漂移。
+  新增语料 g04_is_arm_value_str(臂值= str 参数标识符 + 卫语臂交错 +
+  early-return 后尾位 is),无修复则红。
+  **首试"⑤列 print 超大串退空"谜题结案**:宿主 print 无尺寸阈值
+  (720KB/65536 行多行大串探针通过;倍增构造 39.7 万字符单行亦通过);
+  失败簇为环境相关异常终止(11 连败:rc=-1/127、无 stderr、无 WER 记录,
+  秒级死亡 vs 正常 4-7 分钟完成;其后 8 连跑 7 成功 + 1 例 420s 超时
+  切断——成功运行最慢 414s,超时线贴边),全量 bootstrap 峰值内存
+  239-276MB。另证:循环逐字符拼接 >20 万字符会崩/挂(200k 绿/300k 崩
+  /400k 挂,O(n²) 累计分配;engine.rs:860 注释的 u16 池截断家族),
+  aavm 输出缓冲走 List+join 不受影响,以写法规范规避(divergence-rules
+  §4a 已有)。
+- [ ] 10.2 typeinfo.at 剩余:`t_array_elem` 的"(array-type ...)"字符串
+  形状解析 → Type 载荷化(D23/D27 收账;枚举载荷跨函数已实证可用)。
 - [x] 10.3 codegen.at(部分:C1+C2 已完成 2026-08-26 提交 fce116fde):
   enum OpCode + op_name;I.op/emit/i_size 枚举化;cg_binop_mnem→OpCode;
   10.4-E1 同批完成(engine 49 臂 → is op;矩阵 33/33 绿)。

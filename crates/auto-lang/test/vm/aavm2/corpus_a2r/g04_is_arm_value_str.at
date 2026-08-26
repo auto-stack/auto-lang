@@ -1,0 +1,36 @@
+enum Shape {
+    Circle
+    Square
+}
+
+// 447-③ Y1:t_unify 形——str 模式臂的臂值为 str 参数标识符(E0308 收敛)
+// 与卫语臂交错;单表达式臂值 + 函数尾位 is 值语义。
+fn pick(a str, b str) str {
+    is a {
+        "" -> b
+        if b == "" -> a
+        if a == b -> a
+        else -> ""
+    }
+}
+
+fn label(s Shape, n int) str {
+    if s == Shape.Circle && n > 10 {
+        return "big-circle"
+    }
+    is s {
+        Shape.Circle -> "circle"
+        Shape.Square -> "square"
+        else -> "other"
+    }
+}
+
+fn main() {
+    print(pick("", "x"))
+    print(pick("x", ""))
+    print(pick("y", "y"))
+    print(pick("x", "y"))
+    print(label(Shape.Circle, 20))
+    print(label(Shape.Circle, 1))
+    print(label(Shape.Square, 1))
+}

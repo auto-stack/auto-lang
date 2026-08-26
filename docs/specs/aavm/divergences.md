@@ -17,10 +17,21 @@
   `enum Op` + p_op()(Parser::op() 直译),六链(prefix_power/postfix_power/
   infix_l/infix_r/op_display/binop_result)收编 is-on-Op 或臂链;
   `enum OpCode`(47 助记符 + Blank 哨兵)——I.op 载体枚举化、op_name()
-  为 M4 序列化唯一口径、engine ev_run_t 49 臂分派巨链 is 化;
-  (Y1/P4 谓词 is 化首试因⑤列自举出口问题回退,见计划 10.2 注记。)
+  为 M4 序列化唯一口径、engine ev_run_t 49 臂分派巨链 is 化。
   宿主配套:merge 跨模块枚举名传播;标量枚举 derive Copy(7 golden
   derive 行合法更新)。
+- **D11b·Y1/P4 谓词收账(2026-08-26 二次,首试回退翻案)**:typeinfo
+  t_literal_type/t_binop_result/t_unify、parser is_name_kind/
+  is_unsupported_stmt_kind 五函数 is 化(or 臂/卫语臂交错/函数尾值语义)。
+  连带三修:①AA2R ar_is_body_coerce 补 Ident-str-参数分支(`"" -> b`
+  → `"" => b` E0308;镜像主 a2r expr_needs_string_coercion);②AA2R
+  ar_branch_body 的 tail_no_semi 改保存/恢复(无条件清零冲掉外层
+  函数尾标记,early-return 后尾位 is 失锚);③主 a2r fix_mutable_params
+  等三处文本后处理正则 `=[^=]` → `=[^=>]`(match 臂箭头 `<param> =>`
+  误读为赋值的 `mut` 噪声;golden 零漂移)。语料 g04_is_arm_value_str
+  落盘。首试⑤列"print 超大串退空"结案为环境相关异常终止(宿主 print
+  无尺寸阈值已证伪;循环逐字符拼接 >20 万字符崩/挂为 u16 池截断家族,
+  以 List+join 写法规范规避)。
 - **D14 残余·lexer.at L1**:Token.kind/Tok.kind 载体 str → TokenKind
   (构造点 41+4;p_kind/p_peek 以 kind_name 维持 str 边界待 P1;is_comment_kind
   参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,
