@@ -3423,11 +3423,30 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.map(|w| iced_length(&w)));
                 let eff_h = is.as_ref().and_then(|is| is.height.map(|h| iced_length(&h)));
+                let px_w = is.as_ref().and_then(|is| is.width).and_then(|w| match w { IcedSize::Fixed(f) => Some(f), _ => None });
+                let px_h = is.as_ref().and_then(|is| is.height).and_then(|h| match h { IcedSize::Fixed(f) => Some(f), _ => None });
                 let border_radius = is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
                 let border_width = is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
                 let border_color = is.as_ref().and_then(|is| is.border_color)
                     .unwrap_or(iced::Color::TRANSPARENT);
                 let shadow = is.as_ref().map_or(false, |is| is.shadow);
+                let bg = is.as_ref().and_then(|is| is.background_color).map(iced::Background::Color);
+
+                let eff_img_w = match (px_w, border_width) {
+                    (Some(w), bw) if bw > 0.0 => Some((w - 2.0 * bw).max(0.0)),
+                    (Some(w), _) => Some(w),
+                    _ => None,
+                };
+                let eff_img_h = match (px_h, border_width) {
+                    (Some(h), bw) if bw > 0.0 => Some((h - 2.0 * bw).max(0.0)),
+                    (Some(h), _) => Some(h),
+                    _ => None,
+                };
+                let img_border_radius = if border_radius >= 9999.0 {
+                    9999.0
+                } else {
+                    (border_radius - border_width).max(0.0)
+                };
 
                 if let Some(data) = bytes {
                     let data = if border_radius > 100.0 && (src.ends_with(".svg") || src.contains("/svg")) {
@@ -3441,31 +3460,47 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") {
                         let handle = get_or_create_svg_handle(&src, data);
                         let mut svg_widget = svg(handle);
-                        if let Some(w) = eff_w { svg_widget = svg_widget.width(w); }
-                        if let Some(h) = eff_h { svg_widget = svg_widget.height(h); }
+                        if let Some(w) = eff_img_w { svg_widget = svg_widget.width(iced::Length::Fixed(w)); }
+                        else if let Some(w) = eff_w { svg_widget = svg_widget.width(w); }
+                        if let Some(h) = eff_img_h { svg_widget = svg_widget.height(iced::Length::Fixed(h)); }
+                        else if let Some(h) = eff_h { svg_widget = svg_widget.height(h); }
                         svg_widget.into()
                     } else {
-                        let handle = get_or_create_image_handle(&src, data);
+                        let handle = get_or_create_image_handle(&src, data, img_border_radius, eff_img_w, eff_img_h);
                         let mut img_widget = iced::widget::image(handle);
-                        if let Some(w) = eff_w { img_widget = img_widget.width(w); }
-                        if let Some(h) = eff_h { img_widget = img_widget.height(h); }
+                        if let Some(w) = eff_img_w { img_widget = img_widget.width(iced::Length::Fixed(w)); }
+                        else if let Some(w) = eff_w { img_widget = img_widget.width(w); }
+                        if let Some(h) = eff_img_h { img_widget = img_widget.height(iced::Length::Fixed(h)); }
+                        else if let Some(h) = eff_h { img_widget = img_widget.height(h); }
                         img_widget.into()
                     };
 
-                    let mut cont = container(inner).clip(true);
+                    let mut cont = container(inner)
+                        .center_x(eff_w.unwrap_or(iced::Length::Shrink))
+                        .center_y(eff_h.unwrap_or(iced::Length::Shrink))
+                        .clip(true);
                     if let Some(w) = eff_w { cont = cont.width(w); }
                     if let Some(h) = eff_h { cont = cont.height(h); }
-                    if border_radius > 0.0 || border_width > 0.0 || shadow {
-                        let br = border_radius;
+                    if border_radius > 0.0 || border_width > 0.0 || shadow || bg.is_some() {
+                        let br = if border_radius >= 9999.0 {
+                            match (px_w, px_h) {
+                                (Some(w), Some(h)) => w.min(h) / 2.0,
+                                (Some(w), None) => w / 2.0,
+                                (None, Some(h)) => h / 2.0,
+                                _ => 9999.0,
+                            }
+                        } else {
+                            border_radius
+                        };
                         let bw = border_width;
                         let bc = border_color;
                         cont = cont.style(move |_| container::Style {
-                            background: Some(iced::Background::Color(iced::Color::WHITE)),
+                            background: bg,
                             border: iced::Border::default().rounded(br).width(bw).color(bc),
                             shadow: if shadow {
                                 iced::Shadow { offset: iced::Vector::new(0.0, 2.0), blur_radius: 8.0, color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15) }
                             } else {
-                                iced::Shadow { offset: iced::Vector::ZERO, blur_radius: 0.0, color: iced::Color::TRANSPARENT }
+                                iced::Shadow::default()
                             },
                             ..Default::default()
                         });
@@ -3478,14 +3513,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let mut cont = container(child)
                         .center_x(iced::Length::Fill)
                         .center_y(iced::Length::Fill);
-                    let bg = iced::Color::from_rgb(0.24, 0.47, 0.85);
+                    let placeholder_bg = is.as_ref().and_then(|is| is.background_color)
+                        .unwrap_or_else(|| iced::Color::from_rgb(0.24, 0.47, 0.85));
                     let br = border_radius.max(9999.0);
                     let bw = border_width;
                     let bc = border_color;
                     if let Some(w) = eff_w { cont = cont.width(w); }
                     if let Some(h) = eff_h { cont = cont.height(h); }
                     cont = cont.style(move |_| container::Style {
-                        background: Some(iced::Background::Color(bg)),
+                        background: Some(iced::Background::Color(placeholder_bg)),
                         border: iced::Border::default().rounded(br).width(bw).color(bc),
                         ..Default::default()
                     });
@@ -3526,21 +3562,74 @@ fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     result
 }
 
-/// Cache image::Handle by URL to avoid flickering.
+/// Cache image::Handle by URL and radius to avoid flickering.
 /// Creating a new Handle each frame causes Iced to re-decode and re-upload the texture.
-fn get_or_create_image_handle(url: &str, data: Vec<u8>) -> iced::widget::image::Handle {
+fn get_or_create_image_handle(
+    url: &str,
+    data: Vec<u8>,
+    border_radius: f32,
+    layout_w: Option<f32>,
+    layout_h: Option<f32>,
+) -> iced::widget::image::Handle {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
     static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::image::Handle>>> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
+    let cache_key = format!("{url}#r={border_radius}_{layout_w:?}_{layout_h:?}");
     let mut lock = cache.lock().unwrap();
-    if let Some(handle) = lock.get(url) {
+    if let Some(handle) = lock.get(&cache_key) {
         return handle.clone();
     }
-    let handle = iced::widget::image::Handle::from_bytes(data);
-    lock.insert(url.to_string(), handle.clone());
+
+    let handle = if border_radius > 0.0 {
+        if let Ok(dynamic_img) = image::load_from_memory(&data) {
+            let mut rgba = dynamic_img.into_rgba8();
+            let (w, h) = rgba.dimensions();
+            if w > 0 && h > 0 {
+                let r_px = if border_radius >= 9999.0 {
+                    (w.min(h) as f32) / 2.0
+                } else {
+                    let scale_x = layout_w.map_or(1.0, |lw| if lw > 0.0 { w as f32 / lw } else { 1.0 });
+                    let scale_y = layout_h.map_or(1.0, |lh| if lh > 0.0 { h as f32 / lh } else { 1.0 });
+                    let scale = (scale_x + scale_y) / 2.0;
+                    (border_radius * scale).min((w.min(h) as f32) / 2.0)
+                };
+
+                let cx = (w as f32) / 2.0;
+                let cy = (h as f32) / 2.0;
+                let half_w = cx;
+                let half_h = cy;
+
+                for y in 0..h {
+                    for x in 0..w {
+                        let px_val = ((x as f32 + 0.5) - cx).abs();
+                        let py_val = ((y as f32 + 0.5) - cy).abs();
+                        let qx = px_val - (half_w - r_px);
+                        let qy = py_val - (half_h - r_px);
+                        let dist = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - r_px;
+                        if dist > 0.5 {
+                            rgba.get_pixel_mut(x, y).0[3] = 0;
+                        } else if dist > -0.5 {
+                            let factor = (-dist + 0.5).clamp(0.0, 1.0);
+                            let pixel = rgba.get_pixel_mut(x, y);
+                            pixel.0[3] = (pixel.0[3] as f32 * factor) as u8;
+                        }
+                    }
+                }
+                iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw())
+            } else {
+                iced::widget::image::Handle::from_bytes(data)
+            }
+        } else {
+            iced::widget::image::Handle::from_bytes(data)
+        }
+    } else {
+        iced::widget::image::Handle::from_bytes(data)
+    };
+
+    lock.insert(cache_key, handle.clone());
     handle
 }
 
