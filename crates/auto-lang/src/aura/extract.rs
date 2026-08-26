@@ -757,6 +757,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
             .map(|n| n.as_str().to_string())
             .collect(),
         setup: decl.setup.clone(),
+        actions: decl.actions.clone(),
     }
 )
 }

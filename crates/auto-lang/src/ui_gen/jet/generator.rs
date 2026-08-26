@@ -2221,6 +2221,7 @@ mod tests {
 
         // Create a simple Counter widget
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2268,6 +2269,7 @@ mod tests {
 
         // Create a widget with multiple state variables
         let widget = AuraWidget {
+            actions: None,
             name: "UserProfile".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -2327,6 +2329,7 @@ mod tests {
 
         // Create a stateless widget
         let widget = AuraWidget {
+            actions: None,
             name: "StaticHeader".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2440,6 +2443,7 @@ mod tests {
         use crate::aura::{AuraWidget, AuraNode};
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestWidget".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2504,6 +2508,7 @@ mod tests {
         use crate::aura::{AuraWidget, AuraNode};
 
         let widget = AuraWidget {
+            actions: None,
             name: "TraitTest".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2952,6 +2957,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestCardVariant".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3004,6 +3010,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestCardOutlined".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3052,6 +3059,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestCardDefault".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3211,6 +3219,7 @@ widget TestCardVariant {
         };
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestNestedCard".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3282,6 +3291,7 @@ fn test_text_with_flex_style() {
     };
 
     let widget = AuraWidget {
+        actions: None,
         name: "TestTextStyle".to_string(),
         state_vars: vec![],
         computed: vec![],

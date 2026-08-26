@@ -3143,7 +3143,10 @@ element menubar_separator {
     tag: "menubar_separator"
     category: "navigation"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    // Plan 451 P2: `actions {}` 合成的 menubar 树用 MenubarSeparator——
+    // 补 vue 行与 web: "component"（此前 web: "none" 且无 vue 行）。
+    backends: { web: "component", iced: "none", gpui: "unknown" }
+    vue: { component: "MenubarSeparator", import: "@/components/ui/menubar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]

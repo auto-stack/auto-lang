@@ -220,6 +220,13 @@ pub enum Stmt {
     WidgetDecl(WidgetDecl),
     // Plan 351: shared store (scene:ui)
     StoreDecl(crate::ast::ui::StoreDecl),
+    /// Plan 451 P3: top-level `actions { ... }` declaration — the widget
+    /// block's actions lifted to module level so it can live in its own
+    /// file and travel to the host widget via `use`. Merge priority (both
+    /// vm and vue): host widget's own block > same-file top-level > first
+    /// `use`d module's block (in import order). Handler refs are validated
+    /// against the HOST widget's on{} after merge, not at parse time.
+    ActionsDecl(crate::ast::ui::ActionsBlock),
     /// Plan 367 P2-3: view fragment declaration
     ViewFragmentDecl(crate::ast::ui::ViewFragmentDecl),
     MsgDecl(MsgDecl),
@@ -304,6 +311,7 @@ impl fmt::Display for Stmt {
             Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
             Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
             Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
+            Stmt::ActionsDecl(_) => write!(f, "(actions)"),
             Stmt::Try(_) => write!(f, "(try)"),
             Stmt::MsgDecl(msg) => write!(f, "(msg {} variants)", msg.variants.len()),
             Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
@@ -1169,6 +1177,7 @@ impl ToNode for Stmt {
                 node.add_arg(auto_val::Arg::Pos(Value::str(widget.name.as_str())));
                 node
             }
+            Stmt::ActionsDecl(_) => AutoNode::new("actions"),
             Stmt::StoreDecl(store) => {
                 let mut node = AutoNode::new("store");
                 node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
@@ -1256,6 +1265,7 @@ impl ToAtom for Stmt {
             Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
             Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
             Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
+            Stmt::ActionsDecl(_) => "(actions)".into(),
             Stmt::Try(_) => "(try)".into(),
             Stmt::MsgDecl(msg) => format!("(msg {} variants)", msg.variants.len()).into(),
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),

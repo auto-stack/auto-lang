@@ -588,6 +588,7 @@ mod tests {
         use std::collections::HashMap;
 
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![],
             computed: vec![],

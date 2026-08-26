@@ -2139,6 +2139,13 @@ export default router
                         Ok(result) => {
                             let vue_code = result.vue_code.clone();
                             let widgets = result.widgets.clone();
+                            // Plan 451 P3 按声明种类分派：actions-only 模块
+                            // （顶层 actions 声明，无 widget 工件）跳过——
+                            // actions 随宿主编译被拾取。
+                            if vue_code.trim().is_empty() || widgets.is_empty() {
+                                all_store_files.extend(result.store_composables.clone());
+                                continue;
+                            }
                             let stores = result.store_composables.clone();
                             collect_ext_import_files(&widgets, ext_file_set);
                             let components = detect_shadcn_components(&vue_code);

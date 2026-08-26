@@ -368,6 +368,45 @@ pub struct GeneratedComponent {
 /// - `compile_at_to_vue_with_sub_widgets` (auto-man/vue.rs)
 ///
 /// All four callers should migrate to this function (Plan 361 §3).
+/// Plan 451 P3: scan this file's `use` imports for a module carrying a
+/// top-level `actions {}` declaration (first hit in use order wins). Module
+/// resolution mirrors the vm loader; unreadable/unparseable modules are
+/// skipped with a log line (never fatal — the host widget just keeps its
+/// own/no actions).
+fn collect_use_module_actions(
+    at_path: &std::path::Path,
+    code: &str,
+) -> Option<crate::ast::ui::ActionsBlock> {
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    for use_stmt in crate::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import || use_stmt.is_rust_import {
+            continue;
+        }
+        let module_path = match crate::resolve_use_module(base_dir, &use_stmt) {
+            crate::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            eprintln!(
+                "[codegen] actions module {} failed to parse — skipped",
+                module_path.display()
+            );
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let crate::ast::Stmt::ActionsDecl(acts) = stmt {
+                return Some(acts.clone());
+            }
+        }
+    }
+    None
+}
+
 pub fn generate_component_from_file(
     at_path: &std::path::Path,
     opts: ComponentGenOptions,
@@ -455,6 +494,28 @@ pub fn generate_component_from_file(
         }
     }
 
+    // Plan 451 P3: actions merge for widgets without their own block —
+    // priority: widget's own `actions {}` > same-file top-level declaration >
+    // first `use`d module's top-level declaration (use order). Module
+    // resolution mirrors the vm loader (`{name}.at` / `{name}/mod.at`
+    // relative to this file); unreadable/unparseable modules are skipped
+    // with a warning, never fatal.
+    let fallback_actions: Option<crate::ast::ui::ActionsBlock> = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::ActionsDecl(b) => Some(b.clone()),
+            _ => None,
+        })
+        .or_else(|| collect_use_module_actions(at_path, &code));
+    if let Some(acts) = fallback_actions {
+        for w in widgets.iter_mut() {
+            if w.actions.is_none() {
+                w.actions = Some(acts.clone());
+            }
+        }
+    }
+
     // Plan 408 collected `component fn` declarations here (fragment → SFC
     // synthesis + sub-widget registration). Plan 425: `component fn` sugars
     // to a WidgetDecl at parse time, so the main WidgetDecl loop above
@@ -477,7 +538,26 @@ pub fn generate_component_from_file(
     }
 
     if widgets.is_empty() && store_composables.is_empty() {
-        return Err("No widget or store declarations found in input file".into());
+        // Plan 451 P3: 顶层 `actions {}` 声明的文件（actions 拆独立模块经
+        // use 引用到宿主）不产任何工件——actions 随宿主编译被拾取，本文件
+        // 非错误。其余（纯 fn/类型模块）维持原错误。
+        let has_actions_decl = ast
+            .stmts
+            .iter()
+            .any(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_)));
+        if !has_actions_decl {
+            return Err("No widget or store declarations found in input file".into());
+        }
+        return Ok(crate::ui_gen::GeneratedComponent {
+            vue_code: String::new(),
+            widgets: Vec::new(),
+            all_widget_codes: Vec::new(),
+            store_composables,
+            detected_api_imports: api_imports.clone(),
+            detected_store_deps: store_deps.clone(),
+            bound_model_channels: Default::default(),
+            validation_warnings: store_warnings,
+        });
     }
 
     // Plan 408: merge synthesized component fn names into sub_widgets so every
@@ -1338,7 +1418,105 @@ store BetaStore {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Gap 2: the 015-notes-specific `all_tags` getter auto-inject is gone.
+    /// Plan 451 P3: 顶层 actions 声明的合并优先级与工件容忍。
+    ///
+    /// ① 同文件顶层声明 → 无自带块的 widget 拾取（keymap/menubar 合成生效）；
+    /// ② widget 自带块优先于顶层声明；
+    /// ③ actions-only 文件（无 widget/store）不再报错，产出空工件；
+    /// ④ use 引入模块的顶层声明拾取到宿主。
+    #[test]
+    fn test_top_level_actions_merge() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let dir = std::env::temp_dir().join("plan451_actions_merge_test");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let host_no_block = r#"
+actions {
+    action (id: "file.new", handler: .ActNew, title: "新建", shortcut: "Ctrl+N")
+    menubar { menu (id: "file", title: "文件") { item (action: "file.new") } }
+}
+widget HostApp {
+    msg Msg { ActNew }
+    view { col { menubar {} } }
+    on { .ActNew -> { console_log("x") } }
+}
+"#;
+        let p1 = dir.join("host_noblock.at");
+        std::fs::write(&p1, host_no_block).expect("write host");
+        let result = generate_component_from_file(&p1, ComponentGenOptions::default())
+            .expect("top-level actions + widget must generate");
+        crate::drain_store_extra_files();
+        assert!(
+            result.vue_code.contains("'Ctrl+n': ActNew"),
+            "same-file top-level actions reach the SFC keymap:\n{}",
+            result.vue_code
+        );
+        assert!(
+            result.vue_code.contains("<MenubarMenu value=\"file\">"),
+            "same-file top-level actions drive menubar synthesis:\n{}",
+            result.vue_code
+        );
+
+        // ② widget 自带块优先：顶层声明的 id 不出现在 keymap。
+        let host_own = r#"
+actions {
+    action (id: "top.decoy", handler: .ActNew, title: "顶层诱饵", shortcut: "Ctrl+T")
+}
+widget OwnApp {
+    msg Msg { ActNew }
+    actions { action (id: "own.real", handler: .ActNew, title: "自带", shortcut: "Ctrl+R") }
+    view { col { } }
+    on { .ActNew -> { console_log("x") } }
+}
+"#;
+        let p2 = dir.join("host_own.at");
+        std::fs::write(&p2, host_own).expect("write host with own block");
+        let result2 = generate_component_from_file(&p2, ComponentGenOptions::default())
+            .expect("widget with own actions must generate");
+        crate::drain_store_extra_files();
+        assert!(
+            result2.vue_code.contains("'Ctrl+r': ActNew")
+                && !result2.vue_code.contains("top.decoy"),
+            "widget's own block wins over the top-level declaration:\n{}",
+            result2.vue_code
+        );
+
+        // ③ actions-only 文件：不再报错，产出空工件（随宿主拾取）。
+        let actions_only = r#"
+actions {
+    action (id: "mod.only", handler: .ActMod, title: "模块动作", shortcut: "Ctrl+M")
+}
+"#;
+        let p3 = dir.join("mod_actions.at");
+        std::fs::write(&p3, actions_only).expect("write actions-only module");
+        let result3 = generate_component_from_file(&p3, ComponentGenOptions::default())
+            .expect("actions-only file must not error");
+        crate::drain_store_extra_files();
+        assert!(result3.vue_code.is_empty() && result3.widgets.is_empty());
+
+        // ④ use 引入模块的顶层声明拾取：宿主无自带块、本文件无顶层声明。
+        let host_uses = r#"
+use mod_actions: ActMod
+widget UseApp {
+    msg Msg { ActMod }
+    view { col { toolbar {} } }
+    on { .ActMod -> { console_log("x") } }
+}
+"#;
+        let p4 = dir.join("host_uses.at");
+        std::fs::write(&p4, host_uses).expect("write use host");
+        let result4 = generate_component_from_file(&p4, ComponentGenOptions::default())
+            .expect("use-module actions merge must generate");
+        crate::drain_store_extra_files();
+        assert!(
+            result4.vue_code.contains("'Ctrl+m': ActMod"),
+            "use'd module actions reach the host SFC keymap:\n{}",
+            result4.vue_code
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A store with a `notes` state var but NO declared `all_tags` computed
     /// must generate a composable with no `all_tags` anywhere (previously the
     /// hack injected a getter referencing `notes.value`).

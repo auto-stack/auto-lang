@@ -13639,11 +13639,31 @@ impl<'a> Parser<'a> {
         Ok(RoutesBlock { routes })
     }
 
+    /// Plan 451 P3: 顶层 `actions { ... }` 声明（模块级）。仅在 `actions`
+    /// 后继 `{` 时接管（否则返回 None 回退表达式路径——`actions = ...` 等
+    /// 普通表达式不受影响）；handler 引用此时无宿主可校验，合并进宿主
+    /// widget 后由消费端（vm 安装/vue 生成）落地。
+    pub fn parse_actions_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        // cur = "actions"；词法前瞻一格（取回再压回，parser 流式无回溯）。
+        let next_is_brace = match self.lexer.next() {
+            Ok(t) => {
+                let is_brace = t.kind == TokenKind::LBrace;
+                self.lexer.push_token(t);
+                is_brace
+            }
+            Err(_) => return Ok(None),
+        };
+        if !next_is_brace {
+            return Ok(None);
+        }
+        let block = self.parse_actions_block_inner()?;
+        Ok(Some(Stmt::ActionsDecl(block)))
+    }
+
     /// Plan 451: `actions { ... }` 块——动作注册表 + menubar/toolbar 声明
     /// （语法见 ast::ui::ActionsBlock 文档）。enabled_if/checked_if 为引号
     /// 字符串（条件表达式，运行时 eval_condition_with 求值）。
-    fn parse_actions_block_inner(&mut self) -> AutoResult<crate::ast::ui::ActionsBlock> {
-        self.expect_ident("actions")?;
+    fn parse_actions_block_inner(&mut self) -> AutoResult<crate::ast::ui::ActionsBlock> {        self.expect_ident("actions")?;
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
@@ -13722,8 +13742,8 @@ impl<'a> Parser<'a> {
                 "title" => title = Some(self.parse_actions_string_attr()?),
                 "icon" => icon = Some(self.parse_actions_string_attr()?),
                 "shortcut" => shortcut = Some(self.parse_actions_string_attr()?),
-                "enabled_if" => enabled_if = Some(self.parse_actions_string_attr()?),
-                "checked_if" => checked_if = Some(self.parse_actions_string_attr()?),
+                "enabled_if" => enabled_if = Some(self.parse_actions_cond_attr()?),
+                "checked_if" => checked_if = Some(self.parse_actions_cond_attr()?),
                 _ => {
                     return Err(SyntaxError::Generic {
                         message: format!(
@@ -13775,6 +13795,111 @@ impl<'a> Parser<'a> {
         let name = self.cur.text.to_string();
         self.expect(TokenKind::Ident)?;
         Ok(format!(".{}", name))
+    }
+
+    /// Plan 451 P2: `enabled_if`/`checked_if` 取值——两种拼写：
+    /// ① 引号字符串（P1 形态，与 auto-atom 外挂文件同源，原样保存）；
+    /// ② 裸 DSL 表达式（`enabled_if: .store.tab_count > 0`）——按 view if
+    /// 条件同一 token 文法捕获（空格连接的规范条件串），解析期即校验。
+    /// 两种形态在 AST/运行时等价：vm 侧 eval_condition_with 对条件串求值，
+    /// vue 侧 convert_condition 转译（与 view if 条件共用一张翻译表）。
+    fn parse_actions_cond_attr(&mut self) -> AutoResult<String> {
+        if self.is_kind(TokenKind::Str) {
+            return self.parse_actions_string_attr();
+        }
+        let mut parts: Vec<String> = Vec::new();
+        // 分组括号深度：`(.a || .b) && .c` 的组括号按文法收集；深度归零后
+        // 的 RParen 是 action 属性行的收尾括号，终止捕获。
+        let mut depth: i32 = 0;
+        // 前导点词法两可（Dot token 或 text 为 "." 的标识符，同
+        // parse_actions_handler_attr 的处理）。
+        let at_dot = |p: &mut Self| p.is_kind(TokenKind::Dot) || p.cur.text.as_str() == ".";
+        while !self.is_kind(TokenKind::Comma)
+            && !self.is_kind(TokenKind::EOF)
+        {
+            if self.is_kind(TokenKind::RParen) {
+                if depth <= 0 {
+                    break;
+                }
+                depth -= 1;
+                parts.push(")".to_string());
+                self.next();
+                continue;
+            }
+            if at_dot(self) {
+                self.next();
+                let name = self.cur.text.to_string();
+                self.next();
+                let mut chain = format!(".{}", name);
+                while at_dot(self) {
+                    self.next();
+                    let next_name = self.cur.text.to_string();
+                    self.next();
+                    chain.push_str(&format!(".{}", next_name));
+                }
+                parts.push(chain);
+            } else if self.is_kind(TokenKind::Ident) {
+                let mut chain = self.cur.text.to_string();
+                self.next();
+                if self.is_kind(TokenKind::LParen) {
+                    self.capture_condition_call_args(&mut chain);
+                }
+                while at_dot(self) {
+                    self.next();
+                    let member = self.cur.text.to_string();
+                    self.next();
+                    chain.push_str(&format!(".{}", member));
+                    if self.is_kind(TokenKind::LParen) {
+                        self.capture_condition_call_args(&mut chain);
+                    }
+                }
+                parts.push(chain);
+            } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
+                || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
+                || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)
+                || self.is_kind(TokenKind::And) || self.is_kind(TokenKind::Or)
+                || self.is_kind(TokenKind::Not)
+                || self.is_kind(TokenKind::Add) || self.is_kind(TokenKind::Sub)
+                || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Div)
+                || self.is_kind(TokenKind::Mod)
+            {
+                parts.push(self.cur.text.to_string());
+                self.next();
+            } else if self.is_kind(TokenKind::Int)
+                || self.is_kind(TokenKind::Float)
+                || self.is_kind(TokenKind::True)
+                || self.is_kind(TokenKind::False)
+                || self.is_kind(TokenKind::NoneKW)
+                || self.is_kind(TokenKind::Nil)
+            {
+                parts.push(self.cur.text.to_string());
+                self.next();
+            } else if self.is_kind(TokenKind::Str) {
+                // 条件内的字符串字面量（保留引号，eval_condition_with 与
+                // convert_condition 均按带引号处理）
+                parts.push(format!("\"{}\"", self.cur.text));
+                self.next();
+            } else if self.is_kind(TokenKind::LParen) {
+                depth += 1;
+                parts.push("(".to_string());
+                self.next();
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "action condition: unexpected `{}` in enabled_if/checked_if expression",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+        }
+        if parts.is_empty() {
+            return Err(SyntaxError::Generic {
+                message: "action condition: enabled_if/checked_if expression is empty".into(),
+                span: pos_to_span(self.cur.pos),
+            }.into());
+        }
+        Ok(parts.join(" "))
     }
 
     /// `menubar { menu (id: "...", title: "...") { ... } ... }`
@@ -15818,6 +15943,69 @@ mod tests {
         assert!(
             parser.parse().is_err(),
             "handler without matching on{{}} handler must fail to parse"
+        );
+    }
+
+    /// Plan 451 P3: 顶层 `actions {}` 声明（模块级形态）；非声明用法的
+    /// `actions`（表达式/调用）不受方言接管。
+    #[test]
+    fn test_top_level_actions_decl() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "actions {
+    action (id: \"file.new\", handler: .ActNew, title: \"新建\", shortcut: \"Ctrl+N\")
+    menubar { menu (id: \"file\", title: \"文件\") { item (action: \"file.new\") } }
+}
+widget App {
+    view { col { text \"hi\" {} } }
+    on { .ActNew -> { console_log(\"x\") } }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("top-level actions decl parses");
+        let block = match ast.stmts.first() {
+            Some(crate::ast::Stmt::ActionsDecl(b)) => b,
+            _ => panic!("expected ActionsDecl, got {:?}", ast.stmts.first().map(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_)))),
+        };
+        assert_eq!(block.actions.len(), 1);
+        assert_eq!(block.actions[0].id, "file.new");
+        assert!(block.menubar.is_some());
+
+        // `actions` 后非 `{`（表达式/调用形态）不受接管——仍按原语句解析。
+        let session2 = crate::session::CompilerSession::ui();
+        let src2 = "let actions = 1
+widget App { view { col { text \"hi\" {} } } }
+";
+        let mut parser2 = Parser::from(src2).with_session(session2);
+        let ast2 = parser2.parse().expect("plain `actions` identifier unaffected");
+        assert!(
+            !ast2.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_))),
+            "no ActionsDecl for non-block `actions` usage"
+        );
+    }
+
+    /// Plan 451 P2: enabled_if/checked_if 的裸表达式拼写与引号串等价。
+    #[test]
+    fn test_actions_cond_bare_expression() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {
+    actions {
+        action (id: \"a\", handler: .ActA, title: \"x\", enabled_if: .n > 0)
+        action (id: \"b\", handler: .ActB, title: \"y\", checked_if: (.m || .k) && !.z)
+    }
+    on { .ActA -> { console_log(\"x\") }  .ActB -> { console_log(\"x\") } }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("bare conditions parse");
+        let decl = match ast.stmts.first() {
+            Some(crate::ast::Stmt::WidgetDecl(d)) => d,
+            _ => panic!("expected widget decl"),
+        };
+        let acts = decl.actions.as_ref().expect("actions");
+        assert_eq!(acts.actions[0].enabled_if.as_deref(), Some(".n > 0"));
+        assert_eq!(
+            acts.actions[1].checked_if.as_deref(),
+            Some("( .m || .k ) && ! .z")
         );
     }
 

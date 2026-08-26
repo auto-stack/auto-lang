@@ -2,13 +2,17 @@
 
 > **状态**: ✅ P1 已实施并合并（2026-08-26，worktree .worktree/plan-451 →
 > master）。desktop_mcp.py **50/0 全绿**（T10 热重载经 DSL 源路径转绿且
-> 根治了 Plan 449 期间的 mtime 轮询 flake）；P2/P3 见 §7。
+> 根治了 Plan 449 期间的 mtime 轮询 flake）。
+> ✅ P2/P3 已实施（2026-08-26 续作，见 §7）：vue 侧消费全链路（keydown
+> 回退层 + menubar/toolbar 组件树合成 + 条件转译）+ 顶层 actions 声明
+> （actions 可拆独立模块经 use 引用）。
 > **来源**: Plan 449 复盘讨论——auto-edit.at 是前端 UI 的声明（action 注册表/
 > menubar/toolbar/快捷键），长期归属应在 AutoUI DSL 内（类比 routes/router），
 > auto-atom 外挂文件是 Plan 418 的临时形态；工具链收集规则（vue build 按
 > 文件收集、auto test 递归）是引擎缺陷而非架构约束。
 > **基线**: master 3a3ecf84f
-> **性质**: 编译器/DSL 特性（P1 本轮实施：vm 全链路 + 041 迁移）；P2/P3 见 §7。
+> **性质**: 编译器/DSL 特性（P1：vm 全链路 + 041 迁移；P2/P3：vue 消费 +
+> 顶层声明，见 §7）。
 
 ## 1. 目标
 
@@ -118,14 +122,49 @@ widget App {
 - 并行 worktree（plan-044/plan-450）都在 crates 内活动 → 本计划改动文件
   与它们不交集（parser/ast/action_config/lib/main.rs vs renderer/vue/registry）。
 
-## 7. 后续阶段（另行实施）
+## 7. 后续阶段（✅ 已于 2026-08-26 续作实施）
 
-- **P2 vue 侧消费**：cmd_vue/ui_build 对 app.at 的 actions AST 生成——全局
-  keydown 监听（normalize_shortcut → addEventListener 判定）、menubar/toolbar
-  组件树（vue.rs 已有 menubar_* 组件映射）、enabled_if/checked_if 表达式
-  转译（届时一并把条件升级为真 DSL 表达式）。与 plan-044 的 vue.rs 改动
-  合流后实施。
-- **P3 工具链收集规则**：cmd_vue 按**声明种类**分派（widget→SFC、store→
-  composable、actions→随宿主、其余→解释执行），使 actions 也可拆独立模块
-  经 `use` 引用；auto test 已天然跳过无测试文件（`reports.is_empty()`，
-  main.rs:1023），无需改动。
+### P2 vue 侧消费（✅ 完成）
+
+- **全局 keydown 监听**：`AuraWidget.actions`（extract 接线）→ vue.rs
+  `generate_sfc` 预计算 `actions_key_bindings`（`normalize_shortcut` 归一，
+  首声明者胜，与 vm `shortcut_bindings` 同碰撞规则）→ `generate_script`
+  发射 `__autoActionsKeymap` 常量 + `__autoActionsKeydown`（window
+  addEventListener/removeEventListener 成对，onMounted/onUnmounted）。
+  语义对齐 vm：元素级 onkeydown 之下的回退层；命中即 preventDefault
+  （抑制 Ctrl+S 存页等浏览器默认）；无修饰键击键在输入框聚焦时跳过
+  （对应 vm 焦点件捕获）；mac Cmd 映射到 Ctrl 层（web 侧便利）。
+- **menubar/toolbar 组件树**：view 中 `menubar {}` / `toolbar (style: …) {}`
+  占位标签（无显式子节点 + shadcn 模式）→ 从 actions 声明合成。menubar =
+  shadcn Menubar 家族树（MenubarMenu/Trigger/Content/Item/Separator；
+  勾选槽 16px + lucide Check + 右对齐快捷键文本，镜像 vm convert_menubar）；
+  toolbar = ghost 图标按钮（lucide 组件 + title 原生 tooltip + enabled_if →
+  :disabled）+ 分隔线。schema/aura.at 补 `menubar_separator` 的 vue 行
+  （web: component + MenubarSeparator 导入）+ registry 补 MenuBarSeparator
+  spec（extras 导入解析）。
+- **enabled_if/checked_if 转译**：经 `convert_condition`（与 view if 条件
+  同一翻译表：`.store.x > 0` → `store.x > 0`，方法映射/None→null 同源）。
+  条件拼写升级为真 DSL 表达式：`enabled_if: .store.tab_count > 0`（裸表达式，
+  解析期按 view if 条件同文法校验，含分组括号/逻辑运算/方法调用）与引号串
+  等价并存（AST 内同为规范条件串，vm/vue 两端零分叉）。
+- **验收**：041 vue 生成（`auto build --gen-only --render vue`）产出完整
+  App.vue（keymap 9 项 + 四菜单 menubar + 9 按钮 toolbar + Check/禁用态）；
+  vue.rs 内联单测 5 例（test_actions_*）全绿；desktop_mcp.py 50/0（vm 行为
+  零回归）；lib 全量 3701/0；schema_drift/docs_gen/gallery_golden 绿。
+
+### P3 工具链收集规则（✅ 完成）
+
+- **顶层 `actions {}` 声明**（`Stmt::ActionsDecl`）：UI 方言关键字接管
+  （`actions` 后继 `{` 才接管，普通表达式用法不受影响；词法前瞻一格取回
+  压回）。handler 引用合并进宿主后由消费端校验（独立声明无宿主可校验）。
+- **合并优先级**（vm 与 vue 同序）：宿主 widget 自带块 > 同文件顶层声明 >
+  use 引入模块的顶层声明（导入序首个）。vm：run_file_dynamic_ui_inner
+  （import_stmts 收齐后回退安装）；vue：generate_component_from_file
+  （含 use 模块文件解析，坏模块跳过不致命）；热重载：
+  extract_actions_from_source 同优先级提取（模块声明改动需 touch 宿主
+  文件触发——只 watch 宿主 mtime）。
+- **分派容忍**：actions-only 文件（无 widget/store）不再报错，产出空工件；
+  cmd_vue（Phase 1/3）与 auto-man（pages 扫描）跳过空工件文件（无 junk
+  SFC）。auto test 确认无需改动（reports.is_empty() 天然跳过）。
+- **验收**：api.rs 合并测试 4 例（同文件拾取/自带块优先/actions-only 容忍/
+  use 模块拾取）+ parser 顶层声明测试 + action_config 提取优先级测试。

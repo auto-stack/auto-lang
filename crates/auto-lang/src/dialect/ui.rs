@@ -25,8 +25,10 @@ impl Dialect for UiDialect {
     /// Ident 路径的关键字。不含 view/on —— 它们是真实 TokenKind，
     /// 走 try_parse_token_stmt。
     /// Plan 408: 加 `component`（`component fn` 独立组件声明）。
+    /// Plan 451 P3: 加 `actions`（顶层动作声明——widget 块内 actions 的
+    /// 模块级形态，可拆独立文件经 use 引用到宿主）。
     fn keywords(&self) -> &'static [&'static str] {
-        &["widget", "msg", "model", "component"]
+        &["widget", "msg", "model", "component", "actions"]
     }
 
     fn try_parse_stmt(&self, p: &mut Parser, kw: &str) -> AutoResult<Option<Stmt>> {
@@ -41,6 +43,12 @@ impl Dialect for UiDialect {
             "model" => p.parse_model_block()?,
             // Plan 408: `component fn Name(...) { ... }` → 独立 Vue 组件声明。
             "component" => p.parse_component_fn_decl()?,
+            // Plan 451 P3: 顶层 `actions { ... }`。仅当后继是 `{` 才接管——
+            // `actions = ...` / `actions(...)` 等表达式用法回退原路径。
+            "actions" => match p.parse_actions_decl_stmt()? {
+                Some(stmt) => stmt,
+                None => return Ok(None),
+            },
             _ => return Ok(None),
         };
         Ok(Some(stmt))

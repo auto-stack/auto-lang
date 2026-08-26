@@ -530,6 +530,14 @@ pub struct VueGenerator {
     /// for generate_script — the generator methods receive the widget
     /// piecemeal).
     current_setup_stmts: Option<Vec<crate::ast::Stmt>>,
+    /// Plan 451 P2: current widget's `actions {}` block (stashed in
+    /// generate_sfc). The `menubar {}`/`toolbar {}` placeholder tags in the
+    /// view synthesize their component trees from it.
+    current_actions: Option<crate::ast::ui::ActionsBlock>,
+    /// Plan 451 P2: normalized shortcut → handler fn name (first declaration
+    /// wins, mirroring the vm's shortcut_bindings collision rule). Emitted as
+    /// the global keydown fallback layer in generate_script.
+    actions_key_bindings: Vec<(String, String)>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -680,6 +688,8 @@ impl VueGenerator {
             ext_components: HashMap::new(),
             ext_import_lines: Vec::new(),
             ext_composables: Vec::new(),
+            current_actions: None,
+            actions_key_bindings: Vec::new(),
             facade_ref_fields: std::collections::HashMap::new(),
             setup_locals: Vec::new(),
             setup_ref_fields: std::collections::HashMap::new(),
@@ -997,6 +1007,8 @@ impl VueGenerator {
         self.setup_locals.clear();
         self.setup_ref_fields.clear();
         self.current_setup_stmts = None;
+        self.current_actions = None;
+        self.actions_key_bindings.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1277,6 +1289,26 @@ impl VueGenerator {
         // Widget `use { ... }` external imports — must be registered before
         // template generation so view tags resolve to external components.
         self.register_ext_imports(widget);
+
+        // Plan 451 P2: stash the `actions {}` block and resolve the shortcut
+        // table (normalized key → handler fn, first declaration wins — same
+        // collision rule as the vm's shortcut_bindings). Template synthesis
+        // (menubar/toolbar placeholders) and the script-side keydown fallback
+        // layer both read these.
+        self.current_actions = widget.actions.clone();
+        if let Some(ref acts) = widget.actions {
+            use std::collections::HashSet;
+            let mut seen: HashSet<String> = HashSet::new();
+            for a in &acts.actions {
+                let Some(sc) = a.shortcut.as_deref() else { continue };
+                let key = crate::ui::action_config::normalize_shortcut(sc);
+                if key.is_empty() || !seen.insert(key.clone()) {
+                    continue;
+                }
+                let handler_fn = self.pattern_to_handler_name(&a.handler);
+                self.actions_key_bindings.push((key, handler_fn));
+            }
+        }
 
         // Plan 426: setup preamble — register binding names (facade-local
         // semantics) and refs annotations; name collisions with state/prop
@@ -1663,6 +1695,16 @@ impl VueGenerator {
         // Global (window/document-level) listeners are registered in onMounted
         // and removed in onUnmounted.
         if !self.global_listeners.is_empty() {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
+            }
+        }
+        // Plan 451 P2: `actions {}`-declared shortcuts register a window
+        // keydown fallback layer (mounted/unmounted, same lifecycle).
+        if !self.actions_key_bindings.is_empty() {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }
@@ -2691,6 +2733,59 @@ impl VueGenerator {
             script.push_str("})\n\n");
         }
 
+        // Plan 451 P2: `actions {}`-declared shortcuts — a window keydown
+        // FALLBACK layer under element-level onkeydown bindings (VM parity:
+        // the vm subscription looks the key up in action_config only after
+        // the DSL bind layer). Plain keys (no Ctrl/Alt/meta) are skipped
+        // while typing in a text field, mirroring the vm's focused-widget
+        // capture; matched keys preventDefault so browser defaults (Ctrl+S
+        // page save, Ctrl+P print) don't fire. mac Cmd maps onto the Ctrl
+        // layer (web-side convenience; the vm has no meta key).
+        if !self.actions_key_bindings.is_empty() {
+            let keymap_ty = if self.use_typescript {
+                ": Record<string, () => void>"
+            } else {
+                ""
+            };
+            script.push_str(&format!(
+                "const __autoActionsKeymap{} = {{\n",
+                keymap_ty
+            ));
+            for (key, handler) in &self.actions_key_bindings {
+                script.push_str(&format!("  '{}': {},\n", key, handler));
+            }
+            script.push_str("}\n");
+            let target_cast = if self.use_typescript {
+                "const t = e.target as HTMLElement | null\n    "
+            } else {
+                "const t = e.target\n    "
+            };
+            let fn_sig = if self.use_typescript {
+                "function __autoActionsKeydown(e: KeyboardEvent) {"
+            } else {
+                "function __autoActionsKeydown(e) {"
+            };
+            script.push_str(&format!(
+                "{fn_sig}\n\
+                 \x20 const hasModifier = e.ctrlKey || e.altKey || e.metaKey\n\
+                 \x20 if (!hasModifier) {{\n\
+                 \x20   {target_cast}\
+                 if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return\n\
+                 \x20 }}\n\
+                 \x20 let key = e.key\n\
+                 \x20 if (key.length === 1) key = key.toLowerCase()\n\
+                 \x20 const combo = (e.ctrlKey || e.metaKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + key\n\
+                 \x20 const fn = __autoActionsKeymap[combo]\n\
+                 \x20 if (fn) {{\n\
+                 \x20   e.preventDefault()\n\
+                 \x20   fn()\n\
+                 \x20 }}\n\
+                 }}\n\n"
+            ));
+            script.push_str("onMounted(() => {\n  window.addEventListener('keydown', __autoActionsKeydown)\n})\n\n");
+            script.push_str("onUnmounted(() => {\n  window.removeEventListener('keydown', __autoActionsKeydown)\n})\n\n");
+        }
+
         // Note: auto-edit-mode onMounted was previously hardcoded here (Plan 367 P0-3
         // removed it). This logic now lives in the .at source's .Init handler,
         // which is faithfully transpiled to onMounted above. Having both caused
@@ -3537,6 +3632,220 @@ impl VueGenerator {
         ))
     }
 
+    /// Plan 451 P2: `menubar {}`/`toolbar {}` 占位标签可否从当前 widget 的
+    /// `actions {}` 块合成（块存在且非空）。
+    fn actions_menubar_available(&self) -> bool {
+        self.current_actions
+            .as_ref()
+            .and_then(|a| a.menubar.as_ref())
+            .map(|m| !m.menus.is_empty())
+            .unwrap_or(false)
+    }
+
+    fn actions_toolbar_available(&self) -> bool {
+        self.current_actions
+            .as_ref()
+            .and_then(|a| a.toolbar.as_ref())
+            .map(|t| !t.items.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// 用户在占位标签上给的 class/style 串（vm 侧 convert_menubar 同款
+    /// 语义：class 或 style 均作为容器样式类）。
+    fn actions_placeholder_class(&self, props: &HashMap<String, AuraPropValue>) -> String {
+        props
+            .get("class")
+            .or_else(|| props.get("style"))
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    /// Plan 451 P2: `menubar {}` 占位标签 → shadcn-vue Menubar 组件树。
+    ///
+    /// 结构镜像 vm 侧 convert_menubar（aura_view_builder）：每菜单一个
+    /// MenubarMenu（trigger 文本 + content 项列），项为勾选槽 + 标题 +
+    /// 右对齐快捷键；enabled_if/checked_if 经 convert_condition 转译为
+    /// 模板表达式（`.store.x > 0` → `store.x > 0`，与 view if 条件同一
+    /// 翻译器）。分隔线用 MenubarSeparator（schema/aura.at 的 vue 行）。
+    fn generate_actions_menubar_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        indent: usize,
+    ) -> GenResult<String> {
+        let block = self
+            .current_actions
+            .clone()
+            .expect("actions_menubar_available checked");
+        let menubar = block.menubar.expect("actions_menubar_available checked");
+
+        for comp in [
+            "Menubar",
+            "MenubarMenu",
+            "MenubarTrigger",
+            "MenubarContent",
+            "MenubarItem",
+            "MenubarSeparator",
+        ] {
+            self.shadcn_components_used.insert(comp.to_string());
+        }
+
+        let user_class = self.actions_placeholder_class(props);
+        let class_attr = if user_class.is_empty() {
+            String::new()
+        } else {
+            format!(" class=\"{}\"", Self::escape_html_attr(&user_class))
+        };
+
+        let mut html = format!("{}<Menubar{}>\n", "  ".repeat(indent), class_attr);
+        let menu_ind = "  ".repeat(indent + 1);
+        let item_ind = "  ".repeat(indent + 4);
+
+        for menu in &menubar.menus {
+            html.push_str(&format!(
+                "{}<MenubarMenu value=\"{}\">\n",
+                menu_ind,
+                Self::escape_html_attr(&menu.id)
+            ));
+            html.push_str(&format!(
+                "{}  <MenubarTrigger>{}</MenubarTrigger>\n",
+                menu_ind,
+                Self::escape_html_text(&menu.title)
+            ));
+            html.push_str(&format!("{}  <MenubarContent>\n", menu_ind));
+            for item in &menu.items {
+                match item {
+                    crate::ast::ui::MenuItemEntry::Sep => {
+                        html.push_str(&format!("{item_ind}<MenubarSeparator />\n"));
+                    }
+                    crate::ast::ui::MenuItemEntry::Action(id) => {
+                        let Some(a) = block.actions.iter().find(|a| a.id == *id) else {
+                            continue;
+                        };
+                        let handler = self.pattern_to_handler_name(&a.handler);
+                        let mut attrs = vec![format!("@click=\"{}\"", handler)];
+                        if let Some(cond) = a.enabled_if.as_deref() {
+                            attrs.push(format!(
+                                ":disabled=\"!({})\"",
+                                self.convert_condition(cond)
+                            ));
+                        }
+                        // 勾选槽：与 vm 同构（16px 槽 + lucide check）。
+                        let check = match a.checked_if.as_deref() {
+                            Some(cond) => {
+                                self.lucide_icons.insert("Check".to_string());
+                                format!(
+                                    "{item_ind}  <span class=\"w-4 h-3 shrink-0 inline-flex items-center\">\
+                                     <Check v-if=\"{}\" class=\"h-3 w-3 text-zinc-200\" /></span>\n",
+                                    self.convert_condition(cond)
+                                )
+                            }
+                            None => String::new(),
+                        };
+                        let shortcut = match a.shortcut.as_deref() {
+                            Some(s) if !s.is_empty() => format!(
+                                "{item_ind}  <span class=\"ml-auto text-[11px] text-zinc-500\">{}</span>\n",
+                                Self::escape_html_text(s)
+                            ),
+                            _ => String::new(),
+                        };
+                        html.push_str(&format!(
+                            "{item_ind}<MenubarItem {}>\n{}{item_ind}  <span>{}</span>\n{}{item_ind}</MenubarItem>\n",
+                            attrs.join(" "),
+                            check,
+                            Self::escape_html_text(a.title.as_deref().unwrap_or("")),
+                            shortcut,
+                        ));
+                    }
+                }
+            }
+            html.push_str(&format!("{}  </MenubarContent>\n", menu_ind));
+            html.push_str(&format!("{}</MenubarMenu>\n", menu_ind));
+        }
+        html.push_str(&format!("{}</Menubar>\n", "  ".repeat(indent)));
+        Ok(html)
+    }
+
+    /// Plan 451 P2: `toolbar {}` 占位标签 → 从声明合成的工具栏（镜像 vm
+    /// convert_toolbar）：图标按钮（lucide 组件 + title 原生 tooltip，
+    /// enabled_if → :disabled），无图标则文本按钮；sep 为细分隔线。
+    fn generate_actions_toolbar_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        indent: usize,
+    ) -> GenResult<String> {
+        let block = self
+            .current_actions
+            .clone()
+            .expect("actions_toolbar_available checked");
+        let toolbar = block.toolbar.expect("actions_toolbar_available checked");
+
+        self.shadcn_components_used.insert("Button".to_string());
+
+        let user_class = self.actions_placeholder_class(props);
+        let ind = "  ".repeat(indent);
+        let mut html = format!(
+            "{}<div class=\"flex flex-row items-center{}\">\n",
+            ind,
+            if user_class.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", Self::escape_html_attr(&user_class))
+            }
+        );
+
+        for item in &toolbar.items {
+            match item {
+                crate::ast::ui::MenuItemEntry::Sep => {
+                    html.push_str(&format!(
+                        "{}  <span class=\"w-px h-4 bg-zinc-500 mx-1 shrink-0\" />\n",
+                        ind
+                    ));
+                }
+                crate::ast::ui::MenuItemEntry::Action(id) => {
+                    let Some(a) = block.actions.iter().find(|a| a.id == *id) else {
+                        continue;
+                    };
+                    let handler = self.pattern_to_handler_name(&a.handler);
+                    let mut attrs = vec![format!("@click=\"{}\"", handler)];
+                    if let Some(cond) = a.enabled_if.as_deref() {
+                        attrs.push(format!(
+                            ":disabled=\"!({})\"",
+                            self.convert_condition(cond)
+                        ));
+                    }
+                    let title = a.title.as_deref().unwrap_or("");
+                    attrs.push(format!("title=\"{}\"", Self::escape_html_attr(title)));
+                    let content = match a.icon.as_deref() {
+                        Some(icon) if !icon.is_empty() => {
+                            let lucide = Self::kebab_to_pascal(icon);
+                            self.lucide_icons.insert(lucide.clone());
+                            format!(
+                                "\n{}    <{} class=\"h-4 w-4\" />\n{}  ",
+                                ind, lucide, ind
+                            )
+                        }
+                        _ => format!("{{{{{}}}}}", Self::escape_html_text(title)),
+                    };
+                    let btn_class = match a.icon.as_deref() {
+                        Some(icon) if !icon.is_empty() => "h-7 w-7 px-0 py-0",
+                        _ => "h-7 px-2 py-0 text-[12px]",
+                    };
+                    html.push_str(&format!(
+                        "{}  <Button variant=\"ghost\" class=\"{}\" {}>{}\
+                         </Button>\n",
+                        ind,
+                        btn_class,
+                        attrs.join(" "),
+                        content
+                    ));
+                }
+            }
+        }
+        html.push_str(&format!("{}</div>\n", ind));
+        Ok(html)
+    }
+
     /// Convert AuraNode to HTML string
     pub(crate) fn node_to_html(&mut self, node: &AuraNode, indent: usize) -> GenResult<String> {
         let ind = "  ".repeat(indent);
@@ -3602,6 +3911,21 @@ impl VueGenerator {
                 // <component :is="item.icon" :size="16" class="..." />
                 if tag == "dyn" {
                     return self.generate_dyn_component_html(props, events, children, indent);
+                }
+
+                // Plan 451 P2: `menubar {}` / `toolbar {}` placeholder tags.
+                // When the widget carries an `actions {}` block and the tag
+                // has no explicit children, synthesize the component tree
+                // from the declarations (VM parity: the iced view builder
+                // composes the same structure from action_config on the vm
+                // side). Explicit children keep the hand-written tree.
+                if children.is_empty() && self.is_shadcn() {
+                    if tag == "menubar" && self.actions_menubar_available() {
+                        return self.generate_actions_menubar_html(props, indent);
+                    }
+                    if tag == "toolbar" && self.actions_toolbar_available() {
+                        return self.generate_actions_toolbar_html(props, indent);
+                    }
                 }
 
                 // Slot outlet (Plan: slots): `slot` → <slot />,
@@ -6086,6 +6410,19 @@ impl VueGenerator {
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
+    }
+
+    /// Plan 451 P2: escape for a double-quoted HTML attribute value.
+    fn escape_html_attr(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    }
+
+    /// Plan 451 P2: escape for HTML text content.
+    fn escape_html_text(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
     }
 
     /// Plan 408 P9 / §7.2 缺陷 3: if a statement list is a single expression
@@ -14790,6 +15127,7 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             is_pub: false,
         });
         let widget = AuraWidget {
+            actions: None,
             name: "Child".to_string(),
             state_vars: vec![],
             messages: vec![],
@@ -16995,6 +17333,220 @@ widget Menu {
         assert!(sfc.contains("@mouseup=\"Up\""), "@mouseup emitted:\n{}", sfc);
         assert!(sfc.contains("@wheel=\"Wheel\""), "@wheel emitted:\n{}", sfc);
         assert!(sfc.contains("@contextmenu=\"Ctx\""), "@contextmenu emitted:\n{}", sfc);
+    }
+
+    // ====================================================================
+    // Plan 451 P2: `actions {}` 声明块——vue 侧消费（keydown 回退层 +
+    // menubar/toolbar 占位合成 + enabled_if/checked_if 条件转译）。
+    // ====================================================================
+
+    const ACTIONS_SRC: &str = r#"
+widget App {
+    msg Msg { ActNew, ActSave, ActUndo }
+    model { var n int = 0 }
+    actions {
+        action (id: "file.new",  handler: .ActNew,  title: "新建", icon: "file-plus",   shortcut: "Ctrl+N")
+        action (id: "file.save", handler: .ActSave, title: "保存", shortcut: "Ctrl+S",
+                enabled_if: ".n > 0")
+        action (id: "edit.undo", handler: .ActUndo, title: "撤销", shortcut: "Ctrl+Z",
+                checked_if: ".n > 0")
+        menubar {
+            menu (id: "file", title: "文件") {
+                item (action: "file.new")
+                sep
+                item (action: "file.save")
+            }
+            menu (id: "edit", title: "编辑") {
+                item (action: "edit.undo")
+            }
+        }
+        toolbar {
+            item (action: "file.new")
+            sep
+            item (action: "edit.undo")
+        }
+    }
+    view {
+        col {
+            menubar {}
+            toolbar (style: "ml-auto") {}
+        }
+    }
+    on {
+        .ActNew -> { .n = .n + 1 }
+        .ActSave -> { .n = 0 }
+        .ActUndo -> { .n = 0 }
+    }
+}
+"#;
+
+    /// 快捷键 → 全局 keydown 回退层（normalize_shortcut 判定形态：单字符键
+    /// 小写、修饰键归一），onMounted/onUnmounted 成对注册。
+    #[test]
+    fn test_actions_shortcut_keydown_layer() {
+        let sfc = gen_sfc_from_widget_src_shadcn(ACTIONS_SRC);
+        assert!(
+            sfc.contains("'Ctrl+n': ActNew"),
+            "normalized keymap entry:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'Ctrl+s': ActSave") && sfc.contains("'Ctrl+z': ActUndo"),
+            "all three shortcuts normalized:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.addEventListener('keydown', __autoActionsKeydown)"),
+            "keydown registered:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.removeEventListener('keydown', __autoActionsKeydown)"),
+            "keydown removed on unmount:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("e.preventDefault()"),
+            "matched key prevents browser default:\n{}",
+            sfc
+        );
+    }
+
+    /// `menubar {}` 占位标签 → shadcn Menubar 组件树（trigger 文本/sep/
+    /// 条件转译），无 actions 时保持原行为。
+    #[test]
+    fn test_actions_menubar_synthesis() {
+        let sfc = gen_sfc_from_widget_src_shadcn(ACTIONS_SRC);
+        assert!(
+            sfc.contains("<MenubarMenu value=\"file\">"),
+            "menu entry:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarTrigger>文件</MenubarTrigger>"),
+            "trigger title:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarItem @click=\"ActNew\">"),
+            "item dispatches the on-block handler:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":disabled=\"!(n > 0)\""),
+            "enabled_if translated via convert_condition:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<Check v-if=\"n > 0\""),
+            "checked_if drives the check slot:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<MenubarSeparator />"),
+            "sep synthesized:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger } from '@/components/ui/menubar'"),
+            "family imported (incl. separator):\n{}",
+            sfc
+        );
+        // 快捷键显示文本（vm 同款右对齐弱色）。
+        assert!(
+            sfc.contains(">Ctrl+N</span>"),
+            "shortcut hint rendered:\n{}",
+            sfc
+        );
+    }
+
+    /// `toolbar {}` 占位标签 → 图标按钮 + 分隔线；enabled_if → :disabled。
+    #[test]
+    fn test_actions_toolbar_synthesis() {
+        let sfc = gen_sfc_from_widget_src_shadcn(ACTIONS_SRC);
+        assert!(
+            sfc.contains("class=\"flex flex-row items-center ml-auto\""),
+            "toolbar row with the placeholder's user class:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@click=\"ActNew\" title=\"新建\"") || sfc.contains("title=\"新建\" @click=\"ActNew\""),
+            "icon button with title tooltip:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<FilePlus class=\"h-4 w-4\" />"),
+            "lucide icon component:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("class=\"w-px h-4 bg-zinc-500 mx-1 shrink-0\""),
+            "toolbar separator:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("FilePlus }") || sfc.contains("FilePlus,"),
+            "lucide icon import collected:\n{}",
+            sfc
+        );
+    }
+
+    /// enabled_if/checked_if 的裸 DSL 表达式拼写（Plan 451 P2）与引号串
+    /// 等价——AST 里同为规范条件串。
+    #[test]
+    fn test_actions_condition_bare_expression_spelling() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    msg Msg { ActSave, ActUndo }
+    model { var n int = 0 }
+    actions {
+        action (id: "file.save", handler: .ActSave, title: "保存", enabled_if: .n > 0)
+        action (id: "edit.undo", handler: .ActUndo, title: "撤销", checked_if: .n > 0)
+        menubar {
+            menu (id: "edit", title: "编辑") { item (action: "edit.undo") }
+        }
+        toolbar { item (action: "file.save") }
+    }
+    view { col { menubar {}  toolbar {} } }
+    on {
+        .ActSave -> { .n = 0 }
+        .ActUndo -> { .n = 0 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains(":disabled=\"!(n > 0)\""),
+            "bare enabled_if compiles to the same condition:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<Check v-if=\"n > 0\""),
+            "bare checked_if compiles to the same condition:\n{}",
+            sfc
+        );
+    }
+
+    /// 无 actions 块时占位标签不合成（保持既有空行为），也不发射 keymap。
+    #[test]
+    fn test_actions_placeholder_without_block_untouched() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget App {
+    msg Msg { Go }
+    model { var n int = 0 }
+    view { col { menubar {} } }
+    on { .Go -> { .n = 1 } }
+}
+"#);
+        assert!(
+            !sfc.contains("__autoActionsKeymap"),
+            "no keymap without actions:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("<MenubarMenu"),
+            "no menu synthesis without a menubar block:\n{}",
+            sfc
+        );
     }
 
     /// Event modifiers: key modifiers (up/escape), prevent, stop.

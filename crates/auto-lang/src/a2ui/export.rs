@@ -478,6 +478,7 @@ mod tests {
         };
 
         AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -556,6 +557,7 @@ mod tests {
         };
 
         let widget = AuraWidget {
+            actions: None,
             name: "Test".to_string(),
             state_vars: vec![],
             computed: vec![],

@@ -5311,6 +5311,7 @@ mod tests {
     #[test]
     fn test_setup_block_rejected_on_rust_target() {
         let widget = AuraWidget {
+            actions: None,
             name: "SetupWidget".to_string(),
             state_vars: vec![],
             messages: vec![],
@@ -5349,6 +5350,7 @@ mod tests {
     #[test]
     fn test_simple_counter() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -5462,6 +5464,7 @@ widget Counter {
         }
 
         let widget = AuraWidget {
+            actions: None,
             name: "Playground".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -5594,6 +5597,7 @@ widget Counter {
         }
 
         let widget = AuraWidget {
+            actions: None,
             name: "Playground".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -5695,6 +5699,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_scalar_override() {
         let widget = AuraWidget {
+            actions: None,
             name: "App".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -5765,6 +5770,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_no_scalars_no_override() {
         let widget = AuraWidget {
+            actions: None,
             name: "OnlyCollections".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "items".to_string(),
@@ -5804,6 +5810,7 @@ fn main() {{}}
     #[test]
     fn test_state_snapshot_recurses_into_store() {
         let widget = AuraWidget {
+            actions: None,
             name: "App".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "search".to_string(),
@@ -5851,6 +5858,7 @@ fn main() {{}}
         // The store struct itself should NOT recurse into a `store` field
         // (avoid NotesStore { store: NotesStore } infinite recursion).
         let store_widget = AuraWidget {
+            actions: None,
             name: "NotesStore".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "dark_mode".to_string(),
@@ -6033,6 +6041,7 @@ fn main() {{}}
     /// Plan 043 M5 #1: multi-param msg variants emit a multi-field Rust enum.
     fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
         AuraWidget {
+            actions: None,
             name: "Shell".to_string(),
             state_vars: vec![],
             computed: vec![],
