@@ -1,0 +1,22 @@
+// theme_store.at — accent color state (Plan 006 Phase 2). Port of the
+// hand-written composables/useTheme.ts; the palette/DOM/localStorage live in
+// src/lib/api.ts (stores only support the `use back.api:` import form).
+use back.api: loadAccent, applyAccent
+
+store Theme {
+    model {
+        var current str = "indigo"
+    }
+
+    msg Msg { Init, SetAccent(str) }
+
+    on {
+        .Init -> {
+            .current = loadAccent()
+        }
+        .SetAccent(name) -> {
+            .current = name
+            applyAccent(name)
+        }
+    }
+}

@@ -1,0 +1,496 @@
+// modules_store.at — module registry + selection state (Plan 006 Phase 2;
+// Plan 007 vm-safe rewrite). Port of composables/useModules.ts. The remote
+// `custom` dispatch is REMOVED (Plan 006 §1: protocol retired).
+//
+// State is precomputed for the view (D4): groups carry their member module
+// objects; `title` is the active module's display name. All mutations are
+// whole-replace (D5).
+//
+// Plan 007: handlers use the flat api surface (text + per-item getters,
+// VG12/VG13-safe): NO nested reads of returned maps, NO array fn args, NO
+// find-closures (VG14), NO concat (VG5). `raw` keeps the authoritative text
+// so Select never re-fetches. The MODEL shape is unchanged — vue widgets and
+// the sidebar ext facade are untouched.
+use back.api: fetchModulesRaw, modulesCount, moduleAt, groupCount, groupAt, groupMemberCount, groupMemberAt, standaloneCount, standaloneAt, selectInfo, groupOfModule, getHash
+
+store Modules {
+    model {
+        var modules Array<str> = []
+        // [{ id, label, members: [module...] }] — derived on load
+        var groups Array<str> = []
+        var standalone Array<str> = []
+        var expanded Array<str> = []
+        var active_id ?str = None
+        // "file" | "collection" | "custom" | "" (no selection)
+        var active_kind str = ""
+        var read_only bool = false
+        var loading bool = false
+        var error str = ""
+        var title str = "AutoOS Settings"
+        // Plan 007: authoritative raw modules text (vm selection without fetch)
+        var raw str = ""
+        // Plan 008 batch 1: search + view projection (fold/search state baked
+        // in). Entries: {id, icon, name, description}; groups additionally
+        // {label, open, members}.
+        var search str = ""
+        var view_standalone Array<str> = []
+        var view_groups Array<str> = []
+        var has_results bool = true
+    }
+
+    msg Msg { Init, Select(str), ToggleGroup(str), Search(str) }
+
+    on {
+        .Init -> {
+            .loading = true
+            .error = ""
+            var r = fetchModulesRaw()
+            if r.ok {
+                .raw = r.text
+                var mods = []
+                let n = modulesCount(r.text)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    let m = moduleAt(r.text, i)
+                    mods.push({ id: m.id, kind: m.kind, name: m.name, icon: m.icon, description: m.description, group: m.group, format: m.format })
+                    i = i + 1
+                }
+                .modules = mods
+                var grps = []
+                let gc = groupCount(r.text)
+                var gi = 0
+                loop {
+                    if gi >= gc {
+                        break
+                    }
+                    let g = groupAt(r.text, gi)
+                    var members = []
+                    let mc = groupMemberCount(r.text, gi)
+                    var mi = 0
+                    loop {
+                        if mi >= mc {
+                            break
+                        }
+                        let mm = groupMemberAt(r.text, gi, mi)
+                        members.push({ id: mm.id, kind: mm.kind, name: mm.name, icon: mm.icon, description: mm.description, group: mm.group, format: mm.format })
+                        mi = mi + 1
+                    }
+                    grps.push({ id: g.id, label: g.label, members: members })
+                    gi = gi + 1
+                }
+                .groups = grps
+                var sa = []
+                let sc = standaloneCount(r.text)
+                var si = 0
+                loop {
+                    if si >= sc {
+                        break
+                    }
+                    let sm = standaloneAt(r.text, si)
+                    sa.push({ id: sm.id, kind: sm.kind, name: sm.name, icon: sm.icon, description: sm.description, group: sm.group, format: sm.format })
+                    si = si + 1
+                }
+                .standalone = sa
+                // seed: first group expanded by default (whole-replace, D5)
+                if groupCount(r.text) > 0 {
+                    let g0 = groupAt(r.text, 0)
+                    var has = false
+                    for x in .expanded {
+                        if x == g0.id {
+                            has = true
+                        }
+                    }
+                    if has == false && g0.id != "" {
+                        var out = []
+                        for x in .expanded {
+                            out.push(x)
+                        }
+                        out.push(g0.id)
+                        .expanded = out
+                    }
+                }
+                // Deep-link: #module-id auto-selects when valid (vm: hash is
+                // always "" so this branch skips naturally).
+                var h = getHash()
+                if h != "" {
+                    var si2 = selectInfo(.raw, h)
+                    if si2.found {
+                        .active_id = si2.id
+                        .active_kind = si2.kind
+                        .read_only = si2.read_only
+                        .title = si2.name
+                        var gid = groupOfModule(.raw, h)
+                        if gid != "" {
+                            var has2 = false
+                            for x in .expanded {
+                                if x == gid {
+                                    has2 = true
+                                }
+                            }
+                            if has2 == false {
+                                var out2 = []
+                                for x in .expanded {
+                                    out2.push(x)
+                                }
+                                out2.push(gid)
+                                .expanded = out2
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Plan 008 batch 1: rebuild the search-aware projection (open flag
+            // baked from .expanded; members filtered; has_results for the
+            // empty state) — vm views cannot call .includes(), and widget
+            // computed blocks with ext fns are vue-only.
+            var vg = []
+            let q = .search.to_lower()
+            var any_hit = false
+            for g in .groups {
+                var members = []
+                for m in g.members {
+                    var hit = true
+                    if q != "" {
+                        hit = false
+                        if m.name.to_lower().contains(q) {
+                            hit = true
+                        }
+                        if m.description.to_lower().contains(q) {
+                            hit = true
+                        }
+                    }
+                    if hit {
+                        var ncls = "nav-item w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded"
+                        var nmcls = "nav-name text-sm font-medium text-[#1a1a1a]"
+                        if .active_id == m.id {
+                            ncls = "nav-item active w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded bg-primary/10"
+                            nmcls = "nav-name text-sm font-medium text-primary"
+                        }
+                        members.push({ id: m.id, icon: m.icon, name: m.name, description: m.description, nav_class: ncls, name_class: nmcls })
+                    }
+                }
+                var open = false
+                for x in .expanded {
+                    if x == g.id {
+                        open = true
+                    }
+                }
+                if q != "" {
+                    open = true
+                }
+                if members.len() > 0 {
+                    vg.push({ id: g.id, label: g.label, open: open, members: members })
+                    any_hit = true
+                }
+            }
+            .view_groups = vg
+            var vs = []
+            for sm in .standalone {
+                var shit = true
+                if q != "" {
+                    shit = false
+                    if sm.name.to_lower().contains(q) {
+                        shit = true
+                    }
+                    if sm.description.to_lower().contains(q) {
+                        shit = true
+                    }
+                }
+                if shit {
+                    var scls = "nav-item w-full text-left flex items-start gap-3 px-3 py-[10px] rounded"
+                    var snm = "nav-name text-sm font-medium text-[#1a1a1a]"
+                    if .active_id == sm.id {
+                        scls = "nav-item active w-full text-left flex items-start gap-3 px-3 py-[10px] rounded bg-primary/10"
+                        snm = "nav-name text-sm font-medium text-primary"
+                    }
+                    vs.push({ id: sm.id, icon: sm.icon, name: sm.name, description: sm.description, nav_class: scls, name_class: snm })
+                    any_hit = true
+                }
+            }
+            .view_standalone = vs
+            .has_results = any_hit
+            if r.ok == false {
+                .error = r.error
+                .modules = []
+                .groups = []
+                .standalone = []
+                .view_groups = []
+                .view_standalone = []
+                .has_results = true
+            }
+            .loading = false
+        }
+
+        .Select(id) -> {
+            var si = selectInfo(.raw, id)
+            if si.found {
+                .active_id = si.id
+                .active_kind = si.kind
+                .read_only = si.read_only
+                .title = si.name
+                var gid = groupOfModule(.raw, id)
+                if gid != "" {
+                    var has = false
+                    for x in .expanded {
+                        if x == gid {
+                            has = true
+                        }
+                    }
+                    if has == false {
+                        var out = []
+                        for x in .expanded {
+                            out.push(x)
+                        }
+                        out.push(gid)
+                        .expanded = out
+                    }
+                }
+            }
+
+            // Plan 008 batch 1: rebuild the search-aware projection (open flag
+            // baked from .expanded; members filtered; has_results for the
+            // empty state) — vm views cannot call .includes(), and widget
+            // computed blocks with ext fns are vue-only.
+            var vg = []
+            let q = .search.to_lower()
+            var any_hit = false
+            for g in .groups {
+                var members = []
+                for m in g.members {
+                    var hit = true
+                    if q != "" {
+                        hit = false
+                        if m.name.to_lower().contains(q) {
+                            hit = true
+                        }
+                        if m.description.to_lower().contains(q) {
+                            hit = true
+                        }
+                    }
+                    if hit {
+                        var ncls = "nav-item w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded"
+                        var nmcls = "nav-name text-sm font-medium text-[#1a1a1a]"
+                        if .active_id == m.id {
+                            ncls = "nav-item active w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded bg-primary/10"
+                            nmcls = "nav-name text-sm font-medium text-primary"
+                        }
+                        members.push({ id: m.id, icon: m.icon, name: m.name, description: m.description, nav_class: ncls, name_class: nmcls })
+                    }
+                }
+                var open = false
+                for x in .expanded {
+                    if x == g.id {
+                        open = true
+                    }
+                }
+                if q != "" {
+                    open = true
+                }
+                if members.len() > 0 {
+                    vg.push({ id: g.id, label: g.label, open: open, members: members })
+                    any_hit = true
+                }
+            }
+            .view_groups = vg
+            var vs = []
+            for sm in .standalone {
+                var shit = true
+                if q != "" {
+                    shit = false
+                    if sm.name.to_lower().contains(q) {
+                        shit = true
+                    }
+                    if sm.description.to_lower().contains(q) {
+                        shit = true
+                    }
+                }
+                if shit {
+                    var scls = "nav-item w-full text-left flex items-start gap-3 px-3 py-[10px] rounded"
+                    var snm = "nav-name text-sm font-medium text-[#1a1a1a]"
+                    if .active_id == sm.id {
+                        scls = "nav-item active w-full text-left flex items-start gap-3 px-3 py-[10px] rounded bg-primary/10"
+                        snm = "nav-name text-sm font-medium text-primary"
+                    }
+                    vs.push({ id: sm.id, icon: sm.icon, name: sm.name, description: sm.description, nav_class: scls, name_class: snm })
+                    any_hit = true
+                }
+            }
+            .view_standalone = vs
+            .has_results = any_hit
+        }
+
+        .ToggleGroup(gid) -> {
+            var has = false
+            for x in .expanded {
+                if x == gid {
+                    has = true
+                }
+            }
+            var out = []
+            if has {
+                for x in .expanded {
+                    if x != gid {
+                        out.push(x)
+                    }
+                }
+            }
+            if has == false {
+                for x in .expanded {
+                    out.push(x)
+                }
+                out.push(gid)
+            }
+            .expanded = out
+
+            // Plan 008 batch 1: rebuild the search-aware projection (open flag
+            // baked from .expanded; members filtered; has_results for the
+            // empty state) — vm views cannot call .includes(), and widget
+            // computed blocks with ext fns are vue-only.
+            var vg = []
+            let q = .search.to_lower()
+            var any_hit = false
+            for g in .groups {
+                var members = []
+                for m in g.members {
+                    var hit = true
+                    if q != "" {
+                        hit = false
+                        if m.name.to_lower().contains(q) {
+                            hit = true
+                        }
+                        if m.description.to_lower().contains(q) {
+                            hit = true
+                        }
+                    }
+                    if hit {
+                        var ncls = "nav-item w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded"
+                        var nmcls = "nav-name text-sm font-medium text-[#1a1a1a]"
+                        if .active_id == m.id {
+                            ncls = "nav-item active w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded bg-primary/10"
+                            nmcls = "nav-name text-sm font-medium text-primary"
+                        }
+                        members.push({ id: m.id, icon: m.icon, name: m.name, description: m.description, nav_class: ncls, name_class: nmcls })
+                    }
+                }
+                var open = false
+                for x in .expanded {
+                    if x == g.id {
+                        open = true
+                    }
+                }
+                if q != "" {
+                    open = true
+                }
+                if members.len() > 0 {
+                    vg.push({ id: g.id, label: g.label, open: open, members: members })
+                    any_hit = true
+                }
+            }
+            .view_groups = vg
+            var vs = []
+            for sm in .standalone {
+                var shit = true
+                if q != "" {
+                    shit = false
+                    if sm.name.to_lower().contains(q) {
+                        shit = true
+                    }
+                    if sm.description.to_lower().contains(q) {
+                        shit = true
+                    }
+                }
+                if shit {
+                    var scls = "nav-item w-full text-left flex items-start gap-3 px-3 py-[10px] rounded"
+                    var snm = "nav-name text-sm font-medium text-[#1a1a1a]"
+                    if .active_id == sm.id {
+                        scls = "nav-item active w-full text-left flex items-start gap-3 px-3 py-[10px] rounded bg-primary/10"
+                        snm = "nav-name text-sm font-medium text-primary"
+                    }
+                    vs.push({ id: sm.id, icon: sm.icon, name: sm.name, description: sm.description, nav_class: scls, name_class: snm })
+                    any_hit = true
+                }
+            }
+            .view_standalone = vs
+            .has_results = any_hit
+        }
+
+        .Search(query) -> {
+            .search = query
+
+            // Plan 008 batch 1: rebuild the search-aware projection (open flag
+            // baked from .expanded; members filtered; has_results for the
+            // empty state) — vm views cannot call .includes(), and widget
+            // computed blocks with ext fns are vue-only.
+            var vg = []
+            let q = .search.to_lower()
+            var any_hit = false
+            for g in .groups {
+                var members = []
+                for m in g.members {
+                    var hit = true
+                    if q != "" {
+                        hit = false
+                        if m.name.to_lower().contains(q) {
+                            hit = true
+                        }
+                        if m.description.to_lower().contains(q) {
+                            hit = true
+                        }
+                    }
+                    if hit {
+                        var ncls = "nav-item w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded"
+                        var nmcls = "nav-name text-sm font-medium text-[#1a1a1a]"
+                        if .active_id == m.id {
+                            ncls = "nav-item active w-full text-left flex items-start gap-3 pl-[28px] pr-3 py-[10px] rounded bg-primary/10"
+                            nmcls = "nav-name text-sm font-medium text-primary"
+                        }
+                        members.push({ id: m.id, icon: m.icon, name: m.name, description: m.description, nav_class: ncls, name_class: nmcls })
+                    }
+                }
+                var open = false
+                for x in .expanded {
+                    if x == g.id {
+                        open = true
+                    }
+                }
+                if q != "" {
+                    open = true
+                }
+                if members.len() > 0 {
+                    vg.push({ id: g.id, label: g.label, open: open, members: members })
+                    any_hit = true
+                }
+            }
+            .view_groups = vg
+            var vs = []
+            for sm in .standalone {
+                var shit = true
+                if q != "" {
+                    shit = false
+                    if sm.name.to_lower().contains(q) {
+                        shit = true
+                    }
+                    if sm.description.to_lower().contains(q) {
+                        shit = true
+                    }
+                }
+                if shit {
+                    var scls = "nav-item w-full text-left flex items-start gap-3 px-3 py-[10px] rounded"
+                    var snm = "nav-name text-sm font-medium text-[#1a1a1a]"
+                    if .active_id == sm.id {
+                        scls = "nav-item active w-full text-left flex items-start gap-3 px-3 py-[10px] rounded bg-primary/10"
+                        snm = "nav-name text-sm font-medium text-primary"
+                    }
+                    vs.push({ id: sm.id, icon: sm.icon, name: sm.name, description: sm.description, nav_class: scls, name_class: snm })
+                    any_hit = true
+                }
+            }
+            .view_standalone = vs
+            .has_results = any_hit
+        }
+    }
+}

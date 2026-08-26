@@ -208,6 +208,20 @@ impl VmBridge {
         import_aliases: &std::collections::HashMap<String, String>,
         api_over_http: bool,
     ) -> Result<Self> {
+        // Plan 446 批一 (C1-3): 任一被引用模块 parse 失败 → 桥接构造致命。
+        // 此前 parse 失败仅 WARN,模块符号静默消失,应用以空壳/半壳渲染,
+        // 极难定位(os-config C1/J1 现场共同诉求:显式报错优于静默)。
+        {
+            let failures = crate::ui_module_parse_failures().lock().unwrap();
+            if !failures.is_empty() {
+                return Err(VmBridgeError::InvalidState(format!(
+                    "{} module(s) failed to parse (plan-446 C1-3, see stderr): [{}]",
+                    failures.len(),
+                    failures.join(" | ")
+                )));
+            }
+        }
+
         // Ensure BIGVM_NATIVES is populated before AutoVM::new()
         crate::vm::native_registry::register_builtin_natives();
 
@@ -1004,9 +1018,12 @@ impl VmBridge {
             }
         }
 
-        self.vm
-            .call_fn_by_name(&mut task, &fn_name, 1 + args.len())
-            .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+        // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
+        // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
+        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
+        call_result.map_err(|e| {
+            VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+        })
     }
 
     /// Plan 442 A5: fire every due one-shot timer (set_timeout). Event-form
@@ -1083,9 +1100,12 @@ impl VmBridge {
             }
         }
 
-        self.vm
-            .call_fn_by_name(&mut task, &fn_name, 1 + args.len())
-            .map_err(|e| VmBridgeError::VmError(format!("{:?}", e)))
+        // Plan 446 批一 (F1): 失败时带上崩点 ip + handler 名 —— VMError 本身
+        // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
+        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
+        call_result.map_err(|e| {
+            VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+        })
     }
 
     /// Get the widget name.

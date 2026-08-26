@@ -1,0 +1,50 @@
+// app.at — VM desktop root (Plan 007 Phase 4; Plan 008 batch 1: the unified
+// Sidebar replaces SidebarVm + ThemePickerVm — one view source per widget,
+// vue regen just emits an unused App.vue while the web root stays AppShell).
+//
+// VG16: one store per widget — the root owns Modules only; the collection
+// browser and editors are separate child widgets with their own store
+// imports.
+use modules_store: Modules
+use sidebar: Sidebar
+use vm_collection: CollectionBrowserVm
+use daemon_view: DaemonView
+
+widget App {
+    msg Msg { Init }
+
+    view {
+        row (style: "h-full w-full") {
+            Sidebar { }
+            col (style: "flex-1") {
+                if .store.loading {
+                    text (text: "Loading configuration...", style: "p-4") {}
+                }
+                if .store.error != "" {
+                    text (text: "⚠️ " + .store.error, style: "p-4 text-[#c42b1c]") {}
+                }
+                if .store.loading == false && .store.error == "" {
+                    if .store.active_kind == "" {
+                        text (text: "Select a module from the left to configure it.", style: "p-4") {}
+                    }
+                    if .store.active_kind == "file" {
+                        if .store.active_id == "ai-daemon" {
+                            DaemonView(module_id: .store.active_id) { }
+                            ConfigEditor(module_id: .store.active_id) { }
+                        }
+                        if .store.active_id != "ai-daemon" {
+                            ConfigEditorVm(module_id: .store.active_id) { }
+                        }
+                    }
+                    if .store.active_kind == "collection" {
+                        CollectionBrowserVm(module_id: .store.active_id, read_only: .store.read_only) { }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { store.Init() }
+    }
+}

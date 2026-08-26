@@ -847,8 +847,12 @@ impl Component for DynamicComponent {
         // Execute handler via VM bytecode closure, forwarding payload args so a
         // handler declared `.SelectDay(date) ->` receives them as parameters.
         // Only mark dirty if handler was found and executed successfully.
-        if self.bridge.call_handler(&event_name, &args).is_ok() {
-            self.dirty = true;
+        // Plan 446 批一 (F1): 失败诊断无条件打 stderr(与 dispatch 主路径同款)。
+        match self.bridge.call_handler(&event_name, &args) {
+            Ok(()) => { self.dirty = true; }
+            Err(e) => {
+                eprintln!("[VM-HANDLER] {}.{} failed: {}", self.widget_name, event_name, e);
+            }
         }
     }
 
@@ -886,7 +890,14 @@ impl DynamicComponent {
         }
         match self.bridge.call_handler("Init", &[]) {
             Ok(_) => self.dirty = true,
-            Err(e) => log::warn!("fire_init: Init handler failed (state may be unpopulated): {:?}", e),
+            // Plan 446 批一 (F1): Init 失败从 log::warn 升级为无条件 stderr ——
+            // Init 失败 = 状态未填充,整屏静默空白,必须醒目。
+            Err(e) => {
+                eprintln!(
+                    "[VM-HANDLER] {}.Init failed (state may be unpopulated): {}",
+                    self.widget_name, e
+                );
+            }
         }
     }
 
@@ -985,11 +996,15 @@ impl DynamicComponent {
             }
             Err(_e) => {
                 // Plan 057 (ash-gui 双执行修复): handler 错误此前被完全吞掉(静默中止,
-                // 后续语句全部不执行且无任何日志)。ASH_DEBUG_VM_LOG=1 时打出
-                // 错误,便于定位 abort 点。
-                if std::env::var("ASH_DEBUG_VM_LOG").is_ok() {
-                    eprintln!("[VM-HANDLER] {} failed: {}", clean_name, _e);
-                }
+                // 后续语句全部不执行且无任何日志)。
+                // Plan 446 批一 (F1): 诊断无条件打 stderr —— 此前仅
+                // ASH_DEBUG_VM_LOG=1 可见,os-config 现场靠逐句插桩才能定位崩溃
+                // handler,成本极高。崩点 ip/handler 名由 vm_bridge 附加。
+                eprintln!(
+                    "[VM-HANDLER] {}.{} failed: {}",
+                    if widget_name.is_empty() { &self.widget_name } else { widget_name },
+                    clean_name, _e
+                );
                 // Fallback: try legacy handler_<Event> on root state (backward compat).
                 // ⚠️ 仅当本消息本就属于根 widget 时才回退 —— 若给子 widget/store 的
                 // handler 失败后去根 widget 找同名 handler,会误执行一个语义完全
@@ -999,9 +1014,10 @@ impl DynamicComponent {
                     match self.bridge.call_handler(&clean_name, &args) {
                         Ok(()) => { self.dirty = true; }
                         Err(_e2) => {
-                            if std::env::var("ASH_DEBUG_VM_LOG").is_ok() {
-                                eprintln!("[VM-HANDLER] {} legacy also failed: {}", clean_name, _e2);
-                            }
+                            eprintln!(
+                                "[VM-HANDLER] {}.{} legacy fallback also failed: {}",
+                                self.widget_name, clean_name, _e2
+                            );
                         }
                     }
                 }

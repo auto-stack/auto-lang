@@ -1,0 +1,398 @@
+// scalar_fields.at — the 8-control leaf dispatcher (Plan 006 Phase 4).
+// Port of src/editor/controls/ScalarFields.vue; the descriptor-driven
+// dispatch is probe A's validated architecture. Enum options load through
+// a watch on the (computed) optionsFrom source — spec objects are replaced
+// on every edit (whole-entry rebuild), so the watch re-fires like the
+// original's `watch(() => props.spec.optionsFrom)`.
+
+widget ScalarFields(spec: map, modelValue: map, path: str, on_value: msg) {
+    use {
+        fn: loadEnum, enumUrlOf from "src/front/utils/controls_ext.ts"
+    }
+    msg Msg {
+        Value(map),
+        Changed, ToggleChanged,
+        ToggleReveal,
+        TagInputChanged,
+        AddTag,
+        RemoveTag(str),
+        ToggleOption(str),
+        PickChanged,
+        NumChanged
+    }
+
+    model {
+        var reveal bool = false
+        var tag_input str = ""
+        var options Array<str> = []
+        var val Array<str> = None
+    }
+
+    computed {
+        opts_src => .spec.optionsFrom
+        has_options => .options.len() > 0
+        // show "(current)" option when the value isn't among the options
+        has_current => .modelValue != nil && .modelValue != "" && .options.find(x => x.value == .modelValue) == nil
+    }
+
+    watch {
+        .modelValue.immediate -> { .val = .modelValue }
+        .opts_src.immediate -> {
+            .options = []
+            var u = enumUrlOf(.spec.optionsFrom)
+            if u != "" {
+                var p = loadEnum(u)
+                p.then((opts) => {
+                    .options = opts
+                })
+            }
+        }
+    }
+
+    view {
+        div {
+            class: "field-row"
+            label {
+                class: "field-label"
+                text .spec.label
+            }
+            div {
+                class: "field-control"
+
+                if .spec.kind == "toggle" {
+                    label {
+                        class: "toggle"
+                        input {
+                            type: "checkbox"
+                            checked: .modelValue
+                            onchange: .ToggleChanged($event)
+                        }
+                        span {
+                            class: "toggle-track"
+                            span { class: "toggle-thumb" }
+                        }
+                        span {
+                            class: "toggle-text"
+                            if .modelValue { text "On" }
+                            if .modelValue == false { text "Off" }
+                        }
+                    }
+                } else if .spec.kind == "number" {
+                    input {
+                        class: "input"
+                        "type": "number"
+                        value: .val
+                        oninput: .NumChanged($event)
+                    }
+                } else if .spec.kind == "password" {
+                    div {
+                        class: "secret"
+                        input {
+                            class: "input"
+                            type: if .reveal { "text" } else { "password" }
+                            value: .val
+                            oninput: .Changed($event)
+                            placeholder: "(not set)"
+                            autocomplete: "off"
+                        }
+                        button {
+                            class: "reveal"
+                            onclick: .ToggleReveal
+                            if .reveal { text "🙈" }
+                            if .reveal == false { text "👁" }
+                        }
+                    }
+                } else if .spec.kind == "select" {
+                    if .has_options {
+                        select {
+                            class: "input"
+                            value: .val
+                            onchange: .PickChanged($event)
+                            for o in .options {
+                                option {
+                                    key: o.value
+                                    value: o.value
+                                    text o.label
+                                }
+                            }
+                            if .has_current {
+                                option {
+                                    value: .val
+                                    text f"${.modelValue} (current)"
+                                }
+                            }
+                        }
+                    }
+                    if .has_options == false {
+                        div {
+                            class: "fallback-text"
+                            input {
+                                class: "input"
+                                type: "text"
+                                value: .val
+                                oninput: .Changed($event)
+                                placeholder: "(not set)"
+                            }
+                            span {
+                                class: "fallback-hint"
+                                text "no options available (e.g. builtin-only) — type freely"
+                            }
+                        }
+                    }
+                } else if .spec.kind == "multiselect" {
+                    div {
+                        class: "multiselect"
+                        for o in .options {
+                            label {
+                                class: "ms-item"
+                                key: .o.value
+                                input {
+                                    type: "checkbox"
+                                    checked: .modelValue != nil && .modelValue.includes(.o.value)
+                                    onclick: .ToggleOption(.o.value)
+                                }
+                                text .o.label
+                            }
+                        }
+                        if .has_options == false {
+                            p {
+                                class: "ms-empty"
+                                text "No options available (directory empty or missing)."
+                            }
+                        }
+                    }
+                } else if .spec.kind == "tags" {
+                    div {
+                        class: "tags"
+                        for t in .modelValue {
+                            span {
+                                class: "tag"
+                                key: .t
+                                text .t
+                                button {
+                                    class: "tag-x"
+                                    onclick: .RemoveTag(.t)
+                                    text "×"
+                                }
+                            }
+                        }
+                        input {
+                            class: "tag-input"
+                            value: .tag_input
+                            oninput: .TagInputChanged
+                            onkeyup: .TagInputChanged
+                            onkeydown.enter.prevent: .AddTag
+                            placeholder: "add…"
+                        }
+                    }
+                } else {
+                    input {
+                        class: "input"
+                        type: "text"
+                        value: .val
+                        oninput: .Changed($event)
+                        placeholder: "(empty)"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+
+        .Changed(e) -> { on_value({ path: .path, value: e.target.value }) }
+        .ToggleChanged(e) -> { on_value({ path: .path, value: e.target.checked }) }
+        .NumChanged(e) -> { on_value({ path: .path, value: e.target.value.to_int() }) }
+        .ToggleReveal -> { .reveal = !.reveal }
+        .TagInputChanged -> { .tag_input = .tag_input }
+        .AddTag -> {
+            if .tag_input.trim() != "" {
+                var arr = []
+                if .modelValue != nil { arr = .modelValue }
+                if arr.includes(.tag_input.trim()) == false {
+                    on_value({ path: .path, value: arr.concat([.tag_input.trim()]) })
+                }
+                .tag_input = ""
+            }
+        }
+        .RemoveTag(t) -> {
+            if .modelValue != nil {
+                on_value({ path: .path, value: .modelValue.filter(x => x != t) })
+            }
+        }
+        .ToggleOption(v) -> {
+            var arr = []
+            if .modelValue != nil { arr = .modelValue }
+            if arr.includes(v) {
+                on_value({ path: .path, value: arr.filter(x => x != v) })
+            }
+            if arr.includes(v) == false {
+                on_value({ path: .path, value: arr.concat([v]) })
+            }
+        }
+        .PickChanged(e) -> { on_value({ path: .path, value: e.target.value }) }
+    }
+
+    style {
+        .field-row {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 12px;
+            align-items: start;
+            padding: 8px 0;
+        }
+        .field-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            padding-top: 6px;
+            font-weight: 500;
+        }
+        .field-control {
+            min-width: 0;
+        }
+        .input {
+            width: 100%;
+            max-width: 420px;
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 4px);
+            font-size: var(--font-size-base);
+            background: var(--bg-input);
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            font-family: inherit;
+        }
+        .input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--ring);
+        }
+        .toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .toggle input {
+            display: none;
+        }
+        .toggle-track {
+            width: 36px;
+            height: 20px;
+            border-radius: 10px;
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            position: relative;
+            transition: background 0.15s;
+        }
+        .toggle-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.15s;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+        .toggle input:checked + .toggle-track {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+        .toggle input:checked + .toggle-track .toggle-thumb {
+            transform: translateX(16px);
+        }
+        .toggle-text {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+        .secret {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            max-width: 420px;
+        }
+        .secret .input {
+            flex: 1;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: var(--font-size-sm);
+        }
+        .reveal {
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            border-radius: var(--radius-sm, 4px);
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .fallback-text {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-width: 420px;
+        }
+        .fallback-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .multiselect {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 16px;
+            max-width: 560px;
+        }
+        .ms-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: var(--font-size-sm);
+            cursor: pointer;
+        }
+        .ms-empty {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            max-width: 560px;
+        }
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 4px 2px 8px;
+            background: var(--accent-light);
+            border: 1px solid var(--accent-light);
+            border-radius: 10px;
+            font-size: var(--font-size-sm);
+            color: var(--accent);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .tag-x {
+            border: none;
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 2px;
+        }
+        .tag-x:hover {
+            color: var(--danger);
+        }
+        .tag-input {
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: var(--font-size-sm);
+            color: var(--text-primary);
+            width: 90px;
+        }
+    }
+}

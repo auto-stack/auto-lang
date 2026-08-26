@@ -2730,7 +2730,19 @@ fn aura_vtree_node(
         suffix.push_str(&format!(" [for: {}, {} = {}]", var, idx_str, val));
     }
 
-    let has_body = !node.children.is_empty() || !events.is_empty() || raw_class.map_or(false, |c| !c.is_empty());
+    // Plan 446 批一(J1 附):input/textarea 的 placeholder/value 是快照消费者
+    // (e2e findInputByPlaceholder 等)定位句柄——此前仅 class/events 非空才
+    // 开体,无样式注解的 input 打成裸行丢失 placeholder。属性面即构成 body。
+    let prop_body = matches!(
+        &node.props,
+        VNodeProps::Input { placeholder, .. } if !placeholder.is_empty()
+    ) || matches!(
+        &node.props,
+        VNodeProps::Textarea { placeholder, .. } if !placeholder.is_empty()
+    );
+    let has_body = !node.children.is_empty() || !events.is_empty()
+        || raw_class.map_or(false, |c| !c.is_empty())
+        || prop_body;
 
     // Opening line
     if let Some(lbl) = &label {

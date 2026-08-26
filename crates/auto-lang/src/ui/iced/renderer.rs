@@ -8210,6 +8210,30 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // makes the returned probe a disabled no-op (zero probe overhead here).
         let (view, id_map, _probe) = state.component.view_with_debug_gated(false);
         let view_template = Some(state.component.view_template().clone());
+        // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
+        // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
+        // ——boot 后无重建则 styled 永不落盘,快照首问必走源树回退(子 widget
+        // 裸引用/循环未展开 = os-config C1/J1 现场"空壳")。这里随每帧 MCP
+        // 同步直接推送 vtree 快照;bounds/计算样式注释仍由 6403 回路后补。
+        {
+            let span_map = state.component.span_map().clone();
+            let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+                view.clone(),
+                |path: &[u16]| {
+                    let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                    id_map
+                        .get(&p)
+                        .and_then(|aura_id| span_map.get(&aura_id))
+                        .and_then(|info| info.span)
+                        .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+                },
+            );
+            mcp.set_styled_vtree(crate::ui::mcp_server::StyledNodeSnapshot {
+                widget_name: state.component.widget_name().to_string(),
+                vtree,
+                computed: std::collections::HashMap::new(),
+            });
+        }
         mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
         // Sync window size for layout annotations (Plan 281)
         let ws = state.window_size.borrow();

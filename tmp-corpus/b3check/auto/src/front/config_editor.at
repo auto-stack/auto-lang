@@ -1,0 +1,576 @@
+// config_editor.at — the unified generic config editor (Plan 008 Phase 3
+// batch 3). ONE view source for BOTH backends, replacing the vue named-class
+// editor + ScalarFields/TableField children (Plan 006) and vm_editor.at
+// (Plan 007).
+//
+// Architecture: the vm TEXT pipeline is the canonical contract
+// (fetch/editField/editTagField over the body as a JSON string — api.ts
+// mirrors every fn). The entry list is FLAT: subform fields are interleaved
+// right after their subform row (subAt, dotted keys, depth=1) — no nested
+// arrays in model maps (VG flat-return discipline), handler reads stay
+// chain-direct off fn calls (VG4: no local-var map forwarding), and there
+// are NO handler-to-handler msg calls (vue codegen emits those as dead
+// identifiers — the rebuild/save flows are inlined per site).
+//
+// Registered deviations (D7 convergence-down, per plan): select renders as
+// free text + enum hint (no dropdown on vm); table & nested-subform render
+// as readonly JSON; toggle is a plain checkbox; tags/multiselect are
+// add-only (chip removal v1); confirm dialogs are inline rows; Load button
+// on both tracks (vm children get no auto-Init). Vocabulary per
+// auto/README; marker classes (field-row/field-label/subform/dirty/mono…)
+// are inert test hooks.
+use back.api: fetchConfigSafe, putConfigSafe, deleteBlockSafe, entriesCount, entryAt, subCount, subAt, editField, editTagField, addBlockText, bodyHasText, metaFile
+
+widget ConfigEditor(module_id: str) {
+    msg Msg {
+        Load,
+        Save,
+        ConfirmSaveYes,
+        ConfirmSaveNo,
+        Draft(str),
+        NameDraft(str),
+        Apply(map),
+        TagAdd(map),
+        Toggle(map),
+        PwToggle,
+        ToggleAddBlock,
+        AddBlock,
+        CancelAddBlock,
+        AskDelete(str),
+        ConfirmDeleteYes,
+        ConfirmDeleteNo
+    }
+
+    model {
+        var body str = ""
+        var entries Array<str> = []
+        var loading bool = false
+        var error str = ""
+        var dirty bool = false
+        var saving bool = false
+        var status str = ""
+        var loaded_once bool = false
+        var draft str = ""
+        var pw_show bool = false
+        var meta_file str = ""
+        var adding_block bool = false
+        var new_block_name str = ""
+        var block_error str = ""
+        var confirm_save bool = false
+        var save_acked bool = false
+        var confirm_del str = ""
+    }
+
+    view {
+        col (style: "config-editor max-w-[820px] gap-2") {
+            row (style: "toolbar flex items-center gap-3 py-2 border-b border-[#e0e0e0]") {
+                text (text: .meta_file, style: "mono text-xs text-[#8a8a8a]") {}
+                if .dirty {
+                    text (text: "● unsaved", style: "dirty text-xs font-medium text-primary") {}
+                }
+                if .dirty == false {
+                    if .loaded_once {
+                        text (text: .status, style: "text-xs text-[#8a8a8a]") {}
+                    }
+                }
+                div (style: "flex-1") {}
+                if .block_error != "" {
+                    text (text: .block_error, style: "text-xs text-[#c42b1c]") {}
+                }
+                if .adding_block {
+                    input (placeholder: "block name", value: .new_block_name, style: "block-name w-[160px] px-2 py-1 text-xs border border-[#e0e0e0] rounded bg-white") {
+                        oninput: .NameDraft
+                    }
+                    button (text: "Add", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                        onclick: .AddBlock
+                    }
+                    button (text: "Cancel", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                        onclick: .CancelAddBlock
+                    }
+                }
+                if .adding_block == false {
+                    if .loaded_once {
+                        button (text: "＋ Add block", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                            onclick: .ToggleAddBlock
+                        }
+                        button (text: "Reload", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                            onclick: .Load
+                        }
+                        button (text: "Save", style: "px-4 py-1 text-xs rounded bg-primary border-primary text-white") {
+                            onclick: .Save
+                        }
+                    }
+                }
+                if .loaded_once == false {
+                    button (text: "Load", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                        onclick: .Load
+                    }
+                }
+            }
+            if .confirm_save {
+                row (style: "flex items-center gap-3 px-3 py-2 border border-[#e0e0e0] rounded bg-[#ededed]") {
+                    text (text: "Save changes to disk? (.bak backup kept)", style: "text-sm text-[#1a1a1a]") {}
+                    div (style: "flex-1") {}
+                    button (text: "Yes, save", style: "btn px-3 py-1 text-xs rounded bg-primary border-primary text-white") {
+                        onclick: .ConfirmSaveYes
+                    }
+                    button (text: "Cancel", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                        onclick: .ConfirmSaveNo
+                    }
+                }
+            }
+            if .confirm_del != "" {
+                row (style: "flex items-center gap-3 px-3 py-2 border border-[#c42b1c] rounded bg-[#ededed]") {
+                    text (text: "Delete block " + .confirm_del + "? (.bak kept)", style: "text-sm text-[#c42b1c]") {}
+                    div (style: "flex-1") {}
+                    button (text: "Yes, delete", style: "btn px-3 py-1 text-xs rounded bg-[#c42b1c] border-[#c42b1c] text-white") {
+                        onclick: .ConfirmDeleteYes
+                    }
+                    button (text: "Cancel", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                        onclick: .ConfirmDeleteNo
+                    }
+                }
+            }
+            if .loading {
+                text (text: "Loading…", style: "state-msg px-4 py-3 rounded-lg bg-[#ededed] text-sm text-[#616161]") {}
+            }
+            if .error != "" {
+                text (text: "✗ " + .error, style: "state-msg error px-4 py-3 rounded-lg text-sm text-[#c42b1c]") {}
+            }
+            col (style: "fields gap-1") {
+                for e in .entries {
+                    div (class: "contents") {
+                        key: e.key
+                        if e.kind == "subform" {
+                            row (style: "subform-header flex items-center gap-2 px-3 py-2 mt-3 border border-[#e0e0e0] rounded-t-lg bg-[#ededed]") {
+                                text (text: e.label, style: "subform-title font-semibold text-sm text-[#1a1a1a]") {}
+                                div (style: "flex-1") {}
+                                button (text: "🗑 delete", style: "btn text-xs text-[#c42b1c] border border-[#c42b1c] rounded px-2 py-[2px] bg-white") {
+                                    onclick: .AskDelete(e.key)
+                                }
+                            }
+                        }
+                        if e.kind == "table" {
+                            col (style: "field-row border rounded p-2 gap-1 bg-white") {
+                                text (text: e.label, style: "field-label text-sm font-medium text-[#616161]") {}
+                                text (text: e.frag, style: "text-xs text-[#8a8a8a] font-mono") {}
+                            }
+                        }
+                        if e.kind == "toggle" {
+                            row (style: "field-row flex items-center gap-3 py-2") {
+                                if e.depth == 1 {
+                                    div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                }
+                                text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                checkbox (id: e.key, checked: e.value == "true", label: "") {
+                                    onclick: .Toggle(e)
+                                }
+                                if e.value == "true" {
+                                    text (text: "On", style: "text-xs text-[#616161]") {}
+                                }
+                                if e.value != "true" {
+                                    text (text: "Off", style: "text-xs text-[#8a8a8a]") {}
+                                }
+                            }
+                        }
+                        if e.kind == "number" {
+                            row (style: "field-row flex items-center gap-3 py-2") {
+                                if e.depth == 1 {
+                                    div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                }
+                                text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                input (placeholder: e.label, "type": "number", value: e.value, style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px]") {
+                                    oninput: .Draft
+                                }
+                                button (text: "Apply", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                    onclick: .Apply(e)
+                                }
+                            }
+                        }
+                        if e.kind == "password" {
+                            row (style: "field-row flex items-center gap-3 py-2") {
+                                if e.depth == 1 {
+                                    div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                }
+                                text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                if .pw_show {
+                                    input (placeholder: e.label, value: e.value, style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px] font-mono") {
+                                        oninput: .Draft
+                                    }
+                                }
+                                if .pw_show == false {
+                                    input (placeholder: e.label, "type": "password", value: e.value, style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px] font-mono") {
+                                        oninput: .Draft
+                                    }
+                                }
+                                button (text: "👁", style: "btn px-2 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                    onclick: .PwToggle
+                                }
+                                button (text: "Apply", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                    onclick: .Apply(e)
+                                }
+                            }
+                        }
+                        if e.kind == "text" {
+                            row (style: "field-row flex items-center gap-3 py-2") {
+                                if e.depth == 1 {
+                                    div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                }
+                                text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                input (placeholder: e.label, value: e.value, style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px]") {
+                                    oninput: .Draft
+                                }
+                                button (text: "Apply", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                    onclick: .Apply(e)
+                                }
+                            }
+                        }
+                        if e.kind == "select" {
+                            col (style: "field-row py-2 gap-1") {
+                                row (style: "flex items-center gap-3") {
+                                    if e.depth == 1 {
+                                        div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                    }
+                                    text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                    input (placeholder: e.label, value: e.value, style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px]") {
+                                        oninput: .Draft
+                                    }
+                                    button (text: "Apply", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                        onclick: .Apply(e)
+                                    }
+                                }
+                                if e.url != "" {
+                                    text (text: "(select — free text accepted)", style: "text-xs text-[#8a8a8a]") {}
+                                }
+                            }
+                        }
+                        if e.kind == "tags" {
+                            col (style: "field-row py-2 gap-1") {
+                                row (style: "flex items-center gap-3") {
+                                    if e.depth == 1 {
+                                        div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                    }
+                                    text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                    input (placeholder: "add value", style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px]") {
+                                        oninput: .Draft
+                                    }
+                                    button (text: "Add", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                        onclick: .TagAdd(e)
+                                    }
+                                }
+                                text (text: e.value, style: "text-xs text-[#8a8a8a] font-mono") {}
+                            }
+                        }
+                        if e.kind == "multiselect" {
+                            col (style: "field-row py-2 gap-1") {
+                                row (style: "flex items-center gap-3") {
+                                    if e.depth == 1 {
+                                        div (style: "w-4 shrink-0 border-l-2 border-[#e0e0e0]") {}
+                                    }
+                                    text (text: e.label, style: "field-label text-sm font-medium text-[#616161] w-[160px] shrink-0") {}
+                                    input (placeholder: "add value", style: "input px-[10px] py-[6px] text-sm border border-[#e0e0e0] rounded bg-white w-[240px]") {
+                                        oninput: .Draft
+                                    }
+                                    button (text: "Add", style: "btn px-3 py-1 text-xs rounded border border-[#e0e0e0] bg-white") {
+                                        onclick: .TagAdd(e)
+                                    }
+                                }
+                                text (text: e.value, style: "text-xs text-[#8a8a8a] font-mono") {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Load -> {
+            .loading = true
+            .error = ""
+            var r = fetchConfigSafe(.module_id)
+            if r.ok {
+                .body = r.value
+                .meta_file = metaFile(r.meta)
+                .dirty = false
+                .loaded_once = true
+                .status = "loaded"
+                var es = []
+                let n = entriesCount(.body)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    es.push(entryAt(.body, i, .module_id))
+                    if entryAt(.body, i, .module_id).kind == "subform" {
+                        let sc = subCount(entryAt(.body, i, .module_id).frag)
+                        var j = 0
+                        loop {
+                            if j >= sc {
+                                break
+                            }
+                            es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                            j = j + 1
+                        }
+                    }
+                    i = i + 1
+                }
+                .entries = es
+                .draft = ""
+            }
+            if r.ok == false {
+                .error = "Failed to load config"
+            }
+            .loading = false
+        }
+
+        .Draft(v str) -> {
+            .draft = v
+        }
+
+        .NameDraft(v str) -> {
+            .new_block_name = v
+        }
+
+        .PwToggle -> {
+            .pw_show = .pw_show == false
+        }
+
+        .Toggle(e) -> {
+            var nv = "false"
+            if e.value == "false" || e.value == "" {
+                nv = "true"
+            }
+            .body = editField(.body, e.key, nv)
+            .dirty = true
+            var es = []
+            let n = entriesCount(.body)
+            var i = 0
+            loop {
+                if i >= n {
+                    break
+                }
+                es.push(entryAt(.body, i, .module_id))
+                if entryAt(.body, i, .module_id).kind == "subform" {
+                    let sc = subCount(entryAt(.body, i, .module_id).frag)
+                    var j = 0
+                    loop {
+                        if j >= sc {
+                            break
+                        }
+                        es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                        j = j + 1
+                    }
+                }
+                i = i + 1
+            }
+            .entries = es
+            .draft = ""
+        }
+
+        .Apply(e) -> {
+            if .draft != "" {
+                .body = editField(.body, e.key, .draft)
+                .dirty = true
+                var es = []
+                let n = entriesCount(.body)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    es.push(entryAt(.body, i, .module_id))
+                    if entryAt(.body, i, .module_id).kind == "subform" {
+                        let sc = subCount(entryAt(.body, i, .module_id).frag)
+                        var j = 0
+                        loop {
+                            if j >= sc {
+                                break
+                            }
+                            es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                            j = j + 1
+                        }
+                    }
+                    i = i + 1
+                }
+                .entries = es
+                .draft = ""
+            }
+        }
+
+        .TagAdd(e) -> {
+            if .draft != "" {
+                .body = editTagField(.body, e.key, .draft, "")
+                .dirty = true
+                var es = []
+                let n = entriesCount(.body)
+                var i = 0
+                loop {
+                    if i >= n {
+                        break
+                    }
+                    es.push(entryAt(.body, i, .module_id))
+                    if entryAt(.body, i, .module_id).kind == "subform" {
+                        let sc = subCount(entryAt(.body, i, .module_id).frag)
+                        var j = 0
+                        loop {
+                            if j >= sc {
+                                break
+                            }
+                            es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                            j = j + 1
+                        }
+                    }
+                    i = i + 1
+                }
+                .entries = es
+                .draft = ""
+            }
+        }
+
+        .Save -> {
+            if .dirty && .body != "" {
+                if .save_acked {
+                    .saving = true
+                    .status = "saving…"
+                    var r = putConfigSafe(.module_id, .body)
+                    if r.ok {
+                        .dirty = false
+                        .status = "saved ✓"
+                    }
+                    if r.ok == false {
+                        .status = "save failed"
+                        .error = r.error
+                    }
+                    .saving = false
+                }
+                if .save_acked == false {
+                    .confirm_save = true
+                }
+            }
+        }
+
+        .ConfirmSaveYes -> {
+            .confirm_save = false
+            .save_acked = true
+            .saving = true
+            .status = "saving…"
+            var r = putConfigSafe(.module_id, .body)
+            if r.ok {
+                .dirty = false
+                .status = "saved ✓"
+            }
+            if r.ok == false {
+                .status = "save failed"
+                .error = r.error
+            }
+            .saving = false
+        }
+
+        .ConfirmSaveNo -> {
+            .confirm_save = false
+        }
+
+        .ToggleAddBlock -> {
+            .adding_block = .adding_block == false
+            .block_error = ""
+        }
+
+        .AddBlock -> {
+            var name = .new_block_name.trim()
+            if name != "" {
+                if bodyHasText(.body, name) {
+                    .block_error = "\"" + name + "\" already exists in this config"
+                }
+                if bodyHasText(.body, name) == false {
+                    .body = addBlockText(.body, name)
+                    .dirty = true
+                    .new_block_name = ""
+                    .adding_block = false
+                    .block_error = ""
+                    var es = []
+                    let n = entriesCount(.body)
+                    var i = 0
+                    loop {
+                        if i >= n {
+                            break
+                        }
+                        es.push(entryAt(.body, i, .module_id))
+                        if entryAt(.body, i, .module_id).kind == "subform" {
+                            let sc = subCount(entryAt(.body, i, .module_id).frag)
+                            var j = 0
+                            loop {
+                                if j >= sc {
+                                    break
+                                }
+                                es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                                j = j + 1
+                            }
+                        }
+                        i = i + 1
+                    }
+                    .entries = es
+                    .draft = ""
+                }
+            }
+        }
+
+        .CancelAddBlock -> {
+            .adding_block = false
+            .new_block_name = ""
+            .block_error = ""
+        }
+
+        .AskDelete(name) -> {
+            .confirm_del = name
+        }
+
+        .ConfirmDeleteYes -> {
+            var r = deleteBlockSafe(.module_id, .confirm_del)
+            .confirm_del = ""
+            if r.ok {
+                .block_error = ""
+                var q = fetchConfigSafe(.module_id)
+                if q.ok {
+                    .body = q.value
+                    .meta_file = metaFile(q.meta)
+                    .dirty = false
+                    var es = []
+                    let n = entriesCount(.body)
+                    var i = 0
+                    loop {
+                        if i >= n {
+                            break
+                        }
+                        es.push(entryAt(.body, i, .module_id))
+                        if entryAt(.body, i, .module_id).kind == "subform" {
+                            let sc = subCount(entryAt(.body, i, .module_id).frag)
+                            var j = 0
+                            loop {
+                                if j >= sc {
+                                    break
+                                }
+                                es.push(subAt(.body, entryAt(.body, i, .module_id).key, j, .module_id))
+                                j = j + 1
+                            }
+                        }
+                        i = i + 1
+                    }
+                    .entries = es
+                    .draft = ""
+                }
+                if q.ok == false {
+                    .error = q.error
+                }
+            }
+            if r.ok == false {
+                .block_error = "Delete failed"
+            }
+        }
+
+        .ConfirmDeleteNo -> {
+            .confirm_del = ""
+        }
+    }
+}

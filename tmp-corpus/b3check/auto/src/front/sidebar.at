@@ -1,0 +1,111 @@
+// sidebar.at — unified module navigation (Plan 008 Phase 3 batch 1).
+//
+// ONE view source for BOTH backends: vue (regen → Sidebar.vue consumed by
+// AppShell) and vm (auto run -r vm, child of the vm root App). Replaces the
+// vue-only named-class sidebar (Plan 006) AND sidebar_vm.at (Plan 007).
+//
+// Style vocabulary per auto/README §共享样式词汇 (Plan 008 Phase 2):
+//   - marker classes (sidebar/nav-item/nav-name/nav-desc/theme-picker/swatch)
+//     are INERT test hooks — no CSS defines them on web, vm skips them;
+//   - neutrals are deterministic hex classes; accent only via `primary`;
+//   - no fractional spacing (vm drops py-1.5/gap-1.5);
+//   - conditional classes use if-literal form (P1-proven both backends).
+//
+// Structure notes:
+//   - search/filter/fold state lives in modules_store projections
+//     (view_standalone/view_groups) — vm views cannot call .includes(), and
+//     widget `computed` blocks with ext fns are vue-only;
+//   - nav buttons carry two spans (name / description): vue renders them as
+//     stacked elements, vm collapses children into a two-line label
+//     (extract_children_text joins with \n) — D5 structural parity;
+//   - the theme picker moved into its own ThemePicker widget (VG16: one
+//     store per widget — Sidebar owns Modules only).
+use modules_store: Modules
+use theme_picker: ThemePicker
+
+widget Sidebar {
+    msg Msg { SearchChanged(str), SelectModule(str), ToggleGroup(str) }
+
+    view {
+        aside (style: "sidebar flex flex-col w-[280px] shrink-0 bg-[#f9f9f9] border-r border-[#e0e0e0]") {
+            div (style: "flex items-center gap-2 px-5 py-4 text-base font-semibold text-[#1a1a1a]") {
+                span (text: "⚙️", style: "text-xl") {}
+                text (text: "AutoOS Settings") {}
+            }
+            div (style: "px-4 pb-3") {
+                input (style: "search-input w-full px-3 py-2 text-sm bg-[#f0f0f0] border border-[#e0e0e0] rounded", value: .store.search, oninput: .SearchChanged, placeholder: "Search settings") {}
+            }
+            nav (style: "nav-list flex-1 overflow-auto px-2") {
+                if .store.search == "" {
+                    for m in .store.view_standalone {
+                        button (class: m.nav_class, key: m.id) {
+                            onclick: .SelectModule(m.id)
+                            span (text: m.icon, style: "nav-icon text-lg") {}
+                            span (text: m.name, class: m.name_class) {}
+                            span (text: m.description, style: "nav-desc text-xs text-[#8a8a8a]") {}
+                        }
+                    }
+                }
+
+                for g in .store.view_groups {
+                    div (style: "contents") {
+                        key: g.id
+                        if .store.search == "" {
+                            button (style: "group-header w-full text-left flex items-center gap-2 px-3 py-[10px] mt-2 rounded") {
+                                key: g.id
+                                onclick: .ToggleGroup(g.id)
+                                if g.open {
+                                    text (text: "▾ ", style: "text-xs text-[#8a8a8a]") {}
+                                }
+                                if g.open == false {
+                                    text (text: "▸ ", style: "text-xs text-[#8a8a8a]") {}
+                                }
+                                text (text: g.label, style: "text-sm font-semibold text-[#1a1a1a]") {}
+                            }
+                        }
+                        if .store.search != "" {
+                            for m in g.members {
+                                button (class: m.nav_class, key: m.id) {
+                                    onclick: .SelectModule(m.id)
+                                    span (text: m.icon, style: "nav-icon text-lg") {}
+                                    span (text: m.name, class: m.name_class) {}
+                                    span (text: m.description, style: "nav-desc text-xs text-[#8a8a8a]") {}
+                                }
+                            }
+                        }
+                        if .store.search == "" {
+                            if g.open {
+                                for m in g.members {
+                                    button (class: m.nav_class, key: m.id) {
+                                        onclick: .SelectModule(m.id)
+                                        span (text: m.icon, style: "nav-icon text-lg") {}
+                                        span (text: m.name, class: m.name_class) {}
+                                        span (text: m.description, style: "nav-desc text-xs text-[#8a8a8a]") {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if .store.loading {
+                    text (text: "Loading modules...", style: "block p-4 text-center text-xs text-[#8a8a8a]") {}
+                }
+                if .store.loading == false {
+                    if .store.search != "" {
+                        if .store.has_results == false {
+                            text (text: "No modules found.", style: "block p-4 text-center text-xs text-[#8a8a8a]") {}
+                        }
+                    }
+                }
+            }
+            ThemePicker { }
+        }
+    }
+
+    on {
+        .SearchChanged(q) -> { store.Search(q) }
+        .SelectModule(mid) -> { store.Select(mid) }
+        .ToggleGroup(gid) -> { store.ToggleGroup(gid) }
+    }
+}

@@ -1,0 +1,669 @@
+// collection_browser.at — master-detail browser for collection modules
+// (Plan 006 Phase 3). Port of the hand-written src/components/CollectionBrowser.vue.
+// State lives in the Collection store; list filtering runs in a computed via
+// the ext helper (jade call-computed pattern). The atom body renders through
+// the still hand-written ScalarFields/TableField until Phase 4.
+
+widget CollectionBrowser(module_id: str, read_only: bool) {
+    use {
+    composable: useCollectionStore from "src/front/utils/collection_store_ext.ts"
+    fn: filterEntities from "src/front/utils/collection_store_ext.ts"
+    component: ScalarFields, TableField from "src/front/utils/collection_store_ext.ts"
+}
+
+    msg Msg {
+        Init,
+        FilterChanged,
+        ToggleCreate,
+        NewNameChanged,
+        DoCreate,
+        CancelCreate,
+        SelectEntity(str),
+        Reload,
+        Save,
+        AskDelete,
+        CancelDelete,
+        DoDelete,
+        BackdropClose(map),
+        FieldEdited(map),
+        SidecarChanged
+    }
+
+    model {
+        var filter str = ""
+        var creating bool = false
+        var new_name str = ""
+        var confirm_delete ?str = None
+        var sidecar_draft str = ""
+    }
+
+    computed {
+        can_edit => read_only == false && collectionStore.is_read_only == false
+        filtered => filterEntities(collectionStore.list, .filter)
+    }
+
+    view {
+        div {
+            class: "collection"
+
+            // ── List pane ────────────────────────────────────────────────
+            aside {
+                class: "list-pane"
+                div {
+                    class: "list-head"
+                    input {
+                        class: "filter-input"
+                        value: .filter
+                        oninput: .FilterChanged
+                        onkeyup: .FilterChanged
+                        placeholder: "Filter…"
+                    }
+                    if .can_edit {
+                        button {
+                            class: "btn icon"
+                            title: "New"
+                            onclick: .ToggleCreate
+                            text "+"
+                        }
+                    }
+                }
+                if .creating {
+                    div {
+                        class: "create-row"
+                        input {
+                            class: "name-input"
+                            value: .new_name
+                            oninput: .NewNameChanged
+                            onkeyup: .NewNameChanged
+                            onkeydown.enter: .DoCreate
+                            placeholder: "entity-name"
+                        }
+                        button {
+                            class: "btn small"
+                            disabled: collectionStore.saving || .new_name.trim() == ""
+                            onclick: .DoCreate
+                            text "Add"
+                        }
+                        button {
+                            class: "btn small"
+                            onclick: .CancelCreate
+                            text "✕"
+                        }
+                    }
+                }
+                if collectionStore.list_loading {
+                    div {
+                        class: "list-msg"
+                        text "Loading…"
+                    }
+                }
+                if collectionStore.list_loading == false && .filtered.len() == 0 {
+                    div {
+                        class: "list-msg empty"
+                        if collectionStore.list.len() == 0 { text "No entities." }
+                        if collectionStore.list.len() > 0 { text "No match." }
+                    }
+                }
+                if .filtered.len() > 0 {
+                    div {
+                        class: "entity-list"
+                        for e in .filtered {
+                            div {
+                                class: if collectionStore.selected_name == e.name { "active" } else { "" }
+                                key: e.name
+                                onclick: .SelectEntity(e.name)
+                                span {
+                                    class: "e-name"
+                                    text e.name
+                                }
+                                if e.description != "" {
+                                    span {
+                                        class: "e-desc"
+                                        text e.description
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Detail pane ──────────────────────────────────────────────
+            section {
+                class: "detail-pane"
+                if collectionStore.error != "" && collectionStore.selected_name == nil {
+                    div {
+                        class: "state-msg error"
+                        text f"✗ ${collectionStore.error}"
+                    }
+                }
+                if collectionStore.error == "" && collectionStore.selected_name == nil {
+                    div {
+                        class: "state-msg"
+                        text "Select an entity from the left, or create a new one."
+                    }
+                }
+                if collectionStore.selected_name != nil {
+                    if collectionStore.loading {
+                        div {
+                            class: "state-msg"
+                            text "Loading…"
+                        }
+                    }
+                    if collectionStore.loading == false {
+                        div {
+                            class: "toolbar"
+                            div {
+                                class: "meta"
+                                span {
+                                    class: "mono"
+                                    text collectionStore.selected_name
+                                }
+                                if collectionStore.dirty {
+                                    span {
+                                        class: "dirty"
+                                        text "● unsaved"
+                                    }
+                                }
+                                if collectionStore.is_read_only {
+                                    span {
+                                        class: "ro-badge"
+                                        text "read-only"
+                                    }
+                                }
+                            }
+                            div {
+                                class: "actions"
+                                if .can_edit {
+                                    button {
+                                        class: "btn"
+                                        disabled: collectionStore.saving
+                                        onclick: .Reload
+                                        text "Reload"
+                                    }
+                                }
+                                if .can_edit {
+                                    button {
+                                        class: "btn primary"
+                                        disabled: collectionStore.saving || collectionStore.dirty == false
+                                        onclick: .Save
+                                        if collectionStore.saving { text "Saving…" }
+                                        if collectionStore.saving == false { text "Save" }
+                                    }
+                                }
+                                if .can_edit {
+                                    button {
+                                        class: "btn danger"
+                                        onclick: .AskDelete
+                                        text "Delete"
+                                    }
+                                }
+                            }
+                        }
+                        if collectionStore.error != "" {
+                            div {
+                                class: "state-msg error"
+                                text f"✗ ${collectionStore.error}"
+                            }
+                        }
+
+                        // atom entity: fields + sidecar
+                        if collectionStore.entries.len() > 0 && .can_edit {
+                            div {
+                                class: "fields"
+                                for f in collectionStore.entries {
+                                    div {
+                                        class: "entry"
+                                        key: f.key
+                                        if f.is_table {
+                                        div {
+                                            class: "field-row"
+                                            key: f.key
+                                            label {
+                                                class: "field-label"
+                                                text f.spec.label
+                                            }
+                                            TableField(modelValue: f.value, module_id: .module_id, path: f.key, on_value: .FieldEdited)
+                                        }
+                                    }
+                                    if f.is_table == false {
+                                        div {
+                                            class: "field-row"
+                                            key: f.key
+                                            label {
+                                                class: "field-label"
+                                                text f.spec.label
+                                            }
+                                            ScalarFields(spec: f.spec, modelValue: f.value, path: f.key, on_value: .FieldEdited)
+                                        }
+                                        }
+                                    }
+                                }
+
+                                // sidecar (soul.md for roles)
+                                div {
+                                    class: "field-row sidecar-row"
+                                    label {
+                                        class: "field-label"
+                                        text "Soul "
+                                        span {
+                                            class: "hint"
+                                            text "(markdown sidecar)"
+                                        }
+                                    }
+                                    textarea {
+                                        class: "sidecar"
+                                        value: .sidecar_draft
+                                        oninput: .SidecarChanged
+                                        placeholder: "# Soul\n\nThe role's system prompt / personality (markdown)."
+                                    }
+                                }
+                            }
+                        }
+
+                        // frontmatter-md (skill): read-only
+                        if collectionStore.entries.len() == 0 && collectionStore.is_read_only {
+                            div {
+                                class: "fm-view"
+                                div {
+                                    class: "field-row"
+                                    label {
+                                        class: "field-label"
+                                        text "Name"
+                                    }
+                                    div {
+                                        class: "readonly-val mono"
+                                        text collectionStore.fm_name
+                                    }
+                                }
+                                div {
+                                    class: "field-row"
+                                    label {
+                                        class: "field-label"
+                                        text "Description"
+                                    }
+                                    div {
+                                        class: "readonly-val"
+                                        text collectionStore.fm_description
+                                    }
+                                }
+                                div {
+                                    class: "skill-body"
+                                    text collectionStore.fm_body
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Delete confirm modal ─────────────────────────────────────
+            if .confirm_delete != nil {
+                div {
+                    class: "modal-backdrop"
+                    onclick: .BackdropClose($event)
+                    div {
+                        class: "modal"
+                        p {
+                            text "Delete "
+                            span {
+                                class: "strong"
+                                text .confirm_delete
+                            }
+                            text "?"
+                        }
+                        p {
+                            class: "modal-hint"
+                            text "This removes the "
+                            span {
+                                class: "inline-code"
+                                text ".at"
+                            }
+                            text " file and its sidecar. A "
+                            span {
+                                class: "inline-code"
+                                text ".bak"
+                            }
+                            text " is kept."
+                        }
+                        div {
+                            class: "modal-actions"
+                            button {
+                                class: "btn"
+                                onclick: .CancelDelete
+                                text "Cancel"
+                            }
+                            button {
+                                class: "btn danger"
+                                onclick: .DoDelete
+                                text "Delete"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .Init -> { collectionStore.Open(.module_id) }
+        .FilterChanged -> { .filter = .filter }
+        .ToggleCreate -> { .creating = !.creating }
+        .NewNameChanged -> { .new_name = .new_name }
+        .DoCreate -> {
+            var name = .new_name.trim()
+            if name != "" {
+                collectionStore.NewEntity(name)
+                .creating = false
+                .new_name = ""
+            }
+        }
+        .CancelCreate -> {
+            .creating = false
+            .new_name = ""
+        }
+        .SelectEntity(name) -> {
+            collectionStore.Pick(name)
+            .sidecar_draft = collectionStore.sidecar
+        }
+        .Reload -> { collectionStore.Reload() }
+        .Save -> { collectionStore.SaveEntity() }
+        .AskDelete -> { .confirm_delete = collectionStore.selected_name }
+        .CancelDelete -> { .confirm_delete = None }
+        .DoDelete -> {
+            if .confirm_delete != nil {
+                collectionStore.DelEntity(.confirm_delete)
+            }
+            .confirm_delete = None
+        }
+        .BackdropClose(e) -> {
+            if e.target == e.currentTarget {
+                .confirm_delete = None
+            }
+        }
+        .FieldEdited(args) -> { collectionStore.FieldEdited(args) }
+        .SidecarChanged -> { collectionStore.SetSidecar(.sidecar_draft) }
+    }
+
+    style {
+        .collection {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 16px;
+            max-width: 960px;
+        }
+        .list-pane {
+            border: 1px solid var(--border);
+            border-radius: var(--radius, 8px);
+            background: var(--bg-card);
+            height: fit-content;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .list-head {
+            display: flex;
+            gap: 6px;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .filter-input {
+            flex: 1;
+            padding: 5px 9px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 4px);
+            font-size: var(--font-size-sm);
+            background: var(--bg-input);
+            outline: none;
+        }
+        .filter-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--ring);
+        }
+        .create-row {
+            display: flex;
+            gap: 4px;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+            background: var(--accent-lighter);
+        }
+        .name-input {
+            flex: 1;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 4px);
+            font-size: var(--font-size-sm);
+            background: var(--bg-input);
+            outline: none;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .entity-list {
+            list-style: none;
+            margin: 0;
+            padding: 4px;
+            overflow-y: auto;
+        }
+        .entity-list > div {
+            padding: 7px 10px;
+            border-radius: var(--radius-sm, 4px);
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .entity-list > div:hover {
+            background: var(--bg-hover);
+        }
+        .entity-list > div.active {
+            background: var(--accent-light);
+        }
+        .e-name {
+            display: block;
+            font-weight: 600;
+            font-size: var(--font-size-sm);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--text-primary);
+        }
+        .e-desc {
+            display: block;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            line-height: 1.4;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .list-msg {
+            padding: 16px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: var(--font-size-sm);
+        }
+        .list-msg.empty {
+            font-style: italic;
+        }
+        .detail-pane {
+            min-width: 0;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 0 12px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 8px;
+        }
+        .meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+        }
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .dirty {
+            color: var(--accent);
+        }
+        .ro-badge {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            padding: 5px 14px;
+            border-radius: var(--radius-sm, 4px);
+            cursor: pointer;
+            font-size: var(--font-size-sm);
+            transition: all 0.15s;
+        }
+        .btn:hover:not(:disabled) {
+            background: var(--bg-hover);
+        }
+        .btn.primary {
+            background: var(--accent);
+            color: var(--accent-foreground);
+            border-color: var(--accent);
+        }
+        .btn.primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+        }
+        .btn.danger {
+            color: var(--danger);
+            border-color: var(--border);
+        }
+        .btn.danger:hover:not(:disabled) {
+            background: rgba(196, 43, 28, 0.08);
+            border-color: var(--danger);
+        }
+        .btn.icon {
+            padding: 4px 10px;
+            font-size: 16px;
+            line-height: 1;
+        }
+        .btn.small {
+            padding: 4px 10px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .fields {
+            display: flex;
+            flex-direction: column;
+        }
+        .field-row {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: 12px;
+            align-items: start;
+            padding: 8px 0;
+        }
+        .field-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            padding-top: 6px;
+            font-weight: 500;
+        }
+        .field-label .hint {
+            font-weight: 400;
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+        .sidecar {
+            width: 100%;
+            min-height: 160px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm, 4px);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: var(--font-size-sm);
+            background: var(--bg-input);
+            outline: none;
+            resize: vertical;
+            line-height: 1.5;
+        }
+        .sidecar:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--ring);
+        }
+        .readonly-val {
+            font-size: var(--font-size-sm);
+            color: var(--text-primary);
+            padding-top: 6px;
+        }
+        .skill-body {
+            margin-top: 12px;
+            padding: 12px 14px;
+            background: var(--bg-hover);
+            border-radius: var(--radius, 8px);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: var(--font-size-sm);
+            line-height: 1.5;
+            white-space: pre-wrap;
+            max-height: 50vh;
+            overflow-y: auto;
+            color: var(--text-secondary);
+        }
+        .state-msg {
+            padding: 14px;
+            border-radius: var(--radius, 8px);
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+            font-size: var(--font-size-base);
+        }
+        .state-msg.error {
+            background: rgba(196, 43, 28, 0.08);
+            color: var(--danger);
+        }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius, 8px);
+            padding: 20px 24px;
+            max-width: 380px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+        }
+        .modal p {
+            margin: 0 0 8px 0;
+            font-size: var(--font-size-base);
+        }
+        .modal-hint {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+        }
+        .modal-hint .inline-code {
+        .modal .strong { font-weight: 600; }
+            background: var(--bg-hover);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+    }
+}
