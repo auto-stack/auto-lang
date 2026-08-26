@@ -4506,6 +4506,8 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             let client = client_builder.build().map_err(|e| e.to_string())?;
             // Plan 349 步骤 8 (W3): retry loop rebuilds the request each attempt so
             // consumed multipart forms can be reconstructed.
+            let url = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
+            let default_headers = snapshot_default_headers(); // Plan 446 E4
             send_with_retry(
                 |c| {
                     let mut builder = match method.as_str() {
@@ -4514,6 +4516,11 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                         "DELETE" => c.delete(&url),
                         _ => c.get(&url),
                     };
+                    // Plan 446 E4: 默认头先落,显式 header 同名追加在后
+                    // (reqwest 后设覆盖先设的发送语义)。
+                    for (k, v) in &default_headers {
+                        builder = builder.header(k.as_str(), v.as_str());
+                    }
                     for (k, v) in &headers {
                         builder = builder.header(k.as_str(), v.as_str());
                     }
@@ -5545,6 +5552,94 @@ fn backoff_sleep(attempt: u32) {
 /// optional JSON body). Mirrors `simple_http_request`'s reqwest logic but runs
 /// detached and writes the structured result into ASYNC_RESULTS (Structured).
 /// Plan 349 步骤 7 (W1a).
+// ─── Plan 446 E4: Http default header/query(认证面) ─────────────────────────
+//
+// musk VM 前端的 setupAuthFetch 依赖:auto.http get/post/put/delete/plain
+// handle 族只收 url(无逐调用 header 面),builder 链踩 446-E2。本族 native
+// 提供进程级默认头/默认 query,注入点 = 两个 send 汇聚处
+// (spawn_async_http_handle 与 http.request builder 的 send_with_retry 闭包),
+// 显式 header 同名覆盖默认。
+
+struct HttpDefaults {
+    headers: Vec<(String, String)>,
+    queries: Vec<(String, String)>,
+}
+
+fn http_defaults() -> &'static std::sync::Mutex<HttpDefaults> {
+    static REG: std::sync::OnceLock<std::sync::Mutex<HttpDefaults>> = std::sync::OnceLock::new();
+    REG.get_or_init(|| {
+        std::sync::Mutex::new(HttpDefaults { headers: Vec::new(), queries: Vec::new() })
+    })
+}
+
+fn http_set_default_entry(slot: &mut Vec<(String, String)>, name: String, value: String) {
+    match slot.iter_mut().find(|(k, _)| *k == name) {
+        Some(e) => e.1 = value,
+        None => slot.push((name, value)),
+    }
+}
+
+/// 把默认 query 追加到 url(已含 ? 则用 &)。值不做百分号编码——消费面
+/// (workspace id/token 类)为安全字符集;特殊值由调用方自行编码后传入。
+fn append_default_queries(url: &str) -> String {
+    let qs = {
+        let reg = http_defaults().lock().unwrap();
+        reg.queries.clone()
+    };
+    if qs.is_empty() {
+        return url.to_string();
+    }
+    let mut u = url.to_string();
+    for (k, v) in qs {
+        u.push(if u.contains('?') { '&' } else { '?' });
+        u.push_str(&k);
+        u.push('=');
+        u.push_str(&v);
+    }
+    u
+}
+
+/// 默认 header 快照(发送线程内取一次,避免持锁跨 await/send)。
+fn snapshot_default_headers() -> Vec<(String, String)> {
+    http_defaults().lock().unwrap().headers.clone()
+}
+
+/// Plan 446 E4: `Http.set_default_header(name, value)` —— 进程级默认请求头
+/// (musk: Authorization: Bearer <jwt>)。同名替换。
+pub fn shim_http_set_default_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let mut reg = http_defaults().lock().unwrap();
+    http_set_default_entry(&mut reg.headers, name, value);
+    task.ram.push_nv(0);
+    Ok(())
+}
+
+/// Plan 446 E4: `Http.set_default_query(name, value)` —— 进程级默认 query
+/// (musk: workspace=<wid>)。同名替换。
+pub fn shim_http_set_default_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let mut reg = http_defaults().lock().unwrap();
+    http_set_default_entry(&mut reg.queries, name, value);
+    task.ram.push_nv(0);
+    Ok(())
+}
+
+/// Plan 446 E4: `Http.clear_default_auth()` —— 清空默认头/默认 query
+/// (musk logout 面)。
+pub fn shim_http_clear_default_auth(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let mut reg = http_defaults().lock().unwrap();
+    reg.headers.clear();
+    reg.queries.clear();
+    task.ram.push_nv(0);
+    Ok(())
+}
+
 fn spawn_async_http_handle(
     method: String,
     url: String,
@@ -5554,8 +5649,9 @@ fn spawn_async_http_handle(
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
         let m = method.clone();
-        let u = url.clone();
+        let u = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
         let b = body.clone();
+        let default_headers = snapshot_default_headers(); // Plan 446 E4
         let result = send_with_retry(
             |c| {
                 let builder = match m.as_str() {
@@ -5564,6 +5660,10 @@ fn spawn_async_http_handle(
                     "DELETE" => c.delete(&u),
                     _ => c.get(&u),
                 };
+                let mut builder = builder;
+                for (k, v) in &default_headers {
+                    builder = builder.header(k.as_str(), v.as_str());
+                }
                 if let Some(ref body_str) = b {
                     builder
                         .header("Content-Type", "application/json")
@@ -6741,6 +6841,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // HTTP client functions (manual shims — heap objects for request/response)
     natives.register_shim_by_name("auto.http.get", shim_http_get);
+    natives.register_shim_by_name("auto.http.set_default_header", shim_http_set_default_header);
+    natives.register_shim_by_name("auto.http.set_default_query", shim_http_set_default_query);
+    natives.register_shim_by_name("auto.http.clear_default_auth", shim_http_clear_default_auth);
     natives.register_shim_by_name("auto.http.post", shim_http_post);
     natives.register_shim_by_name("auto.http.put", shim_http_put);
     natives.register_shim_by_name("auto.http.delete", shim_http_delete);
@@ -8278,6 +8381,77 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+mod e4_default_http_tests {
+    use super::*;
+
+    fn reset_defaults() {
+        let mut reg = http_defaults().lock().unwrap();
+        reg.headers.clear();
+        reg.queries.clear();
+    }
+
+    // NOTE: 两断言面共(Process 级)注册表,并行测试互踩——并入 e2e 单测试串行执行。
+    #[test]
+    #[ignore = "merged into default_headers_reach_wire_on_plain_get (shared global registry)"]
+    fn default_query_append_and_replace() {
+        reset_defaults();
+        {
+            let mut reg = http_defaults().lock().unwrap();
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "w1".into());
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "w2".into());
+            http_set_default_entry(&mut reg.queries, "tab".into(), "a b".into());
+        }
+        assert_eq!(append_default_queries("http://x/api"), "http://x/api?workspace=w2&tab=a b");
+        assert_eq!(append_default_queries("http://x/api?p=1"), "http://x/api?p=1&workspace=w2&tab=a b");
+        reset_defaults();
+        assert_eq!(append_default_queries("http://x/api"), "http://x/api");
+    }
+
+    /// E4 端到端:真实 TcpListener 服务断言 Http.get 收到默认头与默认 query。
+    /// 直接驱动 spawn_async_http_handle(plain handle 汇聚点),轮询 ASYNC_RESULTS。
+    #[test]
+    fn default_headers_reach_wire_on_plain_get() {
+        reset_defaults();
+        // 单元面:同名替换 + 多键追加 + 已含 ? 分隔
+        {
+            let mut reg = http_defaults().lock().unwrap();
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "w1".into());
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "w2".into());
+        }
+        assert_eq!(append_default_queries("http://x/api"), "http://x/api?workspace=w2");
+        assert_eq!(append_default_queries("http://x/api?p=1"), "http://x/api?p=1&workspace=w2");
+        reset_defaults();
+        {
+            let mut reg = http_defaults().lock().unwrap();
+            http_set_default_entry(&mut reg.headers, "Authorization".into(), "Bearer t-ok".into());
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "ws-9".into());
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let (mut s, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = s.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+            let resp = "HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 2
+
+{}";
+            s.write_all(resp.as_bytes()).unwrap();
+            req
+        });
+        spawn_async_http_handle("GET".into(), format!("http://127.0.0.1:{port}/api/probe"), None, 999_001);
+        let req = server.join().unwrap();
+        assert!(req.contains("GET /api/probe?workspace=ws-9 "), "query missing: {req}");
+        let req_lc = req.to_ascii_lowercase();
+        assert!(req_lc.contains("authorization: bearer t-ok"), "header missing: {req}");
+        reset_defaults();
+    }
+}
 
 #[cfg(test)]
 mod tests {

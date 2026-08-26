@@ -1221,6 +1221,10 @@ macro_rules! for_each_bigvm_native {
 
             // === HTTP client (2230-2239) ===
             ("auto.http.get", 2230, Void),
+            // Plan 446 E4: 认证面默认头/默认 query(注入于两 send 汇聚处)
+            ("auto.http.set_default_header", 3139, Void),
+            ("auto.http.set_default_query", 3140, Void),
+            ("auto.http.clear_default_auth", 3141, Void),
             ("auto.http.post", 2231, Void),
             ("auto.http.put", 2232, Void),
             ("auto.http.delete", 2233, Void),
@@ -2028,6 +2032,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.not_found", 2223),
     ("auto.http.internal_error", 2224),
     ("auto.http.get", 2230),
+    ("auto.http.set_default_header", 3139),
+    ("auto.http.set_default_query", 3140),
+    ("auto.http.clear_default_auth", 3141),
     ("auto.http.post", 2231),
     ("auto.http.put", 2232),
     ("auto.http.delete", 2233),
