@@ -106,22 +106,29 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         Color::Secondary => {
             if is_dark { Some((129, 140, 248)) } else { Some((99, 102, 241)) } // indigo-400/500
         }
+        // Plan 448 对齐批:暗色语义色从 Tailwind gray 系改为生成端 shadcn
+        // 令牌(index.css .dark)的精确 HSL 换算值 —— 此前 VM 用 gray-900/800
+        // 近似,与 vue 产物的蓝灰调(明暗关系相反:vue 卡片亮于页面)不一致。
+        // --background: 222.2 47.4% 7% / --card: 222.2 47.4% 10%
         Color::Background => {
-            if is_dark { Some((17, 24, 39)) } else { Some((255, 255, 255)) } // gray-900/white
+            if is_dark { Some((9, 14, 26)) } else { Some((255, 255, 255)) }
         }
+        // --card: 222.2 47.4% 10%(亮于 --background,与 vue 暗色卡片浮起方向一致)
         Color::Surface => {
-            if is_dark { Some((31, 41, 55)) } else { Some((249, 250, 251)) } // gray-800/50
+            if is_dark { Some((13, 21, 38)) } else { Some((249, 250, 251)) } // gray-50(light 沿用)
         }
         Color::Error => Some((239, 68, 68)),
         Color::Warning => Some((234, 179, 8)),
         Color::Success => Some((34, 197, 94)),
         Color::Info => Some((59, 130, 246)),
         Color::OnPrimary | Color::OnSecondary => Some((255, 255, 255)),
+        // --foreground: 210 40% 98%
         Color::OnBackground => {
-            if is_dark { Some((229, 231, 235)) } else { Some((17, 24, 39)) } // gray-200/900
+            if is_dark { Some((248, 250, 252)) } else { Some((17, 24, 39)) }
         }
+        // --muted-foreground: 215.4 16.3% 65.1%
         Color::OnSurface => {
-            if is_dark { Some((156, 163, 175)) } else { Some((107, 114, 128)) } // gray-400/500
+            if is_dark { Some((151, 163, 181)) } else { Some((107, 114, 128)) }
         }
         _ => None,
     }

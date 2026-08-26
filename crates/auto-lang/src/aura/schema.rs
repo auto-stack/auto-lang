@@ -2441,6 +2441,16 @@ impl AuraSchema {
         // 使 S002 不再误报)。pre/code/ol/ul/dl/dt/dd/optgroup/figure/
         // figcaption/blockquote: 原生 HTML 直通(map_tag 兜底 arm 对应)。
         // native_button: 显式原生按钮逃生名(避开 button→shadcn Button 映射)。
+        elements.insert("teleport", ElementDef {
+            tag: "teleport",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "to", type_: PropType::String, required: false, default: None, description: "Teleport target selector (e.g. body)" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disable teleport" },
+            ],
+            allows_children: true,
+            description: "Vue Teleport container (codegen maps to <Teleport to=...>)",
+        });
         elements.insert("slot", ElementDef {
             tag: "slot",
             category: ElementCategory::Content,
@@ -2920,7 +2930,7 @@ mod tests {
         // Plan 041a① 后 dl/ol 入表,"cl" 类超短探针出现多重距离-1命中
         // (dl/ol/col)——拼写建议不承诺唯一最近,断言命中集合之一。
         match schema.suggest_similar("cl") {
-            Some(t) => assert!(t == "dl" || t == "ol" || t == "col", "got {}", t),
+            Some(t) => assert!(t == "dl" || t == "ol" || t == "ul" || t == "col", "got {}", t),
             None => panic!("cl should suggest"),
         }
         // "xyz" is too far from any valid element

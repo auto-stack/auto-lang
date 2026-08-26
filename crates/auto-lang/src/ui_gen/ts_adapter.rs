@@ -1044,6 +1044,70 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 }
                                 _ => {}
                             }
+                        } else if let Some(pat_expr) = call.args.args.get(1).map(|a| a.get_expr()) {
+                            // Plan 041a④(musk 041 Phase 5 T21): 动态拼接 pattern
+                            // (`Regex.match(s, prefix + label)`)——此前仅字面量
+                            // 形态转译,动态形态原样落 `Regex.match` 运行时炸。
+                            // 运行时值即 pattern 串,表达式经 transpile_expr 直插
+                            // new RegExp(无字面量层的反斜杠二次转译)。
+                            // flags 位与字面量分支一致:replace 第 4 参,其余第 3 参。
+                            let flag_idx = if method.as_str() == "replace" { 3 } else { 2 };
+                            let flags = call.args.args.get(flag_idx).and_then(|a| match a.get_expr() {
+                                Expr::Str(f) => Some(f.as_str().to_string()),
+                                _ => None,
+                            });
+                            let mut re = String::new();
+                            re.push_str("new RegExp(");
+                            {
+                                let mut buf: Vec<u8> = Vec::new();
+                                transpile_expr(&pat_expr, ctx, &mut buf);
+                                re.push_str(&String::from_utf8_lossy(&buf));
+                            }
+                            if let Some(f) = flags {
+                                re.push_str(&format!(", '{}'", f));
+                            }
+                            re.push(')');
+                            let subject: Option<Expr> = call.args.args.first().map(|a| a.get_expr());
+                            let emit_subject = |out: &mut Vec<u8>| {
+                                if let Some(sub) = subject.as_ref() {
+                                    transpile_expr(sub, ctx, out);
+                                } else {
+                                    write!(out, "''").ok();
+                                }
+                            };
+                            match method.as_str() {
+                                "split" => {
+                                    write!(out, "(").ok();
+                                    emit_subject(out);
+                                    write!(out, ").split({})", re).ok();
+                                    return;
+                                }
+                                "match" => {
+                                    write!(out, "((").ok();
+                                    emit_subject(out);
+                                    write!(out, ").match({}) || [])", re).ok();
+                                    return;
+                                }
+                                "test" => {
+                                    write!(out, "{}.test(", re).ok();
+                                    emit_subject(out);
+                                    write!(out, ")").ok();
+                                    return;
+                                }
+                                "replace" => {
+                                    write!(out, "(").ok();
+                                    emit_subject(out);
+                                    write!(out, ").replace({}, ", re).ok();
+                                    if let Some(to) = call.args.args.get(2) {
+                                        transpile_expr(&to.get_expr().clone(), ctx, out);
+                                    } else {
+                                        write!(out, "''").ok();
+                                    }
+                                    write!(out, ")").ok();
+                                    return;
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     // Plan 028 T14（F8 动态流生命周期）：`Sse.open(url, .Handler)`
@@ -2442,6 +2506,50 @@ mod tests {
     /// PLAN-037 后续修复:同名变量不得遮蔽类型名——`let list = ...` 之后的
     /// `let out list = []` 必须保留类型标注(此前 parser 在类型位置查询了
     /// 变量环境,标注被解析为变量的推断类型而静默丢失)。
+    /// Plan 041a④(musk 041 Phase 5 T21): 动态拼接 pattern 的 Regex 调用
+    /// 转译为 new RegExp(<expr>) 包装(match 补 || [];replace 的 flags 在
+    /// 第 4 参位)。
+    #[test]
+    fn t21_dynamic_regex_pattern_transpiles() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "fn extract(content str, label str) str {
+    let m = Regex.match(content, \"\\\\*\\\\*\" + label + \":\\\\*\\\\*\")
+    if m.length > 1 { return m[1] }
+    return \"\"
+}
+";
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("must parse");
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::Fn(f) = s {
+                let m = crate::aura::extract_module_fn(f).unwrap();
+                let code = crate::ui_gen::vue::VueGenerator::generate_fn_module(&[m]);
+                // 断言无歧义核心片段(反斜杠星号的逐字比对脆弱,交由
+                // "Regex.match 不残留" + 表达式包装形态保证)。
+                assert!(
+                    code.contains(".match(new RegExp(") && code.contains("' + label + '"),
+                    "dynamic pattern must wrap the expression:
+{}",
+                    code
+                );
+                assert!(
+                    code.contains("|| [])"),
+                    "match must keep the empty-array fallback:
+{}",
+                    code
+                );
+                assert!(
+                    !code.contains("Regex.match"),
+                    "no verbatim Regex.match may remain:
+{}",
+                    code
+                );
+                return;
+            }
+        }
+        panic!("no fn found");
+    }
+
     #[test]
     fn let_type_annotation_not_shadowed_by_same_name_var() {
         let session = crate::session::CompilerSession::ui();

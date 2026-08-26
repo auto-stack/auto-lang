@@ -1,14 +1,16 @@
 # 003-converter — Temperature Converter
 
-A bidirectional Celsius/Fahrenheit converter. Editing either field updates the model state.
+A bidirectional Celsius/Fahrenheit converter. Editing either field updates the model state and re-computes the other field — using inline lambda handlers (Plan 448), no `msg`/`on` round trip needed.
 
 Inspired by 7GUIs Task #2 (Temperature Converter).
 
 ## Concepts
 
-- **Input widget** — `input` renders an editable text field with `value` binding and `oninput` event
-- **Model state** — String fields hold the current Celsius and Fahrenheit values
-- **Event binding** — `oninput` fires on every keystroke, updating the model via message handlers
+- **Input widget** — `input` renders an editable text field with `value` binding (folds to two-way `v-model`) and `placeholder`
+- **Inline lambda handlers** — `oninput: () => {.fahrenheit = …}` binds typing directly to a state update; the compiler mints an anonymous event and synthesizes the handler
+- **Model state** — `double` fields hold the current Celsius and Fahrenheit values
+- **Design tokens** — `text-primary`, `bg-card`, `text-muted-foreground` style via the shadcn theme tokens instead of hardcoded colors
+- **Layout spacing** — `gap-4` on the `row` keeps the two fields apart; the card container (`border rounded-2xl shadow-sm`) frames the scene
 
 ## Source
 
@@ -16,49 +18,64 @@ See `front/app.at`:
 
 ```auto
 widget App {
-    msg { CelsiusChanged, FahrenheitChanged }
-
     model {
-        var celsius str = "0"
-        var fahrenheit str = "32"
+        var celsius double = 0.0
+        var fahrenheit double = 32.0
     }
 
     view {
-        col {
-            text "Temperature Converter"
-            class: "text-2xl font-bold mb-4"
+        center {
+            col {
+                style: "w-full max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-4"
 
-            row {
-                col {
-                    text "Celsius"
-                    input (value: .celsius) {
-                        oninput: .CelsiusChanged
-                        placeholder: "Enter Celsius"
+                text "Temperature Converter" {
+                    style: "text-2xl font-bold text-primary text-center mb-6"
+                }
+
+                row {
+                    style: "gap-4"
+
+                    col {
+                        style: "flex-1 gap-1.5"
+                        text "Celsius (°C)" {
+                            style: "text-sm font-medium text-muted-foreground"
+                        }
+                        input (value: .celsius) {
+                            oninput: () => {.fahrenheit = .celsius * 9.0 / 5.0 + 32.0}
+                            placeholder: "0"
+                        }
+                    }
+
+                    col {
+                        style: "flex-1 gap-1.5"
+                        text "Fahrenheit (°F)" {
+                            style: "text-sm font-medium text-muted-foreground"
+                        }
+                        input (value: .fahrenheit) {
+                            oninput: () => {.celsius = (.fahrenheit - 32.0) * 5.0 / 9.0}
+                            placeholder: "32"
+                        }
                     }
                 }
 
-                col {
-                    text "Fahrenheit"
-                    input (value: .fahrenheit) {
-                        oninput: .FahrenheitChanged
-                        placeholder: "Enter Fahrenheit"
-                    }
+                text "°F = °C × 9/5 + 32" {
+                    style: "text-xs text-muted-foreground text-center mt-6"
                 }
             }
-
-            class: "p-6 max-w-md mx-auto gap-4"
-        }
-    }
-
-    on {
-        .CelsiusChanged -> {
-            .celsius = .celsius
-        }
-        .FahrenheitChanged -> {
-            .fahrenheit = .fahrenheit
         }
     }
 }
+```
+
+If an event later needs a payload or its logic is shared across several
+bindings, declare it explicitly instead:
+
+```auto
+msg { CelsiusChanged, FahrenheitChanged }
+on {
+    .CelsiusChanged -> { .fahrenheit = .celsius * 9.0 / 5.0 + 32.0 }
+}
+// view binds: input (value: .celsius) { oninput: .CelsiusChanged }
 ```
 
 ## How to Run
@@ -77,8 +94,8 @@ After `auto gen`, generated projects appear in:
 
 ## Concepts Taught
 
-- `input` widget with `value` binding to model fields
-- `oninput` event for responding to text field changes
+- `input` widget with `value` binding to model fields (two-way via `v-model`)
+- `oninput` inline lambda for responding to text field changes
 - `placeholder` property for input hint text
-- `row` and `col` nesting for side-by-side input layout
-- Model state with `var` for mutable string values
+- `row`/`col` nesting with `gap-*` for side-by-side spaced layout
+- Theming with design tokens (`text-primary`, `bg-card`, `text-muted-foreground`)

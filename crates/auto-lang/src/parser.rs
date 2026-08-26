@@ -6763,7 +6763,16 @@ impl<'a> Parser<'a> {
                     // Method chaining: merge `.method()` lines into previous expression.
                     // Only chain when the current statement STARTS WITH `.` (implicit self),
                     // NOT when it starts with `self.` (explicit self — a normal method call).
+                    //
+                    // Plan 041a⑥-a(musk 041 Phase 5 T20):on-handler/watch 体内
+                    // 禁用链合并——该语境句首 `.X(args)` 是消息派发语义
+                    // (emit 链),`let draft = {...};` 后接 `.go(draft)` 曾被
+                    // 链成 `let draft = {...}.go(draft)`(musk TestEditor/GoalEditor
+                    // 的 DoSave 实测踩中)。链式糖保留给普通 fn 体。
                     let stmts_len = stmts.len();
+                    if self.in_on_body {
+                        stmt_starts_with_dot.pop();
+                    } else
                     if stmts_len >= 2 && *stmt_starts_with_dot.last().unwrap_or(&false) {
                         fn is_dot_self_call(expr: &Expr) -> bool {
                             match expr {
@@ -14394,6 +14403,39 @@ impl<'a> Parser<'a> {
             });
         // Parse props/events in parentheses: tag (props) { children }
         } else if self.is_kind(TokenKind::LParen) {
+            // Plan 041a⑥-c(musk 041 Phase 5 T20):`(` 后首 token 为 Dot 时,
+            // 这是括号表达式简写(`text (.row.idx + 1).to_string()`),不是
+            // prop 列表——props key 永不以 `.` 开头,无歧义。按表达式解析并
+            // 挂到 primary prop。
+            let paren_is_expr = {
+                let tok = self.lexer.next()?;
+                let is_dot = tok.kind == TokenKind::Dot;
+                self.lexer.push_token(tok);
+                is_dot
+            };
+            if paren_is_expr {
+                if let Some(primary_prop) = Self::get_primary_prop(&tag) {
+                    self.next(); // consume (
+                    let value = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    props.push(ViewProp {
+                        name: primary_prop.to_string(),
+                        value: ViewPropValue::Expr(value),
+                    });
+                    // 走 children/后续处理(跳过 props 循环)——fallthrough
+                    // 到下方共同路径;用与 props 分支相同的方式继续。
+                    self.skip_empty_lines();
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "element `<{}>` has no primary prop to bind a parenthesized expression to",
+                            tag
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            } else {
             self.next();
             self.skip_empty_lines();
 
@@ -14450,6 +14492,7 @@ impl<'a> Parser<'a> {
                 }
             }
             self.expect(TokenKind::RParen)?;
+            }
         }
 
         // Check for string literal or f-string as primary property shorthand AFTER parentheses:
@@ -15909,13 +15952,12 @@ mod tests {
         );
     }
 
-    /// Plan 041a⑥-b/c: 041 债务收口期间实测的解析缺口,复现登记。
-    /// (b) 事件绑定值 `.msg(.field, fn($event))` —— 属性值解析对
-    ///     dot-调用实参中的前导 dot/嵌套调用报 "expected Colon";
-    /// (c) 括号表达式方法链 `(a + b).to_string()` —— 041 期间另见。
-    /// 修复者以此为复现入口(musk 侧暂以 handler 内组装绕行)。
+    /// Plan 041a⑥-b/c(已修,musk 041 Phase 5 T20):
+    /// (b) 事件绑定值 `.msg(.field, fn($event))` 嵌套调用;
+    /// (c) 括号表达式作 text 简写 `text (.row.idx + 1).to_string()`
+    ///     ——`(` 后首 token 为 Dot 时按 primary-prop 表达式消歧
+    ///     (props key 永不以 . 开头)。
     #[test]
-    #[ignore = "041a⑥-b/c 已登记缺陷复现:事件绑定嵌套调用 + 括号方法链"]
     fn test_041a_event_binding_forms() {
         // (b) 事件绑定多参 + 嵌套 fn 调用 + $event
         let code_b = concat!(
@@ -15957,7 +15999,6 @@ mod tests {
     /// Plan 041a⑥: 语句级 `.` 消息派发不得并入前一语句(对象字面量赋值后
     /// 换行 + 句首 .msg(...) 曾被 glue 成方法链)。最小复现守护。
     #[test]
-    #[ignore = "041a⑥-a 已登记缺陷复现:句首 .msg(...) 语句并入前一赋值(glue)"]
     fn test_leading_dot_stmt_not_glued_to_previous() {
         let code = concat!(
             "widget App {

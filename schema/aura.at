@@ -1305,6 +1305,25 @@ element callout {
     ]
     allows_children: true
     description: "AutoDown admonition panel (registry Callout, `:::kind title` container)"
+
+element NavDestination {
+    tag: "NavDestination"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element Swiper {
+    tag: "Swiper"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element category-section {
@@ -1514,6 +1533,19 @@ element slot {
     ]
     allows_children: true
     description: "Slot: outlet in component definition; named-slot fill in component invocation"
+}
+
+element teleport {
+    tag: "teleport"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "to", type: "string", description: "Teleport target selector (e.g. body)" }
+        { name: "disabled", type: "bool", default: "false", description: "Disable teleport" }
+    ]
+    allows_children: true
+    description: "Vue Teleport container (codegen maps to <Teleport to=...>)"
 }
 
 element text_input {
@@ -2105,6 +2137,17 @@ element calendarheading {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element callout {
+    tag: "callout"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Callout"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element card {
@@ -2723,6 +2766,17 @@ element datetimeinput {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element details {
+    tag: "details"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Details"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element dialog {
     tag: "dialog"
     category: "unknown"
@@ -3087,6 +3141,16 @@ element dropdownmenutrigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element embed_block {
+    tag: "embed_block"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element field {
     tag: "field"
     category: "unknown"
@@ -3212,6 +3276,17 @@ element grid-item {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element heading {
+    tag: "heading"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Heading"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element hover_card {
     tag: "hover_card"
     category: "overlay"
@@ -3328,6 +3403,17 @@ element markdown {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element math_block {
+    tag: "math_block"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["MathBlock"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element menubar_content {
@@ -3452,17 +3538,6 @@ element native_select {
     ]
     allows_children: true
     description: "Native HTML select"
-}
-
-element nav-destination {
-    tag: "nav-destination"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["NavDestination"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element nav_menu {
@@ -3912,6 +3987,27 @@ element popover_trigger {
     ]
     allows_children: true
     description: "Popover trigger"
+}
+
+element query_block {
+    tag: "query_block"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element quote {
+    tag: "quote"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Quote"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element radio-group {
@@ -4559,17 +4655,6 @@ element stepper_trigger {
     ]
     allows_children: true
     description: "Stepper trigger"
-}
-
-element swiper {
-    tag: "swiper"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["Swiper"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element switch {
