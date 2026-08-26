@@ -295,3 +295,51 @@ boot 即崩，exit 0xFFFFFFFF、无 stderr/panic，三连复现；同日午后�
 （空闲 app + 2Hz 轮询 ~30s 内 40-60% 概率）同类：**崩溃零诊断**。
 **修复建议**：panic hook 落盘 + 最小崩溃现场（含 I.1 第一批）；下游
 门禁已用自愈重试缓解，不作阻塞项。
+
+### J 批增补（2026-08-26 午后，os-config Plan 009 接管会话——J1 视图侧二分定案）
+
+环境：auto-lang master `86460a197` 干净重建（11:09；注：10:14 存量二进制
+疑似含已 reset 的在途 renderer.rs 半成品状态，boot 即空壳/三连崩——重建
+后恢复 J1 登记签名）；os-config 分支 `plan-008-view-unification`
+（3d9c828：含条件扁平化 + 007 循环形态回归）。
+
+**J1 二分矩阵（详情面板内 for 循环，全部形态均只出 1 个空 wrapper col、
+子树零构建；同应用同时刻对照全建）**：
+
+| 变量 | 试过的形态 | 结果 |
+|---|---|---|
+| 循环变量 | 单变量 `for e` / 双变量 `for i, e` | 均 ✗ |
+| wrapper | 无 / `div (class:"contents")` + key | 均 ✗ |
+| 子元素 | text / button / 8 类 kind-if 分支族 | 均 ✗ |
+| 滚动祖先 | 无 / `scroll (style:"flex-1")` 直包 | 均 ✗ |
+| 数组元素 | 对象（vmref）/ 纯字符串（entry_keys） | 均 ✗ |
+| 条件覆盖 | 双层 if 下 / 面板顶层零条件首子位 | 均 ✗ |
+
+对照组（同快照内全建）：侧栏 view_names/standalone/groups 循环
+（container/overflow-auto 祖先）；列表区实体循环——且后者位于
+`if names.len() > 0` 条件链之下，**"条件+循环组合"不足以刻画**：列表区
+if 下循环可建、详情面板零条件顶层循环不可建，差异指向构建路径本身
+（flex-1 第二子位 col？待 renderer 侧定位）。已排除：input 的
+`"type"` 属性（移除无变化）。
+
+**J1 之外的正面信号**：条件扁平化（`if A { if B }}` → `if A && B`）令
+详情区从整区不建恢复到工具栏按钮组/sidecar textarea/fields 容器正常
+构建——深嵌套条件确实是诱因之一，但循环体未被救回。
+
+**旧工程整体退化（J1 家族扩大面）**：b955004（os-config 批 3 提交，当时
+vm 门禁两连绿）整个 `auto/` 目录 git archive 导出后，在当前 master 二
+进制上 = 空壳（root row 下 `Sidebar` 子 widget 裸引用不展开、主区空、
+boot 零诊断）。同二进制下 os-config HEAD（批 4 后）应用侧栏正常。嫌疑
+序列：plan-451 actions DSL vm 全链路（895b7d413，08-26 07:53）/
+plan-450 iced 面板（715bc7dc5）/ plan-041a schema（86460a197）。
+
+**J3 同根新症状**：工具栏 `text (text: .store.selected_name)`（`?str`，
+运行期赋值）文本绑定不渲染（state 池可读、`!= nil` if 门正常）——疑与
+J3 同根（state 池 vs 视图绑定同步），字符串字段亦有份。
+
+**修复验证建议**：以 os-config 两探针为尖锐信号——
+`tmp/vm-detail-dump.mjs`（详情循环，当前红）与 `tmp/vm-b3-check.mjs`
+（批 3 导出回归壳，当前红）；两者转绿 + `node scripts/e2e-vm.mjs`
+9 断言即 J1 族解除。下游门禁侧另登记：e2e-vm 按压对自注册模块
+"Harness Roles"错位（active_id 期望 roles 实得 musk-harness-roles，
+探针同场景正常）——门禁脚本自身待修，勿计入上游。
