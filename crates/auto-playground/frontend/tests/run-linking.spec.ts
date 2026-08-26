@@ -46,4 +46,29 @@ test.describe('Run-mode source ↔ bytecode linking', () => {
     });
     expect(highlighted).toBeGreaterThanOrEqual(0);
   });
+
+  test('is-statement arms carry their own line mapping', async ({ page }) => {
+    const isCode = 'enum Color {\n  Red\n  Green\n}\n\nlet c = Color.Red\nis c {\n  Color.Red -> print("red")\n  Color.Green -> print("green")\n}\n';
+    await page.click('.cm-content');
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(isCode);
+    await page.click('.run-btn');
+    await page.waitForSelector('.bytecode-line', { timeout: 15000 });
+    await page.waitForTimeout(300);
+
+    // arm at source line 7 and line 8 must map to disjoint bytecode offsets
+    const armLines = page.locator('.cm-lineNumbers .cm-gutterElement');
+    await armLines.filter({ hasText: /^7$/ }).click();
+    await page.waitForTimeout(250);
+    const offsets7 = await page.locator('.bytecode-line.is-highlighted')
+      .evaluateAll(els => els.map(el => (el as HTMLElement).dataset.offset));
+    await armLines.filter({ hasText: /^8$/ }).click();
+    await page.waitForTimeout(250);
+    const offsets8 = await page.locator('.bytecode-line.is-highlighted')
+      .evaluateAll(els => els.map(el => (el as HTMLElement).dataset.offset));
+
+    expect(offsets7.length).toBeGreaterThan(0);
+    expect(offsets8.length).toBeGreaterThan(0);
+    expect(offsets7.filter(o => offsets8.includes(o))).toHaveLength(0);
+  });
 });
