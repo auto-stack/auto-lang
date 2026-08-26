@@ -6,7 +6,8 @@
       :data-offset="line.offset"
       :class="['bytecode-line', {
         'is-current': line.offset === currentIp,
-        'is-highlighted': highlightedOffsets?.includes(line.offset),
+        'is-selected': selectedOffsets?.includes(line.offset),
+        'is-hover': highlightedOffsets?.includes(line.offset),
         'has-source': line.line !== undefined,
       }]"
       @click="$emit('offsetClick', line.offset)"
@@ -40,6 +41,9 @@ const props = defineProps<{
   bytecode: BytecodeLine[];
   bytecodeMeta?: BytecodeMeta | null;
   currentIp?: number;
+  /** Pinned highlight (clicked source line) */
+  selectedOffsets?: number[];
+  /** Transient highlight (hovered source line) */
   highlightedOffsets?: number[];
 }>();
 
@@ -155,10 +159,10 @@ function formatOffset(offset: number): string {
   return offset.toString(16).padStart(4, '0');
 }
 
-// Bring the first highlighted line into view when the highlight moves
-// (block:'nearest' is a no-op for lines already visible, so hovering the
-// editor doesn't cause jitter).
-watch(() => props.highlightedOffsets, async (offsets) => {
+// Bring the selected line into view when the selection changes
+// (block:'nearest' is a no-op for lines already visible). Hover highlights
+// intentionally do NOT scroll the panel.
+watch(() => props.selectedOffsets, async (offsets) => {
   if (!offsets?.length) return;
   await nextTick();
   panelRef.value?.$el
@@ -193,7 +197,11 @@ watch(() => props.highlightedOffsets, async (offsets) => {
   background: #0e639c;
   color: #fff;
 }
-.bytecode-line.is-highlighted {
+.bytecode-line.is-hover {
+  background: rgba(86, 156, 214, 0.16);
+  border-left: 3px solid rgba(86, 156, 214, 0.55);
+}
+.bytecode-line.is-selected {
   background: #7b4a0e;
   border-left: 3px solid #ff9d00;
 }

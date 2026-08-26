@@ -132,6 +132,7 @@
               :breakpoints="breakpoints"
               :current-debug-line="currentDebugLine"
               :highlighted-source-line="currentSourceLine"
+              :selected-source-line="selectedSourceLine"
               :read-only="isReplayMode"
               @line-click="$emit('lineClick', $event)"
               @breakpoints-change="$emit('breakpointsChange', $event)"
@@ -158,6 +159,7 @@
               :bytecode="effectiveBytecode"
               :bytecode-meta="bytecodeMeta"
               :current-ip="debugState?.ip"
+              :selected-offsets="selectedOffsets"
               :highlighted-offsets="highlightedOffsets"
               @offset-click="$emit('offsetClick', $event)"
             />
@@ -245,6 +247,10 @@ const props = defineProps<{
   hasRecording?: boolean;
   bytecode?: BytecodeLine[];
   bytecodeMeta?: BytecodeMeta | null;
+  /** Pinned highlight offsets (from clicked source line) */
+  selectedOffsets?: number[];
+  /** Source line pinned by a click, mirrored onto the editor */
+  selectedSourceLine?: number | null;
   debugState?: DebugState | null;
   currentSourceLine?: number | null;
   highlightedOffsets?: number[];

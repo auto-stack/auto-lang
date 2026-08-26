@@ -30,7 +30,9 @@
     :bytecode-meta="mode === 'run' ? runBytecodeMeta : activeMeta"
     :debug-state="activeDebugState"
     :current-source-line="highlightedSourceLine"
-    :highlighted-offsets="highlightedBytecodeOffsets"
+    :highlighted-offsets="hoveredOffsets"
+    :selected-offsets="selectedOffsets"
+    :selected-source-line="highlightedSourceLine"
     :breakpoints="breakpoints"
     :current-debug-line="activeDebugState?.line ?? null"
     :is-replay-mode="replay.isActive.value"
@@ -44,9 +46,9 @@
     @debug-command="onDebugCommand"
     @toggle-record="toggleRecord"
     @export-recording="debug.exportRecording"
-    @line-click="highlightSourceLine"
-    :on-highlight-line="highlightSourceLine"
-    :on-clear-highlight="clearHighlight"
+    @line-click="selectSourceLine"
+    :on-highlight-line="onHoverLine"
+    :on-clear-highlight="onHoverLeave"
     @offset-click="onOffsetClick"
     @breakpoints-change="onBreakpointsChange"
     @load-replay="onLoadReplay"
@@ -76,7 +78,7 @@ const {
   activeTab, transpiledCode, transFiles, selectedTransFile,
   projectFiles, activeFile,
   highlightedOutputLines, highlightedSourceLine, mappedSourceFiles,
-  run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightSourceLine, highlightOutputLine, clearHighlight, share, shareToast,
+  run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightOutputLine, share, shareToast,
 } = usePlaygroundFull();
 
 const debug = useDebugger();
@@ -138,10 +140,24 @@ const bytecodeOffsetToLine = computed(() => {
   return map;
 });
 
-const highlightedBytecodeOffsets = computed(() => {
-  if (!highlightedSourceLine.value) return undefined;
-  return bytecodeLineToOffsets.value[highlightedSourceLine.value];
-});
+// Two highlight layers: pinned selection (clicks) vs transient hover.
+// `highlightedSourceLine` (from usePlaygroundFull) carries the selection;
+// hover is component-local so it never fights the pinned line.
+const hoveredSourceLine = ref<number | null>(null);
+const selectedOffsets = computed(() =>
+  highlightedSourceLine.value ? bytecodeLineToOffsets.value[highlightedSourceLine.value] : undefined);
+const hoveredOffsets = computed(() =>
+  hoveredSourceLine.value ? bytecodeLineToOffsets.value[hoveredSourceLine.value] : undefined);
+
+function selectSourceLine(line: number) {
+  highlightedSourceLine.value = line;
+}
+function onHoverLine(line: number) {
+  hoveredSourceLine.value = line;
+}
+function onHoverLeave() {
+  hoveredSourceLine.value = null;
+}
 
 // Sync debug finished state to main console so Run and Debug show the same result
 watch(() => debug.state.value, (state) => {
@@ -208,7 +224,7 @@ function onDebugCommand(cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 's
 function onOffsetClick(offset: number) {
   const line = bytecodeOffsetToLine.value[offset];
   if (line) {
-    highlightSourceLine(line);
+    selectSourceLine(line);
   }
 }
 

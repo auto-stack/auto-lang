@@ -18,6 +18,7 @@ const props = defineProps<{
   breakpoints?: number[];
   currentDebugLine?: number | null;
   highlightedSourceLine?: number | null;
+  selectedSourceLine?: number | null;
   errorLines?: number[];
   readOnly?: boolean;
 }>();
@@ -132,6 +133,7 @@ const breakpointGutter = [
 
 const debugLineEffect = StateEffect.define<number | null>();
 const crossHighlightEffect = StateEffect.define<number | null>();
+const selectedLineEffect = StateEffect.define<number | null>();
 
 const debugLineState = StateField.define<DecorationSet>({
   create() { return Decoration.none; },
@@ -167,6 +169,24 @@ const crossHighlightState = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// Pinned "selected" line (from clicks) — distinct from the transient hover
+const selectedLineState = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(selectedLineEffect)) {
+        if (e.value === null || e.value <= 0) return Decoration.none;
+        const line = tr.state.doc.line(e.value);
+        return Decoration.set([
+          Decoration.line({ class: 'cm-selected-line' }).range(line.from),
+        ]);
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 const errorLineEffect = StateEffect.define<number[]>();
 
 const errorLineState = StateField.define<DecorationSet>({
@@ -192,6 +212,7 @@ const errorLineState = StateField.define<DecorationSet>({
 const debugLineHighlight = [
   debugLineState,
   crossHighlightState,
+  selectedLineState,
   errorLineState,
   EditorView.baseTheme({
     '.cm-debug-current-line': {
@@ -199,6 +220,10 @@ const debugLineHighlight = [
       borderLeft: '3px solid #0e639c',
     },
     '.cm-cross-highlight-line': {
+      backgroundColor: 'rgba(86, 156, 214, 0.16)',
+      borderLeft: '3px solid rgba(86, 156, 214, 0.55)',
+    },
+    '.cm-selected-line': {
       backgroundColor: '#7b4a0e40',
       borderLeft: '3px solid #ff9d00',
     },
@@ -264,6 +289,18 @@ onMounted(() => {
       }
     }]));
   }
+
+  // Clicking a content line selects (pins) it; gutter clicks are handled by
+  // the breakpoint gutter above, so skip them here.
+  extensions.push(EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if ((event.target as HTMLElement).closest('.cm-gutters')) return false;
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (pos == null) return false;
+      emit('line-click', view.state.doc.lineAt(pos).number);
+      return false;
+    },
+  }));
 
   const state = EditorState.create({
     doc: props.modelValue,
@@ -341,6 +378,11 @@ watch(() => props.highlightedSourceLine, (line) => {
     effects.push(EditorView.scrollIntoView(pos, { y: 'nearest' }));
   }
   editorView.dispatch({ effects });
+});
+
+watch(() => props.selectedSourceLine, (line) => {
+  if (!editorView) return;
+  editorView.dispatch({ effects: [selectedLineEffect.of(line ?? null)] });
 });
 
 watch(() => props.errorLines, (lines) => {
