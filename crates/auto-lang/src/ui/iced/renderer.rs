@@ -4041,7 +4041,7 @@ impl IcedMessage {
 // ============================================================================
 
 /// A single todo item with text and done state.
-struct TodoItem {
+pub(crate) struct TodoItem {
     text: String,
     done: bool,
 }
@@ -5808,7 +5808,7 @@ const DEBUG_INSPECTOR_SECTION_PREFIX: &str = "__inspector_section_";
 /// DevTools panel top-level mode (Plan 309 续篇: 元素树与检视已统一为同屏
 /// 分屏，不再是互斥 tab；控制台仍为独立整宽模式).
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum DevToolsTab {
+pub(crate) enum DevToolsTab {
     /// 同屏分屏：左元素树 (VTree) | 右检视 (面包屑 + 子标签).
     Inspect,
     /// 控制台占满整宽.
@@ -5819,7 +5819,7 @@ enum DevToolsTab {
 /// Box/Computed/Properties into the single 检视 tab). AutoUI and Source remain
 /// standalone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum InspectorSubTab {
+pub(crate) enum InspectorSubTab {
     /// Combined: a single scrollable column of collapsible Box / Computed /
     /// Properties sections (Chrome-DevTools style).
     Inspect,
@@ -5859,7 +5859,7 @@ impl InspectorSubTab {
 /// Collapsed state of the three sections inside the 检视 sub-tab (Plan 307
 /// 续篇 IV). All default expanded (`false`).
 #[derive(Default, Clone, Copy)]
-struct InspectorSections {
+pub(crate) struct InspectorSections {
     box_collapsed: bool,
     computed_collapsed: bool,
     props_collapsed: bool,
@@ -6023,7 +6023,7 @@ struct DynamicState {
 /// warning/info)决定配色,position 支持 top-/bottom-/center × -left/-center/
 /// -right(加正中 "center"),duration_ms 到期自动消失(默认 4000ms,
 /// 与 vue-sonner 对齐)。
-struct ToastReq {
+pub(crate) struct ToastReq {
     id: u64,
     kind: String,
     msg: String,
@@ -10399,7 +10399,7 @@ fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessag
 /// A node in the debug component tree (for DevTools Elements tab).
 #[derive(Clone)]
 #[allow(dead_code)] // legacy component_tree subsystem; pending removal (Task 19/20)
-struct DebugTreeNode {
+pub(crate) struct DebugTreeNode {
     id: String,
     kind: String,
     children: Vec<DebugTreeNode>,
@@ -10444,7 +10444,7 @@ struct DebugRenderCtx {
 
 /// Debug metadata for a single UI element.
 #[derive(Clone)]
-struct DebugElementInfo {
+pub(crate) struct DebugElementInfo {
     kind: String,
     props: Vec<(String, String)>,
     /// Source span: (byte_offset, byte_length) in the .at file

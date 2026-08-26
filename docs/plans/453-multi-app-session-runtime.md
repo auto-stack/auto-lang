@@ -1,6 +1,7 @@
 # Plan 453: AutoUI 多 App 会话运行时（AppSession / DesktopSession 拆分）
 
-> **状态**: 🔄 进行中（2026-08-26 立项；T1 施工图完成，T2 会话类型落地中）
+> **状态**: 🔄 进行中（2026-08-26 立项；T1 施工图 ✅、T2 会话类型 ✅
+> （2026-08-27，5 单测绿 + ui::iced 40 回归绿），下一步 T3 入口瘦身）
 > **来源**: Design 23 §6 里程碑 M1——虚拟桌面程序的会话层底座，452（IME spike，
 > ✅ 归档）的直接后续。452 spike 报告提供三项直接设计输入：① 主窗口 id 由
 > shell 内部生成并丢弃，必须经 `Event::Window(Opened)` 自捕获（窗口注册表的
@@ -96,7 +97,7 @@ pub enum DesktopMessage {
 | # | 任务 | 内容 |
 |---|---|---|
 | T1 | 字段清点施工图 | ✅ 完成（2026-08-26）：`reports/453-t1-dynamic-state-inventory.md`——57 字段四组归位 + 3 项结构外全局态，含合并裁定 M1 / 备注 N1 / 清理候选 C1 |
-| T2 | 会话类型落地 | 新建 `ui/session.rs`：AppId/AppSession/DesktopSession/DesktopMessage/DesktopState 构造器与单元测试（先并存不改行为） |
+| T2 | 会话类型落地 | ✅ 完成（2026-08-27）：`ui/session.rs`——AppId/AppState(13)/DevToolsState(36)/DesktopState(M1 合并+KEYBOARD_BINDINGS 迁入)/WindowEntry/DesktopMessage；7 个 renderer 私有类型提 pub(crate)；单测 5 绿 + ui::iced 回归 40 绿 |
 | T3 | 入口瘦身 | `run_dynamic_iced`（renderer.rs:5736）变薄壳：构建单 App DesktopSession → 进入同一 loop；lib.rs:2933–3430 链路只改组装不改语义 |
 | T4 | 消息扇出 | update 入口按 DesktopMessage 分派至 AppSession；LAST_MODIFIERS 迁入 DesktopState 并清理 thread-local 读点 |
 | T5 | 订阅路由 | §2.3；keyboard_subscription（renderer.rs:5336）等按 AppId 标签化 |

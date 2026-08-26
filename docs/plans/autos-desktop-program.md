@@ -27,7 +27,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 计划 | 里程碑 | 范围一行 | 状态 | 依赖 |
 |---|---|---|---|---|
 | 452 设计+裁定翻转+IME spike | M0 | 正式收编 Design 23；执行 §5 同步清单；跑 §9 spike | ✅ 完成 2026-08-26（报告 reports/452-ime-spike.md，已归档） | 无 |
-| 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | 🔄 实施中——T1 字段施工图 ✅（reports/453-t1-…md），T2 进行中 | 452 ✅ |
+| 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | 🔄 实施中——T1 施工图 ✅、T2 会话类型 ✅（5 测试+40 回归绿），T3 入口瘦身待做 | 452 ✅ |
 | 454 VirtualWindow + WM | M2 | 路线 A；R4 接缝；DesktopBus；MCP 寻址版本化 | 提案中 | 453 |
 | 455 桌面 shell | M3 | 全屏虚拟桌面、任务栏、启动器、App 生命周期 | 提案中 | 454 |
 | 456 Vue 虚拟桌面 | M4 | DOM 嵌入 + BroadcastChannel 总线；先于 454 做出规范实现 | 提案中 | 452（与 454/455 并行） |
