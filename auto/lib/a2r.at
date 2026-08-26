@@ -1497,6 +1497,30 @@ fn ar_pay_first(pay str) str {
     return pay
 }
 
+// 载荷槽按位取型(多元组载荷 "i64, String" 的第 idx 段;越界回 "")
+// 447-③ E2:构造位 str 槽 .to_string() 按位判定(原仅首槽)
+fn ar_pay_slot(pay str, idx int) str {
+    var start = 0
+    var seg = 0
+    var i = 0
+    while i <= pay.len() {
+        var at_end = i == pay.len()
+        if at_end || pay.char_at(i) == ',' {
+            if seg == idx {
+                var t = pay.slice(start, i)
+                return t.trim()
+            }
+            seg = seg + 1
+            start = i + 1
+            if at_end {
+                return ""
+            }
+        }
+        i = i + 1
+    }
+    return ""
+}
+
 // 文本是否 str 字面量(以双引号开头)
 fn ar_text_is_str_lit(t str) int {
     if t.len() > 0 && t.char_at(0) == 34 {
@@ -1545,13 +1569,20 @@ fn ar_enum_try_ctor(mut a Ar, mut p P, enum_name str, word str) str {
         return ""
     }
     var cargs = ar_call_args_text(a, p, "")
-    var slot0 = ar_pay_first(a.ens.get(eci).pays.get(vidx))
+    var payfull = a.ens.get(eci).pays.get(vidx)
     var cout = ""
     var aj = 0
     while aj < cargs.len() {
         var av = cargs.get(aj)
-        if aj == 0 && slot0 == "String" && ar_text_is_str_lit(av) == 1 {
-            av = av + ".to_string()"
+        // 447-③ E2:str 槽位按位判定(多元组载荷每槽独立;原仅首槽):
+        // 字面量与 &str 参数标识符均补 .to_string()(ev_vs(t) 形;
+        // owned str 局部不补——Rust 侧本就是 String)
+        if ar_pay_slot(payfull, aj) == "String" {
+            if ar_text_is_str_lit(av) == 1 {
+                av = av + ".to_string()"
+            } else if e_is_simple_ident(av) == 1 && ar_vparam(a, av) == 1 && ar_vty(a, av) == "str" {
+                av = av + ".to_string()"
+            }
         }
         if aj > 0 {
             cout = cout + ", "
@@ -1642,6 +1673,12 @@ fn ar_coerce_arg(a Ar, text str, ty str, strk int, atom_mut int, prm_ty str, prm
     }
     if prm_ty != "" && !ar_is_int_ty(prm_ty) && !ar_is_str_ty(prm_ty) && !ar_is_float_ty(prm_ty) && prm_ty != "bool" && prm_ty != "void" {
         if atom_mut == 1 {
+            return text + ".clone()"
+        }
+        // 447-③ E2:枚举类型标识符实参 → 无条件克隆(镜像主 a2r
+        // struct_flags 非 Copy 参数位 Ident 克隆,不按 last-use 收窄;
+        // g05 多载荷实证)
+        if ar_enum_find(a, ty) >= 0 && e_is_simple_ident(text) == 1 {
             return text + ".clone()"
         }
         // last-use:实参标识在本 fn 后续仍被引用 → 克隆(值语义 move 保持)
@@ -1955,7 +1992,10 @@ fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
             }
         }
         if has_pay == 1 {
-            return pat.name + "::" + pat.word + "(" + pat.args + ")"
+            // 447-③ E2:多元组载荷绑定 ", " 连接(对齐主 a2r;args 原始
+            // 文本为 "," 无空格,绑定名不含逗号,整串替换安全)
+            var pretty = pat.args.replace(",", ", ")
+            return pat.name + "::" + pat.word + "(" + pretty + ")"
         }
         return pat.name + "::" + pat.word
     }
@@ -2293,6 +2333,10 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
             // 纯字段读(非 Copy:str)→ .clone()(owned 局部与引用参数同型)
             init = init + ".clone()"
         } else if init_ty == "str" && e_is_simple_ident(init) == 1 && has_init == 1 && ar_lu_after(a, init, init_pos) == true {
+            init = init + ".clone()"
+        } else if ar_enum_find(a, init_ty) >= 0 && e_is_simple_ident(init) == 1 && ar_lu_after(a, init, init_pos) == true {
+            // 447-③ E2:枚举 ident 赋给新绑定,源在后续复用 → 克隆(非
+            // Copy 移动;镜像主 a2r inst9c 形)
             init = init + ".clone()"
         }
     }

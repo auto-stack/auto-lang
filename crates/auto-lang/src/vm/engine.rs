@@ -1094,7 +1094,8 @@ impl AutoVM {
     /// Push a Value onto the stack based on its type
     ///
     /// For Phase 2, supports: Int, Uint, Float, Double, Bool, Char, Nil, Str
-    fn push_value(ram: &mut VirtualRAM, value: &Value, vm: &AutoVM) {
+    fn push_value(task: &mut AutoTask, value: &Value, vm: &AutoVM) {
+        let ram = &mut task.ram;
         match value {
             Value::Int(i) => {
                 ram.push_nv(auto_val::encode_i32(*i));
@@ -1120,8 +1121,12 @@ impl AutoVM {
                 // 这里 —— 直推无去重曾令池随每次视图重建膨胀(81 命令 × name/
                 // description,每敲一键全量重建),越过 u16 上限后索引回绕互串。
                 // 改走 add_string(内容去重):重复内容零增长。
+                // 2026-08-26(plan447-E2):入池条目 rc=0,freelist 复用注释明言
+                // "由 push 侧 +1 建立 stake"——原直推漏 retain,GET_GENERIC_FIELD
+                // 读运行期字符串载荷后任意一次 pop/槽释放即超额释放(canary;
+                // 此前全库载荷均为 pinned 常量故未暴露)。统一走 rc_push_str_idx。
                 let idx = vm.add_string(s.as_bytes().to_vec());
-                push_str_tag(ram, idx as u32);
+                vm.rc_push_str_idx(task, idx);
             }
             Value::VmRef(vmref) => {
                 // Plan 419: 堆引用入栈 +1(咽喉点)。
@@ -3028,7 +3033,7 @@ impl AutoVM {
                                     // default 丢弃 -1。
                                     self.rc_release(may_nv);
                                     self.rc_release(default_nv);
-                                    Self::push_value(&mut task.ram, &field_val, self);
+                                    Self::push_value(task, &field_val, self);
                                 } else {
                                     task.ram.push_nv(may_nv);
                                     self.rc_release(default_nv);
@@ -3112,7 +3117,7 @@ impl AutoVM {
                                     // Plan 419: 容器 stake 死亡;内值入栈 +1
                                     // (push_value 的 VmRef 臂已 retain)。
                                     should_propagate = false;
-                                    Self::push_value(&mut task.ram, &field, self);
+                                    Self::push_value(task, &field, self);
                                     self.rc_release_id(may_bits as u64);
                                 }
                                 MayKind::Bare => {
@@ -3682,7 +3687,7 @@ impl AutoVM {
                         if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                             if inst.mono_name == "Result.Ok" {
                                 if let Some(field) = inst.fields.first() {
-                                    Self::push_value(&mut task.ram, field, self);
+                                    Self::push_value(task, field, self);
                                     return Ok(StepResult::Continue);
                                 }
                             }
@@ -3713,7 +3718,7 @@ impl AutoVM {
                         if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
                             if inst.mono_name == "Result.Err" {
                                 if let Some(field) = inst.fields.first() {
-                                    Self::push_value(&mut task.ram, field, self);
+                                    Self::push_value(task, field, self);
                                     return Ok(StepResult::Continue);
                                 }
                             }
@@ -4096,7 +4101,7 @@ impl AutoVM {
                                         guard.as_any().downcast_ref::<GenericInstanceData>()
                                     {
                                         if let Some(value) = instance.get_field(field_index) {
-                                            Self::push_value(&mut task.ram, value, self);
+                                            Self::push_value(task, value, self);
                                         } else {
                                             return Err(VMError::RuntimeError(format!(
                                                 "Field index {} out of bounds", field_index
@@ -8232,7 +8237,7 @@ self.rc_release(a_nv);
                                     let result = future.result.clone();
                                     drop(future); // Release lock before push_value
                                     if let Some(ref r) = result {
-                                        Self::push_value(&mut task.ram, r, self);
+                                        Self::push_value(task, r, self);
                                     } else {
                                         task.ram.push_i32(0); // No result = nil
                                     }
@@ -8283,7 +8288,7 @@ self.rc_release(a_nv);
                                     let result = future.result.clone();
                                     drop(future); // Release lock before push_value
                                     if let Some(ref r) = result {
-                                        Self::push_value(&mut task.ram, r, self);
+                                        Self::push_value(task, r, self);
                                     } else {
                                         task.ram.push_i32(0);
                                     }
@@ -8537,7 +8542,7 @@ self.rc_release(a_nv);
         }
 
         // Push result onto caller's stack
-        Self::push_value(&mut task.ram, &result_value, self);
+        Self::push_value(task, &result_value, self);
 
         Ok(())
     }

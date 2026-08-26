@@ -27,36 +27,38 @@
 //            (ev_push 兼容 push/set);RET 帧/参数槽位算术
 //            与 engine.rs 逐条对齐(参数寻址 bp-n_args+rel-1)。
 //            D30(433 重构):负 int 偏置编码保留但收窄到 int 载荷
-//            域;D31(433 重构):值栈异构载体 → Val 判别器结构体
-//            (k/i/s/arr)——VM 侧 List 天然异构(行为不变),a2r 侧
-//            Vec<Val> 取代裸 List→Vec<String> 的错误映射;不用
-//            enum:VM 枚举载荷跨函数传参丢标签(242 挂账);
+//            域;D31(433 重构;447-③ E2 收账):值栈异构载体 → 枚举
+//            Val{VInt/VStr/VArr/VInst}(对齐 auto-val Value 的 match
+//            分派;433 期"枚举载荷跨函数丢标签"以宿主 H3 根治解除);
 //            布尔/nil 仍以 0/1 整型承载(宿主 print 对 bool 打
 //            "1"/"0",可观察行为一致)。
 
 // 值栈元素:异构值的显式载体(433:a2r 需要静态元素类型;VM 侧 List
-// 本就动态,行为不变)。判别器结构体而非 enum——VM 实证枚举载荷值
-// 跨函数传参会丢标签(probe20/22/23,E1 空/NONE/哨兵泄漏;结构体
-// S1-S3 全绿),挂 242 tracker。k:0=int 1=str 2=arr;i 对 arr 即
-// arena(数组侧表)索引——索引即引用,镜像宿主 VM 的堆 id 设计
-// (D31 续:VM 引用语义与 a2r 值语义在"单一事实源=arena 槽位"上
-// 对齐,局部槽/栈位持有的是可自由复制的索引)。
-type Val {
-    k int
-    i int
-    s str
+// 本就动态,行为不变)。447-③ E2(D34 收账):判别器结构体 {k,i,s}
+// → 枚举载荷 VInt/VStr/VArr/VInst(对齐 auto-val Value 枚举的 match
+// 分派形态;433 期的"枚举载荷跨函数传参丢标签"规避以 H3 根治解除,
+// probe/b31/g05 三件护航)。VArr/VInst 的 int 载荷 = arena(数组侧表)
+// 索引——索引即引用,镜像宿主 VM 的堆 id 设计(D31 续:VM 引用语义
+// 与 a2r 值语义在"单一事实源=arena 槽位"上对齐,局部槽/栈位持有的
+// 是可自由复制的索引);VInst 双载荷 {arena 字段表槽位, 变体名}
+// (部分② 的 k=3 实例形态枚举化)。
+enum Val {
+    VInt(int)
+    VStr(str)
+    VArr(int)
+    VInst(int, str)
 }
 
 fn ev_vi(x int) Val {
-    return Val(0, x, "")
+    return Val.VInt(x)
 }
 
 fn ev_vs(t str) Val {
-    return Val(1, 0, t)
+    return Val.VStr(t)
 }
 
 fn ev_va(ai int) Val {
-    return Val(2, ai, "")
+    return Val.VArr(ai)
 }
 
 // 栈写:sp 越界即 push,否则原地 set(镜像 ev_push)
@@ -71,32 +73,30 @@ fn ev_push(mut stack List<Val>, sp int, v Val) int {
 
 // 数值视图:int 载荷;其余 0(镜像 VM 对非数值参与 ==0 判定的行为)
 fn ev_int(v Val) int {
-    if v.k == 0 {
-        return v.i
+    is v {
+        Val.VInt(n) -> n
+        else -> 0
     }
-    return 0
 }
 
 // 显示串(print 参数):镜像宿主 ADD-含字符串即拼接的语义;负 int
 // 先解偏置(D30 编码);arr 为不可比载体(语料以元素/len 为观察
 // 通道,D31),占位输出
 fn ev_str(v Val) str {
-    if v.k == 1 {
-        return v.s
+    is v {
+        Val.VStr(t) -> t
+        Val.VInt(n) -> ev_dec(n).str()
+        else -> "[arr]"
     }
-    if v.k == 0 {
-        return ev_dec(v.i).str()
-    }
-    return "[arr]"
 }
 
 // 真值:int 按 !=0;其余(含 str)恒真(镜像 VM `v != 0` 的
 // 行为——字符串与 0 比较恒不等)
 fn ev_truthy(v Val) bool {
-    if v.k == 0 {
-        return v.i != 0
+    is v {
+        Val.VInt(n) -> n != 0
+        else -> true
     }
-    return true
 }
 
 // v2 负 int 编码(D30):负 int 偏置 -1e9 入栈(规避宿主无类型
@@ -119,52 +119,82 @@ fn ev_dec(v int) int {
 // (str.cat 指令与 add 的宿主语义镜像,当前 codegen 仅对已知
 // 字符串操作数发 str.cat,双 int 分支为语义保真保留)
 fn ev_add(a Val, b Val) Val {
-    if a.k == 1 {
-        var bs = ev_str(b)
-        var t1 = a.s + bs
-        return ev_vs(t1)
+    is a {
+        Val.VStr(sa) -> {
+            var bs = ev_str(b)
+            return ev_vs(sa + bs)
+        }
+        else -> {
+        }
     }
-    if b.k == 1 {
-        var as2 = ev_str(a)
-        var t2 = as2 + b.s
-        return ev_vs(t2)
+    is b {
+        Val.VStr(sb) -> {
+            var as2 = ev_str(a)
+            return ev_vs(as2 + sb)
+        }
+        else -> {
+        }
     }
-    return ev_vi(a.i + b.i)
+    return ev_vi(ev_int(a) + ev_int(b))
 }
 
 // 全序比较:int 域比较先解偏置;str 域字典序(VM "b" > "a" 实测);
 // 混合型/arr 不可比 → 2(eq 取 false、ne 取 true,镜像 VM "x" == 1
 // → false);返回 -1/0/1/2
 fn ev_cmp(a Val, b Val) int {
-    if a.k == 0 && b.k == 0 {
-        var dx = ev_dec(a.i)
-        var dy = ev_dec(b.i)
-        if dx < dy {
-            return -1
+    is a {
+        Val.VInt(ax) -> {
+            // 嵌套 is 用新鲜拷贝(同标识符二次 is 会触发主 a2r H5 的
+            // match & 引用绑定,载荷变 &i64/&String 不可再入按值调用)
+            var b1 = b
+            is b1 {
+                Val.VInt(bx) -> {
+                    var dx = ev_dec(ax)
+                    var dy = ev_dec(bx)
+                    if dx < dy {
+                        return -1
+                    }
+                    if dx > dy {
+                        return 1
+                    }
+                    return 0
+                }
+                else -> {
+                }
+            }
         }
-        if dx > dy {
-            return 1
+        Val.VStr(sa) -> {
+            var b2 = b
+            is b2 {
+                Val.VStr(sb) -> {
+                    if sa < sb {
+                        return -1
+                    }
+                    if sa > sb {
+                        return 1
+                    }
+                    return 0
+                }
+                else -> {
+                }
+            }
         }
-        return 0
-    }
-    if a.k == 1 && b.k == 1 {
-        if a.s < b.s {
-            return -1
+        else -> {
         }
-        if a.s > b.s {
-            return 1
-        }
-        return 0
     }
     return 2
 }
 
 // arr 载荷提取(只读用途);非数组值返回空表(长度 0 → OOB 语义)
 fn ev_arr_of(mut arena List<List<Val>>, v Val) List<Val> {
-    var none_l List<Val> = List.new()
-    if v.k == 2 {
-        return arena.get(v.i)
+    is v {
+        Val.VArr(ai) -> {
+            return arena.get(ai)
+        }
+        else -> {
+        }
     }
+    var none_l List<Val> = List.new()
     return none_l
 }
 
@@ -179,12 +209,16 @@ fn ev_arr_write(mut arena List<List<Val>>, ai int, idx int, val Val) {
 
 // 数组/字符串长度动态分派(镜像 ARRAY_LEN 两分支)
 fn ev_len(mut arena List<List<Val>>, v Val) int {
-    if v.k == 2 {
-        var l = arena.get(v.i)
-        return l.len()
-    }
-    if v.k == 1 {
-        return v.s.len()
+    is v {
+        Val.VArr(ai) -> {
+            var l = arena.get(ai)
+            return l.len()
+        }
+        Val.VStr(t) -> {
+            return t.len()
+        }
+        else -> {
+        }
     }
     return 0
 }
@@ -272,7 +306,8 @@ fn ev_run_t(source str, trace int) str {
         }
         OpCode.NewInstance -> {
             // Plan 447 部分②:弹名长(const.i32 哨兵,名字在操作数);
-            // 建空字段表入 arena,推实例(k=3:s=变体名,i=arena 槽位)
+            // 建空字段表入 arena,推实例(VInst:slot=arena 槽位,
+            // name=变体名)
             sp = sp - 1
             var nm = ins.s
             if nm.len() >= 2 && nm.char_at(0) == '"' {
@@ -280,7 +315,8 @@ fn ev_run_t(source str, trace int) str {
             }
             var fl List<Val> = List.new()
             arena.push(fl)
-            sp = ev_push(stack, sp, Val(3, arena.len() - 1, nm))
+            var slot3 = arena.len() - 1
+            sp = ev_push(stack, sp, Val.VInst(slot3, nm))
         }
         OpCode.ConstructInstance -> {
             // 栈:[..., 字段值…, 实例, 字段数](镜像宿主弹序:count→
@@ -289,18 +325,27 @@ fn ev_run_t(source str, trace int) str {
             sp = sp - 1
             var inst9 = stack.get(sp - 1)
             sp = sp - 1
-            var fl9 List<Val> = arena.get(inst9.i)
-            var ci9 = 0
-            while ci9 < n9 {
-                fl9.push(stack.get(sp - n9 + ci9))
-                ci9 = ci9 + 1
+            var fl9 List<Val> = List.new()
+            // is 拷贝:VInst 绑定 String 载荷是部分移动,inst9 后续回栈复用
+            var inst9c = inst9
+            is inst9c {
+                Val.VInst(slot9, nm9) -> {
+                    fl9 = arena.get(slot9)
+                    var ci9 = 0
+                    while ci9 < n9 {
+                        fl9.push(stack.get(sp - n9 + ci9))
+                        ci9 = ci9 + 1
+                    }
+                    arena.set(slot9, fl9)
+                }
+                else -> {
+                }
             }
             sp = sp - n9
-            arena.set(inst9.i, fl9)
             sp = ev_push(stack, sp, inst9)
         }
         OpCode.IsVariant -> {
-            // 弹实例,推命中 bool;k=3 且变体名全等才命中(非实例恒假)
+            // 弹实例,推命中 bool;VInst 且变体名全等才命中(非实例恒假)
             var v9 = stack.get(sp - 1)
             sp = sp - 1
             var nm9 = ins.s
@@ -308,8 +353,14 @@ fn ev_run_t(source str, trace int) str {
                 nm9 = nm9.slice(1, nm9.len() - 1)
             }
             var hit9 = 0
-            if v9.k == 3 && v9.s == nm9 {
-                hit9 = 1
+            is v9 {
+                Val.VInst(slot9, name9) -> {
+                    if name9 == nm9 {
+                        hit9 = 1
+                    }
+                }
+                else -> {
+                }
             }
             sp = ev_push(stack, sp, ev_vi(hit9))
         }
@@ -317,7 +368,15 @@ fn ev_run_t(source str, trace int) str {
             // 弹实例,推第 n 槽字段(后续 3 条 nop 为 u32 残留形态,直通)
             var v10 = stack.get(sp - 1)
             sp = sp - 1
-            var fl10 List<Val> = arena.get(v10.i)
+            var slot10 = 0
+            is v10 {
+                Val.VInst(s10, nm10) -> {
+                    slot10 = s10
+                }
+                else -> {
+                }
+            }
+            var fl10 List<Val> = arena.get(slot10)
             sp = ev_push(stack, sp, fl10.get(ins.n))
         }
         OpCode.Nop -> {
@@ -540,13 +599,18 @@ fn ev_run_t(source str, trace int) str {
             }
             var val7 = ev_vi(0)
             if j7 >= 0 && j7 < len7 {
-                if arrv.k == 2 {
-                    var l7 = ev_arr_of(arena, arrv)
-                    val7 = l7.get(j7)
-                } else if arrv.k == 1 {
-                    // D25-① 规避:char_at 原生调用先提升
-                    var cv = arrv.s.char_at(j7)
-                    val7 = ev_vi(cv)
+                is arrv {
+                    Val.VArr(ai7) -> {
+                        var l7 = ev_arr_of(arena, arrv)
+                        val7 = l7.get(j7)
+                    }
+                    Val.VStr(sv7) -> {
+                        // D25-① 规避:char_at 原生调用先提升
+                        var cv = sv7.char_at(j7)
+                        val7 = ev_vi(cv)
+                    }
+                    else -> {
+                    }
                 }
             }
             sp = sp - 2
@@ -559,8 +623,12 @@ fn ev_run_t(source str, trace int) str {
             var idx8 = ev_dec(ev_int(stack.get(sp - 1)))
             var arr8 = stack.get(sp - 2)
             var val8 = stack.get(sp - 3)
-            if arr8.k == 2 {
-                ev_arr_write(arena, arr8.i, idx8, val8)
+            is arr8 {
+                Val.VArr(ai8) -> {
+                    ev_arr_write(arena, ai8, idx8, val8)
+                }
+                else -> {
+                }
             }
             sp = sp - 3
         }

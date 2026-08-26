@@ -347,7 +347,30 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   enum OpCode + op_name;I.op/emit/i_size 枚举化;cg_binop_mnem→OpCode;
   10.4-E1 同批完成(engine 49 臂 → is op;矩阵 33/33 绿)。
 - [ ] 10.3-codegen.at 剩余:C3 cg_expr/cg_stmt p_kind 链 is 化(P2 同批)
-- [~] 10.4-engine.at:E1 完成;E2(Val 三载体枚举化)待做
+- [x] 10.4-engine.at E2 完成(2026-08-26):`Val{k,i,s}` 判别器结构体 →
+  `enum Val{VInt(int) VStr(str) VArr(int) VInst(int,str)}`(部分② 的
+  k=3 实例形态并入 VInst 双载荷);15 处 `v.k==` 判别位 + 4 个构造点
+  还原为 is-绑定分派/枚举构造,8 个 ev_* 函数对齐 auto-val Value 的
+  match 形态(D34 收账;D35 arena 槽位语义保持——VArr/VInst 的 int
+  载荷仍是 arena 索引)。433 期"枚举载荷跨函数丢标签"规避随 H3
+  根治解除;D36①② 提升写法保留(非枚举化障碍,风格回退另行)。
+  **连带四修**:
+  ①宿主 RC 修复(H3 家族新发现):engine.rs push_value 的 Str 分支
+  add_string 后漏 retain(freelist 条目 rc=0 须 push 侧建份额)——
+  GET_GENERIC_FIELD 读运行期字符串载荷后任意 pop/槽释放即超额释放
+  (RC canary;v21 最小复现:fn 内构造运行期串实例→返回→is 绑定读
+  →print;此前全库载荷均为 pinned 常量故未暴露),统一走
+  rc_push_str_idx,8 个调用点(字段读/原生返回)同族潜伏一并修;
+  ②ev_cmp 嵌套双 `is b` 触发主 a2r H5 的 `match &` 引用绑定
+  (&i64/&String 不可入按值调用)→ 每臂新鲜拷贝 b1/b2 消除双 is;
+  ③ConstructInstance 的 is 绑定 String 载荷是部分移动,inst9 回栈
+  复用 E0382 → is 拷贝 inst9c;
+  ④AA2R 多元组载荷三处:模式绑定 ", " 连接、构造位按槽位
+  (ar_pay_slot)判 str `.to_string()`、枚举 ident 实参无条件 clone
+  (镜像主 a2r struct_flags 非 Copy 判据)。
+  新语料三件:p23_enum_multi_payload(M2 dump)/g05_enum_multi_payload
+  (②⑤逐字符对齐)/b31_is_enum_multi(M4/M5 行为 + 矩阵第 34 例)。
+  闸门:aavm2 13+2 绿;全量 18 失败与基线逐项一致零新增。
 - [ ] 10.3.C1 `I.op: str → enum OpCode`(S4 子集 30 种助记符,编号
   对齐 opcode.rs);C2 `i_size`/`cg_binop_mnem`/`cg_is_assign_op` is 化(对齐
   opcode.rs:828 operand_size / codegen.rs:5856);C3 cg_expr/cg_stmt p_kind 链

@@ -1,0 +1,23 @@
+enum Val {
+    VInt(int)
+    VStr(str)
+    VArr(int)
+    VInst(int, str)
+}
+
+fn name_of(v Val) str {
+    is v {
+        Val.VInst(slot, nm) -> nm
+        Val.VStr(t) -> t
+        else -> "other"
+    }
+}
+
+fn main() {
+    let a = Val.VInst(3, "Circle")
+    print(name_of(a))
+    let b = Val.VInt(7)
+    print(name_of(b))
+    let c = Val.VStr("hi")
+    print(name_of(c))
+}

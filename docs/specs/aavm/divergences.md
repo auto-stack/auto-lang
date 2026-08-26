@@ -32,6 +32,22 @@
   落盘。首试⑤列"print 超大串退空"结案为环境相关异常终止(宿主 print
   无尺寸阈值已证伪;循环逐字符拼接 >20 万字符崩/挂为 u16 池截断家族,
   以 List+join 写法规范规避)。
+- **D34·Val 三载体枚举化收账(2026-08-26,E2)**:engine.at 的 Val
+  判别器结构体 {k,i,s} → `enum Val{VInt(int) VStr(str) VArr(int)
+  VInst(int,str)}`(部分② 的 k=3 实例形态并入 VInst 双载荷);8 个
+  ev_* 函数的 `v.k==` 分派还原为 is-绑定分派(对齐 auto-val Value
+  的 match 形态;ev_cmp 嵌套 is 镜像 Rust 元组 match 的 D41 拆臂)。
+  433 期"枚举载荷跨函数传参丢标签"规避(H3 家族)解除;D36①② 规避
+  写法(构造参数提升/读值提升)保留——非枚举化障碍,风格回退另行。
+  **宿主修复(push_value 漏 retain)**:engine.rs push_value 的 Str
+  分支 add_string 后直推无 +1 stake,GET_GENERIC_FIELD 读运行期
+  字符串载荷后任意 pop/槽释放即超额释放(RC canary;v21 最小复现
+  `fn内构造运行期串实例→返回→is 绑定读→print`)——统一走
+  rc_push_str_idx,8 个调用点(字段读/原生返回)同族潜伏一并修复;
+  此前全库载荷均为 pinned 常量故未暴露。多元组载荷三件语料护航:
+  p23(M2 dump)/g05(②⑤逐字符对齐,连带 AA2R 三修:模式绑定
+  ", " 连接/ar_pay_slot 按位 str 槽 .to_string()/枚举 ident 实参
+  无条件 clone 镜像主 a2r struct_flags)/b31(M4/M5 行为 + 矩阵)。
 - **D14 残余·lexer.at L1**:Token.kind/Tok.kind 载体 str → TokenKind
   (构造点 41+4;p_kind/p_peek 以 kind_name 维持 str 边界待 P1;is_comment_kind
   参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,

@@ -1,0 +1,39 @@
+// E2 prep: multi-payload tuple variant construct + is-binding behavior (VM layer).
+// NOTE: keep this corpus ASCII-only - transpiled lexer byte-slicing vs codepoint
+// indexing on CJK is divergence D16 (documented, out of plan-447 scope).
+enum Val {
+    VInt(int)
+    VStr(str)
+    VArr(int)
+    VInst(int, str)
+}
+
+fn name_of(v Val) str {
+    is v {
+        Val.VInst(slot, nm) -> nm
+        Val.VStr(t) -> t
+        else -> "other"
+    }
+}
+
+fn slot_of(v Val) int {
+    is v {
+        Val.VInst(slot, nm) -> slot
+        Val.VInt(n) -> n
+        else -> -1
+    }
+}
+
+fn main() {
+    let a = Val.VInst(3, "Circle")
+    print(name_of(a))
+    print(slot_of(a))
+    let b = Val.VInt(7)
+    print(name_of(b))
+    print(slot_of(b))
+    let c = Val.VStr("hi")
+    print(name_of(c))
+    print(slot_of(c))
+    let d = Val.VArr(11)
+    print(name_of(d))
+}
