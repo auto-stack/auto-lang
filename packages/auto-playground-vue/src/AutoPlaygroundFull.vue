@@ -29,7 +29,7 @@
     :bytecode="layoutBytecode"
     :bytecode-meta="mode === 'run' ? runBytecodeMeta : activeMeta"
     :debug-state="activeDebugState"
-    :current-source-line="highlightedSourceLine"
+    :current-source-line="hoveredSourceLine"
     :highlighted-offsets="hoveredOffsets"
     :selected-offsets="selectedOffsets"
     :selected-source-line="highlightedSourceLine"

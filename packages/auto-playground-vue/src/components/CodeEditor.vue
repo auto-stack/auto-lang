@@ -209,27 +209,35 @@ const errorLineState = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-const debugLineHighlight = [
-  debugLineState,
+// Linking decorations are always mounted: source↔bytecode highlighting is
+// primarily a Run-mode feature, and effects dispatched at unmounted fields
+// would silently no-op.
+const alwaysHighlight = [
   crossHighlightState,
   selectedLineState,
   errorLineState,
   EditorView.baseTheme({
-    '.cm-debug-current-line': {
-      backgroundColor: '#0e639c40',
-      borderLeft: '3px solid #0e639c',
-    },
     '.cm-cross-highlight-line': {
       backgroundColor: 'rgba(86, 156, 214, 0.16)',
-      borderLeft: '3px solid rgba(86, 156, 214, 0.55)',
     },
     '.cm-selected-line': {
-      backgroundColor: '#7b4a0e40',
-      borderLeft: '3px solid #ff9d00',
+      backgroundColor: 'rgba(255, 157, 0, 0.2)',
     },
     '.cm-error-line': {
       backgroundColor: '#f38ba822',
       borderLeft: '3px solid #f38ba8',
+    },
+  }),
+];
+
+// Debug-only: breakpoint gutter + current-IP line marker
+const debugLineHighlight = [
+  debugLineState,
+  breakpointGutter,
+  EditorView.baseTheme({
+    '.cm-debug-current-line': {
+      backgroundColor: '#0e639c40',
+      borderLeft: '3px solid #0e639c',
     },
     '.cm-breakpoint-gutter': {
       width: '22px',
@@ -250,7 +258,7 @@ const debugLineHighlight = [
 ];
 
 function getDebugExtensions(): Extension[] {
-  return [...breakpointGutter, ...debugLineHighlight];
+  return debugLineHighlight;
 }
 
 // ============================================================================
@@ -272,6 +280,7 @@ onMounted(() => {
         emit('update:modelValue', update.state.doc.toString());
       }
     }),
+    ...alwaysHighlight,
     debugCompartment.of(props.isDebugging ? getDebugExtensions() : []),
   ];
 

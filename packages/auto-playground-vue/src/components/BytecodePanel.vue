@@ -199,11 +199,9 @@ watch(() => props.selectedOffsets, async (offsets) => {
 }
 .bytecode-line.is-hover {
   background: rgba(86, 156, 214, 0.16);
-  border-left: 3px solid rgba(86, 156, 214, 0.55);
 }
 .bytecode-line.is-selected {
-  background: #7b4a0e;
-  border-left: 3px solid #ff9d00;
+  background: rgba(255, 157, 0, 0.2);
 }
 .offset {
   color: #858585;
