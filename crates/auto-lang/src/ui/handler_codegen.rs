@@ -19,7 +19,7 @@ use std::collections::{HashSet, HashMap};
 use std::cell::RefCell;
 
 use crate::ast::{
-    Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Type, TypeDecl,
+    Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Try, Type, TypeDecl,
     TypeDeclKind,
 };
 use crate::aura::{AuraWidget, LogicPayload};
@@ -158,6 +158,17 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
         Stmt::Block(b) => rewrite_state_refs_stmts(&mut b.stmts, state_fields),
         // Fn bodies inside handlers are unusual; handle defensively.
         Stmt::Fn(fn_decl) => rewrite_state_refs_stmts(&mut fn_decl.body.stmts, state_fields),
+        // Plan 446 批一(auto-musk 045 现场):try/catch/finally 体同样走查。
+        // 此前缺臂,体内 `.state` 读写漏成裸 self → VM 合成 handler 报
+        // "Undefined variable: self"(musk 七个 try/catch 形态 HTTP handler
+        // 全体毒化)。镜像 Block 的处理。
+        Stmt::Try(t) => {
+            rewrite_state_refs_stmts(&mut t.body.stmts, state_fields);
+            rewrite_state_refs_stmts(&mut t.catch_body.stmts, state_fields);
+            if let Some(fb) = t.finally_body.as_mut() {
+                rewrite_state_refs_stmts(&mut fb.stmts, state_fields);
+            }
+        }
         _ => {}
     }
 }
@@ -1583,6 +1594,60 @@ mod tests {
         // self/. references must be gone
         assert!(!rendered.contains("(name self)"), "{}", rendered);
         assert!(!rendered.contains("(name .)"), "{}", rendered);
+    }
+
+    #[test]
+    fn rewrites_state_refs_inside_try_catch() {
+        // Plan 446 批一 regression (auto-musk 045 现场): handler 体内
+        // try { .error = "" } catch { .configs = .configs } 的 `.x` 读写
+        // 此前不被走查(rewrite_stmt 无 Try 臂),漏成裸 self → VM 合成报
+        // "Undefined variable: self"。修复后 try/catch/finally 三体均重写。
+        let mk_body = |stmts: Vec<Stmt>| Body {
+            stmts,
+            has_new_line: true,
+            source_lines: Vec::new(),
+        };
+        let assign = |field: &str| {
+            Stmt::Expr(Expr::Bina(
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from("."))),
+                    Name::from(field),
+                )),
+                Op::Asn,
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from("self"))),
+                    Name::from(field),
+                )),
+            ))
+        };
+        let mut stmt = Stmt::Try(Try {
+            body: mk_body(vec![assign("error")]),
+            catch_param: None,
+            catch_body: mk_body(vec![assign("configs")]),
+            finally_body: Some(mk_body(vec![assign("loading")])),
+            new_line: true,
+        });
+        let fields = make_state_fields(&["error", "configs", "loading"]);
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &fields);
+        match &stmt {
+            Stmt::Try(t) => {
+                // Stmt 的 Display 不递归,逐体断言(裸 self/. 必须消失)
+                let bodies = [
+                    format!("{}", t.body),
+                    format!("{}", t.catch_body),
+                    t.finally_body.as_ref().map(|f| format!("{}", f)).unwrap_or_default(),
+                ];
+                for (i, rendered) in bodies.iter().enumerate() {
+                    assert!(rendered.contains("(name __state)"), "body[{i}]: {rendered}");
+                    assert!(!rendered.contains("(name self)"), "body[{i}]: {rendered}");
+                    assert!(!rendered.contains("(name .)"), "body[{i}]: {rendered}");
+                }
+                assert!(bodies[0].matches(".error").count() >= 2, "{}", bodies[0]);
+                assert!(bodies[1].matches(".configs").count() >= 2, "{}", bodies[1]);
+                assert!(bodies[2].matches(".loading").count() >= 2, "{}", bodies[2]);
+            }
+            other => panic!("expected Try, got {:?}", other),
+        }
     }
 
     #[test]
