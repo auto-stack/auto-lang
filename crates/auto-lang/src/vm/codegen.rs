@@ -9966,6 +9966,9 @@ impl Codegen {
             Expr::Dot(obj, field) => {
                 self.contains_float(obj) || self.field_is_float(obj, field)
             }
+            Expr::Call(call) => {
+                call.args.args.iter().map(|a| a.get_expr()).any(|e| self.contains_float(&e))
+            }
             _ => false,
         }
     }
@@ -10003,6 +10006,9 @@ impl Codegen {
             }
             Expr::Dot(obj, field) => {
                 self.contains_double(obj) || self.field_is_double(obj, field)
+            }
+            Expr::Call(call) => {
+                call.args.args.iter().map(|a| a.get_expr()).any(|e| self.contains_double(&e))
             }
             _ => false,
         }

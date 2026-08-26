@@ -2362,6 +2362,38 @@ widget OpProbeOrig {
         assert_eq!(bridge.read_state("count").unwrap(), Value::Int(2));
     }
 
+    #[test]
+    fn test_converter_vm_dispatch() {
+        use crate::parser::Parser;
+        use crate::session::CompilerSession;
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/003-converter/src/front");
+        let app_src = std::fs::read_to_string(front.join("app.at")).expect("read app.at");
+        let session = CompilerSession::ui();
+        let mut parser = Parser::from(&app_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        println!("handlers: {:?}", bridge.handler_names());
+        assert!(bridge.has_handler("__evt_oninput_1"));
+        assert!(bridge.has_handler("__evt_oninput_2"));
+
+        bridge.write_state("fahrenheit", Value::Double(323.0)).unwrap();
+        bridge.call_handler("__evt_oninput_2", &[]).unwrap();
+        let celsius = bridge.read_state("celsius").unwrap();
+        match celsius {
+            Value::Float(f) | Value::Double(f) => assert!((f - 161.67).abs() < 0.01, "expected ~161.67, got {}", f),
+            other => panic!("expected float/double celsius, got {:?}", other),
+        }
+    }
+
     /// Plan 323 (Option B) full-pipeline proof against the REAL 016-calendar
     /// source: parse app.at + calendar_util.at → collect imported `Fn`s →
     /// `VmBridge::new_with_imports` → `call_handler("Init")` → the imported
