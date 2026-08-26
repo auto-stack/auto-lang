@@ -3,6 +3,7 @@
     <div
       v-for="line in bytecode"
       :key="line.offset"
+      :data-offset="line.offset"
       :class="['bytecode-line', {
         'is-current': line.offset === currentIp,
         'is-highlighted': highlightedOffsets?.includes(line.offset),
@@ -31,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import ScrollArea from './ScrollArea.vue';
 import type { BytecodeLine, BytecodeMeta } from '../types';
 
@@ -153,6 +154,17 @@ function onOver(e: MouseEvent) {
 function formatOffset(offset: number): string {
   return offset.toString(16).padStart(4, '0');
 }
+
+// Bring the first highlighted line into view when the highlight moves
+// (block:'nearest' is a no-op for lines already visible, so hovering the
+// editor doesn't cause jitter).
+watch(() => props.highlightedOffsets, async (offsets) => {
+  if (!offsets?.length) return;
+  await nextTick();
+  panelRef.value?.$el
+    ?.querySelector(`[data-offset="${offsets[0]}"]`)
+    ?.scrollIntoView({ block: 'nearest' });
+});
 </script>
 
 <style scoped>

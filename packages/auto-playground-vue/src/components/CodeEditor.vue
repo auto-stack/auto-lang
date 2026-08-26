@@ -333,7 +333,14 @@ watch(() => props.currentDebugLine, (line) => {
 
 watch(() => props.highlightedSourceLine, (line) => {
   if (!editorView) return;
-  editorView.dispatch({ effects: crossHighlightEffect.of(line ?? null) });
+  const effects: any[] = [crossHighlightEffect.of(line ?? null)];
+  // Bring the highlighted line into view without touching the cursor
+  // (scrollIntoView with default 'nearest' alignment is a no-op if visible)
+  if (line !== null && line !== undefined) {
+    const pos = Math.min(editorView.state.doc.length, editorView.state.doc.line(line).from);
+    effects.push(EditorView.scrollIntoView(pos, { y: 'nearest' }));
+  }
+  editorView.dispatch({ effects });
 });
 
 watch(() => props.errorLines, (lines) => {

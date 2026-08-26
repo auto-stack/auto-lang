@@ -39,9 +39,13 @@ test.describe('Bytecode panel meta tooltips', () => {
       page.locator('.tok', { hasText: 'nat#' }).first()
     ).toHaveAttribute('data-tip', /auto\.print/);
 
-    // call target 0x0008 resolves to fn add
-    await expect(page.locator('.tok', { hasText: '0x0008' }).first())
-      .toHaveAttribute('data-tip', 'fn add');
+    // call target resolves to fn add (address varies with SOURCE_LINE emission,
+    // so locate the token on the call instruction instead of hardcoding it)
+    const callTok = page
+      .locator('.bytecode-line', { has: page.locator('.mnemonic', { hasText: /^call$/ }) })
+      .locator('.tok')
+      .first();
+    await expect(callTok).toHaveAttribute('data-tip', 'fn add');
   });
 
   test('tooltip hides when leaving the panel', async ({ page }) => {

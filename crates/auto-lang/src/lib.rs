@@ -845,8 +845,16 @@ async fn execute_autovm_with_path(
             }
         }
 
-        // Now compile the statements
-        for stmt in other_stmts.iter() {
+        // Now compile the statements. Emit SOURCE_LINE per top-level stmt so
+        // Run-mode bytecode carries source line info for linking, matching
+        // the debug path (create_vm_from_source).
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+                continue;
+            }
+            if i < ast.source_lines.len() {
+                codegen.emit_source_line(ast.source_lines[i]);
+            }
             codegen.compile_stmt(stmt)?;
         }
     }

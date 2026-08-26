@@ -115,12 +115,32 @@ const layoutBytecode = computed(() => {
   return activeBytecode.value;
 });
 
+// Line↔offset maps derived from whatever bytecode is on screen, so source
+// clicks highlight bytecode in Run mode too (same mechanism Debug used).
+const bytecodeLineToOffsets = computed(() => {
+  const map: Record<number, number[]> = {};
+  for (const line of layoutBytecode.value) {
+    if (line.line !== undefined) {
+      if (!map[line.line]) map[line.line] = [];
+      map[line.line].push(line.offset);
+    }
+  }
+  return map;
+});
+
+const bytecodeOffsetToLine = computed(() => {
+  const map: Record<number, number> = {};
+  for (const line of layoutBytecode.value) {
+    if (line.line !== undefined) {
+      map[line.offset] = line.line;
+    }
+  }
+  return map;
+});
+
 const highlightedBytecodeOffsets = computed(() => {
   if (!highlightedSourceLine.value) return undefined;
-  if (replay.isActive.value) {
-    return replay.lineToOffsets.value[highlightedSourceLine.value];
-  }
-  return debug.lineToOffsets.value[highlightedSourceLine.value];
+  return bytecodeLineToOffsets.value[highlightedSourceLine.value];
 });
 
 // Sync debug finished state to main console so Run and Debug show the same result
@@ -186,9 +206,7 @@ function onDebugCommand(cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 's
 }
 
 function onOffsetClick(offset: number) {
-  const line = replay.isActive.value
-    ? replay.offsetToLine.value[offset]
-    : debug.offsetToLine.value[offset];
+  const line = bytecodeOffsetToLine.value[offset];
   if (line) {
     highlightSourceLine(line);
   }
