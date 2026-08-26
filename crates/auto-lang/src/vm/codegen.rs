@@ -2556,7 +2556,7 @@ impl Codegen {
                             vm_debug!("DEBUG FOR: After store_loc, code len = {}", self.code.len());
 
                             // Loop start label
-                            let loop_start = self.code.len() as i16;
+                            let loop_start = self.code.len();
                             vm_debug!("DEBUG FOR: Loop start at {}", loop_start);
 
                             // Load loop variable
@@ -2595,9 +2595,9 @@ impl Codegen {
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
+                            let current_pos = self.code.len();
                             // Offset is from IP after reading the offset (current_pos + 2)
-                            self.emit_i16(loop_start - current_pos - 2);
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -2630,7 +2630,7 @@ impl Codegen {
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
-                            let loop_start = self.code.len() as i16;
+                            let loop_start = self.code.len();
 
                             // Call iter.next() to get next element
                             self.emit_load_loc(iter_index); // Load iterator
@@ -2679,9 +2679,9 @@ impl Codegen {
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
+                            let current_pos = self.code.len();
                             // Offset is from IP after reading the offset (current_pos + 2)
-                            self.emit_i16(loop_start - current_pos - 2);
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -2773,7 +2773,7 @@ impl Codegen {
                             }
 
                             // Loop start label
-                            let loop_start = self.code.len() as i16;
+                            let loop_start = self.code.len();
 
                             // Load counter for comparison
                             self.emit_load_loc(counter_index);
@@ -2817,8 +2817,8 @@ impl Codegen {
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos - 2);
+                            let current_pos = self.code.len();
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -2863,7 +2863,7 @@ impl Codegen {
                             self.emit_store_loc(iter_index);
 
                             // Loop start label
-                            let loop_start = self.code.len() as i16;
+                            let loop_start = self.code.len();
 
                             // Load index variable for comparison
                             self.emit_load_loc(index_index);
@@ -2905,9 +2905,9 @@ impl Codegen {
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
+                            let current_pos = self.code.len();
                             // Offset is from IP after reading the offset (current_pos + 2)
-                            self.emit_i16(loop_start - current_pos - 2);
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -2973,7 +2973,7 @@ impl Codegen {
                             let iter_var_index = self.add_var(&iter_str);
 
                             // Loop start label
-                            let loop_start = self.code.len() as i16;
+                            let loop_start = self.code.len();
 
                             // Load counter
                             self.emit_load_loc(counter_index);
@@ -3021,8 +3021,8 @@ impl Codegen {
 
                             // JMP back to loop start
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos - 2);
+                            let current_pos = self.code.len();
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // This is the loop exit point - patch all break jumps here
                             let _loop_exit = self.code.len();
@@ -3102,7 +3102,7 @@ impl Codegen {
                         let val_var_index = self.add_var(val_name);
 
                         // Loop start
-                        let loop_start = self.code.len() as i16;
+                        let loop_start = self.code.len();
 
                         if let Some(pos) = self.loop_continue_positions.last_mut() {
                             *pos = loop_start as usize;
@@ -3159,8 +3159,8 @@ impl Codegen {
 
                             // JMP back
                             self.emit(OpCode::JMP);
-                            let current_pos = self.code.len() as i16;
-                            self.emit_i16(loop_start - current_pos - 2);
+                            let current_pos = self.code.len();
+                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                             // Patch exit jump
                             self.patch_jump(jump_to_end);
@@ -3260,8 +3260,8 @@ impl Codegen {
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start as i16 - current_pos - 2);
+                        let current_pos = self.code.len();
+                        self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -3289,7 +3289,7 @@ impl Codegen {
                         self.emit_store_loc(iter_index);
 
                         // Loop start label
-                        let loop_start = self.code.len() as i16;
+                        let loop_start = self.code.len();
 
                         // Call iter.next() to get next element
                         self.emit_load_loc(iter_index); // Load iterator
@@ -3338,8 +3338,8 @@ impl Codegen {
 
                         // JMP back to loop start
                         self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        self.emit_i16(loop_start - current_pos - 2);
+                        let current_pos = self.code.len();
+                        self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
                         // This is the loop exit point - patch all break jumps here
                         let _loop_exit = self.code.len();
@@ -3399,8 +3399,8 @@ impl Codegen {
                         // Legacy path for variants that set loop_continue_positions
                         // before body compilation (rare; most set it after → bug).
                         self.emit(OpCode::JMP);
-                        let current_pos = self.code.len() as i16;
-                        let offset = continue_pos as i16 - current_pos - 2;
+                        let current_pos = self.code.len();
+                        let offset = (continue_pos as isize - current_pos as isize - 2) as i16;
                         self.emit_i16(offset);
                     } else {
                         return Err(AutoError::Msg(
