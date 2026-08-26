@@ -1293,6 +1293,20 @@ element Change {
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
+element callout {
+    tag: "callout"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "kind", type: "string", default: "note", description: "Admonition kind: note/info/tip/success/warning/warn/danger/error/caution" }
+        { name: "title", type: "string", description: "Callout title header" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "AutoDown admonition panel (registry Callout, `:::kind title` container)"
+}
+
 element category-section {
     tag: "category-section"
     category: "unknown"
@@ -1315,6 +1329,32 @@ element component-card {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element details {
+    tag: "details"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "summary", type: "string", description: "Collapsible section summary header" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "AutoDown collapsible panel (registry Details, `:::details Summary`)"
+}
+
+element embed_block {
+    tag: "embed_block"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "target", type: "string", description: "Block-reference embed target" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown block-reference embed panel (registry Embed)"
+}
+
 element frame {
     tag: "frame"
     category: "unknown"
@@ -1323,6 +1363,33 @@ element frame {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element heading {
+    tag: "heading"
+    category: "typography"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "level", type: "int", default: "1", description: "Heading level 1-6 (palette H1..H6, clamped)" }
+        { name: "text", type: "string", description: "Heading text content" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown heading panel (registry Heading, level prop carries H1..H6)"
+}
+
+element math_block {
+    tag: "math_block"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "source", type: "string", description: "TeX source ($$...$$ display math)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown display-math panel (registry MathBlock, KaTeX on web / mono-text degrade on iced)"
 }
 
 element media {
@@ -1398,6 +1465,31 @@ element overlay {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element query_block {
+    tag: "query_block"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "query", type: "string", description: "Query expression source ({{query ...}} macro)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown query macro panel (registry Query, consumer-registered extension slot)"
+}
+
+element quote {
+    tag: "quote"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "AutoDown blockquote panel (registry Quote, `> ` blocks)"
+}
+
 element range_calendar {
     tag: "range_calendar"
     category: "form"
@@ -1437,6 +1529,26 @@ element text_input {
 
 
 // ============ tier: web_component ============
+
+element Embed {
+    tag: "Embed"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element Query {
+    tag: "Query"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
 
 element TabTrigger {
     tag: "TabTrigger"

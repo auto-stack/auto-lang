@@ -583,6 +583,88 @@ impl AuraSchema {
             description: "Code block with syntax highlighting",
         });
 
+        // === Plan 450 / auto-down 019: AutoDown 文档面板元素声明 ===
+        // registry 的 register_document_panel_widgets 登记了 Heading/Quote/
+        // Callout/Details/MathBlock/Query/Embed 七个面板 widget(schema_drift
+        // P3:登记与声明两步缺一即红),这里是声明面。**有意不带 vue meta**:
+        // 面板渲染器尚非具名 Vue 组件(plan-450 批次二裁定,组件化后经
+        // schema.meta 补映射);iced 侧分解渲染见 plan-450 批次三
+        // (aura_view_builder 面板臂 + ui_gen/rust.rs a2r 发射,if-arm 形态
+        // 故 rs_not_in_vb/rs_not_in_render 走 baseline 通道——041a 原生元素
+        // 同款)。props 对齐 registry 的 primary_prop;分块语法见 auto-down
+        // packages/engine/PANEL-ALIGNMENT.md。
+        elements.insert("heading", ElementDef {
+            tag: "heading",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "level", type_: PropType::Int, required: false, default: Some("1"), description: "Heading level 1-6 (palette H1..H6, clamped)" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Heading text content" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown heading panel (registry Heading, level prop carries H1..H6)",
+        });
+        elements.insert("quote", ElementDef {
+            tag: "quote",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown blockquote panel (registry Quote, `> ` blocks)",
+        });
+        elements.insert("callout", ElementDef {
+            tag: "callout",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "kind", type_: PropType::String, required: false, default: Some("note"), description: "Admonition kind: note/info/tip/success/warning/warn/danger/error/caution" },
+                PropDef { name: "title", type_: PropType::String, required: false, default: None, description: "Callout title header" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown admonition panel (registry Callout, `:::kind title` container)",
+        });
+        elements.insert("details", ElementDef {
+            tag: "details",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "summary", type_: PropType::String, required: false, default: None, description: "Collapsible section summary header" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown collapsible panel (registry Details, `:::details Summary`)",
+        });
+        elements.insert("math_block", ElementDef {
+            tag: "math_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "source", type_: PropType::String, required: false, default: None, description: "TeX source ($$...$$ display math)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown display-math panel (registry MathBlock, KaTeX on web / mono-text degrade on iced)",
+        });
+        elements.insert("query_block", ElementDef {
+            tag: "query_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "query", type_: PropType::String, required: false, default: None, description: "Query expression source ({{query ...}} macro)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown query macro panel (registry Query, consumer-registered extension slot)",
+        });
+        elements.insert("embed_block", ElementDef {
+            tag: "embed_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "target", type_: PropType::String, required: false, default: None, description: "Block-reference embed target" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown block-reference embed panel (registry Embed)",
+        });
+
         elements.insert("codepane", ElementDef {
             tag: "codepane",
             category: ElementCategory::Content,

@@ -295,6 +295,7 @@ rs_not_in_render	breadcrumb_page
 rs_not_in_render	breadcrumb_separator
 rs_not_in_render	button_group
 rs_not_in_render	calendar
+rs_not_in_render	callout
 rs_not_in_render	cardcontent
 rs_not_in_render	carddescription
 rs_not_in_render	cardfooter
@@ -326,6 +327,7 @@ rs_not_in_render	context_menu_label
 rs_not_in_render	context_menu_separator
 rs_not_in_render	context_menu_trigger
 rs_not_in_render	dd
+rs_not_in_render	details
 rs_not_in_render	dl
 rs_not_in_render	drawer
 rs_not_in_render	drawer_close
@@ -341,6 +343,7 @@ rs_not_in_render	dropdown_label
 rs_not_in_render	dropdown_separator
 rs_not_in_render	dropdown_trigger
 rs_not_in_render	dt
+rs_not_in_render	embed_block
 rs_not_in_render	figcaption
 rs_not_in_render	figure
 rs_not_in_render	form_control
@@ -349,6 +352,7 @@ rs_not_in_render	form_field
 rs_not_in_render	form_item
 rs_not_in_render	form_label
 rs_not_in_render	form_message
+rs_not_in_render	heading
 rs_not_in_render	hover_card
 rs_not_in_render	hover_card_content
 rs_not_in_render	hover_card_trigger
@@ -358,6 +362,7 @@ rs_not_in_render	input_otp
 rs_not_in_render	kbd
 rs_not_in_render	link
 rs_not_in_render	list_item
+rs_not_in_render	math_block
 rs_not_in_render	menubar
 rs_not_in_render	menubar_content
 rs_not_in_render	menubar_item
@@ -395,6 +400,8 @@ rs_not_in_render	pin_input_slot
 rs_not_in_render	popover_content
 rs_not_in_render	popover_trigger
 rs_not_in_render	pre
+rs_not_in_render	query_block
+rs_not_in_render	quote
 rs_not_in_render	range_calendar
 rs_not_in_render	resizable
 rs_not_in_render	resizable_handle
@@ -463,6 +470,7 @@ rs_not_in_vb	breadcrumb_page
 rs_not_in_vb	breadcrumb_separator
 rs_not_in_vb	button_group
 rs_not_in_vb	calendar
+rs_not_in_vb	callout
 rs_not_in_vb	card
 rs_not_in_vb	cardcontent
 rs_not_in_vb	carddescription
@@ -498,6 +506,7 @@ rs_not_in_vb	context_menu_label
 rs_not_in_vb	context_menu_separator
 rs_not_in_vb	context_menu_trigger
 rs_not_in_vb	dd
+rs_not_in_vb	details
 rs_not_in_vb	dl
 rs_not_in_vb	drawer
 rs_not_in_vb	drawer_close
@@ -514,6 +523,7 @@ rs_not_in_vb	dropdown_label
 rs_not_in_vb	dropdown_separator
 rs_not_in_vb	dropdown_trigger
 rs_not_in_vb	dt
+rs_not_in_vb	embed_block
 rs_not_in_vb	figcaption
 rs_not_in_vb	figure
 rs_not_in_vb	form
@@ -523,6 +533,7 @@ rs_not_in_vb	form_field
 rs_not_in_vb	form_item
 rs_not_in_vb	form_label
 rs_not_in_vb	form_message
+rs_not_in_vb	heading
 rs_not_in_vb	hover_card
 rs_not_in_vb	hover_card_content
 rs_not_in_vb	hover_card_trigger
@@ -532,6 +543,7 @@ rs_not_in_vb	kbd
 rs_not_in_vb	link
 rs_not_in_vb	list
 rs_not_in_vb	list_item
+rs_not_in_vb	math_block
 rs_not_in_vb	menubar_content
 rs_not_in_vb	menubar_item
 rs_not_in_vb	menubar_label
@@ -569,6 +581,8 @@ rs_not_in_vb	popover_content
 rs_not_in_vb	popover_trigger
 rs_not_in_vb	pre
 rs_not_in_vb	previewcard
+rs_not_in_vb	query_block
+rs_not_in_vb	quote
 rs_not_in_vb	range_calendar
 rs_not_in_vb	resizable
 rs_not_in_vb	resizable_handle
