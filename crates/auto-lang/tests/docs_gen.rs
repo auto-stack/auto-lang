@@ -84,6 +84,7 @@ const DOC_EXCLUDE: &[&str] = &[
     "tagsinput", "tagsinputdelete", "tagsinputfield", "tagsinputitem", // tags-input 家族(无独立页)
     "togglegroup", "togglegroupitem", // togglegroup 页
     "toaster",           // toast 页(宿主)
+    "embed", "query",    // iframe 嵌入与数据查询原语
 ];
 
 /// 基线:已知文档债(fold 键;冻结,新增即红)。

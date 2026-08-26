@@ -41,7 +41,7 @@ widget App {
                             style: "text-sm font-medium text-muted-foreground"
                         }
                         input (value: .celsius) {
-                            oninput: () => {.fahrenheit = .celsius * 9.0 / 5.0 + 32.0}
+                            oninput: () => {.fahrenheit = math.round((.celsius * 9.0 / 5.0 + 32.0) * 100.0) / 100.0}
                             placeholder: "0"
                         }
                     }
@@ -52,7 +52,7 @@ widget App {
                             style: "text-sm font-medium text-muted-foreground"
                         }
                         input (value: .fahrenheit) {
-                            oninput: () => {.celsius = (.fahrenheit - 32.0) * 5.0 / 9.0}
+                            oninput: () => {.celsius = math.round((.fahrenheit - 32.0) * 5.0 / 9.0 * 100.0) / 100.0}
                             placeholder: "32"
                         }
                     }
@@ -73,7 +73,7 @@ bindings, declare it explicitly instead:
 ```auto
 msg { CelsiusChanged, FahrenheitChanged }
 on {
-    .CelsiusChanged -> { .fahrenheit = .celsius * 9.0 / 5.0 + 32.0 }
+    .CelsiusChanged -> { .fahrenheit = math.round((.celsius * 9.0 / 5.0 + 32.0) * 100.0) / 100.0 }
 }
 // view binds: input (value: .celsius) { oninput: .CelsiusChanged }
 ```

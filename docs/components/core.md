@@ -743,6 +743,18 @@ _props 待声明_
 
 ---
 
+### `blockquote`
+
+`native_html` · `blockquote` · web: `native` · iced: `none` · category: `content`
+
+Block quotation
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `canvas`
 
 `native_html` · `canvas` · web: `none` · iced: `fallback` · category: `content`
@@ -775,11 +787,15 @@ _props 待声明_
 
 ### `code`
 
-`native_html` · `code` · web: `none` · iced: `partial` · category: `content`
+`native_html` · `code` · web: `native` · iced: `partial` · category: `typography`
 
-P1 extracted from production tables; props TBD
+Inline code
 
-_props 待声明_
+别名:`Code`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -815,6 +831,20 @@ Tabbed code block showing Auto and Vue code side by side
 
 ---
 
+### `dd`
+
+`native_html` · `dd` · web: `native` · iced: `none` · category: `list`
+
+Description detail
+
+别名:`Dd`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `defs`
 
 `native_html` · `defs` · web: `native` · iced: `none` · category: `content`
@@ -825,6 +855,34 @@ _props 待声明_
 
 ---
 
+### `dl`
+
+`native_html` · `dl` · web: `native` · iced: `none` · category: `list`
+
+Description list
+
+别名:`Dl`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `dt`
+
+`native_html` · `dt` · web: `native` · iced: `none` · category: `list`
+
+Description term
+
+别名:`Dt`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `ellipse`
 
 `native_html` · `ellipse` · web: `native` · iced: `none` · category: `content`
@@ -832,6 +890,32 @@ _props 待声明_
 P1 extracted from production tables; props TBD
 
 _props 待声明_
+
+---
+
+### `figcaption`
+
+`native_html` · `figcaption` · web: `native` · iced: `none` · category: `content`
+
+Figure caption
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `figure`
+
+`native_html` · `figure` · web: `native` · iced: `none` · category: `content`
+
+Figure container
+
+别名:`Figure`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -883,7 +967,7 @@ _props 待声明_
 
 ### `li`
 
-`native_html` · `li` · web: `none` · iced: `none` · category: `content`
+`native_html` · `li` · web: `native` · iced: `none` · category: `content`
 
 P1 extracted from production tables; props TBD
 
@@ -939,6 +1023,48 @@ _props 待声明_
 
 ---
 
+### `native_button`
+
+`native_html` · `native_button` · web: `native` · iced: `none` · category: `content`
+
+Native HTML button escape (bypasses button-to-Button mapping)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `string` | — | Button label text |
+| `onclick` | `msg_ref` | — | Message to send when clicked |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+| `disabled` | `bool` | false | Whether button is disabled |
+
+---
+
+### `ol`
+
+`native_html` · `ol` · web: `native` · iced: `none` · category: `list`
+
+Ordered list
+
+别名:`Ol`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `optgroup`
+
+`native_html` · `optgroup` · web: `native` · iced: `none` · category: `form`
+
+Option group
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | — | Group label |
+| `disabled` | `bool` | false | Disabled state |
+
+---
+
 ### `option`
 
 `native_html` · `option` · web: `native` · iced: `none` · category: `content`
@@ -978,6 +1104,20 @@ _props 待声明_
 P1 extracted from production tables; props TBD
 
 _props 待声明_
+
+---
+
+### `pre`
+
+`native_html` · `pre` · web: `native` · iced: `none` · category: `typography`
+
+Preformatted text block
+
+别名:`Pre`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -1168,6 +1308,20 @@ P1 extracted from production tables; props TBD
 别名:`TreeItem` `tree_item`
 
 _props 待声明_
+
+---
+
+### `ul`
+
+`native_html` · `ul` · web: `native` · iced: `none` · category: `list`
+
+Unordered list
+
+别名:`Ul`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
