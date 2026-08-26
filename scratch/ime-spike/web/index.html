@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>452 IME Spike — Web 虚拟窗口</title>
+<style>
+  body { font-family: "Microsoft YaHei", system-ui, sans-serif; background: #10141a; color: #e6e9ef; margin: 0; padding: 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .toolbar button { padding: 6px 12px; }
+  .desktop { display: flex; gap: 24px; }
+  .vwin { flex: 1; max-width: 420px; border: 1px solid #3a4a60; background: #1a2432; border-radius: 6px; overflow: hidden; }
+  .vwin.win-a { border-color: #408cf0; }
+  .vwin.win-b { border-color: #d973d9; }
+  .vwin h3 { margin: 0; padding: 8px 12px; font-size: 13px; background: #26344a; border-bottom: 1px solid #3a4a60; }
+  .vwin.win-a h3 { background: #2c4a75; }
+  .vwin.win-b h3 { background: #4a2c4a; }
+  .vwin .body { padding: 16px; }
+  .vwin input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 15px; }
+  .vwin .hint { font-size: 11px; color: #8a93a5; margin-top: 8px; }
+  #hostLayer { display: none; margin: 0 0 14px; padding: 12px; background: #4a3208; border: 1px solid #f0a63a; border-radius: 6px; }
+  #hostLayer .row { display: flex; gap: 10px; align-items: center; }
+  #hostLayer input { flex: 1; padding: 8px; }
+  #lastFw { font-size: 12px; color: #9ab; }
+  #log { margin-top: 14px; background: #05070a; border: 1px solid #2a2f3a; border-radius: 4px; padding: 8px; height: 200px; overflow: auto; font: 12px/1.5 Consolas, monospace; white-space: pre; }
+  #log .ime { color: #7fd0ff; }
+  #log .focus { color: #7fe0a0; }
+</style>
+</head>
+<body>
+<h2>452 IME Spike — Web 端：虚拟窗口（嵌套 div）内的组合输入</h2>
+<div class="toolbar">
+  <button id="fsBtn">全屏</button>
+  <button id="hostBtn">打开宿主层</button>
+  <span id="lastFw">最近聚焦: -</span>
+</div>
+<div id="hostLayer">
+  <div class="row">
+    <span style="font-size:13px">宿主 IME 输入层</span>
+    <input id="hostInput" placeholder="组合输入落于此层，Enter 提交到最近聚焦的虚拟窗口">
+    <button id="hostCommit">提交→最近聚焦</button>
+  </div>
+</div>
+<div class="desktop">
+  <div class="vwin win-a" id="winA">
+    <h3>Virtual Window A（左）</h3>
+    <div class="body">
+      <input id="inA" placeholder="在此输入中文…">
+      <div class="hint">点击 / Tab 切换焦点；输入中文观察 composition 事件</div>
+    </div>
+  </div>
+  <div class="vwin win-b" id="winB">
+    <h3>Virtual Window B（右）</h3>
+    <div class="body">
+      <input id="inB" placeholder="在此输入中文…">
+      <div class="hint">组合进行中点击本窗口，观察 composition 是否跨窗口</div>
+    </div>
+  </div>
+</div>
+<div id="log"></div>
+<script>
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const t = new Date().toISOString().slice(11, 23);
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = t + ' ' + msg;
+  logEl.prepend(line);
+  while (logEl.children.length > 100) logEl.lastChild.remove();
+}
+let lastFw = null;
+function watchInput(el, name) {
+  el.addEventListener('focusin', () => {
+    lastFw = name;
+    document.getElementById('lastFw').textContent = '最近聚焦: ' + name;
+    log(name + ' focusin', 'focus');
+  });
+  el.addEventListener('focusout', () => log(name + ' focusout', 'focus'));
+  for (const ev of ['compositionstart', 'compositionupdate', 'compositionend']) {
+    el.addEventListener(ev, (e) => log(name + ' ' + ev + ' data="' + (e.data || '') + '"', 'ime'));
+  }
+  el.addEventListener('input', (e) =>
+    log(name + ' input isComposing=' + e.isComposing + ' value="' + el.value + '"'));
+}
+watchInput(document.getElementById('inA'), 'A');
+watchInput(document.getElementById('inB'), 'B');
+const hostIn = document.getElementById('hostInput');
+watchInput(hostIn, 'HOST');
+hostIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') commitHost(); });
+document.getElementById('hostCommit').addEventListener('click', commitHost);
+function commitHost() {
+  const v = hostIn.value;
+  if (!v) return;
+  const target = lastFw === 'B' ? 'inB' : 'inA';
+  const tName = lastFw === 'B' ? 'B' : 'A';
+  document.getElementById(target).value += v;
+  hostIn.value = '';
+  log('HOST→' + tName + ' 提交 "' + v + '"', 'focus');
+  hostIn.focus();
+}
+document.getElementById('fsBtn').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen();
+});
+const hostLayer = document.getElementById('hostLayer');
+document.getElementById('hostBtn').addEventListener('click', () => {
+  const on = hostLayer.style.display !== 'block';
+  hostLayer.style.display = on ? 'block' : 'none';
+  document.getElementById('hostBtn').textContent = on ? '关闭宿主层' : '打开宿主层';
+  if (on) hostIn.focus();
+});
+log('就绪：请在 A/B 输入框中使用中文输入法打字');
+</script>
+</body>
+</html>

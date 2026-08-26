@@ -2,6 +2,12 @@
 
 > 来源：前期在 DeepSeek 上的架构讨论成果，2026-07 整理入库。
 > 关联：docs/design/08-ui-systems.md（AURA IR）、docs/plans/364-a2r-cosmic-replication-readiness.md。
+> **修订（2026-08-26，Design 23 / Plan 452）**：窗口管理归属（§6.1）与桌面
+> 形态（§9.2）已由 docs/design/23-autoui-virtual-desktop.md 修订——窗口语义
+> （chrome/任务栏/焦点策略）归特权桌面 App、Win/Mac 改单 OS 窗口虚拟桌面、
+> RenderCommand 重定位为 AppWindow 接缝的渲染叶子后端。本文其余部分
+> （RenderCommand/RenderQueue/资源集中/弹性）仍然有效，作为 386 复活时的
+> 协议设计底稿。
 
 ## 1. 项目背景与目标
 
@@ -175,6 +181,11 @@ RenderQueue 是应用与宿主间的高性能通信通道，基于**共享内存
 
 ### 6.1 窗口管理
 
+> **修订注记（Design 23 R1/R2）**：窗口树/Z 序/输入路由/合成仍归宿主，但
+> 窗口**语义**（装饰、任务栏、焦点策略）归特权桌面 App（AutoUI 编写）；
+> "窗口"在 Win/Mac 上为单 OS 窗口内的**虚拟窗口**，不再假设每窗口一个
+> OS surface。
+
 维护全局窗口树，存储每个窗口的：
 - Z-order、位置、大小、可见性。
 - 对应的 RenderQueue 引用。
@@ -252,6 +263,11 @@ pub trait GpuBackend {
 - 提供 CPU 2D 后端（基于 tiny-skia）作为降级方案，单应用内存 <10 MB。
 
 ### 9.2 AutoOS 集成
+
+> **修订注记（Design 23 R2/R7）**：桌面形态演进调整为——Win/Mac 虚拟桌面
+> 先行（Plan 454/455），Linux 原生合成器为 Smithay 宿主（Plan 457），
+> RenderCommand 作为 AppWindow 接缝后端由 Plan 386 复活承接。本节
+> "Compositor 直连 Wayland"的描述由 457 落地时细化。
 
 - Compositor 直接基于 Wayland 协议和自研渲染器，替代 X11/Wayland 桌面环境。
 - 应用通过 `autoui-client` 作为系统标准开发方式。
