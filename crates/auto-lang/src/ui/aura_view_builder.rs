@@ -891,7 +891,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Text-bearing elements. The text/interpolation state bindings are
             // captured at this node's current path (the text element's path),
             // which is what the inspector wants.
-            "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
+            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element_tracked_ctx(tag, props, events, children, path, probe, bindings)
             }
 
@@ -1685,7 +1685,7 @@ impl<'a> AuraViewBuilder<'a> {
             "svg" => self.convert_svg_image(props, children, bindings),
 
             // Core element widgets
-            "text" | "label" | "h1" | "h2" | "h3" | "p" | "span" => {
+            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
             "button" | "btn" => self.convert_button(props, events, children, bindings),
@@ -4169,17 +4169,18 @@ let tabs_inner = View::Row {
         let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
 
         // Plan 448 / Design 22: input adopts Shadcn-Vue default preset
-        // (border border-input bg-background rounded-md px-3 py-2 text-sm)
+        // (border rounded-md px-3 py-2 text-sm)
         let user = self.extract_string_with(props, "class", bindings)
             .or_else(|| self.extract_string_with(props, "style", bindings));
-        let default_preset = "border rounded-md bg-background px-3 py-2 text-sm";
+        let default_preset = "border rounded-md px-3 py-2 text-sm";
         let merged = match user.as_deref() {
             None => default_preset.to_string(),
             Some(c) => format!("{} {}", default_preset, c),
         };
         let style = Style::parse(&merged).ok();
         let width = self.extract_u16(props, "width");
-        let password = self.extract_bool(props, "password").unwrap_or(false);
+        let password = self.extract_bool(props, "password").unwrap_or(false)
+            || self.extract_string(props, "type").as_deref() == Some("password");
 
         // Plan 062 T9:on_change/on_submit 改用绑定解析版(_with)——单行
         // input 的事件参数(如 .Filter(.block.id))此前不烘焙,渲染层收到
@@ -4234,7 +4235,7 @@ let tabs_inner = View::Row {
         // Plan 448 / Design 22: textarea adopts Shadcn-Vue default preset
         let user_ta = self.extract_string_with(props, "class", bindings)
             .or_else(|| self.extract_string_with(props, "style", bindings));
-        let default_ta_preset = "border rounded-md bg-background px-3 py-2 text-sm";
+        let default_ta_preset = "border rounded-md px-3 py-2 text-sm";
         let merged_ta = match user_ta.as_deref() {
             None => default_ta_preset.to_string(),
             Some(c) => format!("{} {}", default_ta_preset, c),

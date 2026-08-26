@@ -1950,11 +1950,14 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     placeholder: &str,
     value: &str,
     width: Option<u16>,
-    _password: bool,
+    password: bool,
     style: Option<&Style>,
 ) -> iced::widget::TextInput<'static, M> {
     let mut input_widget = text_input(placeholder, value);
-    let default_style = Style::parse("border rounded-md bg-background px-3 py-2 text-sm").ok();
+    if password {
+        input_widget = input_widget.secure(true);
+    }
+    let default_style = Style::parse("border rounded-md px-3 py-2 text-sm").ok();
     let effective_style = style.or(default_style.as_ref());
     if let Some(s) = effective_style {
         let iced_style = IcedStyle::from_style(s);
@@ -2002,12 +2005,7 @@ fn build_input_shape<M: Clone + Debug + 'static>(
             });
         }
 
-        let bg = iced_style.background_color.unwrap_or_else(|| {
-            let (r, g, b) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                &crate::ui::style::Color::Background,
-            ).unwrap_or((9, 14, 26));
-            iced::Color::from_rgb8(r, g, b)
-        });
+        let bg = iced_style.background_color.unwrap_or(iced::Color::TRANSPARENT);
         let border_color = iced_style.border_color.unwrap_or_else(|| {
             let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
             iced::Color::from_rgb8(r, g, b)
@@ -2811,10 +2809,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 on_change,
                 on_submit,
                 width,
-                password: _,
+                password,
                 style,
             } => {
-                let mut input_widget = build_input_shape(&placeholder, &value, width, false, style.as_ref());
+                let mut input_widget = build_input_shape(&placeholder, &value, width, password, style.as_ref());
 
                 // Wire on_input for text change tracking
                 if let Some(msg) = on_change {
@@ -10903,9 +10901,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
         // trait cannot do since it's generic over M.
-        AbstractView::Input { placeholder, value, on_change, on_submit, width, password: _, style } => {
+        AbstractView::Input { placeholder, value, on_change, on_submit, width, password, style } => {
             let dbg_props = debug_style_props(style.as_ref());
-            let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, false, style.as_ref());
+            let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, password, style.as_ref());
 
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is

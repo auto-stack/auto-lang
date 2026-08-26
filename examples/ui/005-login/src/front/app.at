@@ -26,7 +26,7 @@ widget App {
                     input (value: .email) {
                         oninput: .EmailChanged
                         placeholder: "you@example.com"
-                        style: "w-full px-3 py-2 border rounded-lg mt-2"
+                        style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
                     }
                     if .email_error != "" {
                         text .email_error {
@@ -43,7 +43,7 @@ widget App {
                         oninput: .PasswordChanged
                         placeholder: "Enter your password"
                         type: "password"
-                        style: "w-full px-3 py-2 border rounded-lg mt-2"
+                        style: "w-full px-3 py-2 border rounded-lg mt-2 text-gray-900"
                     }
                     if .password_error != "" {
                         text .password_error {
@@ -75,12 +75,27 @@ widget App {
     on {
         .EmailChanged -> {
             .email = .email
+            if .email != "" {
+                .email_error = ""
+            }
         }
         .PasswordChanged -> {
             .password = .password
+            if .password != "" {
+                .password_error = ""
+            }
         }
         .Submit -> {
-            .email_error = ""
+            if .email == "" {
+                .email_error = "Email is required"
+            } else {
+                .email_error = ""
+            }
+            if .password == "" {
+                .password_error = "Password is required"
+            } else {
+                .password_error = ""
+            }
         }
     }
 }
