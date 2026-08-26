@@ -4128,7 +4128,15 @@ impl VueGenerator {
                         }
                         // v-model optimization: when input/textarea has both :value="stateRef"
                         // and @input handler, replace with v-model (native HTML two-way binding)
-                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() {
+                        //
+                        // Plan 041a⑤(musk 041 Phase 5 T22): value 目标是 prop 时
+                        // 不折 v-model——对 defineProps 只读绑定发射 v-model 是
+                        // 编译红(v-model 要求可写 model 变量),保持 :value 单向。
+                        let model_target_is_prop = value_state_ref
+                            .as_ref()
+                            .map(|r| self.prop_names.iter().any(|p| p == r))
+                            .unwrap_or(false);
+                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() && !model_target_is_prop {
                             // Replace the :value binding with v-model
                             let model_ref = value_state_ref.as_ref().unwrap();
                             // Remove the existing :value attribute and add v-model instead
@@ -4234,8 +4242,13 @@ impl VueGenerator {
                     // a bare `input { value: .x }` must be two-way (the DOM
                     // input event is the writeback), never a one-way :value.
                     // (The pair-with-handler case was already handled above.)
+                    let model_target_is_prop = value_state_ref
+                        .as_ref()
+                        .map(|r| self.prop_names.iter().any(|p| p == r))
+                        .unwrap_or(false);
                     if (tag == "input" || tag == "textarea")
                         && value_state_ref.is_some()
+                        && !model_target_is_prop
                         && !attrs.iter().any(|a| a.starts_with("v-model="))
                     {
                         if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
@@ -21152,6 +21165,51 @@ widget NullProbe {
         }
         assert!(code.contains("<style scoped>"), "component fn SFC must have <style scoped>: {}", code);
         assert!(code.contains(".card-title"), "<style> must contain the CSS rule: {}", code);
+    }
+
+    /// Plan 041a⑤(musk 041 Phase 5 T22): 表单 value 绑定目标是 prop 时
+    /// 不折 v-model(只读绑定编译红),保持 :value 单向;model 变量目标
+    /// 照旧双折(带/不带 oninput)。
+    #[test]
+    fn t22_value_on_prop_stays_one_way() {
+        let src = "widget Editor(content: str) {
+  msg Msg { Input }
+  model { var draft str = \"\" }
+  view {
+    input (value: .content)
+    textarea {
+      value: .content
+      oninput: .Input
+    }
+    input {
+      value: .draft
+      oninput: .Input
+    }
+  }
+}
+";
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("widget");
+        let mut gen = VueGenerator::new_shadcn();
+        let out = gen.generate_sfc(&widget).unwrap();
+        let vmodels: Vec<&str> = out.lines().filter(|l| l.contains("v-model")).collect();
+        assert_eq!(vmodels.len(), 1, "only the model-var input folds; got {:?}
+{}", vmodels, out);
+        assert!(vmodels[0].contains("draft"), "fold targets the state var: {}", vmodels[0]);
+        assert!(out.contains(":modelValue=\"content\""),
+            "prop-bound inputs stay one-way (:modelValue):
+{}", out);
+        assert!(!out.contains("v-model=\"content\""),
+            "prop target must never fold to v-model:
+{}", out);
     }
 
     /// Plan 022 Phase 7c: markdown content prop binding (fixes §10).

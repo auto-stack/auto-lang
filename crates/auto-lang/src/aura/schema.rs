@@ -2838,7 +2838,7 @@ mod tests {
         // Plan 041a① 后 dl/ol 入表,"cl" 类超短探针出现多重距离-1命中
         // (dl/ol/col)——拼写建议不承诺唯一最近,断言命中集合之一。
         match schema.suggest_similar("cl") {
-            Some(t) => assert!(t == "dl" || t == "ol" || t == "col", "got {}", t),
+            Some(t) => assert!(t == "dl" || t == "ol" || t == "ul" || t == "col", "got {}", t),
             None => panic!("cl should suggest"),
         }
         // "xyz" is too far from any valid element
