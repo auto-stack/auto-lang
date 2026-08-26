@@ -306,6 +306,32 @@ vue key 提升的配对验证由其自行安排）。
 在案基线红）+ benchmark_downcast（在案负载偶发）+ md_hidden_classes（master
 同红）；charts_gallery 负载偶发复跑绿。musk 探针（plan442）1 passed。
 
+## E4. 默认认证头/默认 query native（2026-08-26 立项即落地，plan-446-e4）
+
+**来源**：auto-musk KNOWN-DEBT 442/045（setupAuthFetch VM 侧无法独立落地——
+Http.get 仅收 url；builder 链踩 E2；post_bearer 仅 POST）。musk VM 前端的
+鉴权 API 消费面（Bearer musk_jwt + workspace query）自此出现,需求升级。
+
+**方案**：进程级默认项三 native——`Http.set_default_header(name, value)` /
+`Http.set_default_query(name, value)` / `Http.clear_default_auth()`
+（ID 3139-3141）。注入点 = 两个 send 汇聚处:plain handle 族
+（spawn_async_http_handle,GET/POST/PUT/DELETE/get 族共用）与
+http.request builder 路径（默认头先落、显式 header 后设覆盖；默认 query
+追加 URL）。消费侧:musk `ports/platform.vm.at` platformSetupAuthFetch 实装
+（读 localStorage musk_jwt/musk_workspace——442 native 桥同后端,双轨键互通）；
+token 变更经 login 页 Submit 后 platformRefreshAuth 重注入（web adapter no-op
+——拦截器逐请求读 storage,且避免二次 monkey-patch 的 query 重复追加）。
+
+**验证**：单测端到端（真实 TcpListener 断言线上收到 `authorization: bearer …`
+头与 `?workspace=…` query,含同名替换/已含 ? 分隔单元面）;musk 探针
+（plan442）3/3 绿且 App.Init 零失败行——F1 诊断当场抓到首个实现版的
+native ID 撞车（3132 与 value_get_array 冲突;catalog 存在多形态条目,
+"最大 ID"扫描须含非 Void 返回型,教训入册）。
+
+**已知边缘**：auth_store.Me 内部 Logout()（会话过期）无法跨层调端口,
+VM 默认头滞留至下次 login/register/重启——UI 化 logout 时在派发点补调
+（musk 侧注释在 platform.vm.at）。
+
 ## J. Plan 008 批 4 增补（2026-08-26，os-config 视图统一现场报告）
 
 来源：auto-os-config Plan 008（vue/vm 视图统一）批 4 调试实证；
