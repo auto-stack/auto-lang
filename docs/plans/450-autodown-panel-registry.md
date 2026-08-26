@@ -45,7 +45,26 @@ registry，其余 10 个为空位。rust 端（iced 渲染、编辑壳）消费�
    （Codeblock 走 413 Rich span 关键字高亮经验）。——**批次三完成（见下）**
 2. codegen 臂重定向：AutoDownEditor spec 的 vue 消费确认经 uses_autodown 门
    （pac.at npm_deps）；ark TextArea / jet OutlinedTextField 移动端降级不变。
+   ——**批次四确认完成（见下）**
 3. palette_map.at a2r 发射 + 对拍：auto-down 本仓侧职责（autodown-core crate 就位）。
+
+## 批次四：codegen 臂重定向确认（2026-08-26，本会话完成）
+
+- **vue 消费链完整**：schema/aura.at `vue: { component: "AutoDownEditor",
+  import: "@autodown/editor" }` → vue.rs generate_shadcn_imports 发射
+  `import { AutoDownEditor } from '@autodown/editor'` → 该包现为 re-export shim
+  （`export * from '@autodown/engine/editor'`，plan 017），engine 0.4.0 仍以
+  `AutoDownEditor` 名义出口 `EngineEditor.vue`——链路现役正确；020 退役 shim 时
+  统一切 `@autodown/engine`（同批次二 markdown 臂裁定）。
+- **uses_autodown 门的真实落点**：生产门 = auto-man `parse_npm_deps`（pac.at）
+  → `generate_main_ts` 自动注入 `@autodown/editor/style.css`（三调用点
+  write_project_files / generate / regenerate_source_files 均已接线）。
+  `VueGenerator.uses_autodown`（R003 Info 提示的开关）无生产调用方——
+  `with_uses_autodown` 零 caller，且 `validate_sfc` 本身不在生产路径。
+  裁定：不接线（为 Info 级提示穿透 ui_build_* 全签名不值当），记为已知死代码。
+- **移动端降级不漂移**：registry AutoDownEditor backends ark → TextArea、
+  jet → OutlinedTextField（androidx.compose.material3）未动，新增
+  `test_autodown_editor_mobile_backends_stable` 回归守卫锁死。
 
 ## 批次三：iced backend 面板映射（2026-08-26，本会话完成）
 

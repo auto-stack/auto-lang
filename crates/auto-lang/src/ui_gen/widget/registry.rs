@@ -2180,6 +2180,22 @@ mod tests {
         }
     }
 
+    /// Plan 450 批次四（019 codegen 臂确认）: AutoDownEditor 的移动端降级
+    /// 映射不漂移 —— ark → TextArea, jet → OutlinedTextField
+    /// （androidx.compose.material3）。vue 消费不走 backends 表（走
+    /// schema.meta，见批次二结论），故这里只锁移动端两臂。
+    #[test]
+    fn test_autodown_editor_mobile_backends_stable() {
+        let registry = WidgetRegistry::with_defaults();
+        let spec = registry.get("autodown_editor").expect("AutoDownEditor registered");
+        assert_eq!(spec.name, "AutoDownEditor");
+        let ark = spec.backends.get("ark").expect("ark backend");
+        assert_eq!(ark.component, "TextArea");
+        let jet = spec.backends.get("jet").expect("jet backend");
+        assert_eq!(jet.component, "OutlinedTextField");
+        assert_eq!(jet.import.as_deref(), Some("androidx.compose.material3.OutlinedTextField"));
+    }
+
     #[test]
     fn test_default_widgets_col() {
         let registry = WidgetRegistry::with_defaults();
