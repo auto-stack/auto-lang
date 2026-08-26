@@ -46,6 +46,10 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 451 | 条件串非 Expr AST | enabled_if/checked_if 两种拼写（引号串/裸表达式）在 AST 内同为规范条件串而非 Expr AST——单一表示贯通 vm 求值（eval_condition_with）/vue 转译（convert_condition）/auto-atom 文件层的**有意取舍**；条件仅有 token 文法级校验，无类型级编译期校验。需要时可升级 Expr AST + 序列化器保持三端兼容。 | `ast/ui.rs` ActionEntry + `parser.rs` parse_actions_cond_attr |
+| 451 | use 拾取深度不对称 | actions 模块拾取：vm 走 import_stmts **传递闭包**（孙模块命中），vue 的 collect_use_module_actions 只扫**一级** use 模块——actions 放孙模块时 vue 不拾取；需要时补递归即可。 | `lib.rs` run_file_dynamic_ui_inner vs `ui_gen/api.rs` collect_use_module_actions |
+| 451 | plain 模式占位不合成 | `menubar {}`/`toolbar {}` 占位标签的组件树合成仅在 shadcn 模式（依赖 shadcn Menubar/Button 组件族）；`shadcn: off` 的 plain 模式保持占位直通（vm 合成不挑模式）。keydown 回退层不挑模式，任何模式都随声明发射。 | `ui_gen/vue.rs` node_to_html 占位特判（is_shadcn 守卫） |
+| 451 | 模块拆分热重载 | use 引入模块的 actions 声明改动需 touch 宿主 .at 才触发热重载（DSL 源 mtime 只 watch 宿主文件）。 | `ui/action_config.rs` reload_action_config |
 | 444 | 变体断言启发式 | ts_adapter 对「PascalCase 字段访问」一律补非空断言（`cell.Tagged!.text`）——api.ts 惯例下 PascalCase 可选字段即变体 payload（else 分支不变量保证非空），但用户对象若有运行时可空的 PascalCase 字段，`!` 会把编译期检查换成运行时 TypeError。 | `ui_gen/ts_adapter.rs` transpile_expr Dot 臂 |
 | 444 | emits 名册缺省回退 | 父级回调事件名优先按子 emits 名册解析（同文件自动并入 + auto-man 跨文件预扫描）；无 名册 的驱动路径（如 cmd_vue 遗留 `auto vue` 入口）回退 prop 派生命名，透传习惯（`on_delete`↔子 `DeleteBlock`）在该路径仍断并只发 R044/R045 警告。ash-gui 走 auto-man 路径不受影响。 | `ui_gen/vue.rs sub_widget_callback_event_to_vue` |
 | 444 | VM-only 桩为运行时报错 | `fs.*`/`File.*` 在 Vue/JS 目标降级为 `__vmOnly` 抛错桩（gen 期 R 警告 + 运行时显式 Error），非编译期拒绝——按「显式报错优于静默坏代码」裁定，VM/merged 目标不受影响。 | `ui_gen/ts_adapter.rs` Call 臂 + `__vmOnly` 发射 |
@@ -108,6 +112,8 @@
 | 447-① | 全量并行下偶发测试 | `benchmark_downcast_performance`/`cookbook_vm_tests::cb_file_read_lines` 在全量并行负载下偶发失败（单跑均通过，性能阈值/文件 IO 受负载影响），非回归。 | `perf_benchmark_tests.rs` / `cookbook_vm_tests.rs` |
 | 418 | 工具栏图标偶发变暗 | 观察项：最终构建 3 实例采样亮度一致（231/114）不复现，疑锁屏期 DWM 降级帧假象——复现再查，不主动处理。 | `041 toolbar svg 渲染` |
 | 418 | VM int 推断显示坑 | `File.write_text` 返回值在 handler 内 let 绑定后 `.str()` 显示类型区间（"0-2147483647"）而非字节数——041 ActSave 曾绕过（改语句调用丢弃返回值）；根因（int 字面量区间推断/str 化路径）未查，§7.4 声称"另立债务"但一直未登记，2026-08-23 finish-plan 复审补登。 | `041 src/front/app.at` ActSave + VM 推断路径 |
+| 451 复审 | ui_snapshots__editor 快照预存过期 | `tests/ui_snapshots.rs::snapshot_editor` 在 master 基线即失败（stash plan-451 全部改动实测输出同为 6644B，非 451 引入）——EditorPanel 字节数漂移 +43 未随某次改动刷新快照；待认领刷新（`cargo insta` accept）。 | `tests/snapshots/ui_snapshots__editor.snap` |
+| 451 复审 | 041 vue 严格构建预存 R006 | 041 app.at 的 tab 循环（vm 期代码）v-for 缺 `:key`，vue 严格模式（015 P0#1 起默认）对 041 报 R006——plan-451 的 vue 验证经 `--lenient` 门禁；041 要过 vue 严格构建需补 key（快照定位锚是 vm MCP 矩阵，动源需回归 desktop_mcp）。 | `examples/ui/041-auto-edit/src/front/app.at` tab 双分支循环 |
 | 417-E2 | uninit var 收紧 | `var x T` 无初始化器：VM 合法（Nil 起始）但 a2r 发射 `let mut x: i64 = None;` 死形状（任何类型，非关联类型特有）。2026-08-22 调查：全仓 .at 仅 2 处使用（a2c 11_methods/003，同文件 2 行）；语言规范从未文档化该形态（spec 示例全带初始化器）；bare `var x` 全仓 0 处；auto-man 生成器无此模板。**方向（用户倾向）：parser 要求必须初始化**——代价远小于先前评估，待办：①REPL 单条声明是否豁免需定夺；②上层仓（auto-ai/rust-workspace）.at 源合并前复扫；③a2c 测试改 2 行；④a2r 删 `= None` 分支。 | `parser.rs var/let 声明` + `trans/rust.rs store()` |
 | 417-E2 | has-Spec 关联类型绑定 | `has f Type for Spec` 子句只接受类型列表，无法携带 `Item=int` 命名绑定——spec 声明关联类型而实现者走 has 委托时 a2r 产物缺 `type Item = ...;` 编不过（VM 动态不受影响）。缺的是**语法设计决策**（绑定形态如何挂到 has 子句），非代码缺口；现无用例。语法拍板后实现量小（parser has 臂 peek 分支 + 委托转发处替换）。 | `parser.rs has 子句` + `docs/handoff-E2-followup-assoc-body-refs.md` F2 |
 | 417-E2 | trait_checker 参数类型比对 | check_conformance 只比对参数个数不比对类型（代码内既有 TODO）。收紧=全量现存 spec 实现重新校准（str/String、i32/i64 映射边界的兼容规则需拿 stdlib/parity/上层项目实测定表），独立立项，勿混特性批。 | `trait_checker.rs check_conformance` |
