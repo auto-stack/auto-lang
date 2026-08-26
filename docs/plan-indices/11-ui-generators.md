@@ -61,9 +61,10 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 443 | defineModel 降级收窄（PLAN-037 T4 修正） | ✅ | 仅父级实际绑定(v-model:x 发射点记录)的 model channel 编译 defineModel(对象/数组字面量默认值工厂包裹)，未绑定保持 ref(深响应)；文件级双 pass + auto-man from_workspace 预扫描聚合跨文件绑定；jade e2e 23/23(白板回绿)+demo 9/9+editor vue-tsc 零错；cap_widget_map_model_init 自动回绿（worktree plan-443/model-binding 待合并） |
 | 444 | Vue codegen 五类缺陷修复（auto-shell-057） | ✅ | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text "#"+expr 解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse 检测扩 progress/scroll-area/table+CodeEditor 旧脚手架清理；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
 | 445 | 024-charts 图表工坊 demo | ✅ | 四类图切换+流式滑窗+双模式 Reset，vue+vm 双轨全链路（desktop_mcp 19/19+golden） |
+| 450 | AutoDown 面板 widget 登记 + iced 映射 | ✅ | registry 十空位登记（Heading/Codeblock/Quote/List/Table/Callout/Details/MathBlock/Query/Embed）+ VM/a2r 七面板臂（iced 分解渲染，Plan 319 单臂规则）+ schema P3 收口（7 元素+baseline）+ codegen 臂确认（ark/jet 守卫）；auto-down 侧 palette_map a2r 发射与双端金标对拍（跨仓互链 019 批次五） |
 
 ## Status Summary
-- Completed: 36 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 37 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL
