@@ -2165,7 +2165,11 @@ export default router
                             all_store_files.extend(stores);
                         }
                         Err(e) => {
-                            if auto_lang::ui_gen::validators::strict_enabled() {
+                            // Plan 041a(strict 收口): 纯 fn 模块文件(helpers 等)
+                            // 无 widget/store 声明是其正常形态,经独立 fn 编译
+                            // 轨消费——strict 不升为硬错,保持 Warning。
+                            let fn_only = e.to_string().contains("No widget or store declarations");
+                            if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
                                 return Err(format!("Failed to compile {}: {}", path.display(), e));
                             }
                             println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -2256,7 +2260,9 @@ export default router
                         }
                     }
                     Err(e) => {
-                        if auto_lang::ui_gen::validators::strict_enabled() {
+                        // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
+                        let fn_only = e.to_string().contains("No widget or store declarations");
+                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
                             return Err(format!("Failed to compile {}: {}", path.display(), e).into());
                         }
                         println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
@@ -3914,6 +3920,11 @@ fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpo
 /// flow greps for that string — and, under `auto build --strict`, escalates
 /// to a hard build failure (non-zero exit), matching from_workspace.
 fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
+    // Plan 041a(strict 收口): fn-only 文件(helpers 等)是正常形态,降级。
+    if e.contains("No widget or store declarations") {
+        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+        return Ok(());
+    }
     if auto_lang::ui_gen::validators::strict_enabled() {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }

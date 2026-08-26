@@ -431,6 +431,7 @@ rs_not_in_render	tags_input
 rs_not_in_render	tags_input_delete
 rs_not_in_render	tags_input_field
 rs_not_in_render	tags_input_item
+rs_not_in_render	teleport
 rs_not_in_render	toggle_group
 rs_not_in_render	toggle_group_item
 rs_not_in_render	ul
@@ -607,6 +608,7 @@ rs_not_in_vb	tags_input
 rs_not_in_vb	tags_input_delete
 rs_not_in_vb	tags_input_field
 rs_not_in_vb	tags_input_item
+rs_not_in_vb	teleport
 rs_not_in_vb	toast
 rs_not_in_vb	toaster
 rs_not_in_vb	toggle

@@ -109,6 +109,17 @@ use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 /// children (or one conditional level down) and return its expression text —
 /// used to key the fallback v-for wrapper div (container-level keys are fine
 /// on vue but kill the vm subtree, so keys live on branch-first texts).
+/// Dot 链扁平化:a.b.c(根须为 Ident;否则 None)。
+fn dot_chain_path(expr: &crate::ast::Expr) -> Option<String> {
+    match expr {
+        crate::ast::Expr::Ident(n) => Some(n.to_string()),
+        crate::ast::Expr::Dot(inner, name) => {
+            Some(format!("{}.{}", dot_chain_path(inner)?, name))
+        }
+        _ => None,
+    }
+}
+
 fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
     // depth-bounded recursive search: the key may sit on a text nested a few
     // containers inside a conditional branch
@@ -130,6 +141,13 @@ fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
                         if let AuraPropValue::Expr(crate::ast::Expr::Dot(inner, name)) = v {
                             if let crate::ast::Expr::Ident(base) = inner.as_ref() {
                                 return Some(format!("{}.{}", base, name));
+                            }
+                            // Plan 041a(musk 041 Phase 5 R006 收口): 嵌套 Dot
+                            // 链(key: be.sib.id)扁平化为点路径——分支内多级
+                            // 字段 key 此前提取失败,v-for 包装缺 :key 触发
+                            // R006(ChatsView 分叉切换器实测)。
+                            if let Some(base_path) = dot_chain_path(inner) {
+                                return Some(format!("{}.{}", base_path, name));
                             }
                         }
                     }
@@ -4462,6 +4480,23 @@ impl VueGenerator {
                                     gt_pos
                                 };
                                 result.insert_str(insert_pos, &format!(" {}", v_for));
+                                // Plan 041a(musk 041 Phase 5 R006 收口): 快路径
+                                // (单元素直挂 v-for)无 :key 时补 id 回退键——
+                                // strict 模式 R006 拦截;显式 key 已在则不动。
+                                let tag_end = result.find('>').unwrap();
+                                let head = &result[..tag_end];
+                                if !head.contains(":key=") {
+                                    let key_expr = format!(
+                                        " :key=\"((({} as any)?.id ?? {}))\"",
+                                        var, var
+                                    );
+                                    let insert_pos = if tag_end > 0 && result.as_bytes()[tag_end - 1] == b'/' {
+                                        tag_end - 1
+                                    } else {
+                                        tag_end
+                                    };
+                                    result.insert_str(insert_pos, &key_expr);
+                                }
                                 Some(Ok(result))
                             } else {
                                 None
@@ -4492,9 +4527,27 @@ impl VueGenerator {
                 // onto the v-for wrapper. Mixed-if loop bodies carry keys on
                 // branch-first texts (the vm-safe position — container keys
                 // kill the vm subtree) and R006 requires a keyed wrapper.
-                let key_attr = find_loop_child_key(body)
-                    .map(|k| format!(" :key=\"{}\"", k))
-                    .unwrap_or_default();
+                //
+                // Plan 041a(musk 041 Phase 5 R006 收口): 提升失败时回退索引
+                // key——if-in-for 体(分支内 button 等经 shadcn 组件路径的自
+                // 键)无可提升形态,v-for 包装缺 :key 触发 R006(strict 拦截)。
+                // 索引 key 是位置身份,弱于 id key 但为合法 Vue 绑定。
+                let (v_for, key_attr) = match find_loop_child_key(body) {
+                    Some(k) => (v_for, format!(" :key=\"{}\"", k)),
+                    None => {
+                        let idx_var = "__for_idx";
+                        let with_idx = v_for.replace(
+                            &format!("v-for=\"{} in", var),
+                            &format!("v-for=\"({}, {}) in", var, idx_var),
+                        );
+                        if with_idx == v_for {
+                            // 带 index 形态(for i, x)已含两参——用既有 index 名
+                            (v_for.clone(), format!(" :key=\"{}\"", index.clone().unwrap_or_else(|| "__for_idx".into())))
+                        } else {
+                            (with_idx, format!(" :key=\"{}\"", idx_var))
+                        }
+                    }
+                };
                 Ok(format!("{}<div {}{}>\n{}{}</div>\n", ind, v_for, key_attr, body_html, ind))
             }
 
