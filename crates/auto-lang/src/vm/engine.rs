@@ -639,6 +639,8 @@ impl AutoVM {
             return auto_val::Value::Int(i);
         } else if auto_val::is_bool(nv) {
             return auto_val::Value::Bool(auto_val::decode_bool(nv));
+        } else if auto_val::is_f32(nv) {
+            return auto_val::Value::Float(auto_val::decode_f32(nv) as f64);
         } else if auto_val::is_f64(nv) {
             return auto_val::Value::Double(auto_val::decode_f64(nv));
         } else if auto_val::is_object(nv) {
