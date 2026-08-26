@@ -142,7 +142,6 @@ render_not_in_rs	category_section
 render_not_in_rs	center
 render_not_in_rs	check
 render_not_in_rs	chip
-render_not_in_rs	code
 render_not_in_rs	code-block
 render_not_in_rs	code-pane
 render_not_in_rs	codeEditor
@@ -288,6 +287,7 @@ rs_not_in_render	autocomplete_empty
 rs_not_in_render	autocomplete_input
 rs_not_in_render	autocomplete_item
 rs_not_in_render	autocomplete_list
+rs_not_in_render	blockquote
 rs_not_in_render	breadcrumb_item
 rs_not_in_render	breadcrumb_link
 rs_not_in_render	breadcrumb_list
@@ -325,6 +325,8 @@ rs_not_in_render	context_menu_item
 rs_not_in_render	context_menu_label
 rs_not_in_render	context_menu_separator
 rs_not_in_render	context_menu_trigger
+rs_not_in_render	dd
+rs_not_in_render	dl
 rs_not_in_render	drawer
 rs_not_in_render	drawer_close
 rs_not_in_render	drawer_content
@@ -338,6 +340,9 @@ rs_not_in_render	dropdown_item
 rs_not_in_render	dropdown_label
 rs_not_in_render	dropdown_separator
 rs_not_in_render	dropdown_trigger
+rs_not_in_render	dt
+rs_not_in_render	figcaption
+rs_not_in_render	figure
 rs_not_in_render	form_control
 rs_not_in_render	form_description
 rs_not_in_render	form_field
@@ -360,6 +365,7 @@ rs_not_in_render	menubar_label
 rs_not_in_render	menubar_menu
 rs_not_in_render	menubar_separator
 rs_not_in_render	menubar_trigger
+rs_not_in_render	native_button
 rs_not_in_render	native_select
 rs_not_in_render	nav_menu
 rs_not_in_render	nav_menu_content
@@ -372,6 +378,8 @@ rs_not_in_render	number_field
 rs_not_in_render	number_field_decrement
 rs_not_in_render	number_field_increment
 rs_not_in_render	number_field_input
+rs_not_in_render	ol
+rs_not_in_render	optgroup
 rs_not_in_render	pagination
 rs_not_in_render	pagination_ellipsis
 rs_not_in_render	pagination_first
@@ -386,6 +394,7 @@ rs_not_in_render	pin_input_separator
 rs_not_in_render	pin_input_slot
 rs_not_in_render	popover_content
 rs_not_in_render	popover_trigger
+rs_not_in_render	pre
 rs_not_in_render	range_calendar
 rs_not_in_render	resizable
 rs_not_in_render	resizable_handle
@@ -407,6 +416,7 @@ rs_not_in_render	sidebar_menu_button
 rs_not_in_render	sidebar_menu_item
 rs_not_in_render	sidebar_provider
 rs_not_in_render	sidebar_trigger
+rs_not_in_render	slot
 rs_not_in_render	stepper
 rs_not_in_render	stepper_description
 rs_not_in_render	stepper_indicator
@@ -423,6 +433,7 @@ rs_not_in_render	tags_input_field
 rs_not_in_render	tags_input_item
 rs_not_in_render	toggle_group
 rs_not_in_render	toggle_group_item
+rs_not_in_render	ul
 rs_not_in_vb	accordion
 rs_not_in_vb	accordion_content
 rs_not_in_vb	accordion_item
@@ -443,6 +454,7 @@ rs_not_in_vb	autocomplete_empty
 rs_not_in_vb	autocomplete_input
 rs_not_in_vb	autocomplete_item
 rs_not_in_vb	autocomplete_list
+rs_not_in_vb	blockquote
 rs_not_in_vb	breadcrumb
 rs_not_in_vb	breadcrumb_item
 rs_not_in_vb	breadcrumb_link
@@ -458,6 +470,7 @@ rs_not_in_vb	cardfooter
 rs_not_in_vb	cardheader
 rs_not_in_vb	cardtitle
 rs_not_in_vb	chart
+rs_not_in_vb	code
 rs_not_in_vb	codeblock
 rs_not_in_vb	codepane
 rs_not_in_vb	collapsible
@@ -484,6 +497,8 @@ rs_not_in_vb	context_menu_item
 rs_not_in_vb	context_menu_label
 rs_not_in_vb	context_menu_separator
 rs_not_in_vb	context_menu_trigger
+rs_not_in_vb	dd
+rs_not_in_vb	dl
 rs_not_in_vb	drawer
 rs_not_in_vb	drawer_close
 rs_not_in_vb	drawer_content
@@ -498,6 +513,9 @@ rs_not_in_vb	dropdown_item
 rs_not_in_vb	dropdown_label
 rs_not_in_vb	dropdown_separator
 rs_not_in_vb	dropdown_trigger
+rs_not_in_vb	dt
+rs_not_in_vb	figcaption
+rs_not_in_vb	figure
 rs_not_in_vb	form
 rs_not_in_vb	form_control
 rs_not_in_vb	form_description
@@ -520,6 +538,7 @@ rs_not_in_vb	menubar_label
 rs_not_in_vb	menubar_menu
 rs_not_in_vb	menubar_separator
 rs_not_in_vb	menubar_trigger
+rs_not_in_vb	native_button
 rs_not_in_vb	native_select
 rs_not_in_vb	nav_menu
 rs_not_in_vb	nav_menu_content
@@ -532,6 +551,8 @@ rs_not_in_vb	number_field
 rs_not_in_vb	number_field_decrement
 rs_not_in_vb	number_field_increment
 rs_not_in_vb	number_field_input
+rs_not_in_vb	ol
+rs_not_in_vb	optgroup
 rs_not_in_vb	pagination
 rs_not_in_vb	pagination_ellipsis
 rs_not_in_vb	pagination_first
@@ -546,6 +567,7 @@ rs_not_in_vb	pin_input_separator
 rs_not_in_vb	pin_input_slot
 rs_not_in_vb	popover_content
 rs_not_in_vb	popover_trigger
+rs_not_in_vb	pre
 rs_not_in_vb	previewcard
 rs_not_in_vb	range_calendar
 rs_not_in_vb	resizable
@@ -569,6 +591,7 @@ rs_not_in_vb	sidebar_menu_button
 rs_not_in_vb	sidebar_menu_item
 rs_not_in_vb	sidebar_provider
 rs_not_in_vb	sidebar_trigger
+rs_not_in_vb	slot
 rs_not_in_vb	stepper
 rs_not_in_vb	stepper_description
 rs_not_in_vb	stepper_indicator
@@ -589,6 +612,7 @@ rs_not_in_vb	toaster
 rs_not_in_vb	toggle
 rs_not_in_vb	toggle_group
 rs_not_in_vb	toggle_group_item
+rs_not_in_vb	ul
 vb0_not_in_vb1	menubar
 vb0_not_in_vb1	popover
 vb0_not_in_vb1	toolbar
@@ -638,13 +662,18 @@ vue_mt0_not_in_rs	Badge
 vue_mt0_not_in_rs	Button
 vue_mt0_not_in_rs	Center
 vue_mt0_not_in_rs	Checkbox
+vue_mt0_not_in_rs	Code
 vue_mt0_not_in_rs	CodeBlock
 vue_mt0_not_in_rs	CodePane
 vue_mt0_not_in_rs	Codeblock
 vue_mt0_not_in_rs	Col
 vue_mt0_not_in_rs	Column
 vue_mt0_not_in_rs	Container
+vue_mt0_not_in_rs	Dd
 vue_mt0_not_in_rs	Divider
+vue_mt0_not_in_rs	Dl
+vue_mt0_not_in_rs	Dt
+vue_mt0_not_in_rs	Figure
 vue_mt0_not_in_rs	Footer
 vue_mt0_not_in_rs	Grid
 vue_mt0_not_in_rs	H1
@@ -659,12 +688,15 @@ vue_mt0_not_in_rs	Image
 vue_mt0_not_in_rs	Img
 vue_mt0_not_in_rs	Input
 vue_mt0_not_in_rs	Label
+vue_mt0_not_in_rs	Li
 vue_mt0_not_in_rs	Link
 vue_mt0_not_in_rs	Main
 vue_mt0_not_in_rs	Modal
 vue_mt0_not_in_rs	Nav
+vue_mt0_not_in_rs	Ol
 vue_mt0_not_in_rs	Option
 vue_mt0_not_in_rs	P
+vue_mt0_not_in_rs	Pre
 vue_mt0_not_in_rs	PreviewCard
 vue_mt0_not_in_rs	Progress
 vue_mt0_not_in_rs	Radio
@@ -692,6 +724,7 @@ vue_mt0_not_in_rs	Tooltip
 vue_mt0_not_in_rs	Tr
 vue_mt0_not_in_rs	Tree
 vue_mt0_not_in_rs	TreeItem
+vue_mt0_not_in_rs	Ul
 vue_mt0_not_in_rs	article
 vue_mt0_not_in_rs	aside
 vue_mt0_not_in_rs	aspect-ratio
@@ -716,6 +749,7 @@ vue_mt0_not_in_rs	h5
 vue_mt0_not_in_rs	h6
 vue_mt0_not_in_rs	header
 vue_mt0_not_in_rs	img
+vue_mt0_not_in_rs	li
 vue_mt0_not_in_rs	line
 vue_mt0_not_in_rs	linearGradient
 vue_mt0_not_in_rs	main

@@ -5464,6 +5464,28 @@ impl VueGenerator {
             "container" | "Container" => "div".to_string(),
             "center" | "Center" => "div".to_string(),
 
+            // Plan 041a①(musk 041 Phase 5 T19): 原生 HTML 语义元素直通。
+            // 这些元素在 schema 为 native_html(web:"none")——shadcn 注册表
+            // 不支持故落此兜底,此前无 arm 恒坍缩为 div,原生语义不可达
+            // (musk 曾以 tab 元素/ext 组件逃生,见 KNOWN-DEBT 041a①)。
+            // native_select/native_button 为显式原生逃生名(避开 select 的
+            // shadcn Select 拦截与 button 的 Button 映射)。
+            "native_select" => "select".to_string(),
+            "native_button" => "button".to_string(),
+            "pre" | "Pre" => "pre".to_string(),
+            "code" | "Code" => "code".to_string(),
+            "ol" | "Ol" => "ol".to_string(),
+            "ul" | "Ul" => "ul".to_string(),
+            "li" | "Li" => "li".to_string(),
+            "dl" | "Dl" => "dl".to_string(),
+            "dt" | "Dt" => "dt".to_string(),
+            "dd" | "Dd" => "dd".to_string(),
+            "option" | "Option" => "option".to_string(),
+            "optgroup" => "optgroup".to_string(),
+            "figure" | "Figure" => "figure".to_string(),
+            "figcaption" => "figcaption".to_string(),
+            "blockquote" => "blockquote".to_string(),
+
             // HTML5 semantic elements
             "header" | "Header" => "header".to_string(),
             "nav" | "Nav" => "nav".to_string(),
@@ -14828,6 +14850,22 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Int(42)).unwrap(), "42");
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Bool(true)).unwrap(), "true");
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Str("hello".into())).unwrap(), "'hello'");
+    }
+
+    #[test]
+    fn test_map_tag_native_html_passthrough() {
+        // Plan 041a①: 原生语义元素不再坍缩为 div(native_select/native_button
+        // 逃生名 + pre/code/ol/ul/li/option 等直通)。
+        let mut gen = VueGenerator::new();
+        assert_eq!(gen.map_tag("native_select", false), "select");
+        assert_eq!(gen.map_tag("native_button", false), "button");
+        assert_eq!(gen.map_tag("pre", false), "pre");
+        assert_eq!(gen.map_tag("code", false), "code");
+        assert_eq!(gen.map_tag("ol", false), "ol");
+        assert_eq!(gen.map_tag("ul", false), "ul");
+        assert_eq!(gen.map_tag("li", false), "li");
+        assert_eq!(gen.map_tag("option", false), "option");
+        assert_eq!(gen.map_tag("blockquote", false), "blockquote");
     }
 
     #[test]
