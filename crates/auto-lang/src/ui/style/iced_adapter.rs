@@ -67,7 +67,7 @@ pub struct IcedStyle {
     pub margin_x: Option<f32>,       // Not supported by Iced
     pub margin_y: Option<f32>,       // Not supported by Iced
     pub margin_top: Option<f32>,      // Converted to external top spacing
-    pub margin_bottom: Option<f32>,   // mb-N: stored (limited Iced support)
+    pub margin_bottom: Option<f32>,   // mb-N: converted to external bottom spacing (Plan 448 对齐批)
     pub margin_left: Option<f32>,     // ml-N: converted to external left spacing
     pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
     pub margin_left_auto: bool,       // ml-auto: push element to right in row

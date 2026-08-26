@@ -583,6 +583,88 @@ impl AuraSchema {
             description: "Code block with syntax highlighting",
         });
 
+        // === Plan 450 / auto-down 019: AutoDown 文档面板元素声明 ===
+        // registry 的 register_document_panel_widgets 登记了 Heading/Quote/
+        // Callout/Details/MathBlock/Query/Embed 七个面板 widget(schema_drift
+        // P3:登记与声明两步缺一即红),这里是声明面。**有意不带 vue meta**:
+        // 面板渲染器尚非具名 Vue 组件(plan-450 批次二裁定,组件化后经
+        // schema.meta 补映射);iced 侧分解渲染见 plan-450 批次三
+        // (aura_view_builder 面板臂 + ui_gen/rust.rs a2r 发射,if-arm 形态
+        // 故 rs_not_in_vb/rs_not_in_render 走 baseline 通道——041a 原生元素
+        // 同款)。props 对齐 registry 的 primary_prop;分块语法见 auto-down
+        // packages/engine/PANEL-ALIGNMENT.md。
+        elements.insert("heading", ElementDef {
+            tag: "heading",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "level", type_: PropType::Int, required: false, default: Some("1"), description: "Heading level 1-6 (palette H1..H6, clamped)" },
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Heading text content" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown heading panel (registry Heading, level prop carries H1..H6)",
+        });
+        elements.insert("quote", ElementDef {
+            tag: "quote",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown blockquote panel (registry Quote, `> ` blocks)",
+        });
+        elements.insert("callout", ElementDef {
+            tag: "callout",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "kind", type_: PropType::String, required: false, default: Some("note"), description: "Admonition kind: note/info/tip/success/warning/warn/danger/error/caution" },
+                PropDef { name: "title", type_: PropType::String, required: false, default: None, description: "Callout title header" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown admonition panel (registry Callout, `:::kind title` container)",
+        });
+        elements.insert("details", ElementDef {
+            tag: "details",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "summary", type_: PropType::String, required: false, default: None, description: "Collapsible section summary header" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "AutoDown collapsible panel (registry Details, `:::details Summary`)",
+        });
+        elements.insert("math_block", ElementDef {
+            tag: "math_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "source", type_: PropType::String, required: false, default: None, description: "TeX source ($$...$$ display math)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown display-math panel (registry MathBlock, KaTeX on web / mono-text degrade on iced)",
+        });
+        elements.insert("query_block", ElementDef {
+            tag: "query_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "query", type_: PropType::String, required: false, default: None, description: "Query expression source ({{query ...}} macro)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown query macro panel (registry Query, consumer-registered extension slot)",
+        });
+        elements.insert("embed_block", ElementDef {
+            tag: "embed_block",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "target", type_: PropType::String, required: false, default: None, description: "Block-reference embed target" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown block-reference embed panel (registry Embed)",
+        });
+
         elements.insert("codepane", ElementDef {
             tag: "codepane",
             category: ElementCategory::Content,
@@ -2354,6 +2436,143 @@ impl AuraSchema {
             description: "Menubar label",
         });
 
+        // === Plan 041a①/T18-T19(musk 041 Phase 5): 原生语义元素 ===
+        // slot: 组件定义位插座/组件调用位具名填充(codegen 特判已有,补声明
+        // 使 S002 不再误报)。pre/code/ol/ul/dl/dt/dd/optgroup/figure/
+        // figcaption/blockquote: 原生 HTML 直通(map_tag 兜底 arm 对应)。
+        // native_button: 显式原生按钮逃生名(避开 button→shadcn Button 映射)。
+        elements.insert("teleport", ElementDef {
+            tag: "teleport",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "to", type_: PropType::String, required: false, default: None, description: "Teleport target selector (e.g. body)" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disable teleport" },
+            ],
+            allows_children: true,
+            description: "Vue Teleport container (codegen maps to <Teleport to=...>)",
+        });
+        elements.insert("slot", ElementDef {
+            tag: "slot",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "name", type_: PropType::String, required: false, default: None, description: "Slot name (named slot target or outlet)" },
+            ],
+            allows_children: true,
+            description: "Slot: outlet in component definition; named-slot fill in component invocation",
+        });
+        elements.insert("pre", ElementDef {
+            tag: "pre",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Preformatted text block",
+        });
+        elements.insert("code", ElementDef {
+            tag: "code",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Inline code",
+        });
+        elements.insert("ol", ElementDef {
+            tag: "ol",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Ordered list",
+        });
+        elements.insert("ul", ElementDef {
+            tag: "ul",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Unordered list",
+        });
+        elements.insert("dl", ElementDef {
+            tag: "dl",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description list",
+        });
+        elements.insert("dt", ElementDef {
+            tag: "dt",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description term",
+        });
+        elements.insert("dd", ElementDef {
+            tag: "dd",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description detail",
+        });
+        elements.insert("optgroup", ElementDef {
+            tag: "optgroup",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Group label" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+            ],
+            allows_children: true,
+            description: "Option group",
+        });
+        elements.insert("figure", ElementDef {
+            tag: "figure",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Figure container",
+        });
+        elements.insert("figcaption", ElementDef {
+            tag: "figcaption",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Figure caption",
+        });
+        elements.insert("blockquote", ElementDef {
+            tag: "blockquote",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Block quotation",
+        });
+        elements.insert("native_button", ElementDef {
+            tag: "native_button",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Button label text" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message to send when clicked" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Whether button is disabled" },
+            ],
+            allows_children: true,
+            description: "Native HTML button escape (bypasses button-to-Button mapping)",
+        });
+
         // === Native Select ===
         elements.insert("native_select", ElementDef {
             tag: "native_select",
@@ -2708,7 +2927,12 @@ mod tests {
         assert_eq!(schema.suggest_similar("buton"), Some("button"));
         assert_eq!(schema.suggest_similar("buttn"), Some("button"));
         assert_eq!(schema.suggest_similar("rw"), Some("row"));
-        assert_eq!(schema.suggest_similar("cl"), Some("col"));
+        // Plan 041a① 后 dl/ol 入表,"cl" 类超短探针出现多重距离-1命中
+        // (dl/ol/col)——拼写建议不承诺唯一最近,断言命中集合之一。
+        match schema.suggest_similar("cl") {
+            Some(t) => assert!(t == "dl" || t == "ol" || t == "ul" || t == "col", "got {}", t),
+            None => panic!("cl should suggest"),
+        }
         // "xyz" is too far from any valid element
         // Note: Levenshtein distance of 3 still matches, so we test something more distant
         assert!(schema.suggest_similar("abcdefgh").is_none());

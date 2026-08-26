@@ -109,6 +109,17 @@ use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 /// children (or one conditional level down) and return its expression text —
 /// used to key the fallback v-for wrapper div (container-level keys are fine
 /// on vue but kill the vm subtree, so keys live on branch-first texts).
+/// Dot 链扁平化:a.b.c(根须为 Ident;否则 None)。
+fn dot_chain_path(expr: &crate::ast::Expr) -> Option<String> {
+    match expr {
+        crate::ast::Expr::Ident(n) => Some(n.to_string()),
+        crate::ast::Expr::Dot(inner, name) => {
+            Some(format!("{}.{}", dot_chain_path(inner)?, name))
+        }
+        _ => None,
+    }
+}
+
 fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
     // depth-bounded recursive search: the key may sit on a text nested a few
     // containers inside a conditional branch
@@ -130,6 +141,13 @@ fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
                         if let AuraPropValue::Expr(crate::ast::Expr::Dot(inner, name)) = v {
                             if let crate::ast::Expr::Ident(base) = inner.as_ref() {
                                 return Some(format!("{}.{}", base, name));
+                            }
+                            // Plan 041a(musk 041 Phase 5 R006 收口): 嵌套 Dot
+                            // 链(key: be.sib.id)扁平化为点路径——分支内多级
+                            // 字段 key 此前提取失败,v-for 包装缺 :key 触发
+                            // R006(ChatsView 分叉切换器实测)。
+                            if let Some(base_path) = dot_chain_path(inner) {
+                                return Some(format!("{}.{}", base_path, name));
                             }
                         }
                     }
@@ -4452,7 +4470,15 @@ impl VueGenerator {
                         }
                         // v-model optimization: when input/textarea has both :value="stateRef"
                         // and @input handler, replace with v-model (native HTML two-way binding)
-                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() {
+                        //
+                        // Plan 041a⑤(musk 041 Phase 5 T22): value 目标是 prop 时
+                        // 不折 v-model——对 defineProps 只读绑定发射 v-model 是
+                        // 编译红(v-model 要求可写 model 变量),保持 :value 单向。
+                        let model_target_is_prop = value_state_ref
+                            .as_ref()
+                            .map(|r| self.prop_names.iter().any(|p| p == r))
+                            .unwrap_or(false);
+                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() && !model_target_is_prop {
                             // Replace the :value binding with v-model
                             let model_ref = value_state_ref.as_ref().unwrap();
                             // Remove the existing :value attribute and add v-model instead
@@ -4558,8 +4584,13 @@ impl VueGenerator {
                     // a bare `input { value: .x }` must be two-way (the DOM
                     // input event is the writeback), never a one-way :value.
                     // (The pair-with-handler case was already handled above.)
+                    let model_target_is_prop = value_state_ref
+                        .as_ref()
+                        .map(|r| self.prop_names.iter().any(|p| p == r))
+                        .unwrap_or(false);
                     if (tag == "input" || tag == "textarea")
                         && value_state_ref.is_some()
+                        && !model_target_is_prop
                         && !attrs.iter().any(|a| a.starts_with("v-model="))
                     {
                         if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
@@ -4773,6 +4804,23 @@ impl VueGenerator {
                                     gt_pos
                                 };
                                 result.insert_str(insert_pos, &format!(" {}", v_for));
+                                // Plan 041a(musk 041 Phase 5 R006 收口): 快路径
+                                // (单元素直挂 v-for)无 :key 时补 id 回退键——
+                                // strict 模式 R006 拦截;显式 key 已在则不动。
+                                let tag_end = result.find('>').unwrap();
+                                let head = &result[..tag_end];
+                                if !head.contains(":key=") {
+                                    let key_expr = format!(
+                                        " :key=\"((({} as any)?.id ?? {}))\"",
+                                        var, var
+                                    );
+                                    let insert_pos = if tag_end > 0 && result.as_bytes()[tag_end - 1] == b'/' {
+                                        tag_end - 1
+                                    } else {
+                                        tag_end
+                                    };
+                                    result.insert_str(insert_pos, &key_expr);
+                                }
                                 Some(Ok(result))
                             } else {
                                 None
@@ -4803,9 +4851,27 @@ impl VueGenerator {
                 // onto the v-for wrapper. Mixed-if loop bodies carry keys on
                 // branch-first texts (the vm-safe position — container keys
                 // kill the vm subtree) and R006 requires a keyed wrapper.
-                let key_attr = find_loop_child_key(body)
-                    .map(|k| format!(" :key=\"{}\"", k))
-                    .unwrap_or_default();
+                //
+                // Plan 041a(musk 041 Phase 5 R006 收口): 提升失败时回退索引
+                // key——if-in-for 体(分支内 button 等经 shadcn 组件路径的自
+                // 键)无可提升形态,v-for 包装缺 :key 触发 R006(strict 拦截)。
+                // 索引 key 是位置身份,弱于 id key 但为合法 Vue 绑定。
+                let (v_for, key_attr) = match find_loop_child_key(body) {
+                    Some(k) => (v_for, format!(" :key=\"{}\"", k)),
+                    None => {
+                        let idx_var = "__for_idx";
+                        let with_idx = v_for.replace(
+                            &format!("v-for=\"{} in", var),
+                            &format!("v-for=\"({}, {}) in", var, idx_var),
+                        );
+                        if with_idx == v_for {
+                            // 带 index 形态(for i, x)已含两参——用既有 index 名
+                            (v_for.clone(), format!(" :key=\"{}\"", index.clone().unwrap_or_else(|| "__for_idx".into())))
+                        } else {
+                            (with_idx, format!(" :key=\"{}\"", idx_var))
+                        }
+                    }
+                };
                 Ok(format!("{}<div {}{}>\n{}{}</div>\n", ind, v_for, key_attr, body_html, ind))
             }
 
@@ -5787,6 +5853,28 @@ impl VueGenerator {
             "scroll" | "Scroll" => "div".to_string(),
             "container" | "Container" => "div".to_string(),
             "center" | "Center" => "div".to_string(),
+
+            // Plan 041a①(musk 041 Phase 5 T19): 原生 HTML 语义元素直通。
+            // 这些元素在 schema 为 native_html(web:"none")——shadcn 注册表
+            // 不支持故落此兜底,此前无 arm 恒坍缩为 div,原生语义不可达
+            // (musk 曾以 tab 元素/ext 组件逃生,见 KNOWN-DEBT 041a①)。
+            // native_select/native_button 为显式原生逃生名(避开 select 的
+            // shadcn Select 拦截与 button 的 Button 映射)。
+            "native_select" => "select".to_string(),
+            "native_button" => "button".to_string(),
+            "pre" | "Pre" => "pre".to_string(),
+            "code" | "Code" => "code".to_string(),
+            "ol" | "Ol" => "ol".to_string(),
+            "ul" | "Ul" => "ul".to_string(),
+            "li" | "Li" => "li".to_string(),
+            "dl" | "Dl" => "dl".to_string(),
+            "dt" | "Dt" => "dt".to_string(),
+            "dd" | "Dd" => "dd".to_string(),
+            "option" | "Option" => "option".to_string(),
+            "optgroup" => "optgroup".to_string(),
+            "figure" | "Figure" => "figure".to_string(),
+            "figcaption" => "figcaption".to_string(),
+            "blockquote" => "blockquote".to_string(),
 
             // HTML5 semantic elements
             "header" | "Header" => "header".to_string(),
@@ -15169,6 +15257,22 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
     }
 
     #[test]
+    fn test_map_tag_native_html_passthrough() {
+        // Plan 041a①: 原生语义元素不再坍缩为 div(native_select/native_button
+        // 逃生名 + pre/code/ol/ul/li/option 等直通)。
+        let mut gen = VueGenerator::new();
+        assert_eq!(gen.map_tag("native_select", false), "select");
+        assert_eq!(gen.map_tag("native_button", false), "button");
+        assert_eq!(gen.map_tag("pre", false), "pre");
+        assert_eq!(gen.map_tag("code", false), "code");
+        assert_eq!(gen.map_tag("ol", false), "ol");
+        assert_eq!(gen.map_tag("ul", false), "ul");
+        assert_eq!(gen.map_tag("li", false), "li");
+        assert_eq!(gen.map_tag("option", false), "option");
+        assert_eq!(gen.map_tag("blockquote", false), "blockquote");
+    }
+
+    #[test]
     fn test_map_tag() {
         let mut gen = VueGenerator::new();
 
@@ -21666,6 +21770,51 @@ widget NullProbe {
         }
         assert!(code.contains("<style scoped>"), "component fn SFC must have <style scoped>: {}", code);
         assert!(code.contains(".card-title"), "<style> must contain the CSS rule: {}", code);
+    }
+
+    /// Plan 041a⑤(musk 041 Phase 5 T22): 表单 value 绑定目标是 prop 时
+    /// 不折 v-model(只读绑定编译红),保持 :value 单向;model 变量目标
+    /// 照旧双折(带/不带 oninput)。
+    #[test]
+    fn t22_value_on_prop_stays_one_way() {
+        let src = "widget Editor(content: str) {
+  msg Msg { Input }
+  model { var draft str = \"\" }
+  view {
+    input (value: .content)
+    textarea {
+      value: .content
+      oninput: .Input
+    }
+    input {
+      value: .draft
+      oninput: .Input
+    }
+  }
+}
+";
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("widget");
+        let mut gen = VueGenerator::new_shadcn();
+        let out = gen.generate_sfc(&widget).unwrap();
+        let vmodels: Vec<&str> = out.lines().filter(|l| l.contains("v-model")).collect();
+        assert_eq!(vmodels.len(), 1, "only the model-var input folds; got {:?}
+{}", vmodels, out);
+        assert!(vmodels[0].contains("draft"), "fold targets the state var: {}", vmodels[0]);
+        assert!(out.contains(":modelValue=\"content\""),
+            "prop-bound inputs stay one-way (:modelValue):
+{}", out);
+        assert!(!out.contains("v-model=\"content\""),
+            "prop target must never fold to v-model:
+{}", out);
     }
 
     /// Plan 022 Phase 7c: markdown content prop binding (fixes §10).

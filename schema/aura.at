@@ -705,6 +705,18 @@ element audio {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element blockquote {
+    tag: "blockquote"
+    category: "content"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Block quotation"
+}
+
 element canvas {
     tag: "canvas"
     category: "unknown"
@@ -737,12 +749,15 @@ element clipPath {
 
 element code {
     tag: "code"
-    category: "unknown"
+    category: "typography"
     tier: "native_html"
-    backends: { web: "none", iced: "partial", gpui: "unknown" }
-    props: []
+    aliases: ["Code"]
+    backends: { web: "native", iced: "partial", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "Inline code"
 }
 
 element codeblock {
@@ -775,6 +790,19 @@ element codepane {
     description: "Tabbed code block showing Auto and Vue code side by side"
 }
 
+element dd {
+    tag: "dd"
+    category: "list"
+    tier: "native_html"
+    aliases: ["Dd"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Description detail"
+}
+
 element defs {
     tag: "defs"
     category: "unknown"
@@ -785,6 +813,32 @@ element defs {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element dl {
+    tag: "dl"
+    category: "list"
+    tier: "native_html"
+    aliases: ["Dl"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Description list"
+}
+
+element dt {
+    tag: "dt"
+    category: "list"
+    tier: "native_html"
+    aliases: ["Dt"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Description term"
+}
+
 element ellipse {
     tag: "ellipse"
     category: "unknown"
@@ -793,6 +847,31 @@ element ellipse {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element figcaption {
+    tag: "figcaption"
+    category: "content"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Figure caption"
+}
+
+element figure {
+    tag: "figure"
+    category: "content"
+    tier: "native_html"
+    aliases: ["Figure"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Figure container"
 }
 
 element g {
@@ -843,7 +922,7 @@ element li {
     category: "unknown"
     tier: "native_html"
     aliases: ["Li"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "native", iced: "none", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -894,6 +973,47 @@ element mask {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element native_button {
+    tag: "native_button"
+    category: "content"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "text", type: "string", description: "Button label text" }
+        { name: "onclick", type: "msg_ref", description: "Message to send when clicked" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+        { name: "disabled", type: "bool", default: "false", description: "Whether button is disabled" }
+    ]
+    allows_children: true
+    description: "Native HTML button escape (bypasses button-to-Button mapping)"
+}
+
+element ol {
+    tag: "ol"
+    category: "list"
+    tier: "native_html"
+    aliases: ["Ol"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Ordered list"
+}
+
+element optgroup {
+    tag: "optgroup"
+    category: "form"
+    tier: "native_html"
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "label", type: "string", description: "Group label" }
+        { name: "disabled", type: "bool", default: "false", description: "Disabled state" }
+    ]
+    allows_children: true
+    description: "Option group"
+}
+
 element option {
     tag: "option"
     category: "unknown"
@@ -933,6 +1053,19 @@ element polyline {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element pre {
+    tag: "pre"
+    category: "typography"
+    tier: "native_html"
+    aliases: ["Pre"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Preformatted text block"
 }
 
 element previewcard {
@@ -1113,6 +1246,19 @@ element tree-item {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element ul {
+    tag: "ul"
+    category: "list"
+    tier: "native_html"
+    aliases: ["Ul"]
+    backends: { web: "native", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Unordered list"
+}
+
 element use {
     tag: "use"
     category: "unknown"
@@ -1147,24 +1293,19 @@ element Change {
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
-element NavDestination {
-    tag: "NavDestination"
-    category: "unknown"
+element callout {
+    tag: "callout"
+    category: "content"
     tier: "unclassified"
+    aliases: ["Callout"]
     backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
+    props: [
+        { name: "kind", type: "string", default: "note", description: "Admonition kind: note/info/tip/success/warning/warn/danger/error/caution" }
+        { name: "title", type: "string", description: "Callout title header" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element Swiper {
-    tag: "Swiper"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "AutoDown admonition panel (registry Callout, `:::kind title` container)"
 }
 
 element category-section {
@@ -1189,6 +1330,33 @@ element component-card {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element details {
+    tag: "details"
+    category: "content"
+    tier: "unclassified"
+    aliases: ["Details"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "summary", type: "string", description: "Collapsible section summary header" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "AutoDown collapsible panel (registry Details, `:::details Summary`)"
+}
+
+element embed_block {
+    tag: "embed_block"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "target", type: "string", description: "Block-reference embed target" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown block-reference embed panel (registry Embed)"
+}
+
 element frame {
     tag: "frame"
     category: "unknown"
@@ -1197,6 +1365,35 @@ element frame {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
+}
+
+element heading {
+    tag: "heading"
+    category: "typography"
+    tier: "unclassified"
+    aliases: ["Heading"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "level", type: "int", default: "1", description: "Heading level 1-6 (palette H1..H6, clamped)" }
+        { name: "text", type: "string", description: "Heading text content" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown heading panel (registry Heading, level prop carries H1..H6)"
+}
+
+element math_block {
+    tag: "math_block"
+    category: "content"
+    tier: "unclassified"
+    aliases: ["MathBlock"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "source", type: "string", description: "TeX source ($$...$$ display math)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown display-math panel (registry MathBlock, KaTeX on web / mono-text degrade on iced)"
 }
 
 element media {
@@ -1272,6 +1469,32 @@ element overlay {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element query_block {
+    tag: "query_block"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "query", type: "string", description: "Query expression source ({{query ...}} macro)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown query macro panel (registry Query, consumer-registered extension slot)"
+}
+
+element quote {
+    tag: "quote"
+    category: "content"
+    tier: "unclassified"
+    aliases: ["Quote"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "AutoDown blockquote panel (registry Quote, `> ` blocks)"
+}
+
 element range_calendar {
     tag: "range_calendar"
     category: "form"
@@ -1284,6 +1507,31 @@ element range_calendar {
     ]
     allows_children: false
     description: "Date range picker calendar"
+}
+
+element slot {
+    tag: "slot"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "name", type: "string", description: "Slot name (named slot target or outlet)" }
+    ]
+    allows_children: true
+    description: "Slot: outlet in component definition; named-slot fill in component invocation"
+}
+
+element teleport {
+    tag: "teleport"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: [
+        { name: "to", type: "string", description: "Teleport target selector (e.g. body)" }
+        { name: "disabled", type: "bool", default: "false", description: "Disable teleport" }
+    ]
+    allows_children: true
+    description: "Vue Teleport container (codegen maps to <Teleport to=...>)"
 }
 
 element text_input {
@@ -1299,6 +1547,26 @@ element text_input {
 
 
 // ============ tier: web_component ============
+
+element Embed {
+    tag: "Embed"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
+element Query {
+    tag: "Query"
+    category: "unknown"
+    tier: "web_component"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
 
 element TabTrigger {
     tag: "TabTrigger"
@@ -3196,7 +3464,7 @@ element native_select {
     tag: "native_select"
     category: "form"
     tier: "web_component"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "native", iced: "none", gpui: "unknown" }
     props: [
         { name: "value", type: "state_ref", description: "Selected value binding" }
         { name: "name", type: "string", description: "Form field name" }
@@ -3205,6 +3473,17 @@ element native_select {
     ]
     allows_children: true
     description: "Native HTML select"
+}
+
+element nav-destination {
+    tag: "nav-destination"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavDestination"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element nav_menu {
@@ -4301,6 +4580,17 @@ element stepper_trigger {
     ]
     allows_children: true
     description: "Stepper trigger"
+}
+
+element swiper {
+    tag: "swiper"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Swiper"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element switch {

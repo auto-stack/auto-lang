@@ -62,10 +62,11 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 436 | setup Interpreter/a2r Landing | Done | a2r explicit-error guard for setup blocks (decision 1-A, PLAN-037 T7 philosophy, both the ui_gen/rust.rs widget path and the trans/rust.rs logic path); interpreter L1 single-instance semantics (UI-scenario parse in the bridge, setup preamble runs once in its own VM run with bindings into WidgetState.fields, before first view); syntax.md three-phase x three-backend matrix; interpreter mod.rs doc rot fixed |
 | 428 | Code Folding Phase B | Done | Route A per-run painting replaces fill_raw (fold regions + y-projection + two-state chevrons + auto-reveal on caret/search, natives 2932/2933, matrix T3b 4/4 + manual acceptance); three pre-existing bugs found during acceptance root-fixed (gutter raster height, Ctrl-key swallowing, parentless rfd dialog) |
 | 444 | Vue codegen 五类缺陷修复（auto-shell-057） | Complete | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text 拼接解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse/CodeEditor 缺口补齐；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
+| 450 | AutoDown 面板 widget 登记 + iced 映射 | Complete | registry 十空位登记（Heading/Codeblock/Quote/List/Table/Callout/Details/MathBlock/Query/Embed）+ VM/a2r 七面板臂（iced 分解渲染，Plan 319 单臂规则，renderer 零改动）+ schema 声明面 P3 收口（7 元素 + Query/Embed 自旋存根 + baseline ×14）+ codegen 臂确认（ark/jet 守卫）；auto-down 侧 palette_map a2r 发射与双端金标对拍（跨仓互链 019 批次五） |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436, 444, 445, 451 (35 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 436, 444, 445, 450, 451 (36 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -190,4 +191,5 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [436-setup-interpreter-a2r.md](../plans/archive/436-setup-interpreter-a2r.md)
 - [444-vue-codegen-ash-shell-057.md](../plans/archive/444-vue-codegen-ash-shell-057.md)
 - [445-024-charts.md](../plans/archive/445-024-charts.md)
+- [450-autodown-panel-registry.md](../plans/archive/450-autodown-panel-registry.md)
 - [451-actions-dsl.md](../plans/archive/451-actions-dsl.md)

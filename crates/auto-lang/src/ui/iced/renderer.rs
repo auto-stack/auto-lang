@@ -1296,30 +1296,33 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
 /// Wrap an iced element with external spacing for margin simulation.
 /// Handles:
 /// - `margin_top` (mt-*): external top spacing via container padding
+/// - `margin_bottom` (mb-*): external bottom spacing via container padding
+///   (Plan 448 对齐批: 此前被静默丢弃,VM 标题 mb-6 不生效导致与 vue 间距分歧)
 /// - `margin_left` (ml-*): external left spacing via container padding
 /// - `margin_right` (mr-*): external right spacing via container padding
 /// - `mx-auto` (both flags): container fills remaining width, content centered
 /// - `ml-auto` alone: container fills remaining width, content pushed right
 /// - `mr-auto` alone: container fills remaining width, content pushed left
-fn wrap_with_margin_top<M: Clone + Debug + 'static>(
+fn wrap_with_margin<M: Clone + Debug + 'static>(
     el: iced::Element<'static, M>,
     is: &IcedStyle,
 ) -> iced::Element<'static, M> {
     use iced::widget::container;
     let top = is.margin_top.unwrap_or(0.0);
+    let bottom = is.margin_bottom.unwrap_or(0.0);
     let left = is.margin_left.unwrap_or(0.0);
     let right = is.margin_right.unwrap_or(0.0);
-    let needs_wrap = top > 0.0 || left > 0.0 || right > 0.0
+    let needs_wrap = top > 0.0 || bottom > 0.0 || left > 0.0 || right > 0.0
         || is.margin_left_auto || is.margin_right_auto;
     if !needs_wrap {
         return el;
     }
     let mut cont = container(el);
-    if top > 0.0 || left > 0.0 || right > 0.0 {
+    if top > 0.0 || bottom > 0.0 || left > 0.0 || right > 0.0 {
         cont = cont.padding(iced::Padding {
             top,
             right,
-            bottom: 0.0,
+            bottom,
             left,
         });
     }
@@ -1399,7 +1402,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 
     let needs_wrap = justify_center || justify_end || has_visual;
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    let needs_margin_wrap = mt > 0.0
+    let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
+    let needs_margin_wrap = mt > 0.0 || mb > 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
 
     let el = if needs_wrap {
@@ -1447,8 +1451,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
 
     if needs_margin_wrap {
         let mut cont = container(el);
-        if mt > 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 });
+        if mt > 0.0 || mb > 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: mb, left: 0.0 });
         }
         // Handle mx-auto / ml-auto / mr-auto
         if let Some(ref is) = iced_style {
@@ -1560,14 +1564,15 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         r.padding(pd).into()
     };
 
-    // Apply external margin_top and mx-auto/ml-auto/mr-auto
+    // Apply external margin_top/margin_bottom and mx-auto/ml-auto/mr-auto
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
-    let needs_margin_wrap = mt > 0.0
+    let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
+    let needs_margin_wrap = mt > 0.0 || mb > 0.0
         || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto);
     if needs_margin_wrap {
         let mut cont = container(el);
-        if mt > 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: 0.0, left: 0.0 });
+        if mt > 0.0 || mb > 0.0 {
+            cont = cont.padding(iced::Padding { top: mt, right: 0.0, bottom: mb, left: 0.0 });
         }
         if let Some(ref is) = iced_style {
             if is.margin_left_auto && is.margin_right_auto {
@@ -2225,7 +2230,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     let el: iced::Element<'static, M> = rich.into();
                     if let Some(ref s) = style {
-                        wrap_with_margin_top(el, &IcedStyle::from_style(s))
+                        wrap_with_margin(el, &IcedStyle::from_style(s))
                     } else {
                         el
                     }
@@ -2310,7 +2315,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 };
                 if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
-                    wrap_with_margin_top(el, &iced_style)
+                    wrap_with_margin(el, &iced_style)
                 } else {
                     el
                 }
@@ -2643,7 +2648,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 };
                 // Wrap in container if margin_top (from mt-*) needs to be applied
                 let el: iced::Element<'static, M> = if let Some(ref is) = iced_style {
-                    wrap_with_margin_top(el, is)
+                    wrap_with_margin(el, is)
                 } else {
                     el
                 };
@@ -3591,6 +3596,32 @@ fn extract_initials(src: &str) -> String {
         }
     }
     "?".to_string()
+}
+
+/// Plan 448 对齐批: shadcn 令牌基的 iced 主题。窗口底色此前取内置
+/// Theme::Dark(#2B2D31),与 vue 产物 shadcn --background 不一致;
+/// 此处以生成端 index.css 的令牌为基(background/foreground 精确换算,
+/// primary 用 indigo-500 基色),扩展色阶由 palette::Extended::generate
+/// 派生(滚动条/选区等默认控件样式随之取色)。
+fn shadcn_theme(dark: bool) -> iced::Theme {
+    let (background, text) = if dark {
+        // --background: hsl(222.2 47.4% 7%) / --foreground: hsl(210 40% 98%)
+        (iced::Color::from_rgb8(9, 14, 26), iced::Color::from_rgb8(248, 250, 252))
+    } else {
+        // --background: hsl(0 0% 100%) / --foreground: hsl(222.2 84% 4.9%)
+        (iced::Color::from_rgb8(255, 255, 255), iced::Color::from_rgb8(2, 8, 23))
+    };
+    iced::Theme::custom(
+        if dark { "AutoShadcnDark" } else { "AutoShadcnLight" },
+        iced::theme::Palette {
+            background,
+            text,
+            primary: iced::Color::from_rgb8(99, 102, 241), // indigo-500
+            success: iced::Color::from_rgb8(34, 197, 94),
+            warning: iced::Color::from_rgb8(234, 179, 8),
+            danger: iced::Color::from_rgb8(239, 68, 68),
+        },
+    )
 }
 
 /// Plan 411: startup window size (logical px). Sources, in priority order:
@@ -7815,8 +7846,12 @@ fn compare_pngs(
     };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。
+    // Plan 448 对齐批:内置 Theme::Dark 的窗口底色是 #2B2D31,与 vue 产物
+    // shadcn --background(hsl 222.2 47.4% 7% = #090E1A)不一致 —— 换成
+    // shadcn 令牌基的自定义调色板,明暗随 iced_adapter 的 dark_mode 走
+    //(默认暗色,与既有 DARK_MODE 初值一致)。
     let theme_fn = move |_state: &DynamicState| -> iced::Theme {
-        iced::Theme::Dark
+        shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
     };
 
     iced::application(boot, update, dynamic_view)

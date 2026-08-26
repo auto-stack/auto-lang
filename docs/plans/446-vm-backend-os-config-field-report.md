@@ -28,6 +28,10 @@
 | F2 | 静默失效 | P1 | 模块 parse 失败仅 WARN、模块静默不渲染 |
 | G1 | vue codegen | P1 | widget 直连 store 导入生成错误路径 |
 | F3/D4/D5/D6/E3/G2-G5 | 混合 | P2 | 见各节 |
+| J1 | 渲染器 | P0 | 嵌套条件+循环组合的子树构建静默失败（逐要素全过、组合即死） |
+| J2 | 渲染器 | P0 | 循环内容器级 key（col/row/div）杀死子树；button/text key 无害 |
+| J3 | 状态绑定 | P1 | 新增 store bool 字段视图绑定恒 false（state 池与视图不一致） |
+| J4 | 稳定性 | P2 | boot/渲染线程崩溃零诊断（exit -1 无 stderr，含 MCP 轮询触发） |
 
 复现载体：auto-os-config main 分支（`D:\autostack\auto-os-config`）——
 `auto run -r vm`（cwd=auto/）+ `AUTOUI_MCP_PORT=9320` + `node scripts/e2e-vm.mjs`；
@@ -235,3 +239,59 @@ auto-os-config vm 轨为规避上述问题付出的常设成本：
 
 每批可独立验收；第一批落地后建议在 auto-os-config 复跑
 `node scripts/e2e-vm.mjs` + `./scripts/e2e.sh` 双门禁做交叉回归。
+
+---
+
+## J. Plan 008 批 4 增补（2026-08-26，os-config 视图统一现场报告）
+
+来源：auto-os-config Plan 008（vue/vm 视图统一）批 4 调试实证；
+登记惯例同本计划主体（007 现场报告）。上游已顺带解决的对账项：
+oninput/onchange 文本实参契约（原 wip(plan008) 两提交）已落库生效，
+auto-os-config vue 轨三套 e2e + regen 在纯 master 下全绿。
+
+### J1 嵌套条件+循环组合的子树构建静默失败（P0，当前 vm 门禁阻塞）
+
+**现象**：统一后的 collection_browser 详情区不渲染——结构为
+`if selected_name != nil → if loading == false → 富工具栏 + 确认行 +
+if is_read_only == false → col → for e in store.entries { kind 分发 }`。
+state 池一切正常（entries 4 vmref、selected_name 可读），子树就是不出现。
+
+**实证过程**（逐要素二分，全部单独通过）：loading 门 ✓、富工具栏（含
+prop + store 双重条件）✓、textarea ✓、单 kind 行 ✓、text-key ✓、
+007 逐字结构（更浅嵌套 + `!= ""`）✓ 可渲染；**组合形态 ✗**。变形矩阵
+（单/双变量循环 × wrapper/无 wrapper × key 位置）全部失败——指向
+view-builder 构建期的路径相关缺陷，非单一要素。
+
+**复现**：auto-os-config worktree `node scripts/e2e-vm.mjs`，失败固定在
+`detail inputs/applies missing`（boot/导航/列表/实体选中已全过）。
+**修复建议**：优先做 I.1 第一批的诊断性（构建失败显式化），再定位
+aura_view_builder 对深嵌套 Conditional/ForLoop 的路径。
+
+### J2 循环内容器级 key 杀死子树（P0）
+
+**现象**：循环体内 col/row/div 带 `key:` → 整个子树在 vm 不渲染；
+同一 key 挂在 button/text 上无害；双变量循环内的 keyed wrapper div
+同样致死。
+**下游绕行（已落库 master 8491c7a71）**：分支首 text 挂 key + vue
+codegen 的 v-for wrapper key 提升（`find_loop_child_key`，含单测）——
+vue R006 强制 keyed wrapper 与 vm 容器 key 致死形成的死锁由此解开。
+**修复建议**：view-builder 对容器 key 的处理对齐 vue 语义（身份提示，
+不是构建开关）；修复后可撤下游绕行。
+
+### J3 新增 store bool 字段的视图绑定恒 false（P1）
+
+**现象**：同一 widget 内，state 池（autoui_state）返回新增 bool 字段
+true，视图绑定 `if .store.X` 恒 false；旧 bool 字段正常、新增 list
+字段正常、与字段名无关（重命名复现）。
+**下游绕行**：nil 比较（`selected_name != nil`，双端语义已验证一致）。
+**修复建议**：审查 state 池与视图绑定的字段同步/注册机制对
+"运行期前新增字段"的处理。
+
+### J4 boot/渲染线程崩溃零诊断（P2）
+
+**现象**：2026-08-26 晨 master（含在途 renderer.rs 构建）`auto run -r vm`
+boot 即崩，exit 0xFFFFFFFF、无 stderr/panic，三连复现；同日午后新提交
+后 5/9 步通过。与 os-config Plan 008 Phase 0 登记的 MCP 轮询硬崩溃
+（空闲 app + 2Hz 轮询 ~30s 内 40-60% 概率）同类：**崩溃零诊断**。
+**修复建议**：panic hook 落盘 + 最小崩溃现场（含 I.1 第一批）；下游
+门禁已用自愈重试缓解，不作阻塞项。
