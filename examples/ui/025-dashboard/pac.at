@@ -1,0 +1,13 @@
+// pac.at - Dashboard 系统监视器（App 轨道填洞 ②·Plan 438）
+//
+// KPI 卡行 + CPU/内存/网络实时面积曲线 + 可排序进程表。
+// M1 vue 先行（数据源为前端 mock 随机游走，API 形状按真后端
+// system API 设计，见 SPEC.md）；M2 补 vm 实机（038 双后端惯例）。
+
+name: "dashboard"
+version: "0.1.0"
+description: "System monitor dashboard - KPI cards, live area charts, sortable process table (vue/vm)"
+
+scene: "ui"
+render: "vue"
+front_port: 4025

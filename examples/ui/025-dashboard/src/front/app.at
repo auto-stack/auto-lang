@@ -1,0 +1,847 @@
+// front/app.at — Dashboard 系统监视器（Plan 438 M1·App 轨道填洞 ②）
+//
+// 三区布局：KPI 卡行（CPU/内存/网络/进程数）→ 三张实时面积曲线
+// （独立开关）→ 可排序进程表。数据源为前端 mock 随机游走（确定性
+// 算术，024 惯例——vue 轨无 rand 映射）；API 形状按"将来真后端
+// system API"设计，见 SPEC.md。
+//
+// 机制注记：
+// - `interval` 模型变量被 .Tick 机制取走作 setInterval 周期（250ms 基准），
+//   刷新间隔调节经 speedDiv 分频实现（1/4/10 → 250ms/1s/2.5s）。
+// - `running` 初始 "false"、.Init 置 "true"——watch 门控需要一次变更才
+//   启动定时器（vue.rs 生成 watch(running) 无 immediate）。
+// - 几何/排序为 handler 内联重算（模块级 fn 不进 vue SFC，437 §0.6.E-3），
+//   与 024-charts 同款已知重复模式（SPEC 记账）。
+// - 纪律（437 §0.6.D）：float 中间量显式声明；int→float 经字面量混合。
+
+widget App {
+    msg { Init, Play, Pause, SetFast, SetNormal, SetSlow, ToggleCpu, ToggleMem, ToggleNet, SortName, SortCpu, SortMem }
+
+    model {
+        // ---- Tick 机制（interval 被取走；running 门控）----
+        interval int = 250
+        running str = "false"
+        speedDiv int = 4
+        subTick int = 0
+        tickN int = 0
+
+        // ---- 曲线开关 ----
+        showCpu bool = true
+        showMem bool = true
+        showNet bool = true
+
+        // ---- KPI 状态（memT/netT 为十分位：14.2GB = 142）----
+        cpu int = 23
+        memT int = 142
+        netT int = 34
+        procCount int = 148
+        cpuLabel str = "23 %"
+        memLabel str = "14.2 / 32 GB"
+        netLabel str = "3.4 MB/s"
+        procLabel str = "148"
+
+        // ---- 滑窗（Init 预填 30 点，步长恒定）----
+        cpuHist = []
+        memHist = []
+        netHist = []
+
+        // ---- 几何（每次 apply 重算）----
+        cpuLine str = ""
+        cpuArea str = ""
+        memLine str = ""
+        memArea str = ""
+        netLine str = ""
+        netArea str = ""
+
+        // ---- 进程表（mem 为十分位 GB；cpuL/memL 为显示串）----
+        // mem = 十分位 GB（124 = 12.4GB）：显示 /10 为 JS 精确浮点（"12.4"），
+        // 免除 any 除法的 Math.trunc 缺口；<100 显示 *10 MB（精确整数）
+        procs = [
+            { name: "auto-edit",    cpu: 34, mem: 124, status: "running" },
+            { name: "chrome",       cpu: 28, mem: 182, status: "running" },
+            { name: "rust-analyzer", cpu: 19, mem: 98, status: "running" },
+            { name: "node",         cpu: 12, mem: 64,  status: "running" },
+            { name: "ash-server",   cpu: 8,  mem: 42,  status: "running" },
+            { name: "musk-gui",     cpu: 5,  mem: 38,  status: "sleeping" },
+            { name: "mcp-hub",      cpu: 3,  mem: 12,  status: "running" },
+            { name: "code-helper",  cpu: 1,  mem: 9,   status: "stopped" }
+        ]
+        procsView = []
+        sortColumn str = "cpu"
+        sortDir str = "desc"
+        nameH str = "名称"
+        cpuH str = "CPU % ↓"
+        memH str = "内存 ↓"
+    }
+
+    on {
+        .Init -> {
+            // ---- 滑窗预填（30 点 → 步长恒定 504/29）----
+            var hc0 = []
+            var hm0 = []
+            var hn0 = []
+            var i0 = 0
+            while i0 < 30 {
+                hc0.push(.cpu)
+                hm0.push(.memT)
+                hn0.push(.netT)
+                i0 = i0 + 1
+            }
+            .cpuHist = hc0
+            .memHist = hm0
+            .netHist = hn0
+
+            // ---- 几何初算 ----
+            var pc = ""
+            var ic = 0
+            var stepf float = 504.0 / 29.0
+            for v in .cpuHist {
+                var xf float = 36.0 + ic * stepf
+                var vf float = v
+                var yf float = 120.0 - vf / 100.0 * 106.0
+                if ic == 0 {
+                    pc = f"M ${xf} ${yf}"
+                } else {
+                    pc = pc + f" L ${xf} ${yf}"
+                }
+                ic = ic + 1
+            }
+            .cpuLine = pc
+            .cpuArea = pc + " L 540 120 L 36 120 Z"
+            var pm = ""
+            var im = 0
+            for v in .memHist {
+                var xf2 float = 36.0 + im * stepf
+                var vf2 float = v
+                var yf2 float = 120.0 - vf2 / 300.0 * 106.0
+                if im == 0 {
+                    pm = f"M ${xf2} ${yf2}"
+                } else {
+                    pm = pm + f" L ${xf2} ${yf2}"
+                }
+                im = im + 1
+            }
+            .memLine = pm
+            .memArea = pm + " L 540 120 L 36 120 Z"
+            var pn = ""
+            var iN = 0
+            for v in .netHist {
+                var xf3 float = 36.0 + iN * stepf
+                var vf3 float = v
+                var yf3 float = 120.0 - vf3 / 80.0 * 106.0
+                if iN == 0 {
+                    pn = f"M ${xf3} ${yf3}"
+                } else {
+                    pn = pn + f" L ${xf3} ${yf3}"
+                }
+                iN = iN + 1
+            }
+            .netLine = pn
+            .netArea = pn + " L 540 120 L 36 120 Z"
+
+            // ---- 排序初算（cpu desc，选择式：无索引写）----
+            var remaining = []
+            for p in .procs {
+                remaining.push(p)
+            }
+            var out = []
+            var n = .procs.len()
+            var k = 0
+            while k < n {
+                var bi = 0
+                var first = true
+                var bCpu = 0
+                var bMem = 0
+                var bName = ""
+                var idx = 0
+                for q in remaining {
+                    var take = false
+                    if first {
+                        take = true
+                    } else {
+                        if .sortColumn == "cpu" {
+                            if .sortDir == "desc" {
+                                if q["cpu"] > bCpu { take = true }
+                            } else {
+                                if q["cpu"] < bCpu { take = true }
+                            }
+                        }
+                        if .sortColumn == "mem" {
+                            if .sortDir == "desc" {
+                                if q["mem"] > bMem { take = true }
+                            } else {
+                                if q["mem"] < bMem { take = true }
+                            }
+                        }
+                        if .sortColumn == "name" {
+                            if .sortDir == "desc" {
+                                if q["name"] > bName { take = true }
+                            } else {
+                                if q["name"] < bName { take = true }
+                            }
+                        }
+                    }
+                    if take {
+                        bi = idx
+                        bCpu = q["cpu"]
+                        bMem = q["mem"]
+                        bName = q["name"]
+                        first = false
+                    }
+                    idx = idx + 1
+                }
+                out.push(remaining[bi])
+                var r2 = []
+                var j = 0
+                for q in remaining {
+                    if j != bi {
+                        r2.push(q)
+                    }
+                    j = j + 1
+                }
+                remaining = r2
+                k = k + 1
+            }
+            .procsView = out
+
+            // ---- 进程显示串 ----
+            var np0 = []
+            for p in .procsView {
+                var g = p["mem"]
+                var memL = f"${g / 10} GB"
+                if p["mem"] < 100 {
+                    memL = f"${p["mem"] * 10} MB"
+                }
+                np0.push({ name: p["name"], cpu: p["cpu"], mem: p["mem"], status: p["status"], cpuL: f"${p["cpu"]} %", memL: memL })
+            }
+            .procsView = np0
+
+            // ---- 启动（watch 门控需一次变更）----
+            .running = "true"
+        }
+
+        // ---- 播放控制 ----
+        .Play -> { .running = "true" }
+        .Pause -> { .running = "false" }
+
+        // ---- 刷新间隔（分频）----
+        .SetFast -> { .speedDiv = 1 }
+        .SetNormal -> { .speedDiv = 4 }
+        .SetSlow -> { .speedDiv = 10 }
+
+        // ---- 曲线开关 ----
+        .ToggleCpu -> {
+            if .showCpu {
+                .showCpu = false
+            } else {
+                .showCpu = true
+            }
+        }
+        .ToggleMem -> {
+            if .showMem {
+                .showMem = false
+            } else {
+                .showMem = true
+            }
+        }
+        .ToggleNet -> {
+            if .showNet {
+                .showNet = false
+            } else {
+                .showNet = true
+            }
+        }
+
+        // ---- 排序（状态切换 + 重排）----
+        .SortName -> {
+            if .sortColumn == "name" {
+                if .sortDir == "desc" {
+                    .sortDir = "asc"
+                } else {
+                    .sortDir = "desc"
+                }
+            } else {
+                .sortColumn = "name"
+                .sortDir = "asc"
+            }
+            .nameH = "名称 ↑↓"
+            if .sortDir == "desc" {
+                .nameH = "名称 ↓"
+            } else {
+                .nameH = "名称 ↑"
+            }
+            .cpuH = "CPU %"
+            .memH = "内存"
+            // name 排序 = procs 原序（名称升序构造）/ 逆序
+            if .sortDir == "asc" {
+                var outA = []
+                for p in .procs {
+                    outA.push(p)
+                }
+                .procsView = outA
+            } else {
+                var outD = []
+                var iR = .procs.len() - 1
+                while iR >= 0 {
+                    outD.push(.procs[iR])
+                    iR = iR - 1
+                }
+                .procsView = outD
+            }
+            var npN = []
+            for p in .procsView {
+                var gN = p["mem"]
+                var memLN = f"${gN / 10} GB"
+                if p["mem"] < 100 {
+                    memLN = f"${p["mem"] * 10} MB"
+                }
+                npN.push({ name: p["name"], cpu: p["cpu"], mem: p["mem"], status: p["status"], cpuL: f"${p["cpu"]} %", memL: memLN })
+            }
+            .procsView = npN
+        }
+        .SortCpu -> {
+            if .sortColumn == "cpu" {
+                if .sortDir == "desc" {
+                    .sortDir = "asc"
+                } else {
+                    .sortDir = "desc"
+                }
+            } else {
+                .sortColumn = "cpu"
+                .sortDir = "desc"
+            }
+            .nameH = "名称"
+            .cpuH = "CPU %"
+            .memH = "内存"
+            if .sortDir == "desc" {
+                .cpuH = "CPU % ↓"
+            } else {
+                .cpuH = "CPU % ↑"
+            }
+            var remaining = []
+            for p in .procs {
+                remaining.push(p)
+            }
+            var out = []
+            var n = .procs.len()
+            var k = 0
+            while k < n {
+                var bi = 0
+                var first = true
+                var bCpu = 0
+                var idx = 0
+                for q in remaining {
+                    var take = false
+                    if first {
+                        take = true
+                    } else {
+                        if .sortDir == "desc" {
+                            if q["cpu"] > bCpu { take = true }
+                        } else {
+                            if q["cpu"] < bCpu { take = true }
+                        }
+                    }
+                    if take {
+                        bi = idx
+                        bCpu = q["cpu"]
+                        first = false
+                    }
+                    idx = idx + 1
+                }
+                out.push(remaining[bi])
+                var r2 = []
+                var j = 0
+                for q in remaining {
+                    if j != bi {
+                        r2.push(q)
+                    }
+                    j = j + 1
+                }
+                remaining = r2
+                k = k + 1
+            }
+            var npC = []
+            for p in out {
+                var gC = p["mem"]
+                var memLC = f"${gC / 10} GB"
+                if p["mem"] < 100 {
+                    memLC = f"${p["mem"] * 10} MB"
+                }
+                npC.push({ name: p["name"], cpu: p["cpu"], mem: p["mem"], status: p["status"], cpuL: f"${p["cpu"]} %", memL: memLC })
+            }
+            .procsView = npC
+        }
+        .SortMem -> {
+            if .sortColumn == "mem" {
+                if .sortDir == "desc" {
+                    .sortDir = "asc"
+                } else {
+                    .sortDir = "desc"
+                }
+            } else {
+                .sortColumn = "mem"
+                .sortDir = "desc"
+            }
+            .nameH = "名称"
+            .cpuH = "CPU %"
+            .memH = "内存"
+            if .sortDir == "desc" {
+                .memH = "内存 ↓"
+            } else {
+                .memH = "内存 ↑"
+            }
+            var remaining = []
+            for p in .procs {
+                remaining.push(p)
+            }
+            var out = []
+            var n = .procs.len()
+            var k = 0
+            while k < n {
+                var bi = 0
+                var first = true
+                var bMem = 0
+                var idx = 0
+                for q in remaining {
+                    var take = false
+                    if first {
+                        take = true
+                    } else {
+                        if .sortDir == "desc" {
+                            if q["mem"] > bMem { take = true }
+                        } else {
+                            if q["mem"] < bMem { take = true }
+                        }
+                    }
+                    if take {
+                        bi = idx
+                        bMem = q["mem"]
+                        first = false
+                    }
+                    idx = idx + 1
+                }
+                out.push(remaining[bi])
+                var r2 = []
+                var j = 0
+                for q in remaining {
+                    if j != bi {
+                        r2.push(q)
+                    }
+                    j = j + 1
+                }
+                remaining = r2
+                k = k + 1
+            }
+            var npM = []
+            for p in out {
+                var gM = p["mem"]
+                var memLM = f"${gM / 10} GB"
+                if p["mem"] < 100 {
+                    memLM = f"${p["mem"] * 10} MB"
+                }
+                npM.push({ name: p["name"], cpu: p["cpu"], mem: p["mem"], status: p["status"], cpuL: f"${p["cpu"]} %", memL: memLM })
+            }
+            .procsView = npM
+        }
+
+        // ---- .Tick：分频 → 随机游走 → 滑窗 → 几何重算 → 表重排 ----
+        .Tick -> {
+            if .running == "true" {
+                .subTick = .subTick + 1
+                if .subTick >= .speedDiv {
+                    .subTick = 0
+                    .tickN = .tickN + 1
+
+                    // ---- 随机游走（确定性算术，024 惯例）----
+                    .cpu = .cpu + ((.tickN * 37) % 15) - 7
+                    if .cpu < 3 { .cpu = 3 }
+                    if .cpu > 97 { .cpu = 97 }
+                    .memT = .memT + ((.tickN * 29) % 9) - 4
+                    if .memT < 80 { .memT = 80 }
+                    if .memT > 300 { .memT = 300 }
+                    .netT = .netT + ((.tickN * 53) % 25) - 12
+                    if .netT < 0 { .netT = 0 }
+                    if .netT > 80 { .netT = 80 }
+                    .procCount = .procCount + ((.tickN * 11) % 3) - 1
+                    if .procCount < 142 { .procCount = 142 }
+                    if .procCount > 158 { .procCount = 158 }
+
+                    // f-string 插值限局部变量（模型引用直插会发出
+                    // `${cpu}` 而非 `${cpu.value}`——已知生成器缺口，
+                    // 见 SPEC.md 已知边界）。十分位 /10 为 JS 精确浮点
+                    //（"14.2"），不做 %.十 拼接（any/int 除法的
+                    // Math.trunc 发射不稳定，见 SPEC 已知边界②）
+                    var cL = .cpu
+                    var mT = .memT
+                    var nT = .netT
+                    var pC = .procCount
+                    .cpuLabel = f"${cL} %"
+                    .memLabel = f"${mT / 10} / 32 GB"
+                    .netLabel = f"${nT / 10} MB/s"
+                    .procLabel = f"${pC}"
+
+                    // ---- 进程值游走（记录重建，无原地写）----
+                    var np = []
+                    var pi = 0
+                    for p in .procs {
+                        var c = p["cpu"] + ((.tickN * (17 + pi * 3)) % 11) - 5
+                        if c < 0 { c = 0 }
+                        if c > 62 { c = 62 }
+                        var m = p["mem"] + ((.tickN * (13 + pi * 5)) % 13) - 6
+                        if m < 4 { m = 4 }
+                        if m > 320 { m = 320 }
+                        np.push({ name: p["name"], cpu: c, mem: m, status: p["status"] })
+                        pi = pi + 1
+                    }
+                    .procs = np
+
+                    // ---- 滑窗滑动 ----
+                    var hc = []
+                    var over = .cpuHist.len() >= 30
+                    var fc = true
+                    for v in .cpuHist {
+                        if over && fc {
+                            fc = false
+                        } else {
+                            hc.push(v)
+                        }
+                    }
+                    hc.push(.cpu)
+                    .cpuHist = hc
+                    var hm = []
+                    var om = .memHist.len() >= 30
+                    var fm = true
+                    for v in .memHist {
+                        if om && fm {
+                            fm = false
+                        } else {
+                            hm.push(v)
+                        }
+                    }
+                    hm.push(.memT)
+                    .memHist = hm
+                    var hn = []
+                    var on = .netHist.len() >= 30
+                    var fnet = true
+                    for v in .netHist {
+                        if on && fnet {
+                            fnet = false
+                        } else {
+                            hn.push(v)
+                        }
+                    }
+                    hn.push(.netT)
+                    .netHist = hn
+
+                    // ---- 几何重算（定标：cpu/100 · mem/300 · net/80）----
+                    var stepf float = 504.0 / 29.0
+                    var pc = ""
+                    var ic = 0
+                    for v in .cpuHist {
+                        var xf float = 36.0 + ic * stepf
+                        var vf float = v
+                        var yf float = 120.0 - vf / 100.0 * 106.0
+                        if ic == 0 {
+                            pc = f"M ${xf} ${yf}"
+                        } else {
+                            pc = pc + f" L ${xf} ${yf}"
+                        }
+                        ic = ic + 1
+                    }
+                    .cpuLine = pc
+                    .cpuArea = pc + " L 540 120 L 36 120 Z"
+                    var pm = ""
+                    var im = 0
+                    for v in .memHist {
+                        var xf2 float = 36.0 + im * stepf
+                        var vf2 float = v
+                        var yf2 float = 120.0 - vf2 / 300.0 * 106.0
+                        if im == 0 {
+                            pm = f"M ${xf2} ${yf2}"
+                        } else {
+                            pm = pm + f" L ${xf2} ${yf2}"
+                        }
+                        im = im + 1
+                    }
+                    .memLine = pm
+                    .memArea = pm + " L 540 120 L 36 120 Z"
+                    var pn = ""
+                    var iN = 0
+                    for v in .netHist {
+                        var xf3 float = 36.0 + iN * stepf
+                        var vf3 float = v
+                        var yf3 float = 120.0 - vf3 / 80.0 * 106.0
+                        if iN == 0 {
+                            pn = f"M ${xf3} ${yf3}"
+                        } else {
+                            pn = pn + f" L ${xf3} ${yf3}"
+                        }
+                        iN = iN + 1
+                    }
+                    .netLine = pn
+                    .netArea = pn + " L 540 120 L 36 120 Z"
+
+                    // ---- 表重排（name 列与值漂移无关，跳过）----
+                    if .sortColumn != "name" {
+                        var key = "cpu"
+                        if .sortColumn == "mem" {
+                            key = "mem"
+                        }
+                        var remaining = []
+                        for p in .procs {
+                            remaining.push(p)
+                        }
+                        var out = []
+                        var n = .procs.len()
+                        var k = 0
+                        while k < n {
+                            var bi = 0
+                            var first = true
+                            var bv = 0
+                            var idx = 0
+                            for q in remaining {
+                                var v2 = q["cpu"]
+                                if key == "mem" {
+                                    v2 = q["mem"]
+                                }
+                                var take = false
+                                if first {
+                                    take = true
+                                } else {
+                                    if .sortDir == "desc" {
+                                        if v2 > bv { take = true }
+                                    } else {
+                                        if v2 < bv { take = true }
+                                    }
+                                }
+                                if take {
+                                    bi = idx
+                                    bv = v2
+                                    first = false
+                                }
+                                idx = idx + 1
+                            }
+                            out.push(remaining[bi])
+                            var r2 = []
+                            var j = 0
+                            for q in remaining {
+                                if j != bi {
+                                    r2.push(q)
+                                }
+                                j = j + 1
+                            }
+                            remaining = r2
+                            k = k + 1
+                        }
+                        var npV = []
+                        for p in out {
+                            var gV = p["mem"]
+                            var memLV = f"${gV / 10} GB"
+                            if p["mem"] < 100 {
+                                memLV = f"${p["mem"] * 10} MB"
+                            }
+                            npV.push({ name: p["name"], cpu: p["cpu"], mem: p["mem"], status: p["status"], cpuL: f"${p["cpu"]} %", memL: memLV })
+                        }
+                        .procsView = npV
+                    }
+                }
+            }
+        }
+    }
+
+    view {
+        col (style: "min-h-screen bg-background p-6 gap-6") {
+            // ---- 头部：标题 + 刷新控制 ----
+            row (style: "items-center justify-between") {
+                col (style: "gap-1") {
+                    h1 "系统监视器" { style: "text-2xl font-bold tracking-tight" }
+                    text "KPI · 实时曲线 · 进程表 —— mock 随机游走数据源，API 形状见 SPEC.md" { style: "text-sm text-muted-foreground" }
+                }
+                row (style: "items-center gap-2") {
+                    if .speedDiv == 1 {
+                        button "250ms ●" { onclick: .SetFast, style: "px-2.5 py-1.5 text-xs rounded-md bg-primary text-primary-foreground" }
+                    } else {
+                        button "250ms" { onclick: .SetFast, style: "px-2.5 py-1.5 text-xs rounded-md border bg-background hover:bg-accent" }
+                    }
+                    if .speedDiv == 4 {
+                        button "1s ●" { onclick: .SetNormal, style: "px-2.5 py-1.5 text-xs rounded-md bg-primary text-primary-foreground" }
+                    } else {
+                        button "1s" { onclick: .SetNormal, style: "px-2.5 py-1.5 text-xs rounded-md border bg-background hover:bg-accent" }
+                    }
+                    if .speedDiv == 10 {
+                        button "2.5s ●" { onclick: .SetSlow, style: "px-2.5 py-1.5 text-xs rounded-md bg-primary text-primary-foreground" }
+                    } else {
+                        button "2.5s" { onclick: .SetSlow, style: "px-2.5 py-1.5 text-xs rounded-md border bg-background hover:bg-accent" }
+                    }
+                    if .running == "true" {
+                        button "⏸ 暂停" { onclick: .Pause, style: "px-3 py-1.5 text-xs rounded-md bg-red-500 text-white" }
+                    } else {
+                        button "▶ 继续" { onclick: .Play, style: "px-3 py-1.5 text-xs rounded-md bg-green-600 text-white" }
+                    }
+                }
+            }
+
+            // ---- KPI 卡行 ----
+            row (style: "grid grid-cols-4 gap-4") {
+                col (style: "rounded-lg border bg-card p-4 gap-1") {
+                    text "CPU" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    text .cpuLabel { style: "text-2xl font-bold" }
+                    text "8 cores · 3.2GHz" { style: "text-xs text-muted-foreground" }
+                }
+                col (style: "rounded-lg border bg-card p-4 gap-1") {
+                    text "内存" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    text .memLabel { style: "text-2xl font-bold" }
+                    text "物理 32 GB · 交换 8 GB" { style: "text-xs text-muted-foreground" }
+                }
+                col (style: "rounded-lg border bg-card p-4 gap-1") {
+                    text "网络" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    text .netLabel { style: "text-2xl font-bold" }
+                    text "eth0 · 全双工" { style: "text-xs text-muted-foreground" }
+                }
+                col (style: "rounded-lg border bg-card p-4 gap-1") {
+                    text "进程" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                    text .procLabel { style: "text-2xl font-bold" }
+                    text "1 sleeping · 1 stopped" { style: "text-xs text-muted-foreground" }
+                }
+            }
+
+            // ---- 曲线区（三张面积图，独立开关）----
+            col (style: "gap-4") {
+                if .showCpu {
+                    col (style: "rounded-lg border bg-card p-4 gap-2") {
+                        row (style: "items-center justify-between") {
+                            row (style: "items-center gap-2") {
+                                span (style: "w-3 h-3 rounded-sm bg-[#2563eb]") {}
+                                text "CPU 使用率" { style: "text-sm font-medium" }
+                                text "0-100 %" { style: "text-xs text-muted-foreground" }
+                            }
+                            checkbox {
+                                checked: .showCpu,
+                                onclick: .ToggleCpu
+                            }
+                        }
+                        row (style: "items-stretch") {
+                            col (style: "w-8 shrink-0 justify-between items-end pr-1 pt-0 pb-4") {
+                                text "100" { style: "text-[10px] text-muted-foreground" }
+                                text "75" { style: "text-[10px] text-muted-foreground" }
+                                text "50" { style: "text-[10px] text-muted-foreground" }
+                                text "25" { style: "text-[10px] text-muted-foreground" }
+                                text "0" { style: "text-[10px] text-muted-foreground" }
+                            }
+                            svg (viewBox: "0 0 560 134", style: "w-full h-auto") {
+                                path (d: "M30 14 H36 M30 40 H36 M30 67 H36 M30 94 H36", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: "M36 40 H540 M36 67 H540 M36 94 H540", stroke: "#e2e8f0", stroke-width: "1") {}
+                                line (x1: "36", y1: "120", x2: "540", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                line (x1: "36", y1: "14", x2: "36", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: .cpuArea, fill: "#2563eb", fill-opacity: "0.25") {}
+                                path (d: .cpuLine, fill: "none", stroke: "#2563eb", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                        }
+                    }
+                }
+                if .showMem {
+                    col (style: "rounded-lg border bg-card p-4 gap-2") {
+                        row (style: "items-center justify-between") {
+                            row (style: "items-center gap-2") {
+                                span (style: "w-3 h-3 rounded-sm bg-[#16a34a]") {}
+                                text "内存占用" { style: "text-sm font-medium" }
+                                text "0-30 GB" { style: "text-xs text-muted-foreground" }
+                            }
+                            checkbox {
+                                checked: .showMem,
+                                onclick: .ToggleMem
+                            }
+                        }
+                        row (style: "items-stretch") {
+                            col (style: "w-8 shrink-0 justify-between items-end pr-1 pt-0 pb-4") {
+                                text "30" { style: "text-[10px] text-muted-foreground" }
+                                text "22" { style: "text-[10px] text-muted-foreground" }
+                                text "15" { style: "text-[10px] text-muted-foreground" }
+                                text "7" { style: "text-[10px] text-muted-foreground" }
+                                text "0" { style: "text-[10px] text-muted-foreground" }
+                            }
+                            svg (viewBox: "0 0 560 134", style: "w-full h-auto") {
+                                path (d: "M30 14 H36 M30 40 H36 M30 67 H36 M30 94 H36", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: "M36 40 H540 M36 67 H540 M36 94 H540", stroke: "#e2e8f0", stroke-width: "1") {}
+                                line (x1: "36", y1: "120", x2: "540", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                line (x1: "36", y1: "14", x2: "36", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: .memArea, fill: "#16a34a", fill-opacity: "0.25") {}
+                                path (d: .memLine, fill: "none", stroke: "#16a34a", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                        }
+                    }
+                }
+                if .showNet {
+                    col (style: "rounded-lg border bg-card p-4 gap-2") {
+                        row (style: "items-center justify-between") {
+                            row (style: "items-center gap-2") {
+                                span (style: "w-3 h-3 rounded-sm bg-[#d97706]") {}
+                                text "网络吞吐" { style: "text-sm font-medium" }
+                                text "0-8 MB/s" { style: "text-xs text-muted-foreground" }
+                            }
+                            checkbox {
+                                checked: .showNet,
+                                onclick: .ToggleNet
+                            }
+                        }
+                        row (style: "items-stretch") {
+                            col (style: "w-8 shrink-0 justify-between items-end pr-1 pt-0 pb-4") {
+                                text "8" { style: "text-[10px] text-muted-foreground" }
+                                text "6" { style: "text-[10px] text-muted-foreground" }
+                                text "4" { style: "text-[10px] text-muted-foreground" }
+                                text "2" { style: "text-[10px] text-muted-foreground" }
+                                text "0" { style: "text-[10px] text-muted-foreground" }
+                            }
+                            svg (viewBox: "0 0 560 134", style: "w-full h-auto") {
+                                path (d: "M30 14 H36 M30 40 H36 M30 67 H36 M30 94 H36", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: "M36 40 H540 M36 67 H540 M36 94 H540", stroke: "#e2e8f0", stroke-width: "1") {}
+                                line (x1: "36", y1: "120", x2: "540", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                line (x1: "36", y1: "14", x2: "36", y2: "120", stroke: "#94a3b8", stroke-width: "1") {}
+                                path (d: .netArea, fill: "#d97706", fill-opacity: "0.25") {}
+                                path (d: .netLine, fill: "none", stroke: "#d97706", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- 进程表 ----
+            col (style: "rounded-lg border bg-card p-4 gap-2") {
+                row (style: "items-center justify-between") {
+                    text "进程" { style: "text-sm font-semibold" }
+                    text "点击列头排序（名称 / CPU / 内存）" { style: "text-xs text-muted-foreground" }
+                }
+                table {
+                    table-header {
+                        table-row {
+                            table-head (onclick: .SortName, text: .nameH, style: "cursor-pointer select-none") {}
+                            table-head (onclick: .SortCpu, text: .cpuH, style: "text-right cursor-pointer select-none") {}
+                            table-head (onclick: .SortMem, text: .memH, style: "text-right cursor-pointer select-none") {}
+                            table-head (text: "状态") {}
+                        }
+                    }
+                    table-body {
+                        for i, p in .procsView {
+                            table-row (key: i) {
+                                table-cell (text: p.name, style: "font-medium") {}
+                                table-cell (text: p.cpuL, style: "text-right") {}
+                                table-cell (text: p.memL, style: "text-right") {}
+                                table-cell {
+                                    if p.status == "running" {
+                                        badge (text: "running", variant: "default") {}
+                                    } else {
+                                        if p.status == "sleeping" {
+                                            badge (text: "sleeping", variant: "secondary") {}
+                                        } else {
+                                            badge (text: "stopped", variant: "outline") {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
