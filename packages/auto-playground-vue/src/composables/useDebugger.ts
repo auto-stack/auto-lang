@@ -1,11 +1,12 @@
 import { ref, computed } from 'vue';
-import type { BytecodeLine, DebugState, DebugCommand, DebugRecording } from '../types';
+import type { BytecodeLine, BytecodeMeta, DebugState, DebugCommand, DebugRecording } from '../types';
 
 export function useDebugger() {
   const ws = ref<WebSocket | null>(null);
   const isConnected = ref(false);
   const isDebugging = ref(false);
   const bytecode = ref<BytecodeLine[]>([]);
+  const meta = ref<BytecodeMeta | null>(null);
   const state = ref<DebugState | null>(null);
   const error = ref<string | null>(null);
 
@@ -75,8 +76,10 @@ export function useDebugger() {
     switch (msg.type) {
       case 'bytecode':
         bytecode.value = msg.lines || [];
+        meta.value = msg.meta ?? null;
         if (isRecording.value && recording.value) {
           recording.value.bytecode = msg.lines || [];
+          recording.value.meta = msg.meta ?? null;
         }
         break;
       case 'state':
@@ -120,6 +123,7 @@ export function useDebugger() {
     isDebugging.value = false;
     state.value = null;
     bytecode.value = [];
+    meta.value = null;
     error.value = null;
   }
 
@@ -156,6 +160,7 @@ export function useDebugger() {
     isConnected,
     isDebugging,
     bytecode,
+    meta,
     state,
     error,
     lineToOffsets,

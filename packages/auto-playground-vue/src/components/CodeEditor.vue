@@ -255,7 +255,11 @@ onMounted(() => {
   if (props.onRun) {
     extensions.push(keymap.of([{
       key: 'Ctrl-Enter',
-      run: () => { props.onRun?.(); return true; }
+      run: () => {
+        // Debug/replay mode: Run is unavailable, use debug shortcuts instead
+        if (!props.isDebugging) props.onRun?.();
+        return true;
+      }
     }]));
   }
 

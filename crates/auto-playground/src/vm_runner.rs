@@ -5,6 +5,8 @@ pub struct RunResult {
     pub result: String,
     pub time_ms: u64,
     pub bytecode: Vec<serde_json::Value>,
+    /// Symbol tables (strings/functions/natives) for disassembly tooltips
+    pub meta: Option<serde_json::Value>,
 }
 
 fn disasm_to_json(lines: Vec<auto_lang::vm::disasm::DisasmLine>) -> Vec<serde_json::Value> {
@@ -21,15 +23,20 @@ fn disasm_to_json(lines: Vec<auto_lang::vm::disasm::DisasmLine>) -> Vec<serde_js
         .collect()
 }
 
+fn meta_to_json(meta: auto_lang::vm::disasm::BytecodeMeta) -> Option<serde_json::Value> {
+    serde_json::to_value(meta).ok()
+}
+
 pub fn run_source(source: &str) -> RunResult {
     let start = Instant::now();
 
-    let (result, stdout, bytecode) = match auto_lang::run_with_capture_and_bytecode(source) {
-        Ok((res, out, bc)) => (res, out, disasm_to_json(bc)),
+    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_bytecode_with_meta(source) {
+        Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
         Err(e) => (
             String::new(),
             format!("Error: {}", e),
             Vec::new(),
+            None,
         ),
     };
 
@@ -40,6 +47,7 @@ pub fn run_source(source: &str) -> RunResult {
         result,
         time_ms,
         bytecode,
+        meta,
     }
 }
 
@@ -67,6 +75,7 @@ pub fn run_project_source(
                     result: String::new(),
                     time_ms: start.elapsed().as_millis() as u64,
                     bytecode: Vec::new(),
+                    meta: None,
                 }
             }
         },
@@ -77,15 +86,16 @@ pub fn run_project_source(
         None => examples_dir.join(project_dir).join("main.at"),
     };
 
-    let (result, stdout, bytecode) = match auto_lang::run_with_capture_and_path_and_bytecode(
+    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_path_and_bytecode_with_meta(
         source,
         &entry_path.to_string_lossy(),
     ) {
-        Ok((res, out, bc)) => (res, out, disasm_to_json(bc)),
+        Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
         Err(e) => (
             String::new(),
             format!("Error: {}", e),
             Vec::new(),
+            None,
         ),
     };
 
@@ -100,6 +110,7 @@ pub fn run_project_source(
         result,
         time_ms,
         bytecode,
+        meta,
     }
 }
 
@@ -119,5 +130,6 @@ pub fn run_abt(abt: &str) -> RunResult {
         result: String::new(),
         time_ms,
         bytecode: Vec::new(),
+        meta: None,
     }
 }

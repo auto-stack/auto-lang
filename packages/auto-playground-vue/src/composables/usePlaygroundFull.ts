@@ -1,5 +1,5 @@
 import { ref, watch, computed } from 'vue';
-import type { RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, ProjectFile } from '../types';
+import type { BytecodeMeta, RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, ProjectFile } from '../types';
 import { runTypeScript } from '../utils/tsRunner';
 
 const API_BASE = '/api';
@@ -52,6 +52,7 @@ export function usePlaygroundFull() {
   const resultCode = ref('');
   const timeMs = ref(0);
   const bytecode = ref<any[]>([]);
+  const bytecodeMeta = ref<BytecodeMeta | null>(null);
   const isLoading = ref(false);
   const activeTab = ref<OutputTab>(saved.activeTab ?? 'rust');
   const transpileTarget = ref('');
@@ -236,6 +237,7 @@ export function usePlaygroundFull() {
     stderr.value = '';
     resultCode.value = '';
     bytecode.value = [];
+    bytecodeMeta.value = null;
 
     try {
       const body: Record<string, unknown> = projectRequestBody({ source: source.value });
@@ -249,6 +251,7 @@ export function usePlaygroundFull() {
       stderr.value = data.stderr || '';
       timeMs.value = data.time_ms || 0;
       bytecode.value = data.bytecode || [];
+      bytecodeMeta.value = data.meta ?? null;
       if (data.result !== undefined && data.result !== null && data.result !== '') {
         resultCode.value = data.result;
       }
@@ -419,7 +422,7 @@ export function usePlaygroundFull() {
   }, { deep: true });
 
   return {
-    source, stdout, stderr, resultCode, timeMs, bytecode, isLoading,
+    source, stdout, stderr, resultCode, timeMs, bytecode, bytecodeMeta, isLoading,
     activeTab, transpiledCode, transpileTarget, projectDir,
     projectFiles, activeFile,
     transFiles, selectedTransFile,

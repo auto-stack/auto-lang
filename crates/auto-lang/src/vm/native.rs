@@ -117,6 +117,15 @@ impl NativeInterface {
         self.name_to_id.insert(name.to_string(), id);
     }
 
+    /// Reverse map (ID -> first registered name) for disassembly tooltips
+    pub fn id_to_name(&self) -> std::collections::HashMap<u16, String> {
+        let mut map: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+        for (name, &id) in &self.name_to_id {
+            map.entry(id).or_insert_with(|| name.clone());
+        }
+        map
+    }
+
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
     ///
     /// Supports canonical normalization: "List.push" → checks "auto.list.push" etc.

@@ -27,6 +27,7 @@
     :is-recording="debug.isRecording.value"
     :has-recording="!!debug.recording.value"
     :bytecode="layoutBytecode"
+    :bytecode-meta="mode === 'run' ? runBytecodeMeta : activeMeta"
     :debug-state="activeDebugState"
     :current-source-line="highlightedSourceLine"
     :highlighted-offsets="highlightedBytecodeOffsets"
@@ -71,7 +72,7 @@ import type { DebugRecording, OutputTab, ProjectFile } from './types';
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
 const {
-  source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, isLoading,
+  source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, bytecodeMeta: runBytecodeMeta, isLoading,
   activeTab, transpiledCode, transFiles, selectedTransFile,
   projectFiles, activeFile,
   highlightedOutputLines, highlightedSourceLine, mappedSourceFiles,
@@ -100,6 +101,13 @@ const activeBytecode = computed(() => {
   return debug.bytecode.value;
 });
 
+const activeMeta = computed(() => {
+  if (replay.isActive.value) {
+    return replay.meta.value;
+  }
+  return debug.meta.value;
+});
+
 const layoutBytecode = computed(() => {
   if (mode.value === 'run') {
     return runBytecode.value;
@@ -124,9 +132,10 @@ watch(() => debug.state.value, (state) => {
   }
 });
 
-// Reset UI when debug session ends
+// Reset UI when debug session ends, but keep the result visible
+// when the program ran to completion
 watch(() => debug.isDebugging.value, (isDebugging) => {
-  if (!isDebugging && mode.value === 'debug') {
+  if (!isDebugging && mode.value === 'debug' && debug.state.value?.status !== 'finished') {
     mode.value = 'editor';
   }
 });
@@ -238,7 +247,7 @@ function onKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'F5':
       e.preventDefault();
-      onDebugCommand('continue');
+      onDebugCommand(e.shiftKey ? 'stop' : 'continue');
       break;
     case 'F10':
       e.preventDefault();

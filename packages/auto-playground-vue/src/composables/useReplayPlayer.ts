@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { DebugRecording, DebugState, BytecodeLine } from '../types';
+import type { DebugRecording, DebugState, BytecodeLine, BytecodeMeta } from '../types';
 
 export function useReplayPlayer() {
   const isActive = ref(false);
@@ -30,6 +30,8 @@ export function useReplayPlayer() {
   });
 
   const bytecode = computed<BytecodeLine[]>(() => recording.value?.bytecode ?? []);
+
+  const meta = computed<BytecodeMeta | null>(() => recording.value?.meta ?? null);
 
   const lineToOffsets = computed(() => {
     const map: Record<number, number[]> = {};
@@ -112,6 +114,7 @@ export function useReplayPlayer() {
     isPlaying,
     currentState,
     bytecode,
+    meta,
     lineToOffsets,
     offsetToLine,
     totalFrames,

@@ -10,7 +10,7 @@
       <span class="icon">{{ btn.icon }}</span>
       <span class="label">{{ btn.label }}</span>
     </button>
-    <button class="stop-btn" @click="$emit('command', 'stop')" title="Stop Debugging">
+    <button class="stop-btn" @click="$emit('command', 'stop')" title="Stop Debugging (Shift+F5)">
       <span class="icon">■</span>
       <span class="label">Stop</span>
     </button>
@@ -54,10 +54,10 @@ defineEmits<{
 }>();
 
 const buttons: { cmd: DebugCommand; icon: string; label: string; title: string }[] = [
-  { cmd: 'continue', icon: '▶', label: 'Continue', title: 'F5' },
-  { cmd: 'step', icon: '↓', label: 'Step Into', title: 'F11' },
-  { cmd: 'step_over', icon: '→', label: 'Step Over', title: 'F10' },
-  { cmd: 'step_out', icon: '↑', label: 'Step Out', title: 'Shift+F11' },
+  { cmd: 'continue', icon: '▶', label: 'Continue', title: 'Continue (F5)' },
+  { cmd: 'step', icon: '↓', label: 'Step Into', title: 'Step Into (F11)' },
+  { cmd: 'step_over', icon: '→', label: 'Step Over', title: 'Step Over (F10)' },
+  { cmd: 'step_out', icon: '↑', label: 'Step Out', title: 'Step Out (Shift+F11)' },
 ];
 </script>
 

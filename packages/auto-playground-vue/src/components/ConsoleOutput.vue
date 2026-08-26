@@ -1,14 +1,16 @@
 <template>
-  <div class="console-output">
+  <ScrollArea class="console-output">
     <div v-if="timeMs > 0" class="time-info">Completed in {{ timeMs }}ms</div>
     <pre v-if="stdout" class="stdout">{{ stdout }}</pre>
     <pre v-if="stderr" class="stderr">{{ stderr }}</pre>
     <pre v-if="result" class="result">Result: {{ result }}</pre>
     <div v-if="!stdout && !stderr && !result" class="empty">Click Run or press Ctrl+Enter to execute</div>
-  </div>
+  </ScrollArea>
 </template>
 
 <script setup lang="ts">
+import ScrollArea from './ScrollArea.vue';
+
 defineProps<{
   stdout: string;
   stderr: string;
@@ -22,8 +24,6 @@ defineProps<{
   padding: 12px;
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   font-size: 13px;
-  height: 100%;
-  overflow: auto;
   background: #1e1e1e;
   color: #d4d4d4;
 }
