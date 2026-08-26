@@ -104,3 +104,17 @@ quote/callout、details/AccordionItem/embed 发射串）；
 - `cargo check -p auto-lang` 绿；
 - registry 测试：新 widget 可解析（lookup by name/alias）；
 - auto-down 侧 palette map regen 零漂移 + 测试绿 + 对齐表一致。
+
+## finish-plan 复审（2026-08-26）
+
+七项任务逐一对码重验全部 pass：批次一 registry（registry.rs:839，
+测试 2155/2188 绿）；批次一双仓对齐（palette_map.at registry 字段 +
+PANEL-ALIGNMENT.md，de9ba43）；批次二/四为调查与确认性批次（结论在册，
+ark/jet 守卫测试绿）；批次三 iced 映射（aura_view_builder.rs:2082-2195
+七臂 + rust.rs:2042+ 特例，VM 8 测 + a2r 3 测绿）；P3 schema 收口
+（schema.rs:596-657 七元素，fence 裸跑绿，baseline +14 有意漂移）；
+落点 3 对拍（auto-down 77a2eaf，crate 7 测 + engine 254 测绿，金标 16 行
+panelOfBlock 投影）。验证命令全部重跑复现绿。已知遗留（裁定在册，非未竟）：
+`VueGenerator.uses_autodown`/`with_uses_autodown` 无生产调用方（批次四
+裁定不接线，为 Info 级提示穿透 ui_build_* 全签名不值当）；vue 面板组件
+映射待面板组件化（批次二裁定）。分类：A（全部完成）→ 归档。
