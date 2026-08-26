@@ -4168,7 +4168,16 @@ let tabs_inner = View::Row {
         // Resolve value from state if it's a StateRef
         let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
 
-        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
+        // Plan 448 / Design 22: input adopts Shadcn-Vue default preset
+        // (border border-input bg-background rounded-md px-3 py-2 text-sm)
+        let user = self.extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings));
+        let default_preset = "border rounded-md bg-background px-3 py-2 text-sm";
+        let merged = match user.as_deref() {
+            None => default_preset.to_string(),
+            Some(c) => format!("{} {}", default_preset, c),
+        };
+        let style = Style::parse(&merged).ok();
         let width = self.extract_u16(props, "width");
         let password = self.extract_bool(props, "password").unwrap_or(false);
 
@@ -4222,7 +4231,15 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_string_with(props, "content", bindings))
             .unwrap_or_default();
 
-        let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
+        // Plan 448 / Design 22: textarea adopts Shadcn-Vue default preset
+        let user_ta = self.extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings));
+        let default_ta_preset = "border rounded-md bg-background px-3 py-2 text-sm";
+        let merged_ta = match user_ta.as_deref() {
+            None => default_ta_preset.to_string(),
+            Some(c) => format!("{} {}", default_ta_preset, c),
+        };
+        let style = Style::parse(&merged_ta).ok();
         let height = self.extract_u16(props, "height");
 
         let on_change = aura_events_get_base(events, "onchange")

@@ -16,7 +16,7 @@ Traditional browsers apply default User-Agent styles to HTML headings (`font-siz
 2. Large headings without negative letter-spacing (`tracking-tight`) appear loose and unpolished.
 3. Plain black text does not integrate with the design token / theme system (`--primary` HSL colors, dark mode).
 
-Modern application design systems (Tailwind CSS, Shadcn UI, Apple HIG, Material Design 3) reset unstyled HTML elements and apply structured, proportional typography scales.
+Modern application design systems (Tailwind CSS, Shadcn UI, Apple HIG, Material Design 3) reset unstyled HTML elements and apply structured, proportional typography scales and form presets.
 
 ### 1.2 The Single Source of Truth for Default Styles
 
@@ -38,30 +38,43 @@ To achieve **Visual Parity** across all targets, AutoUI establishes a standard t
 
 ---
 
-## 3. Base Element & Layout Defaults
+## 3. Form Controls & Interactive Primitives Defaults (Shadcn Parity)
 
-| Tag | Default Styling | Notes |
+When no custom `style` or `class` is specified in AutoUI source files, form elements and controls adopt standard Shadcn-Vue design presets:
+
+| Component | Default Preset (Tailwind & Shadcn Token Equivalent) | Visual Properties (VM / Iced Target) |
 | :--- | :--- | :--- |
-| **`col` / `column`** | `flex flex-col gap-4` | Layout Primitive |
-| **`row`** | `flex flex-row gap-4` | Layout Primitive |
-| **`center`** | `flex flex-col items-center justify-center h-full` | Layout Primitive |
-| **`grid`** | `grid` | Grid layout container |
-| **`scroll`** | `overflow-auto` | Scrollable container |
-| **`container`** | `max-w-7xl mx-auto` | Content centering container |
-| **`button`** | `px-4 py-2 rounded` (plain) / shadcn variant | Interactive element |
-| **`input`** | `border-primary rounded px-2 py-1` | Form element |
-| **`textarea`** | `border-primary rounded px-2 py-1` | Form element |
-| **`header`** | `w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60` | Semantic Header |
-| **`nav`** | `flex items-center gap-4` | Semantic Navigation |
-| **`aside`** | `w-64 border-r bg-background` | Semantic Sidebar |
-| **`footer`** | `w-full border-t bg-background` | Semantic Footer |
-| **`main`** | `flex-1` | Main Content Area |
+| **`input`** | `border border-input bg-background rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground` | Border: 1px `resolve_border_rgb()`; Radius: 6px; Bg: `Color::Background`; Text: `Color::OnBackground`; Placeholder: `Color::OnSurface`; Padding: 12px H, 8px V |
+| **`textarea`** | `border border-input bg-background rounded-md px-3 py-2 text-sm text-foreground min-h-[80px]` | Border: 1px `resolve_border_rgb()`; Radius: 6px; Bg: `Color::Background`; Text: `Color::OnBackground`; Min-Height: 80px |
+| **`button` (default/primary)** | `bg-primary text-primary-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Primary` (accent-driven); Text: `Color::OnPrimary`; Radius: 6px; Height: 40px; Padding: 16px H |
+| **`button` (secondary)** | `bg-secondary text-secondary-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Secondary`; Text: `Color::OnSecondary`; Radius: 6px; Height: 40px |
+| **`button` (destructive)** | `bg-destructive text-destructive-foreground font-medium rounded-md h-10 px-4 text-sm` | Bg: `Color::Error` (red-600); Text: White; Radius: 6px; Height: 40px |
+| **`button` (outline)** | `border border-input bg-background text-foreground rounded-md h-10 px-4 text-sm` | Border: 1px `resolve_border_rgb()`; Bg: `Color::Background`; Radius: 6px; Height: 40px |
+| **`button` (ghost)** | `rounded-md h-10 px-4 text-sm hover:bg-accent` | Transparent bg; Radius: 6px; Height: 40px |
+| **`button` (icon)** | `h-7 w-7 px-0 py-0 rounded-md` (or `h-10 w-10`) | Square aspect ratio; centered icon |
+| **`checkbox`** | `h-4 w-4 rounded border border-primary` | Border: 1px `Color::Primary`; Radius: 4px; Size: 16x16px |
+| **`badge`** | `inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold` | Radius: 9999px (full); Padding: 10px H, 2px V; Font: 12px semibold |
 
 ---
 
-## 4. Multi-Backend Implementation Architecture
+## 4. Base Containers & Border Color Fallback
 
-### 4.1 Vue / Web Implementation
+| Tag / Utility | Default Styling | Border Fallback Rule |
+| :--- | :--- | :--- |
+| **`col` / `column`** | `flex flex-col gap-4` | Layout primitive |
+| **`row`** | `flex flex-row gap-4` | Layout primitive |
+| **`center`** | `flex flex-col items-center justify-center h-full` | Centering container |
+| **`grid`** | `grid` | Grid layout |
+| **`scroll`** | `overflow-auto` | Scrollable viewport |
+| **`container`** | `max-w-7xl mx-auto` | Content max-width wrapper |
+| **`border` utility** | `border-width: 1px` | **Fallback border color**: Must resolve to `resolve_border_rgb()` (`--border`: zinc-800 in Dark Mode, zinc-200 in Light Mode). Never fallback to transparent. |
+| **`bg-card`** | `Color::Surface` | Surface container (`hsl(222.2 47.4% 10%)` in Dark Mode, gray-50 in Light Mode). |
+
+---
+
+## 5. Multi-Backend Implementation Architecture
+
+### 5.1 Vue / Web Implementation
 1. **`@layer base` in global CSS (`index.css` / `generate_base_css`)**:
    Injects the base typography rules so any raw HTML `<h1..h6>` tag receives standard AutoUI typography even if utility classes are stripped or customized:
    ```css
@@ -76,31 +89,37 @@ To achieve **Visual Parity** across all targets, AutoUI establishes a standard t
    ```
 2. **Cascading Order**:
    Because `@layer base` has lower specificity than utility classes, any explicit `class: "text-sm font-normal"` supplied by the user will override base rules cleanly.
-3. **SFC Generator (`vue.rs`)**:
-   Generates explicit default classes (`text-4xl font-bold tracking-tight mb-4 text-primary` for `h1`, etc.) when no user class is specified.
+3. **Component Generation**:
+   Generates Shadcn-Vue SFC components (`Input.vue`, `Button.vue`, `Textarea.vue`) with integrated `@apply` and Tailwind utility classes.
 
-### 4.2 VM / Iced Implementation (`aura_view_builder.rs`)
-1. **Merge Strategy**:
-   When a user writes `h1 "Hello" { style: "text-primary" }`, the VM merges the user's classes into the default style:
+### 5.2 VM / Iced Implementation (`aura_view_builder.rs` & `renderer.rs`)
+1. **View Builder Preset Injection (`aura_view_builder.rs`)**:
+   When converting `input`, `textarea`, `button`, or `h1..h6`, the builder merges default preset classes with user-specified classes:
    ```rust
-   if let Some(mut default) = default {
-       if let Some(user) = style.take() {
-           default.classes.extend(user.classes);
-       }
-       style = Some(default);
-   }
+   let user = self.extract_string_with(props, "class", bindings)
+       .or_else(|| self.extract_string_with(props, "style", bindings));
+   let default_preset = "border rounded-md bg-background px-3 py-2 text-sm";
+   let merged = match user.as_deref() {
+       None => default_preset.to_string(),
+       Some(c) => format!("{} {}", default_preset, c),
+   };
+   let style = Style::parse(&merged).ok();
    ```
-2. Resolves `text-4xl` to 36px font size, `font-bold` to bold weight, and `text-primary` to the active accent theme color.
+2. **Container Border Color Resolution (`renderer.rs`)**:
+   When `is.border` or `is.border_width > 0` is set without an explicit color, `is.border_color` falls back to `resolve_border_rgb()` instead of `TRANSPARENT`.
+3. **Input Styling (`renderer.rs`)**:
+   Applies background (`Color::Background`), border (1px `resolve_border_rgb()`), border radius (6px `rounded-md`), padding (`px-3 py-2`), font size (14px `text-sm`), and foreground colors.
 
-### 4.3 Rust Native Implementation (`rust.rs`)
-1. In `heading_default_style()`, prepends heading default classes (`text-4xl font-bold`, etc.) to user-provided styles.
+### 5.3 Rust Native Implementation (`rust.rs`)
+1. In `heading_default_style()` and component generators, prepends standard default classes to user-provided styles.
 
 ---
 
-## 5. Verification & Testing
+## 6. Verification & Testing
 
 Every visual parity change must be tested against:
 1. `auto run` (Vue dev server @ port 30xx)
 2. `auto run -r vm` (Iced native window)
 3. `examples/ui/001-helloworld` (Single heading smoke test)
-4. `examples/widgets-gallery` (Full typography & component catalog)
+4. `examples/ui/003-converter` (Inputs, bidirectional binding, and card border)
+5. `examples/widgets-gallery` (Full typography & component catalog)

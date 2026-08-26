@@ -1068,10 +1068,15 @@ fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
 fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
     use iced::Background;
     let radius = is.border_radius.unwrap_or(0.0);
-    let border = if is.rounded || is.border || radius > 0.0 {
+    let border = if is.rounded || is.border || radius > 0.0 || is.border_width.map_or(false, |w| w > 0.0) {
+        let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
+        let color = is.border_color.unwrap_or_else(|| {
+            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+            iced::Color::from_rgb8(r, g, b)
+        });
         iced::Border {
-            color: is.border_color.unwrap_or(iced::Color::TRANSPARENT),
-            width: is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 }),
+            color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
+            width,
             radius: radius.into(),
         }
     } else {
@@ -1214,10 +1219,15 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let radius = is.border_radius.unwrap_or(0.0);
-    let border = if is.rounded || is.border || radius > 0.0 {
+    let border = if is.rounded || is.border || radius > 0.0 || is.border_width.map_or(false, |w| w > 0.0) {
+        let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
+        let color = is.border_color.unwrap_or_else(|| {
+            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+            iced::Color::from_rgb8(r, g, b)
+        });
         iced::Border {
-            color: is.border_color.unwrap_or(iced::Color::TRANSPARENT),
-            width: is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 }),
+            color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
+            width,
             radius: radius.into(),
         }
     } else {
@@ -1935,7 +1945,9 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     style: Option<&Style>,
 ) -> iced::widget::TextInput<'static, M> {
     let mut input_widget = text_input(placeholder, value);
-    if let Some(ref s) = style {
+    let default_style = Style::parse("border rounded-md bg-background px-3 py-2 text-sm").ok();
+    let effective_style = style.or(default_style.as_ref());
+    if let Some(s) = effective_style {
         let iced_style = IcedStyle::from_style(s);
         let effective_width = iced_style.width
             .map(|w| match w {
@@ -1954,6 +1966,70 @@ fn build_input_shape<M: Clone + Debug + 'static>(
                 input_widget = input_widget.width(iced::Length::Fill);
             }
         }
+        // Size / typography
+        if let Some(fs) = effective_font_size(&iced_style) {
+            input_widget = input_widget.size(fs);
+        } else {
+            input_widget = input_widget.size(14.0);
+        }
+        // Padding
+        if let Some(pad) = iced_style.padding {
+            input_widget = input_widget.padding(pad);
+        } else if iced_style.padding_x.is_some() || iced_style.padding_y.is_some() {
+            let px = iced_style.padding_x.unwrap_or(12.0);
+            let py = iced_style.padding_y.unwrap_or(8.0);
+            input_widget = input_widget.padding(iced::Padding {
+                top: py,
+                right: px,
+                bottom: py,
+                left: px,
+            });
+        } else {
+            input_widget = input_widget.padding(iced::Padding {
+                top: 8.0,
+                right: 12.0,
+                bottom: 8.0,
+                left: 12.0,
+            });
+        }
+
+        let bg = iced_style.background_color.unwrap_or_else(|| {
+            let (r, g, b) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                &crate::ui::style::Color::Background,
+            ).unwrap_or((9, 14, 26));
+            iced::Color::from_rgb8(r, g, b)
+        });
+        let border_color = iced_style.border_color.unwrap_or_else(|| {
+            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+            iced::Color::from_rgb8(r, g, b)
+        });
+        let border_width = iced_style.border_width.unwrap_or(if iced_style.border { 1.0 } else { 1.0 });
+        let radius = iced_style.border_radius.unwrap_or(6.0);
+        let value_color = iced_style.text_color.unwrap_or_else(|| {
+            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                &crate::ui::style::Color::OnBackground,
+            ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+             .unwrap_or(iced::Color::WHITE)
+        });
+        let placeholder_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+            &crate::ui::style::Color::OnSurface,
+        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+         .unwrap_or(iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7));
+
+        input_widget = input_widget.style(move |_theme, _status| {
+            iced::widget::text_input::Style {
+                background: iced::Background::Color(bg),
+                border: iced::Border {
+                    color: if border_width > 0.0 { border_color } else { iced::Color::TRANSPARENT },
+                    width: border_width,
+                    radius: radius.into(),
+                },
+                icon: iced::Color::TRANSPARENT,
+                placeholder: placeholder_color,
+                value: value_color,
+                selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.4),
+            }
+        });
     } else if let Some(w) = width {
         if w > 0 {
             input_widget = input_widget.width(iced::Length::Fixed(w as f32));
@@ -10685,36 +10761,6 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         AbstractView::Input { placeholder, value, on_change, on_submit, width, password: _, style } => {
             let dbg_props = debug_style_props(style.as_ref());
             let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, false, style.as_ref());
-
-            // Plan 409 §10 续 12: input 支持 style 驱动的 appearance。容器模拟:
-            // 外层 div 提供 input 外观(border/bg/rounded),input 自身 bg-transparent
-            // border-0 → 透明无边框,让 search icon 能"放进 input 内部"。仅当 input
-            // 显式带 border/bg class 时覆盖(只设 width 的普通 input 仍用 iced 默认)。
-            if let Some(ref s) = style {
-                let is = IcedStyle::from_style(s);
-                if is.background_color.is_some() || is.border || is.border_width.is_some() {
-                    let bg = is.background_color;
-                    let border_color = is.border_color.unwrap_or(iced::Color::TRANSPARENT);
-                    let border_width = is.border_width.unwrap_or(0.0);
-                    let radius = is.border_radius.unwrap_or(0.0);
-                    let value_color = is.text_color.unwrap_or_else(|| {
-                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                            &crate::ui::style::Color::OnBackground,
-                        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                         .unwrap_or(iced::Color::WHITE)
-                    });
-                    input_widget = input_widget.style(move |_theme, _status| {
-                        iced::widget::text_input::Style {
-                            background: iced::Background::Color(bg.unwrap_or(iced::Color::TRANSPARENT)),
-                            border: iced::Border { color: border_color, width: border_width, radius: radius.into() },
-                            icon: iced::Color::TRANSPARENT,
-                            placeholder: iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7),
-                            value: value_color,
-                            selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.4),
-                        }
-                    });
-                }
-            }
 
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is
