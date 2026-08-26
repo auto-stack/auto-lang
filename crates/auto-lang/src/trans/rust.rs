@@ -1279,6 +1279,56 @@ impl RustTrans {
         }
     }
 
+    /// Plan 019 Phase 1: does this expression denote an Auto `str` value?
+    /// Auto str semantics are code-unit (JS-like); a2r must count/slice by
+    /// CHARS, not bytes, or any non-ASCII text mis-scans. True for str-typed
+    /// params (current fn's str params + tracked local types) and string
+    /// literals; false conservatively otherwise (list receivers keep .len()).
+    fn expr_is_string_like(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Ident(name) => {
+                if self.current_fn_str_params.contains(name) {
+                    return true;
+                }
+                matches!(
+                    self.local_var_types.get(name),
+                    Some(Type::StrOwned) | Some(Type::StrFixed(_)) | Some(Type::StrSlice) | Some(Type::CStrLit)
+                )
+            }
+            Expr::Str(_) | Expr::CStr(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Plan 019 Phase 1: emit Auto str slicing for a string receiver using
+    /// CHAR positions. s.slice(a) → s.chars().skip(a)...collect;
+    /// s.slice(a, b) → s.chars().take(b).skip(a)...collect (take-then-skip
+    /// equals skip-then-take(b-a) but emits each argument exactly once).
+    /// Byte slicing would panic on non-boundary positions in non-ASCII text.
+    fn emit_str_slice_chars(
+        &mut self,
+        recv: &Expr,
+        args: &[Arg],
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
+        self.expr(recv, out)?;
+        write!(out, ".chars()")?;
+        if args.len() >= 2 {
+            if let Some(Arg::Pos(b)) = args.get(1) {
+                write!(out, ".take((")?;
+                self.expr(b, out)?;
+                write!(out, ") as usize)")?;
+            }
+        }
+        if let Some(Arg::Pos(a)) = args.first() {
+            write!(out, ".skip((")?;
+            self.expr(a, out)?;
+            write!(out, ") as usize)")?;
+        }
+        write!(out, ".collect::<String>()")?;
+        Ok(())
+    }
+
     /// Write a return expression with automatic .to_string() coercion when needed.
     /// `add_semi`: whether to append a semicolon (false for match arm bodies).
     fn write_return_expr(&mut self, expr: &Expr, out: &mut impl Write, add_semi: bool) -> AutoResult<()> {
@@ -2382,6 +2432,14 @@ impl RustTrans {
                 if matches!(e.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
                     write!(out, ".to_string()")?;
                 }
+                // Plan 019 Phase 1: Some(&str param) into an Option<String>
+                // field/return — the payload renders as &str and needs the
+                // same materialization as string literals.
+                if let Expr::Ident(name) = e.as_ref() {
+                    if self.current_fn_str_params.contains(name) {
+                        write!(out, ".to_string()")?;
+                    }
+                }
                 // Plan 013 (B16): when returning into Option<uint> and the
                 // payload is a bare ident bound to an Int variant (i32), cast
                 // to u32 — Rust won't auto-widen i32→u32 in Some(...).
@@ -2660,10 +2718,17 @@ impl RustTrans {
                                     // (field form, no parens) maps to Rust's
                                     // `.len()` (2026-08-23 auto-ai report
                                     // defect 2 — bare `.length` is E0609 on
-                                    // Vec/String).
+                                    // Vec/String). Plan 019 Phase 1: string
+                                    // receivers count chars (Auto str length
+                                    // is code-unit based; bytes mis-scan
+                                    // non-ASCII text).
                                     if let Expr::Ident(field_name) = rhs.as_ref() {
                                         if field_name.as_str() == "length" {
-                                            write!(out, ".len()")?;
+                                            if self.expr_is_string_like(lhs) {
+                                                write!(out, ".chars().count()")?;
+                                            } else {
+                                                write!(out, ".len()")?;
+                                            }
                                             return Ok(());
                                         }
                                     }
@@ -3462,14 +3527,16 @@ impl RustTrans {
                                 } else {
                                     format!("field{}", i).into()
                                 };
-                                write!(out, "{}: ", field_name)?;
+                                // Plan 019 Phase 1: keyword-colliding field
+                                // names (`type`) need raw-identifier form.
+                                write!(out, "{}: ", Self::rust_ident(field_name.as_str()))?;
                                 self.write_expr_for_struct_field(expr, out)?;
                             }
                             Arg::Name(name) => {
-                                write!(out, "{}: ", name)?;
+                                write!(out, "{}: ", Self::rust_ident(name.as_str()))?;
                             }
                             Arg::Pair(key, expr) => {
-                                write!(out, "{}: ", key)?;
+                                write!(out, "{}: ", Self::rust_ident(key.as_str()))?;
                                 self.write_expr_for_struct_field(expr, out)?;
                             }
                         }
@@ -3990,9 +4057,17 @@ impl RustTrans {
                 // in call()) maps to Rust's `.len()` (2026-08-23 auto-ai
                 // report defect 2: previously emitted a bogus `.length`
                 // field, E0609 on Vec/String).
+                // Plan 019 Phase 1: for STRING receivers Auto's str length
+                // is code-unit based — emit chars().count() so positions
+                // stay consistent with char_at/slice (byte len would
+                // mis-scan any non-ASCII text).
                 if field.as_str() == "length" {
                     self.expr(object, out)?;
-                    write!(out, ".len()")?;
+                    if self.expr_is_string_like(object) {
+                        write!(out, ".chars().count()")?;
+                    } else {
+                        write!(out, ".len()")?;
+                    }
                     return Ok(());
                 }
 
@@ -4016,7 +4091,9 @@ impl RustTrans {
                 }
 
                 self.expr(object, out)?;
-                write!(out, ".{}", field)?;
+                // Plan 019 Phase 1: field names colliding with Rust keywords
+                // (`type`) get raw-identifier escaping.
+                write!(out, ".{}", Self::rust_ident(field))?;
                 // Plan 433 A1: a known struct with a field of this name (e.g.
                 // Tok.len) is a FIELD read — the method-call parens only apply
                 // to collection receivers (String/Vec property sugar).
@@ -4036,7 +4113,15 @@ impl RustTrans {
             Expr::NullCoalesce(lhs, rhs) => {
                 // Null coalescing: lhs ?? rhs
                 // In Rust, this becomes: lhs.unwrap_or(rhs)
+                // Plan 019 Phase 1: a struct field of a BORROWED loop var
+                // (`for w in nodes` → &WNode) moves out of the shared ref
+                // (E0507) — clone the Option before unwrapping.
+                let lhs_needs_clone = matches!(lhs.as_ref(), Expr::Dot(obj, _)
+                    if matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n)));
                 self.expr(lhs, out)?;
+                if lhs_needs_clone {
+                    write!(out, ".clone()")?;
+                }
                 write!(out, ".unwrap_or(")?;
                 self.expr(rhs, out)?;
                 if matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
@@ -5779,6 +5864,22 @@ impl RustTrans {
             if let Some((obj, method_name)) = maybe_module_method {
                 if let Expr::Ident(module) = obj {
                     match module.as_str() {
+                        "String" => {
+                            // Plan 019 Phase 1: String.fromCharCode(n) → a
+                            // one-char String from the code point (report B8).
+                            if method_name.as_str() == "fromCharCode" {
+                                write!(out, "char::from_u32(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    write!(out, "(")?;
+                                    self.expr(a, out)?;
+                                    write!(out, ") as u32")?;
+                                } else {
+                                    write!(out, "0")?;
+                                }
+                                write!(out, ").unwrap_or('\\u{{0}}').to_string()")?;
+                                return Ok(());
+                            }
+                        }
                         "str" => match method_name.as_str() {
                             "uuid" => {
                                 self.a2r_std_used.set(true); write!(out, "a2r_std::uuid()")?;
@@ -5992,6 +6093,12 @@ impl RustTrans {
                         "slice" => {
                             // s.slice(n) -> s[n..].to_string()
                             // s.slice(start, end) -> s[start..end].to_string()
+                            // Plan 019 Phase 1: string receivers slice by
+                            // CHARS (Auto str positions are code-unit based);
+                            // non-string receivers keep the byte-index form.
+                            if self.expr_is_string_like(lhs) {
+                                return self.emit_str_slice_chars(lhs, &call.args.args, out);
+                            }
                             self.expr(lhs, out)?;
                             write!(out, "[")?;
                             let args = &call.args.args;
@@ -6367,6 +6474,11 @@ impl RustTrans {
                 "slice" => {
                     // s.slice(n) -> s[n..].to_string()
                     // s.slice(start, end) -> s[start..end].to_string()
+                    // Plan 019 Phase 1: string receivers slice by CHARS;
+                    // non-string receivers keep the byte-index form.
+                    if self.expr_is_string_like(object) {
+                        return self.emit_str_slice_chars(object, &call.args.args, out);
+                    }
                     self.expr(object, out)?;
                     write!(out, "[")?;
                     let args = &call.args.args;
@@ -7610,8 +7722,12 @@ impl RustTrans {
                 // split returns iterator in Rust, collect into Vec so .len()/.get() work.
                 // If the Auto source needs raw iterator semantics, it should use split() without
                 // assigning to a variable that later uses Vec operations.
+                // Plan 019 Phase 1: Auto's List<str> is owned strings — collect
+                // into Vec<String> (mirrors a2ts semantics). The previous
+                // Vec<_> inferred Vec<&str>, clashing with every declared
+                // List<str> consumer (params, typed locals, returns).
                 if method_name.as_str() == "split" {
-                    write!(out, ".collect::<Vec<_>>()")?;
+                    write!(out, ".map(|s| s.to_string()).collect::<Vec<String>>()")?;
                 }
                 return Ok(());
             }
@@ -8967,7 +9083,9 @@ impl RustTrans {
                 } else if let Expr::Dot(_, m) = c.name.as_ref() {
                     // Plan 433 A1: `.str()` / `.to_string()` method calls return
                     // an owned String — a &str param still needs the borrow.
-                    matches!(m.as_str(), "str" | "to_string")
+                    // Plan 019 Phase 1: `.slice(...)` also renders as an owned
+                    // String (byte-range .to_string() or chars().collect()).
+                    matches!(m.as_str(), "str" | "to_string" | "slice")
                 } else {
                     false
                 }
@@ -9019,12 +9137,29 @@ impl RustTrans {
                     && matches!(self.infer_type_from_expr(expr),
                         Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
             } else { false };
+            // Plan 019 Phase 1: `lines[i]` on a List<str> — the index
+            // conversion emits an owned String (`.clone()`); a &str param
+            // slot needs the same borrow as the get-arm above.
+            let arg_is_str_index = if let Arg::Pos(expr) = arg {
+                matches!(expr, Expr::Index(_, _))
+                    && matches!(self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+            } else { false };
+            // Plan 019 Phase 1: `x.field ?? fallback` yields an owned String
+            // (the coalesce strips the Option) — a &str param slot needs the
+            // borrow, same as the field read itself.
+            let arg_is_str_coalesce = if let Arg::Pos(expr) = arg {
+                matches!(expr, Expr::NullCoalesce(_, _))
+                    && matches!(self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+            } else { false };
             if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
                 && !arg_is_bare_refstr_method
                 && !(needs_borrow_unknown_callee && !needs_borrow && arg_is_explicit_to_string)
                 && !str_stringified_here
                 && (arg_is_ident || arg_is_concat || arg_is_str_returning_call
-                    || arg_is_str_field || arg_is_str_get) {
+                    || arg_is_str_field || arg_is_str_get || arg_is_str_index
+                    || arg_is_str_coalesce) {
                 write!(out, ".as_str()")?;
             }
 
@@ -9531,6 +9666,14 @@ impl RustTrans {
                                 return *inner;
                             }
                         }
+                        // Plan 019 Phase 1: split renders as
+                        // `.map(|s| s.to_string()).collect::<Vec<String>>()`
+                        // — type it so index args resolve their element type
+                        // for the &str borrow gates (an Unknown left the
+                        // `.as_str()` adaptation dark).
+                        "split" => {
+                            return Type::List(Box::new(Type::StrOwned));
+                        }
                         "get" => {
                             if let Type::List(elem) = self.infer_type_from_expr(obj) {
                                 return *elem;
@@ -9972,14 +10115,16 @@ impl RustTrans {
                         && !matches!(t, Type::Fn(_, _) | Type::Void))
                     .unwrap_or(false)
             };
-            write!(out, "{}: ", field_name)?;
+            // Plan 019 Phase 1: keyword-colliding field names (`type`) get
+            // raw-identifier escaping in construction literals.
+            write!(out, "{}: ", Self::rust_ident(field_name.as_str()))?;
             match arg {
                 Arg::Pos(expr) | Arg::Pair(_, expr) => {
                     self.write_expr_for_struct_field(expr, out)?;
                 }
                 Arg::Name(name) => {
                     // Plan 399 Phase 11.2: shorthand `Type { field }` → `field: field`.
-                    write!(out, "{}", name)?;
+                    write!(out, "{}", Self::rust_ident(name.as_str()))?;
                 }
             }
             if needs_to_string {
@@ -11417,6 +11562,18 @@ impl RustTrans {
         // When type is Unknown, try to infer from the expression
         let effective_ty = if matches!(store.ty, Type::Unknown) {
             self.infer_type_from_expr(&store.expr)
+        } else if matches!(&store.expr, Expr::NullCoalesce(_, _))
+            && matches!(store.ty, Type::Option(_))
+        {
+            // Plan 019 Phase 1: the parser annotates `var x = a ?? b` with
+            // the lhs Option type; the coalesce yields the INNER type —
+            // infer instead (keeps later uses well-typed).
+            let inner = self.infer_type_from_expr(&store.expr);
+            if matches!(inner, Type::Unknown) {
+                store.ty.clone()
+            } else {
+                inner
+            }
         } else {
             store.ty.clone()
         };
@@ -11594,7 +11751,18 @@ impl RustTrans {
         // Type inference for Unknown types
         // Plan 204 Phase 1E: Also skip type annotation when the rendered type
         // contains "/* unknown */" (e.g., Option</* unknown */>, [/* unknown */; N])
-        let ty_name = self.rust_type_name(&store.ty);
+        // Plan 019 Phase 1: `var c = x.field ?? fallback` — the coalesce
+        // yields the INNER type, but the parser-annotated store.ty keeps the
+        // Option wrapper, mis-declaring the local and breaking every later
+        // use. Annotate with the (already-computed) effective type instead.
+        let ty_name = if matches!(&store.expr, Expr::NullCoalesce(_, _))
+            && matches!(store.ty, Type::Option(_))
+            && !matches!(effective_ty, Type::Unknown)
+        {
+            self.rust_type_name(&effective_ty)
+        } else {
+            self.rust_type_name(&store.ty)
+        };
         // Plan 391 D2: `let v: Option<T> = m.get(k)` where T is a non-Copy
         // container — Rust's HashMap/Vec::get returns Option<&T>, so the user's
         // owned annotation `Option<Vec<String>>` triggers E0308. Rewrite the
@@ -14545,11 +14713,13 @@ impl RustTrans {
                 // so cross-module `p.models` field access works. (merge mode
                 // keeps fields private — all access is intra-file.)
                 let field_pub = if !self.merge_mode { "pub " } else { "" };
+                // Plan 019 Phase 1: field names colliding with Rust keywords
+                // (`type`) get raw-identifier escaping.
                 write!(
                     sink.body,
                     "{}{}: {},",
                     field_pub,
-                    member.name,
+                    Self::rust_ident(member.name.as_str()),
                     self.rust_type_name(&member.ty)
                 )?;
                 sink.body.write(b"\n")?;
@@ -14563,7 +14733,7 @@ impl RustTrans {
                     sink.body,
                     "{}{}: {},",
                     field_pub,
-                    delegation.member_name,
+                    Self::rust_ident(delegation.member_name.as_str()),
                     self.rust_type_name(&delegation.member_type)
                 )?;
                 sink.body.write(b"\n")?;
