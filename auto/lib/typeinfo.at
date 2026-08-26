@@ -378,17 +378,19 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
     }
     var k = p_kind(p)
     var lhs = ""
-    // ── 前缀 ──
-    if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Not || k == TokenKind.Star {
-        var pow = prefix_power(p_op(k))
-        p_next(p)
-        var operand = t_infer_expr(p, pow, fns)
-        if k == TokenKind.Not {
-            lhs = "bool"
-        } else {
-            lhs = operand
+    // A2:主分派 is 化(前缀/元组/数组/原子;镜像 Rust expr_pratt)
+    is k {
+        TokenKind.Add | TokenKind.Sub | TokenKind.Not | TokenKind.Star -> {
+            var pow = prefix_power(p_op(k))
+            p_next(p)
+            var operand = t_infer_expr(p, pow, fns)
+            if k == TokenKind.Not {
+                lhs = "bool"
+            } else {
+                lhs = operand
+            }
         }
-    } else if k == TokenKind.LParen {
+        TokenKind.LParen -> {
         p_next(p)
         // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
         lhs = t_infer_expr(p, 0, fns)
@@ -404,7 +406,8 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         if parts.len() > 1 {
             lhs = t_join_types(parts)
         }
-    } else if k == TokenKind.LSquare {
+        }
+        TokenKind.LSquare -> {
         // 数组字面量:元素型取首元素,Display 同 Rust Array
         p_next(p)
         skip_empty_lines(p)
@@ -429,7 +432,8 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         if n > 0 {
             lhs = "(array-type (elem " + first + ") (len " + n.str() + "))"
         }
-    } else {
+        }
+        else -> {
         // ── 原子:字面量 / 标识符(含调用/下标后缀) ──
         var lit = t_literal_type(k)
         if lit != "" {
@@ -454,6 +458,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         } else {
             p_err(p, "typeinfo: expected expression, got ")
             return ""
+        }
         }
     }
     // ── 中缀循环 ──

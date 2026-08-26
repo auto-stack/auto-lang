@@ -199,15 +199,24 @@ fn ar_escape_char(s str) str {
 // ── 类型映射(裸名 Display → Rust) ────────────────────────────
 
 fn ar_is_str_ty(t str) bool {
-    return t == "str" || t == "String" || t == "cstr"
+    is t {
+        "str" | "String" | "cstr" -> true
+        else -> false
+    }
 }
 
 fn ar_is_float_ty(t str) bool {
-    return t == "float" || t == "double"
+    is t {
+        "float" | "double" -> true
+        else -> false
+    }
 }
 
 fn ar_is_int_ty(t str) bool {
-    return t == "int" || t == "uint" || t == "usize" || t == "i64" || t == "u64" || t == "byte"
+    is t {
+        "int" | "uint" | "usize" | "i64" | "u64" | "byte" -> true
+        else -> false
+    }
 }
 
 fn ar_base_ty(t str) str {
@@ -232,37 +241,27 @@ fn ar_list_elem(t str) str {
 }
 
 fn ar_rust_ty(t str) str {
-    if t == "" {
-        return ""
+    is t {
+        "" -> ""
+        "int" -> "i64"
+        "uint" -> "u32"
+        "float" -> "f32"
+        "double" -> "f64"
+        "void" -> ""
+        "List" -> "Vec<String>"
+        else -> {
+            if ar_is_str_ty(t) {
+                return "String"
+            }
+            if t.len() > 6 && t.slice(0, 5) == "List<" {
+                return "Vec<" + ar_rust_ty(ar_list_elem(t)) + ">"
+            }
+            if t.len() > 5 && t.slice(0, 4) == "Map<" {
+                return "std::collections::HashMap<String, String>"
+            }
+            return t
+        }
     }
-    if t == "int" {
-        return "i64"
-    }
-    if t == "uint" {
-        return "u32"
-    }
-    if t == "float" {
-        return "f32"
-    }
-    if t == "double" {
-        return "f64"
-    }
-    if ar_is_str_ty(t) {
-        return "String"
-    }
-    if t == "List" {
-        return "Vec<String>"
-    }
-    if t.len() > 6 && t.slice(0, 5) == "List<" {
-        return "Vec<" + ar_rust_ty(ar_list_elem(t)) + ">"
-    }
-    if t.len() > 5 && t.slice(0, 4) == "Map<" {
-        return "std::collections::HashMap<String, String>"
-    }
-    if t == "void" {
-        return ""
-    }
-    return t
 }
 
 fn ar_param_ty(t str) str {
@@ -764,11 +763,17 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
 // ── fn 体再赋值预扫描(var → let mut 判定) ────────────────────
 
 fn ar_is_asn_kind(k TokenKind) bool {
-    return k == TokenKind.Asn || k == TokenKind.AddEq || k == TokenKind.SubEq || k == TokenKind.MulEq || k == TokenKind.DivEq || k == TokenKind.ModEq
+    is k {
+        TokenKind.Asn | TokenKind.AddEq | TokenKind.SubEq | TokenKind.MulEq | TokenKind.DivEq | TokenKind.ModEq -> true
+        else -> false
+    }
 }
 
 fn ar_is_mutating_method(name str) bool {
-    return name == "push" || name == "set" || name == "insert" || name == "clear" || name == "remove" || name == "pop" || name == "sort" || name == "reverse" || name == "retain" || name == "extend"
+    is name {
+        "push" | "set" | "insert" | "clear" | "remove" | "pop" | "sort" | "reverse" | "retain" | "extend" -> true
+        else -> false
+    }
 }
 
 // cur 在 body `{`;扫描到平衡 `}`,记录被改写的绑定名
@@ -889,7 +894,9 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
     ar_reset_expr(a)
     var k = p_kind(p)
     var cur = ""
-    if k == TokenKind.Sub || k == TokenKind.Add || k == TokenKind.Not || k == TokenKind.Star {
+    // A2:主分派 is 化(镜像 Rust expr_pratt 的 match kind 链)
+    is k {
+        TokenKind.Sub | TokenKind.Add | TokenKind.Not | TokenKind.Star -> {
         var pow = prefix_power(p_op(k))
         p_next(p)
         var operand = ar_expr(a, p, pow)
@@ -907,50 +914,61 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
             cur = "+" + operand
         }
         a.prec = 60
-    } else if k == TokenKind.Int {
+        }
+        TokenKind.Int -> {
         cur = int_val(p_text(p)).str()
         p_next(p)
         a.ty = "int"
-    } else if k == TokenKind.Uint {
+        }
+        TokenKind.Uint -> {
         cur = int_val(p_text(p)).str()
         p_next(p)
         a.ty = "uint"
-    } else if k == TokenKind.Float || k == TokenKind.Double {
+        }
+        TokenKind.Float | TokenKind.Double -> {
         cur = p_text(p)
         p_next(p)
         a.ty = "float"
-    } else if k == TokenKind.True || k == TokenKind.False {
+        }
+        TokenKind.True | TokenKind.False -> {
         cur = p_text(p)
         p_next(p)
         a.ty = "bool"
-    } else if k == TokenKind.Char {
+        }
+        TokenKind.Char -> {
         cur = "'" + ar_escape_char(p_text(p)) + "'"
         p_next(p)
         a.ty = "char"
-    } else if k == TokenKind.Str {
+        }
+        TokenKind.Str -> {
         cur = "\"" + ar_escape_str(p_text(p)) + "\""
         p_next(p)
         a.ty = "str"
         a.strk = 1
-    } else if k == TokenKind.FStrStart {
+        }
+        TokenKind.FStrStart -> {
         cur = ar_fstr_value(a, p)
         a.ty = "str"
         a.strk = 3
         a.infer = 1
-    } else if k == TokenKind.Nil || k == TokenKind.Null {
+        }
+        TokenKind.Nil | TokenKind.Null -> {
         p_next(p)
         cur = "None"
         a.ty = ""
-    } else if k == TokenKind.LParen {
+        }
+        TokenKind.LParen -> {
         p_next(p)
         skip_empty_lines(p)
         cur = ar_expr(a, p, 0)
         skip_empty_lines(p)
         p_expect(p, TokenKind.RParen)
-    } else if k == TokenKind.LSquare {
+        }
+        TokenKind.LSquare -> {
         cur = ar_array_literal(a, p)
         a.ty = "array"
-    } else if k == TokenKind.Ident {
+        }
+        TokenKind.Ident -> {
         var name = p_text(p)
         cur = name
         p_next(p)
@@ -974,9 +992,11 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
             a.atom_param = 0
         }
         a.can_call = 1
-    } else {
-        ar_err(a, "unsupported expr atom: " + kind_name(k))
-        return ""
+        }
+        else -> {
+            ar_err(a, "unsupported expr atom: " + kind_name(k))
+            return ""
+        }
     }
     if a.err != "" || p.err != "" {
         return ""
@@ -1363,117 +1383,123 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
     if args.len() > 1 {
         a1 = args.get(1)
     }
-    if word == "len" {
-        a.ty = "int"
-        a.lenflag = 1
-        a.strk = 0
-        a.infer = 0
-        return recv + ".len() as i64"
-    }
-    if word == "str" {
-        a.infer = 0
-        a.ty = "str"
-        a.strk = 3
-        a.lenflag = 0
-        // 447-③前置:接收者带 as i64 尾码(char_at/len 发射)时先括号
-        // ((... as i64).to_string();裸拼是 cast 后接方法调用,解析错)
-        if recv.len() >= 7 && recv.slice(recv.len() - 7, recv.len()) == " as i64" {
-            return "(" + recv + ").to_string()"
+    // A1:方法名词法分派 is 化(对齐 Rust 377 处 match name.as_str();
+    // 复合条件臂 new&&List/set&&ctx 的 word 不与模式臂重叠,落 else)
+    is word {
+        "len" -> {
+            a.ty = "int"
+            a.lenflag = 1
+            a.strk = 0
+            a.infer = 0
+            return recv + ".len() as i64"
         }
-        return recv + ".to_string()"
-    }
-    if word == "new" && recv == "List" {
-        a.infer = 0
-        a.ty = "List"
-        a.strk = 0
-        a.lenflag = 0
-        return "Vec::new()"
-    }
-    if word == "get" {
-        a.infer = 0
-        a.ty = ar_list_elem(recv_ty)
-        a.strk = 0
-        a.lenflag = 0
-        var lit = 0
-        if args.len() > 0 && ar_all_digits(a0) == 1 {
-            lit = 1
+        "str" -> {
+            a.infer = 0
+            a.ty = "str"
+            a.strk = 3
+            a.lenflag = 0
+            // 447-③前置:接收者带 as i64 尾码(char_at/len 发射)时先括号
+            // ((... as i64).to_string();裸拼是 cast 后接方法调用,解析错)
+            if recv.len() >= 7 && recv.slice(recv.len() - 7, recv.len()) == " as i64" {
+                return "(" + recv + ").to_string()"
+            }
+            return recv + ".to_string()"
         }
-        if place == 1 {
-            return recv + "[" + ar_usize_cast(a0, lit) + "]"
+        "get" -> {
+            a.infer = 0
+            a.ty = ar_list_elem(recv_ty)
+            a.strk = 0
+            a.lenflag = 0
+            var lit = 0
+            if args.len() > 0 && ar_all_digits(a0) == 1 {
+                lit = 1
+            }
+            if place == 1 {
+                return recv + "[" + ar_usize_cast(a0, lit) + "]"
+            }
+            return recv + "[" + ar_usize_cast(a0, lit) + "].clone()"
         }
-        return recv + "[" + ar_usize_cast(a0, lit) + "].clone()"
-    }
-    if word == "set" && a.stmt_ctx == 1 {
-        a.infer = 0
-        a.ty = "void"
-        a.strk = 0
-        a.lenflag = 0
-        var lit2 = 0
-        if args.len() > 0 && ar_all_digits(a0) == 1 {
-            lit2 = 1
+        "char_at" -> {
+            a.infer = 0
+            a.ty = "int"
+            a.strk = 0
+            a.lenflag = 0
+            var lit3 = 0
+            if args.len() > 0 && ar_all_digits(a0) == 1 {
+                lit3 = 1
+            }
+            return recv + ".chars().nth(" + ar_usize_cast(a0, lit3) + ").unwrap_or('\\0') as i64"
         }
-        return recv + "[" + ar_usize_cast(a0, lit2) + "] = " + a1
-    }
-    if word == "char_at" {
-        a.infer = 0
-        a.ty = "int"
-        a.strk = 0
-        a.lenflag = 0
-        var lit3 = 0
-        if args.len() > 0 && ar_all_digits(a0) == 1 {
-            lit3 = 1
+        "slice" -> {
+            a.infer = 0
+            a.ty = "str"
+            a.strk = 3
+            a.lenflag = 0
+            var lit_a = 0
+            var lit_b = 0
+            if args.len() > 0 && ar_all_digits(a0) == 1 {
+                lit_a = 1
+            }
+            if args.len() > 1 && ar_all_digits(a1) == 1 {
+                lit_b = 1
+            }
+            return recv + "[" + ar_usize_cast(a0, lit_a) + ".." + ar_usize_cast(a1, lit_b) + "].to_string()"
         }
-        return recv + ".chars().nth(" + ar_usize_cast(a0, lit3) + ").unwrap_or('\\0') as i64"
-    }
-    if word == "slice" {
-        a.infer = 0
-        a.ty = "str"
-        a.strk = 3
-        a.lenflag = 0
-        var lit_a = 0
-        var lit_b = 0
-        if args.len() > 0 && ar_all_digits(a0) == 1 {
-            lit_a = 1
+        "replace" -> {
+            a.infer = 0
+            a.ty = "str"
+            a.strk = 3
+            a.lenflag = 0
+            return recv + ".replace(" + join_args(args) + ")"
         }
-        if args.len() > 1 && ar_all_digits(a1) == 1 {
-            lit_b = 1
+        "trim" -> {
+            a.infer = 0
+            a.ty = "str"
+            a.strk = 3
+            a.lenflag = 0
+            return recv + ".trim().to_string()"
         }
-        return recv + "[" + ar_usize_cast(a0, lit_a) + ".." + ar_usize_cast(a1, lit_b) + "].to_string()"
-    }
-    if word == "replace" {
-        a.infer = 0
-        a.ty = "str"
-        a.strk = 3
-        a.lenflag = 0
-        return recv + ".replace(" + join_args(args) + ")"
-    }
-    if word == "trim" {
-        a.infer = 0
-        a.ty = "str"
-        a.strk = 3
-        a.lenflag = 0
-        return recv + ".trim().to_string()"
-    }
-    if word == "push" {
-        a.infer = 0
-        a.ty = "void"
-        a.strk = 0
-        a.lenflag = 0
-        var elem = ar_list_elem(recv_ty)
-        var v = ""
-        if args.len() > 0 {
-            v = args.get(args.len() - 1)
+        "push" -> {
+            a.infer = 0
+            a.ty = "void"
+            a.strk = 0
+            a.lenflag = 0
+            var elem = ar_list_elem(recv_ty)
+            var v = ""
+            if args.len() > 0 {
+                v = args.get(args.len() - 1)
+            }
+            if ar_is_str_ty(elem) && (a.last_strk == 1 || a.last_strk == 2) {
+                v = v + ".to_string()"
+            }
+            return recv + ".push(" + v + ")"
         }
-        if ar_is_str_ty(elem) && (a.last_strk == 1 || a.last_strk == 2) {
-            v = v + ".to_string()"
+        else -> {
+            if word == "new" && recv == "List" {
+                a.infer = 0
+                a.ty = "List"
+                a.strk = 0
+                a.lenflag = 0
+                return "Vec::new()"
+            }
+            if word == "set" && a.stmt_ctx == 1 {
+                a.infer = 0
+                a.ty = "void"
+                a.strk = 0
+                a.lenflag = 0
+                var lit2 = 0
+                if args.len() > 0 && ar_all_digits(a0) == 1 {
+                    lit2 = 1
+                }
+                return recv + "[" + ar_usize_cast(a0, lit2) + "] = " + a1
+            }
+            a.infer = 0
+            a.ty = ""
+            a.strk = 0
+            a.lenflag = 0
+            return recv + "." + word + "(" + join_args(args) + ")"
         }
-        return recv + ".push(" + v + ")"
     }
-    a.infer = 0
-    a.ty = ""
-    a.strk = 0
-    a.lenflag = 0
-    return recv + "." + word + "(" + join_args(args) + ")"
 }
 
 fn join_args(args List<str>) str {
@@ -2028,16 +2054,12 @@ fn ar_is_pattern_text(a Ar, pat E, scrut_int int) str {
 
 // 载荷槽 Rust 类型 → AUTO 型名(绑定登记用;i64→int/String→str/f64→float)
 fn ar_pay_auto_ty(rust_ty str) str {
-    if rust_ty == "i64" || rust_ty == "i64" {
-        return "int"
+    is rust_ty {
+        "i64" -> "int"
+        "String" -> "str"
+        "f64" -> "float"
+        else -> ""
     }
-    if rust_ty == "String" {
-        return "str"
-    }
-    if rust_ty == "f64" {
-        return "float"
-    }
-    return ""
 }
 
 // is 臂体按 fn 返回型的 str 字面量收敛(尾值位;"none" → "none".to_string())
@@ -2696,11 +2718,14 @@ fn ar_fn_scan_tail(mut a Ar, mut p P) {
     var last_is_expr = 0
     while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         var k = p_kind(p)
-        if k == TokenKind.Let || k == TokenKind.Var || k == TokenKind.Const || k == TokenKind.Shared || k == TokenKind.For || k == TokenKind.While || k == TokenKind.Loop || k == TokenKind.Return || k == TokenKind.Break || k == TokenKind.Continue || k == TokenKind.LBrace {
-            last_is_expr = 0
-        } else {
-            // If 亦可为值位尾(417-E4)
-            last_is_expr = 1
+        is k {
+            TokenKind.Let | TokenKind.Var | TokenKind.Const | TokenKind.Shared | TokenKind.For | TokenKind.While | TokenKind.Loop | TokenKind.Return | TokenKind.Break | TokenKind.Continue | TokenKind.LBrace -> {
+                last_is_expr = 0
+            }
+            else -> {
+                // If 亦可为值位尾(417-E4)
+                last_is_expr = 1
+            }
         }
         last_start = p.pos
         ar_skip_stmt(p)

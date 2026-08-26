@@ -349,7 +349,10 @@ fn builtin_type(name str) str {
 
 fn is_type_name(mut p P) bool {
     var k = p_kind(p)
-    return k == TokenKind.Ident || k == TokenKind.Question || k == TokenKind.Not || k == TokenKind.Tilde || k == TokenKind.LSquare || k == TokenKind.Star || k == TokenKind.At || k == TokenKind.Fn || k == TokenKind.Link || k == TokenKind.Type
+    is k {
+        TokenKind.Ident | TokenKind.Question | TokenKind.Not | TokenKind.Tilde | TokenKind.LSquare | TokenKind.Star | TokenKind.At | TokenKind.Fn | TokenKind.Link | TokenKind.Type -> true
+        else -> false
+    }
 }
 
 // parse_type 子集:标量/用户名 + ?T/!T/*T 前后缀;泛型/数组/fn 类型 Missing
@@ -941,32 +944,41 @@ fn expr_pratt(mut p P, min int) E {
     }
     var k = p_kind(p)
     var lhs = bad_e()
-    if k == TokenKind.If {
-        // if 表达式:复用 if 解析(Display 同 If)
-        var d = if_contents(p)
-        lhs = E("other", "", "", "", d, "")
-    } else if k == TokenKind.Add || k == TokenKind.Sub || k == TokenKind.Not || k == TokenKind.Star {
-        var pow = prefix_power(p_op(k))
-        p_next(p)
-        var operand = expr_pratt(p, pow)
-        var ity = ""
-        if k == TokenKind.Not {
-            ity = "bool"
-        } else {
-            ity = operand.ity
+    // A2:主分派 is 化(镜像 Rust expr_pratt 的 match kind 链)
+    is k {
+        TokenKind.If -> {
+            // if 表达式:复用 if 解析(Display 同 If)
+            var d = if_contents(p)
+            lhs = E("other", "", "", "", d, "")
         }
-        lhs = E("una", k, "", "", "(una (op " + op_display(p_op(k)) + ") " + operand.dump + ")", ity)
-    } else if k == TokenKind.LParen {
-        lhs = paren_prefix(p)
-    } else if k == TokenKind.LSquare {
-        lhs = parse_array(p)
-    } else if k == TokenKind.LBrace {
-        lhs = parse_object(p)
-    } else if k == TokenKind.FStrStart {
-        p_err(p, "v2 unsupported: f-string ")
-        lhs = bad_e()
-    } else {
-        lhs = expr_atom(p)
+        TokenKind.Add | TokenKind.Sub | TokenKind.Not | TokenKind.Star -> {
+            var pow = prefix_power(p_op(k))
+            p_next(p)
+            var operand = expr_pratt(p, pow)
+            var ity = ""
+            if k == TokenKind.Not {
+                ity = "bool"
+            } else {
+                ity = operand.ity
+            }
+            lhs = E("una", k, "", "", "(una (op " + op_display(p_op(k)) + ") " + operand.dump + ")", ity)
+        }
+        TokenKind.LParen -> {
+            lhs = paren_prefix(p)
+        }
+        TokenKind.LSquare -> {
+            lhs = parse_array(p)
+        }
+        TokenKind.LBrace -> {
+            lhs = parse_object(p)
+        }
+        TokenKind.FStrStart -> {
+            p_err(p, "v2 unsupported: f-string ")
+            lhs = bad_e()
+        }
+        else -> {
+            lhs = expr_atom(p)
+        }
     }
     return expr_with_left(p, lhs, min)
 }
