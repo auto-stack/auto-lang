@@ -11111,7 +11111,7 @@ impl VueGenerator {
                             attrs.push(format!(":{}=\"{}\"", key, state_ref));
                         } else if let Ok(val) = self.prop_to_attr_value(value) {
                             match value {
-                                AuraPropValue::Expr(crate::ast::Expr::Lit(crate::ast::Lit::Str(_))) => {
+                                AuraPropValue::Expr(crate::ast::Expr::Str(_)) => {
                                     attrs.push(format!("{}={}", key, val));
                                 }
                                 AuraPropValue::Expr(_) => {
