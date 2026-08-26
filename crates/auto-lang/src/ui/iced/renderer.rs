@@ -5883,6 +5883,10 @@ struct DynamicState {
     /// Plan 402: one-shot flag — resize window to model's window_width/height
     /// on first update (lets each example declare its own initial window size).
     initial_resize_done: std::cell::Cell<bool>,
+    /// Plan 453 T3c：已捕获的 Opened 窗口（id,size），update 头部自 session
+    /// 通道 drain；T4 接管时转为 DesktopSession.windows 初始内容。
+    pub(crate) opened_windows:
+        std::cell::RefCell<Vec<(iced::window::Id, iced::Size)>>,
 }
 
 /// Plan 412 续(toast VM 化):一条悬浮通知。kind(default/success/error/
@@ -6076,10 +6080,20 @@ fn compare_pngs(
             window_size: std::cell::RefCell::new(startup_window_size()),
             pending_window_resize: std::cell::RefCell::new(None),
             initial_resize_done: std::cell::Cell::new(false),
+            opened_windows: std::cell::RefCell::new(Vec::new()),
         }
     };
 
     let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+        // Plan 453 T3c-consumer：每个 update 周期头部消化 Opened 待登记通道
+        // （producer 在 listen_with 回调），去重登记至过渡表；T4 扇出接线时
+        // 本表整体转正为 DesktopSession.windows。
+        for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
+            let mut reg = state.opened_windows.borrow_mut();
+            if !reg.iter().any(|(id, _)| *id == win_id) {
+                reg.push((win_id, size));
+            }
+        }
         if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
             eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
         }

@@ -2,7 +2,7 @@
 
 > **状态**: 🔄 进行中（T1 ✅ T2 ✅；T3 分片推进——**T3a 桌面域 ✅、T3b App 域 ✅**
 > （2026-08-27：合计 50 成员迁入会话聚合，ui 域测试 486 绿两轮）。
-> T3c-producer ✅（Opened→PENDING_OPENS 通道+2 测试；drain 写回随 T4）。待做：T3c-consumer/T4 扇出、T5 订阅打标……）
+> **T3c 全量 ✅**（producer 通道 + update 头部 drain→opened_windows 过渡登记，去重幂等；T4 接管时转正为 DesktopSession.windows）。待做：T4 消息扇出、LAST_MODIFIERS 收敛、T5 订阅打标……）
 > **来源**: Design 23 §6 里程碑 M1——虚拟桌面程序的会话层底座，452（IME spike，
 > ✅ 归档）的直接后续。452 spike 报告提供三项直接设计输入：① 主窗口 id 由
 > shell 内部生成并丢弃，必须经 `Event::Window(Opened)` 自捕获（窗口注册表的
