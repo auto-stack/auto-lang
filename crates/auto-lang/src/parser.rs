@@ -15909,6 +15909,120 @@ mod tests {
         );
     }
 
+    /// Plan 041a⑥-b/c: 041 债务收口期间实测的解析缺口,复现登记。
+    /// (b) 事件绑定值 `.msg(.field, fn($event))` —— 属性值解析对
+    ///     dot-调用实参中的前导 dot/嵌套调用报 "expected Colon";
+    /// (c) 括号表达式方法链 `(a + b).to_string()` —— 041 期间另见。
+    /// 修复者以此为复现入口(musk 侧暂以 handler 内组装绕行)。
+    #[test]
+    #[ignore = "041a⑥-b/c 已登记缺陷复现:事件绑定嵌套调用 + 括号方法链"]
+    fn test_041a_event_binding_forms() {
+        // (b) 事件绑定多参 + 嵌套 fn 调用 + $event
+        let code_b = concat!(
+            "widget App {
+",
+            "  msg Msg { step(int, str) }
+",
+            "  view {
+",
+            "    input (value: .x, oninput: .step(.row.idx, stepValueOf($event)))
+",
+            "  }
+",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code_b).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::WidgetDecl(_))));
+
+        // (c) 括号表达式上的方法链
+        let code_c = concat!(
+            "widget App {
+",
+            "  view {
+",
+            "    span { text (.row.idx + 1).to_string() }
+",
+            "  }
+",
+            "}"
+        );
+        let mut parser =
+            Parser::from(code_c).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::WidgetDecl(_))));
+    }
+
+    /// Plan 041a⑥: 语句级 `.` 消息派发不得并入前一语句(对象字面量赋值后
+    /// 换行 + 句首 .msg(...) 曾被 glue 成方法链)。最小复现守护。
+    #[test]
+    #[ignore = "041a⑥-a 已登记缺陷复现:句首 .msg(...) 语句并入前一赋值(glue)"]
+    fn test_leading_dot_stmt_not_glued_to_previous() {
+        let code = concat!(
+            "widget App {
+",
+            "  msg Msg { go(obj) }
+",
+            "  model { var m obj = {} }
+",
+            "  on {
+",
+            "    .go -> {
+",
+            "      let draft = {a: 1, b: 2};
+",
+            "      .go(draft)
+",
+            "    }
+",
+            "  }
+",
+            "}"
+        );
+        let count = |code: &str| -> usize {
+            let mut parser =
+                Parser::from(code).with_session(crate::session::CompilerSession::ui());
+            let ast = parser.parse().unwrap();
+            let widget = ast.stmts.iter().find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            }).expect("widget decl");
+            let handler = widget.on.as_ref().unwrap().handlers.first().unwrap();
+            handler.body.stmts.len()
+        };
+        // 变体二分:带 ; / 不带 ; / 同行
+        let with_semi = code;
+        let no_semi = code.replace("};
+", "}
+");
+        let same_line = code.replace("};
+      .go", "}
+      let _z = .go");
+        assert_eq!(count(&with_semi), 2, "semi-terminated: two stmts");
+        assert_eq!(count(&no_semi), 2, "newline-terminated: two stmts");
+        let mut parser =
+            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| match s {
+            Stmt::WidgetDecl(w) => Some(w),
+            _ => None,
+        }).expect("widget decl");
+        assert!(widget.on.is_some(), "on block parsed");
+        // 断言语句数与形状:let draft = {..}; 与 .go(draft) 是两条独立语句,
+        // let 的值不得变成 {..}.go(...) 方法链。
+        let handler = widget.on.as_ref().unwrap().handlers.first().unwrap();
+        let stmts = &handler.body.stmts;
+        assert_eq!(stmts.len(), 2, "two separate stmts, got {}: {:#?}", stmts.len(), stmts);
+        assert!(
+            matches!(&stmts[0], crate::ast::Stmt::Store(st)
+                if matches!(st.kind, crate::ast::StoreKind::Let)
+                    && matches!(st.expr, crate::ast::Expr::Object(_))),
+            "let value must stay a plain object literal: {:#?}",
+            stmts[0]
+        );
+    }
+
     #[test]
     fn test_widget_parses_via_dialect_in_ui_scenario() {
         // PR-2: widget 经 UiDialect 派发，UI 场景下解析为 WidgetDecl。

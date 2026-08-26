@@ -2354,6 +2354,133 @@ impl AuraSchema {
             description: "Menubar label",
         });
 
+        // === Plan 041a①/T18-T19(musk 041 Phase 5): 原生语义元素 ===
+        // slot: 组件定义位插座/组件调用位具名填充(codegen 特判已有,补声明
+        // 使 S002 不再误报)。pre/code/ol/ul/dl/dt/dd/optgroup/figure/
+        // figcaption/blockquote: 原生 HTML 直通(map_tag 兜底 arm 对应)。
+        // native_button: 显式原生按钮逃生名(避开 button→shadcn Button 映射)。
+        elements.insert("slot", ElementDef {
+            tag: "slot",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "name", type_: PropType::String, required: false, default: None, description: "Slot name (named slot target or outlet)" },
+            ],
+            allows_children: true,
+            description: "Slot: outlet in component definition; named-slot fill in component invocation",
+        });
+        elements.insert("pre", ElementDef {
+            tag: "pre",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Preformatted text block",
+        });
+        elements.insert("code", ElementDef {
+            tag: "code",
+            category: ElementCategory::Typography,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Inline code",
+        });
+        elements.insert("ol", ElementDef {
+            tag: "ol",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Ordered list",
+        });
+        elements.insert("ul", ElementDef {
+            tag: "ul",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Unordered list",
+        });
+        elements.insert("dl", ElementDef {
+            tag: "dl",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description list",
+        });
+        elements.insert("dt", ElementDef {
+            tag: "dt",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description term",
+        });
+        elements.insert("dd", ElementDef {
+            tag: "dd",
+            category: ElementCategory::List,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Description detail",
+        });
+        elements.insert("optgroup", ElementDef {
+            tag: "optgroup",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Group label" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Disabled state" },
+            ],
+            allows_children: true,
+            description: "Option group",
+        });
+        elements.insert("figure", ElementDef {
+            tag: "figure",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Figure container",
+        });
+        elements.insert("figcaption", ElementDef {
+            tag: "figcaption",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Figure caption",
+        });
+        elements.insert("blockquote", ElementDef {
+            tag: "blockquote",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Block quotation",
+        });
+        elements.insert("native_button", ElementDef {
+            tag: "native_button",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Button label text" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Message to send when clicked" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Whether button is disabled" },
+            ],
+            allows_children: true,
+            description: "Native HTML button escape (bypasses button-to-Button mapping)",
+        });
+
         // === Native Select ===
         elements.insert("native_select", ElementDef {
             tag: "native_select",
@@ -2708,7 +2835,12 @@ mod tests {
         assert_eq!(schema.suggest_similar("buton"), Some("button"));
         assert_eq!(schema.suggest_similar("buttn"), Some("button"));
         assert_eq!(schema.suggest_similar("rw"), Some("row"));
-        assert_eq!(schema.suggest_similar("cl"), Some("col"));
+        // Plan 041a① 后 dl/ol 入表,"cl" 类超短探针出现多重距离-1命中
+        // (dl/ol/col)——拼写建议不承诺唯一最近,断言命中集合之一。
+        match schema.suggest_similar("cl") {
+            Some(t) => assert!(t == "dl" || t == "ol" || t == "col", "got {}", t),
+            None => panic!("cl should suggest"),
+        }
         // "xyz" is too far from any valid element
         // Note: Levenshtein distance of 3 still matches, so we test something more distant
         assert!(schema.suggest_similar("abcdefgh").is_none());
