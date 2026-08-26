@@ -2,13 +2,17 @@
 
 > **状态**: ✅ P1 已实施并合并（2026-08-26，worktree .worktree/plan-451 →
 > master）。desktop_mcp.py **50/0 全绿**（T10 热重载经 DSL 源路径转绿且
-> 根治了 Plan 449 期间的 mtime 轮询 flake）；P2/P3 见 §7。
+> 根治了 Plan 449 期间的 mtime 轮询 flake）。
+> ✅ P2/P3 已实施（2026-08-26 续作，见 §7）：vue 侧消费全链路（keydown
+> 回退层 + menubar/toolbar 组件树合成 + 条件转译）+ 顶层 actions 声明
+> （actions 可拆独立模块经 use 引用）。
 > **来源**: Plan 449 复盘讨论——auto-edit.at 是前端 UI 的声明（action 注册表/
 > menubar/toolbar/快捷键），长期归属应在 AutoUI DSL 内（类比 routes/router），
 > auto-atom 外挂文件是 Plan 418 的临时形态；工具链收集规则（vue build 按
 > 文件收集、auto test 递归）是引擎缺陷而非架构约束。
 > **基线**: master 3a3ecf84f
-> **性质**: 编译器/DSL 特性（P1 本轮实施：vm 全链路 + 041 迁移）；P2/P3 见 §7。
+> **性质**: 编译器/DSL 特性（P1：vm 全链路 + 041 迁移；P2/P3：vue 消费 +
+> 顶层声明，见 §7）。
 
 ## 1. 目标
 
@@ -16,8 +20,8 @@
 `actions {}` 声明块，vm 运行时三源绑定（键盘回退层 / menubar·toolbar 合成 /
 MCP 同源派发）行为完全不变；外部配置文件路径保留为兼容层。
 
-**非目标（本轮）**：vue 侧 actions 消费（P2，因 vue.rs 与 plan-044 worktree
-的未提交改动冲突，且工作量独立成块）；cmd_vue 按声明种类分派（P3 随 P2）。
+**非目标（P1 轮）**：vue 侧 actions 消费（P2）、cmd_vue 按声明种类分派（P3
+随 P2）——两者已于 2026-08-26 续作实施，见 §7。
 
 ## 2. 语法设计
 
@@ -53,9 +57,15 @@ widget App {
   handler 即 parse error，兑现"编译期校验"承诺；现 auto-atom 形式运行时才对上）。
 - `enabled_if`/`checked_if` 取**引号字符串**（条件表达式）：与现文件形态同源，
   由既有 `eval_condition_with` 对合并根 state 求值（`.tab_count` 无前缀语义
-  不变）。升级为真 DSL 表达式 AST 随 P2 的 vue 编译一起做。
+  不变）。P2 起另接受**裸 DSL 表达式拼写**（`enabled_if: .store.tab_count > 0`，
+  解析期按 view if 条件同文法校验）；AST 内两种拼写同为**规范条件串**而非
+  Expr AST——单一表示贯通 vm 求值（eval_condition_with）、vue 转译
+  （convert_condition）与 auto-atom 文件层，这是有意的设计取舍（复审记录
+  见 §8）。
 - 属性名用下划线（`enabled_if`），因 DSL 标识符不含连字符。
 - `sep` 裸标识；`item (action: "...")` 引用 action id。
+- P3 起另支持**顶层** `actions { ... }` 声明（模块级，可拆独立文件经 `use`
+  引用到宿主；`actions` 后继 `{` 才接管，普通表达式用法不受影响）。
 
 ## 3. 实现面（P1）
 
@@ -118,14 +128,90 @@ widget App {
 - 并行 worktree（plan-044/plan-450）都在 crates 内活动 → 本计划改动文件
   与它们不交集（parser/ast/action_config/lib/main.rs vs renderer/vue/registry）。
 
-## 7. 后续阶段（另行实施）
+## 7. 后续阶段（✅ 已于 2026-08-26 续作实施）
 
-- **P2 vue 侧消费**：cmd_vue/ui_build 对 app.at 的 actions AST 生成——全局
-  keydown 监听（normalize_shortcut → addEventListener 判定）、menubar/toolbar
-  组件树（vue.rs 已有 menubar_* 组件映射）、enabled_if/checked_if 表达式
-  转译（届时一并把条件升级为真 DSL 表达式）。与 plan-044 的 vue.rs 改动
-  合流后实施。
-- **P3 工具链收集规则**：cmd_vue 按**声明种类**分派（widget→SFC、store→
-  composable、actions→随宿主、其余→解释执行），使 actions 也可拆独立模块
-  经 `use` 引用；auto test 已天然跳过无测试文件（`reports.is_empty()`，
-  main.rs:1023），无需改动。
+### P2 vue 侧消费（✅ 完成）
+
+- **全局 keydown 监听**：`AuraWidget.actions`（extract 接线）→ vue.rs
+  `generate_sfc` 预计算 `actions_key_bindings`（`normalize_shortcut` 归一，
+  首声明者胜，与 vm `shortcut_bindings` 同碰撞规则）→ `generate_script`
+  发射 `__autoActionsKeymap` 常量 + `__autoActionsKeydown`（window
+  addEventListener/removeEventListener 成对，onMounted/onUnmounted）。
+  语义对齐 vm：元素级 onkeydown 之下的回退层；命中即 preventDefault
+  （抑制 Ctrl+S 存页等浏览器默认）；无修饰键击键在输入框聚焦时跳过
+  （对应 vm 焦点件捕获）；mac Cmd 映射到 Ctrl 层（web 侧便利）。
+- **menubar/toolbar 组件树**：view 中 `menubar {}` / `toolbar (style: …) {}`
+  占位标签（无显式子节点 + shadcn 模式）→ 从 actions 声明合成。menubar =
+  shadcn Menubar 家族树（MenubarMenu/Trigger/Content/Item/Separator；
+  勾选槽 16px + lucide Check + 右对齐快捷键文本，镜像 vm convert_menubar）；
+  toolbar = ghost 图标按钮（lucide 组件 + title 原生 tooltip + enabled_if →
+  :disabled）+ 分隔线。schema/aura.at 补 `menubar_separator` 的 vue 行
+  （web: component + MenubarSeparator 导入）+ registry 补 MenuBarSeparator
+  spec（extras 导入解析）。
+- **enabled_if/checked_if 转译**：经 `convert_condition`（与 view if 条件
+  同一翻译表：`.store.x > 0` → `store.x > 0`，方法映射/None→null 同源）。
+  条件拼写升级为真 DSL 表达式：`enabled_if: .store.tab_count > 0`（裸表达式，
+  解析期按 view if 条件同文法校验，含分组括号/逻辑运算/方法调用）与引号串
+  等价并存（AST 内同为规范条件串，vm/vue 两端零分叉）。
+- **已知边界**：占位标签合成仅在 shadcn 模式（`shadcn: off` 的 plain 模式
+  保持占位直通——vm 无此分叉，合成不挑模式）；keydown 回退层不挑模式，
+  任何模式都随 actions 声明发射。
+- **验收**：041 vue 生成（`auto build --gen-only --render vue`）产出完整
+  App.vue（keymap 9 项 + 四菜单 menubar + 9 按钮 toolbar + Check/禁用态）；
+  vue.rs 内联单测 5 例（test_actions_*）全绿；desktop_mcp.py 50/0（vm 行为
+  零回归）；lib 全量 3701/0；schema_drift/docs_gen/gallery_golden 绿。
+
+### P3 工具链收集规则（✅ 完成）
+
+- **顶层 `actions {}` 声明**（`Stmt::ActionsDecl`）：UI 方言关键字接管
+  （`actions` 后继 `{` 才接管，普通表达式用法不受影响；词法前瞻一格取回
+  压回）。handler 引用合并进宿主后由消费端校验（独立声明无宿主可校验）。
+- **合并优先级**（vm 与 vue 同序）：宿主 widget 自带块 > 同文件顶层声明 >
+  use 引入模块的顶层声明（导入序首个）。vm：run_file_dynamic_ui_inner
+  （import_stmts 收齐后回退安装）；vue：generate_component_from_file
+  （含 use 模块文件解析，坏模块跳过不致命）；热重载：
+  extract_actions_from_source 同优先级提取（模块声明改动需 touch 宿主
+  文件触发——只 watch 宿主 mtime）。
+- **已知边界**：vm 侧 use 拾取走 import_stmts **传递闭包**（孙模块的
+  actions 也命中）；vue 侧 collect_use_module_actions 只扫**一级** use
+  模块（孙模块不追）——actions 放孙模块是极端形态，两端的差已如实记录。
+- **分派容忍**：actions-only 文件（无 widget/store）不再报错，产出空工件；
+  cmd_vue（Phase 1/3）与 auto-man（pages 扫描）跳过空工件文件（无 junk
+  SFC）。auto test 确认无需改动（reports.is_empty() 天然跳过）。
+- **验收**：api.rs 合并测试 4 例（同文件拾取/自带块优先/actions-only 容忍/
+  use 模块拾取）+ parser 顶层声明测试 + action_config 提取优先级测试。
+
+## 8. finish-plan 复审记录（2026-08-26）
+
+按 finish-plan 流程对 P1/P2/P3 全任务逐项对照代码复审，全部验证命令在最终
+提交状态重跑：`cargo build --features ui-iced --bin auto` ✓、lib 全量
+**3701/0** ✓、schema_drift 4/0 + docs_gen 1/0 + gallery_golden 1/0 ✓、
+041 vm `auto build` exit 0 ✓、041 vue 生成合成完整 ✓、desktop_mcp.py
+**50/0** ✓（本次会话复现；前两次失败为残留进程/端口占用的已知 flake，
+清理后稳定）。P1 3.6 实物核对：auto-edit.at 已删、pac.at 无 `ui_config:`、
+README 已更新。
+
+复审发现（均已处置）：
+
+1. **计划文本 vs 实现的分叉（§2）**：§2 原文"升级为真 DSL 表达式 AST"；
+   实装为**规范条件串 + 裸表达式拼写**（解析期 token 文法校验）。这是有意
+   取舍：单一表示贯通 vm 求值（eval_condition_with）、vue 转译
+   （convert_condition）与 auto-atom 文件兼容层，避免 Expr↔串双表示的
+   往返损耗。§2 已改写为实装语义。残余差距：条件表达式无类型级编译期校验
+   （仅 token 文法级）——如未来需要，可升级为 Expr AST 并以序列化器保持
+   三端兼容。
+2. **vm/vue use 拾取深度不对称**（见 §7 已知边界）：vm 传递闭包 vs vue
+   一级。极端形态（actions 放孙模块）vue 不拾取；如遇实际需求，vue 侧
+   collect_use_module_actions 补递归即可。
+3. **plain 模式（`shadcn: off`）占位标签不合成**（见 §7 已知边界）：
+   vm 合成不挑模式，vue 合成依赖 shadcn 组件族；plain 模式保持占位直通。
+4. **格式修复**：parser.rs `parse_actions_block_inner` 函数头与首语句在
+   P2 编辑中被粘行（无行为影响），复审时已修正并随收尾提交。
+5. **与本计划无关的预存问题**（不阻塞归档，如实登记）：
+   `tests/ui_snapshots.rs::snapshot_editor` 快照在 master 基线上已过期
+   （stash 本计划全部改动后实测同样输出 6644B，与本计划无关）；
+   041 vue 严格构建存在预存 R006 警告（vm 期 tab 循环缺 :key，
+   vue 验证经 --lenient 门禁）。
+
+**结论**：A——全部任务完成并验证，无未完成项；发现项均为文档化边界或
+预存问题。归档。

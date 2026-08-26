@@ -1197,9 +1197,15 @@ impl WidgetRegistry {
 
         // MenuBarItem
         let mut menu_bar_item = WidgetSpec::new("MenuBarItem", WidgetCategory::Navigation)
-            .with_alias("menu-bar-item");
+            .with_alias("menubar_item");
         menu_bar_item.has_children = true;
         self.register(menu_bar_item);
+
+        // Plan 451 P2: MenuBarSeparator — `actions {}` 合成的 menubar 树用
+        // （此前无 spec，vue import 无从解析）。
+        let menu_bar_separator = WidgetSpec::new("MenuBarSeparator", WidgetCategory::Navigation)
+            .with_alias("menubar_separator");
+        self.register(menu_bar_separator);
 
         // DropdownMenu
         let mut dropdown_menu = WidgetSpec::new("DropdownMenu", WidgetCategory::Navigation)

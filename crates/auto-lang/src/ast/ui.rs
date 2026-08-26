@@ -100,9 +100,11 @@ pub struct WidgetDecl {
 /// }
 /// ```
 ///
-/// `enabled_if`/`checked_if` 为引号包裹的条件表达式字符串，运行时经
-/// `eval_condition_with` 对合并根 state 求值（与 auto-atom 文件形态同语义，
-/// 如 ".store.tab_count > 0"）；升级为真 DSL 表达式 AST 随 P2 vue 编译一并做。
+/// `enabled_if`/`checked_if` 为条件表达式。两种拼写（Plan 451 P2 起等价）：
+/// 引号字符串（与 auto-atom 文件形态同源，如 ".store.tab_count > 0"）或
+/// 裸 DSL 表达式（`enabled_if: .store.tab_count > 0`，解析期经 view if
+/// 条件同文法校验）。运行时经 `eval_condition_with` 对合并根 state 求值；
+/// vue 侧经 convert_condition 转译为模板表达式。
 #[derive(Debug, Clone)]
 pub struct ActionsBlock {
     pub actions: Vec<ActionEntry>,

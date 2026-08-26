@@ -231,6 +231,13 @@ fn generate_workspace_project(
 
             match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                 Ok((vue_code, widgets)) => {
+                    // Plan 451 P3 按声明种类分派：actions-only 模块（顶层
+                    // actions 声明，工件为空）不产 SFC——actions 随宿主编译
+                    // 被拾取；此处跳过，避免写入空组件文件。
+                    if vue_code.trim().is_empty() || widgets.is_empty() {
+                        println!("  No widget declarations — skipped (actions/module file)");
+                        continue;
+                    }
                     let components = detect_shadcn_components(&vue_code);
                     for comp in &components {
                         all_shadcn_components.insert(comp.clone());
@@ -303,6 +310,11 @@ fn generate_workspace_project(
 
                 match auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
                     Ok((vue_code, widgets)) => {
+                        // Plan 451 P3: actions-only/module 文件不产 SFC（同上）。
+                        if vue_code.trim().is_empty() || widgets.is_empty() {
+                            println!("  No widget declarations — skipped (actions/module file)");
+                            continue;
+                        }
                         let components = detect_shadcn_components(&vue_code);
                         for comp in &components {
                             all_shadcn_components.insert(comp.clone());

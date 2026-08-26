@@ -2976,8 +2976,13 @@ fn run_file_dynamic_ui_inner(
     // auto-atom 外挂文件；热重载经 action_config::reload_action_config
     // 重读本源文件）。消费点（键盘回退层/menubar·toolbar 合成/MCP 同源）
     // 全部经 action_config() 取数，零改动。
+    // Plan 451 P3 合并优先级：宿主 widget 自带块 > 本文件顶层声明 >
+    // use 引入模块的顶层声明（导入序首个）。顶层声明的 handler 引用此时
+    // 才有宿主，不做解析期校验（由 from_actions_block 的引用校验兜底）。
+    let mut dsl_actions_installed = false;
     if let Some(ref acts) = root_decl.actions {
         crate::ui::action_config::set_dsl_action_config_from_block(acts, path);
+        dsl_actions_installed = true;
     }
 
     // 2b. Load child widgets + imported functions/types from `use` imports
@@ -3254,6 +3259,27 @@ fn run_file_dynamic_ui_inner(
 
 
     // 3. Create DynamicComponent with registry + imported symbols
+    // Plan 451 P3: 顶层 actions 回退链（widget 块未安装时）：本文件顶层
+    // 声明 → import_stmts 里首个模块声明（use 传递闭包已在此前收齐）。
+    if !dsl_actions_installed {
+        let fallback = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::ActionsDecl(b) => Some(b.clone()),
+                _ => None,
+            })
+            .or_else(|| {
+                import_stmts.iter().find_map(|s| match s {
+                    crate::ast::Stmt::ActionsDecl(b) => Some(b.clone()),
+                    _ => None,
+                })
+            });
+        if let Some(acts) = fallback {
+            crate::ui::action_config::set_dsl_action_config_from_block(&acts, path);
+        }
+    }
+
     // Plan 370 D-GAP-4: collect StoreDecls and convert them to child WidgetDecls
     // so their state + handlers get compiled into the single VM module.
     // A store is isomorphic to a child widget minus a view — we give it an

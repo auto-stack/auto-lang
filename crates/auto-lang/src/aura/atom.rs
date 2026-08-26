@@ -478,6 +478,7 @@ mod tests {
     #[test]
     fn test_to_atom_simple_widget() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -515,6 +516,7 @@ mod tests {
     #[test]
     fn test_to_atom_with_children() {
         let widget = AuraWidget {
+            actions: None,
             name: "App".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -564,6 +566,7 @@ mod tests {
         let module = AuraModule {
             name: "MyApp".to_string(),
             widgets: vec![AuraWidget {
+                actions: None,
                 name: "Main".to_string(),
                 state_vars: vec![],
                 computed: vec![],

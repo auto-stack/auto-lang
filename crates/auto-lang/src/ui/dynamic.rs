@@ -1430,6 +1430,7 @@ mod tests {
     /// Helper: create a minimal AuraWidget for testing.
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
+            actions: None,
             name: name.to_string(),
             state_vars,
             computed: vec![],
@@ -1548,6 +1549,7 @@ mod tests {
     #[test]
     fn test_view_with_state_binding() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -1727,6 +1729,7 @@ mod tests {
     #[test]
     fn test_view_with_button_and_event() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -1820,6 +1823,7 @@ mod tests {
     #[test]
     fn test_write_state_updates_view() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2014,6 +2018,7 @@ mod tests {
 
         // Reload with a different view template
         let new_widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),

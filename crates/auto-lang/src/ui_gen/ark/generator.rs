@@ -2175,6 +2175,7 @@ mod tests {
     fn test_dispatch_pattern_generation() {
         // Create a widget with messages and handlers
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2246,6 +2247,7 @@ mod tests {
     fn test_generated_file_has_imports() {
         // Create a simple widget without routes (child page - should have @Component only)
         let widget = AuraWidget {
+            actions: None,
             name: "TestWidget".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2302,6 +2304,7 @@ mod tests {
     fn test_semantic_header_element() {
         // Test that semantic HTML elements like header are transpiled to Column
         let widget = AuraWidget {
+            actions: None,
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2352,6 +2355,7 @@ mod tests {
         use crate::aura::{AuraRoute, AuraRoutes};
 
         let widget = AuraWidget {
+            actions: None,
             name: "App".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2425,6 +2429,7 @@ mod tests {
     fn test_app_widget_without_routes_is_entry_page() {
         // Test that App widget without routes is a simple entry page (no Navigation)
         let widget = AuraWidget {
+            actions: None,
             name: "App".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2491,6 +2496,7 @@ mod tests {
     fn test_child_page_with_navigation_has_consume() {
         // Test that child pages with navigation links have @Consume and are wrapped in NavDestination
         let widget = AuraWidget {
+            actions: None,
             name: "IndexPage".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2560,6 +2566,7 @@ mod tests {
         props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("https://example.com/logo.png".into())));
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2613,6 +2620,7 @@ mod tests {
         props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("$r('app.media.icon')".into())));
 
         let widget = AuraWidget {
+            actions: None,
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],

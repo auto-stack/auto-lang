@@ -87,6 +87,7 @@ fn import_surface_update(
         watchers: Vec::new(),
         exposes: Vec::new(),
             setup: None,
+            actions: None,
     })
 }
 

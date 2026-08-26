@@ -1783,6 +1783,7 @@ widget OpProbeOrig {
     /// Helper to create a minimal AuraWidget for testing
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
+            actions: None,
             name: name.to_string(),
             state_vars,
             computed: vec![],

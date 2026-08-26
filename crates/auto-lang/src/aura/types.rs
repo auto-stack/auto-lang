@@ -122,6 +122,12 @@ pub struct AuraWidget {
     /// (Plan 426). The Vue backend emits the statements at `<script setup>`
     /// top level (before state/computed definitions); other backends ignore.
     pub setup: Option<crate::ast::ui::SetupBlock>,
+
+    /// Plan 451: `actions { ... }` 块（动作注册表 + menubar/toolbar 声明）。
+    /// vm 渲染器不经此字段（run_file_dynamic_ui_inner 直接从 WidgetDecl
+    /// 安装 action_config）；Vue 后端（Plan 451 P2）据此生成全局 keydown
+    /// 回退层 + menubar/toolbar 组件树；其他后端忽略。
+    pub actions: Option<crate::ast::ui::ActionsBlock>,
 }
 
 /// A reactive watcher (widget-level `watch { ... }` entry).
@@ -1145,6 +1151,7 @@ mod tests {
     #[test]
     fn test_aura_widget() {
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -1248,6 +1255,7 @@ mod tests {
     fn test_widget_logic_and_view_split() {
         // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
         let widget = AuraWidget {
+            actions: None,
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),

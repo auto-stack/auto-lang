@@ -482,8 +482,10 @@ fn install_dsl_config(
     Some(arc)
 }
 
-/// Plan 451: 从 AutoLang 源码提取首个带 actions 块的 widget 的声明
-/// （DSL 热重载路径：重读源 .at → 此提取 → install）。
+/// Plan 451: 从 AutoLang 源码提取动作声明（DSL 热重载路径：重读源 .at →
+/// 此提取 → install）。优先首个带 actions 块的 widget；否则取顶层
+/// `actions {}` 声明（Plan 451 P3 的模块级形态——热重载只重读本源文件，
+/// use 引入模块的声明改动需 touch 本文件触发）。
 pub fn extract_actions_from_source(
     code: &str,
 ) -> Result<crate::ast::ui::ActionsBlock, String> {
@@ -497,6 +499,11 @@ pub fn extract_actions_from_source(
             if let Some(ref acts) = decl.actions {
                 return Ok(acts.clone());
             }
+        }
+    }
+    for stmt in &ast.stmts {
+        if let crate::ast::Stmt::ActionsDecl(acts) = stmt {
+            return Ok(acts.clone());
         }
     }
     Err("no widget with an `actions` block found in source".into())
@@ -749,6 +756,35 @@ auto-edit {
         assert_eq!(normalize_shortcut("Ctrl+Shift+Z"), "Ctrl+z");
         assert_eq!(normalize_shortcut("Enter"), "Enter");
         assert_eq!(normalize_shortcut("Ctrl"), "");
+    }
+
+    /// Plan 451 P3: 热重载提取——widget 块优先，顶层 `actions {}` 声明兜底。
+    #[test]
+    fn extract_actions_prefers_widget_block_then_top_level() {
+        let with_widget = r#"
+actions {
+    action (id: "top.decoy", handler: .ActX, title: "顶层")
+}
+widget App {
+    actions { action (id: "own.real", handler: .ActX, title: "自带") }
+    view { col { } }
+    on { .ActX -> { } }
+}
+"#;
+        let b = extract_actions_from_source(with_widget).expect("widget block wins");
+        assert_eq!(b.actions[0].id, "own.real");
+
+        let top_only = r#"
+actions { action (id: "mod.only", handler: .ActX, title: "模块") }
+widget App {
+    view { col { } }
+    on { .ActX -> { } }
+}
+"#;
+        let b2 = extract_actions_from_source(top_only).expect("top-level fallback");
+        assert_eq!(b2.actions[0].id, "mod.only");
+
+        assert!(extract_actions_from_source("widget App { view { col { } } }").is_err());
     }
 
     #[test]
