@@ -80,10 +80,17 @@ client.screenshot("converter_vm_decimal")
 启动 Vite 后，运行 Playwright 脚本（参考 `scripts/test_vue_playwright.mjs`）生成 `converter_vue_initial.png` 与 `converter_vue_decimal.png`。
 
 ### 步骤 3：视觉审查与状态一致性判定
-对照 [`docs/design/22-base-styles-and-visual-parity.md`](file:///d:/autostack/auto-lang/docs/design/22-base-styles-and-visual-parity.md) 核对：
+对照 [`docs/design/22-base-styles-and-visual-parity.md`](file:///d:/autostack/auto-lang/docs/design/22-base-styles-and-visual-parity.md) 与第 5、7 节核对：
 1. **容器**：深色底色 `zinc-950`，卡片 `bg-card`，边框 `zinc-800`，圆角 `rounded-2xl`。
 2. **输入框**：14px 字号，`px-3 py-2` 内边距，`rounded-md` (6px) 圆角，`zinc-800` 细边框。
-3. **计算精度**：浮点/双精度四舍五入值在两端精确一致。
+3. **按钮与前景色**：暗色模式下默认主按钮为浅色底（`239 84% 77%`）+ 深黑字（`#0f172a`），带 `hover:bg-primary/90` 悬停微调。
+4. **计算精度**：浮点/双精度四舍五入值在两端精确一致。
+
+### 步骤 4：分级门禁与合入规范 (Change-Scoped Gating)
+严格遵循 AGENTS.md 的测试纪律，杜绝无谓测试开销：
+- **纯验证 / 资产 / 计划跟踪任务**：未修改 `crates/` 下 Rust 源码时，**严禁运行 `cargo t` 和 `docs_gen`**，完成双端截图核验与计划矩阵更新后直接合入。
+- **局部 Rust 代码修改任务**：开发调试使用 `cargo check -p auto-lang`，验证使用作用域测试 `cargo t <module>`（如 `cargo t iced` 或 `cargo t style`）。
+- **仅修改文档/Schema 时**：才执行 `cargo test -p auto-lang --test docs_gen`。
 
 ---
 
