@@ -199,3 +199,19 @@ storage_raw_get/set（localStorage 桥）共享同一 map，自动受益。
   建议并行会话或后续 plan-fix 认领。
 - 437 Phase 2 组件化合入后，本应用与 gallery 图表页可一并切换组件形态
   （几何内联为当前既定形态，非债）。
+
+### §9.1 独立复审收口（2026-08-27，合并后审计）
+
+对 §7/§8/§9 交付做 finish-plan 式复审（master exe 复跑 desktop_mcp
+26/26 ✓、diff 无调试残留/新警告 ✓、入库文件面干净 ✓）。发现与处置：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| 1 | **侧栏折叠降级决议**：§1 目标语句含"响应式排布（侧栏折叠、容器伸缩）"，M1 阶段清单（三区布局）未含侧栏——交付为三区纵向 + KPI 行响应式断点（grid-cols-2 md:grid-cols-4）。**显式降级**：系统监视器形态以纵向信息流为主，侧栏折叠非必要；若后续 Design 21 演进要求侧栏（如进程详情侧栏），另立后续项 |
+| 2 | **行 hover 双端差异**：vue（shadcn TableRow 自带）达成、VM 无——SPEC 补注记录 |
+| 3 | **对 439 需求单**：已落（439-026-database.md §需求单-自-438：8 行规模无需虚拟滚动/列宽下限/排序点击已满足） |
+| 4 | **Tick interval 运行时不可调**（"刷新间隔调节"实为 speedDiv 分频 workaround）——登记 DEBTS.md（未来增强：interval 状态引用 + watch 重启定时器） |
+| 5 | storage 临时目录持久性弱于 localStorage + 多进程并发写语义——SPEC 诚实注记 |
+| 6 | 小修：view_builder mut 遮蔽改直接声明；desktop_mcp T4 映射可读性；KPI 行响应式断点 |
+
+复审后复验：desktop_mcp 26/26（master exe）、cargo check 零错。

@@ -23,6 +23,10 @@
   名称、CPU、内存三列点击列头排序（升降切换，列头箭头指示）；
   状态列不排序（badge 展示：running=default / sleeping=secondary /
   stopped=outline）。
+- **行 hover（双端差异，2026-08-27 审计补注）**: vue 轨 shadcn TableRow
+  自带 `hover:bg-muted/50`（隐式满足）；VM/iced 轨表格行由 view_builder
+  的 Row[Container] 合成，无 hover 态（iced 表格 hover 需 mouse_area
+  包装，非现能力）。plan §1 "行 hover" 以 vue 轨达成、vm 轨降级记录。
 
 ## Data model
 
@@ -86,6 +90,10 @@ poll_system() -> {
   字符串值（零转换）。vue 轨 → localStorage（ts_adapter 映射）；vm 轨 →
   文件背书 storage shim（`AUTO_VM_STORAGE_FILE` 可覆盖，默认按 cwd 哈希
   存临时目录——per-project 隔离、跨进程存活；测试经该环境变量隔离）。
+  诚实注记：临时目录可能被 OS/清理工具回收（弱于 localStorage 的真
+  持久），需跨重启稳妥保存时以 `AUTO_VM_STORAGE_FILE` 指向持久路径；
+  同项目多进程并发写为整表最后写者胜、进程内缓存不见他进程写入
+  （localStorage 的跨 tab 同步语义不保证）。
 
 ## 已知边界（①② 已由 M1-fix 根治，见 plan 438 §8）
 

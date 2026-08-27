@@ -190,13 +190,11 @@ def run_suite(mcp):
         time.sleep(0.5)
         st = mcp.state("showCpu", "showMem", "showNet")
         snap = mcp.snapshot()
-        hidden = [k for k, v in (("CPU 使用率", "showCpu"),
-                                 ("内存占用", "showMem"), ("网络吞吐", "showNet"))
-                  if k not in snap]
+        card_field = {"CPU 使用率": "showCpu", "内存占用": "showMem",
+                      "网络吞吐": "showNet"}
+        hidden = [card for card in card_field if card not in snap]
         result.check("T4 独立隐藏一张卡",
-                     len(hidden) == 1 and st.get(hidden[0] == "CPU 使用率" and "showCpu"
-                                                 or {"内存占用": "showMem",
-                                                     "网络吞吐": "showNet"}[hidden[0]]) == "false",
+                     len(hidden) == 1 and st.get(card_field[hidden[0]]) == "false",
                      f"hidden={hidden} state={st}")
         result.check("T4 其余卡存活", snap.count("checkbox") == 2)
         # 恢复（为 T6 持久化断言保持已知态）

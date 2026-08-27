@@ -4173,14 +4173,13 @@ let tabs_inner = View::Row {
         };
         let style = Style::parse(&merged).ok();
         // 子元素 → Row(水平),对齐 vue Badge 的 inline-flex(items-center 居中)。
-        let child_views: Vec<View<DynamicMessage>> = children
+        // Plan 438 M2: badge (text: "…", variant: "…") 形态——text prop 是
+        // gallery/应用的主流通法,此前只认 children,prop 形态渲染为空 Row。
+        let mut child_views: Vec<View<DynamicMessage>> = children
             .iter()
             .map(|n| self.convert_node_with(n, bindings))
             .filter(|v| !matches!(v, View::Empty))
             .collect();
-        // Plan 438 M2: badge (text: "…", variant: "…") 形态——text prop 是
-        // gallery/应用的主流通法,此前只认 children,prop 形态渲染为空 Row。
-        let mut child_views = child_views;
         if child_views.is_empty() {
             let text = self.extract_string_with(props, "text", bindings).unwrap_or_default();
             if !text.is_empty() {
