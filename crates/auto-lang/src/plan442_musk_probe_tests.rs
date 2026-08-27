@@ -44,5 +44,11 @@ mod plan442_musk_probe {
             !dc.state_fields().is_empty(),
             "linked musk component must expose state fields"
         );
+        // PLAN-046 (auto-musk T10): expose linked module size for the
+        // musk-side threshold gate (auto-musk scripts/vm-link-probe.mjs).
+        println!(
+            "[probe] synthesized+linked modules: {} bytes",
+            dc.bytecode_len()
+        );
     }
 }

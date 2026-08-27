@@ -2940,6 +2940,11 @@ impl VmBridge {
         self.vm.flash.memory.get(addr as usize).copied().unwrap_or(0xEE)
     }
 
+    /// PLAN-046 (auto-musk T10): total linked bytecode size in bytes.
+    pub fn bytecode_len(&self) -> usize {
+        self.vm.flash.memory.len()
+    }
+
     /// Plan 423 P5:原始字节十六进制(反汇编起点错位时会误导,字节不会)。
     pub fn debug_raw(&self, addr: u32, len: usize) -> String {
         let mut out = format!("== raw 0x{:04x}..0x{:04x} ==\n", addr, addr as usize + len);
