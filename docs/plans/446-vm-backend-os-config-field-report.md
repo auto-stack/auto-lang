@@ -474,3 +474,13 @@ crates/auto-lang/src/plan046_obj_natives_tests.rs:两个 #[ignore] WIP 用例
 - 勘误备案:c176c4533 的提交消息被跨仓会话 amend 误改(树内容与原
   提交 750b7d98e 全等,零损失;原消息已存该提交 git notes)。下次触碰
   454 计划文档时建议补一行更正。
+
+### 收口回填(2026-08-27,plan-454 Phase E)
+
+三缺口已全部闭合,两 #[ignore] 用例转绿(plan-454 分支提交 9f40be552):
+缺口① = shim_obj_find 语言级 TAG_NULL 契约(弃 -1 哨兵);缺口② =
+谓词闭包参数域捕获(0x8000 旗标 + CLOSURE 执行期绝对槽解析)与元素
+Value 通道(i32 快路径 tag 位误读剔除);缺口③ = auto.obj.* 编译期路由
+强制 + infer_native_return_type 型别标注(keys/values→Array,
+find→NestedObject)+ for-in Array 源走索引循环通道。附带:harness 的
+stdout 读取通道修复(此前 WIP 用例读 main 返回值恒空串)。
