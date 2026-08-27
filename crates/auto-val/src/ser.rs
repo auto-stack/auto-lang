@@ -34,7 +34,7 @@
 //! externally-tagged unit enums as bare strings. Struct/tuple **variants**
 //! error, mirroring `de`'s unit-only `EnumAccess`.
 
-use crate::{Array, Node, Obj, Value};
+use crate::{Array, AtomSource, Node, Obj, Value};
 use serde::ser::{self, Error as SerErrorTrait, Impossible, Serialize};
 
 /// Error produced by [`ValueSerializer`]. Constructed via `serde::ser::Error`.
@@ -101,6 +101,18 @@ pub fn node_from_value<T: Serialize + ?Sized>(
             "node_from_value expects a map/struct, got `{other:?}`"
         ))),
     }
+}
+
+/// One-step emit: serialize `value` into a named node and render `.at` source
+/// (`name { … }`) in a single call (Plan 332 S2 bridge entry).
+///
+/// `value` is taken **by value** so a2r callers (Auto passes by value) bind
+/// directly without ref adaptation; the `node_name` literal binds as `&str`.
+pub fn node_to_at_source<T: Serialize>(
+    node_name: &str,
+    value: T,
+) -> Result<String, SerError> {
+    Ok(node_from_value(node_name, &value)?.to_at_source())
 }
 
 impl ser::Serializer for ValueSerializer {
@@ -652,5 +664,20 @@ mod tests {
     #[test]
     fn value_serialize_from_alias() {
         assert_eq!(Value::serialize_from(&7i32).unwrap(), Value::Int(7));
+    }
+
+    #[test]
+    fn node_to_at_source_one_step() {
+        #[derive(Serialize)]
+        struct Role {
+            name: String,
+            tier: String,
+        }
+        let src = node_to_at_source("role", Role { name: "coder".into(), tier: "max".into() })
+            .unwrap();
+        assert!(src.starts_with("role {"), "got: {src}");
+        assert!(src.contains("name : \"coder\""), "got: {src}");
+        assert!(src.contains("tier : \"max\""), "got: {src}");
+        assert!(src.ends_with('}'), "got: {src}");
     }
 }

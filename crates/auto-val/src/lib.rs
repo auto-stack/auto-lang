@@ -69,8 +69,8 @@ pub use de::{
 mod ser;
 #[cfg(feature = "serde")]
 pub use ser::{
-    node_from_value, to_value, SerError, SerializeArray, SerializeObjMap, SerializeObjStruct,
-    ValueSerializer,
+    node_from_value, node_to_at_source, to_value, SerError, SerializeArray, SerializeObjMap,
+    SerializeObjStruct, ValueSerializer,
 };
 
 pub type AutoError = Box<dyn std::error::Error>;
