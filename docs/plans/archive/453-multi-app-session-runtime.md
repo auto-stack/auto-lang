@@ -1,6 +1,8 @@
 # Plan 453: AutoUI 多 App 会话运行时（AppSession / DesktopSession 拆分）
 
-> **状态**: 🔄 进行中（T1 ✅ T2 ✅；T3 分片推进——**T3a 桌面域 ✅、T3b App 域 ✅**
+> **状态**: ✅ 完成归档（2026-08-28，T7b 由 Plan 459 交付收口——daemon
+> 迁移 + 双 AppSession 双 OS 窗口 demo + panic 隔离实录 + I2 五套全绿 +
+> I3 复查，见 `459-desktop-session-multi-window.md` §5 验收实录）（T1 ✅ T2 ✅；T3 分片推进——**T3a 桌面域 ✅、T3b App 域 ✅**
 > （2026-08-27：合计 50 成员迁入会话聚合，ui 域测试 486 绿两轮）。
 > **T3c 全量 ✅**（producer 通道 + update 头部 drain→opened_windows 过渡登记，去重幂等；T4 接管时转正为 DesktopSession.windows）。**T6 panic 边界 ✅**（update 包 catch_unwind，panic 落 eprintln 不落进程；view 侧边界残留 T4 同法补）。**T4-core ✅ + T4b-1 ✅**（桌面事件端到端 WindowClosed→注销登记；view 侧 panic 边界）。**T4c 全量 ✅（2026-08-27）**：
 > 会话结构翻转落地（施工图 `reports/453-t4c-session-flip-blueprint.md` 路线甲+
@@ -13,7 +15,8 @@
 > PENDING_WINDOW_OPENS 进程通道退役。ui:: 回归 492 绿（plan411 既有失败豁免）。
 > **T7a 守门 ✅（2026-08-27）**：7 套 desktop_mcp 实机对照，T4c 零回归。
 > **T7b 移交 Plan 459**（2026-08-28）：`459-desktop-session-multi-window.md`
-> ——daemon 迁移 + 双 App demo + panic 隔离；完成后本计划归档）
+> ——daemon 迁移 + 双 App demo + panic 隔离；✅ 459 完成（2026-08-28），
+> 本计划随之归档）
 > **来源**: Design 23 §6 里程碑 M1——虚拟桌面程序的会话层底座，452（IME spike，
 > ✅ 归档）的直接后续。452 spike 报告提供三项直接设计输入：① 主窗口 id 由
 > shell 内部生成并丢弃，必须经 `Event::Window(Opened)` 自捕获（窗口注册表的
