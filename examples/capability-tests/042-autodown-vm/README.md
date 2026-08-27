@@ -25,6 +25,17 @@ auto run -r vm   # 本目录
    true 收口。content 绑定状态 → 状态更新自然触发重解析与视图重建
    （流式路径 v1；逐块布局缓存为登记的 v1 性能债）。
 
+## 可编辑文档（plan 019 批次九，Phase 3 编辑壳）
+
+第四块演示 `autodown_editor` 标签的可编辑变体：点击聚焦文本叶子块、
+键入/退格/Delete、Enter 块内软换行、Ctrl+Z/Y undo-redo、↑↓ 于首末
+物理行跨块迁焦。行内 **粗**/*斜*/*码* marks 以样式段叠加渲染。
+oninput 回环经 `autodown_editor_text("doc-ed")` native 读回全文绑定
+状态（编辑器内部 last_external 差分防回显清场）。
+
+v1 边界：markdown 输入规则未接线；块首退格不跨块合并；选区不跨块。
+IME 手验清单待实机执行。
+
 ## natives 编程环（plan 019 批次八）
 
 第三块演示 `.at` handler 内的可编程文档操作（`autodown_*` natives，JSON

@@ -11,7 +11,7 @@
 // 验证：auto run -r vm（需 auto-lang 以 --features autodown 构建）。
 
 widget App {
-    msg { Init, Next, Program }
+    msg { Init, Next, Program, DocEdit }
 
     model {
         full str = "# 流式标题\n\n第一段：**加粗** 与 `code`。\n\n- 列表甲\n- 列表乙\n\n> 引用收尾\n"
@@ -22,6 +22,8 @@ widget App {
         // 产物），prog 为编程操作后的序列化文本。
         doc str = ""
         prog str = "# 可编程文档\n\n初始段落。\n"
+        // 编辑壳轨（批次九）：可编辑文档的绑定态。
+        doc_ed str = "## 编辑壳演示（点我开始）\n\n文本叶子块逐块编辑：**粗**、*斜*、`码` 高亮渲染；↑↓ 在块间迁移焦点。\n"
     }
 
     on {
@@ -43,6 +45,9 @@ widget App {
                 .streaming = false
             }
         }
+        .DocEdit -> {
+            .doc_ed = autodown_editor_text("doc-ed")
+        }
         .Program -> {
             // 可编程操作：首块文本追加（applyOp 轨）
             .doc = autodown_parse(.prog, 1)
@@ -63,6 +68,8 @@ widget App {
             text "AutoDown natives — programmatic ops" (style: "text-lg font-bold") {}
             autodown (content: .prog) {}
             button (text: "编程：首块插文本", onclick: .Program) {}
+            text "AutoDown editor — editable blocks" (style: "text-lg font-bold") {}
+            autodown_editor (key: "doc-ed", content: .doc_ed, final: true, oninput: .DocEdit) {}
         }
     }
 }
