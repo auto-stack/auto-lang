@@ -11,7 +11,7 @@ Core data structures are fully implemented in `crates/auto-val/src/` and `crates
 - **Atom** (`auto-lang/src/atom/`): Parser, schema loader, validator, and type system for the Atom format. 7 modules.
 - **ListData** and storage-based lists: VM-integrated dynamic lists with Heap and InlineInt64 storage strategies.
 
-The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned. A serde `Deserializer` bridge (Plan 381, `auto-val/src/de.rs`) lets plain Rust structs deserialize from Atom with zero boilerplate; the symmetric `Serializer` direction landed as `ser.rs` (Plan 332 S1, 2026-08-27; auto-ai dogfood pending).
+The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned. A serde `Deserializer` bridge (Plan 381, `auto-val/src/de.rs`) lets plain Rust structs deserialize from Atom with zero boilerplate; the symmetric `Serializer` direction landed as `ser.rs` and is dogfooded by auto-ai role serialization (Plan 332, 2026-08-27).
 
 ## Design
 
@@ -84,7 +84,7 @@ Auto types serialize to Atom text automatically through compiler-generated code.
 | Direction | Status | Mechanism |
 |-----------|--------|-----------|
 | .at → Rust struct (De) | ✅ Plan 381 | serde `Deserializer` adapter (`auto-val/src/de.rs`, ~900 lines); `#[derive(Deserialize)]` + `node.deserialize::<T>()` — zero boilerplate |
-| Rust struct → .at (Ser) | 🟡 core landed (Plan 332 S1, 2026-08-27) | serde `Serializer` adapter (`auto-val/src/ser.rs`): `#[derive(Serialize)]` → `to_value` / `Value::serialize_from`, and `node_from_value(name, &T)` for the `name { … }` node shape; downstream `to_at_source()` emission and ser↔de round-trips covered by 17 tests. Remaining: auto-ai dogfood migration (Plan 332 S2). |
+| Rust struct → .at (Ser) | ✅ Plan 332 (S1+S2, 2026-08-27) | serde `Serializer` adapter (`auto-val/src/ser.rs`): `#[derive(Serialize)]` → `to_value` / `Value::serialize_from`, `node_from_value(name, &T)` for the `name { … }` node shape, and `node_to_at_source(name, value)` one-step emit; ser↔de round-trips covered by 18 tests. Dogfooded in auto-ai: `serialize_at_role` now emits through the bridge (RoleDecl bidirectional wire view, `skip_serializing_if` omits None). |
 
 Annotation semantics for the ser direction (from Plan 332; to be carried as serde attribute conventions rather than a new trait family):
 

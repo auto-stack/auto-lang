@@ -4,7 +4,7 @@
 >
 > **更新（2026-08-04,Plan 381 落地后）**: Plan 381 已实现 `auto-val` 的 serde `Deserializer` 适配器(`serde` feature),提供了**反序列化方向**的零样板方案(`#[derive(Deserialize)]` + `node.deserialize::<T>()`)。本计划(332)的 `#[derive(FromAtom)]` 现定位为**未来的、针对 .at 的定制宏**,可基于 381 的 serde 路径构建(宏生成 serde 调用而非新 trait),或保留独立的 `FromAtom` trait 用于 serialize 方向(`ToAtom`)和 .at 特有标注(如 `#[atom(node="role")]`)。**反序列化方向不再阻塞 —— 332 的优先级降低。**
 
-> **改写（2026-08-27 裁定）**: 🎯 本计划**聚焦为 Serialize 方向单一目标**（见下方 §0），设计语义已沉淀至 [docs/design/07-data-structures.md](../design/07-data-structures.md)「Atom Serialization」节。原设计的自定义 trait 路线（第一/二部分中的 Phase A/C）被 381 的 serde 裁定取代，不再实施。状态：**S1 ✅ 已实施（2026-08-27，worktree plan-332）；S2 待实施（auto-ai 仓 dogfood）**。
+> **改写（2026-08-27 裁定）**: 🎯 本计划**聚焦为 Serialize 方向单一目标**（见下方 §0），设计语义已沉淀至 [docs/design/07-data-structures.md](../design/07-data-structures.md)「Atom Serialization」节。原设计的自定义 trait 路线（第一/二部分中的 Phase A/C）被 381 的 serde 裁定取代，不再实施。状态：**S1 ✅ + S2 ✅ 全部完成（2026-08-27，S2 于 auto-ai 仓 main `005775a`）——计划收官归档**。
 
 ---
 
@@ -36,12 +36,20 @@
 - lib.rs 导出（`#[cfg(feature="serde")]`）+ Cargo.toml feature 注释更新（serde feature 现含双向）
 - 验证：`cargo test -p auto-val --features serde` 184 全绿（其中 ser:: 17 项：标量/整型宽度/Option None→Nil/Vec/嵌套/tuple/bytes/map/枚举单元变体/struct 变体报错/非字符串 key 报错/node_from_value 具名节点 + `Node::deserialize` 回读 + `to_at_source` 发射/非 map 拒绝）；默认 feature 构建（无 serde）零影响；`cargo check -p auto-lang` 通过；ser.rs rustfmt 合规
 
-### S2 — auto-ai dogfood 迁移（跨仓，auto-ai 仓库）
+### S2 — auto-ai dogfood 迁移（跨仓，auto-ai 仓库）✅ 2026-08-27 已实施
 
 - `RoleConfig` 加 `#[derive(Serialize)]`，`serialize_at_role` 改为 `node_from_value::<RoleConfig>("role", &cfg).to_at_source()`
 - `parse_at_role` 逐字段读取改走 381 的 deserialize 路径（若尚未迁移）
 - inherit/merge 业务语义保留在手写层（`load_role`/`merge_over`），桥只做纯字段往返
 - 验证：auto-ai 既有测试不回归 + 新 round-trip 测试
+
+**S2 交付记录（2026-08-27，auto-ai worktree auto-lang-dev，分支 plan-332-s2 → main fast-forward `005775a`）**：
+- 实施形态与原条目有一处演进：**不是**直接给 RoleConfig 加 Serialize（其 `?ModelTier` 字段会发射 serde 变体名而非 wire 形态），而是把已有的 `RoleDecl` 反序列化视图升级为**双向 wire 视图**（`+Serialize` + 全字段 `skip_serializing_if`），serialize_at_role 先做 ModelTier→display_name() 字符串化再走桥——与反序列化侧的 parse_tier_field 后处理完全对称
+- auto-lang 侧前置补丁 `db18f41f7`：ser 桥新增 `node_to_at_source(name, value)` 一步发射 API（**按值**收参，a2r 调用免 ref 适配；字面量绑 &str）
+- 改动 `crates/auto-ai-agent/src/config/role_config.at`（源头）→ 定向 `auto trans` 重转译 `rust/src/role_config.rs`（未跑全量 retranspile，避免 a2r 版本漂移噪声）；a2r 生成质量超出预期（字段构造自动 .clone()、按值传参、`auto_val::node_to_at_source("role", d)` 直出）
+- 相比旧手写发射器的三项行为改进：① 字符串转义修复（引号/换行/制表符旧版会损坏输出）；② 16 字段全量 round-trip（旧版静默丢弃 9 个字段，保存即丢失）；③ None 省略（skip_serializing_if）保持输出形态
+- 验证：`rust/tests/role_ser_bridge.rs` 6 项新测试（全字段往返/None 省略+空配置最小输出/转义/tier 往返/旧弃字段恢复/`load_role` 验证环——即 roles.rs 的 persist/validate 用法）全绿；`transpiled_harness` 24/24 无回归；4 个既有 lib warning 均在未触碰的 orchestration 模块
+- 环境：auto-ai worktree 须置于 `.worktrees/<name>` 深度（`../../../../auto-lang` 跨仓 path 依赖经 `.worktrees/auto-lang` 符号链接解析；一层深 worktree 会解到 `auto-ai/auto-lang` 失败）
 
 **优先级判断（2026-08-27）**：S1 是低风险对称工作且有真实消费者（auto-ai 每次给 role 增字段都要手写两边序列化），但不阻塞任何进行中计划——按需开工，S1 可先行独立交付。
 
