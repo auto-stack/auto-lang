@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-458
-status: in-progress
+status: complete
 feature_name: parity 测试用例分类目录化（libs/<category>/<name>）+ 分类索引 README
 author: [zhaopuming]
 created_at: 2026-08-27T21:00:00+08:00
-updated_at: 2026-08-27T21:00:00+08:00
+updated_at: 2026-08-27T23:30:00+08:00
 
 supersedes_spec_components: []
 new_spec_components: []
