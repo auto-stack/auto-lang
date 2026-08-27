@@ -141,7 +141,7 @@ AutoVM 支持直接调用 Python 库（通过 `use.py` 语法 + PyO3 嵌入）�
 沿用现有 parity 三段式，新增 `tests/python/` 段：
 
 ```
-parity/libs/py_math/
+parity/libs/python/py_math/
 ├── README.md              # 复刻说明：Python 模块、版本、覆盖范围
 ├── tests/
 │   ├── python/            # 原始 Python 脚本（oracle）
@@ -231,7 +231,7 @@ P0: 框架扩展 → P1: math + random → P2: datetime + struct + uuid
 - `runner.rs`：新增 `run_python_oracle()` 和 `run_a2py()`
 - `main.rs`：新增 `ParityMode` 检测
 - `compare.rs`：BugSource 分类复用，新增 "PyFFI bug" 标签
-- 创建 `parity/libs/py_math/` 骨架 + 一个用例验证三方跑通
+- 创建 `parity/libs/python/py_math/` 骨架 + 一个用例验证三方跑通
 
 **出口条件**：
 - [ ] `auto-parity run py_math` 三方跑通，至少 1 个用例一致

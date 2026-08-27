@@ -82,7 +82,7 @@ Auto 有三条路径调用 Rust 能力：
 | **C-json-app** | JSON 配置处理器：解析→查询→修改→序列化 | `auto.json`（parse/encode/get/keys） | serde_json | 固定 JSON 输入 |
 | **C-cli** | CLI 参数解析器：读 argv→分派命令 | `auto.process`（args）+ `auto.fs` | std::env::args + std::fs | 固定 argv 模拟 |
 | **C-env** | 环境变量工具：get/set/遍历 | `auto.env`（get/set/get_or） | std::env | 固定 env 值 |
-| **C-text** | 文本批处理器：读文件→正则替换→写文件 | `auto.fs` + Auto 自实现 regex（复用 parity/libs/regex） | std::fs + regex crate | 临时文件，固定模式 |
+| **C-text** | 文本批处理器：读文件→正则替换→写文件 | `auto.fs` + Auto 自实现 regex（复用 parity/libs/rust/regex） | std::fs + regex crate | 临时文件，固定模式 |
 
 **用例数量估计**：每个 10-20 个 TAP 断言，5 个用例 ≈ 60-100 个新 L1 用例。
 
@@ -115,10 +115,10 @@ Auto 有三条路径调用 Rust 能力：
 
 ### 3.1 复用现有 parity 框架
 
-`parity/crates/auto-parity/` 的三方对比模型（AutoVM / a2r / native Rust）直接适用。每个消费者用例就是一个 `parity/libs/<name>/` 库，结构不变：
+`parity/crates/auto-parity/` 的三方对比模型（AutoVM / a2r / native Rust）直接适用。每个消费者用例就是一个 `parity/libs/consumer/<name>/` 库（Plan 458 分类布局），结构不变：
 
 ```
-parity/libs/c_fs_app/
+parity/libs/consumer/c_fs_app/
 ├── README.md
 ├── auto/c_fs_app.at          # Auto 应用代码：use auto.fs，做文件操作
 ├── tests/auto/*.at           # Auto 测试：TAP 断言文件操作结果
@@ -141,7 +141,7 @@ parity/libs/c_fs_app/
 消费者用例的 Rust oracle **不调 Auto stdlib**，而是直调底层 Rust 库。例如 C-fs 的 oracle：
 
 ```rust
-// parity/libs/c_fs_app/tests/rust/tests/c_fs_app.rs
+// parity/libs/consumer/c_fs_app/tests/rust/tests/c_fs_app.rs
 fn write_and_read(path: &str, content: &str) -> String {
     std::fs::write(path, content).unwrap();
     std::fs::read_to_string(path).unwrap()

@@ -1,7 +1,9 @@
 # Parity Verification Guide
 
 The `auto-parity` tool runs three-way consistency checks across AutoVM, a2r
-(transpiled Rust), and native Rust for each replicated library.
+(transpiled Rust), and native Rust for each replicated library. For a
+categorized index of every library and category, see the
+[top-level README](../README.md).
 
 ## How to run parity checks
 
@@ -19,12 +21,22 @@ cargo run -- --root . --auto-binary ../../target/debug/auto.exe run _dummy
 cargo run -- --root . --auto-binary ../../target/debug/auto.exe phase p0
 ```
 
-Phase mapping (Plan 347):
+Phase mapping (Plans 347/358/367/368/369 — source of truth is the
+`discover_libraries_by_phase` table in `crates/auto-parity/src/main.rs`):
 - `p0`: `_dummy` (framework smoke test)
 - `p1`: `base64`, `url`
 - `p2`: `serde_json`, `regex`
 - `p3`: `sha2`, `rusqlite`
-- `p4`: `reqwest`, `tokio`
+- `p4`: `tokio`, `tokio_stream`
+- `p5`: `py_math`, `py_random`
+- `p6`: `py_datetime`, `py_struct`, `py_uuid`
+- `p7`: `py_configparser`, `py_hashlib`, `py_json`, `py_list`, `py_os`,
+  `py_re`, `py_string`, `py_sys`
+- `d1`: `cli_app`
+- `d2`: `trait_advanced`, `generators`
+- `d4`: `string_utils`
+- `d5`: `c_fs_app`, `c_env_app`, `c_process_app`, `c_text_app`, `c_json_app`
+- `d6`: `http_client_sync`, `c_http_get`, `c_wget`, `c_crawler`
 
 ### All libraries
 ```
@@ -61,10 +73,20 @@ Rust toolchain.
 
 ## How to add a new library
 
-1. Create `libs/<name>/` with:
+Libraries live in categorized two-level layout `libs/<category>/<name>/`
+(Plan 458). Existing categories: `framework` (runner smoke), `lang` (language
+features), `python` (Python stdlib parity), `consumer` (consumer apps),
+`rust` (crate replication). A new category is just a new directory — no tool
+changes needed. The **library identity is the leaf name** `<name>`: it is the
+CLI argument, the TAP/test name, and the module name under `auto/`.
+
+1. Create `libs/<category>/<name>/` with:
    - `auto/<name>.at` — Auto replication
    - `tests/auto/<scenario>.at` — Auto test cases (TAP output)
    - `tests/rust/Cargo.toml` + `tests/rust/tests/<scenario>.rs` — Rust native tests
+   - `tests/python/test_<name>.py` — Python oracle (python-parity libs only;
+     its presence switches the lib to Python parity mode)
+   - `mock-server/` — standalone HTTP fixture (HTTP consumer libs only)
    - `README.md` — replication scope, upstream version, known divergences
 
 2. The `tests/rust/Cargo.toml` must keep itself out of the parity workspace by
@@ -85,8 +107,8 @@ Rust toolchain.
    - Failure: `not ok N - test_name # got X expected Y`
 
    The parity runner executes the test with the working directory set to the
-   library root (`libs/<name>/`), so the library at `./auto/<name>.at` resolves
-   as the module path `auto.<name>`.
+   library root (`libs/<category>/<name>/`), so the library at
+   `./auto/<name>.at` resolves as the module path `auto.<name>`.
 
 4. Run:
    ```
