@@ -3861,16 +3861,24 @@ fn shadcn_theme(dark: bool) -> iced::Theme {
 /// 2. 1280x800 desktop default
 /// Invalid env values fall back to the default rather than failing the app.
 pub fn startup_window_size() -> iced::Size {
+    let mut resolved = iced::Size::new(1280.0, 800.0);
     if let Ok(spec) = std::env::var("AUTO_VM_WINDOW") {
         if let Some((w, h)) = spec.trim().split_once(['x', 'X']) {
             if let (Ok(w), Ok(h)) = (w.trim().parse::<f32>(), h.trim().parse::<f32>()) {
                 if w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0 {
-                    return iced::Size::new(w, h);
+                    resolved = iced::Size::new(w, h);
                 }
             }
         }
     }
-    iced::Size::new(1280.0, 800.0)
+    // PLAN-046-B (auto-musk T7): baseline height lands in session KV so .at
+    // code (`platformViewportHeight`) reads a real value from frame one;
+    // OS-actual corrections flow through both __window_resized funnels.
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "vm.window_inner_height",
+        format!("{}", resolved.height),
+    );
+    resolved
 }
 
 /// VM window title. Sources, in priority order:
@@ -6839,6 +6847,11 @@ fn compare_pngs(
                         let w: f32 = w.parse().unwrap_or(1600.0);
                         let h: f32 = h.parse().unwrap_or(900.0);
                         *state.window_size.borrow_mut() = iced::Size::new(w, h);
+                        // PLAN-046-B: keep .at-visible viewport height fresh.
+                        crate::vm::ffi::stdlib::storage_host_publish(
+                            "vm.window_inner_height",
+                            format!("{}", h),
+                        );
                         // Clamp panel width to not exceed 80% of window
                         let max_pw = w * 0.8;
                         let pw = *state.devtools_panel_width.borrow();
@@ -11728,6 +11741,11 @@ fn apply_debug_event(dt: &mut DevToolsState, raw: &str) -> bool {
                 let w: f32 = w.parse().unwrap_or(800.0);
                 let h: f32 = h.parse().unwrap_or(600.0);
                 *dt.window_size.borrow_mut() = iced::Size::new(w, h);
+                // PLAN-046-B: keep .at-visible viewport height fresh.
+                crate::vm::ffi::stdlib::storage_host_publish(
+                    "vm.window_inner_height",
+                    format!("{}", h),
+                );
                 let max_pw = w * 0.8;
                 if *dt.devtools_panel_width.borrow() > max_pw {
                     *dt.devtools_panel_width.borrow_mut() = max_pw;

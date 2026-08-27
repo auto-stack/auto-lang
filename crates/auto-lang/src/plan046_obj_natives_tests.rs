@@ -103,3 +103,20 @@ mod plan046_obj_natives {
         }
     }
 }
+
+#[cfg(test)]
+mod plan046_window_height_kv {
+    /// T3/T7 前置件:host 发布入口与会话 KV 同库——写入后立即可读,
+    /// 且持久化不炸(storage_persist best-effort)。
+    #[test]
+    fn host_publish_roundtrip() {
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "plan046.test.height",
+            String::from("800"),
+        );
+        assert_eq!(
+            crate::vm::ffi::stdlib::shim_storage_get(String::from("plan046.test.height")),
+            "800"
+        );
+    }
+}

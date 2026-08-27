@@ -575,6 +575,16 @@ pub(crate) fn storage_raw_remove(key: &str) {
     STORAGE_MAP.lock().unwrap().remove(key);
 }
 
+/// PLAN-046-B (auto-musk T7): host-side publish so non-.at runtime components
+/// (the iced renderer's window lifecycle) feed the same Plan 401 session KV
+/// that .at code reads via the localStorage/storage shim family. Same
+/// load-once + write-through contract as Storage.set.
+pub fn storage_host_publish(key: &str, value: String) {
+    storage_load();
+    STORAGE_MAP.lock().unwrap().insert(key.to_string(), value);
+    storage_persist();
+}
+
 // ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────
 // TODO: Env.path_add/prepend/remove FFI deferred — #[rust_fn] registration
 // requires BIGVM_NATIVES updates in native.rs. The shell-side env.path
