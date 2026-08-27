@@ -4328,7 +4328,6 @@ fn push_value_list(task: &mut AutoTask, vm: &AutoVM, items: Vec<auto_val::Value>
 /// Stack: obj_id -> list_id
 pub fn shim_obj_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
-    eprintln!("[obj-keys shim HIT] id={}", obj_id);
     let _stake = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
     let entries = dyn_object_entries(vm, obj_id)?;
     push_value_list(task, vm, entries.into_iter().map(|(k, _)| auto_val::Value::Str(auto_val::AutoStr::from(k.as_str()))).collect());

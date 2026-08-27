@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-454
-status: execution_done
+status: complete
 feature_name: 447 尾巴清偿——D40 续修复/f-string 全量还原 + 宿主 2.4 加固
 author: [zhaopuming]
 created_at: 2026-08-27T01:00:00+08:00
