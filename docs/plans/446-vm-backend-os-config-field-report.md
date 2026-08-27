@@ -433,3 +433,44 @@ J3 同根（state 池 vs 视图绑定同步），字符串字段亦有份。
 9 断言即 J1 族解除。下游门禁侧另登记：e2e-vm 按压对自注册模块
 "Harness Roles"错位（active_id 期望 roles 实得 musk-harness-roles，
 探针同场景正常）——门禁脚本自身待修，勿计入上游。
+
+
+## M. auto-musk PLAN-046 obj 族基线交付(2026-08-27,供 plan454 实施消费)
+
+auto-musk 侧为清偿其 VM 规避形态(KNOWN-DEBT 046-A/T4 清册 R1-R4),已把
+动态接收者方法族的注册/路由/链接三层基础设施 + shim 实体合入本仓
+master(合并点 0737c26f3,WIP 内容提交=c176c4533):
+
+- shim(native.rs):shim_obj_keys/shim_obj_values(ObjectData 优先 +
+  GenericInstance 兜底,键序确定性排序,不支持形态显式报错而非静默零)+
+  shim_obj_find(委托通用 list-find)
+- 注册四表:native_catalog 宏行 2090/2091/2092、NATIVE_ID_ENTRIES 白名单、
+  TYPE_CANONICAL_MAP("obj"/"Object" -> "auto.obj")、stdlib 启动面
+  register_shim_by_name 三件——注意 peek_qualified 没有 lazy 注册,
+  只进宏表不进白名单时链接期才会炸
+- codegen 模块路由表:("Object","keys"/"values") 显式映射两条
+
+### plan454 需收口的三缺口(端到端最后一公里)
+
+1. Option 返回的无类型路径传播:动态接收者 .find(...) 已达 shim 且正确
+   返回,但结果经无类型 codegen 路径回传后语义丢失(实测观察到 0 值);
+   需要确定 None/命中值在非 typed 栈上的表示约定。
+2. 谓词闭包 x GET_FIELD 协作:obj 元素堆形态下闭包体内字段读取链。
+3. 返回值静态型别标注:auto.obj.* 结果需标注为 List 型,使下游 .length/
+   for-in 走 ARRAY_LEN/HOF 通道而非 GET_FIELD 字段读退化。
+
+### 验收靶子(现成)
+
+crates/auto-lang/src/plan046_obj_natives_tests.rs:两个 #[ignore] WIP 用例
+(dynamic_find_with_predicate / object_values_returns_array)转绿即判语义层
+收口;另有注册表数据断言 x2 守回归。
+
+### 协调注记
+
+- musk 侧 KNOWN-DEBT 046-A 行与本节互指;语义收口后 auto-musk 回归执行
+  T4 清册 R1-R4 源回撤 + T13 终验(/auto-plan:work 续跑 PLAN-046)。
+- plan-454 worktree 分支早于本基线创建,实施前先 git merge master
+  (或 rebase);当前两改动文件面零重叠(auto/lib/*.at vs vm/*)。
+- 勘误备案:c176c4533 的提交消息被跨仓会话 amend 误改(树内容与原
+  提交 750b7d98e 全等,零损失;原消息已存该提交 git notes)。下次触碰
+  454 计划文档时建议补一行更正。
