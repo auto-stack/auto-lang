@@ -107,6 +107,13 @@ npm install 之前，install_shadcn_components 改为 remaining 过滤后的注�
   兜底段直接 already installed (skipping)，全程无 shadcn-vue@latest 调用;
 - 024-charts 物化 4 文件、vite ready、同样零 dlx。
 
+**复审补录（第二遍扫描）**: 全仓 `install_shadcn_components|npm_install`
+调用点复扫发现 run_tauri_project（crates/auto-man/src/tauri.rs）仍为旧序，
+冷启动会退化回全量 dlx 兜底（功能正确、优化缺失）→ 已补 materialize 步骤
+对齐 run/build 两条路径并回归绿。vscode 后端经查本就无 shadcn 安装阶段，
+非遗漏。其余项：vue_shadcn 无 TODO/FIXME/dbg!；运行时路径零 unwrap；
+白名单三项为 registry 实拍缺货的设计决策（含闸门单测），非 workaround。
+
 **排障注记（非本计划缺陷）**: Windows 待删句柄延迟释放曾令上轮 gen 树在
 锁释放时被排队删除一并回卷；孤儿 node/esbuild 以 CommandLine 路径过滤点
 名清除后复验通过。提示：脚本化轮询 vite 就绪时不应假定固定 :3000（占用
