@@ -165,3 +165,6 @@ client.screenshot("converter_vm_decimal")
    - 检查边框细线是否存在 1px 渲染丢失或颜色过淡。
 3. **动态状态双端捕获 (Interactive State Sampling)**:
    - 至少捕获 **初始态 (Initial)** 与 **交互/悬停态 (Hovered/Focused/Typed)** 两组截图，确认动态视觉反馈一致。
+4. **截图保留与用户交付展示 (Local Archiving & User Presentation)**:
+   - 每个示例检验完成后，Vue 版与 VM 版的对比截图必须完整保存在本地（如 `<example>/src/front/tests/screenshots/`），并通过 `.gitignore` 排除，**严禁将大体积二进制截图提交入 Git 历史**。
+   - 在会话总结中，**必须显式将双端截图列出/嵌入给用户查看**，方便用户直观对比与双重把关。

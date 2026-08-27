@@ -116,7 +116,12 @@ examples/**/rust/
 # These are build artifacts regenerated from .at sources — never track them.
 examples/**/rust-workspace/
 
-# Temp screenshots
+# AutoUI test screenshots & artifacts (local only, do not track binary images in git)
+examples/ui/**/tests/screenshots/
+examples/ui/**/src/front/tests/screenshots/
+tests/screenshots/
+tests/playwright-report/
+tests/test-results/
 helloworld_test.png
 
 # Cookbook test run artifacts
