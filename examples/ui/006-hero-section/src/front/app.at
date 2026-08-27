@@ -1,16 +1,103 @@
+// app.at — Hero section. Plan 458: 首个"主题敏感"示例。
+//
+// 根节点声明 dark_mode / accent_color 状态变量 —— 这两个变量名是双端运行时
+// 契约(不要改名):VM 渲染器每帧回读并切换 shadcn 明暗调色板与主题主色,
+// Vue 代码gen据此生成 `.dark` class 绑定与 applyAccent(`--primary`)注入。
+// 右上角 Theme Settings 面板在运行中切换主题(Light/Dark)与主题主色(5 色板);
+// 页面配色用 `style: if` 条件分支,保证任意主题下文字/底色成对出现、可读。
+// pac.at 里 `theme: "dark"` / `accent: "indigo"` 声明的是启动默认值(也可用
+// `auto run --theme light --accent ocean` 从 CLI 覆盖)。
 widget App {
-    msg { GetStarted }
+    msg { GetStarted, ToggleSettings, SetTheme(str), SetAccent(str) }
+
+    model {
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var settings_open bool = false
+    }
 
     view {
         col {
-            text "Build Beautiful Apps"
-            text "Write once, run anywhere with AutoLang"
-            button "Get Started" { onclick: .GetStarted }
-            style: "w-full h-full justify-center items-center bg-gradient-to-b from-blue-500 to-purple-600 text-white p-8 gap-4"
+            // ── 顶栏:右上角 Theme Settings 触发按钮 + 弹出面板 ──
+            col {
+                row {
+                    style: "w-full justify-end px-4 pt-4"
+                    button "⚙ Theme" {
+                        onclick: .ToggleSettings
+                        style: if .dark_mode {
+                            "px-4 py-2 text-sm rounded-full bg-black/30 text-white hover:bg-black/40 transition-colors"
+                        } else {
+                            "px-4 py-2 text-sm rounded-full bg-gray-200 text-gray-900 hover:bg-gray-300 transition-colors"
+                        }
+                    }
+                }
+                if .settings_open {
+                    col {
+                        // ── Theme 节 ──
+                        text "Theme" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide" }
+                        row {
+                            style: "gap-2 mt-2"
+                            button "Light" {
+                                onclick: .SetTheme("light")
+                                style: if .dark_mode {
+                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-gray-800 text-gray-200 border border-gray-600 hover:bg-gray-700 transition-colors"
+                                } else {
+                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground font-semibold"
+                                }
+                            }
+                            button "Dark" {
+                                onclick: .SetTheme("dark")
+                                style: if .dark_mode {
+                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground font-semibold"
+                                } else {
+                                    "flex-1 px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 transition-colors"
+                                }
+                            }
+                        }
+                        // ── Accent 节(5 色板,选中态加 ring)──
+                        text "Accent" { style: "text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-4" }
+                        row {
+                            style: "gap-3 mt-2"
+                            button "" { onclick: .SetAccent("indigo"), style: if .accent_color == "indigo" { "w-6 h-6 rounded-full bg-indigo-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-indigo-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("coral"), style: if .accent_color == "coral" { "w-6 h-6 rounded-full bg-rose-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-rose-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("ocean"), style: if .accent_color == "ocean" { "w-6 h-6 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-blue-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("sage"), style: if .accent_color == "sage" { "w-6 h-6 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-emerald-500 hover:scale-110 transition-transform" } }
+                            button "" { onclick: .SetAccent("amber"), style: if .accent_color == "amber" { "w-6 h-6 rounded-full bg-amber-500 ring-2 ring-offset-2 ring-offset-card ring-primary" } else { "w-6 h-6 rounded-full bg-amber-500 hover:scale-110 transition-transform" } }
+                        }
+                        style: "w-56 mr-4 p-4 rounded-xl bg-card text-card-foreground border border-border shadow-lg"
+                    }
+                }
+                style: "w-full items-end"
+            }
+            // ── 主区:Hero 内容(主题条件配色;CTA 随 accent 走)──
+            col {
+                text "Build Beautiful Apps" { style: "text-5xl font-bold tracking-tight" }
+                text "Write once, run anywhere with AutoLang" { style: "text-xl" }
+                button "Get Started" {
+                    onclick: .GetStarted
+                    style: "px-8 py-3 text-lg font-semibold rounded-full bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg transition-colors"
+                }
+                style: "w-full flex-1 justify-center items-center gap-4 p-8"
+            }
+            style: if .dark_mode {
+                "w-full h-full min-h-screen bg-gradient-to-b from-blue-500 to-purple-600 text-white"
+            } else {
+                "w-full h-full min-h-screen bg-gray-50 text-gray-900"
+            }
         }
     }
 
     on {
         .GetStarted -> { print("Getting started!") }
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
     }
 }
