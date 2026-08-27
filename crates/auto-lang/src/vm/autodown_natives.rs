@@ -53,6 +53,17 @@ pub fn shim_autodown_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     push_string(task, vm, &text)
 }
 
+/// `autodown_editor_text(key) -> str`：编辑壳当前全文（plan 019 批次九，
+/// on_change 回环 payload 口；key 未注册 / 双 feature 缺失时返回空串）。
+pub fn shim_autodown_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    let text = crate::ui::autodown_editor::autodown_editor_text(&key).unwrap_or_default();
+    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+    let text = String::new();
+    push_string(task, vm, &text)
+}
+
 /// `autodown_find_block(json, block_id) -> bool`。
 pub fn shim_autodown_find_block(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let block_id = pop_string_arg(task, vm);

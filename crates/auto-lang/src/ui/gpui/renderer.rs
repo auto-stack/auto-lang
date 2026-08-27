@@ -225,6 +225,20 @@ impl<M: Clone + Debug + 'static> IntoGpuiElement<M> for AbstractView<M> {
                 editor_div.into_any()
             }
 
+            // Plan 019 Phase 3: autodown 文档编辑器同 textarea div 降级
+            // （gpui 轨无 cosmic 编辑栈，编辑壳为 iced/VM-only）。
+            AbstractView::AutodownEditor {
+                value,
+                style,
+                ..
+            } => {
+                let mut editor_div = div().child(value.clone());
+                if let Some(style) = style {
+                    editor_div = apply_gpui_style_to_div(editor_div, &style);
+                }
+                editor_div.into_any()
+            }
+
             AbstractView::Checkbox {
                 is_checked,
                 label,

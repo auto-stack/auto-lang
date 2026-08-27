@@ -324,6 +324,21 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// Plan 019 Phase 3: autodown 文档编辑器（markdown 块粒度编辑）。
+    /// 状态存于全局注册表（`autodown_editor(key)`，keyed by `key`）；
+    /// value 差分回写（与 CodeEditor 同 §5.4 口径）。payload 读取走
+    /// `autodown_editor_text(key)`（on_change 信号位，无内嵌载荷）。
+    AutodownEditor {
+        /// 稳定身份,状态存储键。
+        key: String,
+        /// 外部值;仅当与内部文本不同才整体重建块表。
+        value: String,
+        /// 流式收口标记（编辑轨恒按 final 处理;占位透传渲染契约）。
+        is_final: bool,
+        on_change: Option<M>,
+        style: Option<Style>,
+    },
+
     /// Checkbox with optional styling
     Checkbox {
         is_checked: bool,
@@ -1417,6 +1432,13 @@ impl<M: Clone + Debug> View<M> {
                 on_cursor: on_cursor.map(|m| f(m)),
                 on_context_menu: on_context_menu.map(|m| f(m)),
                 search,
+                style,
+            },
+            View::AutodownEditor { key, value, is_final, on_change, style } => View::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change: on_change.map(|m| f(m)),
                 style,
             },
             View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {

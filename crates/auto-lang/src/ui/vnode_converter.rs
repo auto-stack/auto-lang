@@ -264,6 +264,15 @@ where
             },
         ),
 
+        // Plan 019 Phase 3: autodown 文档编辑器同 textarea 降级（VM-only 变体）。
+        View::AutodownEditor { value, .. } => (
+            VNodeKind::Textarea,
+            VNodeProps::Textarea {
+                placeholder: String::new(),
+                value: value.clone(),
+            },
+        ),
+
         View::Textarea {
             placeholder,
             value,

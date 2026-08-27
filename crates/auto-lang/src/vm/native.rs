@@ -11,8 +11,8 @@ use std::sync::RwLock;
 use crate::{for_each_native, gen_native_constants};
 // Plan 019 批次八: autodown natives（shim 常驻 —— feature off 时为桩）。
 use crate::vm::autodown_natives::{
-    shim_autodown_find_block, shim_autodown_insert_template, shim_autodown_insert_text,
-    shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
+    shim_autodown_editor_text, shim_autodown_find_block, shim_autodown_insert_template,
+    shim_autodown_insert_text, shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
 };
 
 /// Decode a tagged string index from a NanoValue popped from the stack.

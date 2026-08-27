@@ -1587,6 +1587,25 @@ mod tests {
         assert!(out.starts_with("```\n") && out.ends_with("\n```"), "{out}");
     }
 
+    /// 公共 API 面（native shim 同路径）：raw key 可达、编辑→读回全文。
+    #[test]
+    fn editor_text_public_api_roundtrip() {
+        let raw = "pubdoc";
+        let sk = storage_key(raw);
+        registry().lock().unwrap().remove(&sk);
+        let c = autodown_editor(raw);
+        assert!(c.sync_external("# 标题\n\n正文。\n", true));
+        *c.focus.lock().unwrap() = Some(1);
+        run_fs(|fs| {
+            c.block_motion(fs, 1, Motion::End);
+            let mut blocks = c.blocks.lock().unwrap();
+            blocks[1].editor.ed_mut().insert_string(" 追加", None);
+        });
+        assert_eq!(autodown_editor_text(raw).unwrap(), "# 标题\n\n正文。 追加");
+        autodown_editor_dispose(raw);
+        assert_eq!(autodown_editor_text(raw), None);
+    }
+
     #[test]
     fn ime_commit_inserts_at_focused_caret() {
         let c = core_for("t12", "空的。\n");

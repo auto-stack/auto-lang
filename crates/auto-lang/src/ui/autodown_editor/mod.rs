@@ -17,8 +17,13 @@
 #[cfg(all(feature = "autodown", feature = "code-editor"))]
 pub mod core;
 
+// iced 下沉（autodown 隐含 ui-iced；code-editor 提供 cosmic-text 栈）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+pub mod widget;
+
 #[cfg(all(feature = "autodown", feature = "code-editor"))]
 pub use core::{
     autodown_editor, autodown_editor_dispose, autodown_editor_sync, autodown_editor_text,
-    storage_key, AutodownEditorCore, DocDrawList, DocInput, DocLayout, DocOutput, DocRun,
+    storage_key, AutodownEditorCore, DocDrawList, DocFrame, DocInput, DocLayout, DocOutput,
+    DocRun,
 };

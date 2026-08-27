@@ -2902,6 +2902,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
+            AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change)
+            }
+
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
                 let checkbox_widget = checkbox(is_checked);
 
@@ -4218,6 +4222,20 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_cursor: on_cursor.map(|m| IcedMessage::from_dynamic(&m)),
             on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
             search,
+            style,
+        },
+
+        AbstractView::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change,
+            style,
+        } => AbstractView::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
             style,
         },
 
@@ -10788,6 +10806,34 @@ fn apply_search(storage_key: &str, search: &str) {
 /// Plan 413: build the code editor for the generic `IntoIcedElement` path
 /// (messages pass through verbatim; the VM path uses
 /// `build_code_editor_dynamic` which also fills `INPUT_TEXT`).
+/// Plan 019 Phase 3: autodown 文档编辑器（VM 泛型路径；IcedMessage 直连
+/// 路径另有 INPUT_TEXT 版本臂——payload 惯例同 code editor）。
+fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
+    key: &str,
+    value: &str,
+    is_final: bool,
+    on_change: Option<M>,
+) -> iced::Element<'static, M> {
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    {
+        use crate::ui::autodown_editor as ade;
+        let sk = ade::storage_key(key);
+        // 单向数据流：外部差分回写（与 code editor 同 §5.4 口径）。
+        ade::autodown_editor_sync(&sk, value, is_final);
+        let fg = if crate::ui::style::iced_adapter::dark_mode() { ade_fg_dark() } else { ade_fg_light() };
+        let mut widget = ade::widget::DocEditor::<M>::new(&sk, fg);
+        if let Some(msg) = on_change {
+            widget = widget.on_change(move || msg.clone());
+        }
+        widget.into()
+    }
+    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+    {
+        let _ = (key, is_final);
+        AbstractView::<M>::Text { content: value.to_owned(), style: None }.into_iced()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_code_editor_generic<M: Clone + Debug + 'static>(
     key: &str,
@@ -10863,6 +10909,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Input { style, .. } => style.as_ref(),
         AbstractView::Textarea { style, .. } => style.as_ref(),
         AbstractView::CodeEditor { style, .. } => style.as_ref(),
+        AbstractView::AutodownEditor { style, .. } => style.as_ref(),
         AbstractView::Grid { style, .. } => style.as_ref(),
     }
 }
@@ -10886,6 +10933,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Table { .. } => "table",
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
+        AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
         AbstractView::Sidebar { .. } => "sidebar",
@@ -11319,6 +11367,43 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
         }
 
+        // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
+        // the live document on edit (同 code editor 的 payload 通道惯例)。
+        AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+            let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
+            #[cfg(all(feature = "autodown", feature = "code-editor"))]
+            {
+                let dbg_props = Vec::<(&str, String)>::new();
+                use crate::ui::autodown_editor as ade;
+                let sk = ade::storage_key(&key);
+                ade::autodown_editor_sync(&sk, &value, is_final);
+                let fg = if crate::ui::style::iced_adapter::dark_mode() {
+                    ade_fg_dark()
+                } else {
+                    ade_fg_light()
+                };
+                let mut widget = ade::widget::DocEditor::<IcedMessage>::new(&sk, fg);
+                if let Some(msg) = on_change.clone() {
+                    let sk2 = sk.clone();
+                    widget = widget.on_change(move || {
+                        INPUT_TEXT.with(|t| *t.borrow_mut() = ade::autodown_editor_text(&sk2).unwrap_or_default());
+                        msg.clone()
+                    });
+                }
+                let el: iced::Element<'static, IcedMessage> = widget.into();
+                let _ = dbg_props;
+                el
+            }
+            #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+            {
+                // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
+                let _ = use_ade;
+                let el: iced::Element<'static, IcedMessage> =
+                    AbstractView::Text { content: value, style: None }.into_iced();
+                el
+            }
+        }
+
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
@@ -11337,7 +11422,8 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
     match view {
         AbstractView::Input { value, on_change, .. }
         | AbstractView::Textarea { value, on_change, .. }
-        | AbstractView::CodeEditor { value, on_change, .. } => {
+        | AbstractView::CodeEditor { value, on_change, .. }
+        | AbstractView::AutodownEditor { value, on_change, .. } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),
@@ -12100,6 +12186,7 @@ fn extract_handler_from_view<M: Clone + Debug>(
         (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_cursor, .. }, "cursor") => on_cursor.clone(),
+        (AbstractView::AutodownEditor { on_change, .. }, "edit") => on_change.clone(),
         (AbstractView::CodeEditor { on_context_menu, .. }, "context_menu") => {
             on_context_menu.clone()
         }
@@ -13376,4 +13463,13 @@ mod line_edit_tests {
         assert!(vii.contains_key("escape"));
         assert!(vii.contains_key("ctrl.k"));
     }
+}
+
+
+/// autodown doc editor 本文字色（暗/亮两档基础灰阶；主题变量接线登记余量）。
+fn ade_fg_dark() -> crate::ui::code_editor::theme::Rgba {
+    crate::ui::code_editor::theme::Rgba { r: 0.92, g: 0.93, b: 0.95, a: 1.0 }
+}
+fn ade_fg_light() -> crate::ui::code_editor::theme::Rgba {
+    crate::ui::code_editor::theme::Rgba { r: 0.12, g: 0.13, b: 0.15, a: 1.0 }
 }
