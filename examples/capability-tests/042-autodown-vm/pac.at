@@ -1,0 +1,13 @@
+// pac.at — VM 轨 autodown 文档渲染 + 流式演示（plan 019 批次七 gallery 页）
+//
+// feature 门控说明：真渲染臂在 auto-lang 的 "autodown" feature 下
+// （autodown-core crate 消费，parse_blocks → 面板树 → iced View）。
+// 无 feature 的二进制运行本页时 autodown widget 退化为 textarea
+// （D-GAP-3 既有降级，内容仍可见）。
+
+name: "autodown-vm"
+version: "0.1.0"
+scene: "ui"
+render: "vm"
+shadcn: off
+default_classes: off
