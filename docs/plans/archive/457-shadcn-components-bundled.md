@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-457
-status: execution_done
+status: archived
 feature_name: 内置 shadcn-vue 组件模板——冷启动免 pnpm dlx
 author: [zhaopuming]
 created_at: 2026-08-27
