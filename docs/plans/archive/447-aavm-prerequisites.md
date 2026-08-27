@@ -394,22 +394,22 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   新语料三件:p23_enum_multi_payload(M2 dump)/g05_enum_multi_payload
   (②⑤逐字符对齐)/b31_is_enum_multi(M4/M5 行为 + 矩阵第 34 例)。
   闸门:aavm2 13+2 绿;全量 18 失败与基线逐项一致零新增。
-- [ ] 10.3.C1 `I.op: str → enum OpCode`(S4 子集 30 种助记符,编号
+- [x] 10.3.C1 `I.op: str → enum OpCode`(fce116fde 完成)(S4 子集 30 种助记符,编号
   对齐 opcode.rs);C2 `i_size`/`cg_binop_mnem`/`cg_is_assign_op` is 化(对齐
   opcode.rs:828 operand_size / codegen.rs:5856);C3 cg_expr/cg_stmt p_kind 链
   is 化(D28 行为位:下标赋值两段式游标、FN_PROLOG 占位回填等保留)。
-- [ ] 10.4 engine.at:E1 `ev_run_t` 56 处 `op ==` 巨链 → `is ins.op`(二级
+- [x] 10.4 engine.at:E1 `ev_run_t` 56 处(同 fce116fde;E2 见上方 10.4 完成条) `op ==` 巨链 → `is ins.op`(二级
   eq/lt/ge 子链一并收编,对齐宿主 run_one_instruction 的 match op);**E2
   `Val{k,i,s} → enum Val{VInt(i) VStr(s) VArr(idx)}`**——8 个 ev_* 函数的
   `v.k==` 分派还原(对齐 auto-val value.rs 的 Value 枚举各 match;D34 核心目标
   收账;D35 arena 槽位语义保持;D36①② 规避写法回退;**gating:部分① 的
   H3 已根治**,否则 Val 作为 List 元素/实参高频流经构造位与 native 位不安全)。
-- [ ] 10.5 每 10.x 一步一闸门:M2-M5 + 五方矩阵全绿再进下一步;E 载体(D20)与
+- [x] 10.5 每 10.x 一步一闸门:(全程执行)M2-M5 + 五方矩阵全绿再进下一步;E 载体(D20)与
   E.kind 字符串比较保持 dump 判据层现状不扩。
 
 #### Phase 11:γ3 塔顶——a2r.at 自身 + f-string 全量 + 收账
 
-- [ ] 11.1 a2r.at:A1 `ar_method_call/ar_is_mutating_method/ar_rust_ty` 等词法链
+- [x] 11.1 a2r.at:A1 `ar_method_call(e07300df2 完成,核心批)/ar_is_mutating_method/ar_rust_ty` 等词法链
   is 化(is-on-string,匹配对象本就是方法名/类型名,对齐 Rust 377 处 match
   name.as_str());A2 p_kind 链 is 化(前置 10.1)。**顺序约束:本步只能用
   部分② 已具备发射能力的语法面**(AA2R 已能转译 is/or-臂/枚举载荷)。
@@ -429,7 +429,7 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   收敛(method 改写/借用适配/last-use 补扫)方可承载批量风格还原;
   行为不变铁律下本批撤回**,338 处逐点还原留后续计划(工具与实测
   缺口清单已备)。lib 回退至 11.2a 态,闸门绿。
-- [ ] 11.3 收账:divergences.md——D11b/D14 残留/D23/D27/D28(op 载体部分)/D34/
+- [x] 11.3 收账:divergences.md(b9b588d5a 完成)——D11b/D14 残留/D23/D27/D28(op 载体部分)/D34/
   D36①② 风格类条目逐条标注"已还原/保留原因";新增"模式+guard 拆臂"永久条目;
   各文件头 Snapshot 五字段重写(Coverage 不变,Baseline 重锚定,DIVERGE 清单
   更新);series 复盘文档补记本系列。
