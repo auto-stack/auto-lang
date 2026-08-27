@@ -30,13 +30,26 @@ All AI coding assistants working in this repository must strictly adhere to the 
 ### 2. Execution Discipline in Worktree
 
 - Always perform code modifications, builds, and test runs within `.worktree/plan-<NNN>` to keep `master` clean.
-- Ensure all relevant test suites pass:
-  - Unit tests: `cargo test -p auto-lang --lib`
-  - Docs & schema consistency: `cargo test -p auto-lang --test docs_gen`
+- **Fast Iteration during Development**:
+  - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
+    - Fast type check: `cargo check -p auto-lang`
+    - Scoped single-module test (optional): `cargo t <module_name>` (e.g. `cargo t iced`)
+  - Reuse standardized automation scripts from `.agents/skills/autoui-verifier/scripts/` (`test_vm_mcp.py`, `test_vue_playwright.mjs`) instead of writing ad-hoc scripts.
+- **Final Verification Gate (Run once before merge/archive)**:
+  - Run fast parallel test suite via `nextest` alias:
+    - **Fast Unit tests**: `cargo t` (alias for `nextest run -p auto-lang --lib`, runs 3200+ tests in parallel)
+    - Docs & schema consistency: `cargo test -p auto-lang --test docs_gen`
   - End-to-end / multi-backend AutoUI verification:
-    - Vue mode: `auto run` (or `auto gen && cd src/front && npx vite`)
+    - Vue mode: `auto run`
     - VM mode: `auto run -r vm`
     - Automated dual-backend parity testing: invoke `autoui-verifier` skill (`.agents/skills/autoui-verifier`).
+
+#### Cargo Test Aliases Reference (from `.cargo/config.toml`)
+- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel)
+- `cargo tv` - VM file tests (`--features test-vm-files`)
+- `cargo tt` - Transpiler tests (`--features test-trans`)
+- `cargo tb` - Book listing tests (`--features test-book`)
+- `cargo ta` - All test suites combined (`--features test-vm-files,test-trans,test-book`)
 
 
 ---

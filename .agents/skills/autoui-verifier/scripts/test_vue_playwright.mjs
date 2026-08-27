@@ -1,6 +1,12 @@
 /**
  * AutoUI Vue Mode Playwright Test Runner.
  * Drives a Vue/Vite frontend and captures high-fidelity dark-mode screenshots.
+ * 
+ * Usage:
+ *   1. Single screenshot:
+ *      node test_vue_playwright.mjs <url> <outPath>
+ *   2. Interactive steps via JSON:
+ *      node test_vue_playwright.mjs <url> --actions '[{"action":"screenshot","path":"shot1.png"},{"action":"click","selector":"button"},{"action":"screenshot","path":"shot2.png"}]'
  */
 
 import fs from 'fs';
@@ -26,11 +32,24 @@ async function resolvePlaywright() {
 }
 
 async function main() {
-  const url = process.argv[2] || 'http://localhost:5173';
-  const outPath = process.argv[3] || './vue_initial.png';
+  const args = process.argv.slice(2);
+  let url = 'http://localhost:3000';
+  let outPath = './vue_initial.png';
+  let actions = null;
 
-  const dir = path.dirname(path.resolve(outPath));
-  fs.mkdirSync(dir, { recursive: true });
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--actions' && i + 1 < args.length) {
+      actions = JSON.parse(args[i + 1]);
+      i++;
+    } else if (args[i] === '--actions-file' && i + 1 < args.length) {
+      actions = JSON.parse(fs.readFileSync(args[i + 1], 'utf-8'));
+      i++;
+    } else if (args[i].startsWith('http://') || args[i].startsWith('https://')) {
+      url = args[i];
+    } else if (!args[i].startsWith('--')) {
+      outPath = args[i];
+    }
+  }
 
   const chromium = await resolvePlaywright();
   let browser;
@@ -54,8 +73,37 @@ async function main() {
   console.log(`[*] Navigating to ${url}...`);
   await page.goto(url, { waitUntil: 'networkidle' });
 
-  await page.screenshot({ path: outPath });
-  console.log(`[+] Saved Vue screenshot to ${outPath}`);
+  if (actions && Array.isArray(actions)) {
+    console.log(`[*] Executing ${actions.length} interaction actions...`);
+    for (const step of actions) {
+      const { action } = step;
+      if (action === 'screenshot') {
+        const p = path.resolve(step.path);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        await page.screenshot({ path: p });
+        console.log(`[+] Captured screenshot: ${step.path}`);
+      } else if (action === 'click') {
+        await page.click(step.selector);
+        console.log(`[+] Clicked: ${step.selector}`);
+      } else if (action === 'fill' || action === 'type') {
+        await page.fill(step.selector, step.text || '');
+        console.log(`[+] Filled ${step.selector} with '${step.text || ''}'`);
+      } else if (action === 'focus') {
+        await page.focus(step.selector);
+        console.log(`[+] Focused: ${step.selector}`);
+      } else if (action === 'press') {
+        await page.keyboard.press(step.key);
+        console.log(`[+] Pressed key: ${step.key}`);
+      } else if (action === 'wait') {
+        await page.waitForTimeout(step.ms || 500);
+      }
+    }
+  } else {
+    const dir = path.dirname(path.resolve(outPath));
+    fs.mkdirSync(dir, { recursive: true });
+    await page.screenshot({ path: outPath });
+    console.log(`[+] Saved Vue screenshot to ${outPath}`);
+  }
 
   await browser.close();
 }
