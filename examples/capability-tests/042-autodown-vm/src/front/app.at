@@ -11,19 +11,27 @@
 // 验证：auto run -r vm（需 auto-lang 以 --features autodown 构建）。
 
 widget App {
-    msg { Init, Next }
+    msg { Init, Next, Program }
 
     model {
         full str = "# 流式标题\n\n第一段：**加粗** 与 `code`。\n\n- 列表甲\n- 列表乙\n\n> 引用收尾\n"
         n int = 0
         stream str = ""
         streaming bool = true
+        // natives 编程环（plan 019 批次八）：doc 为块树 JSON（autodown_parse
+        // 产物），prog 为编程操作后的序列化文本。
+        doc str = ""
+        prog str = "# 可编程文档\n\n初始段落。\n"
     }
 
     on {
         .Init -> {
             .n = 1
             .stream = .full.slice(0, 18)
+            // parse → insert_template（顶层首位插模板块）→ serialize 全环
+            .doc = autodown_parse(.prog, 1)
+            .doc = autodown_insert_template(.doc, "## 模板标题（natives 插入）\n", "", 0)
+            .prog = autodown_serialize(.doc, 0)
         }
         .Next -> {
             .n = .n + 1
@@ -35,6 +43,14 @@ widget App {
                 .streaming = false
             }
         }
+        .Program -> {
+            // 可编程操作：首块文本追加（applyOp 轨）
+            .doc = autodown_parse(.prog, 1)
+            if autodown_find_block(.doc, "block-0") {
+                .doc = autodown_insert_text(.doc, "block-0", 0, "已编程！")
+            }
+            .prog = autodown_serialize(.doc, 0)
+        }
     }
 
     view {
@@ -44,6 +60,9 @@ widget App {
             text "AutoDown VM render — streaming" (style: "text-lg font-bold") {}
             autodown (content: .stream, final: .streaming) {}
             button (text: "下一块", onclick: .Next) {}
+            text "AutoDown natives — programmatic ops" (style: "text-lg font-bold") {}
+            autodown (content: .prog) {}
+            button (text: "编程：首块插文本", onclick: .Program) {}
         }
     }
 }

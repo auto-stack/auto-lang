@@ -10,8 +10,8 @@ VM（iced）轨道的 autodown 文档渲染 + 流式演示。plan 019 Phase 2 �
 ## 运行
 
 ```bash
-# auto-lang 以 autodown feature 构建（crate 路径见 Cargo.toml 注释）
-cargo build -p auto-lang --features ui-iced,code-editor,autodown
+# CLI 以 autodown feature 构建（crate 路径见 Cargo.toml 注释）
+cargo build --bin auto --features autodown
 auto run -r vm   # 本目录
 ```
 
@@ -24,6 +24,22 @@ auto run -r vm   # 本目录
    剥离悬挂 `- `/`> `，loading 链接保留 href 着色），追加完毕 final 翻
    true 收口。content 绑定状态 → 状态更新自然触发重解析与视图重建
    （流式路径 v1；逐块布局缓存为登记的 v1 性能债）。
+
+## natives 编程环（plan 019 批次八）
+
+第三块演示 `.at` handler 内的可编程文档操作（`autodown_*` natives，JSON
+传输循 read_dir 先例，全部由 autodown-core crate 支撑）：
+
+- Init：`autodown_parse` → `autodown_insert_template`（顶层首位插模板块）
+  → `autodown_serialize` 全环，渲染出模板标题；
+- 「编程：首块插文本」按钮：`autodown_find_block` + `autodown_insert_text`
+  （crate `applyOp` 轨）→ 重新序列化渲染。
+
+natives 面：`autodown_parse(src, final)` / `autodown_serialize(json,
+emit_ids)` / `autodown_text(json, id)` / `autodown_find_block(json, id)` /
+`autodown_insert_text(json, id, offset, text)` /
+`autodown_insert_template(json, md, parent, index)`（catalog 2950-2955）。
+无 feature 的二进制：natives 可调用但返回构建错误（本页 Init 会报）。
 
 ## 行为锚定
 

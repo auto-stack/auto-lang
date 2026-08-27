@@ -461,6 +461,16 @@ macro_rules! for_each_native {
             // === Cmp (2880) ===
             (2880, NATIVE_STR_CMP, shim_str_cmp, "auto.cmp.str_cmp"),
 
+            // === Plan 019 批次八: autodown 文档 natives（编辑壳可编程操作轨，
+            // JSON 传输循 read_dir 先例；feature "autodown" 门控实现，
+            // 无 feature 时 shim 返回构建错误）===
+            (2950, NATIVE_AUTODOWN_PARSE, shim_autodown_parse, "auto.autodown.parse"),
+            (2951, NATIVE_AUTODOWN_SERIALIZE, shim_autodown_serialize, "auto.autodown.serialize"),
+            (2952, NATIVE_AUTODOWN_TEXT, shim_autodown_text, "auto.autodown.text"),
+            (2953, NATIVE_AUTODOWN_FIND_BLOCK, shim_autodown_find_block, "auto.autodown.find_block"),
+            (2954, NATIVE_AUTODOWN_INSERT_TEXT, shim_autodown_insert_text, "auto.autodown.insert_text"),
+            (2955, NATIVE_AUTODOWN_INSERT_TEMPLATE, shim_autodown_insert_template, "auto.autodown.insert_template"),
+
             // === DateTime cmp (2794) ===
             (2794, NATIVE_DATETIME_CMP, shim_datetime_cmp, "auto.datetime.cmp")
         }

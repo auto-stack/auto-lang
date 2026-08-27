@@ -24,3 +24,6 @@ default = ["ui-iced", "python"]
 ui-iced = ["auto-lang/ui-iced"]
 python = ["auto-lang/python"]
 with-file-history = ["auto-lang/with-file-history"]
+# Plan 019 批次八: autodown natives + VM 真渲染（跨仓 crate path，见
+# auto-lang Cargo.toml 注释——合并后按互链说明翻转）。
+autodown = ["auto-lang/autodown"]
