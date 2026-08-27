@@ -112,8 +112,8 @@ pub enum DesktopMessage {
 | T3 | 入口瘦身 | `run_dynamic_iced`（renderer.rs:5736）变薄壳：构建单 App DesktopSession → 进入同一 loop；lib.rs:2933–3430 链路只改组装不改语义 |
 | T4 | 消息扇出 | update 入口按 DesktopMessage 分派至 AppSession；LAST_MODIFIERS 迁入 DesktopState 并清理 thread-local 读点 |
 | T5 | 订阅路由 | §2.3；keyboard_subscription（renderer.rs:5336）等按 AppId 标签化 |
-| T6 | panic 边界 | §2.4（审计 + catch_unwind + 崩溃页 UI） |
-| T7 | 双 App 验证 | 示例：一个进程两个 AppSession 各占一 OS 窗口（DevTools/输入值互不串扰）；作为 M1 验收 demo |
+| T6 | panic 边界 | ✅ 完成（T4-core/T4b-1 落地）：update/view 双侧 catch_unwind |
+| T7 | 双 App 验证 | **T7a 守门 ✅（2026-08-27）**：7 套 desktop_mcp 实机跑——calculator 14/0、todo 11/0+6 已知 skip、notes 11/0+2 skip、charts 19/0、dashboard 26/0 全过；minesweeper/041 失败经 **4200b2140 基线二进制复现对照**定性为存量问题（快照 onclick 绑定行缺失家族，T4c 前已坏，另立修复任务）。**就 T4c 而言 I2 零回归**。**T7b 待做**：双 AppSession 双窗口 demo——前置设计决定：iced 0.14 `application` 的 ViewFn 不带 window::Id（单视图），`daemon` 的才带；每窗口渲染各自 AppSession 需迁移 `iced::daemon`（view 按 `app_of_window(win)` 路由）或接受降级 demo。附 T7b 三步：daemon 决策/迁移 → 解除 desktop_app_id() 硬编码（AppId 按 Opened 递增）→ demo + panic 隔离验证 |
 | T8 | MCP 兼容冻结 | mcp_server/mcp_action_subscription 维持 single-app 语义；`AppTarget` 类型占位不给实现 |
 
 ## 4. 验收
