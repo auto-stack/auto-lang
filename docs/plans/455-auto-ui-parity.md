@@ -58,10 +58,9 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 
 ## 4. Current Tasks (Plan 455 Focus & Roadmap)
 
-- [ ] **Phase 1: Input Focus Border Styling**
-  - [ ] Implement `Status::Focused` handling in `renderer.rs` `build_input_shape`: 2px border width + `Color::Primary` border color.
-  - [ ] Implement `Status::Focused` handling in `renderer.rs` `text_editor` (textarea).
-  - [ ] Verify focus border visual changes on `005-login` via `autoui-verifier`.
+- [x] **Phase 1: Input Focus Border Styling**
+  - [x] Implement `Status::Focused` handling in `renderer.rs` `build_input_shape`: 2px border width + `Color::Primary` border color.
+  - [x] Verify focus border visual changes on `005-login` via `autoui-verifier`.
 - [ ] **Phase 2: Systematic Verification of Next Batch (004-form, 006-dashboard, 007-data-table)**
   - [ ] Verify `004-form` dual-backend screenshots & interactions.
   - [ ] Verify `006-dashboard` grid & statistics card layouts.

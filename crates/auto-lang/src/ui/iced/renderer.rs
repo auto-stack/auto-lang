@@ -2023,12 +2023,31 @@ fn build_input_shape<M: Clone + Debug + 'static>(
         ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
          .unwrap_or(iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7));
 
-        input_widget = input_widget.style(move |_theme, _status| {
+        let focus_border_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+            &crate::ui::style::Color::Primary,
+        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+         .unwrap_or(iced::Color::from_rgb8(59, 130, 246));
+        let focus_border_width = (border_width + 1.0).max(2.0);
+
+        input_widget = input_widget.style(move |_theme, status| {
+            let is_focused = matches!(status, iced::widget::text_input::Status::Focused { .. });
+            let active_border_color = if is_focused {
+                focus_border_color
+            } else if border_width > 0.0 {
+                border_color
+            } else {
+                iced::Color::TRANSPARENT
+            };
+            let active_border_width = if is_focused {
+                focus_border_width
+            } else {
+                border_width
+            };
             iced::widget::text_input::Style {
                 background: iced::Background::Color(bg),
                 border: iced::Border {
-                    color: if border_width > 0.0 { border_color } else { iced::Color::TRANSPARENT },
-                    width: border_width,
+                    color: active_border_color,
+                    width: active_border_width,
                     radius: radius.into(),
                 },
                 icon: iced::Color::TRANSPARENT,
