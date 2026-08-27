@@ -7,7 +7,8 @@ edition = "2021"
 default = []
 # Enable serde Deserialize support for Value/Node (Plan 381). Lets any
 # #[derive(Deserialize)] struct read directly from a parsed .at, replacing
-# hand-written opt_string/opt_uint field extraction.
+# hand-written opt_string/opt_uint field extraction. Also enables the
+# Serialize direction (Plan 332 S1): #[derive(Serialize)] -> Value/Node.
 serde = ["dep:serde"]
 
 [dependencies]

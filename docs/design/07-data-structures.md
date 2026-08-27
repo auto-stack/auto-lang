@@ -11,7 +11,7 @@ Core data structures are fully implemented in `crates/auto-val/src/` and `crates
 - **Atom** (`auto-lang/src/atom/`): Parser, schema loader, validator, and type system for the Atom format. 7 modules.
 - **ListData** and storage-based lists: VM-integrated dynamic lists with Heap and InlineInt64 storage strategies.
 
-The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned. A serde `Deserializer` bridge (Plan 381, `auto-val/src/de.rs`) lets plain Rust structs deserialize from Atom with zero boilerplate; the symmetric `Serializer` direction is planned (Plan 332, rewritten 2026-08-27).
+The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned. A serde `Deserializer` bridge (Plan 381, `auto-val/src/de.rs`) lets plain Rust structs deserialize from Atom with zero boilerplate; the symmetric `Serializer` direction landed as `ser.rs` (Plan 332 S1, 2026-08-27; auto-ai dogfood pending).
 
 ## Design
 
@@ -84,7 +84,7 @@ Auto types serialize to Atom text automatically through compiler-generated code.
 | Direction | Status | Mechanism |
 |-----------|--------|-----------|
 | .at → Rust struct (De) | ✅ Plan 381 | serde `Deserializer` adapter (`auto-val/src/de.rs`, ~900 lines); `#[derive(Deserialize)]` + `node.deserialize::<T>()` — zero boilerplate |
-| Rust struct → .at (Ser) | ⏸ planned (Plan 332, rewritten 2026-08-27) | Missing link is a serde `Serializer` producing `Value`/`Node`. Downstream segments already exist: Value → Node, and escape-correct Node → .at source (`emit.rs` `to_at_source()`, round-trip tested). Design mirrors `de.rs`. |
+| Rust struct → .at (Ser) | 🟡 core landed (Plan 332 S1, 2026-08-27) | serde `Serializer` adapter (`auto-val/src/ser.rs`): `#[derive(Serialize)]` → `to_value` / `Value::serialize_from`, and `node_from_value(name, &T)` for the `name { … }` node shape; downstream `to_at_source()` emission and ser↔de round-trips covered by 17 tests. Remaining: auto-ai dogfood migration (Plan 332 S2). |
 
 Annotation semantics for the ser direction (from Plan 332; to be carried as serde attribute conventions rather than a new trait family):
 
