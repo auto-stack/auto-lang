@@ -205,5 +205,5 @@ CLI --theme/--accent  >  pac.at theme:/accent:  >  内置默认 (dark/indigo)
 
 - 临时 hack 扫描：无硬编码 hex 绕过色板表（006 色板全部走 Tailwind 标准色阶 + `ACCENT_PALETTES` 同名）；探针 eprintln 已移除。
 - 已知残留（登记非阻塞）：① cmd_tauri 模板已参数化但 tauri 后端未实测；② vue 面板若同元素既有动态 class 又有 `style: if` 会产生双 `:class`（Vue 编译错）——现网示例无此组合，登记 KNOWN-DEBT；③ `.worktree/auto-down` junction 为本机环境工件（跨仓 path 依赖），不随仓库提交。
-- worktree 说明：`plan-458` 分支对应 `.worktree/plan-458-theme` 目录（`plan-458` 目录被历史遗留的 `plan-458-parity-archive` worktree 占用且被进程锁定；该遗留分支已整体改名保留，未删除）。
+- worktree 说明：`plan-458` 分支对应 `.worktree/plan-458-theme` 目录。施工期间 master 由并行会话推进（plan-459/460/461），且本计划的 T1–T3 已被并行会话先行合入 master；分支已 rebase 到最新 master，剩余 T4+修复+文档 3 个 commit 重放零冲突，rebase 后双端冒烟复验通过（`vm458_rebase_dark/light_ocean.png`）。另：历史上另一个占用 458 号的 parity 分类计划已被重编号为 460 并合入（`bdb4df01b`），其冗余旧分支 `plan-458-parity-archive` 已核实内容全在 master 后删除。
 
