@@ -141,6 +141,8 @@
 | 430 | 复审发现:as_millis/as_micros/as_nanos 手写臂仍是 u128→i32 有损截断(与已修的 as_secs 族对照),未标可疑 | B3"可疑臂逐条裁决"遗留;使用方应知毫秒值 >i32::MAX 即溢出。 | `vm/ffi/stdlib.rs:6927-6929` |
 | 432 | 复审发现:bool 哨兵防护不完整——shim_list_push 有 is_bool 规范化,set/insert 路径直接 decode_i32 | bool 元素经 set/insert 仍变 i32::MIN 别名(v2 侧以 1/0 承载规避不受影响);宿主侧待补。 | `vm/native.rs` set≈2165/insert≈2227 |
 | 432 | 复审发现:engine.at ev_add 双 int 分支偏置不对称(直接 a.i+b.i 无 dec/enc,当前不可达);codegen.at hex4 编址 16 位静默截断(>0xffff dump 错无诊断) | 前者若 str.cat 发射条件放宽即触发错值,至少补警示注释;后者补溢出诊断。 | `engine.at:121-133` / `codegen.at:864-876` |
+| 330 | VM 内省三件套缺位 | `auto debug --agent`(Plan 199)的 JSON state 只含 stack/call_stack/locals/registers,无 globals/heap-objects/symbols dump——排查全局变量污染/符号冲突/堆对象泄漏无工具(330 原 Phase 2 设计 vm/introspection.rs)。无当前消费者,330 已归档,设计沉淀 design/14。 | `vm/debugger.rs` AgentDebugState + `docs/design/14-developer-tools.md` |
+| 330 | trace 无 CLI/env 暴露 | TraceCollector(Plan 199 P5,vm/trace.rs JSONL)仅引擎内集成,无 `--trace` CLI 开关或 AUTO_VM_TRACE 环境变量入口;330 的"handler 超步数/深度阈值自动告警递归"静态诊断也未做。 | `vm/trace.rs` + `crates/auto/src/main.rs` |
 
 ---
 
@@ -152,4 +154,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-25（plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+*最后更新：2026-08-27（Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*

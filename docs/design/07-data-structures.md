@@ -11,7 +11,7 @@ Core data structures are fully implemented in `crates/auto-val/src/` and `crates
 - **Atom** (`auto-lang/src/atom/`): Parser, schema loader, validator, and type system for the Atom format. 7 modules.
 - **ListData** and storage-based lists: VM-integrated dynamic lists with Heap and InlineInt64 storage strategies.
 
-The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned.
+The Atom builder API chain methods (Phase 1) are implemented. Builder pattern (Phase 2) and macro DSL (Phase 3) are planned. A serde `Deserializer` bridge (Plan 381, `auto-val/src/de.rs`) lets plain Rust structs deserialize from Atom with zero boilerplate; the symmetric `Serializer` direction is planned (Plan 332, rewritten 2026-08-27).
 
 ## Design
 
@@ -79,6 +79,23 @@ Auto types serialize to Atom text automatically through compiler-generated code.
 
 **Link mechanism**: `link @uuid(protocol://address)` represents cross-process handles. Serialized as `@ref: "uuid_string"`. Deserialization resolves these through a LinkRegistry rather than creating new objects.
 
+**Rust struct ↔ Atom serde bridge** (Plan 381 delivered the deserialize direction; Plan 332's original custom-trait design was ruled out in favor of this serde path):
+
+| Direction | Status | Mechanism |
+|-----------|--------|-----------|
+| .at → Rust struct (De) | ✅ Plan 381 | serde `Deserializer` adapter (`auto-val/src/de.rs`, ~900 lines); `#[derive(Deserialize)]` + `node.deserialize::<T>()` — zero boilerplate |
+| Rust struct → .at (Ser) | ⏸ planned (Plan 332, rewritten 2026-08-27) | Missing link is a serde `Serializer` producing `Value`/`Node`. Downstream segments already exist: Value → Node, and escape-correct Node → .at source (`emit.rs` `to_at_source()`, round-trip tested). Design mirrors `de.rs`. |
+
+Annotation semantics for the ser direction (from Plan 332; to be carried as serde attribute conventions rather than a new trait family):
+
+- Container: `#[atom(node = "name")]` — root node name, required (`.at` is a `name { ... }` structure); `legacy_node = "oldname"` accepts superseded node names on deserialize (e.g. `profession` → `role` compat).
+- Fields: `rename = "key"` (field name → .at prop key), `skip`, `default` (missing → `Default::default()` instead of error).
+- `Option<T>`: `None` → prop omitted on serialize; missing prop → `None` on deserialize.
+- `Vec<T>` → `Array`; empty vec omitted by default.
+- Inherit/merge business semantics (e.g. role config `inherit` chain) stay hand-written above the derive layer — the bridge does pure field round-trips only.
+
+Dogfood target: auto-ai's hand-written `serialize_at_role` (~120 lines, `auto-ai-agent/rust/src/role_config.rs:363`, consumed at `roles.rs:220/322` and re-exported to Auto code via `lib.rs`) — replaced by the Serializer bridge plus `to_at_source()` once the ser direction lands.
+
 ### Atom Extensions
 
 Atom extensions transform Atom from a pure data format into a quasi-programming language (the foundation of ASTL).
@@ -123,5 +140,7 @@ Auto supports dynamic lists with pluggable storage strategies via `List<T, S>`.
 
 - [raw/data-structures.md](raw/data-structures.md) -- Node, Obj, ListData implementation details
 - [raw/atom.md](raw/atom.md) -- Atom format definition and philosophy
+- Plan 381: value serde Deserializer (archived) -- the De-direction bridge
+- Plan 332: Atom serialization derive (rewritten 2026-08-27) -- annotation semantics + Ser-direction plan
 - [raw/atom-serialize.md](raw/atom-serialize.md) -- Atom serialization and node-centric spec
 - [raw/extending_atom.md](raw/extending_atom.md) -- Atom extensions, simplification rules, and query design

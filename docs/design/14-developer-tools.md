@@ -11,6 +11,7 @@
 **Partial:**
 - LSP basic implementation exists in `crates/auto-lsp/`
 - VSCode extension exists in `editors/vscode/`
+- Agent-mode JSON debugger implemented (`auto debug --agent`, Plan 199); VM globals/heap/symbols introspection still missing
 
 **Planned:**
 - Full LSP feature parity (hover, goto definition, rename, code actions)
@@ -184,6 +185,25 @@ The legacy `autoui_snapshot` tool (build-time AURA template + simple `@rect`) is
 
 **Data path:** the renderer populates `live_vtree` + `live_cache` every frame whenever DevTools (F12) is open **or** the MCP server is active — so an agent gets the full VTree + box model without anyone opening F12. Measured bounds flow via a per-frame `LayoutCollector` → `backfill_bounds` → `SharedState` snapshot copy.
 
+### Agent Debugging Toolchain
+
+The original design (Plan 330, archived 2026-08-27) called for an agent-friendly CLI debugging suite. Its core premises have since been delivered by two channels; only a small VM-introspection remainder is still open (registered in `docs/plans/KNOWN-DEBT-AND-RISKS.md`).
+
+**Delivered capabilities (supersession matrix):**
+
+| Original Plan 330 goal | Delivered by | Form |
+|------------------------|--------------|------|
+| CLI entry, no GUI, JSON output | Plan 199 | `auto debug <file> --agent` (`crates/auto/src/main.rs:533` → `debug_file_agent`) — breakpoints, step/step_over/step_out; each pause emits a JSON state line (stack, call_stack, locals, registers, stdout, ip, line, op); commands read from stdin |
+| Structured execution trace | Plan 199 Phase 5 | `TraceCollector` (`vm/trace.rs`) — JSONL per-opcode trace records |
+| Widget state query (`auto debug state`) | AutoUI MCP suite (Plans 278/299/314/323…) | `autoui_state` — typed field-level query of live widget state, JSON over HTTP |
+| Trigger handler + observe diff (`auto debug handler`) | AutoUI MCP suite | `autoui_action` + `autoui_state` before/after |
+| Agent-driven UI verification | autoui-verifier skill | `test_vm_mcp.py` / `desktop_mcp.py` automate the MCP tool suite |
+
+**Remaining gaps (no current consumer, deferred):**
+
+1. **VM introspection trio** — `globals` / `heap-objects` / `symbols` dumps. The Plan 199 agent JSON state covers stack/call_stack/locals only; there is no tool for diagnosing global-variable pollution, symbol conflicts, or heap-object leaks (Plan 330 Phase 2 design: `vm/introspection.rs`).
+2. **Env-gated static diagnostics** — `AUTO_VM_TRACE`-style env switch and the "handler exceeded step/depth threshold → warn possible recursion" heuristic were never built; `TraceCollector` has no CLI/env exposure either.
+
 ## Open Questions
 
 - Should the web playground support multi-file projects or remain single-file?
@@ -200,3 +220,5 @@ The legacy `autoui_snapshot` tool (build-time AURA template + simple `@rect`) is
 - Plan 278: AutoUI MCP desktop (in-process server + SharedState)
 - Plan 299: AutoUI MCP V2 protocol
 - Plan 314: AutoUI MCP `autoui_vtree` — live styled VTree as Atom
+- Plan 330: Agent-friendly debugging toolchain (archived 2026-08-27; superseded by Plans 199 + MCP suite, remainder in debt ledger)
+- [vm-debugging.md](vm-debugging.md) -- VM debugging infrastructure brainstorm (assembly format, debug info, AutoDBG, trace, verifier, replay)

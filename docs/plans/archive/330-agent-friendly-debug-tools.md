@@ -4,6 +4,12 @@
 
 > **实测状态（2026-08-04）**: 🟡 MCP 工具已存在（autoui_snapshot/vtree/state/action 在 mcp_server.rs 注册），输出为 AURA text。Plan 330 目标的 JSON 输出 + headless CLI 为后续优化。保留为设计。
 
+> **终局裁定（2026-08-27）**: 📦 归档关闭——核心诉求已由后续交付取代，设计沉淀至 [docs/design/14-developer-tools.md](../design/14-developer-tools.md)「Agent Debugging Toolchain」节（含取代矩阵）。逐项裁定：
+> - CLI 入口 + JSON 输出（§2.2 `auto debug state/handler`）→ ✅ **被 Plan 199 取代**：`auto debug --agent`（main.rs:533）断点/单步/step_over/step_out，每次暂停输出 JSON state（stack/call_stack/locals/registers/stdout），stdin 读命令
+> - 结构化 trace（§3 AUTO_VM_TRACE）→ ✅ **被 Plan 199 Phase 5 取代**：`TraceCollector`（vm/trace.rs）JSONL 逐指令记录
+> - widget state 查诊 / handler 触发 diff（§2.2 前两命令）→ ✅ **被 AutoUI MCP 工具族取代**：`autoui_state`（按字段查询、带类型、JSON）、`autoui_action` + before/after、`autoui_wait`/`autoui_type`（ui/mcp_server.rs）+ autoui-verifier 技能（test_vm_mcp.py/desktop_mcp.py）
+> - **剩余独有缺口**（Phase 2 VM 内省三件套 globals/heap-objects/symbols dump、AUTO_VM_TRACE 环境变量入口、递归阈值自动告警）：无当前消费者（现有排查工作流未阻塞），登记 [KNOWN-DEBT-AND-RISKS.md](KNOWN-DEBT-AND-RISKS.md)「未来增强」，不立项。
+
 > **For Claude:** 当前 AutoUI 的 MCP 服务（`autoui_snapshot`/`autoui_vtree`/`autoui_state` 等）是为人类开发者设计的可视化工具——需要 GUI 窗口运行、输出 AURA/Atom 格式、依赖视觉截图。Coding Agent（如 Claude）无法有效使用它们：① 缺少 CLI 入口；② 输出不标准（非 JSON）；③ 无 headless 模式；④ 不能诊查 VM 内部状态（heap_objects、globals、call_stack）。本计划设计一套 Agent 友好的 CLI 调试工具。
 
 ## 1. 当前 MCP 工具分析

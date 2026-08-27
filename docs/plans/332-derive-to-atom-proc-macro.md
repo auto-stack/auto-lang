@@ -4,6 +4,43 @@
 >
 > **更新（2026-08-04,Plan 381 落地后）**: Plan 381 已实现 `auto-val` 的 serde `Deserializer` 适配器(`serde` feature),提供了**反序列化方向**的零样板方案(`#[derive(Deserialize)]` + `node.deserialize::<T>()`)。本计划(332)的 `#[derive(FromAtom)]` 现定位为**未来的、针对 .at 的定制宏**,可基于 381 的 serde 路径构建(宏生成 serde 调用而非新 trait),或保留独立的 `FromAtom` trait 用于 serialize 方向(`ToAtom`)和 .at 特有标注(如 `#[atom(node="role")]`)。**反序列化方向不再阻塞 —— 332 的优先级降低。**
 
+> **改写（2026-08-27 裁定）**: 🎯 本计划**聚焦为 Serialize 方向单一目标**（见下方 §0），设计语义已沉淀至 [docs/design/07-data-structures.md](../design/07-data-structures.md)「Atom Serialization」节。原设计的自定义 trait 路线（第一/二部分中的 Phase A/C）被 381 的 serde 裁定取代，不再实施。状态：**已改写待实施**。
+
+---
+
+# §0 改写后的聚焦范围（2026-08-27）
+
+## 剩余工作裁定
+
+| 原计划部分 | 裁定 | 理由 |
+|---|---|---|
+| Phase A（ToAtom/FromAtom/ToAtomValue/FromAtomValue 四 trait 族） | ❌ 不实施 | 381 裁定走 serde 适配器路线；`de.rs`（908 行）已落地并验证 |
+| Phase B（`#[derive(ToAtom)]` 序列化宏，自定义 trait 载体） | ❌ 原形态不实施 | 改由 serde `Serializer` 适配器承接（下 S1），未来如需标注宏可生成 serde 调用薄层 |
+| Phase C（`#[derive(FromAtom)]` 反序列化宏） | ❌ 不实施 | 已被 `#[derive(Deserialize)]` + `node.deserialize::<T>()`（381）零样板解决 |
+| 标注语义集（node/legacy_node/rename/skip/default、Option 省略、空 Vec 省略） | ✅ 保留 | 长期设计价值，已沉淀 design/07；实施时以 serde attribute 约定承载 |
+| Phase D dogfood（auto-ai ProfessionConfig 迁移） | ✅ 保留（目标改 RoleConfig） | 手写样板仍在：`serialize_at_role`（~120 行，`auto-ai-agent/rust/src/role_config.rs:363`）+ `parse_at_role`，消费于 roles.rs:220/322 并经 lib.rs 导出 |
+| Phase E（文档） | ✅ 保留 | 指向 design/07 |
+
+## 聚焦后的实施阶段
+
+### S1 — auto-val serde `Serializer` 适配器（本仓，单仓可交付）
+
+- `crates/auto-val/src/ser.rs`（新）：`ValueSerializer` 实现 serde `Serializer` trait，产出 `Value`（对标 `de.rs` 的镜像；序列化方向无错误恢复分支，预期规模 300–500 行）
+- 链路补全：`struct --#[derive(Serialize)]--> Value --> Node --> to_at_source()`——后两段已有（`emit.rs` 336 行，escape-correct + round-trip 测试）
+- 根节点名承载：`T::serialize` 产 Value 后包 `Node::new(#[atom(node)] 名)` 的辅助 API（`node_from_value::<T>(name, &t)` 一类）
+- 验证：`cargo test -p auto-val ser`（round-trip：`to_atom_node` → `from_atom_node`/`deserialize::<T>` 等值）
+
+### S2 — auto-ai dogfood 迁移（跨仓，auto-ai 仓库）
+
+- `RoleConfig` 加 `#[derive(Serialize)]`，`serialize_at_role` 改为 `node_from_value::<RoleConfig>("role", &cfg).to_at_source()`
+- `parse_at_role` 逐字段读取改走 381 的 deserialize 路径（若尚未迁移）
+- inherit/merge 业务语义保留在手写层（`load_role`/`merge_over`），桥只做纯字段往返
+- 验证：auto-ai 既有测试不回归 + 新 round-trip 测试
+
+**优先级判断（2026-08-27）**：S1 是低风险对称工作且有真实消费者（auto-ai 每次给 role 增字段都要手写两边序列化），但不阻塞任何进行中计划——按需开工，S1 可先行独立交付。
+
+---
+
 > **类型**:完整计划(设计 + 实施)
 > **状态**:设计草案,待评审
 > **日期**:2026-06-25
