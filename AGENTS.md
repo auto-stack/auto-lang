@@ -35,14 +35,19 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - Fast type check: `cargo check -p auto-lang`
     - Scoped single-module test (optional): `cargo t <module_name>` (e.g. `cargo t iced`)
   - Reuse standardized automation scripts from `.agents/skills/autoui-verifier/scripts/` (`test_vm_mcp.py`, `test_vue_playwright.mjs`) instead of writing ad-hoc scripts.
-- **Final Verification Gate (Run once before merge/archive)**:
-  - Run fast parallel test suite via `nextest` alias:
-    - **Fast Unit tests**: `cargo t` (alias for `nextest run -p auto-lang --lib`, runs 3200+ tests in parallel)
-    - Docs & schema consistency: `cargo test -p auto-lang --test docs_gen`
-  - End-to-end / multi-backend AutoUI verification:
-    - Vue mode: `auto run`
-    - VM mode: `auto run -r vm`
-    - Automated dual-backend parity testing: invoke `autoui-verifier` skill (`.agents/skills/autoui-verifier`).
+- **Change-Scoped Verification Gate (按改动范围分级测试门禁)**:
+  - **Category A: Pure Verification / Asset / Doc-Only Tasks (纯验证/示例资产/计划跟踪)**:
+    - 若未修改 `crates/` 下的 Rust 源码（仅截图、更新 `docs/plans/` 矩阵或修改测试脚本），**严禁运行 `cargo t` 和 `docs_gen`**。仅完成目标验证即可直接合入。
+  - **Category B: Scoped Rust Code Changes (局部 Rust 模块改动)**:
+    - 快速语法/类型检查：`cargo check -p auto-lang`
+    - 局部模块验证：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
+    - 涉及编译器/VM/核心协议重构时，才在最终合入前运行一次 `cargo t`。
+  - **Category C: Docs / Schema Changes (文档与元数据改动)**:
+    - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
+  - **AutoUI 跨端验证（双端模式）**:
+    - Vue 模式：`auto run`
+    - VM 模式：`auto run -r vm`
+    - 自动化双端一致性：调用 `autoui-verifier` 技能 (`.agents/skills/autoui-verifier`)。
 
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
 - `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel)
