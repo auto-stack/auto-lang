@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-461
-status: in-progress
+status: complete
 feature_name: Python 科学计算库（numpy/pandas/matplotlib/torch）use.py 调用 parity
 author: [zhaopuming]
 created_at: 2026-08-28T00:30:00+08:00
-updated_at: 2026-08-28T00:30:00+08:00
+updated_at: 2026-08-28T02:00:00+08:00
 
 supersedes_spec_components: []
 new_spec_components: []
