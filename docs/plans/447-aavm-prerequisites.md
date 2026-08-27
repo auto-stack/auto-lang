@@ -408,9 +408,22 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   is 化(is-on-string,匹配对象本就是方法名/类型名,对齐 Rust 377 处 match
   name.as_str());A2 p_kind 链 is 化(前置 10.1)。**顺序约束:本步只能用
   部分② 已具备发射能力的语法面**(AA2R 已能转译 is/or-臂/枚举载荷)。
-- [ ] 11.2 f-string 全量:338 处 `+ "` 拼接按 Rust 参考的 format!/write! 位逐点
-  还原(前置:部分② Phase 4 已让 parser.at 具备 FStr 解析,a2r.at 发射
-  已就绪 D38c);转义/花括号口径对齐主 a2r(3350-3389 的 `{{`/`}}` 规则)。
+- [~] 11.2 f-string(2026-08-26):
+  **11.2a 能力层完成(提交 0689b118d)**——计划前置声明勘误:部分② 并未
+  让 parser.at 具备 FStr 解析(仅词法 D38c + AA2R 发射侧),本步补全
+  parser fstr_expr(dump 对齐宿主 (fstr ...) 逐字符)/typeinfo(恒 str)/
+  codegen cg_fstr(build.fstr + tags,CGVar 轻量类型跟踪)/engine 执行,
+  语料 p24/b33/g07 三件,矩阵 36/36。
+  **11.2b 批量改写回退(D40 三缺口实证)**:行级转换器(%TEMP%/p447/
+  fstr_conv.py,字符串感知切分/字面量护栏)批量转换 129 处后⑤列 AA2R
+  自举产物 rustc 23 错,E0382 残留单例根因:FStrPart 整段文本直通使
+  插值变量 token 从流中消失 → ar_lu_after/扫描器判定"后续无使用" →
+  前行赋值的 clone 注入失效(E0382 move);另两类:方法调用形态绕过
+  ar_method_call 改写(.str() 原样泄漏 E0599)/参数借用适配缺失
+  (p_text(p) 直通 E0308)。**结论:FStrPart 直通发射须先补齐 Display
+  收敛(method 改写/借用适配/last-use 补扫)方可承载批量风格还原;
+  行为不变铁律下本批撤回**,338 处逐点还原留后续计划(工具与实测
+  缺口清单已备)。lib 回退至 11.2a 态,闸门绿。
 - [ ] 11.3 收账:divergences.md——D11b/D14 残留/D23/D27/D28(op 载体部分)/D34/
   D36①② 风格类条目逐条标注"已还原/保留原因";新增"模式+guard 拆臂"永久条目;
   各文件头 Snapshot 五字段重写(Coverage 不变,Baseline 重锚定,DIVERGE 清单

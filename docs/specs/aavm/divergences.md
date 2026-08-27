@@ -341,6 +341,14 @@
   的逐文件 `// Auto-generated` 分隔注释未复刻;struct 派生三分派
   (float/List→3 派生)与 else-后空行规则等格式细节已对齐;`${expr}`
   内容原样直通(方法调用/复杂表达式形态的 f-string 插值不支持)。
+- **D40 续(447-③ 11.2b 实证,FStrPart 直通三缺口)**:f-string 插值
+  经 FStrPart 整段文本直通 AA2R 发射时——①方法调用形态(.str()/
+  .get(j))绕过 ar_method_call 改写,原样泄漏(Rust 侧 E0599);
+  ②参数借用适配缺失(p_text(p) 直通 vs 调用位 &mut *p,E0308);
+  ③插值变量 token 从流中消失 → ar_lu_after 判定"后续无使用" →
+  先行赋值语句的 clone 注入失效(E0382 move)。批量 f-string 风格
+  还原须先在发射侧补齐 Display 收敛(method 改写/借用适配/last-use
+  补扫 FStrPart 文本)方可推进;lib 批量改写已撤回(计划 11.2b 记录)。
 - **主 a2r 缺陷(已修,242 #18)**:a2r.at 曾在主 a2r 下转译 45 错——链式类型
   推断缺口(Index 元素/clone 透传/Dot 泛化)致 `.get(i).field` 发射 Option 形
   (E0609)、赋值位字段读/ident 重绑定缺 auto-clone(E0507/E0382)、str 型入
