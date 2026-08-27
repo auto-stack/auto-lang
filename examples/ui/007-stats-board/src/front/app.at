@@ -155,42 +155,52 @@ widget App {
                     }
                     col {
                         row {
-                            span "All Traffic"
+                            span "All Traffic" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .perf_all_traffic {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
-                            span "Instagram"
+                            span "Instagram" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .perf_instagram {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
-                            span "LinkedIn"
+                            span "LinkedIn" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .perf_linkedin {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
-                            span "Google"
+                            span "Google" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .perf_google {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-3 border-b border-gray-100"
                         }
                         row {
-                            span "X"
+                            span "X" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .perf_x {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-3"
                         }
@@ -206,9 +216,13 @@ widget App {
                     }
                     col {
                         row {
-                            span "Overall Progress"
+                            span "Overall Progress" {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
-                            span "85.7%"
+                            span "85.7%" {
+                                style: "text-sm font-semibold text-gray-900"
+                            }
                             style: "w-full items-center"
                         }
                         progress (value: .target_progress, max: 100) {
@@ -225,34 +239,42 @@ widget App {
                     divider
                     col {
                         row {
-                            span .kpi1
+                            span .kpi1 {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .kpi1_value {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
-                            span .kpi2
+                            span .kpi2 {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .kpi2_value {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
-                            span .kpi3
+                            span .kpi3 {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .kpi3_value {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-2 border-b border-gray-100"
                         }
                         row {
-                            span .kpi4
+                            span .kpi4 {
+                                style: "text-sm text-gray-500"
+                            }
                             spacer
                             span .kpi4_value {
-                                style: "font-semibold text-gray-900"
+                                style: "font-semibold text-gray-900 text-sm"
                             }
                             style: "w-full items-center py-2"
                         }
@@ -287,21 +309,27 @@ widget App {
                         }
                         row {
                             col {
-                                span "Posts"
+                                span "Posts" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member1_posts {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Followers"
+                                span "Followers" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member1_followers {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Engagement"
+                                span "Engagement" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member1_engagement {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
@@ -329,21 +357,27 @@ widget App {
                         }
                         row {
                             col {
-                                span "Posts"
+                                span "Posts" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member2_posts {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Followers"
+                                span "Followers" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member2_followers {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Engagement"
+                                span "Engagement" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member2_engagement {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
@@ -371,21 +405,27 @@ widget App {
                         }
                         row {
                             col {
-                                span "Posts"
+                                span "Posts" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member3_posts {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Followers"
+                                span "Followers" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member3_followers {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
                                 style: "gap-0 items-center"
                             }
                             col {
-                                span "Engagement"
+                                span "Engagement" {
+                                    style: "text-xs text-gray-500"
+                                }
                                 span .member3_engagement {
                                     style: "font-semibold text-gray-900 text-sm"
                                 }
