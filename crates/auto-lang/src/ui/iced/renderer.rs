@@ -4580,6 +4580,12 @@ fn panic_probe_enabled() -> bool {
     std::env::var("AUTOUI_PANIC_PROBE").map(|v| v == "1").unwrap_or(false)
 }
 
+/// 探针事件匹配：DSL handler 名风格不一（`PanicProbe` / `panic_probe`），
+/// 规范化为去下划线小写后比较。
+fn is_panic_probe_event(event: &str) -> bool {
+    event.to_ascii_lowercase().replace('_', "") == "panicprobe"
+}
+
 /// Global MCP action channel receiver (Plan 278).
 /// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
 static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
@@ -8130,12 +8136,14 @@ fn compare_pngs(
          -> iced::Task<crate::ui::session::DesktopMessage> {
             // console 打标：update 期间 print/console_log 归属本 App。
             crate::libs::builtin::set_console_current_app(app_id.0);
-            // Plan 459 T5 探针：验收用 panic 注入（见 PANIC_PROBE_CRASHED_APP）。
-            if panic_probe_enabled() && m.event == "panic_probe" {
-                PANIC_PROBE_CRASHED_APP.store(app_id.0, std::sync::atomic::Ordering::SeqCst);
-                panic!("plan-459 T5 panic probe injected for App {app_id:?}");
-            }
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // Plan 459 T5 探针：验收用 panic 注入（见 PANIC_PROBE_CRASHED_APP）。
+                // 必须在 catch_unwind **内部** panic（与 update_inner 同一边界），
+                // 否则 panic 直穿 winit 事件循环杀死进程（实测）。
+                if panic_probe_enabled() && is_panic_probe_event(&m.event) {
+                    PANIC_PROBE_CRASHED_APP.store(app_id.0, std::sync::atomic::Ordering::SeqCst);
+                    panic!("plan-459 T5 panic probe injected for App {app_id:?}");
+                }
                 update_inner(state, app_id, m)
             })) {
                 Ok(task) => task.map(move |m| DM::App(app_id, m)),
@@ -8163,7 +8171,11 @@ fn compare_pngs(
                         }
                     }
                     DesktopEvent::WindowClosed(id) => {
-                        state.windows.remove(&id);
+                        // 459 不变式：一窗一 App，App 生命周期随窗（454 引入
+                        // VirtualWindow 后由 WM 接管重挂载/续命）。
+                        if let Some(entry) = state.windows.remove(&id) {
+                            state.apps.remove(&entry.app);
+                        }
                         // daemon 语义：全窗口关闭才退出进程（施工图 §1-2）。
                         if state.windows.is_empty() {
                             return iced::exit();
@@ -8183,7 +8195,13 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => dispatch_app(state, app_id, m),
-            DM::Window(win, m) => match state.app_of_window(&win) {
+            DM::Window(win, m) => {
+                // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
+                // 空则退出；不该由 App 分派管线处理）。
+                if m.event == "__window_close_request" {
+                    return iced::window::close::<crate::ui::session::DesktopMessage>(win);
+                }
+                match state.app_of_window(&win) {
                 Some(app_id) => dispatch_app(state, app_id, m),
                 None => {
                     eprintln!(
@@ -8191,7 +8209,8 @@ fn compare_pngs(
                     );
                     iced::Task::none()
                 }
-            },
+                }
+            }
         }
     };
 
@@ -8353,7 +8372,15 @@ fn compare_pngs(
                         "[window] CloseRequested at {:?} (instrumentation: plan 065)",
                         std::time::SystemTime::now()
                     );
-                    None
+                    // Plan 459：daemon 语义下应用必须自答关窗（window::close）
+                    // —— Windows 实测壳层先行代关（本臂未见触发），但其他
+                    // 平台的 CloseRequested 会浮出到应用，此臂保证跨平台
+                    // 关窗语义完整。
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__window_close_request".to_string(),
+                        input_value: None,
+                    }))
                 }
                 iced::Event::Window(iced::window::Event::Resized(size)) => {
                     Some(DM::Window(window_id, IcedMessage {
