@@ -7,19 +7,43 @@ thread_local! {
     static TEST_OUTPUT_CAPTURE: RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>> = RefCell::new(None);
 }
 
-// UI console capture: used by DevTools Console tab to show print() output
+// UI console capture: used by DevTools Console tab to show print() output.
+// Plan 459：条目带 AppId 标签（0 = 进程级/未知），各 App 的 Console 面板
+// 排空时按标签过滤（双窗口日志互不串扰）。缓冲本体是进程级单例——
+// 多 App 会话的每份 DevToolsState 都经 enable_ui_console() 拿同一 Arc。
+pub type UiConsoleBuffer = std::sync::Arc<std::sync::Mutex<Vec<(u64, String)>>>;
+
 thread_local! {
-    static UI_CONSOLE_BUFFER: RefCell<Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>> = RefCell::new(None);
+    static UI_CONSOLE_BUFFER: RefCell<Option<UiConsoleBuffer>> = RefCell::new(None);
 }
 
-/// Enable UI console capture and return a shared buffer for reading print() output.
-pub fn enable_ui_console() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
-    use std::sync::{Arc, Mutex};
-    let buffer = Arc::new(Mutex::new(Vec::new()));
+/// 当前正在处理消息的 AppId 原始值（0 = 进程级/未知）。Plan 459：update
+/// 外壳在分派入口写、print/console_log 打标读；UI 线程串行执行 update，
+/// 无竞态。shell/执行器线程不写 → 0 = 进程级。
+static CONSOLE_CURRENT_APP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// update 外壳分派入口设置当前 App（见 CONSOLE_CURRENT_APP）。
+pub fn set_console_current_app(app: u64) {
+    CONSOLE_CURRENT_APP.store(app, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// print/console_log 打标读取当前 App。
+fn console_current_app() -> u64 {
+    CONSOLE_CURRENT_APP.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+static UI_CONSOLE_SINK: std::sync::OnceLock<UiConsoleBuffer> = std::sync::OnceLock::new();
+
+/// Enable UI console capture and return a shared buffer for reading print()
+/// output. 幂等：多次调用返回同一进程级单例（459 多 App 会话前提）。
+pub fn enable_ui_console() -> UiConsoleBuffer {
+    let buffer = UI_CONSOLE_SINK.get_or_init(|| {
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+    });
     UI_CONSOLE_BUFFER.with(|buf| {
         *buf.borrow_mut() = Some(buffer.clone());
     });
-    buffer
+    buffer.clone()
 }
 
 /// Disable UI console capture.
@@ -286,10 +310,11 @@ pub fn print(args: &Args) -> Value {
         handle.flush().ok();
     }
 
-    // Also write to UI console buffer if enabled (for DevTools Console tab)
+    // Also write to UI console buffer if enabled (for DevTools Console tab).
+    // Plan 459：条目带当前 AppId 标签（0 = 进程级），面板排空按标签过滤。
     let ui_buf = UI_CONSOLE_BUFFER.with(|buf| buf.borrow().clone());
     if let Some(buffer) = ui_buf {
-        buffer.lock().unwrap().push(output);
+        buffer.lock().unwrap().push((console_current_app(), output));
     }
 
     Value::Void

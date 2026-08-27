@@ -6337,10 +6337,10 @@ fn compare_pngs(
         }
 
         // Pick up pending screenshot request from MCP thread at every update (Plan 285).
-        if state.desktop.devtools.screenshot_request.borrow().is_none() {
+        if state.app.devtools.screenshot_request.borrow().is_none() {
             if let Some(ref mcp_handle) = state.desktop.mcp_shared {
                 if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
-                    *state.desktop.devtools.screenshot_request.borrow_mut() = Some(req);
+                    *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
                 }
             }
         }
@@ -6390,7 +6390,7 @@ fn compare_pngs(
         }
 
         // Handle screenshot request from MCP thread (Plan 285 / Task 20)
-        if let Some(req) = state.desktop.devtools.screenshot_request.borrow_mut().take() {
+        if let Some(req) = state.app.devtools.screenshot_request.borrow_mut().take() {
             // Plan 411: guard zero-size windows (minimized / pre-layout). iced's
             // offscreen source_texture panics on a 0-dimension wgpu surface
             // ("Dimension X is zero") — reply an error instead of crashing.
@@ -6445,21 +6445,21 @@ fn compare_pngs(
 
         // Handle debug mode messages
         if msg.event == DEBUG_TOGGLE_EVENT {
-            state.desktop.devtools.debug_mode = !state.desktop.devtools.debug_mode;
-            if state.desktop.devtools.debug_mode {
+            state.app.devtools.debug_mode = !state.app.devtools.debug_mode;
+            if state.app.devtools.debug_mode {
                 // Opening: show DevTools panel
-                *state.desktop.devtools.devtools_open.borrow_mut() = true;
+                *state.app.devtools.devtools_open.borrow_mut() = true;
             } else {
                 // Closing: clear all debug state
-                *state.desktop.devtools.hovered_widget.borrow_mut() = None;
-                *state.desktop.devtools.selected_widget.borrow_mut() = None;
-                *state.desktop.devtools.selected_vnode.borrow_mut() = None;
-                *state.desktop.devtools.hovered_vnode.borrow_mut() = None;
+                *state.app.devtools.hovered_widget.borrow_mut() = None;
+                *state.app.devtools.selected_widget.borrow_mut() = None;
+                *state.app.devtools.selected_vnode.borrow_mut() = None;
+                *state.app.devtools.hovered_vnode.borrow_mut() = None;
                 // Plan 309 Phase 5: inspect cursor mode is a sub-state of debug
                 // mode — reset it whenever F12 turns debug off.
-                *state.desktop.devtools.inspect_mode.borrow_mut() = false;
-                *state.desktop.devtools.devtools_open.borrow_mut() = false;
-                state.desktop.devtools.pending_hovers.borrow_mut().clear();
+                *state.app.devtools.inspect_mode.borrow_mut() = false;
+                *state.app.devtools.devtools_open.borrow_mut() = false;
+                state.app.devtools.pending_hovers.borrow_mut().clear();
             }
             // Plan 371: force view rebuild so the DevTools panel appears/disappears.
             *state.app.view_dirty.borrow_mut() = true;
@@ -6474,7 +6474,7 @@ fn compare_pngs(
         if msg.event == FOCUS_PROMPT_EVENT {
             // Last-edited textarea → any rendered textarea (first launch,
             // before any edit) → single-line input fallback.
-            let id = state.desktop.devtools.last_textarea_key
+            let id = state.app.devtools.last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
@@ -6486,22 +6486,22 @@ fn compare_pngs(
                         .next()
                         .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
                 })
-                .unwrap_or_else(|| state.desktop.devtools.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             return iced::widget::operation::focus(id);
         }
         // Handle click-to-select: set selected element and open DevTools panel
         if let Some(id) = msg.event.strip_prefix(DEBUG_SELECT_PREFIX) {
             let id = id.to_string();
             // Toggle: if clicking the same element, deselect
-            if state.desktop.devtools.selected_widget.borrow().as_deref() == Some(id.as_str()) {
-                *state.desktop.devtools.selected_widget.borrow_mut() = None;
+            if state.app.devtools.selected_widget.borrow().as_deref() == Some(id.as_str()) {
+                *state.app.devtools.selected_widget.borrow_mut() = None;
                 // Plan 307 Task 17: keep selected_vnode in sync with selected_widget.
                 // The live_cache holds the last frame's VNodeId <-> iced id map,
                 // which is valid for selection (selection persists across frames).
-                *state.desktop.devtools.selected_vnode.borrow_mut() = None;
+                *state.app.devtools.selected_vnode.borrow_mut() = None;
                 // Don't close panel on deselect — user may want to inspect other tabs
             } else {
-                *state.desktop.devtools.selected_widget.borrow_mut() = Some(id.clone());
+                *state.app.devtools.selected_widget.borrow_mut() = Some(id.clone());
                 // Plan 307 Task 17: derive selected_vnode from the aura_N string
                 // via the last frame's live_cache so the left-tree highlight and
                 // inspector panels (keyed on VNodeId) follow the click.
@@ -6509,22 +6509,22 @@ fn compare_pngs(
                     .borrow()
                     .as_ref()
                     .and_then(|c| c.iced_to_vnode(&id));
-                *state.desktop.devtools.selected_vnode.borrow_mut() = derived_vnode;
-                *state.desktop.devtools.devtools_open.borrow_mut() = true;
-                *state.desktop.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                *state.app.devtools.selected_vnode.borrow_mut() = derived_vnode;
+                *state.app.devtools.devtools_open.borrow_mut() = true;
+                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                 // Cache source code (shared loader; Plan 309 Phase 4.1).
                 ensure_source_loaded(state.as_ref_view());
                 // Plan 309 续篇: 检视光标改为常驻 —— 点击后不再自动退出，便于连点
                 // 多个画布元素；由 🔍 按钮手动关闭。
             }
             // Try to set pending scroll from element's span
-            if let Some(ref sel_id) = *state.desktop.devtools.selected_widget.borrow() {
-                let styles = state.desktop.devtools.debug_element_styles.borrow();
+            if let Some(ref sel_id) = *state.app.devtools.selected_widget.borrow() {
+                let styles = state.app.devtools.debug_element_styles.borrow();
                 if let Some(elem_info) = styles.get(sel_id) {
                     if let Some((offset, _len)) = elem_info.span {
                         let line_offsets = state.app.source_line_offsets.borrow();
                         let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
-                        *state.desktop.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
                     }
                 }
             }
@@ -6534,14 +6534,14 @@ fn compare_pngs(
         if let Some(id_str) = msg.event.strip_prefix(DEBUG_SELECT_VNODE_PREFIX) {
             if let Ok(raw) = id_str.parse::<u64>() {
                 let vnode_id = crate::ui::vnode::VNodeId::new(raw);
-                if *state.desktop.devtools.selected_vnode.borrow() == Some(vnode_id) {
+                if *state.app.devtools.selected_vnode.borrow() == Some(vnode_id) {
                     // Toggle off on re-click (matches the old id-string behavior).
-                    *state.desktop.devtools.selected_vnode.borrow_mut() = None;
+                    *state.app.devtools.selected_vnode.borrow_mut() = None;
                     // Plan 307 Task 17: keep selected_widget in sync so the
                     // wrap_debug overlay (keyed on the aura_N string) clears too.
-                    *state.desktop.devtools.selected_widget.borrow_mut() = None;
+                    *state.app.devtools.selected_widget.borrow_mut() = None;
                 } else {
-                    *state.desktop.devtools.selected_vnode.borrow_mut() = Some(vnode_id);
+                    *state.app.devtools.selected_vnode.borrow_mut() = Some(vnode_id);
                     // Plan 307 Task 17: mirror selected_widget from the live_cache
                     // reverse map (VNodeId -> aura_N) so the wrap_debug orange
                     // overlay and source-click paths stay consistent with the
@@ -6554,10 +6554,10 @@ fn compare_pngs(
                         .and_then(|c| c.vnode_to_iced(vnode_id))
                         .cloned();
                     if let Some(aura) = mirrored_widget {
-                        *state.desktop.devtools.selected_widget.borrow_mut() = Some(aura);
+                        *state.app.devtools.selected_widget.borrow_mut() = Some(aura);
                     }
-                    *state.desktop.devtools.devtools_open.borrow_mut() = true;
-                    *state.desktop.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                    *state.app.devtools.devtools_open.borrow_mut() = true;
+                    *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                     // Plan 309 Phase 4: load source so the Source sub-tab can
                     // render the listing on a tree-click (no element click yet).
                     ensure_source_loaded(state.as_ref_view());
@@ -6578,7 +6578,7 @@ fn compare_pngs(
                             })
                         });
                     if let Some(line) = scroll_line {
-                        *state.desktop.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
                     }
                 }
             }
@@ -6587,14 +6587,14 @@ fn compare_pngs(
         // Switch the inspector right-panel inner sub-tab (Plan 307 Task 15).
         if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SUBTAB_PREFIX) {
             if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
-                *state.desktop.devtools.inspector_subtab.borrow_mut() = sub;
+                *state.app.devtools.inspector_subtab.borrow_mut() = sub;
             }
             return iced::Task::none();
         }
         // Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV).
         if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SECTION_PREFIX) {
             {
-                let mut s = state.desktop.devtools.inspector_sections.borrow_mut();
+                let mut s = state.app.devtools.inspector_sections.borrow_mut();
                 match tail {
                     "box" => s.box_collapsed = !s.box_collapsed,
                     "computed" => s.computed_collapsed = !s.computed_collapsed,
@@ -6608,8 +6608,8 @@ fn compare_pngs(
             // Plan 309 续篇: 元素树与检视已合并为同屏分屏 (Inspect 模式)，
             // 不再有独立的元素/检视 tab；__tab_console 在控制台与分屏间切换。
             "__tab_console" => {
-                let cur = *state.desktop.devtools.devtools_tab.borrow();
-                *state.desktop.devtools.devtools_tab.borrow_mut() = if cur == DevToolsTab::Console {
+                let cur = *state.app.devtools.devtools_tab.borrow();
+                *state.app.devtools.devtools_tab.borrow_mut() = if cur == DevToolsTab::Console {
                     DevToolsTab::Inspect
                 } else {
                     DevToolsTab::Console
@@ -6617,28 +6617,28 @@ fn compare_pngs(
                 return iced::Task::none();
             }
             "__close_devtools" => {
-                *state.desktop.devtools.devtools_open.borrow_mut() = false;
+                *state.app.devtools.devtools_open.borrow_mut() = false;
                 // Plan 309 Phase 5: closing the panel also exits the picker so
                 // no always-on overlay renders behind a closed panel.
-                *state.desktop.devtools.inspect_mode.borrow_mut() = false;
+                *state.app.devtools.inspect_mode.borrow_mut() = false;
                 return iced::Task::none();
             }
             // Plan 309 Phase 5.1: Chrome-style inspect-element cursor toggle.
             // Turning it on also forces debug mode + opens the panel so the
             // picker is usable from a single click; turning off just clears it.
             "__toggle_inspect" => {
-                let new_mode = !*state.desktop.devtools.inspect_mode.borrow();
-                *state.desktop.devtools.inspect_mode.borrow_mut() = new_mode;
+                let new_mode = !*state.app.devtools.inspect_mode.borrow();
+                *state.app.devtools.inspect_mode.borrow_mut() = new_mode;
                 if new_mode {
-                    state.desktop.devtools.debug_mode = true;
-                    *state.desktop.devtools.devtools_open.borrow_mut() = true;
+                    state.app.devtools.debug_mode = true;
+                    *state.app.devtools.devtools_open.borrow_mut() = true;
                 }
                 return iced::Task::none();
             }
             // Plan 309 续篇: 内层 Tree|Inspector 分隔栏按下 → 进入拖拽。实际
             // 位移由窗口级 `__mouse_moved` 订阅用绝对坐标计算（同外层分隔栏）。
             "__inner_divider_press" => {
-                *state.desktop.devtools.dragging_inner_divider.borrow_mut() = true;
+                *state.app.devtools.dragging_inner_divider.borrow_mut() = true;
                 return iced::Task::none();
             }
             // Source line click in Inspector: reverse-lookup AuraNodeId → debug element ID
@@ -6652,7 +6652,7 @@ fn compare_pngs(
                             if let Some(debug_id) = cache.get(&aura_id).cloned() {
                                 drop(cache);
                                 drop(line_map);
-                                *state.desktop.devtools.selected_widget.borrow_mut() = Some(debug_id.clone());
+                                *state.app.devtools.selected_widget.borrow_mut() = Some(debug_id.clone());
                                 // Plan 309 Phase 4.2: derive selected_vnode from
                                 // the aura_N id so the right panel (keyed on
                                 // VNodeId) shows the clicked line's full data —
@@ -6662,16 +6662,16 @@ fn compare_pngs(
                                     .borrow()
                                     .as_ref()
                                     .and_then(|c| c.iced_to_vnode(&debug_id));
-                                *state.desktop.devtools.selected_vnode.borrow_mut() = derived_vnode;
-                                *state.desktop.devtools.devtools_open.borrow_mut() = true;
-                                *state.desktop.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                                *state.app.devtools.selected_vnode.borrow_mut() = derived_vnode;
+                                *state.app.devtools.devtools_open.borrow_mut() = true;
+                                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                                 // Scroll source to the selected element's span
-                                let styles = state.desktop.devtools.debug_element_styles.borrow();
+                                let styles = state.app.devtools.debug_element_styles.borrow();
                                 if let Some(elem_info) = styles.get(&debug_id) {
                                     if let Some((offset, _len)) = elem_info.span {
                                         let line_offsets = state.app.source_line_offsets.borrow();
                                         let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
-                                        *state.desktop.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
                                     }
                                 }
                             }
@@ -6697,9 +6697,9 @@ fn compare_pngs(
                         );
                         // Clamp panel width to not exceed 80% of window
                         let max_pw = w * 0.8;
-                        let pw = *state.desktop.devtools.devtools_panel_width.borrow();
+                        let pw = *state.app.devtools.devtools_panel_width.borrow();
                         if pw > max_pw {
-                            *state.desktop.devtools.devtools_panel_width.borrow_mut() = max_pw;
+                            *state.app.devtools.devtools_panel_width.borrow_mut() = max_pw;
                         }
                         // Plan 409 §10 续 11: resize 时重建 view,让响应式布局
                         // (如 category grid 列数)随窗口宽度更新。
@@ -6710,7 +6710,7 @@ fn compare_pngs(
             }
             // Divider drag: press
             "__divider_press" => {
-                *state.desktop.devtools.dragging_divider.borrow_mut() = true;
+                *state.app.devtools.dragging_divider.borrow_mut() = true;
                 return iced::Task::none();
             }
             // Mouse move: update panel width when dragging the OUTER divider, or
@@ -6723,31 +6723,31 @@ fn compare_pngs(
                         let y: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
                         (x, y)
                     };
-                    if *state.desktop.devtools.dragging_divider.borrow() {
+                    if *state.app.devtools.dragging_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
                         let new_width = (win_w - mx).max(200.0).min(win_w - 200.0);
-                        *state.desktop.devtools.devtools_panel_width.borrow_mut() = new_width;
+                        *state.app.devtools.devtools_panel_width.borrow_mut() = new_width;
                     }
                     // Plan 309 续篇: inner Tree|Inspector divider. The panel's
                     // left edge sits at win_w - panel_width; the divider's share
                     // of the panel is (mx - panel_left) / panel_width.
-                    if *state.desktop.devtools.dragging_inner_divider.borrow() {
+                    if *state.app.devtools.dragging_inner_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
-                        let panel_w = (*state.desktop.devtools.devtools_panel_width.borrow()).max(1.0);
+                        let panel_w = (*state.app.devtools.devtools_panel_width.borrow()).max(1.0);
                         let panel_left = win_w - panel_w;
                         let ratio = ((mx - panel_left) / panel_w).clamp(0.1, 0.9);
-                        *state.desktop.devtools.inspector_split_ratio.borrow_mut() = ratio;
+                        *state.app.devtools.inspector_split_ratio.borrow_mut() = ratio;
                     }
                 }
                 return iced::Task::none();
             }
             // Mouse release: stop dragging either divider
             "__mouse_released" => {
-                if *state.desktop.devtools.dragging_divider.borrow() {
-                    *state.desktop.devtools.dragging_divider.borrow_mut() = false;
+                if *state.app.devtools.dragging_divider.borrow() {
+                    *state.app.devtools.dragging_divider.borrow_mut() = false;
                 }
-                if *state.desktop.devtools.dragging_inner_divider.borrow() {
-                    *state.desktop.devtools.dragging_inner_divider.borrow_mut() = false;
+                if *state.app.devtools.dragging_inner_divider.borrow() {
+                    *state.app.devtools.dragging_inner_divider.borrow_mut() = false;
                 }
                 return iced::Task::none();
             }
@@ -6766,10 +6766,10 @@ fn compare_pngs(
             }
             // --- Edit mode messages (E4) ---
             e if e == DEBUG_EDIT_CANCEL => {
-                *state.desktop.devtools.editing_element.borrow_mut() = None;
-                *state.desktop.devtools.edit_textarea_key.borrow_mut() = None;
-                *state.desktop.devtools.edit_span.borrow_mut() = None;
-                *state.desktop.devtools.edit_error.borrow_mut() = None;
+                *state.app.devtools.editing_element.borrow_mut() = None;
+                *state.app.devtools.edit_textarea_key.borrow_mut() = None;
+                *state.app.devtools.edit_span.borrow_mut() = None;
+                *state.app.devtools.edit_error.borrow_mut() = None;
                 return iced::Task::none();
             }
             e if e == DEBUG_EDIT_APPLY => {
@@ -6781,12 +6781,12 @@ fn compare_pngs(
         // Enter edit mode: __edit_{id}
         if let Some(id) = msg.event.strip_prefix(DEBUG_EDIT_PREFIX) {
             let id = id.to_string();
-            let styles = state.desktop.devtools.debug_element_styles.borrow();
+            let styles = state.app.devtools.debug_element_styles.borrow();
             if let Some(info) = styles.get(&id) {
                 if let Some(span) = info.span {
-                    *state.desktop.devtools.editing_element.borrow_mut() = Some(id.clone());
-                    *state.desktop.devtools.edit_span.borrow_mut() = Some(span);
-                    *state.desktop.devtools.edit_error.borrow_mut() = None;
+                    *state.app.devtools.editing_element.borrow_mut() = Some(id.clone());
+                    *state.app.devtools.edit_span.borrow_mut() = Some(span);
+                    *state.app.devtools.edit_error.borrow_mut() = None;
                     // Initialize textarea with source code fragment
                     if let Some(ref code) = *state.app.source_code.borrow() {
                         let (offset, len) = span;
@@ -6794,7 +6794,7 @@ fn compare_pngs(
                             let fragment = &code[offset..offset + len];
                             let key = format!("__edit_{}", id);
                             get_textarea_content(&key, fragment);
-                            *state.desktop.devtools.edit_textarea_key.borrow_mut() = Some(key);
+                            *state.app.devtools.edit_textarea_key.borrow_mut() = Some(key);
                         }
                     }
                 }
@@ -6805,7 +6805,7 @@ fn compare_pngs(
         if let Some(payload) = msg.event.strip_prefix(DEBUG_HOVER_MOVE) {
             if let Some((counter_str, id)) = payload.split_once(':') {
                 if let Ok(counter) = counter_str.parse::<usize>() {
-                    state.desktop.devtools.pending_hovers.borrow_mut().push((counter, id.to_string()));
+                    state.app.devtools.pending_hovers.borrow_mut().push((counter, id.to_string()));
                 }
             }
             return iced::Task::none();
@@ -6830,7 +6830,7 @@ fn compare_pngs(
                         *state.app.source_code.borrow_mut() = Some(code.clone());
                         // Rebuild syntax highlight cache after hot-reload
                         if let Some(ref c) = *state.app.source_code.borrow() {
-                            *state.desktop.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
                         }
 
                         let session = CompilerSession::ui();
@@ -6842,7 +6842,7 @@ fn compare_pngs(
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
                                         *state.app.cached_converted_view.borrow_mut() = None;
-                                        *state.desktop.devtools.cached_debug_id_map.borrow_mut() = None;
+                                        *state.app.devtools.cached_debug_id_map.borrow_mut() = None;
                                         // Rebuild line → AuraNodeId index after hot-reload
                                         {
                                             let span_map = state.component.span_map().clone();
@@ -7073,8 +7073,8 @@ fn compare_pngs(
                 if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                     eprintln!("[FOCUS-DBG] edit detected, key={}", ta_key);
                 }
-                state.desktop.devtools.needs_prompt_refocus.set(true);
-                *state.desktop.devtools.last_textarea_key.borrow_mut() = Some(ta_key.clone());
+                state.app.devtools.needs_prompt_refocus.set(true);
+                *state.app.devtools.last_textarea_key.borrow_mut() = Some(ta_key.clone());
                 // Plan 057 续(行内编辑):编辑器自身消息 → echo:下一次该 key
                 // 的 content 重建保持光标偏移;顺带把光标字节偏移写入组件
                 // cursor_pos(仅当 .at 声明了该字段),供补全按真实光标计算。
@@ -7102,8 +7102,8 @@ fn compare_pngs(
                 if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                     eprintln!("[FOCUS-DBG] keydown handler {}, refocus editor {}", ta_key, editor_key);
                 }
-                state.desktop.devtools.needs_prompt_refocus.set(true);
-                *state.desktop.devtools.last_textarea_key.borrow_mut() = Some(editor_key.clone());
+                state.app.devtools.needs_prompt_refocus.set(true);
+                *state.app.devtools.last_textarea_key.borrow_mut() = Some(editor_key.clone());
                 // 外部变更(历史/补全/ghost 接受/模式切换):清 echo,
                 // 重建时光标回到 value 末尾。
                 TEXTAREA_ECHO_KEYS.lock().unwrap().remove(&editor_key);
@@ -7564,15 +7564,15 @@ fn compare_pngs(
             *state.app.view_dirty.borrow_mut() = true;
             state.app.input_values.remove(&event_name);
             // Plan 047:view 重建后恢复 input 焦点(否则 on_submit 第二次不触发)。
-            state.desktop.devtools.needs_prompt_refocus.set(true);
+            state.app.devtools.needs_prompt_refocus.set(true);
         }
 
         // Plan 049:检测 blocks 数量增加 → 自动滚到底部。
         let cur_block_count = state.component.read_state_as_vec("blocks")
             .map(|v| v.len()).unwrap_or(0);
-        if cur_block_count > state.desktop.devtools.last_block_count.get() {
-            state.desktop.devtools.last_block_count.set(cur_block_count);
-            state.desktop.devtools.needs_scroll_to_bottom.set(true);
+        if cur_block_count > state.app.devtools.last_block_count.get() {
+            state.app.devtools.last_block_count.set(cur_block_count);
+            state.app.devtools.needs_scroll_to_bottom.set(true);
         }
 
         // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
@@ -7820,14 +7820,14 @@ fn compare_pngs(
 
         // Deferred scroll: if selected_widget is set but pending_scroll not yet computed,
         // try to compute from element styles (which are populated during rendering).
-        if state.desktop.devtools.selected_widget.borrow().is_some() && state.desktop.devtools.pending_scroll_to_center.borrow().is_none() {
-            if let Some(ref sel_id) = *state.desktop.devtools.selected_widget.borrow() {
-                let styles = state.desktop.devtools.debug_element_styles.borrow();
+        if state.app.devtools.selected_widget.borrow().is_some() && state.app.devtools.pending_scroll_to_center.borrow().is_none() {
+            if let Some(ref sel_id) = *state.app.devtools.selected_widget.borrow() {
+                let styles = state.app.devtools.debug_element_styles.borrow();
                 if let Some(elem_info) = styles.get(sel_id) {
                     if let Some((offset, _len)) = elem_info.span {
                         let offsets = state.app.source_line_offsets.borrow();
                         let line = offsets.partition_point(|&p| p <= offset).saturating_sub(1);
-                        *state.desktop.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
                     }
                 }
             }
@@ -7843,13 +7843,13 @@ fn compare_pngs(
         }
 
         // Emit scroll_to Task if pending scroll is set
-        let scroll_task: Option<iced::Task<IcedMessage>> = state.desktop.devtools.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
+        let scroll_task: Option<iced::Task<IcedMessage>> = state.app.devtools.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
             let line_height = 14.0; // font_size(10) + spacing(4)
             let viewport_height = 500.0; // estimated panel content area height
             let target_y = (line_idx as f32 * line_height) - (viewport_height / 3.0);
             let y = target_y.max(0.0);
             iced::widget::operation::scroll_to(
-                state.desktop.devtools.inspector_scroll_id.clone(),
+                state.app.devtools.inspector_scroll_id.clone(),
                 iced::widget::scrollable::AbsoluteOffset { x: Some(0.0), y: Some(y) },
             )
         });
@@ -7864,13 +7864,13 @@ fn compare_pngs(
         let mut tail_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
 
         // Plan 047/057: 恢复输入焦点(最后被编辑的 textarea,按稳定 Id)。
-        if state.desktop.devtools.needs_prompt_refocus.get() {
-            state.desktop.devtools.needs_prompt_refocus.set(false);
-            let id = state.desktop.devtools.last_textarea_key
+        if state.app.devtools.needs_prompt_refocus.get() {
+            state.app.devtools.needs_prompt_refocus.set(false);
+            let id = state.app.devtools.last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
-                .unwrap_or_else(|| state.desktop.devtools.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] tail refocus, id={:?}", id);
             }
@@ -7886,7 +7886,7 @@ fn compare_pngs(
                 .keys()
                 .next()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
-                .unwrap_or_else(|| state.desktop.devtools.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] initial focus, id={:?}", id);
             }
@@ -7906,8 +7906,8 @@ fn compare_pngs(
         }
 
         // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
-        if *state.desktop.devtools.needs_bounds.borrow() && state.desktop.devtools.screenshot_request.borrow().is_none() {
-            *state.desktop.devtools.needs_bounds.borrow_mut() = false;
+        if *state.app.devtools.needs_bounds.borrow() && state.app.devtools.screenshot_request.borrow().is_none() {
+            *state.app.devtools.needs_bounds.borrow_mut() = false;
             use crate::ui::iced::LayoutCollector;
             tail_tasks.push(
                 iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
@@ -7921,10 +7921,10 @@ fn compare_pngs(
         }
 
         // Plan 049: blocks 增加后自动滚到底部(最新 block 可见)。
-        if state.desktop.devtools.needs_scroll_to_bottom.get() {
-            state.desktop.devtools.needs_scroll_to_bottom.set(false);
+        if state.app.devtools.needs_scroll_to_bottom.get() {
+            state.app.devtools.needs_scroll_to_bottom.set(false);
             tail_tasks.push(iced::widget::operation::snap_to_end(
-                state.desktop.devtools.blocklist_scroll_id.clone(),
+                state.app.devtools.blocklist_scroll_id.clone(),
             ));
         }
 
@@ -7977,6 +7977,22 @@ fn compare_pngs(
                     Err(payload) => {
                         eprintln!(
                             "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
+                        );
+                        iced::Task::<IcedMessage>::none().map(crate::ui::session::map_to_app)
+                    }
+                }
+            }
+            DM::Window(_win, m) => {
+                // C1 桥接：窗口上下文消息暂与 App 同路（退化桌面单 App 语义
+                // 等价）；C2 起 update_inner 收 app_id，按发生窗口归位窗口级
+                // 字段。panic 边界与 App 臂一致。
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    update_inner(state, m)
+                })) {
+                    Ok(task) => task.map(crate::ui::session::map_to_app),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] window update panicked (plan-459 C1 bridge): {payload:?}"
                         );
                         iced::Task::<IcedMessage>::none().map(crate::ui::session::map_to_app)
                     }
@@ -8179,7 +8195,7 @@ fn dynamic_view(
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
     // desktop.current_modifiers（唯一源，update 臂经消息载荷写回）。
     let alt_held = state.desktop.current_modifiers.borrow().alt();
-    let capture = state.desktop.devtools.debug_mode && *state.desktop.devtools.inspect_mode.borrow() && !alt_held;
+    let capture = state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
 
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
@@ -8256,10 +8272,10 @@ fn dynamic_view(
     // smaller counter, so it wins. When mouse leaves child, only parent fires on_move,
     // so parent becomes the new deepest candidate.
     {
-        let mut pending = state.desktop.devtools.pending_hovers.borrow_mut();
+        let mut pending = state.app.devtools.pending_hovers.borrow_mut();
         if !pending.is_empty() {
             if let Some(best) = pending.iter().min_by_key(|(c, _)| *c) {
-                *state.desktop.devtools.hovered_widget.borrow_mut() = Some(best.1.clone());
+                *state.app.devtools.hovered_widget.borrow_mut() = Some(best.1.clone());
             }
             pending.clear();
         }
@@ -8284,11 +8300,22 @@ fn dynamic_view(
         // Cache empty — fall through to rebuild (uses cached AbstractView if available)
     }
 
-    // Sync console buffer → console_output for DevTools Console tab
+    // Sync console buffer → console_output for DevTools Console tab.
+    // Plan 459：缓冲条目带 AppId 标签（0=进程级），按游标增量排空——各 App
+    // 只收自己的 print/console_log 行 + 进程级行（boot/shell），双窗日志
+    // 互不串扰；游标同时消除旧全量拷贝路径的重复累积。
     {
-        let buf = state.desktop.devtools.console_buffer.lock().unwrap();
-        if !buf.is_empty() {
-            state.desktop.devtools.console_output.borrow_mut().extend_from_slice(&buf);
+        let mut buf = state.app.devtools.console_buffer.lock().unwrap();
+        let start = state.app.devtools.console_drained.get().min(buf.len());
+        let fresh: Vec<String> = buf[start..]
+            .iter()
+            .filter(|(tag, _)| *tag == 0 || *tag == state.app_id.0)
+            .map(|(_, line)| line.clone())
+            .collect();
+        state.app.devtools.console_drained.set(buf.len());
+        drop(buf);
+        if !fresh.is_empty() {
+            state.app.devtools.console_output.borrow_mut().extend(fresh);
         }
     }
 
@@ -8299,7 +8326,7 @@ fn dynamic_view(
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
     let mcp_active = state.desktop.mcp_shared.is_some();
-    let capture_debug = state.desktop.devtools.debug_mode || mcp_active;
+    let capture_debug = state.app.devtools.debug_mode || mcp_active;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -8311,7 +8338,7 @@ fn dynamic_view(
     // changed frame, not every frame. Gated on `capture_debug` so ordinary
     // non-debug/non-MCP runs pay zero bounds-collection overhead.
     if capture_debug {
-        *state.desktop.devtools.needs_bounds.borrow_mut() = true;
+        *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
     let (converted, debug_id_map) = if dirty {
@@ -8333,13 +8360,13 @@ fn dynamic_view(
         }
         let converted = convert_view_messages(view);
         *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
-        *state.desktop.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+        *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
         (converted, debug_id_map)
     } else {
         // Cache miss on non-dirty frame: rebuild from cached AbstractView (cheaper than template rebuild)
         let cached = state.app.cached_converted_view.borrow();
         if let Some(ref converted) = *cached {
-            let debug_id_map = state.desktop.devtools.cached_debug_id_map.borrow().clone();
+            let debug_id_map = state.app.devtools.cached_debug_id_map.borrow().clone();
             // `live_probe` is intentionally NOT refreshed here: the probe is
             // template-derived and stable across cache hits, so the retained
             // probe from the last dirty rebuild remains valid.
@@ -8362,7 +8389,7 @@ fn dynamic_view(
             }
             let converted = convert_view_messages(view);
             *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
-            *state.desktop.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+            *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
             (converted, debug_id_map)
         }
     };
@@ -8400,8 +8427,8 @@ fn dynamic_view(
     let debug_ctx = if let Some(id_map) = debug_id_map {
         let span_map = state.component.span_map().clone();
         Some(DebugRenderCtx {
-            hovered_id: state.desktop.devtools.hovered_widget.borrow().clone(),
-            selected_id: state.desktop.devtools.selected_widget.borrow().clone(),
+            hovered_id: state.app.devtools.hovered_widget.borrow().clone(),
+            selected_id: state.app.devtools.selected_widget.borrow().clone(),
             wrapper_counter: std::cell::RefCell::new(0),
             span_map,
             debug_id_map: id_map,
@@ -8410,7 +8437,7 @@ fn dynamic_view(
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
-            debug_mode: state.desktop.devtools.debug_mode,
+            debug_mode: state.app.devtools.debug_mode,
             capture_data: capture_debug,
             inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
@@ -8448,9 +8475,9 @@ fn dynamic_view(
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
         let styles = ctx.element_styles.borrow();
-        *state.desktop.devtools.debug_element_styles.borrow_mut() = styles.clone();
+        *state.app.devtools.debug_element_styles.borrow_mut() = styles.clone();
         let tree = ctx.component_tree.borrow();
-        *state.desktop.devtools.component_tree.borrow_mut() = tree.clone();
+        *state.app.devtools.component_tree.borrow_mut() = tree.clone();
         // Cache aura_to_id mapping for source-click → component-highlight reverse lookup
         let aura_map = ctx.aura_to_id.borrow();
         *state.app.aura_to_id_cache.borrow_mut() = aura_map.clone();
@@ -8466,11 +8493,11 @@ fn dynamic_view(
         // (Task 14, keyed on VNodeId) tracks the same node the overlay highlights.
         // When hovered_widget is None the cursor left all widgets → clear it.
         // Done before moving `cache` into live_cache.
-        let hovered_aura = state.desktop.devtools.hovered_widget.borrow().clone();
+        let hovered_aura = state.app.devtools.hovered_widget.borrow().clone();
         let new_hovered_vnode = hovered_aura
             .as_deref()
             .and_then(|s| cache.iced_to_vnode(s));
-        *state.desktop.devtools.hovered_vnode.borrow_mut() = new_hovered_vnode;
+        *state.app.devtools.hovered_vnode.borrow_mut() = new_hovered_vnode;
 
         // Plan 309 Phase 2b: merge `raw_class` from `live_probe` into the cache
         // by path → VNodeId, so the Computed tab (which reads the cache) can
@@ -8510,11 +8537,11 @@ fn dynamic_view(
         }
     }
 
-    let result: iced::Element<'static, IcedMessage> = if state.desktop.devtools.debug_mode {
-        if *state.desktop.devtools.devtools_open.borrow() {
+    let result: iced::Element<'static, IcedMessage> = if state.app.devtools.debug_mode {
+        if *state.app.devtools.devtools_open.borrow() {
             // Row layout: [main content] [draggable divider] [DevTools panel]
             let panel = render_devtools_panel(state);
-            let is_dragging = *state.desktop.devtools.dragging_divider.borrow();
+            let is_dragging = *state.app.devtools.dragging_divider.borrow();
             let divider_bg = if is_dragging {
                 iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
             } else {
@@ -8557,7 +8584,7 @@ fn dynamic_view(
     // Pick up pending screenshot request from MCP thread (Plan 285).
     if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
-            *state.desktop.devtools.screenshot_request.borrow_mut() = Some(req);
+            *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
         }
     }
 
@@ -8573,10 +8600,10 @@ fn dynamic_view(
 /// 左树点任意 VNode 即设 `selected_vnode`，右侧检视随之更新；两者始终同屏，
 /// 不再有互斥 tab。控制台保留为独立整宽模式（点「控制台」按钮切换）。
 fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let current_tab = *state.desktop.devtools.devtools_tab.borrow();
+    let current_tab = *state.app.devtools.devtools_tab.borrow();
 
     // Header: [🔍 检视] [控制台] ... [×]
-    let inspect_active = *state.desktop.devtools.inspect_mode.borrow();
+    let inspect_active = *state.app.devtools.inspect_mode.borrow();
     let tab_inspect = container(
         mouse_area(text("🔍 检视").size(11))
             .on_press(IcedMessage {
@@ -8626,7 +8653,7 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         .align_y(iced::Alignment::Center);
 
     // Content: split view (Inspect) or full-width console.
-    let panel_width = *state.desktop.devtools.devtools_panel_width.borrow();
+    let panel_width = *state.app.devtools.devtools_panel_width.borrow();
     let content: iced::Element<'static, IcedMessage> = match current_tab {
         DevToolsTab::Inspect => {
             // Plan 309 续篇: 同屏分屏 [Tree | divider | Inspector]。分隔栏
@@ -8634,19 +8661,19 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
             // `__mouse_moved` 订阅按绝对坐标计算（与外层 DevTools 分隔栏同
             // 一套机制；pane_grid 的组件借用 State 与本渲染器返回的
             // `Element<'static>` 契约不兼容，故手写分屏）。
-            let ratio = (*state.desktop.devtools.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
-            let is_dragging = *state.desktop.devtools.dragging_inner_divider.borrow();
+            let ratio = (*state.app.devtools.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
+            let is_dragging = *state.app.devtools.dragging_inner_divider.borrow();
             let divider_bg = if is_dragging {
                 iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
             } else {
                 iced::Color::from_rgb(0.82, 0.82, 0.82) // gray normally
             };
             let tree_pane = scrollable(render_elements_tab(state))
-                .id(state.desktop.devtools.elements_scroll_id.clone())
+                .id(state.app.devtools.elements_scroll_id.clone())
                 .width(iced::Length::FillPortion((ratio * 1000.0) as u16))
                 .height(iced::Length::Fill);
             let inspector_pane = scrollable(render_inspector_tab(state))
-                .id(state.desktop.devtools.inspector_scroll_id.clone())
+                .id(state.app.devtools.inspector_scroll_id.clone())
                 .width(iced::Length::FillPortion(((1.0 - ratio) * 1000.0) as u16))
                 .height(iced::Length::Fill);
             let inner_divider = mouse_area(
@@ -8671,7 +8698,7 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
         }
         DevToolsTab::Console => container(
             scrollable(render_console_tab(state))
-                .id(state.desktop.devtools.inspector_scroll_id.clone())
+                .id(state.app.devtools.inspector_scroll_id.clone())
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
@@ -8740,8 +8767,8 @@ fn render_elements_tab(state: crate::ui::session::SessionViewRef) -> iced::Eleme
     if has_root {
         // Clone the tree out so we don't hold the RefCell borrow while building rows.
         let tree = vtree.clone().expect("checked root above");
-        let selected = state.desktop.devtools.selected_vnode.borrow().clone();
-        let hovered = state.desktop.devtools.hovered_vnode.borrow().clone();
+        let selected = state.app.devtools.selected_vnode.borrow().clone();
+        let hovered = state.app.devtools.hovered_vnode.borrow().clone();
         let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
         if let Some(root) = tree.root() {
             render_vtree_into(&tree, root, 0, &selected, &hovered, &mut rows);
@@ -8993,7 +9020,7 @@ fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Elem
     col = col.push(render_inspector_subtab_row(state));
 
     // --- Active sub-tab body ---
-    let subtab = *state.desktop.devtools.inspector_subtab.borrow();
+    let subtab = *state.app.devtools.inspector_subtab.borrow();
     let body = match subtab {
         InspectorSubTab::Inspect => render_inspector_inspect_tab(state),
         InspectorSubTab::AutoUI => render_inspector_autoui_tab(state),
@@ -9012,7 +9039,7 @@ fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Elem
 /// so no RefCell borrow is held across the closure-driven widget construction.
 fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let vtree = state.app.live_vtree.borrow().clone();
-    let selected = state.desktop.devtools.selected_vnode.borrow().clone();
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
 
     let (tree, sel_id) = match (vtree, selected) {
         (Some(tree), Some(id)) => (tree, id),
@@ -9108,7 +9135,7 @@ fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> ice
 /// collapsible sections — Box Model, Computed, Properties — each reusing the
 /// existing per-section render fn as its body.
 fn render_inspector_inspect_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let secs = *state.desktop.devtools.inspector_sections.borrow();
+    let secs = *state.app.devtools.inspector_sections.borrow();
     let mut col = column![].spacing(6);
 
     col = col.push(render_collapsible_section(
@@ -9169,7 +9196,7 @@ fn render_collapsible_section(
 /// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
 /// `__inspector_subtab_<Variant>`, parsed in `update()`.
 fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let active = *state.desktop.devtools.inspector_subtab.borrow();
+    let active = *state.app.devtools.inspector_subtab.borrow();
     let variants = [
         InspectorSubTab::Inspect,
         InspectorSubTab::AutoUI,
@@ -9199,7 +9226,7 @@ fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> ice
 /// Reads `live_cache` (bounds/box_model). Falls back to "(布局中…)" when the
 /// node isn't laid out yet or has no cache entry, per design §6.1.
 fn render_inspector_layout_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let selected = state.desktop.devtools.selected_vnode.borrow().clone();
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
     let Some(sel_id) = selected else {
         return placeholder_panel("无选中元素");
     };
@@ -9424,7 +9451,7 @@ fn ensure_source_loaded(state: crate::ui::session::SessionViewRef) {
         }
     }
     *state.app.source_line_offsets.borrow_mut() = offsets;
-    *state.desktop.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(&code));
+    *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(&code));
     // Build line → AuraNodeId index for source-click → component-highlight.
     let span_map = state.component.span_map().clone();
     *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, &code);
@@ -9438,7 +9465,7 @@ where
     F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
 {
     let vtree = state.app.live_vtree.borrow().clone();
-    let selected = state.desktop.devtools.selected_vnode.borrow().clone();
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
     match (vtree, selected) {
         (Some(tree), Some(id)) => match tree.get(id) {
             Some(node) => f(node),
@@ -9719,7 +9746,7 @@ fn render_source_viewer(
                     .color(iced::Color::from_rgb(0.4, 0.6, 0.8)),
             );
 
-            let cached = state.desktop.devtools.cached_highlighted.borrow();
+            let cached = state.app.devtools.cached_highlighted.borrow();
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
             let line_map = state.app.line_to_aura_ids.borrow();
@@ -9926,8 +9953,8 @@ fn select_vnode_message(id: crate::ui::vnode::VNodeId) -> IcedMessage {
 /// `#[allow(dead_code)]` until then.
 #[allow(dead_code)]
 fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let selected_id = state.desktop.devtools.selected_widget.borrow().clone();
-    let styles = state.desktop.devtools.debug_element_styles.borrow();
+    let selected_id = state.app.devtools.selected_widget.borrow().clone();
+    let styles = state.app.devtools.debug_element_styles.borrow();
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
 
     let mut col = column![].spacing(4);
@@ -10005,7 +10032,7 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
             );
 
             // Use cached syntax highlighting for all lines
-            let cached = state.desktop.devtools.cached_highlighted.borrow();
+            let cached = state.app.devtools.cached_highlighted.borrow();
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
 
@@ -10099,10 +10126,10 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
     }
 
     // --- Edit mode UI: inline text_editor ---
-    let editing = state.desktop.devtools.editing_element.borrow().clone();
+    let editing = state.app.devtools.editing_element.borrow().clone();
     if let Some(ref _edit_id) = editing {
-        let edit_err = state.desktop.devtools.edit_error.borrow().clone();
-        let textarea_key = state.desktop.devtools.edit_textarea_key.borrow().clone();
+        let edit_err = state.app.devtools.edit_error.borrow().clone();
+        let textarea_key = state.app.devtools.edit_textarea_key.borrow().clone();
 
         col = col.push(
             container(
@@ -10183,9 +10210,9 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
 
 /// Apply the current edit: read edited text from textarea, write back, trigger hot reload.
 fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
-    let edit_elem = state.desktop.devtools.editing_element.borrow().clone();
-    let edit_span = state.desktop.devtools.edit_span.borrow().clone();
-    let textarea_key = state.desktop.devtools.edit_textarea_key.borrow().clone();
+    let edit_elem = state.app.devtools.editing_element.borrow().clone();
+    let edit_span = state.app.devtools.edit_span.borrow().clone();
+    let textarea_key = state.app.devtools.edit_textarea_key.borrow().clone();
 
     if let (Some(_id), Some((offset, len)), Some(key)) = (edit_elem, edit_span, textarea_key) {
         // Read edited text from textarea content
@@ -10207,10 +10234,10 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
                         *state.app.source_code.borrow_mut() = Some(new_code);
                         // Invalidate caches since source file changed
                         *state.app.cached_converted_view.borrow_mut() = None;
-                        *state.desktop.devtools.cached_debug_id_map.borrow_mut() = None;
+                        *state.app.devtools.cached_debug_id_map.borrow_mut() = None;
                         // Rebuild syntax highlight cache after edit
                         if let Some(ref c) = *state.app.source_code.borrow() {
-                            *state.desktop.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
                         }
                         // Rebuild line → AuraNodeId index after edit
                         {
@@ -10220,17 +10247,17 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
                             }
                         }
                         // Clear edit state on success
-                        *state.desktop.devtools.editing_element.borrow_mut() = None;
-                        *state.desktop.devtools.edit_textarea_key.borrow_mut() = None;
-                        *state.desktop.devtools.edit_span.borrow_mut() = None;
-                        *state.desktop.devtools.edit_error.borrow_mut() = None;
+                        *state.app.devtools.editing_element.borrow_mut() = None;
+                        *state.app.devtools.edit_textarea_key.borrow_mut() = None;
+                        *state.app.devtools.edit_span.borrow_mut() = None;
+                        *state.app.devtools.edit_error.borrow_mut() = None;
                     }
                     Err(e) => {
-                        *state.desktop.devtools.edit_error.borrow_mut() = Some(e);
+                        *state.app.devtools.edit_error.borrow_mut() = Some(e);
                     }
                 }
             } else {
-                *state.desktop.devtools.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
+                *state.app.devtools.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
             }
         }
     }
@@ -10276,7 +10303,7 @@ fn build_line_to_aura_ids(
 
 /// Render the Console tab: show captured print() output.
 fn render_console_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
-    let output = state.desktop.devtools.console_output.borrow();
+    let output = state.app.devtools.console_output.borrow();
 
     if output.is_empty() {
         return column![
