@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-454
-status: drafting
+status: execution_done
 feature_name: 447 尾巴清偿——D40 续修复/f-string 全量还原 + 宿主 2.4 加固
 author: [zhaopuming]
 created_at: 2026-08-27T01:00:00+08:00
@@ -53,26 +53,41 @@ total_steps: 12
 
 ## 执行步骤
 
-### Phase A:宿主 2.4 加固(auto-lang 主仓直接小步)
-- [ ] A1 读定 IS_VARIANT 当前回退条件与合法消费面(Option 编码路径/
-  corpus/musk 常驻探针),确定收窄判定式。
-- [ ] A2 实现 IS_VARIANT 显式错误化 + 探针;全量回归。
-- [ ] A3 CONSTRUCT_INSTANCE 未知载荷 tag 回退改报错 + 探针;全量回归。
+### Phase A:宿主 2.4 加固(2026-08-27 完成,部分保留部分证伪)
+- [x] A1 读定消费面:IS_VARIANT 回退臂承载 Option 原始载荷编码
+  (CREATE_SOME 不包对象,int/str/bool/f64 载荷按 Some 命中是设计)。
+- [x] A2 IS_VARIANT 用户变体×标量错误化:**已实施→实证否决→回退**。
+  首版收窄(非 Option. 前缀+非对象非 null → RuntimeError)被
+  p03_enum_payload 探针击穿——单元变体(Val.VN 无载荷)以裸判别值
+  标量合法流入级联 payload 模式测试,"静默 false"是级联语义的一部分;
+  运行时无类型元数据,与编码漂移不可区分。按本计划 gating 条款判定:
+  **不存在安全收窄空间,维持宽松为终态**(结论与理由以注释固化于
+  engine.rs 该臂处)。
+- [x] A3 CONSTRUCT_INSTANCE 字符串载荷越界池索引:静默解成 i32 继续
+  跑的回退改为显式 RuntimeError(engine.rs)。全量回归:相对当前
+  master 基线(25 失败集,含其他会话新黄金漂移)**零新增**;唯一连带
+  疑似项 cb_file_read_lines 经隔离复跑证实为并行 flake。
 
-### Phase B:AA2R 发射侧收敛(worktree)
-- [ ] B1 扫描器扩展(ar_lu_after/ar_scan_mutations 的 FStrPart 文本计数)。
-- [ ] B2 ar_fstr_parse 的 ${expr} 子翻译(a.ty 快照恢复;print/value 两路)。
-- [ ] B3 g09 语料三形态 + 文本对齐闸门绿。
+### Phase B:AA2R 发射侧收敛(worktree)(2026-08-27 完成)
+- [x] B1 扫描器扩展:ar_scan_mutations 解析 FStrPart 文本内 $引用记入 lu 表。
+- [x] B2 ar_fstr_parse 的 ${expr} 子 tokenize+ar_expr 翻译(a.ty 快照恢复);
+  纯 $Ident 保持直通(format! 借用语义)。
+- [x] B3 语料 g08_fstr_interp(更名自草稿 g09)三形态文本对齐绿;附带补齐
+  ar_return 尾值 as-cast 防析括号镜像宿主;工具性新增 AA2R_DUMP 双向 dump。
 
-### Phase C:f-string 全量还原
-- [ ] C1 转换器入库(tools/ 或 scripts/)并按新能力校准规则。
-- [ ] C2 a2r.at 单文件批量 → aavm2 全量 + ②产物编译 + ⑤自举手工 rustc。
-- [ ] C3 其余六文件分批 → 每批 aavm2 闸门。
-- [ ] C4 终验:矩阵 ×5 + G2 双演示 + .expected.out 零变化。
+### Phase C:f-string 全量还原(2026-08-27 完成,保守安全面)
+- [x] C1 转换器入库 tools/fstr_conv.py。
+- [x] C2 a2r.at 67 处先行,aavm2 全闸门绿 + ⑤自举产物 rustc 零错硬验证。
+- [x] C3 parser39/typeinfo3/codegen15/lexer5/engine1 分批,每批闸门绿;
+  七文件合计 130 处。
+- [x] C4 终验:全量与基线零差;矩阵 36/36 ×5(②⑤转换后源重建);
+  G2 冒烟正确;.expected.out 零变化。
+  残余登记:多段方法链拼接需表达式级深度转换器、纯字面量拼接无迁移收益,
+  如实留册不硬凑(见 divergences D40 续闭合条)。
 
-### Phase D:收账
-- [ ] D1 divergences D40 续翻转闭合(引 g09)/2.4 注记/Snapshot 更新;
-  计划归档。
+### Phase D:收账(2026-08-27 完成)
+- [x] D1 divergences D40 续翻转闭合 / A 段结论固化(engine.rs 注释 +
+  本计划)/ 状态置 execution_done 待归档。
 
 ## 待澄清事项
 - IS_VARIANT 收窄判定若遇 Option 小整数载荷编码冲突,按"A 段 gating"

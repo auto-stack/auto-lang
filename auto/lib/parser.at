@@ -366,7 +366,7 @@ fn parse_type(mut p P) str {
     var ty = parse_type_base(p)
     while p_kind(p) == TokenKind.Question {
         p_next(p)
-        ty = "?" + ty
+        ty = f"?${ty}"
     }
     return ty
 }
@@ -399,7 +399,7 @@ fn parse_type_base(mut p P) str {
             if snap != "" {
                 b = snap
             } else {
-                b = "(type-decl (name " + name + "))"
+                b = f"(type-decl (name ${name}))"
             }
         }
         p_next(p)
@@ -416,7 +416,7 @@ fn parse_type_base(mut p P) str {
                 var at = parse_type(p)
                 skip_empty_lines(p)
                 if !first {
-                    args = args + ", "
+                    args = f"${args}, "
                 }
                 args = args + at
                 first = false
@@ -676,7 +676,7 @@ fn fstr_expr(mut p P) E {
                     p_err(p, "fstr: bad interpolation ")
                     return bad_e()
                 }
-                parts = parts + " " + sub.dump
+                parts = f"${parts} ${sub.dump}"
                 i = j
             } else {
                 // $Ident
@@ -696,7 +696,7 @@ fn fstr_expr(mut p P) E {
                     p_err(p, "fstr: empty interpolation ")
                     return bad_e()
                 }
-                parts = parts + " (name " + nm + ")"
+                parts = f"${parts} (name ${nm})"
                 i = j2
             }
         } else {
@@ -815,7 +815,7 @@ fn parse_args(mut p P) str {
             p_err(p, "v2 unsupported: named call arg ")
             return ""
         }
-        out = out + " " + a.dump
+        out = f"${out} ${a.dump}"
         // sep_args
         var k = p_kind(p)
         if k == TokenKind.Comma || k == TokenKind.Newline {
@@ -857,7 +857,7 @@ fn parse_array(mut p P) E {
     var i = 0
     while i < elems.len() {
         if i > 0 {
-            dump = dump + " "
+            dump = f"${dump} "
         }
         dump = dump + elems.get(i)
         i = i + 1
@@ -907,12 +907,12 @@ fn parse_object(mut p P) E {
     var i = 0
     while p.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
         if i > 0 {
-            dump = dump + " "
+            dump = f"${dump} "
         }
         var key = parse_key(p)
         p_expect(p, TokenKind.Colon)
         var val = expr_pratt(p, 0)
-        dump = dump + "(pair " + key + " " + val.dump + ")"
+        dump = f"${dump}(pair ${key} ${val.dump})"
         i = i + 1
         // sep_obj
         var k = p_kind(p)
@@ -1110,9 +1110,9 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                         if cur.kind == "name" {
                             word = cur.word
                         }
-                        var d = "(call " + cur.dump
+                        var d = f"(call ${cur.dump}"
                         if args != "(args)" {
-                            d = d + " " + args
+                            d = f"${d} ${args}"
                         }
                         cur = E("call", word, cur.dump, args, d + ")", "")
                     } else if op == Op.Colon {
@@ -1120,7 +1120,7 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                         p_next(p)
                         var key = ""
                         if cur.kind == "name" {
-                            key = "(name " + cur.word + ")"
+                            key = f"(name ${cur.word})"
                         } else if cur.kind == "int" || cur.kind == "uint" || cur.kind == "bool" {
                             key = cur.name
                         } else if cur.kind == "str" {
@@ -1158,9 +1158,9 @@ fn expr_with_left(mut p P, lhs E, min int) E {
                             cur = E("dot", rhs.name, "", "", "(dot " + cur.dump + "." + rhs.name + ")", "")
                         } else if rhs.kind == "call" {
                             // 方法调用重写:Call(name=Dot(obj,method))
-                            var d2 = "(call (dot " + cur.dump + "." + rhs.word + ")"
+                            var d2 = f"(call (dot ${cur.dump}.${rhs.word})"
                             if rhs.args != "(args)" {
-                                d2 = d2 + " " + rhs.args
+                                d2 = f"${d2} ${rhs.args}"
                             }
                             cur = E("call", rhs.word, "(dot " + cur.dump + "." + rhs.word + ")", rhs.args, d2 + ")", "")
                         } else {
@@ -1205,7 +1205,7 @@ fn parse_store(mut p P, kw TokenKind) str {
             p_next(p)
             while p_kind(p) == TokenKind.Comma {
                 p_next(p)
-                names = names + " " + p_text(p)
+                names = f"${names} ${p_text(p)}"
                 p_next(p)
             }
         }
@@ -1279,15 +1279,15 @@ fn parse_fn_params(mut p P) str {
             if is_type_name(p) {
                 ty = parse_type(p)
             }
-            var pdump = "(param (name " + pname + ") (type " + ty + ") (mode " + mode + ")"
+            var pdump = f"(param (name ${pname}) (type ${ty}) (mode ${mode})"
             if p_kind(p) == TokenKind.Asn {
                 p_next(p)
                 var def = expr_pratt(p, 0)
-                pdump = pdump + " (default " + def.dump + ")"
+                pdump = f"${pdump} (default ${def.dump})"
             }
-            pdump = pdump + ")"
+            pdump = f"${pdump})"
             if count > 0 {
-                out = out + " "
+                out = f"${out} "
             }
             out = out + pdump
             count = count + 1
@@ -1343,12 +1343,12 @@ fn parse_fn(mut p P) str {
     } else {
         body = parse_body(p)
     }
-    var out = "(fn (name " + name + ")"
+    var out = f"(fn (name ${name})"
     if params != "" {
-        out = out + " (params " + params + ")"
+        out = f"${out} (params ${params})"
     }
     if ret != "" {
-        out = out + " (ret " + ret + ")"
+        out = f"${out} (ret ${ret})"
     }
     pop_scope(p)
     return out + " " + body + ")"
@@ -1363,7 +1363,7 @@ fn if_contents(mut p P) str {
     var out = "(if "
     var cond = expr_pratt(p, 0)
     var body = parse_body(p)
-    out = out + "(branch " + cond.dump + " " + body + ")"
+    out = f"${out}(branch ${cond.dump} ${body})"
     while p_kind(p) == TokenKind.Else {
         p_next(p)
         if p_kind(p) == TokenKind.If {
@@ -1374,10 +1374,10 @@ fn if_contents(mut p P) str {
             }
             var c2 = expr_pratt(p, 0)
             var b2 = parse_body(p)
-            out = out + "(branch " + c2.dump + " " + b2 + ")"
+            out = f"${out}(branch ${c2.dump} ${b2})"
         } else {
             var eb = parse_body(p)
-            out = out + " (else " + eb + ")"
+            out = f"${out} (else ${eb})"
             break
         }
     }
@@ -1560,19 +1560,19 @@ fn parse_type_decl(mut p P) str {
             return ""
         }
         if members != "" {
-            members = members + " "
+            members = f"${members} "
         }
-        members = members + "(member (name " + fname + ") (type " + fty + "))"
+        members = f"${members}(member (name ${fname}) (type ${fty}))"
         // 成员间空行:Display 无 nl 载体,基线亦忽略——静默跳过
         expect_eos(p)
         skip_empty_lines(p)
     }
     p_expect(p, TokenKind.RBrace)
-    var out = "(type-decl (name " + name + ")"
+    var out = f"(type-decl (name ${name})"
     if members != "" {
-        out = out + " (members " + members + ")"
+        out = f"${out} (members ${members})"
     }
-    out = out + ")"
+    out = f"${out})"
     p_decl_register(p, name, out)
     return out
 }
@@ -1598,7 +1598,7 @@ fn parse_enum_decl(mut p P) str {
     }
     p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
-    var out = "(enum (name " + name + ") "
+    var out = f"(enum (name ${name}) "
     var next_val = 0
     var first = true
     var any_payload = false
@@ -1685,9 +1685,9 @@ fn parse_enum_decl(mut p P) str {
             next_val = val + 1
         }
         if !first {
-            out = out + " "
+            out = f"${out} "
         }
-        out = out + "(item (name " + vname + ") (value " + val.str() + "))"
+        out = f"${out}(item (name ${vname}) (value ${val.str()}))"
         first = false
         // 变体间空行同成员:静默跳过
         expect_eos(p)
@@ -1801,14 +1801,14 @@ fn is_pattern(mut p P) E {
             var i = 0
             while i < bind_list.len() {
                 if i > 0 {
-                    bj = bj + " "
-                    aj = aj + ","
+                    bj = f"${bj} "
+                    aj = f"${aj},"
                 }
                 bj = bj + bind_list.get(i)
                 aj = aj + bind_list.get(i)
                 i = i + 1
             }
-            var d = "(tag-cover (kind " + ek + ") (tag " + tg + ") (bindings " + bj + "))"
+            var d = f"(tag-cover (kind ${ek}) (tag ${tg}) (bindings ${bj}))"
             return E("tag-cover", tg, ek, aj, d, "")
         }
     }
@@ -1875,10 +1875,10 @@ fn parse_is_branch(mut p P) str {
     if scoped {
         pop_scope(p)
     }
-    var out = "(eq " + pat.dump + " "
+    var out = f"(eq ${pat.dump} "
     var j = 0
     while j < extra.len() {
-        out = out + "| " + extra.get(j) + " "
+        out = f"${out}| ${extra.get(j)} "
         j = j + 1
     }
     skip_empty_lines(p)
@@ -1896,7 +1896,7 @@ fn parse_is(mut p P) str {
     while p.err == "" && p_kind(p) != TokenKind.RBrace && p_kind(p) != TokenKind.EOF {
         var b = parse_is_branch(p)
         if !first {
-            branches = branches + " "
+            branches = f"${branches} "
         }
         branches = branches + b
         first = false

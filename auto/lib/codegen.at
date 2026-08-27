@@ -612,7 +612,7 @@ fn cg_fstr(mut c CG, mut p P) {
             if lit != "" {
                 var pi = cg_pool_add(c, lit)
                 emit(c, OpCode.LoadStr, "", pi)
-                tags = tags + "1"
+                tags = f"${tags}1"
                 n_parts = n_parts + 1
                 lit = ""
             }
@@ -684,20 +684,20 @@ fn cg_fstr(mut c CG, mut p P) {
     if lit != "" {
         var pi2 = cg_pool_add(c, lit)
         emit(c, OpCode.LoadStr, "", pi2)
-        tags = tags + "1"
+        tags = f"${tags}1"
         n_parts = n_parts + 1
     }
     // tags 文本对齐宿主 disasm:parts=N, tags=[0, 1]
-    var txt = "parts=" + n_parts.str() + ", tags=["
+    var txt = f"parts=${n_parts.str()}, tags=["
     var t3 = 0
     while t3 < n_parts {
         if t3 > 0 {
-            txt = txt + ", "
+            txt = f"${txt}, "
         }
         txt = txt + tags.slice(t3, t3 + 1)
         t3 = t3 + 1
     }
-    txt = txt + "]"
+    txt = f"${txt}]"
     emit(c, OpCode.BuildFstr, txt, n_parts)
     c.str_flag = 1
     c.arr_flag = 0
@@ -762,7 +762,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         var variant = ""
         if p_peek(p, 1) == TokenKind.Dot {
             var seg = p_peek_text(p, 2)
-            var dk = name + "." + seg
+            var dk = f"${name}.${seg}"
             if cg_const_lookup(c, dk) != -999999 || cg_ctor_lookup(c, dk) >= 0 {
                 is_enum_path = true
                 variant = seg
@@ -772,7 +772,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
             p_next(p)
             p_next(p)
             p_next(p)
-            var key = name + "." + variant
+            var key = f"${name}.${variant}"
             if p_kind(p) == TokenKind.LParen {
                 var fc = cg_ctor_lookup(c, key)
                 if fc < 0 {
@@ -956,7 +956,7 @@ fn cg_enum_decl(mut c CG, mut p P) {
         }
         var vname = p_text(p)
         p_next(p)
-        var key = name + "." + vname
+        var key = f"${name}.${vname}"
         var nfields = 0
         var has_payload = false
         if p_kind(p) == TokenKind.LParen {
@@ -1135,7 +1135,7 @@ fn cg_is(mut c CG, mut p P) {
             }
             if fc >= 0 && has_real_bind {
                 // ① 载荷 + 绑定
-                var key = pat.name + "." + pat.word
+                var key = f"${pat.name}.${pat.word}"
                 cg_emit_load(c, t)
                 emit(c, OpCode.IsVariant, "\"" + key + "\"", 0)
                 var jz2 = emit(c, OpCode.JmpZ, "", -1)
@@ -1161,7 +1161,7 @@ fn cg_is(mut c CG, mut p P) {
                 var shared_jz = -1
                 if fc >= 0 {
                     // ② 载荷无实绑定:is.variant 后走共享尾
-                    var key2 = pat.name + "." + pat.word
+                    var key2 = f"${pat.name}.${pat.word}"
                     cg_emit_load(c, t)
                     emit(c, OpCode.IsVariant, "\"" + key2 + "\"", 0)
                 } else if extras.len() == 0 {
@@ -1277,7 +1277,7 @@ fn cg_stmt(mut c CG, mut p P) {
             cg_expr(c, p, 0)
         }
         var na = c.n_args
-        var rs2 = "n_args=" + na.str()
+        var rs2 = f"n_args=${na.str()}"
         emit(c, OpCode.Ret, rs2, na)
         return
     }
@@ -1582,7 +1582,7 @@ fn cg_fn(mut c CG, mut p P) {
     p_expect(p, TokenKind.RBrace)
     cg_pop_scope(c)
     // epilogue RET
-    var rs = "n_args=" + n_args.str()
+    var rs = f"n_args=${n_args.str()}"
     emit(c, OpCode.Ret, rs, n_args)
     // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
     var n_locals = 0
@@ -1638,17 +1638,17 @@ fn cg_serialize(mut c CG) str {
         if ins.op != OpCode.Blank {
             var ops = ins.s
             if ins.op == OpCode.Jmp || ins.op == OpCode.JmpZ || ins.op == OpCode.JmpNz {
-                ops = "-> 0x" + hex4(offs.get(ins.n))
+                ops = f"-> 0x${hex4(offs.get(ins.n))}"
             } else if ins.op == OpCode.Call {
                 var fe = c.fns.get(ins.n)
-                ops = "0x" + hex4(offs.get(fe.ins))
+                ops = f"0x${hex4(offs.get(fe.ins))}"
             } else if ins.op == OpCode.LoadStr {
                 ops = "\"" + c.pool.get(ins.n) + "\""
             }
             if out != "" {
                 out = out + "\n"
             }
-            out = out + hex4(offs.get(j)) + "  " + op_name(ins.op) + " " + ops
+            out = f"${out}${hex4(offs.get(j))}  ${op_name(ins.op)} ${ops}"
         }
         j = j + 1
     }

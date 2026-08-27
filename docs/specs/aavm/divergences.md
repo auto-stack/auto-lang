@@ -341,14 +341,14 @@
   的逐文件 `// Auto-generated` 分隔注释未复刻;struct 派生三分派
   (float/List→3 派生)与 else-后空行规则等格式细节已对齐;`${expr}`
   内容原样直通(方法调用/复杂表达式形态的 f-string 插值不支持)。
-- **D40 续(447-③ 11.2b 实证,FStrPart 直通三缺口)**:f-string 插值
-  经 FStrPart 整段文本直通 AA2R 发射时——①方法调用形态(.str()/
-  .get(j))绕过 ar_method_call 改写,原样泄漏(Rust 侧 E0599);
-  ②参数借用适配缺失(p_text(p) 直通 vs 调用位 &mut *p,E0308);
-  ③插值变量 token 从流中消失 → ar_lu_after 判定"后续无使用" →
-  先行赋值语句的 clone 注入失效(E0382 move)。批量 f-string 风格
-  还原须先在发射侧补齐 Display 收敛(method 改写/借用适配/last-use
-  补扫 FStrPart 文本)方可推进;lib 批量改写已撤回(计划 11.2b 记录)。
+- **D40 续✅ 已闭合(plan-454 B 段,2026-08-27)**:三缺口修复落位——
+  ①②插值段经子 tokenize+ar_expr 正常管道(方法改写/借用适配与普通
+  语句同口径);③扫描器(ar_scan_mutations)解析 FStrPart 文本内 $引用
+  计入 last-use。能力以 corpus_a2r/g08_fstr_interp 三形态文本对齐钉死。
+  后续:f-string 全量还原已按保守安全面完成七文件 130 处(plan-454 C);
+  剩余多段方法链/纯字面量拼接留深度转换器,不做无收益迁移。附带新登记
+  (宿主启发式差异,另项对齐):store→非view调用arg 的 let-mut 升级、
+  单语句 match 臂内联、len-as-cast 括号残余面。
 - **主 a2r 缺陷(已修,242 #18)**:a2r.at 曾在主 a2r 下转译 45 错——链式类型
   推断缺口(Index 元素/clone 透传/Dot 泛化)致 `.get(i).field` 发射 Option 形
   (E0609)、赋值位字段读/ident 重绑定缺 auto-clone(E0507/E0382)、str 型入

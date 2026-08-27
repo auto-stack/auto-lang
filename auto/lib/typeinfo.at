@@ -398,7 +398,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         // 元组判定简化:组内逗号即元组(连接型),否则 group 透传
         lhs = t_infer_expr(p, 0, fns)
         var parts List<str> = List.new()
-        var lh2 = lhs + ""
+        var lh2 = f"${lhs}"
         parts.push(lh2)
         while p_kind(p) == TokenKind.Comma {
             p_next(p)
@@ -440,7 +440,7 @@ fn t_infer_expr(mut p P, min int, mut fns List<TFnSig>) str {
         }
         p_expect(p, TokenKind.RSquare)
         if n > 0 {
-            lhs = "(array-type (elem " + first + ") (len " + n.str() + "))"
+            lhs = f"(array-type (elem ${first}) (len ${n.str()}))"
         }
         }
         else -> {
@@ -511,7 +511,7 @@ fn t_join_types(parts List<str>) str {
     var i = 0
     while i < parts.len() {
         if i > 0 {
-            out = out + ", "
+            out = f"${out}, "
         }
         out = out + parts.get(i)
         i = i + 1
