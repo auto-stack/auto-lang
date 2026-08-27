@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-457
-status: drafting
+status: execution_done
 feature_name: 内置 shadcn-vue 组件模板——冷启动免 pnpm dlx
 author: [zhaopuming]
 created_at: 2026-08-27
@@ -66,14 +66,14 @@ total_steps: 8
 
 ## 任务清单
 
-- [ ] T1 快照抓取脚本 + 现行 registry 实拍（components.json style 对齐）
-- [ ] T2 assets/shadcn-ui 落库 + deps 速查 + SNAPSHOT.md + Sonner 补丁烘焙
-- [ ] T3 盘点缺口依赖集 → VueDependencyUsage 扩展位 + OPTIONAL_DEPS 增补
-- [ ] T4 build.rs + 生成的 bundle 表 + vue_shadcn.rs（lookup/materialize）
-- [ ] T5 run_vue_project 步骤重排 + install_shadcn_components 兜底化
-- [ ] T6 cmd_vue.rs 导出路径接同一 API
-- [ ] T7 单测三件套 + 既有套件回归
-- [ ] T8 冷启动功能验证（login + 长链示例）+ 独立复审
+- [x] T1 快照抓取脚本 + 现行 registry 实拍（components.json style 对齐）
+- [x] T2 assets/shadcn-ui 落库 + deps 速查 + SNAPSHOT.md + Sonner 补丁烘焙
+- [x] T3 盘点缺口依赖集 → VueDependencyUsage 扩展位 + OPTIONAL_DEPS 增补
+- [x] T4 build.rs + 生成的 bundle 表 + vue_shadcn.rs（lookup/materialize）
+- [x] T5 run_vue_project 步骤重排 + install_shadcn_components 兜底化
+- [x] T6 cmd_vue.rs 导出路径接同一 API
+- [x] T7 单测三件套 + 既有套件回归
+- [x] T8 冷启动功能验证（login + 长链示例）+ 独立复审
 
 ## 待澄清
 
@@ -83,4 +83,31 @@ total_steps: 8
 
 ## 执行记录
 
-（执行期填写：批注式日志 + 最终验证结果）
+**快照（T1/T2）**: 61 名逐一 `pnpm dlx shadcn-vue@latest add` 实拍成功 57；
+`toggle`、`chart` 目录经 registryDependencies 闭包随取（运行时互引校验自洽）。
+default registry 缺货白名单 = {auto-complete, input-otp, native-select}
+（闸门单测常驻）。Sonner 图标改名已烘焙进快照。出处与重放：
+assets/shadcn-ui/SNAPSHOT.md + tools/shadcn-snapshot/snapshot.sh。
+
+**依赖接线（T3）**: 外部依赖盘点后唯一缺口 = charts 家族 @unovis/vue +
+@unovis/ts（^1.6.7）→ OPTIONAL_DEPS + VueDependencyUsage::chart（引号
+收尾 marker 判别，五条 chart 路径任一命中即声明）。login/charts 冒烟语料
+均不含 chart 标记 ⇒ 该组保持静默不产生死依赖；声明逻辑由
+package_json_component_groups_conditional 单测锁定。
+
+**集成（T4-T6）**: vue_shadcn.rs 沿用仓库 rust-embed 先例（无 build.rs，
+资产编译期嵌入）；run_vue_project / build_vue_project 双路径把物化挪到
+npm install 之前，install_shadcn_components 改为 remaining 过滤后的注册表
+兜底；crates/auto/cmd_vue.rs 导出路径接同一 API 并同样过滤。
+
+**验证（T7/T8）**: cargo test -p auto-man --lib 238 绿（含新增 5 项）；
+-p auto-lang --lib 3216 绿；docs_gen 4 绿；构建警告均为存量，触碰文件零新
+增。功能冷启动（rm -rf gen 后 target/debug/auto run）:
+- 005-login ≈9s HTTP 200，日志 Step3 "Bundled ui components: 2 copied"、
+  兜底段直接 already installed (skipping)，全程无 shadcn-vue@latest 调用;
+- 024-charts 物化 4 文件、vite ready、同样零 dlx。
+
+**排障注记（非本计划缺陷）**: Windows 待删句柄延迟释放曾令上轮 gen 树在
+锁释放时被排队删除一并回卷；孤儿 node/esbuild 以 CommandLine 路径过滤点
+名清除后复验通过。提示：脚本化轮询 vite 就绪时不应假定固定 :3000（占用
+时 vite 自动跳端口）。

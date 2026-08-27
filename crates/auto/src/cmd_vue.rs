@@ -22,6 +22,7 @@ use colored::Colorize;
 use auto_lang::aura::AuraRoute;
 use auto_lang::ui_gen::VueGenerator;
 use auto_lang::route::{RouteDiscovery, RouteMerger, RouteDef, RouteSource};
+use auto_man::vue_shadcn;
 
 /// Recursively copy a directory and all its contents
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -627,9 +628,30 @@ fn run_install_steps(
         return Ok(());
     }
 
-    // Detect which steps need to be run
-    // Always run npm install to pick up new dependencies (it's fast if already installed)
-    let shadcn_needed = !components.is_empty() && !are_shadcn_components_installed(output_path, components);
+    // PLAN-457: copy bundled ui component sources offline BEFORE install so
+    // dependencies resolve once, complete; only names still missing from
+    // disk afterwards take the registry path.
+    if !components.is_empty() {
+        match vue_shadcn::materialize(output_path, components) {
+            Ok(report) => {
+                if report.written > 0 || report.skipped_existing > 0 {
+                    println!("{} {}", "▶".bright_cyan(), format!(
+                        "Materializing UI components from bundle ({} copied, {} already present)...",
+                        report.written, report.skipped_existing
+                    ).bright_white());
+                }
+            }
+            Err(e) => {
+                println!("{} {}", "⚠".bright_yellow(), format!("Bundled ui component copy failed: {e}").bright_yellow());
+            }
+        }
+    }
+    let remaining: Vec<String> = components
+        .iter()
+        .filter(|c| !are_shadcn_components_installed(output_path, std::slice::from_ref(c)))
+        .cloned()
+        .collect();
+    let shadcn_needed = !remaining.is_empty();
 
     // Calculate step numbers dynamically
     let total_steps = 4; // Always 4 steps, but some may be skipped
@@ -656,28 +678,28 @@ fn run_install_steps(
         }
     }
 
-    // Step 2: shadcn-vue add (or skip if already installed or not needed)
+    // Step 2: shadcn-vue add (registry fallback for non-bundled components)
     current_step += 1;
     if !components.is_empty() {
         if shadcn_needed {
             println!();
-            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Adding shadcn-vue components ({})...", current_step, total_steps, components.join(", ")).bright_white());
+            println!("{} {}", "▶".bright_cyan(), format!("Step {}/{}: Adding shadcn-vue components ({})...", current_step, total_steps, remaining.join(", ")).bright_white());
 
             let mut args = if yes {
-                println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                println!("{}", format!("  Running: npx --yes shadcn-vue@latest add {} --yes", remaining.join(" ")).bright_black());
                 vec!["--yes", "shadcn-vue@latest", "add"]
             } else {
-                println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", components.join(" ")).bright_black());
+                println!("{}", format!("  Running: npx shadcn-vue@latest add {} --yes", remaining.join(" ")).bright_black());
                 vec!["shadcn-vue@latest", "add"]
             };
-            args.extend(components.iter().map(|s| s.as_str()));
+            args.extend(remaining.iter().map(|s| s.as_str()));
             args.push("--yes");
 
             match run_command_live(pkg_exec_cmd(), &args, output_path) {
                 Ok(_) => println!("{}", "  ✓ shadcn-vue components added".bright_green()),
                 Err(e) => {
                     println!("{} {}", "  ✗ Failed:".bright_red(), e);
-                    println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", components.join(" "));
+                    println!("  You may need to run 'npx shadcn-vue@latest add {} --yes' manually.", remaining.join(" "));
                 }
             }
         } else {
