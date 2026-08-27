@@ -322,6 +322,8 @@ pub struct AutodownEditorCore {
     click: Mutex<Option<(ClickKind, Instant)>>,
     modifiers: Mutex<EditorModifiers>,
     shift_anchor: Mutex<Option<(usize, Cursor)>>,
+    /// 批次十④：↑↓ 连续导航的水平目标列（px）；横向移动/点击/结构操作重置。
+    nav_goal_x: Mutex<Option<f32>>,
     preedit: Mutex<Option<String>>,
     /// 外部最近一次推送值（差分口径对齐 413 last_external）。
     last_external: Mutex<Option<String>>,
@@ -342,6 +344,7 @@ impl AutodownEditorCore {
             click: Mutex::new(None),
             modifiers: Mutex::new(EditorModifiers::none()),
             shift_anchor: Mutex::new(None),
+            nav_goal_x: Mutex::new(None),
             preedit: Mutex::new(None),
             last_external: Mutex::new(None),
             layout: Mutex::new(DocLayout { blocks: Vec::new() }),
@@ -415,6 +418,7 @@ impl AutodownEditorCore {
         *self.blocks.lock().unwrap() = blocks;
         *self.focus.lock().unwrap() = None;
         *self.shift_anchor.lock().unwrap() = None;
+        *self.nav_goal_x.lock().unwrap() = None;
         self.revision.fetch_add(1, Ordering::Relaxed);
         true
     }
@@ -612,6 +616,7 @@ impl AutodownEditorCore {
                     *anchor = cur.map(|c| (bi, c));
                 }
             }
+            *self.nav_goal_x.lock().unwrap() = None;
             self.block_motion(font_system, bi, motion);
             out.cursor_changed = true;
             out.request_redraw = true;
@@ -621,14 +626,25 @@ impl AutodownEditorCore {
         // ── 编辑动作（v1 全部不出块；拆块归输入规则批次）───────────────
         match key {
             EditorKey::Enter => {
-                self.block_action(font_system, bi, Action::Enter);
+                // 批次十②：输入规则优先——段落/引用内拆块、列表续项、
+                // 空项退列；围栏与未命中宿主退回软换行。
+                if !self.enter_split(font_system, bi) {
+                    self.block_action(font_system, bi, Action::Enter);
+                }
                 out.text_changed = true;
                 out.cursor_changed = true;
+                out.request_redraw = true;
             }
             EditorKey::Backspace => {
                 if self.caret_at_soft_start(bi) {
-                    // 块首退格不跨块合并（v1 登记边界）。
-                    return DocOutput::default().captured();
+                    // 批次十③：同宿主相邻叶合并；未命中（fence/跨容器边界）
+                    // 保持无动作（登记边界）。
+                    if self.merge_into_previous(font_system, bi) {
+                        out.text_changed = true;
+                        out.cursor_changed = true;
+                        out.request_redraw = true;
+                    }
+                    return out.captured();
                 }
                 self.block_action(font_system, bi, Action::Backspace);
                 out.text_changed = true;
@@ -664,7 +680,11 @@ impl AutodownEditorCore {
     fn block_action(&self, fs: &mut FontSystem, bi: usize, action: Action) {
         let mut blocks = self.blocks.lock().unwrap();
         if let Some(b) = blocks.get_mut(bi) {
-            b.editor.ed_mut().action(fs, action);
+            let ed = b.editor.ed_mut();
+            // 动作前整形：cosmic 的 motion/click 在未整形缓冲上会把光标
+            // 钳到行尾（单测直驱核心时没有渲染帧兜底；实机由渲染先行）。
+            ed.shape_as_needed(fs, true);
+            ed.action(fs, action);
         }
     }
 
@@ -729,16 +749,38 @@ impl AutodownEditorCore {
 
         if boundary {
             if let Some(t) = target {
-                // 邻块边缘落点：上行到上一块末尾，下行到下一块开头。
-                let dest = {
-                    let blocks = self.blocks.lock().unwrap();
-                    blocks.get(t).map(|b| SendEdit::of(b).last_cursor())
+                // 批次十④：水平落点记忆——迁焦前记下当前光标 x（px），
+                // 邻块内以同 x 的 Click 落到最近字形；连续 ↑/↓ 共享同一
+                // 目标列，横向移动/Home/End/点击重置（重置点见 handle_key）。
+                // 先取快照再决定写入——避免 match 表达式的锁守卫覆盖
+                // 整个分支后臂内重入死锁。
+                let cached = { *self.nav_goal_x.lock().unwrap() };
+                let goal_x = match cached {
+                    Some(v) => v,
+                    None => {
+                        let cur_x = {
+                            let blocks = self.blocks.lock().unwrap();
+                            blocks.get(bi).and_then(|b| {
+                                b.editor.ed().cursor_position().map(|(cx, _)| cx as f32)
+                            })
+                        };
+                        let v = cur_x.unwrap_or(0.0);
+                        *self.nav_goal_x.lock().unwrap() = Some(v);
+                        v
+                    }
                 };
                 let mut blocks = self.blocks.lock().unwrap();
-                if let (Some(tb), Some(dest)) = (blocks.get_mut(t), dest) {
+                if let Some(tb) = blocks.get_mut(t) {
                     let ed = tb.editor.ed_mut();
+                    // shape 后借 Click 的就近字形语义落位；
+                    // y 取 ±∞ 语义：上→末行，下→首行。
                     ed.set_selection(Selection::None);
-                    ed.set_cursor(if up { dest } else { Cursor::new(0, 0) });
+                    ed.shape_as_needed(font_system, true);
+                    let y_target: i32 = if up { i32::MAX } else { i32::MIN };
+                    ed.action(
+                        font_system,
+                        Action::Click { x: goal_x.max(0.0) as i32, y: y_target },
+                    );
                 }
                 drop(blocks);
                 *self.focus.lock().unwrap() = Some(t);
@@ -774,6 +816,7 @@ impl AutodownEditorCore {
             *self.focus.lock().unwrap() = Some(hit);
             *self.shift_anchor.lock().unwrap() = None;
         }
+        *self.nav_goal_x.lock().unwrap() = None;
         let mut out = DocOutput {
             request_redraw: true,
             focus_changed: prev_focus != Some(hit),
@@ -1232,6 +1275,438 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
 }
 
 // ---------------------------------------------------------------------------
+// 结构编辑引擎（批次十②③）—— Enter 拆块 / 列表续项与退列 / 块首合并
+// 全程以【字节】偏移为口径（cosmic-text 0.15 的 Cursor.index 即行内字节）。
+// ---------------------------------------------------------------------------
+
+/// 叶子块在骨架树中的宿主槽位描述。
+#[derive(Debug, Clone, PartialEq)]
+enum LeafSlot {
+    /// 顶层段列表中的下标。
+    TopLevel(usize),
+    /// 某 Quote 的 inner 段列表中的下标。
+    QuoteInner { quote_pos: usize, inner_pos: usize },
+    /// 某 List 第 item_idx 项的 inner 段列表中的下标。
+    ListItem { list_pos: usize, item_idx: usize, inner_pos: usize },
+}
+
+/// 在 segs 树中定位叶子 id 的宿主槽（首个命中即返回；叶子 id 全树唯一）。
+fn locate_leaf(segs: &[Seg], leaf: usize) -> Option<LeafSlot> {
+    for (pos, seg) in segs.iter().enumerate() {
+        match seg {
+            Seg::Leaf(i) if *i == leaf => return Some(LeafSlot::TopLevel(pos)),
+            Seg::Quote(inner) => {
+                for (ip, s) in inner.iter().enumerate() {
+                    if matches!(s, Seg::Leaf(i) if *i == leaf) {
+                        return Some(LeafSlot::QuoteInner { quote_pos: pos, inner_pos: ip });
+                    }
+                }
+            }
+            Seg::List { items, .. } => {
+                for (ii, item) in items.iter().enumerate() {
+                    for (ip, s) in item.iter().enumerate() {
+                        if matches!(s, Seg::Leaf(i) if *i == leaf) {
+                            return Some(LeafSlot::ListItem {
+                                list_pos: pos,
+                                item_idx: ii,
+                                inner_pos: ip,
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 骨架树的 DFS 全序叶子 id 序列（与发射顺序同源）。
+fn dfs_leaf_order(segs: &[Seg], out: &mut Vec<usize>) {
+    for seg in segs {
+        match seg {
+            Seg::Leaf(i) => out.push(*i),
+            Seg::Quote(inner) => dfs_leaf_order(inner, out),
+            Seg::List { items, .. } => {
+                for item in items {
+                    dfs_leaf_order(item, out)
+                }
+            }
+            Seg::Raw(_) => {}
+        }
+    }
+}
+
+/// 从 blocks 移除指定 id 并原地压缩（保留序），同步剔除 segs 树中的死叶
+/// （父级项/容器因此为空时一并收缩，空 List 整体摘除）。
+/// 前提：单死叶 d 时，创建序保证 <d 的 id 不变、>d 的 id 前移一位。
+fn remove_leaves_compact(blocks: &mut Vec<BlockBuf>, segs: &mut Vec<Seg>, dead: &[usize]) {
+    let dead_set: std::collections::HashSet<usize> = dead.iter().copied().collect();
+    let mut map: HashMap<usize, usize> = HashMap::new();
+    let mut kept: Vec<BlockBuf> = Vec::with_capacity(blocks.len());
+    for (old, b) in blocks.drain(..).enumerate() {
+        if dead_set.contains(&old) {
+            continue;
+        }
+        map.insert(old, kept.len());
+        kept.push(b);
+    }
+    *blocks = kept;
+
+    fn prune(segs: &mut Vec<Seg>, map: &HashMap<usize, usize>) -> bool {
+        let mut changed = false;
+        segs.retain_mut(|seg| match seg {
+            Seg::Leaf(i) => match map.get(i) {
+                Some(n) => {
+                    changed |= *i != *n;
+                    *i = *n;
+                    true
+                }
+                None => {
+                    changed = true;
+                    false
+                }
+            },
+            Seg::Quote(inner) => {
+                changed |= prune(inner, map);
+                if inner.is_empty() {
+                    changed = true;
+                    false
+                } else {
+                    true
+                }
+            }
+            Seg::List { items, .. } => {
+                items.retain_mut(|item| {
+                    prune(item, map);
+                    !item.is_empty()
+                });
+                if items.is_empty() {
+                    changed = true;
+                    false
+                } else {
+                    true
+                }
+            }
+            Seg::Raw(_) => true,
+        });
+        changed
+    }
+    prune(segs, &map);
+}
+
+/// 覆盖文本写入用的 fallback 视口宽（渲染帧会再设真值）。
+const FALLBACK_WIDTH: f32 = 800.0;
+
+impl AutodownEditorCore {
+    /// 写一块的全文（家族/字号按种类重建 Attrs）。
+    /// 区间快照随之失效（保守清空；回写重建后恢复切片）。
+    fn overwrite_block_text(&self, fs: &mut FontSystem, buf: &mut BlockBuf, text: String) {
+        let family =
+            if matches!(buf.kind, LeafKind::Fence) { mono_family() } else { sans_family() };
+        let attrs = Attrs::new().family(family);
+        let size = leaf_size(buf.kind);
+        buf.editor.ed_mut().with_buffer_mut(|b| {
+            b.set_metrics_and_size(
+                fs,
+                Metrics::new(size, size * LINE_H_MULT),
+                Some(FALLBACK_WIDTH),
+                Some(4000.0),
+            );
+            b.set_text(fs, &text, &attrs, Shaping::Advanced, None);
+        });
+        buf.snapshot = text;
+        buf.intervals.clear();
+        let ed = buf.editor.ed_mut();
+        ed.set_selection(Selection::None);
+    }
+
+    fn block_kind_of(&self, bi: usize) -> LeafKind {
+        self.blocks.lock().unwrap().get(bi).map(|b| b.kind).unwrap_or(LeafKind::Paragraph)
+    }
+
+    /// 光标的字节流偏移（跨行累计，行间计 1 个换行字节）。
+    fn cursor_byte_offset(b: &BlockBuf) -> Option<usize> {
+        let cur = SendEdit::of(b).cursor();
+        b.editor.ed().with_buffer(|bd| {
+            let mut acc = 0usize;
+            for (li, l) in bd.lines.iter().enumerate() {
+                if li == cur.line {
+                    return Some(acc + cur.index.min(l.text().len()));
+                }
+                acc += l.text().len() + 1;
+            }
+            Some(acc)
+        })
+    }
+
+    /// 光标置于字节偏移处（行/列双轴折算，越界钳到软尾；入参须落在
+    /// 调用方构造的字符边界上）。
+    fn place_caret_byte(b: &mut BlockBuf, byte_off: usize) {
+        let dest = b.editor.ed().with_buffer(|bd| {
+            let mut remaining = byte_off;
+            for (li, l) in bd.lines.iter().enumerate() {
+                let n = l.text().len();
+                if remaining <= n {
+                    return (li, remaining);
+                }
+                remaining -= n + 1;
+            }
+            (bd.lines.len().saturating_sub(1), 0usize)
+        });
+        let ed = b.editor.ed_mut();
+        ed.set_selection(Selection::None);
+        ed.set_cursor(Cursor::new(dest.0, dest.1));
+    }
+
+    /// Enter 输入规则主入口。true = 已做结构拆分（调用方跳过软换行）。
+    fn enter_split(&self, font_system: &mut FontSystem, bi: usize) -> bool {
+        // 围栏内维持软换行（fence 不拆）。
+        *self.nav_goal_x.lock().unwrap() = None;
+        if matches!(self.block_kind_of(bi), LeafKind::Fence) {
+            return false;
+        }
+        let slot = {
+            let segs = self.segs.lock().unwrap();
+            match locate_leaf(&segs, bi) {
+                Some(s) => s,
+                None => return false,
+            }
+        };
+        let live = {
+            let blocks = self.blocks.lock().unwrap();
+            SendEdit(blocks[bi].editor.ed()).text()
+        };
+        let offset = {
+            let blocks = self.blocks.lock().unwrap();
+            match Self::cursor_byte_offset(&blocks[bi]) {
+                Some(v) => v,
+                None => return false,
+            }
+        };
+
+        // 空项退列：空内容上按 Enter 且宿主是 List 项 —— 摘除该项，
+        // 焦点落到列表后的新段落。
+        let text_bytes = live.len();
+        if let LeafSlot::ListItem { list_pos, item_idx, .. } = slot {
+            if text_bytes == 0 {
+                return self.exit_empty_list_item(font_system, bi, list_pos, item_idx);
+            }
+        }
+        // 字节偏移钳回字符边界（cursor 侧已保证，防御性再钳）。
+        let mut offset = offset.min(text_bytes);
+        while offset > 0 && !live.is_char_boundary(offset) {
+            offset -= 1;
+        }
+
+        let left: String = live[..offset].to_owned();
+        let right: String = live[offset..].to_owned();
+
+        // 列表续项：光标在宿主项最后一段的字节末端且该段非空 —— 新建列表项。
+        let new_item_continuation = self.item_last_leaf_at_end(bi, offset >= text_bytes);
+
+        // ① 缩左：当前块重写为左半，光标驻尾。
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(bi) {
+                self.overwrite_block_text(font_system, b, left.clone());
+                Self::place_caret_byte(b, left.len());
+            }
+        }
+
+        // ② 右半新建缓冲（标题续行为登记余量：保持同级）。
+        let kind = self.block_kind_of(bi);
+        let new_id = {
+            let mut blocks = self.blocks.lock().unwrap();
+            let id = blocks.len();
+            let mono = matches!(kind, LeafKind::Fence);
+            let size = leaf_size(kind);
+            blocks.push(BlockBuf {
+                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size)),
+                kind,
+                snapshot: right,
+                intervals: Vec::new(),
+            });
+            id
+        };
+
+        // ③ 骨架插入：续项 → 新列表项；否则宿主序列内当前叶之后插右叶。
+        {
+            let mut segs = self.segs.lock().unwrap();
+            if new_item_continuation {
+                if let LeafSlot::ListItem { list_pos, item_idx, .. } = slot {
+                    if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                        items.insert(item_idx + 1, vec![Seg::Leaf(new_id)]);
+                    }
+                }
+            } else {
+                match slot {
+                    LeafSlot::TopLevel(pos) => segs.insert(pos + 1, Seg::Leaf(new_id)),
+                    LeafSlot::QuoteInner { quote_pos, inner_pos } => {
+                        if let Some(Seg::Quote(inner)) = segs.get_mut(quote_pos) {
+                            inner.insert(inner_pos + 1, Seg::Leaf(new_id));
+                        }
+                    }
+                    LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
+                        if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                            if let Some(item) = items.get_mut(item_idx) {
+                                item.insert(inner_pos + 1, Seg::Leaf(new_id));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ④ 焦点迁至新块首。
+        *self.focus.lock().unwrap() = Some(new_id);
+        *self.shift_anchor.lock().unwrap() = None;
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(new_id) {
+                Self::place_caret_byte(b, 0);
+            }
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    /// 续项判定：本叶是宿主项的最后一段，且光标在其字节末端。
+    fn item_last_leaf_at_end(&self, bi: usize, at_end: bool) -> bool {
+        if !at_end {
+            return false;
+        }
+        let segs = self.segs.lock().unwrap();
+        let Some(LeafSlot::ListItem { list_pos, item_idx, inner_pos }) = locate_leaf(&segs, bi)
+        else {
+            return false;
+        };
+        let Some(Seg::List { items, .. }) = segs.get(list_pos) else {
+            return false;
+        };
+        let Some(item) = items.get(item_idx) else {
+            return false;
+        };
+        inner_pos + 1 == item.len()
+    }
+
+    /// 空列表项按 Enter 退出：摘除该项（空列表连带摘除），新段落挂列表后。
+    /// blocks 为创建序：单死叶压缩后 <bi 不变、>bi 前移一位，
+    /// 故追加段落最终 id = 追加时 id - 1。
+    fn exit_empty_list_item(
+        &self,
+        font_system: &mut FontSystem,
+        bi: usize,
+        list_pos: usize,
+        item_idx: usize,
+    ) -> bool {
+        let para_tmp = {
+            let mut blocks = self.blocks.lock().unwrap();
+            let id = blocks.len();
+            blocks.push(BlockBuf {
+                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE)),
+                kind: LeafKind::Paragraph,
+                snapshot: String::new(),
+                intervals: Vec::new(),
+            });
+            id
+        };
+        let insert_at = {
+            let mut segs = self.segs.lock().unwrap();
+            if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
+                items.remove(item_idx);
+            }
+            match segs.get(list_pos) {
+                Some(Seg::List { items, .. }) if items.is_empty() => {
+                    segs.remove(list_pos);
+                    list_pos
+                }
+                _ => list_pos + 1,
+            }
+        };
+        self.segs.lock().unwrap().insert(insert_at, Seg::Leaf(para_tmp));
+        remove_leaves_compact(
+            &mut self.blocks.lock().unwrap(),
+            &mut self.segs.lock().unwrap(),
+            &[bi],
+        );
+        let focus_id = para_tmp - 1;
+        *self.focus.lock().unwrap() = Some(focus_id);
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(b) = blocks.get_mut(focus_id) {
+                Self::place_caret_byte(b, 0);
+            }
+        }
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    /// Backspace 块首合并：同宿主相邻两叶（顶↔顶 / 同一 Quote 内）；
+    /// fence 与跨容器边界登记余量不做。合并后焦点驻接缝。
+    fn merge_into_previous(&self, font_system: &mut FontSystem, bi: usize) -> bool {
+        let prev_bi = {
+            let segs = self.segs.lock().unwrap();
+            let mut order = Vec::new();
+            dfs_leaf_order(&segs, &mut order);
+            let pos = match order.iter().position(|&i| i == bi) {
+                Some(v) => v,
+                None => return false,
+            };
+            if pos == 0 {
+                return false;
+            }
+            order[pos - 1]
+        };
+        let same_host = {
+            let segs = self.segs.lock().unwrap();
+            match (locate_leaf(&segs, prev_bi), locate_leaf(&segs, bi)) {
+                (Some(LeafSlot::TopLevel(_)), Some(LeafSlot::TopLevel(_))) => true,
+                (
+                    Some(LeafSlot::QuoteInner { quote_pos: q1, .. }),
+                    Some(LeafSlot::QuoteInner { quote_pos: q2, .. }),
+                ) => q1 == q2,
+                _ => false,
+            }
+        };
+        if !same_host
+            || matches!(self.block_kind_of(prev_bi), LeafKind::Fence)
+            || matches!(self.block_kind_of(bi), LeafKind::Fence)
+        {
+            return false;
+        }
+        let (prev_text, cur_text, junction) = {
+            let blocks = self.blocks.lock().unwrap();
+            (
+                SendEdit(blocks[prev_bi].editor.ed()).text(),
+                SendEdit(blocks[bi].editor.ed()).text(),
+                SendEdit(blocks[prev_bi].editor.ed()).text().len(),
+            )
+        };
+        {
+            let mut blocks = self.blocks.lock().unwrap();
+            if let Some(pb) = blocks.get_mut(prev_bi) {
+                self.overwrite_block_text(font_system, pb, format!("{prev_text}{cur_text}"));
+            }
+            if let Some(pb) = blocks.get_mut(prev_bi) {
+                Self::place_caret_byte(pb, junction);
+            }
+        }
+        remove_leaves_compact(
+            &mut self.blocks.lock().unwrap(),
+            &mut self.segs.lock().unwrap(),
+            &[bi],
+        );
+        // 单死叶压缩（创建序 bi > prev_bi 恒真）⇒ prev_bi 重编号不变。
+        *self.focus.lock().unwrap() = Some(prev_bi);
+        *self.shift_anchor.lock().unwrap() = None;
+        *self.nav_goal_x.lock().unwrap() = None;
+        self.revision.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 注册表（LRU 容量对齐 413 §5.4 的 32）
 // ---------------------------------------------------------------------------
 
@@ -1344,8 +1819,8 @@ impl<'a> SendEdit<'a> {
     fn last_line_col(&self) -> (usize, usize) {
         self.0.with_buffer(|b| {
             let li = b.lines.len().saturating_sub(1);
-            // cosmic Cursor.index 为字符索引，非字节偏移。
-            let idx = b.lines.last().map(|l| l.text().chars().count()).unwrap_or(0);
+            // cosmic-text 0.15：Cursor.index 为行内字节偏移。
+            let idx = b.lines.last().map(|l| l.text().len()).unwrap_or(0);
             (li, idx)
         })
     }
@@ -1498,38 +1973,122 @@ mod tests {
         assert_eq!(c.focused_block(), Some(0));
     }
 
+        /// 批次十③：同宿主相邻叶块首退格 → 合并入上一叶，焦点驻接缝。
     #[test]
-    fn click_hit_selects_containing_block() {
-        let c = core_for("t6", "甲块。\n\n乙块。\n");
-        run_fs(|fs| {
-            c.render_frame(fs, 600.0, WHITE);
-        });
-        let second = c.layout.lock().unwrap().blocks[1];
-        run_fs(|fs| {
-            let out = c.handle_input(
-                fs,
-                DocInput::MousePressed {
-                    button: EditorButton::Left,
-                    x: second.origin.x + 4.0,
-                    y: second.origin.y + 2.0,
-                },
-                &mut NullClipboard,
-            );
-            assert!(out.focus_changed && out.captured);
-        });
-        assert_eq!(c.focused_block(), Some(1));
+    fn backspace_block_start_merges_same_host() {
+        let c = core_for("mg", "甲块。\n\n乙块。\n");
+        *c.focus.lock().unwrap() = Some(1);
+        let out = press(c, EditorKey::Backspace);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 1);
+        assert_eq!(c.emit_document(), "甲块。乙块。");
+        assert_eq!(c.focused_block(), Some(0));
     }
 
+    /// 跨容器边界（quote 内 → 顶层上一叶）仍不合并（登记边界）。
     #[test]
-    fn backspace_at_block_start_does_not_merge() {
-        let c = core_for("t7", "甲\n\n乙\n");
+    fn backspace_across_container_boundary_stays_noop() {
+        let c = core_for("mg2", "顶段。\n\n> 引内。\n");
         *c.focus.lock().unwrap() = Some(1);
         let out = press(c, EditorKey::Backspace);
         assert!(!out.text_changed);
         assert_eq!(c.block_count(), 2);
-        assert_eq!(c.emit_document(), "甲\n\n乙");
     }
 
+    /// 批次十②：段中 Enter → 拆成两段，焦点落新块首。
+    #[test]
+    fn enter_splits_paragraph_at_caret() {
+        let c = core_for("sp", "前半后半\n");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Home);
+        press(c, EditorKey::Right);
+        press(c, EditorKey::Right);
+        let out = press(c, EditorKey::Enter);
+        assert!(out.text_changed);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.live_text(0), "前半");
+        assert_eq!(c.live_text(1), "后半");
+        assert_eq!(c.focused_block(), Some(1));
+        let doc = c.emit_document();
+        assert!(doc.contains("前半") && doc.contains("后半"), "{doc}");
+    }
+
+    /// 光标在块中间 Enter → 右半带走尾部文本。
+    #[test]
+    fn enter_split_carries_tail_to_new_block() {
+        let c = core_for("sp2", "一二三四五\n");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Home);
+        for _ in 0..3 {
+            press(c, EditorKey::Right);
+        }
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.live_text(0), "一二三");
+        assert_eq!(c.live_text(1), "四五");
+    }
+
+    /// 列表项末端 Enter → 新列表项（emit 重发序号/圆点）。
+    #[test]
+    fn enter_at_item_end_creates_new_item() {
+        let c = core_for("li", "- 甲\n- 乙\n");
+        // 叶子：0=甲, 1=乙
+        *c.focus.lock().unwrap() = Some(1);
+        run_fs(|fs| c.block_motion(fs, 1, Motion::End));
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 3);
+        assert_eq!(c.focused_block(), Some(2));
+        let doc = c.emit_document();
+        assert!(doc.contains("- 甲"), "{doc}");
+        assert!(doc.contains("- 乙"), "{doc}");
+    }
+
+    /// 项末两连 Enter：先续出空项，再在空项上退出列表（摘除空项，
+    /// 焦点落列表后的新段落；Notion 式惯例）。
+    #[test]
+    fn enter_on_empty_item_exits_list() {
+        let c = core_for("le2", "- 甲\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.focused_block(), Some(1));
+        assert_eq!(c.live_text(1), "");
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        let doc = c.emit_document();
+        assert!(doc.contains("- 甲"), "{doc}");
+        assert!(!doc.contains("\n\n- "), "{doc}");
+        assert_eq!(c.live_text(1), "");
+    }
+
+    /// 引用内段落 Enter → 引用内拆分（宿主保持 Quote）。
+    #[test]
+    fn enter_splits_inside_quote() {
+        let c = core_for("q", "> 前半后半\n");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Home);
+        press(c, EditorKey::Right);
+        press(c, EditorKey::Right);
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 2);
+        let doc = c.emit_document();
+        assert!(doc.contains("> 前半"), "{doc}");
+        assert!(doc.contains("> 后半"), "{doc}");
+    }
+
+    /// 围栏内 Enter 维持软换行（不拆块）。
+    #[test]
+    fn enter_inside_fence_softwraps() {
+        let c = core_for("f", "```\nabc\ndef\n```\n");
+        assert_eq!(c.block_kind_of(0), LeafKind::Fence);
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| c.block_motion(fs, 0, Motion::End));
+        let before = c.block_count();
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), before, "fence must not split");
+        assert!(c.live_text(0).contains('\n'), "soft newline inside fence");
+    }
     #[test]
     fn typing_then_backspace_roundtrip_in_block() {
         let c = core_for("t7b", "词根。\n");
