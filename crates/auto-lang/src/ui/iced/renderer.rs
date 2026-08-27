@@ -5865,29 +5865,10 @@ pub(crate) struct InspectorSections {
     props_collapsed: bool,
 }
 
-/// Wrapper holding `DynamicComponent` as iced's application state.
-struct DynamicState {
-    component: DynamicComponent,
-    /// Plan 453 T3b：App 域聚合（施工图 §1.1）。component 本体待 T4 扇出接线
-    /// 时由 AppSession 接管；派生缓存类成员先行归位。
-    pub(crate) app: crate::ui::session::AppState,
-    /// Plan 453 T3a：桌面域聚合（施工图 §1.2 DevTools 保形状 / §1.3 基础设施
-    /// / 裁定 M1 的 current_modifiers 唯一源）。原散布的 38 个成员迁入其中。
-    pub(crate) desktop: crate::ui::session::DesktopState,
-    /// Plan 057 (ash-gui 默认聚焦):启动后首个 update 聚焦命令输入框(一次)。
-    initial_focus_done: std::cell::Cell<bool>,
-    /// Current window size, updated on resize events.
-    window_size: std::cell::RefCell<iced::Size>,
-    /// Plan 402: pending window resize (difficulty change triggers snug fit).
-    pending_window_resize: std::cell::RefCell<Option<iced::Size>>,
-    /// Plan 402: one-shot flag — resize window to model's window_width/height
-    /// on first update (lets each example declare its own initial window size).
-    initial_resize_done: std::cell::Cell<bool>,
-    /// Plan 453 T3c：已捕获的 Opened 窗口（id,size），update 头部自 session
-    /// 通道 drain；T4 接管时转为 DesktopSession.windows 初始内容。
-    pub(crate) opened_windows:
-        std::cell::RefCell<Vec<(iced::window::Id, iced::Size)>>,
-}
+/// Plan 453 T4c：`DynamicState` 已溶解——运行循环 State 即
+/// `crate::ui::session::DesktopSession`（R3 退化桌面）。原平铺成员的读写经
+/// `DesktopSession::split_mut/split_ref` 拆借视图承接（session.rs，字段名
+/// 与旧 DynamicState 一一对应）；窗口登记由 `windows` 注册表接管。
 
 /// Plan 412 续(toast VM 化):一条悬浮通知。kind(default/success/error/
 /// warning/info)决定配色,position 支持 top-/bottom-/center × -left/-center/
@@ -5905,7 +5886,8 @@ pub(crate) struct ToastReq {
 /// Run a `DynamicComponent` in an iced window.
 ///
 /// This is the main entry point for running AURA widgets with iced. It:
-/// 1. Wraps the `DynamicComponent` in a `DynamicState`
+/// 1. Wraps the `DynamicComponent` in a `DesktopSession`（T4c 会话翻转，
+///    R3 退化桌面；平铺读写经 split_mut/split_ref 拆借视图承接）
 /// 2. Uses `iced::application()` (which does NOT require `State: Default`)
 /// 3. Converts `View<DynamicMessage>` to `View<IcedMessage>` before rendering
 /// 4. Maps iced messages back to `DynamicMessage` on update
@@ -6069,22 +6051,26 @@ fn compare_pngs(
     // call while still satisfying the Fn bound.
     let init = std::cell::RefCell::new(Some(component));
 
-    let boot = move || -> DynamicState {
-        let mut comp = init.borrow_mut().take()
+    let boot = move || -> crate::ui::session::DesktopSession {
+        let comp = init.borrow_mut().take()
             .expect("boot should only be called once");
-        DynamicState {
-            component: comp,
-            app: crate::ui::session::AppState::new(),
-            desktop: crate::ui::session::DesktopState::new(Some(mcp_shared.clone())),
-            initial_focus_done: std::cell::Cell::new(false),
-            window_size: std::cell::RefCell::new(startup_window_size()),
-            pending_window_resize: std::cell::RefCell::new(None),
-            initial_resize_done: std::cell::Cell::new(false),
-            opened_windows: std::cell::RefCell::new(Vec::new()),
-        }
+        // R3 退化桌面：单 App 单窗口即完整会话（T4c 翻转，施工图 §2）。
+        crate::ui::session::DesktopSession::single(
+            comp,
+            startup_window_size(),
+            Some(mcp_shared.clone()),
+        )
     };
 
-    let update_inner = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+    let update_inner = |state: &mut crate::ui::session::DesktopSession,
+                        msg: IcedMessage|
+         -> iced::Task<IcedMessage> {
+        // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
+        // 缺主 App 仅在会话被外部破坏时发生，空转返回。
+        let mut state = match state.split_mut(crate::ui::session::desktop_app_id()) {
+            Some(v) => v,
+            None => return iced::Task::none(),
+        };
         // （T3c 登记头已上移至 T4 外壳层 —— 见 `update` 的 DM::App 分支）
         if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
             eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
@@ -6520,7 +6506,7 @@ fn compare_pngs(
                 *state.desktop.devtools.devtools_open.borrow_mut() = true;
                 *state.desktop.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                 // Cache source code (shared loader; Plan 309 Phase 4.1).
-                ensure_source_loaded(state);
+                ensure_source_loaded(state.as_ref_view());
                 // Plan 309 续篇: 检视光标改为常驻 —— 点击后不再自动退出，便于连点
                 // 多个画布元素；由 🔍 按钮手动关闭。
             }
@@ -6567,7 +6553,7 @@ fn compare_pngs(
                     *state.desktop.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                     // Plan 309 Phase 4: load source so the Source sub-tab can
                     // render the listing on a tree-click (no element click yet).
-                    ensure_source_loaded(state);
+                    ensure_source_loaded(state.as_ref_view());
                     // Plan 309 Phase 4.3: auto-scroll the Source tab to the
                     // selected node's line (the deferred-scroll path at the
                     // bottom of update() only covers selected_widget spans).
@@ -6986,8 +6972,8 @@ fn compare_pngs(
                                     u.set("kind", auto_val::Value::str("user"));
                                     u.set("text", auto_val::Value::str(&q));
                                     lines.push(auto_val::Value::Obj(u));
-                                    append_chat_events(&mut state.component, lines);
-                                    set_block_turn(&mut state.component, bid, turn);
+                                    append_chat_events(&mut *state.component, lines);
+                                    set_block_turn(&mut *state.component, bid, turn);
                                     *state.app.view_dirty.borrow_mut() = true;
                                     return iced::Task::none();
                                 }
@@ -7011,7 +6997,7 @@ fn compare_pngs(
                             ev.set("kind", auto_val::Value::str(&kind));
                             ev.set("text", auto_val::Value::str(&text));
                             append_chat_events(
-                                &mut state.component,
+                                &mut *state.component,
                                 vec![auto_val::Value::Obj(ev)],
                             );
                             *state.app.view_dirty.borrow_mut() = true;
@@ -7022,7 +7008,7 @@ fn compare_pngs(
                             // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
                             // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
                             let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
-                            let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
+                            let updated = update_block_in_state(&mut *state.component, bid, &msg.event, &v);
                             if msg.event == "command_result" {
                                 // Plan 057:cwd 回写(cd 后标题栏/新块 cwd 立即反映)
                                 // + 触发 RefreshContext 刷 git 标签(HTTP 模式下
@@ -7727,7 +7713,7 @@ fn compare_pngs(
                             state.app.todos[i].done = !state.app.todos[i].done;
                             let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                            sync_todos_to_vm(&state.app.todos, &mut state.component);
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         }
                     }
                 }
@@ -7739,7 +7725,7 @@ fn compare_pngs(
                             let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                             let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                            sync_todos_to_vm(&state.app.todos, &mut state.component);
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         }
                     } else {
                         // Bare Delete (no index) — notes deletion from EditorPanel
@@ -7767,7 +7753,7 @@ fn compare_pngs(
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                         let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
-                        sync_todos_to_vm(&state.app.todos, &mut state.component);
+                        sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         state.app.input_values.remove("EditInputChanged");
                         state.app.input_values.remove("InputChanged");
                     } else if let Some(text) = from_input_values {
@@ -7777,7 +7763,7 @@ fn compare_pngs(
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                         let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
-                        sync_todos_to_vm(&state.app.todos, &mut state.component);
+                        sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         state.app.input_values.remove("EditInputChanged");
                         state.app.input_values.remove("InputChanged");
                     }
@@ -7787,7 +7773,7 @@ fn compare_pngs(
                     let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
                     let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                    sync_todos_to_vm(&state.app.todos, &mut state.component);
+                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
                 }
                 "ToggleAll" => {
                     let any_active = state.app.todos.iter().any(|t| !t.done);
@@ -7796,7 +7782,7 @@ fn compare_pngs(
                     }
                     let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                    sync_todos_to_vm(&state.app.todos, &mut state.component);
+                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
                 }
                 // Notes app: VM handlers now manage all state correctly.
                 // The previous hardcoded state-sync (read notes as Value::Obj,
@@ -7940,26 +7926,36 @@ fn compare_pngs(
     // T6 的 panic 边界保留在 App 分支内的 catch_unwind。RefCell 无中毒语义、
     // RAII Guard 随 unwind 释放；std Mutex 中毒风险归入施工图 T6 审计项。
     // view 侧 panic 边界为残留项（T4b 接管 AppSession 时同法补）。
-    let update = move |state: &mut DynamicState,
+    let update = move |state: &mut crate::ui::session::DesktopSession,
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
         use crate::ui::session::{DesktopEvent, DesktopMessage as DM};
         match msg {
             DM::Desktop(ev) => {
-                // 桌面事件分支：窗口关闭 → 注销过渡登记表（T4c 接管后同步
-                // DesktopSession.windows）。
-                if let DesktopEvent::WindowClosed(id) = ev {
-                    state.opened_windows.borrow_mut().retain(|(w, _)| *w != id);
+                // 桌面事件分支：窗口生命周期落注册表 / 焦点记录（T4c）。
+                match ev {
+                    DesktopEvent::WindowClosed(id) => {
+                        state.windows.remove(&id);
+                    }
+                    DesktopEvent::WindowFocused(id) => {
+                        *state.focused_window.borrow_mut() = Some(id);
+                    }
+                    DesktopEvent::WindowUnfocused(id) => {
+                        // 仅当失焦者正是当前焦点时清空（防多窗口事件乱序误清）。
+                        let mut f = state.focused_window.borrow_mut();
+                        if *f == Some(id) {
+                            *f = None;
+                        }
+                    }
+                    DesktopEvent::WindowOpened(..) => {}
                 }
                 iced::Task::none()
             }
             DM::App(_app_id, m) => {
-                // T3c-consumer 的登记头迁至外壳层（先于业务处理；按 id 去重幂等）。
+                // T3c-consumer 的登记头迁至外壳层（先于业务处理；按 id 幂等，
+                // BTreeMap 重复 insert 即覆盖）。T4c-4 起改道 DM::Desktop 通路。
                 for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
-                    let mut reg = state.opened_windows.borrow_mut();
-                    if !reg.iter().any(|(id, _)| *id == win_id) {
-                        reg.push((win_id, size));
-                    }
+                    state.register_window(win_id, crate::ui::session::desktop_app_id(), size);
                 }
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     update_inner(state, m)
@@ -7980,7 +7976,7 @@ fn compare_pngs(
     // widget 回调仍全程产 IcedMessage，view 管线零改动）。闭包对借用生命周期的
     // HKT 局限（同 theme_fn 教训）要求以 fn 条目承载。
     fn view_desktop_fn(
-        state: &DynamicState,
+        state: &crate::ui::session::DesktopSession,
     ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
         // T6 视图侧边界：view panic 同样不落进程，降级为全屏提示元素。
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dynamic_view(state))) {
@@ -8004,7 +8000,7 @@ fn compare_pngs(
         }
     }
 
-    let title_fn = move |_state: &DynamicState| -> String {
+    let title_fn = move |_state: &crate::ui::session::DesktopSession| -> String {
         window_title(format!("Auto - {}", widget_name))
     };
 
@@ -8013,7 +8009,7 @@ fn compare_pngs(
     // shadcn --background(hsl 222.2 47.4% 7% = #090E1A)不一致 —— 换成
     // shadcn 令牌基的自定义调色板,明暗随 iced_adapter 的 dark_mode 走
     //(默认暗色,与既有 DARK_MODE 初值一致)。
-    let theme_fn = move |_state: &DynamicState| -> iced::Theme {
+    let theme_fn = move |_state: &crate::ui::session::DesktopSession| -> iced::Theme {
         shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
     };
 
@@ -8027,17 +8023,21 @@ fn compare_pngs(
         .default_font(INTER_FONT)
         // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
         .theme(theme_fn)
-        .subscription(|_state: &DynamicState| {
+        .subscription(|state: &crate::ui::session::DesktopSession| {
+            // T4c：退化桌面必有主 App，订阅构造沿用共享拆借视图。
+            let state = state
+                .split_ref(crate::ui::session::desktop_app_id())
+                .expect("退化桌面必有主 App (plan-453)");
             let mut subs = vec![];
-            if _state.component.source_path().is_some() {
+            if state.component.source_path().is_some() {
                 subs.push(hot_reload_tick());
             }
-            if let Some(interval_ms) = _state.component.tick_interval() {
+            if let Some(interval_ms) = state.component.tick_interval() {
                 subs.push(widget_tick(interval_ms));
             }
             // Plan 412 续(toast 修正 5):toast 到期 tick —— 仅在堆叠非空时
             // 订阅;到期的移除逻辑在 update 的 __toast_tick 分支。
-            if !_state.desktop.toasts.borrow().is_empty() {
+            if !state.desktop.toasts.borrow().is_empty() {
                 subs.push(
                     iced::time::every(std::time::Duration::from_millis(250)).map(|_| {
                         IcedMessage {
@@ -8050,7 +8050,7 @@ fn compare_pngs(
             }
             // Plan 442 A5: one-shot timer tick — only while set_timeout timers
             // are pending; due callbacks fire in update's __timer_tick arm.
-            if _state.component.has_pending_timers() {
+            if state.component.has_pending_timers() {
                 subs.push(
                     iced::time::every(std::time::Duration::from_millis(16)).map(|_| {
                         IcedMessage {
@@ -8062,7 +8062,7 @@ fn compare_pngs(
                 );
             }
             // F12 DevTools + key bindings listener (Plan 275)
-            subs.push(keyboard_subscription(_state.component.key_bindings()));
+            subs.push(keyboard_subscription(state.component.key_bindings()));
             // MCP action channel — polls for injected actions from AI agent (Plan 278)
             subs.push(mcp_action_subscription());
             // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
@@ -8074,7 +8074,7 @@ fn compare_pngs(
             // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
             // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
             // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
-            let mcp_recent = _state.desktop.mcp_shared
+            let mcp_recent = state.desktop.mcp_shared
                 .as_ref()
                 .map(|s| s.lock().unwrap().mcp_active_recently(30))
                 .unwrap_or(false);
@@ -8152,11 +8152,18 @@ fn compare_pngs(
     Ok("UI closed".to_string())
 }
 
-/// View function for `DynamicState`, used as the view callback in `iced::application()`.
+/// View function for the desktop session, used as the view callback in `iced::application()`.
 ///
 /// This is a standalone function (not a closure) so that Rust can correctly
 /// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
-fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
+fn dynamic_view(
+    state: &crate::ui::session::DesktopSession,
+) -> iced::Element<'_, IcedMessage> {
+    // T4c：共享拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
+    let state = match state.split_ref(crate::ui::session::desktop_app_id()) {
+        Some(v) => v,
+        None => return iced::widget::text("[AutoUI 会话] 缺少主 App").size(14).into(),
+    };
     // Plan 309 续篇 II: refresh the cached modifiers from the thread-local the
     // window-level subscription writes (it can't borrow `state`), then set the
     // single INSPECT_CAPTURE flag read by `into_iced` + `wrap_debug` during this
@@ -8558,7 +8565,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 /// Plan 309 续篇: 元素树 (VTree) 与检视 (面包屑 + 子标签) 合并为同屏分屏 ——
 /// 左树点任意 VNode 即设 `selected_vnode`，右侧检视随之更新；两者始终同屏，
 /// 不再有互斥 tab。控制台保留为独立整宽模式（点「控制台」按钮切换）。
-fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let current_tab = *state.desktop.devtools.devtools_tab.borrow();
 
     // Header: [🔍 检视] [控制台] ... [×]
@@ -8717,7 +8724,7 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 
 /// Render the Properties tab: show selected element's style properties.
 /// Render the Elements tab: component tree visualization.
-fn render_elements_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_elements_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 14: the left tree now reads from the live VTree (the runtime
     // DOM) instead of the legacy DebugTreeNode / component_tree. The old path is
     // kept (Task 19/20 removes it); render_tree_into simply isn't called here.
@@ -8962,7 +8969,7 @@ fn build_highlight_cache(source: &str) -> Vec<Vec<(String, iced::Color)>> {
 }
 
 /// Render the Inspector tab: source code + properties, stacked vertically.
-fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 15: the right panel is rebuilt around the VNodeId-based
     // selection. Structure: [breadcrumb] › [sub-tab row] › [active sub-tab body].
     //
@@ -8996,7 +9003,7 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
 ///
 /// Reads `live_vtree` and walks the `parent` chain, cloning the tree out first
 /// so no RefCell borrow is held across the closure-driven widget construction.
-fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let vtree = state.app.live_vtree.borrow().clone();
     let selected = state.desktop.devtools.selected_vnode.borrow().clone();
 
@@ -9093,7 +9100,7 @@ fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, I
 /// parent `scrollable` at the panel level handles overflow) of three
 /// collapsible sections — Box Model, Computed, Properties — each reusing the
 /// existing per-section render fn as its body.
-fn render_inspector_inspect_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_inspect_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let secs = *state.desktop.devtools.inspector_sections.borrow();
     let mut col = column![].spacing(6);
 
@@ -9154,7 +9161,7 @@ fn render_collapsible_section(
 
 /// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
 /// `__inspector_subtab_<Variant>`, parsed in `update()`.
-fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let active = *state.desktop.devtools.inspector_subtab.borrow();
     let variants = [
         InspectorSubTab::Inspect,
@@ -9184,7 +9191,7 @@ fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, I
 ///
 /// Reads `live_cache` (bounds/box_model). Falls back to "(布局中…)" when the
 /// node isn't laid out yet or has no cache entry, per design §6.1.
-fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_layout_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let selected = state.desktop.devtools.selected_vnode.borrow().clone();
     let Some(sel_id) = selected else {
         return placeholder_panel("无选中元素");
@@ -9387,12 +9394,12 @@ fn layout_pending_panel<M: Clone + 'static>() -> iced::Element<'static, M> {
         .into()
 }
 
-/// Lazily load the component source + derived indexes into `DynamicState`
-/// (Plan 309 Phase 4.1). Shared by the element-select (`__select_`) and
+/// Lazily load the component source + derived indexes into the session's
+/// App state (Plan 309 Phase 4.1; T4c 起经共享拆借视图访问). Shared by the element-select (`__select_`) and
 /// VNode-select (`__select_vnode_`) handlers so the Source sub-tab can render
 /// the source listing regardless of which selection path opened it. No-op once
 /// already loaded.
-fn ensure_source_loaded(state: &DynamicState) {
+fn ensure_source_loaded(state: crate::ui::session::SessionViewRef) {
     if state.app.source_code.borrow().is_some() {
         return;
     }
@@ -9419,7 +9426,7 @@ fn ensure_source_loaded(state: &DynamicState) {
 
 /// Helper: clone the selected VNode out of `live_vtree`, or return a grey
 /// placeholder Element if there is no tree / no selection.
-fn with_selected_vnode<F>(state: &DynamicState, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
+fn with_selected_vnode<F>(state: crate::ui::session::SessionViewRef, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
 where
     F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
 {
@@ -9458,7 +9465,7 @@ fn kv_row<M: Clone + 'static>(key: &str, value: String) -> iced::Element<'static
 ///
 /// Data source: `live_vtree` only (the VNode carries its own props). No probe /
 /// cache dependency, so it always works whenever a node is selected.
-fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -9563,7 +9570,7 @@ fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, Ic
 /// non-loop nodes, so we look the probe up via `snapshot().get(&node.path)`.
 /// For loop-body nodes the schemes diverge and the lookup misses — we degrade
 /// gracefully to a grey hint rather than panicking (design §6.1).
-fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_autoui_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let probe = state.app.live_probe.borrow().clone();
         let Some(probe) = probe else {
@@ -9644,7 +9651,7 @@ fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, I
 /// [`render_source_viewer`] for the syntax-highlighted listing. Clicking a
 /// line that has an associated AuraNodeId (handled by `SRC_CLICK_PREFIX`)
 /// selects the corresponding element — bidirectional navigation.
-fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_source_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         // Resolve the span → a 0-based half-open (start, end) line range.
         let highlight_range = node.source_span.map(|span| {
@@ -9685,7 +9692,7 @@ fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, I
 /// `mouse_area` emitting `SRC_CLICK_PREFIX<line>` so a line click selects the
 /// element (bidirectional with element/tree selection).
 fn render_source_viewer(
-    state: &DynamicState,
+    state: crate::ui::session::SessionViewRef,
     highlight_range: Option<(usize, usize)>,
 ) -> iced::Element<'static, IcedMessage> {
     let source = state.app.source_code.borrow().clone();
@@ -9802,7 +9809,7 @@ fn render_source_viewer(
 /// builder, so a full CSS computed-style sheet is not possible. We render the
 /// layout-relevant props from `VNodeProps` plus the live_cache `bounds` /
 /// `box_model` summary, and note that class resolution is pending.
-fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_computed_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -9911,7 +9918,7 @@ fn select_vnode_message(id: crate::ui::vnode::VNodeId) -> IcedMessage {
 /// is intentionally not wired into the new right panel yet — keep it here as
 /// `#[allow(dead_code)]` until then.
 #[allow(dead_code)]
-fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.desktop.devtools.selected_widget.borrow().clone();
     let styles = state.desktop.devtools.debug_element_styles.borrow();
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
@@ -10168,7 +10175,7 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
 }
 
 /// Apply the current edit: read edited text from textarea, write back, trigger hot reload.
-fn apply_edit(state: &mut DynamicState) {
+fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
     let edit_elem = state.desktop.devtools.editing_element.borrow().clone();
     let edit_span = state.desktop.devtools.edit_span.borrow().clone();
     let textarea_key = state.desktop.devtools.edit_textarea_key.borrow().clone();
@@ -10261,7 +10268,7 @@ fn build_line_to_aura_ids(
 }
 
 /// Render the Console tab: show captured print() output.
-fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_console_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     let output = state.desktop.devtools.console_output.borrow();
 
     if output.is_empty() {

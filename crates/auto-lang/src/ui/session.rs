@@ -386,6 +386,23 @@ pub struct SessionViewMut<'a> {
     pub initial_focus_done: &'a mut Cell<bool>,
 }
 
+impl<'a> SessionViewMut<'a> {
+    /// 共享再借出：update 侧把视图临时降级为只读视图传给渲染/加载类
+    /// helper（如 ensure_source_loaded）。再借出仅覆盖调用期，不占用
+    /// 视图本身的可变性。
+    pub fn as_ref_view(&mut self) -> SessionViewRef<'_> {
+        SessionViewRef {
+            component: self.component,
+            app: self.app,
+            desktop: self.desktop,
+            window_size: self.window_size,
+            pending_window_resize: self.pending_window_resize,
+            initial_resize_done: self.initial_resize_done,
+            initial_focus_done: self.initial_focus_done,
+        }
+    }
+}
+
 /// view 侧拆借视图——共享引用版，可 Copy 直传渲染 helper。
 #[derive(Clone, Copy)]
 pub struct SessionViewRef<'a> {
