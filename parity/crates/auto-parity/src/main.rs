@@ -339,7 +339,7 @@ fn detect_parity_mode(config: &RunConfig) -> ParityMode {
 /// Discover all libraries under `<root>/libs/`, skipping `_dummy` (a
 /// framework smoke test, not a real library under test).
 ///
-/// Plan 458 categorized layout: libraries live at `libs/<category>/<name>/`;
+/// Plan 460 categorized layout: libraries live at `libs/<category>/<name>/`;
 /// every first-level directory under `libs/` is a category and discovery
 /// scans one level deeper. The legacy flat layout (`libs/<name>/auto/`) is
 /// still picked up with a stderr warning so an unmigrated library is never
@@ -386,7 +386,7 @@ fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
 /// Return the library list for a given phase.
 ///
 /// Phase mapping (Plans 347/358/367/368/369; names are leaf names in the
-/// Plan 458 categorized layout `libs/<category>/<name>/`):
+/// Plan 460 categorized layout `libs/<category>/<name>/`):
 /// - p0: `_dummy` (framework smoke test)
 /// - p1: `base64`, `url`
 /// - p2: `serde_json`, `regex`

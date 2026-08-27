@@ -1,5 +1,5 @@
 ---
-plan_id: PLAN-458
+plan_id: PLAN-460
 status: complete
 feature_name: parity 测试用例分类目录化（libs/<category>/<name>）+ 分类索引 README
 author: [zhaopuming]
@@ -14,7 +14,7 @@ current_step: 0
 total_steps: 7
 ---
 
-# [PLAN-458] parity 测试用例分类目录化 + 分类索引 README
+# [PLAN-460]（原编号 458，因与并行主题计划撞号，归档时重编为 460；原分支名 plan-458） parity 测试用例分类目录化 + 分类索引 README
 
 ## 变更摘要
 

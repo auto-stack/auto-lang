@@ -18,7 +18,7 @@ The `aavm` subcommand additionally runs the AAVM self-hosting matrix
 parity/
 ├── crates/auto-parity/   the checker tool (this workspace's only crate)
 ├── docs/                 parity-guide.md, known-divergences.md, dashboards
-└── libs/                 the test corpus, categorized (Plan 458)
+└── libs/                 the test corpus, categorized (Plan 460)
     └── <category>/<name>/   one directory per library under test
 ```
 

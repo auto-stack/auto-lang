@@ -17,7 +17,7 @@ pub struct RunConfig {
 }
 
 /// Resolve a library directory under the categorized layout
-/// `libs/<category>/<library>/` (Plan 458). The library identity is the leaf
+/// `libs/<category>/<library>/` (Plan 460). The library identity is the leaf
 /// directory name; the category level exists only for organisation. Returns
 /// `None` when the leaf name matches zero or multiple categories — duplicate
 /// leaf names across categories are ambiguous and rejected rather than
@@ -42,7 +42,7 @@ pub fn resolve_lib_dir(parity_root: &Path, library: &str) -> Option<PathBuf> {
 
 impl RunConfig {
     /// Path to the library directory: `libs/<category>/<library>/` under the
-    /// parity root (Plan 458 categorized layout). Falls back to the legacy
+    /// parity root (Plan 460 categorized layout). Falls back to the legacy
     /// flat path `libs/<library>` when no categorized match exists, so
     /// downstream errors still name a concrete path.
     pub fn lib_dir(&self) -> PathBuf {

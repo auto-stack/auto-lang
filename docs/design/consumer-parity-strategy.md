@@ -115,7 +115,7 @@ Auto 有三条路径调用 Rust 能力：
 
 ### 3.1 复用现有 parity 框架
 
-`parity/crates/auto-parity/` 的三方对比模型（AutoVM / a2r / native Rust）直接适用。每个消费者用例就是一个 `parity/libs/consumer/<name>/` 库（Plan 458 分类布局），结构不变：
+`parity/crates/auto-parity/` 的三方对比模型（AutoVM / a2r / native Rust）直接适用。每个消费者用例就是一个 `parity/libs/consumer/<name>/` 库（Plan 460 分类布局），结构不变：
 
 ```
 parity/libs/consumer/c_fs_app/

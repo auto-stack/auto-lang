@@ -11,7 +11,7 @@ Cargo.lock
 *.a2r.rs
 
 # a2r per-test build directory created by the parity runner.
-# Plan 458: libs are categorized two-level (libs/<category>/<name>/);
+# Plan 460: libs are categorized two-level (libs/<category>/<name>/);
 # the flat libs/*/ patterns are kept until no flat layout remains.
 libs/*/*/build_a2r/
 libs/*/build_a2r/

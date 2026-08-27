@@ -74,7 +74,7 @@ Rust toolchain.
 ## How to add a new library
 
 Libraries live in categorized two-level layout `libs/<category>/<name>/`
-(Plan 458). Existing categories: `framework` (runner smoke), `lang` (language
+(Plan 460). Existing categories: `framework` (runner smoke), `lang` (language
 features), `python` (Python stdlib parity), `consumer` (consumer apps),
 `rust` (crate replication). A new category is just a new directory — no tool
 changes needed. The **library identity is the leaf name** `<name>`: it is the
