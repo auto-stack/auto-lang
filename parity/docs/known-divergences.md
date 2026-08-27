@@ -418,3 +418,9 @@ bug is worked around in-source:
 - **库**: py_random
 - **状态**: open
 - **原因**: `[1, 2, 3]` in Auto is a VM-internal list, not a Python list. `choice([1,2,3])` fails. Workaround: use Python functions that return lists (sorted, list), or pass strings as iterables.
+- **Plan 461 补充发现 (2026-08-28)**: 直调路径下 list 实参抵达 Python 侧后
+  变成 0 维/空对象（`array([7,8,9])` → 0-d ndarray，`sum([1,2,3,4])` → 0），
+  且传入 pyplot 时直接触发 VM panic（Stack Underflow）。a2py 文本转译不受
+  影响（源码层 list 即 Python list），因此涉及 list 实参的用例三方必然
+  分歧。Plan 461 四个 sci-compute 套件全部规避：数据一律 Python 侧创建
+  （arange/linspace），句柄传参。

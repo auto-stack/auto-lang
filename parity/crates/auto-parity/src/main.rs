@@ -396,6 +396,8 @@ fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
 /// - p6: `py_datetime`, `py_struct`, `py_uuid` (Plan 369 Python parity)
 /// - p7: remaining Python stdlib libs (Plan 369 follow-ups), so the phase
 ///       view covers every Python-parity library on disk
+/// - p8: `py_numpy`, `py_pandas`, `py_matplotlib`, `py_torch` (Plan 461
+///       Python sci-compute parity)
 fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
     let phase_map: &[(&str, &[&str])] = &[
         ("p0", &["_dummy"]),
@@ -432,6 +434,11 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
                 "py_sys",
             ],
         ),
+        // Plan 461 (Python sci-compute parity): numpy/pandas/matplotlib/torch
+        // through `use.py` + the PyO3 bridge. torch adds ~10s import time per
+        // backend run; matplotlib asserts file artifacts under
+        // libs/python/py_matplotlib/py_matplotlib_tmp/ (gitignored).
+        ("p8", &["py_numpy", "py_pandas", "py_matplotlib", "py_torch"]),
     ];
 
     for (p, libs) in phase_map {

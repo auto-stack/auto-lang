@@ -51,11 +51,11 @@ three-way result matches the real crate. The original Plan 347 p1–p4 rollout.
 | `tokio_stream` | async-stream pattern | `~Stream<T>` generator path (Plan 321/364; for-over-Stream consumption documented as open) |
 | `url` | url v2.5 | `Url::parse` |
 
-### `libs/python/` — Python stdlib parity (13)
+### `libs/python/` — Python stdlib parity (13) + sci-compute parity (4)
 
 Three-way: AutoVM vs **a2py** (Auto transpiled to Python) vs native Python.
 Parity mode is auto-detected from the lib's `tests/python/` directory
-(Plan 369). Each lib mirrors one stdlib module:
+(Plan 369). The `py_*` stdlib libs each mirror one stdlib module:
 
 | case | stdlib module | intent |
 |---|---|---|
@@ -72,6 +72,22 @@ Parity mode is auto-detected from the lib's `tests/python/` directory
 | `py_struct` | `struct` | binary pack/unpack |
 | `py_sys` | `sys` | sys module subset |
 | `py_uuid` | `uuid` | UUID construction/formatting |
+
+**Sci-compute extension** (Plan 461, phase p8): numpy / pandas / matplotlib /
+torch called through `use.py` + the embedded-CPython bridge. The suites also
+fix the calling conventions: data is created Python-side (`arange` etc.) and
+stays on the Python side of the boundary as opaque `PyObjectHandle`s; only
+scalars/deterministic strings marshal out; object members go through
+`py_call(obj, "method", ...)` / `py_getattr(obj, "attr")` (a2py lowers them to
+`obj.method(...)` / `obj.attr`). Auto list/dict arguments into Python are not
+used — see known-divergence DIV-PY-AUTOLIST-1.
+
+| case | upstream | intent |
+|---|---|---|
+| `py_numpy` | numpy | ufuncs, reductions, reshape/shape, dot, dtype/array string forms |
+| `py_pandas` | pandas | DataFrame from numpy handle, shape/len, column sums, iloc row selection |
+| `py_matplotlib` | matplotlib | headless plot + savefig file artifacts |
+| `py_torch` | torch (CPU) | tensor creation, sum, relu/abs, runtime type strings |
 
 ### `libs/consumer/` — consumer apps (9)
 

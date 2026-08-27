@@ -1,0 +1,46 @@
+// py_torch Auto test — TAP output format (Plan 461 Python sci-compute parity).
+// The parity runner sets the working directory to the library root
+// (parity/libs/python/py_torch), so `use.py torch` resolves the installed
+// torch package through the embedded CPython (PyO3) bridge.
+//
+// Test names MUST match tests/python/test_torch.py because the comparator
+// joins backends by name.
+//
+// Conventions (Plan 461 spike):
+// - Tensors are created Python-side (arange/ones/zeros/linspace); Auto
+//   lists are not passed into Python (DIV-PY-AUTOLIST-1).
+// - 0-dim tensors marshal via __float__ straight to a scalar string, so
+//   reductions like sum() are asserted directly — no .item() chain needed
+//   (calling .item() on the marshalled value would fail: it is a str).
+// - Arithmetic operators must not be used on handles (e.g. `t - 0` degrades
+//   the handle to an int and breaks the next call) — use torch functional
+//   forms (relu/abs) instead.
+use.py torch: arange, ones, zeros, linspace, relu, abs
+
+fn tap_ok(n int, name str) {
+    print("ok " + n.to(str) + " - " + name)
+}
+
+fn tap_not_ok(n int, name str, diag str) {
+    print("not ok " + n.to(str) + " - " + name + " # " + diag)
+}
+
+fn main() {
+    if py_call(arange(5), "sum").to(int) == 10 { tap_ok(1, "test_arange_sum") } else { tap_not_ok(1, "test_arange_sum", "got " + py_call(arange(5), "sum").to(str)) }
+    if py_call(ones(4), "sum").to(int) == 4 { tap_ok(2, "test_ones_sum") } else { tap_not_ok(2, "test_ones_sum", "got " + py_call(ones(4), "sum").to(str)) }
+    if py_call(zeros(3), "sum").to(int) == 0 { tap_ok(3, "test_zeros_sum") } else { tap_not_ok(3, "test_zeros_sum", "got " + py_call(zeros(3), "sum").to(str)) }
+
+    // Functional activations: linspace(0,-4,5) = [0,-1,-2,-3,-4].
+    var neg = linspace(0.0, -4.0, 5)
+    if py_call(relu(neg), "sum").to(int) == 0 { tap_ok(4, "test_relu_sum") } else { tap_not_ok(4, "test_relu_sum", "got " + py_call(relu(neg), "sum").to(str)) }
+    if py_call(abs(neg), "sum").to(int) == 10 { tap_ok(5, "test_abs_sum") } else { tap_not_ok(5, "test_abs_sum", "got " + py_call(abs(neg), "sum").to(str)) }
+
+    // numpy↔torch interop via from_numpy is covered by the numpy-side suite
+    // absence note: use.py has no import aliasing, and torch.arange would
+    // shadow numpy.arange, so a same-name collision prevents importing both.
+    // Instead assert the float tensor runtime type string (deterministic).
+    if py_call(py_call(linspace(0.0, 1.0, 5), "type"), "__str__").to(str) == "torch.FloatTensor" { tap_ok(6, "test_type_float_str") } else { tap_not_ok(6, "test_type_float_str", "got " + py_call(py_call(linspace(0.0, 1.0, 5), "type"), "__str__").to(str)) }
+
+    // Deterministic runtime type string of the arange tensor.
+    if py_call(py_call(arange(5), "type"), "__str__").to(str) == "torch.LongTensor" { tap_ok(7, "test_type_str") } else { tap_not_ok(7, "test_type_str", "got " + py_call(py_call(arange(5), "type"), "__str__").to(str)) }
+}

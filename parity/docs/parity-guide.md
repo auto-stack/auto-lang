@@ -32,6 +32,8 @@ Phase mapping (Plans 347/358/367/368/369 — source of truth is the
 - `p6`: `py_datetime`, `py_struct`, `py_uuid`
 - `p7`: `py_configparser`, `py_hashlib`, `py_json`, `py_list`, `py_os`,
   `py_re`, `py_string`, `py_sys`
+- `p8`: `py_numpy`, `py_pandas`, `py_matplotlib`, `py_torch` (Plan 461
+  sci-compute parity via `use.py`; torch adds ~10s import per backend)
 - `d1`: `cli_app`
 - `d2`: `trait_advanced`, `generators`
 - `d4`: `string_utils`

@@ -33,3 +33,7 @@ libs/*/*/c_*_tmp/
 libs/*/c_*_tmp/
 libs/*/*/tests/rust/c_*_tmp/
 libs/*/tests/rust/c_*_tmp/
+
+# Plan 461 py_matplotlib: savefig artifacts written by the parity runs.
+libs/*/*/py_matplotlib_tmp/
+libs/*/py_matplotlib_tmp/
