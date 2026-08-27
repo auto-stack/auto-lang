@@ -444,3 +444,13 @@ mod t3c_pending_opens_tests {
         let _ = before;
     }
 }
+
+/// Plan 453 T4：单桌面进程的当前 App（多 App 于 T4b 随窗口注册表启用）。
+pub const fn desktop_app_id() -> AppId {
+    AppId(1)
+}
+
+/// 外壳出口统一打标：IcedMessage（view 管线内部线格式）→ DesktopMessage。
+pub fn map_to_app(m: IcedMessage) -> DesktopMessage {
+    DesktopMessage::App(desktop_app_id(), m)
+}

@@ -6085,15 +6085,7 @@ fn compare_pngs(
     };
 
     let update_inner = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
-        // Plan 453 T3c-consumer：每个 update 周期头部消化 Opened 待登记通道
-        // （producer 在 listen_with 回调），去重登记至过渡表；T4 扇出接线时
-        // 本表整体转正为 DesktopSession.windows。
-        for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
-            let mut reg = state.opened_windows.borrow_mut();
-            if !reg.iter().any(|(id, _)| *id == win_id) {
-                reg.push((win_id, size));
-            }
-        }
+        // （T3c 登记头已上移至 T4 外壳层 —— 见 `update` 的 DM::App 分支）
         if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
             eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
         }
@@ -7943,22 +7935,48 @@ fn compare_pngs(
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
-    // Plan 453 T6：panic 边界 —— 单 App 的 update panic 不再带走整个桌面进程
-    // （Design 23 §3 会话层承诺的第一步；A 形态缓冲，真隔离在 386 进程外形态）。
-    // RefCell 无中毒语义、RAII Guard 随 unwind 释放；std Mutex 中毒风险归入
-    // 施工图 T6 审计项。view 侧边界为残留项（T4 接管 AppSession 时同法包裹）。
-    let update = move |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| update_inner(state, msg)))
-        {
-            Ok(task) => task,
-            Err(payload) => {
-                eprintln!(
-                    "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
-                );
-                iced::Task::none()
+    // Plan 453 T4：外壳消息切换为 DesktopMessage —— 订阅出口与视图出口统一
+    // map_to_app 打标，此处解包分派；IcedMessage 保持为 view 管线内部线格式。
+    // T6 的 panic 边界保留在 App 分支内的 catch_unwind。RefCell 无中毒语义、
+    // RAII Guard 随 unwind 释放；std Mutex 中毒风险归入施工图 T6 审计项。
+    // view 侧 panic 边界为残留项（T4b 接管 AppSession 时同法补）。
+    let update = move |state: &mut DynamicState,
+                       msg: crate::ui::session::DesktopMessage|
+          -> iced::Task<crate::ui::session::DesktopMessage> {
+        use crate::ui::session::DesktopMessage as DM;
+        match msg {
+            DM::Desktop(_ev) => iced::Task::none(), // 桌面事件分支：T4b 接窗口关闭等
+            DM::App(_app_id, m) => {
+                // T3c-consumer 的登记头迁至外壳层（先于业务处理；按 id 去重幂等）。
+                for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
+                    let mut reg = state.opened_windows.borrow_mut();
+                    if !reg.iter().any(|(id, _)| *id == win_id) {
+                        reg.push((win_id, size));
+                    }
+                }
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    update_inner(state, m)
+                })) {
+                    Ok(task) => task.map(crate::ui::session::map_to_app),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
+                        );
+                        iced::Task::<IcedMessage>::none().map(crate::ui::session::map_to_app)
+                    }
+                }
             }
         }
     };
+
+    // 视图出口打标：Element<IcedMessage> → Element<DesktopMessage>（仅顶层一次，
+    // widget 回调仍全程产 IcedMessage，view 管线零改动）。闭包对借用生命周期的
+    // HKT 局限（同 theme_fn 教训）要求以 fn 条目承载。
+    fn view_desktop_fn(
+        state: &DynamicState,
+    ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
+        dynamic_view(state).map(crate::ui::session::map_to_app)
+    }
 
     let title_fn = move |_state: &DynamicState| -> String {
         window_title(format!("Auto - {}", widget_name))
@@ -7973,7 +7991,7 @@ fn compare_pngs(
         shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
     };
 
-    iced::application(boot, update, dynamic_view)
+    iced::application(boot, update, view_desktop_fn)
         .title(title_fn)
         .window_size(startup_window_size())
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
@@ -8098,7 +8116,7 @@ fn compare_pngs(
                 }
                 _ => None,
             }));
-            iced::Subscription::batch(subs)
+            iced::Subscription::batch(subs).map(crate::ui::session::map_to_app)
         })
         .run()?;
 
