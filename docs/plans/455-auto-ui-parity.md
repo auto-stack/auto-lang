@@ -40,19 +40,20 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 | `001` | `counter` | Basic state, button, text | Initial, Inc, Dec, Reset | 🟢 Passed |
 | `002` | `todo` | Input, list, checkbox, filter | Initial, Add, Check, Delete | 🟢 Passed |
 | `003` | `clock` | Timer, formatting, reactive display | Realtime tick | 🟢 Passed |
-| `004` | `form` | Multiple inputs, labels, validations | Empty error, fill, submit | 🟡 Pending Audit |
+| `004` | `profile-card` | Image clipping, badges, negative margins | Initial | 🟢 Passed |
 | `005` | `login` | Card, input, password masking, link, error display | Initial, Empty error, Typed, Masked, Submit | 🟢 Passed (Plan 452/453) |
-| `006` | `dashboard` | Grid, card, stats, badges | Layout, Responsive | 🟡 Pending Audit |
-| `007` | `data-table` | Table, pagination, sorting, search | Search, Sort, Page switch | 🟡 Pending Audit |
-| `008` | `settings` | Tabs, switches, selects, inputs | Tab switch, toggle state | 🟡 Pending Audit |
-| `009` | `chat` | Scrollable, message list, input box | Send message, scroll to bottom | 🟡 Pending Audit |
-| `010` | `calculator` | Grid buttons, display, arithmetic | Button clicks, calculations | 🟡 Pending Audit |
+| `006` | `hero-section` | Gradient background, full-screen centering, CTA button | Initial, Gradient, Button Click | 🟢 Passed |
+| `007` | `stats-board` | Grid, card, stats, badges | Layout, Responsive | 🟡 Pending Audit |
+| `008` | `pricing-table` | Pricing tiers, cards, lists, badges | Layout, Selection | 🟡 Pending Audit |
+| `009` | `article-feed` | Feed list, avatar, tags, cards | Scroll, Item click | 🟡 Pending Audit |
+| `010` | `contact-form` | Form fields, textareas, validation | Submit, Field errors | 🟡 Pending Audit |
+| `011` | `calculator` | Grid buttons, display, arithmetic | Button clicks, calculations | 🟡 Pending Audit |
+| `012` | `stopwatch` | Timer state, lap list, buttons | Start, Pause, Lap, Reset | 🟡 Pending Audit |
+| `013` | `todo` | Input, list, checkbox, filter | Initial, Add, Check, Delete | 🟢 Passed |
 | `022` | `kanban` | Drag/drop column boards, task cards | Column switch, task creation | 🟡 Pending Audit |
 | `023` | `realworld` | Multi-view SPA, routing, articles, comments | Route switch, article list | 🟡 Pending Audit |
 | `024` | `charts` | Chart widgets, legends, tooltips | Chart rendering | 🟡 Pending Audit |
-| `026` | `database` | DB tree, query editor, result table | Query execution | 🟡 Pending Audit |
-| `027` | `file-manager` | File tree, icon grid, breadcrumbs | Navigation, selection | 🟡 Pending Audit |
-| `028` | `launcher` | Search modal, command list, shortcuts | Shortcut trigger, action invoke | 🟡 Pending Audit |
+| `025` | `dashboard` | Grid cards, summary metrics, charts | Multi-column layout | 🟡 Pending Audit |
 
 ---
 
@@ -61,10 +62,14 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 - [x] **Phase 1: Input Focus Border Styling**
   - [x] Implement `Status::Focused` handling in `renderer.rs` `build_input_shape`: 2px border width + `Color::Primary` border color.
   - [x] Verify focus border visual changes on `005-login` via `autoui-verifier`.
-- [ ] **Phase 2: Systematic Verification of Next Batch (004-form, 006-dashboard, 007-data-table)**
-  - [ ] Verify `004-form` dual-backend screenshots & interactions.
-  - [ ] Verify `006-dashboard` grid & statistics card layouts.
-  - [ ] Verify `007-data-table` pagination & search bar parity.
+- [x] **Phase 2: Systematic Verification of Hero Section (006-hero-section)**
+  - [x] Dual-backend visual parity check: gradient `bg-gradient-to-b from-blue-500 to-purple-600`, full-page center flex layout, title/subtitle typography, CTA button styling.
+  - [x] AutoUI MCP interaction verification: click button and trigger `.App.GetStarted` action handler.
+  - [x] Capture and store baseline screenshots in `examples/ui/006-hero-section/src/front/tests/screenshots/`.
+- [ ] **Phase 3: Next Batch Parity Audits (007-stats-board, 008-pricing-table, 010-contact-form)**
+  - [ ] Verify `007-stats-board` grid & statistics card layouts.
+  - [ ] Verify `008-pricing-table` card tiers and feature lists.
+  - [ ] Verify `010-contact-form` form validation and error states.
 - [ ] **Phase 3: Automated Regression Harness**
   - [ ] Keep `examples/ui/*/src/front/tests/screenshots/` baseline artifacts up-to-date.
   - [ ] Document verified findings in this tracking plan.

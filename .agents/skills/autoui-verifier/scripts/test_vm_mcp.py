@@ -48,19 +48,23 @@ class AutoUiMcpClient:
         return res.get("content", [{}])[0].get("text", "")
 
     def inspect(self, element_id: str) -> str:
-        res = self.call("autoui_inspect", {"element_id": element_id})
+        clean_id = element_id.lstrip("#")
+        res = self.call("autoui_inspect", {"element_id": clean_id})
         return res.get("content", [{}])[0].get("text", "")
 
     def type_text(self, element_id: str, text: str, clear_first: bool = True) -> str:
-        res = self.call("autoui_type", {"element_id": element_id, "text": text, "clear_first": clear_first})
+        clean_id = element_id.lstrip("#")
+        res = self.call("autoui_type", {"element_id": clean_id, "text": text, "clear_first": clear_first})
         return res.get("content", [{}])[0].get("text", "")
 
     def press(self, element_id: str) -> str:
-        res = self.call("autoui_press", {"element_id": element_id})
+        clean_id = element_id.lstrip("#")
+        res = self.call("autoui_action", {"element_id": clean_id, "action": "press"})
         return res.get("content", [{}])[0].get("text", "")
 
     def toggle(self, element_id: str) -> str:
-        res = self.call("autoui_toggle", {"element_id": element_id})
+        clean_id = element_id.lstrip("#")
+        res = self.call("autoui_action", {"element_id": clean_id, "action": "toggle"})
         return res.get("content", [{}])[0].get("text", "")
 
     def keyboard(self, key: str, modifiers: list = None) -> str:
