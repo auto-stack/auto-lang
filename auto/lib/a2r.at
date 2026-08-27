@@ -152,7 +152,7 @@ fn ar_indent_str(a Ar) str {
     var out = ""
     var i = 0
     while i < a.indent {
-        out = out + "    "
+        out = f"${out}    "
         i = i + 1
     }
     return out
@@ -485,7 +485,7 @@ fn ar_bare_type(mut p P) str {
             var at = ar_bare_type(p)
             skip_empty_lines(p)
             if !first {
-                args = args + ", "
+                args = f"${args}, "
             }
             args = args + at
             first = false
@@ -732,7 +732,7 @@ fn ar_prescan_enum(mut a Ar, mut p P) {
             while more {
                 var at = parse_type(p)
                 if pay != "" {
-                    pay = pay + ", "
+                    pay = f"${pay}, "
                 }
                 pay = pay + ar_rust_ty(at)
                 if p_kind(p) == TokenKind.Comma {
@@ -940,14 +940,14 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
             return ""
         }
         if k == TokenKind.Sub {
-            cur = "-" + operand
+            cur = f"-${operand}"
         } else if k == TokenKind.Not {
-            cur = "!" + operand
+            cur = f"!${operand}"
             a.ty = "bool"
         } else if k == TokenKind.Star {
-            cur = "*" + operand
+            cur = f"*${operand}"
         } else {
-            cur = "+" + operand
+            cur = f"+${operand}"
         }
         a.prec = 60
         }
@@ -972,7 +972,7 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         a.ty = "bool"
         }
         TokenKind.Char -> {
-        cur = "'" + ar_escape_char(p_text(p)) + "'"
+        cur = f"'${ar_escape_char(p_text(p))}'"
         p_next(p)
         a.ty = "char"
         }
@@ -1086,12 +1086,12 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 var word = p_text(p)
                 p_next(p)
                 if cur_prec < 90 {
-                    cur = "(" + cur + ")"
+                    cur = f"(${cur})"
                     cur_prec = 100
                 }
                 if p_kind(p) == TokenKind.LParen {
                     if cur_len == 1 {
-                        cur = "(" + cur + ")"
+                        cur = f"(${cur})"
                         cur_len = 0
                     }
                     // Plan 447 部分② W3:枚举载荷变体构造 Enum.Variant(args)
@@ -1113,11 +1113,11 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                     can_call = 0
                 } else {
                     if ar_enum_has_variant(a, cur, word) {
-                        cur = cur + "::" + word
+                        cur = f"${cur}::${word}"
                         cur_ty = ""
                         cur_infer = 0
                     } else {
-                        cur = cur + "." + word
+                        cur = f"${cur}.${word}"
                         if cur_ty != "" {
                             cur_ty = ar_field_ty(a, ar_base_ty(cur_ty), word)
                         }
@@ -1145,7 +1145,7 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 if ar_all_digits(idx) == 1 {
                     idx_lit = 1
                 }
-                cur = cur + "[" + ar_usize_cast(idx, idx_lit) + "]"
+                cur = f"${cur}[${ar_usize_cast(idx, idx_lit)}]"
                 cur_ty = ""
                 cur_prec = 100
                 cur_len = 0
@@ -1188,30 +1188,30 @@ fn ar_expr_tail(mut a Ar, mut p P, cur_in str, min int) str {
                 cur_infer = 1
             } else if ar_is_asn_kind(opk) {
                 if rhs_ty == "str" && (rhs_strk == 1 || rhs_strk == 2) {
-                    rhs = rhs + ".to_string()"
+                    rhs = f"${rhs}.to_string()"
                 } else if rhs_ty == "str" && e_is_simple_ident(rhs) == 1 && ar_lu_after(a, rhs, rhs_pos) == true {
-                    rhs = rhs + ".clone()"
+                    rhs = f"${rhs}.clone()"
                 } else if rhs_ty == "str" && a.ended_field == 1 {
-                    rhs = rhs + ".clone()"
+                    rhs = f"${rhs}.clone()"
                 }
-                cur = cur + " " + op_txt + " " + rhs
+                cur = f"${cur} ${op_txt} ${rhs}"
                 cur_ty = rhs_ty
                 cur_infer = 0
             } else {
                 if cur_ty == "char" {
-                    cur = "(" + cur + ") as i64"
+                    cur = f"(${cur}) as i64"
                     cur_ty = "int"
                 }
                 if rhs_ty == "char" {
-                    rhs = "(" + rhs + ") as i64"
+                    rhs = f"(${rhs}) as i64"
                     rhs_ty = "int"
                 }
                 var lhs_txt = ar_paren_if(cur, cur_prec, l)
                 if cur_len == 1 {
-                    lhs_txt = "(" + cur + ")"
+                    lhs_txt = f"(${cur})"
                 }
                 var rhs_txt = ar_paren_if(rhs, rhs_prec, l + 1)
-                cur = lhs_txt + " " + op_txt + " " + rhs_txt
+                cur = f"${lhs_txt} ${op_txt} ${rhs_txt}"
                 if opk == TokenKind.Eq || opk == TokenKind.Neq || opk == TokenKind.Lt || opk == TokenKind.Gt || opk == TokenKind.Le || opk == TokenKind.Ge || opk == TokenKind.And || opk == TokenKind.Or {
                     cur_ty = "bool"
                     cur_infer = 1
@@ -1284,9 +1284,9 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
                 a.ty = save_ty
                 a.strk = save_strk
                 a.infer = save_infer
-                fmt = fmt + "{}"
+                fmt = f"${fmt}{{}}"
                 if args != "" {
-                    args = args + ", "
+                    args = f"${args}, "
                 }
                 args = args + seg
                 i = j + 1
@@ -1313,18 +1313,18 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
                     }
                 }
                 var name = content.slice(i + 1, k2)
-                fmt = fmt + "{}"
+                fmt = f"${fmt}{{}}"
                 if args != "" {
-                    args = args + ", "
+                    args = f"${args}, "
                 }
                 args = args + name
                 i = k2
             }
         } else {
             if c == 123 {
-                fmt = fmt + "{{"
+                fmt = f"${fmt}{{{{"
             } else if c == 125 {
-                fmt = fmt + "}}"
+                fmt = f"${fmt}}}}}"
             } else {
                 fmt = fmt + content.slice(i, i + 1)
             }
@@ -1339,9 +1339,9 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
 fn ar_fstr_value(mut a Ar, mut p P) str {
     ar_fstr_parse(a, p)
     var q = "\""
-    var out = "format!(" + q + ar_escape_str(a.fstr_fmt) + q
+    var out = f"format!(${q}${ar_escape_str(a.fstr_fmt)}${q}"
     if a.fstr_args != "" {
-        out = out + ", " + a.fstr_args
+        out = f"${out}, ${a.fstr_args}"
     }
     return out + ")"
 }
@@ -1384,7 +1384,7 @@ fn ar_array_literal(mut a Ar, mut p P) str {
     var i = 0
     while i < parts.len() {
         if i > 0 {
-            out = out + ", "
+            out = f"${out}, "
         }
         out = out + parts.get(i)
         i = i + 1
@@ -1523,7 +1523,7 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
                 v = args.get(args.len() - 1)
             }
             if ar_is_str_ty(elem) && (a.last_strk == 1 || a.last_strk == 2) {
-                v = v + ".to_string()"
+                v = f"${v}.to_string()"
             }
             return recv + ".push(" + v + ")"
         }
@@ -1560,7 +1560,7 @@ fn join_args(args List<str>) str {
     var i = 0
     while i < args.len() {
         if i > 0 {
-            out = out + ", "
+            out = f"${out}, "
         }
         out = out + args.get(i)
         i = i + 1
@@ -1664,13 +1664,13 @@ fn ar_enum_try_ctor(mut a Ar, mut p P, enum_name str, word str) str {
         // owned str 局部不补——Rust 侧本就是 String)
         if ar_pay_slot(payfull, aj) == "String" {
             if ar_text_is_str_lit(av) == 1 {
-                av = av + ".to_string()"
+                av = f"${av}.to_string()"
             } else if e_is_simple_ident(av) == 1 && ar_vparam(a, av) == 1 && ar_vty(a, av) == "str" {
-                av = av + ".to_string()"
+                av = f"${av}.to_string()"
             }
         }
         if aj > 0 {
-            cout = cout + ", "
+            cout = f"${cout}, "
         }
         cout = cout + av
         aj = aj + 1
@@ -1700,7 +1700,7 @@ fn ar_call_args_text(mut a Ar, mut p P, fn_name str) List<str> {
         var atom_mut_saved = a.atom_mut
         a.last_strk = estrk
         if a.lenflag == 1 {
-            e = "(" + e + ")"
+            e = f"(${e})"
         }
         if fi >= 0 {
             var ps = a.fns.get(fi).params
@@ -1806,18 +1806,18 @@ fn ar_call_tail(mut a Ar, mut p P, callee str) str {
     if ti >= 0 {
         var args = ar_call_args_text(a, p, "")
         var fields = a.tys.get(ti).fields
-        var out = callee + " {"
+        var out = f"${callee} {{"
         var i = 0
         while i < args.len() && i < fields.len() {
             var f = fields.get(i)
             var v = args.get(i)
             if ar_is_str_ty(f.ty) {
-                v = v + ".to_string()"
+                v = f"${v}.to_string()"
             }
             if i > 0 {
-                out = out + ","
+                out = f"${out},"
             }
-            out = out + " " + f.name + ": " + v
+            out = f"${out} ${f.name}: ${v}"
             i = i + 1
         }
         a.infer = 0
@@ -1872,9 +1872,9 @@ fn ar_print_tail(mut a Ar, mut p P) str {
         if n_args == 0 && p_kind(p) == TokenKind.FStrStart {
             ar_fstr_parse(a, p)
             var q2 = "\""
-            var fout = "println!(" + q2 + ar_escape_str(a.fstr_fmt) + q2
+            var fout = f"println!(${q2}${ar_escape_str(a.fstr_fmt)}${q2}"
             if a.fstr_args != "" {
-                fout = fout + ", " + a.fstr_args
+                fout = f"${fout}, ${a.fstr_args}"
             }
             p_expect(p, TokenKind.RParen)
             a.ty = "void"
@@ -1891,7 +1891,7 @@ fn ar_print_tail(mut a Ar, mut p P) str {
         }
         if is_lit == 0 {
             if args_txt != "" {
-                args_txt = args_txt + ", "
+                args_txt = f"${args_txt}, "
             }
             args_txt = args_txt + piece
         }
@@ -1915,7 +1915,7 @@ fn ar_print_tail(mut a Ar, mut p P) str {
         fmt = first_lit
         var i = 1
         while i < n_args {
-            fmt = fmt + " {}"
+            fmt = f"${fmt} {{}}"
             i = i + 1
         }
         out = "println!(\"" + fmt + "\", " + args_txt + ")"
@@ -1926,9 +1926,9 @@ fn ar_print_tail(mut a Ar, mut p P) str {
         var k = 0
         while k < n_args {
             if k > 0 {
-                fmt = fmt + " "
+                fmt = f"${fmt} "
             }
-            fmt = fmt + "{}"
+            fmt = f"${fmt}{{}}"
             k = k + 1
         }
         out = "println!(\"" + fmt + "\", " + args_txt + ")"
@@ -2176,7 +2176,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
     // H5:同 fn 内 ≥2 次 is 同一标识符 → match &v(str 模式臂除外:
     // .as_str() 已借用,叠 & 双重引用是 E0308)
     if has_str_pat == 0 && e_is_simple_ident(scrut) == 1 && ar_in_multi_is(a, scrut) == 1 {
-        scrut = "&" + scrut
+        scrut = f"&${scrut}"
     }
     // str 字面量模式 → 局部 String 接收者 .as_str();str 参数本身是
     // &str,加 .as_str() 是 E0658(str_as_str),跳过(镜像主 a2r 守卫)
@@ -2186,7 +2186,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
             scrut_is_str_param = 1
         }
         if scrut_is_str_param == 0 {
-            scrut = scrut + ".as_str()"
+            scrut = f"${scrut}.as_str()"
         }
     }
     p_expect(p, TokenKind.LBrace)
@@ -2214,7 +2214,7 @@ fn ar_is(mut a Ar, mut p P, tail_is int) {
                 p_next(p)
                 skip_empty_lines(p)
                 var np = is_pattern(p)
-                ptxt = ptxt + " | " + ar_is_pattern_text(a, np, scrut_int)
+                ptxt = f"${ptxt} | ${ar_is_pattern_text(a, np, scrut_int)}"
                 skip_empty_lines(p)
             }
             p_expect(p, TokenKind.Arrow)
@@ -2339,7 +2339,7 @@ fn ar_stmt(mut a Ar, mut p P) {
     }
     if a.tail_no_semi == 1 && a.tail_start == stmt_pos {
         if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
-            e = e + ".to_string()"
+            e = f"${e}.to_string()"
         }
         ar_line(a, e)
     } else {
@@ -2401,36 +2401,36 @@ fn ar_store(mut a Ar, mut p P, kw TokenKind) {
     } else if init_infer == 1 && (init_ty == "int" || init_ty == "uint" || init_ty == "bool" || init_ty == "float" || init_ty == "str") {
         anno = ar_rust_ty(init_ty)
     } else if init_ty == "array" && init_arr != "" {
-        anno = "Vec<" + init_arr + ">"
+        anno = f"Vec<${init_arr}>"
     } else if init_ty == "List" {
         anno = "Vec<String>"
     }
     if has_init == 1 {
         if init_len == 1 {
-            init = "(" + init + ")"
+            init = f"(${init})"
         } else if init_ty == "str" && (init_strk == 1 || init_strk == 2) {
-            init = init + ".to_string()"
+            init = f"${init}.to_string()"
         } else if a.ended_field == 1 && init_ty == "str" {
             // 纯字段读(非 Copy:str)→ .clone()(owned 局部与引用参数同型)
-            init = init + ".clone()"
+            init = f"${init}.clone()"
         } else if init_ty == "str" && e_is_simple_ident(init) == 1 && has_init == 1 && ar_lu_after(a, init, init_pos) == true {
-            init = init + ".clone()"
+            init = f"${init}.clone()"
         } else if ar_enum_find(a, init_ty) >= 0 && e_is_simple_ident(init) == 1 && ar_lu_after(a, init, init_pos) == true {
             // 447-③ E2:枚举 ident 赋给新绑定,源在后续复用 → 克隆(非
             // Copy 移动;镜像主 a2r inst9c 形)
-            init = init + ".clone()"
+            init = f"${init}.clone()"
         }
     }
     var kw_txt = "let"
     if kw == TokenKind.Var {
         kw_txt = "let mut"
     }
-    var line = kw_txt + " " + name
+    var line = f"${kw_txt} ${name}"
     if anno != "" {
-        line = line + ": " + anno
+        line = f"${line}: ${anno}"
     }
     if has_init == 1 {
-        line = line + " = " + init
+        line = f"${line} = ${init}"
     }
     ar_line(a, line + ";")
 }
@@ -2564,7 +2564,7 @@ fn ar_return(mut a Ar, mut p P) {
     }
     var e = ar_expr(a, p, 0)
     if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
-        e = e + ".to_string()"
+        e = f"${e}.to_string()"
     }
     // Plan 454 B3 对齐:宿主对尾值位 as-cast 返回包防析括号(g08 实证
     // return (s2.len() as i64);),AA2R 同口径(已整体包裹则不重复)
@@ -2591,7 +2591,7 @@ fn ar_return(mut a Ar, mut p P) {
             bi = bi + 1
         }
         if !outer_wrapped {
-            e = "(" + e + ")"
+            e = f"(${e})"
         }
     }
     ar_line(a, "return " + e + ";")
@@ -2857,12 +2857,12 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
     a.cur_fn = name
     var empty List<str> = List.new()
     a.mutated = empty
-    var sig = "fn " + name + "("
+    var sig = f"fn ${name}("
     var i = 0
     while i < f.params.len() {
         var prm = f.params.get(i)
         if i > 0 {
-            sig = sig + ", "
+            sig = f"${sig}, "
         }
         var pm = prm.mode
         var f2 = a.fns.get(fi)
@@ -2875,16 +2875,16 @@ fn ar_emit_fn2(mut a Ar, mut p P, pubkw str) {
             pj = pj + 1
         }
         if pm != "view" || prmmut == 1 {
-            sig = sig + prm.name + ": &mut " + ar_rust_ty(prm.ty)
+            sig = f"${sig}${prm.name}: &mut ${ar_rust_ty(prm.ty)}"
         } else {
-            sig = sig + prm.name + ": " + ar_param_ty(prm.ty)
+            sig = f"${sig}${prm.name}: ${ar_param_ty(prm.ty)}"
         }
         i = i + 1
     }
-    sig = sig + ")"
+    sig = f"${sig})"
     var ret = ar_rust_ty(f.ret)
     if ret != "" {
-        sig = sig + " -> " + ret
+        sig = f"${sig} -> ${ret}"
     }
     ar_line(a, pubkw + sig + " {")
     a.indent = a.indent + 1

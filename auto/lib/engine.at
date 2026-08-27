@@ -267,7 +267,7 @@ fn ev_run_t(source str, trace int) str {
             if out != "" {
                 out = out + "\n"
             }
-            out = out + op_name(op) + " sp=" + sp.str() + " bp=" + bp.str()
+            out = f"${out}${op_name(op)} sp=${sp.str()} bp=${bp.str()}"
         }
         is op {
             OpCode.Blank -> {

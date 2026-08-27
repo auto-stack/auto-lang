@@ -69,14 +69,14 @@ fn lex_number(source str, start int) Tok {
     var is_binary = false
     var digits = ""
     if cur_char(source, p) == '0' {
-        digits = digits + "0"
+        digits = f"${digits}0"
         p = p + 1
         if cur_char(source, p) == 'x' {
-            digits = digits + "x"
+            digits = f"${digits}x"
             p = p + 1
             is_hex = true
         } else if cur_char(source, p) == 'b' {
-            digits = digits + "b"
+            digits = f"${digits}b"
             p = p + 1
             is_binary = true
         }
@@ -100,7 +100,7 @@ fn lex_number(source str, start int) Tok {
                 p = p + 1
             } else if c == '.' && !has_dot && is_digit(cur_char(source, p + 1)) {
                 has_dot = true
-                digits = digits + "."
+                digits = f"${digits}."
                 p = p + 1
             } else {
                 scanning = false
@@ -433,7 +433,7 @@ fn tokenize(source str) List<Token> {
                                     q = q + 1
                                     scanning = false
                                 } else {
-                                    ctext = ctext + "*"
+                                    ctext = f"${ctext}*"
                                     q = q + 1
                                 }
                             } else {
