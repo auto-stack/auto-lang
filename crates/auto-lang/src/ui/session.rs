@@ -281,20 +281,8 @@ impl AppSession {
 }
 
 impl DesktopSession {
-    /// R3 退化桌面：现有 `auto run` 的单 App 形态就是它。
-    /// `mcp_shared`：None 表示由调用方稍后注入（MCP 幂等护栏，T4）。
-    pub fn single(
-        component: DynamicComponent,
-        window_size: iced::Size,
-        mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
-    ) -> Self {
-        let mut session = Self::empty(mcp_shared);
-        session.allocate_app(component);
-        session.with_window_size(AppId(1), window_size);
-        session
-    }
-
-    /// 459：空会话（boot 逐 App `allocate_app` + 开窗登记）。
+    /// 459：空会话（boot 逐 App `allocate_app` + 开窗登记）。单 App 形态 =
+    /// allocate 一次（R3 退化桌面语义不变）。
     pub fn empty(mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>) -> Self {
         Self {
             apps: BTreeMap::new(),
@@ -326,9 +314,10 @@ impl DesktopSession {
         self.apps.keys().next().copied()
     }
 
-    /// single 的便捷变更：把待定尺寸先记入桌面级待登记表；真实窗口条目仍要
-    /// 等 Opened 登记（boot 期尚无 window::Id）。
-    fn with_window_size(&mut self, app: AppId, size: iced::Size) {
+    /// boot 期把待定尺寸记入桌面级暂存表；Opened 登记（`register_window`）
+    /// 时随窗口条目转正。459 的 boot 开窗路径同步登记，本暂存主要服务
+    /// "先知尺寸、后得 window::Id" 的外部宿主场景与测试。
+    pub fn stage_initial_size(&mut self, app: AppId, size: iced::Size) {
         self.pending_initial_size.insert(app, size);
     }
 
@@ -520,7 +509,7 @@ mod tests {
 
         // boot 期先记初始尺寸（尚无 window::Id），Opened 到达后转正。
         let app = insert_app(&mut ds, "Ghost");
-        ds.with_window_size(app, iced::Size::new(800.0, 600.0));
+        ds.stage_initial_size(app, iced::Size::new(800.0, 600.0));
         let win = iced::window::Id::unique();
         ds.register_window(win, app, iced::Size::new(800.0, 600.0));
 
@@ -548,8 +537,9 @@ mod tests {
     #[test]
     fn split_views_absent_app_is_none() {
         let mut ds = DesktopSession::__test_session();
-        assert!(ds.split_mut(desktop_app_id()).is_none());
-        assert!(ds.split_ref(desktop_app_id()).is_none());
+        let ghost = AppId(999);
+        assert!(ds.split_mut(ghost).is_none());
+        assert!(ds.split_ref(ghost).is_none());
     }
 
     #[test]
@@ -661,19 +651,12 @@ mod tests {
     }
 }
 
-/// Plan 453 T4：单桌面进程的当前 App。459 C2 起 router 全部改走
-/// `primary_app()`/显式 AppId，本锚点仅剩旧 API 兼容（C2 退役）。
-pub const fn desktop_app_id() -> AppId {
-    AppId(1)
-}
-
-/// 外壳出口统一打标：IcedMessage（view 管线内部线格式）→ DesktopMessage。
-pub fn map_to_app(m: IcedMessage) -> DesktopMessage {
-    DesktopMessage::App(desktop_app_id(), m)
-}
+/// Plan 459：`desktop_app_id()`/`map_to_app()` 硬编码已退役 —— 路由一律经
+/// `allocate_app` 分配的显式 AppId（主窗口语义 = `primary_app()`，即注册表
+/// 最小 AppId，454 由 WM 接管）；view/订阅出口按窗口现场打标 `DM::App`。
 
 /// Plan 453 T4b/T4c：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
-/// map_to_app 的 App 打标通路），与业务订阅在批量点并列合并。窗口生命周期
+/// App 打标通路的桌面事件），与业务订阅在批量点并列合并。窗口生命周期
 /// 统一由此产出（T4c 起含 Opened/Focused，业务订阅侧不再重复捕获）。
 pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
     iced::event::listen_with(|e, _status, wid| match e {

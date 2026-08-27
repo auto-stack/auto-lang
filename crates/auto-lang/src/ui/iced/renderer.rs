@@ -4452,32 +4452,129 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     }
 }
 
-/// Periodic tick subscription for hot-reload file watching.
+// ===========================================================================
+// Plan 459：per-App 订阅基建
+// ===========================================================================
+//
+// `Subscription::map`/`filter_map` 组合子的闭包被 const 检查强制零尺寸
+// （不可捕获 —— 453 时代 `map_to_app` fn 指针的由来），因此打标不能走
+// 组合子。这里用两个 iced_futures 的正式扩展点承载按 App 打标：
+//
+// 1. `AppTickRecipe`（自定义 `Recipe`）：tokio interval 驱动的周期 tick /
+//    全局通道轮询，消息直接产成 `DesktopMessage::App`；Recipe 身份含
+//    (AppId, 事件名/轮询函数, 间隔)，多 App 订阅去重互不误伤。
+// 2. `iced_futures::subscription::filter_map`（自由函数版，闭包可捕获）：
+//    per-App 键盘订阅 —— bindings 随闭包按 App 捕获 + 本窗事件过滤。
+
+/// 每 `interval_ms` 产一条 `DM::App(app, msg)` 的订阅。
+enum AppTickKind {
+    /// 固定事件名 tick（hot reload / widget tick / timer / toast / heartbeat）。
+    Event(&'static str, u64),
+    /// 每拍轮询一次进程级通道（fn 指针读全局静态，不捕获）。
+    Poll(fn() -> Option<IcedMessage>, u64),
+}
+
+struct AppTickRecipe {
+    app: crate::ui::session::AppId,
+    kind: AppTickKind,
+}
+
+impl std::hash::Hash for AppTickRecipe {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // 订阅身份：AppId + 事件名/函数指针 + 间隔（453 T4 教训：同间隔
+        // 订阅在 iced 订阅表按 hash 去重，后注册者静默丢失 —— 事件名/函数
+        // 指针参与 hash 保证互不去重）。
+        std::mem::discriminant(&self.kind).hash(state);
+        self.app.hash(state);
+        match &self.kind {
+            AppTickKind::Event(ev, ms) => (*ev, *ms).hash(state),
+            AppTickKind::Poll(f, ms) => (*f as usize, *ms).hash(state),
+        }
+    }
+}
+
+impl iced_futures::subscription::Recipe for AppTickRecipe {
+    type Output = crate::ui::session::DesktopMessage;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        std::hash::Hash::hash(self, state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: iced_futures::subscription::EventStream,
+    ) -> iced_futures::BoxStream<Self::Output> {
+        use crate::ui::session::DesktopMessage as DM;
+        use iced_futures::futures::stream::StreamExt;
+
+        let (event, poll, ms) = match self.kind {
+            AppTickKind::Event(ev, ms) => (Some(ev), None, ms),
+            AppTickKind::Poll(f, ms) => (None, Some(f), ms),
+        };
+        let app = self.app;
+        let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
+        let mut interval = tokio::time::interval_at(start, std::time::Duration::from_millis(ms));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        iced_futures::futures::stream::unfold(
+            (interval, app, event, poll),
+            move |(mut iv, app, event, poll)| async move {
+                let _ = iv.tick().await;
+                let msg = if let Some(ev) = event {
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: ev.to_string(),
+                        input_value: None,
+                    })
+                } else {
+                    poll.expect("AppTickRecipe: poll or event must be set")()
+                };
+                msg.map(|m| DM::App(app, m)).map(|m| (m, (iv, app, event, poll)))
+            },
+        )
+        .boxed()
+    }
+}
+
+fn app_tick(
+    app: crate::ui::session::AppId,
+    event: &'static str,
+    interval_ms: u64,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Event(event, interval_ms),
+    })
+}
+
+/// Periodic tick subscription for hot-reload file watching (per-App).
 ///
-/// Emits an `IcedMessage` with the `HOT_RELOAD_EVENT` sentinel every 500ms.
-/// The update handler checks `check_file_changed()` and reloads if the
-/// source file was modified.
-fn hot_reload_tick() -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(500)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: HOT_RELOAD_EVENT.to_string(),
-        input_value: None,
-    })
+/// Emits `DM::App(app, HOT_RELOAD_EVENT)` every 500ms. The update handler
+/// checks `check_file_changed()` and reloads if the source file was modified.
+fn hot_reload_tick(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    app_tick(app, HOT_RELOAD_EVENT, 500)
 }
 
-/// Periodic tick subscription for widget .Tick handlers.
-fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(interval_ms as u64)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: TICK_EVENT.to_string(),
-        input_value: None,
-    })
+/// Periodic tick subscription for widget .Tick handlers (per-App).
+fn widget_tick(
+    app: crate::ui::session::AppId,
+    interval_ms: u32,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    app_tick(app, TICK_EVENT, interval_ms as u64)
 }
 
-/// Global key bindings storage for keyboard subscription (Plan 275).
-/// Updated by `keyboard_subscription()` each time the subscription is evaluated.
-static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
-    std::sync::OnceLock::new();
+/// Plan 459 T5：panic 注入探针（验收 §4-2 的"示例内置开关"）。
+/// `AUTOUI_PANIC_PROBE=1` 时，demo 的 `.panic_probe` 事件在 update 边界
+/// panic（落 catch_unwind），并记录肇事 App —— 其后的 view 出口仅对该
+/// App 持续 panic（落崩溃页元素），另一窗口不受影响。非 demo 运行零影响。
+static PANIC_PROBE_CRASHED_APP: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn panic_probe_enabled() -> bool {
+    std::env::var("AUTOUI_PANIC_PROBE").map(|v| v == "1").unwrap_or(false)
+}
 
 /// Global MCP action channel receiver (Plan 278).
 /// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
@@ -4772,31 +4869,39 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
         .into()
 }
 
-/// Subscription that polls the MCP action channel and injects IcedMessages
-/// into the event loop. This allows MCP actions to truly simulate user operations
-/// (with animations, state updates, and full UI refresh).
-fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
-    // Poll at 60fps to minimize latency for MCP-injected actions
-    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
-        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
-        let mut lock = guard.lock().unwrap();
-        if let Some(rx) = lock.as_mut() {
-            // Drain all pending actions (non-blocking). VM mode uses Event
-            // addressing, which maps onto IcedMessage. Path mode is a no-op
-            // here (rust mode uses devtools_subscription/devtools_update).
-            match rx.try_recv() {
-                Ok(action) => match action.target {
-                    crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
-                        Some(IcedMessage { widget, event, input_value: action.value })
-                    }
-                    crate::ui::mcp_server::ActionTarget::Path { .. } => None,
-                },
-                Err(std::sync::mpsc::TryRecvError::Empty) => None,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
-            }
-        } else {
-            None
+/// MCP action channel 轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
+fn poll_mcp_actions() -> Option<IcedMessage> {
+    let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+    let mut lock = guard.lock().unwrap();
+    if let Some(rx) = lock.as_mut() {
+        // Drain all pending actions (non-blocking). VM mode uses Event
+        // addressing, which maps onto IcedMessage. Path mode is a no-op
+        // here (rust mode uses devtools_subscription/devtools_update).
+        match rx.try_recv() {
+            Ok(action) => match action.target {
+                crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+                    Some(IcedMessage { widget, event, input_value: action.value })
+                }
+                crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+            },
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
         }
+    } else {
+        None
+    }
+}
+
+/// Subscription that polls the MCP action channel and injects messages into
+/// the event loop. This allows MCP actions to truly simulate user operations
+/// (with animations, state updates, and full UI refresh). 459：打标归 primary
+/// App（T8 单 App 语义）。Poll at 60fps to minimize latency.
+fn mcp_action_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_mcp_actions, 16),
     })
 }
 
@@ -4817,16 +4922,14 @@ static CONFIG_GEN_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 static CONFIG_MTIME_POLL: std::sync::Mutex<Option<std::time::Instant>> =
     std::sync::Mutex::new(None);
 
-fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
+fn mcp_heartbeat_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     // 2026-08-22:200ms → 2s。心跳消息会触发一次完整 update→view 重建
     // (ash-gui 基线视图 ~80ms/次,大 Code 块时 >200ms)—— 200ms 节拍令
     // 消息队列常态积压,事件饿死(命令提交丢失、CPU 满转;实测空闲就
     // ~40% CPU)。快照 2s 内新鲜即可,真实交互路径本就会触发重建。
-    iced::time::every(std::time::Duration::from_millis(2000)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: "__mcp_heartbeat".to_string(),
-        input_value: None,
-    })
+    app_tick(app, "__mcp_heartbeat", 2000)
 }
 
 // =====================================================================
@@ -5625,27 +5728,37 @@ fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
 
 /// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
 /// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
-fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
+/// Shell SSE 事件通道轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
+fn poll_shell_events() -> Option<IcedMessage> {
+    let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+    let mut lock = guard.lock().unwrap();
+    let Some(rx) = lock.as_mut() else {
+        return None;
+    };
+    // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
+    match rx.try_recv() {
+        Ok(ev) => Some(IcedMessage {
+            widget: "ShellStore".to_string(),
+            event: ev.event,
+            input_value: Some(ev.payload_json),
+        }),
+        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+    }
+}
+
+fn shell_event_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     // Plan 062(2026-08-23):间隔必须 ≠ mcp_action_subscription 的 16ms ——
     // 两个 `time::every` 同 duration 的订阅在 iced 的订阅表里 hash 相同,
     // 后注册者被去重、消息静默丢失(merged 模式 job_started/job_done 不到
-    // 达 update 的根因;实测 16→17ms 后事件恢复投递)。
-    iced::time::every(std::time::Duration::from_millis(17)).filter_map(|_| {
-        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
-        let mut lock = guard.lock().unwrap();
-        let Some(rx) = lock.as_mut() else {
-            return None;
-        };
-        // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
-        match rx.try_recv() {
-            Ok(ev) => Some(IcedMessage {
-                widget: "ShellStore".to_string(),
-                event: ev.event,
-                input_value: Some(ev.payload_json),
-            }),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
-        }
+    // 达 update 的根因;实测 16→17ms 后事件恢复投递)。459：Recipe 身份含
+    // 轮询函数指针，天然互不去重，间隔差异不再是正确性前提（保留 17ms
+    // 减少同拍抖动）。
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_shell_events, 17),
     })
 }
 
@@ -5654,136 +5767,156 @@ fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
 /// The subscription closure updates the global ref each time it's evaluated,
 /// and the fn pointer reads from it.
-fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscription<IcedMessage> {
-    // Update global bindings reference
-    {
-        let guard = KEYBOARD_BINDINGS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
-        let mut lock = guard.lock().unwrap();
-        *lock = key_bindings.clone();
+/// Plan 459：per-App 键盘订阅 —— bindings 随闭包按 App 捕获（`listen_with`
+/// 只收 fn 指针不可捕获，故走 `iced_futures::subscription::filter_map`），
+/// `my_window` 过滤保证按键只路由到发生窗口的 App（多窗口互不串扰；
+/// 单窗口行为与原实现等价）。订阅身份含 (AppId, window)，多 App 互不去重。
+fn keyboard_subscription(
+    app: crate::ui::session::AppId,
+    my_window: iced::window::Id,
+    key_bindings: HashMap<String, String>,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopMessage as DM;
+    iced_futures::subscription::filter_map(
+        ("autoui-keyboard", app, my_window),
+        move |event: iced_futures::subscription::Event| {
+            let iced_futures::subscription::Event::Interaction { window, event, status } = event
+            else {
+                return None;
+            };
+            if window != my_window {
+                return None;
+            }
+            keyboard_event_message(event, status, &key_bindings).map(move |m| DM::App(app, m))
+        },
+    )
+}
+
+/// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
+/// F12 toggle、Captured 过滤、bindings 查找、shifted 兜底、Tab 聚焦）。
+fn keyboard_event_message(
+    event: iced::Event,
+    status: iced::event::Status,
+    key_bindings: &HashMap<String, String>,
+) -> Option<IcedMessage> {
+    // F12 → DevTools toggle (always active, even when a widget has focus)
+    // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
+    // when a text input is focused (Plan 371: F12 reliability fix).
+    if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
+        if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+            return Some(IcedMessage {
+                widget: String::new(),
+                event: DEBUG_TOGGLE_EVENT.to_string(),
+                input_value: None,
+            });
+        }
     }
 
-    iced::event::listen_with(|event, status, _window_id| {
-        // F12 → DevTools toggle (always active, even when a widget has focus)
-        // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
-        // when a text input is focused (Plan 371: F12 reliability fix).
-        if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
-            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
-                return Some(IcedMessage {
-                    widget: String::new(),
-                    event: DEBUG_TOGGLE_EVENT.to_string(),
-                    input_value: None,
-                });
-            }
-        }
+    // Skip events already consumed by a focused widget (e.g., text input)
+    if matches!(status, iced::event::Status::Captured) {
+        return None;
+    }
 
-        // Skip events already consumed by a focused widget (e.g., text input)
-        if matches!(status, iced::event::Status::Captured) {
-            return None;
-        }
+    match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key, modifiers, ..
+        }) => {
 
-        match event {
-            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key, modifiers, ..
-            }) => {
-
-                // Build key string for lookup
-                let key_str = match &key {
-                    // Named keys
-                    iced::keyboard::Key::Named(named) => {
-                        let name = match named {
-                            iced::keyboard::key::Named::Enter => "Enter",
-                            iced::keyboard::key::Named::Escape => "Escape",
-                            iced::keyboard::key::Named::Backspace => "Backspace",
-                            iced::keyboard::key::Named::Tab => "Tab",
-                            iced::keyboard::key::Named::Space => " ",
-                            iced::keyboard::key::Named::ArrowUp => "ArrowUp",
-                            iced::keyboard::key::Named::ArrowDown => "ArrowDown",
-                            iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
-                            iced::keyboard::key::Named::ArrowRight => "ArrowRight",
-                            iced::keyboard::key::Named::Delete => "Delete",
-                            iced::keyboard::key::Named::Home => "Home",
-                            iced::keyboard::key::Named::End => "End",
-                            _ => return None,
-                        };
-                        name.to_string()
-                    }
-                    // Character keys — raw character from OS, no case normalization.
-                    // "s" and "S" are different keys. "S" = Shift+s. "Ctrl+S" = Ctrl+Shift+s.
-                    // With Ctrl/Alt held, prepend modifier prefix to the raw character.
-                    iced::keyboard::Key::Character(c) => {
-                        if modifiers.control() || modifiers.alt() {
-                            let mut prefix = String::new();
-                            if modifiers.control() { prefix.push_str("Ctrl+"); }
-                            if modifiers.alt() { prefix.push_str("Alt+"); }
-                            format!("{}{}", prefix, c)
-                        } else {
-                            c.to_string()
-                        }
-                    }
-                    _ => return None,
-                };
-
-                // Look up handler from global bindings
-                let bindings_guard = KEYBOARD_BINDINGS.get().unwrap();
-                let bindings = bindings_guard.lock().unwrap();
-                // Platform compatibility: on Windows, Shift+= returns Character("=") with
-                // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
-                // shifted symbol so bind { "+" -> ... } works on all platforms.
-                // Only applies when no Ctrl/Alt modifier is held.
-                let handler: Option<String> = bindings
-                    .get(&key_str)
-                    .cloned()
-                    .or_else(|| {
-                        if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
-                            let shifted_map: &[(&str, &str)] = &[
-                                ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
-                            ];
-                            shifted_map.iter()
-                                .find(|(from, _)| *from == key_str.as_str())
-                                .and_then(|(_, to)| bindings.get(*to))
-                                .cloned()
-                        } else {
-                            None
-                        }
-                    })
-                    // Plan 418 P2-4: config-declared shortcuts (auto-edit.at via
-                    // pac.at `ui_config:`) are a fallback layer UNDER the
-                    // DSL-declared bindings — same key lookup form ("Ctrl+n").
-                    .or_else(|| {
-                        crate::ui::action_config::action_config()
-                            .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
-                    });
-                if let Some(handler) = handler {
-                    // Strip the leading dot from ".Digit1" → "Digit1"
-                    let event_name = if let Some(stripped) = handler.strip_prefix('.') {
-                        stripped.to_string()
-                    } else {
-                        handler.clone()
+            // Build key string for lookup
+            let key_str = match &key {
+                // Named keys
+                iced::keyboard::Key::Named(named) => {
+                    let name = match named {
+                        iced::keyboard::key::Named::Enter => "Enter",
+                        iced::keyboard::key::Named::Escape => "Escape",
+                        iced::keyboard::key::Named::Backspace => "Backspace",
+                        iced::keyboard::key::Named::Tab => "Tab",
+                        iced::keyboard::key::Named::Space => " ",
+                        iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                        iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                        iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                        iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                        iced::keyboard::key::Named::Delete => "Delete",
+                        iced::keyboard::key::Named::Home => "Home",
+                        iced::keyboard::key::Named::End => "End",
+                        _ => return None,
                     };
-                    Some(IcedMessage {
-                        widget: String::new(),
-                        event: event_name,
-                        input_value: None,
-                    })
-                } else if key_str == "Tab" {
-                    // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
-                    // reaching here were NOT captured by a focused widget —
-                    // when the prompt editor holds focus, its Tab (tab-completion
-                    // via onkeydown.tab) is Captured and never gets here. So an
-                    // un-captured Tab means nothing is focused (or a non-input
-                    // has focus): focus the prompt editor so the caret shows.
-                    Some(IcedMessage {
-                        widget: String::new(),
-                        event: FOCUS_PROMPT_EVENT.to_string(),
-                        input_value: None,
-                    })
-                } else {
-                    None
+                    name.to_string()
                 }
+                // Character keys — raw character from OS, no case normalization.
+                // "s" and "S" are different keys. "S" = Shift+s. "Ctrl+S" = Ctrl+Shift+s.
+                // With Ctrl/Alt held, prepend modifier prefix to the raw character.
+                iced::keyboard::Key::Character(c) => {
+                    if modifiers.control() || modifiers.alt() {
+                        let mut prefix = String::new();
+                        if modifiers.control() { prefix.push_str("Ctrl+"); }
+                        if modifiers.alt() { prefix.push_str("Alt+"); }
+                        format!("{}{}", prefix, c)
+                    } else {
+                        c.to_string()
+                    }
+                }
+                _ => return None,
+            };
+
+            // Look up handler from this App's captured bindings
+            // Platform compatibility: on Windows, Shift+= returns Character("=") with
+            // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
+            // shifted symbol so bind { "+" -> ... } works on all platforms.
+            // Only applies when no Ctrl/Alt modifier is held.
+            let handler: Option<String> = key_bindings
+                .get(&key_str)
+                .cloned()
+                .or_else(|| {
+                    if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
+                        let shifted_map: &[(&str, &str)] = &[
+                            ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
+                        ];
+                        shifted_map.iter()
+                            .find(|(from, _)| *from == key_str.as_str())
+                            .and_then(|(_, to)| key_bindings.get(*to))
+                            .cloned()
+                    } else {
+                        None
+                    }
+                })
+                // Plan 418 P2-4: config-declared shortcuts (auto-edit.at via
+                // pac.at `ui_config:`) are a fallback layer UNDER the
+                // DSL-declared bindings — same key lookup form ("Ctrl+n").
+                .or_else(|| {
+                    crate::ui::action_config::action_config()
+                        .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
+                });
+            if let Some(handler) = handler {
+                // Strip the leading dot from ".Digit1" → "Digit1"
+                let event_name = if let Some(stripped) = handler.strip_prefix('.') {
+                    stripped.to_string()
+                } else {
+                    handler.clone()
+                };
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: event_name,
+                    input_value: None,
+                })
+            } else if key_str == "Tab" {
+                // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
+                // reaching here were NOT captured by a focused widget —
+                // when the prompt editor holds focus, its Tab (tab-completion
+                // via onkeydown.tab) is Captured and never gets here. So an
+                // un-captured Tab means nothing is focused (or a non-input
+                // has focus): focus the prompt editor so the caret shows.
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: FOCUS_PROMPT_EVENT.to_string(),
+                    input_value: None,
+                })
+            } else {
+                None
             }
-            _ => None,
         }
-    })
+        _ => None,
+    }
 }
 
 const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
@@ -5895,7 +6028,7 @@ pub(crate) struct ToastReq {
 /// This is the main entry point for running AURA widgets with iced. It:
 /// 1. Wraps the `DynamicComponent` in a `DesktopSession`（T4c 会话翻转，
 ///    R3 退化桌面；平铺读写经 split_mut/split_ref 拆借视图承接）
-/// 2. Uses `iced::application()` (which does NOT require `State: Default`)
+/// 2. Uses `iced::daemon()` — one OS window per App, per-window view routing
 /// 3. Converts `View<DynamicMessage>` to `View<IcedMessage>` before rendering
 /// 4. Maps iced messages back to `DynamicMessage` on update
 ///
@@ -5907,6 +6040,17 @@ pub(crate) struct ToastReq {
 ///
 /// `AppResult<String>` - Ok("UI closed") on normal exit, Err on failure.
 pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
+    run_dynamic_iced_multi(vec![component])
+}
+
+/// Plan 459：多 App 多窗口入口 —— 一个 `DesktopSession` 服务 N 个 OS 窗口，
+/// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
+/// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
+pub fn run_dynamic_iced_multi(components: Vec<DynamicComponent>) -> AppResult<String> {
+    if components.is_empty() {
+        // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
+        return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
+    }
 
 /// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
 /// Plan 371 Task 20: process a captured screenshot according to the requested
@@ -6019,7 +6163,12 @@ fn compare_pngs(
     }
 }
 
-    let widget_name = component.widget_name().to_string();
+    // Plan 459：MCP 以首个（primary）App 命名——MCP 寻址维持 single-app 语义
+    // （453 T8 冻结），快照/操作永远指向 primary App。
+    let widget_name = components
+        .first()
+        .map(|c| c.widget_name().to_string())
+        .unwrap_or_default();
 
     // Start MCP UI server in background thread (Plan 278)
     let (mcp_shared, mcp_action_rx) = crate::ui::mcp_server::start_mcp_server(
@@ -6036,8 +6185,10 @@ fn compare_pngs(
     // Plan 414 §5.4: seed the in-app console so the panel has content the
     // moment it opens (print() output joins these lines live).
     crate::vm::ui_console::ui_console_push(&format!(
-        "[boot] AutoUI VM app \"{}\" started",
-        widget_name
+        "[boot] AutoUI VM app \"{}\" started ({} app window{})",
+        widget_name,
+        components.len(),
+        if components.len() > 1 { "s" } else { "" }
     ));
     crate::vm::ui_console::ui_console_push(&format!(
         "[boot] MCP automation on 127.0.0.1:{}",
@@ -6054,27 +6205,47 @@ fn compare_pngs(
     }
 
     // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
-    // allow the boot closure to extract the component on the first (and only)
+    // allow the boot closure to extract the components on the first (and only)
     // call while still satisfying the Fn bound.
-    let init = std::cell::RefCell::new(Some(component));
+    let init = std::cell::RefCell::new(Some(components));
 
-    let boot = move || -> crate::ui::session::DesktopSession {
-        let comp = init.borrow_mut().take()
+    let boot = move || -> (crate::ui::session::DesktopSession,
+                           iced::Task<crate::ui::session::DesktopMessage>) {
+        let comps = init.borrow_mut().take()
             .expect("boot should only be called once");
-        // R3 退化桌面：单 App 单窗口即完整会话（T4c 翻转，施工图 §2）。
-        crate::ui::session::DesktopSession::single(
-            comp,
-            startup_window_size(),
-            Some(mcp_shared.clone()),
-        )
+        // R3 退化桌面 + 459 多窗口：逐 App 分配 AppId、开 OS 窗口并同步登记
+        // （`window::open` 同步返回 window::Id，无需等 Opened 事件反推归属）。
+        let mut session = crate::ui::session::DesktopSession::empty(Some(mcp_shared.clone()));
+        let mut open_tasks = Vec::new();
+        for (i, comp) in comps.into_iter().enumerate() {
+            let app_id = session.allocate_app(comp);
+            let size = startup_window_size();
+            // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
+            let position = iced::window::Position::Specific(iced::Point::new(
+                80.0 + 48.0 * i as f32,
+                80.0 + 48.0 * i as f32,
+            ));
+            let (win_id, open_task) = iced::window::open(iced::window::Settings {
+                size,
+                position,
+                ..Default::default()
+            });
+            session.register_window(win_id, app_id, size);
+            open_tasks.push(open_task);
+        }
+        // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
+        // Opened 事件臂作幂等兜底。
+        (session, iced::Task::batch(open_tasks).discard())
     };
 
     let update_inner = |state: &mut crate::ui::session::DesktopSession,
+                        app_id: crate::ui::session::AppId,
                         msg: IcedMessage|
          -> iced::Task<IcedMessage> {
         // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
-        // 缺主 App 仅在会话被外部破坏时发生，空转返回。
-        let mut state = match state.split_mut(crate::ui::session::desktop_app_id()) {
+        // Plan 459：按消息归属 App 拆借（窗口级字段随该 App 的窗口条目）；
+        // 缺 App/窗口仅在会话被外部破坏时发生，空转返回。
+        let mut state = match state.split_mut(app_id) {
             Some(v) => v,
             None => return iced::Task::none(),
         };
@@ -7934,27 +8105,64 @@ fn compare_pngs(
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
-    // Plan 453 T4：外壳消息切换为 DesktopMessage —— 订阅出口与视图出口统一
-    // map_to_app 打标，此处解包分派；IcedMessage 保持为 view 管线内部线格式。
-    // T6 的 panic 边界保留在 App 分支内的 catch_unwind。RefCell 无中毒语义、
-    // RAII Guard 随 unwind 释放；std Mutex 中毒风险归入施工图 T6 审计项。
-    // view 侧 panic 边界为残留项（T4b 接管 AppSession 时同法补）。
+    // Plan 453 T4 / Plan 459 C2：外壳消息 DesktopMessage 三分派 ——
+    // DM::App 按归属 App 分派（update_inner 经 split_mut(app) 取窗口级字段）、
+    // DM::Window 先经 app_of_window 现场解析归属（活注册表，无陈旧性）、
+    // DM::Desktop 维护窗口生命周期。全窗口关闭 → `iced::exit()`（daemon
+    // 语义：不退则进程静默长存，见施工图 §1-2）。T6 的 panic 边界保留在
+    // App/Window 分支内的 catch_unwind；RefCell 无中毒语义、RAII Guard 随
+    // unwind 释放。
     let update = move |state: &mut crate::ui::session::DesktopSession,
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
         use crate::ui::session::{DesktopEvent, DesktopMessage as DM};
+        // 消息归属 → update 分派（App/Window 两臂共用；console 打标 + T5
+        // 探针 + panic 边界 + Task 回标 DM::App(app)）。闭包捕获 update_inner
+        //（fn 条目无法捕获闭包环境），state 经参数传入不与之冲突。
+        let dispatch_app = |state: &mut crate::ui::session::DesktopSession,
+                            app_id: crate::ui::session::AppId,
+                            m: IcedMessage|
+         -> iced::Task<crate::ui::session::DesktopMessage> {
+            // console 打标：update 期间 print/console_log 归属本 App。
+            crate::libs::builtin::set_console_current_app(app_id.0);
+            // Plan 459 T5 探针：验收用 panic 注入（见 PANIC_PROBE_CRASHED_APP）。
+            if panic_probe_enabled() && m.event == "panic_probe" {
+                PANIC_PROBE_CRASHED_APP.store(app_id.0, std::sync::atomic::Ordering::SeqCst);
+                panic!("plan-459 T5 panic probe injected for App {app_id:?}");
+            }
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                update_inner(state, app_id, m)
+            })) {
+                Ok(task) => task.map(move |m| DM::App(app_id, m)),
+                Err(payload) => {
+                    eprintln!(
+                        "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
+                    );
+                    iced::Task::<IcedMessage>::none().map(move |m| DM::App(app_id, m))
+                }
+            }
+        };
         match msg {
             DM::Desktop(ev) => {
                 // 桌面事件分支：窗口生命周期落注册表 / 焦点记录（T4c）。
                 match ev {
                     DesktopEvent::WindowOpened(id, size) => {
-                        // spike 输入①：主窗口 id 由 shell 内部生成并丢弃，经
-                        // Opened 事件捕获登记（T4c-4 起走本消息通路，进程级
-                        // 过渡通道已退役）。
-                        state.register_window(id, crate::ui::session::desktop_app_id(), size);
+                        // boot 期已按 `window::open` 同步登记；本臂作 Opened
+                        // 兜底/幂等刷新。daemon 下窗口必有 boot 归属——
+                        // 未知窗口（非本会话开窗）忽略。
+                        let app = state
+                            .app_of_window(&id)
+                            .or_else(|| state.primary_app());
+                        if let Some(app) = app {
+                            state.register_window(id, app, size);
+                        }
                     }
                     DesktopEvent::WindowClosed(id) => {
                         state.windows.remove(&id);
+                        // daemon 语义：全窗口关闭才退出进程（施工图 §1-2）。
+                        if state.windows.is_empty() {
+                            return iced::exit();
+                        }
                     }
                     DesktopEvent::WindowFocused(id) => {
                         *state.focused_window.borrow_mut() = Some(id);
@@ -7969,47 +8177,55 @@ fn compare_pngs(
                 }
                 iced::Task::none()
             }
-            DM::App(_app_id, m) => {
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    update_inner(state, m)
-                })) {
-                    Ok(task) => task.map(crate::ui::session::map_to_app),
-                    Err(payload) => {
-                        eprintln!(
-                            "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
-                        );
-                        iced::Task::<IcedMessage>::none().map(crate::ui::session::map_to_app)
-                    }
+            DM::App(app_id, m) => dispatch_app(state, app_id, m),
+            DM::Window(win, m) => match state.app_of_window(&win) {
+                Some(app_id) => dispatch_app(state, app_id, m),
+                None => {
+                    eprintln!(
+                        "[session] window event for unregistered window {win:?} dropped (plan-459)"
+                    );
+                    iced::Task::none()
                 }
-            }
-            DM::Window(_win, m) => {
-                // C1 桥接：窗口上下文消息暂与 App 同路（退化桌面单 App 语义
-                // 等价）；C2 起 update_inner 收 app_id，按发生窗口归位窗口级
-                // 字段。panic 边界与 App 臂一致。
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    update_inner(state, m)
-                })) {
-                    Ok(task) => task.map(crate::ui::session::map_to_app),
-                    Err(payload) => {
-                        eprintln!(
-                            "[session] window update panicked (plan-459 C1 bridge): {payload:?}"
-                        );
-                        iced::Task::<IcedMessage>::none().map(crate::ui::session::map_to_app)
-                    }
-                }
-            }
+            },
         }
     };
 
     // 视图出口打标：Element<IcedMessage> → Element<DesktopMessage>（仅顶层一次，
     // widget 回调仍全程产 IcedMessage，view 管线零改动）。闭包对借用生命周期的
     // HKT 局限（同 theme_fn 教训）要求以 fn 条目承载。
+    // Plan 459：daemon 的 view 按窗口调用 —— 先反查归属 App，未登记窗口
+    // （Opened 前的瞬态/外部窗口）回退占位元素；出口按窗口打标 DM::App。
     fn view_desktop_fn(
         state: &crate::ui::session::DesktopSession,
+        window: iced::window::Id,
     ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
+        let Some(app_id) = state.app_of_window(&window) else {
+            return iced::widget::container(
+                iced::widget::text("[AutoUI 会话] 窗口未登记").size(14),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center(iced::Length::Fill)
+            .into();
+        };
+        let Some(view) = state.split_ref_at(app_id, window) else {
+            return iced::widget::text("[AutoUI 会话] 缺少 App 会话").size(14).into();
+        };
+        // Plan 459 T5 view 探针：被注入 panic 的 App 其后每帧在 view 边界
+        // panic → 持续显示崩溃页（另一窗口不受影响）。
+        let probe_hit = panic_probe_enabled()
+            && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst) == app_id.0;
         // T6 视图侧边界：view panic 同样不落进程，降级为全屏提示元素。
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dynamic_view(state))) {
-            Ok(el) => el.map(crate::ui::session::map_to_app),
+        // MCP 快照同步只在 primary App 的视图执行（T8 单 App 语义冻结）。
+        let is_primary = state.primary_app() == Some(app_id);
+        let build = || {
+            if probe_hit {
+                panic!("plan-459 T5 view panic probe for App {app_id:?}");
+            }
+            dynamic_view(view, is_primary)
+        };
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+            Ok(el) => el.map(move |m| crate::ui::session::DesktopMessage::App(app_id, m)),
             Err(payload) => {
                 eprintln!(
                     "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
@@ -8029,8 +8245,16 @@ fn compare_pngs(
         }
     }
 
-    let title_fn = move |_state: &crate::ui::session::DesktopSession| -> String {
-        window_title(format!("Auto - {}", widget_name))
+    let title_fn = move |state: &crate::ui::session::DesktopSession,
+                         window: iced::window::Id|
+           -> String {
+        // 459：per-window 标题 = 归属 App 的 widget 名；未登记窗口退回壳名。
+        let name = state
+            .app_of_window(&window)
+            .and_then(|id| state.apps.get(&id))
+            .map(|a| a.component.widget_name().to_string())
+            .unwrap_or_else(|| widget_name.clone());
+        window_title(format!("Auto - {}", name))
     };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。
@@ -8038,13 +8262,14 @@ fn compare_pngs(
     // shadcn --background(hsl 222.2 47.4% 7% = #090E1A)不一致 —— 换成
     // shadcn 令牌基的自定义调色板,明暗随 iced_adapter 的 dark_mode 走
     //(默认暗色,与既有 DARK_MODE 初值一致)。
-    let theme_fn = move |_state: &crate::ui::session::DesktopSession| -> iced::Theme {
+    let theme_fn = move |_state: &crate::ui::session::DesktopSession,
+                         _window: iced::window::Id|
+           -> iced::Theme {
         shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
     };
 
-    iced::application(boot, update, view_desktop_fn)
+    iced::daemon(boot, update, view_desktop_fn)
         .title(title_fn)
-        .window_size(startup_window_size())
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -8053,97 +8278,99 @@ fn compare_pngs(
         // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
         .theme(theme_fn)
         .subscription(|state: &crate::ui::session::DesktopSession| {
-            // T4c：退化桌面必有主 App，订阅构造沿用共享拆借视图。
-            let state = state
-                .split_ref(crate::ui::session::desktop_app_id())
-                .expect("退化桌面必有主 App (plan-453)");
-            let mut subs = vec![];
-            if state.component.source_path().is_some() {
-                subs.push(hot_reload_tick());
+            // Plan 459：订阅按 App 扇出（453 T5 原案落地）——
+            //   App 级（hot reload / widget tick / timer tick / keyboard）
+            //   按 AppId 打标；桌面级服务（toast 到期 / MCP / shell /
+            //   heartbeat）只订一份、归 primary_app（T8 单 App 语义）；
+            //   listen_with 事件带窗口上下文走 DM::Window（update 现场解析）。
+            use crate::ui::session::DesktopMessage as DM;
+            let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
+            for (app_id, app) in state.apps.iter() {
+                let app_id = *app_id;
+                if app.component.source_path().is_some() {
+                    subs.push(hot_reload_tick(app_id));
+                }
+                if let Some(interval_ms) = app.component.tick_interval() {
+                    subs.push(widget_tick(app_id, interval_ms));
+                }
+                // Plan 442 A5: one-shot timer tick — only while set_timeout timers
+                // are pending; due callbacks fire in update's __timer_tick arm.
+                if app.component.has_pending_timers() {
+                    subs.push(app_tick(app_id, "__timer_tick", 16));
+                }
+                // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
+                if let Some(win) = state.window_of_app(app_id) {
+                    let bindings = app.component.key_bindings().clone();
+                    subs.push(keyboard_subscription(app_id, win, bindings));
+                }
             }
-            if let Some(interval_ms) = state.component.tick_interval() {
-                subs.push(widget_tick(interval_ms));
+            if let Some(primary) = state.primary_app() {
+                // Plan 412 续(toast 修正 5):toast 到期 tick —— 桌面共享堆叠
+                // 只订一份;到期的移除逻辑在 update 的 __toast_tick 分支。
+                if !state.desktop.toasts.borrow().is_empty() {
+                    subs.push(app_tick(primary, "__toast_tick", 250));
+                }
+                // MCP action channel — polls for injected actions from AI agent (Plan 278)
+                subs.push(mcp_action_subscription(primary));
+                // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
+                // dispatches command_output/command_result to ShellStore handlers.
+                subs.push(shell_event_subscription(primary));
+                // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
+                // app while an agent is connected. Only ticks when MCP is active.
+                // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——
+                // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
+                // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
+                // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
+                let mcp_recent = state.desktop.mcp_shared
+                    .as_ref()
+                    .map(|s| s.lock().unwrap().mcp_active_recently(30))
+                    .unwrap_or(false);
+                if mcp_recent
+                    && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
+                {
+                    subs.push(mcp_heartbeat_subscription(primary));
+                }
             }
-            // Plan 412 续(toast 修正 5):toast 到期 tick —— 仅在堆叠非空时
-            // 订阅;到期的移除逻辑在 update 的 __toast_tick 分支。
-            if !state.desktop.toasts.borrow().is_empty() {
-                subs.push(
-                    iced::time::every(std::time::Duration::from_millis(250)).map(|_| {
-                        IcedMessage {
-                            widget: String::new(),
-                            event: "__toast_tick".to_string(),
-                            input_value: None,
-                        }
-                    }),
-                );
-            }
-            // Plan 442 A5: one-shot timer tick — only while set_timeout timers
-            // are pending; due callbacks fire in update's __timer_tick arm.
-            if state.component.has_pending_timers() {
-                subs.push(
-                    iced::time::every(std::time::Duration::from_millis(16)).map(|_| {
-                        IcedMessage {
-                            widget: String::new(),
-                            event: "__timer_tick".to_string(),
-                            input_value: None,
-                        }
-                    }),
-                );
-            }
-            // F12 DevTools + key bindings listener (Plan 275)
-            subs.push(keyboard_subscription(state.component.key_bindings()));
-            // MCP action channel — polls for injected actions from AI agent (Plan 278)
-            subs.push(mcp_action_subscription());
-            // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
-            // dispatches command_output/command_result to ShellStore handlers.
-            subs.push(shell_event_subscription());
-            // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
-            // app while an agent is connected. Only ticks when MCP is active.
-            // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——
-            // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
-            // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
-            // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
-            let mcp_recent = state.desktop.mcp_shared
-                .as_ref()
-                .map(|s| s.lock().unwrap().mcp_active_recently(30))
-                .unwrap_or(false);
-            if mcp_recent
-                && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
-            {
-                subs.push(mcp_heartbeat_subscription());
-            }
-            // Window resize + mouse move/release events for DevTools panel drag
+            // Window resize + mouse move/release events for DevTools panel drag.
+            // Plan 459：消息带窗口上下文走 DM::Window —— update 侧按发生窗口
+            // 归位窗口级字段（`__window_resized` 写对窗口的尺寸；多窗互不串扰）。
             subs.push(iced::event::listen_with(|e, _status, window_id| match e {
                 // Plan 453 T4c-4：Opened/Focused 捕获已统一改道
                 // desktop_window_events()（DM::Desktop 通路），业务侧不再处理
                 // 窗口生命周期事件。
                 // Plan 065:自退排查打点 —— 会话中途 VM 干净退出 = iced 窗口被关
-            // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
-            // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
-            // 一次死亡现场直接看到 CloseRequested 的到达时刻。不改变行为
-            // (返回 None,与之前落入 `_ => None` 相同)。
-            iced::Event::Window(iced::window::Event::CloseRequested) => {
-                eprintln!(
-                    "[window] CloseRequested at {:?} (instrumentation: plan 065)",
-                    std::time::SystemTime::now()
-                );
-                None
-            }
-            iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__window_resized".to_string(),
-                    input_value: Some(format!("{}x{}", size.width, size.height)),
-                }),
-                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__mouse_moved".to_string(),
-                    input_value: Some(format!("{},{}", position.x, position.y)),
-                }),
-                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__mouse_released".to_string(),
-                    input_value: None,
-                }),
+                // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
+                // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
+                // 一次死亡现场直接看到 CloseRequested 的到达时刻。不改变行为
+                // (返回 None,与之前落入 `_ => None` 相同)。
+                iced::Event::Window(iced::window::Event::CloseRequested) => {
+                    eprintln!(
+                        "[window] CloseRequested at {:?} (instrumentation: plan 065)",
+                        std::time::SystemTime::now()
+                    );
+                    None
+                }
+                iced::Event::Window(iced::window::Event::Resized(size)) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__window_resized".to_string(),
+                        input_value: Some(format!("{}x{}", size.width, size.height)),
+                    }))
+                }
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__mouse_moved".to_string(),
+                        input_value: Some(format!("{},{}", position.x, position.y)),
+                    }))
+                }
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__mouse_released".to_string(),
+                        input_value: None,
+                    }))
+                }
                 // Plan 309 续篇 II: track keyboard modifiers so the inspect
                 // picker can switch plain-click (inspect) ↔ Alt-click (native).
                 // The subscription callback can't touch session state (other
@@ -8160,16 +8387,16 @@ fn compare_pngs(
                 iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m))
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { modifiers: m, .. })
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased { modifiers: m, .. }) => {
-                    Some(IcedMessage {
+                    Some(DM::Window(window_id, IcedMessage {
                         widget: String::new(),
                         event: "__modifiers_changed".to_string(),
                         input_value: Some(m.bits().to_string()),
-                    })
+                    }))
                 }
                 _ => None,
             }));
             iced::Subscription::batch(vec![
-                iced::Subscription::batch(subs).map(crate::ui::session::map_to_app),
+                iced::Subscription::batch(subs),
                 crate::ui::session::desktop_window_events(),
             ])
         })
@@ -8178,18 +8405,16 @@ fn compare_pngs(
     Ok("UI closed".to_string())
 }
 
-/// View function for the desktop session, used as the view callback in `iced::application()`.
+/// View function for one App's window, used by `view_desktop_fn` (iced::daemon
+/// per-window view). This is a standalone function (not a closure) so that Rust
+/// can correctly infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 ///
-/// This is a standalone function (not a closure) so that Rust can correctly
-/// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
+/// Plan 459：拆借视图由调用方按窗口构造（`split_ref_at`）；`sync_mcp` 仅在
+/// primary App 的视图为 true —— MCP 快照永远指向 primary（T8 单 App 语义）。
 fn dynamic_view(
-    state: &crate::ui::session::DesktopSession,
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
 ) -> iced::Element<'_, IcedMessage> {
-    // T4c：共享拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
-    let state = match state.split_ref(crate::ui::session::desktop_app_id()) {
-        Some(v) => v,
-        None => return iced::widget::text("[AutoUI 会话] 缺少主 App").size(14).into(),
-    };
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
@@ -8201,6 +8426,7 @@ fn dynamic_view(
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
+    if sync_mcp {
     if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         let mut mcp = mcp_handle.lock().unwrap();
         if !mcp.has_view() {
@@ -8247,6 +8473,7 @@ fn dynamic_view(
             mcp.set_window_size(width, height);
         }
     }
+    } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
     // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
     // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
