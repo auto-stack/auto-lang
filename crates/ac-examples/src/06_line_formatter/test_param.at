@@ -1,0 +1,13 @@
+use auto.str: char_at
+
+fn count_chars(s str) int {
+    return s.len
+}
+
+fn main() {
+    let text = "hello"
+    print(f"text len = ${text.len}")
+    let n = count_chars(text)
+    print(f"count_chars = ${n}")
+    print(f"direct char_at = '${text.char_at(1)}'")
+}

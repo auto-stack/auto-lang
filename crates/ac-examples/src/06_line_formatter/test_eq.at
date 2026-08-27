@@ -1,0 +1,12 @@
+use auto.str: char_at
+
+fn main() {
+    let a = "hello\nworld"
+    let ch = a.char_at(5)
+    print(f"ch = '${ch}'")
+    print(f"ch len = ${ch.len()}")
+    let nl = "\n"
+    print(f"nl len = ${nl.len()}")
+    let eq = ch == nl
+    print(f"eq = ${eq}")
+}

@@ -1,0 +1,34 @@
+// Plan 088 Phase 4 (Complete): Smart Parameter Passing Test
+// 测试智能参数编译：小对象优化，大对象引用
+
+type Point {
+    x int
+    y int
+}
+
+// 小对象函数：int 参数应该优化为值传递
+fn add_small(a int, b int) int {
+    return a + b
+}
+
+// 大对象函数：Point 参数应该引用传递
+fn get_point_x(view p Point) int {
+    return p.x
+}
+
+fn main() void {
+    // 测试小对象优化
+    say("=== Small Object Optimization Test ===")
+    let x = 5
+    let y = 10
+    say("add_small(5, 10) =")
+    say(add_small(x, y))
+
+    // 测试大对象引用传递
+    say("=== Large Object Reference Test ===")
+    let pt = Point{x: 100, y: 200}
+    say("Point.x:")
+    say(get_point_x(pt))
+
+    say("=== All Tests Passed ===")
+}
