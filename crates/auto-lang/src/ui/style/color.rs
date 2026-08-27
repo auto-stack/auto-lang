@@ -20,6 +20,7 @@ pub enum Color {
     OnSecondary,
     OnBackground,
     OnSurface,
+    OnDestructive,
 
     // Tailwind palette colors (basic set for L1)
     Slate(u16),    // slate-50 to slate-900
@@ -112,7 +113,7 @@ impl Color {
             "primary-foreground" => Ok(Color::OnPrimary),
             "secondary-foreground" => Ok(Color::OnSecondary),
             "destructive" | "danger" | "error" => Ok(Color::Error),
-            "destructive-foreground" => Ok(Color::OnPrimary), // white text on red
+            "destructive-foreground" => Ok(Color::OnDestructive), // white text on red
             "success" => Ok(Color::Success),
             "warning" => Ok(Color::Warning),
             "info" => Ok(Color::Info),
@@ -203,7 +204,9 @@ impl Color {
             Color::Warning => (234, 179, 8),         // yellow-500
             Color::Success => (34, 197, 94),         // green-500
             Color::Info => (59, 130, 246),           // blue-500
-            Color::OnPrimary | Color::OnSecondary => (255, 255, 255),   // white
+            Color::OnPrimary => (248, 250, 252),   // light primary foreground in light mode
+            Color::OnSecondary => (15, 23, 42),    // dark secondary foreground in light mode
+            Color::OnDestructive => (248, 250, 252), // white text on destructive red
             Color::OnBackground => (17, 24, 39),     // near-black
             Color::OnSurface => (107, 114, 128),     // gray-500
             _ => (128, 128, 128),

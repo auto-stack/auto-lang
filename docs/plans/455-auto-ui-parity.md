@@ -42,7 +42,7 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 | `003` | `clock` | Timer, formatting, reactive display | Realtime tick | 🟢 Passed |
 | `004` | `profile-card` | Image clipping, badges, negative margins | Initial | 🟢 Passed |
 | `005` | `login` | Card, input, password masking, link, error display | Initial, Empty error, Typed, Masked, Submit | 🟢 Passed (Plan 452/453) |
-| `006` | `hero-section` | Gradient background, full-screen centering, CTA button | Initial, Gradient, Button Click | 🟢 Passed |
+| `006` | `hero-section` | Gradient background, full-screen centering, CTA button | Initial, Gradient, Hover, Typography | 🟢 Passed |
 | `007` | `stats-board` | Grid, card, stats, badges | Layout, Responsive | 🟡 Pending Audit |
 | `008` | `pricing-table` | Pricing tiers, cards, lists, badges | Layout, Selection | 🟡 Pending Audit |
 | `009` | `article-feed` | Feed list, avatar, tags, cards | Scroll, Item click | 🟡 Pending Audit |
@@ -57,19 +57,23 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 
 ---
 
-## 4. Current Tasks (Plan 455 Focus & Roadmap)
+## 4. Current Tasks & Phase Roadmap
 
-- [x] **Phase 1: Input Focus Border Styling**
-  - [x] Implement `Status::Focused` handling in `renderer.rs` `build_input_shape`: 2px border width + `Color::Primary` border color.
-  - [x] Verify focus border visual changes on `005-login` via `autoui-verifier`.
-- [x] **Phase 2: Systematic Verification of Hero Section (006-hero-section)**
-  - [x] Dual-backend visual parity check: gradient `bg-gradient-to-b from-blue-500 to-purple-600`, full-page center flex layout, title/subtitle typography, CTA button styling.
-  - [x] AutoUI MCP interaction verification: click button and trigger `.App.GetStarted` action handler.
-  - [x] Capture and store baseline screenshots in `examples/ui/006-hero-section/src/front/tests/screenshots/`.
-- [ ] **Phase 3: Next Batch Parity Audits (007-stats-board, 008-pricing-table, 010-contact-form)**
-  - [ ] Verify `007-stats-board` grid & statistics card layouts.
-  - [ ] Verify `008-pricing-table` card tiers and feature lists.
-  - [ ] Verify `010-contact-form` form validation and error states.
-- [ ] **Phase 3: Automated Regression Harness**
-  - [ ] Keep `examples/ui/*/src/front/tests/screenshots/` baseline artifacts up-to-date.
-  - [ ] Document verified findings in this tracking plan.
+### Phase 006: `006-hero-section` Parity Fixes
+- [x] **Defect 1: Button Design Token & Foreground Alignment**
+  - Fix `crates/auto-lang/src/ui/style/theme.rs`: In dark mode, align `Color::Primary` to shadcn `--primary` (`210 40% 98%` / `rgb(248, 250, 252)`) and `Color::OnPrimary` to `--primary-foreground` (`222.2 47.4% 11.2%` / `rgb(15, 23, 42)`).
+- [x] **Defect 2: Button Hover Feedback Alignment**
+  - Fix `crates/auto-lang/src/ui/aura_view_builder.rs`: Add default `hover:bg-primary/90` to button default preset, so VM captures `Status::Hovered` feedback matching Vue.
+- [x] **Defect 3: Typography & Text Baseline Alignment**
+  - Verify font size, font weight, line height, and text color rendering between Vue and VM for headline/subtitle.
+- [x] **Defect 4: Dual-Backend Re-Verification**
+  - Re-run dual-backend screenshot captures (initial and hovered states) and perform side-by-side pixel audit.
+
+### Phase 007: `007-stats-board`
+- [ ] Verify multi-column grid layout, stat metric typography, and badge styling.
+
+### Phase 008: `008-pricing-table`
+- [ ] Verify pricing tier cards, highlighted card borders, feature check icons, and CTA buttons.
+
+### Phase 010: `010-contact-form`
+- [ ] Verify multi-line textarea, input focus rings, validation errors, and submit states.

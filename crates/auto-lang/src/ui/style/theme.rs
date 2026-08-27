@@ -99,12 +99,12 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
             // Accent-driven: look up current accent name
             let name = ACCENT_NAME.with(|n| n.borrow().clone());
             let (h, s, l) = accent_hsl(&name).unwrap_or((239, 84, 67));
-            // Dark mode: boost lightness +4% for contrast
-            let l_adjusted = if is_dark { (l + 4).min(85) } else { l };
+            // Dark mode: align to vue index.css .dark `--primary: 239 84% 77%` (L=77%)
+            let l_adjusted = if is_dark { (l + 10).min(85) } else { l };
             Some(hsl_to_rgb(h, s, l_adjusted))
         }
         Color::Secondary => {
-            if is_dark { Some((129, 140, 248)) } else { Some((99, 102, 241)) } // indigo-400/500
+            if is_dark { Some((30, 41, 59)) } else { Some((241, 245, 249)) }
         }
         // Plan 448 对齐批:暗色语义色从 Tailwind gray 系改为生成端 shadcn
         // 令牌(index.css .dark)的精确 HSL 换算值 —— 此前 VM 用 gray-900/800
@@ -121,7 +121,16 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         Color::Warning => Some((234, 179, 8)),
         Color::Success => Some((34, 197, 94)),
         Color::Info => Some((59, 130, 246)),
-        Color::OnPrimary | Color::OnSecondary => Some((255, 255, 255)),
+        // Plan 455 对齐批: shadcn-vue 暗色反转主按钮前景色
+        // light: --primary-foreground = 210 40% 98% (白字)
+        // dark: --primary-foreground = 222.2 47.4% 11.2% (黑字 rgb(15, 23, 42))
+        Color::OnPrimary => {
+            if is_dark { Some((15, 23, 42)) } else { Some((248, 250, 252)) }
+        }
+        Color::OnSecondary => {
+            if is_dark { Some((248, 250, 252)) } else { Some((15, 23, 42)) }
+        }
+        Color::OnDestructive => Some((248, 250, 252)),
         // --foreground: 210 40% 98%
         Color::OnBackground => {
             if is_dark { Some((248, 250, 252)) } else { Some((17, 24, 39)) }

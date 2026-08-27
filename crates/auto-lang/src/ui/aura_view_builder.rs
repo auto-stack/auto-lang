@@ -4028,11 +4028,11 @@ let tabs_inner = View::Row {
         // 边框;ghost/link = 透明。user class 追加在后,可覆盖 preset(如主题色板
         // 的 bg-xxx-500 覆盖 bg-primary,因 IcedStyle 后解析的 BackgroundColor 覆盖前者)。
         let preset: &str = match variant.as_str() {
-            "" | "default" | "primary" => "bg-primary text-primary-foreground font-medium rounded-md",
-            "secondary" => "bg-secondary text-secondary-foreground font-medium rounded-md",
-            "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md",
-            "outline" => "border border-input bg-background text-foreground rounded-md",
-            "ghost" => "rounded-md",
+            "" | "default" | "primary" => "bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90",
+            "secondary" => "bg-secondary text-secondary-foreground font-medium rounded-md hover:bg-secondary/80",
+            "destructive" => "bg-destructive text-destructive-foreground font-medium rounded-md hover:bg-destructive/90",
+            "outline" => "border border-input bg-background text-foreground rounded-md hover:bg-secondary hover:text-secondary-foreground",
+            "ghost" => "rounded-md hover:bg-secondary hover:text-secondary-foreground",
             // Plan 414 R13: icon button - chromeless SQUARE (w follows h).
             "icon" => "h-7 w-7 px-0 py-0",
             "link" => "text-primary",

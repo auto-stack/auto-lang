@@ -118,9 +118,10 @@ client.screenshot("converter_vm_decimal")
 5. **外边距与图层跨界 (Margins & Overlaps)**:
    - [ ] 负外边距（如 `-mt-10`）是否将元素正确向上提升并跨越边界？
    - [ ] Flex gap（如 `gap-4`）在两端各元素间的间距是否均匀？
-6. **按钮默认样式与排版 (Button Defaults)**:
-   - [ ] 按钮文字字号是否对齐 `14px`（Sm）与字重 `500`（Medium）？
-   - [ ] 按钮内边距 (`px-4 py-2`) 与圆角 (`rounded-lg`) 是否一致？
+6. **按钮默认样式、色彩令牌与悬停态 (Button Defaults, Color Tokens & Hover)**:
+   - [ ] **暗色模式反转设计 (Dark Theme Primary Inversion)**: shadcn-vue 在暗色模式下默认 Button 为**浅色高光胶囊（白/浅灰底 `bg-primary` + 黑/深灰字 `text-primary-foreground`）**。核查 VM 端是否误渲染成了蓝紫底白字或硬编码纯白前景色！
+   - [ ] **悬停反馈 (Hover State Feedback)**: 悬停时按钮是否具备透明度/亮度微调（如 `hover:bg-primary/90`）？VM 端是否在 `Hovered` 状态下具备对应变化？
+   - [ ] **文字规格与圆角**: 按钮文字字号是否对齐 `14px`（Sm）、字重 `500`（Medium），内边距 (`px-4 py-2`) 与圆角 (`rounded-md` 6px) 是否一致？
 
 ---
 
@@ -131,11 +132,29 @@ client.screenshot("converter_vm_decimal")
 1. **表单控件聚焦态 (Focus State & Ring)**:
    - 单行 `input` 与多行 `textarea` 在 Iced 中必须通过 `matches!(status, iced::widget::text_input::Status::Focused { .. })` 捕获焦点。
    - 聚焦时边框增粗至 `2.0px` 并自动调用 `resolve_semantic_rgb(&Color::Primary)` 渲染主色（对齐 Vue `focus-visible:ring-2`）。
-2. **Row 内文本排版与边距 (Row Baseline Alignment)**:
+2. **主题色与前景色映射 (Semantic Color Tokens)**:
+   - 暗色模式下 `Color::Primary` 映射至 `--primary`（`210 40% 98%` 即 `rgb(248, 250, 252)`），`Color::OnPrimary` 映射至 `--primary-foreground`（`222.2 47.4% 11.2%` 即 `rgb(2, 8, 23)`）。
+   - 绝不可将 `Color::OnPrimary` 硬编码为纯白 `(255, 255, 255)`，否则会导致暗色主按钮上的文字反差丢失。
+3. **按钮默认 Hover 预设 (Button Hover Preset)**:
+   - 默认 Button variant preset 必须包含 `hover:bg-primary/90`，使 Iced `widget::button::Status::Hovered` 能够自动计算悬停微光样式。
+4. **Row 内文本排版与边距 (Row Baseline Alignment)**:
    - **禁止在 Row 内部子文本上应用垂直外边距（如 `mt-4`）**，因为 Iced 容器外边距包装会导致各子元素内边距不对等，使水平文本垂直基线错位。
    - 垂直外边距必须统一下沉到父级 `Row` 容器（如 `row { style: "justify-center items-center mt-4" }`）。
    - Row 内多个文本之间的间隙统一使用水平外边距（如 `mr-1` 或 `ml-1`），避免 HTML 尾部空白字符被浏览器渲染引擎折叠。
-3. **控件外边距包装 (Margin Wrapping)**:
+5. **控件外边距包装 (Margin Wrapping)**:
    - 所有基础控件（`Input`, `Textarea`, `Checkbox`, `Button`, `Text`）在 `IntoIcedElement` 与 `render_dynamic_view` 中转换为 `iced::Element` 时，必须显式调用 `wrap_with_margin(el, &iced_style)`，确保 `mt-*` / `mb-*` / `ml-*` / `mr-*` 不被静默丢失。
 
+---
 
+## 7. 严格像素与色彩取色核验规程 (Pixel-Level & Design-Token Verification Protocol)
+
+在判定双端视觉对齐（Pass）之前，必须执行以下三层硬性核对，切忌“仅凭宏观轮廓感觉”：
+
+1. **同屏并排放大审查 (Side-by-Side Zoom Audit)**:
+   - 将 Vue 截图与 VM 截图并排对比。放大至局部控件（如按钮、卡片、输入框），严禁仅查看全景缩略图。
+2. **色彩吸管与明暗反差校验 (Color Picker & Contrast Check)**:
+   - 检查主容器背景色（暗底 vs 亮底）。
+   - 检查主按钮背景色与文字色（白底黑字 vs 黑底白字 vs 彩色底）。
+   - 检查边框细线是否存在 1px 渲染丢失或颜色过淡。
+3. **动态状态双端捕获 (Interactive State Sampling)**:
+   - 至少捕获 **初始态 (Initial)** 与 **交互/悬停态 (Hovered/Focused/Typed)** 两组截图，确认动态视觉反馈一致。
