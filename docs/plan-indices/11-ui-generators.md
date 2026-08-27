@@ -59,6 +59,7 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 436 | setup 解释器/a2r 落地 | ✅ | a2r 显式报错守卫(1-A:ui_gen/rust.rs + trans/rust.rs 逻辑路径,PLAN-037 T7 哲学);解释器 L1 单实例(bridge UI 场景解析加载 widget 源 + eval_ast/run_ast 通道 + setup 前导独立 VM run 执行、绑定入 WidgetState.fields、先于首视图);syntax.md 三相位×三后端矩阵;mod.rs 文档腐烂修复 |
 | 435 | AutoUI 组件统一声明（schema 漂移治理与统一注册） | ✅ | P0-P8 全落地：漂移围栏(schema_drift 14 维度)→aura.at 重建(42→368 元素,tier/aliases/backends/sub_widgets 四字段)→校验接入(S001/S002+LSP)→派生翻转(render_support/registry vue 映射 schema 权威+死表 ShadcnRegistry 清退)→ComponentRegistry(Builtin>Local>Package)+官方包自举+use 包引用→文档系统(docs gen CLI+kitchen-sink+三道围栏)；§6 审查 13 缺陷 P6/P7 全修+P8 五项收尾；golden byte-identical 双跑 diff=0；2026-08-26 finish-plan 复审归档（四道围栏+registry 7+desktop 8 重跑绿；2 延期登记 DEBTS.md） |
 | 428 | 代码折叠 Phase B（Route A 逐 run 自绘） | ✅ | fold.rs 区间发现+y 前缀和投影；正文 spans_iter 拆色 fill_text 替代 fill_raw；gutter 两态 chevron+列命中；光标/搜索入折叠区自动揭示；native 2932/2933；041 矩阵 T3b 4/4 + 实机验收通过；验收揪出三既有 bug 全根修（gutter 高度缓存/Ctrl 吞键/对话框无父） |
+| 438 | 025-dashboard 系统监视器 | ✅ | M1 vue 三区布局（KPI 卡+三面积曲线+可排序进程表，浏览器实机 6/6）+ M1-fix ts_adapter 双缺口根治（FStr 臂 .value 解包/int 局部 Math.trunc 追踪）+ M2 vm 模式（table kebab 合一/bindings 提取/badge text prop 三修 + storage 文件背书，desktop_mcp 26/26 含重启恢复闭环）+ §9.1 复审收口（侧栏降级决议/439 需求单/Tick interval 债务登记） |
 | 443 | defineModel 降级收窄（PLAN-037 T4 修正） | ✅ | 仅父级实际绑定(v-model:x 发射点记录)的 model channel 编译 defineModel(对象/数组字面量默认值工厂包裹)，未绑定保持 ref(深响应)；文件级双 pass + auto-man from_workspace 预扫描聚合跨文件绑定；jade e2e 23/23(白板回绿)+demo 9/9+editor vue-tsc 零错；cap_widget_map_model_init 自动回绿；已合并 38adb1ef4，finish-plan 复审归档（vue_capabilities 72/a2vue 10/auto-man 229+6 重跑绿） |
 | 444 | Vue codegen 五类缺陷修复（auto-shell-057） | ✅ | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text "#"+expr 解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse 检测扩 progress/scroll-area/table+CodeEditor 旧脚手架清理；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
 | 445 | 024-charts 图表工坊 demo | ✅ | 四类图切换+流式滑窗+双模式 Reset，vue+vm 双轨全链路（desktop_mcp 19/19+golden） |
@@ -66,7 +67,7 @@ AutoLang's UI system centers on AURA (Auto UI Representation Abstract), a declar
 | 451 | actions 声明 DSL 化 | ✅ | auto-edit.at 并入 widget DSL（P1 vm 全链路+041 迁移 50/0）；P2 vue 消费（keydown 回退层+menubar/toolbar 占位合成+条件转译，裸表达式拼写）；P3 顶层 actions 声明经 use 引用（合并优先级三序，actions-only 文件容忍）；4 条已知限制登记 |
 
 ## Status Summary
-- Completed: 39 | Partial: 4 | Planned: 11 | Deprecated: 0
+- Completed: 40 | Partial: 4 | Planned: 11 | Deprecated: 0
 
 ## Key Achievements
 - Multi-platform AURA pipeline generates native code for Vue, Jetpack Compose, and ArkTS (HarmonyOS) from a single widget DSL

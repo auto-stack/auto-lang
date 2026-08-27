@@ -62,13 +62,14 @@ AutoLang's UI stack centers on AURA (Auto UI Representation Abstract), a declara
 | 436 | setup Interpreter/a2r Landing | Done | a2r explicit-error guard for setup blocks (decision 1-A, PLAN-037 T7 philosophy, both the ui_gen/rust.rs widget path and the trans/rust.rs logic path); interpreter L1 single-instance semantics (UI-scenario parse in the bridge, setup preamble runs once in its own VM run with bindings into WidgetState.fields, before first view); syntax.md three-phase x three-backend matrix; interpreter mod.rs doc rot fixed |
 | 428 | Code Folding Phase B | Done | Route A per-run painting replaces fill_raw (fold regions + y-projection + two-state chevrons + auto-reveal on caret/search, natives 2932/2933, matrix T3b 4/4 + manual acceptance); three pre-existing bugs found during acceptance root-fixed (gutter raster height, Ctrl-key swallowing, parentless rfd dialog) |
 | 435 | AutoUI 组件统一声明（schema 漂移治理与统一注册） | Complete | P0-P8 全落地：漂移围栏→aura.at 重建（42→368 元素，tier/aliases/backends/sub_widgets）→校验接入（S001/S002+LSP）→派生翻转（render_support/registry vue 映射 schema 权威，ShadcnRegistry 死表清退）→ComponentRegistry（Builtin>Local>Package）+官方包自举+use 包引用→文档系统（auto docs gen CLI+kitchen-sink+三道围栏）；§6 审查 13 缺陷全修；golden byte-identical；2026-08-26 finish-plan 复审归档（围栏+lib 3211 重跑绿；2 延期登记 DEBTS.md） |
+| 438 | 025-dashboard 系统监视器 | Complete | vue/vm 双轨系统监视器：M1 三区布局 + M1-fix 生成器双缺口（FStr .value/int trunc）+ M2 vm（table kebab parity + storage 文件背书）+ 复审收口；desktop_mcp 26/26（重启恢复闭环）、浏览器实机 6/6 |
 | 443 | defineModel 降级收窄（PLAN-037 T4 修正） | Complete | 仅父级实际绑定（v-model:x 发射点记录）的 model channel 编译 defineModel（字面量默认值工厂包裹），未绑定保持 ref 深响应；文件级双 pass + auto-man from_workspace 预扫描聚合跨文件绑定；jade e2e 23/23 + demo 9/9 + editor vue-tsc 零错；已合并 38adb1ef4，finish-plan 复审归档（vue_capabilities 72/a2vue 10/auto-man 229+6 重跑绿） |
 | 444 | Vue codegen 五类缺陷修复（auto-shell-057） | Complete | 回调 props 全走 emit 通道+父侧按子 emits 名册解析+text 拼接解析折叠；变体字段访问非空断言；emit payload 门控放开+未定义 handler 带参 emit 桥；walker 补全 else/while 修 async 误判+VM-only fs/File 降级 __vmOnly 抛错桩；str ref 动态点访问 any 通道；gen 模板 @vueuse/CodeEditor 缺口补齐；下游 ash-gui vue-tsc 0 错+build 绿（零手工补丁） |
 | 450 | AutoDown 面板 widget 登记 + iced 映射 | Complete | registry 十空位登记（Heading/Codeblock/Quote/List/Table/Callout/Details/MathBlock/Query/Embed）+ VM/a2r 七面板臂（iced 分解渲染，Plan 319 单臂规则，renderer 零改动）+ schema 声明面 P3 收口（7 元素 + Query/Embed 自旋存根 + baseline ×14）+ codegen 臂确认（ark/jet 守卫）；auto-down 侧 palette_map a2r 发射与双端金标对拍（跨仓互链 019 批次五） |
 
 ## Status
 
-**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 435, 436, 443, 444, 445, 450, 451 (38 plans fully complete)
+**Implemented**: 094, 097, 113, 134, 135, 136, 138, 145, 205, 217, 227, 234, 235-a2vue, 238, 337, 356, 361, 365, 399, 402, 404, 407, 409, 411, 418, 424, 425, 426, 428, 435, 436, 438, 443, 444, 445, 450, 451 (39 plans fully complete)
 
 **Partial**: 099, 133, 144, 147 (4 plans with significant progress)
 
@@ -191,6 +192,7 @@ Plan 094, while not directly a UI plan, is categorized here because the FFI brid
 - [426-setup-preamble-slot.md](../plans/archive/426-setup-preamble-slot.md)
 - [428-code-folding-phase-b.md](../plans/archive/428-code-folding-phase-b.md)
 - [435-autoui-component-schema-unification.md](../plans/archive/435-autoui-component-schema-unification.md)
+- [438-025-dashboard.md](../plans/archive/438-025-dashboard.md)
 - [436-setup-interpreter-a2r.md](../plans/archive/436-setup-interpreter-a2r.md)
 - [443-model-binding-narrowing.md](../plans/archive/443-model-binding-narrowing.md)
 - [444-vue-codegen-ash-shell-057.md](../plans/archive/444-vue-codegen-ash-shell-057.md)

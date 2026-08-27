@@ -136,6 +136,6 @@ RenderCommand 协议(quad/text/image/clip/layer)完备性需要三类最严苛�
 - **每 app 独立 plan**(立项时从纲领派生,编号顺延):一 app 一 plan,大 app 内部分阶段(026 三阶段)。先例:405-023-realworld、407-038-rust-backend;auto-edit 更证明一个 app 会随成长自然长出多个 plan(413→414→418→420→428)。
 - **存量加固**:成熟应用(015/017/018/022/023/038/041 等)各有遗留问题,先做一轮**逐 app 问题盘点**(对标 plans-status-audit 惯例,产出问题清单),再逐 app 立加固 plan,一个一个仔细优化——不与新示例填洞抢同一批 plan 编号,两条线并行。
 
-**首批立项（2026-08-23）**:[437-024-charts](../plans/437-024-charts.md)、[438-025-dashboard](../plans/438-025-dashboard.md)、[439-026-database](../plans/439-026-database.md)、[440-027-file-manager](../plans/440-027-file-manager.md)、[441-028-launcher](../plans/441-028-launcher.md)——5 计划支持多 agent 并发,各计划 §5 声明**拥有/消费边界与降级路径**(如 437 拥有 iced 渲染侧、441 拥有输入/焦点侧;439 拥有 Tree widget、440 降级消费);纲领 plan 顺延至下一空闲号(442+),待需要时再建。
+**首批立项（2026-08-23）**:[437-024-charts](../plans/437-024-charts.md)、[438-025-dashboard](../plans/archive/438-025-dashboard.md)、[439-026-database](../plans/439-026-database.md)、[440-027-file-manager](../plans/440-027-file-manager.md)、[441-028-launcher](../plans/441-028-launcher.md)——5 计划支持多 agent 并发,各计划 §5 声明**拥有/消费边界与降级路径**(如 437 拥有 iced 渲染侧、441 拥有输入/焦点侧;439 拥有 Tree widget、440 降级消费);纲领 plan 顺延至下一空闲号(442+),待需要时再建。
 
 **启动顺序**:024-charts 先行(025 的依赖,且是 golden 三件套的矢量件);438/440/441 的 M1 均不依赖 437,可与 437 同批并发。
