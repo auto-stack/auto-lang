@@ -3038,14 +3038,13 @@ fn register_transitive_widgets_inner(
 }
 
 #[cfg(feature = "ui-iced")]
-fn run_file_dynamic_ui_inner(
+fn build_dynamic_component_inner(
     code: &str,
     path: Option<&str>,
     override_scenario: Option<&crate::session::CompilerSession>,
-) -> AutoResult<String> {
+) -> AutoResult<crate::ui::dynamic::DynamicComponent> {
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
-    use crate::ui::iced::run_dynamic_iced;
     use crate::ui::widget_registry::WidgetRegistry;
 
     // 1. Parse with UI scenario (or override if provided — PR-6)
@@ -3560,7 +3559,28 @@ fn run_file_dynamic_ui_inner(
     //     unconditionally via call_handler.
     comp.fire_init();
 
-    // 4. Run iced (blocks until window closes)
+    Ok(comp)
+}
+
+/// Plan 459：按 `auto run` 同一管线构造 DynamicComponent（不启动 iced 循环）。
+/// 双窗口 demo（examples/ui_dual_app）等宿主复用本入口装配多个 App。
+#[cfg(feature = "ui-iced")]
+pub fn build_dynamic_component(
+    code: &str,
+    path: Option<&str>,
+) -> AutoResult<crate::ui::dynamic::DynamicComponent> {
+    build_dynamic_component_inner(code, path, None)
+}
+
+#[cfg(feature = "ui-iced")]
+fn run_file_dynamic_ui_inner(
+    code: &str,
+    path: Option<&str>,
+    override_scenario: Option<&crate::session::CompilerSession>,
+) -> AutoResult<String> {
+    use crate::ui::iced::run_dynamic_iced;
+    // 4. Run iced (blocks until all windows close; plan-459 daemon semantics)
+    let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     run_dynamic_iced(comp)
         .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
 }

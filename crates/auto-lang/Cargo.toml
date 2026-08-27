@@ -217,6 +217,12 @@ name = "ui_accordion"
 path = "examples/ui_accordion.rs"
 required-features = ["build-examples"]
 
+# Plan 459 T4: dual-window demo (two AppSessions, two OS windows, iced::daemon).
+[[example]]
+name = "ui_dual_app"
+path = "examples/ui_dual_app.rs"
+required-features = ["ui-iced"]
+
 [[example]]
 name = "ui_container"
 path = "examples/ui_container.rs"

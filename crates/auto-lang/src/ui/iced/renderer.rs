@@ -4529,9 +4529,13 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
                 } else {
                     poll.expect("AppTickRecipe: poll or event must be set")()
                 };
-                msg.map(|m| DM::App(app, m)).map(|m| (m, (iv, app, event, poll)))
+                // 空拍（无事件）以 `Some(None)` 项表示、由流级 filter_map 剔除
+                // —— 若直接 yield `None`，unfold 语义是**流终止**（Poll 变体
+                // 首个空轮询即死，459 实测 MCP 动作全丢）。
+                Some((msg.map(|m| DM::App(app, m)), (iv, app, event, poll)))
             },
         )
+        .filter_map(|msg| async move { msg })
         .boxed()
     }
 }
@@ -4872,6 +4876,7 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
 /// MCP action channel 轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
 fn poll_mcp_actions() -> Option<IcedMessage> {
     let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+
     let mut lock = guard.lock().unwrap();
     if let Some(rx) = lock.as_mut() {
         // Drain all pending actions (non-blocking). VM mode uses Event

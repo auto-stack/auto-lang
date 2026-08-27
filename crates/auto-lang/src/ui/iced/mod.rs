@@ -14,5 +14,5 @@ pub mod renderer;
 mod layout_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, last_input_text};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, last_input_text};
 pub(crate) use renderer::encode_payload;
