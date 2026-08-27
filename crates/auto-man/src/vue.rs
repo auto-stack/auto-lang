@@ -4172,11 +4172,8 @@ mod tests {
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
-<<<<<<< HEAD
             chart: true,
-=======
             ..Default::default()
->>>>>>> plan-455
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
@@ -4270,7 +4267,6 @@ mod tests {
         ));
     }
 
-<<<<<<< HEAD
     /// PLAN-457: every component the generator can emit must either ship a
     /// bundled snapshot (offline materialization) or be an allowlisted
     /// default-style registry miss that keeps taking the CLI fallback.
@@ -4287,7 +4283,7 @@ mod tests {
                 "component '{component}' is neither bundled nor allowlisted for fallback"
             );
         }
-=======
+    }
     #[test]
     fn test_avatar_progress_dependency_detection() {
         let usage = VueDependencyUsage::detect(concat!(
@@ -4305,7 +4301,6 @@ mod tests {
         assert!(pkg.contains("\"class-variance-authority\""), "{pkg}");
         assert!(pkg.contains("\"reka-ui\""), "{pkg}");
         assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
->>>>>>> plan-455
     }
 
     /// Plan 444 (ash-shell-057 ⑥): an unused CodeEditor.vue shell from an
