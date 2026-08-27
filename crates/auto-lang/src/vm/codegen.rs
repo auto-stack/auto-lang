@@ -2634,6 +2634,96 @@ impl Codegen {
                             }
                             self.loop_continue_positions.pop();
                         } else if let Expr::Call(_call) = &for_stmt.range {
+                            // Plan 454 E5b(§M 缺口③):Call 产物若静态型别为
+                            // Array(如 auto.obj.values),走「临时数组句柄 +
+                            // 索引循环 + GET_ELEM」通道——默认的 .iter() 迭代
+                            // 器通道对 List 句柄零迭代(句柄≠iterator)。
+                            // Array 型只能经 infer_expr_type 的 Object 映射间接
+                            // 观察——这里直接看原生名(infer 返回 Type 侧)。
+                            let arr_typed = match &for_stmt.range {
+                                Expr::Call(c) => matches!(
+                                    c.name.as_ref(),
+                                    Expr::Dot(_, m)
+                                        if matches!(m.as_str(), "values" | "keys")
+                                ),
+                                _ => false,
+                            };
+                            if arr_typed {
+                                self.push_scope(); // 迭代变量 + 句柄 + 计数器
+                                self.compile_expr(&for_stmt.range)?;
+                                let arr_index = self.add_var("_iterarr");
+                                self.emit_store_loc(arr_index);
+
+                                let var_str = var_name.to_string();
+                                let var_index = self.add_var(&var_str);
+                                // 计数器置 0
+                                let idx_index = self.add_var("_iteridx");
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(0);
+                                self.emit_store_loc(idx_index);
+
+                                let list_len_native = BIGVM_NATIVES
+                                    .lock()
+                                    .unwrap()
+                                    .resolve_qualified("auto.list.len");
+
+                                let loop_start = self.code.len();
+                                // 条件: idx < len
+                                self.emit_load_loc(idx_index);
+                                if let Some(len_id) = list_len_native {
+                                    self.emit_load_loc(arr_index);
+                                    self.emit(OpCode::CALL_NAT);
+                                    self.code.extend_from_slice(&len_id.to_le_bytes());
+                                } else {
+                                    return Err(AutoError::Msg(
+                                        "auto.list.len native not found".to_string(),
+                                    ));
+                                }
+                                self.emit(OpCode::LT);
+                                self.emit(OpCode::JMP_IF_Z);
+                                let jump_to_end = self.emit_placeholder_i16();
+
+                                // 元素: e = arr[idx]
+                                self.emit_load_loc(arr_index);
+                                self.emit_load_loc(idx_index);
+                                self.emit(OpCode::GET_ELEM);
+                                self.emit_store_loc(var_index);
+
+                                // 循环体
+                                let old_pop = self.should_pop_expr_result;
+                                self.should_pop_expr_result = true;
+                                self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
+                                self.should_pop_expr_result = old_pop;
+
+                                // continue 目标: 计数器 +1
+                                let continue_pos = self.code.len();
+                                if let Some(pos) = self.loop_continue_positions.last_mut() {
+                                    *pos = continue_pos;
+                                }
+                                self.emit_load_loc(idx_index);
+                                self.emit(OpCode::CONST_I32);
+                                self.emit_i32(1);
+                                self.emit(OpCode::ADD);
+                                self.emit_store_loc(idx_index);
+                                self.emit(OpCode::JMP);
+                                let cur_pos = self.code.len();
+                                self.emit_i16((loop_start as isize - cur_pos as isize - 2)
+                                    as i16);
+
+                                let _loop_exit = self.code.len();
+                                self.patch_jump(jump_to_end);
+                                self.pop_scope();
+                                let exits = self.loop_exits.pop().unwrap();
+                                for exit_placeholder in exits {
+                                    self.patch_jump(exit_placeholder);
+                                }
+                                let continues = self.loop_continues.pop().unwrap();
+                                for cp in continues {
+                                    self.patch_jump_to(cp, continue_pos);
+                                }
+                                self.loop_continue_positions.pop();
+                                return Ok(());
+                            }
                             // Plan 073: Iterator-based for loop: for x in list.iter() { ... }
                             // Compile the iterator call to get the iterator object
                             self.compile_expr(&for_stmt.range)?;
@@ -8315,6 +8405,10 @@ impl Codegen {
                             || name.starts_with("auto.url_opaque.origin")
                             || name.starts_with("auto.url_opaque.to_string") {
                             self.last_expr_type = ObjectType::String;
+                        } else if name.starts_with("auto.obj.") || name.starts_with("obj.") {
+                            // Plan 454 E(§M 缺口③·型别半):优先于 fn_return_types
+                            // 的通用注册表默认值,否则 values/find 被标 Int 退化。
+                            self.last_expr_type = self.infer_native_return_type(name);
                         } else if let Some(ret_ty) = self.fn_return_types.get(name) {
                             self.last_expr_type = match ret_ty {
                                 Type::Void => ObjectType::Void,
@@ -11971,11 +12065,19 @@ impl Codegen {
             let var_idx = self.add_string(var_name);
             self.code.extend_from_slice(&var_idx.to_le_bytes());
             // Plan 385: emit the variable's local slot offset (relative to bp+1)
+            // Plan 454 E5a: 函数参数域打 0x8000 旗标(idx < 当前 fn n_args),
+            // 运行期按 bp-(n_args-idx+1) 负向寻址解析为绝对槽位。
+            let is_param_slot = self
+                .lookup_var(var_name)
+                .map(|idx| (idx as usize) < self.current_fn_n_args)
+                .unwrap_or(false);
             let slot_offset = self.lookup_var(var_name)
-                .map(|idx| idx as u16)
+                .map(|idx| if is_param_slot { 0x8000u16 | (idx as u16 & 0x3FFF) } else { idx as u16 })
                 .unwrap_or(0xFFFF); // 0xFFFF = no slot (fallback to env)
-            // Plan 419: 记录 by-ref 捕获槽,块尾释放跳过。
-            if slot_offset != 0xFFFF {
+            // Plan 419/454 E5a: 记录 by-ref 捕获槽,块尾释放跳过。
+            // 0x8000 旗标 = 函数参数域(运行期负向寻址),既不进释放组,
+            // 由引擎在 CLOSURE 执行期解析为创建帧绝对槽位。
+            if slot_offset != 0xFFFF && slot_offset & 0x8000 == 0 {
                 self.byref_captured_slots.insert(slot_offset as usize);
             }
             self.code.extend_from_slice(&slot_offset.to_le_bytes());

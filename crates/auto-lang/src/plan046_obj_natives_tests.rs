@@ -58,9 +58,9 @@ mod plan046_obj_natives {
         // completion-only contract until dyn semantics close (see doc above)
     }
 
-    /// T2 full-chain (WIP): `.find` reaches the shim on dynamic receivers but
-    /// Option return does not propagate through untyped codegen paths yet.
-    #[ignore = "PLAN-046 T2 WIP: dyn find -> Option propagation pending (KNOWN-DEBT 046-A)"]
+    /// T2 full-chain (CLOSED by plan-454 Phase E): dynamic receiver routed
+    /// to auto.obj.find (language-level TAG_NULL miss contract), predicate
+    /// outer-captures resolve via param-domain capture slots (E5a).
     #[test]
     fn dynamic_find_with_predicate() {
         let out = run(
@@ -79,9 +79,9 @@ mod plan046_obj_natives {
         }
     }
 
-    /// T2 full-chain (WIP): values list is built by the shim; consuming via
-    /// for-in/arith on untyped results awaits the same dyn-semantics closure.
-    #[ignore = "PLAN-046 T2 WIP: dyn values consumption semantics pending (KNOWN-DEBT 046-A)"]
+    /// T2 full-chain (CLOSED by plan-454 Phase E): Object.values typed as
+    /// Array at compile time so for-in lowers via temp-handle+index+GET_ELEM
+    /// channel instead of the iterator mismatch (E5b).
     #[test]
     fn object_values_returns_array() {
         let out = run(
