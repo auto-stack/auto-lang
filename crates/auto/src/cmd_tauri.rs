@@ -668,19 +668,39 @@ fn generate_postcss_config() -> String {
 }
 
 fn generate_index_html(name: &str) -> String {
+    // Plan 458: theme-aware, same as cmd_vue (dark class follows
+    // AUTO_UI_THEME; accent bootstrap pins --primary when AUTO_UI_ACCENT set).
+    let dark_attr = if auto_lang::ui::style::theme::theme_pref_from_env() == "dark" {
+        r#" class="dark""#
+    } else {
+        ""
+    };
+    let accent_bootstrap = match auto_lang::ui::style::theme::accent_pref_from_env() {
+        Some(accent) => {
+            let dark = auto_lang::ui::style::theme::theme_pref_from_env() == "dark";
+            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(accent, dark)
+                .unwrap_or_else(|| "239 84% 67%".to_string());
+            format!(
+                "  <script>document.documentElement.style.setProperty('--primary', '{}');</script>\n",
+                hsl
+            )
+        }
+        None => String::new(),
+    };
     format!(r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="en"{}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{}</title>
+{}
 </head>
 <body>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
-"#, name)
+"#, dark_attr, name, accent_bootstrap)
 }
 
 fn generate_main_ts() -> String {

@@ -846,20 +846,44 @@ fn generate_index_html(name: &str) -> String {
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
     // `:root` tokens and looks broken (light bg + dark-designed text).
+    // Plan 458: the dark class follows the effective theme pref (AUTO_UI_THEME
+    // from `auto run --theme` / pac.at `theme:`; default dark), and an accent
+    // bootstrap pins `--primary` on <html> when AUTO_UI_ACCENT is set (inline
+    // style beats every stylesheet, and a later runtime `applyAccent` — app
+    // `accent_color` state — overwrites it again).
+    let dark_attr = if auto_lang::ui::style::theme::theme_pref_from_env() == "dark" {
+        r#" class="dark""#
+    } else {
+        ""
+    };
+    let accent_bootstrap =
+        match auto_lang::ui::style::theme::accent_pref_from_env() {
+            Some(accent) => {
+                let dark = auto_lang::ui::style::theme::theme_pref_from_env() == "dark";
+                let hsl = auto_lang::ui::style::theme::accent_primary_hsl(accent, dark)
+                    .unwrap_or_else(|| "239 84% 67%".to_string());
+                format!(
+                    r#"    <script>document.documentElement.style.setProperty('--primary', '{}');</script>
+"#,
+                    hsl
+                )
+            }
+            None => String::new(),
+        };
     format!(r#"<!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en"{}>
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{}</title>
-  </head>
+{}  </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, name)
+"#, dark_attr, name, accent_bootstrap)
 }
 
 fn generate_main_ts(
@@ -3879,6 +3903,21 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.ensure_router_file()?;
         // Plan 413: self-heal the CodeEditor shell the same way.
         project.ensure_code_editor_component()?;
+    }
+
+    // Plan 458: index.html carries the theme default (`class="dark"`) and the
+    // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
+    // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
+    // `class="dark"`, or a theme flag flip) survives the "project exists,
+    // nothing changed" fast path forever.
+    {
+        let index_html_path = project.output_dir.join("index.html");
+        if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
+            let index_html = generate_index_html(&project.name);
+            if let Err(e) = fs::write(&index_html_path, index_html) {
+                println!("  ⚠ index.html refresh skipped: {}", e);
+            }
+        }
     }
 
     // Copy handmade theme assets if available
