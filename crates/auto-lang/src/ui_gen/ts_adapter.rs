@@ -58,6 +58,14 @@ pub struct AuraTsContext {
     /// must NOT be mapped to the Auto collection methods (the old legacy
     /// "unknown local -> Map" branch mis-fired here).
     null_init_locals: std::cell::RefCell<std::collections::HashSet<String>>,
+    /// Plan 438 M1-fix②: handler locals proven int (`var x int = …`, or
+    /// `var x = <proven-int init>` like an int-typed state ref). Their
+    /// divisions lower to `Math.trunc` like int-typed state. Flat per-handler
+    /// set — same scope model as `null_init_locals` (block shadowing with a
+    /// conflicting type in one handler is not modeled; idiomatic handler
+    /// locals don't do that). Reassignment with a non-int RHS removes the
+    /// name (see the `Op::Asn` arm).
+    int_locals: std::cell::RefCell<std::collections::HashSet<String>>,
     /// Plan 053 M5/P5-6: when Some(seq_var), this context is transpiling the
     /// body of a debounced complete-handler (wrapped in setTimeout). State-ref
     /// assignments (`.suggestions = x`) get guarded with
@@ -94,6 +102,7 @@ impl AuraTsContext {
             facade_ref_fields: std::collections::HashMap::new(),
             typed_ints: HashSet::new(),
             null_init_locals: std::cell::RefCell::new(Default::default()),
+            int_locals: std::cell::RefCell::new(Default::default()),
             debounce_seq_var: None,
             warnings: std::cell::RefCell::new(Vec::new()),
         }
@@ -182,6 +191,12 @@ impl AuraTsContext {
     /// its methods pass through unchanged.
     fn is_null_init_local(&self, name: &str) -> bool {
         self.null_init_locals.borrow().contains(name)
+    }
+
+    /// Plan 438 M1-fix②: a handler local proven int (declared with an int
+    /// type annotation, or initialized from a proven-int expression).
+    fn is_local_int(&self, name: &str) -> bool {
+        self.int_locals.borrow().contains(name)
     }
 
     /// Plan 012 Batch A (gap 19): declare facade/plain-object names (widget
@@ -336,7 +351,9 @@ fn expr_proven_int(expr: &Expr, ctx: &AuraTsContext) -> bool {
     match expr {
         Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_)
         | Expr::U64(_) | Expr::Byte(_) | Expr::Char(_) => true,
-        Expr::Ident(n) | Expr::GenName(n) => ctx.is_typed_int(n.as_str()),
+        Expr::Ident(n) | Expr::GenName(n) => {
+            ctx.is_typed_int(n.as_str()) || ctx.is_local_int(n.as_str())
+        }
         Expr::Dot(obj, field) => {
             matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
                 && ctx.is_typed_int(field.as_str())
@@ -527,6 +544,28 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 && matches!(store.expr, crate::ast::Expr::Nil);
             if nil_init {
                 ctx.null_init_locals
+                    .borrow_mut()
+                    .insert(store.name.as_str().to_string());
+            }
+            // Plan 438 M1-fix②: register proven-int locals so their later
+            // divisions lower to Math.trunc (parity with int-typed state).
+            // Proven by an explicit int annotation (`var g int = …`) OR by a
+            // proven-int initializer (`var m = .intState`). Unknown initializers
+            // (record fields, dynamic calls) stay untracked — truncating an
+            // actually-float value is a silent correctness bug (Plan 014 rule).
+            let int_local = matches!(
+                store.ty,
+                crate::ast::Type::Int
+                    | crate::ast::Type::I64
+                    | crate::ast::Type::Uint
+                    | crate::ast::Type::U64
+                    | crate::ast::Type::USize
+                    | crate::ast::Type::Byte
+                    | crate::ast::Type::Char
+            ) || (!matches!(store.expr, crate::ast::Expr::Nil)
+                && expr_proven_int(&store.expr, ctx));
+            if int_local {
+                ctx.int_locals
                     .borrow_mut()
                     .insert(store.name.as_str().to_string());
             }
@@ -857,6 +896,35 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
             write!(out, "'{}'", escaped).ok();
+        }
+
+        // Plan 438 M1-fix①: f-string → JS template literal with AURA-aware
+        // interpolation. Previously there was no arm here, so the whole
+        // expression fell through to the a2ts fallback, whose printer knows
+        // nothing about Vue refs — `.cpu` inside an f-string came out as a
+        // bare `${cpu}` (a Ref object in script context: TS2362 under
+        // vue-tsc, `[object Object]`-class garbage at runtime) instead of
+        // `${cpu.value}`. Literal parts keep the a2ts escaping rules
+        // (backtick and `${` must not leak into the template).
+        Expr::FStr(fstr) => {
+            write!(out, "`").ok();
+            for part in &fstr.parts {
+                match part {
+                    Expr::Str(s) => {
+                        let escaped = s.replace("`", "\\`").replace("${", "\\${");
+                        out.write_all(escaped.as_bytes()).ok();
+                    }
+                    Expr::Char(c) => {
+                        write!(out, "{}", c).ok();
+                    }
+                    other => {
+                        write!(out, "${{").ok();
+                        transpile_expr(other, ctx, out);
+                        write!(out, "}}").ok();
+                    }
+                }
+            }
+            write!(out, "`").ok();
         }
 
         // Function call — API detection, print, builtins, method calls
@@ -1447,6 +1515,17 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             use auto_val::Op;
             match op {
                 Op::Asn => {
+                    // Plan 438 M1-fix②: reassigning a tracked int local with a
+                    // non-proven-int RHS drops it from the int set — the name
+                    // is no longer known-int, so later divisions must not
+                    // lower to Math.trunc.
+                    if let Expr::Ident(n) = lhs.as_ref() {
+                        if ctx.int_locals.borrow().contains(n.as_str())
+                            && !expr_proven_int(rhs, ctx)
+                        {
+                            ctx.int_locals.borrow_mut().remove(n.as_str());
+                        }
+                    }
                     transpile_assign_target(lhs, ctx, out);
                     write!(out, " = ").ok();
                     transpile_expr(rhs, ctx, out);

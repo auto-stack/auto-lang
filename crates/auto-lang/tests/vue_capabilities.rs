@@ -2378,3 +2378,121 @@ widget App {
         assert_eq!(out, first, "run #{i} 与首跑字节不一致(D2 确定性回归)");
     }
 }
+
+/// Plan 438 M1-fix①: handler 内 f-string 插值走 AURA 感知路径——模型引用
+/// `.cpu` 必须发射 `${cpu.value}`。此前 ts_adapter 无 FStr 臂，整个表达式
+/// 兜底到 a2ts 打印器（不认识 Vue ref），发出裸 `${cpu}`（TS2362）。
+#[test]
+fn cap_438_fstr_model_ref_unwraps_value() {
+    let sfc = gen_sfc(
+        r#"
+widget App {
+    msg { Init }
+    model {
+        cpu int = 23
+        label str = ""
+    }
+    on {
+        .Init -> { .label = f"cpu=${.cpu} pct" }
+    }
+    view { col { text .label } }
+}
+"#,
+    );
+    println!("DBG-SFC-START\n{}DBG-SFC-END", sfc);
+    assert!(
+        sfc.contains("label.value = `cpu=${cpu.value} pct`"),
+        "f-string 模型引用必须解包 .value:\n{sfc}"
+    );
+}
+
+/// Plan 438 M1-fix① 续: f-string 内的字符串字面量部分反引号/`${` 转义
+/// （与 a2ts fstr 同规则），局部变量插值保持裸名。
+#[test]
+fn cap_438_fstr_escapes_literal_parts() {
+    let sfc = gen_sfc(
+        r#"
+widget App {
+    msg { Init }
+    model { label str = "" }
+    on {
+        .Init -> {
+            var n = 5
+            .label = f"a`b \${lit} ${n}"
+        }
+    }
+    view { col { text .label } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains(r"a\`b \${lit} ${n}"),
+        "字面量反引号与 ${{ 必须转义、局部插值保持裸名:\n{sfc}"
+    );
+}
+
+/// Plan 438 M1-fix②: 证整型局部变量的 `/` 降为 Math.trunc（与 int 声明
+/// state 对齐）。两条注册路径：显式 int 标注（`var g int = …`）与
+/// 证整型初始化（`var m = .intState`）。
+#[test]
+fn cap_438_local_int_division_trunc() {
+    let sfc = gen_sfc(
+        r#"
+widget App {
+    msg { Init }
+    model { memT int = 142 }
+    on {
+        .Init -> {
+            var fromState = .memT
+            var a = fromState / 10
+            var g int = 100
+            var b = g / 4
+        }
+    }
+    view { col { text "x" } }
+}
+"#,
+    );
+    assert!(
+        sfc.contains("Math.trunc(fromState / 10)"),
+        "int state 初始化的局部整除必须 trunc:\n{sfc}"
+    );
+    assert!(
+        sfc.contains("Math.trunc(g / 4)"),
+        "int 标注局部的整除必须 trunc:\n{sfc}"
+    );
+}
+
+/// Plan 438 M1-fix② 续: 非证整型来源不 trunc——证整型局部被 record 字段
+/// （any）重赋值后失去 trunc（Asn 失效路径），除法保持原生浮点。
+#[test]
+fn cap_438_local_int_tracking_invalidation() {
+    let sfc = gen_sfc(
+        r#"
+widget App {
+    msg { Init }
+    model { procs = [ { mem: 1240 } ] }
+    on {
+        .Init -> {
+            var fromAny = 0
+            for p in .procs {
+                fromAny = p["mem"]
+            }
+            var c = fromAny / 10
+        }
+    }
+    view { col { text "x" } }
+}
+"#,
+    );
+    assert!(
+        !sfc.contains("Math.trunc(fromAny"),
+        "any 重赋值后的局部不得 trunc:
+{sfc}"
+    );
+    assert!(
+        sfc.contains("fromAny / 10"),
+        "any 局部除法保持原生浮点形态:
+{sfc}"
+    );
+}
