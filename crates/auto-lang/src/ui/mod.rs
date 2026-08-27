@@ -55,6 +55,9 @@ pub mod aura_snapshot_builder;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod render_support;
+// Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown 真渲染）。
+#[cfg(feature = "autodown")]
+pub mod autodown_render;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod interpreter;

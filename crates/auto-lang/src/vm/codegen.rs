@@ -4,7 +4,7 @@ use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
 use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_AUTODOWN_FIND_BLOCK, NATIVE_AUTODOWN_INSERT_TEMPLATE, NATIVE_AUTODOWN_INSERT_TEXT, NATIVE_AUTODOWN_PARSE, NATIVE_AUTODOWN_SERIALIZE, NATIVE_AUTODOWN_TEXT, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -480,6 +480,13 @@ impl Codegen {
         intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
         intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
         intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
+        // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
+        intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
+        intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
+        intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
+        intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
+        intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
+        intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
         // Plan 413 follow-up: console natives (in-app Console panel).
         intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
         intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);
@@ -818,6 +825,13 @@ impl Codegen {
         intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
         intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
         intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
+        // Plan 019 批次八: autodown 文档 natives（.at handler 可编程操作文档）。
+        intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
+        intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
+        intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
+        intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
+        intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
+        intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
         // Plan 413 follow-up: console natives (in-app Console panel).
         intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
         intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);

@@ -908,8 +908,30 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
-            // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
-            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+            // Plan 019 批次七: markdown/autodown → 真渲染（autodown-core
+            // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
+            // textarea 降级。
+            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor"
+            | "markdown" => {
+                #[cfg(feature = "autodown")]
+                {
+                    let content = self
+                        .extract_string_with(props, "content", bindings)
+                        .or_else(|| self.extract_string_with(props, "value", bindings))
+                        .unwrap_or_default();
+                    let is_final = props
+                        .get("final")
+                        .map(|v| match v {
+                            AuraPropValue::Expr(expr) => {
+                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .unwrap_or(true);
+                    return crate::ui::autodown_render::render_document(&content, is_final);
+                }
+                #[cfg(not(feature = "autodown"))]
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
@@ -1703,8 +1725,30 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
-            // Plan 370 D-GAP-3: AutoDownEditor → textarea (plain-text degradation)
-            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+            // Plan 019 批次七: markdown/autodown → 真渲染（autodown-core
+            // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
+            // textarea 降级。
+            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor"
+            | "markdown" => {
+                #[cfg(feature = "autodown")]
+                {
+                    let content = self
+                        .extract_string_with(props, "content", bindings)
+                        .or_else(|| self.extract_string_with(props, "value", bindings))
+                        .unwrap_or_default();
+                    let is_final = props
+                        .get("final")
+                        .map(|v| match v {
+                            AuraPropValue::Expr(expr) => {
+                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .unwrap_or(true);
+                    return crate::ui::autodown_render::render_document(&content, is_final);
+                }
+                #[cfg(not(feature = "autodown"))]
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
@@ -6086,6 +6130,48 @@ mod tests {
                 }
                 _ => panic!("Expected View::Container for {tag}"),
             }
+        }
+    }
+
+    /// Plan 019 批次七: markdown/autodown widget 真渲染臂 —— content: 经
+    /// autodown-core parse_blocks 解析为面板树（feature autodown；无 feature
+    /// 时 textarea 降级由其余测试矩阵覆盖）。
+    #[cfg(feature = "autodown")]
+    #[test]
+    fn test_autodown_widget_true_render() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("autodown")
+            .with_prop("content", Expr::Str("# 标题\n\n段落 **粗**\n".into()))
+            .with_prop("final", Expr::Bool(true));
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert_eq!(children.len(), 2);
+                match &children[0] {
+                    View::Text { content, style } => {
+                        assert_eq!(content, "标题");
+                        let expected = Style::parse("text-4xl font-bold text-primary mb-4").unwrap();
+                        assert_eq!(style.as_ref().unwrap().classes, expected.classes);
+                    }
+                    _ => panic!("expected heading text"),
+                }
+                assert!(matches!(&children[1], View::Row { .. }));
+            }
+            _ => panic!("expected document column"),
+        }
+
+        // markdown 别名同臂；final 缺省 true。
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("markdown")
+            .with_prop("content", Expr::Str("- 甲\n- 乙\n".into()));
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert_eq!(children.len(), 1);
+                assert!(matches!(&children[0], View::Column { .. }), "list column");
+            }
+            _ => panic!("expected document column"),
         }
     }
 

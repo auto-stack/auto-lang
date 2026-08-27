@@ -1,0 +1,68 @@
+// front/app.at — VM 轨 autodown 文档渲染 + 流式演示（plan 019 批次七）
+//
+// 两块 autodown widget：
+//   ① 静态文档（final=true）——标题/段落/行内 marks/代码块/引用/列表/表格
+//      全面板词汇一次成型；
+//   ② 流式演示（final=.streaming）——每按一次「下一块」按钮追加一段
+//      文档，final=false 期间悬挂标记/半截链接按流式语义渲染（不闪空
+//      块），追加完毕 final 翻 true 收口。content 绑定状态 → 每次更新
+//      自然触发重解析与视图重建（流式路径 v1）。
+//
+// 验证：auto run -r vm（需 auto-lang 以 --features autodown 构建）。
+
+widget App {
+    msg { Init, Next, Program }
+
+    model {
+        full str = "# 流式标题\n\n第一段：**加粗** 与 `code`。\n\n- 列表甲\n- 列表乙\n\n> 引用收尾\n"
+        n int = 0
+        stream str = ""
+        streaming bool = true
+        // natives 编程环（plan 019 批次八）：doc 为块树 JSON（autodown_parse
+        // 产物），prog 为编程操作后的序列化文本。
+        doc str = ""
+        prog str = "# 可编程文档\n\n初始段落。\n"
+    }
+
+    on {
+        .Init -> {
+            .n = 1
+            .stream = .full.slice(0, 18)
+            // parse → insert_template（顶层首位插模板块）→ serialize 全环
+            .doc = autodown_parse(.prog, 1)
+            .doc = autodown_insert_template(.doc, "## 模板标题（natives 插入）\n", "", 0)
+            .prog = autodown_serialize(.doc, 0)
+        }
+        .Next -> {
+            .n = .n + 1
+            if .n > 5 {
+                .stream = .full
+                .streaming = true
+            } else {
+                .stream = .full.slice(0, .n * 24)
+                .streaming = false
+            }
+        }
+        .Program -> {
+            // 可编程操作：首块文本追加（applyOp 轨）
+            .doc = autodown_parse(.prog, 1)
+            if autodown_find_block(.doc, "block-0") {
+                .doc = autodown_insert_text(.doc, "block-0", 0, "已编程！")
+            }
+            .prog = autodown_serialize(.doc, 0)
+        }
+    }
+
+    view {
+        col (style: "p-6 gap-4") {
+            text "AutoDown VM render — static" (style: "text-lg font-bold") {}
+            autodown (content: "# 静态文档\n\n段落含 **加粗**、*斜体*、`行内码` 与 [链接](https://example.com)。\n\n```rust\nfn main() {}\n```\n\n> 引用块\n\n1. 有序甲\n2. 有序乙\n\n| 甲 | 乙 |\n| --- | --- |\n| 1 | 2 |\n\n---\n\n收尾段落。\n") {}
+            text "AutoDown VM render — streaming" (style: "text-lg font-bold") {}
+            autodown (content: .stream, final: .streaming) {}
+            button (text: "下一块", onclick: .Next) {}
+            text "AutoDown natives — programmatic ops" (style: "text-lg font-bold") {}
+            autodown (content: .prog) {}
+            button (text: "编程：首块插文本", onclick: .Program) {}
+        }
+    }
+}

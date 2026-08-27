@@ -57,6 +57,13 @@ ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
 # Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
 # offline bounds assertions for the VM Row/layout bug matrix.
 iced-layout-tests = ["ui-iced", "dep:iced_test"]
+# Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown widget 真渲染
+# —— parse_blocks → 面板树 → iced View）。跨仓 path 依赖指向 auto-down 侧
+# plan-019-phase1 worktree 的 crate；两仓分支合入后改回
+# ../../auto-down/autodown/packages/core/rust（互链：auto-down 8f4a7e2）。
+# ui-iced: 面板适配落在 aura_view_builder（ui-interpreter 门控），其测试
+# 与 mcp 链路依赖 iced 后端（iced_adapter/编码）。
+autodown = ["ui-iced", "dep:autodown-core"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -64,6 +71,11 @@ auto-atom = { path = "../auto-atom" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }
+# Plan 019 批次七: autodown-core（markdown parser/serializer/块模型 a2r 发射，
+# 见特性 autodown 注释——跨仓 path 指向 auto-down worktree crate；绝对路径规避
+# worktree 与主检出目录深度差，两仓合入后改相对路径
+# ../../../auto-down/autodown/packages/core/rust）
+autodown-core = { path = "D:/autostack/auto-down/worktree/plan-019-phase1/autodown/packages/core/rust", optional = true }
 # Plan 216: C FFI Bindgen manifest types
 auto-bindgen = { path = "../auto-bindgen" }
 rustyline = { workspace = true, features = ["with-file-history"] }

@@ -175,10 +175,12 @@ fn get_support_details(tag: &str) -> TagSupport {
             &[],
             "serialized SVG document rendered via resvg; literal attrs only (viewBox/d/fill/...), dynamic attrs and animation unsupported",
         ),
-        "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" => {
+        // Plan 019 批次七: feature "autodown" 下经 autodown-core crate 真渲染
+        // (parse_blocks -> panel tree -> View);无 feature 时维持 D-GAP-3 textarea 降级。
+        "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor" | "markdown" => {
             TagSupport::partial(
-                &[],
-                "degrades to a plain textarea (D-GAP-3)",
+                &["content", "final"],
+                "true rendering via autodown-core parse_blocks under feature `autodown` (plan 019); textarea degradation otherwise (D-GAP-3)",
             )
         }
         "square" => TagSupport::full(),

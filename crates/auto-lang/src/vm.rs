@@ -58,6 +58,8 @@ pub mod message_context;
 pub mod pattern_matcher;
 // Plan 249: Unified native function catalog (must be before native + native_registry)
 pub mod native_catalog;
+// Plan 019 批次八: autodown_* 文档 natives（JSON 传输；feature autodown 门控）。
+pub mod autodown_natives;
 pub mod native;
 pub mod shell_bridge;
 pub mod host_bridge;
