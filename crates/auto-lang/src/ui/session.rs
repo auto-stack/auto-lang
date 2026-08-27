@@ -1,16 +1,18 @@
-//! Plan 453: 多 App 会话层 —— 类型先行（T2）。
+//! Plan 453: 多 App 会话层。
 //!
 //! 按施工图 `docs/plans/reports/453-t1-dynamic-state-inventory.md` 把
 //! `DynamicState`（renderer.rs:5555–5706，57 字段 + 3 项结构外全局态）
-//! 的内容按域镜像为会话层类型。**本模块暂不接管 `run_dynamic_iced`
-//! 的行为**（那是 T3–T6）；先让类型与构造器并存并通过单测，
-//! 迁移在 T4 扇出改造时逐字段切换。
+//! 的内容按域收编为会话层类型。T4c 起**运行循环 State 即 `DesktopSession`**
+//! （R3 退化桌面）：renderer 的 `DynamicState` 已溶解，update/view 内部经
+//! `split_mut`/`split_ref` 拆借视图沿用旧平铺命名（施工图
+//! `docs/plans/reports/453-t4c-session-flip-blueprint.md` §2 路线甲）。
 //!
 //! 域归属一览：
 //! - `AppSession.state`  ← 施工图 §1.1（App 域，13 字段）
 //! - `DevToolsState`     ← 施工图 §1.2（桌面 DevTools 域，保形状搬迁）
 //! - `DesktopState`      ← 施工图 §1.2 输入修饰键（裁定 M1 合并）+ §1.3
-//! - `WindowEntry`       ← 施工图 §1.4（窗口级，挂 windows 注册表）
+//! - `WindowEntry`       ← 施工图 §1.4（窗口级，挂 windows 注册表；
+//!   主窗口级平铺字段见 DesktopSession，454 多窗口化时归位条目）
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
