@@ -83,12 +83,27 @@ py_math 等已验证的 Python-parity 套件结构（`tests/auto/<mod>.at` +
 
 ## 执行步骤
 
-- [ ] T1 计划文档 + worktree（branch plan-461）
-- [ ] T2 语法/封送探针：numpy 小样，定 A/B 惯用法、同名冲突、句柄方法链
-      与 a2py 支持面
-- [ ] T3 py_numpy 用例 + oracle + README
-- [ ] T4 py_pandas 用例 + oracle + README
-- [ ] T5 py_matplotlib 用例 + oracle + README（含 .gitignore）
-- [ ] T6 py_torch 用例 + oracle + README
-- [ ] T7 phase p8 注册 + parity/README + parity-guide + 索引表更新
-- [ ] T8 全量验证（run ×4、phase p8、cargo test、list）+ 复审 + 合并归档
+- [x] T1 计划文档 + worktree（branch plan-461）
+- [x] T2 语法/封送探针（2026-08-28）：
+  - 惯用法 A（项导入直呼，含点路径 `matplotlib.pyplot: plot`）✓；
+    惯用法 B（`py_call`/`py_getattr` 句柄操作）✓；模块裸名不可作变量 ✗；
+    `use.py` 无 as 别名 ✗（numpy/torch 同名 `arange` 不能同文件导入）
+  - 发现并登记：DIV-PY-AUTOLIST-1 补充——list 实参抵达 Python 侧为 0 维/
+    空对象，传 pyplot 直接 VM panic；a2py 不受影响
+  - 封送语义：数值统一落字符串池（整值浮点去 `.0`）；0 维张量经
+    `__float__` 直转标量；numpy dtype 的 `__str__` 为 C 级 slot 不可经
+    getattr 调用（改读 `name` 属性）；零参 `pyplot.figure()` 实参误传
+    （规避，pyplot 状态机隐式建图）
+  - 发现 runner 解释器探测缺陷：`python3` 在 Windows 可能是无 site-packages
+    的商店版 → 新增 `--python-binary`/`PARITY_PYTHON` 覆盖旗标
+- [x] T3 py_numpy：10 例三方一致 ✓
+- [x] T4 py_pandas：8 例三方一致 ✓（列和 18/22/26 为 arange(12).reshape(4,3)
+      的正确值）
+- [x] T5 py_matplotlib：3 例三方一致 ✓（savefig 产物断言，Agg 无头默认）
+- [x] T6 py_torch：7 例三方一致 ✓
+- [x] T7 phase p8 注册 + parity/README sci-compute 小节 + guide
+      `--python-binary` 说明 + matplotlib 产物 gitignore
+- [x] T8 验证（2026-08-28）：`phase p8` 四库三方全绿
+      （10/10、8/8、3/3、7/7）；py_math 回归 20/20；parity 单测 33 绿；
+      `list` 34→38；fmt：新增代码干净（既有漂移未动）
+- [ ] T8b 复审 + 合并 master + 归档

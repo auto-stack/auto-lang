@@ -8,7 +8,11 @@ categorized index of every library and category, see the
 ## How to run parity checks
 
 `--root` and `--auto-binary` are global flags and must come **before** the
-subcommand (`run` / `phase` / `all` / `list`). From the `parity/` directory:
+subcommand (`run` / `phase` / `all` / `list`). Optionally pass
+`--python-binary` to pin the interpreter used for Python-oracle and a2py
+subprocesses — needed when the PATH `python3` is a different installation
+without the required site-packages (e.g. the Microsoft Store stub on
+Windows), or set `PARITY_PYTHON`. From the `parity/` directory:
 
 ### Single library
 ```

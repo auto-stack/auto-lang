@@ -751,7 +751,21 @@ mod tests {
         assert_eq!(cfg.lib_dir(), PathBuf::from("/tmp/parity/libs/base64"));
     }
 }
+/// Optional explicit Python interpreter, set from the CLI `--python-binary`
+/// flag (Plan 461). When set it wins over the python3/python PATH probe —
+/// needed because the embedded PyO3 interpreter and the PATH `python3` may be
+/// different installations (e.g. the Microsoft Store stub without
+/// site-packages on Windows).
+static PYTHON_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_python_binary(bin: &str) {
+    let _ = PYTHON_OVERRIDE.set(bin.to_string());
+}
+
 fn python_interpreter() -> &'static str {
+    if let Some(bin) = PYTHON_OVERRIDE.get() {
+        return bin.as_str();
+    }
     use std::sync::OnceLock;
     static INTERP: OnceLock<String> = OnceLock::new();
     INTERP.get_or_init(|| {

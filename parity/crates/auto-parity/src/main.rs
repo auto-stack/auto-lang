@@ -21,6 +21,13 @@ struct Cli {
     #[arg(long, env = "AUTO_BINARY", default_value = "auto")]
     auto_binary: String,
 
+    /// Explicit Python interpreter for oracle/a2py subprocesses (Plan 461).
+    /// Overrides the python3/python PATH probe — needed when the PATH
+    /// `python3` is a different installation without the required
+    /// site-packages (e.g. the Microsoft Store stub on Windows).
+    #[arg(long, env = "PARITY_PYTHON")]
+    python_binary: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -58,6 +65,10 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     let root = cli.root.unwrap_or_else(detect_parity_root);
+
+    if let Some(py) = cli.python_binary.as_deref() {
+        runner::set_python_binary(py);
+    }
 
     if !root.is_dir() {
         eprintln!("Error: parity root not found: {}", root.display());
