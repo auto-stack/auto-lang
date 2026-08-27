@@ -10,12 +10,11 @@
 #[cfg(test)]
 mod plan046_obj_natives {
     fn run(src: &str) -> Result<String, String> {
-        let dir = std::env::temp_dir().join("plan046_obj");
-        let _ = std::fs::create_dir_all(&dir);
-        let f = dir.join("probe.at");
-        std::fs::write(&f, src).map_err(|e| e.to_string())?;
-        match std::panic::catch_unwind(|| crate::run_file(f.to_string_lossy().as_ref())) {
-            Ok(Ok(out)) => { /* harness returns main's result value */ Ok(out) }
+        match std::panic::catch_unwind(|| crate::run_with_capture(src)) {
+            // Plan 454 E: assert on CAPTURED STDOUT (main's return value is
+            // Void for print-based probes - the original harness read the
+            // wrong channel and both WIP cases "passed empty").
+            Ok(Ok((_result, stdout))) => Ok(stdout),
             Ok(Err(e)) => Err(e.to_string()),
             Err(_) => Err("panicked".to_string()),
         }

@@ -7730,6 +7730,32 @@ impl Codegen {
                 // so the emit site can use CALL_PY (carrying runtime arg count) instead
                 // of CALL_NAT. Set true in the py_native_map / py_modules branches below.
                 let mut is_py_ffi_call = false;
+                // Plan 454 E(§M 缺口③·路由半):动态接收者(obj/Object 注解)
+                // 的方法族强制走 auto.obj.*——否则被字面量推断成 List.find,
+                // 携带 -1 哨兵与 Int 返回型,下游 hit==None/hit.u 全错位。
+                if let Expr::Dot(obj_expr, method_name) = call.name.as_ref() {
+                    if matches!(method_name.as_str(), "keys" | "values" | "find") {
+                        if let Expr::Ident(recv) = obj_expr.as_ref() {
+                            let is_dyn = self
+                                .var_types
+                                .get(recv.as_str())
+                                .map(|t| match t {
+                                    crate::ast::Type::User(td) => {
+                                        let n = td.name.to_string();
+                                        let short =
+                                            n.rsplit('.').next().unwrap_or(&n).to_string();
+                                        short == "obj" || short == "Object"
+                                    }
+                                    _ => false,
+                                })
+                                .unwrap_or(false);
+                            if is_dyn {
+                                func_name = Some(format!("auto.obj.{}", method_name));
+                            }
+                        }
+                    }
+                }
+
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
                     if let Some(&id) = self.intrinsics.get(name) {
@@ -10458,6 +10484,18 @@ impl Codegen {
     /// Returns the current last_expr_type as default to preserve existing behavior,
     /// except for well-known int-returning natives where it overrides to Int.
     fn infer_native_return_type(&self, name: &str) -> ObjectType {
+        // Plan 454 E(§M 缺口③):obj 族返回型别标注——keys/values 产 List,
+        // find 产元素(Option 载荷,TAG_NULL=None)。无此标注时下游 .length/
+        // for-in/.field 全部按 Int 接收者退化(GET_FIELD 错址 → 静默 0)。
+        if name.starts_with("auto.obj.") || name.starts_with("obj.")
+            || name.starts_with("Object.keys") || name.starts_with("Object.values")
+        {
+            return match name.rsplit('.').next().unwrap_or(name) {
+                "keys" | "values" => ObjectType::Array,
+                "find" => ObjectType::NestedObject,
+                _ => ObjectType::NestedObject,
+            };
+        }
         // Known int-returning natives (without fn_return_types entry)
         // Match both "auto.str.len" and "str.len" forms since the compiler
         // may use either depending on how the method was resolved.

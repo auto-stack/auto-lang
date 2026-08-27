@@ -92,3 +92,40 @@ total_steps: 12
 ## 待澄清事项
 - IS_VARIANT 收窄判定若遇 Option 小整数载荷编码冲突,按"A 段 gating"
   降级为最窄条件并在注记说明。
+
+
+---
+
+## Phase E(2026-08-27 追加,执行中):446 §M 三缺口收口——obj 动态接收者方法族端到端
+
+> 触发:auto-musk PLAN-046 交付注册/路由/链接三层+shim 实体(e4eef57bb §M);
+> 验收判据 = plan046_obj_natives_tests.rs 两个 #[ignore] 用例转绿。
+
+- [x] E0 探针载体修复:harness 原读 main 返回值(Void)而非捕获 stdout,
+  两 WIP 用例恒空串假象;改 run_with_capture 直取输出。
+- [x] E1 缺口①(Option 返回契约):shim_obj_find 弃 -1 哨兵改语言级
+  TAG_NULL(encode_null),不再委托 shim_list_find(hit==None 打通);
+  generic list.find 的 -1 历史契约不动(golden 安全)。
+- [x] E2 缺口③·路由半:native_id 定型咽喉前拦截 Dot-call——receiver
+  var_types 为 User(obj/Object 注解)且方法 ∈{keys,values,find} 时强制
+  func_name=auto.obj.*(否则被字面量 List 推断吞成 List.find/2063,DEBUG 实证)。
+- [x] E3 缺口③·型别半:infer_native_return_type 加 obj 族规则
+  (keys/values→Array,find→NestedObject),下游访问不再按 Int 退化。
+- [x] E4 缺口②·元素通道:obj_find 弃 i32 快路径只走 Value 元素
+  (存储槽 tag 位曾被解码成 0,pred=i32::MIN 恒 false)。
+- [~] E5 缺口②剩余(阻塞点):
+  - E5a 谓词闭包**外层捕获读取值错误**(id 读成 ""/0 → pred 恒 false);
+    LOAD_CAPTURED by-ref 基建在,查 CLOSURE 对 fn 参数槽域的 capture_slots 记录。
+  - E5b 命中路径字段读退化(const-pred 命中后 hit.u 打 "0")——结果值
+    last_expr_type 在 fn 边界返回后的重注记,与 E3 交互,两头夹击。
+  - 转绿后移除两 ignore 行与 reason。
+- [ ] E6 回填:test 文件头注记 + 446 报告 §M 回填已收口提交号 + 通知
+  auto-musk 续跑 T6/T7/T13。
+
+## Phase E 执行日志(2026-08-27)
+
+1. 复现:harness 修前 WIP 全空串系读错通道;修后 test1="0"、test2=0。
+2. E0-E4 已落并逐件实证(miss 分支正确/无 tag 位伪元素/路由 DEBUG 实锤)。
+3. 剩余 E5a/E5b 从 call_closure 帧构造与结果类型重注记两头夹击;
+   t1 程序 DEBUG 线已确证 auto.obj.find 单点路由成功、闭包谓词恒 false
+   为当前唯一断点(test2 的 values 循环待 find 链打通后复验)。
