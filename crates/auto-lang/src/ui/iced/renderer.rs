@@ -7943,9 +7943,16 @@ fn compare_pngs(
     let update = move |state: &mut DynamicState,
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
-        use crate::ui::session::DesktopMessage as DM;
+        use crate::ui::session::{DesktopEvent, DesktopMessage as DM};
         match msg {
-            DM::Desktop(_ev) => iced::Task::none(), // 桌面事件分支：T4b 接窗口关闭等
+            DM::Desktop(ev) => {
+                // 桌面事件分支：窗口关闭 → 注销过渡登记表（T4c 接管后同步
+                // DesktopSession.windows）。
+                if let DesktopEvent::WindowClosed(id) = ev {
+                    state.opened_windows.borrow_mut().retain(|(w, _)| *w != id);
+                }
+                iced::Task::none()
+            }
             DM::App(_app_id, m) => {
                 // T3c-consumer 的登记头迁至外壳层（先于业务处理；按 id 去重幂等）。
                 for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
@@ -7975,7 +7982,26 @@ fn compare_pngs(
     fn view_desktop_fn(
         state: &DynamicState,
     ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
-        dynamic_view(state).map(crate::ui::session::map_to_app)
+        // T6 视图侧边界：view panic 同样不落进程，降级为全屏提示元素。
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dynamic_view(state))) {
+            Ok(el) => el.map(crate::ui::session::map_to_app),
+            Err(payload) => {
+                eprintln!(
+                    "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
+                );
+                iced::widget::container(
+                    iced::widget::text("[AutoUI 会话] 视图构建异常（plan-453 边界兜底）").size(14),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .center(iced::Length::Fill)
+                .style(|_t| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgb(0.10, 0.05, 0.05).into()),
+                    ..Default::default()
+                })
+                .into()
+            }
+        }
     }
 
     let title_fn = move |_state: &DynamicState| -> String {
@@ -8116,7 +8142,10 @@ fn compare_pngs(
                 }
                 _ => None,
             }));
-            iced::Subscription::batch(subs).map(crate::ui::session::map_to_app)
+            iced::Subscription::batch(vec![
+                iced::Subscription::batch(subs).map(crate::ui::session::map_to_app),
+                crate::ui::session::desktop_window_events(),
+            ])
         })
         .run()?;
 

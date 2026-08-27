@@ -454,3 +454,14 @@ pub const fn desktop_app_id() -> AppId {
 pub fn map_to_app(m: IcedMessage) -> DesktopMessage {
     DesktopMessage::App(desktop_app_id(), m)
 }
+
+/// Plan 453 T4b：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
+/// map_to_app 的 App 打标通路），与业务订阅在批量点并列合并。
+pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
+    iced::event::listen_with(|e, _status, wid| match e {
+        iced::Event::Window(iced::window::Event::Closed) => {
+            Some(DesktopMessage::Desktop(DesktopEvent::WindowClosed(wid)))
+        }
+        _ => None,
+    })
+}
