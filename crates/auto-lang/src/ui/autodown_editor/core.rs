@@ -382,6 +382,16 @@ impl AutodownEditorCore {
                 return false;
             }
         }
+        // 自回显快速路径（批次十）：on_change → .at 绑定回写的值就是编辑器
+        // 自身 emit 的全文 —— 此时绝不能整树重建（清焦点/光标，敲一键丢一次）；
+        // 只推进差分基准。外部真变化才走 rebuild（CodeEditor §5.4 单向流）。
+        {
+            let current = self.emit_document();
+            if current == content {
+                *self.last_external.lock().unwrap() = Some(content.to_owned());
+                return false;
+            }
+        }
         crate::ui::code_editor::core::with_font_system(|fs| self.rebuild(content, fs))
     }
 
@@ -1448,7 +1458,7 @@ mod tests {
         let out = c.emit_document();
         assert!(out.starts_with("段甲。 加笔"), "{out}");
         // 回灌 + 差分稳定。
-        assert!(c.sync_external(&out, true));
+        // 回灌 = 自回显快速路径：不重建（批次十语义），差分保持稳定。
         assert!(!c.sync_external(&out, true));
         assert_eq!(c.live_text(0), "段甲。 加笔");
     }
@@ -1604,6 +1614,22 @@ mod tests {
         assert_eq!(autodown_editor_text(raw).unwrap(), "# 标题\n\n正文。 追加");
         autodown_editor_dispose(raw);
         assert_eq!(autodown_editor_text(raw), None);
+    }
+    #[test]
+    /// 批次十回归：自回显（onchange→绑定回写全文）不得触发重建/清焦。
+    #[test]
+    fn external_echo_after_edit_preserves_focus() {
+        let c = core_for("echo", "甲段。\n\n乙段。\n");
+        *c.focus.lock().unwrap() = Some(0);
+        run_fs(|fs| {
+            c.block_motion(fs, 0, Motion::End);
+            let mut blocks = c.blocks.lock().unwrap();
+            blocks[0].editor.ed_mut().insert_string("!", None);
+        });
+        let rev_before = c.revision();
+        assert!(!c.sync_external(c.emit_document().as_str(), true));
+        assert_eq!(c.revision(), rev_before, "echo must not rebuild");
+        assert_eq!(c.focused_block(), Some(0));
     }
 
     #[test]
