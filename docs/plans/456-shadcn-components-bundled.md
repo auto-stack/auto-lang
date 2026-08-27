@@ -1,5 +1,5 @@
 ---
-plan_id: PLAN-455
+plan_id: PLAN-456
 status: drafting
 feature_name: 内置 shadcn-vue 组件模板——冷启动免 pnpm dlx
 author: [zhaopuming]
@@ -14,7 +14,7 @@ current_step: 0
 total_steps: 8
 ---
 
-# [PLAN-455] 内置 shadcn-vue 组件模板——冷启动免 pnpm dlx
+# [PLAN-456] 内置 shadcn-vue 组件模板——冷启动免 pnpm dlx
 
 ## 变更摘要
 
