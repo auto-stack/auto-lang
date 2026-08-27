@@ -1,7 +1,12 @@
 # Plan 447: aavm-prerequisites 三合一——宿主加固 → aavm 语法能力 → lib 风格对译
 
-> **状态**: 🟨 部分①(Phase 1-3 宿主加固)已完成待合并;部分②(Phase 4-7)与
-> 部分③(Phase 8-11)未开工。部分① 执行记录见文末附录。(2026-08-25;
+> **状态**: 🟩 全部完成(2026-08-26)。部分① ② 于 bdd659803 合入;部分③
+> γ 系列完成:P1/P3/C1/E1/Y1+P4/E2(D34 收账,宿主 push_value RC 修复)/
+> P2+aavm break-continue/11.1 A1+A2/11.2a f-string 四层;11.2b 批量
+> f-string 改写实证 D40 续三缺口后撤回(工具与缺口清单留档);11.3
+> 收账完毕。终局验收:矩阵 36/36 全绿 ×5、G2 自举双演示正确
+> (helloworld/fib)、.expected.out 零变化、M5 耗时与基线同数量级。
+> 执行记录见各 Phase 内联注记与文末附录。(2026-08-25;
 > aavm-prerequisites 三件套合并为单一计划,原 447/448/449 合并,序号 448/449 腾空)
 > **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md)(2026-08-25
 > 实证调研:18 件 probe + rustc 实编译验证),§3 H1-H6、§4/§5/§6 语法面与改写点位。
@@ -428,8 +433,12 @@ enum 载荷声明在 ar_prescan_enum:699-701 被拒。能力补齐分四段:
   D36①② 风格类条目逐条标注"已还原/保留原因";新增"模式+guard 拆臂"永久条目;
   各文件头 Snapshot 五字段重写(Coverage 不变,Baseline 重锚定,DIVERGE 清单
   更新);series 复盘文档补记本系列。
-- [ ] 11.4 终局验收:五方矩阵 ①③④⑤ 全绿 + G2 自举演示重跑(helloworld/fib)+
-  `.expected.out` 双件零变化。
+- [x] 11.4 终局验收(2026-08-26):①五方矩阵 36/36 全绿×5 列(含 b31 多载荷/
+  b32 break-continue/b33 f-string 三新例);②G2 自举双演示:最新 lib 经
+  AA2R 自举转译(326KB 产物 rustc 零错)→ aavm2_fast.exe 跑 helloworld
+  → "hello, world!"、fib.at → 55,与 434 封版声明逐字符一致;③
+  001_smoke/002_hello_compile .expected.out 双件 git 零变化;④性能:
+  M5 语料套件 23.8s(基线同数量级)。
 
 ### 风险与缓解
 
