@@ -11,8 +11,9 @@
 > LAST_MODIFIERS thread-local 删除）；桌面窗口事件扩臂
 > Opened/Focused/Unfocused 统一由 desktop_window_events 产出，
 > PENDING_WINDOW_OPENS 进程通道退役。ui:: 回归 492 绿（plan411 既有失败豁免）。
-> **T4c 残留→T7**：desktop_app_id() 硬编码解除（按 register_window 递增）、
-> 双 AppSession 双窗口 demo + desktop_mcp.py 50/0 守门）
+> **T7a 守门 ✅（2026-08-27）**：7 套 desktop_mcp 实机对照，T4c 零回归。
+> **T7b 移交 Plan 459**（2026-08-28）：`459-desktop-session-multi-window.md`
+> ——daemon 迁移 + 双 App demo + panic 隔离；完成后本计划归档）
 > **来源**: Design 23 §6 里程碑 M1——虚拟桌面程序的会话层底座，452（IME spike，
 > ✅ 归档）的直接后续。452 spike 报告提供三项直接设计输入：① 主窗口 id 由
 > shell 内部生成并丢弃，必须经 `Event::Window(Opened)` 自捕获（窗口注册表的
@@ -113,7 +114,7 @@ pub enum DesktopMessage {
 | T4 | 消息扇出 | update 入口按 DesktopMessage 分派至 AppSession；LAST_MODIFIERS 迁入 DesktopState 并清理 thread-local 读点 |
 | T5 | 订阅路由 | §2.3；keyboard_subscription（renderer.rs:5336）等按 AppId 标签化 |
 | T6 | panic 边界 | ✅ 完成（T4-core/T4b-1 落地）：update/view 双侧 catch_unwind |
-| T7 | 双 App 验证 | **T7a 守门 ✅（2026-08-27）**：7 套 desktop_mcp 实机跑——calculator 14/0、todo 11/0+6 已知 skip、notes 11/0+2 skip、charts 19/0、dashboard 26/0 全过；minesweeper/041 失败经 **4200b2140 基线二进制复现对照**定性为存量问题（快照 onclick 绑定行缺失家族，T4c 前已坏，另立修复任务）。**就 T4c 而言 I2 零回归**。**T7b 待做**：双 AppSession 双窗口 demo——前置设计决定：iced 0.14 `application` 的 ViewFn 不带 window::Id（单视图），`daemon` 的才带；每窗口渲染各自 AppSession 需迁移 `iced::daemon`（view 按 `app_of_window(win)` 路由）或接受降级 demo。附 T7b 三步：daemon 决策/迁移 → 解除 desktop_app_id() 硬编码（AppId 按 Opened 递增）→ demo + panic 隔离验证 |
+| T7 | 双 App 验证 | **T7a 守门 ✅（2026-08-27）**：7 套 desktop_mcp 实机跑——calculator 14/0、todo 11/0+6 已知 skip、notes 11/0+2 skip、charts 19/0、dashboard 26/0 全过；minesweeper/041 失败经 **4200b2140 基线二进制复现对照**定性为存量问题（快照 onclick 绑定行缺失家族，T4c 前已坏，另立修复任务）。**就 T4c 而言 I2 零回归**。**T7b → 移交 Plan 459**（2026-08-28 立项）：iced 0.14 `application` 的 ViewFn 不带 window::Id（单视图），`daemon` 的才带——双窗口 demo 需迁移 `iced::daemon`，独立立项 `459-desktop-session-multi-window.md`，完成后本计划一并归档 |
 | T8 | MCP 兼容冻结 | mcp_server/mcp_action_subscription 维持 single-app 语义；`AppTarget` 类型占位不给实现 |
 
 ## 4. 验收
