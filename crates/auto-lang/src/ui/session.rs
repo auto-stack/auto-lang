@@ -225,9 +225,20 @@ pub struct AppSession {
 pub struct DesktopSession {
     pub apps: BTreeMap<AppId, AppSession>,
     /// spike 输入①：主窗口 id 由 shell 内部生成，须经 Opened 事件登记。
+    /// 条目内窗口级字段的消费方在 454（多窗口化）；T4c 阶段 renderer 只用
+    /// 登记/注销/反查与下方平铺的主窗口状态。
     pub windows: BTreeMap<iced::window::Id, WindowEntry>,
     /// boot→Opened 之间暂存的初始窗口尺寸（拿到 window::Id 后转正移除）。
     pub pending_initial_size: BTreeMap<AppId, iced::Size>,
+    /// 主窗口级状态（T4c 自 DynamicState 收编，施工图 §3）。view/update 不
+    /// 携带 window::Id（iced 0.14 `application` 三件套），只能服务主窗口；
+    /// 454 多窗口化时归位 windows 条目、视图按窗口构造。
+    pub window_size: RefCell<iced::Size>,
+    pub pending_window_resize: RefCell<Option<iced::Size>>,
+    pub initial_resize_done: Cell<bool>,
+    pub initial_focus_done: Cell<bool>,
+    /// 焦点窗口记录（Design 23 §2 会话层"焦点与主题策略"最小底座，454 消费）。
+    pub focused_window: RefCell<Option<iced::window::Id>>,
     pub desktop: DesktopState,
 }
 
@@ -243,8 +254,11 @@ pub enum DesktopMessage {
 #[derive(Debug, Clone)]
 pub enum DesktopEvent {
     /// Event::Window(Opened) 捕获（须同步 register_window）。
-    WindowOpened(iced::window::Id),
+    WindowOpened(iced::window::Id, iced::Size),
     WindowClosed(iced::window::Id),
+    /// 焦点进出（Design 23 §2 焦点策略底座；T4c 仅记录 focused_window）。
+    WindowFocused(iced::window::Id),
+    WindowUnfocused(iced::window::Id),
 }
 
 impl AppSession {
@@ -267,6 +281,11 @@ impl DesktopSession {
             apps,
             windows: BTreeMap::new(),
             pending_initial_size: BTreeMap::new(),
+            window_size: RefCell::new(window_size),
+            pending_window_resize: RefCell::new(None),
+            initial_resize_done: Cell::new(false),
+            initial_focus_done: Cell::new(false),
+            focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
         };
         session.with_window_size(AppId(1), window_size);
@@ -280,6 +299,11 @@ impl DesktopSession {
             apps: BTreeMap::new(),
             windows: BTreeMap::new(),
             pending_initial_size: BTreeMap::new(),
+            window_size: RefCell::new(iced::Size::new(0.0, 0.0)),
+            pending_window_resize: RefCell::new(None),
+            initial_resize_done: Cell::new(false),
+            initial_focus_done: Cell::new(false),
+            focused_window: RefCell::new(None),
             desktop: DesktopState::new(None),
         }
     }
@@ -317,6 +341,61 @@ impl DesktopSession {
     pub fn app_mut(&mut self, id: AppId) -> Option<&mut AppSession> {
         self.apps.get_mut(&id)
     }
+
+    /// T4c 拆借视图（mut 版）：update 侧沿用 T3 时代 DynamicState 的平铺命名
+    /// （component / app / desktop / 窗口级），由会话现场拆出互不相交的字段
+    /// 借用构造。函数体迁移零文本改动，`DynamicState` 类型本身溶解
+    /// （施工图 §2 路线甲）。
+    pub fn split_mut(&mut self, id: AppId) -> Option<SessionViewMut<'_>> {
+        let app = self.apps.get_mut(&id)?;
+        Some(SessionViewMut {
+            component: &mut app.component,
+            app: &mut app.state,
+            desktop: &mut self.desktop,
+            window_size: &mut self.window_size,
+            pending_window_resize: &mut self.pending_window_resize,
+            initial_resize_done: &mut self.initial_resize_done,
+            initial_focus_done: &mut self.initial_focus_done,
+        })
+    }
+
+    /// 拆借视图（共享版）：view 侧与订阅构造闭包用。
+    pub fn split_ref(&self, id: AppId) -> Option<SessionViewRef<'_>> {
+        let app = self.apps.get(&id)?;
+        Some(SessionViewRef {
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &self.window_size,
+            pending_window_resize: &self.pending_window_resize,
+            initial_resize_done: &self.initial_resize_done,
+            initial_focus_done: &self.initial_focus_done,
+        })
+    }
+}
+
+/// update 侧拆借视图——字段名与旧 `DynamicState` 一一对应（`opened_windows`
+/// 过渡表除外，已由 `windows` 注册表接管）。
+pub struct SessionViewMut<'a> {
+    pub component: &'a mut DynamicComponent,
+    pub app: &'a mut AppState,
+    pub desktop: &'a mut DesktopState,
+    pub window_size: &'a mut RefCell<iced::Size>,
+    pub pending_window_resize: &'a mut RefCell<Option<iced::Size>>,
+    pub initial_resize_done: &'a mut Cell<bool>,
+    pub initial_focus_done: &'a mut Cell<bool>,
+}
+
+/// view 侧拆借视图——共享引用版，可 Copy 直传渲染 helper。
+#[derive(Clone, Copy)]
+pub struct SessionViewRef<'a> {
+    pub component: &'a DynamicComponent,
+    pub app: &'a AppState,
+    pub desktop: &'a DesktopState,
+    pub window_size: &'a RefCell<iced::Size>,
+    pub pending_window_resize: &'a RefCell<Option<iced::Size>>,
+    pub initial_resize_done: &'a Cell<bool>,
+    pub initial_focus_done: &'a Cell<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +435,40 @@ mod tests {
         let ds = DesktopSession::__test_session();
         let ghost = iced::window::Id::unique();
         assert_eq!(ds.app_of_window(&ghost), None);
+    }
+
+    #[test]
+    fn split_views_absent_app_is_none() {
+        let mut ds = DesktopSession::__test_session();
+        assert!(ds.split_mut(desktop_app_id()).is_none());
+        assert!(ds.split_ref(desktop_app_id()).is_none());
+    }
+
+    #[test]
+    fn primary_window_state_roundtrip() {
+        // T4c 收编的主窗口级字段：语义同旧 DynamicState 同名成员。
+        let mut ds = DesktopSession::__test_session();
+        *ds.window_size.borrow_mut() = iced::Size::new(1024.0, 768.0);
+        *ds.pending_window_resize.borrow_mut() = Some(iced::Size::new(1.0, 1.0));
+        ds.initial_focus_done.set(true);
+        assert_eq!(ds.window_size.borrow().width, 1024.0);
+        assert!(ds.pending_window_resize.borrow().is_some());
+        assert!(ds.initial_resize_done.get() == false && ds.initial_focus_done.get());
+
+        *ds.focused_window.borrow_mut() = Some(iced::window::Id::unique());
+        assert!(ds.focused_window.borrow().is_some());
+    }
+
+    #[test]
+    fn desktop_event_opened_carries_size() {
+        let wid = iced::window::Id::unique();
+        let ev = DesktopEvent::WindowOpened(wid, iced::Size::new(640.0, 480.0));
+        let dm = DesktopMessage::Desktop(ev);
+        let DesktopMessage::Desktop(DesktopEvent::WindowOpened(id, size)) = dm else {
+            panic!("shape mismatch");
+        };
+        assert_eq!(id, wid);
+        assert_eq!(size.width, 640.0);
     }
 
     #[test]
@@ -455,12 +568,22 @@ pub fn map_to_app(m: IcedMessage) -> DesktopMessage {
     DesktopMessage::App(desktop_app_id(), m)
 }
 
-/// Plan 453 T4b：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
-/// map_to_app 的 App 打标通路），与业务订阅在批量点并列合并。
+/// Plan 453 T4b/T4c：桌面级窗口事件订阅 —— 原生产出 DesktopMessage（不经
+/// map_to_app 的 App 打标通路），与业务订阅在批量点并列合并。窗口生命周期
+/// 统一由此产出（T4c 起含 Opened/Focused，业务订阅侧不再重复捕获）。
 pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
     iced::event::listen_with(|e, _status, wid| match e {
+        iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
+            Some(DesktopMessage::Desktop(DesktopEvent::WindowOpened(wid, size)))
+        }
         iced::Event::Window(iced::window::Event::Closed) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowClosed(wid)))
+        }
+        iced::Event::Window(iced::window::Event::Focused) => {
+            Some(DesktopMessage::Desktop(DesktopEvent::WindowFocused(wid)))
+        }
+        iced::Event::Window(iced::window::Event::Unfocused) => {
+            Some(DesktopMessage::Desktop(DesktopEvent::WindowUnfocused(wid)))
         }
         _ => None,
     })
