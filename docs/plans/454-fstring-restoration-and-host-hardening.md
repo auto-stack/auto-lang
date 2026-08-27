@@ -53,11 +53,20 @@ total_steps: 12
 
 ## 执行步骤
 
-### Phase A:宿主 2.4 加固(auto-lang 主仓直接小步)
-- [ ] A1 读定 IS_VARIANT 当前回退条件与合法消费面(Option 编码路径/
-  corpus/musk 常驻探针),确定收窄判定式。
-- [ ] A2 实现 IS_VARIANT 显式错误化 + 探针;全量回归。
-- [ ] A3 CONSTRUCT_INSTANCE 未知载荷 tag 回退改报错 + 探针;全量回归。
+### Phase A:宿主 2.4 加固(2026-08-27 完成,部分保留部分证伪)
+- [x] A1 读定消费面:IS_VARIANT 回退臂承载 Option 原始载荷编码
+  (CREATE_SOME 不包对象,int/str/bool/f64 载荷按 Some 命中是设计)。
+- [x] A2 IS_VARIANT 用户变体×标量错误化:**已实施→实证否决→回退**。
+  首版收窄(非 Option. 前缀+非对象非 null → RuntimeError)被
+  p03_enum_payload 探针击穿——单元变体(Val.VN 无载荷)以裸判别值
+  标量合法流入级联 payload 模式测试,"静默 false"是级联语义的一部分;
+  运行时无类型元数据,与编码漂移不可区分。按本计划 gating 条款判定:
+  **不存在安全收窄空间,维持宽松为终态**(结论与理由以注释固化于
+  engine.rs 该臂处)。
+- [x] A3 CONSTRUCT_INSTANCE 字符串载荷越界池索引:静默解成 i32 继续
+  跑的回退改为显式 RuntimeError(engine.rs)。全量回归:相对当前
+  master 基线(25 失败集,含其他会话新黄金漂移)**零新增**;唯一连带
+  疑似项 cb_file_read_lines 经隔离复跑证实为并行 flake。
 
 ### Phase B:AA2R 发射侧收敛(worktree)
 - [ ] B1 扫描器扩展(ar_lu_after/ar_scan_mutations 的 FStrPart 文本计数)。

@@ -3910,7 +3910,15 @@ impl AutoVM {
                                             Value::Str(auto_val::AutoStr::from(s))
                                         } else {
                                             drop(strings_guard);
-                                            Value::Int(auto_val::decode_i32(nv))
+                                            // Plan 454 A3(447 2.4):字符串 tag 指向
+                                            // 越界池索引曾是"解成 i32 继续跑"的静默
+                                            // 回退——nanbox 重读出的必然是乱值,编码
+                                            // 漂移应显式失败而非产出垃圾字段。
+                                            return Err(VMError::RuntimeError(format!(
+                                                "CONSTRUCT_INSTANCE: string payload pool index {} out of bounds (pool len {})",
+                                                idx,
+                                                self.strings.read().unwrap().len()
+                                            )));
                                         }
                                     } else if auto_val::is_object(nv) {
                                         Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
@@ -4032,6 +4040,14 @@ impl AutoVM {
                                 false
                             }
                         } else {
+                            // Option 原始载荷编码(CREATE_SOME 不包对象):
+                            // int/str/bool/f64 载荷按 Some 命中是设计行为。
+                            // Plan 454 A2 复核(447 2.4):曾尝试对"用户变体名
+                            // ×非对象标量"显式报错,被 p03_enum_payload 实证
+                            // 否决——单元变体(Val.VN 等)以裸判别值标量合法
+                            // 流入级联 payload 模式测试,静默 false 是级联
+                            // 语义的一部分,运行时无类型元数据不可与编码漂移
+                            // 区分。维持宽松,false 为终态。
                             expected_name == "Option.Some"
                         };
                         task.ram.push_nv(auto_val::encode_bool(result));
