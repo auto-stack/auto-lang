@@ -520,61 +520,6 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------------------
-// T3c：Opened 窗口待登记通道（spike 输入①的落地通路）
-// ---------------------------------------------------------------------------
-
-use std::sync::OnceLock;
-
-/// listen_with 回调受"进程级 fn 指针、无法触达会话状态"约束（同
-/// KEYBOARD_BINDINGS 全局先例），窗口 Opened 的真实 Id 只能先落入此进程
-/// 单例通道；T4 扇出接线后在 update 头部 drain 并写回 DesktopSession.windows。
-static PENDING_WINDOW_OPENS: OnceLock<Mutex<Vec<(iced::window::Id, iced::Size)>>> =
-    OnceLock::new();
-
-/// 窗口事件回调侧调用（producer）。
-pub fn record_pending_window_open(id: iced::window::Id, size: iced::Size) {
-    PENDING_WINDOW_OPENS
-        .get_or_init(|| Mutex::new(Vec::new()))
-        .lock()
-        .unwrap()
-        .push((id, size));
-}
-
-/// update 接线侧调用（consumer）：按到达序取走全部待登记项。
-pub fn drain_pending_window_opens() -> Vec<(iced::window::Id, iced::Size)> {
-    match PENDING_WINDOW_OPENS.get() {
-        Some(queue) => std::mem::take(&mut queue.lock().unwrap()),
-        None => Vec::new(),
-    }
-}
-
-#[cfg(test)]
-mod t3c_pending_opens_tests {
-    use super::*;
-
-    #[test]
-    fn drain_returns_fifo_then_empty() {
-        // 进程单例：本测试独占通道顺序，断言相对次序而非绝对内容。
-        record_pending_window_open(iced::window::Id::unique(), iced::Size::new(1.0, 1.0));
-        record_pending_window_open(iced::window::Id::unique(), iced::Size::new(2.0, 2.0));
-        let drained = drain_pending_window_opens();
-        assert!(drained.len() >= 2);
-        assert_eq!(drained[drained.len() - 1].1.width, 2.0);
-        // 本测试视角已清空；后续 drained 调用不早于本次。
-        assert!(drain_pending_window_opens().len()
-            <= drained.len());
-    }
-
-    #[test]
-    fn drain_before_any_record_is_empty_or_shared_clean() {
-        // 与上一测试存在并行交错可能，仅断言"取走后不再包含已取走长度"语义由
-        // mem::take 保证；此处弱断言防回归。
-        let before = drain_pending_window_opens().len();
-        let _ = before;
-    }
-}
-
 /// Plan 453 T4：单桌面进程的当前 App（多 App 于 T4b 随窗口注册表启用）。
 pub const fn desktop_app_id() -> AppId {
     AppId(1)

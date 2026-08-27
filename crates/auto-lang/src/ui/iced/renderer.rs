@@ -7937,6 +7937,12 @@ fn compare_pngs(
             DM::Desktop(ev) => {
                 // 桌面事件分支：窗口生命周期落注册表 / 焦点记录（T4c）。
                 match ev {
+                    DesktopEvent::WindowOpened(id, size) => {
+                        // spike 输入①：主窗口 id 由 shell 内部生成并丢弃，经
+                        // Opened 事件捕获登记（T4c-4 起走本消息通路，进程级
+                        // 过渡通道已退役）。
+                        state.register_window(id, crate::ui::session::desktop_app_id(), size);
+                    }
                     DesktopEvent::WindowClosed(id) => {
                         state.windows.remove(&id);
                     }
@@ -7950,16 +7956,10 @@ fn compare_pngs(
                             *f = None;
                         }
                     }
-                    DesktopEvent::WindowOpened(..) => {}
                 }
                 iced::Task::none()
             }
             DM::App(_app_id, m) => {
-                // T3c-consumer 的登记头迁至外壳层（先于业务处理；按 id 幂等，
-                // BTreeMap 重复 insert 即覆盖）。T4c-4 起改道 DM::Desktop 通路。
-                for (win_id, size) in crate::ui::session::drain_pending_window_opens() {
-                    state.register_window(win_id, crate::ui::session::desktop_app_id(), size);
-                }
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     update_inner(state, m)
                 })) {
@@ -8088,13 +8088,9 @@ fn compare_pngs(
             }
             // Window resize + mouse move/release events for DevTools panel drag
             subs.push(iced::event::listen_with(|e, _status, window_id| match e {
-                // Plan 453 T3c：Opened 捕获真实窗口 id（0.14 shell 丢弃 boot 期
-                // id，spike 输入①）。落入 session 层待登记通道，T4 扇出接线后由
-                // update 头部 drain 至 DesktopSession.windows。
-                iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
-                    crate::ui::session::record_pending_window_open(window_id, size);
-                    None
-                }
+                // Plan 453 T4c-4：Opened/Focused 捕获已统一改道
+                // desktop_window_events()（DM::Desktop 通路），业务侧不再处理
+                // 窗口生命周期事件。
                 // Plan 065:自退排查打点 —— 会话中途 VM 干净退出 = iced 窗口被关
             // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
             // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
