@@ -79,16 +79,22 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         // No rust/ directory, skip backend generation
     }
 
-    // Step 3: npm install
+    // Step 3: Materialize bundled shadcn-vue ui components (PLAN-457).
+    // Offline copies land BEFORE the dependency install so package.json is
+    // complete when pnpm resolves — same ordering as run/build vue paths.
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Materializing UI components...", current_step, total_steps);
+    project.materialize_ui_components()?;
+
+    // Step 4: npm install + registry fallback for non-bundled components
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
     project.npm_install()?;
 
-    // Step 4: Install shadcn-vue components
-    current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
+    println!("▶ Checking shadcn-vue components...");
     project.install_shadcn_components()?;
 
     // Step 5: Initialize Tauri if not exists
