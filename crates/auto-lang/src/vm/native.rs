@@ -4356,7 +4356,31 @@ pub fn shim_obj_values(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// 完整清偿规格见 auto-musk PLAN-046 T2 注 KNOWN-DEBT 046-A;建议并入
 /// auto-lang 后续批次(如 plan454 队列)以本分支为基础续作。
 pub fn shim_obj_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    shim_list_find(task, vm)
+    // Plan 454 E(缺口①收敛):不再委托通用 list-find——其 miss 约定是
+    // push_i32(-1) 哨兵,而语言层 None 是 TAG_NULL(PUSH_NIL);动态接收者
+    // 场景下 hit == None 永假、hit.u 退化为 0(g08 前身实测)。此处改为
+    // 语言契约:命中推元素(带引用语义),穷尽推 encode_null。
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+    let _stake_closure = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake_list = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Plan 454 E(§M 缺口②):只走 Value 元素路径——动态接收者场景的元素
+    // 是堆对象引用(GenericInstance/ObjectData),旧 i32 快路径把存储槽的
+    // tag 位误当元素值解码成 0,谓词闭包接到的接收者恒为 int 0(实测
+    // pred=i32::MIN=false)。obj 字面量数组不存在纯 i32 元素的合法形态。
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+        if vm_is_truthy(found) {
+            push_value(task, vm, elem);
+            return Ok(());
+        }
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
 }
 // ============================================================================
 // HashSet Shims (Plan 118 Phase 3)

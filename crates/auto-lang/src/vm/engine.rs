@@ -220,6 +220,10 @@ pub struct Closure {
     /// LOAD/STORE_CAPTURED 通过此映射直接读写创建者的栈帧（by-reference 捕获）。
     /// 若为空（旧字节码兼容），fallback 到 env（by-value）。
     pub capture_slots: HashMap<String, (usize, usize)>,
+    /// Plan 454 E5a:函数参数域捕获的绝对槽位(bp-(n_args-idx+1),创建时
+    /// 解析——参数不在 bp+1+idx 正域,通用 capture_slots 公式对它全错,
+    /// 表现为谓词闭包读外层参数得 ""/0。为空=无参数域捕获。
+    pub param_abs: HashMap<String, usize>,
 }
 
 /// Plan 442 A5: one-shot timer callback form. The event form dispatches a
@@ -6889,6 +6893,7 @@ impl AutoVM {
                     // Pop captured values from stack and build environment
                     let mut env = HashMap::new();
                     let mut capture_slots = HashMap::new();
+                    let mut param_abs: HashMap<String, usize> = HashMap::new();
                     let creator_bp = task.bp; // Plan 385: 记录创建者的 bp
                     for _i in 0..capture_count {
                         // Read variable name from string table (stored in reverse order)
@@ -6914,15 +6919,26 @@ impl AutoVM {
                         };
                         drop(strings);
                         env.insert(var_name_str.clone(), Value::Int(value));
-                        // Plan 385: 记录原始栈位置用于 by-reference 捕获
+                        // Plan 385/454 E5a: 记录原始栈位置用于 by-reference 捕获。
+                        // 0x8000 旗标 = 函数参数域(负向寻址),此处即用创建帧
+                        // 的 n_args 解析成绝对槽位;普通局部沿用 bp+1+off。
                         if slot_offset != 0xFFFF {
-                            capture_slots.insert(var_name_str, (creator_bp, slot_offset));
+                            if slot_offset & 0x8000 != 0 {
+                                let real = (slot_offset & 0x3FFF) as usize;
+                                let cur_n = task.current_fn_n_args;
+                                if real < cur_n && cur_n > 0 {
+                                    let abs = task.bp - (cur_n - real + 1);
+                                    param_abs.insert(var_name_str.clone(), abs);
+                                }
+                            } else {
+                                capture_slots.insert(var_name_str, (creator_bp, slot_offset));
+                            }
                         }
                     }
 
                     // Create closure
                     let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
-                    let closure = Closure { func_addr, env, n_args, capture_slots };
+                    let closure = Closure { func_addr, env, n_args, capture_slots, param_abs };
 
                     vm_debug!("DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}", closure_id, task.ip, task.ram.sp);
 
@@ -6980,6 +6996,13 @@ impl AutoVM {
                     drop(strings);
 
                     if let Some(closure) = self.closures.get(&closure_id) {
+                        // Plan 454 E5a: 参数域捕获优先(绝对槽,创建帧存活期内有效)
+                        if let Some(&abs_slot) = closure.param_abs.get(var_name.as_str()) {
+                            drop(closure);
+                            let nv = task.ram.read_nv(abs_slot);
+                            self.rc_push(task, nv);
+                            return Ok(StepResult::Continue);
+                        }
                         // Plan 385: 优先通过 capture_slots 读原始栈位置（by-reference）
                         if let Some(&(creator_bp, slot_offset)) = closure.capture_slots.get(var_name.as_str()) {
                             let nv = task.ram.read_nv(creator_bp + 1 + slot_offset);
@@ -7044,6 +7067,14 @@ impl AutoVM {
                     };
                     drop(strings);
 
+                    // Plan 454 E5a: 参数域捕获优先(绝对槽直写)
+                    if let Some(abs_slot) = self.closures.get(&closure_id)
+                        .and_then(|c| c.param_abs.get(var_name.as_str()).copied())
+                    {
+                        let nv = task.ram.pop_nv();
+                        task.ram.write_nv(abs_slot, nv);
+                        return Ok(StepResult::Continue);
+                    }
                     // Plan 385: 优先通过 capture_slots 写原始栈位置（by-reference）
                     let has_slot = self.closures.get(&closure_id)
                         .map(|c| c.capture_slots.get(&var_name).copied())
@@ -7398,6 +7429,7 @@ impl AutoVM {
                                             env: captures,
                                             n_args: 0,
                                             capture_slots: HashMap::new(),
+                                            param_abs: HashMap::new(),
                                         },
                                     );
                                     if let Some(task_guard) = self.tasks.get(&new_task_id) {
@@ -8483,6 +8515,7 @@ self.rc_release(a_nv);
                 env: captures,
                 n_args: 0,
                 capture_slots: HashMap::new(),
+                param_abs: HashMap::new(),
             },
         );
         Some(closure_id)
