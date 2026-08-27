@@ -70,6 +70,22 @@ pub fn set_store_msg_map(msgs: HashMap<String, HashSet<String>>) {
     STORE_MSG_MAP.with(|s| *s.borrow_mut() = msgs);
 }
 
+thread_local! {
+    // Plan 446 批二 A1: store-method 调用在多 store 工程里撞名/未声明时，
+    // 禁止静默 alias 回退——错误收集在此，synthesis 收尾统一升级为 Err。
+    static STORE_DISAMBIG_ERRORS: RefCell<Vec<String>> = RefCell::new(Vec::new());
+}
+
+fn record_store_disambig_error(msg: String) {
+    eprintln!("[HANDLER-CODEGEN] plan-446 A1: {}", msg);
+    STORE_DISAMBIG_ERRORS.with(|s| s.borrow_mut().push(msg));
+}
+
+/// Drain collected A1 disambiguation errors (called at synthesis tail).
+pub fn take_store_disambig_errors() -> Vec<String> {
+    STORE_DISAMBIG_ERRORS.with(|s| std::mem::take(&mut *s.borrow_mut()))
+}
+
 /// Clear the store context after synthesis.
 pub fn clear_store_context() {
     STORE_FIELDS.with(|s| s.borrow_mut().clear());
@@ -300,29 +316,60 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
     }
     // Plan 370 D-GAP-4 Phase 0 + VM multi-store fix: store.X rewriting.
     // store.Method(args) → handler_StoreName_Method(__state, args)
-    // When multiple stores exist, disambiguate by matching Method to the store
-    // that declares it as a msg variant (STORE_MSG_MAP). Fallback to the legacy
-    // alias-based lookup for single-store backward compat.
+    //
+    // Plan 446 批二 A1: 撞名/未声明不再静默回退 alias 表（那会把调用生成到
+    // 错误的 store，运行期零诊断）。规则：
+    //   - 合格化调用 `Store.Method(...)`（alias 即某 store 真名、多 store 工程）
+    //     → 直接按 alias 定位，不做方法名匹配；
+    //   - 泛型接收 `store.Method(...)`：方法名恰好命中唯一 store → 用之；
+    //     撞名（≥2）/未声明（0）→ 记录显式错误（synthesis 收尾升级为 Err），
+    //     AST 仍按旧 alias 目标改写以保持整体一致；
+    //   - 单 store 工程保持旧行为（vue 轨同样容忍 msg 缺声明）。
     if let Expr::Call(call) = e {
         if let Expr::Dot(obj, method) = call.name.as_ref() {
             if let Expr::Ident(alias) = obj.as_ref() {
-                let has_store = STORE_WIDGET_NAMES.with(|s| s.borrow().contains_key(alias.as_str()));
-                if has_store {
-                    // Multi-store: find which store owns this method by msg variant.
-                    let store_name = STORE_MSG_MAP.with(|s| {
-                        let map = s.borrow();
-                        // Find a store whose msg variants contain `method`.
-                        let matched: Vec<String> = map.iter()
-                            .filter(|(_, msgs)| msgs.contains(method.as_str()))
-                            .map(|(name, _)| name.clone())
-                            .collect();
-                        if matched.len() == 1 {
-                            matched[0].clone()
-                        } else {
-                            // Ambiguous or not found: fall back to legacy alias lookup.
-                            STORE_WIDGET_NAMES.with(|sn| sn.borrow().get(alias.as_str()).cloned()).unwrap_or_default()
+                let legacy_target = STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned());
+                if let Some(legacy_target) = legacy_target {
+                    let multi_store = STORE_MSG_MAP.with(|s| s.borrow().len() > 1);
+                    let qualified_call = multi_store && alias.as_str() != "store";
+                    let store_name = if qualified_call {
+                        Some(legacy_target)
+                    } else {
+                        let matched: Vec<String> = STORE_MSG_MAP.with(|s| {
+                            let map = s.borrow();
+                            map.iter()
+                                .filter(|(_, msgs)| msgs.contains(method.as_str()))
+                                .map(|(name, _)| name.clone())
+                                .collect()
+                        });
+                        match matched.len() {
+                            1 => Some(matched[0].clone()),
+                            _ => {
+                                if multi_store {
+                                    if matched.is_empty() {
+                                        record_store_disambig_error(format!(
+                                            "store method `{}` is not declared by any store's Msg/handler set (stores present: {}); declare it in exactly one store's Msg or qualify the call",
+                                            method,
+                                            STORE_MSG_MAP.with(|s| {
+                                                let names: Vec<String> =
+                                                    s.borrow().keys().cloned().collect();
+                                                format!("[{}]", names.join(", "))
+                                            }),
+                                        ));
+                                    } else {
+                                        record_store_disambig_error(format!(
+                                            "ambiguous store method `{}` matches stores [{}]; qualify the call as `Store.{}` or rename one",
+                                            method,
+                                            matched.join(", "),
+                                            method,
+                                        ));
+                                    }
+                                }
+                                Some(legacy_target)
+                            }
                         }
-                    });
+                    };
+                    let store_name = store_name.unwrap_or_default();
                     let handler_fn = format!("handler_{}_{}", store_name, method);
                     let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
                     // Clone and rewrite each original arg before adding
@@ -998,6 +1045,16 @@ pub fn synthesize_widget_module(
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命
+    // （与 C1-3 同哲学：显式报错优于静默错路由）。
+    let disambig_errors = take_store_disambig_errors();
+    if !disambig_errors.is_empty() {
+        return Err(format!(
+            "{} store call(s) failed multi-store disambiguation (plan-446 A1):\n  {}",
+            disambig_errors.len(),
+            disambig_errors.join("\n  ")
+        ));
+    }
     Ok((codegen.finish(widget.name.clone()), registry))
 }
 
@@ -1425,11 +1482,22 @@ pub fn synthesize_from_decl(
                 .as_ref()
                 .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
                 .unwrap_or_default();
-            let msgs: HashSet<String> = d.messages
+            let sname = d.name.to_string();
+            // Plan 446 批二 A1: 消歧集合 = Msg 变体 ∪ on-block 处理器 ∪ 生命周期名。
+            // 此前只收 Msg 变体——"handler 已定义但漏列 Msg 声明"（vue 容忍、
+            // os-config SetSidecar 现场）会查不到，静默回退到错误 store。
+            let mut msgs: HashSet<String> = d.messages
                 .iter()
                 .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
                 .collect();
-            let sname = d.name.to_string();
+            if let Some(on) = &d.on {
+                for h in &on.handlers {
+                    msgs.insert(bare_handler_name(&h.pattern).to_string());
+                }
+            }
+            for lc in &d.lifecycle {
+                msgs.insert(lc.name.clone());
+            }
             all_store_names.push(sname.clone());
             store_fields_map.insert(sname.clone(), fields.clone());
             store_widget_names.insert(sname.clone(), sname.clone());
@@ -1540,6 +1608,15 @@ pub fn synthesize_from_decl(
     let registry = std::mem::take(&mut codegen.generic_registry);
     clear_store_context();
     clear_current_widget();
+    // Plan 446 批二 A1: 消歧失败升级为 synthesis 失败 → boot 致命。
+    let disambig_errors = take_store_disambig_errors();
+    if !disambig_errors.is_empty() {
+        return Err(format!(
+            "{} store call(s) failed multi-store disambiguation (plan-446 A1):\n  {}",
+            disambig_errors.len(),
+            disambig_errors.join("\n  ")
+        ));
+    }
     Ok((codegen.finish(decl.name.to_string()), registry))
 }
 
@@ -1817,5 +1894,153 @@ mod tests {
             }
             other => panic!("expected Call, got {:?}", other),
         }
+    }
+
+    // ---- Plan 446 批二 A1: multi-store disambiguation --------------------
+    // Two failure modes reported by auto-os-config (§A1):
+    //   1. method defined in store B but missing from its Msg list → the map
+    //      lookup missed it and silently fell back to the FIRST-registered
+    //      store (Modules), yielding "Undefined symbol: handler_Modules_X".
+    //   2. same method declared in two stores → silent fallback always picked
+    //      one of them. Must error with the candidate list instead.
+    // Fix: the per-store handler-name set includes on-block + lifecycle names
+    // (not just msg variants); qualified calls (`Collection.Init`) resolve via
+    // the alias directly; ambiguous/missing generic-receiver calls record an
+    // explicit error and fail synthesis.
+
+    fn two_store_context() {
+        set_store_context(
+            [
+                ("Modules".to_string(), Vec::<String>::new()),
+                ("Collection".to_string(), Vec::<String>::new()),
+            ]
+            .into_iter()
+            .collect(),
+            [
+                ("store".to_string(), "Modules".to_string()),
+                ("Modules".to_string(), "Modules".to_string()),
+                ("Collection".to_string(), "Collection".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        set_store_msg_map(
+            [
+                (
+                    "Modules".to_string(),
+                    ["Init", "Select"].iter().map(|s| s.to_string()).collect(),
+                ),
+                (
+                    "Collection".to_string(),
+                    ["Pick"].iter().map(|s| s.to_string()).collect(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+    }
+
+    fn store_call(receiver: &str, method: &str) -> Stmt {
+        Stmt::Expr(Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(receiver))),
+                Name::from(method),
+            )),
+            args: Args { args: vec![] },
+            ret: Type::Void,
+            type_args: Vec::new(),
+            generic_args: Vec::new(),
+            pos: None,
+        }))
+    }
+
+    fn rewritten_target(stmt: &Stmt) -> String {
+        match stmt {
+            Stmt::Expr(Expr::Call(c)) => format!("{}", c.name),
+            other => panic!("expected Call after rewrite, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan446_a1_qualified_store_call_resolves_by_alias_not_method_match() {
+        // `Collection.Init(...)` — Init also exists on Modules but Collection's
+        // own handler set contains it; the explicit alias must win outright.
+        two_store_context();
+        // Simulate A1 case 1: defined as an on-handler but NOT in the msg list.
+        STORE_MSG_MAP.with(|s| {
+            s.borrow_mut()
+                .get_mut("Collection")
+                .unwrap()
+                .insert("Init".to_string());
+        });
+        let mut stmt = store_call("Collection", "Init");
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        clear_store_context();
+        assert!(
+            rewritten_target(&stmt).contains("handler_Collection_Init"),
+            "qualified call must target the aliased store, got: {}",
+            rewritten_target(&stmt)
+        );
+    }
+
+    #[test]
+    fn plan446_a1_ambiguous_store_method_records_error_and_names_candidates() {
+        // Generic `store.Init` where BOTH stores declare Init: previously this
+        // silently picked Modules. Now records an explicit error listing both.
+        two_store_context();
+        STORE_MSG_MAP.with(|s| {
+            s.borrow_mut().get_mut("Collection").unwrap().insert("Init".to_string());
+        });
+        take_store_disambig_errors(); // drain pre-existing
+        let mut stmt = store_call("store", "Init");
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        let errs = take_store_disambig_errors();
+        clear_store_context();
+        assert!(!errs.is_empty(), "ambiguity must be recorded, not silent");
+        let joined = errs.join("; ");
+        assert!(joined.contains("Init"), "error must name the method: {}", joined);
+        assert!(joined.contains("Modules") && joined.contains("Collection"),
+            "error must list candidates: {}", joined);
+        // AST stays coherent (legacy target) so synthesis reports all sites at once.
+        assert!(rewritten_target(&stmt).contains("handler_Modules_Init"));
+    }
+
+    #[test]
+    fn plan446_a1_undeclared_store_method_records_error_in_multi_store_project() {
+        // Method nowhere in any store's handler set: silent first-store fallback
+        // is what produced link-time Undefined symbol with zero diagnostics.
+        two_store_context();
+        take_store_disambig_errors();
+        let mut stmt = store_call("store", "SetSidecar");
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        let errs = take_store_disambig_errors();
+        clear_store_context();
+        assert!(!errs.is_empty(), "undeclared method in multi-store project must be flagged");
+        let joined = errs.join("; ");
+        assert!(joined.contains("SetSidecar"), "{}", joined);
+        assert!(joined.contains("Collection"), "must hint candidate stores: {}", joined);
+    }
+
+    #[test]
+    fn plan446_a1_single_store_undeclared_method_still_falls_back_silently() {
+        // Single-store compat (vue parity): no msg data required, legacy fallback
+        // resolves to the only store without diagnostics.
+        set_store_context(
+            [("Notes".to_string(), Vec::<String>::new())].into_iter().collect(),
+            [
+                ("store".to_string(), "Notes".to_string()),
+                ("Notes".to_string(), "Notes".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        set_store_msg_map([("Notes".to_string(), HashSet::new())].into_iter().collect());
+        take_store_disambig_errors();
+        let mut stmt = store_call("store", "Remove");
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
+        let errs = take_store_disambig_errors();
+        clear_store_context();
+        assert!(errs.is_empty(), "single-store fallback must stay silent, got: {:?}", errs);
+        assert!(rewritten_target(&stmt).contains("handler_Notes_Remove"));
     }
 }
