@@ -4006,12 +4006,9 @@ impl VueGenerator {
                 } else {
                     self.map_tag(tag, children.is_empty())
                 };
-                // DBG: disabled to avoid log spam
-                // eprintln!("DBG shadcn: tag={} is_sub={} force_nat={} is_shadcn={} reg_vue={} reg_vue_lower={}",
-                //     tag, is_known_sub_widget, force_native, self.is_shadcn(),
-                //     self.widget_registry.is_backend_supported("vue", tag),
-                //     self.widget_registry.is_backend_supported("vue", &tag_lower));
-                let is_shadcn_component = !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
+                let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square", "spacer"];
+                let is_layout_primitive = layout_primitives.contains(&tag_lower.as_str());
+                let is_shadcn_component = !is_layout_primitive && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
 
@@ -6070,7 +6067,7 @@ impl VueGenerator {
         // (shadcn components have their own styling).
         // However, layout primitives (row, col, etc.) always need their flex classes
         // regardless of mode — they map to <div> and have no shadcn styling of their own.
-        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square"];
+        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square", "spacer"];
         let is_layout_primitive = layout_primitives.contains(&normalized_tag);
         let skip_defaults = !is_layout_primitive && self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
 
@@ -22191,5 +22188,42 @@ widget ThemeApp {
             "accent_color must be declared as a ref from the model:\n{}",
             sfc
         );
+    }
+
+    #[test]
+    fn test_spacer_generates_flex1() {
+        let mut gen = VueGenerator::new();
+        let props = HashMap::new();
+        let (classes, _, _) = gen.extract_classes("spacer", &props);
+        assert_eq!(classes, "flex-1");
+
+        let mut gen_shadcn = VueGenerator::new_shadcn();
+        let (classes_shadcn, _, _) = gen_shadcn.extract_classes("spacer", &props);
+        assert_eq!(classes_shadcn, "flex-1");
+
+        let src = r#"
+widget TestSpacer {
+    view {
+        row {
+            span "Left"
+            spacer
+            span "Right"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("no widget");
+        let mut gen_sfc = VueGenerator::new_shadcn();
+        let sfc = gen_sfc.generate_sfc(&widget).unwrap();
+        assert!(sfc.contains("<div class=\"flex-1\" />"), "SFC should contain <div class=\"flex-1\" />, got:\n{}", sfc);
     }
 }

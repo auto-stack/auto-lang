@@ -222,6 +222,10 @@ pub struct VueDependencyUsage {
     /// PLAN-457: chart components (chart / chart-area / -bar / -line /
     /// -donut) whose bundled scaffolds import @unovis/vue + @unovis/ts.
     pub chart: bool,
+    /// UI components whose scaffold imports class-variance-authority (button / avatar / badge / alert / navigation-menu).
+    pub cva_scaffold: bool,
+    /// UI components whose scaffold imports reka-ui.
+    pub reka_scaffold: bool,
 }
 
 impl VueDependencyUsage {
@@ -245,6 +249,42 @@ impl VueDependencyUsage {
                 || corpus.contains("@/components/ui/chart-bar'")
                 || corpus.contains("@/components/ui/chart-line'")
                 || corpus.contains("@/components/ui/chart-donut'"),
+            cva_scaffold: corpus.contains("@/components/ui/button'")
+                || corpus.contains("@/components/ui/avatar'")
+                || corpus.contains("@/components/ui/badge'")
+                || corpus.contains("@/components/ui/alert'")
+                || corpus.contains("@/components/ui/navigation-menu'"),
+            reka_scaffold: corpus.contains("@/components/ui/button'")
+                || corpus.contains("@/components/ui/avatar'")
+                || corpus.contains("@/components/ui/progress'")
+                || corpus.contains("@/components/ui/checkbox'")
+                || corpus.contains("@/components/ui/dialog'")
+                || corpus.contains("@/components/ui/dropdown-menu'")
+                || corpus.contains("@/components/ui/popover'")
+                || corpus.contains("@/components/ui/select'")
+                || corpus.contains("@/components/ui/slider'")
+                || corpus.contains("@/components/ui/switch'")
+                || corpus.contains("@/components/ui/tabs'")
+                || corpus.contains("@/components/ui/tooltip'")
+                || corpus.contains("@/components/ui/sheet'")
+                || corpus.contains("@/components/ui/accordion'")
+                || corpus.contains("@/components/ui/alert-dialog'")
+                || corpus.contains("@/components/ui/collapsible'")
+                || corpus.contains("@/components/ui/combobox'")
+                || corpus.contains("@/components/ui/context-menu'")
+                || corpus.contains("@/components/ui/hover-card'")
+                || corpus.contains("@/components/ui/menubar'")
+                || corpus.contains("@/components/ui/navigation-menu'")
+                || corpus.contains("@/components/ui/number-field'")
+                || corpus.contains("@/components/ui/pagination'")
+                || corpus.contains("@/components/ui/pin-input'")
+                || corpus.contains("@/components/ui/radio-group'")
+                || corpus.contains("@/components/ui/range-calendar'")
+                || corpus.contains("@/components/ui/scroll-area'")
+                || corpus.contains("@/components/ui/separator'")
+                || corpus.contains("@/components/ui/stepper'")
+                || corpus.contains("@/components/ui/tags-input'")
+                || corpus.contains("@/components/ui/toggle-group'"),
         }
     }
 
@@ -263,8 +303,10 @@ impl VueDependencyUsage {
         if self.toast {
             pkgs.push("vue-sonner");
         }
-        if self.button {
+        if self.button || self.reka_scaffold {
             pkgs.push("reka-ui");
+        }
+        if self.button || self.cva_scaffold {
             pkgs.push("class-variance-authority");
         }
         if self.drawer {
@@ -4130,7 +4172,11 @@ mod tests {
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
+<<<<<<< HEAD
             chart: true,
+=======
+            ..Default::default()
+>>>>>>> plan-455
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
@@ -4224,6 +4270,7 @@ mod tests {
         ));
     }
 
+<<<<<<< HEAD
     /// PLAN-457: every component the generator can emit must either ship a
     /// bundled snapshot (offline materialization) or be an allowlisted
     /// default-style registry miss that keeps taking the CLI fallback.
@@ -4240,6 +4287,25 @@ mod tests {
                 "component '{component}' is neither bundled nor allowlisted for fallback"
             );
         }
+=======
+    #[test]
+    fn test_avatar_progress_dependency_detection() {
+        let usage = VueDependencyUsage::detect(concat!(
+            "import { Avatar } from '@/components/ui/avatar'\n",
+            "import { Progress } from '@/components/ui/progress'\n",
+        ));
+        assert!(usage.cva_scaffold, "{usage:?}");
+        assert!(usage.reka_scaffold, "{usage:?}");
+        assert!(usage.vueuse_scaffold, "{usage:?}");
+        let req = usage.required_packages();
+        assert!(req.contains(&"class-variance-authority"), "{req:?}");
+        assert!(req.contains(&"reka-ui"), "{req:?}");
+        assert!(req.contains(&"@vueuse/core"), "{req:?}");
+        let pkg = generate_package_json("demo", false, false, &[], &usage);
+        assert!(pkg.contains("\"class-variance-authority\""), "{pkg}");
+        assert!(pkg.contains("\"reka-ui\""), "{pkg}");
+        assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
+>>>>>>> plan-455
     }
 
     /// Plan 444 (ash-shell-057 ⑥): an unused CodeEditor.vue shell from an

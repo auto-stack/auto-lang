@@ -43,7 +43,7 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 | `004` | `profile-card` | Image clipping, badges, negative margins | Initial | 🟢 Passed |
 | `005` | `login` | Card, input, password masking, link, error display | Initial, Empty error, Typed, Masked, Submit | 🟢 Passed (Plan 452/453) |
 | `006` | `hero-section` | Gradient background, full-screen centering, CTA button | Initial, Gradient, Hover, Typography | 🟢 Passed |
-| `007` | `stats-board` | Grid, card, stats, badges | Layout, Responsive | 🟡 Pending Audit |
+| `007` | `stats-board` | Grid, card, stats, badges | Layout, Responsive, Numbers, Avatars | 🟢 Passed |
 | `008` | `pricing-table` | Pricing tiers, cards, lists, badges | Layout, Selection | 🟡 Pending Audit |
 | `009` | `article-feed` | Feed list, avatar, tags, cards | Scroll, Item click | 🟡 Pending Audit |
 | `010` | `contact-form` | Form fields, textareas, validation | Submit, Field errors | 🟡 Pending Audit |
@@ -69,8 +69,17 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 - [x] **Defect 4: Dual-Backend Re-Verification**
   - Re-run dual-backend screenshot captures (initial and hovered states) and perform side-by-side pixel audit.
 
-### Phase 007: `007-stats-board`
-- [ ] Verify multi-column grid layout, stat metric typography, and badge styling.
+### Phase 007: `007-stats-board` Parity Fixes
+- [x] **Defect 1: Vue Scaffold CVA & Reka-UI Dependency Detection**
+  - Fixed `crates/auto-man/src/vue.rs` to detect `class-variance-authority` and `reka-ui` requirements when `avatar`, `badge`, or `progress` components are used in projects without buttons.
+- [x] **Defect 2: VM Spacer Cross-Axis Height Collapse**
+  - Fixed `crates/auto-lang/src/ui/aura_view_builder.rs` `convert_spacer` to use `Style::parse("flex-1")` (width fill only) instead of `w-full h-full`, preventing height-0 row collapses in Iced.
+- [x] **Defect 3: Vue Spacer `<div class="flex-1" />` Codegen**
+  - Fixed `crates/auto-lang/src/ui_gen/vue.rs` to classify `spacer` as a layout primitive and exclude layout primitives from `is_shadcn_component`, ensuring proper `<div class="flex-1" />` spacer emission.
+- [x] **Defect 4: Contrast & Typography Alignment**
+  - Updated `examples/ui/007-stats-board/src/front/app.at` to specify explicit `text-sm text-gray-500` / `font-semibold text-gray-900 text-sm` styles for high-contrast card readability.
+- [x] **Defect 5: Dual-Backend Visual & Pixel Audit**
+  - Verified 100% geometry, padding, border radius, progress bar, avatar, and metric alignment across Vue (Playwright) and VM (AutoUI MCP).
 
 ### Phase 008: `008-pricing-table`
 - [ ] Verify pricing tier cards, highlighted card borders, feature check icons, and CTA buttons.

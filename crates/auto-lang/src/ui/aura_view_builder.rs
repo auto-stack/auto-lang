@@ -3262,7 +3262,7 @@ let tabs_inner = View::Row {
             builder = builder.with_style(s);
         } else {
             builder = builder.with_style(
-                Style::parse("w-full h-full").unwrap()
+                Style::parse("flex-1").unwrap()
             );
         }
         builder.build()
