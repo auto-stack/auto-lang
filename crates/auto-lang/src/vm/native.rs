@@ -4280,6 +4280,85 @@ pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
 }
 
 // ============================================================================
+// Plan 046 (auto-musk T2): dynamic-receiver (`obj`) method family.
+// musk front handlers historically could not link `.find(pred)` /
+// `Object.values(x)` / corrected `Object.keys(x)` on dynamically-typed values,
+// forcing hand-scanned loops (auto-musk PLAN-045 VM-clean workarounds, see
+// PLAN-046 T4 inventory R1-R4). Runtime shapes for dynamic objects:
+//   - object literals -> heap ObjectData (Plan 390 §15 H3b)
+//   - typed instances -> GenericInstanceData
+// Both are collected here; unsupported shapes error LOUDLY instead of the
+// previous silent empty-value degradation observed in PLAN-046 T2 baseline.
+
+fn dyn_object_entries(vm: &AutoVM, obj_id: u64) -> Result<Vec<(String, auto_val::Value)>, VMError> {
+    let obj = vm.get_heap_object(obj_id).ok_or_else(|| {
+        VMError::RuntimeError(format!("obj method family: invalid heap object id {}", obj_id))
+    })?;
+    let guard = obj.read().unwrap();
+    if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+        let mut entries: Vec<(String, auto_val::Value)> = od
+            .fields
+            .iter()
+            .filter_map(|(k, v)| k.name().map(|n| (n.to_string(), v.clone())))
+            .collect();
+        // Deterministic ordering (HashMap storage is unordered) so find/sum
+        // consumers behave reproducibly run-to-run.
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        return Ok(entries);
+    }
+    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+        return Ok(inst.field_names.iter().cloned().zip(inst.fields.iter().cloned()).collect());
+    }
+    Err(VMError::RuntimeError(format!(
+        "obj method family: heap object {} is not a dynamic object",
+        obj_id
+    )))
+}
+
+fn push_value_list(task: &mut AutoTask, vm: &AutoVM, items: Vec<auto_val::Value>) {
+    let mut list: crate::vm::types::ListData<auto_val::Value> = crate::vm::types::ListData::new();
+    for item in items {
+        list.push(item);
+    }
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
+}
+
+/// Object.keys(dynObj) -> List[str]
+/// Stack: obj_id -> list_id
+pub fn shim_obj_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+    eprintln!("[obj-keys shim HIT] id={}", obj_id);
+    let _stake = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
+    let entries = dyn_object_entries(vm, obj_id)?;
+    push_value_list(task, vm, entries.into_iter().map(|(k, _)| auto_val::Value::Str(auto_val::AutoStr::from(k.as_str()))).collect());
+    Ok(())
+}
+
+/// Object.values(dynObj) -> List of field values
+/// Stack: obj_id -> list_id
+pub fn shim_obj_values(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
+    let entries = dyn_object_entries(vm, obj_id)?;
+    push_value_list(task, vm, entries.into_iter().map(|(_, v)| v).collect());
+    Ok(())
+}
+
+/// dynObj.find(closure) -> element or None — delegates to the generic list-find
+/// shim; receivers are runtime lists, identical element machinery applies.
+/// dynObj.find(closure) -> element or None — delegates to the generic list-find
+/// shim; receivers are runtime lists, identical element machinery applies.
+///
+/// PLAN-046 T2 现状注:registry/routing 层已通(命名、注册、链接三关全过,
+/// V2 场景 shim 已被调用);残余缺口在下游运行时语义——动态接收者场景的
+/// Option 返回表示、谓词闭包与 GET_FIELD 的协作——使端到端结果仍不正确。
+/// 完整清偿规格见 auto-musk PLAN-046 T2 注 KNOWN-DEBT 046-A;建议并入
+/// auto-lang 后续批次(如 plan454 队列)以本分支为基础续作。
+pub fn shim_obj_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    shim_list_find(task, vm)
+}
+// ============================================================================
 // HashSet Shims (Plan 118 Phase 3)
 // ============================================================================
 

@@ -63,6 +63,11 @@ pub const TYPE_CANONICAL_MAP: &[(&str, &str)] = &[
     ("Response", "auto.http.response"),
     ("Option", "auto.option"),
     ("String", "auto.str"),
+    // Plan 046 (auto-musk T2): dynamic-receiver method family routes through
+    // the same registry — declared-type key "obj" (param annotations) and the
+    // JS-style bare `Object` qualifier both land on auto.obj.*.
+    ("obj", "auto.obj"),
+    ("Object", "auto.obj"),
     ("Str", "auto.str"),
     ("File", "auto.file"),
 ];

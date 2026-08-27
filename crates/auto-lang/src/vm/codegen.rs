@@ -7577,6 +7577,10 @@ impl Codegen {
                             ("json", "type_of") => Some("auto.json.type_of".to_string()),
                             ("json", "get_at") => Some("auto.json.get_at".to_string()),
                             ("json", "keys") => Some("auto.json.keys".to_string()),
+                            // Plan 046 (auto-musk T2): JS-style bare `Object`
+                            // qualifier routes to the dynamic-receiver family.
+                            ("Object", "keys") => Some("auto.obj.keys".to_string()),
+                            ("Object", "values") => Some("auto.obj.values".to_string()),
                             ("shell", "exec") => Some("auto.sys.exec".to_string()),
                             ("regex", "match") => Some("auto.regex.match".to_string()),
                             // URL module → opaque heap object shims
