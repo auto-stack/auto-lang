@@ -77,6 +77,10 @@ macro_rules! for_each_native {
             (2067, NATIVE_LIST_SORT, shim_list_sort, "auto.list.sort"),
             (2068, NATIVE_LIST_SORT_BY, shim_list_sort_by, "auto.list.sort_by"),
             (2080, NATIVE_LIST_JOIN, shim_list_join, "auto.list.join"),
+            // === Plan 046 (auto-musk T2): dynamic-receiver (obj) family ===
+            (2090, NATIVE_OBJ_KEYS, shim_obj_keys, "auto.obj.keys"),
+            (2091, NATIVE_OBJ_VALUES, shim_obj_values, "auto.obj.values"),
+            (2092, NATIVE_OBJ_FIND, shim_obj_find, "auto.obj.find"),
             (2069, NATIVE_LIST_CONTAINS, shim_list_contains, "auto.list.contains"),
 
             // === Result HOF ===
@@ -1686,6 +1690,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.list.reduce", 2066),
     ("auto.list.sort", 2067),
     ("auto.list.sort_by", 2068),
+    // Plan 046 (auto-musk T2): dynamic-receiver family
+    ("auto.obj.keys", 2090),
+    ("auto.obj.values", 2091),
+    ("auto.obj.find", 2092),
     ("auto.list.contains", 2069),
     ("auto.list.iter", 111),
     ("auto.iterator.next", 112),

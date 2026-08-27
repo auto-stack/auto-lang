@@ -6970,6 +6970,11 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("http.sse_stream", shim_http_sse_get_stream);
 
     natives.register_shim_by_name("Response.status_code", shim_response_status_code);
+    // Plan 046 (auto-musk T2): dynamic-receiver method family — eager so the
+    // linker/peek paths see them without prior reference (peek has no lazy reg).
+    natives.register_shim_by_name("auto.obj.keys", crate::vm::native::shim_obj_keys);
+    natives.register_shim_by_name("auto.obj.values", crate::vm::native::shim_obj_values);
+    natives.register_shim_by_name("auto.obj.find", crate::vm::native::shim_obj_find);
     natives.register_shim_by_name("Response.header_get", shim_response_header_get);
     natives.register_shim_by_name("Response.body", shim_response_body);
 
