@@ -43,6 +43,7 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
 | `004` | `profile-card` | Image clipping, badges, negative margins | Initial | 🟢 Passed |
 | `005` | `login` | Card, input, password masking, link, error display | Initial, Empty error, Typed, Masked, Submit | 🟢 Passed (Plan 452/453) |
 | `006` | `hero-section` | Gradient background, full-screen centering, CTA button | Initial, Gradient, Hover, Typography | 🟢 Passed |
+| `006` | `hero-section` (Plan 458) | **Theme Settings panel**（Light/Dark + 5 accent 色板，运行时切换） | dark/light × vue/vm 初始态、面板展开、运行时切换、accent 切换 | 🟢 Passed (Plan 458) |
 | `007` | `stats-board` | Grid, card, stats, badges | Layout, Responsive, Numbers, Avatars | 🟢 Passed |
 | `008` | `pricing-table` | Pricing tiers, cards, lists, badges | Layout, Selection | 🟡 Pending Audit |
 | `009` | `article-feed` | Feed list, avatar, tags, cards | Scroll, Item click | 🟡 Pending Audit |
