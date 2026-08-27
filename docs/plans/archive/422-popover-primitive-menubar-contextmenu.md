@@ -1,6 +1,8 @@
 # Plan 422: 弹层原语(anchor 定位 popover)与 menubar/contextmenu 迁移
 
 > **状态**: ✅ 已实施(2026-08-23,分支 422-popover;P1-P4 全部落地,矩阵 29/29 + 行为语义测试 13/13;两项人工验收待办见 §6)
+
+> **终局裁定（2026-08-27 复核归档）**: 📦 归档。合并证据 `2ca1cd7db`(Merge branch '422-popover')。P1-P4 全落:Popover 原语(按钮锚+坐标锚)+ **menubar 迁移(估位/2000px catch 退役——连带解除 414 menubar Phase B 遗留,债务簿 418 估位条目同步退役)** + 041 contextmenu 示例 + gallery 文档;矩阵 29/29 + 行为语义 13/13。遗留已登记债务簿:rust 模式 codegen 未覆盖 popover 标签(ui_gen/rust.rs)/子菜单 z 序嵌套远期不承诺/两项实机人工验收(MCP 无鼠标注入无法自动化)。
 > **来源**: 三计划共同指向的同一架构缺口:AutoUI 没有锚定弹层原语,menubar 下拉靠 absolute+像素估算,点击捕获靠 2000px 隐形按钮,右键菜单无处落地
 > **关联**: 418(合成 menubar 迁移方)/ 413(editor oncontextmenu)/ 412(toast 层先例)/ 409(overlay hoist Stack)
 

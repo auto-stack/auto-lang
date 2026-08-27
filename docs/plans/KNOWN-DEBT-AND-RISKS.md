@@ -103,7 +103,7 @@
 | 395 | json.decode turbofish 迁移 | `json.decode[T](text)` 可迁移为 `json.decode<Type>(text)`（rust.rs:3569 特判改为读 `generic_args`）。当前 Index hack 仍工作，auto-ai 仅 1 处使用，非阻塞。 | `trans/rust.rs:3569` |
 | 308 | a2gd documented gaps | 5 条 Godot demo 逆向翻译 sugar 差距（GDScript `$`/`&""`/三元 sugar、复杂 sub_resource、packed arrays、node metadata、is 工效）显式不实现，留档于归档计划附录。 | `docs/plans/archive/308-*.md` 附录 |
 | 364 | Try/深递归 deferred | a2r 的 `Stmt::Try` 降级 deferred（try 是运行时 catch 模型，不映射 Result）；F4 深递归栈溢出根因未根治（perf 测试用 16MB 线程为 interim 缓解）。 | `trans/rust.rs` / `perf_benchmark_tests.rs:169` |
-| 418 | menubar 估位偏移 | P2-3 菜单面板锚定用字符宽度估算（8+Σ(字符×12+28)）合成 absolute overlay——非测量值，字体/缩放变化时会偏；Plan 422 popover 原语（anchor 定位）落地后退役。 | `renderer.rs menubar 面板合成` |
+| ~~418~~ | ~~menubar 估位偏移~~ ✅ 已退役(2026-08-27 复核归档批) | Plan 422 P2 menubar Popover 迁移已落地(估位/2000px catch 删除,矩阵 29/29);原条目即预期"422 落地后退役",现随 414/422 归档批执行。 | `renderer.rs menubar 面板合成`(已删) |
 | 445 | 几何重算三份内联 | Init/.Tick/.Reset 三处 ~90 行同式几何重算（模块级 fn 不进 vue SFC 的 §0.6.E-3 约束所迫）；435 组件化收口后应收敛为单一渲染函数来源。 | `examples/ui/024-charts/src/front/app.at` |
 | 447-① | VM is 值语义 let 绑定位返回 0 | `let r = is x {...}` 绑定位返回 0（函数尾位值语义正常）；最小复现 `fn main() { let r = is "test" { "test" -> "pass" else -> "fail" } print(r) }` 输出 0。部分② Phase 4 语料设计需覆盖该形态。 | `vm/codegen.rs` Expr::Is 值位（2026-08-25 探针整备时发现） |
 | 447-① | VM 函数内嵌套 fn 静默失效 | `fn main() { fn inner() {...} inner() }` 调用无输出无报错（top-level fn 正常）；99_idiom_probe 探针一律顶层 fn 规避。 | `parser.rs`/`vm/codegen.rs` 嵌套 fn 路径 |
@@ -143,6 +143,13 @@
 | 432 | 复审发现:engine.at ev_add 双 int 分支偏置不对称(直接 a.i+b.i 无 dec/enc,当前不可达);codegen.at hex4 编址 16 位静默截断(>0xffff dump 错无诊断) | 前者若 str.cat 发射条件放宽即触发错值,至少补警示注释;后者补溢出诊断。 | `engine.at:121-133` / `codegen.at:864-876` |
 | 330 | VM 内省三件套缺位 | `auto debug --agent`(Plan 199)的 JSON state 只含 stack/call_stack/locals/registers,无 globals/heap-objects/symbols dump——排查全局变量污染/符号冲突/堆对象泄漏无工具(330 原 Phase 2 设计 vm/introspection.rs)。无当前消费者,330 已归档,设计沉淀 design/14。 | `vm/debugger.rs` AgentDebugState + `docs/design/14-developer-tools.md` |
 | 330 | trace 无 CLI/env 暴露 | TraceCollector(Plan 199 P5,vm/trace.rs JSONL)仅引擎内集成,无 `--trace` CLI 开关或 AUTO_VM_TRACE 环境变量入口;330 的"handler 超步数/深度阈值自动告警递归"静态诊断也未做。 | `vm/trace.rs` + `crates/auto/src/main.rs` |
+| 413 | code_editor 人工验收清单未跑 | 微软拼音 IME 实机输入、150% DPI 行号清晰度、Linux(X11/Wayland)复验、TESTING.md 交互行为(三击/Ctrl+词跳转/滚动条拖拽/vi 模式)——需实机人工;`@codemirror` 深化(主题/搜索 UI/多光标)属后续增强。 | code_editor TESTING.md + 041/gallery |
+| 421 | vue code_editor natives 桥接 | `code_editor_*` VM natives 仅 iced 端有全局 registry,vue 端等价能力由 cursor payload 事件承担(natives 桥接属另计划);vitest 未搭(条件项,已降级手验清单);oncursor vue playground 实机验证未跑。 | `ui_gen/vue.rs` + scaffolded 工程 |
+| 422 | popover 覆盖边界 | rust 模式 codegen 未覆盖 popover 标签(`ui_gen/rust.rs`)——VM/iced 语义完整,vue 走 shadcn 映射;子菜单 z 序嵌套(面板内再弹)远期不承诺;两项实机人工验收未跑(041 右键菜单落点/gallery popover 开合,MCP 无鼠标注入无法自动化)。 | `ui_gen/rust.rs` + 041 + gallery |
+| 414 | auto-edit UX Phase B 族 | toolbar 右对齐被 VM Row 渲染器限制阻塞(§7.2,解除后一行启用);真折叠 Phase B(fill_raw 整缓冲绘制无法跳行,倾向 core 自绘,单独立项);action 声明块 Phase B(§6.1,parser/view/aura/a2r 四端改造)。menubar overlay 一项已由 Plan 422 P2 解除。 | `ui/iced/renderer.rs` + 041 |
+| 423 | RC 安全挂账 ×2 | ARRAY_LEN 弹栈不释放引用操作数(每调用泄漏一个份额;持久列表无感,临时列表会长存);裸 i32 堆 id 编码与 TAG_OBJECT 双轨并存,pop 侧无法区分"带份额压栈"与"历史裸压",全量收口需一次性迁移(419 遗留议题)。 | `vm/engine.rs` ARRAY_LEN + 堆 id 编码 |
+| 449 | vm 组件渲染三缺口 | 回调 props 退化/快照组件子树不可见/片段参数化条件不求值(§3.1-3.3)——修好后 041 tab 条/确认弹层可继续组件化;vue 侧 action 配置(vue codegen 全局 keydown+menubar/toolbar 合成)另立计划。 | `ui/render*` + 041 tab_bar/confirm_dialog 设计 |
+| 449 | VM 字节码越界读 bug | store handler + `code_editor_set_text`(疑及同族 set 类内建)编译路径产出越界读,根因在 handler_codegen/vm codegen 对 store decl 的合成;041 目前以根 handler 规避,值得专项修复。 | `vm/handler_codegen.rs` + 041 |
 
 ---
 
@@ -154,4 +161,4 @@
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 
-*最后更新：2026-08-27（Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+*最后更新：2026-08-27（复核归档批:413/414/421/422/423/449 六计划归档,遗留登记 7 条(413 人工验收/421 natives 桥接/422 popover 边界/414 Phase B 族/423 RC 安全×2/449 组件三缺口+越界读 bug),418 menubar 估位条目随 422 P2 落地退役;Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*

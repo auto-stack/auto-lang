@@ -1,6 +1,8 @@
 # Plan 414: auto-edit 对齐 Zed 的 UX 改进（041 示例 + code_editor widget）
 
 > **状态**: ✅ 四轮全部实施（2026-08-21~22，提交 `d04f7e53`/`2b0fa45a`/`632d4db6`）。遗留：menubar 展开式 MVP（overlay 弹层 Phase B）；toolbar 右对齐被 VM Row 渲染器限制阻塞（§7.2，待修复后一行启用）；action 声明式语法 Phase B（§6.1）。（2026-08-21，分支 `plan-414-auto-edit-ux` 提交 `d04f7e53`，worktree `auto-edit-ux`）—— §1.1-1.3 全部落地并实机验证（tab 切换 / 两位行号槽 / 折叠三角 / 1:1 行列 / terminal 图标开合 Console）；§3 后续项（真折叠 Phase B、深层多 tab、Menu/Toolbar widget）待立项。
+
+> **终局裁定（2026-08-27 复核归档）**: 📦 归档。合并证据 `a6834ce07`(Merge plan-414-auto-edit-ux 全量:R8-R15 overlay 系列+§9 窗口标题 pac.at 化)+`4f6cfc21a`(残留批:§8.1 嵌套行图标 iced_test 实测不复现加回归锁)。四轮全落+实机验证(tab 切换/双行号槽/折叠三角/terminal 图标开合)。遗留裁定:menubar overlay 弹层 Phase B **已由 Plan 422 P2 Popover 迁移解除**(连带退役债务簿 418 估位条目);仍欠项已登记债务簿——toolbar 右对齐(VM Row 渲染器限制 §7.2,解除后一行启用)/真折叠 Phase B(fill_raw 整缓冲绘制无法跳行,倾向 core 自绘,单独立项)/action 声明块 Phase B(§6.1 四端改造)。
 > **背景**: 用户对比 auto-edit（041）与 Zed 截图提出 7 项改进。逐项分析后：1-4 本轮实施；5 做 Phase A（gutter 列 + 折叠标记视觉，点击折叠为 Phase B）；6 做 MVP（DSL 级双 tab，状态按 key 独立）；7 仅设计（AutoUI VM 后端确认无 Menu/Toolbar widget）。
 > **上游**: Plan 413（code_editor widget）、`6b8ec73c`（状态栏 + Console 面板）、`6b70dc85`（状态栏样式修正）。
 

@@ -1,6 +1,8 @@
 # Plan 421: vue 端 code_editor 契约补齐(props 消费 + oncursor/oncontextmenu)
 
 > **状态**: ✅ 已实施(2026-08-23,分支 `421-vue-editor-contract`;P1-P4 全落,vitest 未搭——用契约测试 + 手验清单替代)
+
+> **终局裁定（2026-08-27 复核归档）**: 📦 归档。合并证据 `e03a0d912`(Merge branch '421-vue-editor-contract')。P1-P4 全落(props/事件契约透传 + vue_capabilities 真实管线测试 + 快照;顺带修复 413 遗留的连叠 #[test] 双跑/丢属测试)。遗留已登记 KNOWN-DEBT-AND-RISKS:vue 端 code_editor_* natives 桥接未接(现由 cursor payload 事件承担,属另计划)/vitest 未搭(条件项,已降级手验清单)/oncursor vue playground 实机验证未跑。
 > **来源**: auto-man `vue.rs` 脚手架(CodeEditor 组件)与 `ui_gen/vue.rs` codegen 的契约缺口;413 vue 壳已落地但只通最小集
 > **关联**: 413(@codemirror 深化"属后续增强")/ 401(examples vue 升级)
 

@@ -1,6 +1,8 @@
 # Plan 413: 跨平台代码编辑器 widget(模拟 cosmic-edit,iced 后端)
 
 > **状态**: ✅ **实施完成(2026-08-19,Windows)** —— Phase 0-5 全部走完,分支 `plan-413-code-editor`(worktree auto-edit-dev)。
+
+> **终局裁定（2026-08-27 复核归档）**: 📦 归档。合并证据 `06cb18816`(Merge plan-413-residuals)+`519a080de`(补齐实现:搜索高亮/a2r 调用映射/MCP type_text/LRU/warm-up/e2e);后续 428 实机验收还修复了 413 期回归"未处理 Ctrl+字母强制捕获"(`add8eab21`,套件 38/38)。人工验证项(微软拼音 IME 实机/150% DPI 行号清晰度/Linux X11+Wayland 复验/TESTING.md 交互清单:三击/Ctrl+词跳转/滚动条拖拽/vi 模式)需实机人工,已登记债务簿留待;@codemirror 深化(主题/搜索 UI/多光标)为后续增强一并登记。
 > **自动化验收达成**:双后端渲染(wgpu+tiny-skia)、cosmic-text 0.15 单实例、语法高亮(rust/auto 双语)、行号槽、VM 全链路实机渲染(gallery 页 + 041 示例)、a2r codegen、1MB 性能(set 48ms / 稳态渲染 446µs;冷启动 4.2s 为 syntect/onig 一次性正则编译,debug 构建)。
 > **待人工验证**(见 §5 手动清单):微软拼音 IME 实机输入、150% DPI 行号清晰度、Linux(X11/Wayland)复验、TESTING.md 交互行为(三击/Ctrl+词跳转/滚动条拖拽/vi 模式)。
 > **补齐实现(2026-08-19 follow-up,分支 plan-413-followup)**:① **搜索高亮**补齐 —— 正则 search prop 全链路(core 状态 + 渲染 quad + View/aura/a2r + gallery 搜索框),search-as-you-type 跳转 + `code_editor_find(key)` API;② **a2r 调用映射** —— `code_editor_text/cursor_line/cursor_col/selection_len/find/set_text` 可直接出现在 .at handler 表达式(§3.2 DSL 用法成立);③ **MCP type_text/clear** 纳入 CodeEditor;④ **LRU 自动释放**(容量 32,超出淘汰最久未用);⑤ **后台语法 warm-up**(按编辑器语言预热);⑥ **e2e 编译测试**(生成代码 + 临时 crate cargo build,#[ignore])。

@@ -1,9 +1,12 @@
 # Plan 449: 041-auto-edit 组件化重构——单文件拆多文件（store + 013 式组件）
 
 > **状态**: ✅ 已实施并合并（2026-08-26，worktree .worktree/plan-449 →
+
 > master）。desktop_mcp.py 48/1——与重构前的纯原始树（git HEAD + 全新构建）
 > 完全一致，零回归；唯一 FAIL 为 T10「配置热重载」，系 master 上与本重构
 > 无关的既有 flake（§6.3）。
+
+> **终局裁定（2026-08-27 复核归档）**: 📦 归档。合并证据 `9e46d5670`(Merge plan-449)。desktop_mcp 48/1 与重构前纯原始树(git HEAD+全新构建)完全一致,零回归;唯一 FAIL T10 热重载为 master 既有 flake(债务簿已有 451 复审条目,不重复登记)。遗留已登记债务簿:vm 组件渲染三缺口(回调 props 退化/快照组件子树不可见/片段参数化条件不求值)/VM 字节码越界读(store handler+code_editor_set_text 合成路径,041 以根 handler 规避)/vue 侧 action 配置(vue codegen 全局 keydown+menubar/toolbar 合成)。
 > **来源**: 用户示例走查——041 全部 486 行集中在 src/front/app.at 单 widget，
 > 无组件级抽象；期望对齐 015-notes 的多文件工程风格。
 > **基线**: master 8491c7a71（含 plan-044/448/008 已提交内容）
