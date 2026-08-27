@@ -475,27 +475,89 @@ pub fn shim_env_get_or(key: String, default: String) -> String {
 // HashMap (session-scoped persistence). vue implements these against the real
 // browser localStorage; this is the VM-side mirror so the same .at source runs
 // in both render modes.
+//
+// Plan 438 M2: the map is now file-backed — localStorage is per-origin AND
+// durable, so the mirror is per-project (cwd-hashed JSON under the temp dir)
+// and survives process restarts, making panel-config persistence work in vm
+// mode (025-dashboard). `AUTO_VM_STORAGE_FILE` overrides the location (e.g.
+// a durable per-user path; the desktop_mcp suite uses it for isolation).
+// All file IO is best-effort: a missing/unreadable file starts empty, a
+// failed write stays in-memory (config persistence is a convenience, never
+// a correctness gate).
 lazy_static::lazy_static! {
     static ref STORAGE_MAP: std::sync::Mutex<std::collections::HashMap<String, String>> =
         std::sync::Mutex::new(std::collections::HashMap::new());
 }
 
+/// Location of the backing JSON file. Deterministic per cwd (DefaultHasher
+/// with fixed keys), so a project keeps its store across runs.
+fn storage_file() -> Option<std::path::PathBuf> {
+    if let Ok(p) = std::env::var("AUTO_VM_STORAGE_FILE") {
+        if !p.is_empty() {
+            return Some(std::path::PathBuf::from(p));
+        }
+    }
+    let cwd = std::env::current_dir().ok()?;
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    cwd.hash(&mut h);
+    Some(
+        std::env::temp_dir()
+            .join("auto-vm-storage")
+            .join(format!("{:016x}.json", h.finish())),
+    )
+}
+
+/// Merge the backing file into the map. entry().or_insert() keeps values
+/// already written in this process, so in-process writes always win over
+/// the on-disk snapshot.
+fn storage_load() {
+    let Some(path) = storage_file() else { return };
+    let Ok(raw) = std::fs::read_to_string(&path) else { return };
+    let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw)
+    else {
+        return;
+    };
+    let mut map = STORAGE_MAP.lock().unwrap();
+    for (k, v) in parsed {
+        map.entry(k).or_insert(v);
+    }
+}
+
+/// Write the whole map through to the backing file (best-effort). Config
+/// writes are low-frequency, so write-through needs no flush hook.
+fn storage_persist() {
+    let Some(path) = storage_file() else { return };
+    let map = STORAGE_MAP.lock().unwrap();
+    if let Ok(json) = serde_json::to_string_pretty(&*map) {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&path, json);
+    }
+}
+
 /// storage.get(key) → stored value, or "" if absent (mirrors JS localStorage).
 #[auto_macros::rust_fn("Storage.get")]
 pub fn shim_storage_get(key: String) -> String {
+    storage_load();
     STORAGE_MAP.lock().unwrap().get(&key).cloned().unwrap_or_default()
 }
 
-/// storage.set(key, value) → persists for the session.
+/// storage.set(key, value) → persists (file-backed; see Plan 438 M2 note).
 #[auto_macros::rust_fn("Storage.set")]
 pub fn shim_storage_set(key: String, value: String) {
+    storage_load();
     STORAGE_MAP.lock().unwrap().insert(key, value);
+    storage_persist();
 }
 
 /// storage.remove(key) → drops the entry.
 #[auto_macros::rust_fn("Storage.remove")]
 pub fn shim_storage_remove(key: String) {
+    storage_load();
     STORAGE_MAP.lock().unwrap().remove(&key);
+    storage_persist();
 }
 
 // Plan 442 B-support: raw accessors behind the JS-shaped localStorage

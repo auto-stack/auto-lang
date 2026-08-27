@@ -2040,33 +2040,65 @@ let tabs_inner = View::Row {
                         style: Style::parse("border rounded w-full text-sm").ok(),
                     };
                 }
-                if tag == "thead" || tag == "tbody" || tag == "tfoot" {
+                if tag == "thead" || tag == "tbody" || tag == "tfoot"
+                    || tag == "table-header" || tag == "table-body" || tag == "table-footer" {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
                     return View::Column { children: views, spacing: 0, padding: 0, style: None };
                 }
-                if tag == "tr" {
+                if tag == "tr" || tag == "table-row" {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
                     return View::Row { children: views, spacing: 0, padding: 0, style: None };
                 }
-                if tag == "th" || tag == "td" {
-                    let text = self.extract_children_text(children, bindings)
-                        .or_else(|| self.extract_string(props, "text"))
-                        .unwrap_or_default();
-                    let (cell_style, text_style) = if tag == "th" {
+                if tag == "th" || tag == "td" || tag == "table-head" || tag == "table-cell" {
+                    let is_head = tag == "th" || tag == "table-head";
+                    let (cell_style, text_style) = if is_head {
                         ("px-4 py-2 border border-input bg-muted flex-1", "font-medium text-foreground")
                     } else {
                         ("px-4 py-2 border border-input flex-1", "text-muted-foreground")
                     };
-                    let text_view = View::Text {
-                        content: text,
-                        style: Style::parse(text_style).ok(),
+                    // Plan 438 M2: shadcn kebab 族(table-head/table-cell)与 HTML
+                    // 别名合一渲染——vue 侧两族映射同构,VM 侧此前只认 HTML 别名,
+                    // kebab 源(gallery/025 形态)整表空白。非文本子节点(badge 等)
+                    // 优先按子视图渲染,text prop 为纯文本单元格兜底(带 bindings——
+                    // extract_string 的空 bindings 解不出 p.name/.nameH 等引用)。
+                    let child_views: Vec<View<DynamicMessage>> = children
+                        .iter().map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty)).collect();
+                    let content = if child_views.len() == 1 {
+                        child_views.into_iter().next().unwrap()
+                    } else if child_views.len() > 1 {
+                        View::Row { children: child_views, spacing: 0, padding: 0, style: None }
+                    } else {
+                        let text = self.extract_children_text(children, bindings)
+                            .or_else(|| self.extract_string_with(props, "text", bindings))
+                            .unwrap_or_default();
+                        View::Text {
+                            content: text,
+                            style: Style::parse(text_style).ok(),
+                        }
                     };
+                    // 可点击列头(排序):带 onclick 的 th/table-head 渲染为
+                    // Button(View::Text 无 onclick 字段,与上方 text→Button 同款)。
+                    if is_head {
+                        if let Some(event) = aura_events_get_base(events, "onclick") {
+                            if let View::Text { content, .. } = &content {
+                                return View::Button {
+                                    disabled: false,
+                                    label: content.clone(),
+                                    onclick: self.event_to_message_with(event, bindings),
+                                    style: Style::parse(cell_style).ok(),
+                                    on_right_click: None,
+                                    content: None,
+                                };
+                            }
+                        }
+                    }
                     return View::Container {
-                        child: Box::new(text_view),
+                        child: Box::new(content),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse(cell_style).ok(),
                     };
@@ -4146,6 +4178,18 @@ let tabs_inner = View::Row {
             .map(|n| self.convert_node_with(n, bindings))
             .filter(|v| !matches!(v, View::Empty))
             .collect();
+        // Plan 438 M2: badge (text: "…", variant: "…") 形态——text prop 是
+        // gallery/应用的主流通法,此前只认 children,prop 形态渲染为空 Row。
+        let mut child_views = child_views;
+        if child_views.is_empty() {
+            let text = self.extract_string_with(props, "text", bindings).unwrap_or_default();
+            if !text.is_empty() {
+                child_views.push(View::Text {
+                    content: text,
+                    style: None,
+                });
+            }
+        }
         View::Row {
             children: child_views,
             spacing: 0,

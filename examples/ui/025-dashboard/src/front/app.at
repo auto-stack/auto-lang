@@ -76,6 +76,55 @@ widget App {
 
     on {
         .Init -> {
+            // ---- 配置恢复（storage，018 先例；键值全字符串：三档速度存
+            // 档名、bool 存 "true"/"false"、排序存列名+方向——零转换。
+            // VM 为进程内映射（会话级），vue 为 localStorage（真持久）----
+            let sp = storage.get("dash.speed")
+            if sp == "fast" { .speedDiv = 1 }
+            if sp == "normal" { .speedDiv = 4 }
+            if sp == "slow" { .speedDiv = 10 }
+            let scpu = storage.get("dash.show_cpu")
+            if scpu == "true" { .showCpu = true }
+            if scpu == "false" { .showCpu = false }
+            let smem = storage.get("dash.show_mem")
+            if smem == "true" { .showMem = true }
+            if smem == "false" { .showMem = false }
+            let snet = storage.get("dash.show_net")
+            if snet == "true" { .showNet = true }
+            if snet == "false" { .showNet = false }
+            let scol = storage.get("dash.sort_column")
+            if scol == "cpu" { .sortColumn = "cpu" }
+            if scol == "mem" { .sortColumn = "mem" }
+            if scol == "name" { .sortColumn = "name" }
+            let sdir = storage.get("dash.sort_dir")
+            if sdir == "asc" { .sortDir = "asc" }
+            if sdir == "desc" { .sortDir = "desc" }
+            // 列头标签与（恢复后的）排序态同步
+            .nameH = "名称"
+            .cpuH = "CPU %"
+            .memH = "内存"
+            if .sortColumn == "cpu" {
+                if .sortDir == "desc" {
+                    .cpuH = "CPU % ↓"
+                } else {
+                    .cpuH = "CPU % ↑"
+                }
+            }
+            if .sortColumn == "mem" {
+                if .sortDir == "desc" {
+                    .memH = "内存 ↓"
+                } else {
+                    .memH = "内存 ↑"
+                }
+            }
+            if .sortColumn == "name" {
+                if .sortDir == "desc" {
+                    .nameH = "名称 ↓"
+                } else {
+                    .nameH = "名称 ↑"
+                }
+            }
+
             // ---- 滑窗预填（30 点 → 步长恒定 504/29）----
             var hc0 = []
             var hm0 = []
@@ -225,9 +274,9 @@ widget App {
         .Pause -> { .running = "false" }
 
         // ---- 刷新间隔（分频）----
-        .SetFast -> { .speedDiv = 1 }
-        .SetNormal -> { .speedDiv = 4 }
-        .SetSlow -> { .speedDiv = 10 }
+        .SetFast -> { .speedDiv = 1; storage.set("dash.speed", "fast") }
+        .SetNormal -> { .speedDiv = 4; storage.set("dash.speed", "normal") }
+        .SetSlow -> { .speedDiv = 10; storage.set("dash.speed", "slow") }
 
         // ---- 曲线开关 ----
         .ToggleCpu -> {
@@ -236,6 +285,11 @@ widget App {
             } else {
                 .showCpu = true
             }
+            if .showCpu {
+                storage.set("dash.show_cpu", "true")
+            } else {
+                storage.set("dash.show_cpu", "false")
+            }
         }
         .ToggleMem -> {
             if .showMem {
@@ -243,12 +297,22 @@ widget App {
             } else {
                 .showMem = true
             }
+            if .showMem {
+                storage.set("dash.show_mem", "true")
+            } else {
+                storage.set("dash.show_mem", "false")
+            }
         }
         .ToggleNet -> {
             if .showNet {
                 .showNet = false
             } else {
                 .showNet = true
+            }
+            if .showNet {
+                storage.set("dash.show_net", "true")
+            } else {
+                storage.set("dash.show_net", "false")
             }
         }
 
@@ -272,6 +336,8 @@ widget App {
             }
             .cpuH = "CPU %"
             .memH = "内存"
+            storage.set("dash.sort_column", "name")
+            storage.set("dash.sort_dir", .sortDir)
             // name 排序 = procs 原序（名称升序构造）/ 逆序
             if .sortDir == "asc" {
                 var outA = []
@@ -318,6 +384,8 @@ widget App {
             } else {
                 .cpuH = "CPU % ↑"
             }
+            storage.set("dash.sort_column", "cpu")
+            storage.set("dash.sort_dir", .sortDir)
             var remaining = []
             for p in .procs {
                 remaining.push(p)
@@ -390,6 +458,8 @@ widget App {
             } else {
                 .memH = "内存 ↑"
             }
+            storage.set("dash.sort_column", "mem")
+            storage.set("dash.sort_dir", .sortDir)
             var remaining = []
             for p in .procs {
                 remaining.push(p)
