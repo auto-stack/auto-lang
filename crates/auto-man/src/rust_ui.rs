@@ -2530,6 +2530,24 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     let original_dir = std::env::current_dir().ok();
     let _ = std::env::set_current_dir(&front_dir);
 
+    // Plan 458: apply the `auto run`-injected theme + accent presets
+    // (AUTO_UI_THEME / AUTO_UI_ACCENT, set by the run handler from
+    // --theme/--accent > pac.at) to the backend-neutral theme thread-locals
+    // BEFORE the first frame. Values are re-validated here because this fn
+    // is also reachable without the run handler (split-mode hosts). Apps
+    // that declare `dark_mode`/`accent_color` state vars override these
+    // per-frame via the renderer sync (renderer.rs read_state).
+    if let Ok(t) = std::env::var("AUTO_UI_THEME") {
+        if auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str()) {
+            auto_lang::ui::style::theme::set_dark_mode(t == "dark");
+        }
+    }
+    if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
+        if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str()) {
+            auto_lang::ui::style::theme::set_accent_name(&a);
+        }
+    }
+
     let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
 
     // Restore original CWD

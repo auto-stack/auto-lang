@@ -3869,12 +3869,22 @@ fn shadcn_theme(dark: bool) -> iced::Theme {
         // --background: hsl(0 0% 100%) / --foreground: hsl(222.2 84% 4.9%)
         (iced::Color::from_rgb8(255, 255, 255), iced::Color::from_rgb8(2, 8, 23))
     };
+    // Plan 458: primary follows the accent preset thread-local (default
+    // indigo) instead of hardcoded indigo-500, so `auto run --accent` /
+    // pac.at `accent:` drive window-level iced defaults too. Unknown names
+    // keep the legacy indigo-500 fallback.
+    let primary = crate::ui::style::theme::accent_primary_rgb(
+        &crate::ui::style::theme::accent_name(),
+        dark,
+    )
+    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+    .unwrap_or_else(|| iced::Color::from_rgb8(99, 102, 241));
     iced::Theme::custom(
         if dark { "AutoShadcnDark" } else { "AutoShadcnLight" },
         iced::theme::Palette {
             background,
             text,
-            primary: iced::Color::from_rgb8(99, 102, 241), // indigo-500
+            primary,
             success: iced::Color::from_rgb8(34, 197, 94),
             warning: iced::Color::from_rgb8(234, 179, 8),
             danger: iced::Color::from_rgb8(239, 68, 68),

@@ -91,6 +91,59 @@ fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
     }
 }
 
+// Plan 458: theme preference + accent preset single source. The CLI
+// (`auto run --theme/--accent`), pac.at parsing, VM env injection and the
+// vue index.html generator all validate against / read from here.
+pub const THEME_PREFS: [&str; 2] = ["dark", "light"];
+pub const ACCENT_PRESETS: [&str; 5] = ["indigo", "coral", "ocean", "sage", "amber"];
+
+/// Effective theme preference injected by `auto run` (AUTO_UI_THEME env,
+/// validated), or the built-in default "dark". Read by the vue/tauri
+/// index.html generators so all scaffolding paths agree on the theme.
+pub fn theme_pref_from_env() -> &'static str {
+    match std::env::var("AUTO_UI_THEME").as_deref() {
+        Ok(t) if THEME_PREFS.contains(&t) => match t {
+            "light" => "light",
+            _ => "dark",
+        },
+        _ => "dark",
+    }
+}
+
+/// Effective accent preset injected by `auto run` (AUTO_UI_ACCENT env,
+/// validated), or None (generators keep their stylesheet default = indigo).
+pub fn accent_pref_from_env() -> Option<&'static str> {
+    match std::env::var("AUTO_UI_ACCENT").as_deref() {
+        Ok(a) if ACCENT_PRESETS.contains(&a) => Some(match a {
+            "coral" => "coral",
+            "ocean" => "ocean",
+            "sage" => "sage",
+            "amber" => "amber",
+            _ => "indigo",
+        }),
+        _ => None,
+    }
+}
+
+/// `--primary` shadcn token as an HSL triplet string ("H S% L%") for the
+/// given accent preset + theme, or None for unknown preset names. Dark mode
+/// gets the same L-boost as `resolve_semantic_rgb` (aligning to the
+/// generated index.css `.dark --primary`). Consumers: vue index.html inline
+/// bootstrap (Plan 458), code editors, etc.
+pub fn accent_primary_hsl(name: &str, dark: bool) -> Option<String> {
+    let (h, s, l) = accent_hsl(name)?;
+    let l = if dark { (l + 10).min(85) } else { l };
+    Some(format!("{} {}% {}%", h, s, l))
+}
+
+/// Same as `accent_primary_hsl` but as an RGB tuple for native renderers
+/// (iced window palette). Falls back to the caller on None (unknown name).
+pub fn accent_primary_rgb(name: &str, dark: bool) -> Option<(u8, u8, u8)> {
+    let (h, s, l) = accent_hsl(name)?;
+    let l = if dark { (l + 10).min(85) } else { l };
+    Some(hsl_to_rgb(h, s, l))
+}
+
 /// Resolve a semantic color to RGB, considering dark mode and accent.
 pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
     let is_dark = DARK_MODE.with(|d| d.get());
