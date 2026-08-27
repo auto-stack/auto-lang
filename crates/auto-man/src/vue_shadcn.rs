@@ -93,8 +93,7 @@ pub fn materialize(output_dir: &Path, components: &[String]) -> AutoResult<Mater
                 report.skipped_existing += 1;
                 continue;
             }
-            fs::create_dir_all(&dest)
-                .map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
+            fs::create_dir_all(&dest).map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
             let data = ShadcnUiAssets::get(&embedded_path)
                 .ok_or_else(|| format!("bundle miss: {embedded_path}"))?;
             fs::write(&target, data.data.as_ref())
@@ -145,10 +144,8 @@ mod tests {
 
     #[test]
     fn materialize_is_write_if_missing_and_idempotent() {
-        let dir = std::env::temp_dir().join(format!(
-            "automan-shadcn-test-idem-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("automan-shadcn-test-idem-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
 
         let report1 = materialize(&dir, &["button".to_string()]).unwrap();
