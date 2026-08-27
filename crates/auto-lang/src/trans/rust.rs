@@ -2829,6 +2829,23 @@ impl RustTrans {
                             _ => op.op(),
                         };
                         write!(out, " {} ", op_str)?;
+                        // Plan 019 批次七 (E9): `s += rhs` on a String local —
+                        // Rust's AddAssign is only implemented for &str, so
+                        // borrow a String-typed rhs (`buf += &cs` coerces to
+                        // push_str semantics; str params/literals pass as-is).
+                        let addeq_str_borrow = matches!(op, Op::AddEq)
+                            && matches!(lhs.as_ref(), Expr::Ident(n)
+                                if matches!(self.local_var_types.get(n),
+                                    Some(Type::StrOwned) | Some(Type::StrFixed(_))
+                                    | Some(Type::StrSlice) | Some(Type::CStrLit)))
+                            && (matches!(self.infer_type_from_expr(rhs),
+                                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit)
+                                || matches!(rhs.as_ref(), Expr::Call(c)
+                                    if matches!(c.name.as_ref(),
+                                        Expr::Dot(m, f)
+                                            if matches!(m.as_ref(), Expr::Ident(mi) if mi.as_str() == "String")
+                                                && f.as_str() == "fromCharCode")));
+                        if addeq_str_borrow { write!(out, "&")?; }
                         // Plan 391 D1: reassignment `x = <expr>.len()` where x is a
                         // u64/i64/usize local — suppress the `as i32` cast (same
                         // rationale as the let-binding case in store()).
