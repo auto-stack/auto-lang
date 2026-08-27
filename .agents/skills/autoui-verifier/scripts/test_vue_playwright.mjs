@@ -80,7 +80,7 @@ async function main() {
       if (action === 'screenshot') {
         const p = path.resolve(step.path);
         fs.mkdirSync(path.dirname(p), { recursive: true });
-        await page.screenshot({ path: p });
+        await page.screenshot({ path: p, fullPage: true });
         console.log(`[+] Captured screenshot: ${step.path}`);
       } else if (action === 'click') {
         await page.click(step.selector);
@@ -101,7 +101,7 @@ async function main() {
   } else {
     const dir = path.dirname(path.resolve(outPath));
     fs.mkdirSync(dir, { recursive: true });
-    await page.screenshot({ path: outPath });
+    await page.screenshot({ path: outPath, fullPage: true });
     console.log(`[+] Saved Vue screenshot to ${outPath}`);
   }
 
