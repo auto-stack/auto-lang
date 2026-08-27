@@ -1,0 +1,31 @@
+// Plan 454 B3: closes D40-follow-up gaps - interpolation now flows through
+// the normal expression pipeline (${} sub-parse via ar_expr): method
+// rewrite (.str()), string-view arg adaptation, bare idents. ASCII-only.
+enum Shape {
+    Dot
+    Line
+}
+
+type Holder {
+    w int
+}
+
+fn gid(s2 str) int {
+    return s2.len()
+}
+
+fn render(s Shape, name str) str {
+    if s == Shape.Dot {
+        return f"dot:${name}"
+    }
+    return f"line"
+}
+
+fn main() {
+    let name = "n1"
+    let n = 7
+    print(f"${name}:${n.str()}+${n * 2}")
+    let h = Holder(5)
+    print(f"w=${gid(name)} hw=${h.w}")
+    print(render(Shape.Dot, name))
+}

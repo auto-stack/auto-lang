@@ -42,6 +42,11 @@ fn test_a2r_corpus_file(path: &std::path::Path) -> AutoResult<()> {
         escape_for_at_literal(&code)
     );
     let (_r, stdout) = run_with_capture(&program)?;
+    if std::env::var("AA2R_DUMP").is_ok() {
+        eprintln!("DUMP-FILE {}
+DUMP-HOST<<<{}>>>
+DUMP-AA2R<<<{}>>>", path.display(), expected, stdout);
+    }
     assert_eq!(
         stdout.trim_end(),
         expected.trim_end(),

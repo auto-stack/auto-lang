@@ -793,6 +793,38 @@ fn ar_scan_mutations(mut a Ar, mut p P) {
         } else if k == TokenKind.RBrace {
             depth = depth - 1
             p_next(p)
+        } else if k == TokenKind.FStrPart {
+            // Plan 454 B1(D40 续缺口③):f-string 整段文本携带 ${}/$ 引用,
+            // 插值变量不产生独立 token——扫描器必须从文本中恢复使用点,否则
+            // ar_lu_after 判定"后续无使用",先行赋值语句的 clone 注入失效
+            // (E0382 move,g08 实证)。只记使用(lu),mutation 不经字符串。
+            var txt = p_text(p)
+            var ti = 0
+            var tn = txt.len()
+            while ti < tn {
+                if txt.char_at(ti) == 36 {
+                    var wi = ti + 1
+                    if wi < tn && txt.char_at(wi) == 123 {
+                        wi = wi + 1
+                    }
+                    var ws = wi
+                    while wi < tn {
+                        var wc = txt.char_at(wi)
+                        var okc = (wc >= 97 && wc <= 122) || (wc >= 65 && wc <= 90) || (wc >= 48 && wc <= 57) || wc == 95
+                        if !okc {
+                            break
+                        }
+                        wi = wi + 1
+                    }
+                    if wi > ws {
+                        ar_lu_record(a, txt.slice(ws, wi), p.pos)
+                        ti = wi
+                        continue
+                    }
+                }
+                ti = ti + 1
+            }
+            p_next(p)
         } else if k == TokenKind.Ident {
             if p.pos > 0 && p.toks.get(p.pos - 1).kind == TokenKind.Dot {
                 // 字段名位(前一 token 为 Dot):不按绑定处理
@@ -1235,11 +1267,28 @@ fn ar_fstr_parse(mut a Ar, mut p P) {
                     j = j + 1
                 }
                 var e = content.slice(i + 2, j)
+                // Plan 454 B2(D40 续缺口①②):插值表达式不再原文直通——
+                // 子 tokenize 后走 ar_expr 正常管道,方法调用改写(.str()→
+                // .to_string())与借用适配(mut 参数 &mut *p)与普通语句
+                // 同口径;文字直通曾泄漏 E0599/E0308(g08 三形态钉死)。
+                var segtoks = tokenize(e)
+                var segp = parse_new(segtoks)
+                var save_ty = a.ty
+                var save_strk = a.strk
+                var save_infer = a.infer
+                var seg = ar_expr(a, segp, 0)
+                if seg == "" || segp.err != "" {
+                    ar_err(a, "fstr interp: " + e)
+                    return
+                }
+                a.ty = save_ty
+                a.strk = save_strk
+                a.infer = save_infer
                 fmt = fmt + "{}"
                 if args != "" {
                     args = args + ", "
                 }
-                args = args + e
+                args = args + seg
                 i = j + 1
             } else {
                 var k2 = i + 1
@@ -2516,6 +2565,34 @@ fn ar_return(mut a Ar, mut p P) {
     var e = ar_expr(a, p, 0)
     if a.ty == "str" && (a.strk == 1 || a.strk == 2) {
         e = e + ".to_string()"
+    }
+    // Plan 454 B3 对齐:宿主对尾值位 as-cast 返回包防析括号(g08 实证
+    // return (s2.len() as i64);),AA2R 同口径(已整体包裹则不重复)
+    if e.len() > 7 && e.slice(e.len() - 7, e.len()) == " as i64" {
+        var bal = 0
+        var bi = 0
+        var outer_wrapped = false
+        while bi < e.len() {
+            if e.char_at(bi) == 40 {
+                bal = bal + 1
+                if bi == 0 {
+                    outer_wrapped = true
+                }
+            } else if e.char_at(bi) == 41 {
+                bal = bal - 1
+                if bi == e.len() - 1 && bal == 0 {
+                    // 首尾恰为配对括号=整体已包裹
+                } else if bal == 0 && bi < e.len() - 1 {
+                    outer_wrapped = false
+                    bi = e.len()
+                    continue
+                }
+            }
+            bi = bi + 1
+        }
+        if !outer_wrapped {
+            e = "(" + e + ")"
+        }
     }
     ar_line(a, "return " + e + ";")
 }
