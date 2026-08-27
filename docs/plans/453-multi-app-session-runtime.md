@@ -2,7 +2,17 @@
 
 > **状态**: 🔄 进行中（T1 ✅ T2 ✅；T3 分片推进——**T3a 桌面域 ✅、T3b App 域 ✅**
 > （2026-08-27：合计 50 成员迁入会话聚合，ui 域测试 486 绿两轮）。
-> **T3c 全量 ✅**（producer 通道 + update 头部 drain→opened_windows 过渡登记，去重幂等；T4 接管时转正为 DesktopSession.windows）。**T6 panic 边界 ✅**（update 包 catch_unwind，panic 落 eprintln 不落进程；view 侧边界残留 T4 同法补）。**T4-core ✅ + T4b-1 ✅**（桌面事件端到端 WindowClosed→注销登记；view 侧 panic 边界）。**T4c 攻坚项**：component 本体移交 AppSession（会话结构翻转，数百读点）、LAST_MODIFIERS 收敛、多 App 注册表启用、T7 demo+mcp 守门）
+> **T3c 全量 ✅**（producer 通道 + update 头部 drain→opened_windows 过渡登记，去重幂等；T4 接管时转正为 DesktopSession.windows）。**T6 panic 边界 ✅**（update 包 catch_unwind，panic 落 eprintln 不落进程；view 侧边界残留 T4 同法补）。**T4-core ✅ + T4b-1 ✅**（桌面事件端到端 WindowClosed→注销登记；view 侧 panic 边界）。**T4c 全量 ✅（2026-08-27）**：
+> 会话结构翻转落地（施工图 `reports/453-t4c-session-flip-blueprint.md` 路线甲+
+> 拆借视图）——运行循环 State 即 `DesktopSession`，renderer `DynamicState`
+> 溶解（~470 读点零文本改动，函数体经 split_mut/split_ref 承接）；
+> opened_windows 过渡表→windows 注册表（消息通路登记/注销）；
+> **M1 落地**：修饰键唯一源入 DesktopState（载荷化 `__modifiers_changed`，
+> LAST_MODIFIERS thread-local 删除）；桌面窗口事件扩臂
+> Opened/Focused/Unfocused 统一由 desktop_window_events 产出，
+> PENDING_WINDOW_OPENS 进程通道退役。ui:: 回归 492 绿（plan411 既有失败豁免）。
+> **T4c 残留→T7**：desktop_app_id() 硬编码解除（按 register_window 递增）、
+> 双 AppSession 双窗口 demo + desktop_mcp.py 50/0 守门）
 > **来源**: Design 23 §6 里程碑 M1——虚拟桌面程序的会话层底座，452（IME spike，
 > ✅ 归档）的直接后续。452 spike 报告提供三项直接设计输入：① 主窗口 id 由
 > shell 内部生成并丢弃，必须经 `Event::Window(Opened)` 自捕获（窗口注册表的

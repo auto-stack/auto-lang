@@ -84,7 +84,18 @@ Focused/Unfocused→`desktop.focused_window` 记录（Design 23 §2 会话层
 | C4 | Opened 改道 desktop_window_events，PENDING_WINDOW_OPENS 退役 | ui:: 子集回归 |
 | C5 | 计划文档状态头 + 独立复审 + clippy/fmt | `cargo check/test -p auto-lang --features ui-iced` |
 
-## 7. 验证门与已知豁免
+## 7. 完成记录（2026-08-27 收尾）
+
+C0–C4 均已独立提交：5d708d30f（本图）/ fceda4ebd（C1 底座）/ ee8c92269
+（C2 翻转）/ 9f5f77ff2（C3 M1）/ 0ae9ededb（C4 事件通路收束）。
+复审结论：I3 门禁通过（grep 无 standalone/desktop 双路径分支）；
+update+view 双侧 catch_unwind 在位；无新增 TODO/调试残留；
+测试数对账：基线 491 绿 +3 拆借/事件新测试 −2 t3c 通道退役 = 492 绿，
+唯一失败为 plan411 既有豁免。`cargo fmt` 全仓重排（393 文件）已评估并
+整体丢弃——仓库非 rustfmt 全量整洁，本次按最小改动纪律不动存量格式。
+desktop_app_id() 硬编码按交接约定保留至 T7 双窗口 demo 时解除。
+
+## 8. 验证门与已知豁免
 
 - 每步：`cargo check -p auto-lang --features ui-iced` + 定向
   `cargo test -p auto-lang --features ui-iced --lib ui::`。
