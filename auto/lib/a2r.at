@@ -5,6 +5,10 @@
 // ║            @ 41e7985c(21,395 行)                          ║
 // ║ Gate:      S1 golden 文本比对 + S3 G2 自举闭环 + 五方矩阵 ║
 // ╚═══════════════════════════════════════════════════════════╝
+//           447-③ 终局收账:词法表/ar_method_call word 臂(A1)/
+//           ar_expr 主分派/ar_is_asn_kind/fn_scan_tail(A2)/多元组载荷
+//           发射补齐(E2);FStrPart 直通三缺口 → f-string 批量改写撤回
+//           留后续(D40 续,11.2b)
 // Coverage:  单文件/合并转译驱动;type/enum/fn 声明发射(struct 派生
 //            按字段类型三分派、enum 自动 Display+from_id);语句(let/var
 //            /if-else/for 全形态/while/loop/break/continue/return/表达式

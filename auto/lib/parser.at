@@ -8,6 +8,9 @@
 // ║            (242 tracker,见 plan 432 D26——运行期字符串      ║
 // ║            List.push 后读回即 UAF,canary 实证)            ║
 // ╚═══════════════════════════════════════════════════════════╝
+// 447-③ 终局收账:kind 载体 TokenKind(P1)、enum Op + 六链(P3)、
+//           Pratt 界符巨链 is 化(P2)、expr_pratt 主分派 is(11.1)、
+//           is_type_name 谓词 is;E 载体(D20)判据层不动
 // Coverage:  语句(let/var/const/shared、fn 声明、if/else-if、for 全形态、
 //            while/loop 脱糖、break/continue/return、表达式语句、块语句);
 //            表达式(Pratt 表直译:一元/二元全运算符、调用/命名参数、方法

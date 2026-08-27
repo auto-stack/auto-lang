@@ -4,6 +4,9 @@
 // ║ Rust ref:  infer/expr.rs + codegen .type 属性 @ 432 基线  ║
 // ║ Gate:      M3 —— corpus_m3 `.type` 输出与 Rust VM 一致     ║
 // ╚═══════════════════════════════════════════════════════════╝
+//           447-③ 终局收账:t_infer_expr 主分派/t_literal_type/
+//           t_binop_result/t_unify is 化(Y1/11.1);FStrStart → str;
+//           D23/D27 判据层形状保留(dump 口径耦合,见 divergences 终局节)
 // Coverage:  TFnSig 函数注册表(fn 名→ret Display 串,参数经 p_bind 入
 //            作用域)——"单一 TypeStore"的 S3 裁剪;infer 传播(字面量全集/
 //            标识符作用域查找/调用→注册表返回类型/数组元素提取/二元运算

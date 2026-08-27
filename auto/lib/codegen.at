@@ -4,6 +4,9 @@
 // ║ Rust ref:  vm/codegen.rs(Stmt 发射)+ vm/loader.rs(链接) ║
 // ║ Gate:      M4 —— corpus_m4 字节码与 Rust codegen 结构一致  ║
 // ╚═══════════════════════════════════════════════════════════╝
+//           447-③ 终局收账:I.op → enum OpCode(C1)/cg 中缀环 is(P2)/
+//           break-continue 占位回填/cg_fstr build.fstr(11.2a);
+//           布局等价策略保留(D28 余项)
 // Coverage:  脚本 wrapper(FN_PROLOG args=0 locals=16 + RESERVE 16);
 //            fn 编译(每 fn 一个 jmp-over、FN_PROLOG/RESERVE 占位回填、
 //            体块弹出的槽释放组、epilogue RET、jmp-over patch);

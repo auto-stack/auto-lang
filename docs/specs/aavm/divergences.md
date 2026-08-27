@@ -382,3 +382,44 @@
 | 文件 | divergence 处数 |
 |---|---|
 | (全库前瞻) | 26 类 + D41;D11b/D34/D36①② 待部分③ 收账 |
+
+## 447 部分③ 终局收账(2026-08-26,γ 系列)
+
+风格类逐条终态:
+- **D11b(kind 字符串比较)**:**已还原**——token keyword_kind/kind_name、
+  lexer 主链/转义链、parser expr_pratt/is_type_name/P1 840+ 比较位/
+  P3 enum Op 六链/P2 Pratt 四巨链(四文件 11/12 元界符链)、typeinfo
+  t_infer_expr/t_literal_type/t_binop_result、codegen cg 中缀环/C2/E1
+  engine 49 臂、a2r 词法表(ar_is_mutating_method/ar_rust_ty/ar_is_*_ty/
+  ar_pay_auto_ty)/ar_method_call word 臂/ar_is_asn_kind/ar_fn_scan_tail
+  排除链/Y1+P4 五谓词。残余:`== ""` 空串判定、类型跟踪位、E 载体 kind
+  (D20)不属本类。
+- **D14 残留(kind 载体 str)**:**已还原**——Token.kind/Tok.kind 载体
+  TokenKind 化(L1),kind_name 维持 str 边界(P1 决策),Unknown 哨兵保留
+  (aavm 补充变体,Rust 无)。
+- **D23(Type Display 字符串载体)/ D27(t_array_elem 形状解析)**:
+  **保留**(理由:dump 判据层耦合)——Type 文本与 "(array-type ...)"
+  形状本身是 M2/M3 dump 口径的组成部分,载荷化将漂移判据 golden;
+  与 D20(E 载体)同一原则,判据层重构另立计划时一并处理。
+- **D28(op 载体部分)**:**op 载体已还原**——I.op: str → enum OpCode
+  (C1,S4 子集对齐 opcode.rs;op_name 为 M4 序列化唯一口径);其余
+  (占位回填/FnEntry 符号表/槽释放升序/depth 计数)为布局等价策略
+  与宿主缺陷规避,**保留**。
+- **D34(Val 判别器结构体)**:**已还原**——enum Val{VInt/VStr/VArr/
+  VInst}(E2;433 期"枚举载荷跨函数丢标签"规避随宿主 H3 根治解除);
+  D35 arena 槽位语义保持。
+- **D36①②(构造参数提升/读值提升)**:**永久保留**(写法规范,
+  非 pure 风格类)——VM 原生调用编组的表达式位歧义(D25① 同根)
+  未根治前,.at 侧提升局部是正确性保障;登记于 divergence-rules §4a。
+- **D41(模式+guard 拆臂)**:已在 447 部分①② 节登记(永久,语言
+  能力边界)。✓
+
+新增能力层(447-③):aavm 首获 f-string 全链(parser dump 对齐/codegen
+build.fstr/engine 执行/tags 推断)与 break/continue(占位回填镜像宿主
+H2);FStrPart 直通发射的三缺口实证见 D40 续。
+
+## 计数(447-③ 时点)
+
+| 文件 | divergence 处数 |
+|---|---|
+| (全库前瞻) | 26 类 + D41 + D40续;风格类终态:D11b/D14/D28(op载体)/D34 已还原,D23/D27/D28余项/D25/D29-D33/D35/D36 保留有因 |
