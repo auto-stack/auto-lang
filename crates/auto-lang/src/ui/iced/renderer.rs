@@ -38,13 +38,10 @@ thread_local! {
     static INSPECT_CAPTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-// Plan 309 续篇 II: latest keyboard modifiers, written from the window-level
-// event subscription (which can't borrow `DynamicState`) and read at view
-// entry to decide `INSPECT_CAPTURE`. `Modifiers` is `Copy`.
-thread_local! {
-    static LAST_MODIFIERS: std::cell::Cell<iced::keyboard::Modifiers> =
-        const { std::cell::Cell::new(iced::keyboard::Modifiers::empty()) };
-}
+// Plan 453 T4c（裁定 M1 落地）：原 LAST_MODIFIERS thread-local 已删除——
+// 修饰键唯一事实源为 `DesktopState.current_modifiers`：窗口事件订阅把
+// `modifiers.bits()` 塞进 `__modifiers_changed` 消息载荷，update 既有臂解析
+// 写回；view 直接读字段决定 INSPECT_CAPTURE（施工图 §4）。
 
 /// Helper: is the inspect picker currently in "capture" mode (plain click =
 /// inspect over all widgets)?
@@ -6745,10 +6742,16 @@ fn compare_pngs(
                 return iced::Task::none();
             }
             // Plan 309 续篇 II: keyboard modifiers changed (e.g. Alt press/
-            // release). The actual value is stashed in LAST_MODIFIERS by the
-            // subscription and copied into state at view build; this just forces
-            // a rebuild so widgets flip interactive↔non-interactive.
+            // release). T4c 裁定 M1：载荷携带 modifiers.bits()，此处写回
+            // DesktopState.current_modifiers（唯一事实源，view 直读）；
+            // 返回 Task::none() 仅强制重建，让 widget 翻转交互/非交互态。
             "__modifiers_changed" => {
+                if let Some(bits) =
+                    msg.input_value.as_deref().and_then(|s| s.parse::<u32>().ok())
+                {
+                    *state.desktop.current_modifiers.borrow_mut() =
+                        iced::keyboard::Modifiers::from_bits_truncate(bits);
+                }
                 return iced::Task::none();
             }
             // --- Edit mode messages (E4) ---
@@ -8121,8 +8124,10 @@ fn compare_pngs(
                 }),
                 // Plan 309 续篇 II: track keyboard modifiers so the inspect
                 // picker can switch plain-click (inspect) ↔ Alt-click (native).
-                // The subscription closure can't borrow `state`, so stash the
-                // value in a thread-local; `dynamic_view` copies it into state.
+                // The subscription callback can't touch session state (other
+                // thread), so the value rides the message payload (M1, T4c):
+                // `__modifiers_changed` carries `modifiers.bits()`, the update
+                // arm writes `desktop.current_modifiers` — the single source.
                 //
                 // We read modifiers from BOTH `ModifiersChanged` AND every
                 // `KeyPressed`/`KeyReleased` (which carry their own `modifiers`
@@ -8133,11 +8138,10 @@ fn compare_pngs(
                 iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m))
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { modifiers: m, .. })
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased { modifiers: m, .. }) => {
-                    LAST_MODIFIERS.with(|cell| cell.set(m));
                     Some(IcedMessage {
                         widget: String::new(),
                         event: "__modifiers_changed".to_string(),
-                        input_value: None,
+                        input_value: Some(m.bits().to_string()),
                     })
                 }
                 _ => None,
@@ -8164,13 +8168,10 @@ fn dynamic_view(
         Some(v) => v,
         None => return iced::widget::text("[AutoUI 会话] 缺少主 App").size(14).into(),
     };
-    // Plan 309 续篇 II: refresh the cached modifiers from the thread-local the
-    // window-level subscription writes (it can't borrow `state`), then set the
-    // single INSPECT_CAPTURE flag read by `into_iced` + `wrap_debug` during this
-    // build. Plain click/hover = inspect over all widgets; Alt held = native.
-    LAST_MODIFIERS.with(|m| {
-        *state.desktop.current_modifiers.borrow_mut() = m.get();
-    });
+    // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
+    // `into_iced` + `wrap_debug` during this build. Plain click/hover =
+    // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
+    // desktop.current_modifiers（唯一源，update 臂经消息载荷写回）。
     let alt_held = state.desktop.current_modifiers.borrow().alt();
     let capture = state.desktop.devtools.debug_mode && *state.desktop.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
