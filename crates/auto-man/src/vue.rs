@@ -73,74 +73,77 @@ fn are_shadcn_components_installed(output_path: &Path, components: &[String]) ->
     true
 }
 
+/// PLAN-457: every shadcn-vue component import marker the generator emits,
+/// with the component (bundle/folder) name. Single source of truth for
+/// [`detect_shadcn_components`] and the bundle-catalog sync test.
+const COMPONENT_PATTERNS: &[(&str, &str)] = &[
+    ("@/components/ui/button", "button"),
+    ("@/components/ui/input", "input"),
+    ("@/components/ui/textarea", "textarea"),
+    ("@/components/ui/checkbox", "checkbox"),
+    ("@/components/ui/switch", "switch"),
+    ("@/components/ui/select", "select"),
+    ("@/components/ui/tabs", "tabs"),
+    ("@/components/ui/dialog", "dialog"),
+    ("@/components/ui/tooltip", "tooltip"),
+    ("@/components/ui/slider", "slider"),
+    ("@/components/ui/radio-group", "radio-group"),
+    ("@/components/ui/progress", "progress"),
+    ("@/components/ui/badge", "badge"),
+    ("@/components/ui/skeleton", "skeleton"),
+    ("@/components/ui/card", "card"),
+    ("@/components/ui/avatar", "avatar"),
+    ("@/components/ui/table", "table"),
+    ("@/components/ui/separator", "separator"),
+    ("@/components/ui/scroll-area", "scroll-area"),
+    ("@/components/ui/label", "label"),
+    ("@/components/ui/alert", "alert"),
+    ("@/components/ui/sonner", "sonner"),
+    ("@/components/ui/dropdown-menu", "dropdown-menu"),
+    ("@/components/ui/popover", "popover"),
+    ("@/components/ui/sheet", "sheet"),
+    ("@/components/ui/breadcrumb", "breadcrumb"),
+    ("@/components/ui/accordion", "accordion"),
+    ("@/components/ui/alert-dialog", "alert-dialog"),
+    ("@/components/ui/command", "command"),
+    ("@/components/ui/form", "form"),
+    ("@/components/ui/navigation-menu", "navigation-menu"),
+    ("@/components/ui/sidebar", "sidebar"),
+    ("@/components/ui/stepper", "stepper"),
+    ("@/components/ui/calendar", "calendar"),
+    ("@/components/ui/carousel", "carousel"),
+    ("@/components/ui/combobox", "combobox"),
+    ("@/components/ui/context-menu", "context-menu"),
+    ("@/components/ui/drawer", "drawer"),
+    ("@/components/ui/hover-card", "hover-card"),
+    ("@/components/ui/number-field", "number-field"),
+    ("@/components/ui/pagination", "pagination"),
+    ("@/components/ui/pin-input", "pin-input"),
+    ("@/components/ui/tags-input", "tags-input"),
+    ("@/components/ui/toggle-group", "toggle-group"),
+    ("@/components/ui/aspect-ratio", "aspect-ratio"),
+    ("@/components/ui/button-group", "button-group"),
+    ("@/components/ui/chart", "chart"),
+    ("@/components/ui/chart-area", "chart-area"),
+    ("@/components/ui/chart-bar", "chart-bar"),
+    ("@/components/ui/chart-line", "chart-line"),
+    ("@/components/ui/chart-donut", "chart-donut"),
+    ("@/components/ui/collapsible", "collapsible"),
+    ("@/components/ui/input-group", "input-group"),
+    ("@/components/ui/input-otp", "input-otp"),
+    ("@/components/ui/kbd", "kbd"),
+    ("@/components/ui/menubar", "menubar"),
+    ("@/components/ui/native-select", "native-select"),
+    ("@/components/ui/range-calendar", "range-calendar"),
+    ("@/components/ui/resizable", "resizable"),
+    ("@/components/ui/auto-complete", "auto-complete"),
+];
+
 /// Detect which shadcn-vue components are needed from generated Vue code
 fn detect_shadcn_components(vue_code: &str) -> Vec<String> {
     let mut components = HashSet::new();
 
-    let component_patterns = [
-        ("@/components/ui/button", "button"),
-        ("@/components/ui/input", "input"),
-        ("@/components/ui/textarea", "textarea"),
-        ("@/components/ui/checkbox", "checkbox"),
-        ("@/components/ui/switch", "switch"),
-        ("@/components/ui/select", "select"),
-        ("@/components/ui/tabs", "tabs"),
-        ("@/components/ui/dialog", "dialog"),
-        ("@/components/ui/tooltip", "tooltip"),
-        ("@/components/ui/slider", "slider"),
-        ("@/components/ui/radio-group", "radio-group"),
-        ("@/components/ui/progress", "progress"),
-        ("@/components/ui/badge", "badge"),
-        ("@/components/ui/skeleton", "skeleton"),
-        ("@/components/ui/card", "card"),
-        ("@/components/ui/avatar", "avatar"),
-        ("@/components/ui/table", "table"),
-        ("@/components/ui/separator", "separator"),
-        ("@/components/ui/scroll-area", "scroll-area"),
-        ("@/components/ui/label", "label"),
-        ("@/components/ui/alert", "alert"),
-        ("@/components/ui/sonner", "sonner"),
-        ("@/components/ui/dropdown-menu", "dropdown-menu"),
-        ("@/components/ui/popover", "popover"),
-        ("@/components/ui/sheet", "sheet"),
-        ("@/components/ui/breadcrumb", "breadcrumb"),
-        ("@/components/ui/accordion", "accordion"),
-        ("@/components/ui/alert-dialog", "alert-dialog"),
-        ("@/components/ui/command", "command"),
-        ("@/components/ui/form", "form"),
-        ("@/components/ui/navigation-menu", "navigation-menu"),
-        ("@/components/ui/sidebar", "sidebar"),
-        ("@/components/ui/stepper", "stepper"),
-        ("@/components/ui/calendar", "calendar"),
-        ("@/components/ui/carousel", "carousel"),
-        ("@/components/ui/combobox", "combobox"),
-        ("@/components/ui/context-menu", "context-menu"),
-        ("@/components/ui/drawer", "drawer"),
-        ("@/components/ui/hover-card", "hover-card"),
-        ("@/components/ui/number-field", "number-field"),
-        ("@/components/ui/pagination", "pagination"),
-        ("@/components/ui/pin-input", "pin-input"),
-        ("@/components/ui/tags-input", "tags-input"),
-        ("@/components/ui/toggle-group", "toggle-group"),
-        ("@/components/ui/aspect-ratio", "aspect-ratio"),
-        ("@/components/ui/button-group", "button-group"),
-        ("@/components/ui/chart", "chart"),
-        ("@/components/ui/chart-area", "chart-area"),
-        ("@/components/ui/chart-bar", "chart-bar"),
-        ("@/components/ui/chart-line", "chart-line"),
-        ("@/components/ui/chart-donut", "chart-donut"),
-        ("@/components/ui/collapsible", "collapsible"),
-        ("@/components/ui/input-group", "input-group"),
-        ("@/components/ui/input-otp", "input-otp"),
-        ("@/components/ui/kbd", "kbd"),
-        ("@/components/ui/menubar", "menubar"),
-        ("@/components/ui/native-select", "native-select"),
-        ("@/components/ui/range-calendar", "range-calendar"),
-        ("@/components/ui/resizable", "resizable"),
-        ("@/components/ui/auto-complete", "auto-complete"),
-    ];
-
-    for (pattern, component) in component_patterns {
+    for (pattern, component) in COMPONENT_PATTERNS {
         if vue_code.contains(pattern) {
             components.insert(component.to_string());
         }
@@ -181,6 +184,11 @@ const OPTIONAL_DEPS: &[(&str, &str)] = &[
     ("zod", "^3.25.76"),
     ("embla-carousel-vue", "^8.5.1"),
     ("@vueuse/core", "^10.7.0"),
+    // PLAN-457: bundled chart scaffolds (chart / chart-area / -bar / -line /
+    // -donut) import @unovis — previously the shadcn-vue CLI installed these
+    // as a side effect of `add`; now declared up front.
+    ("@unovis/vue", "^1.6.7"),
+    ("@unovis/ts", "^1.6.7"),
 ];
 
 /// Plan 442 P0-1: which optional dependency groups the generated code
@@ -211,6 +219,9 @@ pub struct VueDependencyUsage {
     /// table (ash-gui's package.json regeneration dropped @vueuse and
     /// vue-tsc failed on the fresh gen tree).
     pub vueuse_scaffold: bool,
+    /// PLAN-457: chart components (chart / chart-area / -bar / -line /
+    /// -donut) whose bundled scaffolds import @unovis/vue + @unovis/ts.
+    pub chart: bool,
 }
 
 impl VueDependencyUsage {
@@ -228,6 +239,12 @@ impl VueDependencyUsage {
             vueuse_scaffold: corpus.contains("@/components/ui/progress'")
                 || corpus.contains("@/components/ui/scroll-area'")
                 || corpus.contains("@/components/ui/table'"),
+            // PLAN-457: any chart-family component pulls @unovis.
+            chart: corpus.contains("@/components/ui/chart'")
+                || corpus.contains("@/components/ui/chart-area'")
+                || corpus.contains("@/components/ui/chart-bar'")
+                || corpus.contains("@/components/ui/chart-line'")
+                || corpus.contains("@/components/ui/chart-donut'"),
         }
     }
 
@@ -264,6 +281,11 @@ impl VueDependencyUsage {
         // table scaffolds — detected via `vueuse_scaffold`.
         if self.carousel || self.sidebar || self.vueuse_scaffold {
             pkgs.push("@vueuse/core");
+        }
+        // PLAN-457: bundled chart scaffolds import @unovis/vue (+ /ts types).
+        if self.chart {
+            pkgs.push("@unovis/vue");
+            pkgs.push("@unovis/ts");
         }
         pkgs
     }
@@ -3046,7 +3068,35 @@ export default router
         }
     }
 
-    /// Install shadcn-vue components
+    /// PLAN-457: copy bundled shadcn-vue ui component sources into the
+    /// generated project (offline, write-if-missing). Runs BEFORE
+    /// `npm install` so package.json carries every requirement when the
+    /// package manager first resolves — no post-install dependency surgery.
+    pub fn materialize_ui_components(&self) -> AutoResult<()> {
+        if self.shadcn_components.is_empty() {
+            return Ok(());
+        }
+        let report = crate::vue_shadcn::materialize(&self.output_dir, &self.shadcn_components)?;
+        if report.written > 0 || report.skipped_existing > 0 {
+            println!(
+                "{}",
+                format!(
+                    "  ✓ Bundled ui components: {} copied, {} already present",
+                    report.written, report.skipped_existing
+                )
+                .bright_green()
+            );
+        }
+        Ok(())
+    }
+
+    /// Install shadcn-vue components.
+    ///
+    /// PLAN-457: bundled components were already materialized by
+    /// [`Self::materialize_ui_components`] before `npm install`. This runs
+    /// AFTER install as the registry fallback for names outside the bundle
+    /// (or edge cases like user-deleted files), invoking the CLI only for
+    /// what is still missing on disk.
     pub fn install_shadcn_components(&self) -> AutoResult<()> {
         if self.shadcn_components.is_empty() {
             println!("{} {}", "▶".bright_cyan(), "No shadcn-vue components needed".bright_white());
@@ -3056,20 +3106,28 @@ export default router
         // Fix known compatibility issues regardless of whether components are already installed
         self.fix_shadcn_compatibility_issues();
 
-        // Check if already installed
-        if are_shadcn_components_installed(&self.output_dir, &self.shadcn_components) {
+        // Only names still absent from disk need the registry round trip;
+        // bundled ones landed during materialization.
+        let remaining: Vec<String> = self
+            .shadcn_components
+            .iter()
+            .filter(|c| !are_shadcn_components_installed(&self.output_dir, std::slice::from_ref(c)))
+            .cloned()
+            .collect();
+
+        if remaining.is_empty() {
             println!("{} {}", "▶".bright_cyan(), "shadcn-vue components already installed (skipping)".bright_white());
             return Ok(());
         }
 
         println!();
-        println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", self.shadcn_components.join(", ")).bright_white());
+        println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", remaining.join(", ")).bright_white());
 
         let mut pkg_args: Vec<&str> = vec!["add"];
-        pkg_args.extend(self.shadcn_components.iter().map(|s| s.as_str()));
+        pkg_args.extend(remaining.iter().map(|s| s.as_str()));
         pkg_args.push("--yes");  // shadcn-vue uses --yes for non-interactive
 
-        println!("{}", format!("  Running: {} shadcn-vue@latest add {}", crate::pkg::exec_cmd(), self.shadcn_components.join(" ")).bright_black());
+        println!("{}", format!("  Running: {} shadcn-vue@latest add {}", crate::pkg::exec_cmd(), remaining.join(" ")).bright_black());
 
         match crate::pkg::exec("shadcn-vue@latest", &pkg_args, &self.output_dir) {
             Ok(_) => {
@@ -3163,10 +3221,11 @@ export default router
 ///
 /// Steps:
 /// 1. Generate/regenerate project sources (see `prepare_vue_sources`)
-/// 2. npm install
-/// 3. Install shadcn-vue components
-/// 4. Copy public assets
-/// 5. npm run build
+/// 2. Materialize bundled shadcn-vue components (PLAN-457, before install)
+/// 3. npm install
+/// 4. Registry fallback for non-bundled shadcn-vue components
+/// 5. Copy public assets
+/// 6. npm run build
 pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     println!("{}", "Building Vue project (backend: vue)".bright_cyan());
     let project = prepare_vue_sources(root_dir)?;
@@ -3174,14 +3233,19 @@ pub fn build_vue_project(root_dir: &Path) -> AutoResult<()> {
     // Plan 413: ensure the CodeEditor CodeMirror shell exists (write-if-missing).
     project.ensure_code_editor_component()?;
 
+    // Step 2: materialize bundled ui components (PLAN-457, pre-install)
+    println!();
+    println!("▶ Materializing UI components...");
+    project.materialize_ui_components()?;
+
     // Step 3: npm install
     println!();
     println!("▶ Installing dependencies...");
     project.npm_install()?;
 
-    // Step 4: Install shadcn-vue components
+    // Registry fallback for long-tail components outside the bundle
     println!();
-    println!("▶ Installing shadcn-vue components...");
+    println!("▶ Checking shadcn-vue components...");
     project.install_shadcn_components()?;
 
     // Step 5: Copy public assets
@@ -3737,10 +3801,10 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 /// 1. Incrementally compile changed .at files (see `incremental_compile_changed`)
 /// 2. Generate project structure if not exists
 /// 3. Generate API client code (if api.at exists)
-/// 4. npm install
-/// 5. Install shadcn-vue components
+/// 4. Materialize bundled shadcn-vue components (PLAN-457, before install)
+/// 5. npm install (+ registry fallback for non-bundled components)
 /// 6. Copy public assets
-/// 7. npm run dev
+/// 7. Start dev server
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
 
@@ -3817,16 +3881,22 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         }
     }
 
-    // Step 3: npm install
+    // Step 3: Materialize bundled shadcn-vue ui components (PLAN-457).
+    // Offline copies land BEFORE the dependency install so package.json is
+    // complete when pnpm resolves — no post-install dependency surgery.
+    current_step += 1;
+    println!();
+    println!("▶ Step {}/{}: Materializing UI components...", current_step, total_steps);
+    project.materialize_ui_components()?;
+
+    // Step 4: npm install
     current_step += 1;
     println!();
     println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
     project.npm_install()?;
 
-    // Step 4: Install shadcn-vue components
-    current_step += 1;
-    println!();
-    println!("▶ Step {}/{}: Installing shadcn-vue components...", current_step, total_steps);
+    // Step 5 (fallback): registry add for long-tail components outside the
+    // bundle; a no-op with "already installed (skipping)" when fully bundled.
     project.install_shadcn_components()?;
 
     // Step 5: Copy public assets
@@ -4060,6 +4130,7 @@ mod tests {
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
+            chart: true,
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
@@ -4071,6 +4142,8 @@ mod tests {
         assert!(pkg.contains("\"zod\""), "{pkg}");
         assert!(pkg.contains("\"embla-carousel-vue\""), "{pkg}");
         assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
+        assert!(pkg.contains("\"@unovis/vue\""), "{pkg}");
+        assert!(pkg.contains("\"@unovis/ts\""), "{pkg}");
         // A single consumed group doesn't drag the others in.
         let only_toast = VueDependencyUsage { toast: true, ..Default::default() };
         let pkg = generate_package_json("demo", false, false, &[], &only_toast);
@@ -4149,6 +4222,24 @@ mod tests {
             &stale,
             &VueDependencyUsage { vueuse_scaffold: true, ..Default::default() }
         ));
+    }
+
+    /// PLAN-457: every component the generator can emit must either ship a
+    /// bundled snapshot (offline materialization) or be an allowlisted
+    /// default-style registry miss that keeps taking the CLI fallback.
+    /// Guards against the detect catalog and assets/shadcn-ui drifting apart.
+    #[test]
+    fn plan_457_component_catalog_matches_bundle_or_fallback() {
+        // Verified absent from https://shadcn-vue.com/r/styles/default/ at
+        // snapshot time (2026-08-27, see assets/shadcn-ui/SNAPSHOT.md).
+        const ALLOWED_FALLBACK: &[&str] = &["auto-complete", "input-otp", "native-select"];
+        for (_, component) in COMPONENT_PATTERNS {
+            assert!(
+                crate::vue_shadcn::is_bundled(component)
+                    || ALLOWED_FALLBACK.contains(component),
+                "component '{component}' is neither bundled nor allowlisted for fallback"
+            );
+        }
     }
 
     /// Plan 444 (ash-shell-057 ⑥): an unused CodeEditor.vue shell from an
