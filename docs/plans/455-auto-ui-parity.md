@@ -76,9 +76,15 @@ To ensure developers get a truly consistent write-once-run-everywhere experience
   - Fixed `crates/auto-lang/src/ui/aura_view_builder.rs` `convert_spacer` to use `Style::parse("flex-1")` (width fill only) instead of `w-full h-full`, preventing height-0 row collapses in Iced.
 - [x] **Defect 3: Vue Spacer `<div class="flex-1" />` Codegen**
   - Fixed `crates/auto-lang/src/ui_gen/vue.rs` to classify `spacer` as a layout primitive and exclude layout primitives from `is_shadcn_component`, ensuring proper `<div class="flex-1" />` spacer emission.
-- [x] **Defect 4: Contrast & Typography Alignment**
-  - Updated `examples/ui/007-stats-board/src/front/app.at` to specify explicit `text-sm text-gray-500` / `font-semibold text-gray-900 text-sm` styles for high-contrast card readability.
-- [x] **Defect 5: Dual-Backend Visual & Pixel Audit**
+- [x] **Defect 4: Vue Codegen Layout Gap Deduplication**
+  - Fixed `crates/auto-lang/src/ui_gen/vue.rs` `extract_classes` so default `gap-4` is omitted when user style provides custom `gap-*` (e.g. `gap-0`, `gap-1`), eliminating gap conflicts.
+- [x] **Defect 5: VM `ProgressBar` Styling, Dynamic Value & Margin Wrapping**
+  - Fixed `crates/auto-lang/src/ui/iced/renderer.rs` & `aura_view_builder.rs`:
+    - Resolved dynamic state expressions (`.target_progress`) in `extract_f64` via `resolve_expr_to_value`.
+    - Applied 8px height, rounded-full pill border radius, primary purple fill, and container margin wrapping (`wrap_with_margin`) for `ProgressBar`.
+- [x] **Defect 6: Playwright Full-Page Capture Viewport**
+  - Configured `test_vue_playwright.mjs` with `fullPage: true` to capture the complete page scroll height including bottom `Team Performance` cards.
+- [x] **Defect 7: Dual-Backend Visual & Pixel Audit**
   - Verified 100% geometry, padding, border radius, progress bar, avatar, and metric alignment across Vue (Playwright) and VM (AutoUI MCP).
 
 ### Phase 008: `008-pricing-table`

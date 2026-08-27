@@ -5678,23 +5678,30 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         key: &str,
     ) -> Option<f64> {
+        let empty_bindings = HashMap::new();
+        self.extract_f64_with(props, key, &empty_bindings)
+    }
+
+    /// Extract a float property from AuraNode props with loop bindings.
+    fn extract_f64_with(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<f64> {
         match props.get(key)? {
             AuraPropValue::Expr(expr) => match expr {
                 Expr::Int(i) => Some(*i as f64),
                 Expr::Float(f, _) | Expr::Double(f, _) => Some(*f),
-                Expr::Ident(name) => {
-                    let field_name = name.as_str().trim_start_matches('.');
-                    match self.read_state(field_name) {
-                        Ok(value) => match value {
-                            Value::Int(i) => Some(i as f64),
-                            Value::Float(f) => Some(f as f64),
-                            Value::Double(f) => Some(f),
-                            _ => None,
-                        },
-                        Err(_) => None,
+                _ => {
+                    let val = self.resolve_expr_to_value(expr, bindings)?;
+                    match val {
+                        Value::Int(i) => Some(i as f64),
+                        Value::Float(f) => Some(f as f64),
+                        Value::Double(f) => Some(f),
+                        _ => None,
                     }
                 }
-                _ => None,
             },
             AuraPropValue::StyleBinding(_) => None,
         }

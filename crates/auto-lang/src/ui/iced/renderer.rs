@@ -3208,19 +3208,44 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::ProgressBar { progress, style } => {
                 use iced::widget::progress_bar;
-                let pb = progress_bar(0.0..=1.0, progress);
-                if let Some(ref s) = style {
+                let (is, height, width, radius) = if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
-                    let mut cont = container(pb);
-                    if let Some(ref w) = is.width {
-                        cont = cont.width(iced_length(w));
-                    }
-                    if let Some(ref h) = is.height {
-                        cont = cont.height(iced_length(h));
-                    }
-                    cont.into()
+                    let h = is.height.as_ref().map(iced_length).unwrap_or(iced::Length::Fixed(8.0));
+                    let w = is.width.as_ref().map(iced_length).unwrap_or(iced::Length::Fill);
+                    let r = if is.has_border_radius() || is.rounded {
+                        is.effective_border_radius()
+                    } else {
+                        iced::border::Radius::from(9999.0)
+                    };
+                    (Some(is), h, w, r)
                 } else {
-                    pb.into()
+                    (None, iced::Length::Fixed(8.0), iced::Length::Fill, iced::border::Radius::from(9999.0))
+                };
+
+                let (pr_r, pr_g, pr_b) = crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
+                    .unwrap_or((99, 102, 241));
+                let bar_color = is.as_ref().and_then(|i| i.text_color.or(i.background_color))
+                    .unwrap_or_else(|| iced::Color::from_rgb8(pr_r, pr_g, pr_b));
+                let (bg_r, bg_g, bg_b) = crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Secondary)
+                    .unwrap_or((226, 232, 240));
+                let bg_color = iced::Color::from_rgb8(bg_r, bg_g, bg_b);
+
+                let pb = progress_bar(0.0..=1.0, progress)
+                    .length(width)
+                    .style(move |_theme| progress_bar::Style {
+                        background: iced::Background::Color(bg_color),
+                        bar: iced::Background::Color(bar_color),
+                        border: iced::Border {
+                            radius,
+                            ..Default::default()
+                        },
+                    });
+
+                let cont = container(pb).width(width).height(height);
+                if let Some(ref is_ref) = is {
+                    wrap_with_margin(cont.into(), is_ref)
+                } else {
+                    cont.into()
                 }
             }
 
