@@ -113,14 +113,18 @@ total_steps: 12
   (keys/values→Array,find→NestedObject),下游访问不再按 Int 退化。
 - [x] E4 缺口②·元素通道:obj_find 弃 i32 快路径只走 Value 元素
   (存储槽 tag 位曾被解码成 0,pred=i32::MIN 恒 false)。
-- [~] E5 缺口②剩余(阻塞点):
-  - E5a 谓词闭包**外层捕获读取值错误**(id 读成 ""/0 → pred 恒 false);
-    LOAD_CAPTURED by-ref 基建在,查 CLOSURE 对 fn 参数槽域的 capture_slots 记录。
-  - E5b 命中路径字段读退化(const-pred 命中后 hit.u 打 "0")——结果值
-    last_expr_type 在 fn 边界返回后的重注记,与 E3 交互,两头夹击。
-  - 转绿后移除两 ignore 行与 reason。
-- [ ] E6 回填:test 文件头注记 + 446 报告 §M 回填已收口提交号 + 通知
-  auto-musk 续跑 T6/T7/T13。
+- [x] E5 缺口②剩余(2026-08-27 当日闭合):
+  - E5a 谓词闭包**外层捕获读取值错误**——已修:codegen 对参数域捕获打
+    0x8000 旗标(idx < 当前 fn n_args),引擎 CLOSURE 执行期以创建帧
+    n_args 解析绝对槽位 param_abs(负向公式 bp-(n_args-idx+1)),
+    LOAD/STORE_CAPTURED 参数域优先。
+  - E5b values 循环零迭代:Object.values 结果是 List 句柄却被编译进
+    .iter() 迭代器通道(句柄≠iterator 零迭代)——新增 Array 型 Call 源
+    的索引循环 lowering(临时句柄+计数器+GET_ELEM),与 E3 前置型别规则
+    (keys/values→Array,find→NestedObject)配套。
+  - 四用例 4/4 绿;全量相对基线零新增;aavm2 闸门绿;两 ignore 行已移除。
+- [x] E6 回填:test 文件头两用例注记 CLOSED;446 报告 §M 尾部回填本批
+  提交号(9f40be552);auto-musk 可续跑 T6/T7/T13。
 
 ## Phase E 执行日志(2026-08-27)
 
