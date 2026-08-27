@@ -58,13 +58,13 @@ widget App {
                 }
 
                 row {
-                    text "Don't have an account? " {
-                        style: "text-sm text-gray-500 mt-4"
+                    text "Don't have an account?" {
+                        style: "text-sm text-gray-500 mr-1"
                     }
                     a "Sign up" {
-                        style: "text-sm text-blue-500 font-semibold underline px-3"
+                        style: "text-sm text-blue-500 font-semibold underline"
                     }
-                    style: "justify-center items-center"
+                    style: "justify-center items-center mt-4"
                 }
 
                 style: "bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md mx-auto w-full"
