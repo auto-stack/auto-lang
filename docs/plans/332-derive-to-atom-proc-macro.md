@@ -4,7 +4,7 @@
 >
 > **更新（2026-08-04,Plan 381 落地后）**: Plan 381 已实现 `auto-val` 的 serde `Deserializer` 适配器(`serde` feature),提供了**反序列化方向**的零样板方案(`#[derive(Deserialize)]` + `node.deserialize::<T>()`)。本计划(332)的 `#[derive(FromAtom)]` 现定位为**未来的、针对 .at 的定制宏**,可基于 381 的 serde 路径构建(宏生成 serde 调用而非新 trait),或保留独立的 `FromAtom` trait 用于 serialize 方向(`ToAtom`)和 .at 特有标注(如 `#[atom(node="role")]`)。**反序列化方向不再阻塞 —— 332 的优先级降低。**
 
-> **改写（2026-08-27 裁定）**: 🎯 本计划**聚焦为 Serialize 方向单一目标**（见下方 §0），设计语义已沉淀至 [docs/design/07-data-structures.md](../design/07-data-structures.md)「Atom Serialization」节。原设计的自定义 trait 路线（第一/二部分中的 Phase A/C）被 381 的 serde 裁定取代，不再实施。状态：**已改写待实施**。
+> **改写（2026-08-27 裁定）**: 🎯 本计划**聚焦为 Serialize 方向单一目标**（见下方 §0），设计语义已沉淀至 [docs/design/07-data-structures.md](../design/07-data-structures.md)「Atom Serialization」节。原设计的自定义 trait 路线（第一/二部分中的 Phase A/C）被 381 的 serde 裁定取代，不再实施。状态：**S1 ✅ 已实施（2026-08-27，worktree plan-332）；S2 待实施（auto-ai 仓 dogfood）**。
 
 ---
 
@@ -23,12 +23,18 @@
 
 ## 聚焦后的实施阶段
 
-### S1 — auto-val serde `Serializer` 适配器（本仓，单仓可交付）
+### S1 — auto-val serde `Serializer` 适配器（本仓，单仓可交付）✅ 2026-08-27 已实施
 
 - `crates/auto-val/src/ser.rs`（新）：`ValueSerializer` 实现 serde `Serializer` trait，产出 `Value`（对标 `de.rs` 的镜像；序列化方向无错误恢复分支，预期规模 300–500 行）
 - 链路补全：`struct --#[derive(Serialize)]--> Value --> Node --> to_at_source()`——后两段已有（`emit.rs` 336 行，escape-correct + round-trip 测试）
 - 根节点名承载：`T::serialize` 产 Value 后包 `Node::new(#[atom(node)] 名)` 的辅助 API（`node_from_value::<T>(name, &t)` 一类）
 - 验证：`cargo test -p auto-val ser`（round-trip：`to_atom_node` → `from_atom_node`/`deserialize::<T>` 等值）
+
+**S1 交付记录（2026-08-27，worktree plan-332）**：
+- `ser.rs` ~620 行（实现 ~380 + 测试 ~240）：`ValueSerializer` + `to_value::<T>` + `Value::serialize_from` + `node_from_value(name, &T)`；类型映射镜像 de.rs（i8→I8、i16/i32→Int、i64→I64、u8→U8、u16/u32→Uint、u64→USize、f32→Float、f64→Double、None/unit→Nil、枚举单元变体→裸字符串对应 de 的 StrEnumAccess；newtype/tuple/struct 变体报错——镜像 de 的 unit-only EnumAccess）；`SerializeArray`（seq/tuple/tuple_struct→Array）、`SerializeObjStruct`/`SerializeObjMap`（struct/map→Obj，非字符串 map key 报错镜像 de）
+- 变体映射实测修正一处预期：serde 对普通 `&[u8]` **不**特化 `serialize_bytes`（走 seq→Array of U8）；`serialize_bytes` 显式调用者才产 Array of Byte（de 侧 U8/Byte 均走 visit_u8，双向无损）
+- lib.rs 导出（`#[cfg(feature="serde")]`）+ Cargo.toml feature 注释更新（serde feature 现含双向）
+- 验证：`cargo test -p auto-val --features serde` 184 全绿（其中 ser:: 17 项：标量/整型宽度/Option None→Nil/Vec/嵌套/tuple/bytes/map/枚举单元变体/struct 变体报错/非字符串 key 报错/node_from_value 具名节点 + `Node::deserialize` 回读 + `to_at_source` 发射/非 map 拒绝）；默认 feature 构建（无 serde）零影响；`cargo check -p auto-lang` 通过；ser.rs rustfmt 合规
 
 ### S2 — auto-ai dogfood 迁移（跨仓，auto-ai 仓库）
 

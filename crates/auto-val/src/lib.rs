@@ -59,7 +59,19 @@ mod de;
 #[cfg(feature = "serde")]
 pub use de::ValueDeserializer;
 #[cfg(feature = "serde")]
-pub use de::{lenient_bool, lenient_bool_opt, lenient_f64, lenient_f64_opt, nonempty_string, string_or_list, string_or_list_opt};
+pub use de::{
+    lenient_bool, lenient_bool_opt, lenient_f64, lenient_f64_opt, nonempty_string, string_or_list,
+    string_or_list_opt,
+};
+
+// Plan 332 S1: optional serde Serialize support (mirror of de).
+#[cfg(feature = "serde")]
+mod ser;
+#[cfg(feature = "serde")]
+pub use ser::{
+    node_from_value, to_value, SerError, SerializeArray, SerializeObjMap, SerializeObjStruct,
+    ValueSerializer,
+};
 
 pub type AutoError = Box<dyn std::error::Error>;
 pub type AutoResult<T> = Result<T, AutoError>;
