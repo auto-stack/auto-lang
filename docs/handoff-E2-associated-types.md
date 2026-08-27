@@ -62,7 +62,7 @@ impl Container for Stack { type Item = i64; fn get(&self, i: i64) -> Self::Item 
 
 ### P5 parity 升级 + 三方(半天)
 
-- `parity/libs/trait_advanced/`:sub-scenario B 从 L3 升 L1——auto/ 加带关联类型的
+- `parity/libs/lang/trait_advanced/`:sub-scenario B 从 L3 升 L1——auto/ 加带关联类型的
   spec+实现,tests/auto/ 加 TAP 用例,tests/rust/ 加同名 Rust oracle(Rust 原生,
   直接写)。
 - 验收:`./target/debug/auto-parity.exe --auto-binary ../target/debug/auto.exe run

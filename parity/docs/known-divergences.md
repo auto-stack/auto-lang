@@ -248,7 +248,7 @@ not test-case divergences; they describe what the runtime supports today.
 
 ## trait_advanced (Plan 359 D2)
 
-Three-way parity library `parity/libs/trait_advanced/` is **L1 100% (10/10)**
+Three-way parity library `parity/libs/lang/trait_advanced/` is **L1 100% (10/10)**
 on its baseline subset: a non-generic spec with required methods, void
 default methods, and a non-generic `Comparable` spec with concrete
 implementations. The library also probes advanced trait features; the
@@ -340,7 +340,7 @@ double-verified stable; first-run single Rust-oracle failure was a cold
 compile + mock-server startup race, not reproducible). The original block
 was recorded as:
 
-A partial `parity/libs/http_client_sync/` skeleton exists (mock-server crate
+A partial `parity/libs/consumer/http_client_sync/` skeleton exists (mock-server crate
 + Auto wrapper + Rust oracle), but it **cannot run three-way** because of a
 pre-existing parser bug:
 

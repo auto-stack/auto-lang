@@ -60,7 +60,7 @@ fn max_of(a: T, b: T) -> impl T { ... }   // 双错:泛型声明丢失 + impl T 
 2. **P2 VM 动态分派**(1-2 天):泛型接收者方法调用改 CALL_SPEC。验证:下方完整探针 VM 跑通输出 9;trait_vm_tests(已有 `crates/auto-lang/src/tests/trait_vm_tests.rs`)加有界泛型用例;实机三例回归。
 3. **P3 a2r 发射**(半天-1 天):`<T: Spec>`/`<T>` 正确发射。验证:golden 新用例(建议 `03_control_flow/014` 或 `08_generators` 邻位;**golden 流程**:建 `<name>.at` + 空 `.expected.rs` → 跑测试生成 `.wrong.rs` → 人工核验是合法 Rust(独立 cargo build)→ 提升为 expected)。
 4. **P4 trait_checker 界校验**(可选,小):调用点实参类型须满足 bound——查 `crates/auto-lang/src/trait_checker.rs` 现有 check_conformance 模式。
-5. **P5 parity 升级**(半天):`parity/libs/trait_advanced/` README 的 sub-scenario C 从 L3 升 L1——在 `tests/auto/` 加有界泛型测试 + `tests/rust/trait_advanced.rs` 加同名 oracle(Rust 原生 trait bound);phase map 已注册 d2。三方全绿后翻转 DIV-TRAIT-VM-1 并在 417 计划 E3 行打勾。
+5. **P5 parity 升级**(半天):`parity/libs/lang/trait_advanced/` README 的 sub-scenario C 从 L3 升 L1——在 `tests/auto/` 加有界泛型测试 + `tests/rust/trait_advanced.rs` 加同名 oracle(Rust 原生 trait bound);phase map 已注册 d2。三方全绿后翻转 DIV-TRAIT-VM-1 并在 417 计划 E3 行打勾。
 
 ### 完整验收探针(基线:VM 输出 9;a2r 产物独立编译输出 9)
 
