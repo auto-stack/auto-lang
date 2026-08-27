@@ -4,6 +4,9 @@
 // ║ Rust ref:  vm/engine.rs(执行循环)+ lib.rs(main 入口查找) ║
 // ║ Gate:      M3 主里程碑 —— VM 内全管线跑通 corpus 行为      ║
 // ╚═══════════════════════════════════════════════════════════╝
+//           447-③ 终局收账:ev_run_t 分派巨链 is(E1)/Val 枚举化
+//           VInt|VStr|VArr|VInst(E2,D34)/BuildFstr 执行(11.2a);D36①②
+//           提升写法永久保留(正确性保障,rules §4a)
 // Coverage:  栈机执行循环(指令 List 直译,无字节码解码);帧语义
 //            (CALL:ret-ip+old-bp;RET:result 转移 + new_sp=bp-n_args;
 //            fn.prolog 记 n_args;reserve 推 n+1 零槽);main 入口
@@ -378,6 +381,25 @@ fn ev_run_t(source str, trace int) str {
             }
             var fl10 List<Val> = arena.get(slot10)
             sp = ev_push(stack, sp, fl10.get(ins.n))
+        }
+        OpCode.BuildFstr -> {
+            // 447-③ 11.2a:弹 ins.n 段(栈顶为末段,镜像宿主逆序弹),
+            // ev_str 逐段转文本(int 解偏置 D30)正序拼接
+            var n11 = ins.n
+            var segs List<str> = List.new()
+            var k11 = 0
+            while k11 < n11 {
+                segs.push(ev_str(stack.get(sp - 1)))
+                sp = sp - 1
+                k11 = k11 + 1
+            }
+            var out11 = ""
+            var m11 = segs.len() - 1
+            while m11 >= 0 {
+                out11 = out11 + segs.get(m11)
+                m11 = m11 - 1
+            }
+            sp = ev_push(stack, sp, ev_vs(out11))
         }
         OpCode.Nop -> {
             // no-op(get.generic.field 的 u32 残留字节形态)

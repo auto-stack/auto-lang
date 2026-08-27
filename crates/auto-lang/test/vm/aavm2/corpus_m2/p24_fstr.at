@@ -1,0 +1,8 @@
+fn main() {
+    let name = "world"
+    let n = 42
+    print(f"hello $name !")
+    print(f"n=${n} items")
+    print(f"plain text")
+    print(f"sum=${n + 1} end")
+}

@@ -4,6 +4,9 @@
 // ║ Rust ref:  vm/codegen.rs(Stmt 发射)+ vm/loader.rs(链接) ║
 // ║ Gate:      M4 —— corpus_m4 字节码与 Rust codegen 结构一致  ║
 // ╚═══════════════════════════════════════════════════════════╝
+//           447-③ 终局收账:I.op → enum OpCode(C1)/cg 中缀环 is(P2)/
+//           break-continue 占位回填/cg_fstr build.fstr(11.2a);
+//           布局等价策略保留(D28 余项)
 // Coverage:  脚本 wrapper(FN_PROLOG args=0 locals=16 + RESERVE 16);
 //            fn 编译(每 fn 一个 jmp-over、FN_PROLOG/RESERVE 占位回填、
 //            体块弹出的槽释放组、epilogue RET、jmp-over patch);
@@ -55,6 +58,9 @@ type CGVar {
     name str
     idx int
     arr int
+    // 447-③ 11.2a:build.fstr 段类型 tag 用(""=int/未知,宿主默认同;
+    // "str" → tag 1;仅 str 需显式识别,其余值域 tag 0)
+    ty str
 }
 
 type CG {
@@ -241,6 +247,7 @@ enum OpCode {
     NewInstance
     ConstructInstance
     GetGenericField
+    BuildFstr
     Halt
     Nop
     Blank
@@ -295,6 +302,7 @@ fn op_name(op OpCode) str {
         OpCode.NewInstance -> "new.instance"
         OpCode.ConstructInstance -> "construct.instance"
         OpCode.GetGenericField -> "get.generic.field"
+        OpCode.BuildFstr -> "build.fstr"
         OpCode.Halt -> "halt"
         OpCode.Nop -> "nop"
         else -> ""
@@ -322,7 +330,7 @@ fn i_size(op OpCode) int {
 
 // 名字内联指令的字节宽(new.instance=1+名长;is.variant=3+名长:
 // 操作码+u16 名长+名字节,镜像宿主 emit_u16 + bytes)
-fn i_size_named(op OpCode, s str) int {
+fn i_size_named(op OpCode, s str, n int) int {
     var name = s
     // s 形如 "\"Val.VI\"" —— 剥引号
     if name.len() >= 2 && name.char_at(0) == '"' {
@@ -333,6 +341,10 @@ fn i_size_named(op OpCode, s str) int {
     }
     if op == OpCode.IsVariant {
         return 3 + name.len()
+    }
+    // build.fstr:操作码+u8 段数+每段 u8 tag(镜像宿主 BUILD_FSTR)
+    if op == OpCode.BuildFstr {
+        return 2 + n
     }
     return i_size(op)
 }
@@ -401,7 +413,7 @@ fn cg_sort_ints_of_vars(sc List<CGVar>) List<int> {
     return out
 }
 
-fn cg_add_var(mut c CG, name str, arr int) int {
+fn cg_add_var(mut c CG, name str, arr int, ty str) int {
     var next = c.max_idx + 1
     c.max_idx = next
     // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
@@ -413,13 +425,13 @@ fn cg_add_var(mut c CG, name str, arr int) int {
     var ri = 0
     while ri < sc.len() {
         if sc.get(ri).name == name {
-            sc.set(ri, CGVar(name, next, arr))
+            sc.set(ri, CGVar(name, next, arr, ty))
             replaced = true
         }
         ri = ri + 1
     }
     if !replaced {
-        sc.push(CGVar(name, next, arr))
+        sc.push(CGVar(name, next, arr, ty))
     }
     c.scopes.set(c.depth - 1, sc)
     return next
@@ -440,6 +452,23 @@ fn cg_var_arr(mut c CG, idx int) int {
         s = s - 1
     }
     return 0
+}
+
+// 按名查变量类型(11.2a:build.fstr 段 tag;""=int/未知,宿主默认同)
+fn cg_var_ty(mut c CG, name str) str {
+    var s = c.depth - 1
+    while s >= 0 {
+        var sc = c.scopes.get(s)
+        var i = sc.len() - 1
+        while i >= 0 {
+            if sc.get(i).name == name {
+                return sc.get(i).ty
+            }
+            i = i - 1
+        }
+        s = s - 1
+    }
+    return ""
 }
 
 fn cg_lookup(mut c CG, name str) int {
@@ -563,6 +592,117 @@ fn cg_is_assign_op(k Op) bool {
 }
 
 // 值表达式发射(优先级爬升;复用 parser.at 的 infix_l/infix_r/is_op_kind)
+// f-string 发射(447-③ 11.2a;镜像宿主 codegen.rs 4990 BUILD_FSTR):
+// 逐段先发射(字面段 load.str;$Ident 变量加载;${expr} 子 tokenize +
+// cg_expr 直走),再发 build.fstr(count + tags;tag:1=str 0=int,
+// 镜像宿主 expr_type_hint——Ident 查变量表,非 str 即 int/未知 0)
+fn cg_fstr(mut c CG, mut p P) {
+    p_next(p)
+    var content = p_text(p)
+    p_next(p)
+    p_next(p)
+    var tags = ""
+    var n_parts = 0
+    var lit = ""
+    var i = 0
+    var n = content.len()
+    while i < n {
+        var ch = content.char_at(i)
+        if ch == 36 {
+            if lit != "" {
+                var pi = cg_pool_add(c, lit)
+                emit(c, OpCode.LoadStr, "", pi)
+                tags = tags + "1"
+                n_parts = n_parts + 1
+                lit = ""
+            }
+            if i + 1 < n && content.char_at(i + 1) == 123 {
+                var depth = 1
+                var j = i + 2
+                while j < n && depth > 0 {
+                    var cj = content.char_at(j)
+                    if cj == 123 {
+                        depth = depth + 1
+                    } else if cj == 125 {
+                        depth = depth - 1
+                    }
+                    j = j + 1
+                }
+                if depth != 0 {
+                    cg_err(c, "fstr: unterminated interpolation ")
+                    return
+                }
+                var inner = content.slice(i + 2, j - 1)
+                var subtoks = tokenize(inner)
+                var subp = parse_new(subtoks)
+                cg_expr(c, subp, 0)
+                if c.err != "" || subp.err != "" {
+                    return
+                }
+                var tg = 0
+                if subp.pos < subtoks.len() {
+                    var ftk = subtoks.get(0)
+                    if ftk.kind == TokenKind.Ident && cg_var_ty(c, ftk.text) == "str" {
+                        tg = 1
+                    }
+                }
+                tags = tags + tg.str()
+                n_parts = n_parts + 1
+                i = j
+            } else {
+                var j2 = i + 1
+                var stop = false
+                while j2 < n && !stop {
+                    var cj2 = content.char_at(j2)
+                    var ok2 = (cj2 >= 97 && cj2 <= 122) || (cj2 >= 65 && cj2 <= 90) || (cj2 >= 48 && cj2 <= 57) || cj2 == 95
+                    if !ok2 {
+                        stop = true
+                    } else {
+                        j2 = j2 + 1
+                    }
+                }
+                var nm = content.slice(i + 1, j2)
+                var vi = cg_lookup(c, nm)
+                if vi < 0 {
+                    cg_err(c, "fstr: unknown ident $" + nm)
+                    return
+                }
+                cg_emit_load(c, vi)
+                var tg2 = 0
+                if cg_var_ty(c, nm) == "str" {
+                    tg2 = 1
+                }
+                tags = tags + tg2.str()
+                n_parts = n_parts + 1
+                i = j2
+            }
+        } else {
+            lit = lit + content.slice(i, i + 1)
+            i = i + 1
+        }
+    }
+    if lit != "" {
+        var pi2 = cg_pool_add(c, lit)
+        emit(c, OpCode.LoadStr, "", pi2)
+        tags = tags + "1"
+        n_parts = n_parts + 1
+    }
+    // tags 文本对齐宿主 disasm:parts=N, tags=[0, 1]
+    var txt = "parts=" + n_parts.str() + ", tags=["
+    var t3 = 0
+    while t3 < n_parts {
+        if t3 > 0 {
+            txt = txt + ", "
+        }
+        txt = txt + tags.slice(t3, t3 + 1)
+        t3 = t3 + 1
+    }
+    txt = txt + "]"
+    emit(c, OpCode.BuildFstr, txt, n_parts)
+    c.str_flag = 1
+    c.arr_flag = 0
+}
+
 fn cg_expr(mut c CG, mut p P, min int) {
     if c.err != "" {
         return
@@ -586,6 +726,8 @@ fn cg_expr(mut c CG, mut p P, min int) {
         }
         c.str_flag = 0
         c.arr_flag = 0
+    } else if k == TokenKind.FStrStart {
+        cg_fstr(c, p)
     } else if k == TokenKind.Int {
         var t = p_text(p)
         p_next(p)
@@ -941,7 +1083,7 @@ fn cg_is_pattern_expr(mut c CG, pat E) {
 fn cg_is(mut c CG, mut p P) {
     p_next(p)
     cg_expr(c, p, 0)
-    var t = cg_add_var(c, "_is_target", 0)
+    var t = cg_add_var(c, "_is_target", 0, "")
     cg_emit_store(c, t)
     p_expect(p, TokenKind.LBrace)
     skip_empty_lines(p)
@@ -1006,7 +1148,7 @@ fn cg_is(mut c CG, mut p P) {
                         emit(c, OpCode.Nop, "", 0)
                         emit(c, OpCode.Nop, "", 0)
                         emit(c, OpCode.Nop, "", 0)
-                        var bidx = cg_add_var(c, binds2.get(si), 0)
+                        var bidx = cg_add_var(c, binds2.get(si), 0, "")
                         cg_emit_store(c, bidx)
                     }
                     si = si + 1
@@ -1106,16 +1248,23 @@ fn cg_stmt(mut c CG, mut p P) {
         p_next(p)
         var name = p_text(p)
         p_next(p)
+        var vty = ""
         if is_type_name(p) {
-            parse_type(p)
+            var vt = parse_type(p)
+            if vt == "str" {
+                vty = "str"
+            }
         }
         var is_arr = 0
         if p_kind(p) == TokenKind.Asn {
             p_next(p)
             cg_expr(c, p, 0)
             is_arr = c.arr_flag
+            if c.str_flag == 1 {
+                vty = "str"
+            }
         }
-        var idx = cg_add_var(c, name, is_arr)
+        var idx = cg_add_var(c, name, is_arr, vty)
         cg_emit_store(c, idx)
         return
     }
@@ -1341,7 +1490,7 @@ fn cg_for(mut c CG, mut p P) {
         cg_err(c, "for: expected range op")
         return
     }
-    var idx = cg_add_var(c, name, 0)
+    var idx = cg_add_var(c, name, 0, "")
     cg_emit_store(c, idx)
     var top = c.ins.len()
     cg_emit_load(c, idx)
@@ -1406,7 +1555,7 @@ fn cg_fn(mut c CG, mut p P) {
                 p_next(p)
                 expr_pratt(p, 0)
             }
-            cg_add_var(c, pname, 0)
+            cg_add_var(c, pname, 0, "")
             n_args = n_args + 1
             if p_kind(p) == TokenKind.Comma {
                 p_next(p)
@@ -1478,7 +1627,7 @@ fn cg_serialize(mut c CG) str {
         offs.push(acc)
         var ii = c.ins.get(i)
         if ii.op != OpCode.Blank {
-            acc = acc + i_size_named(ii.op, ii.s)
+            acc = acc + i_size_named(ii.op, ii.s, ii.n)
         }
         i = i + 1
     }
