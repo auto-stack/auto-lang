@@ -16,10 +16,38 @@ pub struct RunConfig {
     pub sort_results: bool,
 }
 
+/// Resolve a library directory under the categorized layout
+/// `libs/<category>/<library>/` (Plan 458). The library identity is the leaf
+/// directory name; the category level exists only for organisation. Returns
+/// `None` when the leaf name matches zero or multiple categories — duplicate
+/// leaf names across categories are ambiguous and rejected rather than
+/// guessed.
+pub fn resolve_lib_dir(parity_root: &Path, library: &str) -> Option<PathBuf> {
+    let libs_dir = parity_root.join("libs");
+    let mut hits = Vec::new();
+    if let Ok(categories) = std::fs::read_dir(&libs_dir) {
+        for category in categories.flatten() {
+            let candidate = category.path().join(library);
+            if candidate.is_dir() {
+                hits.push(candidate);
+            }
+        }
+    }
+    if hits.len() == 1 {
+        hits.pop()
+    } else {
+        None
+    }
+}
+
 impl RunConfig {
-    /// Path to the library directory: `<parity_root>/libs/<library>`.
+    /// Path to the library directory: `libs/<category>/<library>/` under the
+    /// parity root (Plan 458 categorized layout). Falls back to the legacy
+    /// flat path `libs/<library>` when no categorized match exists, so
+    /// downstream errors still name a concrete path.
     pub fn lib_dir(&self) -> PathBuf {
-        self.parity_root.join("libs").join(&self.library)
+        resolve_lib_dir(&self.parity_root, &self.library)
+            .unwrap_or_else(|| self.parity_root.join("libs").join(&self.library))
     }
 
     /// Return a clone of this config with the library name replaced.
@@ -686,7 +714,38 @@ mod tests {
     }
 
     #[test]
-    fn test_run_config_lib_dir() {
+    fn lib_dir_resolves_categorized_layout() {
+        let tmp = std::env::temp_dir().join(format!(
+            "auto-parity-libdir-cat-{}",
+            std::process::id()
+        ));
+        let lib = tmp.join("libs").join("rust").join("base64");
+        std::fs::create_dir_all(&lib).unwrap();
+        let cfg = RunConfig {
+            parity_root: tmp.clone(),
+            auto_binary: "auto".to_string(),
+            library: "base64".to_string(),
+            sort_results: false,
+        };
+        assert_eq!(cfg.lib_dir(), lib);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn lib_dir_rejects_ambiguous_leaf_name() {
+        let tmp = std::env::temp_dir().join(format!(
+            "auto-parity-libdir-ambig-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(tmp.join("libs").join("rust").join("dup")).unwrap();
+        std::fs::create_dir_all(tmp.join("libs").join("lang").join("dup")).unwrap();
+        assert_eq!(resolve_lib_dir(&tmp, "dup"), None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn lib_dir_falls_back_to_flat_layout() {
+        // No categorized directory exists on disk -> legacy flat join.
         let cfg = RunConfig {
             parity_root: PathBuf::from("/tmp/parity"),
             auto_binary: "auto".to_string(),
