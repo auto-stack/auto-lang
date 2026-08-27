@@ -430,6 +430,11 @@ impl DynamicComponent {
         self.bridge.debug_byte(addr)
     }
 
+    /// PLAN-046 (auto-musk T10): total linked bytecode size in bytes.
+    pub fn bytecode_len(&self) -> usize {
+        self.bridge.bytecode_len()
+    }
+
     /// Write a state field value to the VM.
     ///
     /// Updates the named state field and marks the component as dirty.
