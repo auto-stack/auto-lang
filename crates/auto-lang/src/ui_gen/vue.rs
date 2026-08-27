@@ -4006,9 +4006,8 @@ impl VueGenerator {
                 } else {
                     self.map_tag(tag, children.is_empty())
                 };
-                let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square", "spacer"];
-                let is_layout_primitive = layout_primitives.contains(&tag_lower.as_str());
-                let is_shadcn_component = !is_layout_primitive && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
+                let is_spacer = tag_lower == "spacer";
+                let is_shadcn_component = !is_spacer && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
 
@@ -6096,21 +6095,30 @@ impl VueGenerator {
         let skip_semantic_defaults = has_user_class && user_class_skip_elements.contains(&normalized_tag);
 
         // Extract gap prop for layout elements
+        let user_style_has_gap = props.get("class").or_else(|| props.get("style")).map_or(false, |v| {
+            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                s.split_whitespace().any(|tok| tok.starts_with("gap-") || tok == "gap")
+            } else {
+                false
+            }
+        });
         let gap_class = if let Some(value) = props.get("gap") {
             match value {
-                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => format!("gap-{}", s),
-                _ => "gap-4".to_string(),
+                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => format!(" gap-{}", s),
+                _ => " gap-4".to_string(),
             }
+        } else if user_style_has_gap {
+            String::new()
         } else {
-            "gap-4".to_string()
+            " gap-4".to_string()
         };
 
         // Default classes based on tag (only in Plain mode or for non-shadcn elements)
         if !skip_defaults && !skip_semantic_defaults {
             match normalized_tag {
                 // Layout
-                "col" | "column" => classes.push(format!("flex flex-col {}", gap_class)),
-                "row" => classes.push(format!("flex flex-row {}", gap_class)),
+                "col" | "column" => classes.push(format!("flex flex-col{}", gap_class)),
+                "row" => classes.push(format!("flex flex-row{}", gap_class)),
                 "grid" => classes.push("grid".to_string()),
                 // Plan 412 §4.3: square 占位块 —— 色块 + flex 双轴居中。
                 // 与 VM convert_square 的类串对应(VM 用 Container center_x/y)。
@@ -22225,5 +22233,34 @@ widget TestSpacer {
         let mut gen_sfc = VueGenerator::new_shadcn();
         let sfc = gen_sfc.generate_sfc(&widget).unwrap();
         assert!(sfc.contains("<div class=\"flex-1\" />"), "SFC should contain <div class=\"flex-1\" />, got:\n{}", sfc);
+    }
+
+    #[test]
+    fn test_col_gap_override_no_gap4() {
+        let src = r#"
+widget TestGap {
+    view {
+        col {
+            span "Title"
+            span "Subtitle"
+            style: "gap-1"
+        }
+    }
+}
+"#;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().unwrap();
+        let widget = ast.stmts.iter().find_map(|s| {
+            if let crate::ast::Stmt::WidgetDecl(w) = s {
+                crate::aura::extract_widget_from_decl(w).ok()
+            } else {
+                None
+            }
+        }).expect("no widget");
+        let mut gen_sfc = VueGenerator::new_shadcn();
+        let sfc = gen_sfc.generate_sfc(&widget).unwrap();
+        assert!(sfc.contains("<div class=\"flex flex-col gap-1\">"), "SFC should contain <div class=\"flex flex-col gap-1\">, got:\n{}", sfc);
+        assert!(!sfc.contains("gap-4"), "SFC should NOT contain gap-4, got:\n{}", sfc);
     }
 }
