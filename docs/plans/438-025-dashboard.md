@@ -1,6 +1,6 @@
 # Plan 438: 025-dashboard 系统监视器（App 轨道填洞 ②）
 
-> **状态**: 🟡 M1 + M1-fix 已完成（2026-08-26，分支 plan-438，worktree .worktree/plan-438）；M2 待做（消费 437 Phase 2 组件化，437 复审确认其未做）。M1 执行记录见 §7，两处 vue 生成器缺口根治见 §8。
+> **状态**: ✅ M1 + M1-fix + M2 全部完成（2026-08-26~27，M2 分支 plan-438-m2）——vm 实机 26/26、持久化重启闭环、vue 侧 localStorage 映射回归绿。M2 采用**内联几何形态**（024 M3 先例，437 Phase 2 组件化未做不阻塞）。执行记录：M1 §7 / M1-fix §8 / M2 §9。
 > **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 2 项。
 > **关联**: [Plan 437](437-024-charts.md)（chart 组件上游，弱依赖）、012-stopwatch（.Tick 先例）、Plan 386（golden）、姊妹计划 437/439–441
 > **目录**: `examples/ui/025-dashboard/`（编号 025 原为 notes-extended，2026-08-23 已删除、能力并入 015-notes）｜pac `name: "dashboard"`｜端口 4025
@@ -35,7 +35,7 @@
 ## 4. 验收（DoD）
 
 - [x] M1：vue 构建 + vue-tsc 绿 ✓（2026-08-26：`auto build`（strict 再生 + vue-tsc + vite build）全绿；浏览器实机断言 6/6——KPI 随 Tick 变化 / 内存标签 GB·MB 格式 / 排序点击升降翻转 / 三曲线独立开关 / 暂停冻结+恢复 / 图表 path 随数据重算。desktop_mcp 属 VM 轨，随 M2 交付）。
-- [ ] M2：vm 实机可跑，三曲线 + 进程表 + 配置持久化可用。
+- [x] M2：✅（2026-08-27）vm 实机可跑（desktop_mcp 26/26），三曲线（svgdoc）+ 进程表（table kebab 合一修复后）+ 配置持久化（storage 文件背书，重启恢复闭环）全部可用。
 - [ ] mock→真数据源替换演练：接口形状文档化（SPEC.md 内一节）。
 
 ## 5. 多 agent 并发边界
@@ -138,3 +138,64 @@ int `/` 是整除（VM/vue 同语义）——**小数显示必须走 float 局�
 （`var x float = …` + `/ 10.0`，437 §0.6.D 纪律的 vue 侧对偶）。
 M1 时的"十分位存储 + any 浮除"是修复前的侥幸路径，已在 SPEC 标注
 不得再依赖。
+
+## 9. M2 执行记录（2026-08-27，分支 plan-438-m2）
+
+> 形态决策：**内联几何先行**（024-charts M3 先例——svgdoc 通道直跑），
+> 不等 437 Phase 2 组件化（复审确认未做）。表格走 view_builder 既有
+> Column[Row[cells]] 结构（Plan 409 §10 续 16）。
+
+### VM 端三修（crates/auto-lang/src/ui/aura_view_builder.rs）
+
+1. **table 族 kebab 合一**：iced 侧此前只认 HTML 别名（table/thead/tr/th/td），
+   shadcn kebab 形态（table-header/table-row/table-head/table-cell——
+   gallery/025 主流通法）**整表渲染空白**。vue 侧两族映射同构，VM 侧
+   补齐 kebab 分支达成双后端 parity。
+2. **单元格 bindings 提取**：th/td 臂原用 `extract_string`（空 bindings），
+   `text: p.name`/`text: .nameH` 等表达式引用解析为空串——改
+   `extract_string_with(props, "text", bindings)`。
+3. **badge text prop 兜底**：convert_badge 只认 children，
+   `badge (text: "running", variant: "default")` 主流通法渲染为空 Row——
+   无 children 时回退 text prop。
+   附带：**带 onclick 的 th/table-head 渲染为 Button**（可点列头排序，
+   与既有 text→Button 同款）——VM 侧排序点击由此打通。
+
+### storage 文件背书（crates/auto-lang/src/vm/ffi/stdlib.rs）
+
+原 shim 为进程内 HashMap（进程死即失），配置持久化无从谈起。改为
+**文件背书**：`AUTO_VM_STORAGE_FILE` 可覆盖；默认按 cwd 哈希存临时目录
+（per-project 隔离、跨进程存活、不污染仓库——镜像 localStorage 的
+per-origin 语义）。读写均为 best-effort（文件缺失→空起步，写失败→
+仅内存），进程内写入优先于盘上快照（entry().or_insert）。Plan 442 的
+storage_raw_get/set（localStorage 桥）共享同一 map，自动受益。
+
+### app.at 增量（配置持久化，018 先例）
+
+- Init 头部恢复（storage.get × 7 键，纯字符串值零转换），位于排序初算
+  **之前**（恢复的 sortColumn/sortDir 直接生效）；列头 ↑↓ 指示同步。
+- 9 处写入：三速度档（分号多语句，015 先例）/三开关/三排序 handler 内
+  `storage.set`。
+
+### 验证（全部通过）
+
+- `tests/desktop_mcp.py` **26/26**：T1 结构（四 KPI 卡/三曲线 svgdoc/
+  三 checkbox/表头四列/8 行）· T2 KPI 随 Tick 变化 · T3 排序点击翻转
+  （↓→↑+行序）· T4 曲线独立开关 · T5 暂停冻结+恢复 · T6 配置写入→
+  **杀进程重启→恢复**（speedDiv/sort/showCpu/列头 ↓ 全断言）。
+  隔离：AUTO_VM_STORAGE_FILE 指向一次性文件（fresh 清除/保留两相）。
+- vue 侧回归：`auto build`（vue-tsc+vite）绿；9 处 storage.set 全部正确
+  映射 `localStorage.setItem`（含 `sortDir.value` 直插——M1-fix① 再验证）。
+- crates 回归：`--features ui-iced --lib` **3721/1**（唯一失败
+  `plan411_tests::test_md_hidden_classes_parse` 为 master 预存——干净
+  master 同败，非本分支引入；benchmark_downcast 为已知负载敏感 flake）；
+  vue_capabilities 76/76；gallery golden 零漂移。
+- 教训记录：`cargo fmt -p auto-lang` 会整仓重排（crate 非 fmt-clean 基线，
+  ~400 文件噪音 diff）——**勿在本仓跑全量 fmt**，改动保持局部风格一致即可
+  （误跑后已 `git checkout` 回滚并重放两处修改，26/26 复验通过）。
+
+### 遗留与移交
+
+- master 预存回归 `test_md_hidden_classes_parse`（plan411/452 嫌疑）——
+  建议并行会话或后续 plan-fix 认领。
+- 437 Phase 2 组件化合入后，本应用与 gallery 图表页可一并切换组件形态
+  （几何内联为当前既定形态，非债）。

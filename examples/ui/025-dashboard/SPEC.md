@@ -80,9 +80,12 @@ poll_system() -> {
 - 进程 `mem_tenths` 为十分位 GB 整数（前端 memL 格式化：<100 显示
   `*10` MB，否则 `/10` GB）；`status ∈ {"running","sleeping","stopped"}`。
 - 滑窗/几何/排序/显示串逻辑不变（消费同一形状）。
-- M2 若引入 storage 持久化（018 先例），键名建议：
-  `dash.speed_div` / `dash.sort_column` / `dash.sort_dir` /
-  `dash.show_{cpu,mem,net}`。
+- **配置持久化（M2 已实现，键名定版）**：`dash.speed`（"fast"|"normal"|"slow"）、
+  `dash.sort_column`（"name"|"cpu"|"mem"）、`dash.sort_dir`（"asc"|"desc"）、
+  `dash.show_cpu`/`dash.show_mem`/`dash.show_net`（"true"|"false"）——全部
+  字符串值（零转换）。vue 轨 → localStorage（ts_adapter 映射）；vm 轨 →
+  文件背书 storage shim（`AUTO_VM_STORAGE_FILE` 可覆盖，默认按 cwd 哈希
+  存临时目录——per-project 隔离、跨进程存活；测试经该环境变量隔离）。
 
 ## 已知边界（①② 已由 M1-fix 根治，见 plan 438 §8）
 
@@ -102,4 +105,5 @@ poll_system() -> {
 - gen 树 `npx vue-tsc --noEmit` 零错 + `pnpm build` 绿；
 - 实机（浏览器/桌面）：KPI 随 Tick 变化、间隔预设生效、暂停冻结、
   三曲线独立开关、三列排序升降切换；
-- M2（vm 模式）补 `tests/desktop_mcp.py`（013/038 惯例）。
+- M2（vm 模式）：`tests/desktop_mcp.py`（26 断言：结构/KPI Tick/排序翻转/
+  曲线开关/暂停冻结恢复/配置持久化重启闭环；`AUTO_VM_STORAGE_FILE` 隔离）。
