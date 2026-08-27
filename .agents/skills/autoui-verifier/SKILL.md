@@ -122,3 +122,20 @@ client.screenshot("converter_vm_decimal")
    - [ ] 按钮文字字号是否对齐 `14px`（Sm）与字重 `500`（Medium）？
    - [ ] 按钮内边距 (`px-4 py-2`) 与圆角 (`rounded-lg`) 是否一致？
 
+---
+
+## 6. AutoUI 跨端布局与状态黄金规则 (AutoUI Parity Domain Rules)
+
+在编写或修复 AutoUI 布局与控件时，必须遵循以下经过验证的黄金实践：
+
+1. **表单控件聚焦态 (Focus State & Ring)**:
+   - 单行 `input` 与多行 `textarea` 在 Iced 中必须通过 `matches!(status, iced::widget::text_input::Status::Focused { .. })` 捕获焦点。
+   - 聚焦时边框增粗至 `2.0px` 并自动调用 `resolve_semantic_rgb(&Color::Primary)` 渲染主色（对齐 Vue `focus-visible:ring-2`）。
+2. **Row 内文本排版与边距 (Row Baseline Alignment)**:
+   - **禁止在 Row 内部子文本上应用垂直外边距（如 `mt-4`）**，因为 Iced 容器外边距包装会导致各子元素内边距不对等，使水平文本垂直基线错位。
+   - 垂直外边距必须统一下沉到父级 `Row` 容器（如 `row { style: "justify-center items-center mt-4" }`）。
+   - Row 内多个文本之间的间隙统一使用水平外边距（如 `mr-1` 或 `ml-1`），避免 HTML 尾部空白字符被浏览器渲染引擎折叠。
+3. **控件外边距包装 (Margin Wrapping)**:
+   - 所有基础控件（`Input`, `Textarea`, `Checkbox`, `Button`, `Text`）在 `IntoIcedElement` 与 `render_dynamic_view` 中转换为 `iced::Element` 时，必须显式调用 `wrap_with_margin(el, &iced_style)`，确保 `mt-*` / `mb-*` / `ml-*` / `mr-*` 不被静默丢失。
+
+
