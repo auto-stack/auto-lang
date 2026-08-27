@@ -2827,7 +2827,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     input_widget = input_widget.on_submit(msg);
                 }
 
-                input_widget.into()
+                let el: iced::Element<'static, M> = input_widget.into();
+                if let Some(ref s) = style {
+                    let iced_style = IcedStyle::from_style(s);
+                    wrap_with_margin(el, &iced_style)
+                } else {
+                    el
+                }
             }
 
             AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, keymap, .. } => {
@@ -2874,7 +2880,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let is_enter = |action: &text_editor::Action| {
                     matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
                 };
-                if let Some(msg) = on_change {
+                let el: iced::Element<'static, M> = if let Some(msg) = on_change {
                     let action_key = key.clone();
                     let submit_clone = on_submit.clone();
                     editor.on_action(move |action| {
@@ -2891,6 +2897,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }).into()
                 } else {
                     editor.into()
+                };
+                if let Some(ref s) = style {
+                    let is = IcedStyle::from_style(s);
+                    wrap_with_margin(el, &is)
+                } else {
+                    el
                 }
             }
 
@@ -2939,7 +2951,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                row_widget.into()
+                let el: iced::Element<'static, M> = row_widget.into();
+                if let Some(ref s) = style {
+                    let iced_style = IcedStyle::from_style(s);
+                    wrap_with_margin(el, &iced_style)
+                } else {
+                    el
+                }
             }
 
             AbstractView::Container {
@@ -10932,6 +10950,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             input_widget = input_widget.id(iced::widget::Id::new("prompt_input"));
 
             let el: iced::Element<'static, IcedMessage> = input_widget.into();
+            let el = if let Some(ref s) = style {
+                let iced_style = IcedStyle::from_style(s);
+                wrap_with_margin(el, &iced_style)
+            } else {
+                el
+            };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
         }
 
@@ -11050,6 +11074,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
                 let editor = with_textarea_keydown(editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(editor, on_change, on_submit)
+            };
+            let el = if let Some(ref s) = style {
+                let is = IcedStyle::from_style(s);
+                wrap_with_margin(el, &is)
+            } else {
+                el
             };
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el }
         }
