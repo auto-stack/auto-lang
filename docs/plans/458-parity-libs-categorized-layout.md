@@ -89,10 +89,32 @@ README 但无法被一览。
 
 ## 执行步骤
 
-- [ ] T1 计划文档 + worktree（本文件，branch plan-458）
-- [ ] T2 auto-parity 代码改造 + 单测
-- [ ] T3 `git mv` 35 个用例入分类目录 + `.gitignore` 通配升级
-- [ ] T4 phase 表修正（p4 去 reqwest、新增 p7）
-- [ ] T5 `parity/README.md` + `parity-guide.md` 更新
-- [ ] T6 补 4 个 per-lib README
-- [ ] T7 验证 + 独立复审 + 合并 master + 归档
+- [x] T1 计划文档 + worktree（本文件，branch plan-458）
+- [x] T2 auto-parity 代码改造 + 单测（resolve_lib_dir 唯一命中/歧义拒绝；
+      lib_dir 平铺回退；discover 两级扫描 + 未迁移平铺警告 + 纳入；phase
+      过滤改走 resolve_lib_dir）
+- [x] T3 `git mv` 35 个用例入分类目录 + `.gitignore` 通配升级
+- [x] T4 phase 表修正（p4 去 reqwest、新增 p7 收编 8 个 py_*）
+- [x] T5 `parity/README.md` + `parity-guide.md` 更新
+- [x] T6 补 4 个 per-lib README（tokio_stream、c_crawler、c_http_get、c_wget）
+- [x] T7 验证（2026-08-27）：
+  - parity workspace `cargo test`：33 passed / 0 failed（含新增 5 个
+    解析/发现单测）
+  - `auto-parity list`：恰好 34 个叶子名（_dummy 按语义排除），无平铺警告
+  - 端到端抽样（worktree 真实目录树 + master 构建 auto.exe）：
+    - `phase p0`（framework/_dummy）：5/5 三方一致 ✓
+    - `run py_string`（python）：8/8 三方一致 ✓（a2py/Python oracle 路径）
+    - `run string_utils`（lang）：22/22 三方一致 ✓
+    - `run c_text_app`（consumer）：6/6 三方一致 ✓
+    - `run base64`（rust）：33/33 三方一致 ✓
+  - 运行产物（build_a2r 等）确认被升级后的 .gitignore 两级通配覆盖
+  - 备注：首次验证中 p0 的 a2r 列 missing 系验证手段副作用（共享
+    CARGO_TARGET_DIR 把产物重定向出 runner 硬编码的
+    build_a2r/<bin>/target/release/ 路径），与布局改造无关；去除该环境
+    变量重跑后三方全绿（见上）
+- [x] T7b 独立复审：全库 grep 确认活文档/代码无漏网平铺路径引用（归档
+      plans 与历史 handoff 除外——后者 2 处亦已同步）；println! 均为工具
+      正常输出；5 个编译警告全部为 master 既有死代码警告（aavm.rs
+      golden_is_file、compare.rs Backend、tap.rs tap_map、runner.rs
+      MockServer mut），位于本次未触碰的代码，登记 KNOWN-DEBT 不在本计划
+      处理

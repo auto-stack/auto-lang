@@ -419,10 +419,19 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // library's `tests/python/` directory by `detect_parity_mode`.
         ("p5", &["py_math", "py_random"]),
         ("p6", &["py_datetime", "py_struct", "py_uuid"]),
-        ("p7", &[
-            "py_configparser", "py_hashlib", "py_json", "py_list",
-            "py_os", "py_re", "py_string", "py_sys",
-        ]),
+        (
+            "p7",
+            &[
+                "py_configparser",
+                "py_hashlib",
+                "py_json",
+                "py_list",
+                "py_os",
+                "py_re",
+                "py_string",
+                "py_sys",
+            ],
+        ),
     ];
 
     for (p, libs) in phase_map {
@@ -482,7 +491,11 @@ mod tests {
         let found = discover_all_libraries(&tmp);
         assert_eq!(
             found,
-            vec!["base64".to_string(), "py_math".to_string(), "url".to_string()]
+            vec![
+                "base64".to_string(),
+                "py_math".to_string(),
+                "url".to_string()
+            ]
         );
     }
 

@@ -715,10 +715,8 @@ mod tests {
 
     #[test]
     fn lib_dir_resolves_categorized_layout() {
-        let tmp = std::env::temp_dir().join(format!(
-            "auto-parity-libdir-cat-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("auto-parity-libdir-cat-{}", std::process::id()));
         let lib = tmp.join("libs").join("rust").join("base64");
         std::fs::create_dir_all(&lib).unwrap();
         let cfg = RunConfig {
@@ -733,10 +731,8 @@ mod tests {
 
     #[test]
     fn lib_dir_rejects_ambiguous_leaf_name() {
-        let tmp = std::env::temp_dir().join(format!(
-            "auto-parity-libdir-ambig-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("auto-parity-libdir-ambig-{}", std::process::id()));
         std::fs::create_dir_all(tmp.join("libs").join("rust").join("dup")).unwrap();
         std::fs::create_dir_all(tmp.join("libs").join("lang").join("dup")).unwrap();
         assert_eq!(resolve_lib_dir(&tmp, "dup"), None);
@@ -752,10 +748,7 @@ mod tests {
             library: "base64".to_string(),
             sort_results: false,
         };
-        assert_eq!(
-            cfg.lib_dir(),
-            PathBuf::from("/tmp/parity/libs/base64")
-        );
+        assert_eq!(cfg.lib_dir(), PathBuf::from("/tmp/parity/libs/base64"));
     }
 }
 fn python_interpreter() -> &'static str {
