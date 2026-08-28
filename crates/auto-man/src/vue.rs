@@ -1680,6 +1680,12 @@ fn is_local_ext_path(path: &str) -> bool {
 fn collect_ext_import_files(widgets: &[AuraWidget], out: &mut std::collections::BTreeSet<String>) {
     for widget in widgets {
         for imp in &widget.ext_imports {
+            // Plan 437 Phase 2:包引用(`use { package: x from "..." }`)不产
+            // ext 文件拷贝 —— 组件经 ComponentRegistry 加载生成,路径可含
+            // `..`(页文件相对),进 ext 集会触发"escapes project root"误杀。
+            if matches!(imp.kind, auto_lang::ast::ui::ExtImportKind::Package) {
+                continue;
+            }
             let path = imp.path.as_str();
             if is_local_ext_path(path) {
                 let normalized = path.trim_start_matches("./").trim_start_matches('/');
@@ -2299,6 +2305,56 @@ export default router
         if pages_dir.exists() {
             scan_pages_dir(&pages_dir, &front_dir, root_dir, shadcn, default_classes, &bound_model_channels, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
                 .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
+        }
+
+        // Plan 437 Phase 2: components/ 目录(官方/第三方 .at 组件包)接入
+        // vue 全项目生成 —— 每个组件 widget 生成独立 SFC 落 src/components/
+        // (文件名 = widget 名,与页面的 `@/components/<Widget>.vue` 导入对齐)。
+        // package.at 是包清单(manifest),不是组件源,跳过。此前该目录只服务
+        // VM 轨(§0.6.E-2 的 435 前状态在 auto-man 的残留)。
+        {
+            let components_at_dir = front_dir.join("components");
+            if components_at_dir.exists() {
+                let mut comp_entries: Vec<std::path::PathBuf> = fs::read_dir(&components_at_dir)
+                    .map_err(|e| format!("Failed to read components directory: {}", e))?
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .collect();
+                comp_entries.sort();
+                for path in comp_entries {
+                    if path.extension().map(|e| e == "at").unwrap_or(false) {
+                        let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                        if file_name == "package.at" {
+                            continue;
+                        }
+                        match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+                            Ok((_vue_code, widgets, _stores)) => {
+                                for widget in &widgets {
+                                    let gen = if shadcn {
+                                        VueGenerator::new_shadcn()
+                                    } else {
+                                        VueGenerator::new()
+                                    };
+                                    let mut gen = gen.with_default_classes(default_classes);
+                                    match gen.generate(widget) {
+                                        Ok(widget_code) => {
+                                            let stem = path.file_stem()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("component");
+                                            all_components.push(("components".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                        }
+                                        Err(e) => {
+                                            println!("{} Failed to generate component widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Process .at files directly in front_dir (sub-widgets like sidebar.at, editor.at)

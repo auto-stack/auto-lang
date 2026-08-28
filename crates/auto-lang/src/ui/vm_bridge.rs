@@ -998,7 +998,12 @@ impl VmBridge {
     /// * `widget_name` - Widget that owns the handler (e.g. "App", "EditorPanel")
     /// * `event_name` - Handler name (e.g., "Inc", "Init", "Edit")
     /// * `args` - Arguments to pass to the handler (after `__state`)
-    pub fn call_handler_for(&mut self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
+    ///
+    /// Plan 437 Phase 2: receiver relaxed to `&self` — AutoVM's call chain
+    /// (rc_push_id / rc_push_str_idx / add_string / call_fn_by_name) is fully
+    /// interior-mutable, and the render phase (AuraViewBuilder holds `&VmBridge`)
+    /// needs to fire child-widget Init handlers after seeding props.
+    pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
 
         // Verify the handler is exported before setting up a call frame.

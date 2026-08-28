@@ -1,0 +1,102 @@
+// components/line_chart.at - AutoLineChart component (Plan 437 Phase 2 ①)
+//
+// 官方 Auto 实现的折线图(几何 = d3-scale 风格 linear scale + M/L path,
+// 渲染端 v1 = SVG 子树直通:vue 轨 442 A4 直通臂,VM 轨 svgdoc 通道)。
+// 命名政策(§0.6.E-1):Auto 前缀避开内置 shadcn LineChart 折叠名。
+// 纪律(§0.6.D):float 中间量显式声明;int→float 经存储强转;
+// 局部变量不得与 model 字段同名(ts_adapter 裸名解析按字段优先)。
+//
+// # Usage
+// ```
+// use { package: official from "../components" }
+// auto-line-chart (data: .series, index: "m", fields: ["v", "w"], colors: ["#2563eb", "#16a34a"]) {}
+// ```
+
+widget AutoLineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb"]) {
+    msg { Init }
+
+    model {
+        // 几何输出(Init 计算):每系列 { d: path, c: color } 段记录
+        segs List = []
+        labels str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 全系列共享 y 域:max over data × fields ----
+            var vmax int = 0
+            for d in .data {
+                for f in .fields {
+                    var v = d[f]
+                    if v > vmax {
+                        vmax = v
+                    }
+                }
+            }
+            var vmaxf float = vmax
+            var left float = 40.0
+            var top float = 10.0
+            var right float = 550.0
+            var bottom float = 260.0
+            var n int = .data.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = (right - left) / nf
+            }
+            // ---- 每系列一条 M/L path(段记录打包路径+颜色) ----
+            var outSegs List = []
+            var cs = .colors
+            var ccount int = cs.len()
+            var k int = 0
+            for f in .fields {
+                var dstr = ""
+                var i = 0
+                for d in .data {
+                    var vf float = d[f]
+                    var xf float = left + i * stepf
+                    var yf float = bottom - vf / vmaxf * (bottom - top)
+                    if i == 0 {
+                        dstr = f"M ${xf} ${yf}"
+                    } else {
+                        dstr = dstr + f" L ${xf} ${yf}"
+                    }
+                    i = i + 1
+                }
+                var ci int = k
+                if ci >= ccount {
+                    ci = ccount - 1
+                }
+                outSegs.push({ d: dstr, c: cs[ci] })
+                k = k + 1
+            }
+            .segs = outSegs
+            // ---- x 轴标签(v1 单字符串拼接,R006 规避) ----
+            var iname = .index
+            var outLabels = ""
+            for d in .data {
+                if outLabels == "" {
+                    outLabels = d[iname]
+                } else {
+                    outLabels = outLabels + "   " + d[iname]
+                }
+            }
+            .labels = outLabels
+        }
+    }
+
+    view {
+        col (style: "w-full") {
+            svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                line (x1: "40", y1: "10", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                for seg in .segs {
+                    path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                }
+            }
+            row (style: "justify-between px-10 pt-1") {
+                text .labels { style: "text-xs text-muted-foreground" }
+            }
+        }
+    }
+}

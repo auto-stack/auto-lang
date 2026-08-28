@@ -2730,6 +2730,22 @@ let tabs_inner = View::Row {
             }
         }
 
+        // 4b. Plan 437 Phase 2: prop 声明默认值播种 —— `(index: str = "m",
+        // colors: List<str> = [...])` 一类 widget-parens 默认值此前只在
+        // vue 轨生效(withDefaults),VM 轨不播种 → 子组件 handler 读未传
+        // prop 时 GET_FIELD 直接失败(donut 的 colors 即此)。父级显式传值
+        // 优先(parent wins)。
+        for prop in &child_widget.props {
+            if !resolved_props.contains_key(&prop.name) {
+                if let Some(default_expr) = &prop.default {
+                    resolved_props.insert(
+                        prop.name.clone(),
+                        eval_initial_without_vm(default_expr),
+                    );
+                }
+            }
+        }
+
         // 5. Ensure child state object exists on the VM heap + write props.
         self.bridge.ensure_child_state(
             &child_widget.name,
@@ -2746,6 +2762,33 @@ let tabs_inner = View::Row {
     /// Uses the same VmBridge (same VM), creates/updates the child's state
     /// object on the heap, and renders the child's view tree with an
     /// override_state_obj_id so read_state reads from the child's state.
+    /// Plan 437 Phase 2: 子组件声明了 Init handler 时,在 props 播种后于
+    /// 渲染期补发一次(每渲染帧重放)。handler 缺失(HandlerNotFound)静默
+    /// —— namespaced 导出不存在 = 该子组件没有 Init,常态;其余错误记
+    /// warn 不中断渲染。
+    fn fire_child_init_if_any(&self, child_widget: &crate::aura::AuraWidget, state_obj_id: u64) {
+        // Init 在提取期被移入 lifecycle 向量(extract.rs),不在 handlers 表。
+        let has_init = child_widget
+            .lifecycle
+            .iter()
+            .any(|l| l.name == "Init");
+        if !has_init {
+            return;
+        }
+        if let Err(e) = self
+            .bridge
+            .call_handler_for(&child_widget.name, "Init", state_obj_id, &[])
+        {
+            if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
+                log::warn!(
+                    "child {}.Init failed during render: {:?}",
+                    child_widget.name,
+                    e
+                );
+            }
+        }
+    }
+
     fn render_child_widget(
         &self,
         child_widget: &crate::aura::AuraWidget,
@@ -2754,6 +2797,13 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+        // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
+        // Init 会触发(fire_init),视图中实例化的子组件 Init 从不运行,
+        // 派生计算型组件(chart 几何)在 VM 轨无渲染期计算路径(vue 轨
+        // onMounted 正常,跨轨语义缺口)。统一 state 架构下逐实例顺序
+        // props → Init → build,每个渲染帧重放:纯派生 Init 幂等;副作用
+        // 型子组件 Init 会在每次脏重建时重放(v1 近似,债务在案)。
+        self.fire_child_init_if_any(child_widget, child_state_id);
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
@@ -2792,6 +2842,9 @@ let tabs_inner = View::Row {
         probe: &mut BuildProbe,
     ) -> View<DynamicMessage> {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
+        // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
+        // (tracked 双胎保持同一渲染语义)。
+        self.fire_child_init_if_any(child_widget, child_state_id);
 
         let child_builder = AuraViewBuilder {
             bridge: self.bridge,
@@ -4970,6 +5023,16 @@ let tabs_inner = View::Row {
                     None => String::new(),
                 }
             }
+            // Plan 437 Phase 2:索引表达式(`seg["d"]`)—— svg 子树动态
+            // 属性此前无 Index 臂 → 空串 → attr 被丢(循环段记录的路径/
+            // 颜色整体消失)。委托 resolve_expr_to_value 的 Index 臂
+            // (含 VmRef 记录物化)后取 display 形态。
+            Expr::Index(_, _) => {
+                match self.resolve_expr_to_value(expr, bindings) {
+                    Some(v) => value_to_display_string(&v),
+                    None => String::new(),
+                }
+            }
             // D-GAP-4 (013-todo footer): `text f"${.store.active_count} items
             // left"` parses the f-string as the text ELEMENT'S PRIMARY PROP
             // (Expr::FStr), unlike a bare child f-string which becomes
@@ -5122,6 +5185,20 @@ let tabs_inner = View::Row {
             Expr::Double(f, _) => Some(Value::Double(*f)),
             Expr::Bool(b) => Some(Value::Bool(*b)),
             Expr::Str(s) => Some(Value::Str(s.clone())),
+            // Plan 437 Phase 2: list literals in child-prop bindings (chart
+            // 组件的 fields/colors)——逐元素解析为 Value::Array;任一元素
+            // 失败整体 None(与现有 arm 的保守语义一致)。ensure_child_state
+            // 会把 Array 转成 heap ListData(VM bytecode 读法)。
+            Expr::Array(elems) => {
+                let mut values = Vec::with_capacity(elems.len());
+                for e in elems {
+                    match self.resolve_expr_to_value(e, bindings) {
+                        Some(v) => values.push(v),
+                        None => return None,
+                    }
+                }
+                Some(Value::Array(auto_val::Array { values }))
+            }
             // PLAN-048 L1 (musk VM 数据桥): None/Nil/Null literals resolve to
             // Value::Nil so computed comparisons like `.token != None` can
             // evaluate. Previously the literal fell to `_ => None`, voiding
@@ -5796,6 +5873,37 @@ let tabs_inner = View::Row {
                     let empty = Vec::new();
                     let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
                     inner.push_str(&self.serialize_svg_children(body, bindings));
+                }
+                // Plan 437 Phase 2:for 循环展开 —— Conditional 修复(Plan 445
+                // 后续修复)的同族缺口。症状相同:循环包裹的数据 path 整体
+                // 不出现在 svgdoc(组件化 chart 的 seg 循环全空)。迭代语义
+                // 与主转换器 ForLoop 臂一致(bindings → heap-id/VmRef 列表 →
+                // read_state_as_vec),逐项绑定 var 后递归序列化循环体。
+                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                    let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
+                    let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
+                    let items: Vec<Value> = if stripped.contains('.') && !stripped.starts_with("store.") {
+                        self.resolve_iterable(iterable, bindings).unwrap_or_default()
+                    } else if let Some(val) = bindings.get(state_name).cloned() {
+                        match val {
+                            auto_val::Value::Array(arr) => arr.iter().cloned().collect(),
+                            auto_val::Value::Int(id) if id >= 4_000_000 => {
+                                self.bridge.index_list_all(id as usize)
+                            }
+                            auto_val::Value::VmRef(r) => self.bridge.index_list_all(r.id),
+                            _ => Vec::new(),
+                        }
+                    } else {
+                        self.read_state_as_vec(state_name).unwrap_or_default()
+                    };
+                    for (i, item) in items.iter().enumerate() {
+                        let mut loop_bindings = bindings.clone();
+                        loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
+                        if let Some(idx_var) = index {
+                            loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
+                        }
+                        inner.push_str(&self.serialize_svg_children(body, &loop_bindings));
+                    }
                 }
                 _ => {}
             }

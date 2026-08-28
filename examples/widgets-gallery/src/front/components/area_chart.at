@@ -1,0 +1,101 @@
+// components/area_chart.at - AutoAreaChart component (Plan 437 Phase 2 ③)
+//
+// 官方 Auto 实现的面积图(linear scale + 折线下探底边闭合 Z 路径,
+// fill 半透明叠加;顶边另发描边 path 保持折线轮廓)。渲染端 v1 =
+// SVG 子树直通(442 A4)。纪律(§0.6.D)同 line_chart.at。
+
+widget AutoAreaChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb"]) {
+    msg { Init }
+
+    model {
+        // 几何输出(Init 计算):每系列 { a: 面积路径, l: 描线路径, c: 颜色 }
+        segs List = []
+        labels str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 全系列共享 y 域 ----
+            var vmax int = 0
+            for d in .data {
+                for f in .fields {
+                    var v = d[f]
+                    if v > vmax {
+                        vmax = v
+                    }
+                }
+            }
+            var vmaxf float = vmax
+            var bottom float = 260.0
+            var span float = 250.0
+            var n int = .data.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = 510.0 / nf
+            }
+            // ---- 每系列:面积路径(底边闭合)+ 顶边描线路径 ----
+            var outSegs List = []
+            var cs = .colors
+            var ccount int = cs.len()
+            var k int = 0
+            for f in .fields {
+                var astr = ""
+                var lstr = ""
+                var i = 0
+                for d in .data {
+                    var vf float = d[f]
+                    var xf float = 40.0 + i * stepf
+                    var yf float = bottom - vf / vmaxf * span
+                    if i == 0 {
+                        lstr = f"M${xf} ${yf}"
+                        astr = f"M${xf} ${yf}"
+                    } else {
+                        lstr = lstr + f" L${xf} ${yf}"
+                        astr = astr + f" L${xf} ${yf}"
+                    }
+                    i = i + 1
+                }
+                // 面积闭合:末点下探底边 → 回到首点 x 的底边 → Z
+                var nf2 float = n - 1
+                var xlast float = 40.0 + nf2 * stepf
+                var ci int = k
+                if ci >= ccount {
+                    ci = ccount - 1
+                }
+                outSegs.push({ a: astr + f" L${xlast} 260 L40 260 Z", l: lstr, c: cs[ci] })
+                k = k + 1
+            }
+            .segs = outSegs
+            // ---- x 轴标签 ----
+            var iname = .index
+            var outLabels = ""
+            for d in .data {
+                if outLabels == "" {
+                    outLabels = d[iname]
+                } else {
+                    outLabels = outLabels + "   " + d[iname]
+                }
+            }
+            .labels = outLabels
+        }
+    }
+
+    view {
+        col (style: "w-full") {
+            svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                path (d: "M40 72.5 H550 M40 135 H550 M40 197.5 H550", stroke: "#e2e8f0", stroke-width: "1") {}
+                line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                for seg in .segs {
+                    path (key: seg["a"], d: seg["a"], fill: seg["c"], fill-opacity: "0.25") {}
+                }
+                for seg in .segs {
+                    path (key: seg["l"], d: seg["l"], fill: "none", stroke: seg["c"], stroke-width: "2") {}
+                }
+            }
+            row (style: "justify-between px-10 pt-1") {
+                text .labels { style: "text-xs text-muted-foreground" }
+            }
+        }
+    }
+}

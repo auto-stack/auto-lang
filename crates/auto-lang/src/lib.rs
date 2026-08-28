@@ -3474,7 +3474,20 @@ fn build_dynamic_component_inner(
                 if !seen_dirs.insert(dir.clone()) {
                     continue;
                 }
-                match pkg_reg.load_package(&dir, base_dir) {
+                // Plan 437 Phase 2:包路径基准与 vue 侧(api.rs)对齐 —— 页文件
+                // 相对声明(`from "../components"`)在 pages/ 下解析;app 相对
+                // 仍先行(根 widget 的声明形态)。两个候选逐一试,首个存在者
+                // 生效,全部不存在才告警。
+                let candidates = [
+                    base_dir.join(&dir),
+                    base_dir.join("pages").join(&dir),
+                ];
+                let first = pkg_reg.load_package(&candidates[0], base_dir);
+                let loaded = match first {
+                    Ok(p) => Ok(p),
+                    Err(_) => pkg_reg.load_package(&candidates[1], base_dir),
+                };
+                match loaded {
                     Ok(pkg) => {
                         for (d, aw) in &pkg.full_widgets {
                             child_decls.push(d.clone());
@@ -3482,7 +3495,12 @@ fn build_dynamic_component_inner(
                         }
                     }
                     Err(e) => {
-                        log::warn!("package `{}` load failed (VM): {}", imp.path, e)
+                        log::warn!(
+                            "package `{}` load failed (VM): {} (tried {:?})",
+                            imp.path,
+                            e,
+                            candidates
+                        )
                     }
                 }
             }
@@ -5850,6 +5868,10 @@ mod plan412_tests;
 
 #[cfg(test)]
 mod plan446_j1_repro_tests;
+
+// Plan 437 Phase 2: VM 轨子组件 Init 生命周期钉子(渲染期 props→Init→build)。
+#[cfg(test)]
+mod plan437_child_init_tests;
 
 #[cfg(test)]
 mod plan352_tests;

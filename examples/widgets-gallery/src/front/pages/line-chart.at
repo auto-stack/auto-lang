@@ -1,18 +1,21 @@
-// pages/line-chart.at — LineChart 页（Plan 437 Charts 分组 ①）
+// pages/line-chart.at — LineChart 页(Plan 437 Charts 分组 ①)
 //
-// v1：几何内联在本页（d3-scale 风格 linear scale + SVG path 生成）。
-// 组件化（components/line_chart.at 的 AutoLineChart widget）待 435 统一
-// 声明体系合入后落地——master 上 vue 轨的 kebab tag 走 shadcn 脚手架，
-// components/*.at 只服务 VM 轨，跨轨注册是 435 的辖区。
-//
-// 渲染端 v1 = SVG 直通（442 A4）：vue 轨直通臂，VM 轨 svgdoc 通道。
-// 纪律（§0.6.D）：float 中间量显式声明；int→float 经存储强转。
+// Phase 2(2026-08-28):几何已提取为官方 Auto 组件
+// components/line_chart.at(AutoLineChart,d3-scale 风格 linear scale +
+// M/L path)。本页只持 demo 数据 + 消费组件,v1 内联几何形态退役。
+// 渲染端 v1 = SVG 直通(442 A4):vue 轨直通臂,VM 轨 svgdoc 通道。
 
 widget LineChartPage {
-    msg { Init }
+    use { package: official from "../components" }
 
     model {
-        // ---- demo 数据（charts-gallery 契约形状）----
+        single = [
+            { m: "Jan", v: 30 },
+            { m: "Feb", v: 80 },
+            { m: "Mar", v: 10 },
+            { m: "Apr", v: 55 },
+            { m: "May", v: 95 }
+        ]
         monthly = [
             { m: "Jan", desktop: 186, mobile: 80 },
             { m: "Feb", desktop: 305, mobile: 200 },
@@ -21,157 +24,31 @@ widget LineChartPage {
             { m: "May", desktop: 209, mobile: 130 },
             { m: "Jun", desktop: 214, mobile: 140 }
         ]
-        single = [
-            { m: "Jan", v: 30 },
-            { m: "Feb", v: 80 },
-            { m: "Mar", v: 10 },
-            { m: "Apr", v: 55 },
-            { m: "May", v: 95 }
-        ]
-        // ---- 几何（Init 计算）----
-        singlePath str = ""
-        singleLabels str = ""
-        monthlyPaths List<str> = []
-        monthlyLabels str = ""
-    }
-
-    on {
-        .Init -> {
-            // ---- 单系列 ----
-            var vmax int = 0
-            for d in .single {
-                var v = d["v"]
-                if v > vmax {
-                    vmax = v
-                }
-            }
-            var vmaxf float = vmax
-            var n int = .single.len()
-            var left float = 40.0
-            var top float = 10.0
-            var right float = 550.0
-            var bottom float = 260.0
-            var stepf float = 1.0
-            if n > 1 {
-                var nf float = n - 1
-                stepf = (right - left) / nf
-            }
-            var dstr = ""
-            var i = 0
-            for d in .single {
-                var vf float = d["v"]
-                var xf float = left + i * stepf
-                var yf float = bottom - vf / vmaxf * (bottom - top)
-                if i == 0 {
-                    dstr = f"M ${xf} ${yf}"
-                } else {
-                    dstr = dstr + f" L ${xf} ${yf}"
-                }
-                i = i + 1
-            }
-            .singlePath = dstr
-            var labels = ""
-            for d in .single {
-                if labels == "" {
-                    labels = d["m"]
-                } else {
-                    labels = labels + "   " + d["m"]
-                }
-            }
-            .singleLabels = labels
-
-            // ---- 多系列（desktop + mobile）----
-            var vmax2 int = 0
-            for d in .monthly {
-                var a = d["desktop"]
-                if a > vmax2 {
-                    vmax2 = a
-                }
-                var b = d["mobile"]
-                if b > vmax2 {
-                    vmax2 = b
-                }
-            }
-            var vmax2f float = vmax2
-            var n2 int = .monthly.len()
-            var step2 float = 1.0
-            if n2 > 1 {
-                var n2f float = n2 - 1
-                step2 = 510.0 / n2f
-            }
-            var paths List<str> = []
-            for f in ["desktop", "mobile"] {
-                var dstr2 = ""
-                var j = 0
-                for d in .monthly {
-                    var vf2 float = d[f]
-                    var xf2 float = 40.0 + j * step2
-                    var yf2 float = 260.0 - vf2 / vmax2f * 250.0
-                    if j == 0 {
-                        dstr2 = f"M ${xf2} ${yf2}"
-                    } else {
-                        dstr2 = dstr2 + f" L ${xf2} ${yf2}"
-                    }
-                    j = j + 1
-                }
-                paths.push(dstr2)
-            }
-            .monthlyPaths = paths
-            var labels2 = ""
-            for d in .monthly {
-                if labels2 == "" {
-                    labels2 = d["m"]
-                } else {
-                    labels2 = labels2 + "   " + d["m"]
-                }
-            }
-            .monthlyLabels = labels2
-        }
     }
 
     view {
         col {
             h1 "LineChart"
-            text "官方 Auto 实现的折线图——几何计算（linear scale、path 生成）全部用 Auto 完成，渲染端走 SVG：vue 轨直通，VM 轨 svgdoc 通道。数据形状与 shadcn chart 一致（record 列表 + index/categories 字段名）。"
+            text "官方 Auto 实现的折线图——几何计算(linear scale、path 生成)全部在 AutoLineChart 组件内用 Auto 完成,渲染端走 SVG:vue 轨直通,VM 轨 svgdoc 通道。数据形状与 shadcn chart 一致(record 列表 + index/categories 字段名)。"
 
             h2 "Basic"
             preview-card (id: "line-chart-basic") {
-                col (style: "w-full") {
-                    svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
-                        line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                        line (x1: "40", y1: "10", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                        path (d: .singlePath, fill: "none", stroke: "#2563eb", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round") {}
-                    }
-                    row (style: "justify-between px-10 pt-1") {
-                        text .singleLabels { style: "text-xs text-muted-foreground" }
-                    }
-                }
+                auto-line-chart (data: .single, index: "m", fields: ["v"], colors: ["#2563eb"]) {}
             }
 
             h2 "Multi-series"
             preview-card (id: "line-chart-multi") {
-                col (style: "w-full") {
-                    svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
-                        line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                        line (x1: "40", y1: "10", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                        for p in .monthlyPaths {
-                            path (key: p, d: p, fill: "none", stroke: "#2563eb", stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
-                        }
-                    }
-                    row (style: "justify-between px-10 pt-1") {
-                        text .monthlyLabels { style: "text-xs text-muted-foreground" }
-                    }
-                }
+                auto-line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#2563eb"]) {}
             }
 
-            h2 "Geometry source"
-            codeblock (lang: "auto", code: "fn line_path(data List, field str, vmax int) -> str {\n    var vmaxf float = vmax\n    ...\n    dstr\n}") {}
+            h2 "Component source"
+            codeblock (lang: "auto", code: "widget AutoLineChart {\n    model { data List = []  index str = \"m\"  fields List<str> = [\"v\"] }\n    on { .Init -> { /* linear scale + M/L path 几何 */ } }\n    view { svg (viewBox: \"0 0 560 300\") { /* path (d: p) */ } }\n}\n// 完整源码见 components/line_chart.at") {}
 
-            h2 "Props（v1 内联形态）"
+            h2 "Props(AutoLineChart 组件)"
             table {
                 table-header {
                     table-row {
-                        table-head "Concept" {}
+                        table-head "Prop" {}
                         table-head "Shape" {}
                         table-head "Description" {}
                     }
@@ -180,17 +57,22 @@ widget LineChartPage {
                     table-row {
                         table-cell "data" {}
                         table-cell "List of record" {}
-                        table-cell "index 字段 + 各数值字段" {}
-                    }
-                    table-row {
-                        table-cell "categories" {}
-                        table-cell "List of str" {}
-                        table-cell "数值系列字段名（v1 多系列同色，配色列后续）" {}
+                        table-cell "数据记录列表(index 字段 + 各数值字段)" {}
                     }
                     table-row {
                         table-cell "index" {}
                         table-cell "str" {}
-                        table-cell "x 轴标签字段名" {}
+                        table-cell "x 轴标签字段名(默认 m)" {}
+                    }
+                    table-row {
+                        table-cell "fields" {}
+                        table-cell "List<str>" {}
+                        table-cell "数值系列字段名(多系列共享 y 域,v1 同色)" {}
+                    }
+                    table-row {
+                        table-cell "colors" {}
+                        table-cell "List<str>" {}
+                        table-cell "每系列描边色(默认 [#2563eb],不足时复用末色)" {}
                     }
                 }
             }

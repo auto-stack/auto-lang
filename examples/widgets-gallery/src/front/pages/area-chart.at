@@ -1,11 +1,12 @@
 // pages/area-chart.at — AreaChart 页（Plan 437 Charts 分组 ③）
 //
-// v1：面积几何 Auto 内联（linear scale + 折线下探到底边闭合的 Z 路径，
-// fill 半透明叠加；顶边另发一条描边 path 保持折线清晰）。
-// 渲染端 SVG 直通（442 A4）。纪律（§0.6.D）：float 显式声明。
+// Phase 2（2026-08-28）：几何已提取为官方 Auto 组件
+// components/area_chart.at（AutoAreaChart，linear scale + 折线下探底边
+// 闭合 Z 路径，fill 半透明叠加；顶边另发描边 path）。本页只持 demo
+// 数据 + 消费组件，v1 内联几何形态退役。
 
 widget AreaChartPage {
-    msg { Init }
+    use { package: official from "../components" }
 
     model {
         monthly = [
@@ -16,96 +17,47 @@ widget AreaChartPage {
             { m: "May", desktop: 209, mobile: 130 },
             { m: "Jun", desktop: 214, mobile: 140 }
         ]
-        // ---- 几何（Init 计算）----
-        area0 str = ""
-        line0 str = ""
-        area1 str = ""
-        line1 str = ""
-        labels str = ""
-    }
-
-    on {
-        .Init -> {
-            // ---- y 域（两系列全局 max）----
-            var vmax int = 0
-            for d in .monthly {
-                var a = d["desktop"]
-                if a > vmax {
-                    vmax = a
-                }
-                var b = d["mobile"]
-                if b > vmax {
-                    vmax = b
-                }
-            }
-            var vmaxf float = vmax
-            var n int = .monthly.len()
-            var nf float = n - 1
-            var stepf float = 510.0 / nf
-
-            // ---- 两系列：面积路径（底边闭合）+ 顶边描线路径 ----
-            var a0 = ""
-            var l0 = ""
-            var a1 = ""
-            var l1 = ""
-            var i = 0
-            for d in .monthly {
-                var v0 float = d["desktop"]
-                var v1 float = d["mobile"]
-                var xf float = 40.0 + i * stepf
-                var y0 float = 260.0 - v0 / vmaxf * 250.0
-                var y1 float = 260.0 - v1 / vmaxf * 250.0
-                if i == 0 {
-                    l0 = f"M${xf} ${y0}"
-                    l1 = f"M${xf} ${y1}"
-                    a0 = f"M${xf} ${y0}"
-                    a1 = f"M${xf} ${y1}"
-                } else {
-                    l0 = l0 + f" L${xf} ${y0}"
-                    l1 = l1 + f" L${xf} ${y1}"
-                    a0 = a0 + f" L${xf} ${y0}"
-                    a1 = a1 + f" L${xf} ${y1}"
-                }
-                i = i + 1
-            }
-            // 面积闭合：末点下探底边 → 回到首点 x 的底边 → Z
-            var xlast float = 40.0 + (n - 1) * stepf
-            .area0 = a0 + f" L${xlast} 260 L40 260 Z"
-            .area1 = a1 + f" L${xlast} 260 L40 260 Z"
-            .line0 = l0
-            .line1 = l1
-
-            // ---- x 标签 ----
-            var ls = ""
-            for d in .monthly {
-                if ls == "" {
-                    ls = d["m"]
-                } else {
-                    ls = ls + "   " + d["m"]
-                }
-            }
-            .labels = ls
-        }
     }
 
     view {
         col {
             h1 "AreaChart"
-            text "官方 Auto 实现的面积图——折线路径下探底边闭合（fill 半透明叠加），顶边另发描边 path 保持轮廓清晰。渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+            text "官方 Auto 实现的面积图——折线路径下探底边闭合（fill 半透明叠加），顶边另发描边 path 保持轮廓清晰。几何全部在 AutoAreaChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
 
             h2 "Overlay"
             preview-card (id: "area-chart-overlay") {
-                col (style: "w-full") {
-                    svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
-                        path (d: "M40 72.5 H550 M40 135 H550 M40 197.5 H550", stroke: "#e2e8f0", stroke-width: "1") {}
-                        line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                        path (d: .area1, fill: "#16a34a", fill-opacity: "0.25") {}
-                        path (d: .area0, fill: "#2563eb", fill-opacity: "0.25") {}
-                        path (d: .line1, fill: "none", stroke: "#16a34a", stroke-width: "2") {}
-                        path (d: .line0, fill: "none", stroke: "#2563eb", stroke-width: "2") {}
+                auto-area-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#16a34a"]) {}
+            }
+
+            h2 "Props（AutoAreaChart 组件）"
+            table {
+                table-header {
+                    table-row {
+                        table-head "Prop" {}
+                        table-head "Shape" {}
+                        table-head "Description" {}
                     }
-                    row (style: "justify-between px-10 pt-1") {
-                        text .labels { style: "text-xs text-muted-foreground" }
+                }
+                table-body {
+                    table-row {
+                        table-cell "data" {}
+                        table-cell "List of record" {}
+                        table-cell "数据记录列表(index 字段 + 各数值字段)" {}
+                    }
+                    table-row {
+                        table-cell "index" {}
+                        table-cell "str" {}
+                        table-cell "x 轴标签字段名(默认 m)" {}
+                    }
+                    table-row {
+                        table-cell "fields" {}
+                        table-cell "List<str>" {}
+                        table-cell "数值系列字段名(多系列共享 y 域)" {}
+                    }
+                    table-row {
+                        table-cell "colors" {}
+                        table-cell "List<str>" {}
+                        table-cell "每系列填充/描边色(不足时复用末色)" {}
                     }
                 }
             }
