@@ -286,6 +286,8 @@ pub enum WmCommand {
     /// listen_with 全局左键按下（坐标见 `WmState.last_cursor`，由全局
     /// CursorMoved 持续回写；update 侧做 z 序命中测试 → 聚焦置顶）。
     GlobalPress,
+    /// Plan 463 T3：桌面调试退出（全屏无框桌面无关闭按钮，Esc 保留出口）。
+    ExitDesktop,
 }
 
 /// 一个虚拟窗口的 WM 条目。desktop 模式下同时承担 WindowEntry 的

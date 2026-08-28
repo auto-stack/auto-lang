@@ -5870,6 +5870,38 @@ fn keyboard_subscription(
     )
 }
 
+/// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
+/// R12 桌面层路由的键盘半边）。Esc = 调试退出（全屏无框桌面无关闭按钮）；
+/// T6 追加窗口循环/布局切换/launcher 召唤（键位 T1 报告 §7 定案）。
+fn desktop_hotkey_subscription(
+    my_window: iced::window::Id,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopMessage as DM;
+    iced_futures::subscription::filter_map(
+        ("autoui-desktop-hotkeys", my_window),
+        move |event: iced_futures::subscription::Event| {
+            let iced_futures::subscription::Event::Interaction { window, event, .. } = event else {
+                return None;
+            };
+            if window != my_window {
+                return None;
+            }
+            let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) =
+                event
+            else {
+                return None;
+            };
+            // Esc：无修饰键按下时退出（带修饰键的组合留给 App 层）。
+            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape))
+                && modifiers.is_empty()
+            {
+                return Some(DM::Wm(crate::ui::session::WmCommand::ExitDesktop));
+            }
+            None
+        },
+    )
+}
+
 /// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
 /// F12 toggle、Captured 过滤、bindings 查找、shifted 兜底、Tab 聚焦）。
 /// `allow_devtools=false`（Plan 462 desktop 模式）时 F12 不展开 DevTools
@@ -6130,13 +6162,19 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
 /// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
 pub fn run_dynamic_iced_multi(components: Vec<DynamicComponent>) -> AppResult<String> {
-    run_session(components, RunMode::Standalone)
+    run_session(components, RunMode::Standalone, false)
 }
 
 /// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
 /// （Design 23 R2 拓扑；chrome/拖拽/缩放/关闭/聚焦见 `virtual_window.rs`）。
 pub fn run_dynamic_desktop(components: Vec<DynamicComponent>) -> AppResult<String> {
-    run_session(components, RunMode::Desktop)
+    run_session(components, RunMode::Desktop, false)
+}
+
+/// Plan 463 T3：全屏桌面入口 —— 宿主窗 borderless + Fullscreen
+/// （iced 0.14 `Settings{fullscreen, decorations}`；Esc 保留调试退出）。
+pub fn run_dynamic_desktop_fullscreen(components: Vec<DynamicComponent>) -> AppResult<String> {
+    run_session(components, RunMode::Desktop, true)
 }
 
 /// 会话运行形态（Plan 462，I3：唯一 update/view/订阅管线，仅此配置位与
@@ -6149,7 +6187,11 @@ pub enum RunMode {
     Desktop,
 }
 
-fn run_session(mut components: Vec<DynamicComponent>, mode: RunMode) -> AppResult<String> {
+fn run_session(
+    mut components: Vec<DynamicComponent>,
+    mode: RunMode,
+    fullscreen: bool,
+) -> AppResult<String> {
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
         return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
@@ -6347,12 +6389,19 @@ fn compare_pngs(
             RunMode::Desktop => {
                 // Plan 462：单宿主 OS 窗口 + N 个虚拟窗口（级联偏移 48n，
                 // 初始尺寸 = 宿主的 60%，与独立模式级联错开视觉重叠）。
+                // Plan 463 T3：全屏桌面 = borderless + Fullscreen（无关闭
+                // 按钮，Esc 退出见桌面级热键臂）。
                 let host_size = startup_window_size();
-                let (win_id, open_task) = iced::window::open(iced::window::Settings {
+                let mut settings = iced::window::Settings {
                     size: host_size,
                     position: iced::window::Position::Specific(iced::Point::new(80.0, 80.0)),
                     ..Default::default()
-                });
+                };
+                if fullscreen {
+                    settings.fullscreen = true;
+                    settings.decorations = false;
+                }
+                let (win_id, open_task) = iced::window::open(settings);
                 session.open_desktop(win_id);
                 let mut entries: Vec<(crate::ui::session::AppId, String)> = Vec::new();
                 for comp in comps {
@@ -8413,6 +8462,10 @@ fn compare_pngs(
                     return iced::Task::none();
                 }
                 match cmd {
+                    // Plan 463 T3：Esc = 桌面调试退出（全屏无框无关闭按钮）。
+                    WmCommand::ExitDesktop => {
+                        return iced::exit();
+                    }
                     // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
                     //（last_cursor 由全局 CursorMoved 持续回写；点击桌面空白
                     // 不改焦点，其语义归 463 桌面层）。
@@ -8771,6 +8824,13 @@ fn compare_pngs(
                 }
             }
             if let Some(primary) = state.primary_app() {
+                // Plan 463 T3：桌面级热键（Esc 调试退出；T6 追加布局/循环/
+                // 召唤）。仅 desktop 模式订一份；独立模式行为不变。
+                if state.is_desktop() {
+                    if let Some(host) = &state.host {
+                        subs.push(desktop_hotkey_subscription(host.window));
+                    }
+                }
                 // Plan 462：desktop 模式帧泵（空闲时也要有机会消费 view 侧
                 // 投递的 MCP 截图请求；AUTOUI_MCP_DISABLE=1 一并关闭）。
                 if state.is_desktop()
