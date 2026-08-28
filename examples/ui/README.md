@@ -93,7 +93,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 | 025 | dashboard | 系统监视器（KPI 卡 + 三实时面积曲线 + 可排序进程表 + 配置持久化；mock 随机游走，API 形状见 SPEC） | 4025 | ✅ [Plan 438](../../docs/plans/archive/438-025-dashboard.md)（M1 vue 实机 6/6 + M1-fix 双生成器缺口根治 + M2 vm desktop_mcp 26/26） |
 | 026 | database | SQLite 可视化客户端 | 4026/8026 | 📋 [Plan 439](../../docs/plans/439-026-database.md) 立项中 |
 | 027 | file-manager | 文件管理器 | 4027/8027 | 📋 [Plan 440](../../docs/plans/440-027-file-manager.md) 立项中 |
-| 028 | launcher | 启动器（command palette） | 4028 | 📋 [Plan 441](../../docs/plans/441-028-launcher.md) 立项中 |
+| 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✅ [Plan 464](../../docs/plans/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
 | 038 | minesweeper | 经典扫雷（双后端） | 4038 | 🎯 严肃应用，持续扩展 |
 | 041 | auto-edit | 文本编辑器 | 4041 | 🎯 严肃应用，持续扩展 |
 
