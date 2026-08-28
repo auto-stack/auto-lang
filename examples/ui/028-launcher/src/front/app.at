@@ -44,21 +44,39 @@ widget App {
         var gsel int = 0            // 网格焦点索引（与 sel 同为 app 内自建）
         var gcount str = ""
 
-        // ---- 注册表（独立模式 mock；desktop 模式宿主覆盖 `apps`）----
-        // ln/lt = name/title 的预小写副本（匹配用；见文件头注）。
-        var apps = [
-            { name: "011-calculator",  title: "Calculator",  icon: "calculator",       category: "tool",    ln: "011-calculator",  lt: "calculator" },
-            { name: "012-stopwatch",   title: "Stopwatch",   icon: "timer",            category: "tool",    ln: "012-stopwatch",   lt: "stopwatch" },
-            { name: "013-todo",        title: "Todo",        icon: "check-square",     category: "task",    ln: "013-todo",        lt: "todo" },
-            { name: "014-weather",     title: "Weather",     icon: "cloud-sun",        category: "life",    ln: "014-weather",     lt: "weather" },
-            { name: "015-notes",       title: "Notes",       icon: "notebook-pen",     category: "notes",   ln: "015-notes",       lt: "notes" },
-            { name: "017-chat",        title: "Chat",        icon: "message-circle",   category: "social",  ln: "017-chat",        lt: "chat" },
-            { name: "018-book-reader", title: "Books",       icon: "book-open",        category: "reading", ln: "018-book-reader", lt: "books" },
-            { name: "020-music-player", title: "Music",      icon: "music",            category: "media",   ln: "020-music-player", lt: "music" },
-            { name: "024-charts",      title: "Charts",      icon: "bar-chart-3",      category: "data",    ln: "024-charts",      lt: "charts" },
-            { name: "025-dashboard",   title: "Dashboard",   icon: "layout-dashboard", category: "system",  ln: "025-dashboard",   lt: "dashboard" },
-            { name: "038-minesweeper", title: "Minesweeper", icon: "bomb",             category: "game",    ln: "038-minesweeper", lt: "minesweeper" },
-            { name: "041-auto-edit",   title: "Auto Edit",   icon: "file-code",        category: "editor",  ln: "041-auto-edit",   lt: "auto edit" }
+        // ---- 注册表（独立模式 mock；desktop 模式宿主覆盖同名列表）----
+        // 注入/存储形态 = 平行字符串列表（Obj 数组的 VM handler 字段读失效
+        // ——B12 同族，464 探针钉死；字符串列表下标读保真）。
+        // ln/lt = name/title 的预小写副本（匹配用，见文件头注）。
+        var apps_names = [
+            "011-calculator", "012-stopwatch", "013-todo", "014-weather",
+            "015-notes", "017-chat", "018-book-reader", "020-music-player",
+            "024-charts", "025-dashboard", "038-minesweeper", "041-auto-edit"
+        ]
+        var apps_titles = [
+            "Calculator", "Stopwatch", "Todo", "Weather",
+            "Notes", "Chat", "Books", "Music",
+            "Charts", "Dashboard", "Minesweeper", "Auto Edit"
+        ]
+        var apps_icons = [
+            "calculator", "timer", "check-square", "cloud-sun",
+            "notebook-pen", "message-circle", "book-open", "music",
+            "bar-chart-3", "layout-dashboard", "bomb", "file-code"
+        ]
+        var apps_cats = [
+            "tool", "tool", "task", "life",
+            "notes", "social", "reading", "media",
+            "data", "system", "game", "editor"
+        ]
+        var apps_lns = [
+            "011-calculator", "012-stopwatch", "013-todo", "014-weather",
+            "015-notes", "017-chat", "018-book-reader", "020-music-player",
+            "024-charts", "025-dashboard", "038-minesweeper", "041-auto-edit"
+        ]
+        var apps_lts = [
+            "calculator", "stopwatch", "todo", "weather",
+            "notes", "chat", "books", "music",
+            "charts", "dashboard", "minesweeper", "auto edit"
         ]
         var recent = []             // 启动名记录，最近在前，上限 5（storage 持久化）
         var last str = ""           // 最近一次启动（演示/断言锚）
@@ -267,64 +285,63 @@ widget App {
         // 空查询 → recent 置顶分组 + 注册表序全量；非空 → 打分
         // exact(0) > prefix(1) > 词首(2) > 子序列(3)，同分按注册表序，
         // recent 在同档内前移（折扣 5..1，不足以跨档）。
+        //
+        // 实现注记（464 T4）：注册表注入/存储形态为平行字符串列表
+        // （apps_names/titles/icons/cats/lns/lts）——Obj 数组的 VM handler
+        // 字段读失效（B12 同族，探针测试钉死），字符串列表下标读保真；
+        // ranked/gridrows 行对象为 handler 自建（view 侧读取已证可用）。
         .ApplyFilter -> {
             .ranked = []
             .nres = 0
             var ql str = .q.lower()
+            var napps int = .apps_names.len()
 
             if ql == "" {
                 // —— 空查询：recent 分组（存在的才列）+ 其余注册表序 ——
-                var inrecent = []
-                var ai int = 0
-                while ai < .apps.len() {
-                    var flag int = 0
-                    var ri int = 0
-                    while ri < .recent.len() {
-                        if .recent[ri] == .apps[ai].name {
-                            flag = 1
-                        }
-                        ri = ri + 1
-                    }
-                    inrecent.push(flag)
-                    ai = ai + 1
-                }
-                // recent 顺序（recent 内去重由 Launch 维护）
-                var rj int = 0
-                while rj < .recent.len() {
-                    var aj int = 0
-                    while aj < .apps.len() {
-                        if inrecent[aj] == 1 && .apps[aj].name == .recent[rj] {
-                            var row = { i: .ranked.len(), name: .apps[aj].name, title: .apps[aj].title, icon: .apps[aj].icon, category: .apps[aj].category, mg: .apps[aj].title.slice(0, 1), sub: "recent" }
+                var ri int = 0
+                while ri < .recent.len() {
+                    var ai int = 0
+                    while ai < napps {
+                        if .apps_names[ai] == .recent[ri] {
+                            var row = { i: .ranked.len(), name: .apps_names[ai], title: .apps_titles[ai], icon: .apps_icons[ai], category: .apps_cats[ai], mg: .apps_titles[ai].slice(0, 1), sub: "recent" }
                             .ranked.push(row)
                         }
-                        aj = aj + 1
+                        ai = ai + 1
                     }
-                    rj = rj + 1
+                    ri = ri + 1
                 }
-                // 其余按注册表序
                 var ak int = 0
-                while ak < .apps.len() {
-                    if inrecent[ak] == 0 {
-                        var row2 = { i: .ranked.len(), name: .apps[ak].name, title: .apps[ak].title, icon: .apps[ak].icon, category: .apps[ak].category, mg: .apps[ak].title.slice(0, 1), sub: .apps[ak].category }
+                while ak < napps {
+                    var seen int = 0
+                    var rj int = 0
+                    while rj < .recent.len() {
+                        if .recent[rj] == .apps_names[ak] {
+                            seen = 1
+                        }
+                        rj = rj + 1
+                    }
+                    if seen == 0 {
+                        var row2 = { i: .ranked.len(), name: .apps_names[ak], title: .apps_titles[ak], icon: .apps_icons[ak], category: .apps_cats[ak], mg: .apps_titles[ak].slice(0, 1), sub: .apps_cats[ak] }
                         .ranked.push(row2)
                     }
                     ak = ak + 1
                 }
             } else {
                 // —— 打分：score = tier*100 + 注册表序 - recent 折扣 ——
-                var scores = []
+                var scored = []
                 var si int = 0
-                while si < .apps.len() {
-                    var a = .apps[si]
+                while si < napps {
+                    var ln str = .apps_lns[si]
+                    var lt str = .apps_lts[si]
                     var tier int = 99
 
-                    if a.ln == ql || a.lt == ql {
+                    if ln == ql || lt == ql {
                         tier = 0
                     }
                     if tier == 99 {
                         // 前缀
-                        if a.lt.len() >= ql.len() {
-                            if a.lt.slice(0, ql.len()) == ql {
+                        if lt.len() >= ql.len() {
+                            if lt.slice(0, ql.len()) == ql {
                                 tier = 1
                             }
                         }
@@ -332,19 +349,19 @@ widget App {
                     if tier == 99 {
                         // 词首（位置 0 或 空格/-/_ 之后）
                         var p int = 0
-                        while p < a.lt.len() {
+                        while p < lt.len() {
                             var hit int = 0
                             if p == 0 {
                                 hit = 1
                             } else {
-                                var pc str = a.lt.slice(p - 1, p)
+                                var pc str = lt.slice(p - 1, p)
                                 if pc == " " || pc == "-" || pc == "_" {
                                     hit = 1
                                 }
                             }
                             if hit == 1 {
-                                if a.lt.len() - p >= ql.len() {
-                                    if a.lt.slice(p, p + ql.len()) == ql {
+                                if lt.len() - p >= ql.len() {
+                                    if lt.slice(p, p + ql.len()) == ql {
                                         tier = 2
                                     }
                                 }
@@ -356,9 +373,9 @@ widget App {
                         // 子序列（双指针）
                         var qi int = 0
                         var sj int = 0
-                        while sj < a.lt.len() {
+                        while sj < lt.len() {
                             if qi < ql.len() {
-                                if a.lt.slice(sj, sj + 1) == ql.slice(qi, qi + 1) {
+                                if lt.slice(sj, sj + 1) == ql.slice(qi, qi + 1) {
                                     qi = qi + 1
                                 }
                             }
@@ -374,7 +391,7 @@ widget App {
                         // recent 折扣：最近者折扣最大（5..1），仅同档内重排
                         var rk int = 0
                         while rk < .recent.len() {
-                            if .recent[rk] == a.name {
+                            if .recent[rk] == ln {
                                 var disc int = 5 - rk
                                 if disc < 1 {
                                     disc = 1
@@ -384,27 +401,38 @@ widget App {
                             rk = rk + 1
                         }
                     }
-                    scores.push(score)
+                    var srow = { name: .apps_names[si], title: .apps_titles[si], icon: .apps_icons[si], category: .apps_cats[si], score: score }
+                    scored.push(srow)
                     si = si + 1
                 }
 
-                // 选择排序输出（score 升序；99 = 不匹配不输出；
-                // 同分先到先得 = 注册表序稳定）
-                var n int = .apps.len()
+                // 选择排序输出（score 升序；9900 = 不匹配不输出；
+                // 同分先到先得 = 注册表序稳定）。下标访问只碰 scored/used
+                // （handler 自建，T3 实证可用）。
+                var n int = scored.len()
+                var used = []
+                var u int = 0
+                while u < n {
+                    used.push(0)
+                    u = u + 1
+                }
                 var placed int = 0
                 while placed < n {
                     var best int = -1
                     var bestScore int = 0
                     var bi int = 0
                     while bi < n {
-                        if scores[bi] < 9900 {
-                            if best == -1 {
-                                best = bi
-                                bestScore = scores[bi]
-                            } else {
-                                if scores[bi] < bestScore {
+                        if used[bi] == 0 {
+                            var sc int = scored[bi].score
+                            if sc < 9900 {
+                                if best == -1 {
                                     best = bi
-                                    bestScore = scores[bi]
+                                    bestScore = sc
+                                } else {
+                                    if sc < bestScore {
+                                        best = bi
+                                        bestScore = sc
+                                    }
                                 }
                             }
                         }
@@ -413,9 +441,9 @@ widget App {
                     if best == -1 {
                         placed = n
                     } else {
-                        var row3 = { i: .ranked.len(), name: .apps[best].name, title: .apps[best].title, icon: .apps[best].icon, category: .apps[best].category, mg: .apps[best].title.slice(0, 1), sub: .apps[best].category }
+                        var row3 = { i: .ranked.len(), name: scored[best].name, title: scored[best].title, icon: scored[best].icon, category: scored[best].category, mg: scored[best].title.slice(0, 1), sub: scored[best].category }
                         .ranked.push(row3)
-                        scores[best] = 9900
+                        used[best] = 1
                         placed = placed + 1
                     }
                 }
@@ -435,8 +463,8 @@ widget App {
             // 网格行（注册表序全量，与查询无关）；gsel 夹取 + 计数
             .gridrows = []
             var gi2 int = 0
-            while gi2 < .apps.len() {
-                var row4 = { gi: gi2, name: .apps[gi2].name, title: .apps[gi2].title, mg: .apps[gi2].title.slice(0, 1), category: .apps[gi2].category }
+            while gi2 < napps {
+                var row4 = { gi: .gridrows.len(), name: .apps_names[gi2], title: .apps_titles[gi2], mg: .apps_titles[gi2].slice(0, 1), category: .apps_cats[gi2] }
                 .gridrows.push(row4)
                 gi2 = gi2 + 1
             }

@@ -203,6 +203,17 @@ pub struct DesktopState {
     pub app_resolver: Option<std::sync::Arc<dyn Fn(&str) -> Option<LaunchSpec> + Send + Sync>>,
     /// Plan 463 T5：shell 的窗口级字段垫片（见 [`ShellFields`]）。
     pub shell_fields: ShellFields,
+    /// Plan 464 T4：launcher overlay App 的 AppId。首次 SummonLauncher 时
+    /// 懒挂载（v1 前无消费者不推空层——462 overlay 槽约定）；独立模式恒 None。
+    pub launcher_app: Option<AppId>,
+    /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
+    /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
+    /// None = 注册表无 launcher（召唤降级 toast）。
+    pub launcher_entry: Option<std::path::PathBuf>,
+    /// Plan 464 T4：注册表条目快照（boot 期 scan 结果的克隆）。召唤时下行
+    /// 注入 launcher 的平行字符串列表（真注册表，R10）——resolver 闭包只按
+    /// 名取 LaunchSpec，不暴露清单，故单独留这份。
+    pub registry_entries: Vec<crate::ui::app_registry::AppRegistryEntry>,
 }
 
 impl DesktopState {
@@ -216,6 +227,9 @@ impl DesktopState {
             shell_app: None,
             app_resolver: None,
             shell_fields: ShellFields::default(),
+            launcher_app: None,
+            launcher_entry: None,
+            registry_entries: Vec::new(),
         }
     }
 
@@ -539,6 +553,9 @@ pub enum DesktopCommand {
     CloseWindow(Wid),
     FocusWindow(Wid),
     SetLayout(LayoutMode),
+    /// Plan 464 T4：launcher 召唤（shell ⊞ 按钮 `summon\tlauncher` 记录；
+    /// Ctrl+Space 热键走 DM::Desktop(SummonLauncher) 事件，同落 summon 执行体）。
+    SummonLauncher,
 }
 
 impl DesktopCommand {
@@ -561,6 +578,9 @@ impl DesktopCommand {
             DesktopCommand::SetLayout(mode) => {
                 format!("layout{}{}", Self::FIELD_SEP, mode.as_str())
             }
+            DesktopCommand::SummonLauncher => {
+                format!("summon{}launcher", Self::FIELD_SEP)
+            }
         }
     }
 
@@ -582,6 +602,7 @@ impl DesktopCommand {
                     "close" => arg.parse::<u64>().ok().map(|w| DesktopCommand::CloseWindow(Wid(w))),
                     "focus" => arg.parse::<u64>().ok().map(|w| DesktopCommand::FocusWindow(Wid(w))),
                     "layout" => Some(DesktopCommand::SetLayout(LayoutMode::from_name(arg))),
+                    "summon" => Some(DesktopCommand::SummonLauncher),
                     _ => None,
                 }
             })
@@ -614,6 +635,11 @@ pub struct ShellFields {
 pub struct HostCtx {
     pub window: iced::window::Id,
     pub wm: WmState,
+    /// Plan 464 T4：windowless 特权 App（shell / launcher overlay）的窗口级
+    /// 字段垫片（原 shell_fields 挂 DesktopState——与 update 侧 `&mut desktop`
+    /// 拆借冲突，移入 HostCtx 与 self.desktop 分离，同 host.wm 方式）。
+    pub shell_fields: ShellFields,
+    pub launcher_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -699,7 +725,12 @@ impl DesktopSession {
 
     /// Plan 462：进入 desktop 模式（boot 期开完宿主窗后调用）。
     pub fn open_desktop(&mut self, window: iced::window::Id) {
-        self.host = Some(HostCtx { window, wm: WmState::new() });
+        self.host = Some(HostCtx {
+            window,
+            wm: WmState::new(),
+            shell_fields: ShellFields::default(),
+            launcher_fields: ShellFields::default(),
+        });
     }
 
     /// desktop 模式判定（I3 配置位）。
@@ -756,7 +787,13 @@ impl DesktopSession {
         let Some(shell) = self.desktop.shell_app else {
             return Vec::new();
         };
-        let Some(app) = self.apps.get_mut(&shell) else {
+        self.drain_app_desktop_commands(shell)
+    }
+
+    /// Plan 464 T4：任意特权 App 的 DesktopBus 排空（shell 之外，
+    /// launcher overlay 的上行 `launch` 记录同管线；读+清幂等）。
+    pub fn drain_app_desktop_commands(&mut self, app_id: AppId) -> Vec<DesktopCommand> {
+        let Some(app) = self.apps.get_mut(&app_id) else {
             return Vec::new();
         };
         let Ok(auto_val::Value::Str(payload)) = app.component.read_state("__desktop_cmd") else {
@@ -877,6 +914,49 @@ impl DesktopSession {
     /// （component / app / desktop / 窗口级），由会话现场拆出互不相交的字段
     /// 借用构造。窗口级字段取该 App 当前唯一窗口（459 一窗一 App）。
     pub fn split_mut(&mut self, id: AppId) -> Option<SessionViewMut<'_>> {
+        // Plan 464 T4：windowless 特权 App（launcher overlay；shell 同型）。
+        // 二者无 vwin/OS 窗 —— `window_of_app` 为 None，此前在此被静默丢弃
+        // （463 任务栏点击顺延项 §5.4 与 464 launcher 键盘流同根因，实机
+        // 复现于 T4）；垫片字段承接拆借后 update_inner 正常派发 handler。
+        if self.window_of_app(id).is_none() {
+            let is_shell = self.desktop.shell_app == Some(id);
+            let is_launcher = self.desktop.launcher_app == Some(id);
+            if !is_shell && !is_launcher {
+                return None;
+            }
+            let host = self.host.as_mut()?;
+            let window = host.window;
+            let app = self.apps.get_mut(&id)?;
+            let fields = if is_shell {
+                (
+                    &mut host.shell_fields.window_size,
+                    &mut host.shell_fields.pending_window_resize,
+                    &mut host.shell_fields.initial_resize_done,
+                    &mut host.shell_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.launcher_fields.window_size,
+                    &mut host.launcher_fields.pending_window_resize,
+                    &mut host.launcher_fields.initial_resize_done,
+                    &mut host.launcher_fields.initial_focus_done,
+                )
+            };
+            let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
+                fields;
+            return Some(SessionViewMut {
+                app_id: id,
+                window,
+                component: &mut app.component,
+                app: &mut app.state,
+                desktop: &mut self.desktop,
+                window_size,
+                pending_window_resize,
+                initial_resize_done,
+                initial_focus_done,
+                vwin_rect: None,
+            });
+        }
         let win = self.window_of_app(id)?;
         self.split_mut_at(id, win)
     }
@@ -977,12 +1057,44 @@ impl DesktopSession {
             component: &app.component,
             app: &app.state,
             desktop: &self.desktop,
-            window_size: &self.desktop.shell_fields.window_size,
-            pending_window_resize: &self.desktop.shell_fields.pending_window_resize,
-            initial_resize_done: &self.desktop.shell_fields.initial_resize_done,
-            initial_focus_done: &self.desktop.shell_fields.initial_focus_done,
+            window_size: &host.shell_fields.window_size,
+            pending_window_resize: &host.shell_fields.pending_window_resize,
+            initial_resize_done: &host.shell_fields.initial_resize_done,
+            initial_focus_done: &host.shell_fields.initial_focus_done,
             vwin_rect: None,
         })
+    }
+
+    /// Plan 464 T4：launcher overlay App 的拆借视图（view 装配的 launcher
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_shell`] 相同）。
+    pub fn split_ref_launcher(&self) -> Option<SessionViewRef<'_>> {
+        let launcher = self.desktop.launcher_app?;
+        let app = self.apps.get(&launcher)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: launcher,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.launcher_fields.window_size,
+            pending_window_resize: &host.launcher_fields.pending_window_resize,
+            initial_resize_done: &host.launcher_fields.initial_resize_done,
+            initial_focus_done: &host.launcher_fields.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 464 T4：launcher overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位）。读 launcher 的 `visible` 状态；未挂载恒 false。
+    pub fn launcher_visible(&self) -> bool {
+        let Some(la) = self.desktop.launcher_app else { return false };
+        matches!(
+            self.apps
+                .get(&la)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
     }
 }
 
