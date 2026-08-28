@@ -941,7 +941,31 @@ impl DynamicComponent {
     /// Resolves the widget's state_obj_id (root or child) and calls the
     /// namespaced handler fn (handler_<Widget>_<Event>).
     pub fn on_with_input_for(&mut self, widget_name: &str, event_name: &str, input_value: Option<String>) {
-        let (clean_name, payload) = decode_payload(event_name);
+        let (clean_name, mut payload) = decode_payload(event_name);
+
+        // Plan 446 批五 U2: `$event` 标记实参替换。内联调用形态
+        // `onchange: .TableCell(i, ri, c.name, $event.target.value)` 的
+        // $event 实参在视图构建期无法求值，被冻结成字面量字符串随
+        // payload 编码往返——此前原样送达 handler（os-config 现场"文本
+        // 不落盘"根因）。真实输入到达时（input_value=Some），把以
+        // `$event` 开头的字符串实参替换为输入值；`.checked` 后缀按
+        // 布尔语义解析。
+        if let Some(text) = &input_value {
+            for arg in payload.iter_mut() {
+                if let auto_val::Value::Str(s) = arg {
+                    if s.as_str().starts_with("$event") {
+                        *arg = if s.as_str().ends_with(".checked") {
+                            auto_val::Value::Bool(matches!(
+                                text.trim(),
+                                "true" | "1" | "on" | "checked"
+                            ))
+                        } else {
+                            auto_val::Value::Str(text.clone().into())
+                        };
+                    }
+                }
+            }
+        }
 
         // If this event comes from an input, update the bound state field first.
         if let Some(text) = &input_value {

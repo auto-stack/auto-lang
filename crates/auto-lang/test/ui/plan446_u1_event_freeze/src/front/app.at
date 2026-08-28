@@ -4,10 +4,11 @@
 use store: NavStore
 
 widget App {
-    msg { Init, Nav }
+    msg { Init, Nav, Cell }
 
     model {
         var current str = "boot"
+        var probe str = "none"
     }
 
     on {
@@ -19,6 +20,13 @@ widget App {
         .Nav(id) -> {
             store.SetActive(id)
             .current = id
+        }
+
+        // Plan 446 批五 U2: 循环内 input 的 $event 内联调用形态(现场
+        // collection_browser TableCell 同款)。
+        .Cell(idx, txt) -> {
+            .current = txt
+            .probe = idx
         }
     }
 
@@ -32,6 +40,11 @@ widget App {
                 }
             }
             col {
+                for e in .store.items {
+                    input (value: e.name) {
+                        onchange: .Cell(1, $event.target.value)
+                    }
+                }
                 select (onchange: .Nav) {
                     option "home" {}
                     option "roles" {}

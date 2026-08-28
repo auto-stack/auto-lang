@@ -141,4 +141,29 @@ mod plan446_batch5_u1 {
             cur
         );
     }
+
+    /// U2: `$event` 标记实参替换。内联 `onchange: .Cell(1, $event.target.value)`
+    /// 在视图构建期把 $event 冻结成字面量串随 payload 往返——dispatch 时
+    /// 须用真实输入替换（现场"文本不落盘"根因）。事件串模拟渲染层
+    /// encode_payload 形态（name + 类型标签实参序列）。
+    #[test]
+    fn u2_event_marker_arg_replaced_with_typed_text() {
+        let mut dc = build();
+        let encoded = "Cell\u{1F}i\u{1F}1\u{1F}s\u{1F}$event.target.value";
+        dc.on_with_input_for("App", encoded, Some("typed-text".to_string()));
+        let cur = dc.read_state("current").expect("current readable");
+        assert!(
+            matches!(&cur, auto_val::Value::Str(s) if s.as_str() == "typed-text"),
+            "U2: $event marker not replaced with typed text, got {:?}",
+            cur
+        );
+        // 非 $event 实参保持原值（字面量 1 → idx）。
+        let probe = dc.read_state("probe").expect("probe readable");
+        assert!(
+            matches!(&probe, auto_val::Value::Str(s) if s.as_str() == "1")
+                || matches!(&probe, auto_val::Value::Int(i) if *i == 1),
+            "U2: non-marker arg corrupted, got {:?}",
+            probe
+        );
+    }
 }

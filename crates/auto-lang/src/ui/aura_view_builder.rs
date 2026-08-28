@@ -2181,10 +2181,24 @@ let tabs_inner = View::Row {
                 }
                 if tag == "th" || tag == "td" || tag == "table-head" || tag == "table-cell" {
                     let is_head = tag == "th" || tag == "table-head";
-                    let (cell_style, text_style) = if is_head {
-                        ("px-4 py-2 border border-input bg-muted flex-1", "font-medium text-foreground")
+                    // Plan 446 批五 U5: 表头预设对齐 vue 轨（border + font-semibold，
+                    // 无内置底色——此前 bg-muted 在 iced 暗色主题下呈"暗底白字"），
+                    // 且 th/td 的 class/style prop 并入预设（后者优先，同
+                    // convert_button 惯例）——此前用户样式被整体忽略。
+                    let (cell_preset, text_style) = if is_head {
+                        ("px-4 py-2 border border-input flex-1 text-left font-semibold",
+                         "text-foreground")
                     } else {
                         ("px-4 py-2 border border-input flex-1", "text-muted-foreground")
+                    };
+                    let user_cell = self
+                        .extract_string_with(props, "class", bindings)
+                        .or_else(|| self.extract_string_with(props, "style", bindings));
+                    let cell_style = match user_cell.as_deref() {
+                        Some(u) if !u.trim().is_empty() => {
+                            format!("{} {}", cell_preset, u)
+                        }
+                        _ => cell_preset.to_string(),
                     };
                     // Plan 438 M2: shadcn kebab 族(table-head/table-cell)与 HTML
                     // 别名合一渲染——vue 侧两族映射同构,VM 侧此前只认 HTML 别名,
@@ -2216,7 +2230,7 @@ let tabs_inner = View::Row {
                                     disabled: false,
                                     label: content.clone(),
                                     onclick: self.event_to_message_with(event, bindings),
-                                    style: Style::parse(cell_style).ok(),
+                                    style: Style::parse(&cell_style).ok(),
                                     on_right_click: None,
                                     content: None,
                                 };
@@ -2226,7 +2240,7 @@ let tabs_inner = View::Row {
                     return View::Container {
                         child: Box::new(content),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
-                        style: Style::parse(cell_style).ok(),
+                        style: Style::parse(&cell_style).ok(),
                     };
                 }
                 // Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级渲染。
