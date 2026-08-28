@@ -86,6 +86,12 @@
     ——v1 用容器级 `keydown` + `Inert`/tabindex 策略，T2 实测定案）。
 - 布局：463 布局规范的 TS 直译（grid/master-stack/snap 纯函数）+ 同一单测断言集
   （I6 对拍：矩形期望值表共享）。
+- **E1/E2 接缝语义（I1 评审产出，`reports/462-i1-seam-review.md`）**：DOM 叶是
+  "叶子不在宿主 widget 树内"的第一个真实消费者——本计划落地时把事件路由按
+  **E1 的 `(AppId, event)` 注入形状**实现（命中矩形 → 归属 App → 扇出），并把
+  **E2 的 `AppWindow` 叶子形态枚举**（Element | RenderCommand | Wayland | DOM）
+  写进 WM 语义规范；386（路线 B RenderCommand 叶）复活时照抄该规范，
+  无需再设计（见 I1 报告 §3）。
 
 ### 3.3 页面级假设处置（v1 收敛）
 
@@ -110,7 +116,7 @@ R12 的 tauri 增强臂）。
 | T1 | 宿主 scaffold 施工图 | 宿主模式命名/触发（`--desktop` vs `render:"desktop"`）、registry 生成器位置（auto-man vue.rs）、shell 来源（shell.at 转译 vs 模板）定案；报告 `reports/465-t1-host-blueprint.md` | 评审通过 |
 | T2 | containment spike | §3.3 表格四项实测（modal/teleport/监听/主题）+ DOM 焦点策略定案 | spike 记录 + 截图入报告 |
 | T3 | registry 生成器 | 构建期扫 apps 目录 → `src/apps-registry.ts`（动态 import 映射） | 单测：生成物含全部 vm/vue 兼容 App；vite 构建通过 |
-| T4 | WmStore + virtual_window DOM 叶 | `virtual_window` a2vue 实现 + WmStore（rect/z/focus）+ 拖拽/resize/hit-test + 布局 TS 直译 | a2vue 金样（I4）+ 布局对拍单测（与 463 期望值表共享） |
+| T4 | WmStore + virtual_window DOM 叶 | `virtual_window` a2vue 实现 + WmStore（rect/z/focus）+ 拖拽/resize/hit-test + 布局 TS 直译；事件路由按 **E1 `(AppId, event)` 注入形状**、`AppWindow` 叶子枚举入 WM 语义规范（E2，消费 I1 评审报告） | a2vue 金样（I4）+ 布局对拍单测（与 463 期望值表共享） |
 | T5 | 多挂载生命周期 | launch（动态 import+createApp+容器挂载）/close（unmount）/panic 兜底（errorCaptured 崩溃页 ≈ 459 崩溃页语义） | Playwright：连续启动 ≥3 个 vue App、关闭回收、崩溃页隔离 |
 | T6 | shell/launcher/热键 | taskbar DOM 实现 + 028-launcher 挂 overlay + document 键盘路由（召唤/Alt+Tab/布局） | Playwright 全键盘流：Ctrl+Space→搜索→Enter→新窗；Alt+Tab 聚焦轮转 |
 | T7 | tauri 壳 | 宿主页 tauri 打包全屏（可选：global-shortcut） | `auto run --render tauri`（宿主项目）实机全屏桌面可用 |
@@ -124,6 +130,9 @@ R12 的 tauri 增强臂）。
 2. **tauri 端到端**：同一宿主页全屏 webview 可用（T7）。
 3. **I4**：`virtual_window`/`taskbar` 两端实现同源登记 + a2vue 金样；
    **I5**：028-launcher 源码零分叉；**I6**：布局期望值表双端共享。
+4. **E1/E2 检验**：叶子形态（DOM ↔ 树内 Element）切换为**加法操作**——
+   不出现第二条桌面代码路径（与 I3 同型）；`(AppId, event)` 注入形状
+   在 WM 语义规范中成文，386 复活可直接引用。
 4. `auto run`（单 App vue）零回归（生成物 diff 仅宿主模式新增文件）。
 
 ## 6. 风险
