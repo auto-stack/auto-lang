@@ -28,10 +28,12 @@ ext str {
     #[vm]
     fn lower() str
 
-    /// Get a substring from start to end (exclusive)
-    /// Example: "hello".sub(1, 4)  // returns "ell"
+    /// Get a substring of `len` characters starting at `start` (inclusive).
+    /// NOTE (plan-446 F4): semantics are (start, LEN) — NOT (start, end).
+    /// Indices clamp to char boundaries; out-of-range yields "".
+    /// Example: "hello".sub(1, 3)  // returns "ell"
     #[vm]
-    fn sub(start int, end int) str
+    fn sub(start int, len int) str
 
     // ============================================================================
     // Search Methods

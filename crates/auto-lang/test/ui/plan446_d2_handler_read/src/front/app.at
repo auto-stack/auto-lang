@@ -7,7 +7,7 @@
 use store: D2Store
 
 widget App {
-    msg { Init, Probe }
+    msg { Init, Probe, Probe2 }
 
     model {
         var picked str = "none"
@@ -26,6 +26,12 @@ widget App {
                     .picked = m.name
                 }
             }
+        }
+
+        // 形态二:闭包 find(现场 §D4"find 在 handler 静默不匹配"行)
+        .Probe2 -> {
+            let hit = .items.find(m => m.name == "beta")
+            .picked = hit.name
         }
     }
 

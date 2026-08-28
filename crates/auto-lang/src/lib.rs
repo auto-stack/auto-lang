@@ -5742,6 +5742,11 @@ mod plan446_b1_tests;
 #[cfg(test)]
 mod plan446_batch3_tests;
 
+// Plan 446 批四: 打磨项回归（F3/D4/D5/E3 探针）。
+#[cfg(test)]
+mod plan446_batch4_tests;
+
+
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
 // These require the `ui-iced` feature (crate::ui::* imports), so gate them

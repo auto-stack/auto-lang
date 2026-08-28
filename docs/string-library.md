@@ -102,7 +102,8 @@ let sub = str_sub(s, 0, 5)  // "hello"
 **Parameters:**
 - `s` (str): The string to extract from
 - `start` (int): Starting index (inclusive)
-- `end` (int): Ending index (exclusive)
+- `len` (int): Number of characters to extract — semantics are
+  `(start, len)`, NOT `(start, end)` (plan-446 F4 explicit note)
 
 **Returns:** New substring
 

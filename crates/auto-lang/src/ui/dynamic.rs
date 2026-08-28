@@ -963,11 +963,27 @@ impl DynamicComponent {
                 // no-param handler (e.g. 013-todo's `onenter: .AddTodo`) shifts
                 // the VM call frame — the handler's later state writes land on
                 // a garbage object id. Unknown arity keeps the legacy behavior.
-                let declares_param = self
+                let param_count = self
                     .bridge
-                    .handler_param_count(widget_name, &clean_name)
-                    .map(|n| n > 0)
-                    .unwrap_or(true);
+                    .handler_param_count(widget_name, &clean_name);
+                let declares_param = param_count.map(|n| n > 0).unwrap_or(true);
+                // Plan 446 批四 B3: 多参 handler 的输入分发显式化。输入文本
+                // 只能作为第一实参，其余参数（循环变量/$event 等）无从取得——
+                // 此前静默置换，handler 以错位实参运行（os-config 被迫"输入框
+                // handler 一律单参"）。现改为诊断 + 丢弃该次分发（不调用），
+                // 错误可定位而非静默腐坏。
+                if let Some(n) = param_count {
+                    if n > 1 {
+                        eprintln!(
+                            "[VM-INPUT] {}.{} declares {} params — typed text can only fill the 1st; \
+                             remaining args have no source (plan-446 B3). Dropping this input dispatch. \
+                             Use a single-param handler (+ Apply) or pass args explicitly.",
+                            if widget_name.is_empty() { &self.widget_name } else { widget_name },
+                            clean_name, n
+                        );
+                        return;
+                    }
+                }
                 if declares_param {
                     args.push(auto_val::Value::Str(text.clone().into()));
                 }

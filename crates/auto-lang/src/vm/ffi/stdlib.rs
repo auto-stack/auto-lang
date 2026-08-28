@@ -2154,7 +2154,8 @@ pub fn shim_json_parse_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 // ============================================================================
 
 /// 判定栈值是否为 JSON 文档堆对象（__json_object GenericInstanceData /
-/// ListData<Value>——json.parse 的产物形态）。命中则返回堆 id。
+/// ListData<Value>——json.parse 的产物；ListData<i32>——json.keys 等
+/// 文本工具链的返回形态，批四 D5 补齐）。命中则返回堆 id。
 fn json_doc_heap_id(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
     let id = if auto_val::is_object(nv) {
         auto_val::decode_object(nv) as u64
@@ -2170,9 +2171,33 @@ fn json_doc_heap_id(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
             let any = guard.as_any();
             any.downcast_ref::<crate::vm::generic_registry::GenericInstanceData>().is_some()
                 || any.downcast_ref::<crate::vm::types::ListData<auto_val::Value>>().is_some()
+                || any.downcast_ref::<crate::vm::types::ListData<i32>>().is_some()
         })
         .unwrap_or(false);
     if is_doc { Some(id) } else { None }
+}
+
+/// ListData<i32> 的 JSON 序列化（D5）：全负元素 = 字符串池负索引编码
+/// （`Vec<String>::push_to_stack` 的形态，json.keys 的返回）→ 解码为
+/// key 字符串数组；含非负元素 = 真 int 数组。不进共享的 vm_value_to_json
+/// （其 i32 臂直读数值，负索引会被当负数）。
+fn json_serialize_i32_list(vm: &AutoVM, id: u64) -> Option<String> {
+    use crate::vm::types::ListData;
+    use serde_json::Value as J;
+    let obj = vm.get_heap_object(id)?;
+    let guard = obj.read().unwrap();
+    let list = guard.as_any().downcast_ref::<ListData<i32>>()?;
+    let elems: Vec<J> = if list.elems.iter().all(|i| *i < 0) {
+        let strings = vm.strings.read().unwrap();
+        list.elems.iter().map(|i| {
+            strings.get((-*i - 1) as usize)
+                .map(|b| J::String(String::from_utf8_lossy(b).to_string()))
+                .unwrap_or(J::Null)
+        }).collect()
+    } else {
+        list.elems.iter().map(|i| serde_json::json!(*i)).collect()
+    };
+    serde_json::to_string(&J::Array(elems)).ok()
 }
 
 /// 文档类 json native（get/get_at/has_key/len/keys/is_valid）的首参规整：
@@ -2191,6 +2216,11 @@ fn normalize_json_doc_head(
     }
     let doc_nv = task.ram.pop_nv();
     let serialized: Option<String> = json_doc_heap_id(vm, doc_nv).and_then(|id| {
+        // ListData<i32>（负索引编码）走专用解码；其余经共享转换器。
+        let direct = json_serialize_i32_list(vm, id);
+        if direct.is_some() {
+            return direct;
+        }
         let jv = vm_value_to_json(
             vm,
             &auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }),
@@ -5194,7 +5224,10 @@ pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 }
 
 /// Get raw body bytes from Response handle
-/// response_body(res_handle) -> []byte
+/// response_body(res_handle) -> str
+/// Plan 446 批四 E3: 返回体改推 UTF-8 文本（lossy）。此前推 Vec<i32> 字节，
+/// print/str.* 消费面只见堆 id（现场"巨大数字串"垃圾值——官方示例
+/// 02_http_client 即以 `str.find(res.body(), ...)` 作文本消费）。
 pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
@@ -5202,8 +5235,8 @@ pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
     }).unwrap_or_default();
 
-    let byte_vec: Vec<i32> = body_bytes.into_iter().map(|b| b as i32).collect();
-    byte_vec.push_to_stack(task, vm)
+    let text = String::from_utf8_lossy(&body_bytes).to_string();
+    text.push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }

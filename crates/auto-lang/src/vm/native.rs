@@ -2413,20 +2413,10 @@ fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError>
         }
     }
 
-    // Fallback: check heap ListData<Value> (array literals — Plan 390 §15 H3b)
-    if let Some(array_ref) = vm.get_heap_object(list_id) {
-        let guard = array_ref.read().unwrap();
-        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
-            let elems: Vec<i32> = list.elems.iter().map(|v| {
-                match v {
-                    auto_val::Value::Int(n) => *n,
-                    _ => 0,
-                }
-            }).collect();
-            return Ok(elems);
-        }
-    }
-
+    // Plan 446 批四 D4: 此前对 ListData<Value> 有"非 Int 元素 coerce 为 0"的
+    // fallback——对象/字符串元素的 find/map/any 等全部 HOF 走 i32 快路径时
+    // 谓词接到恒 0，永不命中（plan454 已在 obj.find 剔除同款 tag 位误读，
+    // 本处补齐 list 族）。Value 列表一律交由各 shim 的 Value 路径处理。
     Err(VMError::RuntimeError(format!("Invalid list ID: {}", list_id)))
 }
 
@@ -2628,7 +2618,7 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 
     let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
 
-    // Fast path: i32 elements
+    // Fast path: genuine ListData<i32>
     if let Ok(elements) = get_list_i32_elements(vm, list_id) {
         for elem in elements {
             push_tagged_value_rc(vm, task, elem);
@@ -2641,7 +2631,9 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
                 return Ok(());
             }
         }
-        task.ram.push_i32(-1); // None
+        // Plan 446 批四 D4: miss 契约对齐语言层 None（TAG_NULL，与 auto.obj.find
+        // 的 Plan 454 E 契约一致）——此前推 -1 哨兵，`hit == None` 恒假。
+        task.ram.push_nv(auto_val::encode_null());
         return Ok(());
     }
 
@@ -2658,7 +2650,8 @@ pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             return Ok(());
         }
     }
-    task.ram.push_i32(-1); // None
+    // Plan 446 批四 D4: miss = 语言层 None（同上 fast-path 注记）。
+    task.ram.push_nv(auto_val::encode_null());
     Ok(())
 }
 
