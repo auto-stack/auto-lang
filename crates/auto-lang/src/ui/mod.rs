@@ -34,6 +34,10 @@ pub mod handler_codegen;
 #[cfg(feature = "ui-iced")]
 pub mod session;
 
+// Plan 463 T2：桌面布局引擎（free/grid/master-stack 纯函数 + snap 几何）。
+#[cfg(feature = "ui-iced")]
+pub mod layout;
+
 // Plan 442 A3: web-ecosystem ext imports on the VM render target
 // (adapter-chain loading + platform stubs).
 pub mod ext_stubs;
