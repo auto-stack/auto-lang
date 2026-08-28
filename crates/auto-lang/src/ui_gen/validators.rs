@@ -397,9 +397,9 @@ fn r003_autodown_css_missing(
         "R003",
         Severity::Info,
         widget,
-        "Template uses <AutoDownEditor>. Make sure main.ts imports \
-         '@autodown/editor/style.css' (auto-injected by generate_main_ts when \
-         npm_deps includes @autodown/editor)."
+        "Template uses <AutoDownEditor>. Make sure main.ts imports the editor \
+         stylesheet ('@autodown/engine/style.css' on the plan-019 engine \
+         path; legacy '@autodown/editor/style.css' for vendored consumers)."
             .to_string(),
     )]
 }

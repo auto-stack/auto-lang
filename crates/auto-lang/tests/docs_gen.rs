@@ -40,6 +40,10 @@ const DOC_EXCLUDE: &[&str] = &[
     // 语义 HTML/Layout 组页面(alignment/scroll/position/...)文档化
     "article", "aside", "footer", "header", "main", "nav", "section",
     "p", "span", "h1", "h2", "h3",
+    // Plan 019 Phase 4:文本格式化/标题尾族随 aura.at 重排进入
+    // builtin_widget 层——语义与 h1-h3/p/span 同族，随 Layout 组文档化
+    // （层级 h4-h6 与行内 b/i/em/strong/small/link 不另设页面）。
+    "b", "em", "h4", "h5", "h6", "i", "link", "small", "strong",
     // 基础文本原语,Layout 组 demo 内文档化
     "text",
     // form 家族件(form 页文档化)

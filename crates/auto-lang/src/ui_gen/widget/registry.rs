@@ -785,6 +785,14 @@ impl WidgetRegistry {
         // AutoDownEditor — WYSIWYG editor bound to an AutoDown document body.
         // The primary prop `content` carries the note body; @update/@save events
         // bubble edited content back to the block's dataSource.save flow.
+        //
+        // Plan 019 Phase 4: vue 后端重定向 @autodown/engine/AutoDownEditor
+        // —— vue 映射声明在 schema/aura.at（P4-4 overlay 单源，禁手写
+        // insert）；props/events 契约对齐 ui_gen/vue.rs autodown_editor 臂
+        // （:content/:canEdit/:showActions + @update/@save/@cancel）。
+        // ark/jet：编辑降级 TextArea/OutlinedTextField 维持——019 边界：
+        // 块级编辑壳仅 iced/VM 轨（ui/autodown_editor），ark/jet 展示经
+        // 面板树（plan-450 面板臂），编辑降级在册。
         let mut autodown_editor = WidgetSpec::new("AutoDownEditor", WidgetCategory::Display)
             .with_alias("autodown_editor");
         autodown_editor.primary_prop = Some("content".to_string());
@@ -808,14 +816,18 @@ impl WidgetRegistry {
     }
 
     /// Plan musk-022 Phase 3: rich-text widgets — streaming markdown
-    /// (markstream-vue) and mermaid diagrams. These pull in their npm packages
+    /// and mermaid diagrams. These pull in their npm packages
     /// automatically via `npm_package` so projects using `markdown {}` /
     /// `mermaid {}` need no manual `npm_deps` declaration.
     fn register_rich_text_widgets(&mut self) {
-        // Markdown — streaming markdown renderer (markstream-vue).
+        // Markdown — streaming markdown renderer.
         // Renders markdown content with optional typewriter/streaming effects.
         // Primary prop `content` accepts a markdown string; `stream` accepts an
         // SSE chunk for live rendering.
+        //
+        // Plan 019 Phase 4: vue 后端重定向 @autodown/engine/MarkdownRender
+        // （vue 映射声明在 schema/aura.at，P4-4 单源；替换 musk-022 时代
+        // markstream-vue 平台挂载路径，存量消费方迁移归 020 musk re-vendor）。
         let mut markdown = WidgetSpec::new("Markdown", WidgetCategory::Display)
             .with_alias("markdown");
         markdown.primary_prop = Some("content".to_string());

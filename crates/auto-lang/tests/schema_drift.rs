@@ -706,7 +706,13 @@ fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) 
         let Some(end) = rest.find('"') else { continue };
         let name = rest[..end].to_string();
         names.insert(name.clone());
-        let window = &rest[..rest.len().min(2500)];
+        // 窗口截断须落在字符边界（registry.rs 注释含 CJK，固定字节窗会
+        // 劈开多字节字符——019 Phase 4 注释变长后暴露）。
+        let mut win_len = rest.len().min(2500);
+        while win_len > 0 && !rest.is_char_boundary(win_len) {
+            win_len -= 1;
+        }
+        let window = &rest[..win_len];
         let block_end = window.find("self.register(").unwrap_or(window.len());
         if window[..block_end].contains("import: Some(") {
             imported.insert(name.clone());
