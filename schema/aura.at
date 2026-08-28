@@ -50,14 +50,23 @@ element aside {
 
 element autodown_editor {
     tag: "autodown_editor"
-    category: "unknown"
+    category: "form"
     tier: "builtin_widget"
-    aliases: ["autodown", "autodowneditor", "markdown_editor"]
+    aliases: ["autodowneditor"]
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
-    vue: { component: "AutoDownEditor", import: "@autodown/editor" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    vue: { component: "AutoDownEditor", import: "@autodown/engine", npm: "@autodown/engine@^0.4.0" }
+    props: [
+        { name: "key", type: "string", description: "Stable state-storage identity (VM editor shell registry key)" }
+        { name: "content", type: "union:string,state_ref", description: "Bound markdown document body" }
+        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker (editor treats document as final)" }
+        { name: "can_edit", type: "bool", default: "true", description: "Whether the editor is interactive (vue arm: canEdit)" }
+        { name: "show_actions", type: "bool", default: "true", description: "Show editor action bar (vue arm: showActions)" }
+        { name: "oninput", type: "msg_ref", description: "Message on document edit (payload via autodown_editor_text(key) on VM)" }
+        { name: "onchange", type: "msg_ref", description: "Alias of oninput" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor on vue, cosmic-text block buffers on VM)"
 }
 
 element avatar {
@@ -73,6 +82,16 @@ element avatar {
         { name: "alt", type: "string", description: "Alt text for accessibility" }
         { name: "fallback", type: "string", description: "Fallback text when image fails" }
     ]
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element b {
+    tag: "b"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
 }
@@ -209,6 +228,16 @@ element divider {
     description: "Horizontal or vertical divider line"
 }
 
+element em {
+    tag: "em"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element footer {
     tag: "footer"
     category: "unknown"
@@ -269,12 +298,55 @@ element h3 {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element h4 {
+    tag: "h4"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H4"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h5 {
+    tag: "h5"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H5"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element h6 {
+    tag: "h6"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["H6"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element header {
     tag: "header"
     category: "unknown"
     tier: "builtin_widget"
     aliases: ["Header"]
     backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element i {
+    tag: "i"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -359,6 +431,21 @@ element label {
     description: "Form label"
 }
 
+element link {
+    tag: "link"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["Link"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "href", type: "string", required: true, description: "Link URL" }
+        { name: "text", type: "string", description: "Link text" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "Hyperlink"
+}
+
 element list {
     tag: "list"
     category: "list"
@@ -398,13 +485,29 @@ element main {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element markdown {
+    tag: "markdown"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["autodown", "markdown_editor"]
+    backends: { web: "component", iced: "unknown", gpui: "unknown" }
+    vue: { component: "MarkdownRender", import: "@autodown/engine", npm: "@autodown/engine@^0.4.0" }
+    props: [
+        { name: "content", type: "union:string,state_ref", description: "Markdown source (literal or state-bound)" }
+        { name: "final", type: "union:bool,state_ref", default: "true", description: "Streaming marker: false = still receiving chunks (dangling-marker stripping)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: false
+    description: "AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)"
+}
+
 element menubar {
     tag: "menubar"
     category: "navigation"
     tier: "builtin_widget"
     backends: { web: "component", iced: "unknown", gpui: "unknown" }
     vue: { component: "Menubar", import: "@/components/ui/menubar" }
-    sub_widgets: ["menubar_content", "menubar_item", "menubar_menu", "menubar_trigger"]
+    sub_widgets: ["menubar_content", "menubar_item", "menubar_menu", "menubar_separator", "menubar_trigger"]
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
@@ -547,6 +650,16 @@ element separator {
     description: "Visual divider"
 }
 
+element small {
+    tag: "small"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element spacer {
     tag: "spacer"
     category: "utility"
@@ -582,6 +695,16 @@ element square {
     tier: "builtin_widget"
     aliases: ["Square"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element strong {
+    tag: "strong"
+    category: "unknown"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -688,7 +811,7 @@ element a {
     tag: "a"
     category: "unknown"
     tier: "native_html"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
@@ -884,39 +1007,6 @@ element g {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element h4 {
-    tag: "h4"
-    category: "unknown"
-    tier: "native_html"
-    aliases: ["H4"]
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element h5 {
-    tag: "h5"
-    category: "unknown"
-    tier: "native_html"
-    aliases: ["H5"]
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element h6 {
-    tag: "h6"
-    category: "unknown"
-    tier: "native_html"
-    aliases: ["H6"]
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element li {
     tag: "li"
     category: "unknown"
@@ -946,21 +1036,6 @@ element linearGradient {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element link {
-    tag: "link"
-    category: "content"
-    tier: "native_html"
-    aliases: ["Link"]
-    backends: { web: "native", iced: "none", gpui: "unknown" }
-    props: [
-        { name: "href", type: "string", required: true, description: "Link URL" }
-        { name: "text", type: "string", description: "Link text" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: false
-    description: "Hyperlink"
 }
 
 element mask {
@@ -1291,6 +1366,26 @@ element Change {
     props: []
     allows_children: true
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
+}
+
+element NavDestination {
+    tag: "NavDestination"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element Swiper {
+    tag: "Swiper"
+    category: "unknown"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element callout {
@@ -3337,17 +3432,6 @@ element loading {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element markdown {
-    tag: "markdown"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "MarkdownRender", import: "@autodown/vue" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element menubar_content {
     tag: "menubar_content"
     category: "navigation"
@@ -3411,8 +3495,7 @@ element menubar_separator {
     tag: "menubar_separator"
     category: "navigation"
     tier: "web_component"
-    // Plan 451 P2: `actions {}` 合成的 menubar 树用 MenubarSeparator——
-    // 补 vue 行与 web: "component"（此前 web: "none" 且无 vue 行）。
+    aliases: ["menubarseparator"]
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "MenubarSeparator", import: "@/components/ui/menubar" }
     props: [
@@ -3473,17 +3556,6 @@ element native_select {
     ]
     allows_children: true
     description: "Native HTML select"
-}
-
-element nav-destination {
-    tag: "nav-destination"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["NavDestination"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element nav_menu {
@@ -4580,17 +4652,6 @@ element stepper_trigger {
     ]
     allows_children: true
     description: "Stepper trigger"
-}
-
-element swiper {
-    tag: "swiper"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["Swiper"]
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element switch {

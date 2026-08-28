@@ -35,13 +35,22 @@ _props 待声明_
 
 ### `autodown_editor`
 
-`builtin_widget` · `autodown_editor` · web: `component` · iced: `unknown` · category: `content`
+`builtin_widget` · `autodown_editor` · web: `component` · iced: `unknown` · category: `form`
 
-P1 extracted from production tables; props TBD
+AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor on vue, cosmic-text block buffers on VM)
 
-别名:`autodown` `autodowneditor` `markdown_editor`
+别名:`autodowneditor`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `key` | `string` | — | Stable state-storage identity (VM editor shell registry key) |
+| `content` | `union: string|state_ref` | — | Bound markdown document body |
+| `final` | `union: bool|state_ref` | true | Streaming marker (editor treats document as final) |
+| `can_edit` | `bool` | true | Whether the editor is interactive (vue arm: canEdit) |
+| `show_actions` | `bool` | true | Show editor action bar (vue arm: showActions) |
+| `oninput` | `msg_ref` | — | Message on document edit (payload via autodown_editor_text(key) on VM) |
+| `onchange` | `msg_ref` | — | Alias of oninput |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 
@@ -62,6 +71,16 @@ P1 extracted from production tables; props TBD
 | `fallback` | `string` | — | Fallback text when image fails |
 
 子件:`avatarfallback` `avatarimage`
+
+---
+
+### `b`
+
+`builtin_widget` · `b` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+_props 待声明_
 
 ---
 
@@ -211,6 +230,16 @@ Horizontal or vertical divider line
 
 ---
 
+### `em`
+
+`builtin_widget` · `em` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+_props 待声明_
+
+---
+
 ### `footer`
 
 `builtin_widget` · `footer` · web: `native` · iced: `unknown` · category: `content`
@@ -277,6 +306,42 @@ _props 待声明_
 
 ---
 
+### `h4`
+
+`builtin_widget` · `h4` · web: `native` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`H4`
+
+_props 待声明_
+
+---
+
+### `h5`
+
+`builtin_widget` · `h5` · web: `native` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`H5`
+
+_props 待声明_
+
+---
+
+### `h6`
+
+`builtin_widget` · `h6` · web: `native` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+别名:`H6`
+
+_props 待声明_
+
+---
+
 ### `header`
 
 `builtin_widget` · `header` · web: `native` · iced: `unknown` · category: `content`
@@ -284,6 +349,16 @@ _props 待声明_
 P1 extracted from production tables; props TBD
 
 别名:`Header`
+
+_props 待声明_
+
+---
+
+### `i`
+
+`builtin_widget` · `i` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
 
 _props 待声明_
 
@@ -374,6 +449,22 @@ Form label
 
 ---
 
+### `link`
+
+`builtin_widget` · `link` · web: `native` · iced: `unknown` · category: `content`
+
+Hyperlink
+
+别名:`Link`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `href` | `string` | — | Link URL |
+| `text` | `string` | — | Link text |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `list`
 
 `builtin_widget` · `list` · web: `component` · iced: `fallback` · category: `list`
@@ -413,6 +504,22 @@ _props 待声明_
 
 ---
 
+### `markdown`
+
+`builtin_widget` · `markdown` · web: `component` · iced: `unknown` · category: `content`
+
+AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)
+
+别名:`autodown` `markdown_editor`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `content` | `union: string|state_ref` | — | Markdown source (literal or state-bound) |
+| `final` | `union: bool|state_ref` | true | Streaming marker: false = still receiving chunks (dangling-marker stripping) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
 ### `menubar`
 
 `builtin_widget` · `menubar` · web: `component` · iced: `unknown` · category: `navigation`
@@ -425,7 +532,7 @@ Menubar container
 |------|------|---------|-------------|
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
-子件:`menubar_content` `menubar_item` `menubar_menu` `menubar_trigger`
+子件:`menubar_content` `menubar_item` `menubar_menu` `menubar_separator` `menubar_trigger`
 
 ---
 
@@ -581,6 +688,16 @@ Visual divider
 
 ---
 
+### `small`
+
+`builtin_widget` · `small` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
+
+_props 待声明_
+
+---
+
 ### `spacer`
 
 `builtin_widget` · `spacer` · web: `component` · iced: `full` · category: `utility`
@@ -618,6 +735,16 @@ Inline text span
 P1 extracted from production tables; props TBD
 
 别名:`Square`
+
+_props 待声明_
+
+---
+
+### `strong`
+
+`builtin_widget` · `strong` · web: `none` · iced: `unknown` · category: `content`
+
+P1 extracted from production tables; props TBD
 
 _props 待声明_
 
@@ -723,7 +850,7 @@ _props 待声明_
 
 ### `a`
 
-`native_html` · `a` · web: `none` · iced: `none` · category: `content`
+`native_html` · `a` · web: `none` · iced: `unknown` · category: `content`
 
 P1 extracted from production tables; props TBD
 
@@ -929,42 +1056,6 @@ _props 待声明_
 
 ---
 
-### `h4`
-
-`native_html` · `h4` · web: `native` · iced: `none` · category: `content`
-
-P1 extracted from production tables; props TBD
-
-别名:`H4`
-
-_props 待声明_
-
----
-
-### `h5`
-
-`native_html` · `h5` · web: `native` · iced: `none` · category: `content`
-
-P1 extracted from production tables; props TBD
-
-别名:`H5`
-
-_props 待声明_
-
----
-
-### `h6`
-
-`native_html` · `h6` · web: `native` · iced: `none` · category: `content`
-
-P1 extracted from production tables; props TBD
-
-别名:`H6`
-
-_props 待声明_
-
----
-
 ### `li`
 
 `native_html` · `li` · web: `native` · iced: `none` · category: `content`
@@ -994,22 +1085,6 @@ _props 待声明_
 P1 extracted from production tables; props TBD
 
 _props 待声明_
-
----
-
-### `link`
-
-`native_html` · `link` · web: `native` · iced: `none` · category: `content`
-
-Hyperlink
-
-别名:`Link`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `href` | `string` | — | Link URL |
-| `text` | `string` | — | Link text |
-| `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
 

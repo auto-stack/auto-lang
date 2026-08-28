@@ -912,7 +912,7 @@ fn generate_main_ts(
     locale_files: &[String],
 ) -> String {
     let autodown_css = if uses_autodown {
-        "\nimport '@autodown/editor/style.css'"
+        "\nimport '@autodown/engine/style.css'"
     } else {
         ""
     };
@@ -1311,7 +1311,9 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write index.html: {}", e))?;
 
     // src/main.ts
-    let uses_autodown = extra_deps.iter().any(|(name, _)| name == "@autodown/editor");
+    let uses_autodown = extra_deps
+        .iter()
+        .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
     let main_ts = generate_main_ts(has_routes, uses_autodown, style_files, i18n, locale_files);
     fs::write(output_path.join("src/main.ts"), main_ts)
         .map_err(|e| format!("Failed to write src/main.ts: {}", e))?;
@@ -2884,7 +2886,10 @@ export default router
         }
 
         // Write main.ts
-        let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
+        let uses_autodown = self
+        .npm_deps
+        .iter()
+        .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
         fs::write(src_dir.join("main.ts"), &main_ts_content)
             .map_err(|e| format!("Failed to write main.ts: {}", e))?;
@@ -2929,7 +2934,10 @@ export default router
         self.mount_platform_impls()?;
         // Plan musk-022 Phase 2: re-copy i18n locale files.
         let locale_copies = self.copy_locale_files()?;
-        let uses_autodown = self.npm_deps.iter().any(|(name, _)| name == "@autodown/editor");
+        let uses_autodown = self
+        .npm_deps
+        .iter()
+        .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
         let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
         let main_ts_path = src_dir.join("main.ts");
         fs::write(&main_ts_path, &main_ts_content)

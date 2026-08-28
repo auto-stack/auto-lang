@@ -15226,7 +15226,7 @@ widget NoteEditor {
         );
         // Named import from @autodown/editor.
         assert!(
-            sfc.contains("import { AutoDownEditor } from '@autodown/editor'"),
+            sfc.contains("import { AutoDownEditor } from '@autodown/engine'"),
             "named import from @autodown/editor:\n{}",
             sfc
         );
@@ -18375,8 +18375,11 @@ widget App {
 }
 "#);
         assert!(
+            // DSL 显式 use.web component from 走声明包（应用作者自选，存量
+            // vendor 仍 @autodown/editor）；registry 路径才默认 engine（plan
+            // 019 Phase 4，见 15214 处用例）。
             sfc.contains("import { AutoDownEditor } from '@autodown/editor'"),
-            "same import shape as the registry path:\n{}",
+            "declared-source import shape (use.web from) must be honored:\n{}",
             sfc
         );
         assert!(sfc.contains("<AutoDownEditor"), "component tag:\n{}", sfc);

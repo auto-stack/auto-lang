@@ -2843,6 +2843,39 @@ impl AuraSchema {
             description: "Multi-line text input",
         });
 
+        // === Plan 019 Phase 4: AutoDown 文档组件（props 声明落定，替代
+        // 既有 "props TBD" 回退）。vue 后端消费 @autodown/engine
+        // （MarkdownRender / AutoDownEditor）；VM/iced 侧见
+        // ui/autodown_render（只读轨）与 ui/autodown_editor（编辑壳）。
+        elements.insert("markdown", ElementDef {
+            tag: "markdown",
+            category: ElementCategory::Content,
+            props: vec![
+                PropDef { name: "content", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Markdown source (literal or state-bound)" },
+                PropDef { name: "final", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Streaming marker: false = still receiving chunks (dangling-marker stripping)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown document renderer (read-only; @autodown/engine MarkdownRender on vue, autodown-core parse_blocks on VM)",
+        });
+
+        elements.insert("autodown_editor", ElementDef {
+            tag: "autodown_editor",
+            category: ElementCategory::Form,
+            props: vec![
+                PropDef { name: "key", type_: PropType::String, required: false, default: None, description: "Stable state-storage identity (VM editor shell registry key)" },
+                PropDef { name: "content", type_: PropType::Union(vec![PropType::String, PropType::StateRef]), required: false, default: None, description: "Bound markdown document body" },
+                PropDef { name: "final", type_: PropType::Union(vec![PropType::Bool, PropType::StateRef]), required: false, default: Some("true"), description: "Streaming marker (editor treats document as final)" },
+                PropDef { name: "can_edit", type_: PropType::Bool, required: false, default: Some("true"), description: "Whether the editor is interactive (vue arm: canEdit)" },
+                PropDef { name: "show_actions", type_: PropType::Bool, required: false, default: Some("true"), description: "Show editor action bar (vue arm: showActions)" },
+                PropDef { name: "oninput", type_: PropType::MsgRef, required: false, default: None, description: "Message on document edit (payload via autodown_editor_text(key) on VM)" },
+                PropDef { name: "onchange", type_: PropType::MsgRef, required: false, default: None, description: "Alias of oninput" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: false,
+            description: "AutoDown block editor (plan 019 Phase 3 shell; @autodown/engine AutoDownEditor on vue, cosmic-text block buffers on VM)",
+        });
+
         // === Utility: Separator ===
         elements.insert("separator", ElementDef {
             tag: "separator",
