@@ -304,6 +304,10 @@ pub struct ComponentGenOptions {
     pub api_imports_override: Option<Vec<String>>,
     /// Override store dependencies. When `None`, auto-detected from `use store:`.
     pub store_deps_override: Option<Vec<String>>,
+    /// Plan 446 批三 G1: store composable 导入路径前缀（默认 `@/stores`）。
+    /// 部署管线把生成物迁至 `src/stores/auto/` 时配 `@/stores/auto`，
+    /// 使 SFC 的 import 与实际落盘位置对齐（vue-tsc TS2307 规避）。
+    pub store_import_prefix: Option<String>,
     /// Root directory for API import validation (auto-man uses this).
     pub root_dir_for_validation: Option<std::path::PathBuf>,
     /// Streaming API endpoints (`#[api] fn` returning `~Stream<T>`) discovered
@@ -697,6 +701,11 @@ pub fn generate_component_from_file(
     // pac.at `default_classes: off` (Plan 014): skip the doc-theme default
     // Tailwind classes for non-layout-primitive tags; default stays on.
     let default_classes = opts.default_classes.unwrap_or(true);
+    // Plan 446 批三 G1: store 导入前缀（默认 @/stores）。
+    let store_import_prefix = opts
+        .store_import_prefix
+        .clone()
+        .unwrap_or_else(|| "@/stores".to_string());
 
     // Plan 443 pass 1 — same-file binding scan. When this file's channel map
     // is non-empty, generate every widget once WITHOUT bound-channel info and
@@ -713,6 +722,7 @@ pub fn generate_component_from_file(
                 .with_mode(vue_mode)
                 .with_default_classes(default_classes)
                 .with_store_deps(store_deps.clone())
+                .with_store_import_prefix(store_import_prefix.clone())
                 .with_sub_widgets(all_sub_widgets.clone())
                 .with_sub_widget_models(sub_widget_models.clone())
                 .with_sub_widget_msgs(sub_widget_msgs.clone());
@@ -748,6 +758,7 @@ pub fn generate_component_from_file(
             .with_mode(vue_mode)
             .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
+            .with_store_import_prefix(store_import_prefix.clone())
             .with_sub_widgets(all_sub_widgets.clone())
             .with_sub_widget_models(sub_widget_models.clone())
             .with_sub_widget_msgs(sub_widget_msgs.clone())

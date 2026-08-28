@@ -47,7 +47,9 @@ resolver = "2"
 clap = { version = "4.5.17", features = ["derive"] }
 dirs = "6.0.0"
 rustyline = { version = "14.0.0", features = ["with-file-history"] }
-serde_json = "1.0"
+# Plan 446 D6: preserve_order — json.keys/遍历保持插入序，与 vue 轨
+# Object.entries 语义对齐（跨后端 UI 字段顺序 parity）。
+serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 miette = { version = "7.2", features = ["fancy"] }
 thiserror = "2.0.12"

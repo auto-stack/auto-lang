@@ -481,6 +481,24 @@ impl AutoVM {
             native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
             native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
             native_interface.register(crate::vm::native::NATIVE_STR_TO_UINT, crate::vm::native::shim_str_to_uint_nv);
+            // Plan 446 批三 D1: json.parse 占位 shim（rust_fn 版原样透传字符串）
+            // 覆盖为 vm 感知版——经 Plan 340 转换器物化成 __json_object/
+            // ListData 堆值，下游 GET_FIELD/for-in 直读。ID 取静态表
+            // （auto.json.parse = 1902，native_catalog）。
+            if let Some(id) = crate::vm::native_registry::BIGVM_NATIVES
+                .lock()
+                .unwrap()
+                .resolve_qualified("auto.json.parse")
+            {
+                native_interface.register(
+                    id,
+                    crate::vm::ffi::stdlib::shim_json_parse_vm,
+                );
+            }
+            // Plan 446 批三 D1(续): 文档类 json native（get/get_at/has_key/
+            // len/keys/is_valid）双态化——堆文档首参序列化回文本走原路径，
+            // json.get(json.parse(x), k) 文本工具链与点访问 idiom 互通。
+            crate::vm::ffi::stdlib::override_json_doc_natives(&mut native_interface);
         }
 
         // Plan 011 (MS3-B): shell-host bridge natives.

@@ -1,0 +1,18 @@
+// d2_store.at — Plan 446 D2 regression corpus(store 侧)。
+// Array<str> 标注列表装 obj 字面量(现场同款松类型用法),Init 填充。
+
+store D2Store {
+    model {
+        var items Array<str> = []
+    }
+
+    msg { Init }
+
+    on {
+        .Init -> {
+            .items = []
+            .items.push({ name: "alpha", description: "first" })
+            .items.push({ name: "beta", description: "second" })
+        }
+    }
+}

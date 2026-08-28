@@ -292,6 +292,12 @@ pub struct VueGenerator {
     /// Store dependencies from `use store:` (Plan 351)
     store_deps: Vec<String>,
 
+    /// Plan 446 批三 G1: store composable 导入路径前缀。默认 `@/stores`；
+    /// 部署管线若把生成物迁至子目录（os-config regen 的 `src/stores/auto/`
+    /// 布局），配 `@/stores/auto` 使 vue-tsc 的模块解析与实际落盘位置
+    /// 对齐（此前恒 `@/stores` → TS2307，下游被迫 regen 过滤规避）。
+    store_import_prefix: String,
+
     /// Whether the project depends on @autodown/editor (from pac.at npm_deps).
     /// Drives R003 validation + main.ts CSS import.
     uses_autodown: bool,
@@ -647,6 +653,7 @@ impl VueGenerator {
             state_types: HashMap::new(),
             int_names: std::collections::HashSet::new(),
             store_deps: Vec::new(),
+            store_import_prefix: "@/stores".to_string(),
             uses_autodown: false,
             last_validation_warnings: Vec::new(),
             codegen_warnings: std::cell::RefCell::new(Vec::new()),
@@ -757,6 +764,14 @@ impl VueGenerator {
     /// Set store dependencies from `use store:` declarations (Plan 351).
     pub fn with_store_deps(mut self, deps: Vec<String>) -> Self {
         self.store_deps = deps;
+        self
+    }
+
+    /// Plan 446 批三 G1: set the store composable import path prefix.
+    /// Default `@/stores`; deployments relocating generated composables
+    /// (e.g. `src/stores/auto/`) pass the matching prefix.
+    pub fn with_store_import_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.store_import_prefix = prefix.into();
         self
     }
 
@@ -2292,9 +2307,11 @@ impl VueGenerator {
         // Plan 351: store composable imports + const store
         if !self.store_deps.is_empty() {
             for dep in &self.store_deps {
+                // Plan 446 批三 G1: 导入前缀可配（默认 @/stores），对齐
+                // 部署管线的实际生成位置（os-config: src/stores/auto/）。
                 script.push_str(&format!(
-                    "import {{ use{}Store }} from '@/stores/use{}Store'\n",
-                    dep, dep
+                    "import {{ use{}Store }} from '{}/use{}Store'\n",
+                    dep, self.store_import_prefix, dep
                 ));
             }
             // v1: single store → const store = reactive(useXxxStore())
@@ -21299,6 +21316,43 @@ widget A1Probe {
             !sfc.contains("AuthStore.Init()"),
             "raw store name must not leak into TS:
 {sfc}"
+        );
+    }
+
+    /// Plan 446 批三 G1: store 导入前缀可配。默认 `@/stores` 不变；配
+    /// `@/stores/auto` 时 SFC import 与迁址后的生成物对齐（os-config
+    /// regen 布局，此前恒 @/stores → vue-tsc TS2307）。
+    #[test]
+    fn test_g1_store_import_prefix_configurable() {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(A1_STORE_QUAL_SRC).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+
+        // 默认前缀不变（回归守卫）
+        let mut gen_default = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
+        let sfc_default = gen_default.generate(&widget).expect("generate SFC (default)");
+        assert!(
+            sfc_default.contains("from '@/stores/useAuthStoreStore'"),
+            "default prefix must stay @/stores:\n{sfc_default}"
+        );
+
+        // 可配前缀落在 import 行
+        let mut gen_cfg = VueGenerator::new()
+            .with_store_deps(vec!["AuthStore".to_string()])
+            .with_store_import_prefix("@/stores/auto");
+        let sfc_cfg = gen_cfg.generate(&widget).expect("generate SFC (configured)");
+        assert!(
+            sfc_cfg.contains("from '@/stores/auto/useAuthStoreStore'"),
+            "configured prefix must reach the import line:\n{sfc_cfg}"
+        );
+        assert!(
+            !sfc_cfg.contains("from '@/stores/useAuthStoreStore'"),
+            "stale default-prefix import must not remain:\n{sfc_cfg}"
         );
     }
 

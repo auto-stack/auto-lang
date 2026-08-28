@@ -2133,6 +2133,133 @@ pub fn shim_json_parse(s: String) -> String {
     s
 }
 
+/// Plan 446 批三 D1: vm 感知的 `json.parse`——接通 Plan 340 的 JSON↔VM 转换器。
+/// 占位 shim（上方 rust_fn 版）原样返回字符串，下游点访问/方法链全是垃圾
+/// （os-config 现场：body.provider.kind == 0，"看似可用"的最坏形态）。
+/// 本版把 JSON 文本物化为 VM 堆值：对象→`__json_object` GenericInstanceData、
+/// 数组→ListData<Value>（GET_FIELD/for-in 运行期直读，无需注册模板）。
+/// 非法 JSON 显式报错（占位时代静默透传是现场定位成本的主要来源）。
+/// 注册在 engine 的 inventory 覆盖块（build_from_inventory 之后），与
+/// str.contains 等 nanbox 覆盖同款惯例。
+pub fn shim_json_parse_vm(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(format!("json.parse: {}", e)))?;
+    let value: serde_json::Value = serde_json::from_str(&s)
+        .map_err(|e| VMError::RuntimeError(format!("json.parse: invalid JSON: {}", e)))?;
+    json_to_vm_value(task, vm, &value, 0)
+}
+
+// ============================================================================
+// Plan 446 批三 D1(续): 文档类 json native 双态入参
+// ============================================================================
+
+/// 判定栈值是否为 JSON 文档堆对象（__json_object GenericInstanceData /
+/// ListData<Value>——json.parse 的产物形态）。命中则返回堆 id。
+fn json_doc_heap_id(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
+    let id = if auto_val::is_object(nv) {
+        auto_val::decode_object(nv) as u64
+    } else if auto_val::is_i32(nv) {
+        let v = auto_val::decode_i32(nv);
+        if v > 0 { v as u64 } else { return None }
+    } else {
+        return None;
+    };
+    let is_doc = vm.get_heap_object(id)
+        .map(|o| {
+            let guard = o.read().unwrap();
+            let any = guard.as_any();
+            any.downcast_ref::<crate::vm::generic_registry::GenericInstanceData>().is_some()
+                || any.downcast_ref::<crate::vm::types::ListData<auto_val::Value>>().is_some()
+        })
+        .unwrap_or(false);
+    if is_doc { Some(id) } else { None }
+}
+
+/// 文档类 json native（get/get_at/has_key/len/keys/is_valid）的首参规整：
+/// 若首参是 json.parse 产出的堆文档，序列化回 JSON 文本原位替换；文本/
+/// 其它形态原样透传。下游 rust_fn shim 的字符串语义（片段切片/type_of）
+/// 字节级不变——`json.get(json.parse(x), k)` 文本工具链与 `json.parse` +
+/// 点访问两种idiom自此互通（批三"语义统一"目标）。
+fn normalize_json_doc_head(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    extra_args: usize,
+) -> Result<(), VMError> {
+    let mut extras: Vec<auto_val::NanoValue> = Vec::with_capacity(extra_args);
+    for _ in 0..extra_args {
+        extras.push(task.ram.pop_nv());
+    }
+    let doc_nv = task.ram.pop_nv();
+    let serialized: Option<String> = json_doc_heap_id(vm, doc_nv).and_then(|id| {
+        let jv = vm_value_to_json(
+            vm,
+            &auto_val::Value::VmRef(auto_val::VmRef { id: id as usize }),
+            0,
+        )
+        .ok()?;
+        serde_json::to_string(&jv).ok()
+    });
+    match serialized {
+        Some(text) => {
+            let idx = vm.add_string(text.into_bytes());
+            vm.rc_push_str_idx(task, idx);
+        }
+        None => task.ram.push_nv(doc_nv),
+    }
+    for nv in extras {
+        task.ram.push_nv(nv);
+    }
+    Ok(())
+}
+
+/// 原始（inventory rust_fn）shim 的暂存表：wrapper 规整首参后委托原实现。
+lazy_static::lazy_static! {
+    static ref JSON_DOC_ORIGINALS: std::sync::Mutex<std::collections::HashMap<u16, crate::vm::native::ShimFunc>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// 覆盖文档类 json native 为双态版（engine 的 AutoVM::new 覆盖块调用，
+/// 须在 build_from_inventory 之后）。命名面含 auto.json.* 与 Json.* 双轨
+/// （inventory 注册名经 canonical 归一到同一固定 ID）。
+pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::NativeInterface) {
+    use crate::vm::native_registry::BIGVM_NATIVES;
+    const DOC_NATIVES: &[(&str, usize)] = &[
+        ("auto.json.get", 1),
+        ("auto.json.get_at", 1),
+        ("auto.json.has_key", 1),
+        ("auto.json.len", 0),
+        ("auto.json.keys", 0),
+        ("auto.json.is_valid", 0),
+    ];
+    for (name, extra) in DOC_NATIVES {
+        let id = match BIGVM_NATIVES.lock().unwrap().resolve_qualified(name) {
+            Some(id) => id,
+            None => continue,
+        };
+        let original = match native_interface.get(id) {
+            Some(f) => f.clone(),
+            None => continue,
+        };
+        JSON_DOC_ORIGINALS
+            .lock()
+            .unwrap()
+            .insert(id, original);
+        let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
+            normalize_json_doc_head(task, vm, *extra)?;
+            let original = JSON_DOC_ORIGINALS
+                .lock()
+                .unwrap()
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| {
+                    VMError::RuntimeError("json doc native: original shim missing".into())
+                })?;
+            original(task, vm)
+        };
+        native_interface.register(id, wrapper);
+    }
+}
+
 /// Parse a TOML string (placeholder)
 #[auto_macros::rust_fn("toml.from_str")]
 pub fn shim_toml_from_str(s: String) -> String {

@@ -1,0 +1,37 @@
+// app.at — Plan 446 D2 regression corpus: handler 内数组元素字段读取。
+//
+// 现场矩阵（§D2，2026-08-25 基线）：model 数组循环变量 `m.id` 在
+// widget/store handler 失效（静默不匹配），`let d = r.data; d.x` 局部中转
+// 亦失效——fn 模块内一切正常。本 corpus 把两形态放进 App handler。
+
+use store: D2Store
+
+widget App {
+    msg { Init, Probe }
+
+    model {
+        var picked str = "none"
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .picked = "none"
+        }
+
+        // 形态一:循环变量字段读(现场矩阵"model 数组循环变量 m.id"行)
+        .Probe -> {
+            for m in .items {
+                if m.name == "alpha" {
+                    .picked = m.name
+                }
+            }
+        }
+    }
+
+    view {
+        col {
+            text .picked
+        }
+    }
+}
