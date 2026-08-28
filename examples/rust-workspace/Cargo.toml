@@ -22,6 +22,9 @@ members = [
     "musk-verify-fresh-back",
     "myapp-back",
     "plan-032-back",
+    "plan-047-dev-back",
+    "plan-048-dev-back",
+    "plan-049-dev-back",
     "pricing-table",
     "profile-card",
     "stats-board"
