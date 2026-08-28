@@ -143,7 +143,34 @@ shell-track（立项时分配计划号，提案依赖 463/464）
 **驱动侧小特性清单**（并入 463 / shell-track 驱动项，均为加法）：
 workspace 分区与切换命令、desktop 层 z 槽、thumbnail 快照接口（386 lite）。
 
-## 7. 工程量与风险
+## 7. 进程外 App 与桌面协议（启动方式问答，2026-08-28）
+
+**现状**：462 虚拟桌面 = 单进程融合（route A）——app .at 经
+`build_dynamic_component` 运行时编译进宿主进程，软隔离（panic 边界）。
+而 `auto run` 独立模式已经是"一进程一 app 一 OS 窗口"——**独立 exe 形态
+今天已存在，路线 B 要做的不是发明进程模型，而是保留进程、把"自开 OS 窗口"
+换成"表面交给桌面合成"**。
+
+未来完整桌面（每 app 独立 exe、快捷方式/launcher 启动）走 **AutoUI 桌面协议**
+（角色对标 Wayland：桌面=compositor、app=client），五通道：
+
+| 通道 | 内容 | 462 雏形 |
+|---|---|---|
+| 孵化/握手 | spawn/反向连接 → app 上报标题/图标/尺寸 → 分配 Wid+虚拟窗 → 回传 surface 句柄 | `allocate_app`/`wm_add_win` 的进程间版 |
+| 帧 | 共享缓冲渲染（GPU texture / CPU 共享内存）→ 桌面合成进虚拟窗矩形 | RenderCommand 叶（386 正身，R4） |
+| 输入 | 桌面 `hit_test` → (Wid, event) 编码 → IPC 注入 app 事件循环 | E1 的进程间版（I1 评审扩展点） |
+| 控制 | 生命周期/标题/通知双向 + DesktopBus 跨进程 | `DM::Wm` 的 IPC 化 |
+| 观测 | MCP/DevTools per-app 端口，桌面代理 | desktop_mcp 多进程扩展 |
+
+进程退出 → 桌面回收虚拟窗（等价 462 Close 语义）。协议本身 = 386 Stage 2
+"两进程"的核心设计；Stage 1 loopback 同进程先验协议。
+
+**路线无感不变式**：app 代码不知道自己在 A 还是 B——同一份 .at 既可融合挂载
+（`build_dynamic_component`）也可编译独立 exe 走协议；窗口语义全由宿主提供。
+启动双轨并存（R11/R6）：pac.at 增 `launch: "session" | "spawn"`（`render:`
+已有雏形），launcher/快捷方式按字段选择。
+
+## 8. 工程量与风险
 
 - **工程量定性**：S1–S7/S9 每个表面 ≈ 一个 0xx 级示例 App 的量级（widget 组合
   + 投影消费），无深水区；真正的工程重心是**投影协议 v1 的设计**（一次做好，
