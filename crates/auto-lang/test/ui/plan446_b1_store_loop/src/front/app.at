@@ -1,0 +1,41 @@
+// app.at — Plan 446 B1 regression corpus: store 列表循环上的字段访问事件实参。
+//
+// 现场形态（auto-os-config Plan 007 §B1，collection_browser.at 同款）：
+//   for e in .store.view_entities { button { onclick: .Pick(e.name) } }
+// 报告症状：启动即 wedge——MCP 首次 state sync（view() 内）卡死/进程退出、
+// 零诊断；对照组（本地 map 循环 m.id 实参）正常。
+//
+// 元素形态照抄现场：store 字段以 Array<str> 标注、运行期装入 obj 字面量
+// { name, description }（collection_store.at:97 同款松类型用法）。
+
+use store: Bucket
+
+widget App {
+    msg { Init, Pick(str) }
+
+    model {
+        var picked str = "none"
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .picked = "none"
+        }
+
+        .Pick(name) -> {
+            .picked = name
+        }
+    }
+
+    view {
+        col {
+            text .picked
+            for ent in .store.items {
+                button (text: ent.name) {
+                    onclick: .Pick(ent.name)
+                }
+            }
+        }
+    }
+}

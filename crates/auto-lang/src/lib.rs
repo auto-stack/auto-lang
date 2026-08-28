@@ -5734,6 +5734,10 @@ mod plan349_tests;
 #[cfg(test)]
 mod plan446_batch2_tests;
 
+// Plan 446 批二 B1: store 列表循环字段访问事件实参回归（corpus 驱动）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan446_b1_tests;
+
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
 // These require the `ui-iced` feature (crate::ui::* imports), so gate them

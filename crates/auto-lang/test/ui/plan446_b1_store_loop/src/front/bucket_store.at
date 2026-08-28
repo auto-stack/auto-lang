@@ -1,0 +1,19 @@
+// bucket_store.at — Plan 446 B1 regression corpus（store 侧）。
+// 现场同款：Array<str> 标注的列表字段由 Init 装入 obj 字面量
+// （collection_store.at:81/97 的 `items.push({ name, description })` 形态）。
+
+store Bucket {
+    model {
+        var items Array<str> = []
+    }
+
+    msg { Init }
+
+    on {
+        .Init -> {
+            .items = []
+            .items.push({ name: "alpha", description: "first" })
+            .items.push({ name: "beta", description: "second" })
+        }
+    }
+}
