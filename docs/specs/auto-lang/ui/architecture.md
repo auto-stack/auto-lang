@@ -32,7 +32,7 @@ graph TD
     ACT["action_config.rs<br/>(418/423/451 Action 配置层)"]
     EDITORS["code_editor/ · autodown_editor/<br/>(413-428 内建编辑器)"]
     SESSION["session.rs 双层会话<br/>DesktopSession/AppSession (453/459)"]
-    WM["wm.rs WmState/VirtualWindow<br/>(462 虚拟桌面 WM)"]
+    WM["session.rs 内 WmState/WmCommand<br/>+ iced/virtual_window.rs<br/>(462 虚拟桌面 WM)"]
     MCP["mcp_server.rs 调试服务"]
   end
 
@@ -117,7 +117,7 @@ graph TD
 - 日期 / 来源：plan-435（2026-08）
 - 决策：散落 8 处的组件定义收敛为一份 `.at` schema（扩展 aliases/tier/backends/deprecated 字段）+ 统一注册表；schema 管契约、Rust 管行为，render_support/vue import 映射从 schema 派生，CI 拦截漂移。canonical=kebab-case，变体进 aliases。
 - 备选：A. Rust 硬编码为源（cons：漂移实证 8 处）；B. schema 单源派生（pros：一处改处处生效；cons：派生链需维护）。
-- 后果：`schema/aura.at` 成为 widget/chart 契约唯一源；462 的 virtual_window 也经此登记（I4）。
+- 后果：`schema/aura.at` 成为 widget/chart 契约唯一源；462 要求 virtual_window 经此登记（I4，随桌面线收尾合入）。
 - 状态：active
 
 ### ADR-10: DSL 现代化——widget 单轨 + setup 三相位 + msg 简写

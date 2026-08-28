@@ -51,8 +51,8 @@ J1/J2 渲染器子树，批五转正中）。
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
 - `ui_gen/vue.rs:VueGenerator` · `ui_gen/api.rs` · `ui_gen/widget/registry.rs`（widget/chart 契约表）
 - `ui/widget_registry.rs` · `ui/render_support.rs` · `ui/event_router.rs` · `ui/aura_view_builder.rs`
-- 桌面线：`ui/session.rs`（双层会话）· `ui/wm.rs`（WmState/VirtualWindow）·
-  `ui/iced/renderer.rs`（view_desktop_fn/run_dynamic_iced_multi）· `ui/iced/virtual_window.rs`
+- 桌面线：`ui/session.rs`（DesktopSession/AppSession + WmState/WmCommand/DM::Wm）·
+  `ui/iced/virtual_window.rs`（VirtualWindow）· `ui/iced/renderer.rs`（view_desktop_fn/run_dynamic_iced_multi）
 - 样式与主题：`ui/style/`（class/theme/iced_adapter）· `ui/action_config.rs`（actions 配置层，
   热重载/OS keymap/表达式条件）
 - 内建编辑器：`ui/code_editor/` · `ui/autodown_editor/` · `ui/handler_codegen.rs` · `ui/hot_reload.rs`
@@ -76,6 +76,8 @@ widget Counter {
   片段参数化条件不求值——修好前 041 组件化受限。
 - 446 批五（U2–U6）在 worktree 待 merge；463 合入后需实测内存给 386 提供数据。
 - 455 矩阵多数示例（008–025）仍 Pending Audit；示例矩阵编号与目录有漂移（todo 在计划内）。
+- 桌面线由并行会话活跃推进：WM 无独立 wm.rs 文件（WmState/WmCommand 实体在 session.rs，Plan 471 实测
+  校正）；virtual_window 的 schema/aura.at 契约登记（462-I4）master 暂未见，随桌面线收尾合入。
 - 465 未落地前，vue codegen 的 modal `position:fixed`/teleport-to-body 假设与虚拟桌面容器冲突（改造点已定位 vue.rs:6310/3599/4057）。
 - a2vue 工程庞大（vue.rs 万行级），缺陷修复走 444 式"五类分簇"模式；013/015/011 构建失败系 master 预存（R006/R007）。
 - router 双语法并存（Plan 105/106，见 docs/router.md）。
