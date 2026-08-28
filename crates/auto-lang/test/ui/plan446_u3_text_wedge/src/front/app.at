@@ -1,0 +1,47 @@
+// app.at — Plan 446 批五 U3 corpus: 病态文本 wedge 复现载体。
+// 现场机理: os-config roles 详情态 sidecar(磁盘数据已被转义翻倍 bug 损坏成
+// ~655K 连续反斜杠)进入 textarea —— 单个不可断行 mega-token 令 iced
+// text_editor 排版等效死循环,整个 iced 事件循环冻结(WD 计数归零),
+// 截图通道 10s 超时即此症状。
+
+use store: WedgeStore
+
+widget App {
+    msg { Init, Mode }
+
+    model {
+        var current str = "boot"
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .current = "boot"
+        }
+
+        .Mode(mode) -> {
+            store.SetMode(mode)
+            .current = mode
+        }
+    }
+
+    view {
+        row {
+            col {
+                button (text: "ok") { onclick: .Mode("ok") }
+                button (text: "ta_5k") { onclick: .Mode("ta_5k") }
+                button (text: "ta_20k") { onclick: .Mode("ta_20k") }
+                button (text: "ta_80k") { onclick: .Mode("ta_80k") }
+                button (text: "ta_320k") { onclick: .Mode("ta_320k") }
+                button (text: "ta_655k") { onclick: .Mode("ta_655k") }
+                button (text: "ta_breakable") { onclick: .Mode("ta_breakable") }
+                button (text: "text_unbreakable") { onclick: .Mode("text_unbreakable") }
+            }
+            col {
+                textarea (value: .store.payload) {}
+                text .store.ptext
+                text .current
+            }
+        }
+    }
+}

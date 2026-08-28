@@ -1,0 +1,47 @@
+// wedge_store.at — Plan 446 批五 U3 corpus(store 侧)。
+// 载荷形态: ok(对照) / ta_N(不可断行 token 进 textarea,N=token 字符数) /
+// ta_breakable(同尺寸可断行) / text_unbreakable(text 元素对照)。
+store WedgeStore {
+    model {
+        var payload str = "hello"
+        var ptext str = "ptext-idle"
+    }
+
+    msg { Init, SetMode }
+
+    on {
+        .Init -> {
+            .payload = "hello"
+            .ptext = "ptext-idle"
+        }
+
+        .SetMode(mode) -> {
+            if mode == "ok" {
+                .payload = "hello"
+                .ptext = "ptext-idle"
+            }
+            if mode == "ta_5k" {
+                .payload = "B:{" + "\\".repeat(5000)
+            }
+            if mode == "ta_20k" {
+                .payload = "B:{" + "\\".repeat(20000)
+            }
+            if mode == "ta_80k" {
+                .payload = "B:{" + "\\".repeat(80000)
+            }
+            if mode == "ta_320k" {
+                .payload = "B:{" + "\\".repeat(320000)
+            }
+            if mode == "ta_655k" {
+                .payload = "B:{" + "\\".repeat(655000)
+            }
+            if mode == "ta_breakable" {
+                .payload = "word ".repeat(131000)
+            }
+            if mode == "text_unbreakable" {
+                .payload = "hello"
+                .ptext = "B:{" + "\\".repeat(655000)
+            }
+        }
+    }
+}
