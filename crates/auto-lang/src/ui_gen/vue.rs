@@ -402,6 +402,11 @@ pub struct VueGenerator {
     has_dark_mode: bool,
     /// Name of the dark mode state variable (e.g. "isDark" or "dark_mode")
     dark_mode_var: Option<String>,
+    /// Plan 458: true when the widget itself declares `dark_mode` in its
+    /// state_vars (root-App pattern, e.g. 006-hero-section) — the template
+    /// binds the local ref; false means the store convention (`store.dark_mode`,
+    /// e.g. 015-notes) or the handler-only fallback.
+    dark_mode_on_widget: bool,
 
     /// Plan 409 §8: whether the widget owns an `accent_color` state var —
     /// triggers widget-path applyAccent() injection (mirrors the store path).
@@ -680,6 +685,7 @@ impl VueGenerator {
             used_handlers: HashSet::new(),
             has_dark_mode: false,
             dark_mode_var: None,
+            dark_mode_on_widget: false,
             has_accent_color: false,
             use_theme_toggle: false,
             needs_toast_import: false,
@@ -1012,6 +1018,7 @@ impl VueGenerator {
         self.codegen_warnings.borrow_mut().clear();
         self.has_dark_mode = false;
         self.dark_mode_var = None;
+        self.dark_mode_on_widget = false;
         self.has_accent_color = false;
         self.use_theme_toggle = false;
         self.needs_toast_import = false;
@@ -1395,6 +1402,9 @@ impl VueGenerator {
         self.dark_mode_var = widget.state_vars.iter()
             .find(|s| s.name == "isDark" || s.name == "dark_mode")
             .map(|s| s.name.clone());
+        // Plan 458: widget-local declaration (root-App pattern) vs store
+        // convention — decides the template's dark class binding source.
+        self.dark_mode_on_widget = widget.state_vars.iter().any(|s| s.name == "dark_mode");
         // Plan 409 §8: widget-path accent support — the widget owns the
         // `accent_color` state (mirrors the store composable detection at
         // Plan 360; gallery App is a widget, not a store).
@@ -1684,6 +1694,12 @@ impl VueGenerator {
         // Plan 409 §8: accent bootstrap needs onMounted (applyAccent restore).
         if self.has_accent_color && !imports.contains(&"onMounted") {
             imports.push("onMounted");
+        }
+        // Plan 458: theme flips must re-apply the accent (applyAccent writes
+        // the .dark-scoped --primary too, which otherwise falls back to the
+        // stylesheet's indigo).
+        if self.has_accent_color && self.has_dark_mode && !imports.contains(&"watch") {
+            imports.push("watch");
         }
         // Lifecycle: .Init → onMounted, .Destroy → onUnmounted
         let has_init = widget.lifecycle.iter().any(|l| l.name == "Init");
@@ -1990,6 +2006,25 @@ impl VueGenerator {
                     script.push_str(&format!("const {} = ref({})\n", state.name, init));
                 }
             }
+        }
+
+        // Plan 458: seed DECLARED dark_mode / accent_color refs from the
+        // `auto run` env defaults (emitted as window globals by the
+        // theme-aware index.html bootstrap; absent when the env vars are
+        // unset, so a widget's own initial value stands). Mirrors the VM
+        // seeding in run_dynamic_iced.
+        if self.has_dark_mode {
+            let var = self
+                .dark_mode_var
+                .clone()
+                .unwrap_or_else(|| "dark_mode".to_string());
+            script.push_str(&format!(
+                "// Plan 458: seed theme default from index.html bootstrap.\nif (window.__AUTO_UI_THEME__ === 'light' || window.__AUTO_UI_THEME__ === 'dark') {var}.value = window.__AUTO_UI_THEME__ === 'dark'\n",
+                var = var
+            ));
+        }
+        if self.has_accent_color {
+            script.push_str("// Plan 458: seed accent default from index.html bootstrap.\nif (typeof window.__AUTO_UI_ACCENT__ === 'string') accent_color.value = window.__AUTO_UI_ACCENT__\n");
         }
 
         if !widget.state_vars.is_empty() {
@@ -3054,9 +3089,26 @@ impl VueGenerator {
             script.push_str("\n// Restore saved accent on mount.\n");
             script.push_str("onMounted(() => {\n");
             script.push_str("  const saved = getSavedAccent()\n");
-            script.push_str("  accent_color.value = saved\n");
-            script.push_str("  applyAccent(saved, document.documentElement.classList.contains('dark'))\n");
+            // Plan 458: only override the CLI/env-seeded ref when a real
+            // persisted choice exists (getSavedAccent returns '' otherwise).
+            script.push_str("  if (saved) {\n");
+            script.push_str("    accent_color.value = saved\n");
+            script.push_str("    applyAccent(saved, document.documentElement.classList.contains('dark'))\n");
+            script.push_str("  }\n");
             script.push_str("})\n");
+            // Plan 458: re-apply the accent when the theme flips at runtime —
+            // applyAccent also writes the .dark-scoped --primary, which would
+            // otherwise fall back to the stylesheet's default indigo.
+            if self.has_dark_mode {
+                let dark_var = self
+                    .dark_mode_var
+                    .clone()
+                    .unwrap_or_else(|| "dark_mode".to_string());
+                script.push_str(&format!(
+                    "// Plan 458: keep the accent in sync across theme flips.\nwatch({}, (v) => applyAccent(accent_color.value, v))\n",
+                    dark_var
+                ));
+            }
             script.push('\n');
         }
 
@@ -3283,7 +3335,14 @@ impl VueGenerator {
         let has_toggle_dark = self.used_handlers.contains("ToggleDarkMode");
         if self.has_dark_mode || has_toggle_dark {
             let dark_expr = match &self.dark_mode_var {
-                Some(var) if var == "dark_mode" => "store.dark_mode",
+                // Plan 458: bind whichever instance actually exists — the
+                // widget's own ref (root-App pattern, 006-hero-section) or
+                // the store convention (015-notes). Binding store.dark_mode
+                // for a widget-local var crashes the render (`store` is not
+                // defined on the instance → blank page).
+                Some(var) if var == "dark_mode" => {
+                    if self.dark_mode_on_widget { "dark_mode" } else { "store.dark_mode" }
+                }
                 _ => "isDark",
             };
             // If dark_expr is store.dark_mode but var wasn't set, use store.dark_mode
@@ -3292,7 +3351,37 @@ impl VueGenerator {
             } else {
                 dark_expr
             };
-            let html = root_html.replacen("<div ", &format!("<div :class=\"{{ dark: {} }}\" ", dark_expr), 1);
+            let html = if let Some(pos) = root_html.find(":class=\"") {
+                // Plan 458: the root already carries a dynamic :class (e.g. a
+                // `style: if` conditional merged by the layout path). Vue
+                // rejects a second :class attribute ("Duplicate attribute"),
+                // so merge both into one array binding:
+                //   :class="EXISTING"  →  :class="[{ dark: dark_mode }, EXISTING]"
+                let val_start = pos + ":class=\"".len();
+                match root_html[val_start..].find('"') {
+                    Some(rel) => {
+                        let val_end = val_start + rel;
+                        let mut merged = String::with_capacity(root_html.len() + dark_expr.len() + 8);
+                        merged.push_str(&root_html[..val_start]);
+                        merged.push_str(&format!("[{{ dark: {} }}, ", dark_expr));
+                        merged.push_str(&root_html[val_start..val_end]);
+                        merged.push(']');
+                        merged.push_str(&root_html[val_end..]);
+                        merged
+                    }
+                    None => root_html.replacen(
+                        "<div ",
+                        &format!("<div :class=\"{{ dark: {} }}\" ", dark_expr),
+                        1,
+                    ),
+                }
+            } else {
+                root_html.replacen(
+                    "<div ",
+                    &format!("<div :class=\"{{ dark: {} }}\" ", dark_expr),
+                    1,
+                )
+            };
             template.push_str(&html);
         } else {
             template.push_str(&root_html);
@@ -11727,8 +11816,15 @@ impl VueGenerator {
     fn layout_dynamic_style_attr(&self, value: &AuraPropValue) -> Option<String> {
         use crate::ast::Expr;
         match value {
+            // Plan 458: `style: if` branches carry Tailwind CLASS lists (the
+            // 006/015 theme-switching convention), so they must bind :class —
+            // the previous If→:style arm emitted class names as CSS
+            // declarations, which Vue drops as invalid, making conditional
+            // styles silent no-ops on layout primitives. Only free-form
+            // dynamic expressions are CSS declaration strings (Plan 053,
+            // e.g. "display:grid; " + n) and keep binding :style.
             AuraPropValue::Expr(Expr::If(if_stmt)) => {
-                Some(format!(":style=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
+                Some(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
             }
             AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
                 Ok(s) if s != "null" => Some(format!(":style=\"{}\"", s)),
@@ -13592,9 +13688,9 @@ export function cn(...inputs: ClassValue[]) {
             code.push_str(
                 "(function bootstrapAccent() {\n\
                  \x20 const saved = getSavedAccent()\n\
-                 \x20 accent_color.value = saved\n\
+                 \x20 accent_color.value = saved || 'indigo'\n\
                  \x20 const isDark = document.documentElement.classList.contains('dark')\n\
-                 \x20 applyAccent(saved, isDark)\n\
+                 \x20 applyAccent(saved || 'indigo', isDark)\n\
                  })()\n",
             );
         }
@@ -13690,13 +13786,15 @@ function applyAccent(name: string, isDark = false): void {
   try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}
 }
 
-/** Read the saved accent from localStorage, defaulting to 'indigo'. */
+/** Read the saved accent from localStorage, or '' when nothing was persisted
+ * (callers apply their own fallback — store default 'indigo', or the Plan 458
+ * CLI/env-seeded value which must NOT be clobbered). */
 function getSavedAccent(): string {
   try {
     const saved = localStorage.getItem(ACCENT_STORAGE_KEY)
     if (saved && ACCENT_PALETTES[saved]) return saved
   } catch {}
-  return 'indigo'
+  return ''
 }
 
 /** List of accent names for UI rendering (swatch buttons). */

@@ -49,8 +49,8 @@ CLI --theme/--accent  >  pac.at theme:/accent:  >  内置默认 (dark/indigo)
         └─ 应用内运行时切换（dark_mode/accent_color 状态变量）> 以上所有"初始默认值"
 ```
 
-- 运行时层语义（现实现已满足）：根组件**未声明** `dark_mode` → `read_state` 返回 Err → 保留启动默认值；**声明了** → 应用首帧起接管（初始值即应用声明的初值，运行中可改）。
-- 因此 pac.at/CLI 的值本质是"**初始默认主题**"：对声明了状态变量的应用，仅在首帧前生效；对未声明的应用（如 001/002），全程生效。
+- 运行时层语义（含施工修订）：根组件**未声明** `dark_mode` → `read_state` 返回 Err → 保留启动默认值；**声明了** → 应用首帧起接管。
+  **施工修订（T4 实测发现）**：若应用声明了 `dark_mode = true` 而 CLI/pac.at 指定 light，按"初值即默认"的朴素实现，CLI 值会被 model 初值从首帧起压掉（实测复现）。故 VM 侧 `run_dynamic_iced` 启动时把 `AUTO_UI_THEME`/`AUTO_UI_ACCENT` **一次性播种**进已声明的状态变量（未声明的不动）；Vue 侧由 index.html bootstrap 发射 `window.__AUTO_UI_*__` 全局、生成代码据此初始化 ref。最终优先级：**运行时点击 > 启动播种（CLI/pac.at）> 内置默认**。
 
 ### 2.3 注入通道：env 变量（沿用既有模式）
 
@@ -169,8 +169,41 @@ CLI --theme/--accent  >  pac.at theme:/accent:  >  内置默认 (dark/indigo)
 2. 任务顺序 T1 → T2/T3（可并行）→ T4 → T5；每任务一 commit（`feat(plan-458): T<n>-<x> …`）。
 3. 完成 §4 门禁 + 独立复审后，按 AGENTS.md 流程归档本文件并合入 master（`feat(auto-ui): theme system — CLI/pac.at entry, dual-backend default unification, 006 theme-aware example (Plan 458)`）。
 
-## 7. 验证记录（施工时填写）
+## 7. 验证记录
 
-- [ ] T1-T5 逐项验证结果
-- [ ] 截图矩阵路径汇总
-- [ ] 独立复审结论
+### 7.1 逐任务结果（全部完成）
+
+- **T1** ✅ `auto run --theme light --accent ocean` 输出 `UI theme: light (from cli)`；无旗标时输出 `UI theme: dark (from pac.at)`（006 pac.at 声明生效）；CLI 优先级验证通过。非法值回落默认（main.rs 校验）。
+- **T2** ✅ `run_vm_ui` 首帧前 set_dark_mode/set_accent_name；`shadcn_theme` Palette.primary 随 accent（ocean → 蓝色 CTA 实测）；未注入时行为与旧默认一致（兼容 `cargo tv`）。
+- **T3** ✅ 三份 `generate_index_html` 主题化统一（cmd_vue / auto-man vue / cmd_tauri）；`run_vue_project` 每次 run 重写 index.html（006 旧 stale 产物自愈实测：重写后带 `class="dark"` 与 bootstrap）。
+- **T4** ✅ 006 双端全交互走通（见 7.2）。施工中发现并修复 3 个 vue codegen 既有缺陷 + 1 个播种语义缺陷（各自独立 commit）。
+- **T5** ✅ 截图矩阵 + README 主题约定 + Plan 455 矩阵更新（见 7.2/7.3）。
+
+### 7.2 截图矩阵（`<example>/src/front/tests/screenshots/`）
+
+| 示例 | 状态 | 文件 |
+|---|---|---|
+| 006 vm | dark 默认 | `vm458_dark.png` |
+| 006 vm | light + ocean（CLI） | `vm458_light_ocean.png` |
+| 006 vm | 面板展开（light） | `vm458_panel_open.png` |
+| 006 vm | 运行时切 Dark + coral | `vm458_runtime_dark_coral.png` |
+| 006 vue | light + coral（CLI） | `vue458_light_coral.png` |
+| 006 vue | 面板展开（light） | `vue458_panel_open.png` |
+| 006 vue | 运行时切 Dark（accent 保持 coral） | `vue458_runtime_dark.png` |
+| 001 vm/vue | dark 默认 / light | `vm458_001_dark|light.png`、`vue458_001_light.png` |
+| 002 vm | dark 默认 / light | `vm458_002_dark|light.png` |
+
+关键断言：双端同配置同一外观；006 运行时切换即时生效（VM 每帧回读 / Vue 响应式）；`gen/front/vue/index.html` 含 `class="dark"` 与 `--primary` bootstrap；App.vue 含播种与 `watch(dark_mode)` 联动。
+
+### 7.3 门禁
+
+- `cargo check -p auto-man -p auto` ✅；`cargo build -p auto` ✅。
+- `cargo t`（nextest 3219）：`--no-fail-fast` 全量运行；唯一失败 `ffi_dual_013_dep_method` 为并行负载偶发，隔离重跑 PASS（与本次改动无关，FFI 双进程类测试既有的资源竞争敏感）。
+- 雗compiler warning：本次新增代码无新警告（`renderer.rs:122/920` 等为存量）。
+
+### 7.4 独立复审结论
+
+- 临时 hack 扫描：无硬编码 hex 绕过色板表（006 色板全部走 Tailwind 标准色阶 + `ACCENT_PALETTES` 同名）；探针 eprintln 已移除。
+- 已知残留（登记非阻塞）：① cmd_tauri 模板已参数化但 tauri 后端未实测；② vue 面板若同元素既有动态 class 又有 `style: if` 会产生双 `:class`（Vue 编译错）——现网示例无此组合，登记 KNOWN-DEBT；③ `.worktree/auto-down` junction 为本机环境工件（跨仓 path 依赖），不随仓库提交。
+- worktree 说明：`plan-458` 分支对应 `.worktree/plan-458-theme` 目录。施工期间 master 由并行会话推进（plan-459/460/461），且本计划的 T1–T3 已被并行会话先行合入 master；分支已 rebase 到最新 master，剩余 T4+修复+文档 3 个 commit 重放零冲突，rebase 后双端冒烟复验通过（`vm458_rebase_dark/light_ocean.png`）。另：历史上另一个占用 458 号的 parity 分类计划已被重编号为 460 并合入（`bdb4df01b`），其冗余旧分支 `plan-458-parity-archive` 已核实内容全在 master 后删除。
+

@@ -6057,10 +6057,34 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// Plan 459：多 App 多窗口入口 —— 一个 `DesktopSession` 服务 N 个 OS 窗口，
 /// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
 /// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
-pub fn run_dynamic_iced_multi(components: Vec<DynamicComponent>) -> AppResult<String> {
+pub fn run_dynamic_iced_multi(mut components: Vec<DynamicComponent>) -> AppResult<String> {
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
         return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
+    }
+
+    // Plan 458: seed DECLARED dark_mode / accent_color state vars once from
+    // the `auto run` env defaults (AUTO_UI_THEME / AUTO_UI_ACCENT, resolved
+    // by the CLI/pac.at layer), so the CLI value stays the INITIAL value even
+    // for apps that declare the vars (their model init would otherwise win
+    // over the thread-local default from frame one). Only vars that already
+    // exist are seeded (read_state Ok = declared); runtime clicks mutate the
+    // vars afterwards and take precedence as usual. Plan 459：逐 App 播种。
+    for component in &mut components {
+        if let Ok(t) = std::env::var("AUTO_UI_THEME") {
+            if crate::ui::style::theme::THEME_PREFS.contains(&t.as_str())
+                && component.read_state("dark_mode").is_ok()
+            {
+                let _ = component.write_state("dark_mode", auto_val::Value::Bool(t == "dark"));
+            }
+        }
+        if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
+            if crate::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
+                && component.read_state("accent_color").is_ok()
+            {
+                let _ = component.write_state("accent_color", auto_val::Value::str(&a));
+            }
+        }
     }
 
 /// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).

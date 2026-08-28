@@ -675,17 +675,32 @@ fn generate_index_html(name: &str) -> String {
     } else {
         ""
     };
-    let accent_bootstrap = match auto_lang::ui::style::theme::accent_pref_from_env() {
-        Some(accent) => {
-            let dark = auto_lang::ui::style::theme::theme_pref_from_env() == "dark";
-            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(accent, dark)
-                .unwrap_or_else(|| "239 84% 67%".to_string());
-            format!(
-                "  <script>document.documentElement.style.setProperty('--primary', '{}');</script>\n",
-                hsl
-            )
+    // Plan 458: theme/accent bootstrap — same semantics as cmd_vue.
+    let theme_env = std::env::var("AUTO_UI_THEME").ok().filter(|t| {
+        auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str())
+    });
+    let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
+        auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
+    });
+    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() {
+        let dark = theme_env.as_deref() != Some("light");
+        let mut lines = String::from("  <script>\n");
+        if let Some(t) = &theme_env {
+            lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
         }
-        None => String::new(),
+        if let Some(a) = &accent_env {
+            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)
+                .unwrap_or_else(|| "239 84% 67%".to_string());
+            lines.push_str(&format!("    window.__AUTO_UI_ACCENT__ = '{}';\n", a));
+            lines.push_str(&format!(
+                "    document.documentElement.style.setProperty('--primary', '{}');\n",
+                hsl
+            ));
+        }
+        lines.push_str("  </script>\n");
+        lines
+    } else {
+        String::new()
     };
     format!(r#"<!DOCTYPE html>
 <html lang="en"{}>
