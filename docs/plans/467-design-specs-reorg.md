@@ -1,17 +1,25 @@
 ---
 plan_id: PLAN-467
-status: drafting
+status: reviewed
 feature_name: docs/design 整理 + docs/specs v2 + auto-plan 范式收敛
 author: [zcode]
 created_at: 2026-08-28
 updated_at: 2026-08-28
 
 # Leave these EMPTY here — /auto-plan:review fills them:
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+supersedes_spec_components:
+  - "docs/specs/README.md: v1 整体重写为 v2（五环 spec-sync → auto-plan 四技能）"
+  - "docs/design/plan-spec-hybrid-model.md: 加 superseded 横幅（被 26 取代）"
+new_spec_components:
+  - "docs/design/26-autoplan-spec-ledger.md: 新增（v2 范式设计）"
+  - "docs/specs/overview.md: 新增（全局总览，/auto-plan:new 取材源）"
+  - "docs/specs/goals.md: 新增（GOAL-001..018 目标账本）"
+  - "docs/specs/{auto-cosmic,shim-metadata,a2r-actor-tests,autoui-skill}/project.md: 新增 4 张项目卡"
+touched_goals:
+  - "GOAL-018: 开发范式与知识账本运转（本计划即首个完整走通的样板）"
 
-current_step: 0
+
+current_step: 12
 total_steps: 12
 ---
 
@@ -177,31 +185,61 @@ Markdown 文档 + `git mv` + 2 个 Python 脚本（spec-index.py / spec-lint.py�
 
 ## 验收标准
 
-- [ ] AC1: `docs/design/` 无编号冲突；`new/` 目录不存在；`strategy/` 含 4 篇；19-plan-374 位于 `docs/plans/reports/`。
-- [ ] AC2: `00-intro.md` 索引覆盖 design/ 下全部文件（数量对账：111 - 1 迁出 + 2 新增 = 112）。
-- [ ] AC3: `docs/specs/` 存在 README v2 + overview.md + goals.md + 4 张新项目卡；INDEX.md 重生成且含新卡。
-- [ ] AC4: AGENTS.md worktree/归档/范式段更新；new-plan.sh 产出的骨架含新范式 frontmatter（bash -n 语法过）。
-- [ ] AC5: spec-lint 无 ERROR；移动残留 grep 零命中；工作树提交干净。
-- [ ] AC6: `26-autoplan-spec-ledger.md` 存在且 plan-spec-hybrid-model.md 带 superseded 横幅。
+- [x] AC1: `docs/design/` 无编号冲突；`new/` 目录不存在；`strategy/` 含 4 篇；19-plan-374 位于 `docs/plans/reports/`。
+- [x] AC2: `00-intro.md` 索引覆盖 design/ 下全部文件（数量对账：111 - 1 迁出 + 2 新增 = 112）。
+- [x] AC3: `docs/specs/` 存在 README v2 + overview.md + goals.md + 4 张新项目卡；INDEX.md 重生成且含新卡。
+- [x] AC4: AGENTS.md worktree/归档/范式段更新；new-plan.sh 产出的骨架含新范式 frontmatter（bash -n 语法过）。
+- [x] AC5: spec-lint 无 ERROR；移动残留 grep 零命中；工作树提交干净。
+- [x] AC6: `26-autoplan-spec-ledger.md` 存在且 plan-spec-hybrid-model.md 带 superseded 横幅。
 
 ## 执行步骤
 
 1. `git mv docs/design/19-plan-374-rust-type-compat.md docs/plans/reports/374-rust-type-compat.md`，文首加归属注记。验证：`ls docs/plans/reports/374-*`。
+   [✅ 已完成] f1586a72c；归属注记已加，零外部引用
 2. `git mv docs/design/new/a2ui-composer-analysis.md docs/design/25-a2ui-composer-analysis.md`，删除空 `new/`；修 `archive/234` 内链接。验证：`ls docs/design/new` 报不存在。
+   [✅ 已完成] f1586a72c；archive/234 链接已修，new/ 已删
 3. `mkdir docs/design/strategy` + 4 个 `git mv`；修复 website/{rust,python}.md、website/zh/{rust,python}.md、archive/359、369、347、348、plans-360-369-status-summary 内路径链接。验证：对每个旧文件名 grep 路径形链接零命中。
+   [✅ 已完成] f1586a72c；偏差（已核实）：website/{rust,python}.md 的链接经查为站点路由（/docs/design/...）且 website/ 内无文件拷贝，与仓库路径解耦，未改动；实际修复 archive/359、369、347、348、plans-360-369-status-summary 与 consumer-parity 互链
 4. `plan-spec-hybrid-model.md` 文首加 superseded 横幅（指向 26）。
+   [✅ 已完成] f1586a72c；横幅指向 26
 5. 重写 `docs/design/00-intro.md`（全量索引）。验证：索引文件数与 `find docs/design -type f | wc -l` 对账。
+   [✅ 已完成] db5eade45 + 2291e2eeb；数量对账修正：实际 111 篇（raw 实为 67，计划期估算 70 有误），索引已按实际数
 6. 新写 `docs/design/26-autoplan-spec-ledger.md`。验证：文件存在且含 6 段映射表与路径映射表。
+   [✅ 已完成] db5eade45；含 6 段映射表（§2.3）与路径映射表（§4）
 7. 重写 `docs/specs/README.md`（v2 规约）。验证：含路径映射表与 merge 扩展程序。
+   [✅ 已完成] aa290cff2；含路径映射表（§5）与 merge 扩展程序（§4）
 8. 新写 `docs/specs/overview.md` 与 `docs/specs/goals.md`。验证：两文件存在，overview ≤150 行。
+   [✅ 已完成] aa290cff2；overview 128 行 ≤150
 9. 新建 4 张项目卡（auto-cosmic / shim-metadata / a2r-actor-tests / autoui-skill）。验证：4 个 project.md 存在。
+   [✅ 已完成] aa290cff2；4 卡齐
 10. 更新 `scripts/spec-index.py` GROUPS，运行 `python scripts/spec-index.py` 重生成 INDEX。验证：INDEX 含 4 新卡。
+   [✅ 已完成] aa290cff2；INDEX 26 项目含 4 新卡（含 aavm Status 解析修复）
 11. 更新 `AGENTS.md`（§1/§4/§5 + 范式小节）与 `scripts/new-plan.sh`（新 frontmatter 骨架；`bash -n` 过）。
+   [✅ 已完成] 8bc65a7bd；探针运行验证 v2 frontmatter 后清理
 12. 全量验证：`python scripts/spec-lint.py`；残留 grep；`git add -A && git commit`。验证：AC1-AC6 逐条勾选。
+   [✅ 已完成] 2291e2eeb；spec-lint 0 error/1 warn（aavm/data 既有）、链接检查 ALL OK、git status 0
 
 ## 复审记录
 
-（待 /auto-plan:review 填写）
+**复审人**：zcode（/auto-plan:review 范式，2026-08-28）　**结论**：✅ 通过（reviewed）
+
+逐条核验（不信勾选框，全部对实际文件重跑）：
+
+| 项 | 证据 |
+|---|---|
+| AC1 编号/目录 | find 全列：16 族仅 16+16a（附录，有意）；双 19 消解；new/ 不存在；strategy/ 4 篇；reports/374 就位 |
+| AC2 索引对账 | find=111；00-intro 分区合计 1+10+5+11+2+4+3+3+5+67=111 ✓（计划期写 112 系 raw 估算 70 vs 实际 67，已修正） |
+| AC3 specs v2 | README v2 / overview(128 行) / goals(18 条) / 4 卡齐；INDEX 重生成 26 项目，实验/沙盒组就位 |
+| AC4 范式对齐 | AGENTS.md 范式块 + §1/2/4/5 路径更新；new-plan.sh bash -n 过 + 探针生成 v2 frontmatter 验证后清理 |
+| AC5 验证 | spec-lint 0 error（1 warn=aavm/data 既有，数据目录非 module）；新建/改写 10 文件相对链接脚本检查 ALL OK；残留 grep 仅命中计划自身与归属注记；worktree 提交干净 |
+| AC6 体系文档 | 26 存在（6 段映射+路径映射+取舍记录）；plan-spec-hybrid 横幅 1 处 |
+
+**遗漏/延后/workaround 扫描**：
+- 无未批准延后。两处与计划文本的偏差均显式记录（步骤 3 的 website 路由裁定、步骤 5 的数量修正），非静默缩水。
+- 有意取舍（Design 26 §6 决议，非本计划遗漏）：① 438 归档计划不回溯入账，账本向前生长；② specs module 树对 437–466 的深度回填不做，现状由 overview.md 承载。
+- 范围外遗留（记录为后续候选，不阻塞）：docs/ 根级 26 个散文件的归类（v1 设计 §7 曾规划未行）；仓库根杂物清理（tmp/nul/日志）。
+
+**git 溯源**：git log --follow 抽查 strategy/python-parity-roadmap.md 可溯至迁移前历史 ✓
 
 ## 待澄清事项
 
