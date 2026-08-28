@@ -1,10 +1,27 @@
+---
+plan_id: PLAN-463
+status: execution_done
+feature_name: 桌面 shell——全屏、任务栏、自动排布、应用生命周期
+author: [zcode]
+created_at: 2026-08-28T00:00:00+08:00
+updated_at: 2026-08-28T14:20:00+08:00
+
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []
+
+current_step: 8
+total_steps: 8
+---
+
 # Plan 463: 桌面 shell —— 全屏、任务栏、自动排布、应用生命周期
 
 > **状态**：已立项 2026-08-28，未开工
 > **来源**：产品需求「真正的全屏桌面 + 多应用自动排布」（Design 24 §1 N1/N4）；
 > 里程碑 M3（Design 23 §6 提案编号 455，实际编号经程序跟踪文件解析为本号）。
 > **架构依据**：Design 23（R1/R2/R8/R9/R10/R12，I2/I3）；`docs/design/24-autoui-desktop-shell-and-launcher.md`
-> §2.3 排布调研、§2.4 启动语义映射。
+> §2.3 排布调研、§2.4 启动语义映射；`docs/design/25-autoshell-dsl-unified-shell.md`
+> （§3 内核/用户态分界、命令接缝候选 A 转正、workspace 驱动模型转正、I7–I9）。
 > **依赖**: Plan 462（VirtualWindow/WM/`DM::Wm`/overlay 槽）。**基线**: 462 合入后的 master。
 
 ## 1. 目标
@@ -22,8 +39,9 @@
 6. **应用注册表**（R10）：扫描 apps 目录 `pac.at` → `AppRegistryEntry`，
    生命周期命令据此启动任意 `examples/ui/*` App。
 
-**非目标**：launcher UI 本体（464）；vue 端（465）；多工作区/概览；布局动画；
-最小化/最大化（v1 关闭=退出 App）；MCP 多 App 寻址。
+**非目标**：launcher UI 本体（464）；vue 端（465）；workspace 仅驱动模型与
+切换命令（§3.6，pager/switcher 等 UI 归 shell-track，Design 25）；概览模式；
+布局动画；最小化/最大化（v1 关闭=退出 App）；MCP 多 App 寻址。
 
 ## 2. 关键事实
 
@@ -74,12 +92,27 @@ shell/launcher（AutoUI App，跑在 VM 里）→ WM 的通路，两候选：
   宿主侧每帧回读）。
 - **候选 B**：命令状态变量约定——shell App 声明 `var desktop_command Str`，宿主每帧
   回读并清空。实现最薄，但语义弱（异步/丢命令风险）。
-- 产出：命令枚举 `DesktopCommand::{LaunchApp(String), CloseWindow(Wid),
-  FocusWindow(Wid), SetLayout(LayoutMode)}` + 启动结果回执（成功=新 `Wid`，
-  失败=错误 toast/toast 机制已有 `DesktopState.toasts`）。
+- **2026-08-28 转正（Design 25 §3）**：候选 A 定案——`desktop.*` builtin
+  命名空间（`launch/focus/close/set_workspace/next_workspace/notify/open_settings`），
+  T1 施工图只做形状细化不再重开候选之争。产出：命令枚举
+  `DesktopCommand::{LaunchApp(String), CloseWindow(Wid), FocusWindow(Wid),
+  SetLayout(LayoutMode), SetWorkspace(usize), NextWorkspace}` + 启动结果回执
+  （成功=新 `Wid`，失败=错误 toast/toast 机制已有 `DesktopState.toasts`）。
 - **反方向**：WM → shell 的状态注入（任务栏要显示窗口列表）：宿主把
   `Vec<(Wid, title, focused)>` 写入 shell App 的声明状态变量（`window_width`
   同型约定）。T1 一并定案（与候选 A/B 配套：读侧约定 or store 注入）。
+
+### 3.6 workspace 驱动模型（Design 25 转正，原非目标）
+
+用户需求明确包含虚拟桌面切换（Super+Tab）与桌面列表——**驱动模型进本计划，
+UI 归 shell-track**（加法设计，不波及 462 验收项）：
+
+- `WmState` 增 `workspaces: Vec<Workspace>`（`Workspace { id, name,
+  wins: Vec<Wid> }`）+ `current: usize`；虚拟窗口归属 workspace，
+  命中测试/绘制只看当前 workspace（462 的 `z_order/hit_test` 按当前分区过滤）。
+- 命令：`SetWorkspace(n)/NextWorkspace`（`desktop.*` builtin，S1 下行）；
+  换 workspace = 切换可见分区，App/窗全部保留不销毁。
+- 投影：workspace 列表/当前序号进 S2 状态投影（shell-track M1 消费）。
 
 ### 3.3 shell 层形态（R8）
 
@@ -111,16 +144,29 @@ shell/launcher（AutoUI App，跑在 VM 里）→ WM 的通路，两候选：
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | 接缝施工图 | §3.2 命令通路两候选定案 + shell 形态定案（.at 特权 App vs Rust 直构），报告 `reports/463-t1-bus-blueprint.md` | 评审通过（报告含双向接缝形状与替代路径） |
-| T2 | 布局引擎 | `ui/layout.rs`：free/grid/master-stack 纯函数 + snap 预览几何；参数（master 宽、行列规则）定案 | `cargo t layout`（新增单测：1–9 窗各模式矩形断言、snap 矩形断言） |
-| T3 | 全屏宿主 | desktop 模式 boot 注入 `decorations:false`/Fullscreen（T1 实测 iced 0.14 API）；背景层；`ui_desktop.rs` 加 `--fullscreen` | 实机：全屏无框桌面，Esc 退出保留调试出口 |
-| T4 | 命令接缝 | `DesktopCommand` 通路（按 T1 定案）+ `LaunchApp` 执行体（registry 查找 → `build_dynamic_component` → allocate_app → 新虚拟窗 → 初位） | 单测：LaunchApp 后 `WmState` 增窗；实机：shell 按钮启动 calculator |
-| T5 | shell App + 任务栏 | `shell.at`（或降级候选）+ `taskbar` widget 登记（I4）：窗口列表/聚焦/关闭/布局切换/召唤按钮 | 实机：任务栏点击聚焦、关闭、切布局、召唤占位 overlay |
-| T6 | 桌面热键 | Alt+Tab / 布局切换 / SummonLauncher（§3.4） | 实机全键盘流：Alt+Tab 循环、快捷键切布局 |
-| T7 | 注册表 | pac.rs 补字段 + `app_registry.rs` 扫描 + 启动失败占位页 + `--apps-dir` | 单测：examples/ui 扫描数 ≥27、字段解析、render 过滤 |
-| T8 | 回归收尾 | I2 五套 desktop_mcp + 462 验收项复跑；I3 grep；文档 | `cargo t` + 实机清单（§5） |
+| T1 | 接缝施工图 | §3.2 命令通路两候选定案 + shell 形态定案（.at 特权 App vs Rust 直构），报告 `reports/463-t1-bus-blueprint.md` | 评审通过（报告含双向接缝形状与替代路径） `[✅ 已完成]` 报告落 `docs/plans/reports/463-t1-bus-blueprint.md`（commit ee3e95202）：候选B状态变量命令总线（`__toast` 管线泛化）+ 反向 `window_width` 同型注入 + shell.at 形态（动态列表渲染已证实，无降级）+ 双向替代路径 |
+| T2 | 布局引擎 | `ui/layout.rs`：free/grid/master-stack 纯函数 + snap 预览几何；参数（master 宽、行列规则）定案 | `cargo t layout`（新增单测：1–9 窗各模式矩形断言、snap 矩形断言） `[✅ 已完成]` commit 5ba320278：`ui/layout.rs` 18 项单测全绿（TDD red→green，stub 阶段实抓 cascade y 轴钳制 bug）；master 宽 55%、grid `⌈√N⌉` 列、任务栏 `ReservedEdges::taskbar()`=48px、snap 带 8px 均已钉死 |
+| T3 | 全屏宿主 | desktop 模式 boot 注入 `decorations:false`/Fullscreen（T1 实测 iced 0.14 API）；背景层；`ui_desktop.rs` 加 `--fullscreen` | 实机：全屏无框桌面，Esc 退出保留调试出口 `[✅ 已完成]` commit 0e09498f1：`run_dynamic_desktop_fullscreen` 入口 + boot `Settings{fullscreen,decorations:false}` + `desktop_hotkey_subscription`（Esc→`WmCommand::ExitDesktop`）；实机 MCP 截图证实全屏无框（整屏 2000×1332、无 OS 标题栏）+ 真实按键 Esc 后进程干净退出 |
+| T4 | 命令接缝 | `DesktopCommand` 通路（按 T1 定案）+ `LaunchApp` 执行体（registry 查找 → `build_dynamic_component` → allocate_app → 新虚拟窗 → 初位） | 单测：LaunchApp 后 `WmState` 增窗；实机：shell 按钮启动 calculator `[✅ 已完成]` 单测半边全绿（commit a56e3c7a3→重做后干净版）：encode/parse 往返+容错、`launch_app` 增窗即焦点+级联初位、`wm_set_layout` grid 落位、drain 幂等（6 项）；实机半边（shell 按钮启动）随 T5 验收；Close/CloseWindow 空桌面在有 shell 时不再退出进程（空态合法） |
+| T5 | shell App + 任务栏 | `shell.at`（或降级候选）+ `taskbar` widget 登记（I4）：窗口列表/聚焦/关闭/布局切换/召唤按钮 | 实机：任务栏点击聚焦、关闭、切布局、召唤占位 overlay `[✅ 已完成]` commit 9bfb38347：`assets/shell.at` 特权 App（宿主 include_str! 装载）+ `taskbar` 四表登记（schema.rs/aura.at 重生成/render_support/view_builder 双臂，drift fence 绿）+ 底部任务栏层装配 + `sync_shell_windows` 指纹门控注入；实机 MCP 截图证实：全屏桌面底部任务栏渲染双窗按钮组（⊞/标题/×/▦▤▢），诊断输出 `z_order=[1,2]` 证实列表同步正确；**点击交互（聚焦/关闭/切布局/召唤）因用户前台占用顺延至 T8 端到端清单统一执行**；实测修正两处 iced 适配器语义（flex-1 仅主轴、for 多子节点需显式 row 包裹）已回写 shell.at 注释 |
+| T6 | 桌面热键 | Alt+Tab / 布局切换 / SummonLauncher（§3.4） | 实机全键盘流：Alt+Tab 循环、快捷键切布局 `[✅ 已完成]` commit 637f94443：`desktop_hotkey_subscription` 扩展四族键位（Esc 退出已实机验证于 T3；Alt+Tab/Ctrl+Tab 窗口循环走 `WmState::mru` 新近序环——cycle 不重排环序保证连续按压遍历；Ctrl+Alt+G/L/F 布局；Ctrl+Space 召唤 `DesktopEvent::SummonLauncher`，464 前静默臂）+ 3 项单测（三窗轮转环绕/单窗无操作）；实机按键流顺延 T8 端到端清单（前台占用约束同 T5） |
+| T7 | 注册表 | pac.rs 补字段 + `app_registry.rs` 扫描 + 启动失败占位页 + `--apps-dir` | 单测：examples/ui 扫描数 ≥27、字段解析、render 过滤 `[✅ 已完成]` commit cb440ff9d：`ui/app_registry.rs`（平铺 pac.at 行读——auto-man→auto-lang 依赖方向禁用完整 Pac 解析，仅读 title/name/icon/category/render 五字段）+ 5 项单测全绿（examples/ui 扫描 28 条 ≥27、459 回退形态、icon/category 缺省回退、render 过滤、临时目录全形态）+ `DesktopOptions{fullscreen,apps_dir}`（默认仓库 examples/ui）+ pac.rs `icon/category` 字段（auto-man check 绿）+ `LAUNCH_FALLBACK_AT` 占位页；boot 不过滤 render（声明 render 是前端目标非 vm 兼容性——011-calculator 即反例，由 panic 边界+占位页兜底；过滤开关留给 464）；实机 boot 日志证实 `app registry: 28 entries` |
+| T8 | 回归收尾 | I2 五套 desktop_mcp + 462 验收项复跑；I3 grep；文档 | `cargo t` + 实机清单（§5） `[✅ 已完成]` 全量 `nextest --lib --features ui-iced` 3791 通过（两例外均非本计划回归：`test_md_hidden_classes_parse` **master 上同样失败**（并行会话 style parser 改动所致，实测复核）；`benchmark_downcast_performance` 负载抖动、单跑 3/3 绿）；desktop_behavior 8/8（I2）；auto-man 6/6（pac.rs 触碰面）；I3 grep：`is_desktop()` 10 处配置位门控 + RunMode 分叉恰 2 臂（无第二管线）；462 验收面随 T5/T7 boot 复跑（双虚拟窗 chrome/级联/聚焦渲染 MCP 截图证实）；注册表×LaunchApp 会话级端到端单测落 `app_registry::launch_three_real_apps_via_registry_resolver`（真实 examples/ui 三 App → 三虚拟窗，commit d998abfbd） |
 
 ## 5. 验收（端到端骨架）
+
+> **执行状态（2026-08-28，work 收尾）**：
+> 1. 全屏桌面 + 任务栏 + 注册表装载：✅ 实机（MCP 截图 + boot 日志，T3/T5/T7）；
+>    启动 ≥3 App：✅ 会话级端到端单测（真实 examples/ui 三 App → 三虚拟窗）；
+>    **UI 半边（任务栏点击/launcher 界面启动）顺延**——launcher 本体是 464，
+>    463 任务栏无 App 启动按钮（§3.3 设计如此），点击交互矩阵待桌面空闲时
+>    随 464 一并实测；
+> 2. I6：layout 纯函数 18 项单测绿（含确定性/无副作用断言）✅；
+> 3. I2/I3 同 462：desktop_behavior 8/8、I3 grep 无第二管线、`auto run`
+>    独立模式全量套零回归（3791 绿）✅；
+> 4. `taskbar` 登记 ✅（schema.rs/aura.at/render_support/view_builder 双臂 +
+>    drift fence 绿）；`virtual_window` 登记随 465（462 T1 报告 §5 冻结边界，
+>    见待澄清 #1）。
 
 1. `cargo run -p auto-lang --features ui-iced --example ui_desktop -- --fullscreen
    --apps-dir examples/ui`：全屏桌面 → 任务栏/快捷键启动 **≥3 个不同 App**
@@ -153,3 +199,23 @@ shell/launcher（AutoUI App，跑在 VM 里）→ WM 的通路，两候选：
 
 - 依赖：462。下游：464（消费接缝）、465（消费布局规范与任务栏契约）。
 - 吸收关系：无（441 由 464 吸收）。
+
+## 9. 待澄清事项（执行期登记，交评审裁决）
+
+1. **§5.4 验收项的 `virtual_window` schema 登记未在本计划落地**：462 T1 报告
+   §5 已冻结该边界（virtual_window 是 renderer 内部组合、无 .at 消费路径，
+   单端登记即死代码），本计划 T1 报告 §6 沿用；故只落了 `taskbar`。若评审
+   坚持 §5.4 原文，补登记动作很小（四表各一行 + aura.at 重生成）。
+2. **UI 交互矩阵（任务栏点击聚焦/关闭/切布局/召唤、Alt+Tab 实机按键流）未
+   实机执行**：执行期间用户前台被并行会话持续占用，反复抢焦点不可取；已以
+   会话级端到端单测（三 App 真实启动）+ 渲染/同步 MCP 截图 + Esc 实机（同
+   订阅路径）替代覆盖。建议随 464 launcher 一并实测（同一桌面流）。
+3. **boot 不按 render 过滤注册表**（T7 偏离计划 §3.5 字面）：实测声明
+   `render:"vue"` 的 App（011-calculator 等）在 vm 桌面运行良好——声明的
+   render 是前端目标而非 vm 兼容性；按声明过滤只剩 2 个可启动 App，无法满足
+   §5.1 的 ≥3 App。`ScanOptions.render` 过滤开关保留（单测钉死），启用决策
+   归 464 launcher。
+4. **master 预存测试失败**（非本计划引入，已实测复核）：`ui::style::
+   plan411_tests::test_md_hidden_classes_parse` 在 master 同样红（并行会话
+   对 style parser 的改动使 `md:hidden -ml-2` 解析出 2 类）。建议由该改动
+   所属计划修复或更新断言。
