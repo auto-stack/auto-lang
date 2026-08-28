@@ -5528,6 +5528,15 @@ fn check_async_http_result(request_id: u64) -> Option<String> {
     })
 }
 
+/// Plan 446 批二 E2: 非夺取式就绪探测（供 engine 的 CALL_SPEC 同步 drain 用）。
+/// 与 check_async_http_result_handle 的 take 语义不同，本函数不消费条目——
+/// 消费仍由 shim 的重入分支完成。
+pub(crate) fn async_http_result_ready(request_id: u64) -> bool {
+    ASYNC_RESULTS.lock().ok()
+        .and_then(|map| map.get(&request_id).map(|opt| opt.is_some()))
+        .unwrap_or(false)
+}
+
 /// Helper: spawn an async HTTP request on a dedicated thread.
 /// Result is stored in ASYNC_RESULTS[request_id] as the Body variant.
 fn spawn_async_http(method: String, url: String, body: Option<String>, request_id: u64) {

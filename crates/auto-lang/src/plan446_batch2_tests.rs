@@ -10,11 +10,12 @@
 //!   - E1 ✅：engine CALL_SPEC 对"裸句柄命中 HTTP_RESPONSES 表"的
 //!     `.status()/.body()/.header(k)` 直接路由到只读 native（NATIVE_RESPONSE_*);
 //!     另加 codegen arity 分流（零参 status → Response.status_code）。
-//!   - E2 ⚠️ 部分收敛：根因面已定位（builder 链结果的静态类型被推断为
-//!     User(Response) → 零参 .status() 按声明面 setter(self, code) 弹栈多吃
-//!     槽位 → 后续语句栈下溢；`.status().to_string()` 组合仍误编译，
-//!     见计划 待澄清事项 E2 残余）。代码gen arity 分流 + engine 兜底已
-//!     消除部分形态，端到端探针保持 #[ignore] 至收口。
+//!   - E2 ✅：协议级根因 = CALL_SPEC 路径执行链式 `.send()` 后置位的
+//!     waiting_http_request_id 无人消费（CALL_SPEC 无挂起协议），stale 标记
+//!     令后续任何 CALL_NAT 无限 rewind+Yield（轨迹实证 82 万次自旋；旧观察
+//!     的栈下溢崩溃为同一失序的另一表现）。修复 = engine 对 RequestBuilder
+//!     堆 tag 链直调 shim 支撑的 native 族（2235-2239），send 以同步 drain
+//!     完成 Yield 协议（轮询就绪后触发 shim 重入清位+推柄）。
 
 #[cfg(test)]
 mod plan446_batch2_http {
@@ -75,10 +76,6 @@ mod plan446_batch2_http {
     // calls in the same scope must still work.
     // ------------------------------------------------------------------
     #[test]
-    #[ignore = "446批二 E2 残余：builder 链结果的 .status() 静态类型=User(Response)，\
-                零参读法仍按声明面 setter(self,code) 弹栈（代码gen arity 分流只覆盖 \
-                Response.status_code 命名面）；.status().to_string() 组合误编译。\
-                根因诊断与续作指引见 docs/plans/446 待澄清事项。"]
     fn e2_second_http_call_after_builder_chain_survives() {
         let port_body = spawn_one_shot_server(
             "HTTP/1.1 200 OK",

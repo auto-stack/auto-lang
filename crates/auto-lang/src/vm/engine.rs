@@ -5668,14 +5668,17 @@ impl AutoVM {
                         }
                     }
 
-                    // Plan 446 批二 E2(续): RequestBuilder 链式调用兜底。
-                    // 目录里存在两套 id 面——shim 实装的
-                    // auto.http.request_builder_*(2235-2239)与无实装的
-                    // RequestBuilder.*(2260-2264);堆 tag 分派会把
-                    // .header/.body/.timeout/.send 路由到后者 → 静默吞参/错位,
-                    // 链上残留坏栈槽,下一语句栈下溢(os-config E2 现场崩溃)。
-                    // 此处按"接收者堆对象 tag == RequestBuilder"精确判定,强制
-                    // 回路由 shim 支撑的 id 族。
+                    // Plan 446 批二 E2: RequestBuilder 链的 CALL_SPEC 拦截 +
+                    // Yield 协议同步完成。链式 .header/.body/.timeout/.send 以
+                    // "RequestBuilder.X" 到达本处;若落入 exports 声明Stub/其它
+                    // 兜底臂,send 置位的 waiting_http_request_id 无人消费——
+                    // 之后任何 CALL_NAT(如 .status() 查询)撞上 stale 标记即
+                    // 无限 rewind+Yield(现场"send 后同作用域 http 调用崩溃/
+                    // 挂死"的协议级根因,轨迹实证 826K 次自旋)。
+                    // 处理:精确判定"接收者堆对象 tag == RequestBuilder"后直调
+                    // shim 支撑的 native;send 的异步语义在本路径无调度器配合,
+                    // 以同步 drain 完成——轮询结果就绪后触发 shim 重入(清位+
+                    // 推柄),保持 waiting 标记零残留。
                     if matches!(
                         method_name.as_str(),
                         "header" | "body" | "timeout" | "json" | "send"
@@ -5707,12 +5710,35 @@ impl AutoVM {
                                 if let Some(shim) =
                                     self.native_interface.get(shim_id).cloned()
                                 {
-                                    return shim(task, self)
-                                        .map(|_| StepResult::Continue);
+                                    shim(task, self)?;
+                                    if shim_id
+                                        == crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND
+                                    {
+                                        // Yield 协议同步完成:首轮 shim 已 spawn 并置位
+                                        // waiting;轮询就绪后重入(清位+推柄)。
+                                        if let Some(req_id) = task.waiting_http_request_id {
+                                            let deadline = std::time::Instant::now()
+                                                + std::time::Duration::from_secs(30);
+                                            while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+                                                if std::time::Instant::now() > deadline {
+                                                    task.waiting_http_request_id = None;
+                                                    return Err(VMError::RuntimeError(
+                                                        "http request-builder send timed out (plan-446 E2)".into(),
+                                                    ));
+                                                }
+                                                std::thread::sleep(std::time::Duration::from_millis(5));
+                                            }
+                                            shim(task, self)?;
+                                        }
+                                    }
+                                    return Ok(StepResult::Continue);
                                 }
                             }
                         }
                     }
+
+                    // 2026-08-28 勘误注记: 最初版拦截缺上面的同步 drain,曾致
+                    // 挂死;已由带协议完成的版本取代,勿回退。
 
                     // PLAN-044: unwrap_or 的坍缩 Option 协议——非 null 接收者
                     // 即 Some(v),unwrap_or(d) = 恒等(丢默认值参);null 接收者
