@@ -5730,6 +5730,10 @@ mod plan341_tests;
 #[cfg(test)]
 mod plan349_tests;
 
+// Plan 446 批二: http natives 可用性回归（E1 res.status 哨兵 / E2 builder 链后续调用）。
+#[cfg(test)]
+mod plan446_batch2_tests;
+
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
 // These require the `ui-iced` feature (crate::ui::* imports), so gate them

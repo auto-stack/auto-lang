@@ -7850,6 +7850,28 @@ impl Codegen {
                     }
                 }
 
+                // Plan 446 批二 E1/E2(续): http 客户端访问器的 arity 分流。
+                // stdlib 表面把 `Response.status` 声明为服务端 setter
+                // (self, code int);客户端零参读法 res.status() 会按 setter 签名
+                // 弹栈 → 多吃一个栈槽,后续任何语句栈下溢(os-config E2 现场)。
+                // 零参读法改路由到 shim 支撑的只读 native;一参 header 读法同理
+                // (声明面只有双参 set-form Response.header(key,value))。
+                if let Expr::Dot(_, method_name) = call.name.as_ref() {
+                    let argc = call.args.args.len();
+                    let redirected = match (method_name.as_str(), argc) {
+                        ("status", 0) | ("status_code", 0) => {
+                            Some("Response.status_code".to_string())
+                        }
+                        ("header", 1) => Some("Response.header_get".to_string()),
+                        _ => None,
+                    };
+                    if let Some(new_name) = redirected {
+                        if BIGVM_NATIVES.lock().unwrap().peek_qualified(&new_name).is_some() {
+                            func_name = Some(new_name);
+                        }
+                    }
+                }
+
                 let native_id = if let Some(name) = &func_name {
                     // Check intrinsics first (print, etc.)
                     if let Some(&id) = self.intrinsics.get(name) {

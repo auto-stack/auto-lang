@@ -5621,6 +5621,99 @@ impl AutoVM {
                     };
                     let receiver_nv = receiver_nv;
 
+                    // Plan 446 批二 E1/E2: HTTP response-handle 访问器兜底。
+                    // http.get / builder .send() 返回的是 HTTP_RESPONSES
+                    // (stdlib 线程本地表)里的裸句柄,不是堆对象;静态类型在多语境
+                    // 推断坍缩后,`.status()/.body()/.header(k)` 到达 CALL_SPEC 时
+                    // 既无静态 native 名也无堆 tag 可分派——此前落入未定义调用
+                    // 的静默兜底:哨兵值(os-config E1 现场)、栈槽被吞导致后续任何
+                    // http 调用栈下溢崩溃(E2 现场同根)。
+                    // 判定收窄到"小正整数句柄且不在堆上、但命中 response 表",
+                    // 服务端 Response 构建链(堆对象)与普通 int 方法不受影响。
+                    let http_response_handle = match method_name.as_str() {
+                        "status" | "status_code" | "body" | "header" | "header_get"
+                            if arg_count <= 1 && auto_val::is_i32(receiver_nv) =>
+                        {
+                            let h = auto_val::decode_i32(receiver_nv);
+                            let is_heap = h > 0 && self.heap_objects.contains_key(&(h as u64));
+                            if h > 0
+                                && !is_heap
+                                && crate::vm::ffi::stdlib::lookup_http_response(h as u64).is_some()
+                            {
+                                Some(h)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(handle) = http_response_handle {
+                        let shim_id = match (method_name.as_str(), arg_count) {
+                            ("status", 0) | ("status_code", 0) => {
+                                crate::vm::ffi::stdlib::NATIVE_RESPONSE_STATUS_CODE
+                            }
+                            ("body", 0) => crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY,
+                            ("header", 1) | ("header_get", 1) => {
+                                crate::vm::ffi::stdlib::NATIVE_RESPONSE_HEADER_GET
+                            }
+                            _ => u16::MAX,
+                        };
+                        if shim_id != u16::MAX {
+                            if let Some(shim) =
+                                self.native_interface.get(shim_id).cloned()
+                            {
+                                return shim(task, self)
+                                    .map(|_| StepResult::Continue);
+                            }
+                        }
+                    }
+
+                    // Plan 446 批二 E2(续): RequestBuilder 链式调用兜底。
+                    // 目录里存在两套 id 面——shim 实装的
+                    // auto.http.request_builder_*(2235-2239)与无实装的
+                    // RequestBuilder.*(2260-2264);堆 tag 分派会把
+                    // .header/.body/.timeout/.send 路由到后者 → 静默吞参/错位,
+                    // 链上残留坏栈槽,下一语句栈下溢(os-config E2 现场崩溃)。
+                    // 此处按"接收者堆对象 tag == RequestBuilder"精确判定,强制
+                    // 回路由 shim 支撑的 id 族。
+                    if matches!(
+                        method_name.as_str(),
+                        "header" | "body" | "timeout" | "json" | "send"
+                    ) && arg_count <= 2
+                    {
+                        let rb_heap_id = if auto_val::is_object(receiver_nv) {
+                            Some(auto_val::decode_object(receiver_nv) as u64)
+                        } else if auto_val::is_i32(receiver_nv) {
+                            let v = auto_val::decode_i32(receiver_nv);
+                            if v > 0 { Some(v as u64) } else { None }
+                        } else {
+                            None
+                        };
+                        let is_builder = rb_heap_id
+                            .and_then(|id| self.heap_objects.get(&id))
+                            .map(|o| o.read().unwrap().type_tag().name() == "RequestBuilder")
+                            .unwrap_or(false);
+                        if is_builder {
+                            const RB_NONE: u16 = u16::MAX;
+                            let shim_id = match (method_name.as_str(), arg_count) {
+                                ("header", 2) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_HEADER,
+                                ("body", 1) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_BODY,
+                                ("timeout", 1) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_TIMEOUT,
+                                ("json", 1) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_JSON,
+                                ("send", 0) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND,
+                                _ => RB_NONE,
+                            };
+                            if shim_id != RB_NONE {
+                                if let Some(shim) =
+                                    self.native_interface.get(shim_id).cloned()
+                                {
+                                    return shim(task, self)
+                                        .map(|_| StepResult::Continue);
+                                }
+                            }
+                        }
+                    }
+
                     // PLAN-044: unwrap_or 的坍缩 Option 协议——非 null 接收者
                     // 即 Some(v),unwrap_or(d) = 恒等(丢默认值参);null 接收者
                     // 由 None 协议臂接管(mpsc/stream 失败前 intercept)。
