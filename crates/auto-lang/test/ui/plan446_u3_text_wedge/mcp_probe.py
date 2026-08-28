@@ -6,8 +6,8 @@
 """
 import json, os, re, socket, subprocess, sys, time, urllib.request
 
-APP = r"D:\autostack\auto-lang\.worktrees\plan-446-dev\crates\auto-lang\test\ui\plan446_u3_text_wedge"
-AUTO = r"D:\autostack\auto-lang\.worktrees\plan-446-dev\target\debug\auto.exe"
+APP = r"D:\autostack\auto-lang\crates\auto-lang\test\ui\plan446_u3_text_wedge"
+AUTO = r"D:\autostack\auto-lang\target\debug\auto.exe"
 
 def pick_free_port():
     with socket.socket() as s:
