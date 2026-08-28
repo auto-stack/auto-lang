@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-471
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: ui-module-spec-refresh
 author: [zcode]
 created_at: 2026-08-28
@@ -67,3 +67,11 @@ total_steps: 6
 ## 复审记录
 
 ## 待澄清事项
+
+---
+
+## spec-sync 回写记录（2026-08-28，/auto-plan:merge）
+
+- 回写载体即本计划交付物（ui overview/architecture ADR-09..17/plans.md 45 行 + 四模块补行）。
+- `.autoos/specs.json`：P471-1..2 入库（reports/designs，幂等）。
+- 归档：`docs/plans/archive/`，`status: archived`（终态）。
