@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（批二部分落地：A1/E1 完成、E2 部分收敛、B1 待续；worktree .worktrees/plan-446-dev；批一已合入 master——见 §K/§L/§E4）
+状态: executing（第二批：A1/E1/E2 完成，B1 进行中；worktree .worktrees/plan-446-dev；批一已合入 master——见 §K/§L/§E4）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -520,40 +520,34 @@ stdout 读取通道修复(此前 WIP 用例读 main 返回值恒空串)。
 （plan446_batch2 e1_res_status_reports_wire_status_on_get_handle 绿，
 旧代码红：stdout 为垃圾值）。
 
-**E2 builder 链后续调用崩溃——部分收敛（残余登记待澄清）**：
-已定位根因面（diag 矩阵实证）：
-- builder 链中间步 `.header/.body/.timeout/.send` 以 `Unknown.X` 静态名发射，
-  运行期堆 tag 分派路由到目录中**无 shim 实装**的 `RequestBuilder.*`(2260-2264)
-  id 族（shim 支撑面是 auto.http.request_builder_*, 2235-2239）——分派裂脑；
-- 链结果 `built` 静态类型被推断为 User(Response) → 零参 `.status()` 按
-  声明面 setter(self, code) 双参弹栈 → 多吃栈槽 → 后续语句 Stack Underflow
-  （virt_memory.rs:426 panic，即现场"handler 原子回滚、零诊断"的崩溃点）。
-已落修复：engine.rs CALL_SPEC 增 RequestBuilder 堆 tag 兜底（强制回路由
-shim 支撑的 2235-2239 id 族）+ 上述 codegen arity 分流。效果矩阵：
-- `let st = built.status()`（链后读状态）不再崩溃；
-- `if built.status() == 204 {...}` + 链后 `http.get` 组合运行完毕不崩；
-- 残余红：`print(built.status().to_string())` 及 print 链形态仍崩/误编译
-  （`.status().to_string()` 组合 + User(Response) 零参读法未全被 arity 分流
-  命中）。验收探针 e2_second_http_call_after_builder_chain_survives 保持
-  #[ignore]，续作指引见待澄清事项。
-
-回归面：plan446 全系 7 用例 + http 23 用例 + handler_codegen 13 用例 +
-cargo check 0 error。
+**[✅ 已完成] E2 builder 链后续调用崩溃——协议级根因修复**（engine.rs + stdlib.rs，提交 89adb9bdb）：
+轨迹实证（CALL_NAT/CALL_SPEC 运行期日志）钉死根因：链式 `.send()` 经
+CALL_SPEC 路径执行后置位 `task.waiting_http_request_id`，而 **CALL_SPEC 执行
+路径没有 CALL_NAT 的挂起/重试协议**——标记无人消费；此后任何 CALL_NAT
+（如 `.status()` 查询）撞上 stale 标记即无限 rewind+Yield（40 秒实测
+826,488 次自旋；此前观察的"栈下溢崩溃/哨兵值"是同一失序在不同
+发射形态下的另一表现，即现场"同一 handler 内随后的任何 http 调用崩溃"
+的协议级根因）。
+修复：engine CALL_SPEC 对"接收者堆对象 tag == RequestBuilder"的
+`.header(2)/.body(1)/.timeout(1)/.json(1)/.send(0)` 直调 shim 支撑的 native
+族（NATIVE_HTTP_REQUEST_BUILDER_* 2235-2239，目录中无实装的
+RequestBuilder.*(2260-2264) 名面被绕开）；send 以**同步 drain 完成 Yield
+协议**——轮询 ASYNC_RESULTS 就绪（30s 上限，超时报错）后触发 shim 重入
+（其重入分支清位+推柄），waiting 标记零残留。新增非夺取式就绪探测
+`async_http_result_ready`（stdlib.rs，与 take 语义的 check_* 并存）。
+勘误备案：最初版拦截缺同步 drain（曾致挂死），已由带协议完成的版本取代。
+验收：`chain(header/body/timeout/send) → built.status()==204 → http.get →
+res.status()==200` 全链真实 TcpListener 断言绿；e2 探针解除 #[ignore]。
+回归：plan446 全系 8 用例 + http 24 用例 + request_builder 全绿。
 
 ## 待澄清事项
 
-- **E2 残余**：builder 链结果上 `print(x.status().to_string())` 形态仍误编译。
-  两条候选路径（下轮二选一或并做）：
-  1. codegen arity 分流扩展——对 var_types 为 User("Response") 的接收者，
-     方法名集合 {status, body, header, status_code, header_get} 一律按 argc
-     分流到只读 native 名（现实现只在 func_name 已成形后改写，疑似被
-     Unknown_/str. 前缀路径旁路）；
-  2. stdlib 表面正名——在 stdlib/auto/http.at 显式声明客户端只读访问器
-     （`Response.status(self) int` 零参重载或改名单 `status_code`），并同步
-     examples/a2rs 02/03；涉及服务端 corpus（06_todo_api `.status(code)`）
-     兼容面，宜独立小批。收敛后解除 e2 探针 #[ignore]。
 - **B1（第二批剩余项）未实施**：store 列表循环字段访问实参的 event-arg
   vmref 物化（view-builder/event 求值路径），需 aura_view_builder + dynamic.rs
   独立攻坚，本轮预算未覆盖。
-- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；E2 残余与 B1 建议随
-  批三会话一并排程。
+- **E1 附带观察（低优先）**：`res` 的静态类型在不同语境坍缩为
+  str/int/User(Response)（http.at 表面声明 + `#[vm]` decl 推断链所致），
+  E1/E2 已在运行期与 arity 分流双层兜住；类型推断本身的正本清源
+  （stdio 表面 client accessors 正名）留待独立小批，见 §N E1 修复注记。
+- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；建议与 B1 一并
+  排程下轮会话。
