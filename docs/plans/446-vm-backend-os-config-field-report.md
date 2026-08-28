@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: execution_done（§I 四批全部落地：批一诊断 §L/§K、批二可用性 §N、
+状态: reviewed（§R 复审通过——四批全验,零阻塞债;待 /auto-plan:merge；§I 四批：批一诊断 §L/§K、批二可用性 §N、
 批三语义统一 §O、批四打磨 §Q——待 /auto-plan:review；§P 新报与剩余
 低优先项见待澄清；worktree .worktrees/plan-446-dev 留置待 merge）
 创建: 2026-08-25
@@ -714,7 +714,68 @@ md_hidden_classes 基线红 + benchmark 偶发）。**门禁通过**。
 
 **批四回归**：plan446_batch4 6/6 + 全量门禁上述。
 
-## 待澄清事项
+## R. 复审记录（2026-08-28，/auto-plan:review）
+
+复审人：ZCode 会话（批二/三/四执行者复核，按"验证不轻信"重跑）。
+
+### 逐项验收判定（证据 = worktree 内复跑）
+
+| 验收项 | 判定 | 证据 |
+|---|---|---|
+| A1 消歧报错（多 store 撞名/漏声明含 store+方法名） | PASS | plan446_a1_* 4 用例（handler_codegen 内）复跑绿；单 store 兼容保留 |
+| A1 下游半（os-config 方法名改回 Init/Select） | 委托下游 | 计划 §I 明文指派 os-config e2e 双门禁交叉回归，非本仓可验 |
+| B1 store 循环字段实参（MCP 模式触发+正确字符串） | PASS（headless 等价） | plan446_b1 双探针（60s 限时渲染+payload 分发）绿；MCP 实机归 os-config e2e（§I 指派） |
+| B3 多参输入分发 | PASS | 行为改动已文档化（诊断+丢弃），下游"单参+Apply"绕行可复议 |
+| C1 popover 可渲染 + 错误定位/非零退出 | PASS | 定位/致命化 = plan446_batch1 2 用例；**渲染半原未验，本复审实证绿并转常驻锁**（plan446_c1_popover_tests + corpus） |
+| D1 json.parse 物化 + 双态文档 native | PASS | batch3 双探针 + json 全系 26/26 |
+| D2/D3/D4 handler 值语义 | PASS | d2 corpus 探针 + d4 五形态矩阵（本批根修 i32 强转 + None 契约） |
+| D5 get_at 收键列 | PASS | d5 探针绿 |
+| D6 插入序 | PASS | d6 探针绿；全量零波及 |
+| E1/E2 http natives | PASS | batch2 真实 TcpListener 双探针绿（e2 已解除 ignore） |
+| E3 错误响应 body | PASS | e3 探针断言 "boom!" 无数字串 |
+| F1 handler 崩溃诊断 | PASS | 批一落地（dynamic.rs 三处无条件 stderr + vm_bridge crash ip），代码在位 |
+| F3 字面量陷阱 | PASS（验证解除） | 双探针绿 |
+| F4 substr 语义文档 | PASS | 实证 (start,LEN)；str.at/string-library.md 修正，docs_gen 4/4 |
+| G1 store 导入前缀 | PASS | test_g1（默认不变守卫+可配落行）绿 |
+| G2-G5 | N/A | 计划内无章节无证据（悬空引用，见下） |
+
+### 全量门禁（复审运行）
+
+- ui-iced 全量：3762/3763（唯一失败 md_hidden_classes_parse = 在案基线红）。
+- cargo ta：非 book/非 book_listing 面**零新增失败**（失败集 ⊆ master 基线，
+  benchmark_downcast 在案偶发）；tt/tv 组无新失败。
+- book_listing：**环境性不可用**——依赖未跟踪的本地 book/ 语料，并行会话
+  正在重建（同一用例分钟级内 fail→pass 抖动；失败模式=文件缺失非输出
+  错配；本计划足迹不含 book 面）。记为环境排除，非计划债。
+
+### 遗漏 / 延后 / workaround 清单
+
+1. **C1 渲染半曾未验**（批一只落诊断半）——本复审补验转绿并上常驻锁，已闭合。
+2. **G2-G5 悬空引用**——总览/§I 提及但报告从未有章节（无症状/证据/复现）。
+   非被丢弃的任务（无范围可丢）；建议 merge 时从 §I 切分行删除，或要求
+   os-config 补录后再立项。已登记待澄清（可见非静默）。
+3. **§P（U1-U7）新范围**——执行中途并行会话登记，未纳入 §I 切分；去向
+   （独立立项/并入续批）留用户裁决。已登记待澄清。
+4. **E1 类型坍缩正本清源**——显式延后（运行期+arity 双层兜底已落地），
+   待澄清在册。
+5. 代码内 workaround 均已文档化：JSON_DOC_ORIGINALS 全局暂存（沿用
+   NativeInterface 覆盖块惯例）、E2 同步 drain（含勘误备案）、
+   .worktrees/auto-down junction（环境注记 §O）。计划自有 diff 零
+   TODO/FIXME 残留。
+6. tmp-corpus/b3check 入库为批一有据决策（§L + j1 repro 测试注释互指）。
+
+### spec-impact 元数据
+
+`specs/modules/` 台账在本仓不存在（specs/ 为并行会话本地瞬态内容，git 零
+跟踪）——`supersedes_spec_components` / `new_spec_components` /
+`touched_goals` 三字段**留空**（规则：宁空勿猜）。本计划的可沉淀面已
+全部在本文档 §K-§Q 实施记录中。
+
+### 结论
+
+全部验收项 PASS 或按计划 §I 明文委托下游，无阻塞债 → **status: reviewed**。
+残留开放项（§P 去向、G2-G5 清理、E1 正本清源、下游 e2e 对账）均已在册
+可见。就绪待 /auto-plan:merge。
 
 - **G2-G5 无登记细节**：§0 总览与 §I 切分提及 G2-G5（vue codegen P2 族），
   但报告主体从未写对应章节（无证据/症状/复现）。除非下游补充现场，
