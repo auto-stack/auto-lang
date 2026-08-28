@@ -57,3 +57,12 @@
 | 325 | autovm-enum-method-and-cross-module-bugs | 进行中（无完成标记） | plans/ | enum 方法调用与跨模块字符串缺陷，阻塞后端 Auto 代码 |
 | 332 | derive-to-atom-proc-macro | 设计草案，待评审 | plans/ | `#[derive(ToAtom)]`/`FromAtom` 标注驱动 .at 序列化 |
 | 367 | codegen-quality-improvements | 进行中 | plans/ | 含 view fragment 语法（P2-3）落入 parser（`Stmt::ViewFragmentDecl`） |
+
+## 2026-08 增补（Plan 471）
+
+| Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
+|------|------|------|------|-----------|
+| 425 | component-fn-sugar-retirement | ✅ | archive/ | component fn AST 级糖化（parse_component_fn_decl 产出等价 WidgetDecl） |
+| 426 | setup-preamble-slot | ✅ | archive/ | parser 新增 AST SetupBlock（块级 refs 声明；await MVP 拒绝） |
+| 435 | autoui-component-schema-unification | ✅ | archive/ | schema/aura.at 唯一契约源（aliases/tier/backends 字段扩展） |
+| 448 | autoui-syntax-improvements | 🟡（A/B1/B2 实施待合并） | plans/ | msg 去名+内联 lambda；铸名 mint_inline_event_handlers 进 parser |

@@ -81,13 +81,14 @@
 | vm | AutoVM：abt/codegen/engine/debugger/ffi/generic | 446 渲染后端薄弱点清偿、466 测试提速 |
 | trans | 转译后端：C/Rust/JS/TS/Python/GDScript/r2a | 400/415 a2r 深化、417/427 parity 修复线 |
 | runtime | runtime/scope/session/libs/ffi | 442 平台桥 natives |
-| ui | ui/（iced/gpui/headless/interpreter）+ ui_gen/ + a2ui/ + aura/ | 437–465 AutoUI 桌面线主战场 |
+| ui | aura/ + ui/（渲染/编辑器/主题）+ 桌面运行时（session/wm/VirtualWindow）+ ui_gen/ + a2ui/ | 桌面线 462/463 落地、464/465 设计中；spec 已随 Plan 471 刷新 |
 | mcp | MCP server 集成 | 稳定 |
 
 ## 活跃开发线（2026-08）
 
-1. **AutoUI 桌面轨道**（最热）：虚拟桌面 WM（462）→ 桌面 Shell 自动排布（463）→
-   Launcher（464）→ Vue 虚拟桌面（465）；前置：charts（437）/database（439）/
+1. **AutoUI 桌面轨道**（最热）：WM 地基与桌面 Shell 已落地（462/463 execution_done）→
+   Launcher（464）→ Vue 虚拟桌面（465）设计就绪待施工；RenderQueue 386 暂缓观察；
+   前置：charts（437 ✅）/database（439）/
    file-manager（440）/launcher 示例（441）/主题系统（458）/双端 parity（455）。
    设计：Design [20](../design/20-autoui-separation-architecture.md)–[24](../design/autoui/desktop-shell-and-launcher.md)。
 2. **a2r parity 线**：功能差距 tracker（242）+ api_gen body 转译（400）+ 剩余大项（415）。

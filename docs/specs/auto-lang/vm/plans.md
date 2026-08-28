@@ -93,3 +93,11 @@
 
 （*）plan-069/080 文件无显式状态行，状态取自 docs/plan-reports/07-vm-runtime.md。
 plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移至 `docs/plans/archive/`，属报告链接腐化。
+
+## 2026-08 增补（Plan 471）
+
+| Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
+|------|------|------|------|-----------|
+| 442 | cross-platform-closure（VM 侧） | 🟡 | plans/ | musk 后端切 AutoVM：native 桥/Http natives；A4 SVG 直通复用 View::Image svgdoc |
+| 446 | vm-backend-os-config-field-report | 🟡（批五转正中） | plans/ | 实战 VM 渲染薄弱点清偿（A1 多 store 消歧/J1-J2 子树）；账本 P446-1..4 |
+| 466 | test-speedup | ✅ | plans/ | sccache/cargo t ≤30s/全量门禁收敛 review；账本 P466-1..7 |

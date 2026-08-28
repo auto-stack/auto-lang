@@ -55,3 +55,12 @@
   `plans/archive/355-fix-persistent-session-fn-body-recursion.md`（auto-shell session 修复，与 trans 无关）
   同号并存；引用 355 必须带 slug。
 - 242 是活文档，其状态由自身维护；其指向的子项完成度以 plan 文件内表格为准。
+
+## 2026-08 增补（Plan 471）
+
+| Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
+|------|------|------|------|-----------|
+| 400 | api-gen-a2r-body-transpilation | 🟡（Phase 1+2 合并） | plans/ | api_gen .at body 直转 Rust（is_thin_delegation/try_transpile_body + AUTO_A2R_BODY） |
+| 415 | a2r-remaining-big-items | 📋/🟡 | plans/ | a2r 剩余大项（242 tracker 收口线） |
+| 417 | a2r-parity-debt 持续清偿线 | ✅（E1-E4 系列） | archive/ | string_utils/serde_json 等 parity 断裂根修（D2 导入签名/E3 if 尾值/427 str_param_borrow） |
+| 442 | cross-platform-closure（转译侧） | 🟡 | plans/ | musk 五域接线；vue.rs SVG 静态字面量直通 |

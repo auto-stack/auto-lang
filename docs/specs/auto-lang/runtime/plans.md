@@ -52,3 +52,10 @@
 | 352 | middleware-session-ssr-openapi | 设计文档 | plans/ | Web 框架四项缺失能力（中间件/session/SSR/OpenAPI） |
 | 353 | io-fs-module-design | 调研与设计文档 | archive/ | auto.file/File.* 现状盘点与 IO/FS 模块设计 |
 | 355 | fix-persistent-session-fn-body-recursion | ✅ 已修复（2026-06-27 合并） | archive/ | 持久 session 解析 fn 内复合语句无限递归修复；与 plans/355-a2r-async-await 重号 |
+
+## 2026-08 增补（Plan 471）
+
+| Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
+|------|------|------|------|-----------|
+| 442 | cross-platform-closure | 🟡（C3 观察期） | plans/ | musk 五域接线：Http.set_default_header 等 native 桥 + 平台 adapter 显式降级 |
+| 458 | auto-ui-theme-system | 🟡 | plans/ | theme/accent 经 env（AUTO_UI_THEME/ACCENT）横切三 crate 注入 |
