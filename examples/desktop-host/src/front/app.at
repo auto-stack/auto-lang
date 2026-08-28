@@ -1,0 +1,15 @@
+// Plan 465: vue 虚拟桌面宿主占位源——desktop 模式下 src/App.vue 被
+// auto-man 的宿主 shell 模板覆盖（见 auto-man vue.rs generate_desktop_host）。
+// 本文件只保证该目录是一个可编译的 vue workspace。
+widget App {
+    model {
+        var ready bool = true
+    }
+
+    view {
+        col {
+            style: "w-full h-full items-center justify-center"
+            text `desktop host placeholder: ${.ready}`
+        }
+    }
+}

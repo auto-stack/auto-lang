@@ -378,6 +378,10 @@ enum Commands {
         theme: Option<String>,
         #[arg(long, help = "Plan 458: UI accent preset (indigo, coral, ocean, sage, amber). Overrides pac.at `accent:`; default indigo")]
         accent: Option<String>,
+        #[arg(long, help = "Plan 465: desktop host mode — vue scaffold becomes the virtual-desktop shell consuming an apps registry")]
+        desktop: bool,
+        #[arg(long, help = "Plan 465: apps directory for the desktop registry (default <workspace>/examples/ui)")]
+        apps: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -853,7 +857,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, desktop, apps, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -970,6 +974,17 @@ fn real_main(cli: Cli) -> Result<()> {
                     println!("  UI theme: {} unknown (want dark|light) — using default dark", t);
                 }
                 None => {}
+            }
+            // Plan 465: desktop host mode + apps dir for the vue registry.
+            // Env-injection idiom shared with AUTO_UI_THEME so both the vue
+            // and tauri pipelines (which run vue generation internally) see it.
+            if desktop {
+                std::env::set_var("AUTO_DESKTOP", "1");
+                println!("  Desktop host mode: ON");
+            }
+            if let Some(a) = &apps {
+                std::env::set_var("AUTO_DESKTOP_APPS", a);
+                println!("  Desktop apps dir: {}", a);
             }
             let accent_eff = accent.as_deref().map(str::to_lowercase).or_else(|| am.pac_accent());
             match accent_eff.as_deref() {
