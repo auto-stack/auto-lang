@@ -29,7 +29,7 @@
 | F1 | 静默失效 | P1 | handler 崩溃静默回滚全部状态写入、无任何诊断 |
 | F2 | 静默失效 | P1 | 模块 parse 失败仅 WARN、模块静默不渲染 |
 | G1 | vue codegen | P1 | widget 直连 store 导入生成错误路径 |
-| F3/D4/D5/D6/E3/G2-G5 | 混合 | P2 | 见各节 |
+| F3/D4/D5/D6/E3 | 混合 | P2 | 见各节（G2-G5 经 2026-08-28 裁决删除：报告与下游 VG 清单均无对应记录，双重核实为悬空引用） |
 | J1 | 渲染器 | P0 | 嵌套条件+循环组合的子树构建静默失败（逐要素全过、组合即死） |
 | J2 | 渲染器 | P0 | 循环内容器级 key（col/row/div）杀死子树；button/text key 无害 |
 | J3 | 状态绑定 | P1 | 新增 store bool 字段视图绑定恒 false（state 池与视图不一致） |
@@ -237,10 +237,16 @@ auto-os-config vm 轨为规避上述问题付出的常设成本：
    E1/E2（http）；
 3. **第三批（语义统一）**：D1/D2/D3（动态值管线统一）、D6（preserve_order）、
    G1（vue store 路径）；
-4. **第四批（打磨）**：F3/F4/B3/D4/D5/E3/G2-G5。
+4. **第四批（打磨）**：F3/F4/B3/D4/D5/E3（原列 G2-G5 已删除——悬空引用，2026-08-28 裁决）。
 
 每批可独立验收；第一批落地后建议在 auto-os-config 复跑
 `node scripts/e2e-vm.mjs` + `./scripts/e2e.sh` 双门禁做交叉回归。
+5. **第五批（渲染层，§P/U1-U7，2026-08-28 用户授权复活后转正）**：
+   U7 loop 字段 Dot 求值链统一（button class:/style: prop 与 children
+   折叠走 props 直取链 + 求值失败显式告警）→ U1 事件冻结（P0）→
+   U4 select 渲染缺位 → U2 autoui_type onchange 表达式粘连 →
+   U3 截图通道详情态超时 → U6 快照空壳窗口 → U5 thead/th 样式。
+   实施记录落 §S。
 
 ---
 
