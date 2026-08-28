@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-469
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: specs-tree-deoddity
 author: [zcode]
 created_at: 2026-08-28
@@ -59,3 +59,10 @@ total_steps: 0
 ## 复审记录
 
 ## 待澄清事项
+
+---
+
+## spec-sync 回写记录（2026-08-28，/auto-plan:merge）
+
+- `.autoos/specs.json`：P469-1 入库（reports）。
+- 归档：`docs/plans/archive/`，`status: archived`（终态）。
