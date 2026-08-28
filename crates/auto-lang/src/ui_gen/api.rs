@@ -434,9 +434,30 @@ pub fn generate_component_from_file(
     let api_imports = opts.api_imports_override.unwrap_or_else(|| {
         extract_api_imports_from_ast(&ast)
     });
-    let store_deps = opts.store_deps_override.unwrap_or_else(|| {
+    let mut store_deps = opts.store_deps_override.unwrap_or_else(|| {
         extract_store_imports_from_ast(&ast)
     });
+    // PLAN-048 (auto-musk A 线): Display 化的 AST 省略 handler 体,限定调用
+    // (`ForgeStore.X(...)`)不可见——改扫源文件文本,跨 store 引用并入 deps。
+    {
+        if let Ok(raw) = std::fs::read_to_string(at_path) {
+            let mut cur = String::new();
+            let mut extra: Vec<String> = Vec::new();
+            for ch in raw.chars() {
+                if ch.is_alphanumeric() || ch == '_' {
+                    cur.push(ch);
+                } else {
+                    let starts_uc = cur.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                    if starts_uc && cur.len() > 5 && cur.ends_with("Store")
+                        && !store_deps.contains(&cur) && !extra.contains(&cur) {
+                        extra.push(cur.clone());
+                    }
+                    cur.clear();
+                }
+            }
+            store_deps.extend(extra);
+        }
+    }
     let sub_widgets = opts.sub_widgets.unwrap_or_default();
 
     // Extract store declarations → generate composables
