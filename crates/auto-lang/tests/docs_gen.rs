@@ -101,6 +101,8 @@ const DOC_TODO_BASELINE: &[&str] = &[
     "mermaid", "modal", "navmenu", "radioitem", "range", "spacer", "square",
     "stack", "svg", "swiper", "tag", "toolbar", "listitem",
     "navdestination",
+    // Plan 463 desktop shell 新增(taskbar),文档化跟随该计划的文档批次。
+    "taskbar",
 ];
 
 fn gallery_page_folds() -> BTreeSet<String> {

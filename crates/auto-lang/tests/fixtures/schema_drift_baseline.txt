@@ -243,7 +243,6 @@ render_not_in_vb	preview-card
 render_not_in_vb	preview_card
 render_not_in_vb	previewcard
 render_not_in_vb	radio
-render_not_in_vb	select
 render_not_in_vb	sheet
 render_not_in_vb	sidebar
 render_not_in_vb	skeleton
@@ -632,6 +631,9 @@ rs_not_in_vb	ul
 vb0_not_in_vb1	menubar
 vb0_not_in_vb1	popover
 vb0_not_in_vb1	toolbar
+vb1_not_in_vb0	Select
+vb1_not_in_vb0	select
+vb_not_in_render	Select
 vb_not_in_render	a
 vb_not_in_render	b
 vb_not_in_render	em
@@ -647,6 +649,7 @@ vb_not_in_render	separator
 vb_not_in_render	small
 vb_not_in_render	strong
 vb_not_in_render	toolbar
+vb_not_in_rs	Select
 vb_not_in_rs	a
 vb_not_in_rs	article
 vb_not_in_rs	aside
@@ -680,6 +683,7 @@ vb_not_in_rs	nav
 vb_not_in_rs	progress
 vb_not_in_rs	scrollable
 vb_not_in_rs	section
+vb_not_in_rs	select
 vb_not_in_rs	sep
 vb_not_in_rs	small
 vb_not_in_rs	square

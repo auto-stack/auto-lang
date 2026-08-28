@@ -760,6 +760,18 @@ _props 待声明_
 
 ---
 
+### `taskbar`
+
+`builtin_widget` · `taskbar` · web: `none` · iced: `full` · category: `navigation`
+
+Desktop shell taskbar (bottom bar)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `class` | `union: string|class_binding` | — | Bar chrome classes (h-/w-/bg-/border- land on the bar) |
+
+---
+
 ### `text`
 
 `builtin_widget` · `text` · web: `component` · iced: `full` · category: `typography`

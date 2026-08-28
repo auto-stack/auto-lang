@@ -1,4 +1,4 @@
-front/app.at	25907	f7d794b965d26ef7
+front/app.at	25925	1d8be2fa9f1a335f
 front/components/area_chart.at	2516	f5c6768cbfdc5c86
 front/components/bar_chart.at	2324	f0fd9d0fc60f6cac
 front/components/carousel.at	3149	7d8b748fff8cafa9
@@ -78,4 +78,4 @@ front/pages/toast.at	38090	ad1a266786606ee0
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	10782	e9ea18d974dd5af5
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1399395	d55df6ea46ac0fa9
+TOTAL	1399413	52c25eeb030fd714
