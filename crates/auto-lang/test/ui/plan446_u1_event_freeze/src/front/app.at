@@ -1,0 +1,48 @@
+// app.at — Plan 446 批五 U1 corpus: 事件冻结(P0)复现载体。
+// 侧栏(循环构建) press → Nav(m.id) → store.active_id 切换 → 主区条件翻转。
+
+use store: NavStore
+
+widget App {
+    msg { Init, Nav }
+
+    model {
+        var current str = "boot"
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .current = "home"
+        }
+
+        .Nav(id) -> {
+            store.SetActive(id)
+            .current = id
+        }
+    }
+
+    view {
+        row {
+            col {
+                for m in .store.items {
+                    button (text: m.name) {
+                        onclick: .Nav(m.id)
+                    }
+                }
+            }
+            col {
+                if .store.active_id == "roles" {
+                    text "ROLES-VIEW" {}
+                }
+                if .store.active_id == "daemon" {
+                    text "DAEMON-VIEW" {}
+                }
+                if .store.active_id == "home" {
+                    text "HOME-VIEW" {}
+                }
+                text .current
+            }
+        }
+    }
+}

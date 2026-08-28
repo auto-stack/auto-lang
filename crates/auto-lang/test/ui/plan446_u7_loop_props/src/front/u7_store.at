@@ -1,0 +1,21 @@
+// u7_store.at — Plan 446 批五 U7 corpus(store 侧)。
+// items 元素携带 nav_class/value/label 字段,覆盖 §P 消费链矩阵:
+// 条件位(对照✓)/text prop 直取(对照✓)/button class:/style:(✗现场)/
+// text-label children 折叠(✗现场)。
+
+store U7Store {
+    model {
+        var items Array<str> = []
+        var active_id str = "b"
+    }
+
+    msg { Init }
+
+    on {
+        .Init -> {
+            .items = []
+            .items.push({ id: "a", name: "alpha", nav_class: "w-64 bg-red-500 text-white", value: "va", label: "la" })
+            .items.push({ id: "b", name: "beta", nav_class: "w-64 bg-blue-500 text-white", value: "vb", label: "lb" })
+        }
+    }
+}

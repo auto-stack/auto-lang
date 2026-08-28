@@ -1,0 +1,42 @@
+// app.at — Plan 446 批五 U7 corpus: loop 字段 Dot 表达式的链路求值一致性
+// （§P/P7 现场矩阵复现载体）。
+
+use store: U7Store
+
+widget App {
+    msg { Init }
+
+    model {
+        var probe str = "none"
+    }
+
+    on {
+        .Init -> {
+            store.Init()
+            .probe = "ok"
+        }
+    }
+
+    view {
+        col {
+            for m in .store.items {
+                row {
+                    // 链1(对照,现场✓): 条件位
+                    if .store.active_id == m.id {
+                        text (text: m.name, class: "active-name") {}
+                    }
+                    // 链2(对照,现场✓): text prop 直取
+                    input (value: m.value) {}
+                    // 链3(现场✗): button class: prop —— 静默失败落 preset
+                    button (class: m.nav_class, text: m.name) {
+                        onclick: .Init
+                    }
+                    // 链4(现场✗): text/label 元素 children 折叠 —— 整 label 缺位
+                    label (class: "row-label") {
+                        text (text: m.label) {}
+                    }
+                }
+            }
+        }
+    }
+}

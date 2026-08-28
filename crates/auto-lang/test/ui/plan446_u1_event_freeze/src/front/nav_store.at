@@ -1,0 +1,26 @@
+// nav_store.at — Plan 446 批五 U1 corpus(store 侧)。
+// 现场形状: 集合页实体列表循环构建后,侧栏任意 press 被接受但 active_id
+// 冻结(全局死导航,§P/U1)。
+
+store NavStore {
+    model {
+        var items Array<str> = []
+        var active_id str = "home"
+    }
+
+    msg { Init, SetActive }
+
+    on {
+        .Init -> {
+            .items = []
+            .items.push({ id: "home", name: "Home" })
+            .items.push({ id: "roles", name: "Roles" })
+            .items.push({ id: "daemon", name: "Daemon" })
+            .active_id = "home"
+        }
+
+        .SetActive(id) -> {
+            .active_id = id
+        }
+    }
+}

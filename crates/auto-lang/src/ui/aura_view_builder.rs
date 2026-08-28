@@ -1648,6 +1648,15 @@ impl<'a> AuraViewBuilder<'a> {
                             }
                             Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
                         }
+                        // Plan 446 批五 U7(链4): 文本类子元素的内容折叠(绑定感知)。
+                        // 此前只认 Text 节点——`label { text (text: m.label) {} }`
+                        // 的子元素求值被跳过,宿主元素内容为空(os-config §P 现场
+                        // "整个 label 缺位"根因)。
+                        AuraNode::Element { tag, props: cprops, .. }
+                            if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
+                        {
+                            self.child_element_text(cprops, bindings)
+                        }
                         _ => None,
                     })
                     .collect::<Vec<String>>()
@@ -3968,6 +3977,24 @@ let tabs_inner = View::Row {
     /// - A `text` or `content` prop
     /// - A child text node
     /// - The tag's main argument
+    /// Plan 446 批五 U7: 文本类 tag 清单（children 折叠与元素转换共用）。
+    const TEXT_LIKE_TAGS: &'static [&'static str] = &[
+        "text", "label", "h1", "h2", "h3", "h4", "h5", "h6", "p", "span",
+        "a", "link", "small", "strong", "em", "b", "i",
+    ];
+
+    /// Plan 446 批五 U7(链4): 文本类子元素的文本内容提取（绑定感知，
+    /// 走 props 直取链 extract_string_with——与宿主元素同款求值）。
+    fn child_element_text(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<String> {
+        self.extract_string_with(props, "text", bindings)
+            .or_else(|| self.extract_string_with(props, "content", bindings))
+            .or_else(|| self.extract_string_with(props, "label", bindings))
+    }
+
     fn convert_text_element(
         &self,
         tag: &str,
@@ -3986,6 +4013,13 @@ let tabs_inner = View::Row {
                         AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
                         AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
                             Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
+                        }
+                        // Plan 446 批五 U7(链4): 同 tracked 变体——文本类子元素
+                        // 的内容折叠(绑定感知)。
+                        AuraNode::Element { tag, props: cprops, .. }
+                            if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
+                        {
+                            self.child_element_text(cprops, bindings)
                         }
                         _ => None,
                     })
@@ -4132,6 +4166,22 @@ let tabs_inner = View::Row {
             // `class: cell.style` where each cell carries its own Tailwind class.
             let user = self.extract_string_with(props, "class", bindings)
                 .or_else(|| self.extract_string_with(props, "style", bindings));
+            // Plan 446 批五 U7(链3): 求值成功但样式类全被丢弃(自定义类名不在
+            // Tailwind 词汇表,如 os-config 的 "e-row active")时显式告警——
+            // 此前静默回退 preset 外观(紫块/白字/h-10),下游无从定位
+            // (§P 处方:"求值失败→静默兜底"改显式告警)。
+            if let Some(u) = user.as_deref() {
+                if !u.trim().is_empty()
+                    && Style::parse(u).map(|s| s.classes.is_empty()).unwrap_or(true)
+                {
+                    log::warn!(
+                        "[446-U7] button class/style resolved to '{}' but no style classes \
+                         survived parsing (custom class names outside the Tailwind vocabulary) \
+                         — button falls back to its preset look",
+                        u
+                    );
+                }
+            }
             let base = if preset.is_empty() {
                 size_preset.to_string()
             } else {

@@ -5773,6 +5773,11 @@ mod plan446_batch4_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan446_c1_popover_tests;
 
+// Plan 446 批五: 渲染层（§P/U1-U7）回归。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan446_batch5_tests;
+
+
 
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
