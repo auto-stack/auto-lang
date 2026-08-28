@@ -187,3 +187,372 @@ mod plan449_style_migration_probe {
         );
     }
 }
+use crate::ui::style::{Color, SizeValue, StyleClass};
+use serde_json::{json, Map, Value};
+use std::path::PathBuf;
+
+/// PLAN-049 (auto-musk) T2: style-parity VM 侧 dump —— 读 musk 夹具 cases.json,
+/// 逐 token 走 class.rs 解析,输出属性表 JSON 行（run.mjs 抓取后与 web 侧
+/// tailwind 生成 CSS 的静态规则表逐属性 diff）。
+///
+/// cases.json 定位：env STYLE_PARITY_CASES 优先（run.mjs 传入自身仓路径,不依赖
+/// sibling 布局）；缺省回退 sibling auto-musk 主检出。找不到 → SKIP 不判失败
+/// （普通 cargo test 无夹具也能跑）。
+///
+/// 属性表口径（与 run.mjs norm 对齐）：
+/// - 长度一律 "Npx"（Tailwind 1 unit=4px;Full=100%,Auto=auto,分数=百分比）。
+/// - 颜色一律 "color(<tailwind 色名>@<alpha 0-1>)" —— 双轨以类串里的色名为
+///   公共键（VM 语义变体 muted/card 同落 Surface 的合并是 theme.rs 值域问题,
+///   进 tokenValues 报告,不进 diff）；"_rgb_" 前缀键为解析 RGB 报告值,diff 忽略。
+/// - 布局布尔用 CSS 属性名 + tailwind 语义值（flex-direction:column 等）。
+/// - truncate 按语义展开三属性,对齐 web 生成规则。
+/// - 阴影/过渡/旋转等 VM 降级项落 "_" 前缀报告键,diff 忽略（web-only 增强）。
+#[cfg(test)]
+mod plan449_style_parity_dump {
+    use super::*;
+
+    fn locate_cases() -> Option<PathBuf> {
+        if let Ok(p) = std::env::var("STYLE_PARITY_CASES") {
+            let p = PathBuf::from(p);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        let rel = "../../../auto-musk/scripts/lib-parity/style-parity/fixtures/cases.json";
+        let candidates = [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| PathBuf::from(d).join(rel)),
+            Some(PathBuf::from(rel)),
+        ];
+        candidates.into_iter().flatten().find(|p| p.exists())
+    }
+
+    pub(super) fn trim_f32(p: f32) -> String {
+        let s = format!("{p}");
+        if s.ends_with(".0") {
+            s[..s.len() - 2].to_string()
+        } else {
+            s
+        }
+    }
+
+    fn px_of(v: &SizeValue) -> String {
+        match v {
+            SizeValue::Full => "100%".into(),
+            SizeValue::Half => "50%".into(),
+            SizeValue::Third => "33.333%".into(),
+            SizeValue::TwoThirds => "66.666%".into(),
+            SizeValue::Quarter => "25%".into(),
+            SizeValue::ThreeQuarters => "75%".into(),
+            SizeValue::Auto => "auto".into(),
+            SizeValue::Fixed(u) => format!("{}px", u * 4),
+            SizeValue::Pixels(p) => format!("{}px", trim_f32(*p)),
+        }
+    }
+
+    fn fmt_alpha(a: f32) -> String {
+        trim_f32(a)
+    }
+
+    fn neg_px(v: &SizeValue) -> String {
+        format!("-{}", px_of(v))
+    }
+
+    /// min-h-screen 在 class.rs 里是 f32::MAX 哨兵——对拍口径折回 web 的 100vh。
+    fn vh_or_px(px: f32) -> String {
+        if px > 1.0e9 {
+            "100vh".into()
+        } else {
+            format!("{}px", trim_f32(px))
+        }
+    }
+
+    /// 颜色类 → (色名, alpha, 报告 RGB)。色名取自类串 base（bg-primary/10 →
+    /// "primary"），双轨 diff 的公共键;RGB 为 theme.rs 语义解析报告值。
+    fn color_entry(base_with_alpha: &str) -> Option<(String, f32, Option<(u8, u8, u8, u8)>)> {
+        let (base, alpha) = match base_with_alpha.split_once('/') {
+            Some((b, a)) => (b, a.parse::<f32>().unwrap_or(100.0) / 100.0),
+            None => (base_with_alpha, 1.0),
+        };
+        let col = Color::from_tailwind(base).ok()?;
+        let (r, g, b) = col.to_rgb8();
+        let rgb = crate::ui::style::theme::resolve_semantic_rgb(&col)
+            .map(|(r, g, b)| (r, g, b, (alpha * 255.0) as u8))
+            .or(Some((r, g, b, (alpha * 255.0) as u8)));
+        Some((base.to_string(), alpha, rgb))
+    }
+
+    /// 单个 StyleClass → 属性表。未覆盖变体给 {"ir": "<Debug>"}（run.mjs 记
+    /// vm-unmapped 进报告）。
+    fn class_props(c: &StyleClass, raw: &str) -> Vec<(String, Value)> {
+        use StyleClass::*;
+        let mut out: Vec<(String, Value)> = Vec::new();
+        let color_key = |prop: &str, base_with_alpha: &str| -> Vec<(String, Value)> {
+            match color_entry(base_with_alpha) {
+                Some((name, a, rgb)) => {
+                    let mut v = vec![(
+                        prop.to_string(),
+                        json!(format!("color({}@{})", name, fmt_alpha(a))),
+                    )];
+                    if let Some((r, g, b, a8)) = rgb {
+                        v.push(("_rgb_".to_string() + prop, json!(format!("{r},{g},{b},{a8}"))));
+                    }
+                    v
+                }
+                None => vec![(prop.to_string(), json!(format!("unresolved({base_with_alpha})")))],
+            }
+        };
+        let color_base = |prefixes: &[&str]| -> Option<String> {
+            for p in prefixes {
+                if let Some(rest) = raw.strip_prefix(p) {
+                    return Some(rest.to_string());
+                }
+            }
+            None
+        };
+        match c {
+            Padding(v) => out.push(("padding".into(), json!(px_of(v)))),
+            PaddingX(v) => {
+                out.push(("padding-left".into(), json!(px_of(v))));
+                out.push(("padding-right".into(), json!(px_of(v))));
+            }
+            PaddingY(v) => {
+                out.push(("padding-top".into(), json!(px_of(v))));
+                out.push(("padding-bottom".into(), json!(px_of(v))));
+            }
+            PaddingTop(v) => out.push(("padding-top".into(), json!(px_of(v)))),
+            PaddingBottom(v) => out.push(("padding-bottom".into(), json!(px_of(v)))),
+            PaddingLeft(v) => out.push(("padding-left".into(), json!(px_of(v)))),
+            PaddingRight(v) => out.push(("padding-right".into(), json!(px_of(v)))),
+            Margin(v) => out.push(("margin".into(), json!(px_of(v)))),
+            NegativeMargin(v) => out.push(("margin".into(), json!(neg_px(v)))),
+            NegativeMarginX(v) => {
+                out.push(("margin-left".into(), json!(neg_px(v))));
+                out.push(("margin-right".into(), json!(neg_px(v))));
+            }
+            NegativeMarginY(v) => {
+                out.push(("margin-top".into(), json!(neg_px(v))));
+                out.push(("margin-bottom".into(), json!(neg_px(v))));
+            }
+            NegativeMarginTop(v) => out.push(("margin-top".into(), json!(neg_px(v)))),
+            NegativeMarginBottom(v) => out.push(("margin-bottom".into(), json!(neg_px(v)))),
+            NegativeMarginLeft(v) => out.push(("margin-left".into(), json!(neg_px(v)))),
+            NegativeMarginRight(v) => out.push(("margin-right".into(), json!(neg_px(v)))),
+            MarginX(v) => {
+                out.push(("margin-left".into(), json!(px_of(v))));
+                out.push(("margin-right".into(), json!(px_of(v))));
+            }
+            MarginY(v) => {
+                out.push(("margin-top".into(), json!(px_of(v))));
+                out.push(("margin-bottom".into(), json!(px_of(v))));
+            }
+            MarginTop(v) => out.push(("margin-top".into(), json!(px_of(v)))),
+            MarginBottom(v) => out.push(("margin-bottom".into(), json!(px_of(v)))),
+            MarginLeft(v) => out.push(("margin-left".into(), json!(px_of(v)))),
+            MarginRight(v) => out.push(("margin-right".into(), json!(px_of(v)))),
+            MarginLeftAuto => out.push(("margin-left".into(), json!("auto"))),
+            MarginRightAuto => out.push(("margin-right".into(), json!("auto"))),
+            MarginXAuto => {
+                out.push(("margin-left".into(), json!("auto")));
+                out.push(("margin-right".into(), json!("auto")));
+            }
+            Gap(v) => out.push(("gap".into(), json!(px_of(v)))),
+            GapX(v) => out.push(("column-gap".into(), json!(px_of(v)))),
+            GapY(v) => out.push(("row-gap".into(), json!(px_of(v)))),
+            SpaceX(v) => out.push(("column-gap".into(), json!(px_of(v)))),
+            SpaceY(v) => out.push(("row-gap".into(), json!(px_of(v)))),
+            BackgroundColor(_) => {
+                if let Some(base) = color_base(&["bg-"]) {
+                    out.extend(color_key("background-color", &base));
+                }
+            }
+            TextColor(_) => {
+                if let Some(base) = color_base(&["text-"]) {
+                    out.extend(color_key("color", &base));
+                }
+            }
+            BorderColor(_) => {
+                if let Some(base) = color_base(&["border-"]) {
+                    out.extend(color_key("border-color", &base));
+                }
+            }
+            AccentColor(_) => {
+                if let Some(base) = color_base(&["accent-"]) {
+                    out.extend(color_key("accent-color", &base));
+                }
+            }
+            Flex => out.push(("display".into(), json!("flex"))),
+            Block => out.push(("display".into(), json!("block"))),
+            Inline => out.push(("display".into(), json!("inline"))),
+            InlineBlock => out.push(("display".into(), json!("inline-block"))),
+            InlineFlex => out.push(("display".into(), json!("inline-flex"))),
+            Grid => out.push(("display".into(), json!("grid"))),
+            Flex1 => out.push(("flex".into(), json!("1"))),
+            FlexAuto => out.push(("flex".into(), json!("auto"))),
+            FlexInitial => out.push(("flex".into(), json!("initial"))),
+            FlexNone => out.push(("flex".into(), json!("none"))),
+            Grow => out.push(("flex-grow".into(), json!("1"))),
+            Grow0 => out.push(("flex-grow".into(), json!("0"))),
+            Shrink => out.push(("flex-shrink".into(), json!("1"))),
+            Shrink0 => out.push(("flex-shrink".into(), json!("0"))),
+            FlexRow => out.push(("flex-direction".into(), json!("row"))),
+            FlexCol => out.push(("flex-direction".into(), json!("column"))),
+            FlexRowReverse => out.push(("flex-direction".into(), json!("row-reverse"))),
+            FlexColReverse => out.push(("flex-direction".into(), json!("column-reverse"))),
+            FlexWrap => out.push(("flex-wrap".into(), json!("wrap"))),
+            FlexWrapReverse => out.push(("flex-wrap".into(), json!("wrap-reverse"))),
+            FlexNowrap => out.push(("flex-wrap".into(), json!("nowrap"))),
+            ItemsCenter => out.push(("align-items".into(), json!("center"))),
+            ItemsStart => out.push(("align-items".into(), json!("flex-start"))),
+            ItemsEnd => out.push(("align-items".into(), json!("flex-end"))),
+            ItemsStretch => out.push(("align-items".into(), json!("stretch"))),
+            JustifyCenter => out.push(("justify-content".into(), json!("center"))),
+            JustifyStart => out.push(("justify-content".into(), json!("flex-start"))),
+            JustifyEnd => out.push(("justify-content".into(), json!("flex-end"))),
+            JustifyBetween => out.push(("justify-content".into(), json!("space-between"))),
+            JustifyAround => out.push(("justify-content".into(), json!("space-around"))),
+            JustifyEvenly => out.push(("justify-content".into(), json!("space-evenly"))),
+            SelfStart => out.push(("align-self".into(), json!("flex-start"))),
+            SelfCenter => out.push(("align-self".into(), json!("center"))),
+            SelfEnd => out.push(("align-self".into(), json!("flex-end"))),
+            SelfStretch => out.push(("align-self".into(), json!("stretch"))),
+            Width(v) => out.push(("width".into(), json!(px_of(v)))),
+            Height(v) => out.push(("height".into(), json!(px_of(v)))),
+            MinWidth(px) => out.push(("min-width".into(), json!(vh_or_px(*px)))),
+            MinHeight(px) => out.push(("min-height".into(), json!(vh_or_px(*px)))),
+            MaxWidth(px) => out.push(("max-width".into(), json!(format!("{}px", trim_f32(*px))))),
+            MaxHeight(px) => out.push(("max-height".into(), json!(format!("{}px", trim_f32(*px))))),
+            Rounded => out.push(("border-radius".into(), json!("4px"))),
+            RoundedNone => out.push(("border-radius".into(), json!("0px"))),
+            RoundedSm => out.push(("border-radius".into(), json!("2px"))),
+            RoundedMd => out.push(("border-radius".into(), json!("6px"))),
+            RoundedLg => out.push(("border-radius".into(), json!("8px"))),
+            RoundedXl => out.push(("border-radius".into(), json!("12px"))),
+            Rounded2Xl => out.push(("border-radius".into(), json!("16px"))),
+            Rounded3Xl => out.push(("border-radius".into(), json!("24px"))),
+            RoundedFull => out.push(("border-radius".into(), json!("9999px"))),
+            Border => out.push(("border-width".into(), json!("1px"))),
+            Border0 => out.push(("border-width".into(), json!("0px"))),
+            BorderWidth(w) => out.push(("border-width".into(), json!(format!("{}px", trim_f32(*w))))),
+            TextXs => out.push(("font-size".into(), json!("12px"))),
+            TextSm => out.push(("font-size".into(), json!("14px"))),
+            TextBase => out.push(("font-size".into(), json!("16px"))),
+            TextLg => out.push(("font-size".into(), json!("18px"))),
+            TextXl => out.push(("font-size".into(), json!("20px"))),
+            Text2Xl => out.push(("font-size".into(), json!("24px"))),
+            Text3Xl => out.push(("font-size".into(), json!("30px"))),
+            Text4Xl => out.push(("font-size".into(), json!("36px"))),
+            Text5Xl => out.push(("font-size".into(), json!("48px"))),
+            Text6Xl => out.push(("font-size".into(), json!("60px"))),
+            Text7Xl => out.push(("font-size".into(), json!("72px"))),
+            Text8Xl => out.push(("font-size".into(), json!("96px"))),
+            Text9Xl => out.push(("font-size".into(), json!("128px"))),
+            TextArbitrary(px) => out.push(("font-size".into(), json!(format!("{}px", trim_f32(*px))))),
+            FontBold => out.push(("font-weight".into(), json!("700"))),
+            FontMedium => out.push(("font-weight".into(), json!("500"))),
+            FontNormal => out.push(("font-weight".into(), json!("400"))),
+            FontLight => out.push(("font-weight".into(), json!("300"))),
+            FontExtraLight => out.push(("font-weight".into(), json!("200"))),
+            FontSemiBold => out.push(("font-weight".into(), json!("600"))),
+            FontSerif => out.push(("font-family".into(), json!("serif"))),
+            FontSans => out.push(("font-family".into(), json!("sans"))),
+            FontMono => out.push(("font-family".into(), json!("mono"))),
+            TextCenter => out.push(("text-align".into(), json!("center"))),
+            TextLeft => out.push(("text-align".into(), json!("left"))),
+            TextRight => out.push(("text-align".into(), json!("right"))),
+            LineHeight(lh) => out.push(("line-height".into(), json!(trim_f32(*lh)))),
+            LineHeightNone => out.push(("line-height".into(), json!("1"))),
+            WhitespaceNowrap => out.push(("white-space".into(), json!("nowrap"))),
+            BreakWords => out.push(("overflow-wrap".into(), json!("break-word"))),
+            CursorPointer => out.push(("cursor".into(), json!("pointer"))),
+            OutlineNone => out.push(("outline".into(), json!("none"))),
+            BorderNone => out.push(("border-style".into(), json!("none"))),
+            ListNone => out.push(("list-style".into(), json!("none"))),
+            Antialiased => out.push(("_antialiased".into(), json!("1"))),
+            Truncate => {
+                out.push(("overflow".into(), json!("hidden")));
+                out.push(("text-overflow".into(), json!("ellipsis")));
+                out.push(("white-space".into(), json!("nowrap")));
+            }
+            Opacity(v) => out.push(("opacity".into(), json!(fmt_alpha(*v as f32 / 100.0)))),
+            Relative => out.push(("position".into(), json!("relative"))),
+            Absolute => out.push(("position".into(), json!("absolute"))),
+            Fixed => out.push(("position".into(), json!("fixed"))),
+            Sticky => out.push(("position".into(), json!("sticky"))),
+            ZIndex(z) => out.push(("z-index".into(), json!(z.to_string()))),
+            TopOffset(px) => out.push(("top".into(), json!(format!("{}px", trim_f32(*px))))),
+            BottomOffset(px) => out.push(("bottom".into(), json!(format!("{}px", trim_f32(*px))))),
+            RightOffset(px) => out.push(("right".into(), json!(format!("{}px", trim_f32(*px))))),
+            LeftOffset(px) => out.push(("left".into(), json!(format!("{}px", trim_f32(*px))))),
+            Inset(px) => {
+                for p in ["top", "right", "bottom", "left"] {
+                    out.push((p.to_string(), json!(format!("{}px", trim_f32(*px)))));
+                }
+            }
+            OverflowAuto => out.push(("overflow".into(), json!("auto"))),
+            OverflowHidden => out.push(("overflow".into(), json!("hidden"))),
+            OverflowVisible => out.push(("overflow".into(), json!("visible"))),
+            OverflowScroll => out.push(("overflow".into(), json!("scroll"))),
+            OverflowXAuto => out.push(("overflow-x".into(), json!("auto"))),
+            OverflowYAuto => out.push(("overflow-y".into(), json!("auto"))),
+            Hidden => out.push(("display".into(), json!("none"))),
+            Shadow => out.push(("_shadow".into(), json!("shadow"))),
+            ShadowSm => out.push(("_shadow".into(), json!("sm"))),
+            ShadowMd => out.push(("_shadow".into(), json!("md"))),
+            ShadowLg => out.push(("_shadow".into(), json!("lg"))),
+            ShadowXl => out.push(("_shadow".into(), json!("xl"))),
+            Shadow2Xl => out.push(("_shadow".into(), json!("2xl"))),
+            ShadowNone => out.push(("box-shadow".into(), json!("none"))),
+            TransitionColors => out.push(("_transition".into(), json!("colors"))),
+            TransitionDuration(ms) => out.push(("_transition-duration".into(), json!(ms.to_string()))),
+            Rotate(deg) => out.push(("_rotate".into(), json!(trim_f32(*deg)))),
+            Order(n) => out.push(("order".into(), json!(n.to_string()))),
+            CodeLang(_) => {} // 元数据类,非视觉
+            other => {
+                out.push(("ir".into(), json!(format!("{other:?}"))));
+            }
+        }
+        out
+    }
+
+    fn dump_token(raw: &str) -> Value {
+        if let Some(rest) = raw.strip_prefix("hover:") {
+            let ok = StyleClass::parse_single(rest).is_ok();
+            return json!({"raw": raw, "variant": "hover", "ok": ok, "props": {}});
+        }
+        match StyleClass::parse_single(raw) {
+            Ok(c) => {
+                let mut props = Map::new();
+                for (k, v) in class_props(&c, raw) {
+                    props.insert(k, v);
+                }
+                json!({"raw": raw, "ok": true, "props": props})
+            }
+            Err(e) => json!({"raw": raw, "ok": false, "err": e}),
+        }
+    }
+
+    #[test]
+    fn style_parity_dump() {
+        let Some(path) = locate_cases() else {
+            println!("[style-parity-dump] SKIPPED — cases.json not found (set STYLE_PARITY_CASES)");
+            return;
+        };
+        let text = std::fs::read_to_string(&path).expect("read cases.json");
+        let cases: Value = serde_json::from_str(&text).expect("parse cases.json");
+        let empty = Vec::new();
+        let list = cases.get("cases").and_then(|c| c.as_array()).unwrap_or(&empty);
+        println!("[style-parity-dump] BEGIN {} cases from {}", list.len(), path.display());
+        for case in list {
+            let id = case.get("id").and_then(|v| v.as_str()).unwrap_or("?").replace('"', "'");
+            let classes = case.get("classes").and_then(|v| v.as_str()).unwrap_or("");
+            let tokens: Vec<Value> = classes.split_whitespace().map(dump_token).collect();
+            println!(
+                "[style-parity-dump] {}",
+                json!({"case": id, "tokens": tokens})
+            );
+        }
+        println!("[style-parity-dump] END");
+    }
+}
