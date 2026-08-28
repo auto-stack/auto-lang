@@ -48,6 +48,10 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 465 | a2vue 组件路径 prop 直通 | shadcn 组件路径对任意自定义 prop（如 virtual_window 的 `win: w`）不透传（v-for :key 路径仅子组件/外部门组件走 v-bind 形态）；宿主叶子自读 WmStore 不依赖该透传，.at 直书桌面为后续需求时补齐。 | `ui_gen/vue.rs` is_shadcn_component 属性发射路径 + `reports/465-t4-wm-dom-leaf.md` §3 |
+| 465 | reka portal 族窗口逸出 | dialog/modal/dropdown 等经 reka DialogPortal **DOM 重挂** document.body（T2 实测：CSS containing block 不可收敛，DOM 搬家≠CSS fixed）；v1 登记限制清单+启动警告，不改写 portal 语义；正规解 = 生成器 DialogContent 模板 `DialogPortal :to` + provide/inject 注入窗容器（generator 级改写，后续）。 | `ui_gen/vue.rs:14483` DialogContent 模板 + `reports/465-t2-containment-spike.md` §1① |
+| 465 | document 监听跨窗广播 | App 自注册的 `.window/.document` 全局监听天然跨窗触发（T2 实测：单键双窗计数同涨）；桌面热键走捕获段+stopImmediatePropagation 自保；受害 App 白名单先行。 | `assets/wm/keyboard.ts` + `reports/465-t2-containment-spike.md` §1③ |
+| 465 | pkg 失败吞错启发式 | run_command_live 的「node_modules 存在即 Ok」启发式（pnpm v9 ERR_PNPM_IGNORED_BUILDS 误报兼容）在 pnpm v11 下仍可能吞掉真失败（本批仅修 add --dev→-D 根因；启发式收窄待后续）。 | `pkg.rs run_command_live` + `reports/465-t8-parity-record.md` §9 |
 | 451 | 条件串非 Expr AST | enabled_if/checked_if 两种拼写（引号串/裸表达式）在 AST 内同为规范条件串而非 Expr AST——单一表示贯通 vm 求值（eval_condition_with）/vue 转译（convert_condition）/auto-atom 文件层的**有意取舍**；条件仅有 token 文法级校验，无类型级编译期校验。需要时可升级 Expr AST + 序列化器保持三端兼容。 | `ast/ui.rs` ActionEntry + `parser.rs` parse_actions_cond_attr |
 | 451 | use 拾取深度不对称 | actions 模块拾取：vm 走 import_stmts **传递闭包**（孙模块命中），vue 的 collect_use_module_actions 只扫**一级** use 模块——actions 放孙模块时 vue 不拾取；需要时补递归即可。 | `lib.rs` run_file_dynamic_ui_inner vs `ui_gen/api.rs` collect_use_module_actions |
 | 451 | plain 模式占位不合成 | `menubar {}`/`toolbar {}` 占位标签的组件树合成仅在 shadcn 模式（依赖 shadcn Menubar/Button 组件族）；`shadcn: off` 的 plain 模式保持占位直通（vm 合成不挑模式）。keydown 回退层不挑模式，任何模式都随声明发射。 | `ui_gen/vue.rs` node_to_html 占位特判（is_shadcn 守卫） |
