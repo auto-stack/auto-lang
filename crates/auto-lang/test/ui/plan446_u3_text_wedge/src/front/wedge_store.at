@@ -1,6 +1,11 @@
 // wedge_store.at — Plan 446 批五 U3 corpus(store 侧)。
-// 载荷形态: ok(对照) / ta_N(不可断行 token 进 textarea,N=token 字符数) /
-// ta_breakable(同尺寸可断行) / text_unbreakable(text 元素对照)。
+// 载荷形态:
+//   ok             : 小文本(对照)
+//   ta_655k        : 现场磁盘规模(655K 连续反斜杠,转义翻倍产物)
+//   ta_1m3         : 现场快照规模(1.31M,含 B:{ 前缀)
+//   ta_1m3_field   : 同上,配套 app 侧 field-props 渲染分支
+//   ta_breakable   : 同尺寸可断行文本(空格分词,排除纯大小因素)
+//   text_unbreakable: 同款 token 进 text 元素(对照,不冻)
 store WedgeStore {
     model {
         var payload str = "hello"
@@ -18,22 +23,40 @@ store WedgeStore {
         .SetMode(mode) -> {
             if mode == "ok" {
                 .payload = "hello"
-                .ptext = "ptext-idle"
-            }
-            if mode == "ta_5k" {
-                .payload = "B:{" + "\\".repeat(5000)
-            }
-            if mode == "ta_20k" {
-                .payload = "B:{" + "\\".repeat(20000)
-            }
-            if mode == "ta_80k" {
-                .payload = "B:{" + "\\".repeat(80000)
-            }
-            if mode == "ta_320k" {
-                .payload = "B:{" + "\\".repeat(320000)
             }
             if mode == "ta_655k" {
                 .payload = "B:{" + "\\".repeat(655000)
+            }
+            if mode == "ta_1m3" {
+                .payload = "B:{" + "\\".repeat(1310850)
+            }
+            if mode == "ta_lines" {
+                .payload = ("\\".repeat(1024) + "\n").repeat(640)
+            }
+            if mode == "ta_letters" {
+                .payload = "a".repeat(655000)
+            }
+            if mode == "ta_underscore" {
+                .payload = "_".repeat(655000)
+            }
+            if mode == "ta_dashes" {
+                .payload = "-".repeat(655000)
+            }
+            if mode == "text_1m3" {
+                .payload = "hello"
+                .ptext = "B:{" + "\\".repeat(1310850)
+            }
+            if mode == "ta_800k" {
+                .payload = "B:{" + "\\".repeat(800000)
+            }
+            if mode == "ta_1m" {
+                .payload = "B:{" + "\\".repeat(1048576)
+            }
+            if mode == "ta_1150k" {
+                .payload = "B:{" + "\\".repeat(1150000)
+            }
+            if mode == "ta_1m3_field" {
+                .payload = "B:{" + "\\".repeat(1310850)
             }
             if mode == "ta_breakable" {
                 .payload = "word ".repeat(131000)

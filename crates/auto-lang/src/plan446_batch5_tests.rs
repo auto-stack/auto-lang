@@ -167,3 +167,40 @@ mod plan446_batch5_u1 {
         );
     }
 }
+
+#[cfg(feature = "ui-iced")]
+mod plan446_batch5_u3_textarea_wedge {
+    use crate::ui::iced::renderer::{oversized_textarea_preview, textarea_needs_preview};
+
+    /// U3 降级门槛:64KB 为界,小值走编辑器,超大值降级只读预览。
+    /// 现场机理:cosmic-text 对 `-`/`\` 等字形的整形 ≈60µs/字符(线性,
+    /// corpus 实测),1.3MB 损坏 sidecar 令 text_editor 每帧分钟级、
+    /// iced 事件循环整体冻结 —— 截图通道 10s 超时是最显眼症状。
+    #[test]
+    fn u3_textarea_preview_gate_boundaries() {
+        assert!(!textarea_needs_preview(""), "empty stays editable");
+        assert!(!textarea_needs_preview("hello"), "small stays editable");
+        assert!(
+            !textarea_needs_preview(&"x".repeat(64 * 1024)),
+            "exactly at cap stays editable"
+        );
+        assert!(
+            textarea_needs_preview(&"x".repeat(64 * 1024 + 1)),
+            "cap+1 degrades to preview"
+        );
+        // 现场形态:655K / 1.31M 连续反斜杠(转义翻倍损坏数据)。
+        assert!(textarea_needs_preview(&"\\".repeat(655_000)));
+        let pathological = "B:{".to_string() + &"\\".repeat(1_310_850);
+        assert!(textarea_needs_preview(&pathological));
+    }
+
+    /// 预览构造冒烟:1.31M 病态值上构建不 panic、不触碰 text_editor 整形
+    /// (函数体只做 chars 截断;渲染代价由 corpus 探针端到端锁定:
+    /// test/ui/plan446_u3_text_wedge + tmp/u3u6/probe-wedge.py,全形态 ALIVE)。
+    #[test]
+    fn u3_oversized_preview_builds_on_pathological_input() {
+        let pathological = "B:{".to_string() + &"\\".repeat(1_310_850);
+        let _el: iced::Element<'static, ()> = oversized_textarea_preview(&pathological);
+        let _el2: iced::Element<'static, ()> = oversized_textarea_preview("正常小文本");
+    }
+}

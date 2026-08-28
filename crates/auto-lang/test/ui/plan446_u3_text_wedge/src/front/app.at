@@ -1,16 +1,19 @@
 // app.at — Plan 446 批五 U3 corpus: 病态文本 wedge 复现载体。
 // 现场机理: os-config roles 详情态 sidecar(磁盘数据已被转义翻倍 bug 损坏成
-// ~655K 连续反斜杠)进入 textarea —— 单个不可断行 mega-token 令 iced
-// text_editor 排版等效死循环,整个 iced 事件循环冻结(WD 计数归零),
-// 截图通道 10s 超时即此症状。
+// ~655K 连续反斜杠,快照侧再翻倍至 1.31M)进入 textarea —— 单个不可断行
+// mega-token 令 cosmic-text 单段落排版超线性,iced 事件循环冻结,截图通道
+// 10s 超时即此症状。renderer 侧 soften(超限 run 按行分割)后 corpus 各规模
+// 均恢复;ta_1m3_field 形态携带现场同款 placeholder/style/oninput 用于对齐
+// 现场渲染上下文。
 
 use store: WedgeStore
 
 widget App {
-    msg { Init, Mode }
+    msg { Init, Mode, Touch }
 
     model {
         var current str = "boot"
+        var probe str = "none"
     }
 
     on {
@@ -23,22 +26,38 @@ widget App {
             store.SetMode(mode)
             .current = mode
         }
+
+        .Touch(v) -> {
+            .probe = "touched"
+        }
     }
 
     view {
         row {
             col {
                 button (text: "ok") { onclick: .Mode("ok") }
-                button (text: "ta_5k") { onclick: .Mode("ta_5k") }
-                button (text: "ta_20k") { onclick: .Mode("ta_20k") }
-                button (text: "ta_80k") { onclick: .Mode("ta_80k") }
-                button (text: "ta_320k") { onclick: .Mode("ta_320k") }
                 button (text: "ta_655k") { onclick: .Mode("ta_655k") }
+                button (text: "ta_1m3") { onclick: .Mode("ta_1m3") }
+                button (text: "ta_lines") { onclick: .Mode("ta_lines") }
+                button (text: "ta_letters") { onclick: .Mode("ta_letters") }
+                button (text: "ta_underscore") { onclick: .Mode("ta_underscore") }
+                button (text: "ta_dashes") { onclick: .Mode("ta_dashes") }
+                button (text: "text_1m3") { onclick: .Mode("text_1m3") }
+                button (text: "ta_800k") { onclick: .Mode("ta_800k") }
+                button (text: "ta_1m") { onclick: .Mode("ta_1m") }
+                button (text: "ta_1150k") { onclick: .Mode("ta_1150k") }
+                button (text: "ta_1m3_field") { onclick: .Mode("ta_1m3_field") }
                 button (text: "ta_breakable") { onclick: .Mode("ta_breakable") }
                 button (text: "text_unbreakable") { onclick: .Mode("text_unbreakable") }
             }
             col {
-                textarea (value: .store.payload) {}
+                if .current == "ta_1m3_field" {
+                    textarea (placeholder: "# Soul — the role's system prompt / personality (markdown).", value: .store.payload, style: "sidecar") {
+                        oninput: .Touch
+                    }
+                } else {
+                    textarea (value: .store.payload) {}
+                }
                 text .store.ptext
                 text .current
             }

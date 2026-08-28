@@ -990,7 +990,15 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                 builder = builder.with_layout_bounds(shared.get_layout_bounds().clone());
             }
             let output = builder.build(&shared.widget_name, template);
-            text_result(output)
+            // Plan 446 批五 U6:首帧前回退自标识 —— 此快照来自源模板
+            // (子 widget 裸引用、for 未展开),不是真实渲染树。现场曾把该
+            // 窗口产物当"应用空壳"误判(J1 家族);标注后 agent 一眼可辨,
+            // 重试即可(实测窗口 <1.5s 自愈,见 §S U6)。
+            let marked = format!(
+                "(autoui) PRE-RENDER FALLBACK: the app has not completed its first rendered frame yet — this is the SOURCE TEMPLATE (child widgets unexpanded, loops unrolled), not the live UI. Retry shortly.\n\n{}",
+                output
+            );
+            text_result(marked)
         }
         None => error_result("No UI available yet — the application may not have rendered"),
     }

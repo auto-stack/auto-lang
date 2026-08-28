@@ -865,67 +865,57 @@ fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) ->
     SpanSettings { text: content, lines }
 }
 
-/// Plan 446 批五 U3: 不可断行 mega-token 防冻结整形。
+/// Plan 446 批五 U3: textarea 超大内容降级门槛(字节)。
 ///
 /// 现场机理(auto-os-config roles 详情态,§P/U3):sidecar 数据被转义翻倍
-/// bug 损坏成 ~655K 连续反斜杠,作为单个不可断行 token 进入 iced
-/// `text_editor` —— 其软换行布局在该 token 上呈超二次方代价(实测 corpus:
-/// 5K≈2s / 80K≈5s / 320K≈20s / 655K=分钟级),且每次脏重建重来,事件循环
-/// 永久冻结,截图通道 10s 超时只是最显眼症状。
+/// bug 损坏成 ~1.31M 连续反斜杠进入 textarea(iced `text_editor`)——
+/// cosmic-text 对 `-`/`\` 等字形的整形/布局代价约为常观数字的百倍量级
+/// (corpus 实测近似线性 ≈60µs/字符:5K≈0.3s / 80K≈5s / 320K≈20s /
+/// 655K+ 每帧分钟级),iced 事件循环被单帧渲染永久占用 —— 截图通道 10s
+/// 超时只是最显眼症状,实质是整个 UI 冻结。分行/零宽断行符均无效(代价
+/// 按字符计,与段落结构无关,corpus `ta_lines`/ZWSP 变体实证)。
 ///
-/// 处方:对超过 `MAX_UNBREAKABLE_RUN` 的连续非空白 run,每 `CHUNK` 字符插入
-/// 零宽空格(U+200B)制造断行机会 —— 视觉不变(换行处本就软断),布局代价
-/// 回到近似线性。只影响喂给编辑器的展示文本;store 原值不动,仅当用户对
-/// 该病态行执行编辑时零宽符才会随 onchange 回流(此时内容已是损坏数据,
-/// 见 §P/U3 旁注:磁盘侧转义翻倍是独立缺陷,归下游修)。
-const MAX_UNBREAKABLE_RUN: usize = 2048;
-const UNBREAKABLE_CHUNK: usize = 1024;
-const ZERO_WIDTH_SPACE: char = '\u{200B}';
+/// 处方:超过本门槛的 textarea 值不再进编辑器,降级为**只读预览**
+/// (`oversized_textarea_preview`:提示行 + 截断快照)。无编辑器即无
+/// onchange 回流 —— store 原值完整保留,不存在截断落盘风险;正常尺寸
+/// (<64KB)的编辑路径零变化。阈值取 64KB:现场健康 sidecar 为 KB 量级,
+/// 误伤面可忽略。
+const TEXTAREA_INLINE_EDIT_CAP: usize = 64 * 1024;
 
-fn soften_unbreakable_runs(value: &str) -> std::borrow::Cow<'_, str> {
-    // 快路径:扫描找首个超限 run,没有则零分配原样返回(每帧每 textarea 都走)。
-    let mut run_start: Option<usize> = None;
-    let mut has_overrun = false;
-    for (i, ch) in value.char_indices() {
-        if ch.is_whitespace() {
-            run_start = None;
-        } else {
-            match run_start {
-                None => run_start = Some(i),
-                Some(start) => {
-                    if i - start >= MAX_UNBREAKABLE_RUN {
-                        has_overrun = true;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    if !has_overrun {
-        return std::borrow::Cow::Borrowed(value);
-    }
-    // 慢路径:逐 run 重建,超限 run 按 CHUNK 分块插 U+200B。
-    let mut out = String::with_capacity(value.len() + value.len() / MAX_UNBREAKABLE_RUN + 4);
-    let mut run_len = 0usize;
-    for ch in value.chars() {
-        if ch.is_whitespace() {
-            run_len = 0;
-            out.push(ch);
-            continue;
-        }
-        if run_len > 0 && run_len % UNBREAKABLE_CHUNK == 0 {
-            out.push(ZERO_WIDTH_SPACE);
-        }
-        out.push(ch);
-        run_len += 1;
-    }
-    std::borrow::Cow::Owned(out)
+/// 预览快照展示的头部长度(字符)。只读预览是"看",不是"编"——完整内容
+/// 始终在 store,外部编辑器工作流不受影响。
+const TEXTAREA_PREVIEW_HEAD_CHARS: usize = 32 * 1024;
+
+/// 判定 textarea 值是否超过内联编辑门槛(降级只读预览)。
+pub(crate) fn textarea_needs_preview(value: &str) -> bool {
+    value.len() > TEXTAREA_INLINE_EDIT_CAP
+}
+
+/// 超大 textarea 值的只读预览:提示行 + 截断快照(Plan 446 批五 U3)。
+/// 泛型于消息类型:纯展示元素,不携带任何事件。
+pub(crate) fn oversized_textarea_preview<M: Clone + std::fmt::Debug + 'static>(
+    value: &str,
+) -> iced::Element<'static, M> {
+    let total_chars = value.chars().count();
+    let head: String = value.chars().take(TEXTAREA_PREVIEW_HEAD_CHARS).collect();
+    let hint = format!(
+        "(autoui) value too large for inline editing ({} chars / {} bytes) — read-only preview of the first {} chars; full value is preserved in state.",
+        total_chars,
+        value.len(),
+        TEXTAREA_PREVIEW_HEAD_CHARS
+    );
+    // 预览文本必须 Fill 宽度:text 默认 Shrink,其 min 宽 = 最长不可断行
+    // (病态数据即百万像素),会把宿主行整体挤出窗口(实测主区只剩标题)。
+    iced::widget::column![
+        iced::widget::text(hint).size(11).width(iced::Length::Fill),
+        iced::widget::text(head).width(iced::Length::Fill),
+    ]
+    .width(iced::Length::Fill)
+    .into()
 }
 
 /// Get or create a `&'static text_editor::Content` for the given key, synced to `value`.
 fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content {
-    let softened = soften_unbreakable_runs(value);
-    let value: &str = &softened;
     // Phase 1: ensure the entry exists (under lock)
     {
         let mut map = TEXTAREA_CONTENTS.lock().unwrap();
@@ -2912,6 +2902,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, keymap, .. } => {
+                // Plan 446 批五 U3:超大内容降级只读预览(rust 模式同款守卫,
+                // 机理见 TEXTAREA_INLINE_EDIT_CAP)。
+                if textarea_needs_preview(&value) {
+                    let el = oversized_textarea_preview(&value);
+                    if let Some(ref s) = style {
+                        let is = IcedStyle::from_style(s);
+                        wrap_with_margin(el, &is)
+                    } else {
+                        el
+                    }
+                } else {
                 let key = format!("__textarea_{}", placeholder.len());
 
                 let content = get_textarea_content(&key, &value);
@@ -2978,6 +2979,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     wrap_with_margin(el, &is)
                 } else {
                     el
+                }
                 }
             }
 
@@ -4574,9 +4576,6 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
         let mut interval = tokio::time::interval_at(start, std::time::Duration::from_millis(ms));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        if std::env::var("AUTOUI_SCREENSHOT_DEBUG").is_ok() {
-            eprintln!("[HB-STREAM] started app={app:?} event={event:?} poll={poll:?} every {ms}ms");
-        }
 
         iced_futures::futures::stream::unfold(
             (interval, app, event, poll),
@@ -6668,11 +6667,6 @@ fn compare_pngs(
         if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
             eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
         }
-        if std::env::var("AUTOUI_SCREENSHOT_DEBUG").is_ok() && msg.event == "__mcp_heartbeat" {
-            static HB_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let n = HB_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            eprintln!("[HB] update_inner heartbeat #{} entered", n);
-        }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
         // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
         // 触发,每次都是新 toast)。必须在所有事件分支**之前**:按钮点击等
@@ -7001,31 +6995,17 @@ fn compare_pngs(
             let baseline = req.baseline;
             let diff = req.diff;
             let threshold = req.threshold;
-            let shot_debug = std::env::var("AUTOUI_SCREENSHOT_DEBUG").is_ok();
-            if shot_debug {
-                let t0 = std::time::Instant::now();
-                eprintln!("[SCREENSHOT] {t0:?} picked up in update, issuing task chain");
-            }
             return iced::window::oldest()
                 .then(move |maybe_id: Option<iced::window::Id>| {
                     match maybe_id {
                         Some(id) => {
                             let tx = reply_tx.clone();
                             let name = name.clone();
-                            if shot_debug {
-                                eprintln!("[SCREENSHOT] oldest resolved, calling window::screenshot");
-                            }
                             iced::window::screenshot(id)
                                 .then(move |ss: iced::window::Screenshot| {
-                                    if shot_debug {
-                                        eprintln!("[SCREENSHOT] screenshot future resolved ({} bytes), processing", ss.rgba.len());
-                                    }
                                     let result = process_screenshot(
                                         &ss, &name, baseline, diff, threshold,
                                     );
-                                    if shot_debug {
-                                        eprintln!("[SCREENSHOT] process done, replying");
-                                    }
                                     let tx = tx.lock().unwrap().take().unwrap();
                                     let _ = tx.send(result);
                                     iced::Task::none()
@@ -8556,33 +8536,6 @@ fn compare_pngs(
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
         use crate::ui::session::{DesktopEvent, DesktopMessage as DM, WmCommand};
-        {
-            static WD_SPAWNED: std::sync::Once = std::sync::Once::new();
-            WD_UPDATES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            struct WdUpdateDone;
-            impl Drop for WdUpdateDone {
-                fn drop(&mut self) {
-                    WD_UPDATES_DONE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
-            let _wd_update_done = WdUpdateDone;
-            WD_SPAWNED.call_once(|| {
-                if std::env::var("AUTOUI_SCREENSHOT_DEBUG").is_ok() {
-                    std::thread::spawn(|| loop {
-                        static LAST_U: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                        static LAST_V: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                        std::thread::sleep(std::time::Duration::from_secs(1));
-                        let u = WD_UPDATES.load(std::sync::atomic::Ordering::Relaxed);
-                        let ud = WD_UPDATES_DONE.load(std::sync::atomic::Ordering::Relaxed);
-                        let v = WD_VIEWS.load(std::sync::atomic::Ordering::Relaxed);
-                        let vd = WD_VIEWS_DONE.load(std::sync::atomic::Ordering::Relaxed);
-                        let lu = LAST_U.swap(u, std::sync::atomic::Ordering::Relaxed);
-                        let lv = LAST_V.swap(v, std::sync::atomic::Ordering::Relaxed);
-                        eprintln!("[WD] updates={u}(+{}) done={ud} views={v}(+{}) done={vd}", u - lu, v - lv);
-                    });
-                }
-            });
-        }
         // Plan 463 T4：DesktopBus 排空 #1 —— 任意消息周期开头先消费 shell
         // 命令（`__toast` 同型读+清；400ms 帧泵兜底空闲期，命令至多 400ms 达）。
         if state.desktop.shell_app.is_some() {
@@ -9121,11 +9074,6 @@ fn compare_pngs(
                     .as_ref()
                     .map(|s| s.lock().unwrap().mcp_active_recently(30))
                     .unwrap_or(false);
-                if std::env::var("AUTOUI_SCREENSHOT_DEBUG").is_ok() {
-                    static SUBS_EVAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                    let n = SUBS_EVAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    eprintln!("[SUBS] eval #{n}: mcp_recent={mcp_recent} primary={primary:?} desktop={}", state.is_desktop());
-                }
                 if mcp_recent
                     && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
                 {
@@ -9227,24 +9175,10 @@ fn compare_pngs(
 ///
 /// Plan 459：拆借视图由调用方按窗口构造（`split_ref_at`）；`sync_mcp` 仅在
 /// primary App 的视图为 true —— MCP 快照永远指向 primary（T8 单 App 语义）。
-/// Plan 446 批五 U3 诊断:事件循环活性看门狗计数器(仅 AUTOUI_SCREENSHOT_DEBUG 时打点)。
-pub static WD_UPDATES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-pub static WD_UPDATES_DONE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-pub static WD_VIEWS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-pub static WD_VIEWS_DONE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
 fn dynamic_view(
     state: crate::ui::session::SessionViewRef<'_>,
     sync_mcp: bool,
 ) -> iced::Element<'_, IcedMessage> {
-    WD_VIEWS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    struct WdViewDone;
-    impl Drop for WdViewDone {
-        fn drop(&mut self) {
-            WD_VIEWS_DONE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        }
-    }
-    let _wd_view_done = WdViewDone;
     // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
     // `into_iced` + `wrap_debug` during this build. Plain click/hover =
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
@@ -12074,24 +12008,18 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     keydown.remove(k);
                 }
             }
-            let content = if rich {
-                get_textarea_content_rich(&key, &value, &ghost)
-            } else {
-                get_textarea_content(&key, &value)
-            };
-
-            // text_editor::placeholder borrows with the element's lifetime;
-            // since content is &'static, we need a &'static str for placeholder too.
-            let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-            // 富文本路径的 editor 泛型参数是 SpanHighlighter,与存量 PlainText
-            // 不同 —— 不能在同一个变量上条件赋值,双分支各自建链后汇成 Element。
-            let editor_height = match height {
-                Some(h) => iced::Length::Fixed(h as f32),
-                // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
-                // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
-                None => iced::Length::Fixed(30.0),
-            };
-            let el: iced::Element<'static, IcedMessage> = if rich {
+            // Plan 446 批五 U3:超过内联编辑门槛的值降级只读预览 —— 编辑器
+            // 路径(含 Content::with_text 缓冲构建,其 cosmic-text 整形代价
+            // 即病理本体)整体绕开。机理与取舍见 TEXTAREA_INLINE_EDIT_CAP。
+            let el: iced::Element<'static, IcedMessage> = if textarea_needs_preview(&value) {
+                oversized_textarea_preview(&value)
+            } else if rich {
+                let content = get_textarea_content_rich(&key, &value, &ghost);
+                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                let editor_height = match height {
+                    Some(h) => iced::Length::Fixed(h as f32),
+                    None => iced::Length::Fixed(30.0),
+                };
                 let mut rich_editor = text_editor(content).placeholder(ph);
                 // Plan 057 (ash-gui 输入焦点):稳定 Id(同存量路径)。
                 rich_editor = rich_editor
@@ -12109,6 +12037,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let rich_editor = with_textarea_keydown(rich_editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(rich_editor, on_change, on_submit)
             } else {
+                let content = get_textarea_content(&key, &value);
+                // text_editor::placeholder borrows with the element's lifetime;
+                // since content is &'static, we need a &'static str for placeholder too.
+                let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
+                // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
+                // 多行续行需显式 height prop(.at 的 max-h/field-sizing 是 CSS-only)。
+                let editor_height = match height {
+                    Some(h) => iced::Length::Fixed(h as f32),
+                    None => iced::Length::Fixed(30.0),
+                };
                 let mut editor = text_editor(content).placeholder(ph);
                 // Plan 057 (ash-gui 输入焦点): stable per-editor Id (derived from the
                 // action key) so focus() can re-target this editor after view
