@@ -70,7 +70,7 @@
 
 | 手段 | 适用项 | 判定 |
 |---|---|---|
-| **新 widget 登记族**（WidgetRegistry + schema/aura.at，I4 双端实现） | `desktop_surface`（壁纸/图标层，常驻最底 z 槽）、`workspace_pager`、`window_switcher`、`notification_center`、`taskbar/dock`、`window_thumbnail`、`virtual_window`（465 已挂）、`command_palette`（441 M2） | **主力手段**——shell 表面基本都是"widget + store + desktop.*"组合 |
+| **新 widget 登记族**（WidgetRegistry + schema/aura.at，I4 双端实现） | `workspace_pager`、`window_switcher`、`notification_center`、`taskbar/dock`、`window_thumbnail`、`virtual_window`（465 已挂）、`command_palette`（441 M2）；壁纸/图标/虚拟文件夹作为默认 pack 根声明 `Desktop` 的子组件（见 §4.1，`desktop_surface` 名废弃） | **主力手段**——shell 表面基本都是"widget + store + desktop.*"组合 |
 | **新 builtin 命名空间** | `desktop.*`（§3 S1 清单） | 命令接缝的正身 |
 | **manifest 声明标记** | pac.at `scene: "shell"`（特权 shell App 身份：宿主装载、DesktopBus 授权、mount 目标差异） | 一行 manifest，不进语法 |
 | **语法级 `desktop {}` 块** | shell App 声明式绑定投影状态（如 `desktop windows { … }` 动态列表投影） | **v2 备选**：仅当"投影状态变量约定 + for 循环消费"被证明不可维护时再固化语法（触发条件登记在案）；避免过早语法化 |
@@ -83,6 +83,25 @@
 z 槽）。shell 层实际声明的最高 widget 是 `desktop_surface`（壁纸/图标层）。
 "app 关键字"原案的合理内核已由 pac.at 承担；若将来语法化（根 `widget` 升格
 `app`），与 `desktop {}` 同挂 v2 触发条件。
+
+### 4.1 默认 shell pack 与 `Desktop` 根声明（2026-08-28 定案）
+
+shell 的**默认布局声明在 Auto 里，不写死在引擎**：随引擎内嵌一份默认
+shell pack（`shell/default/shell.at`），根声明 `widget Desktop { wallpaper /
+icons / folders / statusbar / dock / launcher / notice / switcher … }`——各
+组件的默认布局（如 statusbar 顶端/底端）写在声明里。引擎只拥有：挂载槽
+（desktop 层 z 槽/overlay 槽/状态栏槽，463 预留槽的扩展）、pack 发现、
+配置合并点；**零布局硬编码**（否则破坏 R1/R8 + I8 双端同源 + 金样可测性）。
+
+- **覆盖链**（照搬 458 分层先例）：运行时配置（auto-os-config，S7 settings
+  读写同一 store）> pack 声明默认；v1 覆盖为**数据级**（位置/启停/顺序/热键），
+  整组件替换留作后续 pack 变体机制。
+- **命名**：根声明即 `widget Desktop`（现语法即可，无关键字）；
+  `desktop_surface` 名废弃。语法级 `desktop {}` 关键字仍留 v2 触发条件
+  （第三方桌面变体/投影绑定声明式语法出现需求时升级，语义边界已由
+  Desktop 根声明趟清，升级只换写法不重设计）。
+- **I9 照旧**：Desktop 声明内组件只消费投影（S2）+ 发命令（S1），
+  声明里没有窗口动态区——虚拟窗口仍由宿主托管在 shell 之上。
 
 结论：**v1 不新增语法关键字**。Shell 的统一性来自"同一份 .at + 同一登记源
 （I4）+ 同一 DesktopBus 协议"，不来自新语法；语法扩展留有明确触发条件，
