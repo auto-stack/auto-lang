@@ -2496,3 +2496,193 @@ widget App {
 {sfc}"
     );
 }
+
+// ============================================================================
+// Plan 437 Phase 1: chart 族契约（声明驱动发射）。
+// 契约源 = schema/aura.at 的 element props 声明（经 registry overlay 落入
+// vue BackendMapping.props）；vue.rs 的 chart 特判臂退役，发射遍历声明。
+// ============================================================================
+
+/// Phase 0 契约表落库锁:每个 chart 族 tag 的 vue BackendMapping 必须声明
+/// 全量 props 契约（来源 schema/aura.at,不再裸声明/硬编码分离)。
+#[test]
+fn cap_chart_family_props_contract_in_registry() {
+    use auto_lang::ui_gen::widget::WidgetRegistry;
+    let reg = WidgetRegistry::with_defaults();
+    let contract: &[(&str, &[&str])] = &[
+        (
+            "area-chart",
+            &[
+                "data", "categories", "index", "colors", "margin", "filter-opacity",
+                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
+                "show-grid-line", "x-formatter", "y-formatter", "curve-type",
+                "show-gradient", "custom-tooltip",
+            ],
+        ),
+        (
+            "bar-chart",
+            &[
+                "data", "categories", "index", "colors", "margin", "filter-opacity",
+                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
+                "show-grid-line", "x-formatter", "y-formatter", "type",
+                "rounded-corners", "custom-tooltip",
+            ],
+        ),
+        (
+            "line-chart",
+            &[
+                "data", "categories", "index", "colors", "margin", "filter-opacity",
+                "show-x-axis", "show-y-axis", "show-tooltip", "show-legend",
+                "show-grid-line", "x-formatter", "y-formatter", "curve-type",
+                "custom-tooltip",
+            ],
+        ),
+        (
+            "donut-chart",
+            &[
+                "data", "category", "index", "colors", "margin", "filter-opacity",
+                "show-tooltip", "show-legend", "type", "value-formatter",
+                "sort-function", "custom-tooltip",
+            ],
+        ),
+    ];
+    for (tag, props) in contract {
+        let mapping = reg
+            .get(tag)
+            .and_then(|s| s.backend("vue"))
+            .unwrap_or_else(|| panic!("{tag}: no vue BackendMapping"));
+        for p in *props {
+            assert!(
+                mapping.props.contains_key(*p),
+                "{tag}: vue mapping missing declared prop `{p}`"
+            );
+        }
+    }
+}
+
+/// 声明驱动发射:全部声明 props 在四类图上逐一发出来——字面量字符串静态、
+/// bool/int/引用绑定。这是 schema 声明 → vue 发射的端到端锁(实现只遍历声明)。
+#[test]
+fn cap_chart_props_full_combination_spec_driven() {
+    let sfc = gen_sfc_shadcn(r#"
+widget Page {
+    model { var rev list = [] }
+    view {
+        col {
+            area-chart (data: .rev, categories: ["desktop"], index: "month", colors: .palette, margin: .m, filter-opacity: 0.8, show-x-axis: false, show-y-axis: true, show-tooltip: true, show-legend: false, show-grid-line: true, x-formatter: .fmtX, y-formatter: .fmtY, show-gradient: true) {}
+            line-chart (data: .rev, categories: ["desktop"], index: "month", curve-type: "natural") {}
+            bar-chart (data: .rev, type: "stacked", rounded-corners: true) {}
+            donut-chart (data: .rev, category: "source", index: "month", value-formatter: .fmtV, sort-function: .sortFn) {}
+        }
+    }
+}
+"#);
+    // 字面量字符串 → 静态属性
+    assert!(sfc.contains("index=\"month\""), "index static:\n{sfc}");
+    assert!(sfc.contains("type=\"stacked\""), "type static:\n{sfc}");
+    assert!(sfc.contains("category=\"source\""), "category static:\n{sfc}");
+    // 绑定引用 → :attr
+    assert!(sfc.contains(":data=\"rev\""), "data bound:\n{sfc}");
+    assert!(sfc.contains(":categories="), "categories bound:\n{sfc}");
+    assert!(sfc.contains(":colors=\"palette\""), "colors bound:\n{sfc}");
+    assert!(sfc.contains(":margin=\"m\""), "margin bound:\n{sfc}");
+    // 数值/bool → 绑定
+    assert!(sfc.contains(":filter-opacity=\"0.8\""), "filter-opacity bound:\n{sfc}");
+    assert!(sfc.contains(":show-x-axis=\"false\""), "show-x-axis bound:\n{sfc}");
+    assert!(sfc.contains(":show-y-axis=\"true\""), "show-y-axis bound:\n{sfc}");
+    assert!(sfc.contains(":show-tooltip=\"true\""), "show-tooltip bound:\n{sfc}");
+    assert!(sfc.contains(":show-legend=\"false\""), "show-legend bound:\n{sfc}");
+    assert!(sfc.contains(":show-grid-line=\"true\""), "show-grid-line bound:\n{sfc}");
+    assert!(sfc.contains(":show-gradient=\"true\""), "show-gradient bound:\n{sfc}");
+    assert!(sfc.contains(":rounded-corners=\"true\""), "rounded-corners bound:\n{sfc}");
+    // 函数引用 → 绑定
+    assert!(sfc.contains(":x-formatter=\"fmtX\""), "x-formatter bound:\n{sfc}");
+    assert!(sfc.contains(":y-formatter=\"fmtY\""), "y-formatter bound:\n{sfc}");
+    assert!(sfc.contains(":value-formatter=\"fmtV\""), "value-formatter bound:\n{sfc}");
+    assert!(sfc.contains(":sort-function=\"sortFn\""), "sort-function bound:\n{sfc}");
+    // CurveType 值映射(转换层)
+    assert!(sfc.contains(":curve-type=\"CurveType.Natural\""), "curve-type:\n{sfc}");
+}
+
+/// snake_case 拼写变体同样收编到 kebab 属性(双拼写接收,声明驱动路径保留)。
+#[test]
+fn cap_chart_snake_kebab_dual_acceptance() {
+    let sfc = gen_sfc_shadcn(r#"
+widget Page {
+    model { var rev list = [] }
+    view {
+        col {
+            line-chart (data: .rev, show_x_axis: false, filter_opacity: 0.5, curve_type: "step") {}
+        }
+    }
+}
+"#);
+    assert!(sfc.contains(":show-x-axis=\"false\""), "snake show_x_axis:\n{sfc}");
+    assert!(sfc.contains(":filter-opacity=\"0.5\""), "snake filter_opacity:\n{sfc}");
+    assert!(sfc.contains(":curve-type=\"CurveType.Step\""), "snake curve_type:\n{sfc}");
+}
+
+/// CurveType 映射表(转换层):d3 值全表 + 未知值回退 MonotoneX + 标识符透传。
+#[test]
+fn cap_chart_curve_type_mapping_table() {
+    let sfc = gen_sfc_shadcn(r#"
+widget Page {
+    model { var d list = [] }
+    view {
+        col {
+            area-chart (data: .d, curve-type: "basis") {}
+            line-chart (data: .d, curve-type: "monotone") {}
+        }
+    }
+}
+"#);
+    assert!(sfc.contains(":curve-type=\"CurveType.Basis\""), "basis:\n{sfc}");
+    assert!(sfc.contains(":curve-type=\"CurveType.MonotoneX\""), "monotone:\n{sfc}");
+    assert!(sfc.contains("import { CurveType } from '@unovis/ts'"), "import:\n{sfc}");
+
+    let sfc_unknown = gen_sfc_shadcn(r#"
+widget Page {
+    model { var d list = [] }
+    view { line-chart (data: .d, curve-type: "wibble") {} }
+}
+"#);
+    assert!(
+        sfc_unknown.contains(":curve-type=\"CurveType.MonotoneX\""),
+        "unknown curve falls back:\n{sfc_unknown}"
+    );
+}
+
+/// data 绑定表达式两形态:.model 路径 vs 内联字面量列表(都走绑定)。
+#[test]
+fn cap_chart_data_binding_forms() {
+    let sfc = gen_sfc_shadcn(r#"
+widget Page {
+    model { var monthlyRevenue list = [] }
+    view {
+        col {
+            area-chart (data: .monthlyRevenue) {}
+            line-chart (data: [ { m: "Jan", v: 3 }, { m: "Feb", v: 5 } ]) {}
+        }
+    }
+}
+"#);
+    assert!(sfc.contains(":data=\"monthlyRevenue\""), "model path:\n{sfc}");
+    assert!(
+        sfc.contains(":data=\"[{") && sfc.contains("m: 'Jan', v: 3"),
+        "inline literal stays bound:\n{sfc}"
+    );
+}
+
+/// 缺省透传:一个 prop 都不写 → 裸标签,不发射任何 chart 数据属性、无 R013。
+#[test]
+fn cap_chart_props_omitted_emits_nothing() {
+    let sfc = gen_sfc_shadcn(r#"
+widget Page {
+    view { donut-chart {} }
+}
+"#);
+    assert!(sfc.contains("<DonutChart"), "bare tag:\n{sfc}");
+    assert!(!sfc.contains(":data="), "no data attr:\n{sfc}");
+    assert!(!sfc.contains(":category="), "no category attr:\n{sfc}");
+    assert!(!sfc.contains("R013"), "no warnings:\n{sfc}");
+}

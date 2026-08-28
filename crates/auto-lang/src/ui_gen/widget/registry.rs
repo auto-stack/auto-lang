@@ -85,17 +85,27 @@ impl WidgetRegistry {
                 .find_map(|k| {
                     schema
                         .resolve_tag(k)
-                        .and_then(|(canon, _)| {
-                            entries.iter().find(|(t, _)| *t == fold(canon)).map(|(_, e)| e.clone())
+                        .and_then(|(canon, def)| {
+                            entries.iter().find(|(t, _)| *t == fold(canon)).map(|(_, e)| {
+                                // Plan 437 P1:props 契约随 vue 映射一并落库 ——
+                                // 声明名即 vue 属性名(kebab),发射侧(生成器)
+                                // 遍历此映射,实现与声明不再分离。
+                                let props: HashMap<String, String> = def
+                                    .props
+                                    .iter()
+                                    .map(|p| (p.name.to_string(), p.name.to_string()))
+                                    .collect();
+                                (e.clone(), props)
+                            })
                         })
                 });
-            if let Some(e) = hit {
+            if let Some((e, props)) = hit {
                 spec.backends.insert(
                     "vue".to_string(),
                     BackendMapping {
                         component: e.component,
                         import: e.import,
-                        props: HashMap::new(),
+                        props,
                         events: HashMap::new(),
                         extra_components: e.extras,
                         npm_package: e.npm,

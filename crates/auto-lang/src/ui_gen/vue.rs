@@ -8100,6 +8100,55 @@ impl VueGenerator {
         }
     }
 
+    /// Plan 437 Phase 1: chart 族 spec 驱动发射。遍历 registry 里由
+    /// schema/aura.at 声明的 vue props 契约(Plan 437 契约表落库后的唯一
+    /// 事实源),按声明名排序保证生成物稳定;值级转换保留为转换层特例:
+    /// curve-type 字符串值 → CurveType 枚举,custom-tooltip 组件引用恒走
+    /// 绑定。snake_case 拼写变体与 kebab 声明名双接收。
+    fn emit_chart_family_attrs(&mut self, attrs: &mut Vec<String>, tag: &str, props: &HashMap<String, AuraPropValue>) {
+        let Some(mapping) = self.widget_registry.get(tag).and_then(|s| s.backend("vue")) else {
+            return;
+        };
+        let mut declared: Vec<(String, String)> = mapping
+            .props
+            .iter()
+            .map(|(aura, vue)| (aura.clone(), vue.clone()))
+            .collect();
+        declared.sort();
+        for (name, vue_attr) in declared {
+            // class/style 走公共样式通道(push_style_class + 尾部 class
+            // 兜底),此处发射会重复
+            if name == "class" || name == "style" {
+                continue;
+            }
+            // 转换层 ①:curve-type 值映射(CurveType 枚举)
+            if name == "curve-type" {
+                self.emit_curve_type_prop(attrs, props);
+                continue;
+            }
+            // 转换层 ②:custom-tooltip 是组件引用 —— 字符串值也是引用名,
+            // 恒走绑定,不产静态属性
+            if name == "custom-tooltip" {
+                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(id)) = value {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", id));
+                    } else if let Some(s) = self.extract_string_value(value) {
+                        attrs.push(format!(":custom-tooltip=\"{}\"", s));
+                    }
+                }
+                continue;
+            }
+            if props.contains_key(name.as_str()) {
+                self.emit_chart_prop(attrs, props, &name, &vue_attr);
+            } else {
+                let snake = name.replace('-', "_");
+                if snake != name && props.contains_key(snake.as_str()) {
+                    self.emit_chart_prop(attrs, props, &snake, &vue_attr);
+                }
+            }
+        }
+    }
+
     /// Emit curve-type prop for charts, mapping string values to CurveType enum.
     fn emit_curve_type_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>) {
         if let Some(value) = props.get("curve-type").or_else(|| props.get("curve_type")) {
@@ -11266,134 +11315,16 @@ impl VueGenerator {
                 self.push_style_class(&mut attrs, props);
             }
 
-            // === Charts (shadcn-vue + Unovis) ===
-            "area_chart" | "area-chart" => {
-                self.emit_chart_prop(&mut attrs, props, "data", "data");
-                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
-                self.emit_chart_prop(&mut attrs, props, "index", "index");
-                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
-                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
-                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
-                self.emit_curve_type_prop(&mut attrs, props);
-                self.emit_chart_prop(&mut attrs, props, "show-gradient", "show-gradient");
-                self.emit_chart_prop(&mut attrs, props, "show_gradient", "show-gradient");
-                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    } else if let Some(name) = self.extract_string_value(value) {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    }
-                }
-                self.push_style_class(&mut attrs, props);
-            }
-
-            "bar_chart" | "bar-chart" => {
-                self.emit_chart_prop(&mut attrs, props, "data", "data");
-                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
-                self.emit_chart_prop(&mut attrs, props, "index", "index");
-                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
-                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
-                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
-                self.emit_chart_prop(&mut attrs, props, "type", "type");
-                self.emit_chart_prop(&mut attrs, props, "rounded-corners", "rounded-corners");
-                self.emit_chart_prop(&mut attrs, props, "rounded_corners", "rounded-corners");
-                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    } else if let Some(name) = self.extract_string_value(value) {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    }
-                }
-                self.push_style_class(&mut attrs, props);
-            }
-
-            "line_chart" | "line-chart" => {
-                self.emit_chart_prop(&mut attrs, props, "data", "data");
-                self.emit_chart_prop(&mut attrs, props, "categories", "categories");
-                self.emit_chart_prop(&mut attrs, props, "index", "index");
-                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
-                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
-                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "show-x-axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_x_axis", "show-x-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-y-axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show_y_axis", "show-y-axis");
-                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show-grid-line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "show_grid_line", "show-grid-line");
-                self.emit_chart_prop(&mut attrs, props, "x-formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "x_formatter", "x-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y-formatter", "y-formatter");
-                self.emit_chart_prop(&mut attrs, props, "y_formatter", "y-formatter");
-                self.emit_curve_type_prop(&mut attrs, props);
-                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    } else if let Some(name) = self.extract_string_value(value) {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    }
-                }
-                self.push_style_class(&mut attrs, props);
-            }
-
-            "donut_chart" | "donut-chart" => {
-                self.emit_chart_prop(&mut attrs, props, "data", "data");
-                self.emit_chart_prop(&mut attrs, props, "category", "category");
-                self.emit_chart_prop(&mut attrs, props, "index", "index");
-                self.emit_chart_prop(&mut attrs, props, "colors", "colors");
-                self.emit_chart_prop(&mut attrs, props, "margin", "margin");
-                self.emit_chart_prop(&mut attrs, props, "filter-opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "filter_opacity", "filter-opacity");
-                self.emit_chart_prop(&mut attrs, props, "show-tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show_tooltip", "show-tooltip");
-                self.emit_chart_prop(&mut attrs, props, "show-legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "show_legend", "show-legend");
-                self.emit_chart_prop(&mut attrs, props, "type", "type");
-                self.emit_chart_prop(&mut attrs, props, "value-formatter", "value-formatter");
-                self.emit_chart_prop(&mut attrs, props, "value_formatter", "value-formatter");
-                self.emit_chart_prop(&mut attrs, props, "sort-function", "sort-function");
-                self.emit_chart_prop(&mut attrs, props, "sort_function", "sort-function");
-                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    } else if let Some(name) = self.extract_string_value(value) {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", name));
-                    }
-                }
+            // === Charts (shadcn-vue + Unovis) — Plan 437 Phase 1 spec 驱动 ===
+            // 契约在 schema/aura.at(经 registry overlay 落库),发射遍历声明;
+            // 值转换(CurveType/custom-tooltip)见 emit_chart_family_attrs。
+            "area_chart" | "area-chart"
+            | "bar_chart" | "bar-chart"
+            | "line_chart" | "line-chart"
+            | "donut_chart" | "donut-chart"
+            | "chart_tooltip" | "chart-tooltip"
+            | "chart_legend" | "chart-legend" => {
+                self.emit_chart_family_attrs(&mut attrs, tag, props);
                 self.push_style_class(&mut attrs, props);
             }
 
