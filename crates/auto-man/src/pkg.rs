@@ -292,7 +292,10 @@ pub fn add_packages(packages: &[&str], dev: bool, cwd: &Path) -> Result<(), Stri
         PkgManagerKind::Bun | PkgManagerKind::Pnpm => {
             let mut a = vec!["add"];
             if dev {
-                a.push("--dev");
+                // Plan 465 T7: pnpm v11 rejects `add --dev` (bogus "Unknown
+                // option" + non-zero exit, previously swallowed by the
+                // node_modules heuristic below). `-D` works on pnpm and bun.
+                a.push("-D");
             }
             a
         }
