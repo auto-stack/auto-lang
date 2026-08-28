@@ -13,6 +13,13 @@
 #[cfg(test)]
 mod plan442_musk_probe {
     fn locate_musk_app() -> Option<std::path::PathBuf> {
+        // PLAN-049 (auto-musk): worktree 布局下 sibling 不存在,env 直指语料。
+        if let Ok(p) = std::env::var("MUSK_APP_PATH") {
+            let p = std::path::PathBuf::from(p);
+            if p.exists() {
+                return Some(p);
+            }
+        }
         // crates/auto-lang → ../../../ = autostack/ (sibling checkouts).
         let rel = "../../../auto-musk/src/front/app.at";
         let candidates = [
