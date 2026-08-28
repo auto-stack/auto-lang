@@ -1,0 +1,19 @@
+// pac.at — 028-launcher（Plan 464）。
+//
+// 桌面 launcher：palette（搜索 + 模糊过滤 + 键盘流）/ grid 两形态的真注册表
+// 启动器。desktop 模式下由桌面 shell 以 overlay 槽召唤（463 SummonLauncher），
+// 独立模式（`auto run`，vue 调试）自管开关 + 内嵌 mock 清单（I3 配置差异）。
+//
+// front_port: 4028 沿用 Plan 441 预订；icon 由 463 T7 注册表消费（缺省回退
+// app-window）。render 声明 "vue"（开发目标端）；vm 兼容性由 T3/T4 实机验收
+// 兜底（注册表扫描不过滤 render——463 T7 定案，声明的 render 是前端目标）。
+
+name: "launcher"
+version: "0.1.0"
+description: "Desktop launcher - palette/grid app search & launch (vue/vm)"
+
+scene: "ui"
+render: "vue"
+front_port: 4028
+icon: "search"
+category: "system"

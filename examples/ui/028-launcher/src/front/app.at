@@ -1,0 +1,451 @@
+// app.at — 028-launcher 根组件（Plan 464）。
+//
+// 形态：palette（搜索 + 模糊过滤 + 选中高亮 + 键盘流）与 grid（图标网格，
+// T2）两形态的 overlay，由 `visible` 状态变量门控。desktop 模式下宿主经
+// 463 接缝注入：SummonLauncher → visible="1"、应用清单 → `apps`、
+// `__wm_*` 同型的状态注入（I3：数据来源差异，非代码分叉）；独立模式
+// （`auto run`）内嵌 mock 清单 + 页面按钮自管开关。
+//
+// 单组件约束（025-dashboard 形态，双端转译实测结论，464 T1 盘点）：
+//   - 模块级 fn 不进 vue SFC（024 先例 + 本计划探针复证）→ 模糊排序写成
+//     状态法 handler（.ApplyFilter：读 q/apps/recent，写 ranked，纯状态变换，
+//     规则钉死在 SPEC.md）；
+//   - store 子组件的 vue TS 生成损坏（013/038 实测）→ 全部状态内聚 App；
+//   - 模板文本插值里不能调 .len()（vue TS 编译错）→ 计数在 handler 算成
+//     字符串/数值状态（.count/.nres）。
+// 字符串比较一律针对预小写字段（ln/lt，mock 字面量给出、宿主注入时由宿主
+// 预小写）：排序权重全整数，规避浮点/字符宽度双端差（SPEC §排序）。
+
+widget App {
+    msg {
+        Init, SetQ(str), ApplyFilter, MoveUp, MoveDown, Pick,
+        Escape, SwitchMode, Open, Close, Launch(str)
+    }
+
+    model {
+        // ---- 接缝状态（desktop 宿主注入；独立模式恒默认值）----
+        var visible str = "0"       // overlay 门控：宿主 SummonLauncher 置 "1"
+        var hosted str = "0"        // 宿主挂载时写 "1"：隐藏独立模式的开门按钮
+        var __desktop_cmd str = ""  // 上行命令总线（DesktopBus v1 记录形）
+
+        // ---- 形态 ----
+        var mode str = "palette"    // palette | grid
+
+        // ---- 查询与结果 ----
+        var q str = ""
+        var ranked = []             // {i,name,title,icon,category,mg,sub}
+        var sel int = 0             // palette 选中索引（app 内自建焦点索引）
+        var nres int = 0            // 结果数（view 条件用，替代模板 .len()）
+        var count str = ""          // 计数显示串
+
+        // ---- 注册表（独立模式 mock；desktop 模式宿主覆盖 `apps`）----
+        // ln/lt = name/title 的预小写副本（匹配用；见文件头注）。
+        var apps = [
+            { name: "011-calculator",  title: "Calculator",  icon: "calculator",       category: "tool",    ln: "011-calculator",  lt: "calculator" },
+            { name: "012-stopwatch",   title: "Stopwatch",   icon: "timer",            category: "tool",    ln: "012-stopwatch",   lt: "stopwatch" },
+            { name: "013-todo",        title: "Todo",        icon: "check-square",     category: "task",    ln: "013-todo",        lt: "todo" },
+            { name: "014-weather",     title: "Weather",     icon: "cloud-sun",        category: "life",    ln: "014-weather",     lt: "weather" },
+            { name: "015-notes",       title: "Notes",       icon: "notebook-pen",     category: "notes",   ln: "015-notes",       lt: "notes" },
+            { name: "017-chat",        title: "Chat",        icon: "message-circle",   category: "social",  ln: "017-chat",        lt: "chat" },
+            { name: "018-book-reader", title: "Books",       icon: "book-open",        category: "reading", ln: "018-book-reader", lt: "books" },
+            { name: "020-music-player", title: "Music",      icon: "music",            category: "media",   ln: "020-music-player", lt: "music" },
+            { name: "024-charts",      title: "Charts",      icon: "bar-chart-3",      category: "data",    ln: "024-charts",      lt: "charts" },
+            { name: "025-dashboard",   title: "Dashboard",   icon: "layout-dashboard", category: "system",  ln: "025-dashboard",   lt: "dashboard" },
+            { name: "038-minesweeper", title: "Minesweeper", icon: "bomb",             category: "game",    ln: "038-minesweeper", lt: "minesweeper" },
+            { name: "041-auto-edit",   title: "Auto Edit",   icon: "file-code",        category: "editor",  ln: "041-auto-edit",   lt: "auto edit" }
+        ]
+        var recent = []             // 启动名记录，最近在前，上限 5（T2 接 storage）
+        var last str = ""           // 最近一次启动（演示/调试显示）
+    }
+
+    view {
+        if .visible == "1" {
+            if .mode == "palette" {
+                // ---- palette 形态：全屏暗底 + 顶部 1/4 处搜索卡 ----
+                col {
+                    style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                    spacer { style: "h-24 w-full" }
+                    col {
+                        style: "w-full max-w-xl bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
+
+                        // 搜索行
+                        row {
+                            style: "flex items-center gap-2 px-4 py-3 border-b border-gray-700"
+                            text "🔍" { style: "text-lg" }
+                            input {
+                                value: .q
+                                oninput: .SetQ
+                                onenter: .Pick
+                                placeholder: "Search apps…"
+                                style: "flex-1 text-lg text-white bg-gray-900 caret-white"
+                            }
+                        }
+
+                        // 结果列表（空态/无结果态）
+                        col {
+                            style: "w-full"
+                            if .nres == 0 {
+                                col {
+                                    style: "flex flex-col items-center py-10"
+                                    text "No matching apps" { style: "text-gray-400 text-sm" }
+                                }
+                            }
+                            for r in .ranked {
+                                if .sel == r.i {
+                                    row {
+                                        onclick: .Launch(r.name)
+                                        style: "flex items-center gap-3 px-4 py-3 bg-blue-900 cursor-pointer"
+                                        col {
+                                            style: "h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center"
+                                            text r.mg { style: "text-white text-sm font-bold" }
+                                        }
+                                        col {
+                                            style: "flex flex-col"
+                                            text r.title { style: "text-white text-sm font-medium" }
+                                            text r.sub { style: "text-gray-400 text-xs" }
+                                        }
+                                        text r.category { style: "ml-auto text-xs text-gray-500" }
+                                    }
+                                } else {
+                                    row {
+                                        onclick: .Launch(r.name)
+                                        style: "flex items-center gap-3 px-4 py-3 hover:bg-gray-700 cursor-pointer"
+                                        col {
+                                            style: "h-9 w-9 rounded-lg bg-gray-700 flex items-center justify-center"
+                                            text r.mg { style: "text-gray-200 text-sm font-bold" }
+                                        }
+                                        col {
+                                            style: "flex flex-col"
+                                            text r.title { style: "text-gray-100 text-sm" }
+                                            text r.sub { style: "text-gray-400 text-xs" }
+                                        }
+                                        text r.category { style: "ml-auto text-xs text-gray-500" }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 底部提示行
+                        row {
+                            style: "flex items-center gap-4 px-4 py-2 border-t border-gray-700"
+                            text "↑↓ select" { style: "text-xs text-gray-500" }
+                            text "Enter launch" { style: "text-xs text-gray-500" }
+                            text "Esc close" { style: "text-xs text-gray-500" }
+                            text .count { style: "ml-auto text-xs text-gray-500" }
+                        }
+                    }
+                    spacer { style: "h-24 w-full" }
+                }
+            } else {
+                // ---- grid 形态（T2）：图标网格 + 方向键焦点 ----
+                col {
+                    style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                    spacer { style: "h-24 w-full" }
+                    col {
+                        style: "w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl p-6"
+                        text "Grid (plan 464 T2)" { style: "text-gray-400 text-sm" }
+                    }
+                    spacer { style: "h-24 w-full" }
+                }
+            }
+        } else {
+            // ---- 隐藏态：透明空层（desktop 不挡桌面点击；独立模式给开门按钮）----
+            col {
+                style: "w-full h-full"
+                if .hosted == "0" {
+                    row {
+                        style: "w-full h-full flex items-center justify-center bg-gray-100"
+                        button "🔍 Open launcher (Ctrl+Space)" {
+                            onclick: .Open
+                            style: "px-4 py-2 bg-gray-900 text-white rounded-lg shadow"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    bind {
+        "ArrowUp" -> .MoveUp
+        "ArrowDown" -> .MoveDown
+        "Escape" -> .Escape
+        "Ctrl+ " -> .Open
+    }
+
+    on {
+        .Init -> {
+            .q = ""
+            .sel = 0
+            .mode = "palette"
+            .visible = "0"
+            .ApplyFilter()
+        }
+
+        .Open -> {
+            .visible = "1"
+            .mode = "palette"
+            .sel = 0
+            .ApplyFilter()
+        }
+
+        .Close -> {
+            .visible = "0"
+        }
+
+        .SetQ(t) -> {
+            .q = t
+            .sel = 0
+            .ApplyFilter()
+        }
+
+        // 模糊排序（纯状态变换；规则 = SPEC.md「排序」节的唯一实现）：
+        // 空查询 → recent 置顶分组 + 注册表序全量；非空 → 打分
+        // exact(0) > prefix(1) > 词首(2) > 子序列(3)，同分按注册表序，
+        // recent 在同档内前移（折扣 5..1，不足以跨档）。
+        .ApplyFilter -> {
+            .ranked = []
+            .nres = 0
+            var ql str = .q.lower()
+
+            if ql == "" {
+                // —— 空查询：recent 分组（存在的才列）+ 其余注册表序 ——
+                var inrecent = []
+                var ai int = 0
+                while ai < .apps.len() {
+                    var flag int = 0
+                    var ri int = 0
+                    while ri < .recent.len() {
+                        if .recent[ri] == .apps[ai].name {
+                            flag = 1
+                        }
+                        ri = ri + 1
+                    }
+                    inrecent.push(flag)
+                    ai = ai + 1
+                }
+                // recent 顺序（recent 内去重由 Launch 维护）
+                var rj int = 0
+                while rj < .recent.len() {
+                    var aj int = 0
+                    while aj < .apps.len() {
+                        if inrecent[aj] == 1 && .apps[aj].name == .recent[rj] {
+                            var row = { i: .ranked.len(), name: .apps[aj].name, title: .apps[aj].title, icon: .apps[aj].icon, category: .apps[aj].category, mg: .apps[aj].title.slice(0, 1), sub: "recent" }
+                            .ranked.push(row)
+                        }
+                        aj = aj + 1
+                    }
+                    rj = rj + 1
+                }
+                // 其余按注册表序
+                var ak int = 0
+                while ak < .apps.len() {
+                    if inrecent[ak] == 0 {
+                        var row2 = { i: .ranked.len(), name: .apps[ak].name, title: .apps[ak].title, icon: .apps[ak].icon, category: .apps[ak].category, mg: .apps[ak].title.slice(0, 1), sub: .apps[ak].category }
+                        .ranked.push(row2)
+                    }
+                    ak = ak + 1
+                }
+            } else {
+                // —— 打分：score = tier*100 + 注册表序 - recent 折扣 ——
+                var scores = []
+                var si int = 0
+                while si < .apps.len() {
+                    var a = .apps[si]
+                    var tier int = 99
+
+                    if a.ln == ql || a.lt == ql {
+                        tier = 0
+                    }
+                    if tier == 99 {
+                        // 前缀
+                        if a.lt.len() >= ql.len() {
+                            if a.lt.slice(0, ql.len()) == ql {
+                                tier = 1
+                            }
+                        }
+                    }
+                    if tier == 99 {
+                        // 词首（位置 0 或 空格/-/_ 之后）
+                        var p int = 0
+                        while p < a.lt.len() {
+                            var hit int = 0
+                            if p == 0 {
+                                hit = 1
+                            } else {
+                                var pc str = a.lt.slice(p - 1, p)
+                                if pc == " " || pc == "-" || pc == "_" {
+                                    hit = 1
+                                }
+                            }
+                            if hit == 1 {
+                                if a.lt.len() - p >= ql.len() {
+                                    if a.lt.slice(p, p + ql.len()) == ql {
+                                        tier = 2
+                                    }
+                                }
+                            }
+                            p = p + 1
+                        }
+                    }
+                    if tier == 99 {
+                        // 子序列（双指针）
+                        var qi int = 0
+                        var sj int = 0
+                        while sj < a.lt.len() {
+                            if qi < ql.len() {
+                                if a.lt.slice(sj, sj + 1) == ql.slice(qi, qi + 1) {
+                                    qi = qi + 1
+                                }
+                            }
+                            sj = sj + 1
+                        }
+                        if qi == ql.len() {
+                            tier = 3
+                        }
+                    }
+
+                    var score int = tier * 100 + si
+                    if tier < 99 {
+                        // recent 折扣：最近者折扣最大（5..1），仅同档内重排
+                        var rk int = 0
+                        while rk < .recent.len() {
+                            if .recent[rk] == a.name {
+                                var disc int = 5 - rk
+                                if disc < 1 {
+                                    disc = 1
+                                }
+                                score = score - disc
+                            }
+                            rk = rk + 1
+                        }
+                    }
+                    scores.push(score)
+                    si = si + 1
+                }
+
+                // 选择排序输出（score 升序；99 = 不匹配不输出；
+                // 同分先到先得 = 注册表序稳定）
+                var n int = .apps.len()
+                var placed int = 0
+                while placed < n {
+                    var best int = -1
+                    var bestScore int = 0
+                    var bi int = 0
+                    while bi < n {
+                        if scores[bi] < 9900 {
+                            if best == -1 {
+                                best = bi
+                                bestScore = scores[bi]
+                            } else {
+                                if scores[bi] < bestScore {
+                                    best = bi
+                                    bestScore = scores[bi]
+                                }
+                            }
+                        }
+                        bi = bi + 1
+                    }
+                    if best == -1 {
+                        placed = n
+                    } else {
+                        var row3 = { i: .ranked.len(), name: .apps[best].name, title: .apps[best].title, icon: .apps[best].icon, category: .apps[best].category, mg: .apps[best].title.slice(0, 1), sub: .apps[best].category }
+                        .ranked.push(row3)
+                        scores[best] = 9900
+                        placed = placed + 1
+                    }
+                }
+            }
+
+            .nres = .ranked.len()
+            if .nres == 0 {
+                .count = "0 apps"
+            } else {
+                if .sel >= .nres {
+                    .sel = .nres - 1
+                }
+                var idx int = .sel + 1
+                .count = f"${idx} / ${.nres} apps"
+            }
+        }
+
+        .MoveUp -> {
+            if .nres > 0 {
+                if .sel > 0 {
+                    .sel = .sel - 1
+                } else {
+                    .sel = .nres - 1
+                }
+                .ApplyFilter()
+            }
+        }
+
+        .MoveDown -> {
+            if .nres > 0 {
+                if .sel < .nres - 1 {
+                    .sel = .sel + 1
+                } else {
+                    .sel = 0
+                }
+                .ApplyFilter()
+            }
+        }
+
+        // Enter：启动当前选中项
+        .Pick -> {
+            if .nres > 0 {
+                if .sel < .nres {
+                    .Launch(.ranked[.sel].name)
+                }
+            }
+        }
+
+        // Esc 逐层退出（P3）：清词 → 退 grid → 关闭
+        .Escape -> {
+            if .q != "" {
+                .q = ""
+                .sel = 0
+                .ApplyFilter()
+            } else {
+                if .mode == "grid" {
+                    .mode = "palette"
+                } else {
+                    .visible = "0"
+                }
+            }
+        }
+
+        // Tab：palette ↔ grid
+        .SwitchMode -> {
+            if .mode == "palette" {
+                .mode = "grid"
+            } else {
+                .mode = "palette"
+            }
+        }
+
+        // 启动（R11）：写上行总线 + recent + 隐匿。
+        // desktop 模式宿主排空 `__desktop_cmd` 执行 LaunchApp；独立模式
+        // 总线无人消费，仅演示（441 fallback 边界）。
+        .Launch(name) -> {
+            .last = name
+            // recent：去重置顶，上限 5
+            var nr = []
+            nr.push(name)
+            var oi int = 0
+            while oi < .recent.len() {
+                if nr.len() < 5 {
+                    if .recent[oi] != name {
+                        nr.push(.recent[oi])
+                    }
+                }
+                oi = oi + 1
+            }
+            .recent = nr
+            .__desktop_cmd = "launch\t" + name
+            .visible = "0"
+            .q = ""
+            .sel = 0
+            .ApplyFilter()
+        }
+    }
+}
