@@ -1494,6 +1494,45 @@ mod tests {
         assert_eq!(DesktopCommand::parse_records(&payload), cmds);
     }
 
+    /// Plan 464 T4/T5：windowless 特权 App（shell）的 update 侧拆借。修复前
+    /// `split_mut` 对无窗 App 返回 None——update_inner 静默丢弃其全部消息
+    /// （463 任务栏点击顺延项 §5.4 的根因；464 launcher 键盘流同根因）。
+    /// 垫片拆借后，按钮 handler 的总线写入经 drain 通路可达执行体。
+    #[test]
+    fn windowless_shell_split_mut_and_bus() {
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::build_dynamic_component(
+            "widget ShellProbe {
+    model {
+        var __desktop_cmd str = \"\"
+    }
+    view { col { text \"shell\" } }
+}
+",
+            None,
+        )
+        .unwrap();
+        let shell = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(shell);
+
+        // 修复点：无窗 shell 可拆借（此前 None）
+        let mut view = ds
+            .split_mut(shell)
+            .expect("windowless shell 应可拆借（T4 垫片）");
+        // 模拟任务栏 × 按钮 handler 的总线写入
+        let _ = view
+            .component
+            .write_state("__desktop_cmd", auto_val::Value::str("close	3"));
+
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![DesktopCommand::CloseWindow(Wid(3))],
+            "shell 总线记录应可达执行体"
+        );
+    }
+
     #[test]
     fn desktop_command_parse_skips_bad_records() {
         let payload = "launch\u{1f}013-todo\u{1e}bogus\u{1e}focus\u{1f}notanumber\u{1e}close\u{1f}9";

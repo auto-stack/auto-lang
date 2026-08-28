@@ -5850,6 +5850,21 @@ fn keyboard_subscription(
     focused: bool,
     desktop_mode: bool,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    keyboard_subscription_ext(app, my_window, key_bindings, focused, desktop_mode, false)
+}
+
+/// Plan 464 T5：`escape_forward` —— Esc 被焦点输入框/IME 捕获（Captured）时
+/// bind 路径收不到按键；launcher 的 Esc 逐层退出依赖宿主转发同一 .Escape
+/// （幂等：handler 以 visible=="1" 门控，与 bind 双派发亦安全）。仅 launcher
+/// overlay 的订阅传 true。
+fn keyboard_subscription_ext(
+    app: crate::ui::session::AppId,
+    my_window: iced::window::Id,
+    key_bindings: HashMap<String, String>,
+    focused: bool,
+    desktop_mode: bool,
+    escape_forward: bool,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
     // Plan 462：identity 加入 focused —— desktop 模式焦点翻转即重订阅，
     // 闭包内按焦点门控（R12：键盘只进焦点虚拟窗口的 App）。
@@ -5869,8 +5884,26 @@ fn keyboard_subscription(
                     eprintln!("[464-KEY] app={app:?} key={key:?} status={status:?}");
                 }
             }
-            keyboard_event_message(event, status, &key_bindings, !desktop_mode)
-                .map(move |m| DM::App(app, m))
+            let is_escape = matches!(
+                &event,
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                })
+            );
+            match keyboard_event_message(event, status, &key_bindings, !desktop_mode) {
+                Some(m) => Some(DM::App(app, m)),
+                // Captured 捕获的 Esc：bind 路径不可达 —— launcher 场景转发
+                None if escape_forward && is_escape => Some(DM::App(
+                    app,
+                    IcedMessage {
+                        widget: String::new(),
+                        event: "Escape".to_string(),
+                        input_value: None,
+                    },
+                )),
+                None => None,
+            }
         },
     )
 }
@@ -6211,6 +6244,9 @@ fn summon_launcher(
     state: &mut crate::ui::session::DesktopSession,
 ) -> iced::Task<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
+    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+        eprintln!("[464-SUMMON] summon_launcher entered, mounted={}", state.desktop.launcher_app.is_some());
+    }
     // 1. 懒挂载
     if state.desktop.launcher_app.is_none() {
         let Some(entry) = state.desktop.launcher_entry.clone() else {
@@ -6288,6 +6324,9 @@ fn drain_and_execute_desktop_commands(
     if cmds.is_empty() {
         return (false, Vec::new());
     }
+    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+        eprintln!("[464-DRAIN] {} commands", cmds.len());
+    }
     execute_desktop_commands(state, cmds)
 }
 
@@ -6302,6 +6341,9 @@ fn execute_desktop_commands(
     for cmd in cmds {
         match cmd {
             DC::SummonLauncher => {
+                if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                    eprintln!("[464-SUMMON] bus summon command");
+                }
                 tasks.push(summon_launcher(state));
             }
             DC::LaunchApp(name) => match state.launch_app(&name) {
@@ -8676,10 +8718,14 @@ fn compare_pngs(
           -> iced::Task<crate::ui::session::DesktopMessage> {
         use crate::ui::session::{DesktopEvent, DesktopMessage as DM, WmCommand};
         if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
-            if let DM::App(ref app_id, ref m) = msg {
-                if m.event.starts_with("Move") || m.event.starts_with("Pick") {
+            match &msg {
+                DM::App(ref app_id, ref m) => {
                     eprintln!("[464-UPD] DM::App({app_id:?}, {})", m.event);
                 }
+                DM::Desktop(ref ev) => {
+                    eprintln!("[464-UPD] DM::Desktop({ev:?})");
+                }
+                _ => {}
             }
         }
         // Plan 463 T4：DesktopBus 排空原在此处（任意消息周期开头）。Plan 464
@@ -9227,10 +9273,14 @@ fn compare_pngs(
                 {
                     if let Some(app) = state.apps.get(&la) {
                         let bindings = app.component.key_bindings().clone();
-                        if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
-                            eprintln!("[464-SUB] launcher keyboard sub registered (visible)");
-                        }
-                        subs.push(keyboard_subscription(la, host.window, bindings, true, true));
+                        subs.push(keyboard_subscription_ext(
+                            la,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
                     }
                 }
             }
