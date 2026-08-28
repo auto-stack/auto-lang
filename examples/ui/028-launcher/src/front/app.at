@@ -18,8 +18,8 @@
 
 widget App {
     msg {
-        Init, SetQ(str), ApplyFilter, MoveUp, MoveDown, Pick,
-        Escape, SwitchMode, Open, Close, Launch(str)
+        Init, SetQ(str), ApplyFilter, MoveUp, MoveDown, MoveLeft, MoveRight,
+        Pick, Escape, SwitchMode, Open, Close, Launch(str)
     }
 
     model {
@@ -38,6 +38,11 @@ widget App {
         var nres int = 0            // 结果数（view 条件用，替代模板 .len()）
         var count str = ""          // 计数显示串
 
+        // ---- 网格形态（P5，对标 Activities/Launchpad）----
+        var gridrows = []           // {gi,name,title,mg,category} 注册表序全量
+        var gsel int = 0            // 网格焦点索引（与 sel 同为 app 内自建）
+        var gcount str = ""
+
         // ---- 注册表（独立模式 mock；desktop 模式宿主覆盖 `apps`）----
         // ln/lt = name/title 的预小写副本（匹配用；见文件头注）。
         var apps = [
@@ -54,8 +59,8 @@ widget App {
             { name: "038-minesweeper", title: "Minesweeper", icon: "bomb",             category: "game",    ln: "038-minesweeper", lt: "minesweeper" },
             { name: "041-auto-edit",   title: "Auto Edit",   icon: "file-code",        category: "editor",  ln: "041-auto-edit",   lt: "auto edit" }
         ]
-        var recent = []             // 启动名记录，最近在前，上限 5（T2 接 storage）
-        var last str = ""           // 最近一次启动（演示/调试显示）
+        var recent = []             // 启动名记录，最近在前，上限 5（storage 持久化）
+        var last str = ""           // 最近一次启动（演示/断言锚）
     }
 
     view {
@@ -137,13 +142,50 @@ widget App {
                     spacer { style: "h-24 w-full" }
                 }
             } else {
-                // ---- grid 形态（T2）：图标网格 + 方向键焦点 ----
+                // ---- grid 形态（P5）：图标网格（注册表序全量）+ 方向键焦点 ----
                 col {
                     style: "w-full h-full bg-gray-900 flex flex-col items-center"
                     spacer { style: "h-24 w-full" }
                     col {
                         style: "w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl p-6"
-                        text "Grid (plan 464 T2)" { style: "text-gray-400 text-sm" }
+                        row {
+                            style: "flex items-center mb-4"
+                            text "All apps" { style: "text-gray-300 text-sm" }
+                            text .gcount { style: "ml-auto text-xs text-gray-500" }
+                        }
+                        grid {
+                            cols: 4
+                            gap: 3
+                            for g in .gridrows {
+                                if .gsel == g.gi {
+                                    col {
+                                        onclick: .Launch(g.name)
+                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl bg-blue-900 cursor-pointer"
+                                        col {
+                                            style: "h-12 w-12 rounded-xl bg-blue-600 flex items-center justify-center"
+                                            text g.mg { style: "text-white text-lg font-bold" }
+                                        }
+                                        text g.title { style: "text-white text-xs text-center" }
+                                    }
+                                } else {
+                                    col {
+                                        onclick: .Launch(g.name)
+                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-700 cursor-pointer"
+                                        col {
+                                            style: "h-12 w-12 rounded-xl bg-gray-700 flex items-center justify-center"
+                                            text g.mg { style: "text-gray-200 text-lg font-bold" }
+                                        }
+                                        text g.title { style: "text-gray-200 text-xs text-center" }
+                                    }
+                                }
+                            }
+                        }
+                        row {
+                            style: "flex items-center gap-4 mt-4 pt-3 border-t border-gray-700"
+                            text "↑↓←→ move" { style: "text-xs text-gray-500" }
+                            text "Enter launch" { style: "text-xs text-gray-500" }
+                            text "Tab palette" { style: "text-xs text-gray-500" }
+                        }
                     }
                     spacer { style: "h-24 w-full" }
                 }
@@ -154,10 +196,13 @@ widget App {
                 style: "w-full h-full"
                 if .hosted == "0" {
                     row {
-                        style: "w-full h-full flex items-center justify-center bg-gray-100"
+                        style: "w-full h-full flex flex-col items-center justify-center bg-gray-100 gap-4"
                         button "🔍 Open launcher (Ctrl+Space)" {
                             onclick: .Open
                             style: "px-4 py-2 bg-gray-900 text-white rounded-lg shadow"
+                        }
+                        if .last != "" {
+                            text f"Last launched: ${.last}" { style: "text-sm text-gray-600" }
                         }
                     }
                 }
@@ -168,7 +213,11 @@ widget App {
     bind {
         "ArrowUp" -> .MoveUp
         "ArrowDown" -> .MoveDown
+        "ArrowLeft" -> .MoveLeft
+        "ArrowRight" -> .MoveRight
+        "Enter" -> .Pick
         "Escape" -> .Escape
+        "Tab" -> .SwitchMode
         "Ctrl+ " -> .Open
     }
 
@@ -176,8 +225,22 @@ widget App {
         .Init -> {
             .q = ""
             .sel = 0
+            .gsel = 0
             .mode = "palette"
             .visible = "0"
+            // recent 持久化恢复（018/025 storage 先例）。定长 5 槽键：
+            // storage.get → localStorage.getItem 产出 string|null，vue 生成码
+            // 不带 ?? ''，对结果调方法会 TS18047 —— 槽值只做 != "" 比较（实测）。
+            var r0 = storage.get("launcher.recent_apps.0")
+            if r0 != "" { .recent.push(r0) }
+            var r1 = storage.get("launcher.recent_apps.1")
+            if r1 != "" { .recent.push(r1) }
+            var r2 = storage.get("launcher.recent_apps.2")
+            if r2 != "" { .recent.push(r2) }
+            var r3 = storage.get("launcher.recent_apps.3")
+            if r3 != "" { .recent.push(r3) }
+            var r4 = storage.get("launcher.recent_apps.4")
+            if r4 != "" { .recent.push(r4) }
             .ApplyFilter()
         }
 
@@ -366,35 +429,118 @@ widget App {
                 var idx int = .sel + 1
                 .count = f"${idx} / ${.nres} apps"
             }
+
+            // 网格行（注册表序全量，与查询无关）；gsel 夹取 + 计数
+            .gridrows = []
+            var gi2 int = 0
+            while gi2 < .apps.len() {
+                var row4 = { gi: gi2, name: .apps[gi2].name, title: .apps[gi2].title, mg: .apps[gi2].title.slice(0, 1), category: .apps[gi2].category }
+                .gridrows.push(row4)
+                gi2 = gi2 + 1
+            }
+            if .gridrows.len() > 0 {
+                if .gsel >= .gridrows.len() {
+                    .gsel = .gridrows.len() - 1
+                }
+                var gi3 int = .gsel + 1
+                .gcount = f"${gi3} / ${.gridrows.len()} apps"
+            } else {
+                .gcount = "0 apps"
+            }
         }
 
         .MoveUp -> {
-            if .nres > 0 {
-                if .sel > 0 {
-                    .sel = .sel - 1
-                } else {
-                    .sel = .nres - 1
+            if .mode == "palette" {
+                if .nres > 0 {
+                    if .sel > 0 {
+                        .sel = .sel - 1
+                    } else {
+                        .sel = .nres - 1
+                    }
+                    .ApplyFilter()
                 }
-                .ApplyFilter()
+            } else {
+                // grid：上移一行（cols=4），列内回绕
+                var n2 int = .gridrows.len()
+                if n2 > 0 {
+                    var g int = .gsel
+                    if g < 4 {
+                        g = g - 4 + n2
+                    } else {
+                        g = g - 4
+                    }
+                    .gsel = g
+                    .ApplyFilter()
+                }
             }
         }
 
         .MoveDown -> {
-            if .nres > 0 {
-                if .sel < .nres - 1 {
-                    .sel = .sel + 1
-                } else {
-                    .sel = 0
+            if .mode == "palette" {
+                if .nres > 0 {
+                    if .sel < .nres - 1 {
+                        .sel = .sel + 1
+                    } else {
+                        .sel = 0
+                    }
+                    .ApplyFilter()
                 }
-                .ApplyFilter()
+            } else {
+                var n3 int = .gridrows.len()
+                if n3 > 0 {
+                    var g2 int = .gsel + 4
+                    if g2 >= n3 {
+                        g2 = g2 - n3
+                    }
+                    .gsel = g2
+                    .ApplyFilter()
+                }
             }
         }
 
-        // Enter：启动当前选中项
+        .MoveLeft -> {
+            if .mode == "grid" {
+                var n4 int = .gridrows.len()
+                if n4 > 0 {
+                    var g3 int = .gsel
+                    if g3 == 0 {
+                        g3 = n4 - 1
+                    } else {
+                        g3 = g3 - 1
+                    }
+                    .gsel = g3
+                    .ApplyFilter()
+                }
+            }
+        }
+
+        .MoveRight -> {
+            if .mode == "grid" {
+                var n5 int = .gridrows.len()
+                if n5 > 0 {
+                    var g4 int = .gsel + 1
+                    if g4 >= n5 {
+                        g4 = 0
+                    }
+                    .gsel = g4
+                    .ApplyFilter()
+                }
+            }
+        }
+
+        // Enter：启动当前焦点项（palette = 选中行；grid = 聚焦瓦片）
         .Pick -> {
-            if .nres > 0 {
-                if .sel < .nres {
-                    .Launch(.ranked[.sel].name)
+            if .mode == "palette" {
+                if .nres > 0 {
+                    if .sel < .nres {
+                        .Launch(.ranked[.sel].name)
+                    }
+                }
+            } else {
+                if .gridrows.len() > 0 {
+                    if .gsel < .gridrows.len() {
+                        .Launch(.gridrows[.gsel].name)
+                    }
                 }
             }
         }
@@ -428,7 +574,7 @@ widget App {
         // 总线无人消费，仅演示（441 fallback 边界）。
         .Launch(name) -> {
             .last = name
-            // recent：去重置顶，上限 5
+            // recent：去重置顶，上限 5 + storage 持久化（逗号串序列化）
             var nr = []
             nr.push(name)
             var oi int = 0
@@ -441,6 +587,12 @@ widget App {
                 oi = oi + 1
             }
             .recent = nr
+            // 定长 5 槽持久化（与 Init 恢复对称）
+            if nr.len() > 0 { storage.set("launcher.recent_apps.0", nr[0]) } else { storage.set("launcher.recent_apps.0", "") }
+            if nr.len() > 1 { storage.set("launcher.recent_apps.1", nr[1]) } else { storage.set("launcher.recent_apps.1", "") }
+            if nr.len() > 2 { storage.set("launcher.recent_apps.2", nr[2]) } else { storage.set("launcher.recent_apps.2", "") }
+            if nr.len() > 3 { storage.set("launcher.recent_apps.3", nr[3]) } else { storage.set("launcher.recent_apps.3", "") }
+            if nr.len() > 4 { storage.set("launcher.recent_apps.4", nr[4]) } else { storage.set("launcher.recent_apps.4", "") }
             .__desktop_cmd = "launch\t" + name
             .visible = "0"
             .q = ""
