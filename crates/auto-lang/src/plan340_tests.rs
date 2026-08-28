@@ -247,6 +247,160 @@ widget App {
         );
     }
 
+    /// PLAN-048 T2 (musk VM 数据桥): `emit_api_http_call` 必须支持 `{param}`
+    /// 花括号路径模板（musk back/api.at 与 vue 轨 client 的约定，如
+    /// `/api/chats/session/{id}`）。修复前只认 `:param`，花括号路径整段落入
+    /// URL 常量（字面 `{id}` 发往后端必 404），且路径参数被错并入 body。
+    ///
+    /// 断言面（split 模式合成模块）：
+    ///   1. GET `{id}`：无 CALL reloc（改写发生）且字符串池无字面 `{id}`
+    ///      （前缀/后缀分段拼接替代整段 URL 常量）；
+    ///   2. POST `{id}` + 额外参数：路径参数不进 body（池内无 `"id":` 片段）、
+    ///      其余参数进 body（池内有 `"profession_id":` 片段）。
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_brace_path_params_in_api_http_rewrite() {
+        use crate::compile::CompileSession;
+        use crate::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type SessionDetail = { id str, name str }
+
+#[api(method = "GET", path = "/api/chats/session/{id}")]
+pub fn chats_get_session(id str) SessionDetail {
+    return None
+}
+
+#[api(method = "POST", path = "/api/chats/session/{id}/message")]
+pub fn chats_send_message(id str, content str, profession_id str) {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: chats_get_session, chats_send_message
+
+widget App {
+    model {
+        var sid = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Open -> {
+            .sid = chats_get_session("abc").id
+        }
+        .Send -> {
+            chats_send_message("abc", "hi", "prof1")
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
+            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts, &aliases, true,
+        )
+        .expect("synthesize split");
+
+        // 1. 改写发生：两个契约 fn 都不再是 CALL reloc。
+        for bare in ["chats_get_session", "chats_send_message"] {
+            let has_reloc = module.relocs.iter().any(|r| {
+                r.reloc_type == crate::vm::loader::RelocType::FuncCall
+                    && (r.symbol_name == bare || r.symbol_name.ends_with(bare))
+            });
+            assert!(
+                !has_reloc,
+                "split mode: {} should be rewritten to HTTP, not a CALL reloc",
+                bare
+            );
+        }
+
+        // 字符串池汇集（UTF-8 lossy 便于子串断言）。
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        // 2. 花括号占位符不得整段落入 URL 常量。
+        let brace_hits: Vec<&String> = pool.iter().filter(|s| s.contains("{id}")).collect();
+        assert!(
+            brace_hits.is_empty(),
+            "brace placeholder must be spliced, found literal in consts: {:?}",
+            brace_hits
+        );
+        // 前缀分段存在（URL 已按 {id} 切开拼接）。
+        assert!(
+            pool.iter().any(|s| s.contains("/api/chats/session/")),
+            "expected URL prefix segment in string pool: {:?}",
+            pool
+        );
+
+        // 3. POST 路径参数不进 body；其余参数进 body。
+        assert!(
+            !pool.iter().any(|s| s == "\"id\":"),
+            "path param must be excluded from body, found \"id\": piece: {:?}",
+            pool
+        );
+        assert!(
+            pool.iter().any(|s| s.contains("\"profession_id\":")),
+            "expected body key piece for non-path arg: {:?}",
+            pool
+        );
+    }
+
     /// Regression: a `#[api]` fn returning a 1-slot scalar (uint/int) and
     /// called as a bare statement must NOT emit POP_N(2). The HTTP rewrite
     /// pushes a single NanoValue (from `auto.json.to_value`), but before the
