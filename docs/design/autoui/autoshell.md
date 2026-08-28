@@ -174,7 +174,7 @@ workspace 分区与切换命令、desktop 层 z 槽、thumbnail 快照接口（3
 
 **发布态 exe = 双模二进制**，入口裁决三步：① 命令行/环境带 AutoDesk 孵化标记
 （spawn 注入 `--autodesk-client=<pipe>`）→ 客户端连入桌面；② 无标记但探测到
-AutoDesk broker 在线（`\.\pipeutodesk-broker` 握手）→ 连入桌面；
+AutoDesk broker 在线（`\\.\pipe\autodesk-broker` 握手）→ 连入桌面；
 ③ 都没有 → 独立模式自开 OS 窗口（= `auto run` 现行为）。安装时把 exe 路径
 注册进 AutoDesk 应用注册表（launcher/快捷方式数据源）。
 
