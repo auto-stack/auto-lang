@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-446
-status: reviewed              # drafting → executing → execution_done → reviewed → archived（复审见 §R2）
+status: archived             # drafting → executing → execution_done → reviewed → archived（终态；复审见 §R2）
 feature_name: VM 渲染后端实战薄弱点（auto-os-config 现场报告·五批修复）
 author: [zcode]
 created_at: 2026-08-25
