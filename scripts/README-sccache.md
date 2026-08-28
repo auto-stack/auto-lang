@@ -12,10 +12,30 @@
 - 脚本逻辑：PATH 里有 `sccache` 就代理给它，否则直接调用 rustc。
 - 所以无论装没装 sccache，都不会报错。
 
-## 开启方式（在 shell profile 里加一行）
+## 开启方式
 
 仓库自带的 wrapper 脚本路径是 `scripts/sccache-wrap.sh`（Linux/macOS）和
 `sccache-wrap.cmd`（Windows）。把对应的绝对路径设给 `RUSTC_WRAPPER` 即可。
+
+### Windows（推荐：用户级环境变量，Plan 466）
+
+已安装 sccache 的机器，直接把 `RUSTC_WRAPPER` 指向 `sccache.exe`，并用 `setx`
+写用户级环境变量（AI agent 的每个新 shell 自动继承，无需逐 profile 配置）：
+
+```powershell
+setx RUSTC_WRAPPER "C:\Users\<you>\.cargo\bin\sccache.exe"
+setx SCCACHE_DIR "D:\autostack\.sccache"     # 避开空间紧张的 C 盘(默认在 %LOCALAPPDATA%\Mozilla\sccache\cache)
+setx SCCACHE_CACHE_SIZE "30G"                 # 默认 10G 对本仓库依赖树偏小
+```
+
+> 不要在 Windows 上经 `sccache-wrap.cmd` 转发：`.cmd` 由 cmd.exe 二次解析
+> 参数，在超长且含空格/括号的编译参数上会失败（Plan 466 实测：windows-sys
+> 的巨型 `--check-cfg` 参数经 wrapper 转发以 exit 1 中断构建）。wrapper
+> 脚本仅保留给"未装 sccache 也要能构建"的机器做透传兜底。
+
+> worktree 冷构建收益：registry 依赖的编译产物按内容寻址，跨 worktree 命中；
+> 新 worktree 首次全量构建可加 `CARGO_INCREMENTAL=0` 进一步提高命中率
+> （sccache 不缓存增量编译单元；registry 依赖本就非增量，不受影响）。
 
 ### Linux / macOS（bash / zsh）
 
@@ -27,9 +47,9 @@ export RUSTC_WRAPPER="/path/to/auto-lang/scripts/sccache-wrap.sh"
 
 把 `/path/to/auto-lang` 换成本仓库在你机器上的绝对路径。
 
-### Windows（PowerShell）
+### Windows（PowerShell profile 方式，备选）
 
-在 PowerShell profile（`$PROFILE`，可用 `notepad $PROFILE` 打开）里加：
+在 PowerShell profile（`PROFILE`，可用 `notepad $PROFILE` 打开）里加：
 
 ```powershell
 $env:RUSTC_WRAPPER = "D:\path\to\auto-lang\scripts\sccache-wrap.cmd"

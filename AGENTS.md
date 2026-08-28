@@ -41,7 +41,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - **Category B: Scoped Rust Code Changes (局部 Rust 模块改动)**:
     - 快速语法/类型检查：`cargo check -p auto-lang`
     - 局部模块验证：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
-    - 涉及编译器/VM/核心协议重构时，才在最终合入前运行一次 `cargo t`。
+    - 涉及编译器/VM/核心协议重构时，才在最终合入前运行一次 `cargo tf`（full 档，含 1M churn；Plan 466）。
   - **Category C: Docs / Schema Changes (文档与元数据改动)**:
     - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
   - **AutoUI 跨端验证（双端模式）**:
@@ -50,11 +50,12 @@ All AI coding assistants working in this repository must strictly adhere to the 
     - 自动化双端一致性：调用 `autoui-verifier` 技能 (`.agents/skills/autoui-verifier`)。
 
 #### Cargo Test Aliases Reference (from `.cargo/config.toml`)
-- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel)
+- `cargo t`  - Fast daily tests (~3200 unit tests via nextest in parallel; 1M churn tier excluded, Plan 466)
+- `cargo tf` - Full-scale daily tests (all tests incl. 1M churn tier) — the review / pre-fold full-suite gate (Plan 466)
 - `cargo tv` - VM file tests (`--features test-vm-files`)
 - `cargo tt` - Transpiler tests (`--features test-trans`)
 - `cargo tb` - Book listing tests (`--features test-book`)
-- `cargo ta` - All test suites combined (`--features test-vm-files,test-trans,test-book`)
+- `cargo ta` - All test suites combined (`--features test-vm-files,test-trans,test-book`; full scale)
 
 
 ---
