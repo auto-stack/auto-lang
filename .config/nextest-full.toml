@@ -1,0 +1,4 @@
+# Plan 466: full 档 nextest 配置(cargo tf / cargo ta 经 --config-file 指定)。
+# --config-file 是整体替换而非合并:本文件不设 default-filter → 全部测试
+# (含 str_churn_bounded_large 1M 大档)都会运行 —— review / fold 前的
+# 全量门禁专用。本文件需自成一体。

@@ -1,0 +1,10 @@
+# Plan 466: cargo t 提速——默认档排除 1M 大规模 churn 测试
+# 本 nextest 版本(0.9.138)既不支持 profile 级 env 也不支持全局 [env]
+# (启动时会警告 unknown configuration key),故改用
+# "default-filter 排除 + full 配置整体替换"双文件实现双档:
+#   默认(本文件):   排除 str_churn_bounded_large(1M) —— cargo t/tv/tt/tb/th 日常档;
+#                   其 100k 日常版 str_churn_bounded 照常运行
+#   full(nextest-full.toml): 不设过滤 —— cargo tf/ta 全量门禁,1M 大档照跑
+# 裸 cargo test 不经 nextest,两档都会运行(全量语义)。
+[profile.default]
+default-filter = "not test(str_churn_bounded_large)"

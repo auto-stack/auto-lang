@@ -621,23 +621,47 @@ fn writer() {
     }
 }
 
-#[tokio::test]
-async fn str_churn_bounded_large() {
-    // §3.2:str_churn_bounded —— 循环拼接 100 万个不同串,live_pool 峰值 <<
-    // 总创建数(freelist 复用生效;rc_stats 断言,不看 RSS)。
-    let code = r#"
-fn main() int {
+// §3.2:str_churn_bounded —— 循环拼接大量不同串,live_pool 峰值 <<
+// 总创建数(freelist 复用生效;rc_stats 断言,不看 RSS)。
+// 规模两档(Plan 466):
+//   str_churn_bounded        100k —— 日常档,`cargo t`(default-filter 放行)照常运行
+//   str_churn_bounded_large  1M   —— 全量档,仅 `cargo tf`/`ta`(full 配置)运行,
+//                                    default-filter 从日常档排除
+// 断言阈值不随规模缩放;裸 cargo test 两档都跑。
+async fn str_churn_bounded_impl(iters: u64) {
+    let code = format!(
+        r#"
+fn main() int {{
     var s str = ""
-    for i in 0..1000000 {
+    for i in 0..{iters} {{
         s = "prefix-" + i.str() + "-suffix"
-    }
+    }}
     0
-}
-"#;
+}}
+"#
+    );
     let start = std::time::Instant::now();
-    let (vm, _out) = run_code_vm(code).await;
+    let (vm, _out) = run_code_vm(&code).await;
     let elapsed = start.elapsed();
     let live = vm.pool_live_count();
-    assert!(live < 1000, "live_pool must stay bounded (got {} after 1M unique strings)", live);
-    eprintln!("str_churn 1M: live_pool={} elapsed={:?}", live, elapsed);
+    assert!(
+        live < 1000,
+        "live_pool must stay bounded (got {} after {} unique strings)",
+        live,
+        iters
+    );
+    eprintln!(
+        "str_churn {}: live_pool={} elapsed={:?}",
+        iters, live, elapsed
+    );
+}
+
+#[tokio::test]
+async fn str_churn_bounded() {
+    str_churn_bounded_impl(100_000).await;
+}
+
+#[tokio::test]
+async fn str_churn_bounded_large() {
+    str_churn_bounded_impl(1_000_000).await;
 }

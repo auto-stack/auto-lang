@@ -1,10 +1,13 @@
 # Plan 289: Cargo aliases for faster test workflows
 # Usage:
-#   cargo t          - fast daily tests (no heavy test groups)
+#   cargo t          - fast daily tests (no heavy test groups; 1M churn test
+#                      excluded via .config/nextest.toml default-filter, Plan 466)
+#   cargo tf         - full-scale daily tests (all tests incl. 1M churn, via
+#                      .config/nextest-full.toml) — review/pre-fold gate (Plan 466)
 #   cargo tv         - VM file tests
 #   cargo tt         - transpiler tests
 #   cargo tb         - book listing tests (slow: ~5-7s each)
-#   cargo ta         - all tests (VM + trans + book)
+#   cargo ta         - all tests (VM + trans + book; full scale)
 #   cargo th         - HTTP e2e tests (real TCP servers; serial only)
 #
 # Requires: cargo install cargo-nextest
@@ -35,10 +38,12 @@ jobs = 8
 
 [alias]
 t = "nextest run -p auto-lang --lib"
+# Plan 466: full 档 = 全部测试含 1M 大档 churn(review/fold 全量门禁专用)
+tf = "nextest run -p auto-lang --lib --config-file .config/nextest-full.toml"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"
-ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-book"
+ta = "nextest run -p auto-lang --lib --features test-vm-files,test-trans,test-book --config-file .config/nextest-full.toml"
 # Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
