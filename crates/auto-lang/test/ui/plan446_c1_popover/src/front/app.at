@@ -1,0 +1,36 @@
+// app.at — Plan 446 C1 review probe: 现场 popover 形态（深层嵌套 +
+// 属性组合）能否解析并渲染。§C 现场症状：collect_module_imports parse
+// failed → 模块静默丢弃；批一落了诊断半（C1-2/C1-3），本探针锁渲染半。
+
+widget App {
+    msg { Init, ConfirmCancel }
+
+    model {
+        var confirm_open bool = false
+        var ctx_x float = 400.0
+        var rendered str = "none"
+    }
+
+    on {
+        .Init -> {
+            .rendered = "ok"
+        }
+        .ConfirmCancel -> {
+            .confirm_open = false
+        }
+    }
+
+    view {
+        row {
+            col {
+                text "outer"
+                popover (open: .confirm_open, x: .ctx_x, y: 300.0, ondismiss: .ConfirmCancel, class: "w-72 border rounded p-3 gap-2") {
+                    col {
+                        text "confirm?"
+                        button "Cancel" { onclick: .ConfirmCancel }
+                    }
+                }
+            }
+        }
+    }
+}

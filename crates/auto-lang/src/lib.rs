@@ -5769,6 +5769,10 @@ mod plan446_batch3_tests;
 #[cfg(test)]
 mod plan446_batch4_tests;
 
+// Plan 446 C1: popover 形态渲染回归锁（复审转常驻）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan446_c1_popover_tests;
+
 
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
