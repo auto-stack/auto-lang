@@ -157,6 +157,7 @@
 
 | 计划 | 类别 | 严重度 | 描述 | 根因/理由 | 引用 | 登记日 |
 |------|------|--------|------|-----------|------|--------|
+| 463 | 环境限制 | 🟡 | worktree 内 `cargo tb`/book_listing_tests 全数不可运行（61 项"失败"为环境假象） | book_listing_tests 经 `CARGO_MANIFEST_DIR/../../../book` 读仓库外兄弟目录 `D:\autostack\book`，该相对路径从 worktree 解析必然落空（结构性，非代码问题）。缓解：`.worktrees/book → D:\autostack\book` junction（复审时已建）；长期可考虑 book 路径支持 env 覆盖 | docs/plans/463-desktop-shell-auto-arrange.md §10.2 | 2026-08-28 |
 | 398 | 下游任务 | 🟢 | ash-gui-native M0.5 测试骨架（conftest/desktop_mcp/test_smoke）+ M1 in-process 后端 | 属 auto-shell 仓的下游任务，本仓计划仅负责 VM 侧修复（已完成） | docs/plans/archive/398-*.md §14.3/§14.4 | 2026-08-20 |
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |

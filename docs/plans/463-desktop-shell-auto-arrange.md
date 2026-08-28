@@ -1,14 +1,20 @@
 ---
 plan_id: PLAN-463
-status: execution_done
+status: reviewed
 feature_name: 桌面 shell——全屏、任务栏、自动排布、应用生命周期
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-28T14:20:00+08:00
+updated_at: 2026-08-28T15:10:00+08:00
 
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——VM 渲染/桌面 shell 现状段（462 地基上补 463 桌面 shell/布局/注册表）"
+  - "docs/specs/auto-man/project.md: 修改——pac.at schema 增 icon/category 可选字段"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——ui/layout.rs 布局引擎（free/grid/master-stack 纯函数 + snap 半屏几何，I6 对拍规范源）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——ui/app_registry.rs 应用注册表（scan_apps/平铺 pac.at 读/LaunchApp 解析器装配）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——ui/shell.rs + assets/shell.at 桌面 shell（DesktopBus v0 消费端 + taskbar 底栏 + 启动失败占位页）"
+touched_goals:
+  - "GOAL-009: 桌面 shell 端到端骨架——全屏桌面/任务栏/三模式布局引擎/DesktopBus v0/桌面热键/应用注册表（M3，464/465 就位）"
 
 current_step: 8
 total_steps: 8
@@ -221,3 +227,47 @@ UI 归 shell-track**（加法设计，不波及 462 验收项）：
    plan411_tests::test_md_hidden_classes_parse` 在 master 同样红（并行会话
    对 style parser 的改动使 `md:hidden -ml-2` 解析出 2 类）。建议由该改动
    所属计划修复或更新断言。
+
+## 10. 复审记录
+
+> 复审人：zcode（/auto-plan:review 独立复审）；时间：2026-08-28 15:00–15:30 +08:00。
+> 方法：worktree 实际 diff（`18ae67330..HEAD`，8 commits，15 文件 +1956/−19）逐项
+> 复验 + 失败集对比法全量门禁（worktree vs master 双跑），verify-don't-trust。
+
+### 10.1 验收逐项复验
+
+| # | 准则 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 实机端到端骨架（全屏/任务栏/启动/排布/循环/空态） | **pass**（UI 点击半边经裁决顺延 464，见 §9-2） | 全屏无框 MCP 截图（T3）；底部任务栏双窗按钮组 + `z_order=[1,2]` 同步诊断（T5）；注册表 28 条 boot 日志（T7）；三 App 真实启动会话级 e2e 单测 `launch_three_real_apps_via_registry_resolver`（titles=calculator/todo/459-dual-app，三虚拟窗、新窗即焦点）；Esc 实机退出（进程核销） |
+| 2 | I6 layout 纯函数单测绿、无副作用 | **pass** | `layout::` 73/73（含确定性/输入不可变断言）；18 项模式/几何断言 |
+| 3 | I2/I3 同 462、独立模式零回归 | **pass** | desktop_behavior 8/8；`is_desktop()` 10 处配置位门控 + RunMode 恰 2 臂（无第二管线）；全量套 ui 域零失败 |
+| 4 | taskbar/virtual_window 登记（I4） | **pass**（virtual_window 归 465，§9-1 裁决） | taskbar 四表（schema.rs/aura.at 重生成/render_support/view_builder 双臂）+ drift fence 绿 |
+
+### 10.2 全量门禁（本复审唯一全量门禁）
+
+- 命令：`cargo nextest run -p auto-lang --lib --features ui-iced,test-vm-files,test-trans,test-book --no-fail-fast`（`cargo tf` 尚未在册——466 未合入，本跑为其等价超集）。
+- **失败集对比法**：worktree 32 项失败 ≡ master 32 项失败，双向差集均为空；全集位于
+  a2r_tests（21）/aavm2_m4/book_listing/cookbook_vm/style（`md:hidden` 解析）——
+  皆为并行会话在 master 预存（逐项 master 复跑复核），**463 触碰面
+  （layout/session/renderer/app_registry/shell/pac）零失败**。
+- 附带发现：book_listing_tests 依赖仓库外兄弟目录 `D:\autostack\book`（经
+  `CARGO_MANIFEST_DIR/../../../book` 解析），**worktree 内结构性不可达**——已以
+  junction `.worktrees/book → D:\autostack\book` 消除（446 worktree-junction 注记
+  同款环境项；已登记 KNOWN-DEBT）。
+- 复审期间 master 前进（3309909a8 auto-musk style-parity 合入），与 463 触碰面
+  无文件交集；fold 时由 merge 处理。
+
+### 10.3 遗漏 / 延后 / workaround 扫描
+
+- diff 内零 TODO/FIXME/dbg!；4 处 eprintln 均为正当运维日志（降级告警×2、
+  boot 注册表统计、debug-gated 召唤提示）。
+- 延后三项均经用户裁决（§9-1/2/3），非静默降级。
+- workaround 两处已文档化：shell.at 分隔符双轨（控件串无法直书 `\u{1E}/\u{1F}`，
+  宿主解析两套等价）；for 多子节点显式 row 包裹（iced 适配器语义，shell.at 注释）。
+- worktree 内两处未提交改动（`examples/rust-workspace/`）属并行会话，不在 463
+  commit 集内，merge fold 不受影响。
+
+### 10.4 结论
+
+**通过（pass）**——`status: reviewed`。无阻断性债务；三项裁决顺延 + 环境项已
+登记（KNOWN-DEBT 表 463 行）。可进入 `/auto-plan:merge`（fold + specs 沉淀 + 归档）。
