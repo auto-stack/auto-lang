@@ -720,6 +720,38 @@ md_hidden_classes 基线红 + benchmark 偶发）。**门禁通过**。
 
 **批四回归**：plan446_batch4 6/6 + 全量门禁上述。
 
+## S. 批五实施记录（2026-08-28 起，用户授权复活后，进行中）
+
+立项：§P/U1-U7 转正（§I 第 5 条切分，依赖序）；G2-G5 悬空引用删除
+（双重核实：本计划无章节 + 下游 VG 清单无对应条目）。
+
+**[✅ 已完成] U7 loop 字段 Dot 求值链**（本批最大清偿项）：
+- 链4 根修：`convert_text_element`（tracked/非 tracked 双变体）的 children
+  内容折叠此前只认 Text 节点——文本类子元素（`label { text (text: e.label)
+  {} }`）求值被跳过、宿主内容为空（现场"整个 label 缺位"）。现折叠文本类
+  子元素的 text/content/label prop（绑定感知，与宿主同走 extract_string_with
+  props 直取链——§P 处方的"统一走 props 直取链"）。
+- 链3 实证+显式化：button class:/style: 求值链在真 Tailwind 值下**已通**
+  （Red(500) 并入实证）——现场"preset 兜底"根因是自定义类名（"e-row
+  active" 类）被 Style::parse 静默丢弃。按 §P 处方改显式：resolved 类串
+  解析出零样式类时 log::warn（不再静默 preset 外观）。
+回归：plan446_batch5 u7 四链矩阵（条件/直取对照 + class 并入 + 折叠）。
+
+**[✅ 验证解除] U1 事件冻结（P0）**：corpus
+`test/ui/plan446_u1_event_freeze/`（现场形状：循环构建侧栏 press →
+store.active_id → 主区条件翻转）在**真实 iced 窗口 + MCP 通道**
+（mcp_probe.py：boot→press Roles→press Daemon）下连续 press 正常翻转
+——NO-FREEZE。现场基线 1487b5c5d 之后的合入已治愈。探针开发期间两次
+撞见"state 永不可用"启动偶发（U6 族佐证，见下）。残余风险：reduced
+corpus 未覆盖他们的完整形态——下游 runbook 第四节要求真实集合页专项
+复验，红则取证回传。
+
+**待续（下一会话）**：U2 autoui_type 粘连 / U3 截图超时 / U4 select 缺位 /
+U5 thead 样式 / U6 快照空壳窗口（本批两次实证启动偶发）。
+
+**下游交付**：`docs/plans/reports/446-downstream-runbook.md`（撤绕行清单
++ e2e 双门禁 + U1 专项复验 + 取证要求，交 os-config agent 执行）。
+
 ## R. 复审记录（2026-08-28，/auto-plan:review）
 
 复审人：ZCode 会话（批二/三/四执行者复核，按"验证不轻信"重跑）。
