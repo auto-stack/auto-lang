@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: archived（终态 2026-08-28：复审通过→merge 归档；spec 台账沉淀 P446-1..4 于 .autoos/specs.json;worktree/分支已清;§P 新报与开放项见文内待澄清）；§I 四批：批一诊断 §L/§K、批二可用性 §N、
+状态: executing（用户授权复活 2026-08-28：归档态解除，§P/U1-U7 转正为批五实施；此前四批已复审归档沉淀 P446-1..4；G2-G5 悬空引用经裁决删除）；§I 四批：批一诊断 §L/§K、批二可用性 §N、
 批三语义统一 §O、批四打磨 §Q——待 /auto-plan:review；§P 新报与剩余
 低优先项见待澄清；worktree .worktrees/plan-446-dev 留置待 merge）
 创建: 2026-08-25
