@@ -753,11 +753,24 @@ index/value prop、onselect/onchange 经按钮同款 payload 编码通道
 （name/类型码/值 三段式 → decode_payload）送达 handler。回归：
 u4_select_renders_and_dispatches（产出+options+分发三断言）。
 
-**待续（下一会话）**：U3 截图超时 / U5 thead 样式 / U6 快照空壳窗口
-（批内两次实证启动偶发）。U2 机理已定位未修：`scan_node_for_inputs`
-以 `clean_handler_name(内联表达式)` 作 input_state_map 键，与 dispatch
-侧合成 handler 名不一致 → autoui_type 文本不落盘——修法需对齐两键或
-表达式键直写 value 字段，验证须走 MCP autoui_type 实测通道。
+**[✅ 已完成] U2 $event 标记实参替换（文本落盘根修）**：机理修正——
+两处 handler 名派生器（clean_handler_name / extract_handler_name）算法
+一致、键本就对得上；真根因是内联形态 `onchange: .Cell(i, $event.target
+.value)` 的 $event 实参在视图构建期不可求值，被冻结成字面量字符串随
+payload 编码往返，原样送达 handler。修在 dispatch 侧（on_with_input_for
+解码后）：input_value 存在时，以 `$event` 开头的字符串实参替换为输入值
+（`.checked` 后缀按布尔解析）。回归：u2_event_marker_arg_replaced（编码
+事件串模拟渲染层形态，标记替换+非标记实参保持双断言）。
+
+**[✅ 已完成] U5 表头样式**：th 预设对齐 vue 轨（border + font-semibold，
+去 bg-muted 内置底色——iced 暗色主题下即现场"暗底白字"）；th/td 的
+class/style prop 并入预设（用户优先，同 convert_button 惯例）——此前被
+整体忽略。回归：table 族 44 用例全绿（含 gallery kebab 表族）。
+
+**待续（下一会话）**：U3 截图详情态超时 / U6 快照空壳窗口（批内两次
+实证"state 永不可用"启动偶发佐证；两者均需 os-config 现场语料的实机
+MCP 通道诊断——U3 疑富子树截图 >10s 服务端上限，U6 疑首渲染未完成
+前快照回退源树的竞态窗口，勿盲修）。
 
 **下游交付**：`docs/plans/reports/446-downstream-runbook.md`（撤绕行清单
 + e2e 双门禁 + U1 专项复验 + 取证要求，交 os-config agent 执行）。
