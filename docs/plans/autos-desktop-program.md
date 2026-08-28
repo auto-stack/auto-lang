@@ -15,8 +15,10 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 
 452 已立项（2026-08-26）；453+ 编号以立项时实际分配为准。
 
-> **当前状态**：452 已完成归档（2026-08-26）；453 已立项（计划文件
-> `453-multi-app-session-runtime.md`，实施自 T1 字段清点起步）。
+> **当前状态**：452/453/459 已完成归档（2026-08-28，M1 收口：多 App 会话 + daemon
+> 多窗口 + panic 隔离）。2026-08-28 立项 M2–M4 计划族（Design 24：
+> `docs/design/24-autoui-desktop-shell-and-launcher.md`）——462/463/464/465，
+> 未开工。
 
 **编号解析规则**：本表是"里程碑 ↔ 实际计划号"的**唯一事实源**。Design 23 与
 各计划正文中的 453–457 字样均为**提案编号**，一律经本表解析为实际编号。
@@ -27,13 +29,18 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 计划 | 里程碑 | 范围一行 | 状态 | 依赖 |
 |---|---|---|---|---|
 | 452 设计+裁定翻转+IME spike | M0 | 正式收编 Design 23；执行 §5 同步清单；跑 §9 spike | ✅ 完成 2026-08-26（报告 reports/452-ime-spike.md，已归档） | 无 |
-| 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | 🔄 代码工作全量完成（T1–T6+T4c+T7a：会话翻转落地、M1 修饰键收敛、窗口事件消息通路、desktop_mcp 实机守门零回归）；M1 验收 demo 移交 459，完成后归档 | 452 ✅ |
-| 459 DesktopSession 多窗口化 | M1 收口 | iced daemon 迁移；AppId 递增分配与打标；双 AppSession 双窗口 demo；panic 隔离验证 | 已立项 2026-08-28（453 T7b 载体），未开工 | 453 |
-| 454 VirtualWindow + WM | M2 | 路线 A；R4 接缝；DesktopBus；MCP 寻址版本化 | 提案中 | 453 |
-| 455 桌面 shell | M3 | 全屏虚拟桌面、任务栏、启动器、App 生命周期 | 提案中 | 454 |
-| 456 Vue 虚拟桌面 | M4 | DOM 嵌入 + BroadcastChannel 总线；先于 454 做出规范实现 | 提案中 | 452（与 454/455 并行） |
-| 457 Smithay 宿主 | M5 | Linux 原生合成器宿主，复用桌面 shell | 提案中 | 454+455 |
+| 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | ✅ 完成 2026-08-28（随 459 验收一并归档） | 452 ✅ |
+| 459 DesktopSession 多窗口化 | M1 收口 | iced daemon 迁移；AppId 递增分配与打标；双 AppSession 双窗口 demo；panic 隔离验证 | ✅ 完成 2026-08-28（C0–C4 + 实机验收，已归档） | 453 ✅ |
+| 462（原提案 454）VirtualWindow + WM | M2 | 路线 A：`virtual_window` 注册 widget、chrome、事件/焦点分区、桌面宿主入口、R4 接缝 v1（`462-virtual-window-wm.md`） | 已立项 2026-08-28，未开工 | 459 ✅ |
+| 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell App+任务栏、layout 纯函数三模式+snap、生命周期命令接缝、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`） | 已立项 2026-08-28，未开工 | 462 |
+| 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 已立项 2026-08-28，未开工（M1 子阶段可先行） | 462+463 |
+| 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |
+| 457 Smithay 宿主 | M5 | Linux 原生合成器宿主，复用桌面 shell | 提案中 | 462+463 |
 | 386 复活 | M6 | R4 接缝的 RenderCommand 后端（路线 B），Stage 1-3 | ⏸ PAUSED | 见仪表盘 |
+
+**编号映射（2026-08-28 立项）**：M2→**462**、M3→**463**、M4→**465**（原提案
+454/455/456，正文历史提案号不回改）；新增 **464**（launcher，吸收 Plan 441，
+其 palette 原语化降为 464 可选任务、vm 焦点原语改由 462 承载）。
 
 ## 入口条件仪表盘
 
@@ -59,6 +66,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 2 | chrome/窗口管理归属 | 宿主拥有窗口管理（doc 20 §6.1） | 特权桌面 App 拥有窗口语义，宿主只管合成 | Design 23 R1 / 452 | doc20 ✅（2026-08-26，T2） |
 | 3 | RenderQueue 定位 | 独立的分离渲染内存优化（Plan 386） | R4 接缝的 RenderCommand 后端（路线 B） | Design 23 R7 / 452 | 386 ✅（2026-08-26，T4） |
 | 4 | 独立窗口模式地位 | （隐含）默认且唯一 | 永久一等公民 + 退化桌面构造（R3/R6） | Design 23 / 452 | — |
+| 5 | shell 组件归属 + 排布/注册表/启动/热键（**追加 R8–R12**，非翻转） | — | launcher/任务栏=特权 AutoUI App；排布=WM 纯函数策略（free/grid/master-stack+snap）；注册表=pac.at 清单；启动=会话挂载非进程孵化；桌面级热键路由优先于 App 分发 | Design 24 / 462-465 立项 | — |
 
 同步动作完成时把 ⬜ 改 ✅ 并附提交号。归档计划（365）不改正文，只加状态注记。
 

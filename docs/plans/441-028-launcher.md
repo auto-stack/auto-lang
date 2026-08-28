@@ -1,6 +1,11 @@
 # Plan 441: 028-launcher 启动器（App 轨道填洞 ⑤）
 
-> **状态**: ⬜ 未开工（2026-08-23 立项草稿，多 agent 可领取）
+> **状态**: ⬜ 未开工 → **2026-08-28 被 Plan 464 吸收，本计划不再单独执行**。
+> 吸收映射：M1 palette UI/mock 注册表/模糊过滤/最近使用 → 464；M2 command-palette
+> 原语化 → 464 可选任务 T6；M3 vm 焦点原语 → 改由 Plan 462（WM 焦点分区）承载。
+> 背景：464 把 demo 边界从「mock 注册表 + 不做真启动」升级为「真注册表（pac.at 扫描）
+> + 真桌面启动」（Design 24 R10/R11），`examples/ui/028-launcher` 编号与 4028 端口
+> 沿用本计划预订。本文件保留作为原调研与 widget 化设想存档。
 > **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 5 项。
 > **关联**: [Plan 418](archive/418-auto-edit-actions-and-config.md)（Ctrl+J 全局快捷键先例）、capability-tests/026-keyboard-mouse-events（键盘事件现状钉子）、[Plan 437](437-024-charts.md)（iced 文件分工）、姊妹计划 437–440
 > **目录**: `examples/ui/028-launcher/`（编号 028 原为 dom-escape fixture，已迁 `examples/capability-tests/`）｜pac `name: "launcher"`｜端口 4028
