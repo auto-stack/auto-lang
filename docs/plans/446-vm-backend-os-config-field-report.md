@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（第二批 A1/E1/E2/B1 全部完成——§N；剩余批三/批四见 §I；worktree .worktrees/plan-446-dev）
+状态: executing（批一/批二/批三全落地——§L/§N/§O；剩批四打磨项 F3/F4/B3/D4/D5/E3/G2-G5 见 §I；worktree .worktrees/plan-446-dev）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -553,11 +553,69 @@ Array<str> 标注装 obj 字面量、`for ent in .store.items` + `onclick:
 本批交付=corpus+探针锁行为；**下游绕行可撤**（os-config 的影子
 names[]/索引参数模式，§H 清单对应条目可删）。
 
+## O. 批三实施记录（2026-08-28，auto-lang worktree plan-446-dev，已合入 master）
+
+按 §I 第三批（语义统一）实施：D1/D6/G1 修复落地，D2/D3 实证已愈、
+探针锁定。开工前先逐项探针（基线距离现场报告已多批合入）：
+
+**[✅ 已完成] D1 json.parse 接通 Plan 340 转换器 + 文档 native 双态化**：
+1. `shim_json_parse_vm`（stdlib.rs）替换占位 rust_fn 版（engine
+   AutoVM::new 的 inventory 覆盖块注册，与 str.contains 同款惯例）：
+   JSON 文本 → `json_to_vm_value` 物化（对象→`__json_object`
+   GenericInstanceData、数组→ListData<Value>）；GET_FIELD/for-in 运行期
+   直读实例自身 field_names，无需注册模板。非法 JSON 显式报错
+   （占位时代静默透传是"看似可用"最坏形态）。
+2. **兼容面收口（关键）**：既有 corpus 的 `json.get(json.parse(x), k)`
+   文本工具链会被 1 打破——六个文档类 native（get/get_at/has_key/len/
+   keys/is_valid）双态化：首参是堆文档时经 `vm_value_to_json` 序列化回
+   JSON 文本**原位替换**再走原 rust_fn 路径（片段切片/type_of 语义
+   字节级不变，ffi_dual_003/008/009 全绿）。两种 idiom（点访问 /
+   get 工具链）自此互通——正是"语义统一"的批目标。
+验收：d1_json_parse_supports_dot_access / d1_json_parse_array_iteration
+（点访问+标量字段+数组迭代元素字段读）绿；json 全系 26/26 绿。
+
+**[✅ 已完成] D6 json.keys 插入序**：workspace `serde_json` 开
+`preserve_order`。与 vue 轨 Object.entries 语义对齐（跨后端 UI 字段
+顺序 parity）。验收：d6_json_keys_insertion_order（zebra,alpha,mid
+插入序断言）绿。**全量回归零波及**（见下）——serde_json Map 换
+IndexMap 后端的全局行为变更在 3752+3227 用例中无一处期望字母序。
+
+**[✅ 已完成] G1 vue store 导入路径可配**：`ComponentGenOptions.
+store_import_prefix`（默认 `@/stores` 不变）+ `VueGenerator::
+with_store_import_prefix`，SFC import 行 `'{prefix}/use{X}Store'`。
+部署管线把生成物迁至 `src/stores/auto/`（os-config regen 布局）时配
+`@/stores/auto` 即对齐，vue-tsc TS2307 消除；006 惯例（ext composable
+facade）与 regen VM_ONLY 过滤两套绕行可撤。验收：
+test_g1_store_import_prefix_configurable（默认不变回归守卫 + 可配前缀
+落 import 行）绿。
+
+**[✅ 验证解除] D2 handler 循环变量字段读**：corpus
+`test/ui/plan446_d2_handler_read/`（现场矩阵"model 数组循环变量 m.id
+失效(静默不匹配)"行——App handler 内 `for m in .items { if m.name ==
+"alpha" { .picked = m.name } }`）在现 master 直接绿。多批值通道工作
+（plan454 E 元素 Value 通道 / 446 批二 B1 物化链）已顺带治愈；
+本批交付=corpus+探针锁行为。
+
+**[✅ 验证解除] D3 数组跨 fn 实参**：探针 `arr_len(make_list())==3`
+（obj 字面量数组跨 fn 边界）直接绿——同上顺带治愈，探针入套件锁定。
+
+**环境注记**：worktree 内路径依赖 `autodown-core`（`../../../auto-down/…`）
+自 plan-019 合入后从 worktree 解析不到——`.worktrees/auto-down` 目录
+联接（junction）指回主仓旁的 auto-down 检出解决；后续 plan worktree
+沿用此约定。
+
+**回归**：ui-iced 全量 3751/3752（唯一失败 = md_hidden_classes_parse，
+批一 §L 在案 master 同红）+ 默认 feature 日常套件 3227/3227 全绿 +
+plan446 全系 10/10 + json 26/26。
+
 ## 待澄清事项
 
 - **E1 附带观察（低优先）**：`res` 的静态类型在不同语境坍缩为
   str/int/User(Response)（http.at 表面声明 + `#[vm]` decl 推断链所致），
   E1/E2 已在运行期与 arity 分流双层兜住；类型推断本身的正本清源
   （stdlib 表面 client accessors 正名）留待独立小批，见 §N E1 修复注记。
-- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；建议排程下轮
-  会话。
+- **批四（打磨）未动工**：F3/F4/B3/D4/D5/E3/G2-G5（§I 第四批）。
+  D4 与 D2 同源——D2 已实证治愈，D4 大概率同愈，做时先探针。
+- **D6 下游对账**：preserve_order 后 vm 轨字段顺序=插入序，os-config
+  已登记的"字母序已知偏差"条目可撤；vue/vm 双端 UI 字段顺序 parity
+  的实机验证由其 e2e 双门禁覆盖。
