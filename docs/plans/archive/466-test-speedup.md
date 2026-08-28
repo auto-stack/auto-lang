@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-466
-status: reviewed
+status: archived
 feature_name: 测试与构建提速三方案落地（sccache 启用 / cargo t ≤30s / 全量测试门禁收敛到 review）
 author: [zcode]
 created_at: 2026-08-28T11:42:29+08:00
