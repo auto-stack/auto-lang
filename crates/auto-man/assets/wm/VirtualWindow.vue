@@ -5,7 +5,7 @@
 // schema/aura.at（I4）。语义规范（E1 (AppId,event) 注入形状 / E2 叶枚举）:
 // docs/plans/reports/465-t4-wm-dom-leaf.md。
 import { computed } from 'vue'
-import { wm, focus, type WinEntry } from './store'
+import { close, focus, type WinEntry } from './store'
 
 const props = defineProps<{
   /** WmStore 的窗口条目（reactive；rect/z/focused 直读）。 */
@@ -73,12 +73,8 @@ function onPointerUp(): void {
 }
 
 function onClose(): void {
-  wm.wins.splice(
-    wm.wins.findIndex((w) => w.wid === props.win.wid),
-    1,
-  )
-  // 生命周期收尾（unmount + 容器移除）走 store.close —— host shell 监听
-  // wm-close 再调 store.close(wid)，这里只发事件（E1: (AppId, event) 注入）。
+  // T5: 生命周期收尾统一走 store.close（unmount + 容器移除 + 焦点让渡）。
+  close(props.win.wid)
 }
 </script>
 

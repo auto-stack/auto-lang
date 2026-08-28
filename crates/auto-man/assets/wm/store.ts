@@ -1,8 +1,8 @@
-// Plan 465 T4: WmStore — 桌面 WM 状态（vue 叶）。462 iced WmState 的 TS 对应物:
-// rect/z/focus 的唯一写点；排布策略经 layout.ts 纯函数（R9：布局是策略，
-// store 是状态）。事件路由语义（E1 (AppId, event) 注入形状）见
+// Plan 465 T4/T5: WmStore — 桌面 WM 状态（vue 叶）。462 iced WmState 的 TS
+// 对应物: rect/z/focus 的唯一写点；排布策略经 layout.ts 纯函数（R9：布局是
+// 策略，store 是状态）。事件路由语义（E1 (AppId, event) 注入形状）见
 // docs/plans/reports/465-t4-wm-dom-leaf.md。
-import { reactive } from 'vue'
+import { createApp, reactive, type Component, type App } from 'vue'
 import { layout, cascadeRect, usableRect, TASKBAR_HEIGHT, type LayoutModeName, type Rect } from './layout'
 
 export interface WinEntry {
@@ -12,9 +12,14 @@ export interface WinEntry {
   rect: Rect
   z: number
   focused: boolean
-  /** registry load() 的组件实例挂载容器（T5 生命周期管理用）。 */
+  /** 客户区容器（宿主 ref 回调就位后回填；App 挂载点）。 */
   container: HTMLElement | null
-  app: { unmount: () => void } | null
+  /** createApp 实例句柄（close = unmount）。 */
+  app: App | null
+  /** 待挂载根组件（launch 动态 import 的产物，T5）。 */
+  comp: Component | null
+  /** 崩溃隔离（459 崩溃页语义：本窗占位，他窗不受影响）。 */
+  crashed: boolean
 }
 
 let nextWid = 1
@@ -28,7 +33,7 @@ export const wm = reactive({
   focusedWid: null as number | null,
 })
 
-/** 桌面根元素就位后调用一次（resize 监听在 keyboard.ts / host shell 接线）。 */
+/** 桌面根元素就位后调用一次（resize 监听在 keyboard.ts 接线）。 */
 export function setViewport(w: number, h: number): void {
   viewport.width = w
   viewport.height = h
@@ -45,7 +50,6 @@ export function focus(wid: number): void {
 
 /** 命中测试 → 焦点（E1 注入形状的指针半边：矩形含点 → 归属 App → 聚焦）。 */
 export function focusAtPoint(x: number, y: number): WinEntry | null {
-  // z 序从顶到底找第一个含点窗口。
   const sorted = [...wm.wins].sort((a, b) => b.z - a.z)
   for (const w of sorted) {
     const r = w.rect
@@ -67,7 +71,11 @@ export function applyLayout(): void {
   }
 }
 
-export function launchWindow(appId: string, title: string, container: HTMLElement, app: { unmount: () => void }): WinEntry {
+/**
+ * T5: 记录一次启动（动态 import 完成后调用）；真实 createApp+mount 推迟到
+ * 客户区 ref 回调（attachClient）——容器须先进 DOM。
+ */
+export function launchWindow(appId: string, title: string, comp: Component): WinEntry {
   const usableArea = usable()
   const rect = cascadeRect(wm.wins.length, { width: 640, height: 480 }, usableArea)
   const win: WinEntry = {
@@ -77,8 +85,10 @@ export function launchWindow(appId: string, title: string, container: HTMLElemen
     rect,
     z: nextZ++,
     focused: true,
-    container,
-    app,
+    container: null,
+    app: null,
+    comp,
+    crashed: false,
   }
   wm.wins.push(win)
   focus(win.wid)
@@ -86,17 +96,42 @@ export function launchWindow(appId: string, title: string, container: HTMLElemen
   return win
 }
 
+/** 客户区 ref 回调：容器就位 → createApp + mount（errorHandler 落崩溃页）。 */
+export function attachClient(w: WinEntry, el: unknown): void {
+  w.container = el as HTMLElement | null
+  if (!el || !w.comp || w.app || w.crashed) return
+  const app = createApp(w.comp)
+  // 459 崩溃页语义：单 App 视图异常 → 本窗持续显示崩溃占位，他窗不受影响。
+  app.config.errorHandler = (err) => {
+    console.warn('[desktop] app crashed:', w.appId, err)
+    w.crashed = true
+    try {
+      app.unmount()
+    } catch {
+      /* unmount during crash is best-effort */
+    }
+    w.app = null
+  }
+  app.mount(el as HTMLElement)
+  w.app = app
+}
+
 /** 关窗 = unmount + 容器移除（459「窗关 App 随之退」）；焦点让渡给 z 次顶。 */
 export function close(wid: number): void {
   const idx = wm.wins.findIndex((w) => w.wid === wid)
   if (idx === -1) return
   const [w] = wm.wins.splice(idx, 1)
-  w.app?.unmount()
+  try {
+    w.app?.unmount()
+  } catch {
+    /* best-effort */
+  }
+  w.app = null
   w.container?.remove()
   if (wm.focusedWid === wid) {
     const top = [...wm.wins].sort((a, b) => b.z - a.z)[0]
-    wm.focusedWid = top ? top.wid : null
     if (top) focus(top.wid)
+    else wm.focusedWid = null
   }
 }
 
@@ -105,13 +140,10 @@ export function setLayout(mode: LayoutModeName): void {
   if (mode !== 'free') applyLayout()
 }
 
-/** Alt+Tab：z 序轮转（顶 → 焦点）。 */
+/** Alt+Tab：z 序轮转（最低 z 抬顶 = 聚焦轮转）。 */
 export function cycleFocus(): void {
   if (wm.wins.length < 2) return
-  const sorted = [...wm.wins].sort((a, b) => a.z - b.z)
-  const bottom = sorted[0]
-  // 把 z 最低的窗抬到顶 = 聚焦轮转。
-  const maxZ = Math.max(...wm.wins.map((w) => w.z))
-  bottom.z = maxZ + 1
+  const bottom = [...wm.wins].sort((a, b) => a.z - b.z)[0]
+  bottom.z = Math.max(...wm.wins.map((w) => w.z)) + 1
   focus(bottom.wid)
 }

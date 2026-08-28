@@ -4509,71 +4509,86 @@ export function findApp(id: string): AppEntry | undefined {{
     )
 }
 
-/// Host shell — T3 minimal shape (launch bar + single mount viewport).
-/// T4/T5 replace this with the WmStore window z-stack + taskbar +
-/// launcher overlay per the T1 blueprint's shell.at mirror.
+/// Host shell (Plan 465 T5): WmStore z-stack + taskbar + launcher overlay
+/// slot. Taskbar/overlay structure mirrors 463 shell.at (T1 blueprint §5);
+/// the overlay is the 464-launcher slot (placeholder panel until 464 lands).
 fn generate_host_app_vue() -> String {
     r#"<script setup lang="ts">
 // Plan 465: desktop host shell (auto-generated; rewritten on every
-// `--desktop` run). T3 minimal: launch bar + single app viewport.
-import { createApp, ref, type App, type Component } from 'vue'
+// `--desktop` run). WmStore z-stack + taskbar + launcher overlay slot.
+import { onMounted, ref } from 'vue'
 import { APPS, findApp } from './apps-registry'
+import {
+  wm,
+  launchWindow,
+  focusAtPoint,
+  setViewport,
+  attachClient,
+} from './wm/store'
+import { installDesktopKeyboard } from './wm/keyboard'
+import Taskbar from './wm/Taskbar.vue'
+import VirtualWindow from './wm/VirtualWindow.vue'
 
-const viewport = ref<HTMLElement | null>(null)
-const active = ref('')
-let app: App | null = null
-let container: HTMLDivElement | null = null
-
-function close(): void {
-  app?.unmount()
-  app = null
-  container?.remove()
-  container = null
-  active.value = ''
-}
+const overlayOpen = ref(false)
+const desktopEl = ref<HTMLElement | null>(null)
 
 async function launch(id: string): Promise<void> {
-  close()
+  overlayOpen.value = false
   const entry = findApp(id)
-  if (!entry || !viewport.value) return
-  const mod = await entry.load()
-  container = document.createElement('div')
-  container.className = 'w-full h-full'
-  viewport.value.appendChild(container)
-  app = createApp(mod.default as Component)
-  app.mount(container)
-  active.value = id
+  if (!entry) return
+  try {
+    const mod = await entry.load()
+    launchWindow(entry.id, entry.title, mod.default)
+  } catch (err) {
+    console.error(`[desktop] launch failed: ${id}`, err)
+  }
 }
+
+function setClient(w: (typeof wm.wins)[number], el: unknown): void {
+  attachClient(w, el)
+}
+
+function toggleOverlay(): void {
+  overlayOpen.value = !overlayOpen.value
+}
+
+onMounted(() => {
+  setViewport(window.innerWidth, window.innerHeight)
+  installDesktopKeyboard({ summonLauncher: toggleOverlay })
+})
 </script>
 
 <template>
   <div class="w-full h-full flex flex-col bg-background">
-    <div class="h-10 flex items-center gap-1 px-2 bg-card border-b shrink-0">
-      <button
-        v-for="a in APPS"
-        :key="a.id"
-        class="h-7 px-3 text-xs rounded border bg-background hover:bg-accent"
-        :class="active === a.id ? 'border-primary text-primary' : 'border-border'"
-        @click="launch(a.id)"
+    <div ref="desktopEl" class="desktop-area flex-1 relative overflow-hidden">
+      <VirtualWindow v-for="w in wm.wins" :key="w.wid" :win="w">
+        <template v-if="!w.crashed">
+          <div :ref="(el) => setClient(w, el)" class="w-full h-full" />
+        </template>
+        <div v-else class="w-full h-full flex items-center justify-center bg-background">
+          <p class="text-sm text-muted-foreground">[AutoUI 会话] 视图构建异常（plan-453 边界兜底）</p>
+        </div>
+      </VirtualWindow>
+      <div
+        v-if="overlayOpen"
+        class="absolute inset-0 flex items-start justify-center pt-24 bg-black/50"
+        style="z-index: 9999"
+        @click.self="overlayOpen = false"
       >
-        {{ a.title }}
-      </button>
-      <button
-        v-if="active"
-        class="h-7 w-7 text-xs rounded border border-border hover:bg-accent"
-        title="Close active app"
-        @click="close"
-      >
-        ×
-      </button>
+        <div class="w-96 max-h-96 overflow-auto rounded-lg border border-border bg-card shadow-xl p-2">
+          <button
+            v-for="a in APPS"
+            :key="a.id"
+            class="w-full h-10 px-3 flex items-center gap-2 text-sm rounded hover:bg-accent text-left"
+            @click="launch(a.id)"
+          >
+            <span class="truncate">{{ a.title }}</span>
+            <span class="ml-auto text-xs text-muted-foreground shrink-0">{{ a.category }}</span>
+          </button>
+        </div>
+      </div>
     </div>
-    <div
-      ref="viewport"
-      class="flex-1 relative overflow-hidden"
-      :class="active ? '' : 'flex items-center justify-center'"
-    >
-      <p v-if="!active" class="text-sm text-muted-foreground">select an app to launch</p>
-    </div>
+    <Taskbar @summon="toggleOverlay" />
   </div>
 </template>
 "#
