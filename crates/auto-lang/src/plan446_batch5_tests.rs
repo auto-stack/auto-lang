@@ -114,4 +114,31 @@ mod plan446_batch5_u1 {
             cur
         );
     }
+
+    /// U4: select 控件 VM 端渲染——View::Select 产出（options/选中态/
+    /// onselect payload 通道）。此前 view-builder 无 select 路由（§P/U4
+    /// "快照结构在、渲染丢"）。
+    #[test]
+    fn u4_select_renders_and_dispatches() {
+        let mut dc = build();
+        let (view, _, _) = dc.view_with_debug();
+        let g = format!("{:?}", view);
+        assert!(
+            g.contains("Select {"),
+            "U4: View::Select not produced, view: {}",
+            &g[..g.len().min(600)]
+        );
+        assert!(
+            g.contains("\"roles\"") && g.contains("\"daemon\""),
+            "U4: select options missing"
+        );
+        // payload 分发: 模拟渲染层 SelectCallback 产出的编码事件。
+        dc.on_with_input_for("App", "Nav\u{1F}s\u{1F}roles", None);
+        let cur = dc.read_state("current").expect("current readable");
+        assert!(
+            matches!(&cur, auto_val::Value::Str(s) if s.as_str() == "roles"),
+            "U4: select payload dispatch failed, got {:?}",
+            cur
+        );
+    }
 }

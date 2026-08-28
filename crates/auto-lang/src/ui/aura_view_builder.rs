@@ -1763,6 +1763,11 @@ impl<'a> AuraViewBuilder<'a> {
             // Input widgets
             "input" => self.convert_input(props, events, bindings),
             "textarea" => self.convert_textarea(props, events, bindings),
+            // Plan 446 批五 U4: select 控件 VM 端渲染。此前 view-builder 无
+            // select 路由——快照结构在（源树回退）、渲染丢（os-config §P/U4
+            // 被迫"select renders as free text"）。iced 侧 AbstractView::Select
+            // 全支持（pick_list），本臂补齐产出端。
+            "select" | "Select" => self.convert_select(props, events, children, bindings),
             // Plan 413: code editor widget (syntax highlighting, line
             // numbers, wrap, vi/undo, IME).
             "code_editor" | "codeEditor" | "codeeditor" => {
@@ -4422,6 +4427,70 @@ let tabs_inner = View::Row {
     }
 
     /// Convert a textarea element.
+    /// Plan 446 批五 U4: `select { option "a" {} … }` → View::Select。
+    /// options 取 option 子元素文本（literal/text prop，绑定感知）；
+    /// selected 取 index prop（int）或 value/selected prop（按文本匹配）；
+    /// onselect/onchange → SelectCallback，经按钮同款 payload 编码通道
+    /// （`name\u{1F}s\u{1F}value`）把选中值送达 handler（decode_payload
+    /// 在 on_with_input_for 消费——与循环按钮实参同一条已证路径）。
+    fn convert_select(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let mut options: Vec<String> = Vec::new();
+        for child in children {
+            if let AuraNode::Element { tag, props: cprops, children: ckids, .. } = child {
+                if tag == "option" || tag == "Option" {
+                    let text = self
+                        .child_element_text(cprops, bindings)
+                        .or_else(|| {
+                            ckids.iter().filter_map(|k| match k {
+                                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                                _ => None,
+                            }).next()
+                        })
+                        .unwrap_or_default();
+                    if !text.is_empty() {
+                        options.push(text);
+                    }
+                }
+            }
+        }
+        let selected_index = self
+            .extract_string_with(props, "index", bindings)
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|i| *i < options.len().max(1))
+            .or_else(|| {
+                let cur = self
+                    .extract_string_with(props, "value", bindings)
+                    .or_else(|| self.extract_string_with(props, "selected", bindings))?;
+                options.iter().position(|o| *o == cur)
+            });
+        let on_select = aura_events_get_base(events, "onselect")
+            .or_else(|| aura_events_get_base(events, "select"))
+            .or_else(|| aura_events_get_base(events, "onchange"))
+            .or_else(|| aura_events_get_base(events, "change"))
+            .map(|event| {
+                let handler = extract_handler_name(&event.handler).to_string();
+                crate::ui::view::SelectCallback::new(move |_idx, selected: &str| {
+                    DynamicMessage::String(format!("{}\u{1F}s\u{1F}{}", handler, selected))
+                })
+            });
+        let style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .and_then(|s| Style::parse(&s).ok());
+        View::Select {
+            options,
+            selected_index,
+            on_select,
+            style,
+        }
+    }
+
     fn convert_textarea(
         &self,
         props: &HashMap<String, AuraPropValue>,

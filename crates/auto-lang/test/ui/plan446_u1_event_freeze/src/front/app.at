@@ -32,6 +32,11 @@ widget App {
                 }
             }
             col {
+                select (onchange: .Nav) {
+                    option "home" {}
+                    option "roles" {}
+                    option "daemon" {}
+                }
                 if .store.active_id == "roles" {
                     text "ROLES-VIEW" {}
                 }
