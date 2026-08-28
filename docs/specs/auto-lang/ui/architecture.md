@@ -176,3 +176,17 @@ graph TD
 - 后果：455 跟踪器矩阵为验收基准（~9 绿/8+ 待审计）；"auto 跟随系统"显式非目标。
 - 状态：active
 
+
+### ADR-18: chart 族发射 = schema 声明驱动（契约单源）
+- 日期 / 来源：plan-437 Phase 1（2026-08-28，435 统一声明体系首批示范）
+- 决策：chart 族（area/bar/line/donut/chart/charttooltip/chartlegend 七元素）的 props 契约全量落库 schema/aura.at（唯一契约源），registry overlay（apply_schema_vue_mappings）把声明填进 vue BackendMapping.props，vue.rs 四个硬编码 match 臂（~130 行）退役，收敛为 emit_chart_family_attrs 遍历声明发射（按声明名排序保序）；值级转换保留为转换层特例（curve-type 字符串→CurveType 枚举、custom-tooltip 组件引用恒绑定）。
+- 备选：继续硬编码臂 + 契约注释（cons：435 审计的"实现比声明多"典型样本，声明与发射漂移无围栏）。
+- 后果：契约测试锁声明→发射全链（cap_chart_family_props_contract_in_registry）；奇偶校验证明新旧臂输出仅属性序差异；后续 chart 属性扩展只改 schema。
+- 状态：active
+
+### ADR-19: VM 轨子组件 Init 渲染期补发（props 播种 → Init → build）
+- 日期 / 来源：plan-437 Phase 2（2026-08-28，组件化的真阻塞）
+- 决策：VM 轨视图中实例化的子组件（组件包/本地 widget），在 prepare_child_render_state 播种 props（含 prop 声明默认值）后由渲染器补发一次 Init（call_handler_for 放宽 &self，AutoVM 全链 interior-mutable）；每渲染帧重放，纯派生 Init 幂等；tracked 双胎同步。配套五项解析臂补全：Expr::Array props、svg 子树 ForLoop 展开（445 Conditional 修复同族）、Index 属性求值、prop 默认值播种、VM 包装载路径基准对齐（pages/ 候选）。
+- 备选：computed 求值器扩展块体/循环（cons：view-build 快速路径复杂化，与 VM 字节码执行语义重复）；子组件独立 VM（cons：破坏单 VM 合成架构）。
+- 后果：vue 轨 onMounted 与 VM 轨语义对齐，chart 等派生计算型组件双轨可用；**副作用型子组件 Init 随脏重建重放**（v1 近似，组件 Init 应保持纯派生）；vue-tsc/结构同源已证，视觉并排未重做。
+- 状态：active（重放语义收敛留后续：dirty-prop 比对后重放）

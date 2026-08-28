@@ -87,7 +87,7 @@
 | 454 | fstring-restoration-host-hardening | ✅ | archive/ | AA2R f-string 三缺口修复 + 宿主 2.4 收紧（部分证伪回退） |
 | 457 | shadcn-components-bundled | ✅ | archive/ | ~60 shadcn 组件编译期内嵌 auto-man，冷启动离线化 |
 | 459 | desktop-session-multi-window | ✅ | archive/ | iced::daemon 多 OS 窗口 + panic 隔离（ADR-13 后半） |
-| 437 | 024-charts-official-library | ✅（待 review） | plans/ | chart 族契约正式化+声明驱动发射；"引擎给笔，Auto 持笔"，v1 SVG 直通 |
+| 437 | 024-charts-official-library | ✅（archived） | archive/ | chart 族 schema 契约落库+spec 驱动发射（ADR-18）；四类图官方 Auto 组件化；VM 子组件 Init 渲染期补发（ADR-19）；v1 SVG 直通 |
 | 439 | 026-database | 📋 草案 | plans/ | SQLite 客户端；Tree widget 交付方；FFI 未就绪降级内存引擎 |
 | 440 | 027-file-manager | 📋 草案 | plans/ | 双栏 Finder；422 contextmenu 首战；fs 走后端 use.rust |
 | 441 | 028-launcher | 📋 被 464 吸收 | plans/ | 升级真注册表+真启动；焦点原语移交 462 |

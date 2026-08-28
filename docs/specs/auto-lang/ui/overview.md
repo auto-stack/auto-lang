@@ -19,6 +19,12 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 
 ## 现状（2026-08-28）
 
+**组件线（plan-437 落地，ADR-18/19）**：chart 族（line/bar/area/donut）schema 契约落库
++ vue 发射 spec 驱动化（特判臂退役）；四类图官方 Auto 组件（AutoLineChart 等四件，
+widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery components/）；
+VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
+派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
+
 **桌面线（452→459→462→463 落地，464/465 已设计未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget
