@@ -30,6 +30,11 @@ pub struct AuraTsContext {
     /// IIFE/multi-statement computed-body paths (ts_adapter) unwrap computed
     /// refs consistently with the single-expr path (vue.rs expr_to_js).
     pub computed_names: HashSet<String>,
+    /// plan446 批二 A1 配套(PLAN-047 merge 微批):限定 store 调用的源名
+    /// (`use store: AuthStore` 的 `AuthStore`)。非 None 时 handler 体内同名
+    /// Ident 改发 facade `store`(vue 轨仅生成单 facade const;多 store 命名
+    /// facade 留上游项)。
+    pub store_facade_from: Option<String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
     /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
@@ -95,6 +100,7 @@ impl AuraTsContext {
             prop_names: HashSet::new(),
             ref_names: HashSet::new(),
             computed_names: HashSet::new(),
+            store_facade_from: None,
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
@@ -204,6 +210,11 @@ impl AuraTsContext {
     /// always pass through — never mapped to `.splice`/`.includes`.
     pub fn with_facade_names(mut self, names: HashSet<String>) -> Self {
         self.facade_names = names;
+        self
+    }
+    /// A1 配套:注入限定 store 源名 → handler 体 Ident 改发 `store` facade。
+    pub fn with_store_facade_from(mut self, qualified: String) -> Self {
+        self.store_facade_from = Some(qualified);
         self
     }
 
@@ -879,6 +890,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         Expr::Ident(name) => {
             if ctx.is_state(name.as_str()) || ctx.is_computed(name.as_str()) {
                 write!(out, "{}.value", name.as_str()).ok();
+            } else if ctx.store_facade_from.as_deref() == Some(name.as_str()) {
+                // A1 配套:`AuthStore` → facade `store`(见字段注)。
+                write!(out, "store").ok();
             } else if name.as_str() == "self" || name.as_str() == "." {
                 // In Vue <script setup>, self/this is not needed
                 // Skip output — the field access will be handled by Expr::Dot
