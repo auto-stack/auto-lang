@@ -10,6 +10,9 @@
 > **关系**：**扩展** Design 23（架构裁定 R1–R7 全部不变）。本文追加裁定 **R8–R12**，
 > 给出 shell/launcher 层的调研依据、平台矩阵与计划分解；计划编号以
 > `docs/plans/autos-desktop-program.md`「计划一览」解析为准。
+> **2026-08-28 增补**：shell 层的工程化分解（表面盘点 S1–S9、内核/用户态分界、
+> DesktopBus 定案、默认 shell pack 与 `widget Desktop` 根声明、I7–I9）由
+> `docs/design/autoui/autoshell.md` 细化，与本文不冲突。
 
 ## 1. 需求与范围
 

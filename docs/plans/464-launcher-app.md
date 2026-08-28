@@ -5,7 +5,8 @@
 > （Design 24 §1 N3）；**吸收 Plan 441**（028-launcher 原为 mock 注册表 demo，
 > 本计划把边界升级为真桌面启动器，处置映射见 §1.1）。
 > **架构依据**：Design 23（R1/R8）、Design 24（§2.2 launcher 调研 P1–P6、R10 注册表、
-> R11 启动=挂载、R12 召唤热键、I5 三端一份源）。
+> R11 启动=挂载、R12 召唤热键、I5 三端一份源）；Design 25（§2 S2=launcher 是
+> shell 第一表面、§3 命令接缝=`desktop.launch(name)` builtin、I7–I9）。
 > **依赖**: 462（overlay 槽/焦点分区）+ 463（`SummonLauncher` 事件与 `LaunchApp` 接缝）；
 > **M1 子阶段可先行**（仅依赖 mock 注册表，见任务表）。
 > **目录**: `examples/ui/028-launcher/`（编号沿用 441 预订；pac `name:"launcher"`、
@@ -40,10 +41,12 @@
 
 - **清单/端口约定**：`pac.at` 字段与 4028 端口沿用 441 预订（`crates/auto-man/src/pac.rs`）；
   `icon:` 字段由 463 T7 落地（lucide 名，缺省 `app-window`）。
-- **接缝前提（463 T1/T4 交付）**：shell App 与宿主的双向接缝——下行：宿主注入
-  应用清单（`Vec<AppRegistryEntry{name,title,icon,category,launchable}>`）与
-  `SummonLauncher` 事件；上行：`DesktopCommand::LaunchApp(name)`。launcher 是
-  **overlay 槽上的普通 App**，与 shell 同一接缝形状（R8）。
+- **接缝前提（463 T1/T4 交付；Design 25 §3 定案）**：launcher 与宿主的双向
+  接缝——下行：宿主注入应用清单（`Vec<AppRegistryEntry{name,title,icon,
+  category,launchable}>`）与 `SummonLauncher` 事件；上行：**`desktop.launch(name)`
+  builtin**（DesktopBus v1 命令形状）。launcher 是 **overlay 槽上的普通 App**，
+  也是默认 shell pack（Design 25 §4.1，`widget Desktop`）装载的**第一个表面**
+  （S2）——shell-track M1 的投影协议以本表面的接缝消费为第一个实测样本（R8/I9）。
 - **模糊搜索的双端一致**：匹配逻辑写在 .at（纯函数状态法），vm 端跑 AutoVM、
   vue 端转 TS——013 等示例的 .at 逻辑双端转译是既有管线；排序权重（精确 > 前缀 >
   词首 > 子序列；近期使用加权）写进 SPEC 并作为 465 对拍项。
