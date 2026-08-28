@@ -52,7 +52,7 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 - `architecture.md`：一张图 + **ADR 追加日志**（只追加不改写，格式：日期/来源 plan/决策/备选
   pros-cons/后果/状态）。
 - `design/<slug>.md`：单主题单文件，范围/原则/细节/**显式非目标**（模板基准
-  `http-server-spec.md` 风格）。
+  `stdlib/design/http-server.md` 风格）。
 - `plans.md`：纯表格 `| Plan | 标题 | 状态 | 归档 | 一句话沉淀 |`，脚本可解析。
 
 新增两个全局件：

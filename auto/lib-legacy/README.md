@@ -8,7 +8,7 @@ Plan 431 E1:旧自举库(13 个 `.at` 文件)移入本目录归档。
    的期望输出与这些文件的行为绑定,是 v2 移植一致性判据的可回收语料;
 2. **a2r 类型映射规则**——v1 里 Auto↔Rust 类型对应关系的现成实现;
 3. **opcode 编号兼容性**——v2 保持编号一致(v0.5 基线 194 条,见
-   `docs/specs/aavm/porting-boundary.md`)。
+   `docs/specs/aavm/design/porting-boundary.md`)。
 
 ## 封存状态(plan 432 收尾,2026-08-24)
 

@@ -4,7 +4,7 @@
 
 语句级 1:1 优先;确无 Auto 对应时允许结构性改写,但**每处必须记录**。
 433 四向对比(Rust 参考 / AAVM-VM / a2r 产物 / 旧 AAVM)时,diff 必须能由
-`docs/specs/aavm/divergences.md` 的登记逐条解释。
+`docs/specs/aavm/design/divergences.md` 的登记逐条解释。
 
 ## 2. 允许的改写模式清单（C1 首版）
 
@@ -26,7 +26,7 @@
 
 1. `.at` 文件内:`// DIVERGE(D3): Box<dyn Any> → kind 鉴别器,heap 对象三形态`
    ——编号引用 §2 表,冒号后写"原 → 改 + 一句理由";
-2. 汇总登记:`docs/specs/aavm/divergences.md`(432 起随移植进度维护),
+2. 汇总登记:`docs/specs/aavm/design/divergences.md`(432 起随移植进度维护),
    按文件分节,含计数与理由;433 对比 runner 把它作为"合法差异白名单"输入。
 
 ## 4. 纯 Rust 模式编码规范（C3）

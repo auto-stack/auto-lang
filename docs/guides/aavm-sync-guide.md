@@ -3,7 +3,7 @@
 > **⚠️ 已被取代（Plan 429-434 系列，2026-08）**：本手册描述的"增量同步旧 AAVM"路线
 > 已废弃——旧 AAVM（auto/lib-legacy，13 文件）已封存，AAVM v2 采用"纯 Rust 模式全新重写 +
 > divergence 登记"路线。现行规范见 `docs/specs/aavm/`（porting-boundary / file-mapping /
-> divergence-rules / corpus），系列复盘见 `docs/specs/aavm/series-429-434-retrospective.md`。
+> divergence-rules / corpus），系列复盘见 `docs/specs/aavm/design/series-429-434-retrospective.md`。
 > 本文件仅作历史参考保留。
 
 ## 触发条件

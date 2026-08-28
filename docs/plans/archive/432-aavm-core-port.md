@@ -154,7 +154,7 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
 
 - **S1**(2026-08-24,单切片会话):
   - token.at:139 TokenKind + keyword_kind(58 词)+ kind_name 全量,自 b3bd64f5
-    基线机械生成(docs/specs/aavm/data/ 脚本复用);
+    基线机械生成(docs/specs/aavm/design/data/ 脚本复用);
   - lexer.at(~500 行):主循环核心子集直译——空白/换行(基线 at 记账 quirk 照抄)/
     行+块+Doc 注释(含基线 '*' 吞字符 quirk)/标识符(连字符规则)/数字(进制+后缀+
     下划线剥离语义)/字符串转义/字符字面量/全部定界符与复合运算符;
@@ -166,7 +166,7 @@ token/lexer → ast/parser核心 → typeinfo核心 → opcode声明 → codegen
     Newline token 行号取递增后值、数字 len 用剥离后长度——均照抄保闸门。
   - 已登记 AUTO_LIB_FILES_V2(token→lexer);全量 3129 绿 + aavm2 三用例绿。
 - **S2 前置考古**(2026-08-24 续):M2 目标格式清单全量落盘
-  (docs/specs/aavm/m2-ast-dump-format.md——顶层/语句/表达式/Op 的 S-expr
+  (docs/specs/aavm/design/m2-ast-dump-format.md——顶层/语句/表达式/Op 的 S-expr
   逐字格式 + 来源行号,免下会话重做);实施决策 D20(parse_dump 直出)/
   D21(List.* sanctioned,C3 修正)预定;Pratt 表数值与 Branch 格式为开工首日项。
 

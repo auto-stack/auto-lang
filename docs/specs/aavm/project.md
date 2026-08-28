@@ -55,7 +55,7 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   `cargo run -- --root . --auto-binary ../target/debug/auto.exe aavm`):
   ① reference ② aavm_rust(六文件,见 divergences.md D38 主 a2r 缺口注)
   ③ aavm_vm ④ golden ⑤ aa2r —— 稳定集 corpus_m4 全绿。
-- divergence 登记簿:docs/specs/aavm/divergences.md(判定规则见
+- divergence 登记簿:docs/specs/aavm/design/divergences.md(判定规则见
   divergence-rules.md)。
 - 风格升级(类 C → 一对一 Rust 对译)前提条件调研:
   idiom-upgrade-prereqs.md(2026-08-25;实证矩阵 + 宿主修复清单 H1-H6 +

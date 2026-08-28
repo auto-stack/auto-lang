@@ -8,7 +8,7 @@
 > (helloworld/fib)、.expected.out 零变化、M5 耗时与基线同数量级。
 > 执行记录见各 Phase 内联注记与文末附录。(2026-08-25;
 > aavm-prerequisites 三件套合并为单一计划,原 447/448/449 合并,序号 448/449 腾空)
-> **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/idiom-upgrade-prereqs.md)(2026-08-25
+> **来源**: [idiom-upgrade-prereqs.md](../specs/aavm/design/idiom-upgrade-prereqs.md)(2026-08-25
 > 实证调研:18 件 probe + rustc 实编译验证),§3 H1-H6、§4/§5/§6 语法面与改写点位。
 > **定位**: 把 aavm lib 从"类 C 最简风格"升回"与 Rust 参考一对一"的**完整前提**,按
 > 顺序分三部分:**① 宿主加固**——修掉自举路径暴露出的宿主缺陷,而不是继续绕开;
@@ -17,9 +17,9 @@
 > **纪律**: 三部分**塔式爬升,顺序不可倒置**;前一部分合入并通过各自闸门后方可开工
 > 下一部分。本计划合并前的原分叉为 447(①)、448(②)、449(③),现统一为一份。
 > **阶段编号(合并后统一)**: 部分①= Phase 1-3;部分②= Phase 4-7;部分③= Phase 8-11。
-> **关联**: [divergences.md](../specs/aavm/divergences.md) D11b/D17/D25-①/D34/D36-① 收账对象;
-> [divergence-rules.md](../specs/aavm/divergence-rules.md) §4 纯 Rust 模式编码规范;
-> [m2-ast-dump-format.md](../specs/aavm/m2-ast-dump-format.md);
+> **关联**: [divergences.md](../specs/aavm/design/divergences.md) D11b/D17/D25-①/D34/D36-① 收账对象;
+> [divergence-rules.md](../specs/aavm/design/divergence-rules.md) §4 纯 Rust 模式编码规范;
+> [m2-ast-dump-format.md](../specs/aavm/design/m2-ast-dump-format.md);
 > KNOWN-DEBT-AND-RISKS.md:112-113。
 > **基线**: master `c3ee519d0` + 2026-08-25 构建;aavm2 闸门当前 10 项全绿。
 

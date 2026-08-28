@@ -71,7 +71,7 @@ for f in parser vm/codegen vm/engine vm/opcode vm/native_catalog; do
   git show b3bd64f5:crates/auto-lang/src/$f.rs > /tmp/$f.rs
 done
 # 函数级提取(下一函数起点作区间边界,规避字符字面量 '{' 干扰)
-python docs/specs/aavm/data/extract_fns.py /tmp/parser.rs > docs/specs/aavm/data/parser_fns.csv
+python docs/specs/aavm/design/data/extract_fns.py /tmp/parser.rs > docs/specs/aavm/design/data/parser_fns.csv
 # opcode / catalog 同法(脚本存档于 plan-431 提交的 target/a431/*.py,tag 重锚定时复用)
 ```
 

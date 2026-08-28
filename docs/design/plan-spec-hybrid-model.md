@@ -34,7 +34,7 @@
 - `docs/plan-reports/` 16 篇：361 个 plan 蒸馏出的主题叙事，是"过程记录 → 持久知识"的现成中间层。
 - `docs/language/specification.md` + `spec-updates/`：语言规范与增量演进记录格式。
 - `docs/conformance/`：唯一带"规范 → 对偶测试 → 实现"流程的目录，其条目格式可复用。
-- `docs/specs/http-server-spec.md`：按特性单文件、含显式非目标的 spec 范式，是模块级 design 文档的模板基准。
+- `docs/specs/stdlib/design/http-server.md`：按特性单文件、含显式非目标的 spec 范式，是模块级 design 文档的模板基准。
 - superpowers 四技能骨架：已被 370+ 个 plan 验证，整体沿用。
 - 旧 .ad 体系的 ADR 模板（备选方案 pros/cons + Consequences）与 reviews/reports 表格模板。
 
@@ -121,7 +121,7 @@ docs/specs/
 | `project.md` | project | 定位一句话、状态、目标（链接 roadmap）、**模块架构图（mermaid，节点链接到 module 目录）**、模块清单表、对外接口 | 模块增删、目标变化时 | ≤150 行 |
 | `overview.md` | module | 职责、当前实现状态、关键代码入口（文件:行级路径）、使用示例、已知坑 | 相关 plan 收尾时（spec-sync） | ≤100 行 |
 | `architecture.md` | module | 架构说明（一张图）+ **ADR 追加日志**：ADR-NN、日期、决策、备选 pros/cons、后果、来源 plan | 有架构决策的 plan 收尾时 | ADR 只追加不改写（Superseded 标记） |
-| `design/<slug>.md` | module | 某一主题的深度设计知识（机制、数据结构、算法、协议），模板基准为 specs/http-server-spec.md：范围/原则/细节/显式非目标 | spec-sync 蒸馏时新增或重写 | 单主题单文件，不限篇幅 |
+| `design/<slug>.md` | module | 某一主题的深度设计知识（机制、数据结构、算法、协议），模板基准为 specs/stdlib/design/http-server.md：范围/原则/细节/显式非目标 | spec-sync 蒸馏时新增或重写 | 单主题单文件，不限篇幅 |
 | `plans.md` | module | 相关 plan 索引表：编号/标题/状态/归档位置/一句话沉淀 | spec-sync 追加；spec-lint 校验 | 纯表格，脚本可解析 |
 
 **显式不设的类型**（及理由）：
@@ -243,7 +243,7 @@ docs/specs/
 | docs/design/00–20 章 | 主体迁移：章节内容按 module 拆入 specs/auto-lang/*/design/；00-intro.md 更新为指向 specs 树。跨模块全局内容保留在 design/ |
 | docs/design/raw/ 71 篇 | 保持草稿池定位；被吸收的篇目在文首标注去向链接 |
 | docs/specs/*.ad（旧金字塔） | 移入 docs/specs/_archive/forge-relay/，README 注明历史背景，不删 |
-| docs/specs/http-server-spec.md | 迁入 specs/stdlib/design/http-server.md（或 specs/auto-lang/networking/，按归属判定），作为 design 模板范例 |
+| docs/specs/stdlib/design/http-server.md | 迁入 specs/stdlib/design/http-server.md（或 specs/auto-lang/networking/，按归属判定），作为 design 模板范例 |
 | docs/language/specification.md + spec-updates/ | 迁入 specs/auto-lang/（语言规范属核心 project 的顶层文档）；spec-updates 增量格式保留 |
 | docs/conformance/ | 维持自治目录，INDEX 中链接 |
 | docs/ 根级 26 个散文件 | 随迁移逐个归类：*-implementation.md / *-summary.md → 对应 module design/；transpiler 指南 → specs/auto-lang/trans/ 或 tour；重名 migration-guide 合并 |

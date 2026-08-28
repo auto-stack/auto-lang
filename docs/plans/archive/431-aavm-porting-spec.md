@@ -79,7 +79,7 @@ status: complete
   - Rust 宏（matches!/vec! 等）→ 展开后的等价代码；
   - `?` 传播 → 显式 match（或 Auto `.?`，以 B3 盘点为准）。
 - [x] C2 强制记录格式：每处 divergence 在 `.at` 文件内以 `// DIVERGE(n): 原因` 注释标记，
-  并汇总到 `docs/specs/aavm/divergences.md`（含计数与理由），供 433 四向对比时解释差异来源。
+  并汇总到 `docs/specs/aavm/design/divergences.md`（含计数与理由），供 433 四向对比时解释差异来源。
 - [x] C3 Auto 侧"纯 Rust 模式"编码规范：`use.rust` 风格、命名（保留 Rust 函数名以便对照）、
   禁用 Auto stdlib 的 lint 方式（如何在测试基建里检测违规引用）。
 
@@ -130,8 +130,8 @@ status: complete
 ## 执行结果（2026-08-24,单日完成）
 
 - **基线锚定**:v0.5 tag 仍未打,按 429-C1 临时基线 `b3bd64f5` 锚定
-  (tag 落地后重锚定并重跑清单脚本,脚本已存档于 docs/specs/aavm/data/)。
-- **Phase A**(docs/specs/aavm/porting-boundary.md + data/*.csv):
+  (tag 落地后重锚定并重跑清单脚本,脚本已存档于 docs/specs/aavm/design/data/)。
+- **Phase A**(docs/specs/aavm/design/porting-boundary.md + data/*.csv):
   - parser.rs 436 函数(core 367/~14.7k 行,ui 63/task 6)、codegen 161 函数、
     engine 71 函数的函数级清单(名称启发式 + 精度声明 + 人工复核回写规则);
   - opcode 194 条处置表:移植 183 / 仅声明 6(SWAP/CONST_U8/SHL/SHR/JMP_L/PRINT

@@ -45,7 +45,8 @@ def check_structure():
         if not (proj / "project.md").exists():
             errors.append(f"{proj.name}: 缺 project.md")
         for mod in sorted(proj.iterdir()):
-            if mod.is_dir() and not (mod / "overview.md").exists():
+            # design/ 是规约（README §2）定义的非模块目录，不要求 overview.md
+            if mod.is_dir() and mod.name != "design" and not (mod / "overview.md").exists():
                 warnings.append(f"{proj.name}/{mod.name}: module 目录缺 overview.md")
 
 

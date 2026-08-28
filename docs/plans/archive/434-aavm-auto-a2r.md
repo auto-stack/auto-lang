@@ -61,7 +61,7 @@ status: complete
 ### S4：收尾
 
 - [x] a2r.at v2 Snapshot/Coverage 回填(文件头);divergences.md 增补 D38a-d/D39/D40(26 类)。
-- [x] 总纲收官:docs/specs/aavm/series-429-434-retrospective.md;project.md 更新为 v2 现实;v1 已随 lib-legacy 封存(433 时点)。
+- [x] 总纲收官:docs/specs/aavm/design/series-429-434-retrospective.md;project.md 更新为 v2 现实;v1 已随 lib-legacy 封存(433 时点)。
 
 ## 风险与缓解
 
