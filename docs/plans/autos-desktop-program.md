@@ -38,7 +38,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳 + E1/E2 接缝语义（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |
 | shell-track（未立项，提案） | M3+ | **AutoShell 统一层**（Design 25）：状态投影协议 v1 + dock/switcher/pager/通知中心/settings/桌面本体，全部 AutoUI DSL 声明、双端同源（I7–I9） | 提案（依赖 463/464；缩略挂 386、shell IME 挂 457） | 463+464 |
 | 457 Smithay 宿主 | M5 | Linux 原生合成器宿主，复用桌面 shell | 提案中 | 462+463 |
-| 386 复活 | M6 | R4 接缝的 RenderCommand 后端（路线 B），Stage 1-3 | ⏸ PAUSED | 见仪表盘 |
+| 386 复活 | M6 | R4 接缝的 RenderCommand 后端（路线 B），Stage 1-3；协议蓝图 Design 25 §7/§7.1 已备 | ⏸ PAUSED（条件 1/3 达成：I1 ✅；常驻 App 待 463/464、内存实测待 463 合入后即测） | 见仪表盘 |
 
 **编号映射（2026-08-28 立项）**：M2→**462**、M3→**463**、M4→**465**（原提案
 454/455/456，正文历史提案号不回改）；新增 **464**（launcher，吸收 Plan 441，
