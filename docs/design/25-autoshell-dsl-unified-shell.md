@@ -75,6 +75,15 @@
 | **manifest 声明标记** | pac.at `scene: "shell"`（特权 shell App 身份：宿主装载、DesktopBus 授权、mount 目标差异） | 一行 manifest，不进语法 |
 | **语法级 `desktop {}` 块** | shell App 声明式绑定投影状态（如 `desktop windows { … }` 动态列表投影） | **v2 备选**：仅当"投影状态变量约定 + for 循环消费"被证明不可维护时再固化语法（触发条件登记在案）；避免过早语法化 |
 
+**容器层级 vs 授权层级（2026-08-28 辨析，防 `desktop` 关键字误用）**：
+运行时容器层级是 `desktop > app > widget`（DesktopSession → AppSession → view
+树，实现里已如此）；但 **DSL 授权单元的最高级是 `app`**（pac.at + 根 widget），
+`desktop` 不是授权物——它的内容（窗口/workspace）是宿主动态状态，无法静态
+声明，且 R1/R8 的本意正是"连桌面自己的 UI 也是 app"（特权 app 装载到预留
+z 槽）。shell 层实际声明的最高 widget 是 `desktop_surface`（壁纸/图标层）。
+"app 关键字"原案的合理内核已由 pac.at 承担；若将来语法化（根 `widget` 升格
+`app`），与 `desktop {}` 同挂 v2 触发条件。
+
 结论：**v1 不新增语法关键字**。Shell 的统一性来自"同一份 .at + 同一登记源
 （I4）+ 同一 DesktopBus 协议"，不来自新语法；语法扩展留有明确触发条件，
 属于可逆决策。
