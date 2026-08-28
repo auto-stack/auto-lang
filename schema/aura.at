@@ -1439,6 +1439,16 @@ element details {
     description: "AutoDown collapsible panel (registry Details, `:::details Summary`)"
 }
 
+element dyn {
+    tag: "dyn"
+    category: "content"
+    tier: "unclassified"
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "Dynamic component: dyn (.expr) { props } → <component :is=...> (props pass through to the resolved component; not enumerable in schema)"
+}
+
 element embed_block {
     tag: "embed_block"
     category: "content"

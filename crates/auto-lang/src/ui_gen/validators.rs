@@ -1498,6 +1498,46 @@ function Foo() { emit('Save'); emit('Cancel'); }"#,
     }
 
     #[test]
+    fn schema_validation_accepts_dyn_dynamic_component() {
+        // dyn (.expr) { props } 是 codegen 特判的动态组件结构关键字(→
+        // <component :is>),schema 补声明后不应触发 S002;透传 prop 归目标
+        // 组件所有,声明为空 props 的元素跳过 S001,故两者皆零(auto-down
+        // plan 021 G4 回归)。
+        let code = r#"widget T {
+    msg M { Go }
+    model { icon Array<str> = null }
+    on { .Go -> { } }
+    view {
+        col {
+            dyn (.icon) { size: 16 }
+        }
+    }
+}"#;
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = crate::Parser::from(code);
+        parser = parser.with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = stmt {
+                if let Ok(w) = crate::aura::extract_widget_from_decl(d) {
+                    widgets.push(w);
+                }
+            }
+        }
+        assert_eq!(widgets.len(), 1);
+        let ws = validate_aura_against_schema(&widgets, &[]);
+        let offenders: Vec<&ValidationWarning> = ws
+            .iter()
+            .filter(|w| w.rule == "S002" || w.rule == "S001")
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "dyn 不应触发 S002/S001: {offenders:?}"
+        );
+    }
+
+    #[test]
     fn schema_validation_accepts_local_widgets_and_fold_aliases() {
         // 本地 widget 名(CopyButton)与折叠别名(alert-dialog ≡ alert_dialog)
         // 都不应触发 S002。

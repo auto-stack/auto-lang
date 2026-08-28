@@ -2441,6 +2441,17 @@ impl AuraSchema {
         // 使 S002 不再误报)。pre/code/ol/ul/dl/dt/dd/optgroup/figure/
         // figcaption/blockquote: 原生 HTML 直通(map_tag 兜底 arm 对应)。
         // native_button: 显式原生按钮逃生名(避开 button→shadcn Button 映射)。
+        // dyn: 动态组件(dyn (.expr) { props } → <component :is>,codegen 特判
+        // 已有,补声明使 S002 不再误报——同 slot/teleport 先例)。props 为目标
+        // 组件透传面,不在 schema 枚举;空 props 同时使 S001 prop 校验跳过
+        // (透传 prop 无从声明,advisory 也不该发)。
+        elements.insert("dyn", ElementDef {
+            tag: "dyn",
+            category: ElementCategory::Content,
+            props: vec![],
+            allows_children: true,
+            description: "Dynamic component: dyn (.expr) { props } → <component :is=...> (props pass through to the resolved component; not enumerable in schema)",
+        });
         elements.insert("teleport", ElementDef {
             tag: "teleport",
             category: ElementCategory::Content,

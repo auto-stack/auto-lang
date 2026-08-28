@@ -342,6 +342,7 @@ rs_not_in_render	dropdown_label
 rs_not_in_render	dropdown_separator
 rs_not_in_render	dropdown_trigger
 rs_not_in_render	dt
+rs_not_in_render	dyn
 rs_not_in_render	embed_block
 rs_not_in_render	figcaption
 rs_not_in_render	figure
@@ -523,6 +524,7 @@ rs_not_in_vb	dropdown_label
 rs_not_in_vb	dropdown_separator
 rs_not_in_vb	dropdown_trigger
 rs_not_in_vb	dt
+rs_not_in_vb	dyn
 rs_not_in_vb	embed_block
 rs_not_in_vb	figcaption
 rs_not_in_vb	figure
