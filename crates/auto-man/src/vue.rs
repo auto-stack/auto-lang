@@ -4516,7 +4516,7 @@ fn generate_host_app_vue() -> String {
     r#"<script setup lang="ts">
 // Plan 465: desktop host shell (auto-generated; rewritten on every
 // `--desktop` run). WmStore z-stack + taskbar + launcher overlay slot.
-import { onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { APPS, findApp } from './apps-registry'
 import {
   wm,
@@ -4531,6 +4531,14 @@ import VirtualWindow from './wm/VirtualWindow.vue'
 
 const overlayOpen = ref(false)
 const desktopEl = ref<HTMLElement | null>(null)
+// Plan 465 T6: 464-launcher 占位槽的搜索流（真 launcher 落地后换源，I5 复验）。
+const query = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+const filtered = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return APPS
+  return APPS.filter((a) => a.title.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
+})
 
 async function launch(id: string): Promise<void> {
   overlayOpen.value = false
@@ -4544,6 +4552,11 @@ async function launch(id: string): Promise<void> {
   }
 }
 
+function launchFirst(): void {
+  const first = filtered.value[0]
+  if (first) void launch(first.id)
+}
+
 function setClient(w: (typeof wm.wins)[number], el: unknown): void {
   attachClient(w, el)
 }
@@ -4551,6 +4564,13 @@ function setClient(w: (typeof wm.wins)[number], el: unknown): void {
 function toggleOverlay(): void {
   overlayOpen.value = !overlayOpen.value
 }
+
+watch(overlayOpen, (open) => {
+  if (open) {
+    query.value = ''
+    void nextTick(() => searchInput.value?.focus())
+  }
+})
 
 onMounted(() => {
   setViewport(window.innerWidth, window.innerHeight)
@@ -4576,8 +4596,15 @@ onMounted(() => {
         @click.self="overlayOpen = false"
       >
         <div class="w-96 max-h-96 overflow-auto rounded-lg border border-border bg-card shadow-xl p-2">
+          <input
+            ref="searchInput"
+            v-model="query"
+            class="w-full h-9 px-3 mb-2 text-sm rounded border border-border bg-background outline-none focus:border-primary"
+            placeholder="search apps… (Enter launches the first match)"
+            @keydown.enter="launchFirst"
+          >
           <button
-            v-for="a in APPS"
+            v-for="a in filtered"
             :key="a.id"
             class="w-full h-10 px-3 flex items-center gap-2 text-sm rounded hover:bg-accent text-left"
             @click="launch(a.id)"
