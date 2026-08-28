@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（第二批：A1/E1/E2 完成，B1 进行中；worktree .worktrees/plan-446-dev；批一已合入 master——见 §K/§L/§E4）
+状态: executing（第二批 A1/E1/E2/B1 全部完成——§N；剩余批三/批四见 §I；worktree .worktrees/plan-446-dev）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -540,14 +540,24 @@ RequestBuilder.*(2260-2264) 名面被绕开）；send 以**同步 drain 完成 Y
 res.status()==200` 全链真实 TcpListener 断言绿；e2 探针解除 #[ignore]。
 回归：plan446 全系 8 用例 + http 24 用例 + request_builder 全绿。
 
+**[✅ 已完成] B1 store 循环字段访问实参——验证解除**（corpus+探针，2026-08-28）：
+复现载体入库 `test/ui/plan446_b1_store_loop/`（现场同款：store 字段
+Array<str> 标注装 obj 字面量、`for ent in .store.items` + `onclick:
+.Pick(ent.name)`、`.Pick(name)` 带参 handler）。双探针在现 master 直接绿：
+- 渲染面：build+首次视图渲染在 60s 限时线程内瞬时完成（无 wedge），
+  两按钮渲染、onclick 实参物化为字段值 alpha/beta、无 VmRef 裸引用泄漏；
+- handler 面：payload 编码→decode→`on_with_input_for` 分发后 `.picked`
+  收到正确字符串。
+判定：B1 的 wedge 已被批一 §L 的 J1 根因修复（styled_vtree 首问竞态/
+视图同步路径重构）顺带治愈——原症状属快照回退时代观察，与 J2 同性质。
+本批交付=corpus+探针锁行为；**下游绕行可撤**（os-config 的影子
+names[]/索引参数模式，§H 清单对应条目可删）。
+
 ## 待澄清事项
 
-- **B1（第二批剩余项）未实施**：store 列表循环字段访问实参的 event-arg
-  vmref 物化（view-builder/event 求值路径），需 aura_view_builder + dynamic.rs
-  独立攻坚，本轮预算未覆盖。
 - **E1 附带观察（低优先）**：`res` 的静态类型在不同语境坍缩为
   str/int/User(Response)（http.at 表面声明 + `#[vm]` decl 推断链所致），
   E1/E2 已在运行期与 arity 分流双层兜住；类型推断本身的正本清源
-  （stdio 表面 client accessors 正名）留待独立小批，见 §N E1 修复注记。
-- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；建议与 B1 一并
-  排程下轮会话。
+  （stdlib 表面 client accessors 正名）留待独立小批，见 §N E1 修复注记。
+- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；建议排程下轮
+  会话。
