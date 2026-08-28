@@ -1,0 +1,83 @@
+// Plan 463 T5：桌面 shell（特权 .at App —— 宿主进程内编译装载，不进 examples/ui）。
+// R1/R8 首落：shell 组件本身是 AutoUI App。双向接缝（T1 报告 §2/§3 定案）：
+//   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录 "verb\targ"，
+//       多条以 "\n" 连接；生产侧控件字符串不可直书 \u{1E}/\u{1F}，宿主解析
+//       两套分隔符等价接受）
+//   入：`__wm_wins`（宿主 write_state_vec 注入 {wid,title,focused} 对象数组，
+//       任务栏窗口列表渲染源）
+//       `__wm_meta`（宿主注入 "layout\tfocused_wid"，布局按钮态）
+// 消费者唯一：宿主 renderer 的 DesktopBus 双排空点（462/463 update 壳层）。
+// 464 launcher 将挂 SummonLauncher 召唤出的 overlay 槽（本文件只发事件）。
+widget DesktopShell {
+    msg {
+        SummonLauncher,
+        LayoutFree, LayoutGrid, LayoutStack,
+        WinFocus(str), WinClose(str)
+    }
+
+    model {
+        var __desktop_cmd str = ""
+        var __wm_wins = []
+        var __wm_meta str = ""
+        var __wm_fp str = ""
+    }
+
+    view {
+        col {
+            style: "w-full h-full"
+            // 任务栏以上让位给虚拟窗层：flex-1 在 iced 适配器只映射主轴
+            // （row=宽），纵向撑开须显式 h-full（T5 实测修正）。
+            spacer {
+                style: "w-full h-full"
+            }
+            taskbar {
+                style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-t"
+
+                button "⊞" {
+                    onclick: .SummonLauncher
+                    style: "h-8 w-10 px-0 text-xs"
+                }
+
+                for w in .__wm_wins {
+                    row {
+                        style: "gap-1 items-center"
+                        button (text: w.title) {
+                            onclick: .WinFocus(w.wid)
+                            style: "h-8 px-3 text-xs max-w-48"
+                        }
+                        button "×" {
+                            onclick: .WinClose(w.wid)
+                            style: "h-8 w-7 px-0 text-xs text-muted-foreground"
+                        }
+                    }
+                }
+
+                spacer {
+                    style: "flex-1 h-8"
+                }
+
+                button "▦" {
+                    onclick: .LayoutGrid
+                    style: "h-8 w-10 px-0 text-xs"
+                }
+                button "▤" {
+                    onclick: .LayoutStack
+                    style: "h-8 w-10 px-0 text-xs"
+                }
+                button "▢" {
+                    onclick: .LayoutFree
+                    style: "h-8 w-10 px-0 text-xs"
+                }
+            }
+        }
+    }
+
+    on {
+        .SummonLauncher -> { .__desktop_cmd = "summon\tlauncher" }
+        .LayoutFree -> { .__desktop_cmd = "layout\tfree" }
+        .LayoutGrid -> { .__desktop_cmd = "layout\tgrid" }
+        .LayoutStack -> { .__desktop_cmd = "layout\tmaster-stack" }
+        .WinFocus(wid) -> { .__desktop_cmd = "focus\t" + wid }
+        .WinClose(wid) -> { .__desktop_cmd = "close\t" + wid }
+    }
+}

@@ -874,6 +874,9 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
             "row" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
+            // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4 登记）；row 语义
+            // 水平排布,贴底锚定由宿主 shell 层装配做。镜像 untracked 同名臂。
+            "taskbar" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
             "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -1737,6 +1740,9 @@ impl<'a> AuraViewBuilder<'a> {
             // Core layout widgets
             "col" | "column" => self.convert_column(props, children, bindings),
             "row" => self.convert_row(props, children, bindings),
+            // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4）；row 语义。
+            // 镜像 tracked 层同名臂（文件 D-GAP 规则）。
+            "taskbar" => self.convert_row(props, children, bindings),
             "grid" => self.convert_grid(props, children, bindings),
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、

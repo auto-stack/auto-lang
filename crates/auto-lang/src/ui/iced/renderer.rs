@@ -6192,6 +6192,51 @@ fn execute_desktop_commands(
     false
 }
 
+/// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
+/// 同型约定）。窗口列表（wid/title/focused 对象数组）+ 布局/焦点元数据
+/// 写入 shell 声明状态；指纹未变则跳过写（防每帧 churn），写后置 shell
+/// view_dirty。每 update 周期在排空点邻位调用（O(窗数) 串接，便宜）。
+fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
+    let Some(shell) = state.desktop.shell_app else { return };
+    let Some(host) = state.host.as_ref() else { return };
+    let mut fp = String::new();
+    let mut wins: Vec<auto_val::Value> = Vec::new();
+    for &wid in &host.wm.z_order {
+        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let focused = host.wm.focused == Some(wid);
+        // entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与
+        // 条件渲染都走字符串语义（dashboard/041 对象列表同型）。
+        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("wid", auto_val::Value::Str(wid.0.to_string().into())),
+            ("title", auto_val::Value::Str(v.title.clone().into())),
+            ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
+        ])));
+        fp.push_str(&format!("{}:{},", wid.0, focused as u8));
+    }
+    let layout_name = match host.wm.layout {
+        crate::ui::layout::LayoutMode::Free => "free",
+        crate::ui::layout::LayoutMode::Grid => "grid",
+        crate::ui::layout::LayoutMode::MasterStack => "master-stack",
+    };
+    let focused_wid = host.wm.focused.map(|w| w.0.to_string()).unwrap_or_default();
+    let meta = format!("{}\t{}", layout_name, focused_wid);
+    fp.push_str(&format!("|{}", meta));
+    let app = match state.apps.get_mut(&shell) {
+        Some(a) => a,
+        None => return,
+    };
+    if matches!(
+        app.component.read_state("__wm_fp"),
+        Ok(auto_val::Value::Str(ref s)) if s.to_string() == fp
+    ) {
+        return;
+    }
+    let _ = app.component.write_state_vec("__wm_wins", wins);
+    let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
+    let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
+    *app.state.view_dirty.borrow_mut() = true;
+}
+
 /// Run a `DynamicComponent` in an iced window.
 ///
 /// This is the main entry point for running AURA widgets with iced. It:
@@ -6480,6 +6525,16 @@ fn compare_pngs(
                         ),
                     );
                     session.wm_add_win(app_id, title, rect);
+                }
+                // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
+                // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
+                match crate::ui::shell::build_shell_component() {
+                    Ok(shell_comp) => {
+                        session.desktop.shell_app = Some(session.allocate_app(shell_comp));
+                    }
+                    Err(err) => {
+                        eprintln!("[session] shell load failed (desktop continues): {err}")
+                    }
                 }
                 (session, open_task.discard())
             }
@@ -8445,6 +8500,9 @@ fn compare_pngs(
             if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
                 return iced::exit();
             }
+            // Plan 463 T5：窗口列表/布局注入（指纹门控，每周期一次兜底；
+            // DM::Wm 臂尾有同周期即时版）。
+            sync_shell_windows(state);
         }
         // 消息归属 → update 分派（App/Window 两臂共用；console 打标 + T5
         // 探针 + panic 边界 + Task 回标 DM::App(app)）。闭包捕获 update_inner
@@ -8526,6 +8584,8 @@ fn compare_pngs(
                     if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
                         return iced::exit();
                     }
+                    // shell 自身按钮路径：本周期命令已执行，列表即时同步。
+                    sync_shell_windows(state);
                 }
                 task
             }
@@ -8613,6 +8673,9 @@ fn compare_pngs(
                         }
                     }
                 }
+                // Plan 463 T5：WM 状态变化（聚焦/拖拽落位/关闭/布局）当周期
+                // 即时同步任务栏（指纹门控，无变化时零写）。
+                sync_shell_windows(state);
                 iced::Task::none()
             }
             DM::Window(win, m) => {
@@ -8763,6 +8826,26 @@ fn compare_pngs(
                 layers.push(crate::ui::iced::virtual_window::virtual_window_element(
                     vwin, focused, client,
                 ));
+            }
+            // Plan 463 T5：shell 层（任务栏；z-stack 之上常驻）。底部锚定
+            // 由 shell.at 根 col（h-full + 纵向 spacer）落实——dynamic_view
+            // 根是 Fill×Fill toast-Stack，装配层 align 无从发力（实测）。
+            // Plan 464 overlay 槽：launcher/通知层追加在本层之后（Stack 顶层，
+            // 消费 DM::Desktop(SummonLauncher)）；v1 无消费者，不推空层。
+            if state.desktop.shell_app.is_some() {
+                let shell_app = state.desktop.shell_app.expect("shell checked");
+                let build = || state.split_ref_shell().map(|v| dynamic_view(v, false));
+                let shell_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] shell 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] shell view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(shell_client.map(move |m| DM::App(shell_app, m)));
             }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }

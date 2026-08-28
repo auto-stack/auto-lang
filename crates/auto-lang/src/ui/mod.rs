@@ -38,6 +38,9 @@ pub mod session;
 #[cfg(feature = "ui-iced")]
 pub mod layout;
 
+// Plan 463 T5：桌面 shell（特权 .at App 装配）。
+pub mod shell;
+
 // Plan 442 A3: web-ecosystem ext imports on the VM render target
 // (adapter-chain loading + platform stubs).
 pub mod ext_stubs;

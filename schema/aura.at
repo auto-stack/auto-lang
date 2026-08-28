@@ -720,6 +720,18 @@ element svg {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element taskbar {
+    tag: "taskbar"
+    category: "navigation"
+    tier: "builtin_widget"
+    backends: { web: "none", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "class", type: "union:string,class_binding", description: "Bar chrome classes (h-/w-/bg-/border- land on the bar)" }
+    ]
+    allows_children: true
+    description: "Desktop shell taskbar (bottom bar)"
+}
+
 element text {
     tag: "text"
     category: "typography"

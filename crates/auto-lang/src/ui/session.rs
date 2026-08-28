@@ -201,6 +201,8 @@ pub struct DesktopState {
     /// Plan 463 T4：LaunchApp 解析器（App 名 → 启动材料）。boot 期由
     /// 注册表装配（T7）；None = 无注册表（单测可注入内联 .at）。
     pub app_resolver: Option<std::sync::Arc<dyn Fn(&str) -> Option<LaunchSpec> + Send + Sync>>,
+    /// Plan 463 T5：shell 的窗口级字段垫片（见 [`ShellFields`]）。
+    pub shell_fields: ShellFields,
 }
 
 impl DesktopState {
@@ -213,6 +215,7 @@ impl DesktopState {
             toast_next_id: Cell::new(1),
             shell_app: None,
             app_resolver: None,
+            shell_fields: ShellFields::default(),
         }
     }
 
@@ -526,11 +529,17 @@ impl DesktopCommand {
 
     /// 解析宿主消费的记录串（`\u{1E}` 连接多条）。未知 verb/坏记录跳过，
     /// 不 panic、不阻塞后续记录（toast 侧同语义）。
+    /// 分隔符双轨：宿主/单测直写 `\u{1E}`/`\u{1F}`；shell.at 控件字符串
+    /// 只能转义 `\n`/`\t`（lexer 无 `\u{..}`），故两套等价接受。
     pub fn parse_records(payload: &str) -> Vec<Self> {
         payload
-            .split(Self::REC_SEP)
+            .split([Self::REC_SEP, '\n'])
             .filter_map(|rec| {
-                let (verb, arg) = rec.split_once(Self::FIELD_SEP)?;
+                let rec = rec.trim_end_matches('\r');
+                if rec.is_empty() {
+                    return None;
+                }
+                let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
                     "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
                     "close" => arg.parse::<u64>().ok().map(|w| DesktopCommand::CloseWindow(Wid(w))),
@@ -551,6 +560,17 @@ pub struct LaunchSpec {
     pub source_path: Option<String>,
     /// chrome 标题（None = 根 widget 名，462 行为）。
     pub title: Option<String>,
+}
+
+/// Plan 463 T5：shell 特权 App 的窗口级字段垫片。shell 无虚拟窗/无独立
+/// OS 窗，但拆借视图（`SessionViewRef`）形状要求这些字段存在；垫片全零值
+/// 即正确语义（响应式 window_* 变量对 shell 不生效，vwin_rect 恒 None）。
+#[derive(Default)]
+pub struct ShellFields {
+    pub window_size: RefCell<iced::Size>,
+    pub pending_window_resize: RefCell<Option<iced::Size>>,
+    pub initial_resize_done: Cell<bool>,
+    pub initial_focus_done: Cell<bool>,
 }
 
 /// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
@@ -893,6 +913,27 @@ impl DesktopSession {
             pending_window_resize: &entry.pending_window_resize,
             initial_resize_done: &entry.initial_resize_done,
             initial_focus_done: &entry.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 463 T5：shell 特权 App 的拆借视图（view 装配的 shell 层专用）。
+    /// shell 无虚拟窗 —— 窗口级字段走 `DesktopState.shell_fields` 垫片，
+    /// `vwin_rect` 恒 None（不参与 WM 几何）；独立模式无 shell 恒 None。
+    pub fn split_ref_shell(&self) -> Option<SessionViewRef<'_>> {
+        let shell = self.desktop.shell_app?;
+        let app = self.apps.get(&shell)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: shell,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &self.desktop.shell_fields.window_size,
+            pending_window_resize: &self.desktop.shell_fields.pending_window_resize,
+            initial_resize_done: &self.desktop.shell_fields.initial_resize_done,
+            initial_focus_done: &self.desktop.shell_fields.initial_focus_done,
             vwin_rect: None,
         })
     }

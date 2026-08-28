@@ -2391,6 +2391,19 @@ impl AuraSchema {
             description: "Menubar trigger",
         });
 
+        // Plan 463 T5: desktop shell taskbar (bottom bar chrome; I4 登记)。
+        // iced 臂映射 row 语义（水平条）；贴底锚定由宿主 shell 层装配做
+        // （shell.at spacer）；a2vue 契约随 465（web: partial）。
+        elements.insert("taskbar", ElementDef {
+            tag: "taskbar",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "Bar chrome classes (h-/w-/bg-/border- land on the bar)" },
+            ],
+            allows_children: true,
+            description: "Desktop shell taskbar (bottom bar)",
+        });
+
         elements.insert("menubar_content", ElementDef {
             tag: "menubar_content",
             category: ElementCategory::Navigation,

@@ -100,6 +100,8 @@ fn get_support_details(tag: &str) -> TagSupport {
         // ── Core layout (Full) ──
         "col" | "column" => TagSupport::full(),
         "row" => TagSupport::full(),
+        // Plan 463 T5: taskbar —— 桌面 shell 底栏（Iced 映射 row 语义,Full）。
+        "taskbar" => TagSupport::full(),
         "center" => TagSupport::full(),
         "container" | "div" => TagSupport::full(),
 
