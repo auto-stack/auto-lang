@@ -27,9 +27,12 @@
     :is-recording="debug.isRecording.value"
     :has-recording="!!debug.recording.value"
     :bytecode="layoutBytecode"
+    :bytecode-meta="mode === 'run' ? runBytecodeMeta : activeMeta"
     :debug-state="activeDebugState"
-    :current-source-line="highlightedSourceLine"
-    :highlighted-offsets="highlightedBytecodeOffsets"
+    :current-source-line="hoveredSourceLine"
+    :highlighted-offsets="hoveredOffsets"
+    :selected-offsets="selectedOffsets"
+    :selected-source-line="highlightedSourceLine"
     :breakpoints="breakpoints"
     :current-debug-line="activeDebugState?.line ?? null"
     :is-replay-mode="replay.isActive.value"
@@ -43,9 +46,9 @@
     @debug-command="onDebugCommand"
     @toggle-record="toggleRecord"
     @export-recording="debug.exportRecording"
-    @line-click="highlightSourceLine"
-    :on-highlight-line="highlightSourceLine"
-    :on-clear-highlight="clearHighlight"
+    @line-click="selectSourceLine"
+    :on-highlight-line="onHoverLine"
+    :on-clear-highlight="onHoverLeave"
     @offset-click="onOffsetClick"
     @breakpoints-change="onBreakpointsChange"
     @load-replay="onLoadReplay"
@@ -71,11 +74,11 @@ import type { DebugRecording, OutputTab, ProjectFile } from './types';
 type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
 const {
-  source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, isLoading,
+  source, stdout, stderr, resultCode, timeMs, bytecode: runBytecode, bytecodeMeta: runBytecodeMeta, isLoading,
   activeTab, transpiledCode, transFiles, selectedTransFile,
   projectFiles, activeFile,
   highlightedOutputLines, highlightedSourceLine, mappedSourceFiles,
-  run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightSourceLine, highlightOutputLine, clearHighlight, share, shareToast,
+  run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightOutputLine, share, shareToast,
 } = usePlaygroundFull();
 
 const debug = useDebugger();
@@ -100,6 +103,13 @@ const activeBytecode = computed(() => {
   return debug.bytecode.value;
 });
 
+const activeMeta = computed(() => {
+  if (replay.isActive.value) {
+    return replay.meta.value;
+  }
+  return debug.meta.value;
+});
+
 const layoutBytecode = computed(() => {
   if (mode.value === 'run') {
     return runBytecode.value;
@@ -107,13 +117,47 @@ const layoutBytecode = computed(() => {
   return activeBytecode.value;
 });
 
-const highlightedBytecodeOffsets = computed(() => {
-  if (!highlightedSourceLine.value) return undefined;
-  if (replay.isActive.value) {
-    return replay.lineToOffsets.value[highlightedSourceLine.value];
+// Line↔offset maps derived from whatever bytecode is on screen, so source
+// clicks highlight bytecode in Run mode too (same mechanism Debug used).
+const bytecodeLineToOffsets = computed(() => {
+  const map: Record<number, number[]> = {};
+  for (const line of layoutBytecode.value) {
+    if (line.line !== undefined) {
+      if (!map[line.line]) map[line.line] = [];
+      map[line.line].push(line.offset);
+    }
   }
-  return debug.lineToOffsets.value[highlightedSourceLine.value];
+  return map;
 });
+
+const bytecodeOffsetToLine = computed(() => {
+  const map: Record<number, number> = {};
+  for (const line of layoutBytecode.value) {
+    if (line.line !== undefined) {
+      map[line.offset] = line.line;
+    }
+  }
+  return map;
+});
+
+// Two highlight layers: pinned selection (clicks) vs transient hover.
+// `highlightedSourceLine` (from usePlaygroundFull) carries the selection;
+// hover is component-local so it never fights the pinned line.
+const hoveredSourceLine = ref<number | null>(null);
+const selectedOffsets = computed(() =>
+  highlightedSourceLine.value ? bytecodeLineToOffsets.value[highlightedSourceLine.value] : undefined);
+const hoveredOffsets = computed(() =>
+  hoveredSourceLine.value ? bytecodeLineToOffsets.value[hoveredSourceLine.value] : undefined);
+
+function selectSourceLine(line: number) {
+  highlightedSourceLine.value = line;
+}
+function onHoverLine(line: number) {
+  hoveredSourceLine.value = line;
+}
+function onHoverLeave() {
+  hoveredSourceLine.value = null;
+}
 
 // Sync debug finished state to main console so Run and Debug show the same result
 watch(() => debug.state.value, (state) => {
@@ -124,9 +168,10 @@ watch(() => debug.state.value, (state) => {
   }
 });
 
-// Reset UI when debug session ends
+// Reset UI when debug session ends, but keep the result visible
+// when the program ran to completion
 watch(() => debug.isDebugging.value, (isDebugging) => {
-  if (!isDebugging && mode.value === 'debug') {
+  if (!isDebugging && mode.value === 'debug' && debug.state.value?.status !== 'finished') {
     mode.value = 'editor';
   }
 });
@@ -177,11 +222,9 @@ function onDebugCommand(cmd: 'continue' | 'step' | 'step_over' | 'step_out' | 's
 }
 
 function onOffsetClick(offset: number) {
-  const line = replay.isActive.value
-    ? replay.offsetToLine.value[offset]
-    : debug.offsetToLine.value[offset];
+  const line = bytecodeOffsetToLine.value[offset];
   if (line) {
-    highlightSourceLine(line);
+    selectSourceLine(line);
   }
 }
 
@@ -238,7 +281,7 @@ function onKeyDown(e: KeyboardEvent) {
   switch (e.key) {
     case 'F5':
       e.preventDefault();
-      onDebugCommand('continue');
+      onDebugCommand(e.shiftKey ? 'stop' : 'continue');
       break;
     case 'F10':
       e.preventDefault();

@@ -374,6 +374,10 @@ enum Commands {
         no_merge: bool,
         #[arg(long, help = "Parser scenario: core, ui, or shell (overrides pac.at scene)")]
         scene: Option<String>,
+        #[arg(long, help = "Plan 458: UI theme preset (dark, light). Overrides pac.at `theme:`; default dark")]
+        theme: Option<String>,
+        #[arg(long, help = "Plan 458: UI accent preset (indigo, coral, ocean, sage, amber). Overrides pac.at `accent:`; default indigo")]
+        accent: Option<String>,
         #[arg(allow_hyphen_values = true)]
         args: Vec<String>,
     },
@@ -849,7 +853,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 println!("{}", format_success_json(json!({"message": "Build completed"})));
             }
         }
-        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, args }) => {
+        Some(Commands::Run { dir, port, back_port, front_port, render, server, no_merge, scene, theme, accent, args }) => {
             if !ai_mode {
                 init_logger();
                 println_logo();
@@ -949,6 +953,39 @@ fn real_main(cli: Cli) -> Result<()> {
             if let Some(t) = am.pac_window_title() {
                 std::env::set_var("AUTO_VM_TITLE", &t);
                 println!("  VM window title: {} (from pac.at)", t);
+            }
+            // Plan 458: UI theme + accent presets. CLI --theme/--accent >
+            // pac.at `theme:`/`accent:` > built-in default (dark/indigo,
+            // applied by the consumers when these env vars are absent).
+            // Injected via env so the iced renderer (-r vm, same process)
+            // and the vue index.html generator read the same effective value.
+            let theme_eff = theme.as_deref().map(str::to_lowercase).or_else(|| am.pac_theme());
+            match theme_eff.as_deref() {
+                Some(t) if auto_lang::ui::style::theme::THEME_PREFS.contains(&t) => {
+                    std::env::set_var("AUTO_UI_THEME", t);
+                    let via = if theme.is_some() { " (from cli)" } else { " (from pac.at)" };
+                    println!("  UI theme: {}{}", t, via);
+                }
+                Some(t) => {
+                    println!("  UI theme: {} unknown (want dark|light) — using default dark", t);
+                }
+                None => {}
+            }
+            let accent_eff = accent.as_deref().map(str::to_lowercase).or_else(|| am.pac_accent());
+            match accent_eff.as_deref() {
+                Some(a) if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a) => {
+                    std::env::set_var("AUTO_UI_ACCENT", a);
+                    let via = if accent.is_some() { " (from cli)" } else { " (from pac.at)" };
+                    println!("  UI accent: {}{}", a, via);
+                }
+                Some(a) => {
+                    println!(
+                        "  UI accent: {} unknown (want {}) — using default indigo",
+                        a,
+                        auto_lang::ui::style::theme::ACCENT_PRESETS.join("|")
+                    );
+                }
+                None => {}
             }
             // Plan 418: UI action/binding config (Action declaration layer).
             // Resolved against the project dir (auto run's cwd) so the

@@ -2,6 +2,16 @@
 
 ## Status: COMPLETE
 
+> **Amendment (2026-08-26, Plan 452 / Design 23)**: the Windows host ruling
+> recorded under D2 / Host ③ — "the host is **not a compositor on Windows** —
+> DWM is; one OS window per app" — is **superseded** by Design 23
+> (docs/design/23-autoui-virtual-desktop.md, ruling R2): on Windows/macOS the
+> desktop host is a single-OS-window virtual desktop that composites virtual
+> windows itself. Host ③ is repositioned as the RenderCommand backend of the
+> AppWindow seam (see Plan 386's positioning update). The standalone
+> one-OS-window-per-app mode remains a first-class configuration (R3/R6).
+> Archived body below is kept as historical record, unchanged.
+
 ## Background
 
 Two constraints collide in the COSMIC replication effort (Plan 364):

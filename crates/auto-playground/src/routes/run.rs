@@ -17,6 +17,7 @@ pub struct RunResponse {
     pub result: String,
     pub time_ms: u64,
     pub bytecode: Vec<serde_json::Value>,
+    pub meta: Option<serde_json::Value>,
 }
 
 pub async fn run_handler(
@@ -36,5 +37,6 @@ pub async fn run_handler(
         result: result.result,
         time_ms: result.time_ms,
         bytecode: result.bytecode,
+        meta: result.meta,
     }))
 }

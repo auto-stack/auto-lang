@@ -100,6 +100,17 @@ pub struct Pac {
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
 
+    /// Plan 458: UI theme preference, declared as `theme: "dark" | "light"`
+    /// in pac.at. None = built-in default (dark). `auto run --theme` wins.
+    /// Parsed into `ThemePref` (validated) at use sites; the raw string is
+    /// kept here so unknown values can warn where context is available.
+    pub theme: Option<AutoStr>,
+
+    /// Plan 458: UI accent (theme primary color) preset name, declared as
+    /// `accent: "indigo" | "coral" | "ocean" | "sage" | "amber"` in pac.at.
+    /// None = built-in default (indigo). `auto run --accent` wins.
+    pub accent: Option<AutoStr>,
+
     /// Plan 418: UI action/binding config file, declared as
     /// `ui_config: "auto-edit.at"` in pac.at. Resolved relative to the
     /// project dir by `auto run`; the renderer loads actions/menubar/
@@ -243,6 +254,16 @@ impl Pac {
         let title_trimmed = title.trim().to_string();
         let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
 
+        // Plan 458: UI theme + accent preset, e.g. `theme: "light"`,
+        // `accent: "ocean"`. Lowercased for tolerant matching; absent/blank
+        // → None (use sites fall back to the built-in dark/indigo default).
+        let theme = config.root.get_prop("theme").to_astr();
+        let theme_trimmed = theme.trim().to_lowercase();
+        let theme = (!theme_trimmed.is_empty()).then(|| AutoStr::from(theme_trimmed));
+        let accent = config.root.get_prop("accent").to_astr();
+        let accent_trimmed = accent.trim().to_lowercase();
+        let accent = (!accent_trimmed.is_empty()).then(|| AutoStr::from(accent_trimmed));
+
         // Plan 418: UI action config file, e.g. `ui_config: "auto-edit.at"`.
         let ui_config = config.root.get_prop("ui_config").to_astr();
         let ui_config_trimmed = ui_config.trim().to_string();
@@ -382,6 +403,8 @@ impl Pac {
             back_port,
             window,
             title,
+            theme,
+            accent,
             ui_config,
             external_backend,
             shadcn,

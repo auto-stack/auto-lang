@@ -25,10 +25,10 @@
         </button>
         <button
           class="toolbar-btn debug-btn"
-          :class="{ active: isDebugging }"
-          @click="props.onDebug"
+          :class="{ active: isDebugging, exit: isDebugging }"
+          @click="isDebugging ? $emit('debugCommand', 'stop') : props.onDebug()"
           :disabled="isLoading || isReplayMode"
-          title="Start Debugging"
+          :title="isDebugging ? 'Stop Debugging (Shift+F5)' : 'Start Debugging'"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a10 10 0 0 1 10 10"/>
@@ -38,9 +38,10 @@
             <path d="M12 12l4 4"/>
             <path d="M12 12l-4 4"/>
           </svg>
-          Debug
+          {{ isDebugging ? 'Exit Debug' : 'Debug' }}
         </button>
         <button
+          v-if="!isDebugging"
           class="toolbar-btn run-btn"
           @click="props.onRun"
           :disabled="isLoading || isReplayMode"
@@ -48,6 +49,7 @@
           {{ isLoading ? 'Running...' : 'Run (Ctrl+Enter)' }}
         </button>
         <div
+          v-if="!isDebugging"
           class="trans-split-btn"
           :class="{ disabled: isLoading || isReplayMode }"
           title="Transpile to target language"
@@ -130,6 +132,7 @@
               :breakpoints="breakpoints"
               :current-debug-line="currentDebugLine"
               :highlighted-source-line="currentSourceLine"
+              :selected-source-line="selectedSourceLine"
               :read-only="isReplayMode"
               @line-click="$emit('lineClick', $event)"
               @breakpoints-change="$emit('breakpointsChange', $event)"
@@ -154,7 +157,9 @@
             <BytecodePanel
               v-if="mode === 'run' || mode === 'debug' || mode === 'replay'"
               :bytecode="effectiveBytecode"
+              :bytecode-meta="bytecodeMeta"
               :current-ip="debugState?.ip"
+              :selected-offsets="selectedOffsets"
               :highlighted-offsets="highlightedOffsets"
               @offset-click="$emit('offsetClick', $event)"
             />
@@ -200,7 +205,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import type { OutputTab, BytecodeLine, DebugState, TransFile, ProjectFile } from '../types';
+import type { OutputTab, BytecodeLine, BytecodeMeta, DebugState, TransFile, ProjectFile } from '../types';
 import CodeEditor from './CodeEditor.vue';
 import CodePreview from './CodePreview.vue';
 import BytecodePanel from './BytecodePanel.vue';
@@ -241,6 +246,11 @@ const props = defineProps<{
   isRecording?: boolean;
   hasRecording?: boolean;
   bytecode?: BytecodeLine[];
+  bytecodeMeta?: BytecodeMeta | null;
+  /** Pinned highlight offsets (from clicked source line) */
+  selectedOffsets?: number[];
+  /** Source line pinned by a click, mirrored onto the editor */
+  selectedSourceLine?: number | null;
   debugState?: DebugState | null;
   currentSourceLine?: number | null;
   highlightedOffsets?: number[];
@@ -447,6 +457,15 @@ function onLoadExample(payload: { source: string; project_dir?: string; files?: 
   color: #fff;
   border-color: #b78e1c;
 }
+.debug-btn.exit {
+  background: #5c1a1a;
+  color: #ff6b6b;
+  border-color: #e51400;
+}
+.debug-btn.exit:hover:not(:disabled) {
+  background: #7a2020;
+  color: #ff8787;
+}
 .run-btn {
   background: #0e639c;
   color: #fff;
@@ -626,7 +645,8 @@ function onLoadExample(payload: { source: string; project_dir?: string; files?: 
 }
 .console-main {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 @media (max-width: 768px) {

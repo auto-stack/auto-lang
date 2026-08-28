@@ -908,11 +908,45 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
-            // Plan 019 批次七: markdown/autodown → 真渲染（autodown-core
+            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
+            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
+            "autodown_editor" | "autodowneditor" => {
+                #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                {
+                    let key = self
+                        .extract_string_with(props, "key", bindings)
+                        .or_else(|| self.extract_string_with(props, "id", bindings))
+                        .unwrap_or_else(|| "doc".to_owned());
+                    let value = self
+                        .extract_string_with(props, "content", bindings)
+                        .or_else(|| self.extract_string_with(props, "value", bindings))
+                        .unwrap_or_default();
+                    let is_final = props
+                        .get("final")
+                        .map(|v| match v {
+                            AuraPropValue::Expr(expr) => {
+                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .unwrap_or(true);
+                    let on_change = aura_events_get_base(events, "oninput")
+                        .or_else(|| aura_events_get_base(events, "input"))
+                        .or_else(|| aura_events_get_base(events, "onchange"))
+                        .or_else(|| aura_events_get_base(events, "change"))
+                        .map(|event| self.event_to_message(&event.handler));
+                    let style = self.extract_style_with(props, bindings);
+                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                }
+                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                self.convert_textarea(props, events, bindings)
+            }
+
+            // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
             // textarea 降级。
-            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor"
-            | "markdown" => {
+            "autodown" | "markdown_editor" | "markdown" => {
                 #[cfg(feature = "autodown")]
                 {
                     let content = self
@@ -1725,11 +1759,45 @@ impl<'a> AuraViewBuilder<'a> {
             "code_editor" | "codeEditor" | "codeeditor" => {
                 self.convert_code_editor(props, events, bindings)
             }
-            // Plan 019 批次七: markdown/autodown → 真渲染（autodown-core
+            // Plan 019 批次九拆分：`autodown_editor` 别名走可编辑文档编辑器
+            // 变体（Phase 3 编辑壳）；markdown/autodown 维持只读真渲染。
+            "autodown_editor" | "autodowneditor" => {
+                #[cfg(all(feature = "autodown", feature = "code-editor"))]
+                {
+                    let key = self
+                        .extract_string_with(props, "key", bindings)
+                        .or_else(|| self.extract_string_with(props, "id", bindings))
+                        .unwrap_or_else(|| "doc".to_owned());
+                    let value = self
+                        .extract_string_with(props, "content", bindings)
+                        .or_else(|| self.extract_string_with(props, "value", bindings))
+                        .unwrap_or_default();
+                    let is_final = props
+                        .get("final")
+                        .map(|v| match v {
+                            AuraPropValue::Expr(expr) => {
+                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .unwrap_or(true);
+                    let on_change = aura_events_get_base(events, "oninput")
+                        .or_else(|| aura_events_get_base(events, "input"))
+                        .or_else(|| aura_events_get_base(events, "onchange"))
+                        .or_else(|| aura_events_get_base(events, "change"))
+                        .map(|event| self.event_to_message(&event.handler));
+                    let style = self.extract_style_with(props, bindings);
+                    return View::AutodownEditor { key, value, is_final, on_change, style };
+                }
+                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                self.convert_textarea(props, events, bindings)
+            }
+
+            // Plan 019 批次七: markdown/autodown → 只读真渲染（autodown-core
             // parse_blocks → 面板树 → View）。无 feature 时维持 D-GAP-3
             // textarea 降级。
-            "autodown_editor" | "autodowneditor" | "autodown" | "markdown_editor"
-            | "markdown" => {
+            "autodown" | "markdown_editor" | "markdown" => {
                 #[cfg(feature = "autodown")]
                 {
                     let content = self
@@ -6182,6 +6250,30 @@ mod tests {
         }
     }
 
+    /// Plan 019 批次九：`autodown_editor` 标签走可编辑变体臂
+    /// （Phase 3 编辑壳；key/content/final/oninput 提取）。
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    #[test]
+    fn test_autodown_editor_widget_editable_arm() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("autodown_editor")
+            .with_prop("key", Expr::Str("doc-ed".into()))
+            .with_prop("content", Expr::Str("# 编辑\nn".into()))
+            .with_prop("final", Expr::Bool(true))
+            .with_event("oninput", ".DocEdit");
+        match builder.build(&node) {
+            View::AutodownEditor { key, value, is_final, on_change, .. } => {
+                assert_eq!(key, "doc-ed");
+                assert_eq!(value, "# 编辑\nn");
+                assert!(is_final);
+                assert!(on_change.is_some(), "oninput → on_change message");
+            }
+            other => panic!("expected AutodownEditor variant"),
+        }
+    }
     /// D-GAP-4: an if/else body spliced into a row records each spliced node
     /// at its own RESULTING slot — not all at the conditional's index (which
     /// merged their probe entries: the 013 todo rows showed one checkbox

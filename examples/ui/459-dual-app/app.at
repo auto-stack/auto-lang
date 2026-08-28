@@ -1,0 +1,80 @@
+// Plan 459 双窗口 demo 源（T4，方案① 同一 .at 双实例）。
+// 由 `examples/ui_dual_app.rs` 装载两份 → 一个 DesktopSession 服务两个
+// OS 窗口，各自渲染一个 AppSession。验收点（计划 §4）：
+//   1. 计数/输入两窗口互不串扰；
+//   2. print() 日志按 App 打标，F12 Console 各窗口只见自己的行；
+//   3. AUTOUI_PANIC_PROBE=1 时点 Crash 按钮，仅本窗落崩溃页、另一窗
+//      持续可交互（T5 隔离验证，探针在 renderer update/view 外壳）。
+widget DualApp {
+    msg {
+        Increment, Decrement, Reset, NoteChanged, PanicProbe
+    }
+
+    model {
+        var count int = 0
+        var note str = ""
+    }
+
+    view {
+        center {
+            col {
+                style: "w-full max-w-md p-8 bg-card border rounded-2xl shadow-sm mx-4 gap-4"
+
+                text "Plan 459 双窗口 demo" {
+                    style: "text-lg font-bold text-primary text-center"
+                }
+
+                text "Counter: ${.count}" {
+                    style: "text-3xl font-bold text-center"
+                }
+
+                row {
+                    style: "gap-4 justify-center"
+                    button "-" { onclick: .Decrement }
+                    button "Reset" { onclick: .Reset }
+                    button "+" { onclick: .Increment }
+                }
+
+                input {
+                    value: .note
+                    oninput: .NoteChanged
+                    placeholder: "在此输入 —— 两窗口互不可见"
+                }
+
+                text "F12 打开 Console 查看本窗口日志（print 按 App 打标）" {
+                    style: "text-xs text-muted-foreground text-center"
+                }
+
+                button "Crash（panic 探针，仅本窗）" {
+                    onclick: .PanicProbe
+                    style: "text-destructive"
+                }
+            }
+        }
+    }
+
+    on {
+        .Increment -> {
+            .count = .count + 1
+            print("[+] count=" + .count.str())
+        }
+
+        .Decrement -> {
+            .count = .count - 1
+            print("[-] count=" + .count.str())
+        }
+
+        .Reset -> {
+            .count = 0
+            print("[reset] count=0")
+        }
+
+        .NoteChanged -> {
+            .note = .note
+        }
+
+        .PanicProbe -> {
+            print("[panic probe] 注入请求已发出（需 AUTOUI_PANIC_PROBE=1）")
+        }
+    }
+}

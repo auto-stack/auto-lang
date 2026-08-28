@@ -269,7 +269,7 @@ a2r 测试总量可观，但有几个关键 Rust 模式**覆盖稀薄**，正是
 3. **宣传弹药**（喂给 A 的 hero demo 和对照页）。
 
 **关键决策点（留待 D 子项目 spec）**：
-- 用例库放哪？建议 `parity/libs/<name>/`（与现有 parity 框架一致）+ 在 `examples/` 下做面向用户的副本。
+- 用例库放哪？建议 `parity/libs/<category>/<name>/`（Plan 460 分类布局，与现有 parity 框架一致）+ 在 `examples/` 下做面向用户的副本。
 - 用例的"难度梯度"：每个类别是否都要有 minimal/realistic/full 三档？
 - async 用例的 parity 对比策略（已有 sorted TAP 处理非确定完成顺序，是否够用）。
 - 与 a2r-std 的关系：哪些用例需要扩展 a2r-std（比如 rusqlite 的绑定）？

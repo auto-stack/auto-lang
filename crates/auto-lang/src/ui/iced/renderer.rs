@@ -38,13 +38,10 @@ thread_local! {
     static INSPECT_CAPTURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-// Plan 309 续篇 II: latest keyboard modifiers, written from the window-level
-// event subscription (which can't borrow `DynamicState`) and read at view
-// entry to decide `INSPECT_CAPTURE`. `Modifiers` is `Copy`.
-thread_local! {
-    static LAST_MODIFIERS: std::cell::Cell<iced::keyboard::Modifiers> =
-        const { std::cell::Cell::new(iced::keyboard::Modifiers::empty()) };
-}
+// Plan 453 T4c（裁定 M1 落地）：原 LAST_MODIFIERS thread-local 已删除——
+// 修饰键唯一事实源为 `DesktopState.current_modifiers`：窗口事件订阅把
+// `modifiers.bits()` 塞进 `__modifiers_changed` 消息载荷，update 既有臂解析
+// 写回；view 直接读字段决定 INSPECT_CAPTURE（施工图 §4）。
 
 /// Helper: is the inspect picker currently in "capture" mode (plain click =
 /// inspect over all widgets)?
@@ -2933,6 +2930,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
+            AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+                build_autodown_editor_generic(&key, &value, is_final, on_change)
+            }
+
             AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
                 let checkbox_widget = checkbox(is_checked);
 
@@ -3868,12 +3869,22 @@ fn shadcn_theme(dark: bool) -> iced::Theme {
         // --background: hsl(0 0% 100%) / --foreground: hsl(222.2 84% 4.9%)
         (iced::Color::from_rgb8(255, 255, 255), iced::Color::from_rgb8(2, 8, 23))
     };
+    // Plan 458: primary follows the accent preset thread-local (default
+    // indigo) instead of hardcoded indigo-500, so `auto run --accent` /
+    // pac.at `accent:` drive window-level iced defaults too. Unknown names
+    // keep the legacy indigo-500 fallback.
+    let primary = crate::ui::style::theme::accent_primary_rgb(
+        &crate::ui::style::theme::accent_name(),
+        dark,
+    )
+    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+    .unwrap_or_else(|| iced::Color::from_rgb8(99, 102, 241));
     iced::Theme::custom(
         if dark { "AutoShadcnDark" } else { "AutoShadcnLight" },
         iced::theme::Palette {
             background,
             text,
-            primary: iced::Color::from_rgb8(99, 102, 241), // indigo-500
+            primary,
             success: iced::Color::from_rgb8(34, 197, 94),
             warning: iced::Color::from_rgb8(234, 179, 8),
             danger: iced::Color::from_rgb8(239, 68, 68),
@@ -4037,12 +4048,12 @@ impl IcedMessage {
 // ============================================================================
 
 /// A single todo item with text and done state.
-struct TodoItem {
+pub(crate) struct TodoItem {
     text: String,
     done: bool,
 }
 
-/// Sync `state.todos` (Rust-side) to VM state so the `for todo in .todos` loop can read them.
+/// Sync `state.app.todos` (Rust-side) to VM state so the `for todo in .todos` loop can read them.
 fn sync_todos_to_vm(todos: &[TodoItem], component: &mut DynamicComponent) {
     let values: Vec<auto_val::Value> = todos.iter().enumerate().map(|(i, t)| {
         let mut obj = auto_val::Obj::new();
@@ -4291,6 +4302,20 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
         },
 
+        AbstractView::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change,
+            style,
+        } => AbstractView::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
+            style,
+        },
+
         AbstractView::Checkbox {
             is_checked,
             label,
@@ -4427,32 +4452,139 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     }
 }
 
-/// Periodic tick subscription for hot-reload file watching.
+// ===========================================================================
+// Plan 459：per-App 订阅基建
+// ===========================================================================
+//
+// `Subscription::map`/`filter_map` 组合子的闭包被 const 检查强制零尺寸
+// （不可捕获 —— 453 时代 `map_to_app` fn 指针的由来），因此打标不能走
+// 组合子。这里用两个 iced_futures 的正式扩展点承载按 App 打标：
+//
+// 1. `AppTickRecipe`（自定义 `Recipe`）：tokio interval 驱动的周期 tick /
+//    全局通道轮询，消息直接产成 `DesktopMessage::App`；Recipe 身份含
+//    (AppId, 事件名/轮询函数, 间隔)，多 App 订阅去重互不误伤。
+// 2. `iced_futures::subscription::filter_map`（自由函数版，闭包可捕获）：
+//    per-App 键盘订阅 —— bindings 随闭包按 App 捕获 + 本窗事件过滤。
+
+/// 每 `interval_ms` 产一条 `DM::App(app, msg)` 的订阅。
+enum AppTickKind {
+    /// 固定事件名 tick（hot reload / widget tick / timer / toast / heartbeat）。
+    Event(&'static str, u64),
+    /// 每拍轮询一次进程级通道（fn 指针读全局静态，不捕获）。
+    Poll(fn() -> Option<IcedMessage>, u64),
+}
+
+struct AppTickRecipe {
+    app: crate::ui::session::AppId,
+    kind: AppTickKind,
+}
+
+impl std::hash::Hash for AppTickRecipe {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // 订阅身份：AppId + 事件名/函数指针 + 间隔（453 T4 教训：同间隔
+        // 订阅在 iced 订阅表按 hash 去重，后注册者静默丢失 —— 事件名/函数
+        // 指针参与 hash 保证互不去重）。
+        std::mem::discriminant(&self.kind).hash(state);
+        self.app.hash(state);
+        match &self.kind {
+            AppTickKind::Event(ev, ms) => (*ev, *ms).hash(state),
+            AppTickKind::Poll(f, ms) => (*f as usize, *ms).hash(state),
+        }
+    }
+}
+
+impl iced_futures::subscription::Recipe for AppTickRecipe {
+    type Output = crate::ui::session::DesktopMessage;
+
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+        std::hash::Hash::hash(self, state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: iced_futures::subscription::EventStream,
+    ) -> iced_futures::BoxStream<Self::Output> {
+        use crate::ui::session::DesktopMessage as DM;
+        use iced_futures::futures::stream::StreamExt;
+
+        let (event, poll, ms) = match self.kind {
+            AppTickKind::Event(ev, ms) => (Some(ev), None, ms),
+            AppTickKind::Poll(f, ms) => (None, Some(f), ms),
+        };
+        let app = self.app;
+        let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
+        let mut interval = tokio::time::interval_at(start, std::time::Duration::from_millis(ms));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        iced_futures::futures::stream::unfold(
+            (interval, app, event, poll),
+            move |(mut iv, app, event, poll)| async move {
+                let _ = iv.tick().await;
+                let msg = if let Some(ev) = event {
+                    Some(IcedMessage {
+                        widget: String::new(),
+                        event: ev.to_string(),
+                        input_value: None,
+                    })
+                } else {
+                    poll.expect("AppTickRecipe: poll or event must be set")()
+                };
+                // 空拍（无事件）以 `Some(None)` 项表示、由流级 filter_map 剔除
+                // —— 若直接 yield `None`，unfold 语义是**流终止**（Poll 变体
+                // 首个空轮询即死，459 实测 MCP 动作全丢）。
+                Some((msg.map(|m| DM::App(app, m)), (iv, app, event, poll)))
+            },
+        )
+        .filter_map(|msg| async move { msg })
+        .boxed()
+    }
+}
+
+fn app_tick(
+    app: crate::ui::session::AppId,
+    event: &'static str,
+    interval_ms: u64,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Event(event, interval_ms),
+    })
+}
+
+/// Periodic tick subscription for hot-reload file watching (per-App).
 ///
-/// Emits an `IcedMessage` with the `HOT_RELOAD_EVENT` sentinel every 500ms.
-/// The update handler checks `check_file_changed()` and reloads if the
-/// source file was modified.
-fn hot_reload_tick() -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(500)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: HOT_RELOAD_EVENT.to_string(),
-        input_value: None,
-    })
+/// Emits `DM::App(app, HOT_RELOAD_EVENT)` every 500ms. The update handler
+/// checks `check_file_changed()` and reloads if the source file was modified.
+fn hot_reload_tick(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    app_tick(app, HOT_RELOAD_EVENT, 500)
 }
 
-/// Periodic tick subscription for widget .Tick handlers.
-fn widget_tick(interval_ms: u32) -> iced::Subscription<IcedMessage> {
-    iced::time::every(std::time::Duration::from_millis(interval_ms as u64)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: TICK_EVENT.to_string(),
-        input_value: None,
-    })
+/// Periodic tick subscription for widget .Tick handlers (per-App).
+fn widget_tick(
+    app: crate::ui::session::AppId,
+    interval_ms: u32,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    app_tick(app, TICK_EVENT, interval_ms as u64)
 }
 
-/// Global key bindings storage for keyboard subscription (Plan 275).
-/// Updated by `keyboard_subscription()` each time the subscription is evaluated.
-static KEYBOARD_BINDINGS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, String>>> =
-    std::sync::OnceLock::new();
+/// Plan 459 T5：panic 注入探针（验收 §4-2 的"示例内置开关"）。
+/// `AUTOUI_PANIC_PROBE=1` 时，demo 的 `.panic_probe` 事件在 update 边界
+/// panic（落 catch_unwind），并记录肇事 App —— 其后的 view 出口仅对该
+/// App 持续 panic（落崩溃页元素），另一窗口不受影响。非 demo 运行零影响。
+static PANIC_PROBE_CRASHED_APP: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn panic_probe_enabled() -> bool {
+    std::env::var("AUTOUI_PANIC_PROBE").map(|v| v == "1").unwrap_or(false)
+}
+
+/// 探针事件匹配：DSL handler 名风格不一（`PanicProbe` / `panic_probe`），
+/// 规范化为去下划线小写后比较。
+fn is_panic_probe_event(event: &str) -> bool {
+    event.to_ascii_lowercase().replace('_', "") == "panicprobe"
+}
 
 /// Global MCP action channel receiver (Plan 278).
 /// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
@@ -4747,31 +4879,40 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
         .into()
 }
 
-/// Subscription that polls the MCP action channel and injects IcedMessages
-/// into the event loop. This allows MCP actions to truly simulate user operations
-/// (with animations, state updates, and full UI refresh).
-fn mcp_action_subscription() -> iced::Subscription<IcedMessage> {
-    // Poll at 60fps to minimize latency for MCP-injected actions
-    iced::time::every(std::time::Duration::from_millis(16)).filter_map(|_| {
-        let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
-        let mut lock = guard.lock().unwrap();
-        if let Some(rx) = lock.as_mut() {
-            // Drain all pending actions (non-blocking). VM mode uses Event
-            // addressing, which maps onto IcedMessage. Path mode is a no-op
-            // here (rust mode uses devtools_subscription/devtools_update).
-            match rx.try_recv() {
-                Ok(action) => match action.target {
-                    crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
-                        Some(IcedMessage { widget, event, input_value: action.value })
-                    }
-                    crate::ui::mcp_server::ActionTarget::Path { .. } => None,
-                },
-                Err(std::sync::mpsc::TryRecvError::Empty) => None,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
-            }
-        } else {
-            None
+/// MCP action channel 轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
+fn poll_mcp_actions() -> Option<IcedMessage> {
+    let guard = MCP_ACTION_RX.get_or_init(|| std::sync::Mutex::new(None));
+
+    let mut lock = guard.lock().unwrap();
+    if let Some(rx) = lock.as_mut() {
+        // Drain all pending actions (non-blocking). VM mode uses Event
+        // addressing, which maps onto IcedMessage. Path mode is a no-op
+        // here (rust mode uses devtools_subscription/devtools_update).
+        match rx.try_recv() {
+            Ok(action) => match action.target {
+                crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
+                    Some(IcedMessage { widget, event, input_value: action.value })
+                }
+                crate::ui::mcp_server::ActionTarget::Path { .. } => None,
+            },
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
         }
+    } else {
+        None
+    }
+}
+
+/// Subscription that polls the MCP action channel and injects messages into
+/// the event loop. This allows MCP actions to truly simulate user operations
+/// (with animations, state updates, and full UI refresh). 459：打标归 primary
+/// App（T8 单 App 语义）。Poll at 60fps to minimize latency.
+fn mcp_action_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_mcp_actions, 16),
     })
 }
 
@@ -4792,16 +4933,14 @@ static CONFIG_GEN_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 static CONFIG_MTIME_POLL: std::sync::Mutex<Option<std::time::Instant>> =
     std::sync::Mutex::new(None);
 
-fn mcp_heartbeat_subscription() -> iced::Subscription<IcedMessage> {
+fn mcp_heartbeat_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     // 2026-08-22:200ms → 2s。心跳消息会触发一次完整 update→view 重建
     // (ash-gui 基线视图 ~80ms/次,大 Code 块时 >200ms)—— 200ms 节拍令
     // 消息队列常态积压,事件饿死(命令提交丢失、CPU 满转;实测空闲就
     // ~40% CPU)。快照 2s 内新鲜即可,真实交互路径本就会触发重建。
-    iced::time::every(std::time::Duration::from_millis(2000)).map(|_| IcedMessage {
-        widget: String::new(),
-        event: "__mcp_heartbeat".to_string(),
-        input_value: None,
-    })
+    app_tick(app, "__mcp_heartbeat", 2000)
 }
 
 // =====================================================================
@@ -5600,27 +5739,37 @@ fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
 
 /// Subscription:poll `SHELL_EVENT_RX`,把每条 shell 事件转成 IcedMessage,
 /// 由 update 闭包派发到 store 的 RunOutput/RunResult handler(无参,读预置字段)。
-fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
+/// Shell SSE 事件通道轮询（AppTickRecipe::Poll 用；读进程级静态通道）。
+fn poll_shell_events() -> Option<IcedMessage> {
+    let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
+    let mut lock = guard.lock().unwrap();
+    let Some(rx) = lock.as_mut() else {
+        return None;
+    };
+    // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
+    match rx.try_recv() {
+        Ok(ev) => Some(IcedMessage {
+            widget: "ShellStore".to_string(),
+            event: ev.event,
+            input_value: Some(ev.payload_json),
+        }),
+        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+    }
+}
+
+fn shell_event_subscription(
+    app: crate::ui::session::AppId,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     // Plan 062(2026-08-23):间隔必须 ≠ mcp_action_subscription 的 16ms ——
     // 两个 `time::every` 同 duration 的订阅在 iced 的订阅表里 hash 相同,
     // 后注册者被去重、消息静默丢失(merged 模式 job_started/job_done 不到
-    // 达 update 的根因;实测 16→17ms 后事件恢复投递)。
-    iced::time::every(std::time::Duration::from_millis(17)).filter_map(|_| {
-        let guard = SHELL_EVENT_RX.get_or_init(|| std::sync::Mutex::new(None));
-        let mut lock = guard.lock().unwrap();
-        let Some(rx) = lock.as_mut() else {
-            return None;
-        };
-        // 取一条(非阻塞)。一次 update 处理一条事件,避免 handler 重入。
-        match rx.try_recv() {
-            Ok(ev) => Some(IcedMessage {
-                widget: "ShellStore".to_string(),
-                event: ev.event,
-                input_value: Some(ev.payload_json),
-            }),
-            Err(std::sync::mpsc::TryRecvError::Empty) => None,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
-        }
+    // 达 update 的根因;实测 16→17ms 后事件恢复投递)。459：Recipe 身份含
+    // 轮询函数指针，天然互不去重，间隔差异不再是正确性前提（保留 17ms
+    // 减少同拍抖动）。
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::Poll(poll_shell_events, 17),
     })
 }
 
@@ -5629,136 +5778,156 @@ fn shell_event_subscription() -> iced::Subscription<IcedMessage> {
 /// Uses `listen_with` (fn pointer) with a global `Arc<Mutex<HashMap>>` for bindings.
 /// The subscription closure updates the global ref each time it's evaluated,
 /// and the fn pointer reads from it.
-fn keyboard_subscription(key_bindings: &HashMap<String, String>) -> iced::Subscription<IcedMessage> {
-    // Update global bindings reference
-    {
-        let guard = KEYBOARD_BINDINGS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
-        let mut lock = guard.lock().unwrap();
-        *lock = key_bindings.clone();
+/// Plan 459：per-App 键盘订阅 —— bindings 随闭包按 App 捕获（`listen_with`
+/// 只收 fn 指针不可捕获，故走 `iced_futures::subscription::filter_map`），
+/// `my_window` 过滤保证按键只路由到发生窗口的 App（多窗口互不串扰；
+/// 单窗口行为与原实现等价）。订阅身份含 (AppId, window)，多 App 互不去重。
+fn keyboard_subscription(
+    app: crate::ui::session::AppId,
+    my_window: iced::window::Id,
+    key_bindings: HashMap<String, String>,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopMessage as DM;
+    iced_futures::subscription::filter_map(
+        ("autoui-keyboard", app, my_window),
+        move |event: iced_futures::subscription::Event| {
+            let iced_futures::subscription::Event::Interaction { window, event, status } = event
+            else {
+                return None;
+            };
+            if window != my_window {
+                return None;
+            }
+            keyboard_event_message(event, status, &key_bindings).map(move |m| DM::App(app, m))
+        },
+    )
+}
+
+/// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
+/// F12 toggle、Captured 过滤、bindings 查找、shifted 兜底、Tab 聚焦）。
+fn keyboard_event_message(
+    event: iced::Event,
+    status: iced::event::Status,
+    key_bindings: &HashMap<String, String>,
+) -> Option<IcedMessage> {
+    // F12 → DevTools toggle (always active, even when a widget has focus)
+    // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
+    // when a text input is focused (Plan 371: F12 reliability fix).
+    if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
+        if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+            return Some(IcedMessage {
+                widget: String::new(),
+                event: DEBUG_TOGGLE_EVENT.to_string(),
+                input_value: None,
+            });
+        }
     }
 
-    iced::event::listen_with(|event, status, _window_id| {
-        // F12 → DevTools toggle (always active, even when a widget has focus)
-        // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
-        // when a text input is focused (Plan 371: F12 reliability fix).
-        if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
-            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
-                return Some(IcedMessage {
-                    widget: String::new(),
-                    event: DEBUG_TOGGLE_EVENT.to_string(),
-                    input_value: None,
-                });
-            }
-        }
+    // Skip events already consumed by a focused widget (e.g., text input)
+    if matches!(status, iced::event::Status::Captured) {
+        return None;
+    }
 
-        // Skip events already consumed by a focused widget (e.g., text input)
-        if matches!(status, iced::event::Status::Captured) {
-            return None;
-        }
+    match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key, modifiers, ..
+        }) => {
 
-        match event {
-            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key, modifiers, ..
-            }) => {
-
-                // Build key string for lookup
-                let key_str = match &key {
-                    // Named keys
-                    iced::keyboard::Key::Named(named) => {
-                        let name = match named {
-                            iced::keyboard::key::Named::Enter => "Enter",
-                            iced::keyboard::key::Named::Escape => "Escape",
-                            iced::keyboard::key::Named::Backspace => "Backspace",
-                            iced::keyboard::key::Named::Tab => "Tab",
-                            iced::keyboard::key::Named::Space => " ",
-                            iced::keyboard::key::Named::ArrowUp => "ArrowUp",
-                            iced::keyboard::key::Named::ArrowDown => "ArrowDown",
-                            iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
-                            iced::keyboard::key::Named::ArrowRight => "ArrowRight",
-                            iced::keyboard::key::Named::Delete => "Delete",
-                            iced::keyboard::key::Named::Home => "Home",
-                            iced::keyboard::key::Named::End => "End",
-                            _ => return None,
-                        };
-                        name.to_string()
-                    }
-                    // Character keys — raw character from OS, no case normalization.
-                    // "s" and "S" are different keys. "S" = Shift+s. "Ctrl+S" = Ctrl+Shift+s.
-                    // With Ctrl/Alt held, prepend modifier prefix to the raw character.
-                    iced::keyboard::Key::Character(c) => {
-                        if modifiers.control() || modifiers.alt() {
-                            let mut prefix = String::new();
-                            if modifiers.control() { prefix.push_str("Ctrl+"); }
-                            if modifiers.alt() { prefix.push_str("Alt+"); }
-                            format!("{}{}", prefix, c)
-                        } else {
-                            c.to_string()
-                        }
-                    }
-                    _ => return None,
-                };
-
-                // Look up handler from global bindings
-                let bindings_guard = KEYBOARD_BINDINGS.get().unwrap();
-                let bindings = bindings_guard.lock().unwrap();
-                // Platform compatibility: on Windows, Shift+= returns Character("=") with
-                // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
-                // shifted symbol so bind { "+" -> ... } works on all platforms.
-                // Only applies when no Ctrl/Alt modifier is held.
-                let handler: Option<String> = bindings
-                    .get(&key_str)
-                    .cloned()
-                    .or_else(|| {
-                        if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
-                            let shifted_map: &[(&str, &str)] = &[
-                                ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
-                            ];
-                            shifted_map.iter()
-                                .find(|(from, _)| *from == key_str.as_str())
-                                .and_then(|(_, to)| bindings.get(*to))
-                                .cloned()
-                        } else {
-                            None
-                        }
-                    })
-                    // Plan 418 P2-4: config-declared shortcuts (auto-edit.at via
-                    // pac.at `ui_config:`) are a fallback layer UNDER the
-                    // DSL-declared bindings — same key lookup form ("Ctrl+n").
-                    .or_else(|| {
-                        crate::ui::action_config::action_config()
-                            .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
-                    });
-                if let Some(handler) = handler {
-                    // Strip the leading dot from ".Digit1" → "Digit1"
-                    let event_name = if let Some(stripped) = handler.strip_prefix('.') {
-                        stripped.to_string()
-                    } else {
-                        handler.clone()
+            // Build key string for lookup
+            let key_str = match &key {
+                // Named keys
+                iced::keyboard::Key::Named(named) => {
+                    let name = match named {
+                        iced::keyboard::key::Named::Enter => "Enter",
+                        iced::keyboard::key::Named::Escape => "Escape",
+                        iced::keyboard::key::Named::Backspace => "Backspace",
+                        iced::keyboard::key::Named::Tab => "Tab",
+                        iced::keyboard::key::Named::Space => " ",
+                        iced::keyboard::key::Named::ArrowUp => "ArrowUp",
+                        iced::keyboard::key::Named::ArrowDown => "ArrowDown",
+                        iced::keyboard::key::Named::ArrowLeft => "ArrowLeft",
+                        iced::keyboard::key::Named::ArrowRight => "ArrowRight",
+                        iced::keyboard::key::Named::Delete => "Delete",
+                        iced::keyboard::key::Named::Home => "Home",
+                        iced::keyboard::key::Named::End => "End",
+                        _ => return None,
                     };
-                    Some(IcedMessage {
-                        widget: String::new(),
-                        event: event_name,
-                        input_value: None,
-                    })
-                } else if key_str == "Tab" {
-                    // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
-                    // reaching here were NOT captured by a focused widget —
-                    // when the prompt editor holds focus, its Tab (tab-completion
-                    // via onkeydown.tab) is Captured and never gets here. So an
-                    // un-captured Tab means nothing is focused (or a non-input
-                    // has focus): focus the prompt editor so the caret shows.
-                    Some(IcedMessage {
-                        widget: String::new(),
-                        event: FOCUS_PROMPT_EVENT.to_string(),
-                        input_value: None,
-                    })
-                } else {
-                    None
+                    name.to_string()
                 }
+                // Character keys — raw character from OS, no case normalization.
+                // "s" and "S" are different keys. "S" = Shift+s. "Ctrl+S" = Ctrl+Shift+s.
+                // With Ctrl/Alt held, prepend modifier prefix to the raw character.
+                iced::keyboard::Key::Character(c) => {
+                    if modifiers.control() || modifiers.alt() {
+                        let mut prefix = String::new();
+                        if modifiers.control() { prefix.push_str("Ctrl+"); }
+                        if modifiers.alt() { prefix.push_str("Alt+"); }
+                        format!("{}{}", prefix, c)
+                    } else {
+                        c.to_string()
+                    }
+                }
+                _ => return None,
+            };
+
+            // Look up handler from this App's captured bindings
+            // Platform compatibility: on Windows, Shift+= returns Character("=") with
+            // SHIFT modifier (NOT Character("+")). This fallback maps the base key to its
+            // shifted symbol so bind { "+" -> ... } works on all platforms.
+            // Only applies when no Ctrl/Alt modifier is held.
+            let handler: Option<String> = key_bindings
+                .get(&key_str)
+                .cloned()
+                .or_else(|| {
+                    if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
+                        let shifted_map: &[(&str, &str)] = &[
+                            ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
+                        ];
+                        shifted_map.iter()
+                            .find(|(from, _)| *from == key_str.as_str())
+                            .and_then(|(_, to)| key_bindings.get(*to))
+                            .cloned()
+                    } else {
+                        None
+                    }
+                })
+                // Plan 418 P2-4: config-declared shortcuts (auto-edit.at via
+                // pac.at `ui_config:`) are a fallback layer UNDER the
+                // DSL-declared bindings — same key lookup form ("Ctrl+n").
+                .or_else(|| {
+                    crate::ui::action_config::action_config()
+                        .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
+                });
+            if let Some(handler) = handler {
+                // Strip the leading dot from ".Digit1" → "Digit1"
+                let event_name = if let Some(stripped) = handler.strip_prefix('.') {
+                    stripped.to_string()
+                } else {
+                    handler.clone()
+                };
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: event_name,
+                    input_value: None,
+                })
+            } else if key_str == "Tab" {
+                // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
+                // reaching here were NOT captured by a focused widget —
+                // when the prompt editor holds focus, its Tab (tab-completion
+                // via onkeydown.tab) is Captured and never gets here. So an
+                // un-captured Tab means nothing is focused (or a non-input
+                // has focus): focus the prompt editor so the caret shows.
+                Some(IcedMessage {
+                    widget: String::new(),
+                    event: FOCUS_PROMPT_EVENT.to_string(),
+                    input_value: None,
+                })
+            } else {
+                None
             }
-            _ => None,
         }
-    })
+        _ => None,
+    }
 }
 
 const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
@@ -5790,7 +5959,7 @@ const DEBUG_INSPECTOR_SECTION_PREFIX: &str = "__inspector_section_";
 /// DevTools panel top-level mode (Plan 309 续篇: 元素树与检视已统一为同屏
 /// 分屏，不再是互斥 tab；控制台仍为独立整宽模式).
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum DevToolsTab {
+pub(crate) enum DevToolsTab {
     /// 同屏分屏：左元素树 (VTree) | 右检视 (面包屑 + 子标签).
     Inspect,
     /// 控制台占满整宽.
@@ -5801,7 +5970,7 @@ enum DevToolsTab {
 /// Box/Computed/Properties into the single 检视 tab). AutoUI and Source remain
 /// standalone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum InspectorSubTab {
+pub(crate) enum InspectorSubTab {
     /// Combined: a single scrollable column of collapsible Box / Computed /
     /// Properties sections (Chrome-DevTools style).
     Inspect,
@@ -5841,171 +6010,22 @@ impl InspectorSubTab {
 /// Collapsed state of the three sections inside the 检视 sub-tab (Plan 307
 /// 续篇 IV). All default expanded (`false`).
 #[derive(Default, Clone, Copy)]
-struct InspectorSections {
+pub(crate) struct InspectorSections {
     box_collapsed: bool,
     computed_collapsed: bool,
     props_collapsed: bool,
 }
 
-/// Wrapper holding `DynamicComponent` as iced's application state.
-struct DynamicState {
-    component: DynamicComponent,
-    /// Tracks current input text values: event_name -> current_text.
-    /// Used to keep text inputs editable between re-renders.
-    input_values: std::collections::HashMap<String, String>,
-    /// Dynamic todo items, managed outside VM state since __todos is not
-    /// declared in the .at model and thus cannot use read_state/write_state.
-    todos: Vec<TodoItem>,
-    /// Debug mode: toggled by F12 (Auto-UI DevTools). When on, hovering highlights containers.
-    debug_mode: bool,
-    /// ID of the currently hovered element (for debug highlight).
-    hovered_widget: std::cell::RefCell<Option<String>>,
-    /// Accumulated hover candidates during a single frame. Resolved in view() by picking
-    /// the smallest counter (= deepest element). Cleared after each view() call.
-    pending_hovers: std::cell::RefCell<Vec<(usize, String)>>,
-    /// Style metadata per debug element, collected during rendering.
-    debug_element_styles: std::cell::RefCell<std::collections::HashMap<String, DebugElementInfo>>,
-    /// ID of the currently selected element (click-to-select, orange highlight).
-    selected_widget: std::cell::RefCell<Option<String>>,
-    /// Currently selected VNode (Plan 307 Task 14) — keys the live VTree tree
-    /// selection so later tasks (breadcrumb, tabs, hover) can use a stable id.
-    selected_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
-    /// Currently hovered VNode (Plan 307 Task 14). Stubbed: set alongside click
-    /// selection for now (no separate mouse_area hover wiring).
-    hovered_vnode: std::cell::RefCell<Option<crate::ui::vnode::VNodeId>>,
-    /// Inspect-element cursor mode (Plan 309 Phase 5): a Chrome-style picker
-    /// sub-state of debug mode that gates the always-on hover overlay. When
-    /// on, hovering highlights elements; a click selects + auto-exits.
-    inspect_mode: std::cell::RefCell<bool>,
-    /// Latest keyboard modifiers (Plan 309 续篇 II). Refreshed from the
-    /// `LAST_MODIFIERS` thread-local at each view build; Alt gates the inspect
-    /// picker between plain (inspect) and Alt (native) interaction.
-    current_modifiers: std::cell::RefCell<iced::keyboard::Modifiers>,
-    /// Inspector right-panel inner sub-tab (Plan 307 续篇 IV): 检视 (combined
-    /// Box/Computed/Properties) / AutoUI / 源码.
-    inspector_subtab: std::cell::RefCell<InspectorSubTab>,
-    /// Collapsed state of the three sections inside the 检视 sub-tab
-    /// (Plan 307 续篇 IV). All expanded by default.
-    inspector_sections: std::cell::RefCell<InspectorSections>,
-    /// Whether the DevTools panel is open on the right side.
-    devtools_open: std::cell::RefCell<bool>,
-    /// Currently active DevTools tab.
-    devtools_tab: std::cell::RefCell<DevToolsTab>,
-    /// Captured console output from print() calls.
-    console_output: std::cell::RefCell<Vec<String>>,
-    /// Cached source code of the current .at file.
-    source_code: std::cell::RefCell<Option<String>>,
-    /// Byte offset of each line start (computed when source is loaded).
-    source_line_offsets: std::cell::RefCell<Vec<usize>>,
-    /// Shared console buffer — written to by print() via UI_CONSOLE_BUFFER.
-    console_buffer: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    /// Component tree for DevTools Elements tab, rebuilt each frame.
-    component_tree: std::cell::RefCell<Option<DebugTreeNode>>,
-    /// Live VTree snapshot rebuilt each frame for DevTools inspection (Plan 307).
-    live_vtree: std::cell::RefCell<Option<crate::ui::vnode::VTree>>,
-    /// Live BuildProbe snapshot rebuilt each frame for DevTools inspection
-    /// (Plan 307 Task 9). Holds per-path AutoUI data (state bindings etc.)
-    /// captured during the tracked view build. Consumed by later tasks.
-    live_probe: std::cell::RefCell<Option<crate::ui::debug::BuildProbe>>,
-    /// Live `InspectorCache` snapshot rebuilt each frame for DevTools inspection
-    /// (Plan 307 Task 12). Holds the `VNodeId <-> iced widget id` map captured
-    /// during the per-frame render. `None` on non-debug frames. Consumed by
-    /// later tasks (13 = bounds backfill, 15-16 = inspector panels).
-    live_cache: std::cell::RefCell<Option<crate::ui::debug::InspectorCache>>,
-    /// Currently editing element ID (Inspector edit mode).
-    editing_element: std::cell::RefCell<Option<String>>,
-    /// Key for the TEXTAREA_CONTENTS storage used by the inline source editor.
-    edit_textarea_key: std::cell::RefCell<Option<String>>,
-    /// Source span of the element being edited.
-    edit_span: std::cell::RefCell<Option<(usize, usize)>>,
-    /// Error message from last edit apply attempt (if any).
-    edit_error: std::cell::RefCell<Option<String>>,
-    /// Cached span lookup from view_template. Rebuilt only after hot-reload.
-    /// Key: (kind, occurrence_index) → span (offset, len).
-    /// Whether the AbstractView needs rebuilding (set in update, cleared in dynamic_view).
-    /// When false, cached_converted_view is reused instead of rebuilding from AuraNode.
-    view_dirty: std::cell::RefCell<bool>,
-    /// Cached converted view tree (AbstractView<IcedMessage>), reused when view_dirty is false.
-    /// Saves O(n) AuraViewBuilder::build + convert_view_messages on idle frames.
-    cached_converted_view: std::cell::RefCell<Option<crate::ui::view::View<IcedMessage>>>,
-    /// Cached DebugIdMap from last view_with_debug() call, reused on non-dirty frames.
-    cached_debug_id_map: std::cell::RefCell<Option<crate::ui::debug_id_map::DebugIdMap>>,
-    /// Cached rendered iced Element (result of render_dynamic_view).
-    /// Reused when view_dirty is false via take(), preserving iced widget interaction state.
-    cached_rendered: std::cell::RefCell<Option<iced::Element<'static, IcedMessage>>>,
-    /// Pre-computed syntax highlighting: per-line list of (text, color) spans.
-    /// Built once on source load/changed, reused every frame to avoid re-tokenization.
-    cached_highlighted: std::cell::RefCell<Option<Vec<Vec<(String, iced::Color)>>>>,
-    /// Fixed ID for the DevTools inspector scrollable, used for programmatic scroll.
-    inspector_scroll_id: iced::widget::Id,
-    /// Fixed ID for the DevTools elements-tree (left pane) scrollable.
-    elements_scroll_id: iced::widget::Id,
-    /// Plan 047:固定 ID for the primary text_input(ash-gui PromptBar),
-    /// 用于 view 重建后恢复焦点(iced 的 on_submit 只在 focused 时触发)。
-    prompt_input_id: iced::widget::Id,
-    /// Plan 047:Set by PromptBar.Run handler; update 结尾据此返回 focus Task。
-    needs_prompt_refocus: std::cell::Cell<bool>,
-    /// Plan 057 (ash-gui 输入焦点):最后被编辑的 textarea 的 action key
-    /// ("{widget}_{event}")。needs_prompt_refocus 置位时,update 结尾聚焦
-    /// Id::new("textarea_{key}") —— 比旧 prompt_input_id 更准(textarea 分支
-    /// 从未挂过该 Id,Plan 047 的恢复只对单行 input 生效)。
-    last_textarea_key: std::cell::RefCell<Option<String>>,
-    /// Plan 057 (ash-gui 默认聚焦):启动后首个 update 聚焦命令输入框(一次)。
-    initial_focus_done: std::cell::Cell<bool>,
-    /// Plan 049:BlockList scrollable 的固定 Id,用于 snap_to_end 自动滚到底部。
-    blocklist_scroll_id: iced::widget::Id,
-    /// Plan 049:Set when blocks 数量增加;update 结尾返回 snap_to_end Task。
-    needs_scroll_to_bottom: std::cell::Cell<bool>,
-    /// Plan 049:追踪上次 blocks 数量,检测新增 block。
-    last_block_count: std::cell::Cell<usize>,
-    /// Split ratio (0..1) for the inner Tree|Inspector divider within the
-    /// DevTools panel — `ratio` is the Tree pane's share of the panel width.
-    /// Dragged via the inner divider (Plan 309 续篇).
-    inspector_split_ratio: std::cell::RefCell<f32>,
-    /// True while the inner (Tree|Inspector) divider is being dragged; drives
-    /// ratio updates from the window-level `__mouse_moved` subscription.
-    dragging_inner_divider: std::cell::RefCell<bool>,
-    /// When set, the next update() cycle will scroll to center this line index.
-    pending_scroll_to_center: std::cell::RefCell<Option<usize>>,
-    /// When true, next update() will trigger a layout bounds collection Task (Plan 282).
-    needs_bounds: std::cell::RefCell<bool>,
-    /// Pending screenshot request from MCP thread (Plan 285).
-    screenshot_request: std::cell::RefCell<Option<crate::ui::mcp_server::ScreenshotRequest>>,
-    /// DevTools panel width in pixels. Default ~40% of window width.
-    devtools_panel_width: std::cell::RefCell<f32>,
-    /// Current window size, updated on resize events.
-    window_size: std::cell::RefCell<iced::Size>,
-    /// True when user is dragging the DevTools divider handle.
-    dragging_divider: std::cell::RefCell<bool>,
-    /// Plan 402: pending window resize (difficulty change triggers snug fit).
-    pending_window_resize: std::cell::RefCell<Option<iced::Size>>,
-    /// Plan 402: one-shot flag — resize window to model's window_width/height
-    /// on first update (lets each example declare its own initial window size).
-    initial_resize_done: std::cell::Cell<bool>,
-    /// Line number (0-based) → list of AuraNodeIds whose spans cover that line.
-    /// Built from span_map + source code for source-click → component-highlight.
-    line_to_aura_ids: std::cell::RefCell<std::collections::HashMap<usize, Vec<AuraNodeId>>>,
-    /// Cache of AuraNodeId → debug element ID, copied from DebugRenderCtx after each render.
-    /// Used to resolve source-click → selected_widget without holding a reference to DebugRenderCtx.
-    aura_to_id_cache: std::cell::RefCell<std::collections::HashMap<AuraNodeId, String>>,
-    /// MCP shared state handle — updated after each render for AI agent inspection (Plan 278).
-    mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
-    /// Plan 412 续(toast VM 化):当前显示中的 toast 堆叠。handler 里的
-    /// toast()/toast.success() 调用被重写为 __toast state 写入,update 消费
-    /// 后 push 到这里并渲染窗口级悬浮层;每条 toast 各有一个一次性到期
-    /// Task(__toast_expire 携带 id),到期移除后其余上移补位(标准 toast
-    /// 库堆叠行为:新 toast 总在最下方,同锚点侧纵向生长)。上限 8 条,
-    /// 超出时丢弃最旧。
-    toasts: std::cell::RefCell<Vec<ToastReq>>,
-    /// 下一条 toast 的自增 id(expire Task 按 id 寻址)。
-    toast_next_id: std::cell::Cell<u64>,
-}
+/// Plan 453 T4c：`DynamicState` 已溶解——运行循环 State 即
+/// `crate::ui::session::DesktopSession`（R3 退化桌面）。原平铺成员的读写经
+/// `DesktopSession::split_mut/split_ref` 拆借视图承接（session.rs，字段名
+/// 与旧 DynamicState 一一对应）；窗口登记由 `windows` 注册表接管。
 
 /// Plan 412 续(toast VM 化):一条悬浮通知。kind(default/success/error/
 /// warning/info)决定配色,position 支持 top-/bottom-/center × -left/-center/
 /// -right(加正中 "center"),duration_ms 到期自动消失(默认 4000ms,
 /// 与 vue-sonner 对齐)。
-struct ToastReq {
+pub(crate) struct ToastReq {
     id: u64,
     kind: String,
     msg: String,
@@ -6017,8 +6037,9 @@ struct ToastReq {
 /// Run a `DynamicComponent` in an iced window.
 ///
 /// This is the main entry point for running AURA widgets with iced. It:
-/// 1. Wraps the `DynamicComponent` in a `DynamicState`
-/// 2. Uses `iced::application()` (which does NOT require `State: Default`)
+/// 1. Wraps the `DynamicComponent` in a `DesktopSession`（T4c 会话翻转，
+///    R3 退化桌面；平铺读写经 split_mut/split_ref 拆借视图承接）
+/// 2. Uses `iced::daemon()` — one OS window per App, per-window view routing
 /// 3. Converts `View<DynamicMessage>` to `View<IcedMessage>` before rendering
 /// 4. Maps iced messages back to `DynamicMessage` on update
 ///
@@ -6030,6 +6051,41 @@ struct ToastReq {
 ///
 /// `AppResult<String>` - Ok("UI closed") on normal exit, Err on failure.
 pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
+    run_dynamic_iced_multi(vec![component])
+}
+
+/// Plan 459：多 App 多窗口入口 —— 一个 `DesktopSession` 服务 N 个 OS 窗口，
+/// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
+/// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
+pub fn run_dynamic_iced_multi(mut components: Vec<DynamicComponent>) -> AppResult<String> {
+    if components.is_empty() {
+        // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
+        return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
+    }
+
+    // Plan 458: seed DECLARED dark_mode / accent_color state vars once from
+    // the `auto run` env defaults (AUTO_UI_THEME / AUTO_UI_ACCENT, resolved
+    // by the CLI/pac.at layer), so the CLI value stays the INITIAL value even
+    // for apps that declare the vars (their model init would otherwise win
+    // over the thread-local default from frame one). Only vars that already
+    // exist are seeded (read_state Ok = declared); runtime clicks mutate the
+    // vars afterwards and take precedence as usual. Plan 459：逐 App 播种。
+    for component in &mut components {
+        if let Ok(t) = std::env::var("AUTO_UI_THEME") {
+            if crate::ui::style::theme::THEME_PREFS.contains(&t.as_str())
+                && component.read_state("dark_mode").is_ok()
+            {
+                let _ = component.write_state("dark_mode", auto_val::Value::Bool(t == "dark"));
+            }
+        }
+        if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
+            if crate::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
+                && component.read_state("accent_color").is_ok()
+            {
+                let _ = component.write_state("accent_color", auto_val::Value::str(&a));
+            }
+        }
+    }
 
 /// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
 /// Plan 371 Task 20: process a captured screenshot according to the requested
@@ -6142,7 +6198,12 @@ fn compare_pngs(
     }
 }
 
-    let widget_name = component.widget_name().to_string();
+    // Plan 459：MCP 以首个（primary）App 命名——MCP 寻址维持 single-app 语义
+    // （453 T8 冻结），快照/操作永远指向 primary App。
+    let widget_name = components
+        .first()
+        .map(|c| c.widget_name().to_string())
+        .unwrap_or_default();
 
     // Start MCP UI server in background thread (Plan 278)
     let (mcp_shared, mcp_action_rx) = crate::ui::mcp_server::start_mcp_server(
@@ -6159,8 +6220,10 @@ fn compare_pngs(
     // Plan 414 §5.4: seed the in-app console so the panel has content the
     // moment it opens (print() output joins these lines live).
     crate::vm::ui_console::ui_console_push(&format!(
-        "[boot] AutoUI VM app \"{}\" started",
-        widget_name
+        "[boot] AutoUI VM app \"{}\" started ({} app window{})",
+        widget_name,
+        components.len(),
+        if components.len() > 1 { "s" } else { "" }
     ));
     crate::vm::ui_console::ui_console_push(&format!(
         "[boot] MCP automation on 127.0.0.1:{}",
@@ -6177,84 +6240,51 @@ fn compare_pngs(
     }
 
     // BootFn requires Fn (not FnOnce), so we use RefCell<Option<...>> to
-    // allow the boot closure to extract the component on the first (and only)
+    // allow the boot closure to extract the components on the first (and only)
     // call while still satisfying the Fn bound.
-    let init = std::cell::RefCell::new(Some(component));
+    let init = std::cell::RefCell::new(Some(components));
 
-    let boot = move || -> DynamicState {
-        let mut comp = init.borrow_mut().take()
+    let boot = move || -> (crate::ui::session::DesktopSession,
+                           iced::Task<crate::ui::session::DesktopMessage>) {
+        let comps = init.borrow_mut().take()
             .expect("boot should only be called once");
-        // Sync initial renderer-side todos (empty by default — the app's
-        // .Init handler or user actions populate todos).
-        // Audit B12(a): do NOT write active_count/todo_count = 0 here — this
-        // boot runs AFTER fire_init and used to clobber the app's real counts
-        // (013 Init correctly computed active_count=3; the GUI then showed 0).
-        // The legacy todo arms recompute counts from their own list on user
-        // actions, so no boot-time seeding is needed.
-        let initial_todos: Vec<TodoItem> = Vec::new();
-        DynamicState {
-            component: comp,
-            input_values: std::collections::HashMap::new(),
-            todos: initial_todos,
-            debug_mode: false,
-            hovered_widget: std::cell::RefCell::new(None),
-            pending_hovers: std::cell::RefCell::new(Vec::new()),
-            debug_element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
-            selected_widget: std::cell::RefCell::new(None),
-            selected_vnode: std::cell::RefCell::new(None),
-            hovered_vnode: std::cell::RefCell::new(None),
-            inspect_mode: std::cell::RefCell::new(false),
-            current_modifiers: std::cell::RefCell::new(iced::keyboard::Modifiers::empty()),
-            inspector_subtab: std::cell::RefCell::new(InspectorSubTab::default()),
-            inspector_sections: std::cell::RefCell::new(InspectorSections::default()),
-            devtools_open: std::cell::RefCell::new(false),
-            devtools_tab: std::cell::RefCell::new(DevToolsTab::Inspect),
-            console_output: std::cell::RefCell::new(Vec::new()),
-            source_code: std::cell::RefCell::new(None),
-            source_line_offsets: std::cell::RefCell::new(Vec::new()),
-            console_buffer: crate::libs::builtin::enable_ui_console(),
-            component_tree: std::cell::RefCell::new(None),
-            live_vtree: std::cell::RefCell::new(None),
-            live_probe: std::cell::RefCell::new(None),
-            live_cache: std::cell::RefCell::new(None),
-            editing_element: std::cell::RefCell::new(None),
-            edit_textarea_key: std::cell::RefCell::new(None),
-            edit_span: std::cell::RefCell::new(None),
-            edit_error: std::cell::RefCell::new(None),
-            view_dirty: std::cell::RefCell::new(true),
-            cached_converted_view: std::cell::RefCell::new(None),
-            cached_debug_id_map: std::cell::RefCell::new(None),
-            cached_rendered: std::cell::RefCell::new(None),
-            cached_highlighted: std::cell::RefCell::new(None),
-            inspector_scroll_id: iced::widget::Id::unique(),
-            elements_scroll_id: iced::widget::Id::unique(),
-            prompt_input_id: iced::widget::Id::new("prompt_input"),
-            last_textarea_key: std::cell::RefCell::new(None),
-            initial_focus_done: std::cell::Cell::new(false),
-            needs_prompt_refocus: std::cell::Cell::new(false),
-            blocklist_scroll_id: iced::widget::Id::new("blocklist_scroll"),
-            needs_scroll_to_bottom: std::cell::Cell::new(false),
-            last_block_count: std::cell::Cell::new(0),
-            // Plan 309 续篇: Tree | Inspector 同屏分屏，树占 38%；分隔栏可拖拽。
-            inspector_split_ratio: std::cell::RefCell::new(0.38),
-            dragging_inner_divider: std::cell::RefCell::new(false),
-            pending_scroll_to_center: std::cell::RefCell::new(None),
-            needs_bounds: std::cell::RefCell::new(false),
-            screenshot_request: std::cell::RefCell::new(None),
-            devtools_panel_width: std::cell::RefCell::new(600.0),
-            window_size: std::cell::RefCell::new(startup_window_size()),
-            dragging_divider: std::cell::RefCell::new(false),
-            pending_window_resize: std::cell::RefCell::new(None),
-            initial_resize_done: std::cell::Cell::new(false),
-            line_to_aura_ids: std::cell::RefCell::new(std::collections::HashMap::new()),
-            aura_to_id_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
-            mcp_shared: Some(mcp_shared.clone()),
-            toasts: std::cell::RefCell::new(Vec::new()),
-            toast_next_id: std::cell::Cell::new(1),
+        // R3 退化桌面 + 459 多窗口：逐 App 分配 AppId、开 OS 窗口并同步登记
+        // （`window::open` 同步返回 window::Id，无需等 Opened 事件反推归属）。
+        let mut session = crate::ui::session::DesktopSession::empty(Some(mcp_shared.clone()));
+        let mut open_tasks = Vec::new();
+        for (i, comp) in comps.into_iter().enumerate() {
+            let app_id = session.allocate_app(comp);
+            let size = startup_window_size();
+            // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
+            let position = iced::window::Position::Specific(iced::Point::new(
+                80.0 + 48.0 * i as f32,
+                80.0 + 48.0 * i as f32,
+            ));
+            let (win_id, open_task) = iced::window::open(iced::window::Settings {
+                size,
+                position,
+                ..Default::default()
+            });
+            session.register_window(win_id, app_id, size);
+            open_tasks.push(open_task);
         }
+        // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
+        // Opened 事件臂作幂等兜底。
+        (session, iced::Task::batch(open_tasks).discard())
     };
 
-    let update = |state: &mut DynamicState, msg: IcedMessage| -> iced::Task<IcedMessage> {
+    let update_inner = |state: &mut crate::ui::session::DesktopSession,
+                        app_id: crate::ui::session::AppId,
+                        msg: IcedMessage|
+         -> iced::Task<IcedMessage> {
+        // T4c：拆借视图承接旧 DynamicState 平铺命名（施工图 §2 路线甲）。
+        // Plan 459：按消息归属 App 拆借（窗口级字段随该 App 的窗口条目）；
+        // 缺 App/窗口仅在会话被外部破坏时发生，空转返回。
+        let mut state = match state.split_mut(app_id) {
+            Some(v) => v,
+            None => return iced::Task::none(),
+        };
+        // （T3c 登记头已上移至 T4 外壳层 —— 见 `update` 的 DM::App 分支）
         if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
             eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
         }
@@ -6278,10 +6308,10 @@ fn compare_pngs(
                     let parts: Vec<&str> = rec.split('\u{1f}').collect();
                     if parts.len() == 4 && !parts[1].is_empty() {
                         let duration = parts[3].parse::<u64>().unwrap_or(4000).max(200);
-                        let id = state.toast_next_id.get();
-                        state.toast_next_id.set(id + 1);
+                        let id = state.desktop.toast_next_id.get();
+                        state.desktop.toast_next_id.set(id + 1);
                         {
-                            let mut toasts = state.toasts.borrow_mut();
+                            let mut toasts = state.desktop.toasts.borrow_mut();
                             if toasts.len() >= 8 {
                                 toasts.remove(0);
                             }
@@ -6302,7 +6332,7 @@ fn compare_pngs(
                 // 置 view_dirty,否则 toast 永远不显示;到期路径在 __toast_tick
                 // 里置。
                 if pushed_any {
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
             }
         }
@@ -6332,7 +6362,7 @@ fn compare_pngs(
                 .unwrap_or("/")
                 .to_string();
             state.component.set_route(&path);
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
 
@@ -6347,7 +6377,7 @@ fn compare_pngs(
             // 只有真的过期了才置 view_dirty,配合 dynamic_view 的 Element
             // 缓存,稳态零重建、不扰动滚动/焦点。
             let now = std::time::Instant::now();
-            let mut toasts = state.toasts.borrow_mut();
+            let mut toasts = state.desktop.toasts.borrow_mut();
             let before = toasts.len();
             toasts.retain(|t| {
                 now.duration_since(t.shown_at).as_millis() < t.duration_ms as u128
@@ -6355,7 +6385,7 @@ fn compare_pngs(
             let removed = toasts.len() != before;
             drop(toasts);
             if removed {
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.view_dirty.borrow_mut() = true;
             }
             return iced::Task::none();
         }
@@ -6368,7 +6398,7 @@ fn compare_pngs(
         if msg.event == "__timer_tick" {
             let fired = state.component.poll_timers();
             if fired > 0 {
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.view_dirty.borrow_mut() = true;
             }
             return iced::Task::none();
         }
@@ -6385,7 +6415,7 @@ fn compare_pngs(
                         let st = state.component.preview_states.entry(id.to_string()).or_default();
                         st.show = !st.show;
                         st.copied = false;
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
                 }
@@ -6398,7 +6428,7 @@ fn compare_pngs(
                             crate::ui::dynamic::PreviewTab::Auto
                         };
                         st.copied = false;
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
                 }
@@ -6418,7 +6448,7 @@ fn compare_pngs(
                         }
                         let st = state.component.preview_states.entry(id.to_string()).or_default();
                         st.copied = true;
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
                 }
@@ -6433,7 +6463,7 @@ fn compare_pngs(
             let gen = crate::ui::action_config::config_generation();
             let last_seen = CONFIG_GEN_SEEN.swap(gen, std::sync::atomic::Ordering::SeqCst);
             if gen != last_seen {
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.view_dirty.borrow_mut() = true;
             }
             if msg.event == "__mcp_heartbeat" {
                 let now = std::time::Instant::now();
@@ -6444,7 +6474,7 @@ fn compare_pngs(
                 if due {
                     *CONFIG_MTIME_POLL.lock().unwrap() = Some(now);
                     if crate::ui::action_config::check_action_config_changed() {
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
             }
@@ -6467,13 +6497,13 @@ fn compare_pngs(
                                 Some(id.to_string())
                             };
                         crate::ui::action_config::set_menubar_open(next);
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
                 }
                 "__menubar_close" => {
                     crate::ui::action_config::set_menubar_open(None);
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                     return iced::Task::none();
                 }
                 _ => {}
@@ -6494,13 +6524,13 @@ fn compare_pngs(
                                 Some(slot.to_string())
                             };
                         crate::ui::action_config::set_popover_open(next);
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                     return iced::Task::none();
                 }
                 "__popover_close" => {
                     crate::ui::action_config::set_popover_open(None);
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                     return iced::Task::none();
                 }
                 _ => {}
@@ -6509,14 +6539,14 @@ fn compare_pngs(
             && !msg.event.starts_with("__")
         {
             crate::ui::action_config::set_menubar_open(None);
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
         }
 
         // Pick up pending screenshot request from MCP thread at every update (Plan 285).
-        if state.screenshot_request.borrow().is_none() {
-            if let Some(ref mcp_handle) = state.mcp_shared {
+        if state.app.devtools.screenshot_request.borrow().is_none() {
+            if let Some(ref mcp_handle) = state.desktop.mcp_shared {
                 if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
-                    *state.screenshot_request.borrow_mut() = Some(req);
+                    *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
                 }
             }
         }
@@ -6531,10 +6561,10 @@ fn compare_pngs(
                     // it), so this borrow is the debug gate. Padding/margin
                     // refinement is deferred until `raw_class` is populated by a
                     // later task.
-                    if let Some(cache) = state.live_cache.borrow_mut().as_mut() {
+                    if let Some(cache) = state.app.live_cache.borrow_mut().as_mut() {
                         crate::ui::debug::backfill_bounds(cache, &bounds_map);
                     }
-                    if let Some(ref mcp) = state.mcp_shared {
+                    if let Some(ref mcp) = state.desktop.mcp_shared {
                         let mut handle = mcp.lock().unwrap();
                         handle.set_layout_bounds(bounds_map);
                         // Plan 314 Task 5: push a serializable snapshot of the
@@ -6547,8 +6577,8 @@ fn compare_pngs(
                         // (Task 4); if the panel/MCP just started they may still be
                         // None on the very first round-trip, in which case we skip
                         // (the tool degrades to "UI not yet rendered").
-                        let vtree_borrow = state.live_vtree.borrow();
-                        let cache_borrow = state.live_cache.borrow();
+                        let vtree_borrow = state.app.live_vtree.borrow();
+                        let cache_borrow = state.app.live_cache.borrow();
                         if let (Some(vtree), Some(cache)) =
                             (vtree_borrow.as_ref(), cache_borrow.as_ref())
                         {
@@ -6566,7 +6596,7 @@ fn compare_pngs(
         }
 
         // Handle screenshot request from MCP thread (Plan 285 / Task 20)
-        if let Some(req) = state.screenshot_request.borrow_mut().take() {
+        if let Some(req) = state.app.devtools.screenshot_request.borrow_mut().take() {
             // Plan 411: guard zero-size windows (minimized / pre-layout). iced's
             // offscreen source_texture panics on a 0-dimension wgpu surface
             // ("Dimension X is zero") — reply an error instead of crashing.
@@ -6616,29 +6646,29 @@ fn compare_pngs(
         // an early-return path, so the flag was always `false` by the time it was
         // read below — i.e. dead. It has been removed; view rebuilds now hinge
         // solely on `component.is_dirty()`. If a UI-only change ever needs to
-        // force a rebuild, set `*state.view_dirty.borrow_mut() = true;` directly
+        // force a rebuild, set `*state.app.view_dirty.borrow_mut() = true;` directly
         // (the field that flag used to feed) on the relevant path.
 
         // Handle debug mode messages
         if msg.event == DEBUG_TOGGLE_EVENT {
-            state.debug_mode = !state.debug_mode;
-            if state.debug_mode {
+            state.app.devtools.debug_mode = !state.app.devtools.debug_mode;
+            if state.app.devtools.debug_mode {
                 // Opening: show DevTools panel
-                *state.devtools_open.borrow_mut() = true;
+                *state.app.devtools.devtools_open.borrow_mut() = true;
             } else {
                 // Closing: clear all debug state
-                *state.hovered_widget.borrow_mut() = None;
-                *state.selected_widget.borrow_mut() = None;
-                *state.selected_vnode.borrow_mut() = None;
-                *state.hovered_vnode.borrow_mut() = None;
+                *state.app.devtools.hovered_widget.borrow_mut() = None;
+                *state.app.devtools.selected_widget.borrow_mut() = None;
+                *state.app.devtools.selected_vnode.borrow_mut() = None;
+                *state.app.devtools.hovered_vnode.borrow_mut() = None;
                 // Plan 309 Phase 5: inspect cursor mode is a sub-state of debug
                 // mode — reset it whenever F12 turns debug off.
-                *state.inspect_mode.borrow_mut() = false;
-                *state.devtools_open.borrow_mut() = false;
-                state.pending_hovers.borrow_mut().clear();
+                *state.app.devtools.inspect_mode.borrow_mut() = false;
+                *state.app.devtools.devtools_open.borrow_mut() = false;
+                state.app.devtools.pending_hovers.borrow_mut().clear();
             }
             // Plan 371: force view rebuild so the DevTools panel appears/disappears.
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
 
@@ -6650,8 +6680,7 @@ fn compare_pngs(
         if msg.event == FOCUS_PROMPT_EVENT {
             // Last-edited textarea → any rendered textarea (first launch,
             // before any edit) → single-line input fallback.
-            let id = state
-                .last_textarea_key
+            let id = state.app.devtools.last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
@@ -6663,46 +6692,45 @@ fn compare_pngs(
                         .next()
                         .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
                 })
-                .unwrap_or_else(|| state.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             return iced::widget::operation::focus(id);
         }
         // Handle click-to-select: set selected element and open DevTools panel
         if let Some(id) = msg.event.strip_prefix(DEBUG_SELECT_PREFIX) {
             let id = id.to_string();
             // Toggle: if clicking the same element, deselect
-            if state.selected_widget.borrow().as_deref() == Some(id.as_str()) {
-                *state.selected_widget.borrow_mut() = None;
+            if state.app.devtools.selected_widget.borrow().as_deref() == Some(id.as_str()) {
+                *state.app.devtools.selected_widget.borrow_mut() = None;
                 // Plan 307 Task 17: keep selected_vnode in sync with selected_widget.
                 // The live_cache holds the last frame's VNodeId <-> iced id map,
                 // which is valid for selection (selection persists across frames).
-                *state.selected_vnode.borrow_mut() = None;
+                *state.app.devtools.selected_vnode.borrow_mut() = None;
                 // Don't close panel on deselect — user may want to inspect other tabs
             } else {
-                *state.selected_widget.borrow_mut() = Some(id.clone());
+                *state.app.devtools.selected_widget.borrow_mut() = Some(id.clone());
                 // Plan 307 Task 17: derive selected_vnode from the aura_N string
                 // via the last frame's live_cache so the left-tree highlight and
                 // inspector panels (keyed on VNodeId) follow the click.
-                let derived_vnode = state
-                    .live_cache
+                let derived_vnode = state.app.live_cache
                     .borrow()
                     .as_ref()
                     .and_then(|c| c.iced_to_vnode(&id));
-                *state.selected_vnode.borrow_mut() = derived_vnode;
-                *state.devtools_open.borrow_mut() = true;
-                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                *state.app.devtools.selected_vnode.borrow_mut() = derived_vnode;
+                *state.app.devtools.devtools_open.borrow_mut() = true;
+                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                 // Cache source code (shared loader; Plan 309 Phase 4.1).
-                ensure_source_loaded(state);
+                ensure_source_loaded(state.as_ref_view());
                 // Plan 309 续篇: 检视光标改为常驻 —— 点击后不再自动退出，便于连点
                 // 多个画布元素；由 🔍 按钮手动关闭。
             }
             // Try to set pending scroll from element's span
-            if let Some(ref sel_id) = *state.selected_widget.borrow() {
-                let styles = state.debug_element_styles.borrow();
+            if let Some(ref sel_id) = *state.app.devtools.selected_widget.borrow() {
+                let styles = state.app.devtools.debug_element_styles.borrow();
                 if let Some(elem_info) = styles.get(sel_id) {
                     if let Some((offset, _len)) = elem_info.span {
-                        let line_offsets = state.source_line_offsets.borrow();
+                        let line_offsets = state.app.source_line_offsets.borrow();
                         let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
-                        *state.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
                     }
                 }
             }
@@ -6712,46 +6740,43 @@ fn compare_pngs(
         if let Some(id_str) = msg.event.strip_prefix(DEBUG_SELECT_VNODE_PREFIX) {
             if let Ok(raw) = id_str.parse::<u64>() {
                 let vnode_id = crate::ui::vnode::VNodeId::new(raw);
-                if *state.selected_vnode.borrow() == Some(vnode_id) {
+                if *state.app.devtools.selected_vnode.borrow() == Some(vnode_id) {
                     // Toggle off on re-click (matches the old id-string behavior).
-                    *state.selected_vnode.borrow_mut() = None;
+                    *state.app.devtools.selected_vnode.borrow_mut() = None;
                     // Plan 307 Task 17: keep selected_widget in sync so the
                     // wrap_debug overlay (keyed on the aura_N string) clears too.
-                    *state.selected_widget.borrow_mut() = None;
+                    *state.app.devtools.selected_widget.borrow_mut() = None;
                 } else {
-                    *state.selected_vnode.borrow_mut() = Some(vnode_id);
+                    *state.app.devtools.selected_vnode.borrow_mut() = Some(vnode_id);
                     // Plan 307 Task 17: mirror selected_widget from the live_cache
                     // reverse map (VNodeId -> aura_N) so the wrap_debug orange
                     // overlay and source-click paths stay consistent with the
                     // tree selection. If no mapping exists yet (e.g. first frame),
                     // leave selected_widget as-is — the overlay simply won't draw
                     // until the next frame builds the map.
-                    let mirrored_widget = state
-                        .live_cache
+                    let mirrored_widget = state.app.live_cache
                         .borrow()
                         .as_ref()
                         .and_then(|c| c.vnode_to_iced(vnode_id))
                         .cloned();
                     if let Some(aura) = mirrored_widget {
-                        *state.selected_widget.borrow_mut() = Some(aura);
+                        *state.app.devtools.selected_widget.borrow_mut() = Some(aura);
                     }
-                    *state.devtools_open.borrow_mut() = true;
-                    *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                    *state.app.devtools.devtools_open.borrow_mut() = true;
+                    *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                     // Plan 309 Phase 4: load source so the Source sub-tab can
                     // render the listing on a tree-click (no element click yet).
-                    ensure_source_loaded(state);
+                    ensure_source_loaded(state.as_ref_view());
                     // Plan 309 Phase 4.3: auto-scroll the Source tab to the
                     // selected node's line (the deferred-scroll path at the
                     // bottom of update() only covers selected_widget spans).
-                    let scroll_line = state
-                        .live_vtree
+                    let scroll_line = state.app.live_vtree
                         .borrow()
                         .as_ref()
                         .and_then(|tree| {
                             tree.get(vnode_id).and_then(|node| {
                                 node.source_span.map(|span| {
-                                    state
-                                        .source_line_offsets
+                                    state.app.source_line_offsets
                                         .borrow()
                                         .partition_point(|&p| p <= span.offset)
                                         .saturating_sub(1)
@@ -6759,7 +6784,7 @@ fn compare_pngs(
                             })
                         });
                     if let Some(line) = scroll_line {
-                        *state.pending_scroll_to_center.borrow_mut() = Some(line);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
                     }
                 }
             }
@@ -6768,14 +6793,14 @@ fn compare_pngs(
         // Switch the inspector right-panel inner sub-tab (Plan 307 Task 15).
         if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SUBTAB_PREFIX) {
             if let Some(sub) = InspectorSubTab::from_message_tail(tail) {
-                *state.inspector_subtab.borrow_mut() = sub;
+                *state.app.devtools.inspector_subtab.borrow_mut() = sub;
             }
             return iced::Task::none();
         }
         // Toggle a collapsible section inside the 检视 sub-tab (Plan 307 续篇 IV).
         if let Some(tail) = msg.event.strip_prefix(DEBUG_INSPECTOR_SECTION_PREFIX) {
             {
-                let mut s = state.inspector_sections.borrow_mut();
+                let mut s = state.app.devtools.inspector_sections.borrow_mut();
                 match tail {
                     "box" => s.box_collapsed = !s.box_collapsed,
                     "computed" => s.computed_collapsed = !s.computed_collapsed,
@@ -6789,8 +6814,8 @@ fn compare_pngs(
             // Plan 309 续篇: 元素树与检视已合并为同屏分屏 (Inspect 模式)，
             // 不再有独立的元素/检视 tab；__tab_console 在控制台与分屏间切换。
             "__tab_console" => {
-                let cur = *state.devtools_tab.borrow();
-                *state.devtools_tab.borrow_mut() = if cur == DevToolsTab::Console {
+                let cur = *state.app.devtools.devtools_tab.borrow();
+                *state.app.devtools.devtools_tab.borrow_mut() = if cur == DevToolsTab::Console {
                     DevToolsTab::Inspect
                 } else {
                     DevToolsTab::Console
@@ -6798,62 +6823,61 @@ fn compare_pngs(
                 return iced::Task::none();
             }
             "__close_devtools" => {
-                *state.devtools_open.borrow_mut() = false;
+                *state.app.devtools.devtools_open.borrow_mut() = false;
                 // Plan 309 Phase 5: closing the panel also exits the picker so
                 // no always-on overlay renders behind a closed panel.
-                *state.inspect_mode.borrow_mut() = false;
+                *state.app.devtools.inspect_mode.borrow_mut() = false;
                 return iced::Task::none();
             }
             // Plan 309 Phase 5.1: Chrome-style inspect-element cursor toggle.
             // Turning it on also forces debug mode + opens the panel so the
             // picker is usable from a single click; turning off just clears it.
             "__toggle_inspect" => {
-                let new_mode = !*state.inspect_mode.borrow();
-                *state.inspect_mode.borrow_mut() = new_mode;
+                let new_mode = !*state.app.devtools.inspect_mode.borrow();
+                *state.app.devtools.inspect_mode.borrow_mut() = new_mode;
                 if new_mode {
-                    state.debug_mode = true;
-                    *state.devtools_open.borrow_mut() = true;
+                    state.app.devtools.debug_mode = true;
+                    *state.app.devtools.devtools_open.borrow_mut() = true;
                 }
                 return iced::Task::none();
             }
             // Plan 309 续篇: 内层 Tree|Inspector 分隔栏按下 → 进入拖拽。实际
             // 位移由窗口级 `__mouse_moved` 订阅用绝对坐标计算（同外层分隔栏）。
             "__inner_divider_press" => {
-                *state.dragging_inner_divider.borrow_mut() = true;
+                *state.app.devtools.dragging_inner_divider.borrow_mut() = true;
                 return iced::Task::none();
             }
             // Source line click in Inspector: reverse-lookup AuraNodeId → debug element ID
             e if e.starts_with(SRC_CLICK_PREFIX) => {
                 if let Ok(line) = e[SRC_CLICK_PREFIX.len()..].parse::<usize>() {
-                    let line_map = state.line_to_aura_ids.borrow();
+                    let line_map = state.app.line_to_aura_ids.borrow();
                     if let Some(aura_ids) = line_map.get(&line) {
                         // Pick the last (innermost) AuraNodeId for this line
                         if let Some(&aura_id) = aura_ids.last() {
-                            let cache = state.aura_to_id_cache.borrow();
+                            let cache = state.app.aura_to_id_cache.borrow();
                             if let Some(debug_id) = cache.get(&aura_id).cloned() {
                                 drop(cache);
                                 drop(line_map);
-                                *state.selected_widget.borrow_mut() = Some(debug_id.clone());
+                                *state.app.devtools.selected_widget.borrow_mut() = Some(debug_id.clone());
                                 // Plan 309 Phase 4.2: derive selected_vnode from
                                 // the aura_N id so the right panel (keyed on
                                 // VNodeId) shows the clicked line's full data —
                                 // without this the panel stayed empty after a
                                 // source-line click.
-                                let derived_vnode = state
-                                    .live_cache
+                                let derived_vnode = state.app.live_cache
                                     .borrow()
                                     .as_ref()
                                     .and_then(|c| c.iced_to_vnode(&debug_id));
-                                *state.selected_vnode.borrow_mut() = derived_vnode;
-                                *state.devtools_open.borrow_mut() = true;
-                                *state.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                                *state.app.devtools.selected_vnode.borrow_mut() = derived_vnode;
+                                *state.app.devtools.devtools_open.borrow_mut() = true;
+                                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
                                 // Scroll source to the selected element's span
-                                let styles = state.debug_element_styles.borrow();
+                                let styles = state.app.devtools.debug_element_styles.borrow();
                                 if let Some(elem_info) = styles.get(&debug_id) {
                                     if let Some((offset, _len)) = elem_info.span {
-                                        let line_offsets = state.source_line_offsets.borrow();
+                                        let line_offsets = state.app.source_line_offsets.borrow();
                                         let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
-                                        *state.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
                                     }
                                 }
                             }
@@ -6879,20 +6903,20 @@ fn compare_pngs(
                         );
                         // Clamp panel width to not exceed 80% of window
                         let max_pw = w * 0.8;
-                        let pw = *state.devtools_panel_width.borrow();
+                        let pw = *state.app.devtools.devtools_panel_width.borrow();
                         if pw > max_pw {
-                            *state.devtools_panel_width.borrow_mut() = max_pw;
+                            *state.app.devtools.devtools_panel_width.borrow_mut() = max_pw;
                         }
                         // Plan 409 §10 续 11: resize 时重建 view,让响应式布局
                         // (如 category grid 列数)随窗口宽度更新。
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
                 return iced::Task::none();
             }
             // Divider drag: press
             "__divider_press" => {
-                *state.dragging_divider.borrow_mut() = true;
+                *state.app.devtools.dragging_divider.borrow_mut() = true;
                 return iced::Task::none();
             }
             // Mouse move: update panel width when dragging the OUTER divider, or
@@ -6905,47 +6929,53 @@ fn compare_pngs(
                         let y: f32 = it.next().unwrap_or("0").parse().unwrap_or(0.0);
                         (x, y)
                     };
-                    if *state.dragging_divider.borrow() {
+                    if *state.app.devtools.dragging_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
                         let new_width = (win_w - mx).max(200.0).min(win_w - 200.0);
-                        *state.devtools_panel_width.borrow_mut() = new_width;
+                        *state.app.devtools.devtools_panel_width.borrow_mut() = new_width;
                     }
                     // Plan 309 续篇: inner Tree|Inspector divider. The panel's
                     // left edge sits at win_w - panel_width; the divider's share
                     // of the panel is (mx - panel_left) / panel_width.
-                    if *state.dragging_inner_divider.borrow() {
+                    if *state.app.devtools.dragging_inner_divider.borrow() {
                         let win_w = state.window_size.borrow().width;
-                        let panel_w = (*state.devtools_panel_width.borrow()).max(1.0);
+                        let panel_w = (*state.app.devtools.devtools_panel_width.borrow()).max(1.0);
                         let panel_left = win_w - panel_w;
                         let ratio = ((mx - panel_left) / panel_w).clamp(0.1, 0.9);
-                        *state.inspector_split_ratio.borrow_mut() = ratio;
+                        *state.app.devtools.inspector_split_ratio.borrow_mut() = ratio;
                     }
                 }
                 return iced::Task::none();
             }
             // Mouse release: stop dragging either divider
             "__mouse_released" => {
-                if *state.dragging_divider.borrow() {
-                    *state.dragging_divider.borrow_mut() = false;
+                if *state.app.devtools.dragging_divider.borrow() {
+                    *state.app.devtools.dragging_divider.borrow_mut() = false;
                 }
-                if *state.dragging_inner_divider.borrow() {
-                    *state.dragging_inner_divider.borrow_mut() = false;
+                if *state.app.devtools.dragging_inner_divider.borrow() {
+                    *state.app.devtools.dragging_inner_divider.borrow_mut() = false;
                 }
                 return iced::Task::none();
             }
             // Plan 309 续篇 II: keyboard modifiers changed (e.g. Alt press/
-            // release). The actual value is stashed in LAST_MODIFIERS by the
-            // subscription and copied into state at view build; this just forces
-            // a rebuild so widgets flip interactive↔non-interactive.
+            // release). T4c 裁定 M1：载荷携带 modifiers.bits()，此处写回
+            // DesktopState.current_modifiers（唯一事实源，view 直读）；
+            // 返回 Task::none() 仅强制重建，让 widget 翻转交互/非交互态。
             "__modifiers_changed" => {
+                if let Some(bits) =
+                    msg.input_value.as_deref().and_then(|s| s.parse::<u32>().ok())
+                {
+                    *state.desktop.current_modifiers.borrow_mut() =
+                        iced::keyboard::Modifiers::from_bits_truncate(bits);
+                }
                 return iced::Task::none();
             }
             // --- Edit mode messages (E4) ---
             e if e == DEBUG_EDIT_CANCEL => {
-                *state.editing_element.borrow_mut() = None;
-                *state.edit_textarea_key.borrow_mut() = None;
-                *state.edit_span.borrow_mut() = None;
-                *state.edit_error.borrow_mut() = None;
+                *state.app.devtools.editing_element.borrow_mut() = None;
+                *state.app.devtools.edit_textarea_key.borrow_mut() = None;
+                *state.app.devtools.edit_span.borrow_mut() = None;
+                *state.app.devtools.edit_error.borrow_mut() = None;
                 return iced::Task::none();
             }
             e if e == DEBUG_EDIT_APPLY => {
@@ -6957,20 +6987,20 @@ fn compare_pngs(
         // Enter edit mode: __edit_{id}
         if let Some(id) = msg.event.strip_prefix(DEBUG_EDIT_PREFIX) {
             let id = id.to_string();
-            let styles = state.debug_element_styles.borrow();
+            let styles = state.app.devtools.debug_element_styles.borrow();
             if let Some(info) = styles.get(&id) {
                 if let Some(span) = info.span {
-                    *state.editing_element.borrow_mut() = Some(id.clone());
-                    *state.edit_span.borrow_mut() = Some(span);
-                    *state.edit_error.borrow_mut() = None;
+                    *state.app.devtools.editing_element.borrow_mut() = Some(id.clone());
+                    *state.app.devtools.edit_span.borrow_mut() = Some(span);
+                    *state.app.devtools.edit_error.borrow_mut() = None;
                     // Initialize textarea with source code fragment
-                    if let Some(ref code) = *state.source_code.borrow() {
+                    if let Some(ref code) = *state.app.source_code.borrow() {
                         let (offset, len) = span;
                         if offset + len <= code.len() {
                             let fragment = &code[offset..offset + len];
                             let key = format!("__edit_{}", id);
                             get_textarea_content(&key, fragment);
-                            *state.edit_textarea_key.borrow_mut() = Some(key);
+                            *state.app.devtools.edit_textarea_key.borrow_mut() = Some(key);
                         }
                     }
                 }
@@ -6981,7 +7011,7 @@ fn compare_pngs(
         if let Some(payload) = msg.event.strip_prefix(DEBUG_HOVER_MOVE) {
             if let Some((counter_str, id)) = payload.split_once(':') {
                 if let Ok(counter) = counter_str.parse::<usize>() {
-                    state.pending_hovers.borrow_mut().push((counter, id.to_string()));
+                    state.app.devtools.pending_hovers.borrow_mut().push((counter, id.to_string()));
                 }
             }
             return iced::Task::none();
@@ -7002,11 +7032,11 @@ fn compare_pngs(
                                 offsets.push(i + 1);
                             }
                         }
-                        *state.source_line_offsets.borrow_mut() = offsets;
-                        *state.source_code.borrow_mut() = Some(code.clone());
+                        *state.app.source_line_offsets.borrow_mut() = offsets;
+                        *state.app.source_code.borrow_mut() = Some(code.clone());
                         // Rebuild syntax highlight cache after hot-reload
-                        if let Some(ref c) = *state.source_code.borrow() {
-                            *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                        if let Some(ref c) = *state.app.source_code.borrow() {
+                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
                         }
 
                         let session = CompilerSession::ui();
@@ -7017,13 +7047,13 @@ fn compare_pngs(
                                     if let Ok(widget) = crate::aura::extract_widget_from_decl(decl) {
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
-                                        *state.cached_converted_view.borrow_mut() = None;
-                                        *state.cached_debug_id_map.borrow_mut() = None;
+                                        *state.app.cached_converted_view.borrow_mut() = None;
+                                        *state.app.devtools.cached_debug_id_map.borrow_mut() = None;
                                         // Rebuild line → AuraNodeId index after hot-reload
                                         {
                                             let span_map = state.component.span_map().clone();
-                                            if let Some(ref src) = *state.source_code.borrow() {
-                                                *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                                            if let Some(ref src) = *state.app.source_code.borrow() {
+                                                *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
                                             }
                                         }
                                     }
@@ -7063,7 +7093,7 @@ fn compare_pngs(
                     let _ = state.component.write_state("ms_display", auto_val::Value::str(&ms_display));
                 }
             }
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
             return iced::Task::none();
         }
 
@@ -7130,7 +7160,7 @@ fn compare_pngs(
                                 "job_list",
                                 auto_val::Value::Array(auto_val::Array { values: jobs_vec }),
                             );
-                            *state.view_dirty.borrow_mut() = true;
+                            *state.app.view_dirty.borrow_mut() = true;
                         }
                         "ai_turn" | "ai_chunk" | "ai_tool_call" | "ai_tool_result" | "chat_cleared" => {
                             // Plan 063 T4/T5:AI chat 抽屉事件族。chat_events 由
@@ -7145,7 +7175,7 @@ fn compare_pngs(
                                     "chat_events",
                                     auto_val::Value::Array(auto_val::Array { values: Vec::new() }),
                                 );
-                                *state.view_dirty.borrow_mut() = true;
+                                *state.app.view_dirty.borrow_mut() = true;
                                 return iced::Task::none();
                             }
                             let turn = v.get("turn").and_then(|x| x.as_i64()).unwrap_or(0);
@@ -7161,9 +7191,9 @@ fn compare_pngs(
                                     u.set("kind", auto_val::Value::str("user"));
                                     u.set("text", auto_val::Value::str(&q));
                                     lines.push(auto_val::Value::Obj(u));
-                                    append_chat_events(&mut state.component, lines);
-                                    set_block_turn(&mut state.component, bid, turn);
-                                    *state.view_dirty.borrow_mut() = true;
+                                    append_chat_events(&mut *state.component, lines);
+                                    set_block_turn(&mut *state.component, bid, turn);
+                                    *state.app.view_dirty.borrow_mut() = true;
                                     return iced::Task::none();
                                 }
                                 "ai_chunk" => {
@@ -7186,10 +7216,10 @@ fn compare_pngs(
                             ev.set("kind", auto_val::Value::str(&kind));
                             ev.set("text", auto_val::Value::str(&text));
                             append_chat_events(
-                                &mut state.component,
+                                &mut *state.component,
                                 vec![auto_val::Value::Obj(ev)],
                             );
-                            *state.view_dirty.borrow_mut() = true;
+                            *state.app.view_dirty.borrow_mut() = true;
                         }
                         _ => {
                             // command_output:{block_id,chunk};command_result:{block_id,cwd,status,output,duration_ms,exit_code}
@@ -7197,7 +7227,7 @@ fn compare_pngs(
                             // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
                             // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
                             let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
-                            let updated = update_block_in_state(&mut state.component, bid, &msg.event, &v);
+                            let updated = update_block_in_state(&mut *state.component, bid, &msg.event, &v);
                             if msg.event == "command_result" {
                                 // Plan 057:cwd 回写(cd 后标题栏/新块 cwd 立即反映)
                                 // + 触发 RefreshContext 刷 git 标签(HTTP 模式下
@@ -7212,7 +7242,7 @@ fn compare_pngs(
                                 state.component.on_with_input_for("ShellStore", "RefreshContext", None);
                             }
                             if updated {
-                                *state.view_dirty.borrow_mut() = true;
+                                *state.app.view_dirty.borrow_mut() = true;
                             }
                         }
                     }
@@ -7233,7 +7263,7 @@ fn compare_pngs(
 
         // If this message carries input text, track it and update state
         if let Some(text) = &msg.input_value {
-            state.input_values.insert(event_name.clone(), text.clone());
+            state.app.input_values.insert(event_name.clone(), text.clone());
         }
 
         // Plan 057 (ash-gui 输入焦点): an edit message that originates from a
@@ -7249,8 +7279,8 @@ fn compare_pngs(
                 if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                     eprintln!("[FOCUS-DBG] edit detected, key={}", ta_key);
                 }
-                state.needs_prompt_refocus.set(true);
-                *state.last_textarea_key.borrow_mut() = Some(ta_key.clone());
+                state.app.devtools.needs_prompt_refocus.set(true);
+                *state.app.devtools.last_textarea_key.borrow_mut() = Some(ta_key.clone());
                 // Plan 057 续(行内编辑):编辑器自身消息 → echo:下一次该 key
                 // 的 content 重建保持光标偏移;顺带把光标字节偏移写入组件
                 // cursor_pos(仅当 .at 声明了该字段),供补全按真实光标计算。
@@ -7278,8 +7308,8 @@ fn compare_pngs(
                 if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                     eprintln!("[FOCUS-DBG] keydown handler {}, refocus editor {}", ta_key, editor_key);
                 }
-                state.needs_prompt_refocus.set(true);
-                *state.last_textarea_key.borrow_mut() = Some(editor_key.clone());
+                state.app.devtools.needs_prompt_refocus.set(true);
+                *state.app.devtools.last_textarea_key.borrow_mut() = Some(editor_key.clone());
                 // 外部变更(历史/补全/ghost 接受/模式切换):清 echo,
                 // 重建时光标回到 value 末尾。
                 TEXTAREA_ECHO_KEYS.lock().unwrap().remove(&editor_key);
@@ -7347,7 +7377,7 @@ fn compare_pngs(
                             }
                         }
                         let _ = state.component.write_state_vec("blocks", blocks);
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
             }
@@ -7376,7 +7406,7 @@ fn compare_pngs(
                         }
                     }
                     let _ = state.component.write_state_vec("blocks", blocks);
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
             }
         }
@@ -7444,7 +7474,7 @@ fn compare_pngs(
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
             if let Some(p) = args.first().map(|v| v.as_str()).filter(|p| !p.is_empty()) {
                 state.component.on_with_input_for("ShellStore", "OpenPath", Some(p.to_string()));
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.view_dirty.borrow_mut() = true;
             }
         }
         if widget_name == "BlockItem" && event_name.starts_with("ToggleCollapse") {
@@ -7470,7 +7500,7 @@ fn compare_pngs(
                     }
                     if flipped {
                         let _ = state.component.write_state_vec("blocks", blocks);
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
             }
@@ -7507,7 +7537,7 @@ fn compare_pngs(
                 }
                 if flipped {
                     let _ = state.component.write_state_vec("blocks", blocks);
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
             }
         }
@@ -7526,7 +7556,7 @@ fn compare_pngs(
                     });
                     if blocks.len() != before {
                         let _ = state.component.write_state_vec("blocks", blocks);
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
             }
@@ -7577,7 +7607,7 @@ fn compare_pngs(
                         }
                         let _ = state.component.write_state_vec("blocks", blocks);
                     }
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
             }
         }
@@ -7589,9 +7619,9 @@ fn compare_pngs(
             if let Some(name) = args.first().map(|v| v.as_str()).filter(|n| !n.is_empty()) {
                 let _ = state.component.write_state("injected_command", auto_val::Value::str(name));
                 let _ = state.component.write_state("input", auto_val::Value::str(name));
-                *state.cached_rendered.borrow_mut() = None;
-                *state.cached_converted_view.borrow_mut() = None;
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.cached_rendered.borrow_mut() = None;
+                *state.app.cached_converted_view.borrow_mut() = None;
+                *state.app.view_dirty.borrow_mut() = true;
             }
         }
 
@@ -7617,7 +7647,7 @@ fn compare_pngs(
         // now show the computed value, not stale user-typed text.
         // Keep only the triggering event's entry (the user just typed it).
         let input_map = state.component.input_state_map().clone();
-        state.input_values.retain(|ev_name, _| {
+        state.app.input_values.retain(|ev_name, _| {
             ev_name == &event_name
                 || !input_map.contains_key(ev_name)
         });
@@ -7721,7 +7751,7 @@ fn compare_pngs(
                         // vm::shell_bridge 队列,merged_exec_loop 从那里取。
                         // renderer 不再读 __pending_command 提交执行(旧链绕过
                         // api.at 契约)。此处置换块后仅需标脏。
-                        *state.view_dirty.borrow_mut() = true;
+                        *state.app.view_dirty.borrow_mut() = true;
                     }
                 }
             }
@@ -7735,20 +7765,20 @@ fn compare_pngs(
         // Plan 053 M4:OnEnter 内部 Run 后同样需要强制重建(cmd_ran 已判)。
         if cmd_ran {
             let _ = state.component.write_state("input", auto_val::Value::str(""));
-            *state.cached_rendered.borrow_mut() = None; // 强制重建(丢弃旧 widget)
-            *state.cached_converted_view.borrow_mut() = None;
-            *state.view_dirty.borrow_mut() = true;
-            state.input_values.remove(&event_name);
+            *state.app.cached_rendered.borrow_mut() = None; // 强制重建(丢弃旧 widget)
+            *state.app.cached_converted_view.borrow_mut() = None;
+            *state.app.view_dirty.borrow_mut() = true;
+            state.app.input_values.remove(&event_name);
             // Plan 047:view 重建后恢复 input 焦点(否则 on_submit 第二次不触发)。
-            state.needs_prompt_refocus.set(true);
+            state.app.devtools.needs_prompt_refocus.set(true);
         }
 
         // Plan 049:检测 blocks 数量增加 → 自动滚到底部。
         let cur_block_count = state.component.read_state_as_vec("blocks")
             .map(|v| v.len()).unwrap_or(0);
-        if cur_block_count > state.last_block_count.get() {
-            state.last_block_count.set(cur_block_count);
-            state.needs_scroll_to_bottom.set(true);
+        if cur_block_count > state.app.devtools.last_block_count.get() {
+            state.app.devtools.last_block_count.set(cur_block_count);
+            state.app.devtools.needs_scroll_to_bottom.set(true);
         }
 
         // PB-11:Ctrl+L 清屏 emit 模拟(ash-gui M2)。PromptBar.OnCtrlL 应 emit
@@ -7756,7 +7786,7 @@ fn compare_pngs(
         // emit(同 Run)。这里直接触发 store.ClearScreen(归档所有 blocks)。
         if widget_name == "PromptBar" && event_name == "OnCtrlL" {
             let _ = state.component.on_with_input_for("ShellStore", "ClearScreen", None);
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
         }
 
         // ── Shell bridge:RunCommand 后备路径(ash-gui M1) ──
@@ -7795,7 +7825,7 @@ fn compare_pngs(
                 }
                 // Plan 060(M1-T3):同上 —— 执行提交由 shell.at 的
                 // run_command → auto.shell.exec_submit 完成,renderer 不再插手。
-                *state.view_dirty.borrow_mut() = true;
+                *state.app.view_dirty.borrow_mut() = true;
             }
         }
         if event_name == "Cancel" {
@@ -7854,7 +7884,7 @@ fn compare_pngs(
                         "blocks",
                         auto_val::Value::Array(auto_val::Array { values: blocks_vec }),
                     );
-                    *state.view_dirty.borrow_mut() = true;
+                    *state.app.view_dirty.borrow_mut() = true;
                 }
             }
         }
@@ -7898,23 +7928,23 @@ fn compare_pngs(
                 match base {
                 "Toggle" | "ToggleTodo" => {
                     if let Some(i) = idx {
-                        if i < state.todos.len() {
-                            state.todos[i].done = !state.todos[i].done;
-                            let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        if i < state.app.todos.len() {
+                            state.app.todos[i].done = !state.app.todos[i].done;
+                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                            sync_todos_to_vm(&state.todos, &mut state.component);
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         }
                     }
                 }
                 "Delete" | "DeleteTodo" => {
                     if let Some(i) = idx {
                         // Indexed Delete:N — todo item deletion
-                        if i < state.todos.len() {
-                            state.todos.remove(i);
-                            let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        if i < state.app.todos.len() {
+                            state.app.todos.remove(i);
+                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                             let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                            let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
-                            sync_todos_to_vm(&state.todos, &mut state.component);
+                            let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
                         }
                     } else {
                         // Bare Delete (no index) — notes deletion from EditorPanel
@@ -7935,43 +7965,43 @@ fn compare_pngs(
                     }
                 }
                 "AddTodo" => {
-                    let from_input_values = state.input_values.get("EditInputChanged").cloned();
+                    let from_input_values = state.app.input_values.get("EditInputChanged").cloned();
                     if !saved_input.is_empty() {
-                        state.todos.push(TodoItem { text: saved_input, done: false });
-                        let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        state.app.todos.push(TodoItem { text: saved_input, done: false });
+                        let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
-                        sync_todos_to_vm(&state.todos, &mut state.component);
-                        state.input_values.remove("EditInputChanged");
-                        state.input_values.remove("InputChanged");
+                        sync_todos_to_vm(&state.app.todos, &mut *state.component);
+                        state.app.input_values.remove("EditInputChanged");
+                        state.app.input_values.remove("InputChanged");
                     } else if let Some(text) = from_input_values {
                         // Fallback: use the last tracked input value
-                        state.todos.push(TodoItem { text, done: false });
-                        let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                        state.app.todos.push(TodoItem { text, done: false });
+                        let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                         let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
+                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
                         let _ = state.component.write_state("input", auto_val::Value::str(""));
-                        sync_todos_to_vm(&state.todos, &mut state.component);
-                        state.input_values.remove("EditInputChanged");
-                        state.input_values.remove("InputChanged");
+                        sync_todos_to_vm(&state.app.todos, &mut *state.component);
+                        state.app.input_values.remove("EditInputChanged");
+                        state.app.input_values.remove("InputChanged");
                     }
                 }
                 "ClearCompleted" => {
-                    state.todos.retain(|t| !t.done);
-                    let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                    state.app.todos.retain(|t| !t.done);
+                    let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                    let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.todos.len() as i32));
-                    sync_todos_to_vm(&state.todos, &mut state.component);
+                    let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
+                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
                 }
                 "ToggleAll" => {
-                    let any_active = state.todos.iter().any(|t| !t.done);
-                    for todo in &mut state.todos {
+                    let any_active = state.app.todos.iter().any(|t| !t.done);
+                    for todo in &mut state.app.todos {
                         todo.done = any_active; // if any active → mark all done; else → mark all undone
                     }
-                    let active = state.todos.iter().filter(|t| !t.done).count() as i32;
+                    let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
                     let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                    sync_todos_to_vm(&state.todos, &mut state.component);
+                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
                 }
                 // Notes app: VM handlers now manage all state correctly.
                 // The previous hardcoded state-sync (read notes as Value::Obj,
@@ -7982,12 +8012,12 @@ fn compare_pngs(
                 // We only clear stale input_values caches here so the next
                 // render reflects handler-set state, not old typed text.
                 "Edit" => {
-                    state.input_values.remove("EditTitle");
-                    state.input_values.remove("EditBody");
+                    state.app.input_values.remove("EditTitle");
+                    state.app.input_values.remove("EditBody");
                 }
                 "Save" | "Cancel" => {
-                    state.input_values.remove("EditTitle");
-                    state.input_values.remove("EditBody");
+                    state.app.input_values.remove("EditTitle");
+                    state.app.input_values.remove("EditBody");
                 }
                 _ => {}
                 }
@@ -7996,14 +8026,14 @@ fn compare_pngs(
 
         // Deferred scroll: if selected_widget is set but pending_scroll not yet computed,
         // try to compute from element styles (which are populated during rendering).
-        if state.selected_widget.borrow().is_some() && state.pending_scroll_to_center.borrow().is_none() {
-            if let Some(ref sel_id) = *state.selected_widget.borrow() {
-                let styles = state.debug_element_styles.borrow();
+        if state.app.devtools.selected_widget.borrow().is_some() && state.app.devtools.pending_scroll_to_center.borrow().is_none() {
+            if let Some(ref sel_id) = *state.app.devtools.selected_widget.borrow() {
+                let styles = state.app.devtools.debug_element_styles.borrow();
                 if let Some(elem_info) = styles.get(sel_id) {
                     if let Some((offset, _len)) = elem_info.span {
-                        let offsets = state.source_line_offsets.borrow();
+                        let offsets = state.app.source_line_offsets.borrow();
                         let line = offsets.partition_point(|&p| p <= offset).saturating_sub(1);
-                        *state.pending_scroll_to_center.borrow_mut() = Some(line);
+                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
                     }
                 }
             }
@@ -8015,17 +8045,17 @@ fn compare_pngs(
         // `ui_changed` flag here, but that flag was always false; see the note
         // above where it was declared. Set view_dirty directly if needed.)
         if state.component.is_dirty() {
-            *state.view_dirty.borrow_mut() = true;
+            *state.app.view_dirty.borrow_mut() = true;
         }
 
         // Emit scroll_to Task if pending scroll is set
-        let scroll_task: Option<iced::Task<IcedMessage>> = state.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
+        let scroll_task: Option<iced::Task<IcedMessage>> = state.app.devtools.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
             let line_height = 14.0; // font_size(10) + spacing(4)
             let viewport_height = 500.0; // estimated panel content area height
             let target_y = (line_idx as f32 * line_height) - (viewport_height / 3.0);
             let y = target_y.max(0.0);
             iced::widget::operation::scroll_to(
-                state.inspector_scroll_id.clone(),
+                state.app.devtools.inspector_scroll_id.clone(),
                 iced::widget::scrollable::AbsoluteOffset { x: Some(0.0), y: Some(y) },
             )
         });
@@ -8040,14 +8070,13 @@ fn compare_pngs(
         let mut tail_tasks: Vec<iced::Task<IcedMessage>> = Vec::new();
 
         // Plan 047/057: 恢复输入焦点(最后被编辑的 textarea,按稳定 Id)。
-        if state.needs_prompt_refocus.get() {
-            state.needs_prompt_refocus.set(false);
-            let id = state
-                .last_textarea_key
+        if state.app.devtools.needs_prompt_refocus.get() {
+            state.app.devtools.needs_prompt_refocus.set(false);
+            let id = state.app.devtools.last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
-                .unwrap_or_else(|| state.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] tail refocus, id={:?}", id);
             }
@@ -8063,7 +8092,7 @@ fn compare_pngs(
                 .keys()
                 .next()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
-                .unwrap_or_else(|| state.prompt_input_id.clone());
+                .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
                 eprintln!("[FOCUS-DBG] initial focus, id={:?}", id);
             }
@@ -8083,8 +8112,8 @@ fn compare_pngs(
         }
 
         // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
-        if *state.needs_bounds.borrow() && state.screenshot_request.borrow().is_none() {
-            *state.needs_bounds.borrow_mut() = false;
+        if *state.app.devtools.needs_bounds.borrow() && state.app.devtools.screenshot_request.borrow().is_none() {
+            *state.app.devtools.needs_bounds.borrow_mut() = false;
             use crate::ui::iced::LayoutCollector;
             tail_tasks.push(
                 iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
@@ -8098,10 +8127,10 @@ fn compare_pngs(
         }
 
         // Plan 049: blocks 增加后自动滚到底部(最新 block 可见)。
-        if state.needs_scroll_to_bottom.get() {
-            state.needs_scroll_to_bottom.set(false);
+        if state.app.devtools.needs_scroll_to_bottom.get() {
+            state.app.devtools.needs_scroll_to_bottom.set(false);
             tail_tasks.push(iced::widget::operation::snap_to_end(
-                state.blocklist_scroll_id.clone(),
+                state.app.devtools.blocklist_scroll_id.clone(),
             ));
         }
 
@@ -8111,8 +8140,169 @@ fn compare_pngs(
         scroll_task.unwrap_or_else(iced::Task::none)
     };
 
-    let title_fn = move |_state: &DynamicState| -> String {
-        window_title(format!("Auto - {}", widget_name))
+    // Plan 453 T4 / Plan 459 C2：外壳消息 DesktopMessage 三分派 ——
+    // DM::App 按归属 App 分派（update_inner 经 split_mut(app) 取窗口级字段）、
+    // DM::Window 先经 app_of_window 现场解析归属（活注册表，无陈旧性）、
+    // DM::Desktop 维护窗口生命周期。全窗口关闭 → `iced::exit()`（daemon
+    // 语义：不退则进程静默长存，见施工图 §1-2）。T6 的 panic 边界保留在
+    // App/Window 分支内的 catch_unwind；RefCell 无中毒语义、RAII Guard 随
+    // unwind 释放。
+    let update = move |state: &mut crate::ui::session::DesktopSession,
+                       msg: crate::ui::session::DesktopMessage|
+          -> iced::Task<crate::ui::session::DesktopMessage> {
+        use crate::ui::session::{DesktopEvent, DesktopMessage as DM};
+        // 消息归属 → update 分派（App/Window 两臂共用；console 打标 + T5
+        // 探针 + panic 边界 + Task 回标 DM::App(app)）。闭包捕获 update_inner
+        //（fn 条目无法捕获闭包环境），state 经参数传入不与之冲突。
+        let dispatch_app = |state: &mut crate::ui::session::DesktopSession,
+                            app_id: crate::ui::session::AppId,
+                            m: IcedMessage|
+         -> iced::Task<crate::ui::session::DesktopMessage> {
+            // console 打标：update 期间 print/console_log 归属本 App。
+            crate::libs::builtin::set_console_current_app(app_id.0);
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // Plan 459 T5 探针：验收用 panic 注入（见 PANIC_PROBE_CRASHED_APP）。
+                // 必须在 catch_unwind **内部** panic（与 update_inner 同一边界），
+                // 否则 panic 直穿 winit 事件循环杀死进程（实测）。
+                if panic_probe_enabled() && is_panic_probe_event(&m.event) {
+                    PANIC_PROBE_CRASHED_APP.store(app_id.0, std::sync::atomic::Ordering::SeqCst);
+                    panic!("plan-459 T5 panic probe injected for App {app_id:?}");
+                }
+                update_inner(state, app_id, m)
+            })) {
+                Ok(task) => task.map(move |m| DM::App(app_id, m)),
+                Err(payload) => {
+                    eprintln!(
+                        "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
+                    );
+                    iced::Task::<IcedMessage>::none().map(move |m| DM::App(app_id, m))
+                }
+            }
+        };
+        match msg {
+            DM::Desktop(ev) => {
+                // 桌面事件分支：窗口生命周期落注册表 / 焦点记录（T4c）。
+                match ev {
+                    DesktopEvent::WindowOpened(id, size) => {
+                        // boot 期已按 `window::open` 同步登记；本臂作 Opened
+                        // 兜底/幂等刷新。daemon 下窗口必有 boot 归属——
+                        // 未知窗口（非本会话开窗）忽略。
+                        let app = state
+                            .app_of_window(&id)
+                            .or_else(|| state.primary_app());
+                        if let Some(app) = app {
+                            state.register_window(id, app, size);
+                        }
+                    }
+                    DesktopEvent::WindowClosed(id) => {
+                        // 459 不变式：一窗一 App，App 生命周期随窗（454 引入
+                        // VirtualWindow 后由 WM 接管重挂载/续命）。
+                        if let Some(entry) = state.windows.remove(&id) {
+                            state.apps.remove(&entry.app);
+                        }
+                        // daemon 语义：全窗口关闭才退出进程（施工图 §1-2）。
+                        if state.windows.is_empty() {
+                            return iced::exit();
+                        }
+                    }
+                    DesktopEvent::WindowFocused(id) => {
+                        *state.focused_window.borrow_mut() = Some(id);
+                    }
+                    DesktopEvent::WindowUnfocused(id) => {
+                        // 仅当失焦者正是当前焦点时清空（防多窗口事件乱序误清）。
+                        let mut f = state.focused_window.borrow_mut();
+                        if *f == Some(id) {
+                            *f = None;
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
+            DM::App(app_id, m) => dispatch_app(state, app_id, m),
+            DM::Window(win, m) => {
+                // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
+                // 空则退出；不该由 App 分派管线处理）。
+                if m.event == "__window_close_request" {
+                    return iced::window::close::<crate::ui::session::DesktopMessage>(win);
+                }
+                match state.app_of_window(&win) {
+                Some(app_id) => dispatch_app(state, app_id, m),
+                None => {
+                    eprintln!(
+                        "[session] window event for unregistered window {win:?} dropped (plan-459)"
+                    );
+                    iced::Task::none()
+                }
+                }
+            }
+        }
+    };
+
+    // 视图出口打标：Element<IcedMessage> → Element<DesktopMessage>（仅顶层一次，
+    // widget 回调仍全程产 IcedMessage，view 管线零改动）。闭包对借用生命周期的
+    // HKT 局限（同 theme_fn 教训）要求以 fn 条目承载。
+    // Plan 459：daemon 的 view 按窗口调用 —— 先反查归属 App，未登记窗口
+    // （Opened 前的瞬态/外部窗口）回退占位元素；出口按窗口打标 DM::App。
+    fn view_desktop_fn(
+        state: &crate::ui::session::DesktopSession,
+        window: iced::window::Id,
+    ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
+        let Some(app_id) = state.app_of_window(&window) else {
+            return iced::widget::container(
+                iced::widget::text("[AutoUI 会话] 窗口未登记").size(14),
+            )
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .center(iced::Length::Fill)
+            .into();
+        };
+        let Some(view) = state.split_ref_at(app_id, window) else {
+            return iced::widget::text("[AutoUI 会话] 缺少 App 会话").size(14).into();
+        };
+        // Plan 459 T5 view 探针：被注入 panic 的 App 其后每帧在 view 边界
+        // panic → 持续显示崩溃页（另一窗口不受影响）。
+        let probe_hit = panic_probe_enabled()
+            && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst) == app_id.0;
+        // T6 视图侧边界：view panic 同样不落进程，降级为全屏提示元素。
+        // MCP 快照同步只在 primary App 的视图执行（T8 单 App 语义冻结）。
+        let is_primary = state.primary_app() == Some(app_id);
+        let build = || {
+            if probe_hit {
+                panic!("plan-459 T5 view panic probe for App {app_id:?}");
+            }
+            dynamic_view(view, is_primary)
+        };
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+            Ok(el) => el.map(move |m| crate::ui::session::DesktopMessage::App(app_id, m)),
+            Err(payload) => {
+                eprintln!(
+                    "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
+                );
+                iced::widget::container(
+                    iced::widget::text("[AutoUI 会话] 视图构建异常（plan-453 边界兜底）").size(14),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .center(iced::Length::Fill)
+                .style(|_t| iced::widget::container::Style {
+                    background: Some(iced::Color::from_rgb(0.10, 0.05, 0.05).into()),
+                    ..Default::default()
+                })
+                .into()
+            }
+        }
+    }
+
+    let title_fn = move |state: &crate::ui::session::DesktopSession,
+                         window: iced::window::Id|
+           -> String {
+        // 459：per-window 标题 = 归属 App 的 widget 名；未登记窗口退回壳名。
+        let name = state
+            .app_of_window(&window)
+            .and_then(|id| state.apps.get(&id))
+            .map(|a| a.component.widget_name().to_string())
+            .unwrap_or_else(|| widget_name.clone());
+        window_title(format!("Auto - {}", name))
     };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。
@@ -8120,13 +8310,14 @@ fn compare_pngs(
     // shadcn --background(hsl 222.2 47.4% 7% = #090E1A)不一致 —— 换成
     // shadcn 令牌基的自定义调色板,明暗随 iced_adapter 的 dark_mode 走
     //(默认暗色,与既有 DARK_MODE 初值一致)。
-    let theme_fn = move |_state: &DynamicState| -> iced::Theme {
+    let theme_fn = move |_state: &crate::ui::session::DesktopSession,
+                         _window: iced::window::Id|
+           -> iced::Theme {
         shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
     };
 
-    iced::application(boot, update, dynamic_view)
+    iced::daemon(boot, update, view_desktop_fn)
         .title(title_fn)
-        .window_size(startup_window_size())
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -8134,96 +8325,114 @@ fn compare_pngs(
         .default_font(INTER_FONT)
         // Plan 047:深色主题(对齐 ash-gui vue dark mode)。之前无 theme,窗口默认白色。
         .theme(theme_fn)
-        .subscription(|_state: &DynamicState| {
-            let mut subs = vec![];
-            if _state.component.source_path().is_some() {
-                subs.push(hot_reload_tick());
+        .subscription(|state: &crate::ui::session::DesktopSession| {
+            // Plan 459：订阅按 App 扇出（453 T5 原案落地）——
+            //   App 级（hot reload / widget tick / timer tick / keyboard）
+            //   按 AppId 打标；桌面级服务（toast 到期 / MCP / shell /
+            //   heartbeat）只订一份、归 primary_app（T8 单 App 语义）；
+            //   listen_with 事件带窗口上下文走 DM::Window（update 现场解析）。
+            use crate::ui::session::DesktopMessage as DM;
+            let mut subs: Vec<iced::Subscription<DM>> = Vec::new();
+            for (app_id, app) in state.apps.iter() {
+                let app_id = *app_id;
+                if app.component.source_path().is_some() {
+                    subs.push(hot_reload_tick(app_id));
+                }
+                if let Some(interval_ms) = app.component.tick_interval() {
+                    subs.push(widget_tick(app_id, interval_ms));
+                }
+                // Plan 442 A5: one-shot timer tick — only while set_timeout timers
+                // are pending; due callbacks fire in update's __timer_tick arm.
+                if app.component.has_pending_timers() {
+                    subs.push(app_tick(app_id, "__timer_tick", 16));
+                }
+                // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
+                if let Some(win) = state.window_of_app(app_id) {
+                    let bindings = app.component.key_bindings().clone();
+                    subs.push(keyboard_subscription(app_id, win, bindings));
+                }
             }
-            if let Some(interval_ms) = _state.component.tick_interval() {
-                subs.push(widget_tick(interval_ms));
+            if let Some(primary) = state.primary_app() {
+                // Plan 412 续(toast 修正 5):toast 到期 tick —— 桌面共享堆叠
+                // 只订一份;到期的移除逻辑在 update 的 __toast_tick 分支。
+                if !state.desktop.toasts.borrow().is_empty() {
+                    subs.push(app_tick(primary, "__toast_tick", 250));
+                }
+                // MCP action channel — polls for injected actions from AI agent (Plan 278)
+                subs.push(mcp_action_subscription(primary));
+                // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
+                // dispatches command_output/command_result to ShellStore handlers.
+                subs.push(shell_event_subscription(primary));
+                // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
+                // app while an agent is connected. Only ticks when MCP is active.
+                // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——
+                // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
+                // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
+                // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
+                let mcp_recent = state.desktop.mcp_shared
+                    .as_ref()
+                    .map(|s| s.lock().unwrap().mcp_active_recently(30))
+                    .unwrap_or(false);
+                if mcp_recent
+                    && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
+                {
+                    subs.push(mcp_heartbeat_subscription(primary));
+                }
             }
-            // Plan 412 续(toast 修正 5):toast 到期 tick —— 仅在堆叠非空时
-            // 订阅;到期的移除逻辑在 update 的 __toast_tick 分支。
-            if !_state.toasts.borrow().is_empty() {
-                subs.push(
-                    iced::time::every(std::time::Duration::from_millis(250)).map(|_| {
-                        IcedMessage {
-                            widget: String::new(),
-                            event: "__toast_tick".to_string(),
-                            input_value: None,
-                        }
-                    }),
-                );
-            }
-            // Plan 442 A5: one-shot timer tick — only while set_timeout timers
-            // are pending; due callbacks fire in update's __timer_tick arm.
-            if _state.component.has_pending_timers() {
-                subs.push(
-                    iced::time::every(std::time::Duration::from_millis(16)).map(|_| {
-                        IcedMessage {
-                            widget: String::new(),
-                            event: "__timer_tick".to_string(),
-                            input_value: None,
-                        }
-                    }),
-                );
-            }
-            // F12 DevTools + key bindings listener (Plan 275)
-            subs.push(keyboard_subscription(_state.component.key_bindings()));
-            // MCP action channel — polls for injected actions from AI agent (Plan 278)
-            subs.push(mcp_action_subscription());
-            // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
-            // dispatches command_output/command_result to ShellStore handlers.
-            subs.push(shell_event_subscription());
-            // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
-            // app while an agent is connected. Only ticks when MCP is active.
-            // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——
-            // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
-            // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
-            // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
-            let mcp_recent = _state
-                .mcp_shared
-                .as_ref()
-                .map(|s| s.lock().unwrap().mcp_active_recently(30))
-                .unwrap_or(false);
-            if mcp_recent
-                && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
-            {
-                subs.push(mcp_heartbeat_subscription());
-            }
-            // Window resize + mouse move/release events for DevTools panel drag
-            subs.push(iced::event::listen_with(|e, _status, _window_id| match e {
+            // Window resize + mouse move/release events for DevTools panel drag.
+            // Plan 459：消息带窗口上下文走 DM::Window —— update 侧按发生窗口
+            // 归位窗口级字段（`__window_resized` 写对窗口的尺寸；多窗互不串扰）。
+            subs.push(iced::event::listen_with(|e, _status, window_id| match e {
+                // Plan 453 T4c-4：Opened/Focused 捕获已统一改道
+                // desktop_window_events()（DM::Desktop 通路），业务侧不再处理
+                // 窗口生命周期事件。
                 // Plan 065:自退排查打点 —— 会话中途 VM 干净退出 = iced 窗口被关
-            // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
-            // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
-            // 一次死亡现场直接看到 CloseRequested 的到达时刻。不改变行为
-            // (返回 None,与之前落入 `_ => None` 相同)。
-            iced::Event::Window(iced::window::Event::CloseRequested) => {
-                eprintln!(
-                    "[window] CloseRequested at {:?} (instrumentation: plan 065)",
-                    std::time::SystemTime::now()
-                );
-                None
-            }
-            iced::Event::Window(iced::window::Event::Resized(size)) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__window_resized".to_string(),
-                    input_value: Some(format!("{}x{}", size.width, size.height)),
-                }),
-                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__mouse_moved".to_string(),
-                    input_value: Some(format!("{},{}", position.x, position.y)),
-                }),
-                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(IcedMessage {
-                    widget: String::new(),
-                    event: "__mouse_released".to_string(),
-                    input_value: None,
-                }),
+                // 闭(run() 返回 Ok("UI closed") → exit 0;auto-shell 065 死亡现场
+                // 已钉死)。谁发的关闭请求未知(OS 级/焦点/事件误投递),打点让下
+                // 一次死亡现场直接看到 CloseRequested 的到达时刻。不改变行为
+                // (返回 None,与之前落入 `_ => None` 相同)。
+                iced::Event::Window(iced::window::Event::CloseRequested) => {
+                    eprintln!(
+                        "[window] CloseRequested at {:?} (instrumentation: plan 065)",
+                        std::time::SystemTime::now()
+                    );
+                    // Plan 459：daemon 语义下应用必须自答关窗（window::close）
+                    // —— Windows 实测壳层先行代关（本臂未见触发），但其他
+                    // 平台的 CloseRequested 会浮出到应用，此臂保证跨平台
+                    // 关窗语义完整。
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__window_close_request".to_string(),
+                        input_value: None,
+                    }))
+                }
+                iced::Event::Window(iced::window::Event::Resized(size)) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__window_resized".to_string(),
+                        input_value: Some(format!("{}x{}", size.width, size.height)),
+                    }))
+                }
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__mouse_moved".to_string(),
+                        input_value: Some(format!("{},{}", position.x, position.y)),
+                    }))
+                }
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => {
+                    Some(DM::Window(window_id, IcedMessage {
+                        widget: String::new(),
+                        event: "__mouse_released".to_string(),
+                        input_value: None,
+                    }))
+                }
                 // Plan 309 续篇 II: track keyboard modifiers so the inspect
                 // picker can switch plain-click (inspect) ↔ Alt-click (native).
-                // The subscription closure can't borrow `state`, so stash the
-                // value in a thread-local; `dynamic_view` copies it into state.
+                // The subscription callback can't touch session state (other
+                // thread), so the value rides the message payload (M1, T4c):
+                // `__modifiers_changed` carries `modifiers.bits()`, the update
+                // arm writes `desktop.current_modifiers` — the single source.
                 //
                 // We read modifiers from BOTH `ModifiersChanged` AND every
                 // `KeyPressed`/`KeyReleased` (which carry their own `modifiers`
@@ -8234,42 +8443,47 @@ fn compare_pngs(
                 iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m))
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { modifiers: m, .. })
                 | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased { modifiers: m, .. }) => {
-                    LAST_MODIFIERS.with(|cell| cell.set(m));
-                    Some(IcedMessage {
+                    Some(DM::Window(window_id, IcedMessage {
                         widget: String::new(),
                         event: "__modifiers_changed".to_string(),
-                        input_value: None,
-                    })
+                        input_value: Some(m.bits().to_string()),
+                    }))
                 }
                 _ => None,
             }));
-            iced::Subscription::batch(subs)
+            iced::Subscription::batch(vec![
+                iced::Subscription::batch(subs),
+                crate::ui::session::desktop_window_events(),
+            ])
         })
         .run()?;
 
     Ok("UI closed".to_string())
 }
 
-/// View function for `DynamicState`, used as the view callback in `iced::application()`.
+/// View function for one App's window, used by `view_desktop_fn` (iced::daemon
+/// per-window view). This is a standalone function (not a closure) so that Rust
+/// can correctly infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
 ///
-/// This is a standalone function (not a closure) so that Rust can correctly
-/// infer the higher-ranked lifetime bound `for<'a> ViewFn<'a, ...>`.
-fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
-    // Plan 309 续篇 II: refresh the cached modifiers from the thread-local the
-    // window-level subscription writes (it can't borrow `state`), then set the
-    // single INSPECT_CAPTURE flag read by `into_iced` + `wrap_debug` during this
-    // build. Plain click/hover = inspect over all widgets; Alt held = native.
-    LAST_MODIFIERS.with(|m| {
-        *state.current_modifiers.borrow_mut() = m.get();
-    });
-    let alt_held = state.current_modifiers.borrow().alt();
-    let capture = state.debug_mode && *state.inspect_mode.borrow() && !alt_held;
+/// Plan 459：拆借视图由调用方按窗口构造（`split_ref_at`）；`sync_mcp` 仅在
+/// primary App 的视图为 true —— MCP 快照永远指向 primary（T8 单 App 语义）。
+fn dynamic_view(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+) -> iced::Element<'_, IcedMessage> {
+    // Plan 309 续篇 II: set the single INSPECT_CAPTURE flag read by
+    // `into_iced` + `wrap_debug` during this build. Plain click/hover =
+    // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
+    // desktop.current_modifiers（唯一源，update 臂经消息载荷写回）。
+    let alt_held = state.desktop.current_modifiers.borrow().alt();
+    let capture = state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
 
     // Sync state to MCP shared handle for AI agent inspection (Plan 278)
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
-    if let Some(ref mcp_handle) = state.mcp_shared {
+    if sync_mcp {
+    if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         let mut mcp = mcp_handle.lock().unwrap();
         if !mcp.has_view() {
             eprintln!("AutoUI MCP: first state sync in view()");
@@ -8315,6 +8529,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             mcp.set_window_size(width, height);
         }
     }
+    } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
     // Plan 370 D-GAP-2/D-GAP-5: sync dark mode + accent to iced_adapter thread_locals
     // so semantic colors (bg-primary, text-foreground, etc.) resolve correctly.
@@ -8340,10 +8555,10 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // smaller counter, so it wins. When mouse leaves child, only parent fires on_move,
     // so parent becomes the new deepest candidate.
     {
-        let mut pending = state.pending_hovers.borrow_mut();
+        let mut pending = state.app.devtools.pending_hovers.borrow_mut();
         if !pending.is_empty() {
             if let Some(best) = pending.iter().min_by_key(|(c, _)| *c) {
-                *state.hovered_widget.borrow_mut() = Some(best.1.clone());
+                *state.app.devtools.hovered_widget.borrow_mut() = Some(best.1.clone());
             }
             pending.clear();
         }
@@ -8358,21 +8573,32 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // When view_dirty=false: if cache exists, take and return it directly (preserves button hover/press state).
     //                         if cache is empty (shouldn't happen normally), rebuild from cached AbstractView.
 
-    let dirty = *state.view_dirty.borrow();
+    let dirty = *state.app.view_dirty.borrow();
 
     // Fast path: return cached Element when nothing changed.
     if !dirty {
-        if let Some(el) = state.cached_rendered.borrow_mut().take() {
+        if let Some(el) = state.app.cached_rendered.borrow_mut().take() {
             return el;
         }
         // Cache empty — fall through to rebuild (uses cached AbstractView if available)
     }
 
-    // Sync console buffer → console_output for DevTools Console tab
+    // Sync console buffer → console_output for DevTools Console tab.
+    // Plan 459：缓冲条目带 AppId 标签（0=进程级），按游标增量排空——各 App
+    // 只收自己的 print/console_log 行 + 进程级行（boot/shell），双窗日志
+    // 互不串扰；游标同时消除旧全量拷贝路径的重复累积。
     {
-        let buf = state.console_buffer.lock().unwrap();
-        if !buf.is_empty() {
-            state.console_output.borrow_mut().extend_from_slice(&buf);
+        let mut buf = state.app.devtools.console_buffer.lock().unwrap();
+        let start = state.app.devtools.console_drained.get().min(buf.len());
+        let fresh: Vec<String> = buf[start..]
+            .iter()
+            .filter(|(tag, _)| *tag == 0 || *tag == state.app_id.0)
+            .map(|(_, line)| line.clone())
+            .collect();
+        state.app.devtools.console_drained.set(buf.len());
+        drop(buf);
+        if !fresh.is_empty() {
+            state.app.devtools.console_output.borrow_mut().extend(fresh);
         }
     }
 
@@ -8382,8 +8608,8 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // opening F12. Visual overlays (hover/selected highlight, inspect mouse_area)
     // remain gated on `debug_mode` alone (see `wrap_debug`'s `if !self.debug_mode`
     // early-return), so MCP-only capture never perturbs the rendered layout.
-    let mcp_active = state.mcp_shared.is_some();
-    let capture_debug = state.debug_mode || mcp_active;
+    let mcp_active = state.desktop.mcp_shared.is_some();
+    let capture_debug = state.app.devtools.debug_mode || mcp_active;
 
     // Plan 314 Task 4: request a layout-bounds collection this frame whenever we
     // are capturing DevTools/MCP data. `update()` checks `needs_bounds` at its
@@ -8395,7 +8621,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // changed frame, not every frame. Gated on `capture_debug` so ordinary
     // non-debug/non-MCP runs pay zero bounds-collection overhead.
     if capture_debug {
-        *state.needs_bounds.borrow_mut() = true;
+        *state.app.devtools.needs_bounds.borrow_mut() = true;
     }
 
     let (converted, debug_id_map) = if dirty {
@@ -8407,23 +8633,23 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             state.component.view_with_debug_gated(capture_debug);
         let debug_id_map = Some(debug_id_map);
         if capture_debug {
-            *state.live_probe.borrow_mut() = Some(probe);
+            *state.app.live_probe.borrow_mut() = Some(probe);
         } else {
-            *state.live_probe.borrow_mut() = None;
+            *state.app.live_probe.borrow_mut() = None;
         }
-        inject_todo_list(&mut view, &state.todos, state.component.widget_name());
-        if !state.input_values.is_empty() {
-            patch_input_values(&mut view, &state.input_values);
+        inject_todo_list(&mut view, &state.app.todos, state.component.widget_name());
+        if !state.app.input_values.is_empty() {
+            patch_input_values(&mut view, &state.app.input_values);
         }
         let converted = convert_view_messages(view);
-        *state.cached_converted_view.borrow_mut() = Some(converted.clone());
-        *state.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+        *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
+        *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
         (converted, debug_id_map)
     } else {
         // Cache miss on non-dirty frame: rebuild from cached AbstractView (cheaper than template rebuild)
-        let cached = state.cached_converted_view.borrow();
+        let cached = state.app.cached_converted_view.borrow();
         if let Some(ref converted) = *cached {
-            let debug_id_map = state.cached_debug_id_map.borrow().clone();
+            let debug_id_map = state.app.devtools.cached_debug_id_map.borrow().clone();
             // `live_probe` is intentionally NOT refreshed here: the probe is
             // template-derived and stable across cache hits, so the retained
             // probe from the last dirty rebuild remains valid.
@@ -8436,17 +8662,17 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
                 state.component.view_with_debug_gated(capture_debug);
             let debug_id_map = Some(debug_id_map);
             if capture_debug {
-                *state.live_probe.borrow_mut() = Some(probe);
+                *state.app.live_probe.borrow_mut() = Some(probe);
             } else {
-                *state.live_probe.borrow_mut() = None;
+                *state.app.live_probe.borrow_mut() = None;
             }
-            inject_todo_list(&mut view, &state.todos, state.component.widget_name());
-            if !state.input_values.is_empty() {
-                patch_input_values(&mut view, &state.input_values);
+            inject_todo_list(&mut view, &state.app.todos, state.component.widget_name());
+            if !state.app.input_values.is_empty() {
+                patch_input_values(&mut view, &state.app.input_values);
             }
             let converted = convert_view_messages(view);
-            *state.cached_converted_view.borrow_mut() = Some(converted.clone());
-            *state.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
+            *state.app.cached_converted_view.borrow_mut() = Some(converted.clone());
+            *state.app.devtools.cached_debug_id_map.borrow_mut() = debug_id_map.clone();
             (converted, debug_id_map)
         }
     };
@@ -8468,24 +8694,24 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
                     .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
             },
         );
-        *state.live_vtree.borrow_mut() = Some(vtree);
+        *state.app.live_vtree.borrow_mut() = Some(vtree);
     } else {
-        *state.live_vtree.borrow_mut() = None;
-        *state.live_probe.borrow_mut() = None;
-        *state.live_cache.borrow_mut() = None;
+        *state.app.live_vtree.borrow_mut() = None;
+        *state.app.live_probe.borrow_mut() = None;
+        *state.app.live_cache.borrow_mut() = None;
     }
 
     // Clear view_dirty after consuming the change.
     // Do this BEFORE rendering so that subscriptions/events arriving during
     // render processing don't get missed.
-    *state.view_dirty.borrow_mut() = false;
+    *state.app.view_dirty.borrow_mut() = false;
 
 
     let debug_ctx = if let Some(id_map) = debug_id_map {
         let span_map = state.component.span_map().clone();
         Some(DebugRenderCtx {
-            hovered_id: state.hovered_widget.borrow().clone(),
-            selected_id: state.selected_widget.borrow().clone(),
+            hovered_id: state.app.devtools.hovered_widget.borrow().clone(),
+            selected_id: state.app.devtools.selected_widget.borrow().clone(),
             wrapper_counter: std::cell::RefCell::new(0),
             span_map,
             debug_id_map: id_map,
@@ -8494,7 +8720,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
             element_styles: std::cell::RefCell::new(std::collections::HashMap::new()),
             tree_stack: std::cell::RefCell::new(Vec::new()),
             component_tree: std::cell::RefCell::new(None),
-            debug_mode: state.debug_mode,
+            debug_mode: state.app.devtools.debug_mode,
             capture_data: capture_debug,
             inspector_cache: std::cell::RefCell::new(crate::ui::debug::InspectorCache::new()),
         })
@@ -8511,7 +8737,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // 根节点结构恒定,iced 内部 widget-tree 的 diff 得以保留 scrollable
     // 滚动位置等交互状态;toast 层不设 opaque —— 命中测试穿透,不夺焦点、
     // 不拦截主界面交互,纯悬浮展示。
-    let toasts = state.toasts.borrow();
+    let toasts = state.desktop.toasts.borrow();
     let toast_el: iced::Element<'static, IcedMessage> = if toasts.is_empty() {
         iced::widget::container(iced::widget::Space::new()).into()
     } else {
@@ -8532,12 +8758,12 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
         let styles = ctx.element_styles.borrow();
-        *state.debug_element_styles.borrow_mut() = styles.clone();
+        *state.app.devtools.debug_element_styles.borrow_mut() = styles.clone();
         let tree = ctx.component_tree.borrow();
-        *state.component_tree.borrow_mut() = tree.clone();
+        *state.app.devtools.component_tree.borrow_mut() = tree.clone();
         // Cache aura_to_id mapping for source-click → component-highlight reverse lookup
         let aura_map = ctx.aura_to_id.borrow();
-        *state.aura_to_id_cache.borrow_mut() = aura_map.clone();
+        *state.app.aura_to_id_cache.borrow_mut() = aura_map.clone();
         // Plan 307 Task 12: copy the `VNodeId <-> iced widget id` map into
         // DynamicState for later bounds backfill (Task 13) and inspector panels
         // (tasks 15-16). InspectorCache derives Clone.
@@ -8550,11 +8776,11 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // (Task 14, keyed on VNodeId) tracks the same node the overlay highlights.
         // When hovered_widget is None the cursor left all widgets → clear it.
         // Done before moving `cache` into live_cache.
-        let hovered_aura = state.hovered_widget.borrow().clone();
+        let hovered_aura = state.app.devtools.hovered_widget.borrow().clone();
         let new_hovered_vnode = hovered_aura
             .as_deref()
             .and_then(|s| cache.iced_to_vnode(s));
-        *state.hovered_vnode.borrow_mut() = new_hovered_vnode;
+        *state.app.devtools.hovered_vnode.borrow_mut() = new_hovered_vnode;
 
         // Plan 309 Phase 2b: merge `raw_class` from `live_probe` into the cache
         // by path → VNodeId, so the Computed tab (which reads the cache) can
@@ -8567,7 +8793,7 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // Plan 371 Task 8: ALSO merge `events` so autoui_vtree / autoui_find
         // can show handler info per node (previously events were always empty
         // in the live snapshot).
-        if let Some(probe) = state.live_probe.borrow().as_ref() {
+        if let Some(probe) = state.app.live_probe.borrow().as_ref() {
             for (path_u16, entry) in probe.snapshot() {
                 let vid = crate::ui::vnode::VNodeId::new(
                     crate::ui::vnode::id_from_path(path_u16),
@@ -8588,17 +8814,17 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
         // degrade to placeholders. (The cache object is always constructed above
         // — this just gates whether it is retained.)
         if capture_debug {
-            *state.live_cache.borrow_mut() = Some(cache);
+            *state.app.live_cache.borrow_mut() = Some(cache);
         } else {
-            *state.live_cache.borrow_mut() = None;
+            *state.app.live_cache.borrow_mut() = None;
         }
     }
 
-    let result: iced::Element<'static, IcedMessage> = if state.debug_mode {
-        if *state.devtools_open.borrow() {
+    let result: iced::Element<'static, IcedMessage> = if state.app.devtools.debug_mode {
+        if *state.app.devtools.devtools_open.borrow() {
             // Row layout: [main content] [draggable divider] [DevTools panel]
             let panel = render_devtools_panel(state);
-            let is_dragging = *state.dragging_divider.borrow();
+            let is_dragging = *state.app.devtools.dragging_divider.borrow();
             let divider_bg = if is_dragging {
                 iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
             } else {
@@ -8639,16 +8865,16 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
     };
 
     // Pick up pending screenshot request from MCP thread (Plan 285).
-    if let Some(ref mcp_handle) = state.mcp_shared {
+    if let Some(ref mcp_handle) = state.desktop.mcp_shared {
         if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
-            *state.screenshot_request.borrow_mut() = Some(req);
+            *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
         }
     }
 
     // Cache the Element for reuse on next non-dirty frame, then take and return.
     // view_dirty was already cleared above.
-    *state.cached_rendered.borrow_mut() = Some(result);
-    state.cached_rendered.borrow_mut().take().unwrap()
+    *state.app.cached_rendered.borrow_mut() = Some(result);
+    state.app.cached_rendered.borrow_mut().take().unwrap()
 }
 
 /// Render the DevTools panel on the right side of the window.
@@ -8656,11 +8882,11 @@ fn dynamic_view(state: &DynamicState) -> iced::Element<'_, IcedMessage> {
 /// Plan 309 续篇: 元素树 (VTree) 与检视 (面包屑 + 子标签) 合并为同屏分屏 ——
 /// 左树点任意 VNode 即设 `selected_vnode`，右侧检视随之更新；两者始终同屏，
 /// 不再有互斥 tab。控制台保留为独立整宽模式（点「控制台」按钮切换）。
-fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let current_tab = *state.devtools_tab.borrow();
+fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let current_tab = *state.app.devtools.devtools_tab.borrow();
 
     // Header: [🔍 检视] [控制台] ... [×]
-    let inspect_active = *state.inspect_mode.borrow();
+    let inspect_active = *state.app.devtools.inspect_mode.borrow();
     let tab_inspect = container(
         mouse_area(text("🔍 检视").size(11))
             .on_press(IcedMessage {
@@ -8710,7 +8936,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         .align_y(iced::Alignment::Center);
 
     // Content: split view (Inspect) or full-width console.
-    let panel_width = *state.devtools_panel_width.borrow();
+    let panel_width = *state.app.devtools.devtools_panel_width.borrow();
     let content: iced::Element<'static, IcedMessage> = match current_tab {
         DevToolsTab::Inspect => {
             // Plan 309 续篇: 同屏分屏 [Tree | divider | Inspector]。分隔栏
@@ -8718,19 +8944,19 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
             // `__mouse_moved` 订阅按绝对坐标计算（与外层 DevTools 分隔栏同
             // 一套机制；pane_grid 的组件借用 State 与本渲染器返回的
             // `Element<'static>` 契约不兼容，故手写分屏）。
-            let ratio = (*state.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
-            let is_dragging = *state.dragging_inner_divider.borrow();
+            let ratio = (*state.app.devtools.inspector_split_ratio.borrow()).clamp(0.1, 0.9);
+            let is_dragging = *state.app.devtools.dragging_inner_divider.borrow();
             let divider_bg = if is_dragging {
                 iced::Color::from_rgb(0.3, 0.5, 0.9) // blue while dragging
             } else {
                 iced::Color::from_rgb(0.82, 0.82, 0.82) // gray normally
             };
             let tree_pane = scrollable(render_elements_tab(state))
-                .id(state.elements_scroll_id.clone())
+                .id(state.app.devtools.elements_scroll_id.clone())
                 .width(iced::Length::FillPortion((ratio * 1000.0) as u16))
                 .height(iced::Length::Fill);
             let inspector_pane = scrollable(render_inspector_tab(state))
-                .id(state.inspector_scroll_id.clone())
+                .id(state.app.devtools.inspector_scroll_id.clone())
                 .width(iced::Length::FillPortion(((1.0 - ratio) * 1000.0) as u16))
                 .height(iced::Length::Fill);
             let inner_divider = mouse_area(
@@ -8755,7 +8981,7 @@ fn render_devtools_panel(state: &DynamicState) -> iced::Element<'static, IcedMes
         }
         DevToolsTab::Console => container(
             scrollable(render_console_tab(state))
-                .id(state.inspector_scroll_id.clone())
+                .id(state.app.devtools.inspector_scroll_id.clone())
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill),
         )
@@ -8815,17 +9041,17 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 
 /// Render the Properties tab: show selected element's style properties.
 /// Render the Elements tab: component tree visualization.
-fn render_elements_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_elements_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 14: the left tree now reads from the live VTree (the runtime
     // DOM) instead of the legacy DebugTreeNode / component_tree. The old path is
     // kept (Task 19/20 removes it); render_tree_into simply isn't called here.
-    let vtree = state.live_vtree.borrow();
+    let vtree = state.app.live_vtree.borrow();
     let has_root = vtree.as_ref().and_then(|t| t.root()).is_some();
     if has_root {
         // Clone the tree out so we don't hold the RefCell borrow while building rows.
         let tree = vtree.clone().expect("checked root above");
-        let selected = state.selected_vnode.borrow().clone();
-        let hovered = state.hovered_vnode.borrow().clone();
+        let selected = state.app.devtools.selected_vnode.borrow().clone();
+        let hovered = state.app.devtools.hovered_vnode.borrow().clone();
         let mut rows: Vec<iced::Element<'static, IcedMessage>> = Vec::new();
         if let Some(root) = tree.root() {
             render_vtree_into(&tree, root, 0, &selected, &hovered, &mut rows);
@@ -9060,7 +9286,7 @@ fn build_highlight_cache(source: &str) -> Vec<Vec<(String, iced::Color)>> {
 }
 
 /// Render the Inspector tab: source code + properties, stacked vertically.
-fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 15: the right panel is rebuilt around the VNodeId-based
     // selection. Structure: [breadcrumb] › [sub-tab row] › [active sub-tab body].
     //
@@ -9077,7 +9303,7 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
     col = col.push(render_inspector_subtab_row(state));
 
     // --- Active sub-tab body ---
-    let subtab = *state.inspector_subtab.borrow();
+    let subtab = *state.app.devtools.inspector_subtab.borrow();
     let body = match subtab {
         InspectorSubTab::Inspect => render_inspector_inspect_tab(state),
         InspectorSubTab::AutoUI => render_inspector_autoui_tab(state),
@@ -9094,9 +9320,9 @@ fn render_inspector_tab(state: &DynamicState) -> iced::Element<'static, IcedMess
 ///
 /// Reads `live_vtree` and walks the `parent` chain, cloning the tree out first
 /// so no RefCell borrow is held across the closure-driven widget construction.
-fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let vtree = state.live_vtree.borrow().clone();
-    let selected = state.selected_vnode.borrow().clone();
+fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let vtree = state.app.live_vtree.borrow().clone();
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
 
     let (tree, sel_id) = match (vtree, selected) {
         (Some(tree), Some(id)) => (tree, id),
@@ -9191,8 +9417,8 @@ fn render_inspector_breadcrumb(state: &DynamicState) -> iced::Element<'static, I
 /// parent `scrollable` at the panel level handles overflow) of three
 /// collapsible sections — Box Model, Computed, Properties — each reusing the
 /// existing per-section render fn as its body.
-fn render_inspector_inspect_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let secs = *state.inspector_sections.borrow();
+fn render_inspector_inspect_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let secs = *state.app.devtools.inspector_sections.borrow();
     let mut col = column![].spacing(6);
 
     col = col.push(render_collapsible_section(
@@ -9252,8 +9478,8 @@ fn render_collapsible_section(
 
 /// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
 /// `__inspector_subtab_<Variant>`, parsed in `update()`.
-fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let active = *state.inspector_subtab.borrow();
+fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let active = *state.app.devtools.inspector_subtab.borrow();
     let variants = [
         InspectorSubTab::Inspect,
         InspectorSubTab::AutoUI,
@@ -9282,13 +9508,13 @@ fn render_inspector_subtab_row(state: &DynamicState) -> iced::Element<'static, I
 ///
 /// Reads `live_cache` (bounds/box_model). Falls back to "(布局中…)" when the
 /// node isn't laid out yet or has no cache entry, per design §6.1.
-fn render_inspector_layout_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let selected = state.selected_vnode.borrow().clone();
+fn render_inspector_layout_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
     let Some(sel_id) = selected else {
         return placeholder_panel("无选中元素");
     };
 
-    let cache = state.live_cache.borrow().clone();
+    let cache = state.app.live_cache.borrow().clone();
     let Some(cache) = cache else {
         // Not in debug mode (no cache built this frame).
         return layout_pending_panel();
@@ -9485,13 +9711,13 @@ fn layout_pending_panel<M: Clone + 'static>() -> iced::Element<'static, M> {
         .into()
 }
 
-/// Lazily load the component source + derived indexes into `DynamicState`
-/// (Plan 309 Phase 4.1). Shared by the element-select (`__select_`) and
+/// Lazily load the component source + derived indexes into the session's
+/// App state (Plan 309 Phase 4.1; T4c 起经共享拆借视图访问). Shared by the element-select (`__select_`) and
 /// VNode-select (`__select_vnode_`) handlers so the Source sub-tab can render
 /// the source listing regardless of which selection path opened it. No-op once
 /// already loaded.
-fn ensure_source_loaded(state: &DynamicState) {
-    if state.source_code.borrow().is_some() {
+fn ensure_source_loaded(state: crate::ui::session::SessionViewRef) {
+    if state.app.source_code.borrow().is_some() {
         return;
     }
     let Some(path) = state.component.source_path() else {
@@ -9507,22 +9733,22 @@ fn ensure_source_loaded(state: &DynamicState) {
             offsets.push(i + 1);
         }
     }
-    *state.source_line_offsets.borrow_mut() = offsets;
-    *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(&code));
+    *state.app.source_line_offsets.borrow_mut() = offsets;
+    *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(&code));
     // Build line → AuraNodeId index for source-click → component-highlight.
     let span_map = state.component.span_map().clone();
-    *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, &code);
-    *state.source_code.borrow_mut() = Some(code);
+    *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, &code);
+    *state.app.source_code.borrow_mut() = Some(code);
 }
 
 /// Helper: clone the selected VNode out of `live_vtree`, or return a grey
 /// placeholder Element if there is no tree / no selection.
-fn with_selected_vnode<F>(state: &DynamicState, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
+fn with_selected_vnode<F>(state: crate::ui::session::SessionViewRef, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
 where
     F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
 {
-    let vtree = state.live_vtree.borrow().clone();
-    let selected = state.selected_vnode.borrow().clone();
+    let vtree = state.app.live_vtree.borrow().clone();
+    let selected = state.app.devtools.selected_vnode.borrow().clone();
     match (vtree, selected) {
         (Some(tree), Some(id)) => match tree.get(id) {
             Some(node) => f(node),
@@ -9556,7 +9782,7 @@ fn kv_row<M: Clone + 'static>(key: &str, value: String) -> iced::Element<'static
 ///
 /// Data source: `live_vtree` only (the VNode carries its own props). No probe /
 /// cache dependency, so it always works whenever a node is selected.
-fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -9661,9 +9887,9 @@ fn render_inspector_props_tab(state: &DynamicState) -> iced::Element<'static, Ic
 /// non-loop nodes, so we look the probe up via `snapshot().get(&node.path)`.
 /// For loop-body nodes the schemes diverge and the lookup misses — we degrade
 /// gracefully to a grey hint rather than panicking (design §6.1).
-fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_autoui_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
-        let probe = state.live_probe.borrow().clone();
+        let probe = state.app.live_probe.borrow().clone();
         let Some(probe) = probe else {
             return placeholder_panel("(AutoUI 探针未启用)");
         };
@@ -9742,11 +9968,11 @@ fn render_inspector_autoui_tab(state: &DynamicState) -> iced::Element<'static, I
 /// [`render_source_viewer`] for the syntax-highlighted listing. Clicking a
 /// line that has an associated AuraNodeId (handled by `SRC_CLICK_PREFIX`)
 /// selects the corresponding element — bidirectional navigation.
-fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_source_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         // Resolve the span → a 0-based half-open (start, end) line range.
         let highlight_range = node.source_span.map(|span| {
-            let line_offsets = state.source_line_offsets.borrow();
+            let line_offsets = state.app.source_line_offsets.borrow();
             let start_line = line_offsets
                 .partition_point(|&pos| pos <= span.offset)
                 .saturating_sub(1);
@@ -9783,10 +10009,10 @@ fn render_inspector_source_tab(state: &DynamicState) -> iced::Element<'static, I
 /// `mouse_area` emitting `SRC_CLICK_PREFIX<line>` so a line click selects the
 /// element (bidirectional with element/tree selection).
 fn render_source_viewer(
-    state: &DynamicState,
+    state: crate::ui::session::SessionViewRef,
     highlight_range: Option<(usize, usize)>,
 ) -> iced::Element<'static, IcedMessage> {
-    let source = state.source_code.borrow().clone();
+    let source = state.app.source_code.borrow().clone();
     let path_display = state
         .component
         .source_path()
@@ -9803,10 +10029,10 @@ fn render_source_viewer(
                     .color(iced::Color::from_rgb(0.4, 0.6, 0.8)),
             );
 
-            let cached = state.cached_highlighted.borrow();
+            let cached = state.app.devtools.cached_highlighted.borrow();
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
-            let line_map = state.line_to_aura_ids.borrow();
+            let line_map = state.app.line_to_aura_ids.borrow();
 
             for i in 0..total {
                 let line_num = format!("{:>4}", i + 1);
@@ -9900,7 +10126,7 @@ fn render_source_viewer(
 /// builder, so a full CSS computed-style sheet is not possible. We render the
 /// layout-relevant props from `VNodeProps` plus the live_cache `bounds` /
 /// `box_model` summary, and note that class resolution is pending.
-fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_computed_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -9940,7 +10166,7 @@ fn render_inspector_computed_tab(state: &DynamicState) -> iced::Element<'static,
         }
 
         // --- Live bounds / box model + computed style from InspectorCache ---
-        let cache = state.live_cache.borrow().clone();
+        let cache = state.app.live_cache.borrow().clone();
         let mut have_computed = false;
         if let Some(cache) = cache {
             if let Some(computed) = cache.get(node.id) {
@@ -10009,9 +10235,9 @@ fn select_vnode_message(id: crate::ui::vnode::VNodeId) -> IcedMessage {
 /// is intentionally not wired into the new right panel yet — keep it here as
 /// `#[allow(dead_code)]` until then.
 #[allow(dead_code)]
-fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let selected_id = state.selected_widget.borrow().clone();
-    let styles = state.debug_element_styles.borrow();
+fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let selected_id = state.app.devtools.selected_widget.borrow().clone();
+    let styles = state.app.devtools.debug_element_styles.borrow();
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
 
     let mut col = column![].spacing(4);
@@ -10051,7 +10277,7 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
     }
 
     // --- Divider + Source section (bottom) ---
-    let source = state.source_code.borrow().clone();
+    let source = state.app.source_code.borrow().clone();
     let path_display = state.component.source_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "unknown".to_string());
@@ -10059,7 +10285,7 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
     // Determine highlighted line range from selected element's span
     let highlight_range = info.and_then(|elem_info| {
         elem_info.span.and_then(|(offset, len)| {
-            let line_offsets = state.source_line_offsets.borrow();
+            let line_offsets = state.app.source_line_offsets.borrow();
             // Find start line (first line_offset <= offset)
             let start_line = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
             // Find end line (first line_offset >= offset + len)
@@ -10089,12 +10315,12 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
             );
 
             // Use cached syntax highlighting for all lines
-            let cached = state.cached_highlighted.borrow();
+            let cached = state.app.devtools.cached_highlighted.borrow();
             let all_lines: Vec<&str> = code.lines().collect();
             let total = all_lines.len();
 
             // Pre-check which lines have associated AuraNodeIds (for hover cursor style)
-            let line_map = state.line_to_aura_ids.borrow();
+            let line_map = state.app.line_to_aura_ids.borrow();
             for i in 0..total {
                 let line_num = format!("{:>4}", i + 1);
                 let is_highlighted = highlight_range
@@ -10183,10 +10409,10 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
     }
 
     // --- Edit mode UI: inline text_editor ---
-    let editing = state.editing_element.borrow().clone();
+    let editing = state.app.devtools.editing_element.borrow().clone();
     if let Some(ref _edit_id) = editing {
-        let edit_err = state.edit_error.borrow().clone();
-        let textarea_key = state.edit_textarea_key.borrow().clone();
+        let edit_err = state.app.devtools.edit_error.borrow().clone();
+        let textarea_key = state.app.devtools.edit_textarea_key.borrow().clone();
 
         col = col.push(
             container(
@@ -10266,10 +10492,10 @@ fn render_inspector_source_section(state: &DynamicState) -> iced::Element<'stati
 }
 
 /// Apply the current edit: read edited text from textarea, write back, trigger hot reload.
-fn apply_edit(state: &mut DynamicState) {
-    let edit_elem = state.editing_element.borrow().clone();
-    let edit_span = state.edit_span.borrow().clone();
-    let textarea_key = state.edit_textarea_key.borrow().clone();
+fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
+    let edit_elem = state.app.devtools.editing_element.borrow().clone();
+    let edit_span = state.app.devtools.edit_span.borrow().clone();
+    let textarea_key = state.app.devtools.edit_textarea_key.borrow().clone();
 
     if let (Some(_id), Some((offset, len)), Some(key)) = (edit_elem, edit_span, textarea_key) {
         // Read edited text from textarea content
@@ -10277,7 +10503,7 @@ fn apply_edit(state: &mut DynamicState) {
         let new_text = map.get(&key).map(|c| c.text().to_string()).unwrap_or_default();
         drop(map);
 
-        let source = state.source_code.borrow().clone();
+        let source = state.app.source_code.borrow().clone();
         if let Some(ref code) = source {
             if offset + len <= code.len() {
                 match state.component.write_source_range(offset, len, &new_text) {
@@ -10287,34 +10513,34 @@ fn apply_edit(state: &mut DynamicState) {
                         for (i, ch) in new_code.char_indices() {
                             if ch == '\n' { offsets.push(i + 1); }
                         }
-                        *state.source_line_offsets.borrow_mut() = offsets;
-                        *state.source_code.borrow_mut() = Some(new_code);
+                        *state.app.source_line_offsets.borrow_mut() = offsets;
+                        *state.app.source_code.borrow_mut() = Some(new_code);
                         // Invalidate caches since source file changed
-                        *state.cached_converted_view.borrow_mut() = None;
-                        *state.cached_debug_id_map.borrow_mut() = None;
+                        *state.app.cached_converted_view.borrow_mut() = None;
+                        *state.app.devtools.cached_debug_id_map.borrow_mut() = None;
                         // Rebuild syntax highlight cache after edit
-                        if let Some(ref c) = *state.source_code.borrow() {
-                            *state.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                        if let Some(ref c) = *state.app.source_code.borrow() {
+                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
                         }
                         // Rebuild line → AuraNodeId index after edit
                         {
                             let span_map = state.component.span_map().clone();
-                            if let Some(ref src) = *state.source_code.borrow() {
-                                *state.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                            if let Some(ref src) = *state.app.source_code.borrow() {
+                                *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
                             }
                         }
                         // Clear edit state on success
-                        *state.editing_element.borrow_mut() = None;
-                        *state.edit_textarea_key.borrow_mut() = None;
-                        *state.edit_span.borrow_mut() = None;
-                        *state.edit_error.borrow_mut() = None;
+                        *state.app.devtools.editing_element.borrow_mut() = None;
+                        *state.app.devtools.edit_textarea_key.borrow_mut() = None;
+                        *state.app.devtools.edit_span.borrow_mut() = None;
+                        *state.app.devtools.edit_error.borrow_mut() = None;
                     }
                     Err(e) => {
-                        *state.edit_error.borrow_mut() = Some(e);
+                        *state.app.devtools.edit_error.borrow_mut() = Some(e);
                     }
                 }
             } else {
-                *state.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
+                *state.app.devtools.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
             }
         }
     }
@@ -10359,8 +10585,8 @@ fn build_line_to_aura_ids(
 }
 
 /// Render the Console tab: show captured print() output.
-fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessage> {
-    let output = state.console_output.borrow();
+fn render_console_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+    let output = state.app.devtools.console_output.borrow();
 
     if output.is_empty() {
         return column![
@@ -10381,7 +10607,7 @@ fn render_console_tab(state: &DynamicState) -> iced::Element<'static, IcedMessag
 /// A node in the debug component tree (for DevTools Elements tab).
 #[derive(Clone)]
 #[allow(dead_code)] // legacy component_tree subsystem; pending removal (Task 19/20)
-struct DebugTreeNode {
+pub(crate) struct DebugTreeNode {
     id: String,
     kind: String,
     children: Vec<DebugTreeNode>,
@@ -10426,7 +10652,7 @@ struct DebugRenderCtx {
 
 /// Debug metadata for a single UI element.
 #[derive(Clone)]
-struct DebugElementInfo {
+pub(crate) struct DebugElementInfo {
     kind: String,
     props: Vec<(String, String)>,
     /// Source span: (byte_offset, byte_length) in the .at file
@@ -10863,6 +11089,34 @@ fn apply_search(storage_key: &str, search: &str) {
 /// Plan 413: build the code editor for the generic `IntoIcedElement` path
 /// (messages pass through verbatim; the VM path uses
 /// `build_code_editor_dynamic` which also fills `INPUT_TEXT`).
+/// Plan 019 Phase 3: autodown 文档编辑器（VM 泛型路径；IcedMessage 直连
+/// 路径另有 INPUT_TEXT 版本臂——payload 惯例同 code editor）。
+fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
+    key: &str,
+    value: &str,
+    is_final: bool,
+    on_change: Option<M>,
+) -> iced::Element<'static, M> {
+    #[cfg(all(feature = "autodown", feature = "code-editor"))]
+    {
+        use crate::ui::autodown_editor as ade;
+        let sk = ade::storage_key(key);
+        // 单向数据流：外部差分回写（与 code editor 同 §5.4 口径）。
+        ade::autodown_editor_sync(&sk, value, is_final);
+        let fg = if crate::ui::style::iced_adapter::dark_mode() { ade_fg_dark() } else { ade_fg_light() };
+        let mut widget = ade::widget::DocEditor::<M>::new(&sk, fg);
+        if let Some(msg) = on_change {
+            widget = widget.on_change(move || msg.clone());
+        }
+        widget.into()
+    }
+    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+    {
+        let _ = (key, is_final);
+        AbstractView::<M>::Text { content: value.to_owned(), style: None }.into_iced()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_code_editor_generic<M: Clone + Debug + 'static>(
     key: &str,
@@ -10938,6 +11192,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Input { style, .. } => style.as_ref(),
         AbstractView::Textarea { style, .. } => style.as_ref(),
         AbstractView::CodeEditor { style, .. } => style.as_ref(),
+        AbstractView::AutodownEditor { style, .. } => style.as_ref(),
         AbstractView::Grid { style, .. } => style.as_ref(),
     }
 }
@@ -10961,6 +11216,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Table { .. } => "table",
         AbstractView::Textarea { .. } => "textarea",
         AbstractView::CodeEditor { .. } => "code_editor",
+        AbstractView::AutodownEditor { .. } => "autodown_editor",
         AbstractView::Input { .. } => "input",
         AbstractView::Accordion { .. } => "accordion",
         AbstractView::Sidebar { .. } => "sidebar",
@@ -11406,6 +11662,43 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el }
         }
 
+        // Plan 019 Phase 3: autodown doc editor (VM path) — INPUT_TEXT carries
+        // the live document on edit (同 code editor 的 payload 通道惯例)。
+        AbstractView::AutodownEditor { key, value, is_final, on_change, style: _ } => {
+            let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
+            #[cfg(all(feature = "autodown", feature = "code-editor"))]
+            {
+                let dbg_props = Vec::<(&str, String)>::new();
+                use crate::ui::autodown_editor as ade;
+                let sk = ade::storage_key(&key);
+                ade::autodown_editor_sync(&sk, &value, is_final);
+                let fg = if crate::ui::style::iced_adapter::dark_mode() {
+                    ade_fg_dark()
+                } else {
+                    ade_fg_light()
+                };
+                let mut widget = ade::widget::DocEditor::<IcedMessage>::new(&sk, fg);
+                if let Some(msg) = on_change.clone() {
+                    let sk2 = sk.clone();
+                    widget = widget.on_change(move || {
+                        INPUT_TEXT.with(|t| *t.borrow_mut() = ade::autodown_editor_text(&sk2).unwrap_or_default());
+                        msg.clone()
+                    });
+                }
+                let el: iced::Element<'static, IcedMessage> = widget.into();
+                let _ = dbg_props;
+                el
+            }
+            #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+            {
+                // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
+                let _ = use_ade;
+                let el: iced::Element<'static, IcedMessage> =
+                    AbstractView::Text { content: value, style: None }.into_iced();
+                el
+            }
+        }
+
         // Everything else delegates to the unified IntoIcedElement renderer
         _ => {
             let kind = view_kind(&view);
@@ -11424,7 +11717,8 @@ fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &st
     match view {
         AbstractView::Input { value, on_change, .. }
         | AbstractView::Textarea { value, on_change, .. }
-        | AbstractView::CodeEditor { value, on_change, .. } => {
+        | AbstractView::CodeEditor { value, on_change, .. }
+        | AbstractView::AutodownEditor { value, on_change, .. } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),
@@ -12192,6 +12486,7 @@ fn extract_handler_from_view<M: Clone + Debug>(
         (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_cursor, .. }, "cursor") => on_cursor.clone(),
+        (AbstractView::AutodownEditor { on_change, .. }, "edit") => on_change.clone(),
         (AbstractView::CodeEditor { on_context_menu, .. }, "context_menu") => {
             on_context_menu.clone()
         }
@@ -13468,4 +13763,13 @@ mod line_edit_tests {
         assert!(vii.contains_key("escape"));
         assert!(vii.contains_key("ctrl.k"));
     }
+}
+
+
+/// autodown doc editor 本文字色（暗/亮两档基础灰阶；主题变量接线登记余量）。
+fn ade_fg_dark() -> crate::ui::code_editor::theme::Rgba {
+    crate::ui::code_editor::theme::Rgba { r: 0.92, g: 0.93, b: 0.95, a: 1.0 }
+}
+fn ade_fg_light() -> crate::ui::code_editor::theme::Rgba {
+    crate::ui::code_editor::theme::Rgba { r: 0.12, g: 0.13, b: 0.15, a: 1.0 }
 }

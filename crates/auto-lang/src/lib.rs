@@ -324,7 +324,7 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _)| (r, stdout)) })
+            rt.block_on(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -332,6 +332,19 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
 
 /// Run AutoLang code with stdout capture and return the disassembled bytecode.
 pub fn run_with_capture_and_bytecode(code: &str) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+    run_with_capture_and_bytecode_with_meta(code).map(|(r, out, bc, _)| (r, out, bc))
+}
+
+/// Like [`run_with_capture_and_bytecode`], also returning the symbol tables
+/// (strings/functions/natives) for resolving disassembly operand references.
+pub fn run_with_capture_and_bytecode_with_meta(
+    code: &str,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(4 * 1024 * 1024)
@@ -348,6 +361,19 @@ pub fn run_with_capture_and_path_and_bytecode(
     code: &str,
     path: &str,
 ) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+    run_with_capture_and_path_and_bytecode_with_meta(code, path).map(|(r, out, bc, _)| (r, out, bc))
+}
+
+/// Like [`run_with_capture_and_path_and_bytecode`], also returning [`crate::vm::disasm::BytecodeMeta`].
+pub fn run_with_capture_and_path_and_bytecode_with_meta(
+    code: &str,
+    path: &str,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
@@ -380,7 +406,7 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _)| r) })
+            rt.block_on(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -393,7 +419,7 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
         .stack_size(4 * 1024 * 1024)
         .spawn(move || {
             let rt = get_global_runtime();
-            rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _)| (r, stdout)) })
+            rt.block_on(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
         })
         .expect("Failed to spawn execution thread");
     handle.join().unwrap()
@@ -689,7 +715,7 @@ fn init_py_ffi(_session: &compile::CompileSession) -> Option<crate::vm::native::
 
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
-async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
     execute_autovm_with_path(code, capture, None).await
 }
 
@@ -701,7 +727,7 @@ async fn execute_autovm_with_path(
     code: &str,
     capture: bool,
     path: Option<&str>,
-) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::opcode::OpCode;
@@ -819,8 +845,16 @@ async fn execute_autovm_with_path(
             }
         }
 
-        // Now compile the statements
-        for stmt in other_stmts.iter() {
+        // Now compile the statements. Emit SOURCE_LINE per top-level stmt so
+        // Run-mode bytecode carries source line info for linking, matching
+        // the debug path (create_vm_from_source).
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+                continue;
+            }
+            if i < ast.source_lines.len() {
+                codegen.emit_source_line(ast.source_lines[i]);
+            }
             codegen.compile_stmt(stmt)?;
         }
     }
@@ -1266,6 +1300,10 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
         vm.merge_native_interface(&py_ni);
     }
 
+    // Symbol tables for disassembly tooltips (strings/functions/natives).
+    // Collected after all native merges, before execution mutates state.
+    let bytecode_meta = crate::vm::disasm::BytecodeMeta::of_vm(&vm);
+
     // Helper to extract stdout from capture buffer
     let get_stdout = || {
         output_buffer
@@ -1357,7 +1395,7 @@ fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
         let _ = server_thread.join();
     }
 
-    Ok((result, get_stdout(), bytecode_lines))
+    Ok((result, get_stdout(), bytecode_lines, bytecode_meta))
 }
 
 /// Plan 260: Compile and run all `#[test]` functions in the given code.
@@ -3000,14 +3038,13 @@ fn register_transitive_widgets_inner(
 }
 
 #[cfg(feature = "ui-iced")]
-fn run_file_dynamic_ui_inner(
+fn build_dynamic_component_inner(
     code: &str,
     path: Option<&str>,
     override_scenario: Option<&crate::session::CompilerSession>,
-) -> AutoResult<String> {
+) -> AutoResult<crate::ui::dynamic::DynamicComponent> {
     use crate::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
-    use crate::ui::iced::run_dynamic_iced;
     use crate::ui::widget_registry::WidgetRegistry;
 
     // 1. Parse with UI scenario (or override if provided — PR-6)
@@ -3522,7 +3559,28 @@ fn run_file_dynamic_ui_inner(
     //     unconditionally via call_handler.
     comp.fire_init();
 
-    // 4. Run iced (blocks until window closes)
+    Ok(comp)
+}
+
+/// Plan 459：按 `auto run` 同一管线构造 DynamicComponent（不启动 iced 循环）。
+/// 双窗口 demo（examples/ui_dual_app）等宿主复用本入口装配多个 App。
+#[cfg(feature = "ui-iced")]
+pub fn build_dynamic_component(
+    code: &str,
+    path: Option<&str>,
+) -> AutoResult<crate::ui::dynamic::DynamicComponent> {
+    build_dynamic_component_inner(code, path, None)
+}
+
+#[cfg(feature = "ui-iced")]
+fn run_file_dynamic_ui_inner(
+    code: &str,
+    path: Option<&str>,
+    override_scenario: Option<&crate::session::CompilerSession>,
+) -> AutoResult<String> {
+    use crate::ui::iced::run_dynamic_iced;
+    // 4. Run iced (blocks until all windows close; plan-459 daemon semantics)
+    let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     run_dynamic_iced(comp)
         .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
 }
@@ -3552,7 +3610,7 @@ fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
         .spawn(move || {
             let rt = get_global_runtime();
             rt.block_on(async {
-                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _)| {
+                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| {
                     if !stdout.is_empty() { println!("{}", stdout); }
                     r
                 })

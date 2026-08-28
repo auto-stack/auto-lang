@@ -9,6 +9,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, Decoration, type 
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autoLanguage } from '../lang/auto';
+import { attachFloatingScrollbar, type FloatingScrollHandle } from '../utils/floatingScroll';
 
 const props = defineProps<{
   modelValue: string;
@@ -17,6 +18,7 @@ const props = defineProps<{
   breakpoints?: number[];
   currentDebugLine?: number | null;
   highlightedSourceLine?: number | null;
+  selectedSourceLine?: number | null;
   errorLines?: number[];
   readOnly?: boolean;
 }>();
@@ -31,6 +33,7 @@ const emit = defineEmits<{
 
 const editorContainer = ref<HTMLDivElement>();
 let editorView: EditorView | null = null;
+let fsbHandle: FloatingScrollHandle | null = null;
 const debugCompartment = new Compartment();
 
 // ============================================================================
@@ -130,6 +133,7 @@ const breakpointGutter = [
 
 const debugLineEffect = StateEffect.define<number | null>();
 const crossHighlightEffect = StateEffect.define<number | null>();
+const selectedLineEffect = StateEffect.define<number | null>();
 
 const debugLineState = StateField.define<DecorationSet>({
   create() { return Decoration.none; },
@@ -165,6 +169,24 @@ const crossHighlightState = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// Pinned "selected" line (from clicks) — distinct from the transient hover
+const selectedLineState = StateField.define<DecorationSet>({
+  create() { return Decoration.none; },
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(selectedLineEffect)) {
+        if (e.value === null || e.value <= 0) return Decoration.none;
+        const line = tr.state.doc.line(e.value);
+        return Decoration.set([
+          Decoration.line({ class: 'cm-selected-line' }).range(line.from),
+        ]);
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 const errorLineEffect = StateEffect.define<number[]>();
 
 const errorLineState = StateField.define<DecorationSet>({
@@ -187,22 +209,35 @@ const errorLineState = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-const debugLineHighlight = [
-  debugLineState,
+// Linking decorations are always mounted: source↔bytecode highlighting is
+// primarily a Run-mode feature, and effects dispatched at unmounted fields
+// would silently no-op.
+const alwaysHighlight = [
   crossHighlightState,
+  selectedLineState,
   errorLineState,
   EditorView.baseTheme({
-    '.cm-debug-current-line': {
-      backgroundColor: '#0e639c40',
-      borderLeft: '3px solid #0e639c',
-    },
     '.cm-cross-highlight-line': {
-      backgroundColor: '#7b4a0e40',
-      borderLeft: '3px solid #ff9d00',
+      backgroundColor: 'rgba(86, 156, 214, 0.16)',
+    },
+    '.cm-selected-line': {
+      backgroundColor: 'rgba(255, 157, 0, 0.2)',
     },
     '.cm-error-line': {
       backgroundColor: '#f38ba822',
       borderLeft: '3px solid #f38ba8',
+    },
+  }),
+];
+
+// Debug-only: breakpoint gutter + current-IP line marker
+const debugLineHighlight = [
+  debugLineState,
+  breakpointGutter,
+  EditorView.baseTheme({
+    '.cm-debug-current-line': {
+      backgroundColor: '#0e639c40',
+      borderLeft: '3px solid #0e639c',
     },
     '.cm-breakpoint-gutter': {
       width: '22px',
@@ -223,7 +258,7 @@ const debugLineHighlight = [
 ];
 
 function getDebugExtensions(): Extension[] {
-  return [...breakpointGutter, ...debugLineHighlight];
+  return debugLineHighlight;
 }
 
 // ============================================================================
@@ -245,6 +280,7 @@ onMounted(() => {
         emit('update:modelValue', update.state.doc.toString());
       }
     }),
+    ...alwaysHighlight,
     debugCompartment.of(props.isDebugging ? getDebugExtensions() : []),
   ];
 
@@ -255,9 +291,25 @@ onMounted(() => {
   if (props.onRun) {
     extensions.push(keymap.of([{
       key: 'Ctrl-Enter',
-      run: () => { props.onRun?.(); return true; }
+      run: () => {
+        // Debug/replay mode: Run is unavailable, use debug shortcuts instead
+        if (!props.isDebugging) props.onRun?.();
+        return true;
+      }
     }]));
   }
+
+  // Clicking a content line selects (pins) it; gutter clicks are handled by
+  // the breakpoint gutter above, so skip them here.
+  extensions.push(EditorView.domEventHandlers({
+    mousedown(event, view) {
+      if ((event.target as HTMLElement).closest('.cm-gutters')) return false;
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (pos == null) return false;
+      emit('line-click', view.state.doc.lineAt(pos).number);
+      return false;
+    },
+  }));
 
   const state = EditorState.create({
     doc: props.modelValue,
@@ -268,6 +320,9 @@ onMounted(() => {
     state,
     parent: editorContainer.value,
   });
+
+  // Floating scrollbar over the CM scroller (native one hidden via CSS)
+  fsbHandle = attachFloatingScrollbar(editorView.scrollDOM, editorContainer.value!);
 
   // Hover line highlight
   let hoverLine = 0;
@@ -324,7 +379,19 @@ watch(() => props.currentDebugLine, (line) => {
 
 watch(() => props.highlightedSourceLine, (line) => {
   if (!editorView) return;
-  editorView.dispatch({ effects: crossHighlightEffect.of(line ?? null) });
+  const effects: any[] = [crossHighlightEffect.of(line ?? null)];
+  // Bring the highlighted line into view without touching the cursor
+  // (scrollIntoView with default 'nearest' alignment is a no-op if visible)
+  if (line !== null && line !== undefined) {
+    const pos = Math.min(editorView.state.doc.length, editorView.state.doc.line(line).from);
+    effects.push(EditorView.scrollIntoView(pos, { y: 'nearest' }));
+  }
+  editorView.dispatch({ effects });
+});
+
+watch(() => props.selectedSourceLine, (line) => {
+  if (!editorView) return;
+  editorView.dispatch({ effects: [selectedLineEffect.of(line ?? null)] });
 });
 
 watch(() => props.errorLines, (lines) => {
@@ -349,6 +416,8 @@ watch(() => props.breakpoints, (bps) => {
 }, { deep: true });
 
 onUnmounted(() => {
+  fsbHandle?.destroy();
+  fsbHandle = null;
   editorView?.destroy();
 });
 </script>
@@ -365,6 +434,10 @@ onUnmounted(() => {
 }
 .editor-container :deep(.cm-scroller) {
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  scrollbar-width: none; /* Firefox */
+}
+.editor-container :deep(.cm-scroller)::-webkit-scrollbar {
+  display: none;
 }
 .editor-container :deep(.cm-gutters) {
   cursor: default;

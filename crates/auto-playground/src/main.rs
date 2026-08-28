@@ -106,6 +106,10 @@ async fn main() {
     }
 
     let app = app.layer(cors);
+    // index.html is volatile (its hashed asset references change on every
+    // build) — force revalidation so browsers never run a stale UI skeleton
+    // against fresh assets.
+    let app = app.layer(axum::middleware::from_fn(no_cache_html));
 
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3030));
     tracing::info!("Auto Playground server listening on http://{}", addr);
@@ -114,6 +118,28 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 
     drop(frontend_child);
+}
+
+/// Add `Cache-Control: no-cache` to HTML responses (revalidate every time;
+/// 304s still apply via ETag). Hashed assets are unaffected.
+async fn no_cache_html(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut res = next.run(req).await;
+    let is_html = res
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.starts_with("text/html"))
+        .unwrap_or(false);
+    if is_html {
+        res.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        );
+    }
+    res
 }
 
 async fn debug_ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {

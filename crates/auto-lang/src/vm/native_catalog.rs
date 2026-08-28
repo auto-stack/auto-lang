@@ -474,6 +474,8 @@ macro_rules! for_each_native {
             (2953, NATIVE_AUTODOWN_FIND_BLOCK, shim_autodown_find_block, "auto.autodown.find_block"),
             (2954, NATIVE_AUTODOWN_INSERT_TEXT, shim_autodown_insert_text, "auto.autodown.insert_text"),
             (2955, NATIVE_AUTODOWN_INSERT_TEMPLATE, shim_autodown_insert_template, "auto.autodown.insert_template"),
+            // === Plan 019 批次九: 编辑壳 payload 回读（on_change 回环口）===
+            (2956, NATIVE_AUTODOWN_EDITOR_TEXT, shim_autodown_editor_text, "auto.autodown_editor.text"),
 
             // === DateTime cmp (2794) ===
             (2794, NATIVE_DATETIME_CMP, shim_datetime_cmp, "auto.datetime.cmp")

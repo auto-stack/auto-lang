@@ -16,6 +16,7 @@ export interface RunResponse {
   time_ms: number;
   result?: string;
   bytecode?: BytecodeLine[];
+  meta?: BytecodeMeta | null;
 }
 
 export interface RunCodeRequest {
@@ -120,6 +121,15 @@ export interface DebugRecording {
   initialBreakpoints: number[];
   bytecode: BytecodeLine[];
   events: RecordingEvent[];
+  meta?: BytecodeMeta | null;
+}
+
+/// Symbol tables accompanying disassembly, letting operand references
+/// (`str[N]`, `nat#N`, jump/call hex targets) resolve to concrete values.
+export interface BytecodeMeta {
+  strings: string[];
+  functions: { offset: number; name: string }[];
+  natives: Record<string, string>;
 }
 
 export type RecordingEvent =

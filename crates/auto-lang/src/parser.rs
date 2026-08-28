@@ -7609,21 +7609,23 @@ impl<'a> Parser<'a> {
     pub fn parse_expr_or_body(&mut self) -> AutoResult<Body> {
         if self.is_kind(TokenKind::LBrace) {
             self.body()
-        } else if self.is_kind(TokenKind::Return) {
-            let mut body = Body::new();
-            body.stmts.push(self.return_stmt()?);
-            Ok(body)
-        } else if self.is_kind(TokenKind::Break) {
-            let mut body = Body::new();
-            body.stmts.push(self.break_stmt()?);
-            Ok(body)
-        } else if self.is_kind(TokenKind::Continue) {
-            let mut body = Body::new();
-            body.stmts.push(self.continue_stmt()?);
-            Ok(body)
         } else {
+            // Single-statement fallback (e.g. `Pattern -> print(...)` in an is
+            // arm): record the statement's line so codegen emits SOURCE_LINE
+            // and the arm maps to bytecode for source linking.
             let mut body = Body::new();
-            body.stmts.push(Stmt::Expr(self.parse_expr()?));
+            let stmt_line = self.cur.pos.line;
+            let stmt = if self.is_kind(TokenKind::Return) {
+                self.return_stmt()?
+            } else if self.is_kind(TokenKind::Break) {
+                self.break_stmt()?
+            } else if self.is_kind(TokenKind::Continue) {
+                self.continue_stmt()?
+            } else {
+                Stmt::Expr(self.parse_expr()?)
+            };
+            body.stmts.push(stmt);
+            body.source_lines.push(stmt_line as usize);
             Ok(body)
         }
     }

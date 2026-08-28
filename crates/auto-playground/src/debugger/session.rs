@@ -54,9 +54,12 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
             })
         })
         .collect();
+    // VM constructor registers std shims, so symbol tables are complete here
+    let meta = auto_lang::vm::disasm::BytecodeMeta::of_vm(&vm);
+    let meta_json = serde_json::to_value(&meta).ok();
     send_json(
         &mut ws,
-        serde_json::json!({ "type": "bytecode", "lines": bytecode_json }),
+        serde_json::json!({ "type": "bytecode", "lines": bytecode_json, "meta": meta_json }),
     )
     .await
     .ok();

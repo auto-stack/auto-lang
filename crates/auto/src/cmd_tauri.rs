@@ -668,19 +668,54 @@ fn generate_postcss_config() -> String {
 }
 
 fn generate_index_html(name: &str) -> String {
+    // Plan 458: theme-aware, same as cmd_vue (dark class follows
+    // AUTO_UI_THEME; accent bootstrap pins --primary when AUTO_UI_ACCENT set).
+    let dark_attr = if auto_lang::ui::style::theme::theme_pref_from_env() == "dark" {
+        r#" class="dark""#
+    } else {
+        ""
+    };
+    // Plan 458: theme/accent bootstrap — same semantics as cmd_vue.
+    let theme_env = std::env::var("AUTO_UI_THEME").ok().filter(|t| {
+        auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str())
+    });
+    let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
+        auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
+    });
+    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() {
+        let dark = theme_env.as_deref() != Some("light");
+        let mut lines = String::from("  <script>\n");
+        if let Some(t) = &theme_env {
+            lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+        }
+        if let Some(a) = &accent_env {
+            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)
+                .unwrap_or_else(|| "239 84% 67%".to_string());
+            lines.push_str(&format!("    window.__AUTO_UI_ACCENT__ = '{}';\n", a));
+            lines.push_str(&format!(
+                "    document.documentElement.style.setProperty('--primary', '{}');\n",
+                hsl
+            ));
+        }
+        lines.push_str("  </script>\n");
+        lines
+    } else {
+        String::new()
+    };
     format!(r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="en"{}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{}</title>
+{}
 </head>
 <body>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
-"#, name)
+"#, dark_attr, name, accent_bootstrap)
 }
 
 fn generate_main_ts() -> String {

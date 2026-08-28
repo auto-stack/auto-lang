@@ -31,6 +31,9 @@ pub mod style;
 pub mod debug;
 pub mod vm_bridge;
 pub mod handler_codegen;
+#[cfg(feature = "ui-iced")]
+pub mod session;
+
 // Plan 442 A3: web-ecosystem ext imports on the VM render target
 // (adapter-chain loading + platform stubs).
 pub mod ext_stubs;
@@ -58,6 +61,11 @@ pub mod render_support;
 // Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown 真渲染）。
 #[cfg(feature = "autodown")]
 pub mod autodown_render;
+
+// Plan 019 Phase 3: autodown 文档编辑壳（cosmic-text 块缓冲 + 焦点导航）。
+// 双 feature 门控：块模型单源（autodown）× cosmic-text 栈（code-editor）。
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+pub mod autodown_editor;
 
 #[cfg(feature = "ui-interpreter")]
 pub mod interpreter;

@@ -6,7 +6,7 @@ mod tap;
 
 use clap::{Parser, Subcommand};
 use compare::{ComparisonReport, TestCaseComparison};
-use runner::{lib_has_mock_server, MockServer, RunConfig};
+use runner::{lib_has_mock_server, resolve_lib_dir, MockServer, RunConfig};
 use std::path::PathBuf;
 
 /// Three-way parity checker: AutoVM vs a2r vs native Rust.
@@ -20,6 +20,13 @@ struct Cli {
     /// Path to the auto binary (default: "auto").
     #[arg(long, env = "AUTO_BINARY", default_value = "auto")]
     auto_binary: String,
+
+    /// Explicit Python interpreter for oracle/a2py subprocesses (Plan 461).
+    /// Overrides the python3/python PATH probe — needed when the PATH
+    /// `python3` is a different installation without the required
+    /// site-packages (e.g. the Microsoft Store stub on Windows).
+    #[arg(long, env = "PARITY_PYTHON")]
+    python_binary: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -58,6 +65,10 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     let root = cli.root.unwrap_or_else(detect_parity_root);
+
+    if let Some(py) = cli.python_binary.as_deref() {
+        runner::set_python_binary(py);
+    }
 
     if !root.is_dir() {
         eprintln!("Error: parity root not found: {}", root.display());
@@ -336,17 +347,44 @@ fn detect_parity_mode(config: &RunConfig) -> ParityMode {
     }
 }
 
-/// Discover all library directories under `<root>/libs/`, skipping `_dummy`
-/// (which is a framework smoke test, not a real library under test).
+/// Discover all libraries under `<root>/libs/`, skipping `_dummy` (a
+/// framework smoke test, not a real library under test).
+///
+/// Plan 460 categorized layout: libraries live at `libs/<category>/<name>/`;
+/// every first-level directory under `libs/` is a category and discovery
+/// scans one level deeper. The legacy flat layout (`libs/<name>/auto/`) is
+/// still picked up with a stderr warning so an unmigrated library is never
+/// silently dropped from `list`/`all`.
 fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
     let libs_dir = root.join("libs");
     let mut libs = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&libs_dir) {
         for entry in entries.flatten() {
-            if entry.path().is_dir() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join("auto").is_dir() {
+                // Legacy flat layout — still discoverable, but nag.
                 if let Some(name) = entry.file_name().to_str() {
                     if name != "_dummy" {
+                        eprintln!(
+                            "warning: library '{name}' sits directly under libs/; \
+                             move it into a category dir (libs/<category>/{name}/)"
+                        );
                         libs.push(name.to_string());
+                    }
+                }
+                continue;
+            }
+            if let Ok(children) = std::fs::read_dir(&path) {
+                for child in children.flatten() {
+                    if child.path().is_dir() {
+                        if let Some(name) = child.file_name().to_str() {
+                            if name != "_dummy" {
+                                libs.push(name.to_string());
+                            }
+                        }
                     }
                 }
             }
@@ -358,21 +396,26 @@ fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
 
 /// Return the library list for a given phase.
 ///
-/// Phase mapping per Plan 347:
+/// Phase mapping (Plans 347/358/367/368/369; names are leaf names in the
+/// Plan 460 categorized layout `libs/<category>/<name>/`):
 /// - p0: `_dummy` (framework smoke test)
 /// - p1: `base64`, `url`
 /// - p2: `serde_json`, `regex`
 /// - p3: `sha2`, `rusqlite`
-/// - p4: `reqwest`, `tokio`
+/// - p4: `tokio`, `tokio_stream` (`reqwest` dropped — never landed on disk)
 /// - p5: `py_math`, `py_random` (Plan 369 Python parity)
 /// - p6: `py_datetime`, `py_struct`, `py_uuid` (Plan 369 Python parity)
+/// - p7: remaining Python stdlib libs (Plan 369 follow-ups), so the phase
+///       view covers every Python-parity library on disk
+/// - p8: `py_numpy`, `py_pandas`, `py_matplotlib`, `py_torch` (Plan 461
+///       Python sci-compute parity)
 fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
     let phase_map: &[(&str, &[&str])] = &[
         ("p0", &["_dummy"]),
         ("p1", &["base64", "url"]),
         ("p2", &["serde_json", "regex"]),
         ("p3", &["sha2", "rusqlite"]),
-        ("p4", &["reqwest", "tokio", "tokio_stream"]),
+        ("p4", &["tokio", "tokio_stream"]),
         // Plan 358 additions:
         ("d1", &["cli_app"]),
         ("d2", &["trait_advanced", "generators"]),
@@ -382,13 +425,31 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
         // oracle that calls the same underlying crate directly.
         ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app", "c_json_app"]),
         // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
-        // (parity runner auto-spawns libs/<name>/mock-server/ via MockServer).
+        // (parity runner auto-spawns libs/<category>/<name>/mock-server/ via MockServer).
         ("d6", &["http_client_sync", "c_http_get", "c_wget", "c_crawler"]),
         // Plan 369 (Python parity): three-way parity against a Python oracle
         // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
         // library's `tests/python/` directory by `detect_parity_mode`.
         ("p5", &["py_math", "py_random"]),
         ("p6", &["py_datetime", "py_struct", "py_uuid"]),
+        (
+            "p7",
+            &[
+                "py_configparser",
+                "py_hashlib",
+                "py_json",
+                "py_list",
+                "py_os",
+                "py_re",
+                "py_string",
+                "py_sys",
+            ],
+        ),
+        // Plan 461 (Python sci-compute parity): numpy/pandas/matplotlib/torch
+        // through `use.py` + the PyO3 bridge. torch adds ~10s import time per
+        // backend run; matplotlib asserts file artifacts under
+        // libs/python/py_matplotlib/py_matplotlib_tmp/ (gitignored).
+        ("p8", &["py_numpy", "py_pandas", "py_matplotlib", "py_torch"]),
     ];
 
     for (p, libs) in phase_map {
@@ -398,7 +459,7 @@ fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
             return libs
                 .iter()
                 .filter_map(|s| {
-                    if root.join("libs").join(s).is_dir() {
+                    if resolve_lib_dir(root, s).is_some() {
                         Some(s.to_string())
                     } else {
                         None
@@ -429,8 +490,8 @@ mod tests {
     fn test_phase_lookup_picks_up_existing_lib() {
         let tmp = tempfile_dir();
         let libs = tmp.join("libs");
-        std::fs::create_dir_all(libs.join("_dummy")).unwrap();
-        std::fs::create_dir_all(libs.join("base64")).unwrap();
+        std::fs::create_dir_all(libs.join("framework").join("_dummy")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
         let p0 = discover_libraries_by_phase(&tmp, "p0");
         assert_eq!(p0, vec!["_dummy".to_string()]);
         let p1 = discover_libraries_by_phase(&tmp, "p1");
@@ -441,11 +502,30 @@ mod tests {
     fn test_discover_all_libraries_skips_dummy() {
         let tmp = tempfile_dir();
         let libs = tmp.join("libs");
-        std::fs::create_dir_all(libs.join("_dummy")).unwrap();
-        std::fs::create_dir_all(libs.join("base64")).unwrap();
-        std::fs::create_dir_all(libs.join("url")).unwrap();
+        std::fs::create_dir_all(libs.join("framework").join("_dummy")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("url")).unwrap();
+        std::fs::create_dir_all(libs.join("python").join("py_math")).unwrap();
         let found = discover_all_libraries(&tmp);
-        assert_eq!(found, vec!["base64".to_string(), "url".to_string()]);
+        assert_eq!(
+            found,
+            vec![
+                "base64".to_string(),
+                "py_math".to_string(),
+                "url".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_discover_all_libraries_includes_legacy_flat_lib() {
+        let tmp = tempfile_dir();
+        let libs = tmp.join("libs");
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
+        // Un-migrated flat lib: has auto/ directly under libs/<name>/.
+        std::fs::create_dir_all(libs.join("old_lib").join("auto")).unwrap();
+        let found = discover_all_libraries(&tmp);
+        assert_eq!(found, vec!["base64".to_string(), "old_lib".to_string()]);
     }
 
     fn tempfile_dir() -> PathBuf {

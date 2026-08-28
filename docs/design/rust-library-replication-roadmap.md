@@ -252,7 +252,7 @@ auto-lang/
 ### 4.2 单个库的内部结构（以 base64 为例）
 
 ```
-libs/base64/
+libs/rust/base64/
 ├── README.md
 ├── auto/
 │   ├── base64.at              # 公共 API: encode(str) str, decode(str) Result[str, Error]

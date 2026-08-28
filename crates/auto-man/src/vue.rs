@@ -846,20 +846,62 @@ fn generate_index_html(name: &str) -> String {
     // in index.css; the handwritten ash-gui (and the shadcn default) render
     // dark. Without `class="dark"` on <html> the app falls back to the light
     // `:root` tokens and looks broken (light bg + dark-designed text).
+    // Plan 458: the dark class follows the effective theme pref (AUTO_UI_THEME
+    // from `auto run --theme` / pac.at `theme:`; default dark), and an accent
+    // bootstrap pins `--primary` on <html> when AUTO_UI_ACCENT is set (inline
+    // style beats every stylesheet, and a later runtime `applyAccent` — app
+    // `accent_color` state — overwrites it again).
+    let dark_attr = if auto_lang::ui::style::theme::theme_pref_from_env() == "dark" {
+        r#" class="dark""#
+    } else {
+        ""
+    };
+    // Plan 458: when the run layer resolved theme/accent (env present), emit
+    // a bootstrap that (a) pins `--primary` on <html> for the accent and
+    // (b) publishes window.__AUTO_UI_THEME__/__AUTO_UI_ACCENT__ globals the
+    // generated setup reads to seed declared dark_mode/accent_color refs.
+    // Both are skipped when the env is unset so a widget's own initial
+    // value stands untouched.
+    let theme_env = std::env::var("AUTO_UI_THEME").ok().filter(|t| {
+        auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str())
+    });
+    let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
+        auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
+    });
+    let accent_bootstrap = if theme_env.is_some() || accent_env.is_some() {
+        let dark = theme_env.as_deref() != Some("light");
+        let mut lines = String::from("    <script>\n");
+        if let Some(t) = &theme_env {
+            lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
+        }
+        if let Some(a) = &accent_env {
+            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)
+                .unwrap_or_else(|| "239 84% 67%".to_string());
+            lines.push_str(&format!("    window.__AUTO_UI_ACCENT__ = '{}';\n", a));
+            lines.push_str(&format!(
+                "    document.documentElement.style.setProperty('--primary', '{}');\n",
+                hsl
+            ));
+        }
+        lines.push_str("    </script>\n");
+        lines
+    } else {
+        String::new()
+    };
     format!(r#"<!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en"{}>
   <head>
     <meta charset="UTF-8">
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{}</title>
-  </head>
+{}  </head>
   <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, name)
+"#, dark_attr, name, accent_bootstrap)
 }
 
 fn generate_main_ts(
@@ -3881,6 +3923,21 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.ensure_code_editor_component()?;
     }
 
+    // Plan 458: index.html carries the theme default (`class="dark"`) and the
+    // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
+    // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
+    // `class="dark"`, or a theme flag flip) survives the "project exists,
+    // nothing changed" fast path forever.
+    {
+        let index_html_path = project.output_dir.join("index.html");
+        if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
+            let index_html = generate_index_html(&project.name);
+            if let Err(e) = fs::write(&index_html_path, index_html) {
+                println!("  ⚠ index.html refresh skipped: {}", e);
+            }
+        }
+    }
+
     // Copy handmade theme assets if available
     let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
     let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
@@ -4172,11 +4229,8 @@ mod tests {
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
-<<<<<<< HEAD
             chart: true,
-=======
             ..Default::default()
->>>>>>> plan-455
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
@@ -4270,7 +4324,6 @@ mod tests {
         ));
     }
 
-<<<<<<< HEAD
     /// PLAN-457: every component the generator can emit must either ship a
     /// bundled snapshot (offline materialization) or be an allowlisted
     /// default-style registry miss that keeps taking the CLI fallback.
@@ -4287,7 +4340,7 @@ mod tests {
                 "component '{component}' is neither bundled nor allowlisted for fallback"
             );
         }
-=======
+    }
     #[test]
     fn test_avatar_progress_dependency_detection() {
         let usage = VueDependencyUsage::detect(concat!(
@@ -4305,7 +4358,6 @@ mod tests {
         assert!(pkg.contains("\"class-variance-authority\""), "{pkg}");
         assert!(pkg.contains("\"reka-ui\""), "{pkg}");
         assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
->>>>>>> plan-455
     }
 
     /// Plan 444 (ash-shell-057 ⑥): an unused CodeEditor.vue shell from an

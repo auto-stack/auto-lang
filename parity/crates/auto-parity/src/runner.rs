@@ -16,10 +16,38 @@ pub struct RunConfig {
     pub sort_results: bool,
 }
 
+/// Resolve a library directory under the categorized layout
+/// `libs/<category>/<library>/` (Plan 460). The library identity is the leaf
+/// directory name; the category level exists only for organisation. Returns
+/// `None` when the leaf name matches zero or multiple categories — duplicate
+/// leaf names across categories are ambiguous and rejected rather than
+/// guessed.
+pub fn resolve_lib_dir(parity_root: &Path, library: &str) -> Option<PathBuf> {
+    let libs_dir = parity_root.join("libs");
+    let mut hits = Vec::new();
+    if let Ok(categories) = std::fs::read_dir(&libs_dir) {
+        for category in categories.flatten() {
+            let candidate = category.path().join(library);
+            if candidate.is_dir() {
+                hits.push(candidate);
+            }
+        }
+    }
+    if hits.len() == 1 {
+        hits.pop()
+    } else {
+        None
+    }
+}
+
 impl RunConfig {
-    /// Path to the library directory: `<parity_root>/libs/<library>`.
+    /// Path to the library directory: `libs/<category>/<library>/` under the
+    /// parity root (Plan 460 categorized layout). Falls back to the legacy
+    /// flat path `libs/<library>` when no categorized match exists, so
+    /// downstream errors still name a concrete path.
     pub fn lib_dir(&self) -> PathBuf {
-        self.parity_root.join("libs").join(&self.library)
+        resolve_lib_dir(&self.parity_root, &self.library)
+            .unwrap_or_else(|| self.parity_root.join("libs").join(&self.library))
     }
 
     /// Return a clone of this config with the library name replaced.
@@ -686,20 +714,58 @@ mod tests {
     }
 
     #[test]
-    fn test_run_config_lib_dir() {
+    fn lib_dir_resolves_categorized_layout() {
+        let tmp =
+            std::env::temp_dir().join(format!("auto-parity-libdir-cat-{}", std::process::id()));
+        let lib = tmp.join("libs").join("rust").join("base64");
+        std::fs::create_dir_all(&lib).unwrap();
+        let cfg = RunConfig {
+            parity_root: tmp.clone(),
+            auto_binary: "auto".to_string(),
+            library: "base64".to_string(),
+            sort_results: false,
+        };
+        assert_eq!(cfg.lib_dir(), lib);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn lib_dir_rejects_ambiguous_leaf_name() {
+        let tmp =
+            std::env::temp_dir().join(format!("auto-parity-libdir-ambig-{}", std::process::id()));
+        std::fs::create_dir_all(tmp.join("libs").join("rust").join("dup")).unwrap();
+        std::fs::create_dir_all(tmp.join("libs").join("lang").join("dup")).unwrap();
+        assert_eq!(resolve_lib_dir(&tmp, "dup"), None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn lib_dir_falls_back_to_flat_layout() {
+        // No categorized directory exists on disk -> legacy flat join.
         let cfg = RunConfig {
             parity_root: PathBuf::from("/tmp/parity"),
             auto_binary: "auto".to_string(),
             library: "base64".to_string(),
             sort_results: false,
         };
-        assert_eq!(
-            cfg.lib_dir(),
-            PathBuf::from("/tmp/parity/libs/base64")
-        );
+        assert_eq!(cfg.lib_dir(), PathBuf::from("/tmp/parity/libs/base64"));
     }
 }
+/// Optional explicit Python interpreter, set from the CLI `--python-binary`
+/// flag (Plan 461). When set it wins over the python3/python PATH probe —
+/// needed because the embedded PyO3 interpreter and the PATH `python3` may be
+/// different installations (e.g. the Microsoft Store stub without
+/// site-packages on Windows).
+static PYTHON_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn set_python_binary(bin: &str) {
+    let _ = PYTHON_OVERRIDE.set(bin.to_string());
+}
+
 fn python_interpreter() -> &'static str {
+    if let Some(bin) = PYTHON_OVERRIDE.get() {
+        return bin.as_str();
+    }
     use std::sync::OnceLock;
     static INTERP: OnceLock<String> = OnceLock::new();
     INTERP.get_or_init(|| {

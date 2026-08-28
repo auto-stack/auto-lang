@@ -27,6 +27,30 @@ auto run --render vm   # 038/041 等支持：直接跑 AutoVM 解释器（原生
   - **Playwright 冒烟** `tests/smoke.spec.ts`：015、017、018、022、023
   - **ATD 验收** `tests/acceptance.atd`（Plan 366 DSL）：011、013、015、017、018、022、023
 
+## 主题约定（Plan 458）
+
+**示例生态默认主题是 Dark（深色），主题主色默认 indigo**。要查看浅色效果，用
+CLI 覆盖；示例自己的 pac.at 也可声明默认值：
+
+```bash
+auto run --theme light             # 浅色主题（dark / light）
+auto run --theme light --accent ocean   # 同时指定主题主色
+# indigo | coral | ocean | sage | amber
+```
+
+- 优先级：`auto run --theme/--accent` > pac.at `theme:`/`accent:` > 内置默认
+  （dark / indigo）。
+- 双端一致：CLI/pac.at 值决定 Vue 产物 index.html 的 `.dark` class 与
+  `--primary` 引导值，也决定 VM(Iced) 窗口的 shadcn 调色板 —— 同一份配置
+  两端同一外观。
+- 应用内运行时切换：根组件声明 `dark_mode`（bool）/ `accent_color`（str）
+  状态变量即可被双端识别（变量名是契约）。**006-hero-section** 是首个完整
+  示范：右上角 Theme Settings 面板可在运行中切换主题与主色。
+- 仍硬编码浅色配色（`bg-white`/`text-gray-900` 等）的历史示例（004/005/007/
+  008/038）自带可读但与深色页面底色冲突，后续按
+  [Design 19](../../docs/design/19-theming-and-dark-mode.md) 的 token 迁移表
+  逐步语义化。
+
 ## 编号说明（024–040 空洞的来历）
 
 编号有空洞，均有明确去向。**新示例优先填入空洞**（从 024 起，编号顺序

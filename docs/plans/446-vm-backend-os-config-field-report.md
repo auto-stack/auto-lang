@@ -1,6 +1,6 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: drafting（上游修复提案，含复现载体与验收标准）
+状态: executing（批二部分落地：A1/E1 完成、E2 部分收敛、B1 待续；worktree .worktrees/plan-446-dev；批一已合入 master——见 §K/§L/§E4）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -484,3 +484,76 @@ Value 通道(i32 快路径 tag 位误读剔除);缺口③ = auto.obj.* 编译期
 强制 + infer_native_return_type 型别标注(keys/values→Array,
 find→NestedObject)+ for-in Array 源走索引循环通道。附带:harness 的
 stdout 读取通道修复(此前 WIP 用例读 main 返回值恒空串)。
+
+## N. 批二实施记录（2026-08-28，auto-lang worktree plan-446-dev，已合入 master）
+
+按 §I 第二批（vm 可用性）实施，A1/E1 完成、E2 部分收敛；B1 未在本轮实施（见待澄清事项）。
+
+**[✅ 已完成] A1 多 store 消歧显式报错**（handler_codegen.rs，提交 ce513361b）：
+1. 消歧集合从"仅 Msg 变体"扩为 **Msg ∪ on-block 处理器 ∪ 生命周期名**——
+   "handler 已定义但漏列 Msg 声明"（os-config SetSidecar 现场，§A1-1）自动
+   解析到正确 store，不再回退错误目标；
+2. 合格化调用 `Store.Method(...)`（alias 即 store 真名、多 store 工程）直接按
+   alias 定位，不再被方法名匹配劫持（§A1 修复建议 3 的限定调用增强）；
+3. 泛型接收 `store.X`：撞名（≥2 store 命中）→ 显式报错列出候选 store 名；
+   未声明（0 命中）→ 显式报错列出在场 store；两者禁止静默 alias 回退，
+   错误经 thread-local 收集、synthesis 收尾升级为 Err → boot 致命（与 C1-3
+   同哲学）。单 store 工程保持静默 fallback（vue 轨兼容性）。
+回归：plan446_a1_* 4 用例（qualified/ambiguous/undeclared/single-store-compat）
++ handler_codegen 13 用例 + vue store 相关 40 用例全绿。
+
+**[✅ 已完成] E1 res.status() 哨兵修复**（engine.rs + codegen.rs，提交 551b6f9c7）：
+根因链（实证）：
+- `http.get`/builder `.send()` 返回的是 HTTP_RESPONSES 线程本地表里的**裸句柄**
+  （非堆对象）；`res` 的静态类型在不同语境坍缩为 str/int/User(Response) 不等——
+  `.status()` 由此被编译为 `str.status`/`Unknown_status`/按声明面
+  `Response.status(self, code)`（服务端 setter！双参）等错误目标；
+- 落入未定义调用的静默兜底 → 哨兵值/栈槽被吞/E2 崩溃（同一根因三症状）。
+修复：
+1. **运行期兜底**（engine.rs CALL_SPEC，判据收窄："小正整数句柄且不在堆上、
+   但命中 HTTP_RESPONSES 表"）：`.status()/.status_code()/.body()/.header(k)/
+   .header_get(k)` 直接路由到 shim 支撑的只读 native（NATIVE_RESPONSE_STATUS_CODE/
+   BODY/HEADER_GET，2216-2218）；
+2. **编译期 arity 分流**（codegen.rs，镜像 plan454 obj 路由先例）：零参
+   `.status()` → `Response.status_code`；一参 `.header(k)` → `Response.header_get`。
+验收：真实 TcpListener 断言——`res.status()` 返回线上真值 201
+（plan446_batch2 e1_res_status_reports_wire_status_on_get_handle 绿，
+旧代码红：stdout 为垃圾值）。
+
+**E2 builder 链后续调用崩溃——部分收敛（残余登记待澄清）**：
+已定位根因面（diag 矩阵实证）：
+- builder 链中间步 `.header/.body/.timeout/.send` 以 `Unknown.X` 静态名发射，
+  运行期堆 tag 分派路由到目录中**无 shim 实装**的 `RequestBuilder.*`(2260-2264)
+  id 族（shim 支撑面是 auto.http.request_builder_*, 2235-2239）——分派裂脑；
+- 链结果 `built` 静态类型被推断为 User(Response) → 零参 `.status()` 按
+  声明面 setter(self, code) 双参弹栈 → 多吃栈槽 → 后续语句 Stack Underflow
+  （virt_memory.rs:426 panic，即现场"handler 原子回滚、零诊断"的崩溃点）。
+已落修复：engine.rs CALL_SPEC 增 RequestBuilder 堆 tag 兜底（强制回路由
+shim 支撑的 2235-2239 id 族）+ 上述 codegen arity 分流。效果矩阵：
+- `let st = built.status()`（链后读状态）不再崩溃；
+- `if built.status() == 204 {...}` + 链后 `http.get` 组合运行完毕不崩；
+- 残余红：`print(built.status().to_string())` 及 print 链形态仍崩/误编译
+  （`.status().to_string()` 组合 + User(Response) 零参读法未全被 arity 分流
+  命中）。验收探针 e2_second_http_call_after_builder_chain_survives 保持
+  #[ignore]，续作指引见待澄清事项。
+
+回归面：plan446 全系 7 用例 + http 23 用例 + handler_codegen 13 用例 +
+cargo check 0 error。
+
+## 待澄清事项
+
+- **E2 残余**：builder 链结果上 `print(x.status().to_string())` 形态仍误编译。
+  两条候选路径（下轮二选一或并做）：
+  1. codegen arity 分流扩展——对 var_types 为 User("Response") 的接收者，
+     方法名集合 {status, body, header, status_code, header_get} 一律按 argc
+     分流到只读 native 名（现实现只在 func_name 已成形后改写，疑似被
+     Unknown_/str. 前缀路径旁路）；
+  2. stdlib 表面正名——在 stdlib/auto/http.at 显式声明客户端只读访问器
+     （`Response.status(self) int` 零参重载或改名单 `status_code`），并同步
+     examples/a2rs 02/03；涉及服务端 corpus（06_todo_api `.status(code)`）
+     兼容面，宜独立小批。收敛后解除 e2 探针 #[ignore]。
+- **B1（第二批剩余项）未实施**：store 列表循环字段访问实参的 event-arg
+  vmref 物化（view-builder/event 求值路径），需 aura_view_builder + dynamic.rs
+  独立攻坚，本轮预算未覆盖。
+- **批三预沟通**：§I 第三批（D1/D2/D3/D6/G1）尚未动工；E2 残余与 B1 建议随
+  批三会话一并排程。

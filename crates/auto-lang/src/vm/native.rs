@@ -11,8 +11,8 @@ use std::sync::RwLock;
 use crate::{for_each_native, gen_native_constants};
 // Plan 019 批次八: autodown natives（shim 常驻 —— feature off 时为桩）。
 use crate::vm::autodown_natives::{
-    shim_autodown_find_block, shim_autodown_insert_template, shim_autodown_insert_text,
-    shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
+    shim_autodown_editor_text, shim_autodown_find_block, shim_autodown_insert_template,
+    shim_autodown_insert_text, shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
 };
 
 /// Decode a tagged string index from a NanoValue popped from the stack.
@@ -115,6 +115,15 @@ impl NativeInterface {
     /// Register a name -> ID mapping for CALL_SPEC fallback (Plan 200 Task 3.3)
     pub fn register_name(&mut self, name: &str, id: u16) {
         self.name_to_id.insert(name.to_string(), id);
+    }
+
+    /// Reverse map (ID -> first registered name) for disassembly tooltips
+    pub fn id_to_name(&self) -> std::collections::HashMap<u16, String> {
+        let mut map: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+        for (name, &id) in &self.name_to_id {
+            map.entry(id).or_insert_with(|| name.clone());
+        }
+        map
     }
 
     /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")

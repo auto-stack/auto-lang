@@ -3,6 +3,11 @@
 > **状态**：⏸ 暂缓（明确的前置条件未满足）
 > **来源**：从 Plan 365 W5 独立出来。Plan 365 的 Host ①/②（in-process）已
 > 完成；RenderQueue 是 Host ③（AutoOS 愿景），不影响 COSMIC 兼容性。
+> **定位更新（2026-08-26，Design 23 / Plan 452）**：RenderCommand 重定位为
+> 虚拟桌面 **AppWindow 接缝的渲染叶子后端（路线 B）**——宿主 = Plan 455 的
+> 桌面进程（Win/Mac 单 OS 窗口、单 surface 合成虚拟窗口，不再每 App 一个
+> OS 窗口，见 Design 23 R2/R7）。启动条件已改挂虚拟桌面（见下节更新与
+> `docs/plans/autos-desktop-program.md` 仪表盘）。Stage 1→2→3 分期不变。
 
 ## 背景
 
@@ -42,6 +47,11 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
 
 满足后，按 Plan 365 Migration 的 Stage 1→2→3 渐进推进。
 
+> **更新（2026-08-26，Plan 452）**：条件 1 改挂虚拟桌面——"≥3 个 App 常驻
+> 虚拟桌面（Plan 454/455 产物；任务栏/启动器/通知中心可计入）"；条件 2
+> 保留原文；新增条件 3：454 的 AppWindow 接缝就位（Design 23 不变式 I1
+> 通过一次评审）。实时状态见 `docs/plans/autos-desktop-program.md` 仪表盘。
+
 ## 工作项（启动后）
 
 ### Stage 1 — VTree → RenderCommand lowering + in-process loopback
@@ -75,6 +85,8 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
 - **Windows host 不是 compositor**——DWM 是。host 是 DWM client：winit
   多窗口进程，持有唯一 wgpu 上下文，每 app 一个 OS 窗口，执行该 app 的
   RenderCommand 流。窗口堆叠/装饰/焦点/最终合成由 Windows 负责。
+  *(2026-08-26 注：本条拓扑已被 Design 23 R2 翻转——Win/Mac 宿主为单 OS
+  窗口虚拟桌面，窗口语义归特权桌面 App；本条保留作历史参考。)*
 - **Linux host**：同一二进制可作为 winit client 调试；AutoOS 阶段才生长
   smithay-based 真 compositor 变体（Linux-only）。
 - **弹性**：host 是接受的 SPOF（与 Wayland compositor / Chrome GPU 进程

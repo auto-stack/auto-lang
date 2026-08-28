@@ -42,7 +42,7 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -142,6 +142,9 @@ iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "c
 # Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
 # 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
 iced_widget = { version = "0.14", optional = true }
+# Plan 459: 自定义 Recipe/per-App 订阅需要 subscription::filter_map 的可捕获闭包
+# （iced facade 未 re-export subscription 自由函数）。与 iced 同版本系。
+iced_futures = { version = "0.14", optional = true }
 # Plan 414 §8.2: headless layout testbench — normal optional dep (Cargo
 # forbids optional dev-deps); only linked when `iced-layout-tests` is on.
 iced_test = { version = "0.14", optional = true }
@@ -213,6 +216,12 @@ required-features = ["build-examples"]
 name = "ui_accordion"
 path = "examples/ui_accordion.rs"
 required-features = ["build-examples"]
+
+# Plan 459 T4: dual-window demo (two AppSessions, two OS windows, iced::daemon).
+[[example]]
+name = "ui_dual_app"
+path = "examples/ui_dual_app.rs"
+required-features = ["ui-iced"]
 
 [[example]]
 name = "ui_container"

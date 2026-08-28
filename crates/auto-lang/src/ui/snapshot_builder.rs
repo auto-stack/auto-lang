@@ -188,6 +188,25 @@ impl SnapshotBuilder {
                 UiNode { id, kind: "CodeEditor".to_string(), props, actions, children: vec![] }
             },
 
+            // Plan 019 Phase 3: autodown 文档编辑器 snapshot — key/value +
+            // live 全文（编辑态对 MCP 探针可见）。
+            View::AutodownEditor { key, value, on_change, .. } => {
+                let mut props = vec![
+                    ("key".to_string(), key.clone()),
+                    ("value".to_string(), value.clone()),
+                ];
+                #[cfg(feature = "autodown")]
+                if let Some(text) = crate::ui::autodown_editor::autodown_editor_text(
+                    &crate::ui::autodown_editor::storage_key(key),
+                ) {
+                    props.push(("internal_text".to_string(), text));
+                }
+                let actions = on_change.as_ref()
+                    .map(|msg| vec![Self::extract_action("edit", msg)])
+                    .unwrap_or_default();
+                UiNode { id, kind: "AutodownEditor".to_string(), props, actions, children: vec![] }
+            },
+
             View::Checkbox { is_checked, label, on_toggle, .. } => {
                 let props = vec![
                     ("checked".to_string(), is_checked.to_string()),

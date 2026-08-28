@@ -14,6 +14,55 @@ pub struct DisasmLine {
     pub line: Option<u32>,
 }
 
+/// Symbol tables accompanying a disassembly, letting UIs resolve operand
+/// references (`str[N]`, `nat#N`, jump/call hex targets) to concrete values.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BytecodeMeta {
+    /// Merged string pool: `str[N]`, `field[N]`, `method=N` and global
+    /// name indices all resolve into this table.
+    pub strings: Vec<String>,
+    /// Functions sorted by bytecode offset (from `flash.addr_to_name`).
+    pub functions: Vec<BytecodeFnSymbol>,
+    /// Native shim ID -> registered name (`nat#N`).
+    pub natives: std::collections::HashMap<u16, String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BytecodeFnSymbol {
+    pub offset: u32,
+    pub name: String,
+}
+
+impl BytecodeMeta {
+    /// Collect symbol tables from a loaded VM (after string pool load and
+    /// native shim registration).
+    pub fn of_vm(vm: &super::engine::AutoVM) -> Self {
+        let strings: Vec<String> = vm
+            .strings
+            .read()
+            .unwrap()
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .collect();
+        let mut functions: Vec<BytecodeFnSymbol> = vm
+            .flash
+            .addr_to_name
+            .iter()
+            .map(|(&offset, name)| BytecodeFnSymbol {
+                offset,
+                name: name.clone(),
+            })
+            .collect();
+        functions.sort_by_key(|f| f.offset);
+        let natives = vm.native_interface.id_to_name();
+        Self {
+            strings,
+            functions,
+            natives,
+        }
+    }
+}
+
 /// Bytecode disassembler
 pub struct Disassembler<'a> {
     flash: &'a VirtualFlash,

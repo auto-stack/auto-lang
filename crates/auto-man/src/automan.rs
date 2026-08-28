@@ -338,6 +338,16 @@ impl Automan {
         self.pac.title.as_ref().map(|t| t.to_string())
     }
 
+    /// Plan 458: UI theme preference from pac.at `theme: "dark"|"light"`.
+    pub fn pac_theme(&self) -> Option<String> {
+        self.pac.theme.as_ref().map(|t| t.to_string())
+    }
+
+    /// Plan 458: UI accent preset from pac.at `accent: "..."`.
+    pub fn pac_accent(&self) -> Option<String> {
+        self.pac.accent.as_ref().map(|t| t.to_string())
+    }
+
     /// Plan 418: UI action config file from pac.at `ui_config: "..."`.
     pub fn pac_ui_config(&self) -> Option<String> {
         self.pac.ui_config.as_ref().map(|t| t.to_string())

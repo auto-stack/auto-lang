@@ -1,5 +1,5 @@
 <template>
-  <div class="code-preview">
+  <ScrollArea class="code-preview">
     <div class="lines-container">
       <div
         v-for="(line, index) in highlightedLines"
@@ -15,11 +15,12 @@
         <span class="line-content"></span>
       </div>
     </div>
-  </div>
+  </ScrollArea>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import ScrollArea from './ScrollArea.vue';
 import hljs from 'highlight.js/lib/core';
 import rust from 'highlight.js/lib/languages/rust';
 import python from 'highlight.js/lib/languages/python';
@@ -78,9 +79,9 @@ function onLineClick(lineNum: number) {
 
 <style scoped>
 .code-preview {
-  position: relative;
-  height: 100%;
-  overflow: auto;
+  /* Fill the preview pane (flex item of .pane-body); fixes shrink-to-fit */
+  flex: 1;
+  min-width: 0;
   background: #1e1e1e;
 }
 .lines-container {

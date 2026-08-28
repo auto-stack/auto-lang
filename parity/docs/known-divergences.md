@@ -248,7 +248,7 @@ not test-case divergences; they describe what the runtime supports today.
 
 ## trait_advanced (Plan 359 D2)
 
-Three-way parity library `parity/libs/trait_advanced/` is **L1 100% (10/10)**
+Three-way parity library `parity/libs/lang/trait_advanced/` is **L1 100% (10/10)**
 on its baseline subset: a non-generic spec with required methods, void
 default methods, and a non-generic `Comparable` spec with concrete
 implementations. The library also probes advanced trait features; the
@@ -340,7 +340,7 @@ double-verified stable; first-run single Rust-oracle failure was a cold
 compile + mock-server startup race, not reproducible). The original block
 was recorded as:
 
-A partial `parity/libs/http_client_sync/` skeleton exists (mock-server crate
+A partial `parity/libs/consumer/http_client_sync/` skeleton exists (mock-server crate
 + Auto wrapper + Rust oracle), but it **cannot run three-way** because of a
 pre-existing parser bug:
 
@@ -418,3 +418,9 @@ bug is worked around in-source:
 - **库**: py_random
 - **状态**: open
 - **原因**: `[1, 2, 3]` in Auto is a VM-internal list, not a Python list. `choice([1,2,3])` fails. Workaround: use Python functions that return lists (sorted, list), or pass strings as iterables.
+- **Plan 461 补充发现 (2026-08-28)**: 直调路径下 list 实参抵达 Python 侧后
+  变成 0 维/空对象（`array([7,8,9])` → 0-d ndarray，`sum([1,2,3,4])` → 0），
+  且传入 pyplot 时直接触发 VM panic（Stack Underflow）。a2py 文本转译不受
+  影响（源码层 list 即 Python list），因此涉及 list 实参的用例三方必然
+  分歧。Plan 461 四个 sci-compute 套件全部规避：数据一律 Python 侧创建
+  （arange/linspace），句柄传参。

@@ -1,5 +1,5 @@
 <template>
-  <div class="file-tree">
+  <ScrollArea class="file-tree">
     <div
       v-for="file in files"
       :key="file.path"
@@ -9,10 +9,12 @@
     >
       <span class="file-name">{{ file.path }}</span>
     </div>
-  </div>
+  </ScrollArea>
 </template>
 
 <script setup lang="ts">
+import ScrollArea from './ScrollArea.vue';
+
 defineProps<{
   files: { path: string }[];
   selected: string;
@@ -26,13 +28,11 @@ defineEmits<{
 
 <style scoped>
 .file-tree {
-  display: flex;
-  flex-direction: column;
+  flex: none;
   min-width: 140px;
   max-width: 220px;
   background: #252526;
   border-right: 1px solid #444;
-  overflow-y: auto;
   padding: 4px 0;
 }
 .file-item {
