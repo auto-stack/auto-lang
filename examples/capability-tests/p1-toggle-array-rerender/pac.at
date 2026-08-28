@@ -1,0 +1,4 @@
+name: "p1-toggle-rerender"
+version: "0.1.0"
+scene: "ui"
+render: "vue"

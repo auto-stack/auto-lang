@@ -1,0 +1,28 @@
+// side_panel.at — v5 子消费者:if g.open 条件成员(复刻 os-config Sidebar)。
+widget SidePanel {
+    msg Msg { ToggleGroup(str) }
+
+    view {
+        col {
+            style: "side-panel flex flex-col gap-[0px] p-3 bg-[#f9f9f9]"
+            button "Toggle g1 (child)" {
+                onclick: .ToggleGroup("g1")
+                style: "px-3 py-1 bg-primary text-primary-foreground rounded"
+            }
+            for g in .store.view_groups {
+                text (text: g.label, style: "font-semibold") {}
+                if g.open {
+                    col {
+                        key: g.id
+                        text (text: g.m1) {}
+                        text (text: g.m2) {}
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .ToggleGroup(gid) -> { store.Toggle(gid) }
+    }
+}

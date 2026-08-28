@@ -1,0 +1,36 @@
+// app.at — p1 v5(RED 复刻):App 以 T18 概要卡形态(button+key+onclick+嵌套
+// row/col)二消费 view_groups,SidePanel 按条件渲染成员。
+// RED = press 后 SidePanel 的 if g.open 成员仍渲染(os-config ③)。
+use groups_store: GroupsStore
+use side_panel: SidePanel
+
+widget App {
+    msg { Init, SelectMod(str) }
+
+    model {
+        var active str = ""
+    }
+
+    view {
+        col {
+            style: "p-6 font-sans space-y-4"
+            for g in .store.view_groups {
+                button (class: "ov-card w-full text-left flex items-start gap-3 px-4 py-3 rounded-lg border border-[#e0e0e0] bg-white", key: g.id) {
+                                        row (style: "flex flex-row items-center gap-3 w-full") {
+                        span (text: g.label, style: "text-2xl shrink-0") {}
+                        col (style: "ov-text flex-1 min-w-0 flex flex-col gap-[0px]") {
+                            text (text: g.label, style: "text-sm font-semibold") {}
+                            text (text: g.m1, style: "text-xs") {}
+                        }
+                    }
+                }
+            }
+            SidePanel { }
+        }
+    }
+
+    on {
+        .Init -> { store.Init() }
+        .SelectMod(id) -> { .active = id }
+    }
+}
