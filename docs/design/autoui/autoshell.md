@@ -170,6 +170,26 @@ workspace 分区与切换命令、desktop 层 z 槽、thumbnail 快照接口（3
 启动双轨并存（R11/R6）：pac.at 增 `launch: "session" | "spawn"`（`render:`
 已有雏形），launcher/快捷方式按字段选择。
 
+### 7.1 双模 exe 与窗口形态迁移（2026-08-28 定案）
+
+**发布态 exe = 双模二进制**，入口裁决三步：① 命令行/环境带 AutoDesk 孵化标记
+（spawn 注入 `--autodesk-client=<pipe>`）→ 客户端连入桌面；② 无标记但探测到
+AutoDesk broker 在线（`\.\pipeutodesk-broker` 握手）→ 连入桌面；
+③ 都没有 → 独立模式自开 OS 窗口（= `auto run` 现行为）。安装时把 exe 路径
+注册进 AutoDesk 应用注册表（launcher/快捷方式数据源）。
+
+**窗口形态迁移三层**（"独立出去 / 进入 AutoDesk"，不重启）：
+
+| 层 | 语义 | 可行性 |
+|---|---|---|
+| L1 同进程换窗形态 | 虚拟窗 ↔ 独立 OS 窗：WM Close(虚拟窗)但 app 不移除 → `window::open` 新 OS 窗 → `register_window` 重挂（459 独立路径复用）；反向同理 | ✅ 现有机件（459 daemon + 462 WM）拼装，`DesktopSession` 一次状态转移的工程量 |
+| L2 跨进程 detach | app 本为路线 B 客户端进程时，"独立出去"=一条协议消息（表面合成模式 ↔ 自开 OS 窗模式），状态不动 | ✅ 协议消息，成本趋近零——**未来默认孵化走 spawn-client 的核心理由** |
+| L3 融合态真跨进程 | AutoVM 状态序列化（纯数据，snapshot 已证）→ 孵化 exe → 注入恢复；v2a 快照重启（秒级近无缝）→ v2b live 换手（新进程先渲染、双缓冲原子换源，类比 Chrome 站点进程迁移） | ⚙️ 原则可行，分 v2a/v2b 递进 |
+
+架构结论：发布态 exe 一律内置路线 B 客户端能力，AutoDesk 默认孵化走 client
+进程；融合态保留给可信内置 App——detach/attach 在主流路径上是协议消息，
+不是进程迁移难题。
+
 ## 8. 工程量与风险
 
 - **工程量定性**：S1–S7/S9 每个表面 ≈ 一个 0xx 级示例 App 的量级（widget 组合
