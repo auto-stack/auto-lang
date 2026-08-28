@@ -29,6 +29,7 @@ use crate::ui::iced::renderer::{
     DebugElementInfo, DebugTreeNode, DevToolsTab, InspectorSections, InspectorSubTab, IcedMessage,
     ToastReq, TodoItem,
 };
+use crate::ui::layout::{LayoutMode, ReservedEdges};
 
 /// 进程内 App 的稳定标识。459 起 boot 经 `allocate_app` 递增分配、一 App
 /// 一 OS 窗口；454 引入 VirtualWindow 后一个 DesktopSession 内可含多个 AppId。
@@ -194,6 +195,12 @@ pub struct DesktopState {
     pub mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     pub toasts: RefCell<Vec<ToastReq>>,
     pub toast_next_id: Cell<u64>,
+    /// Plan 463 T5：shell 特权 App 的 AppId（DesktopBus 双向锚点；
+    /// None = 未装载 shell，独立模式恒 None）。
+    pub shell_app: Option<AppId>,
+    /// Plan 463 T4：LaunchApp 解析器（App 名 → 启动材料）。boot 期由
+    /// 注册表装配（T7）；None = 无注册表（单测可注入内联 .at）。
+    pub app_resolver: Option<std::sync::Arc<dyn Fn(&str) -> Option<LaunchSpec> + Send + Sync>>,
 }
 
 impl DesktopState {
@@ -204,6 +211,8 @@ impl DesktopState {
             mcp_shared,
             toasts: RefCell::new(Vec::new()),
             toast_next_id: Cell::new(1),
+            shell_app: None,
+            app_resolver: None,
         }
     }
 
@@ -320,6 +329,9 @@ pub struct WmState {
     pub interaction: Option<WmInteraction>,
     /// 最近光标位置（StartDrag 时现算 grab 偏移；全局 CursorMoved 回写）。
     pub last_cursor: Cell<iced::Point>,
+    /// Plan 463 T4：当前布局模式（Free = 用户位置即真值；切换经
+    /// `DesktopSession::wm_set_layout` 统一应用）。
+    pub layout: LayoutMode,
 }
 
 impl WmState {
@@ -332,6 +344,7 @@ impl WmState {
             next_z: 0,
             interaction: None,
             last_cursor: Cell::new(iced::Point::ORIGIN),
+            layout: LayoutMode::default(),
         }
     }
 
@@ -473,6 +486,73 @@ impl WmInteraction {
     }
 }
 
+// ---------------------------------------------------------------------------
+// DesktopBus v0（Plan 463 T4，T1 报告 §2/§5 定案：候选 B 状态变量命令总线）
+// ---------------------------------------------------------------------------
+
+/// shell/launcher → WM 的生命周期命令。宿主从 shell App 的 `__desktop_cmd`
+/// 状态变量消费（读+清，`__toast` 同型管线；T1 报告 §2.3 双排空点）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum DesktopCommand {
+    /// 启动注册表 App（目录名 id；T7 注册表查表 → `build_dynamic_component`）。
+    LaunchApp(String),
+    CloseWindow(Wid),
+    FocusWindow(Wid),
+    SetLayout(LayoutMode),
+}
+
+impl DesktopCommand {
+    const REC_SEP: char = '\u{1e}';
+    const FIELD_SEP: char = '\u{1f}';
+
+    /// 单记录编码：`verb\u{1F}arg`（与 `__toast` 记录同型；shell.at 写入侧
+    /// 直接拼此格式）。
+    pub fn encode(&self) -> String {
+        match self {
+            DesktopCommand::LaunchApp(name) => {
+                format!("launch{}{name}", Self::FIELD_SEP)
+            }
+            DesktopCommand::CloseWindow(wid) => {
+                format!("close{}{}", Self::FIELD_SEP, wid.0)
+            }
+            DesktopCommand::FocusWindow(wid) => {
+                format!("focus{}{}", Self::FIELD_SEP, wid.0)
+            }
+            DesktopCommand::SetLayout(mode) => {
+                format!("layout{}{}", Self::FIELD_SEP, mode.as_str())
+            }
+        }
+    }
+
+    /// 解析宿主消费的记录串（`\u{1E}` 连接多条）。未知 verb/坏记录跳过，
+    /// 不 panic、不阻塞后续记录（toast 侧同语义）。
+    pub fn parse_records(payload: &str) -> Vec<Self> {
+        payload
+            .split(Self::REC_SEP)
+            .filter_map(|rec| {
+                let (verb, arg) = rec.split_once(Self::FIELD_SEP)?;
+                match verb {
+                    "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
+                    "close" => arg.parse::<u64>().ok().map(|w| DesktopCommand::CloseWindow(Wid(w))),
+                    "focus" => arg.parse::<u64>().ok().map(|w| DesktopCommand::FocusWindow(Wid(w))),
+                    "layout" => Some(DesktopCommand::SetLayout(LayoutMode::from_name(arg))),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+}
+
+/// LaunchApp 的启动材料（单测内联注入；生产侧由 T7 注册表解析供给）。
+pub struct LaunchSpec {
+    /// .at 源码（`auto run` 同管线编译装载）。
+    pub code: String,
+    /// 源路径（热重载跟踪 + `use` 相对解析；None = 纯内联）。
+    pub source_path: Option<String>,
+    /// chrome 标题（None = 根 widget 名，462 行为）。
+    pub title: Option<String>,
+}
+
 /// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
 pub struct HostCtx {
     pub window: iced::window::Id,
@@ -590,6 +670,75 @@ impl DesktopSession {
 
     pub fn wm_win_of_app(&self, app: AppId) -> Option<Wid> {
         self.host.as_ref()?.wm.win_of_app(app)
+    }
+
+    /// 宿主窗视口（布局引擎/级联初位的基准；未登记时回退启动默认尺寸）。
+    pub fn host_viewport(&self) -> iced::Rectangle {
+        let size = self
+            .host
+            .as_ref()
+            .and_then(|h| self.windows.get(&h.window))
+            .map(|e| *e.window_size.borrow())
+            .unwrap_or(iced::Size::new(1280.0, 800.0));
+        iced::Rectangle { x: 0.0, y: 0.0, width: size.width, height: size.height }
+    }
+
+    /// Plan 463 T4：DesktopBus 排空 —— 读+清 shell 的 `__desktop_cmd`
+    /// 并解析为命令序列（幂等；无 shell/无记录均空转，`__toast` 同型）。
+    pub fn drain_desktop_commands(&mut self) -> Vec<DesktopCommand> {
+        let Some(shell) = self.desktop.shell_app else {
+            return Vec::new();
+        };
+        let Some(app) = self.apps.get_mut(&shell) else {
+            return Vec::new();
+        };
+        let Ok(auto_val::Value::Str(payload)) = app.component.read_state("__desktop_cmd") else {
+            return Vec::new();
+        };
+        if payload.is_empty() {
+            return Vec::new();
+        }
+        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
+        DesktopCommand::parse_records(&payload)
+    }
+
+    /// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
+    /// `build_dynamic_component` 编译装载 → `allocate_app` → 新虚拟窗
+    /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回
+    /// Err（调用方转 toast，不阻断桌面）。
+    pub fn launch_app(&mut self, name: &str) -> Result<Wid, String> {
+        let resolver = self
+            .desktop
+            .app_resolver
+            .clone()
+            .ok_or_else(|| "app registry unavailable".to_string())?;
+        let spec = resolver(name).ok_or_else(|| format!("app not found: {name}"))?;
+        let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
+            .map_err(|e| format!("build `{name}` failed: {e}"))?;
+        let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
+        let app_id = self.allocate_app(comp);
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), ReservedEdges::taskbar());
+        let index = self.host.as_ref().map(|h| h.wm.wins.len()).unwrap_or(0);
+        // 初位尺寸 = 可用区 60%（462 boot 同参），级联偏移随窗数推进。
+        let size = iced::Size::new(usable.width * 0.6, usable.height * 0.6);
+        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+        let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
+        let wid = self.wm_add_win(app_id, title, rect);
+        if layout != LayoutMode::Free {
+            self.wm_set_layout(layout);
+        }
+        Ok(wid)
+    }
+
+    /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回全部虚拟窗
+    /// （几何批量写点唯一性：rect 只经 `apply_layout`/WM 交互改）。
+    pub fn wm_set_layout(&mut self, mode: LayoutMode) {
+        let viewport = self.host_viewport();
+        let Some(host) = self.host.as_mut() else {
+            return;
+        };
+        host.wm.layout = mode;
+        crate::ui::layout::apply_layout(&mut host.wm, viewport, ReservedEdges::taskbar());
     }
 
     /// 测试专用：无 App 的空会话（路由表 / 桌面状态单测用）。
@@ -1125,6 +1274,140 @@ mod tests {
         // 独立模式拆借无 vwin_rect（走 iced::window::resize 旧路径）。
         let view = ds.split_mut(app).expect("standalone split");
         assert!(view.vwin_rect.is_none());
+    }
+
+    // ---- Plan 463 T4：DesktopBus 命令解析 ----
+
+    #[test]
+    fn desktop_command_encode_parse_round_trip() {
+        let cmds = vec![
+            DesktopCommand::LaunchApp("011-calculator".to_string()),
+            DesktopCommand::CloseWindow(Wid(3)),
+            DesktopCommand::FocusWindow(Wid(7)),
+            DesktopCommand::SetLayout(crate::ui::layout::LayoutMode::Grid),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+    }
+
+    #[test]
+    fn desktop_command_parse_skips_bad_records() {
+        let payload = "launch\u{1f}013-todo\u{1e}bogus\u{1e}focus\u{1f}notanumber\u{1e}close\u{1f}9";
+        assert_eq!(
+            DesktopCommand::parse_records(payload),
+            vec![
+                DesktopCommand::LaunchApp("013-todo".to_string()),
+                DesktopCommand::CloseWindow(Wid(9)),
+            ]
+        );
+        assert!(DesktopCommand::parse_records("").is_empty());
+    }
+
+    // ---- Plan 463 T4：LaunchApp 执行体 ----
+
+    const T4_PROBE_AT: &str = "widget T4Probe {\n    model { var count int = 0 }\n    view { text \"probe ${.count}\" }\n}\n";
+
+    fn t4_session_with_resolver() -> DesktopSession {
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let win = match ds.host.as_ref().map(|h| h.window) {
+            Some(w) => w,
+            None => panic!("desktop"),
+        };
+        let primary = insert_app(&mut ds, "Primary");
+        ds.register_window(win, primary, iced::Size::new(1280.0, 800.0));
+        // shell fixture：须声明 `__desktop_cmd`（生产侧 shell.at 声明同款）。
+        let mut shell_widget = make_test_widget("Shell");
+        shell_widget.state_vars.push(AuraStateDef {
+            name: "__desktop_cmd".to_string(),
+            type_info: crate::ast::Type::StrFixed(0),
+            initial: Expr::Str("".into()),
+            decorators: vec![],
+        });
+        let shell_comp = DynamicComponent::new(&shell_widget).unwrap();
+        ds.desktop.shell_app = Some(ds.allocate_app(shell_comp));
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: T4_PROBE_AT.to_string(),
+                source_path: None,
+                title: Some("Probe App".to_string()),
+            })
+        }));
+        ds
+    }
+
+    #[test]
+    fn launch_app_adds_window_and_focuses() {
+        let mut ds = t4_session_with_resolver();
+        let wid = ds.launch_app("probe").expect("launch ok");
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.wins.contains_key(&wid), "LaunchApp 后 WmState 增窗");
+        assert_eq!(host.wm.focused, Some(wid), "新窗即焦点");
+        assert_eq!(host.wm.wins[&wid].title, "Probe App", "标题来自 LaunchSpec");
+    }
+
+    #[test]
+    fn launch_app_cascades_second_window() {
+        let mut ds = t4_session_with_resolver();
+        let w1 = ds.launch_app("probe").expect("launch 1");
+        let w2 = ds.launch_app("probe").expect("launch 2");
+        assert_ne!(w1, w2);
+        let host = ds.host.as_ref().unwrap();
+        let r1 = *host.wm.wins[&w1].rect.borrow();
+        let r2 = *host.wm.wins[&w2].rect.borrow();
+        assert!(r2.x > r1.x && r2.y > r1.y, "第二窗级联偏移（48n 先例）");
+    }
+
+    #[test]
+    fn launch_app_unknown_name_errors_without_window() {
+        let mut ds = t4_session_with_resolver();
+        let before = ds.host.as_ref().unwrap().wm.wins.len();
+        let err = ds.launch_app("nope").expect_err("unknown app errors");
+        assert!(err.contains("not found"), "err = {err}");
+        assert_eq!(ds.host.as_ref().unwrap().wm.wins.len(), before);
+    }
+
+    // ---- Plan 463 T4：布局切换应用 ----
+
+    #[test]
+    fn wm_set_layout_grid_positions_windows() {
+        let mut ds = t4_session_with_resolver();
+        let _a = ds.launch_app("probe").expect("launch a");
+        let _b = ds.launch_app("probe").expect("launch b");
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.layout, crate::ui::layout::LayoutMode::Grid);
+        let rects: Vec<iced::Rectangle> = host
+            .wm
+            .z_order
+            .iter()
+            .map(|w| *host.wm.wins[w].rect.borrow())
+            .collect();
+        assert_eq!(rects.len(), 2);
+        // 1280x800 宿主、任务栏 48 → 可用 1280x752，两窗左右对半。
+        assert!((rects[0].width - 640.0).abs() < 0.6, "w = {}", rects[0].width);
+        assert!((rects[0].height - 752.0).abs() < 0.6);
+        assert!((rects[1].x - 640.0).abs() < 0.6, "右半 x = {}", rects[1].x);
+    }
+
+    #[test]
+    fn drain_desktop_commands_reads_and_clears() {
+        let mut ds = t4_session_with_resolver();
+        let shell = ds.desktop.shell_app.expect("shell");
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__desktop_cmd", auto_val::Value::str("launch\u{1f}probe"))
+            .unwrap();
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(cmds, vec![DesktopCommand::LaunchApp("probe".to_string())]);
+        // 幂等：第二次排空为空（已清）。
+        assert!(ds.drain_desktop_commands().is_empty());
     }
 }
 

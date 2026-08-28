@@ -6138,6 +6138,60 @@ pub(crate) struct ToastReq {
     duration_ms: u64,
 }
 
+/// Plan 463 T4：桌面级 toast（LaunchApp 成败回执等）。入共享堆叠 +
+/// 置 primary 的 view_dirty（toast 层随 primary 的 dynamic_view 包装渲染）。
+fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
+    let id = state.desktop.next_toast_id();
+    state.desktop.toasts.borrow_mut().push(ToastReq {
+        id,
+        kind: kind.to_string(),
+        msg: msg.to_string(),
+        position: "bottom-center".to_string(),
+        shown_at: std::time::Instant::now(),
+        duration_ms: 3500,
+    });
+    if let Some(primary) = state.primary_app() {
+        if let Some(v) = state.split_mut(primary) {
+            *v.app.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
+/// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
+/// 退出进程（shell 缺位时关掉最后一个虚拟窗沿用 462 daemon 语义；有 shell
+/// 时空桌面是合法态，持续存活等待启动）。
+fn execute_desktop_commands(
+    state: &mut crate::ui::session::DesktopSession,
+    cmds: Vec<crate::ui::session::DesktopCommand>,
+) -> bool {
+    use crate::ui::session::DesktopCommand as DC;
+    for cmd in cmds {
+        match cmd {
+            DC::LaunchApp(name) => match state.launch_app(&name) {
+                Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
+                Err(err) => push_desktop_toast(state, "error", &err),
+            },
+            DC::CloseWindow(wid) => {
+                if let Some(app) = state.wm_remove_win(wid) {
+                    state.apps.remove(&app);
+                }
+                if state.desktop.shell_app.is_none()
+                    && state
+                        .host
+                        .as_ref()
+                        .map(|h| h.wm.wins.is_empty())
+                        .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+            DC::FocusWindow(wid) => state.wm_focus(wid),
+            DC::SetLayout(mode) => state.wm_set_layout(mode),
+        }
+    }
+    false
+}
+
 /// Run a `DynamicComponent` in an iced window.
 ///
 /// This is the main entry point for running AURA widgets with iced. It:
@@ -8384,6 +8438,14 @@ fn compare_pngs(
                 }
             });
         }
+        // Plan 463 T4：DesktopBus 排空 #1 —— 任意消息周期开头先消费 shell
+        // 命令（`__toast` 同型读+清；400ms 帧泵兜底空闲期，命令至多 400ms 达）。
+        if state.desktop.shell_app.is_some() {
+            let cmds = state.drain_desktop_commands();
+            if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
+                return iced::exit();
+            }
+        }
         // 消息归属 → update 分派（App/Window 两臂共用；console 打标 + T5
         // 探针 + panic 边界 + Task 回标 DM::App(app)）。闭包捕获 update_inner
         //（fn 条目无法捕获闭包环境），state 经参数传入不与之冲突。
@@ -8454,7 +8516,19 @@ fn compare_pngs(
                 }
                 iced::Task::none()
             }
-            DM::App(app_id, m) => dispatch_app(state, app_id, m),
+            DM::App(app_id, m) => {
+                let task = dispatch_app(state, app_id, m);
+                // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
+                // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
+                // 按钮路径不受帧泵节拍限制（T1 报告 §2.3）。
+                if state.desktop.shell_app.is_some() {
+                    let cmds = state.drain_desktop_commands();
+                    if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
+                        return iced::exit();
+                    }
+                }
+                task
+            }
             DM::Wm(cmd) => {
                 // Plan 462：WM 命令臂。独立模式不产生该变体（防御性忽略，
                 // I3：不设第二管线，仅配置位门控）。
@@ -8521,17 +8595,19 @@ fn compare_pngs(
                         }
                     }
                     // 关闭虚拟窗口；App 随窗移除（459 一窗一 App 不变式的
-                    // WM 化，见 459 update 注释预告）。全部虚拟窗关闭 = 桌面
-                    // 空态 → daemon 语义退出进程（与独立模式全窗关一致）。
+                    // WM 化，见 459 update 注释预告）。全部虚拟窗关闭：
+                    // 无 shell = daemon 语义退出进程（462 行为不变）；有
+                    // shell = 空桌面合法态（任务栏存活，等待再启动；463）。
                     WmCommand::Close(wid) => {
                         if let Some(app) = state.wm_remove_win(wid) {
                             state.apps.remove(&app);
                         }
-                        if state
-                            .host
-                            .as_ref()
-                            .map(|h| h.wm.wins.is_empty())
-                            .unwrap_or(false)
+                        if state.desktop.shell_app.is_none()
+                            && state
+                                .host
+                                .as_ref()
+                                .map(|h| h.wm.wins.is_empty())
+                                .unwrap_or(false)
                         {
                             return iced::exit();
                         }

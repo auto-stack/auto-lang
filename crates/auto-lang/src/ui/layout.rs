@@ -112,6 +112,34 @@ pub fn usable_rect(viewport: iced::Rectangle, reserved: ReservedEdges) -> iced::
     }
 }
 
+/// 非纯薄应用层（Plan 463 T4）：把 `layout()` 结果写回 WM —— rect 的唯一
+/// 批量写点（R9：排布是 WM 策略；单窗交互路径不经此）。free 模式为恒等
+/// 写回（用户位置即真值）。窗口级 `window_size` 同步（响应式布局消费）。
+pub fn apply_layout(
+    wm: &mut crate::ui::session::WmState,
+    viewport: iced::Rectangle,
+    reserved: ReservedEdges,
+) {
+    let snaps: Vec<WindowState> = wm
+        .z_order
+        .iter()
+        .filter_map(|wid| {
+            let v = wm.wins.get(wid)?;
+            Some(WindowState {
+                wid: *wid,
+                rect: *v.rect.borrow(),
+                focused: wm.focused == Some(*wid),
+            })
+        })
+        .collect();
+    for (wid, r) in layout(wm.layout, &snaps, viewport, reserved) {
+        if let Some(v) = wm.wins.get_mut(&wid) {
+            *v.rect.borrow_mut() = r;
+            *v.window_size.borrow_mut() = iced::Size::new(r.width, r.height);
+        }
+    }
+}
+
 /// Grid：cols = ⌈√N⌉，rows = ⌈N/cols⌉，行主序。空表返回空表。
 fn layout_grid(wins: &[WindowState], usable: iced::Rectangle) -> Vec<(Wid, iced::Rectangle)> {
     let n = wins.len();
