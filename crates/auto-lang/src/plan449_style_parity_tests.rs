@@ -432,6 +432,30 @@ mod plan449_style_parity_dump {
             Rounded2Xl => out.push(("border-radius".into(), json!("16px"))),
             Rounded3Xl => out.push(("border-radius".into(), json!("24px"))),
             RoundedFull => out.push(("border-radius".into(), json!("9999px"))),
+            RoundedT(sz) => {
+                let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
+                out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+            }
+            RoundedB(sz) => {
+                let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
+                out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+            }
+            RoundedL(sz) => {
+                let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
+                out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
+            }
+            RoundedR(sz) => {
+                let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
+                out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+            }
+            RoundedTL(sz) => out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
+            RoundedTR(sz) => out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
+            RoundedBL(sz) => out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
+            RoundedBR(sz) => out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
             Border => out.push(("border-width".into(), json!("1px"))),
             Border0 => out.push(("border-width".into(), json!("0px"))),
             BorderWidth(w) => out.push(("border-width".into(), json!(format!("{}px", trim_f32(*w))))),
