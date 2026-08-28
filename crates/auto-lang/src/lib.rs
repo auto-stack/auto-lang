@@ -2732,7 +2732,13 @@ fn positioned_parse_errors(e: &crate::error::AutoError, source: &str) -> String 
         let msg = e.to_string();
         let mut line_col = None;
         if let Some(span) = e.labels().and_then(|mut ls| ls.next()) {
-            let offset = span.inner().offset();
+            let mut offset = span.inner().offset();
+            // Plan 011(os-config):span offset 可能落在多字节字符内部(如中文
+            // 注释/字符串里报错)——直接切片会 panic("not a char boundary"),
+            // 把真实语法错误掩盖成崩溃。回退到最近的字符边界。
+            while offset > 0 && !source.is_char_boundary(offset) {
+                offset -= 1;
+            }
             if offset <= source.len() {
                 let until = &source[..offset];
                 let line = until.matches('\n').count() + 1;
