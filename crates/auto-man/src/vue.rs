@@ -3281,6 +3281,10 @@ export default router
             }
         }
 
+        // WM runtime assets (store/layout/keyboard/leaves) — overwrite every
+        // run; owned by the generator.
+        crate::wm_assets::materialize(&self.output_dir)?;
+
         merge_host_npm_deps(&self.output_dir, &npm_merge)?;
 
         fs::write(src_dir.join("apps-registry.ts"), generate_apps_registry(&registry_rows))
