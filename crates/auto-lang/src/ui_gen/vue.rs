@@ -2034,12 +2034,12 @@ impl VueGenerator {
                 .clone()
                 .unwrap_or_else(|| "dark_mode".to_string());
             script.push_str(&format!(
-                "// Plan 458: seed theme default from index.html bootstrap.\nif (window.__AUTO_UI_THEME__ === 'light' || window.__AUTO_UI_THEME__ === 'dark') {var}.value = window.__AUTO_UI_THEME__ === 'dark'\n",
+                "// Plan 458: seed theme default from index.html bootstrap.\nif ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_THEME__ === 'dark') {var}.value = (window as any).__AUTO_UI_THEME__ === 'dark'\n",
                 var = var
             ));
         }
         if self.has_accent_color {
-            script.push_str("// Plan 458: seed accent default from index.html bootstrap.\nif (typeof window.__AUTO_UI_ACCENT__ === 'string') accent_color.value = window.__AUTO_UI_ACCENT__\n");
+            script.push_str("// Plan 458: seed accent default from index.html bootstrap.\nif (typeof (window as any).__AUTO_UI_ACCENT__ === 'string') accent_color.value = (window as any).__AUTO_UI_ACCENT__\n");
         }
 
         if !widget.state_vars.is_empty() {
@@ -8464,13 +8464,27 @@ impl VueGenerator {
             "button" => {
                 // Handle variant prop (default, secondary, destructive, outline, ghost, link)
                 if let Some(value) = props.get("variant") {
-                    let variant = self.extract_string_value(value).unwrap_or("default");
-                    attrs.push(format!("variant=\"{}\"", variant));
+                    if let Some(variant) = self.extract_string_value(value) {
+                        attrs.push(format!("variant=\"{}\"", variant));
+                    } else if let AuraPropValue::Expr(e) = value {
+                        if let Ok(expr_vue) = self.expr_to_vue_bound_value(e) {
+                            attrs.push(format!(":variant=\"{}\"", expr_vue));
+                        } else {
+                            attrs.push("variant=\"default\"".to_string());
+                        }
+                    }
                 }
                 // Handle size prop (sm, default, lg, icon)
                 if let Some(value) = props.get("size") {
-                    let size = self.extract_string_value(value).unwrap_or("default");
-                    attrs.push(format!("size=\"{}\"", size));
+                    if let Some(size) = self.extract_string_value(value) {
+                        attrs.push(format!("size=\"{}\"", size));
+                    } else if let AuraPropValue::Expr(e) = value {
+                        if let Ok(expr_vue) = self.expr_to_vue_bound_value(e) {
+                            attrs.push(format!(":size=\"{}\"", expr_vue));
+                        } else {
+                            attrs.push("size=\"default\"".to_string());
+                        }
+                    }
                 }
                 // Handle disabled
                 if let Some(value) = props.get("disabled") {

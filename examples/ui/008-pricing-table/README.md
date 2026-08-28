@@ -1,87 +1,32 @@
-# 008-pricing-table — Three-Tier Pricing Table
+# 008-pricing-table — Three-Tier Pricing Table with Theme Settings
 
-Three pricing tiers (Basic, Premium, Enterprise) with a monthly/yearly toggle switch.
+Three-tier pricing plans (Single Developer, Team, Enterprise) with default Dark theme, a top title bar, and a Settings panel for switching Light/Dark theme and Accent colors.
 
-## Concepts
+## Features
 
-- Switch widget for toggling state
-- Conditional display with boolean model field
-- Card layout in a horizontal row
-- Message handling to flip a boolean
-
-## Source
-
-See `front/app.at`:
-
-```auto
-widget App {
-    msg { ToggleYearly }
-
-    model {
-        var is_yearly bool = false
-        var plan1_name str = "Basic"
-        var plan1_price str = "$9/mo"
-        var plan2_name str = "Premium"
-        var plan2_price str = "$29/mo"
-        var plan3_name str = "Enterprise"
-        var plan3_price str = "$99/mo"
-    }
-
-    view {
-        col {
-            text "Pricing Plans"
-            text "Choose the plan that fits your needs"
-            switch { value: .is_yearly, label: "Yearly", onchange: .ToggleYearly }
-            row {
-                col {
-                    text .plan1_name
-                    text .plan1_price
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
-                }
-                col {
-                    text .plan2_name
-                    text .plan2_price
-                    text "Most Popular"
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
-                }
-                col {
-                    text .plan3_name
-                    text .plan3_price
-                    button "Choose Plan"
-                    class: "bg-white rounded-lg shadow p-6 flex-1"
-                }
-                class: "gap-6"
-            }
-            class: "w-full p-8 gap-6 items-center"
-        }
-    }
-
-    on {
-        .ToggleYearly -> { .is_yearly = !.is_yearly }
-    }
-}
-```
+- **Default Theme**: Dark Mode (`theme: "dark"` in `pac.at`, `var dark_mode bool = true`).
+- **Top Title Bar**: Header with app icon (`💳`), title (`Pricing Table`), example badge (`008`), and settings trigger button (`⚙ Settings`).
+- **Settings Dropdown Panel**:
+  - Theme mode toggle: ☀️ Light / 🌙 Dark.
+  - Accent color picker: 5 semantic palettes (Indigo, Coral, Ocean, Sage, Amber).
+- **Three Pricing Cards**:
+  - Single Developer ($39/mo): Starter tier with blue styling.
+  - Team ($99/mo): "RECOMMENDED" highlight tier with orange badge and borders.
+  - Enterprise ("Exclusive Deals"): High-tier card with zinc styling.
+- **Cross-Backend Parity**: Full visual & functional parity verified across Vue (`auto run`) and VM/Iced (`auto run -r vm`).
 
 ## How to Run
 
 ```bash
 cd examples/ui/008-pricing-table
-auto gen              # Generate code for all backends (vue, jet, ark, rust)
-auto run              # Run dev server
+auto build            # Compile and build Vue project
+auto run              # Run Vue dev server
+auto run -r vm        # Run Native VM + Iced Desktop mode
 ```
 
-After `auto gen`, generated projects appear in:
-- `vue/` — Vue 3 + shadcn-vue
-- `jet/` — Jetpack Compose (Kotlin)
-- `ark/` — ArkTS (HarmonyOS)
-- `rust/` — Rust GPUI
+Override theme from CLI:
+```bash
+auto run --theme light --accent coral
+auto run -r vm --theme light --accent ocean
+```
 
-## Concepts Taught
-
-- Switch widget: `switch` with `value`, `label`, and `onchange` properties
-- Message handling: `ToggleYearly` message flips the `is_yearly` boolean with `!`
-- Card layout: three `col` cards in a `row` with `flex-1` for equal width
-- Static badge: "Most Popular" text on the Premium card
-- Centered layout: `items-center` on the parent column

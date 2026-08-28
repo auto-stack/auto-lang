@@ -884,16 +884,15 @@ impl StyleClass {
 
         // Parse font weight
         match class {
-            "font-bold" => return Ok(StyleClass::FontBold),
+            "font-black" | "font-extrabold" | "font-bold" => return Ok(StyleClass::FontBold),
+            "font-semibold" => return Ok(StyleClass::FontSemiBold),
             "font-medium" => return Ok(StyleClass::FontMedium),
             "font-normal" => return Ok(StyleClass::FontNormal),
+            "font-light" => return Ok(StyleClass::FontLight),
+            "font-extralight" | "font-thin" => return Ok(StyleClass::FontExtraLight),
             "font-serif" => return Ok(StyleClass::FontSerif),
             "font-sans" => return Ok(StyleClass::FontSans),
             "font-mono" => return Ok(StyleClass::FontMono),
-            "font-normal" => return Ok(StyleClass::FontNormal),
-            "font-light" => return Ok(StyleClass::FontLight),
-            "font-extralight" => return Ok(StyleClass::FontExtraLight),
-            "font-semibold" => return Ok(StyleClass::FontSemiBold),
             _ => {}
         }
 

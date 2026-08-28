@@ -1,5 +1,21 @@
+// app.at — Pricing Table.
+// Features top title bar with Settings dropdown panel (Theme: Light/Dark + Accent: 5 colors).
+// Default theme: Dark mode.
 widget App {
+    msg {
+        ToggleSettings,
+        SetTheme(str),
+        SetAccent(str),
+        BuyPlan1,
+        BuyPlan2,
+        BuyPlan3
+    }
+
     model {
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var settings_open bool = false
+
         // Single Developer
         var plan1_name str = "Single Developer"
         var plan1_subtitle str = "For individual developers"
@@ -31,209 +47,471 @@ widget App {
 
     view {
         col {
-            col {
-                h2 "Pricing Plans"
-                span "Choose the plan that fits your needs"
-                style: "gap-2 items-center"
-            }
+            // ── Top Title Bar ──
             row {
-                // Single Developer
-                col {
-                    col {
-                        h3 .plan1_name {
-                            style: "text-lg font-bold text-gray-900"
-                        }
-                        span .plan1_subtitle {
-                            style: "text-sm text-gray-500"
-                        }
-                        span .plan1_price {
-                            style: "text-4xl font-bold text-gray-900 mt-2"
-                        }
-                        style: "gap-1 items-center"
+                row {
+                    span "💳" {
+                        style: "text-xl"
                     }
-                    col {
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .plan1_devs
-                            style: "gap-2 items-center"
+                    span "Pricing Table" {
+                        style: if .dark_mode {
+                            "text-base font-bold text-zinc-100"
+                        } else {
+                            "text-base font-bold text-gray-900"
                         }
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .feat1
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .feat2
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .feat3
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .feat4
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-blue-500 font-bold"
-                            }
-                            span .feat5
-                            style: "gap-2 items-center"
-                        }
-                        style: "gap-3 mt-6"
                     }
-                    button .plan1_btn {
-                        style: "w-full py-2.5 bg-blue-500 text-white rounded-lg font-semibold mt-6"
+                    span "008" {
+                        style: if .dark_mode {
+                            "text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-medium"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium"
+                        }
                     }
-                    style: "bg-white rounded-xl border-2 border-blue-500 p-6 flex-1"
+                    style: "gap-2.5 items-center"
                 }
 
-                // Team
-                col {
-                    col {
-                        h3 .plan2_name {
-                            style: "text-lg font-bold text-gray-900"
-                        }
-                        span .plan2_subtitle {
-                            style: "text-sm text-gray-500"
-                        }
-                        span .plan2_price {
-                            style: "text-4xl font-bold text-gray-900 mt-2"
-                        }
-                        style: "gap-1 items-center"
-                    }
-                    col {
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .plan2_devs
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .feat1
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .feat2
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .feat3
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .feat4
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-orange-500 font-bold"
-                            }
-                            span .feat5
-                            style: "gap-2 items-center"
-                        }
-                        style: "gap-3 mt-6"
-                    }
-                    button .plan2_btn {
-                        style: "w-full py-2.5 bg-orange-500 text-white rounded-lg font-semibold mt-6"
-                    }
-                    style: "bg-white rounded-xl border-2 border-orange-500 p-6 flex-1"
-                }
+                spacer
 
-                // Enterprise
-                col {
-                    col {
-                        h3 .plan3_name {
-                            style: "text-lg font-bold text-gray-900"
-                        }
-                        span .plan3_subtitle {
-                            style: "text-sm text-gray-500"
-                        }
-                        span .plan3_deal {
-                            style: "text-4xl font-bold text-gray-900 mt-2"
-                        }
-                        style: "gap-1 items-center"
-                    }
-                    col {
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .plan3_devs
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .feat1
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .feat2
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .feat3
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .feat4
-                            style: "gap-2 items-center"
-                        }
-                        row {
-                            span "✓" {
-                                style: "text-gray-400 font-bold"
-                            }
-                            span .feat5
-                            style: "gap-2 items-center"
-                        }
-                        style: "gap-3 mt-6"
-                    }
-                    button .plan3_btn {
-                        style: "w-full py-2.5 bg-gray-500 text-white rounded-lg font-semibold mt-6"
-                    }
-                    style: "bg-white rounded-xl border-2 border-gray-400 p-6 flex-1"
+                // Settings Trigger Button
+                button "⚙ Settings" {
+                    variant: if .settings_open { "default" } else { "outline" }
+                    onclick: .ToggleSettings
+                    style: "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                 }
-                style: "gap-6"
+                style: if .dark_mode {
+                    "w-full px-8 py-3.5 items-center border-b border-zinc-800 bg-zinc-900/60"
+                } else {
+                    "w-full px-8 py-3.5 items-center border-b border-gray-200 bg-white/80"
+                }
             }
-            style: "w-full p-8 gap-8 bg-gray-50 min-h-screen items-center"
+
+            // ── Settings Dropdown Panel (When Open) ──
+            if .settings_open {
+                row {
+                    spacer
+                    col {
+                        // Theme Section
+                        col {
+                            span "THEME" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                                }
+                            }
+                            row {
+                                button "☀️ Light" {
+                                    onclick: .SetTheme("light")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    }
+                                }
+                                button "🌙 Dark" {
+                                    onclick: .SetTheme("dark")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-colors"
+                                    }
+                                }
+                                style: "w-full gap-2 mt-1"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        // Accent Section
+                        col {
+                            span "ACCENT COLOR" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide mt-1.5"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1.5"
+                                }
+                            }
+                            row {
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("indigo")
+                                    style: if .accent_color == "indigo" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("coral")
+                                    style: if .accent_color == "coral" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("ocean")
+                                    style: if .accent_color == "ocean" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("sage")
+                                    style: if .accent_color == "sage" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("amber")
+                                    style: if .accent_color == "amber" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                style: "w-full gap-3 mt-1 items-center"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        style: if .dark_mode {
+                            "w-64 p-4 rounded-xl bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        } else {
+                            "w-64 p-4 rounded-xl bg-white text-gray-900 border border-gray-200 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        }
+                    }
+                    style: "w-full"
+                }
+            }
+
+            // ── Main Pricing Content ──
+            col {
+                // Section Header: Title uses Theme Accent Color
+                col {
+                    h2 "Pricing Plans" {
+                        style: "text-3xl font-extrabold text-primary tracking-tight text-center"
+                    }
+                    span "Choose the plan that fits your needs" {
+                        style: if .dark_mode {
+                            "text-sm text-zinc-400 mt-1"
+                        } else {
+                            "text-sm text-gray-500 mt-1"
+                        }
+                    }
+                    style: "gap-1 items-center mb-2"
+                }
+
+                // 3 Cards Row
+                row {
+                    // Plan 1: Single Developer
+                    col {
+                        col {
+                            h3 .plan1_name {
+                                style: if .dark_mode {
+                                    "text-lg font-bold text-zinc-100"
+                                } else {
+                                    "text-lg font-bold text-gray-900"
+                                }
+                            }
+                            span .plan1_subtitle {
+                                style: if .dark_mode {
+                                    "text-xs text-zinc-400"
+                                } else {
+                                    "text-xs text-gray-500"
+                                }
+                            }
+                            span .plan1_price {
+                                style: if .dark_mode {
+                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                } else {
+                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                }
+                            }
+                            style: "gap-1 items-center"
+                        }
+                        col {
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .plan1_devs {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat1 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat2 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat3 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat4 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat5 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            style: "gap-3.5 my-5 flex-1"
+                        }
+                        button .plan1_btn {
+                            onclick: .BuyPlan1
+                            style: "w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
+                        }
+                        style: if .dark_mode {
+                            "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
+                        } else {
+                            "bg-white rounded-2xl border border-gray-200 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
+                        }
+                    }
+
+                    // Plan 2: Team (Recommended)
+                    col {
+                        col {
+                            row {
+                                span "RECOMMENDED" {
+                                    style: "px-2.5 py-0.5 bg-primary text-primary-foreground text-xs font-bold rounded-full tracking-wide mb-1"
+                                }
+                                style: "justify-center"
+                            }
+                            h3 .plan2_name {
+                                style: if .dark_mode {
+                                    "text-lg font-bold text-zinc-100"
+                                } else {
+                                    "text-lg font-bold text-gray-900"
+                                }
+                            }
+                            span .plan2_subtitle {
+                                style: if .dark_mode {
+                                    "text-xs text-zinc-400"
+                                } else {
+                                    "text-xs text-gray-500"
+                                }
+                            }
+                            span .plan2_price {
+                                style: if .dark_mode {
+                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                } else {
+                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                }
+                            }
+                            style: "gap-1 items-center"
+                        }
+                        col {
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .plan2_devs {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat1 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat2 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat3 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat4 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-primary font-bold mr-2.5 text-sm" }
+                                span .feat5 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            style: "gap-3.5 my-5 flex-1"
+                        }
+                        button .plan2_btn {
+                            onclick: .BuyPlan2
+                            style: "w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-semibold transition-colors shadow-md cursor-pointer"
+                        }
+                        style: if .dark_mode {
+                            "bg-zinc-900 rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-xl justify-between"
+                        } else {
+                            "bg-white rounded-2xl border-2 border-primary p-6 flex-1 max-w-[340px] min-w-[260px] shadow-md justify-between"
+                        }
+                    }
+
+                    // Plan 3: Enterprise
+                    col {
+                        col {
+                            h3 .plan3_name {
+                                style: if .dark_mode {
+                                    "text-lg font-bold text-zinc-100"
+                                } else {
+                                    "text-lg font-bold text-gray-900"
+                                }
+                            }
+                            span .plan3_subtitle {
+                                style: if .dark_mode {
+                                    "text-xs text-zinc-400"
+                                } else {
+                                    "text-xs text-gray-500"
+                                }
+                            }
+                            span .plan3_deal {
+                                style: if .dark_mode {
+                                    "text-4xl font-extrabold text-zinc-100 mt-2"
+                                } else {
+                                    "text-4xl font-extrabold text-gray-900 mt-2"
+                                }
+                            }
+                            style: "gap-1 items-center"
+                        }
+                        col {
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .plan3_devs {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .feat1 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .feat2 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .feat3 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .feat4 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            row {
+                                span "✓" { style: "text-zinc-400 font-bold mr-2.5 text-sm" }
+                                span .feat5 {
+                                    style: if .dark_mode { "text-sm text-zinc-300" } else { "text-sm text-gray-700" }
+                                }
+                                style: "items-center"
+                            }
+                            style: "gap-3.5 my-5 flex-1"
+                        }
+                        button .plan3_btn {
+                            onclick: .BuyPlan3
+                            style: if .dark_mode {
+                                "w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
+                            } else {
+                                "w-full py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold transition-colors shadow-sm cursor-pointer"
+                            }
+                        }
+                        style: if .dark_mode {
+                            "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between"
+                        } else {
+                            "bg-white rounded-2xl border border-gray-200 p-6 flex-1 max-w-[340px] min-w-[260px] shadow-sm justify-between"
+                        }
+                    }
+                    style: "gap-6 max-w-5xl w-full items-stretch"
+                }
+                style: "w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto"
+            }
+
+            style: if .dark_mode {
+                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+            } else {
+                "w-full min-h-screen bg-gray-50 text-gray-900"
+            }
         }
     }
+
+    on {
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
+        .BuyPlan1 -> { print("Selected Plan: Single Developer") }
+        .BuyPlan2 -> { print("Selected Plan: Team") }
+        .BuyPlan3 -> { print("Selected Plan: Enterprise") }
+    }
 }
+

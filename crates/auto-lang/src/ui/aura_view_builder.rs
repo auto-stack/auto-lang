@@ -5003,8 +5003,12 @@ let tabs_inner = View::Row {
                     if is_true {
                         // then body must be a single expression (Plan 339 contract)
                         if branch.body.stmts.len() == 1 {
-                            if let crate::ast::Stmt::Expr(e) = &branch.body.stmts[0] {
-                                return self.resolve_expr_to_string_with(e, bindings);
+                            match &branch.body.stmts[0] {
+                                crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
+                                crate::ast::Stmt::If(nested_if) => {
+                                    return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                }
+                                _ => {}
                             }
                         }
                         return String::new();
@@ -5012,8 +5016,12 @@ let tabs_inner = View::Row {
                 }
                 if let Some(else_body) = &if_expr.else_ {
                     if else_body.stmts.len() == 1 {
-                        if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
-                            return self.resolve_expr_to_string_with(e, bindings);
+                        match &else_body.stmts[0] {
+                            crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
+                            crate::ast::Stmt::If(nested_if) => {
+                                return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -5341,8 +5349,12 @@ let tabs_inner = View::Row {
                     if is_true {
                         // then body must be a single expression (Plan 339 contract)
                         if branch.body.stmts.len() == 1 {
-                            if let crate::ast::Stmt::Expr(e) = &branch.body.stmts[0] {
-                                return self.resolve_expr_to_value(e, bindings);
+                            match &branch.body.stmts[0] {
+                                crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
+                                crate::ast::Stmt::If(nested_if) => {
+                                    return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                }
+                                _ => {}
                             }
                         }
                         return None;
@@ -5350,8 +5362,12 @@ let tabs_inner = View::Row {
                 }
                 if let Some(else_body) = &if_expr.else_ {
                     if else_body.stmts.len() == 1 {
-                        if let crate::ast::Stmt::Expr(e) = &else_body.stmts[0] {
-                            return self.resolve_expr_to_value(e, bindings);
+                        match &else_body.stmts[0] {
+                            crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
+                            crate::ast::Stmt::If(nested_if) => {
+                                return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                            }
+                            _ => {}
                         }
                     }
                 }
