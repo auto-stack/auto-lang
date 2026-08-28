@@ -4,7 +4,7 @@
 > **类型**:完整计划(实施)
 > **状态**:实施中（Tier 1 核心体验 + 后端 schema + 标签/搜索已完成；三列布局 + AutoDown 编辑器 + block + 文件夹组织待实施）
 > **日期**:2026-07-06（初版）/ 2026-07-14（v2 融合三列布局 + AutoDown + block 方案）
-> **战略文档**:[Design 16](../design/16-app-generation-and-ai-authoring.md)(M1 基准)、[Design 17](../design/17-blocks-first-class.md)(Block 三层模型)、[Design 18](../design/18-shared-store.md)(SharedStore)
+> **战略文档**:[Design 16](../design/16-app-generation-and-ai-authoring.md)(M1 基准)、[Design 17](../design/blocks/blocks-first-class.md)(Block 三层模型)、[Design 18](../design/autoui/shared-store.md)(SharedStore)
 > **前置**:015-notes 现有后端通讯已稳定;codegen fixes 已合并(self. strip、v-model、conditional style、callback prop 等)
 > **归档**:025-notes-extended 的 store + routing 概念验证已被吸收;不再维护
 > **For Claude:** 实施部分使用 `superpowers:executing-plans` 逐任务执行,在专用 worktree 内进行。

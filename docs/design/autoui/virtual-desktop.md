@@ -1,5 +1,7 @@
 # 23 - AutoUI 虚拟桌面架构设计（Virtual Desktop / AutoOS 桌面层）
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/virtual-desktop.md`（Design 23），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 23”即指本文。
+
 > **状态**：正式（2026-08-26 Plan 452 T1 收编；裁定 R1–R7 即日生效）
 > **来源**：2026-08-26 架构讨论——AutoUI 从"每 App 独立窗口"走向"跨平台虚拟桌面"。
 > **关系**：本文档**修订** doc 20（分离架构）、**翻转** Plan 365 的 Windows 宿主裁定、

@@ -1,7 +1,7 @@
 # capability-tests
 
 Minimal Auto UI apps that each exercise **one** AutoUI platform gap from the
-[025 gap enumeration](../../docs/design/16-appendix-025-gap-enumeration.md),
+[025 gap enumeration](../../docs/design/autoui/025-gap-enumeration.md),
 driving the gap's feature via TDD (initially RED → GREEN when implemented).
 Tracked by [Plan 345](../../docs/plans/345-gap-canary-tests.md).
 

@@ -2,7 +2,7 @@
 
 > **性质**：活账（living tracker）。每次计划状态头变更时同步本文件（已写入各计划
 > finish-plan 步骤）。详细状态只住在各计划自己的状态头里，这里只放指针级一行。
-> **架构依据**：`docs/design/23-autoui-virtual-desktop.md`（下称 Design 23）。
+> **架构依据**：`docs/design/autoui/virtual-desktop.md`（下称 Design 23）。
 > **本文拥有的东西**：依赖图、入口条件仪表盘、裁定登记簿。计划内部进度不在此抄。
 
 ## 目标
@@ -17,7 +17,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 
 > **当前状态**：452/453/459 已完成归档（2026-08-28，M1 收口：多 App 会话 + daemon
 > 多窗口 + panic 隔离）。2026-08-28 立项 M2–M4 计划族（Design 24：
-> `docs/design/24-autoui-desktop-shell-and-launcher.md`）——462/463/464/465；
+> `docs/design/autoui/desktop-shell-and-launcher.md`）——462/463/464/465；
 > **462 已完成**（单 OS 窗口多虚拟窗口 + WM 最小集，实机验收 + 3222 测试全绿），
 > 463/464/465 未开工。
 

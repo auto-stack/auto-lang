@@ -42,7 +42,7 @@
 | 资源 | 职责 | 状态 |
 |---|---|---|
 | [auto-playground](auto-playground/project.md) | Playground Web API 服务（axum+ws+前端） | active |
-| [packages/](../design/21-examples-app-track.md) | 4 个 JS 包：@auto-ui/widgets、forge-ui、lab-ui、playground-vue | active |
+| [packages/](../design/autoui/examples-app-track.md) | 4 个 JS 包：@auto-ui/widgets、forge-ui、lab-ui、playground-vue | active |
 | [blocks/](blocks/project.md) | Skill 级 UI 区块包（Design 17） | active |
 | [website/](website/project.md) | 文档站点 + 8 本书籍 + playground 页 | active |
 | [autoui-skill](autoui-skill/project.md) | AI agent 技能包（AutoUI 项目生成契约 C1–C9） | active |
@@ -89,7 +89,7 @@
 1. **AutoUI 桌面轨道**（最热）：虚拟桌面 WM（462）→ 桌面 Shell 自动排布（463）→
    Launcher（464）→ Vue 虚拟桌面（465）；前置：charts（437）/database（439）/
    file-manager（440）/launcher 示例（441）/主题系统（458）/双端 parity（455）。
-   设计：Design [20](../design/20-autoui-separation-architecture.md)–[24](../design/24-autoui-desktop-shell-and-launcher.md)。
+   设计：Design [20](../design/20-autoui-separation-architecture.md)–[24](../design/autoui/desktop-shell-and-launcher.md)。
 2. **a2r parity 线**：功能差距 tracker（242）+ api_gen body 转译（400）+ 剩余大项（415）。
 3. **构建与测试基础设施**：466（sccache/cargo t ≤30s/全量门禁收敛 review）已落地。
 4. **LSP/VSCode**：416 Phase 5–6（semantic tokens/TS 迁移）。
@@ -101,4 +101,4 @@
 - 技术债：[docs/plans/KNOWN-DEBT-AND-RISKS.md](../plans/KNOWN-DEBT-AND-RISKS.md)
 - 计划状态审计：[docs/plans/plans-status-audit-2026-08-20.md](../plans/plans-status-audit-2026-08-20.md)
 - 设计文档：[docs/design/00-intro.md](../design/00-intro.md)
-- 开发范式：[docs/specs/README.md](README.md)（v2）+ [Design 26](../design/26-autoplan-spec-ledger.md)
+- 开发范式：[docs/specs/README.md](README.md)（v2）+ [Design 26](../design/autoplan-spec-ledger.md)

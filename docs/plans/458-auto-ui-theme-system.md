@@ -3,7 +3,7 @@
 **Status**: Planned
 **Scope**: `crates/auto-man/src/pac.rs`, `crates/auto/src/main.rs`, `crates/auto/src/cmd_vue.rs`, `crates/auto-man/src/vue.rs`, `crates/auto-man/src/rust_ui.rs`, `crates/auto-lang/src/ui/style/theme.rs`, `crates/auto-lang/src/ui/iced/renderer.rs`, `crates/auto-lang/src/ui_gen/vue.rs`, `examples/ui/006-hero-section`, `examples/ui/README.md`
 **Goal**: 让"主题（Light/Dark）"与"主题主色（Accent）"成为 AutoUI 的一等配置：CLI 与 pac.at 可指定、双后端（Vue / VM-Iced）默认值一致、应用内可运行时切换；以 `examples/ui/006-hero-section` 为首个"主题敏感示例"，内置右上角 Settings 面板（主题 + 主色切换，对标 auto-musk `settings_menu.at`）。
-**关联**: Plan 455（AutoUI 双端 parity 跟踪）、`docs/design/19-theming-and-dark-mode.md`（语义 token 体系）、`docs/design/22-base-styles-and-visual-parity.md`
+**关联**: Plan 455（AutoUI 双端 parity 跟踪）、`docs/design/autoui/theming-and-dark-mode.md`（语义 token 体系）、`docs/design/autoui/base-styles-and-visual-parity.md`
 
 ---
 

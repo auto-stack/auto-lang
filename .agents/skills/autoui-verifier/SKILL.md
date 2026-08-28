@@ -80,7 +80,7 @@ client.screenshot("converter_vm_decimal")
 启动 Vite 后，运行 Playwright 脚本（参考 `scripts/test_vue_playwright.mjs`）生成 `converter_vue_initial.png` 与 `converter_vue_decimal.png`。
 
 ### 步骤 3：视觉审查与状态一致性判定
-对照 [`docs/design/22-base-styles-and-visual-parity.md`](file:///d:/autostack/auto-lang/docs/design/22-base-styles-and-visual-parity.md) 与第 5、7 节核对：
+对照 [`docs/design/autoui/base-styles-and-visual-parity.md`](file:///d:/autostack/auto-lang/docs/design/autoui/base-styles-and-visual-parity.md) 与第 5、7 节核对：
 1. **容器**：深色底色 `zinc-950`，卡片 `bg-card`，边框 `zinc-800`，圆角 `rounded-2xl`。
 2. **输入框**：14px 字号，`px-3 py-2` 内边距，`rounded-md` (6px) 圆角，`zinc-800` 细边框。
 3. **按钮与前景色**：暗色模式下默认主按钮为浅色底（`239 84% 77%`）+ 深黑字（`#0f172a`），带 `hover:bg-primary/90` 悬停微调。

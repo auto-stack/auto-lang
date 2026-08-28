@@ -1,7 +1,7 @@
 # Plan 440: 027-file-manager 文件管理器（App 轨道填洞 ④）
 
 > **状态**: ⬜ 未开工（2026-08-23 立项草稿，多 agent 可领取）
-> **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 4 项。
+> **来源**: [Design 21 §5](../design/autoui/examples-app-track.md) 填洞路线第 4 项。
 > **关联**: [Plan 422](422-popover-primitive-menubar-contextmenu.md)（右键菜单原语，已落地 29/29）、[Plan 439](439-026-database.md)（Tree widget 上游）、023-realworld（use.rust 后端先例）、015-notes（树形导航降级先例）、姊妹计划 437–439/441
 > **目录**: `examples/ui/027-file-manager/`（编号 027 原为 native-css fixture，已迁 `examples/capability-tests/`）｜pac `name: "file-manager"`｜端口 4027/8027
 

@@ -15,7 +15,7 @@
 
 把虚拟桌面架构从讨论沉淀为可执行的程序基座：
 
-1. Design 23（`docs/design/23-autoui-virtual-desktop.md`）从草案转正式，
+1. Design 23（`docs/design/autoui/virtual-desktop.md`）从草案转正式，
    作为 453–457 与 386 复活的共同架构依据。
 2. 执行 Design 23 §5 同步清单——doc 20 加修订横幅与段落注记、Plan 365
    归档注记、Plan 386 定位改写——消除存量文档与新股定的打架。
@@ -72,7 +72,7 @@ T6 报告归档（如有 Design 23 修订则走登记簿）+ 本计划移入 arc
 
 | # | 标准 | 判定 | 证据（2026-08-28 现场复核） |
 |---|---|---|---|
-| 1 | Design 23 状态头为正式；§5 表 20/365/386 ✅、450 ⬜ | ✅ pass | `docs/design/23-autoui-virtual-desktop.md` 状态头"正式（2026-08-26 Plan 452 T1 收编）"；§5 L99-102 四行状态与验收原文逐字一致 |
+| 1 | Design 23 状态头为正式；§5 表 20/365/386 ✅、450 ⬜ | ✅ pass | `docs/design/autoui/virtual-desktop.md` 状态头"正式（2026-08-26 Plan 452 T1 收编）"；§5 L99-102 四行状态与验收原文逐字一致 |
 | 2 | `grep "not a compositor"` 每处命中伴随 R2 翻转注记 | ✅ pass | 命中 4 处：Design 23:37（裁定本体）；archive/365:6/:79（Status 下带日期的英文 Amendment，逐字核验）；本计划验收原文自身 |
 | 3 | spike 报告覆盖 §9 六项且有定性结论 | ✅ pass | `reports/452-ime-spike.md`（140 行）：①通过（preedit 缺陷在案）②受限③④⑤⑥通过，**无阻断**；证据 `reports/assets/452-ime-spike/01–07.jpg` + 原型 `scratch/ime-spike/` 均在 |
 | 4 | 仪表盘可回答"386 还差几项" | ✅ pass（附新鲜度修正） | 三项条件均带"当前"值；复审时修正一处过期：R4 接缝项"当前：N/A"→"接缝 v1 已由 462 落地，I1 评审未做" |
@@ -101,7 +101,7 @@ T6 报告归档（如有 Design 23 修订则走登记簿）+ 本计划移入 arc
 - **supersedes_spec_components**: `docs/design/20-autoui-separation-architecture.md`
   §6.1/§9.2（修改）；`docs/plans/archive/365-*`（Windows 裁定翻转注记）；
   `docs/plans/386-autoui-renderqueue-future-optimization.md`（定位改写）
-- **new_spec_components**: `docs/design/23-autoui-virtual-desktop.md`（正式，R1–R7）；
+- **new_spec_components**: `docs/design/autoui/virtual-desktop.md`（正式，R1–R7）；
   `docs/plans/autos-desktop-program.md`（依赖图/仪表盘/裁定登记簿）；
   `docs/plans/reports/452-ime-spike.md`
 - **touched_goals**: AutoOS 虚拟桌面程序 M0（Design 23 §6）——453+ 立项条件达成，

@@ -1,7 +1,7 @@
 # Plan 439: 026-database SQLite 可视化客户端（App 轨道填洞 ③）
 
 > **状态**: ⬜ 未开工（2026-08-23 立项草稿，多 agent 可领取）
-> **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 3 项。
+> **来源**: [Design 21 §5](../design/autoui/examples-app-track.md) 填洞路线第 3 项。
 > **关联**: 023-realworld（use.rust FFI shims 先例）、Plan 429–434（aavm prelude/porting，rusqlite FFI 路径）、015-notes（树状导航先例，Plan 354）、[Plan 413](413-cross-platform-code-editor.md)（code_editor 复用）、姊妹计划 437/438/440/441
 > **目录**: `examples/ui/026-database/`（编号 026 原为 keyboard-mouse-events fixture，已迁 `examples/capability-tests/`）｜pac `name: "database"`｜端口 4026/8026
 

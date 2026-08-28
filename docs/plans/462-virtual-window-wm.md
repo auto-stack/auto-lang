@@ -3,8 +3,8 @@
 > **状态**: ✅ 完成（2026-08-28，T1–T7 全量 + 实机验收 + 全量回归绿）
 > **来源**：产品需求「桌面端虚拟桌面」（Design 24 §1 N1）；里程碑 M2（Design 23 §6
 > 提案编号 454，实际编号经程序跟踪文件「计划一览」解析为本号）。
-> **架构依据**：`docs/design/23-autoui-virtual-desktop.md`（R1 WM-as-app、R2 单 OS 窗口
-> 虚拟桌面、R4 AppWindow 接缝、R5 路线 A 先行、I2/I3）；`docs/design/24-autoui-desktop-shell-and-launcher.md`
+> **架构依据**：`docs/design/autoui/virtual-desktop.md`（R1 WM-as-app、R2 单 OS 窗口
+> 虚拟桌面、R4 AppWindow 接缝、R5 路线 A 先行、I2/I3）；`docs/design/autoui/desktop-shell-and-launcher.md`
 > （R9 排布纯函数、R12 桌面热键、§6 风险）。
 > **基线**: master ba17b6c75（453/459 已归档）。
 > **本计划产出是 463/464/465 的共同地基**：VirtualWindow widget 契约（I4 登记源）。

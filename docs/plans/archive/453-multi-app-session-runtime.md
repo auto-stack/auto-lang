@@ -23,7 +23,7 @@
 > 必要性实证）；② 订阅消息返回的 iced Task 在纯 0.14 应用中正常执行
 > （renderer.rs:6048 的 wart 是动态渲染器包装层局部问题）；③ 桌面级键盘监听
 > 天然可用（无焦点也可见），全局热键无需额外机制。
-> **架构依据**: `docs/design/23-autoui-virtual-desktop.md`（R3 退化桌面 /
+> **架构依据**: `docs/design/autoui/virtual-desktop.md`（R3 退化桌面 /
 > R4 接缝 / R6 兼容纪律；不变式 I2/I3）；编号解析见
 > `docs/plans/autos-desktop-program.md` 计划一览。
 > **基线**: master fd454efad

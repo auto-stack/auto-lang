@@ -55,6 +55,6 @@ palette-drift guard checks every `palette` entry exists in the AURA
 - **widgets** (Plan 331/336/337): the palette blocks compose.
 - **apps** (Design 16): `app = shell + route→block selection + block data wiring`.
 
-See [Design 17](../docs/design/17-blocks-first-class.md) and
-[Plan 342](../docs/plans/342-block-tier-phase-a-package-foundation.md) /
-[Plan 343](../docs/plans/343-block-tier-phase-b-generator-and-cli.md).
+See [Design 17](../docs/design/blocks/blocks-first-class.md) and
+[Plan 342](../docs/plans/archive/342-block-tier-phase-a-package-foundation.md) /
+[Plan 343](../docs/plans/archive/343-block-tier-phase-b-generator-and-cli.md).

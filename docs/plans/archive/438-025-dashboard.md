@@ -1,7 +1,7 @@
 # Plan 438: 025-dashboard 系统监视器（App 轨道填洞 ②）
 
 > **状态**: ✅ M1 + M1-fix + M2 全部完成（2026-08-26~27，M2 分支 plan-438-m2）——vm 实机 26/26、持久化重启闭环、vue 侧 localStorage 映射回归绿。M2 采用**内联几何形态**（024 M3 先例，437 Phase 2 组件化未做不阻塞）。执行记录：M1 §7 / M1-fix §8 / M2 §9。
-> **来源**: [Design 21 §5](../design/21-examples-app-track.md) 填洞路线第 2 项。
+> **来源**: [Design 21 §5](../design/autoui/examples-app-track.md) 填洞路线第 2 项。
 > **关联**: [Plan 437](437-024-charts.md)（chart 组件上游，弱依赖）、012-stopwatch（.Tick 先例）、Plan 386（golden）、姊妹计划 437/439–441
 > **目录**: `examples/ui/025-dashboard/`（编号 025 原为 notes-extended，2026-08-23 已删除、能力并入 015-notes）｜pac `name: "dashboard"`｜端口 4025
 

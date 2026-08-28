@@ -48,4 +48,4 @@ block 不绑死端点（不知道 `/api/notes`），接 typed fetcher `dataSourc
 - eject 后的 spec 升级回流短期不做。
 - 开放：AI 生成可复现性（acceptance + reference 锚定收敛，是否需确定性种子留 Phase B）；block 泛型（`DataTableBlock[T]`）取决于 Auto 泛型在 UI 场景的成熟度。
 
-> 来源: docs/design/17-blocks-first-class.md；crates/auto-lang/src/ui_gen/block/{spec,registry}.rs；blocks/
+> 来源: docs/design/blocks/blocks-first-class.md；crates/auto-lang/src/ui_gen/block/{spec,registry}.rs；blocks/

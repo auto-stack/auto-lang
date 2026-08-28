@@ -1,5 +1,7 @@
 # 26 — AutoPlan Spec Ledger：开发范式与知识账本 v2
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoplan-spec-ledger.md`（Design 26），经审计属需求级/专题类设计而非域级章，按模块归位原则移入根级（流程体系类不占章号，与 plan-spec-hybrid-model.md 同列）。历史文献中的“Design 26”即指本文。
+
 > **状态**：现行（2026-08-28，Plan 467 确立）
 > **取代**：[plan-spec-hybrid-model.md](plan-spec-hybrid-model.md)（v1，2026-07-23；其 §1 诊断与 §9 反模式清单被本文继承）
 > **适用**：auto-lang monorepo 全部开发任务

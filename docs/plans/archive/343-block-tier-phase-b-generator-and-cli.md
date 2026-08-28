@@ -3,7 +3,7 @@
 > **类型**:完整计划(实施)
 > **状态**: ✅ 已完成并归档（2026-08-04）。实测确认全部实现：cmd_block.rs 的 BlockAction::List/Show/Add/Check 四个命令全部实现（auto block list/show/add/check）。文档下方「设计待确认」系历史残留。
 > **日期**:2026-06-26(2026-06-26 按"agent-driven"架构重定范围)
-> **战略文档**:[docs/design/17-blocks-first-class.md](../design/17-blocks-first-class.md)(Skill 模型,§2.3/§2.4/§9)
+> **战略文档**:[docs/design/blocks/blocks-first-class.md](../design/blocks/blocks-first-class.md)(Skill 模型,§2.3/§2.4/§9)
 > **前置**:[Plan 342](342-block-tier-phase-a-package-foundation.md)(block 包格式 + `BlockRegistry` + 首批包)
 > **架构定调(重定范围)**:`auto` 二进制**无** LLM/HTTP 基建(无 reqwest / API key / agent crate)。故 AI 生成**不在 `auto` 内部**;按 Design 17 的 Skill 模型,**生成器 = agent**(本会话 / auto-musk),`auto` 只负责"供给 spec + 校验产物"。
 > **For Claude:** 实施部分使用 `superpowers:executing-plans` 逐任务执行,在专用 worktree 内进行。

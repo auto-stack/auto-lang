@@ -3,7 +3,7 @@
 > **类型**:完整计划(实施)
 > **状态**:✅ 已完成（N1 / K2·N4 / N2 / N3 / OOM / this.n 全部闭环；K1 延后单列、K3 DROPPED 归 AutoDown）— 见 §Phase 6 末
 > **日期**:2026-06-30
-> **战略文档**:[Design 16](../design/16-app-generation-and-ai-authoring.md)、[025 差距枚举](../design/16-appendix-025-gap-enumeration.md)
+> **战略文档**:[Design 16](../design/16-app-generation-and-ai-authoring.md)、[025 差距枚举](../design/autoui/025-gap-enumeration.md)
 > **前置**:025-notes-extended(SPEC + 已知差距)、差距枚举(本文依据)
 > **For Claude:** 实施部分使用 `superpowers:executing-plans` 逐任务执行,在专用 worktree 内进行。
 

@@ -61,7 +61,7 @@ widget Counter {
 
 - `docs/design/08-ui-systems.md`
 - `docs/design/16-app-generation-and-ai-authoring.md`
-- `docs/design/17-blocks-first-class.md`
+- `docs/design/blocks/blocks-first-class.md`
 - `docs/router.md`
 - `docs/plan-indices/11-ui-generators.md`、`docs/plan-reports/`（UI 相关主题）
 - `examples/ui/001–025` 教学序列

@@ -216,5 +216,5 @@ flowchart TD
    - 为该示例启动 VM 模式并调用 MCP 获取 `vm_initial.png` 与 `vm_action.png`。
    - 启动 Vue 模式捕获 `vue_initial.png` 与 `vue_action.png`。
 3. **精准定位差异**：
-   - 若布局/样式有细微差异，参考 `docs/design/22-base-styles-and-visual-parity.md` 修改 `aura_view_builder.rs` / `renderer.rs`。
+   - 若布局/样式有细微差异，参考 `docs/design/autoui/base-styles-and-visual-parity.md` 修改 `aura_view_builder.rs` / `renderer.rs`。
    - 若事件/计算有差异，通过 MCP `autoui_snapshot` 检查 State 与 VM Bytecode 分派。

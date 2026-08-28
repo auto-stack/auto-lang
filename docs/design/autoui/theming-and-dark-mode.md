@@ -1,5 +1,7 @@
 # Design 19: AutoUI 统一的深浅色模式与主题色配置方案
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/theming-and-dark-mode.md`（Design 19），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 19”即指本文。
+
 > **状态**: 设计完成，待实施
 > **日期**: 2026-07-17
 > **影响**: 所有 UI 后端（Vue / Rust / Jet / Ark）

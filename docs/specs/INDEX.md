@@ -1,7 +1,7 @@
 # Specs 全局索引
 
 > **本文件由 `scripts/spec-index.py` 生成，请勿手改。**
-> 规约见 [README.md](README.md)；设计见 [docs/design/26-autoplan-spec-ledger.md](../design/26-autoplan-spec-ledger.md)；全局总览见 [overview.md](overview.md)、目标账本见 [goals.md](goals.md)。
+> 规约见 [README.md](README.md)；设计见 [docs/design/autoplan-spec-ledger.md](../design/autoplan-spec-ledger.md)；全局总览见 [overview.md](overview.md)、目标账本见 [goals.md](goals.md)。
 
 ## 语言核心
 

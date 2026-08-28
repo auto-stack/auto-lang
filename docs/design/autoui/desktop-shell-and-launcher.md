@@ -1,5 +1,7 @@
 # 24 - AutoUI 桌面 Shell 与 Launcher 设计（虚拟桌面 M2–M4 落地）
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/desktop-shell-and-launcher.md`（Design 24），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 24”即指本文。
+
 > **状态**：正式（2026-08-28）
 > **来源**：产品需求——①平台扩展：虚拟桌面覆盖 **Web（vue/tauri）** 与 **桌面（VM/Rust iced）** 双端；
 > ②示例扩展：做一个真正的**全屏桌面**，通过**快捷键召唤 launcher**（launcher 本身是 `examples/ui/`

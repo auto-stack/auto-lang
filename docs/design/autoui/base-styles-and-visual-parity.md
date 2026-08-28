@@ -1,5 +1,7 @@
 # 22 - AutoUI Base Styles and Cross-Backend Visual Parity Specification
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/base-styles-and-visual-parity.md`（Design 22），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 22”即指本文。
+
 ## 1. Overview & Design Philosophy
 
 AutoUI provides a unified UI description language (`.at` widgets with AURA IR) that compiles to multiple execution targets:

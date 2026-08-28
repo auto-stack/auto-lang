@@ -1,5 +1,7 @@
 # 025 Gap Enumeration (lightweight) — Design 16 appendix
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/025-gap-enumeration.md`（Design 16 附录），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 16 附录”即指本文。
+
 > **日期**:2026-06-30
 > **来源**:从 `examples/ui/025-notes-extended/SPEC.md` 出发,用一组**探针 widget**逐个试探 AI 会自然写出的不确定构造,`auto build` → 捕获失败。（025 目录已于 2026-08-23 删除,SPEC 留存于 git 历史;本文档作为差距枚举的历史记录保留。）
 > **目的**:为"金丝雀测试 + 差距特性实现"提供**完整的差距清单**(已知 + 非obvious),避免只修已知的 3 个而漏掉其余。

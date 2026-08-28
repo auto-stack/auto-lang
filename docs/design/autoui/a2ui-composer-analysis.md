@@ -1,5 +1,7 @@
 # A2UI Composer Analysis & AutoUI Implementation Plan
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/a2ui-composer-analysis.md`（Design 25），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 25”即指本文。
+
 ## 1. Technology Analysis: Google A2UI
 
 ### What is A2UI?

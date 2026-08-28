@@ -6,7 +6,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 > **开发范式（2026-08-28 起，Plan 467）**：标准流程采用 **auto-plan 四技能范式**
 > （`/auto-plan:new` → `/auto-plan:work` → `/auto-plan:review` → `/auto-plan:merge`），
-> 范式设计与规约见 [docs/design/26-autoplan-spec-ledger.md](docs/design/26-autoplan-spec-ledger.md)
+> 范式设计与规约见 [docs/design/autoplan-spec-ledger.md](docs/design/autoplan-spec-ledger.md)
 > 与 [docs/specs/README.md](docs/specs/README.md) §4。**路径映射**（四技能为 auto-os 仓书写，
 > 在本仓执行时以此为准）：技能文档中的 `docs/plans/archived/` 在本仓为 **`docs/plans/archive/`**；
 > `.worktrees/plan-<NNN>-dev` 与 `.autoos/specs.json` 两仓一致。

@@ -30,5 +30,5 @@ is deferred — the gallery currently shows the authored source. Adding live
 render is a follow-up (needs the a2vue single-widget compile path wired into a
 dev-time preview).
 
-See [docs/design/17-blocks-first-class.md](../../docs/design/17-blocks-first-class.md)
+See [docs/design/blocks/blocks-first-class.md](../../docs/design/blocks/blocks-first-class.md)
 and [Plan 342](../../docs/plans/342-block-tier-phase-a-package-foundation.md).

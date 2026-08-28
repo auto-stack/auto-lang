@@ -48,13 +48,13 @@ auto run --theme light --accent ocean   # 同时指定主题主色
   示范：右上角 Theme Settings 面板可在运行中切换主题与主色。
 - 仍硬编码浅色配色（`bg-white`/`text-gray-900` 等）的历史示例（004/005/007/
   008/038）自带可读但与深色页面底色冲突，后续按
-  [Design 19](../../docs/design/19-theming-and-dark-mode.md) 的 token 迁移表
+  [Design 19](../../docs/design/autoui/theming-and-dark-mode.md) 的 token 迁移表
   逐步语义化。
 
 ## 编号说明（024–040 空洞的来历）
 
 编号有空洞，均有明确去向。**新示例优先填入空洞**（从 024 起，编号顺序
-即构建/复杂度顺序，详见 [Design 21 §2](../../docs/design/21-examples-app-track.md)）；
+即构建/复杂度顺序，详见 [Design 21 §2](../../docs/design/autoui/examples-app-track.md)）；
 填入时在本 README 加一行历史注记。历史去向：
 
 - **024**：原 widget-gallery，已升级为顶级 [`examples/widgets-gallery/`](../widgets-gallery/)。
@@ -243,7 +243,7 @@ Stage 1 的 golden 对照样例。
 
 ## 升级与毕业（AutoOS）
 
-> 本节仅摘要；完整战略见 [Design 21 — 应用示例轨道与 AutoOS 默认应用矩阵](../../docs/design/21-examples-app-track.md)（分轨、编号约定、默认应用矩阵、填洞路线 024–033、demo 边界、五闸门、golden 三件套、计划结构）。
+> 本节仅摘要；完整战略见 [Design 21 — 应用示例轨道与 AutoOS 默认应用矩阵](../../docs/design/autoui/examples-app-track.md)（分轨、编号约定、默认应用矩阵、填洞路线 024–033、demo 边界、五闸门、golden 三件套、计划结构）。
 
 - **示例内升级**（教学 toy → 真实应用形态）：由
   [Plan 401 纲领](../../docs/plans/401-autoui-examples-upgrade.md)统一跟踪，

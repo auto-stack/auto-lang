@@ -86,14 +86,14 @@ graph TD
 - 状态：active
 
 ### ADR-06: Block = Skill（spec + reference 双产物，AI 生成而非预烘焙库）
-- 日期 / 来源：docs/design/17-blocks-first-class.md §2
+- 日期 / 来源：docs/design/blocks/blocks-first-class.md §2
 - 决策：block 不是预烘焙组件库，而是"自然语言 spec + 结构化 frontmatter + 每 variant 一份 reference `.at` + gotchas"；`auto block add` 由 AI 按 spec 现场生成定制 `.at`，消费者拥有输出源码、可改可 eject。
 - 备选：A. 黑盒高配置组件（pros：复用即所得；cons：变体空间高维，props 爆炸——低代码地狱）；B. 纯示例代码（pros：零维护；cons：不算复用）；C. Skill 模型（pros：订制走 NL、验收靠 acceptance 清单；cons：生成可复现性需 reference 锚定 + 编译回路收敛）。
 - 后果：`ui_gen/block/registry.rs:BlockRegistry` + 顶层 `blocks/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 待做（plan-343）。
 - 状态：active
 
 ### ADR-07: block kind 词汇表圈住订制自由，eject 为天花板
-- 日期 / 来源：docs/design/17-blocks-first-class.md §4、§7
+- 日期 / 来源：docs/design/blocks/blocks-first-class.md §4、§7
 - 决策：不定"万能 block"，而定 kind 分类法（Form/Data-display/Feedback/Layout/Composite），每类固定扩展点词汇表；订制超出词汇表 → eject 接管源码。配色/间距归 design token，不进 block。
 - 备选：A. 无限 props（cons：不可枚举、AI 无稳定目标）；B. kind 词汇表 + eject（pros：灵活且可文档化；cons：eject 后 spec 改进无法回流——开放问题）。
 - 后果：loading/error/empty 成为数据型 block 的强制槽（对接 Rung 2 数据生命周期）。

@@ -1,8 +1,10 @@
 # 21 — examples/ui 应用示例轨道（App Track）与 AutoOS 默认应用矩阵
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/examples-app-track.md`（Design 21），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 21”即指本文。
+
 > **状态**:设计文档(定稿 v1)
 > **日期**:2026-08-23
-> **关联**:[Plan 183](../plans/archive/183-unified-ui-examples.md)(示例初版分层)、[Plan 401](../plans/401-autoui-examples-upgrade.md)(存量示例升级纲领)、Plan 413/414/418/420/428(auto-edit 系列)、Plan 402/407(扫雷)、[Design 16](16-app-generation-and-ai-authoring.md)/[Design 18](18-shared-store.md)、[Plan 386](../plans/386-autoui-renderqueue-future-optimization.md)(RenderQueue golden 三件套)、[examples/ui/README.md](../../examples/ui/README.md)
+> **关联**:[Plan 183](../plans/archive/183-unified-ui-examples.md)(示例初版分层)、[Plan 401](../plans/401-autoui-examples-upgrade.md)(存量示例升级纲领)、Plan 413/414/418/420/428(auto-edit 系列)、Plan 402/407(扫雷)、[Design 16](16-app-generation-and-ai-authoring.md)/[Design 18](shared-store.md)、[Plan 386](../plans/386-autoui-renderqueue-future-optimization.md)(RenderQueue golden 三件套)、[examples/ui/README.md](../../examples/ui/README.md)
 > **目的**:定义 `examples/ui/` 的定位、编号约定、分层、**AutoOS 默认应用矩阵**、demo 边界与毕业闸门、填洞路线与计划结构。本文是 App 轨道的**战略文档**;具体执行归计划体系(见 §10)。
 
 ---

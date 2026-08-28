@@ -1,5 +1,7 @@
 # 17 — Blocks as a First-Class Tier (Skill Model)
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/blocks/blocks-first-class.md`（Design 17），经审计属需求级/专题类设计而非域级章，按模块归位原则移入blocks/。历史文献中的“Design 17”即指本文。
+
 > **状态**:设计文档(概念设计)
 > **日期**:2026-06-26
 > **关联**:Design [16 App Generation](16-app-generation-and-ai-authoring.md)、widget 层(Plan 331/336/337)、`/auto-lang-creator` skill、`examples/a2ui-composer`、`examples/a3ui-replica`

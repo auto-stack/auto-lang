@@ -19,7 +19,7 @@ total_steps: 8
 > **状态**：已立项 2026-08-28，未开工
 > **来源**：产品需求「真正的全屏桌面 + 多应用自动排布」（Design 24 §1 N1/N4）；
 > 里程碑 M3（Design 23 §6 提案编号 455，实际编号经程序跟踪文件解析为本号）。
-> **架构依据**：Design 23（R1/R2/R8/R9/R10/R12，I2/I3）；`docs/design/24-autoui-desktop-shell-and-launcher.md`
+> **架构依据**：Design 23（R1/R2/R8/R9/R10/R12，I2/I3）；`docs/design/autoui/desktop-shell-and-launcher.md`
 > §2.3 排布调研、§2.4 启动语义映射；`docs/design/25-autoshell-dsl-unified-shell.md`
 > （§3 内核/用户态分界、命令接缝候选 A 转正、workspace 驱动模型转正、I7–I9）。
 > **依赖**: Plan 462（VirtualWindow/WM/`DM::Wm`/overlay 槽）。**基线**: 462 合入后的 master。

@@ -45,7 +45,7 @@ Replicate the `a3ui` project (a Vue/shadcn-vue clone of Google's A2UI Composer g
 - `examples/component-gallery/` — 46 shadcn-vue components documented in pure Auto
 - `examples/a2ui-composer/` — Simplified A2UI Composer (Phase 0-1 of Plan 217)
 - `docs/plans/archive/217-a2ui-composer-implementation.md` — Prior A2UI composer plan
-- `docs/design/25-a2ui-composer-analysis.md` — A2UI ↔ AutoUI architecture mapping
+- `docs/design/autoui/a2ui-composer-analysis.md` — A2UI ↔ AutoUI architecture mapping
 
 ---
 

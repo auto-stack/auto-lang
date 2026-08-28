@@ -1,7 +1,7 @@
 # Auto-Lang Specs 体系规约
 
 > 版本：v2（2026-08-28，Plan 467）
-> 设计文档：[docs/design/26-autoplan-spec-ledger.md](../design/26-autoplan-spec-ledger.md)（现行范式）
+> 设计文档：[docs/design/autoplan-spec-ledger.md](../design/autoplan-spec-ledger.md)（现行范式）
 > 历史版本：v1 见 [docs/design/plan-spec-hybrid-model.md](../design/plan-spec-hybrid-model.md)（已被取代，
 > 其文档类型定义与反模式清单被本版继承）
 > 本文档是**操作规约**：目录怎么组织、文档怎么写、流程怎么走。改动本规约需先改设计文档。
@@ -100,7 +100,7 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 | `docs/plans/archived/` | **`docs/plans/archive/`** |
 | `.worktrees/plan-<NNN>-dev` | 相同 |
 | `.autoos/specs.json` | 相同 |
-| `docs/designs/008-auto-plan.md` | `docs/design/26-autoplan-spec-ledger.md` |
+| `docs/designs/008-auto-plan.md` | `docs/design/autoplan-spec-ledger.md` |
 | musk 后端 `127.0.0.1:8080` | 通常不可用 → 走手工回退 + §4 扩展 |
 
 ## 6. 六段账本映射
@@ -137,4 +137,4 @@ v1 的五种文档类型（project.md / overview.md / architecture.md / design\<
 v1 §9 八条（手工中央 manifest / 按流程产物分文档 / 多 role 接力 / 并发自行取号 /
 同构双索引 / 描述不存在的代码 / 内容互相复制 / 归档双轨）+ Design 26 新增三条
 （状态机跳步 / 账本双写不一致 / plan 复制 spec 全文）——全文见
-[26-autoplan-spec-ledger.md §7](../design/26-autoplan-spec-ledger.md)。
+[26-autoplan-spec-ledger.md §7](../design/autoplan-spec-ledger.md)。

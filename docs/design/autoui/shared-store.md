@@ -1,5 +1,7 @@
 # 18 — Shared Store (Rung 4: cross-widget/cross-route state)
 
+> 📦 **归位注记（2026-08-28，Plan 468）**：本文档原为 `docs/design/autoui/shared-store.md`（Design 18），经审计属需求级/专题类设计而非域级章，按模块归位原则移入autoui/。历史文献中的“Design 18”即指本文。
+
 > **状态**:设计文档(草案)
 > **日期**:2026-07-02
 > **战略文档**:[Design 16](16-app-generation-and-ai-authoring.md) Rung 4

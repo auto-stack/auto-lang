@@ -1,0 +1,20 @@
+# AutoUI 域需求级设计
+
+> AutoUI/App 生成域的**需求级设计文档**子目录（Plan 468 归位，2026-08-28）。
+> 域级章见根级 [Design 16（App 生成战略）](../16-app-generation-and-ai-authoring.md) 与
+> [Design 20（AutoUI 分离架构）](../20-autoui-separation-architecture.md)；本目录存放各需求/专题的深入设计。
+
+| 文档 | 原号 | 主题 | 关联计划 |
+|---|---|---|---|
+| [shared-store](shared-store.md) | 18 | Rung 4 跨 widget/跨路由共享状态 | 351/370 |
+| [theming-and-dark-mode](theming-and-dark-mode.md) | 19 | 深浅色模式与主题色配置 | 458 |
+| [examples-app-track](examples-app-track.md) | 21 | examples/ui 应用轨道与 AutoOS 默认应用矩阵 | 401–441 |
+| [base-styles-and-visual-parity](base-styles-and-visual-parity.md) | 22 | 跨后端基础样式与视觉一致性规范 | 411/455 |
+| [virtual-desktop](virtual-desktop.md) | 23 | 虚拟桌面架构（WM/多窗口/桌面会话） | 452/459/462 |
+| [desktop-shell-and-launcher](desktop-shell-and-launcher.md) | 24 | 桌面 Shell 与 Launcher（M2–M4） | 463/464/465 |
+| [a2ui-composer-analysis](a2ui-composer-analysis.md) | 25* | Google A2UI 技术分析与实现映射（研究输入） | — |
+| [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
+
+> \* 原 `25-a2ui-composer-analysis.md`。另注意：`docs/design/25-autoshell-dsl-unified-shell.md`
+> 为在途文档（并行会话活跃编辑中），稳定后将归位本目录（autoshell-dsl-unified-shell.md），
+> 届时 25 号一并封存。

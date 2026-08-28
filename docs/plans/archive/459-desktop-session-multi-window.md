@@ -4,7 +4,7 @@
 > **来源**: Plan 453 T7b 移交。453 的会话运行时代码工作已全部落地
 > （T1–T6 + T4c 翻转 + T7a 守门零回归），M1 验收的最后一环——双 AppSession
 > 双 OS 窗口 demo——因 iced 入口形态问题独立立项，验收完成后 453 一并归档。
-> **架构依据**: `docs/design/23-autoui-virtual-desktop.md`（R3 退化桌面、
+> **架构依据**: `docs/design/autoui/virtual-desktop.md`（R3 退化桌面、
 > §6 里程碑 M1；不变式 I2/I3）；453 计划 §2.1/§2.3（DesktopMessage /
 > 订阅路由形状）；T4c 施工图 `reports/453-t4c-session-flip-blueprint.md`；
 > **本计划施工图** `reports/459-t1-daemon-blueprint.md`（T1 产出）。
