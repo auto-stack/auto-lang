@@ -84,3 +84,9 @@ toml = "0.8"
 indicatif = "0.17"
 rust-embed = { version = "8.5", features = ["compression"] }
 tempfile = "3.14"
+
+# Plan 466: dev 瘦身——行号级调试信息(panic 回溯仍有行号),显著缩小 target
+# 与链接开销(每个 worktree 的 target 从 ~26G 明显下降);AI agent 流程无交互式
+# 调试需求,代价极低。需要完整变量调试时临时覆盖 CARGO_PROFILE_DEV_DEBUG=2。
+[profile.dev]
+debug = "line-tables-only"

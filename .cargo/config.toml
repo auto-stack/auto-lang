@@ -23,7 +23,8 @@ linker = "rust-lld.exe"
 rustflags = ["-C", "link-arg=/STACK:33554432"]  # 32 MB
 
 [build]
-jobs = 8
+# Plan 466: 8→12(20 逻辑核/31.8G RAM 实测有余量;若出现内存压力回退 8)
+jobs = 12
 # sccache (rustc compile cache) is opt-in via the per-platform wrapper scripts
 # in scripts/sccache-wrap.{sh,cmd}, enabled through the RUSTC_WRAPPER env var
 # (set per-platform in the user shell environment, like PYO3_PYTHON below).
