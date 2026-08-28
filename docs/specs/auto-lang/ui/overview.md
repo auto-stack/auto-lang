@@ -12,8 +12,9 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **代码生成**（`ui_gen/`）：a2vue（主力）、a2rust、a2jet/a2ark、ts adapter、widget 契约表、block 层。
 - **VM 运行时渲染**（`ui/`）：vnode/事件路由/VM 桥接、iced/gpui/headless 后端、code_editor 与
   autodown_editor 内建 widget、热重载、MCP 调试服务。
-- **桌面运行时**（2026-08 新增）：`session.rs`（DesktopSession/AppSession 双层会话）、`wm.rs`
-  （WmState/VirtualWindow）、排布纯函数与 DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
+- **桌面运行时**（2026-08 新增）：`session.rs`（DesktopSession/AppSession 双层会话 + WmState/
+  WmCommand 桌面消息）、`ui/iced/virtual_window.rs`（VirtualWindow 渲染）、排布纯函数与
+  DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
 
 ## 现状（2026-08-28）
