@@ -5257,17 +5257,16 @@ pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
     // 约定(XxxStore)扫全文的限定引用;去重后并入。
     let mut hits: Vec<String> = Vec::new();
     let mut cur = String::new();
-    let mut prev_uc = false;
     for ch in code.chars() {
         if ch.is_alphanumeric() || ch == '_' {
             cur.push(ch);
-            prev_uc = ch.is_uppercase();
         } else {
-            if prev_uc && cur.len() > 5 && cur.ends_with("Store") && !deps.contains(&cur) {
+            // 首字母大写且以 Store 结尾的标识符(生态命名约定:XxxStore)。
+            let starts_uc = cur.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+            if starts_uc && cur.len() > 5 && cur.ends_with("Store") && !deps.contains(&cur) {
                 hits.push(cur.clone());
             }
             cur.clear();
-            prev_uc = false;
         }
     }
     for h in hits {
