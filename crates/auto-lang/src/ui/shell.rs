@@ -15,3 +15,32 @@ pub fn build_shell_component(
 ) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
     crate::build_dynamic_component(SHELL_AT, None)
 }
+
+/// Plan 463 T7：启动失败占位页（Design 24 §6.5）—— LaunchApp 构建失败时
+/// 的可见反馈窗：不白屏、不阻断桌面（toast 并行报错；关闭占位窗即走）。
+pub const LAUNCH_FALLBACK_AT: &str = r#"widget LaunchFallback {
+    msg {}
+    model {
+        var app str = ""
+    }
+    view {
+        center {
+            col {
+                style: "gap-3 p-8 items-center"
+                icon (name: "app-window", style: "h-10 w-10 text-muted-foreground") {}
+                text "应用暂不可用" { style: "text-lg font-semibold" }
+                text "无法启动：${.app}" { style: "text-sm text-muted-foreground" }
+            }
+        }
+    }
+}"#;
+
+/// 进程内编译装载占位页组件（`app` 状态 = 目标 App 名，视图绑定展示）。
+#[cfg(feature = "ui-iced")]
+pub fn build_launch_fallback(
+    app_name: &str,
+) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
+    let mut comp = crate::build_dynamic_component(LAUNCH_FALLBACK_AT, None)?;
+    let _ = comp.write_state("app", auto_val::Value::str(app_name));
+    Ok(comp)
+}

@@ -6199,7 +6199,27 @@ fn execute_desktop_commands(
         match cmd {
             DC::LaunchApp(name) => match state.launch_app(&name) {
                 Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
-                Err(err) => push_desktop_toast(state, "error", &err),
+                Err(err) => {
+                    push_desktop_toast(state, "error", &err);
+                    // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
+                    // 可见反馈窗代替白屏；占位页自身构建失败则仅 toast。
+                    if let Ok(comp) = crate::ui::shell::build_launch_fallback(&name) {
+                        let app_id = state.allocate_app(comp);
+                        let usable = crate::ui::layout::usable_rect(
+                            state.host_viewport(),
+                            crate::ui::layout::ReservedEdges::taskbar(),
+                        );
+                        let index = state
+                            .host
+                            .as_ref()
+                            .map(|h| h.wm.wins.len())
+                            .unwrap_or(0);
+                        let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
+                        let rect = crate::ui::layout::cascade_rect(index, size, usable);
+                        let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
+                        state.wm_focus(wid);
+                    }
+                }
             },
             DC::CloseWindow(wid) => {
                 if let Some(app) = state.wm_remove_win(wid) {
@@ -6291,19 +6311,32 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
 /// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
 pub fn run_dynamic_iced_multi(components: Vec<DynamicComponent>) -> AppResult<String> {
-    run_session(components, RunMode::Standalone, false)
+    run_session(components, RunMode::Standalone, DesktopOptions::default())
+}
+
+/// Plan 463：desktop 模式运行选项（I3 配置位族；独立模式忽略）。
+#[derive(Debug, Clone, Default)]
+pub struct DesktopOptions {
+    /// T3：全屏无框桌面（`Settings{fullscreen, decorations:false}`）。
+    pub fullscreen: bool,
+    /// T7：应用注册表目录（扫描 `*/pac.at` → LaunchApp 目标）。None =
+    /// 不装载注册表（LaunchApp 回 toast "registry unavailable"）。
+    pub apps_dir: Option<std::path::PathBuf>,
 }
 
 /// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
 /// （Design 23 R2 拓扑；chrome/拖拽/缩放/关闭/聚焦见 `virtual_window.rs`）。
 pub fn run_dynamic_desktop(components: Vec<DynamicComponent>) -> AppResult<String> {
-    run_session(components, RunMode::Desktop, false)
+    run_session(components, RunMode::Desktop, DesktopOptions::default())
 }
 
-/// Plan 463 T3：全屏桌面入口 —— 宿主窗 borderless + Fullscreen
-/// （iced 0.14 `Settings{fullscreen, decorations}`；Esc 保留调试退出）。
-pub fn run_dynamic_desktop_fullscreen(components: Vec<DynamicComponent>) -> AppResult<String> {
-    run_session(components, RunMode::Desktop, true)
+/// Plan 463 T3/T7：全屏桌面入口 —— borderless + Fullscreen + 可选注册表
+/// （Esc 保留调试退出；`DesktopOptions.apps_dir` 装配 LaunchApp 注册表）。
+pub fn run_dynamic_desktop_fullscreen(
+    components: Vec<DynamicComponent>,
+    opts: DesktopOptions,
+) -> AppResult<String> {
+    run_session(components, RunMode::Desktop, opts)
 }
 
 /// 会话运行形态（Plan 462，I3：唯一 update/view/订阅管线，仅此配置位与
@@ -6319,7 +6352,7 @@ pub enum RunMode {
 fn run_session(
     mut components: Vec<DynamicComponent>,
     mode: RunMode,
-    fullscreen: bool,
+    opts: DesktopOptions,
 ) -> AppResult<String> {
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
@@ -6526,7 +6559,7 @@ fn compare_pngs(
                     position: iced::window::Position::Specific(iced::Point::new(80.0, 80.0)),
                     ..Default::default()
                 };
-                if fullscreen {
+                if opts.fullscreen {
                     settings.fullscreen = true;
                     settings.decorations = false;
                 }
@@ -6565,6 +6598,33 @@ fn compare_pngs(
                     Err(err) => {
                         eprintln!("[session] shell load failed (desktop continues): {err}")
                     }
+                }
+                // Plan 463 T7：应用注册表 —— 扫描 apps_dir 装配 LaunchApp
+                // 解析器。boot 不过滤 render：声明 `render:"vue"` 的 App 多数
+                // vm 兼容（011-calculator 即桌面 demo 常客），声明的 render
+                // 是前端目标不是 vm 兼容性；真不兼容的由 panic 边界 + 占位页
+                // 兜底（T7）。`ScanOptions.render` 过滤开关留给 464 launcher。
+                if let Some(apps_dir) = &opts.apps_dir {
+                    let entries = crate::ui::app_registry::scan_apps(
+                        apps_dir,
+                        &crate::ui::app_registry::ScanOptions::default(),
+                    );
+                    eprintln!(
+                        "[session] app registry: {} entries from {}",
+                        entries.len(),
+                        apps_dir.display()
+                    );
+                    session.desktop.app_resolver =
+                        Some(std::sync::Arc::new(move |name: &str| {
+                            entries.iter().find(|e| e.id == name).and_then(|e| {
+                                let code = std::fs::read_to_string(&e.entry).ok()?;
+                                Some(crate::ui::session::LaunchSpec {
+                                    code,
+                                    source_path: Some(e.entry.to_string_lossy().to_string()),
+                                    title: Some(e.title.clone()),
+                                })
+                            })
+                        }));
                 }
                 (session, open_task.discard())
             }

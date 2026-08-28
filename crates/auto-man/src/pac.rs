@@ -100,6 +100,15 @@ pub struct Pac {
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
 
+    /// Plan 463: desktop registry icon (lucide name), declared as
+    /// `icon: "calculator"` in pac.at. None = registry falls back to
+    /// `"app-window"` (R10 桌面注册表消费；本结构侧仅承载声明).
+    pub icon: Option<AutoStr>,
+
+    /// Plan 463: desktop registry category, declared as `category: "tool"`
+    /// in pac.at. None = registry falls back to `"app"`.
+    pub category: Option<AutoStr>,
+
     /// Plan 458: UI theme preference, declared as `theme: "dark" | "light"`
     /// in pac.at. None = built-in default (dark). `auto run --theme` wins.
     /// Parsed into `ThemePref` (validated) at use sites; the raw string is
@@ -254,6 +263,16 @@ impl Pac {
         let title_trimmed = title.trim().to_string();
         let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
 
+        // Plan 463: desktop registry icon/category, e.g. `icon: "calculator"`,
+        // `category: "tool"`. Absent/blank → None (registry falls back to
+        // "app-window" / "app"; see auto-lang ui::app_registry).
+        let icon = config.root.get_prop("icon").to_astr();
+        let icon_trimmed = icon.trim().to_string();
+        let icon = (!icon_trimmed.is_empty()).then(|| AutoStr::from(icon_trimmed));
+        let category = config.root.get_prop("category").to_astr();
+        let category_trimmed = category.trim().to_string();
+        let category = (!category_trimmed.is_empty()).then(|| AutoStr::from(category_trimmed));
+
         // Plan 458: UI theme + accent preset, e.g. `theme: "light"`,
         // `accent: "ocean"`. Lowercased for tolerant matching; absent/blank
         // → None (use sites fall back to the built-in dark/indigo default).
@@ -403,6 +422,8 @@ impl Pac {
             back_port,
             window,
             title,
+            icon,
+            category,
             theme,
             accent,
             ui_config,
