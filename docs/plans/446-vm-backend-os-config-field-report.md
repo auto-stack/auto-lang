@@ -1,11 +1,24 @@
+---
+plan_id: PLAN-446
+status: reviewed              # drafting → executing → execution_done → reviewed → archived（复审见 §R2）
+feature_name: VM 渲染后端实战薄弱点（auto-os-config 现场报告·五批修复）
+author: [zcode]
+created_at: 2026-08-25
+updated_at: 2026-08-28
+supersedes_spec_components:
+  - "docs/specs/auto-lang/mcp/architecture.md: AutoUI MCP 通道行为修订——autoui_screenshot 详情态冻结根修（textarea >64KB 降级只读预览，render Dynamic/into_iced 双入口同守卫）+ autoui_snapshot 首帧前回退 PRE-RENDER FALLBACK 自标识"
+new_spec_components: []
+touched_goals: []
+---
+
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（用户授权复活 2026-08-28：归档态解除，§P/U1-U7 转正为批五实施；此前四批已复审归档沉淀 P446-1..4；G2-G5 悬空引用经裁决删除）；批五 U1-U7 全项收口
+状态: reviewed（用户授权复活 2026-08-28：归档态解除，§P/U1-U7 转正为批五实施；此前四批已复审归档沉淀 P446-1..4；G2-G5 悬空引用经裁决删除）；批五 U1-U7 全项收口
 （U3/U6 于批五续二收口，见 §S 末两条——U3 机理修正：详情态截图超时真因是
 损坏 sidecar 触发 cosmic-text 字形整形冻结整个 iced 事件循环，非"富子树>10s"）；
-§I 四批：批一诊断 §L/§K、批二可用性 §N、批三语义统一 §O、批四打磨 §Q——待
-/auto-plan:review；§P 新报与剩余低优先项见待澄清；worktree
-.worktrees/plan-446-dev 留置待 merge）
+§I 四批（批一诊断 §L/§K、批二可用性 §N、批三语义统一 §O、批四打磨 §Q）经 §R
+一轮复审；批五经 §R2 二轮复审通过；§P 新报与剩余低优先项见待澄清；分支已折叠
+入 master（d50ee7edf）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -908,3 +921,66 @@ state/非空快照同帧就绪（≈1.3s），窗口内仅 66B"尚无 UI"错误�
 - **基线红登记**（非本计划范围，供交叉参照）：md_hidden_classes_parse
   批一在案 master 同红；benchmark_downcast 与 book_listing 家族为负载
   偶发（本批 13 个孤立复跑全绿）。
+
+## R2. 批五复审记录（2026-08-28 晚，/auto-plan:review 第二轮）
+
+复审人：ZCode 会话（U3/U6 执行者自复审，按"验证不轻信"在折叠后的 master
+上全量重跑）。基线说明：worktree `.worktrees/plan-446-dev` 已折叠清除
+（批五修复 = master `d50ee7edf`，簿记 = `b153f1904`，探针路径维护为复审
+时单独提交）——本复审按技能规程在**默认检出**执行。注意：主检出工作树
+含并行会话在途的 `apply_column_style` max-width 修复（未提交，属台账
+"collection 体不渲染"条的攻关，与 446 足迹无交集），门禁与探针在该树上
+运行，结果可归因（446 批五增量 = `d50ee7edf` + `03ff2a66c` 两提交，仅
+ui 层 4 文件 + corpus，零 vm/ffi/trans/book 足迹）。
+
+### 批五逐项验收判定（证据 = 本轮复跑）
+
+| 项 | 判定 | 证据 |
+|---|---|---|
+| U7 loop 字段 Dot 求值链 | PASS | `plan446_batch5::u7_consumer_chain_matrix`（批五套件 6/6 内） |
+| U1 事件冻结（P0） | PASS | 单测 `u1_press_after_loop_build_updates_active_id` + 现场 `mcp_probe.py` NO-FREEZE（press Roles→Daemon active_id 连续翻转，新构建） |
+| U4 select 渲染 | PASS | `u4_select_renders_and_dispatches` |
+| U2 $event 标记实参 | PASS | `u2_event_marker_arg_replaced` |
+| U5 表头样式 | PASS | table 族含于 lib+ui-iced 全量（见门禁 B） |
+| U3 截图详情态超时 | PASS | corpus 七形态全 ALIVE（ok 1.1s / 655K 1.5s / 1.31M 1.6s / field-props 1.3s / text_1m3 3.3s 等，新构建）；现场 SHOT-detail **0.90s**（原 10s 确定性超时）；单测 ×2 |
+| U6 快照空壳窗口 | PASS | 新构建 3/3 boot 健康（state/snapshot 同帧 ≈1.1-1.4s 就绪）；PRE-RENDER FALLBACK 自标识在库 |
+
+### 全量门禁（本轮，master 2ac09bafa..ec1720191 树）
+
+- 门禁 A `cargo t`（默认 feature，含 RC churn 层）：**3233/3233 全绿**。
+- 门禁 B lib+ui-iced 全量 `--no-fail-fast`：**3814/3815**，唯一失败 =
+  `test_md_hidden_classes_parse`（在案基线红，批一起 master 同红）——零新增。
+- ta/tf/tv/tt/tb 未重跑口径：批五增量零 vm/ffi/trans/book 足迹（上表），
+  ta 已于 §R（批四态）通过且其后 446 无该面改动。
+
+### 遗漏 / 延后 / workaround 猎查（批五增量）
+
+1. **collection 模块体像素不渲染**——批五执行期间发现的独立缺陷（非
+   §P/U1-U7 任务），已入 KNOWN-DEBT 🔴/🟡 台账；本轮视觉复验显示
+   os-config main 已推进外置 backend 迁移（Roles 页现渲染 "⚠
+   not-migrated" 占位），并行会话在途攻关（max-width 修复在主检出工作
+   树）。非静默丢弃，不阻塞本计划。
+2. **soul.md 转义翻倍数据损坏**——台账 🔴，双端定界待办（runbook 五A），
+   委托下游。
+3. **text 元素 >1M 残余**——§S 在案（现场无此形态）。
+4. **E1 类型坍缩正本清源**——§R 在案延后，继续挂账。
+5. **workaround 面本批零新增**：U3 降级预览为文档化的设计行为
+   （TEXTAREA_INLINE_EDIT_CAP 常量注释承载机理）；探针路径修复为复审
+   维护项。计划相关 diff 无 TODO/FIXME 残留。
+6. 并行 WIP `03ff2a66c`（ZWSP soften）被 `d50ee7edf` 取代——ZWSP/分行
+   双变体 corpus 实证无效（§S U3 ⑤），历史可溯，无工作丢失。
+
+### spec-impact 元数据
+
+frontmatter 已新增（本计划原为无 frontmatter 的旧格式现场报告）：
+`supersedes_spec_components` = docs/specs/auto-lang/mcp/architecture.md
+（AutoUI MCP 通道行为修订：截图防冻结降级 + 快照回退自标识）；
+`new_spec_components` / `touched_goals` = 空（specs.json goals 账本为空，
+宁空勿猜；行为细节沉淀于本计划 §S，merge 时按 mcp/architecture.md 条目
+upsert）。
+
+### 结论
+
+批五（U1-U7）全部验收项 PASS，门禁双绿（唯一失败为在案基线红），遗漏/
+延后全部显式登记可见、无阻塞债 → **status: reviewed**，就绪待
+/auto-plan:merge。
