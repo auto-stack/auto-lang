@@ -3130,6 +3130,9 @@ impl VueGenerator {
         // Plan 012 Batch A (gap 19): proven array/string receivers for
         // the .remove/.contains method-mapping gate.
         let (arrays, strings) = self.typed_collection_names();
+        if self.store_deps.len() == 1 {
+            ctx = ctx.with_store_facade_from(self.store_deps[0].clone());
+        }
         ctx.with_typed_collections(arrays, strings)
             .with_typed_ints(self.int_names.iter().cloned().collect())
             .with_facade_names(self.facade_local_names())
@@ -5646,7 +5649,19 @@ impl VueGenerator {
                         })
                         .map(|a| self.expr_to_auto_string(&a))
                         .collect();
-                    format!("{}.{}({})", self.expr_to_auto_string(object), method, args_str.join(", "))
+                    // plan446 批二 A1 配套:限定 store 调用 `Store.Method()` 发
+                    // facade `store.Method()`(v1 单 store per file;多 store
+                    // 命名 facade 留上游项)。不加此臂则 TS2304(裸 store 名)。
+                    let receiver = self.expr_to_auto_string(object);
+                    let receiver = match object.as_ref() {
+                        Expr::Ident(root)
+                            if self.store_deps.len() == 1 && &self.store_deps[0] == root =>
+                        {
+                            "store".to_string()
+                        }
+                        _ => receiver,
+                    };
+                    format!("{}.{}({})", receiver, method, args_str.join(", "))
                 } else {
                     let args_str: Vec<String> = call.args.args.iter()
                         .filter_map(|a| match a {
@@ -21234,6 +21249,55 @@ widget RemoveProbe {
     }
 }
 "#;
+
+    const A1_STORE_QUAL_SRC: &str = r#"
+use store: AuthStore
+
+widget A1Probe {
+    msg Msg { Boot }
+    view {
+        col {
+            button "b" { onclick: .Boot }
+        }
+    }
+    on {
+        .Boot() -> { AuthStore.Init() }
+    }
+}
+"#;
+
+    /// plan446 批二 A1(多 store 消歧)配套:限定 store 调用 `X.Method()` 在
+    /// vue 轨须发 facade(`store.Method()`),否则 TS2304(标识符不存在)。
+    /// v1 单 store per file:接收者 ∈ store_deps 即改写;多 store 场景留待
+    /// 命名 facade 上游项。
+    #[test]
+    fn test_a1_qualified_store_call_emits_facade() {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(A1_STORE_QUAL_SRC).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
+        let sfc = gen.generate(&widget).expect("generate SFC");
+        assert!(
+            sfc.contains("const store = reactive(useAuthStoreStore())"),
+            "use store decl must yield the facade const:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("store.Init()"),
+            "qualified AuthStore.Init() must emit the facade receiver:
+{sfc}"
+        );
+        assert!(
+            !sfc.contains("AuthStore.Init()"),
+            "raw store name must not leak into TS:
+{sfc}"
+        );
+    }
 
     #[test]
     fn test_gap19_typed_array_remove_keeps_splice() {
