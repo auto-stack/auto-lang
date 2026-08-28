@@ -1076,6 +1076,10 @@ impl StyleClass {
             "items-end" => return Ok(StyleClass::ItemsEnd),
             // Plan 412: align-items: stretch(交叉轴 Fill,渲染层处理)
             "items-stretch" => return Ok(StyleClass::ItemsStretch),
+            // Plan 049 (auto-musk D3): baseline 基线对齐 iced 无对应——按
+            // Plan 412 降级矩阵先例解析保存为 ItemsStart(顶部对齐近似),
+            // 不再整类静默丢弃(musk app.at 品牌行在用)。
+            "items-baseline" => return Ok(StyleClass::ItemsStart),
             _ => {}
         }
 
@@ -1525,9 +1529,16 @@ fn parse_size_value(input: &str) -> Result<SizeValue, String> {
         "3/4" => Ok(SizeValue::ThreeQuarters),
         _ => {
             // Try to parse as a number
-            let value: u16 = input.parse()
-                .map_err(|_| format!("Invalid size value: {}", input))?;
-            Ok(SizeValue::Fixed(value))
+            if let Ok(value) = input.parse::<u16>() {
+                return Ok(SizeValue::Fixed(value));
+            }
+            // Plan 049 (auto-musk D3): 0.5 步进分数值(px-2.5/py-0.5/mb-1.5 …)。
+            // 此前仅 gap 族走 parse_gap_value 支持,p/m 族静默丢弃;对齐同一
+            // 换算(1 unit = 4px)落 Pixels。
+            if let Ok(f) = input.parse::<f32>() {
+                return Ok(SizeValue::Pixels(f * 4.0));
+            }
+            Err(format!("Invalid size value: {}", input))
         }
     }
 }
@@ -1640,6 +1651,29 @@ mod tests {
     fn test_parse_padding() {
         assert_eq!(StyleClass::parse_single("p-4"), Ok(StyleClass::Padding(SizeValue::Fixed(4))));
         assert_eq!(StyleClass::parse_single("p-0"), Ok(StyleClass::Padding(SizeValue::Fixed(0))));
+    }
+
+    // Plan 049 (auto-musk D3): p/m 族 0.5 步进分数值——此前只有 gap 族支持分数,
+    // login.at 的 px-2.5/py-2.5 与会话壳草案的 mb-0.5/py-0.5 等被静默丢弃。
+    // 对齐 parse_gap_value 的先例:分数 -> Pixels(N*4px)。
+    #[test]
+    fn test_parse_fractional_spacing() {
+        assert_eq!(StyleClass::parse_single("px-2.5"), Ok(StyleClass::PaddingX(SizeValue::Pixels(10.0))));
+        assert_eq!(StyleClass::parse_single("py-2.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(10.0))));
+        assert_eq!(StyleClass::parse_single("py-0.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(2.0))));
+        assert_eq!(StyleClass::parse_single("mb-0.5"), Ok(StyleClass::MarginBottom(SizeValue::Pixels(2.0))));
+        assert_eq!(StyleClass::parse_single("py-1.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(6.0))));
+        assert_eq!(StyleClass::parse_single("p-3.5"), Ok(StyleClass::Padding(SizeValue::Pixels(14.0))));
+        // 整数与既有语义不回归
+        assert_eq!(StyleClass::parse_single("px-4"), Ok(StyleClass::PaddingX(SizeValue::Fixed(4))));
+        assert_eq!(StyleClass::parse_single("gap-0.5"), Ok(StyleClass::Gap(SizeValue::Pixels(2.0))));
+    }
+
+    // Plan 049 (auto-musk D3): items-baseline 降级臂——iced 无基线对齐,按
+    // Plan 412 降级矩阵先例解析保存为 ItemsStart(顶部对齐近似),不再整类丢弃。
+    #[test]
+    fn test_parse_items_baseline_degrades_to_start() {
+        assert_eq!(StyleClass::parse_single("items-baseline"), Ok(StyleClass::ItemsStart));
     }
 
     #[test]
