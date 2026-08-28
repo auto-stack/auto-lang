@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-468
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: design 文档按模块归位（去序号化）
 author: [zcode]
 created_at: 2026-08-28
@@ -157,3 +157,11 @@ docs/design/
 ## 待澄清事项
 
 （无）
+
+---
+
+## spec-sync 回写记录（2026-08-28，/auto-plan:merge）
+
+- `.autoos/specs.json`：P468-1..2 入库（reports/designs，幂等）。
+- `docs/design/autoui/README.md`：新子目录索引（含 25-autoshell 在途登记）。
+- 归档：`git mv` → `docs/plans/archive/`，`status: archived`（终态）。
