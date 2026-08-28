@@ -746,8 +746,18 @@ store.active_id → 主区条件翻转）在**真实 iced 窗口 + MCP 通道**
 corpus 未覆盖他们的完整形态——下游 runbook 第四节要求真实集合页专项
 复验，红则取证回传。
 
-**待续（下一会话）**：U2 autoui_type 粘连 / U3 截图超时 / U4 select 缺位 /
-U5 thead 样式 / U6 快照空壳窗口（本批两次实证启动偶发）。
+**[✅ 已完成] U4 select 控件 VM 端渲染**：view-builder 无 select 路由
+（§P/U4 "快照结构在、渲染丢"根因；iced 侧 AbstractView::Select 全支持）。
+`convert_select`：options 取 option 子元素文本（绑定感知）、选中态取
+index/value prop、onselect/onchange 经按钮同款 payload 编码通道
+（name/类型码/值 三段式 → decode_payload）送达 handler。回归：
+u4_select_renders_and_dispatches（产出+options+分发三断言）。
+
+**待续（下一会话）**：U3 截图超时 / U5 thead 样式 / U6 快照空壳窗口
+（批内两次实证启动偶发）。U2 机理已定位未修：`scan_node_for_inputs`
+以 `clean_handler_name(内联表达式)` 作 input_state_map 键，与 dispatch
+侧合成 handler 名不一致 → autoui_type 文本不落盘——修法需对齐两键或
+表达式键直写 value 字段，验证须走 MCP autoui_type 实测通道。
 
 **下游交付**：`docs/plans/reports/446-downstream-runbook.md`（撤绕行清单
 + e2e 双门禁 + U1 专项复验 + 取证要求，交 os-config agent 执行）。
