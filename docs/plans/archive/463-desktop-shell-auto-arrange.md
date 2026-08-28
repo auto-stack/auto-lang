@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-463
-status: reviewed
+status: archived
 feature_name: 桌面 shell——全屏、任务栏、自动排布、应用生命周期
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
