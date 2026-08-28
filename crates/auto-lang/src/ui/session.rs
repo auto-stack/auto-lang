@@ -300,6 +300,11 @@ pub enum WmCommand {
     GlobalPress,
     /// Plan 463 T3：桌面调试退出（全屏无框桌面无关闭按钮，Esc 保留出口）。
     ExitDesktop,
+    /// Plan 463 T6：窗口循环（Alt+Tab/Ctrl+Tab；z 序栈顶往栈底方向轮转聚焦）。
+    CycleWindow,
+    /// Plan 463 T6：布局切换（桌面热键 Ctrl+Alt+G/L/F；与 shell 总线的
+    /// `DesktopCommand::SetLayout` 同落 `wm_set_layout`）。
+    SetLayout(crate::ui::layout::LayoutMode),
 }
 
 /// 一个虚拟窗口的 WM 条目。desktop 模式下同时承担 WindowEntry 的
@@ -332,6 +337,10 @@ pub struct WmState {
     pub interaction: Option<WmInteraction>,
     /// 最近光标位置（StartDrag 时现算 grab 偏移；全局 CursorMoved 回写）。
     pub last_cursor: Cell<iced::Point>,
+    /// Plan 463 T6：焦点新近序（MRU，front = 最近聚焦）。Alt+Tab 环序的
+    /// 唯一事实源——`cycle_focus` 走本表且不重排它（点击聚焦才重排），
+    /// 保证连续按压遍历全部窗口后环绕。
+    pub mru: Vec<Wid>,
     /// Plan 463 T4：当前布局模式（Free = 用户位置即真值；切换经
     /// `DesktopSession::wm_set_layout` 统一应用）。
     pub layout: LayoutMode,
@@ -347,6 +356,7 @@ impl WmState {
             next_z: 0,
             interaction: None,
             last_cursor: Cell::new(iced::Point::ORIGIN),
+            mru: Vec::new(),
             layout: LayoutMode::default(),
         }
     }
@@ -373,6 +383,9 @@ impl WmState {
         );
         self.z_order.push(wid);
         self.focused = Some(wid);
+        // 新窗即焦点窗（MRU 前插；boot 期批量装载构成初始新近序）。
+        self.mru.retain(|w| *w != wid);
+        self.mru.insert(0, wid);
         wid
     }
 
@@ -406,7 +419,29 @@ impl WmState {
         })
     }
 
-    /// 聚焦 = 记录焦点 + 置顶（z_order 尾部 + z 单调刷新）。
+    /// Plan 463 T6：窗口循环（Alt+Tab/Ctrl+Tab）—— MRU 环序（[`Self::mru`]，
+    /// front = 最近聚焦）向下走一格并聚焦。**本方法不重排 mru**（点击聚焦才
+    /// 重排），连续按压即 c→b→a→c 遍历；新点击重新锚定新近序。单窗/空桌
+    /// 无操作返回 None。
+    pub fn cycle_focus(&mut self) -> Option<Wid> {
+        if self.mru.len() < 2 {
+            return None;
+        }
+        let cur = self.focused?;
+        let idx = self.mru.iter().position(|w| *w == cur)?;
+        let next = self.mru[(idx + 1) % self.mru.len()];
+        // 抬升（z 序）+ 焦点，但不触碰 mru（环序在按压序列内保持稳定）。
+        self.focused = Some(next);
+        self.z_order.retain(|w| *w != next);
+        self.z_order.push(next);
+        self.next_z += 1;
+        if let Some(v) = self.wins.get_mut(&next) {
+            v.z = self.next_z;
+        }
+        Some(next)
+    }
+
+    /// 聚焦 = 记录焦点 + 置顶（z_order 尾部 + z 单调刷新）+ MRU 前插。
     pub fn focus(&mut self, wid: Wid) {
         if !self.wins.contains_key(&wid) {
             return;
@@ -414,6 +449,8 @@ impl WmState {
         self.focused = Some(wid);
         self.z_order.retain(|w| *w != wid);
         self.z_order.push(wid);
+        self.mru.retain(|w| *w != wid);
+        self.mru.insert(0, wid);
         self.next_z += 1;
         if let Some(v) = self.wins.get_mut(&wid) {
             v.z = self.next_z;
@@ -626,6 +663,10 @@ pub enum DesktopEvent {
     /// 让 MCP 截图等"view 侧投递 / update 侧消费"的异步请求有机会被
     /// 处理；独立模式不订——保持空闲零开销）。
     ServiceTick,
+    /// Plan 463 T6：launcher 召唤（桌面热键 Ctrl+Space / shell ⊞ 按钮，
+    /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
+    /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
+    SummonLauncher,
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -682,6 +723,12 @@ impl DesktopSession {
         if let Some(host) = self.host.as_mut() {
             host.wm.focus(wid);
         }
+    }
+
+    /// Plan 463 T6：窗口循环聚焦（桌面热键；见 [`WmState::cycle_focus`]）。
+    pub fn wm_cycle_focus(&mut self) -> Option<Wid> {
+        let host = self.host.as_mut()?;
+        host.wm.cycle_focus()
     }
 
     pub fn wm_focused_app(&self) -> Option<AppId> {
@@ -1449,6 +1496,32 @@ mod tests {
         assert_eq!(cmds, vec![DesktopCommand::LaunchApp("probe".to_string())]);
         // 幂等：第二次排空为空（已清）。
         assert!(ds.drain_desktop_commands().is_empty());
+    }
+
+    // ---- Plan 463 T6：窗口循环聚焦 ----
+
+    #[test]
+    fn wm_cycle_focus_rotates_z_order() {
+        let mut ds = t4_session_with_resolver();
+        let a = ds.launch_app("probe").expect("a");
+        let b = ds.launch_app("probe").expect("b");
+        let c = ds.launch_app("probe").expect("c");
+        // 启动序 a→b→c，z 序 [a,b,c]，焦点 c（栈顶）。
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(c));
+        // 第一次循环：c → b（栈顶往栈底方向）。
+        assert_eq!(ds.wm_cycle_focus(), Some(b));
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(b));
+        // 第二次：b → a。
+        assert_eq!(ds.wm_cycle_focus(), Some(a));
+        // 第三次：a 环绕回 c。
+        assert_eq!(ds.wm_cycle_focus(), Some(c));
+    }
+
+    #[test]
+    fn wm_cycle_focus_single_window_is_noop() {
+        let mut ds = t4_session_with_resolver();
+        ds.launch_app("probe").expect("single");
+        assert_eq!(ds.wm_cycle_focus(), None, "单窗循环无操作");
     }
 }
 

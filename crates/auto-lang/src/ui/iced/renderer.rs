@@ -5871,12 +5871,15 @@ fn keyboard_subscription(
 }
 
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
-/// R12 桌面层路由的键盘半边）。Esc = 调试退出（全屏无框桌面无关闭按钮）；
-/// T6 追加窗口循环/布局切换/launcher 召唤（键位 T1 报告 §7 定案）。
+/// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
+/// - Esc：调试退出（全屏无框桌面无关闭按钮）；
+/// - Alt+Tab / Ctrl+Tab：窗口循环（Windows OS 吞 Alt+Tab，Ctrl+Tab 兜底）；
+/// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
+/// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::DesktopMessage as DM;
+    use crate::ui::session::{DesktopMessage as DM, WmCommand};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -5891,11 +5894,38 @@ fn desktop_hotkey_subscription(
             else {
                 return None;
             };
+            use iced::keyboard::{key::Named, Key};
             // Esc：无修饰键按下时退出（带修饰键的组合留给 App 层）。
-            if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape))
-                && modifiers.is_empty()
+            if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
+                return Some(DM::Wm(WmCommand::ExitDesktop));
+            }
+            // 窗口循环：Tab + Alt（POSIX WM 惯例，OS 不拦即达）或 Ctrl
+            //（Windows 实测可达的兜底键位，T1 报告 §7 定案）。
+            if matches!(key, Key::Named(Named::Tab))
+                && (modifiers.alt() || modifiers.control())
+                && !modifiers.shift()
             {
-                return Some(DM::Wm(crate::ui::session::WmCommand::ExitDesktop));
+                return Some(DM::Wm(WmCommand::CycleWindow));
+            }
+            // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
+            if modifiers.control() && modifiers.alt() {
+                if let Key::Character(c) = &key {
+                    let mode = match c.to_lowercase().as_str() {
+                        "g" => Some(crate::ui::layout::LayoutMode::Grid),
+                        "l" => Some(crate::ui::layout::LayoutMode::MasterStack),
+                        "f" => Some(crate::ui::layout::LayoutMode::Free),
+                        _ => None,
+                    };
+                    if let Some(mode) = mode {
+                        return Some(DM::Wm(WmCommand::SetLayout(mode)));
+                    }
+                }
+            }
+            // launcher 召唤：Ctrl+Space（中文系统 IME 抢键时 Ctrl+Alt+Space
+            // 天然覆盖——同键位族不细分 alt）；464 前事件无消费者（update 臂静默）。
+            if matches!(key, Key::Named(Named::Space)) && modifiers.control() && !modifiers.shift()
+            {
+                return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
             }
             None
         },
@@ -8571,6 +8601,12 @@ fn compare_pngs(
                     // Plan 462：desktop 帧泵 —— 空更新，仅驱动 view 重算
                     //（MCP 截图请求在 view 投递 / update 消费）。
                     DesktopEvent::ServiceTick => {}
+                    // Plan 463 T6：launcher 召唤 —— 464 前无消费者（静默；
+                    // overlay 槽挂载点见 view_desktop_fn 的 shell 层后位）。
+                    DesktopEvent::SummonLauncher => {
+                        #[cfg(debug_assertions)]
+                        eprintln!("[desktop] SummonLauncher (no consumer yet; plan 464)");
+                    }
                 }
                 iced::Task::none()
             }
@@ -8618,6 +8654,14 @@ fn compare_pngs(
                         }
                     }
                     WmCommand::Focus(wid) => state.wm_focus(wid),
+                    // Plan 463 T6：窗口循环（Alt+Tab/Ctrl+Tab 热键臂）。
+                    WmCommand::CycleWindow => {
+                        state.wm_cycle_focus();
+                    }
+                    // Plan 463 T6：布局切换热键臂（与 shell 总线
+                    // DesktopCommand::SetLayout 同落 wm_set_layout；
+                    // 臂尾 sync_shell_windows 即时刷新任务栏按钮态）。
+                    WmCommand::SetLayout(mode) => state.wm_set_layout(mode),
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
                     WmCommand::StartDrag { wid } => {
