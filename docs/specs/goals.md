@@ -24,6 +24,7 @@
 | GOAL-015 | Agent 生态：CodingAgent、嵌入式综合 Agent、Harness 架构（与 auto-os 协同） | 规划中 | roadmap Agent 节、Design [15](../design/15-ai-daemon-infrastructure.md) |
 | GOAL-016 | 构建与测试基础设施：sccache、cargo t ≤30s、全量门禁收敛到 review、CI 闸门 | 部分达成 | plan-466、`.github/workflows/vm-files-ci.yml` |
 | GOAL-017 | 自举：用 Auto 写 Auto 编译器（aavm，auto/ 目录 .at 实现，六道闸门） | 进行中 | [aavm](aavm/project.md)、plans 429–434 |
+| GOAL-018 | 开发范式与知识账本运转：auto-plan 四技能 + specs v2 账本，每计划完成即沉淀 | 进行中 | Design [26](../design/26-autoplan-spec-ledger.md)、[README v2](README.md)、plan-467 |
 
 > 状态取值：`规划中 / 进行中 / 部分达成 / 已达成（可关闭）`。
 > 一个 GOAL 关闭时保留行并标注达成日期与收尾 plan。
