@@ -9,7 +9,7 @@
 
 **Tech Stack:** Rust, Auto 语言 (.at), Python 3, PyO3 (auto python feature), clap
 
-**Design spec:** `docs/design/python-parity-roadmap.md`
+**Design spec:** `docs/design/strategy/python-parity-roadmap.md`
 
 ---
 

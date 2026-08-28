@@ -1,5 +1,9 @@
 # Plan 374: Rust UI 代码生成器 — 类型兼容性深度修复
 
+> **归属注记（2026-08-28，Plan 467）**：本文档原位于 `docs/design/19-plan-374-rust-type-compat.md`，
+> 实为 Plan 374 的执行过程报告而非设计文档，现归位到 `docs/plans/reports/`。
+> Plan 374 本体见 `docs/plans/archive/374-a2r-store-viewfn-parity.md`（已完成归档）。
+
 ## 状态：第三轮进行中（39→0）
 
 ---

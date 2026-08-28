@@ -1,5 +1,10 @@
 # Plan + Spec 混合开发模型设计
 
+> ⚠️ **已被取代（2026-08-28，Plan 467）**：本设计的五环流程（spec-sync 手工回写）已被
+> auto-plan 四技能范式（new/work/review/merge + 6 段 spec ledger）取代，v2 设计见
+> [26-autoplan-spec-ledger.md](26-autoplan-spec-ledger.md)。本文保留作为 v1 的诊断与取舍记录
+> （§1 问题诊断、§9 反模式清单仍然有效并被 v2 继承）。
+
 > **Status**: 草案 v1（待评审）
 > 日期：2026-07-23
 > 范围：auto-lang monorepo 全仓库的知识体系与开发流程设计

@@ -12,7 +12,7 @@
 
 **Tech Stack:** Rust, Auto 语言 (.at), clap (CLI), TAP (Test Anything Protocol), cargo test
 
-**Design spec:** `docs/design/rust-library-replication-roadmap.md`
+**Design spec:** `docs/design/strategy/rust-library-replication-roadmap.md`
 
 ---
 

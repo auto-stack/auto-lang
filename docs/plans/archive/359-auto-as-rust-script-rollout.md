@@ -9,7 +9,7 @@
 
 **Tech Stack:** Rust (cargo workspace), Auto 语言 (.at), clap, TAP (Test Anything Protocol), axum (playground 后端), Vue 3 + VitePress (website/playground 前端), CodeMirror 6, GitHub Actions (CI), a2r-std 运行时
 
-**Design spec:** `docs/design/auto-as-rust-script-strategy.md`
+**Design spec:** `docs/design/strategy/auto-as-rust-script-strategy.md`
 
 ---
 
@@ -152,16 +152,16 @@ credibility landmine for the 'Auto as Rust script' messaging."
 ### Task C1.2: 核对 design spec 与对外文案不再误引
 
 **Files:**
-- Read-only check: `docs/design/auto-as-rust-script-strategy.md`
+- Read-only check: `docs/design/strategy/auto-as-rust-script-strategy.md`
 
 - [x] **Step 1: 确认母纲第 4.3 节"漏洞 1 的对外处理"措辞与 C1 修复一致**
 
-Run: `grep -n "conformance_tests.rs" docs/design/auto-as-rust-script-strategy.md`
+Run: `grep -n "conformance_tests.rs" docs/design/strategy/auto-as-rust-script-strategy.md`
 Expected: 母纲第 4.3 节已写明"在 C 子项目堵上之前不在对外文案里引用 conformance_tests.rs 作为一致性证据"——C1 完成后，conformance 已被诚实降级为"VM 输出回归测试"，措辞仍然成立（对外仍不应作为"VM↔a2r 一致性"证据）。无需修改。
 
 - [x] **Step 2: 记录 C1 完成事实到母纲（可选，轻量）**
 
-在 `docs/design/auto-as-rust-script-strategy.md` 第 1.2 节"漏洞 1"段落末尾追加一行：
+在 `docs/design/strategy/auto-as-rust-script-strategy.md` 第 1.2 节"漏洞 1"段落末尾追加一行：
 
 ```
 （已于 Plan 359 C1 修复：conformance_tests.rs 注释已诚实降级为"AutoVM 输出回归测试"。）
@@ -170,7 +170,7 @@ Expected: 母纲第 4.3 节已写明"在 C 子项目堵上之前不在对外文�
 - [x] **Step 3: Commit**
 
 ```bash
-git add docs/design/auto-as-rust-script-strategy.md
+git add docs/design/strategy/auto-as-rust-script-strategy.md
 git commit -m "docs(strategy): note C1 conformance header fix completed (Plan 359)"
 ```
 

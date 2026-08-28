@@ -178,7 +178,7 @@ Plan 368 (Consumer Parity)
   └── Plan 367（曾被重名，代码注释残留 15 处）
 
 Plan 369 (Python Parity)
-  └── docs/design/python-parity-roadmap.md（架构设计源）
+  └── docs/design/strategy/python-parity-roadmap.md（架构设计源）
 ```
 
 ---

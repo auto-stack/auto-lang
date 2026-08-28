@@ -2,7 +2,7 @@
 
 **日期**: 2026-07-21
 **状态**: Draft（设计文档，待实施）
-**关联**: `docs/design/auto-as-rust-script-strategy.md`（母纲）、`docs/plans/359-auto-as-rust-script-rollout.md`（Phase E/F）
+**关联**: `docs/design/strategy/auto-as-rust-script-strategy.md`（母纲）、`docs/plans/359-auto-as-rust-script-rollout.md`（Phase E/F）
 
 ---
 

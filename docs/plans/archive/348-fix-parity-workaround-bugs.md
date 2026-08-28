@@ -10,7 +10,7 @@
 
 **Root cause source:** 根因分析来自对 `crates/auto-lang/src/` 的深度调查，详见本文档各 Task。
 
-**Design spec:** `docs/design/rust-library-replication-roadmap.md`, `parity/docs/known-divergences.md`
+**Design spec:** `docs/design/strategy/rust-library-replication-roadmap.md`, `parity/docs/known-divergences.md`
 
 ---
 
