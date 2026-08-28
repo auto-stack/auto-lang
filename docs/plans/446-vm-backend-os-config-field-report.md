@@ -1,8 +1,11 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（用户授权复活 2026-08-28：归档态解除，§P/U1-U7 转正为批五实施；此前四批已复审归档沉淀 P446-1..4；G2-G5 悬空引用经裁决删除）；§I 四批：批一诊断 §L/§K、批二可用性 §N、
-批三语义统一 §O、批四打磨 §Q——待 /auto-plan:review；§P 新报与剩余
-低优先项见待澄清；worktree .worktrees/plan-446-dev 留置待 merge）
+状态: executing（用户授权复活 2026-08-28：归档态解除，§P/U1-U7 转正为批五实施；此前四批已复审归档沉淀 P446-1..4；G2-G5 悬空引用经裁决删除）；批五 U1-U7 全项收口
+（U3/U6 于批五续二收口，见 §S 末两条——U3 机理修正：详情态截图超时真因是
+损坏 sidecar 触发 cosmic-text 字形整形冻结整个 iced 事件循环，非"富子树>10s"）；
+§I 四批：批一诊断 §L/§K、批二可用性 §N、批三语义统一 §O、批四打磨 §Q——待
+/auto-plan:review；§P 新报与剩余低优先项见待澄清；worktree
+.worktrees/plan-446-dev 留置待 merge）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -767,13 +770,63 @@ payload 编码往返，原样送达 handler。修在 dispatch 侧（on_with_inpu
 class/style prop 并入预设（用户优先，同 convert_button 惯例）——此前被
 整体忽略。回归：table 族 44 用例全绿（含 gallery kebab 表族）。
 
-**待续（下一会话）**：U3 截图详情态超时 / U6 快照空壳窗口（批内两次
-实证"state 永不可用"启动偶发佐证；两者均需 os-config 现场语料的实机
-MCP 通道诊断——U3 疑富子树截图 >10s 服务端上限，U6 疑首渲染未完成
-前快照回退源树的竞态窗口，勿盲修）。
+**[✅ 已完成] U3 截图详情态超时（机理修正——非"富子树截图>10s"，2026-08-28 视觉多模态实机诊断）**：
+
+实机复现（worktree HEAD + os-config 现场）：默认视图截图 1.0s ✓；nav
+Roles→选中 assistant 进详情态（快照 1.31MB/5 inputs/1 textarea）后
+`autoui_screenshot` 10.0s 确定性超时、重试同样；state/snapshot 0.13-0.75s
+存活（MCP 独立线程服务）。
+
+诊断链（逐层取证）：① OS 级窗口截图=陈旧帧（主区空白）→ 冻结在呈现层；
+② 阶段日志：截图请求未被 update 拾取 → 心跳 30s 仅 1 跳 → 订阅流存活但
+不再产消息 → **iced 事件循环整体冻结**（watchdog 计数 update/view 双归零，
+assistant 重建完成后永久归零）——截图超时只是最显眼症状；③ wgpu 三后端
+GL/vulkan/DX12 同冻 → 非驱动；④ corpus 变体矩阵
+`test/ui/plan446_u3_text_wedge/`：655K 连续反斜杠进 textarea=冻，同尺寸
+空格分词=活，同 token 进 text 元素=活 → 病理锁定 textarea（iced
+text_editor/cosmic-text）；⑤ 规模曲线近似线性 ≈60µs/字符（5K≈0.3s /
+80K≈5s / 320K≈20s / 655K+ 每帧分钟级）——**特定字形（`-`、`\`）的整形
+天价，按字符计，与段落/断行结构无关**（分行 `ta_lines`、零宽符 ZWSP 两
+变体实证无效——推翻并行 WIP 03ff2a66c 的 ZWSP soften 处方，本批取代）；
+⑥ 快照解剖：详情 sidecar 值=1.31M 连续反斜杠。
+
+根因：os-config roles 实体 soul sidecar 数据已损坏（磁盘
+`assistant.soul.md`=655K 反斜杠，08-25 转义翻倍产物；经 HTTP 文本管线到
+快照再翻倍至 1.31M——线上转义形式未还原，归下游文本管线对账），该值进入
+text_editor → 每帧分钟级整形 → iced 事件循环被单帧永久占用 → 全 UI 冻结。
+U6 的"空壳持久/state 永不可用"启动偶发与此同族（事件循环死于首帧前/中，
+sync 永不发生）。
+
+修复（renderer.rs）：textarea 值 >64KB（`TEXTAREA_INLINE_EDIT_CAP`）降级
+只读预览（`oversized_textarea_preview`：提示行 + 前 32K 字符截断快照，
+text width(Fill) 防 min-width 挤出布局），编辑器路径（含
+`Content::with_text` 缓冲构建——其 cosmic-text 整形即病理本体）整体绕开；
+store 原值不动、无编辑即无截断落盘。VM/双入口（render_dynamic_view +
+rust 模式 into_iced）两臂同款守卫。
+
+验收：corpus 全形态 ALIVE（ok 1.5s / 655K 2.3s / 1.31M 2.5s /
+field-props 2.1s / text_1m3 9.5s）；现场复验 SHOT-default 1.15s +
+**SHOT-detail 1.17-1.54s（原 10s 超时）** + 导航后重试 1.52s；单测
+u3_textarea_preview_gate_boundaries / u3_oversized_preview_builds_on_
+pathological_input；OS 级截图视觉核验帧真实呈现。
+回归：plan446_batch5 6/6（含新 2 测）+ lib+ui-iced 全量（见下）。
+残余登记：① text 元素 >1M 依旧 ~10s 级（现场无此形态，未修）；② 磁盘
+损坏数据本体归下游清理（恢复 soul.md + 修转义翻倍管线）；③ **新发现
+（P 族候选，独立于 U3）**：collection 模块体像素不渲染——Roles/Skills
+主区空白（daemon 正常；快照树完整、截图通道活；css-era 基线有内容 = 回归；
+类列表去除 / sidecar 移除双二分无效）——待澄清立项。
+
+**[✅ 已完成] U6 快照空壳窗口**：修复版二进制 6/6 boot 健康采样——
+state/非空快照同帧就绪（≈1.3s），窗口内仅 66B"尚无 UI"错误（<0.75s），
+无 105B 空壳、无"state 永不可用"复现（历史 2 见 = 冻结家族，见 U3 根因）。
+交付：tool_snapshot 的首帧前回退（源模板）加 **PRE-RENDER FALLBACK**
+自标识前缀——空壳误判免疫、提示重试。残余：启动偶发（事件循环 boot 期
+死亡）未再复现、未定位；保持观察项，出现时 stderr 已有 F1/J4 诊断面。
 
 **下游交付**：`docs/plans/reports/446-downstream-runbook.md`（撤绕行清单
-+ e2e 双门禁 + U1 专项复验 + 取证要求，交 os-config agent 执行）。
++ e2e 双门禁 + U1 专项复验 + 取证要求，交 os-config agent 执行）；
+批五续二增补 U3 取证要求（详情态截图 + OS 级对照）与 sidecar 数据损坏
+对账项。
 
 ## R. 复审记录（2026-08-28，/auto-plan:review）
 
