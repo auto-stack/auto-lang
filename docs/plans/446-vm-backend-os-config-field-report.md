@@ -1,6 +1,8 @@
 # Plan 446 — VM 渲染后端实战薄弱点（auto-os-config Plan 007 现场报告）
 
-状态: executing（批一/批二/批三全落地——§L/§N/§O；剩批四打磨项 F3/F4/B3/D4/D5/E3/G2-G5 见 §I；worktree .worktrees/plan-446-dev）
+状态: execution_done（§I 四批全部落地：批一诊断 §L/§K、批二可用性 §N、
+批三语义统一 §O、批四打磨 §Q——待 /auto-plan:review；§P 新报与剩余
+低优先项见待澄清；worktree .worktrees/plan-446-dev 留置待 merge）
 创建: 2026-08-25
 来源: auto-os-config Plan 007（前端 Auto 化第二步 — VM 桌面版，已合并 main）。
 该仓库把完整 Vue 配置编辑器跑上了 `render: "vm"`（iced 桌面窗口 + MCP 驱动 e2e），
@@ -662,14 +664,72 @@ diff% 0.97、最复杂编辑器视图 6.72。
 实测到。疑似 styled_vtree 落盘与快照读取的窗口竞态（446 批一 J1 收口
 "快照回退源树"家族的残余形态）。下游 capture/e2e 已普遍加非空重试缓冲。
 
+## Q. 批四实施记录（2026-08-28，auto-lang worktree plan-446-dev，已合入 master）
+
+按 §I 第四批（打磨）实施：F3/F4/B3/D4/D5/E3 六项收口（G2-G5 计划内无
+登记细节，见待澄清）。开工逐项探针实证：
+
+**[✅ 已完成] D4 `.find(闭包)` 根修**（变体矩阵定位）：
+- 根因一：`get_list_i32_elements` 对 `ListData<Value>` 有"非 Int 元素
+  coerce 为 0"的 fallback——对象/字符串元素的 find/map/filter/any/all
+  全 HOF 走 i32 快路径时谓词接到恒 0 永不命中（plan454 已在 obj.find
+  剔除同款 tag 位误读，list 族本批补齐）。删 fallback，Value 列表一律走
+  各 shim 的 Value 路径。
+- 根因二：list.find miss 推 -1 哨兵——`hit == None` 恒假（v5 探针实证）。
+  对齐 auto.obj.find 的 Plan 454 E 语言契约：miss = TAG_NULL。
+验收：fn 模块/局部字面量/`[]any`/obj 注解/str 元素五形态全绿（d4 探针
++ d2 corpus handler 语境探针 + scratch 矩阵）。
+
+**[✅ 已完成] D5 json 文档探测覆盖键列**：`json.keys` 返回
+`ListData<i32>` 负索引编码（字符串池引用）——批三双态探测未覆盖。
+探测扩展 ListData<i32>，序列化走专用解码（全负 → key 字符串数组，
+含非负 → 真 int 数组；不进共享 vm_value_to_json 以免负索引被当负数）。
+验收：`json.get_at(json.keys(x), 0)` 返回首键（d5 探针）。
+
+**[✅ 已完成] E3 res.body() 文本化**：此前推 Vec<i32> 字节——print/str.*
+消费面只见堆 id（现场"巨大数字串"，官方示例 02_http_client 即
+`str.find(res.body(),…)` 文本消费）。改推 UTF-8 lossy 文本。验收：500
+响应 body 断言 "boom!" 且无数字串泄漏（e3 探针，真实 TcpListener）。
+
+**[✅ 已完成] B3 多参输入分发显式化**：输入文本只能作第一实参，多参
+handler 其余实参无从取得——此前静默置换错位运行（os-config 被迫
+"输入框一律单参"）。dynamic.rs on_with_input_for 对
+handler_param_count > 1 的输入分发：stderr 显式诊断（含 handler 名/
+参数数/建议）+ 丢弃该次分发。单参/无参/未知元数行为不变。
+
+**[✅ 验证解除] F3 map 字面量陷阱**：空数组字面量（{members: []}）与
+字面量内方法调用（{count: a.len()}）双探针在现 master 直接绿——多批
+值求值工作已顺带治愈，探针入套件锁定。
+
+**[✅ 已完成] F4 substr 语义文档统一**：实证 VM 实际语义 = (start, LEN)
+（str.substr/.sub 双探针）；三处文档面矛盾（str.at 注释+示例错标
+end-exclusive 且示例结果错、string-library.md 错标、conformance 已对）
+——统一为 (start, LEN) 显式标注。docs_gen 4/4 过（Category C 门禁）。
+
+**预折叠门禁**（Plan 466 新规）：cargo ta 全量 + ui-iced 全量于 worktree。
+非 book 面 worktree 失败集 ⊆ master 失败集（零新增；benchmark_downcast
+在案偶发）；book 面 13 个 worktree 独有失败经孤立/成组复跑 13/13 全绿
+——负载偶发家族非确定性回归。ui-iced 3754/3756（唯二 = 在案
+md_hidden_classes 基线红 + benchmark 偶发）。**门禁通过**。
+
+**批四回归**：plan446_batch4 6/6 + 全量门禁上述。
+
 ## 待澄清事项
 
+- **G2-G5 无登记细节**：§0 总览与 §I 切分提及 G2-G5（vue codegen P2 族），
+  但报告主体从未写对应章节（无证据/症状/复现）。除非下游补充现场，
+  视为悬空引用不作实施——建议复审时从 §I 切分行删除或要求 os-config
+  补录。
+- **§P（Plan 010 增补 U1-U7）去向待定**：并行会话在批三/四之间登记的
+  渲染层新报（P0 事件冻结/P7 loop 字段 Dot 求值链为主）。属新范围，
+  未纳入本计划 §I 切分——建议独立立项或并入 446 续批，由用户裁决。
 - **E1 附带观察（低优先）**：`res` 的静态类型在不同语境坍缩为
   str/int/User(Response)（http.at 表面声明 + `#[vm]` decl 推断链所致），
   E1/E2 已在运行期与 arity 分流双层兜住；类型推断本身的正本清源
   （stdlib 表面 client accessors 正名）留待独立小批，见 §N E1 修复注记。
-- **批四（打磨）未动工**：F3/F4/B3/D4/D5/E3/G2-G5（§I 第四批）。
-  D4 与 D2 同源——D2 已实证治愈，D4 大概率同愈，做时先探针。
 - **D6 下游对账**：preserve_order 后 vm 轨字段顺序=插入序，os-config
   已登记的"字母序已知偏差"条目可撤；vue/vm 双端 UI 字段顺序 parity
   的实机验证由其 e2e 双门禁覆盖。
+- **基线红登记**（非本计划范围，供交叉参照）：md_hidden_classes_parse
+  批一在案 master 同红；benchmark_downcast 与 book_listing 家族为负载
+  偶发（本批 13 个孤立复跑全绿）。
