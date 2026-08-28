@@ -5473,6 +5473,11 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
     let body = body.map(|s| s.to_string());
     let result = std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
+        // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
+        // (emit_api_http_call)的两条主臂,必须与通用 request 汇聚点同样应用
+        // 进程级默认头/默认查询(musk: Authorization Bearer + workspace)。
+        let url = append_default_queries(&url);
+        let default_headers = snapshot_default_headers();
         let mut builder = match method.as_str() {
             "POST" => client.post(&url),
             "PUT" => client.put(&url),
@@ -5480,6 +5485,10 @@ fn simple_http_json(method: &str, url: &str, body: Option<&str>) -> String {
             "PATCH" => client.patch(&url),
             _ => client.get(&url),
         };
+        // 默认头先落,调用方显式 header 同名追加在后(与 request 臂同序)。
+        for (k, v) in &default_headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
         if let Some(b) = body {
             builder = builder.header("Content-Type", "application/json").body(b);
         }
@@ -8526,6 +8535,66 @@ Content-Length: 2
         assert!(req.contains("GET /api/probe?workspace=ws-9 "), "query missing: {req}");
         let req_lc = req.to_ascii_lowercase();
         assert!(req_lc.contains("authorization: bearer t-ok"), "header missing: {req}");
+        reset_defaults();
+
+        // PLAN-048 T2 (musk VM 数据桥): auto.http.get_json / post_json —— 即
+        // emit_api_http_call 契约改写所用的两条臂 —— 必须同样应用 446-E4
+        // 默认头/默认查询。修复前只接在通用 request 汇聚点
+        // (spawn_async_http_handle),get_json/post_json 走 simple_http_json
+        // 裸发 → musk VM 前端契约调用缺 Bearer+workspace 全线 401。
+        // 本段并入同一串行测试(共享进程级注册表,并行必互踩——见本文件
+        // e4 模块头注),直接驱动 spawn_async_http(Body 汇聚点)。
+        {
+            let mut reg = http_defaults().lock().unwrap();
+            http_set_default_entry(&mut reg.headers, "Authorization".into(), "Bearer t-json".into());
+            http_set_default_entry(&mut reg.queries, "workspace".into(), "ws-j".into());
+        }
+        // GET 臂(chats_list_sessions 形态)。
+        let listener_json = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port_json = listener_json.local_addr().unwrap().port();
+        let server_json = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let (mut s, _) = listener_json.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = s.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+            s.write_all(resp.as_bytes()).unwrap();
+            req
+        });
+        spawn_async_http("GET".into(), format!("http://127.0.0.1:{port_json}/api/chats/sessions"), None, 999_101);
+        let req_json = server_json.join().unwrap();
+        assert!(req_json.contains("GET /api/chats/sessions?workspace=ws-j "), "get_json query missing: {req_json}");
+        assert!(
+            req_json.to_ascii_lowercase().contains("authorization: bearer t-json"),
+            "get_json header missing: {req_json}"
+        );
+        // POST 臂(auth_login 形态):默认头/查询同在 + body 完整落线。
+        let listener_post = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port_post = listener_post.local_addr().unwrap().port();
+        let server_post = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let (mut s, _) = listener_post.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = s.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+            s.write_all(resp.as_bytes()).unwrap();
+            req
+        });
+        spawn_async_http(
+            "POST".into(),
+            format!("http://127.0.0.1:{port_post}/api/auth/login"),
+            Some(r#"{"username":"u","password":"p"}"#.into()),
+            999_102,
+        );
+        let req_post = server_post.join().unwrap();
+        assert!(req_post.contains("POST /api/auth/login?workspace=ws-j "), "post_json query missing: {req_post}");
+        assert!(
+            req_post.to_ascii_lowercase().contains("authorization: bearer t-json"),
+            "post_json header missing: {req_post}"
+        );
+        assert!(req_post.contains(r#"{"username":"u","password":"p"}"#), "post_json body missing: {req_post}");
         reset_defaults();
     }
 }

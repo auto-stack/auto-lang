@@ -4528,17 +4528,25 @@ impl Codegen {
         let mut path = format!("{}{}", base_url, api.path);
         let mut body_arg_indices: Vec<usize> = Vec::new();
         for (ai, expr) in arg_exprs.iter().enumerate() {
-            // Only positional args map to path params by position.
+            // Only positional args map to path params by position. Two
+            // placeholder spellings: `{param}` (musk/vue convention, e.g.
+            // "/api/chats/session/{id}") and `:param` (legacy). Brace wins
+            // when both would match.
             let param_name = api.params.get(ai).cloned().unwrap_or_default();
-            let placeholder = format!(":{}", param_name);
-            if path.contains(&placeholder) {
-                // Splice the arg into the path at `:param`: emit a LOAD_STR +
-                // arg + STR_CAT chain via emit_url_with_param.
-                self.emit_url_with_param(&path, &placeholder, expr)?;
-                path = String::new(); // marker: URL already emitted
+            let brace = format!("{{{}}}", param_name);
+            let colon = format!(":{}", param_name);
+            let placeholder = if !param_name.is_empty() && path.contains(&brace) {
+                brace
+            } else if path.contains(&colon) {
+                colon
             } else {
                 body_arg_indices.push(ai);
-            }
+                continue;
+            };
+            // Splice the arg into the path at the placeholder: emit a
+            // LOAD_STR + arg + STR_CAT chain via emit_url_with_param.
+            self.emit_url_with_param(&path, &placeholder, expr)?;
+            path = String::new(); // marker: URL already emitted
         }
         // If no path-param substitution happened (path unchanged), emit the
         // literal URL now.
