@@ -326,6 +326,27 @@ impl DynamicComponent {
         let widget_name = view_widget.name.clone();
         let input_state_map = extract_input_state_map_with_registry(view.view_tree, &registry);
 
+        // PLAN-048 L1 (musk auth gate): merge store-as-child computeds into
+        // the root computed table. Store fields are merged into root state as
+        // bare names, but store COMPUTEDS (e.g. AuthStore's
+        // `authenticated => .token != None`) were dropped here — view
+        // conditions referencing them (eval_condition_with → eval_computed)
+        // always resolved empty, so `if store.authenticated != true` was
+        // permanently false and the main UI rendered with token=nil.
+        let mut computed = view_widget.computed.clone();
+        for d in child_decls {
+            if d.view.is_none() {
+                if let Some(cb) = &d.computed {
+                    for p in &cb.properties {
+                        computed.push(crate::aura::AuraComputed {
+                            name: p.name.to_string(),
+                            expr: p.expr.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
         // EDGE-01: merge element-attribute onkeydown.* bindings into key_bindings.
         let mut key_bindings = view.key_bindings.clone();
         for (k, v) in collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name) {
@@ -355,7 +376,7 @@ impl DynamicComponent {
             key_bindings,
             widget_registry: registry,
             routes,
-            computed: view_widget.computed.clone(),
+            computed,
             preview_states: Default::default(),
         })
     }

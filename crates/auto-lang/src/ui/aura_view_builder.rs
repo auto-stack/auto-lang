@@ -4989,6 +4989,11 @@ let tabs_inner = View::Row {
             Expr::Double(f, _) => Some(Value::Double(*f)),
             Expr::Bool(b) => Some(Value::Bool(*b)),
             Expr::Str(s) => Some(Value::Str(s.clone())),
+            // PLAN-048 L1 (musk VM 数据桥): None/Nil/Null literals resolve to
+            // Value::Nil so computed comparisons like `.token != None` can
+            // evaluate. Previously the literal fell to `_ => None`, voiding
+            // any computed that compared against None (auth gate).
+            Expr::None | Expr::Nil | Expr::Null => Some(Value::Nil),
             // Plan 339: binary comparison for if-expressions (e.g., i == .active_index)
             Expr::Bina(left, Op::Eq, right) => {
                 let l = self.resolve_expr_to_value(left, bindings)?;
@@ -5206,6 +5211,11 @@ let tabs_inner = View::Row {
     /// - `.flag` — bare state ref (truthy check)
     fn eval_condition_with(&self, condition: &str, bindings: &Bindings) -> bool {
         let cond = condition.trim();
+        self.eval_condition_with_inner(condition, bindings)
+    }
+
+    fn eval_condition_with_inner(&self, cond: &str, bindings: &Bindings) -> bool {
+        let cond = cond.trim();
 
         // Strip outer parentheses for grouped expressions like (...) —
         // do this BEFORE operator splitting so that inner || / && are not split prematurely.
@@ -5300,7 +5310,13 @@ let tabs_inner = View::Row {
                 .unwrap_or(false);
         } else {
             // Try binding path truthy check
-            return self.resolve_binding_path(cond, bindings)
+            if let Some(v) = self.resolve_binding_path(cond, bindings) {
+                return v.as_bool();
+            }
+            // PLAN-048 L1: bare `store.X` computed truthy check — same
+            // computed-table fallback as the operator path above.
+            let name = cond.strip_prefix("store.").unwrap_or(cond);
+            return self.eval_computed(name, bindings)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         };
@@ -5347,9 +5363,20 @@ let tabs_inner = View::Row {
                 }
             }
         } else {
-            match self.read_state(lhs) {
+            // PLAN-048 L1 (musk auth gate): bare `store.X` / `StoreName.X` /
+            // plain computed refs — read_state strips the "store." prefix but
+            // only hits materialized state fields; store COMPUTEDS (e.g.
+            // AuthStore's `authenticated => .token != None`) live only in the
+            // computed table, so fall back to eval_computed (last path
+            // segment) before giving up.
+            let name = lhs.strip_prefix("store.").unwrap_or(lhs);
+            let name = name.rsplit('.').next().unwrap_or(name);
+            match self.read_state(name) {
                 Ok(v) => value_to_display_string(&v),
-                Err(_) => return false,
+                Err(_) => match self.eval_computed(name, bindings) {
+                    Some(v) => value_to_display_string(&v),
+                    None => return false,
+                },
             }
         };
 
@@ -7592,6 +7619,54 @@ mod tests {
         let r_neq = builder_edit.eval_condition_with(cond_edit_neq, &bindings);
         eprintln!("editing_id==-1, todo.id=0: '.editing_id != todo.id' => {}", r_neq);
         assert!(r_neq, "editing_id=-1 should NOT equal todo.id=0 (neq)");
+    }
+
+    /// PLAN-048 L1 (musk auth gate): `if store.authenticated != true` must
+    /// resolve store COMPUTEDS. Previously eval_condition_with resolved the
+    /// LHS via read_state only — computeds are not materialized in state —
+    /// so the condition was permanently false and the main UI rendered with
+    /// token=nil (047 R9 登录墙缺位根因).
+    #[test]
+    fn test_plan048_store_computed_condition_auth_gate() {
+        let widget = make_test_widget("App", vec![AuraStateDef {
+            name: "token".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("".into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        let computed = vec![crate::aura::AuraComputed {
+            name: "authenticated".to_string(),
+            expr: Expr::Bina(
+                Box::new(Expr::Dot(Box::new(Expr::Ident(".".into())), "token".to_string().into())),
+                Op::Neq,
+                Box::new(Expr::None),
+            ),
+        }];
+
+        // token 恢复为 nil(未登录) → authenticated=false → `!= true` 为真 → 登录分支
+        bridge.write_state("token", Value::Nil).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
+        assert!(
+            builder.eval_condition_with("store.authenticated != true", &Bindings::new()),
+            "token=nil: gate must be TRUE (render LoginPage)"
+        );
+
+        // token 恢复(JWT) → authenticated=true → gate false → 主 UI 分支
+        bridge.write_state("token", Value::Str("jwt-abc".into())).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
+        assert!(
+            !builder.eval_condition_with("store.authenticated != true", &Bindings::new()),
+            "token set: gate must be FALSE (render main UI)"
+        );
+
+        // 无操作符裸真值形态 `store.authenticated` 同样必须接 computed
+        bridge.write_state("token", Value::Nil).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
+        assert!(
+            !builder.eval_condition_with("store.authenticated", &Bindings::new()),
+            "token=nil: bare truthy check must be FALSE"
+        );
     }
 }
 
