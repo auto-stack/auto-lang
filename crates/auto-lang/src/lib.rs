@@ -5838,6 +5838,11 @@ mod plan442_musk_probe_tests;
 #[cfg(test)]
 mod plan442_musk_backend_probe_tests;
 
+// Plan 049 (auto-musk) style-parity: class.rs 支持度探针 + 对拍 dump（手动门,
+// 跨仓 sibling 布局;T1 映射草案逐类断言见模块头注）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan449_style_parity_tests;
+
 // Plan 046 (auto-musk T2): obj receiver method family regression corpus.
 #[cfg(test)]
 mod plan046_obj_natives_tests;
