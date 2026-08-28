@@ -608,6 +608,60 @@ test_g1_store_import_prefix_configurable（默认不变回归守卫 + 可配前�
 批一 §L 在案 master 同红）+ 默认 feature 日常套件 3227/3227 全绿 +
 plan446 全系 10/10 + json 26/26。
 
+## P. Plan 010 增补（2026-08-28，os-config 双端一致性现场报告）
+
+来源：auto-os-config Plan 010（vm 轨一致性对拍 + 清偿）。该仓把双轨像素
+对拍做成了常驻门禁（`scripts/track-parity/`：vue=Playwright 1440x900@1x，
+vm=每视图独立 `auto run -r vm` + autoui_screenshot，pixelmatch + 分区
+metrics），过程中实证下列缺陷。全部条目已在该仓 workaround/登记，不阻塞
+消费；下游终值（009 阶段一 css-era 基准 0.00% 零回归前提）：侧栏默认视图
+diff% 0.97、最复杂编辑器视图 6.72。
+观察基线：master `1487b5c5d`（含批二 A1/E1/E2）；报告时 master `f536c1ba1`
+（批三 D1/D6/G1——语义管线修复，与本节渲染层条目无交集）。
+
+| # | 类别 | 严重度 | 一句话 |
+|---|---|---|---|
+| P1 (=下游 U1) | 事件路由 | P0 | 集合页实体列表循环构建后，侧栏任意 press 被接受但 active_id 冻结（全局死导航） |
+| P2 (=U2) | action_mapper | P1 | autoui_type 合成输入把内联 onchange 表达式粘连成 handler 名，文本不落盘 |
+| P3 (=U3) | 截图通道 | P1 | 集合页详情态 autoui_screenshot 必超时（服务端 ~10s 放弃；同刻 state/snapshot 0.0s 存活） |
+| P4 (=U4) | select 渲染 | P1 | select 控件 vm 端整体缺位（快照结构在、渲染丢） |
+| P5 (=U5) | table 样式 | P2 | thead 内置暗色底白字；th 的 style 属性被忽略 |
+| P6 (=U9/快照竞态) | 快照通道 | P2 | autoui_snapshot 偶发空壳树（105B），空壳期实测可 >8s |
+| P7 (=U7) | 表达式求值 | P1 | **loop 字段 Dot 表达式在部分 prop 链求值失败**（见下，本节最大清偿项根因） |
+
+### P7 loop 字段 Dot 表达式的链路求值不一致（P1）
+
+同一循环变量字段表达式（如 `m.nav_class`），不同消费链结果不同：
+
+| 消费链 | 结果 |
+|---|---|
+| 条件位 `if g.open` / `if .store.active_id == m.id` | ✓ 正常 |
+| text prop 直取 `input (value: e.value)` | ✓ 正常 |
+| **button 的 `class:`/`style:` prop** | ✗ 静默失败 → convert_button 兜底 primary preset（紫块/白字/h-10），叠加子树折叠为多行 label 被 h-10 裁剪，仅首行 icon 可见 |
+| **text/label 元素的 children 折叠**（`label (…) { text (text: e.label) {} }`） | ✗ content 求值失败 → **整个 label 缺位** |
+
+**修复建议**：把 children 折叠链与 button class: 链统一走 props 直取链
+（`extract_string_with`）同款求值；「求值失败→静默 preset 兜底/空内容」
+改为 BuildProbe 显式告警。修复后可撤下游 workaround：
+侧栏 nav 条件展开双态静态串 + label 全量 text-prop 化
+（auto-os-config commit 1610c21）。
+
+### P3 补充证据
+
+复现：roles 集合页 Load → 选中 assistant 进详情态 → `autoui_screenshot`
+60s 客户端超时下 **10.0s 返回**"iced thread may not be responding"（服务端
+内部上限）；同详情态 `autoui_state`/`autoui_snapshot` 0.0s 响应——iced 主
+线程存活，仅截图路径与 detail 富子树的协作阻塞。7 个非详情视图截图全部
+1.5s 正常。446 批一 J1 收口（"渲染一直正常"）与本条不矛盾：这是截图通道
+特有问题，非渲染构建问题。
+
+### P6 补充证据
+
+独立实例 boot（autoui_state 轮询就绪 + sleep 2s）后首次 snapshot 返回
+105B 空壳树；立即重试（t=1s）有时直接非空；持续重试 8 次全空的实例亦
+实测到。疑似 styled_vtree 落盘与快照读取的窗口竞态（446 批一 J1 收口
+"快照回退源树"家族的残余形态）。下游 capture/e2e 已普遍加非空重试缓冲。
+
 ## 待澄清事项
 
 - **E1 附带观察（低优先）**：`res` 的静态类型在不同语境坍缩为
