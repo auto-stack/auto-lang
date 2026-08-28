@@ -19,18 +19,18 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ---
 
-## 分类总览（112 篇）
+## 分类总览（111 篇）
 
 | 分区 | 数量 | 内容 |
 |---|---|---|
 | 一、语言核心 | 10（01–10） | 从源码到执行的语言本体设计 |
 | 二、应用框架与生态 | 5（11–15） | Shell / 并发 / 网络 / 开发工具 / AI 基础设施 |
-| 三、AutoUI 与 App 生成 | 10（16–25） | App 生成战略、Blocks、SharedStore、主题、分离架构、示例轨道、虚拟桌面、桌面 Shell |
+| 三、AutoUI 与 App 生成 | 11（16–25，含 16a） | App 生成战略、Blocks、SharedStore、主题、分离架构、示例轨道、虚拟桌面、桌面 Shell |
 | 四、流程与体系 | 2 | Plan+Spec 混合模型（v1，已取代）、AutoPlan 账本（v2，现行） |
 | 五、战略路线图 `strategy/` | 4 | Rust 脚本层 / 消费者 parity / Python parity / Rust 库复刻 |
 | 六、专题诊断（根级） | 3 | 方言体系诊断、VM 调试、ASH 设计总览（外仓主题） |
 | 七、附录 `blocks/`、`forge/` | 3 + 5 | Design 17 配套；AutoForge（已迁 auto-os 生态） |
-| 八、历史素材 `raw/` | 70 | 早期未经整理的原始设计草稿（只读参考） |
+| 八、历史素材 `raw/` | 67 | 早期未经整理的原始设计草稿（只读参考） |
 
 ---
 
@@ -128,10 +128,10 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 > forge/ 的 Spec 分类思想（Goals/Architectures/Designs/Plans/Tests/Reviews）被
 > [26-autoplan-spec-ledger.md](26-autoplan-spec-ledger.md) 的 6 段账本继承。
 
-## 八、历史素材（`raw/`，70 篇）
+## 八、历史素材（`raw/`，67 篇）
 
 早期未经整理的原始设计草稿，是 01–15 章的素材来源，**只读保留**（个别被外仓引用，
-如 auto-down 引用 `raw/new_memory.md` 的方言逃逸符）。不逐一索引，按文件名主题检索即可。
+如 auto-down 仓引用 `raw/auto-down.md` 的方言三逃逸符）。不逐一索引，按文件名主题检索即可。
 
 ---
 
