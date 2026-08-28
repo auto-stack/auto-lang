@@ -17,8 +17,9 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 
 > **当前状态**：452/453/459 已完成归档（2026-08-28，M1 收口：多 App 会话 + daemon
 > 多窗口 + panic 隔离）。2026-08-28 立项 M2–M4 计划族（Design 24：
-> `docs/design/24-autoui-desktop-shell-and-launcher.md`）——462/463/464/465，
-> 未开工。
+> `docs/design/24-autoui-desktop-shell-and-launcher.md`）——462/463/464/465；
+> **462 已完成**（单 OS 窗口多虚拟窗口 + WM 最小集，实机验收 + 3222 测试全绿），
+> 463/464/465 未开工。
 
 **编号解析规则**：本表是"里程碑 ↔ 实际计划号"的**唯一事实源**。Design 23 与
 各计划正文中的 453–457 字样均为**提案编号**，一律经本表解析为实际编号。
@@ -31,7 +32,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 452 设计+裁定翻转+IME spike | M0 | 正式收编 Design 23；执行 §5 同步清单；跑 §9 spike | ✅ 完成 2026-08-26（报告 reports/452-ime-spike.md，已归档） | 无 |
 | 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | ✅ 完成 2026-08-28（随 459 验收一并归档） | 452 ✅ |
 | 459 DesktopSession 多窗口化 | M1 收口 | iced daemon 迁移；AppId 递增分配与打标；双 AppSession 双窗口 demo；panic 隔离验证 | ✅ 完成 2026-08-28（C0–C4 + 实机验收，已归档） | 453 ✅ |
-| 462（原提案 454）VirtualWindow + WM | M2 | 路线 A：`virtual_window` 注册 widget、chrome、事件/焦点分区、桌面宿主入口、R4 接缝 v1（`462-virtual-window-wm.md`） | 已立项 2026-08-28，未开工 | 459 ✅ |
+| 462（原提案 454）VirtualWindow + WM | M2 | 路线 A：`virtual_window` 注册 widget、chrome、事件/焦点分区、桌面宿主入口、R4 接缝 v1（`462-virtual-window-wm.md`） | ✅ 完成 2026-08-28（实机双窗 demo 全交互 + `cargo t` 3222 绿 + I2 五套 desktop_mcp 全绿；IME 两项残留转 463） | 459 ✅ |
 | 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell App+任务栏、layout 纯函数三模式+snap、生命周期命令接缝、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`） | 已立项 2026-08-28，未开工 | 462 |
 | 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 已立项 2026-08-28，未开工（M1 子阶段可先行） | 462+463 |
 | 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |

@@ -236,6 +236,247 @@ pub struct AppSession {
     pub state: AppState,
 }
 
+// ---------------------------------------------------------------------------
+// WM 域（Plan 462：单 OS 窗口内多虚拟窗口，路线 A。Design 23 R2/R4、
+// 计划 462 §3.2 —— 宿主窗 1:N 虚拟窗；独立模式 host=None 零影响）
+// ---------------------------------------------------------------------------
+
+/// 虚拟窗口句柄（宿主窗内单调分配，与 OS `window::Id` 无关）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Wid(pub u64);
+
+/// resize 把手方位（八向）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeEdge {
+    North,
+    South,
+    East,
+    West,
+    NorthWest,
+    NorthEast,
+    SouthWest,
+    SouthEast,
+}
+
+/// WM 进行中的指针交互（拖拽/缩放状态机；move/release 由全局
+/// `__mouse_moved`/`__mouse_released` 事件驱动，update 壳层拦截）。
+#[derive(Debug, Clone, Copy)]
+pub enum WmInteraction {
+    /// `grab` = 按下时光标相对窗口左上角的偏移。
+    Drag { wid: Wid, grab: iced::Point },
+    Resize {
+        wid: Wid,
+        edge: ResizeEdge,
+        start_rect: iced::Rectangle,
+        start_cursor: iced::Point,
+    },
+}
+
+/// chrome / 桌面层热键发往 WM 的命令（`DesktopMessage::Wm` 载荷）。
+#[derive(Debug, Clone)]
+pub enum WmCommand {
+    /// 聚焦并置顶（客户区空白点击、chrome 点击）。
+    Focus(Wid),
+    /// 关闭虚拟窗口；App 随窗移除（459 一窗一 App 不变式的 WM 化）。
+    Close(Wid),
+    /// 标题栏按下：进入拖拽（grab 偏移由 update 侧按 last_cursor 现算）。
+    StartDrag { wid: Wid },
+    /// 边缘把手按下：进入八向缩放。
+    StartResize { wid: Wid, edge: ResizeEdge },
+    /// listen_with 全局左键按下（坐标见 `WmState.last_cursor`，由全局
+    /// CursorMoved 持续回写；update 侧做 z 序命中测试 → 聚焦置顶）。
+    GlobalPress,
+}
+
+/// 一个虚拟窗口的 WM 条目。desktop 模式下同时承担 WindowEntry 的
+/// 窗口级字段职责（`split_*_at` 拆借视图按 App 定位到这里）。
+pub struct VWinState {
+    pub wid: Wid,
+    pub app: AppId,
+    /// chrome 标题（boot = widget 名；463 起可来自 pac title）。
+    pub title: String,
+    /// 宿主窗坐标内的矩形（位置 + 尺寸；WM state 唯一拥有，R9）。
+    pub rect: RefCell<iced::Rectangle>,
+    /// z 序辅助值（单调递增；权威顺序在 `WmState.z_order`）。
+    pub z: u64,
+    // --- WindowEntry 四字段的 desktop 版（split_*_at 拆借消费）---
+    pub window_size: RefCell<iced::Size>,
+    pub pending_window_resize: RefCell<Option<iced::Size>>,
+    pub initial_resize_done: Cell<bool>,
+    pub initial_focus_done: Cell<bool>,
+}
+
+/// 最小窗口管理器状态（Plan 462 T2）。位置/焦点/z 的唯一事实源；
+/// 布局策略（free/grid/master-stack）归 463。
+pub struct WmState {
+    pub wins: BTreeMap<Wid, VWinState>,
+    /// 绘制与命中顺序（back → front）。
+    pub z_order: Vec<Wid>,
+    pub focused: Option<Wid>,
+    next_wid: u64,
+    next_z: u64,
+    pub interaction: Option<WmInteraction>,
+    /// 最近光标位置（StartDrag 时现算 grab 偏移；全局 CursorMoved 回写）。
+    pub last_cursor: Cell<iced::Point>,
+}
+
+impl WmState {
+    pub(crate) fn new() -> Self {
+        Self {
+            wins: BTreeMap::new(),
+            z_order: Vec::new(),
+            focused: None,
+            next_wid: 0,
+            next_z: 0,
+            interaction: None,
+            last_cursor: Cell::new(iced::Point::ORIGIN),
+        }
+    }
+
+    /// 登记新虚拟窗口（级联偏移由调用方算好传入）；新窗即焦点窗。
+    pub fn add_win(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+        self.next_wid += 1;
+        self.next_z += 1;
+        let wid = Wid(self.next_wid);
+        let size = iced::Size::new(rect.width, rect.height);
+        self.wins.insert(
+            wid,
+            VWinState {
+                wid,
+                app,
+                title,
+                rect: RefCell::new(rect),
+                z: self.next_z,
+                window_size: RefCell::new(size),
+                pending_window_resize: RefCell::new(None),
+                initial_resize_done: Cell::new(false),
+                initial_focus_done: Cell::new(false),
+            },
+        );
+        self.z_order.push(wid);
+        self.focused = Some(wid);
+        wid
+    }
+
+    /// 移除虚拟窗口，返回其 App（调用方决定 App 去留）。
+    pub fn remove_win(&mut self, wid: Wid) -> Option<AppId> {
+        let v = self.wins.remove(&wid)?;
+        self.z_order.retain(|w| *w != wid);
+        if self.focused == Some(wid) {
+            self.focused = self.z_order.last().copied();
+        }
+        if self.interaction.map(|i| i.wid()) == Some(wid) {
+            self.interaction = None;
+        }
+        Some(v.app)
+    }
+
+    pub fn win_of_app(&self, app: AppId) -> Option<Wid> {
+        self.wins.values().find(|v| v.app == app).map(|v| v.wid)
+    }
+
+    pub fn focused_app(&self) -> Option<AppId> {
+        self.focused.and_then(|w| self.wins.get(&w)).map(|v| v.app)
+    }
+
+    /// z 序自顶向下的命中测试（返回最上层含点窗口）。
+    pub fn hit_test(&self, x: f32, y: f32) -> Option<Wid> {
+        self.z_order.iter().rev().find_map(|w| {
+            let r = self.wins.get(w)?.rect.borrow();
+            (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height)
+                .then_some(*w)
+        })
+    }
+
+    /// 聚焦 = 记录焦点 + 置顶（z_order 尾部 + z 单调刷新）。
+    pub fn focus(&mut self, wid: Wid) {
+        if !self.wins.contains_key(&wid) {
+            return;
+        }
+        self.focused = Some(wid);
+        self.z_order.retain(|w| *w != wid);
+        self.z_order.push(wid);
+        self.next_z += 1;
+        if let Some(v) = self.wins.get_mut(&wid) {
+            v.z = self.next_z;
+        }
+    }
+
+    /// 全局光标移动：进行中的交互落位（拖拽平移 / 八向缩放），返回是否消费。
+    pub fn apply_cursor(&mut self, x: f32, y: f32, host: iced::Size) -> bool {
+        self.last_cursor.set(iced::Point::new(x, y));
+        let Some(interaction) = self.interaction else {
+            return false;
+        };
+        match interaction {
+            WmInteraction::Drag { wid, grab } => {
+                if let Some(v) = self.wins.get(&wid) {
+                    let mut r = v.rect.borrow_mut();
+                    let w = r.width;
+                    // 钳制：标题栏保持可抓取（至少 60px 留在桌面内）。
+                    r.x = (x - grab.x).clamp(-(w - 60.0), (host.width - 60.0).max(0.0));
+                    r.y = (y - grab.y).clamp(0.0, (host.height - 30.0).max(0.0));
+                }
+            }
+            WmInteraction::Resize { wid, edge, start_rect, start_cursor } => {
+                let dx = x - start_cursor.x;
+                let dy = y - start_cursor.y;
+                const MIN_W: f32 = 160.0;
+                const MIN_H: f32 = 120.0;
+                if let Some(v) = self.wins.get(&wid) {
+                    let mut r = v.rect.borrow_mut();
+                    let mut left = start_rect.x;
+                    let mut top = start_rect.y;
+                    let mut width = start_rect.width;
+                    let mut height = start_rect.height;
+                    if matches!(edge, ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast) {
+                        width = (start_rect.width + dx).max(MIN_W);
+                    }
+                    if matches!(edge, ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast) {
+                        height = (start_rect.height + dy).max(MIN_H);
+                    }
+                    if matches!(edge, ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest) {
+                        let right = start_rect.x + start_rect.width;
+                        width = (start_rect.width - dx).max(MIN_W);
+                        left = right - width;
+                    }
+                    if matches!(edge, ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast) {
+                        let bottom = start_rect.y + start_rect.height;
+                        height = (start_rect.height - dy).max(MIN_H);
+                        top = bottom - height;
+                    }
+                    r.x = left;
+                    r.y = top;
+                    r.width = width;
+                    r.height = height;
+                    // 窗口级字段同步（响应式布局 window_width 随缩放更新）。
+                    *v.window_size.borrow_mut() = iced::Size::new(width, height);
+                }
+            }
+        }
+        true
+    }
+
+    /// 结束交互（全局 release），返回是否有交互在进行。
+    pub fn end_interaction(&mut self) -> bool {
+        self.interaction.take().is_some()
+    }
+}
+
+impl WmInteraction {
+    pub fn wid(&self) -> Wid {
+        match self {
+            WmInteraction::Drag { wid, .. } | WmInteraction::Resize { wid, .. } => *wid,
+        }
+    }
+}
+
+/// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
+pub struct HostCtx {
+    pub window: iced::window::Id,
+    pub wm: WmState,
+}
+
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
 /// 459：多 App 多 OS 窗口（iced::daemon，每窗口渲染各自 AppSession）。
 pub struct DesktopSession {
@@ -250,6 +491,10 @@ pub struct DesktopSession {
     /// 焦点窗口记录（Design 23 §2 会话层"焦点与主题策略"最小底座，454 消费）。
     pub focused_window: RefCell<Option<iced::window::Id>>,
     pub desktop: DesktopState,
+    /// Plan 462：desktop 模式宿主上下文。`None` = 独立窗口模式（R3 退化
+    /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
+    /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
+    pub host: Option<HostCtx>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -262,6 +507,9 @@ pub enum DesktopMessage {
     /// 459：带窗口上下文的业务事件（Resized/mouse/modifiers 等
     /// listen_with 出口）；update 侧经 `app_of_window` 现场解析归属。
     Window(iced::window::Id, IcedMessage),
+    /// Plan 462：WM 命令（chrome 回调 / 桌面热键 / 全局命中测试）。
+    /// 独立模式不产生（I3：仅 desktop 配置位产此变体）。
+    Wm(WmCommand),
 }
 
 #[derive(Debug, Clone)]
@@ -272,6 +520,17 @@ pub enum DesktopEvent {
     /// 焦点进出（Design 23 §2 焦点策略底座；T4c 仅记录 focused_window）。
     WindowFocused(iced::window::Id),
     WindowUnfocused(iced::window::Id),
+    /// Plan 462：desktop 模式的低频帧泵（空闲时驱动 update→view 重算，
+    /// 让 MCP 截图等"view 侧投递 / update 侧消费"的异步请求有机会被
+    /// 处理；独立模式不订——保持空闲零开销）。
+    ServiceTick,
+}
+
+/// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
+/// 重定义频率与职责）。
+pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
+    iced::time::every(std::time::Duration::from_millis(ms))
+        .map(|_| DesktopMessage::Desktop(DesktopEvent::ServiceTick))
 }
 
 impl AppSession {
@@ -291,7 +550,44 @@ impl DesktopSession {
             next_app: 0,
             focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
+            host: None,
         }
+    }
+
+    /// Plan 462：进入 desktop 模式（boot 期开完宿主窗后调用）。
+    pub fn open_desktop(&mut self, window: iced::window::Id) {
+        self.host = Some(HostCtx { window, wm: WmState::new() });
+    }
+
+    /// desktop 模式判定（I3 配置位）。
+    pub fn is_desktop(&self) -> bool {
+        self.host.is_some()
+    }
+
+    /// desktop 模式：登记一个虚拟窗口（App 的可见容器）。返回 Wid。
+    /// 窗口级字段职责随 `split_*_at` 的 desktop 分支落到 VWinState。
+    pub fn wm_add_win(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+        let host = self.host.as_mut().expect("wm_add_win requires desktop mode");
+        host.wm.add_win(app, title, rect)
+    }
+
+    /// desktop 模式：移除虚拟窗口并返回其 AppId（调用方负责移除 App）。
+    pub fn wm_remove_win(&mut self, wid: Wid) -> Option<AppId> {
+        self.host.as_mut()?.wm.remove_win(wid)
+    }
+
+    pub fn wm_focus(&mut self, wid: Wid) {
+        if let Some(host) = self.host.as_mut() {
+            host.wm.focus(wid);
+        }
+    }
+
+    pub fn wm_focused_app(&self) -> Option<AppId> {
+        self.host.as_ref()?.wm.focused_app()
+    }
+
+    pub fn wm_win_of_app(&self, app: AppId) -> Option<Wid> {
+        self.host.as_ref()?.wm.win_of_app(app)
     }
 
     /// 测试专用：无 App 的空会话（路由表 / 桌面状态单测用）。
@@ -346,8 +642,12 @@ impl DesktopSession {
         self.windows.get(win).map(|e| e.app)
     }
 
-    /// AppId → window::Id 反查（459 一窗一 App；454 单窗多 App 时由 WM 接管）。
+    /// AppId → window::Id 反查。desktop 模式：所有 App 都挂在唯一宿主窗
+    /// （只要它有虚拟窗口条目）；独立模式保持 459 一窗一 App 反查。
     pub fn window_of_app(&self, app: AppId) -> Option<iced::window::Id> {
+        if let Some(host) = &self.host {
+            return host.wm.win_of_app(app).map(|_| host.window);
+        }
         self.windows.iter().find(|(_, e)| e.app == app).map(|(k, _)| *k)
     }
 
@@ -372,9 +672,29 @@ impl DesktopSession {
         win: iced::window::Id,
     ) -> Option<SessionViewMut<'_>> {
         let app = self.apps.get_mut(&id)?;
+        // Plan 462 desktop 分支：窗口级字段落到该 App 的 VWinState（宿主窗
+        // 由 N 个 App 共享；vwin_rect 供 update 尾把模型 window_* 变量落到
+        // 虚拟窗口矩形，而不是宿主/oldest OS 窗）。
+        if let Some(host) = self.host.as_mut() {
+            let wid = host.wm.win_of_app(id)?;
+            let v = host.wm.wins.get_mut(&wid)?;
+            return Some(SessionViewMut {
+                app_id: id,
+                window: win,
+                component: &mut app.component,
+                app: &mut app.state,
+                desktop: &mut self.desktop,
+                window_size: &mut v.window_size,
+                pending_window_resize: &mut v.pending_window_resize,
+                initial_resize_done: &mut v.initial_resize_done,
+                initial_focus_done: &mut v.initial_focus_done,
+                vwin_rect: Some(&v.rect),
+            });
+        }
         let entry = self.windows.get_mut(&win)?;
         Some(SessionViewMut {
             app_id: id,
+            window: win,
             component: &mut app.component,
             app: &mut app.state,
             desktop: &mut self.desktop,
@@ -382,6 +702,7 @@ impl DesktopSession {
             pending_window_resize: &mut entry.pending_window_resize,
             initial_resize_done: &mut entry.initial_resize_done,
             initial_focus_done: &mut entry.initial_focus_done,
+            vwin_rect: None,
         })
     }
 
@@ -394,9 +715,26 @@ impl DesktopSession {
     /// 459：显式窗口版拆借（daemon view 按发生窗口构造）。
     pub fn split_ref_at(&self, id: AppId, win: iced::window::Id) -> Option<SessionViewRef<'_>> {
         let app = self.apps.get(&id)?;
+        if let Some(host) = &self.host {
+            let wid = host.wm.win_of_app(id)?;
+            let v = host.wm.wins.get(&wid)?;
+            return Some(SessionViewRef {
+                app_id: id,
+                window: win,
+                component: &app.component,
+                app: &app.state,
+                desktop: &self.desktop,
+                window_size: &v.window_size,
+                pending_window_resize: &v.pending_window_resize,
+                initial_resize_done: &v.initial_resize_done,
+                initial_focus_done: &v.initial_focus_done,
+                vwin_rect: Some(&v.rect),
+            });
+        }
         let entry = self.windows.get(&win)?;
         Some(SessionViewRef {
             app_id: id,
+            window: win,
             component: &app.component,
             app: &app.state,
             desktop: &self.desktop,
@@ -404,6 +742,7 @@ impl DesktopSession {
             pending_window_resize: &entry.pending_window_resize,
             initial_resize_done: &entry.initial_resize_done,
             initial_focus_done: &entry.initial_focus_done,
+            vwin_rect: None,
         })
     }
 }
@@ -413,6 +752,9 @@ impl DesktopSession {
 pub struct SessionViewMut<'a> {
     /// 本视图归属的 App（console 打标 / view 门控读）。
     pub app_id: AppId,
+    /// 事件发生窗口（desktop 模式 = 宿主窗；独立模式 = 归属 OS 窗）。
+    /// 462 起 pending resize 消费直接指向它（退役 `window::oldest()` 猜测）。
+    pub window: iced::window::Id,
     pub component: &'a mut DynamicComponent,
     pub app: &'a mut AppState,
     pub desktop: &'a mut DesktopState,
@@ -420,6 +762,9 @@ pub struct SessionViewMut<'a> {
     pub pending_window_resize: &'a mut RefCell<Option<iced::Size>>,
     pub initial_resize_done: &'a mut Cell<bool>,
     pub initial_focus_done: &'a mut Cell<bool>,
+    /// desktop 模式持有本 App 虚拟窗口矩形（模型 window_* 变量落点）；
+    /// 独立模式 None（走 iced::window::resize）。
+    pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
 }
 
 impl<'a> SessionViewMut<'a> {
@@ -429,6 +774,7 @@ impl<'a> SessionViewMut<'a> {
     pub fn as_ref_view(&mut self) -> SessionViewRef<'_> {
         SessionViewRef {
             app_id: self.app_id,
+            window: self.window,
             component: self.component,
             app: self.app,
             desktop: self.desktop,
@@ -436,6 +782,7 @@ impl<'a> SessionViewMut<'a> {
             pending_window_resize: self.pending_window_resize,
             initial_resize_done: self.initial_resize_done,
             initial_focus_done: self.initial_focus_done,
+            vwin_rect: self.vwin_rect,
         }
     }
 }
@@ -445,6 +792,8 @@ impl<'a> SessionViewMut<'a> {
 pub struct SessionViewRef<'a> {
     /// 本视图归属的 App（console 打标 / view 门控读）。
     pub app_id: AppId,
+    /// 事件发生窗口（desktop 模式 = 宿主窗；独立模式 = 归属 OS 窗）。
+    pub window: iced::window::Id,
     pub component: &'a DynamicComponent,
     pub app: &'a AppState,
     pub desktop: &'a DesktopState,
@@ -452,6 +801,7 @@ pub struct SessionViewRef<'a> {
     pub pending_window_resize: &'a RefCell<Option<iced::Size>>,
     pub initial_resize_done: &'a Cell<bool>,
     pub initial_focus_done: &'a Cell<bool>,
+    pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +988,7 @@ mod tests {
     #[test]
     fn desktop_message_shapes_compile() {
         // 形状冻结检查：App 消息 = (AppId, IcedMessage)，454 直接复用；
-        // 459 扩 Window 变体承载窗口上下文事件。
+        // 459 扩 Window 变体承载窗口上下文事件；462 扩 Wm 变体。
         let msg = IcedMessage {
             widget: String::new(),
             event: "__noop".to_string(),
@@ -648,6 +998,131 @@ mod tests {
         assert!(matches!(dm, DesktopMessage::App(AppId(1), _)));
         let dm = DesktopMessage::Window(iced::window::Id::unique(), msg);
         assert!(matches!(dm, DesktopMessage::Window(_, _)));
+        let dm = DesktopMessage::Wm(WmCommand::Focus(Wid(7)));
+        assert!(matches!(dm, DesktopMessage::Wm(WmCommand::Focus(Wid(7)))));
+    }
+
+    // --- Plan 462 T2：WM 域 ---
+
+    fn desktop_session_with_host() -> DesktopSession {
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        ds
+    }
+
+    #[test]
+    fn wm_add_focus_remove_lifecycle() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let wid = ds.wm_add_win(
+            app,
+            "V".into(),
+            iced::Rectangle::new(iced::Point::new(10.0, 20.0), iced::Size::new(300.0, 200.0)),
+        );
+        assert_eq!(ds.window_of_app(app), ds.host.as_ref().map(|h| h.window));
+        assert_eq!(ds.wm_focused_app(), Some(app), "新窗即焦点窗");
+        assert!(ds.is_desktop());
+
+        // 第二窗聚焦翻转 + z 置顶。
+        let app2 = insert_app(&mut ds, "V2");
+        let wid2 = ds.wm_add_win(app2, "V2".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
+        assert_eq!(ds.wm_focused_app(), Some(app2));
+        ds.wm_focus(wid);
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.z_order.last(), Some(&wid), "聚焦窗置顶");
+        assert_eq!(host.wm.focused, Some(wid));
+
+        // 命中测试：z 序自顶向下（窗 1 后聚焦 → 覆盖两窗重叠区）。
+        assert_eq!(host.wm.hit_test(5.0, 5.0), Some(wid2), "窗1 矩形外归窗2");
+        assert_eq!(host.wm.hit_test(50.0, 50.0), Some(wid), "重叠区归顶窗");
+        assert_eq!(host.wm.hit_test(5000.0, 5000.0), None, "桌面外无命中");
+
+        // 关闭：App 随窗返回；焦点回退到剩余顶窗。
+        assert_eq!(ds.wm_remove_win(wid), Some(app));
+        assert_eq!(ds.window_of_app(app), None, "窗关则 app 反查失效");
+        assert_eq!(ds.wm_focused_app(), Some(app2));
+    }
+
+    #[test]
+    fn wm_split_views_target_vwin_fields() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        ds.wm_add_win(app, "V".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)));
+        let host_win = ds.host.as_ref().unwrap().window;
+        let ghost = iced::window::Id::unique();
+
+        // desktop 模式：任何窗口号（含未知 OS 窗）都能按 App 拆到 vwin 字段。
+        let view = ds.split_mut_at(app, ghost).expect("desktop split is win-agnostic");
+        assert_eq!(view.window, ghost);
+        assert!(view.vwin_rect.is_some());
+        *view.pending_window_resize.borrow_mut() = Some(iced::Size::new(100.0, 80.0));
+        let view = ds.split_ref_at(app, host_win).expect("split by host window");
+        assert_eq!(view.window_size.borrow().width, 640.0);
+        assert!(view.pending_window_resize.borrow().is_some());
+    }
+
+    #[test]
+    fn wm_drag_and_resize_interaction() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "V");
+        let wid = ds.wm_add_win(app, "V".into(), iced::Rectangle::new(iced::Point::new(100.0, 100.0), iced::Size::new(300.0, 200.0)));
+
+        // 拖拽：grab 偏移 = 按下点 - 窗口原点；move 后位置随之，尺寸不变。
+        ds.host.as_mut().unwrap().wm.last_cursor.set(iced::Point::new(150.0, 130.0));
+        ds.host.as_mut().unwrap().wm.interaction =
+            Some(WmInteraction::Drag { wid, grab: iced::Point::new(50.0, 30.0) });
+        let host_size = iced::Size::new(1600.0, 900.0);
+        assert!(ds.host.as_mut().unwrap().wm.apply_cursor(250.0, 230.0, host_size));
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = host.wm.wins[&wid].rect.borrow();
+            assert_eq!((r.x, r.y), (200.0, 200.0));
+            assert_eq!((r.width, r.height), (300.0, 200.0), "拖拽不改尺寸");
+        }
+        assert!(ds.host.as_mut().unwrap().wm.end_interaction());
+        assert!(!ds.host.as_mut().unwrap().wm.end_interaction(), "无交互时 release 返回 false");
+
+        // 缩放：SE 把手向右下 +50/+50；W 把手左缘跟随保持右缘不动。
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+            wid,
+            edge: ResizeEdge::SouthEast,
+            start_rect: iced::Rectangle::new(iced::Point::new(200.0, 200.0), iced::Size::new(300.0, 200.0)),
+            start_cursor: iced::Point::new(0.0, 0.0),
+        });
+        ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, host_size);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = host.wm.wins[&wid].rect.borrow();
+            assert_eq!((r.width, r.height), (350.0, 250.0));
+        }
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+            wid,
+            edge: ResizeEdge::West,
+            start_rect: iced::Rectangle::new(iced::Point::new(200.0, 200.0), iced::Size::new(300.0, 200.0)),
+            start_cursor: iced::Point::new(200.0, 0.0),
+        });
+        ds.host.as_mut().unwrap().wm.apply_cursor(160.0, 0.0, host_size);
+        {
+            let host = ds.host.as_ref().unwrap();
+            let r = host.wm.wins[&wid].rect.borrow();
+            assert_eq!(r.x, 160.0, "W 缩放左缘跟随光标");
+            assert_eq!(r.width, 340.0, "W 缩放右缘不动");
+        }
+        ds.host.as_mut().unwrap().wm.end_interaction();
+    }
+
+    #[test]
+    fn standalone_mode_has_no_wm() {
+        let mut ds = DesktopSession::__test_session();
+        let app = insert_app(&mut ds, "Solo");
+        let win = iced::window::Id::unique();
+        ds.register_window(win, app, iced::Size::new(800.0, 600.0));
+        assert!(!ds.is_desktop());
+        assert_eq!(ds.window_of_app(app), Some(win), "独立模式反查不变");
+        assert!(ds.wm_focused_app().is_none());
+        // 独立模式拆借无 vwin_rect（走 iced::window::resize 旧路径）。
+        let view = ds.split_mut(app).expect("standalone split");
+        assert!(view.vwin_rect.is_none());
     }
 }
 

@@ -1,13 +1,15 @@
 # Plan 462: VirtualWindow + WM 最小集（单 OS 窗口多 App，路线 A）
 
-> **状态**：已立项 2026-08-28，未开工（多 agent 可领取）
+> **状态**: ✅ 完成（2026-08-28，T1–T7 全量 + 实机验收 + 全量回归绿）
 > **来源**：产品需求「桌面端虚拟桌面」（Design 24 §1 N1）；里程碑 M2（Design 23 §6
 > 提案编号 454，实际编号经程序跟踪文件「计划一览」解析为本号）。
 > **架构依据**：`docs/design/23-autoui-virtual-desktop.md`（R1 WM-as-app、R2 单 OS 窗口
 > 虚拟桌面、R4 AppWindow 接缝、R5 路线 A 先行、I2/I3）；`docs/design/24-autoui-desktop-shell-and-launcher.md`
 > （R9 排布纯函数、R12 桌面热键、§6 风险）。
-> **基线**: master 1487b5c5d（453/459 已归档）。
+> **基线**: master ba17b6c75（453/459 已归档）。
 > **本计划产出是 463/464/465 的共同地基**：VirtualWindow widget 契约（I4 登记源）。
+> **T1 施工图**: `reports/462-t1-virtual-window-spike.md`（定案候选 B：组合
+> Stack/container.clip/mouse_area + 全局事件状态机；iced 0.14 源码级依据 + 实机验证记录）。
 
 ## 1. 目标
 
@@ -98,13 +100,26 @@ WM 键 → 未捕获才投递焦点窗的 App bindings）。`desktop.current_mod
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | VirtualWindow spike | §3.1 两候选最小 demo + 定案报告 `reports/462-t1-virtual-window-spike.md` | `cargo run -p auto-lang --features ui-iced --example <spike>` 实机：窗内输入、窗外点击不穿透 |
-| T2 | WM state + 消息 | `session.rs`：`Wid`/`WindowState`/`WmState`/`WmCommand`、宿主窗 1:N 虚拟窗注册表改造；`DesktopMessage::Wm` | `cargo check -p auto-lang --features ui-iced` + `cargo t session`（现有单测绿） |
-| T3 | VirtualWindow widget | 按 T1 定案实现：clip/translate/on_event 命中路由/focus 分支/z；`registry.rs` + `schema/aura.at` 登记（I4，含 a2vue 占位说明，465 消费） | T2 命令 + `cargo t ui_gen`（登记漂移测试绿） |
-| T4 | chrome | 标题栏/关闭/拖拽移动/边缘 8 向 resize/点击聚焦，发 `DM::Wm` | 并入 T5 demo 实机操作 |
-| T5 | 桌面宿主入口 | `renderer.rs`：desktop 模式（单宿主窗 + N 虚拟窗 + z-stack view + overlay 预留槽）；`pending_window_resize` 窗口上下文化修复；新 example `crates/auto-lang/examples/ui_desktop.rs`（复用 `build_dynamic_component`，两个不同 .at：建议 `459-dual-app` + `011-calculator`） | `cargo run -p auto-lang --features ui-iced --example ui_desktop` 实机：两窗拖拽/缩放/关闭/聚焦互不串扰 |
-| T6 | 键盘/焦点/IME | §3.4 桌面层路由；focus id 分区（AppId 前缀命名空间）；452 残留两项（组合失焦 discard、preedit 落盘） | 实机：两窗各含输入框，Tab/点击切换焦点不串扰；中文 IME 组合输入随焦点走 |
-| T7 | 回归与收尾 | I2 复跑（5 套 desktop_mcp 全绿）；I3 grep 检查；`AUTOUI_PANIC_PROBE` 虚拟窗粒度复验；459 demo（独立模式）不回归 | `cargo t`（ui:: 子集 + desktop_mcp 五套）；grep 无 standalone/desktop 双路径 |
+| T1 | VirtualWindow spike | ✅ 完成：**定案候选 B**（组合方案，候选 A 否决）——Stack z 序事件短路 + container.clip + mouse_area 捕获 + 全局事件状态机；报告 `reports/462-t1-virtual-window-spike.md`（含 iced 0.14 源码依据与实机记录） | 实机 demo 全交互通过 |
+| T2 | WM state + 消息 | ✅ 完成：`session.rs` `Wid/VWinState/WmState/WmInteraction/WmCommand`、`DesktopSession.host`（I3 配置位）、`DesktopMessage::Wm`、宿主窗 1:N 注册表、`split_*_at` desktop 分支；新增 5 个 WM 单测 | `cargo t session::` 19/19 绿 |
+| T3 | VirtualWindow 组合层 | ✅ 完成：新 `ui/iced/virtual_window.rs`（desktop_root + virtual_window_element：定位包裹/窗体 clip+阴影+焦点描边/标题栏 chrome/客户区聚焦包裹/八向缩放把手）。**计划修正**：schema/WidgetRegistry 登记移至 465（v1 chrome 为 renderer 内部组合、无 .at 消费路径，单端登记即死代码；I4 双端同源随 DOM 叶落地） | 编译 + 实机渲染验证 |
+| T4 | chrome | ✅ 完成：标题栏拖拽（`StartDrag` + `WmState` grab 状态机）、× 关闭（App 随窗移除）、八向缩放把手、点击聚焦置顶（客户区包裹 + `GlobalPress` 命中双通路） | 实机：拖拽/缩放/关闭/聚焦全过 |
+| T5 | 桌面宿主入口 | ✅ 完成：`run_session(components, RunMode)` 单管线拆分（Standalone/Desktop 仅 boot 开窗与 view 组装分叉）；`run_dynamic_desktop` 入口；boot 单宿主窗 + N 虚拟窗级联；新 example `crates/auto-lang/examples/ui_desktop.rs`；**额外**：① `pending_window_resize` 按视图窗口直指（退役 `window::oldest()` 多窗猜测 bug）② desktop 模式 `__window_resized` 同步全体虚拟窗 window_size ③ `desktop_service_tick` 400ms 帧泵（MCP 截图消费链路）④ 修复 `take_screenshot_request` 无 sync_mcp 门控被非 primary App 窥窃的滞留 bug | `cargo run --example ui_desktop` 实机全交互 |
+| T6 | 键盘/焦点/IME | ✅ 完成（结构部分）：订阅 focused 门控（identity 含 focused，焦点翻转重订阅，R12 订阅半边）；F12 DevTools 在 desktop 模式禁用（固定 widget id 同窗撞车，T8 语义延续）。**残留**：452 两项 IME 任务（组合中失焦 discard、preedit 落盘）未做——焦点分区结构已实测可用（真实点击+Unicode 键盘入 `value:"hi"`），IME 组合行为需分平台人工矩阵，转 463 前置确认项 | 实机键盘流通过 |
+| T7 | 回归与收尾 | ✅ 完成：`cargo t` 3222/3222 绿；I2 五套 desktop_mcp 全绿（calculator 14、todo 11、notes 11、charts 19、dashboard 26，0 失败）；I3 复查（全部 desktop 分叉以 `host.is_some()` 配置位表达，无双路径）；panic 隔离虚拟窗粒度复验 | 见验收 |
+
+## 4.1 实机验收记录（2026-08-28，Windows 11 / DPI 200%）
+
+MCP 截图（autoui_screenshot）+ 真实鼠标键盘（ctypes SendInput）驱动：
+
+1. 单 OS 窗口双虚拟窗口（DualApp + calculator），chrome/焦点描边/z 序正确；
+2. 点击后排标题栏 → 置顶 + 焦点翻转（描边换色）；
+3. 标题栏拖拽 +200/+150 物理px → 窗口精确随动；
+4. SE 角把手缩放 → +80/+60 逻辑px 精确放大、左上锚定；
+5. 真实点击虚拟窗内输入框 + Unicode 键盘 → `value: "hi"`；
+6. × 关闭单窗 → App 随窗移除、余窗存活；全关 → `iced::exit` 进程退出；
+7. `AUTOUI_PANIC_PROBE=1` Crash 注入 → update/view 双边界拦截（仅本 App），
+   另一 App 真实点击继续可交互。
 
 ## 5. 验收
 

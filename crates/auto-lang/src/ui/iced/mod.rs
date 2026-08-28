@@ -7,6 +7,8 @@ mod layout_collector;
 // Plan 422: 锚定弹层原语(iced overlay wrapper,Tooltip 同型)。
 pub mod popover;
 pub mod renderer;
+// Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
+pub mod virtual_window;
 
 // Plan 414 §8.2: headless layout testbench — `iced_test`-based bounds
 // assertions (feature `iced-layout-tests`; see layout_tests.rs header).
@@ -14,5 +16,5 @@ pub mod renderer;
 mod layout_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, last_input_text};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_desktop, last_input_text};
 pub(crate) use renderer::encode_payload;

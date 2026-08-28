@@ -5786,35 +5786,45 @@ fn keyboard_subscription(
     app: crate::ui::session::AppId,
     my_window: iced::window::Id,
     key_bindings: HashMap<String, String>,
+    focused: bool,
+    desktop_mode: bool,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
+    // Plan 462：identity 加入 focused —— desktop 模式焦点翻转即重订阅，
+    // 闭包内按焦点门控（R12：键盘只进焦点虚拟窗口的 App）。
     iced_futures::subscription::filter_map(
-        ("autoui-keyboard", app, my_window),
+        ("autoui-keyboard", app, my_window, focused),
         move |event: iced_futures::subscription::Event| {
             let iced_futures::subscription::Event::Interaction { window, event, status } = event
             else {
                 return None;
             };
-            if window != my_window {
+            if window != my_window || !focused {
                 return None;
             }
-            keyboard_event_message(event, status, &key_bindings).map(move |m| DM::App(app, m))
+            keyboard_event_message(event, status, &key_bindings, !desktop_mode)
+                .map(move |m| DM::App(app, m))
         },
     )
 }
 
 /// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
 /// F12 toggle、Captured 过滤、bindings 查找、shifted 兜底、Tab 聚焦）。
+/// `allow_devtools=false`（Plan 462 desktop 模式）时 F12 不展开 DevTools
+/// 面板（固定 widget id 在同窗多 App 下会互相撞车，见订阅处注记）。
 fn keyboard_event_message(
     event: iced::Event,
     status: iced::event::Status,
     key_bindings: &HashMap<String, String>,
+    allow_devtools: bool,
 ) -> Option<IcedMessage> {
     // F12 → DevTools toggle (always active, even when a widget has focus)
     // Must be checked BEFORE the Captured guard, otherwise F12 is swallowed
     // when a text input is focused (Plan 371: F12 reliability fix).
     if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
-        if matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)) {
+        if allow_devtools
+            && matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12))
+        {
             return Some(IcedMessage {
                 widget: String::new(),
                 event: DEBUG_TOGGLE_EVENT.to_string(),
@@ -6057,7 +6067,27 @@ pub fn run_dynamic_iced(component: DynamicComponent) -> AppResult<String> {
 /// Plan 459：多 App 多窗口入口 —— 一个 `DesktopSession` 服务 N 个 OS 窗口，
 /// 每窗口渲染各自的 AppSession（iced::daemon，boot 期 `window::open` 逐 App
 /// 开窗并同步登记）。全窗口关闭后进程退出（daemon 语义，`iced::exit`）。
-pub fn run_dynamic_iced_multi(mut components: Vec<DynamicComponent>) -> AppResult<String> {
+pub fn run_dynamic_iced_multi(components: Vec<DynamicComponent>) -> AppResult<String> {
+    run_session(components, RunMode::Standalone)
+}
+
+/// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
+/// （Design 23 R2 拓扑；chrome/拖拽/缩放/关闭/聚焦见 `virtual_window.rs`）。
+pub fn run_dynamic_desktop(components: Vec<DynamicComponent>) -> AppResult<String> {
+    run_session(components, RunMode::Desktop)
+}
+
+/// 会话运行形态（Plan 462，I3：唯一 update/view/订阅管线，仅此配置位与
+/// boot 开窗方式分叉；禁止再增第二条 standalone/desktop 代码路径）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunMode {
+    /// R3 退化桌面：每 App 一个 OS 窗口（459 语义，`auto run` 现状）。
+    Standalone,
+    /// R2 虚拟桌面：单宿主 OS 窗口 + N 个 `VirtualWindow`（462）。
+    Desktop,
+}
+
+fn run_session(mut components: Vec<DynamicComponent>, mode: RunMode) -> AppResult<String> {
     if components.is_empty() {
         // daemon 无窗口不会自动退出，空入参直接报错而非静默长存。
         return Err(Box::new(std::io::Error::other("run_dynamic_iced_multi: no components")));
@@ -6251,26 +6281,66 @@ fn compare_pngs(
         // R3 退化桌面 + 459 多窗口：逐 App 分配 AppId、开 OS 窗口并同步登记
         // （`window::open` 同步返回 window::Id，无需等 Opened 事件反推归属）。
         let mut session = crate::ui::session::DesktopSession::empty(Some(mcp_shared.clone()));
-        let mut open_tasks = Vec::new();
-        for (i, comp) in comps.into_iter().enumerate() {
-            let app_id = session.allocate_app(comp);
-            let size = startup_window_size();
-            // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
-            let position = iced::window::Position::Specific(iced::Point::new(
-                80.0 + 48.0 * i as f32,
-                80.0 + 48.0 * i as f32,
-            ));
-            let (win_id, open_task) = iced::window::open(iced::window::Settings {
-                size,
-                position,
-                ..Default::default()
-            });
-            session.register_window(win_id, app_id, size);
-            open_tasks.push(open_task);
+        match mode {
+            RunMode::Desktop => {
+                // Plan 462：单宿主 OS 窗口 + N 个虚拟窗口（级联偏移 48n，
+                // 初始尺寸 = 宿主的 60%，与独立模式级联错开视觉重叠）。
+                let host_size = startup_window_size();
+                let (win_id, open_task) = iced::window::open(iced::window::Settings {
+                    size: host_size,
+                    position: iced::window::Position::Specific(iced::Point::new(80.0, 80.0)),
+                    ..Default::default()
+                });
+                session.open_desktop(win_id);
+                let mut entries: Vec<(crate::ui::session::AppId, String)> = Vec::new();
+                for comp in comps {
+                    let app_id = session.allocate_app(comp);
+                    let title = session
+                        .apps
+                        .get(&app_id)
+                        .map(|a| a.component.widget_name().to_string())
+                        .unwrap_or_default();
+                    entries.push((app_id, title));
+                }
+                // 注册表宿主条目：app = primary（app_of_window / MCP / toast
+                // 等"单 App 语义"锚点在 desktop 模式仍指向 primary，T8 冻结）。
+                let primary = session.primary_app().expect("desktop boot has apps");
+                session.register_window(win_id, primary, host_size);
+                for (i, (app_id, title)) in entries.into_iter().enumerate() {
+                    let rect = iced::Rectangle::new(
+                        iced::Point::new(80.0 + 48.0 * i as f32, 80.0 + 48.0 * i as f32),
+                        iced::Size::new(
+                            (host_size.width * 0.6).max(360.0),
+                            (host_size.height * 0.6).max(280.0),
+                        ),
+                    );
+                    session.wm_add_win(app_id, title, rect);
+                }
+                (session, open_task.discard())
+            }
+            RunMode::Standalone => {
+                let mut open_tasks = Vec::new();
+                for (i, comp) in comps.into_iter().enumerate() {
+                    let app_id = session.allocate_app(comp);
+                    let size = startup_window_size();
+                    // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
+                    let position = iced::window::Position::Specific(iced::Point::new(
+                        80.0 + 48.0 * i as f32,
+                        80.0 + 48.0 * i as f32,
+                    ));
+                    let (win_id, open_task) = iced::window::open(iced::window::Settings {
+                        size,
+                        position,
+                        ..Default::default()
+                    });
+                    session.register_window(win_id, app_id, size);
+                    open_tasks.push(open_task);
+                }
+                // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
+                // Opened 事件臂作幂等兜底。
+                (session, iced::Task::batch(open_tasks).discard())
+            }
         }
-        // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
-        // Opened 事件臂作幂等兜底。
-        (session, iced::Task::batch(open_tasks).discard())
     };
 
     let update_inner = |state: &mut crate::ui::session::DesktopSession,
@@ -8102,13 +8172,19 @@ fn compare_pngs(
         // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {
             *state.window_size.borrow_mut() = size;
-            tail_tasks.push(iced::window::oldest().then(move |maybe_id| {
-                if let Some(id) = maybe_id {
-                    iced::window::resize::<IcedMessage>(id, size)
-                } else {
-                    iced::Task::none()
-                }
-            }));
+            if let Some(rect) = state.vwin_rect {
+                // Plan 462：desktop 模式 —— 模型 window_* 变量落虚拟窗口矩形，
+                // 宿主 OS 窗保持不变（R2/R9）。
+                let mut r = rect.borrow_mut();
+                r.width = size.width;
+                r.height = size.height;
+            } else {
+                // Plan 459 遗留 bug 修复（462 T5）：resize 直接指向本视图
+                // 归属窗口，退役 `window::oldest()` 单窗时代猜测（多窗下会
+                // 改错窗）。
+                let win = state.window;
+                tail_tasks.push(iced::window::resize::<IcedMessage>(win, size));
+            }
         }
 
         // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
@@ -8150,7 +8226,7 @@ fn compare_pngs(
     let update = move |state: &mut crate::ui::session::DesktopSession,
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
-        use crate::ui::session::{DesktopEvent, DesktopMessage as DM};
+        use crate::ui::session::{DesktopEvent, DesktopMessage as DM, WmCommand};
         // 消息归属 → update 分派（App/Window 两臂共用；console 打标 + T5
         // 探针 + panic 边界 + Task 回标 DM::App(app)）。闭包捕获 update_inner
         //（fn 条目无法捕获闭包环境），state 经参数传入不与之冲突。
@@ -8215,11 +8291,161 @@ fn compare_pngs(
                             *f = None;
                         }
                     }
+                    // Plan 462：desktop 帧泵 —— 空更新，仅驱动 view 重算
+                    //（MCP 截图请求在 view 投递 / update 消费）。
+                    DesktopEvent::ServiceTick => {}
                 }
                 iced::Task::none()
             }
             DM::App(app_id, m) => dispatch_app(state, app_id, m),
+            DM::Wm(cmd) => {
+                // Plan 462：WM 命令臂。独立模式不产生该变体（防御性忽略，
+                // I3：不设第二管线，仅配置位门控）。
+                if !state.is_desktop() {
+                    return iced::Task::none();
+                }
+                match cmd {
+                    // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
+                    //（last_cursor 由全局 CursorMoved 持续回写；点击桌面空白
+                    // 不改焦点，其语义归 463 桌面层）。
+                    WmCommand::GlobalPress => {
+                        let cursor = state
+                            .host
+                            .as_ref()
+                            .map(|h| h.wm.last_cursor.get())
+                            .unwrap_or_default();
+                        if let Some(wid) = state
+                            .host
+                            .as_ref()
+                            .and_then(|h| h.wm.hit_test(cursor.x, cursor.y))
+                        {
+                            state.wm_focus(wid);
+                        }
+                    }
+                    WmCommand::Focus(wid) => state.wm_focus(wid),
+                    // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
+                    // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
+                    WmCommand::StartDrag { wid } => {
+                        state.wm_focus(wid);
+                        if let Some(host) = state.host.as_mut() {
+                            let grab = host.wm.last_cursor.get();
+                            let origin = host
+                                .wm
+                                .wins
+                                .get(&wid)
+                                .map(|v| v.rect.borrow().position())
+                                .unwrap_or_default();
+                            host.wm.interaction =
+                                Some(crate::ui::session::WmInteraction::Drag {
+                                    wid,
+                                    grab: iced::Point::new(grab.x - origin.x, grab.y - origin.y),
+                                });
+                        }
+                    }
+                    WmCommand::StartResize { wid, edge } => {
+                        state.wm_focus(wid);
+                        if let Some(host) = state.host.as_mut() {
+                            host.wm.interaction =
+                                Some(crate::ui::session::WmInteraction::Resize {
+                                    wid,
+                                    edge,
+                                    start_rect: host
+                                        .wm
+                                        .wins
+                                        .get(&wid)
+                                        .map(|v| *v.rect.borrow())
+                                        .unwrap_or_default(),
+                                    start_cursor: host.wm.last_cursor.get(),
+                                });
+                        }
+                    }
+                    // 关闭虚拟窗口；App 随窗移除（459 一窗一 App 不变式的
+                    // WM 化，见 459 update 注释预告）。全部虚拟窗关闭 = 桌面
+                    // 空态 → daemon 语义退出进程（与独立模式全窗关一致）。
+                    WmCommand::Close(wid) => {
+                        if let Some(app) = state.wm_remove_win(wid) {
+                            state.apps.remove(&app);
+                        }
+                        if state
+                            .host
+                            .as_ref()
+                            .map(|h| h.wm.wins.is_empty())
+                            .unwrap_or(false)
+                        {
+                            return iced::exit();
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
             DM::Window(win, m) => {
+                // Plan 462 desktop：全局光标事件优先驱动 WM 拖拽/缩放状态机。
+                // 交互进行中消费事件（不下发 App——app 内 divider 拖拽与 WM
+                // 拖拽互斥，桌面语义下 WM 优先）。
+                if state.is_desktop() && matches!(m.event.as_str(), "__mouse_moved" | "__mouse_released") {
+                    match m.event.as_str() {
+                        "__mouse_moved" => {
+                            if let Some(ref val) = m.input_value {
+                                if let Some((xs, ys)) = val.split_once(',') {
+                                    let x: f32 = xs.parse().unwrap_or(0.0);
+                                    let y: f32 = ys.parse().unwrap_or(0.0);
+                                    let host_size = state
+                                        .host
+                                        .as_ref()
+                                        .and_then(|h| state.windows.get(&h.window))
+                                        .map(|e| *e.window_size.borrow())
+                                        .unwrap_or(iced::Size::new(1280.0, 800.0));
+                                    if state
+                                        .host
+                                        .as_mut()
+                                        .map(|h| h.wm.apply_cursor(x, y, host_size))
+                                        .unwrap_or(false)
+                                    {
+                                        return iced::Task::none();
+                                    }
+                                }
+                            }
+                        }
+                        "__mouse_released" => {
+                            if state
+                                .host
+                                .as_mut()
+                                .map(|h| h.wm.end_interaction())
+                                .unwrap_or(false)
+                            {
+                                return iced::Task::none();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                // Plan 462 desktop：宿主窗 resize → 全体虚拟窗口 window_size
+                // 同步（独立模式走原 per-window 拆借路径，行为不变）。
+                if state.is_desktop() && m.event == "__window_resized" {
+                    if let Some(ref val) = m.input_value {
+                        if let Some((ws, hs)) = val.split_once('x') {
+                            let w: f32 = ws.parse().unwrap_or(1280.0);
+                            let h: f32 = hs.parse().unwrap_or(800.0);
+                            let size = iced::Size::new(w, h);
+                            if let Some(host) = state.host.as_ref() {
+                                if let Some(entry) = state.windows.get(&host.window) {
+                                    *entry.window_size.borrow_mut() = size;
+                                }
+                                for v in host.wm.wins.values() {
+                                    *v.window_size.borrow_mut() = size;
+                                }
+                            }
+                            for app in state.apps.values() {
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                            crate::vm::ffi::stdlib::storage_host_publish(
+                                "vm.window_inner_height",
+                                format!("{}", h),
+                            );
+                            return iced::Task::none();
+                        }
+                    }
+                }
                 // 关窗请求：产 window::close（Closed 事件随后走注册表清理 +
                 // 空则退出；不该由 App 分派管线处理）。
                 if m.event == "__window_close_request" {
@@ -8247,6 +8473,62 @@ fn compare_pngs(
         state: &crate::ui::session::DesktopSession,
         window: iced::window::Id,
     ) -> iced::Element<'_, crate::ui::session::DesktopMessage> {
+        use crate::ui::session::DesktopMessage as DM;
+        // Plan 462：desktop 模式 —— 宿主窗渲染 WM z-stack（背景 + N 个
+        // VirtualWindow 层），每层复用同一 per-App 视图管线（dynamic_view +
+        // panic 边界 + DM::App 打标），仅外层组装按配置分叉（I3）。
+        if state.is_desktop() {
+            let Some(host) = state.host.as_ref() else {
+                return iced::widget::text("[AutoUI 会话] 桌面宿主未初始化").size(14).into();
+            };
+            if host.window != window {
+                return iced::widget::container(
+                    iced::widget::text("[AutoUI 会话] 窗口未登记").size(14),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .center(iced::Length::Fill)
+                .into();
+            }
+            let mut layers: Vec<iced::Element<'_, DM>> = Vec::new();
+            for &wid in &host.wm.z_order {
+                let Some(vwin) = host.wm.wins.get(&wid) else { continue };
+                let app_id = vwin.app;
+                let probe_hit = panic_probe_enabled()
+                    && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst)
+                        == app_id.0;
+                let is_primary = state.primary_app() == Some(app_id);
+                let build = || {
+                    if probe_hit {
+                        panic!("plan-459 T5 view panic probe for App {app_id:?}");
+                    }
+                    // MCP 快照同步仅 primary（T8 冻结）；desktop 下其余 App
+                    // 走同一视图管线但 sync_mcp=false。
+                    let Some(view) = state.split_ref_at(app_id, host.window) else {
+                        return None;
+                    };
+                    Some(dynamic_view(view, is_primary))
+                };
+                let client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 缺少 App 会话").size(14).into(),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
+                        );
+                        desktop_crash_element()
+                    }
+                };
+                let client = client.map(move |m| DM::App(app_id, m));
+                let focused = host.wm.focused == Some(wid);
+                layers.push(crate::ui::iced::virtual_window::virtual_window_element(
+                    vwin, focused, client,
+                ));
+            }
+            return crate::ui::iced::virtual_window::desktop_root(layers);
+        }
         let Some(app_id) = state.app_of_window(&window) else {
             return iced::widget::container(
                 iced::widget::text("[AutoUI 会话] 窗口未登记").size(14),
@@ -8291,6 +8573,18 @@ fn compare_pngs(
                 .into()
             }
         }
+    }
+
+    // Plan 462：desktop 分支的视图崩溃页（plan-453 T6 边界兜底的
+    // VirtualWindow 版；消息类型无关，独立模式的内联版保持原样不动）。
+    fn desktop_crash_element() -> iced::Element<'static, IcedMessage> {
+        iced::widget::container(
+            iced::widget::text("[AutoUI 会话] 视图构建异常（plan-453 边界兜底）").size(14),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .center(iced::Length::Fill)
+        .into()
     }
 
     let title_fn = move |state: &crate::ui::session::DesktopSession,
@@ -8349,10 +8643,33 @@ fn compare_pngs(
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {
                     let bindings = app.component.key_bindings().clone();
-                    subs.push(keyboard_subscription(app_id, win, bindings));
+                    // Plan 462（R12 订阅半边）：desktop 模式键盘只投递焦点
+                    // 虚拟窗口的 App（identity 含 focused，焦点翻转即重订阅）；
+                    // 独立模式恒 true —— 每窗过滤照旧，行为不变。F12 DevTools
+                    // 面板在 desktop 模式禁用（面板固定 widget id 会同窗撞车；
+                    // MCP/DevTools 单 App 语义见 453 T8 冻结，463+ 再解）。
+                    let focused = if state.is_desktop() {
+                        state.wm_focused_app() == Some(app_id)
+                    } else {
+                        true
+                    };
+                    subs.push(keyboard_subscription(
+                        app_id,
+                        win,
+                        bindings,
+                        focused,
+                        state.is_desktop(),
+                    ));
                 }
             }
             if let Some(primary) = state.primary_app() {
+                // Plan 462：desktop 模式帧泵（空闲时也要有机会消费 view 侧
+                // 投递的 MCP 截图请求；AUTOUI_MCP_DISABLE=1 一并关闭）。
+                if state.is_desktop()
+                    && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
+                {
+                    subs.push(crate::ui::session::desktop_service_tick(400));
+                }
                 // Plan 412 续(toast 修正 5):toast 到期 tick —— 桌面共享堆叠
                 // 只订一份;到期的移除逻辑在 update 的 __toast_tick 分支。
                 if !state.desktop.toasts.borrow().is_empty() {
@@ -8426,6 +8743,13 @@ fn compare_pngs(
                         event: "__mouse_released".to_string(),
                         input_value: None,
                     }))
+                }
+                // Plan 462：全局左键按下 → WM 命中测试/聚焦置顶（R12 桌面层
+                // 路由的事件半边；独立模式 update 臂配置位门控忽略）。
+                iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
+                    iced::mouse::Button::Left,
+                )) => {
+                    Some(DM::Wm(crate::ui::session::WmCommand::GlobalPress))
                 }
                 // Plan 309 续篇 II: track keyboard modifiers so the inspect
                 // picker can switch plain-click (inspect) ↔ Alt-click (native).
@@ -8865,9 +9189,14 @@ fn dynamic_view(
     };
 
     // Pick up pending screenshot request from MCP thread (Plan 285).
-    if let Some(ref mcp_handle) = state.desktop.mcp_shared {
-        if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
-            *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
+    // Plan 462：仅 primary（sync_mcp 门控，T8 单 App 语义）—— desktop 模式
+    // 下非 primary App 的 view 此前会偷走共享请求，而它们几乎收不到
+    // update，请求滞留至 MCP 工具超时（实测复现于 ui_desktop 双窗 demo）。
+    if sync_mcp {
+        if let Some(ref mcp_handle) = state.desktop.mcp_shared {
+            if let Some(req) = mcp_handle.lock().unwrap().take_screenshot_request() {
+                *state.app.devtools.screenshot_request.borrow_mut() = Some(req);
+            }
         }
     }
 
