@@ -5248,10 +5248,34 @@ pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session);
-    match parser.parse() {
+    let mut deps = match parser.parse() {
         Ok(ast) => extract_store_imports_from_ast(&ast),
         Err(_) => Vec::new(),
+    };
+    // PLAN-048 (auto-musk A 线): 跨 store 限定调用 (`ForgeStore.X(...)`) 也构成
+    // store 依赖——否则 vue 产物裸发 `ForgeStore` 无 import(TS2304)。按生态命名
+    // 约定(XxxStore)扫全文的限定引用;去重后并入。
+    let mut hits: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut prev_uc = false;
+    for ch in code.chars() {
+        if ch.is_alphanumeric() || ch == '_' {
+            cur.push(ch);
+            prev_uc = ch.is_uppercase();
+        } else {
+            if prev_uc && cur.len() > 5 && cur.ends_with("Store") && !deps.contains(&cur) {
+                hits.push(cur.clone());
+            }
+            cur.clear();
+            prev_uc = false;
+        }
     }
+    for h in hits {
+        if !deps.contains(&h) {
+            deps.push(h);
+        }
+    }
+    deps
 }
 
 /// // Check if any widget has routes

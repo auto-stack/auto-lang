@@ -2319,6 +2319,13 @@ impl VueGenerator {
             let first = &self.store_deps[0];
             script.push_str(&format!("import {{ reactive }} from 'vue'\n"));
             script.push_str(&format!("const store = reactive(use{}Store())\n\n", first));
+            // PLAN-048 (auto-musk A 线): 跨 store 依赖(deps[1..])各发独立
+            // facade(如 ForgeStore → forgeStore),配套 ts_adapter 的 Ident
+            // 映射——此前第二个及以后的 store 调用裸发名字(TS2304)。
+            for dep in self.store_deps.iter().skip(1) {
+                let var = facade_var_for(dep);
+                script.push_str(&format!("const {var} = reactive(use{}Store())\n\n", dep));
+            }
         }
 
         // Widget-level `watch { ... }` block → Vue watch() calls.
@@ -3147,8 +3154,14 @@ impl VueGenerator {
         // Plan 012 Batch A (gap 19): proven array/string receivers for
         // the .remove/.contains method-mapping gate.
         let (arrays, strings) = self.typed_collection_names();
-        if self.store_deps.len() == 1 {
+        if !self.store_deps.is_empty() {
             ctx = ctx.with_store_facade_from(self.store_deps[0].clone());
+            // PLAN-048: deps[1..] 的 facade 变量映射(与发射的 const 配套)。
+            let mut extra = std::collections::HashMap::new();
+            for dep in self.store_deps.iter().skip(1) {
+                extra.insert(dep.clone(), facade_var_for(dep));
+            }
+            ctx = ctx.with_store_facades(extra);
         }
         ctx.with_typed_collections(arrays, strings)
             .with_typed_ints(self.int_names.iter().cloned().collect())
@@ -22481,5 +22494,16 @@ widget TestGap {
         let sfc = gen_sfc.generate_sfc(&widget).unwrap();
         assert!(sfc.contains("<div class=\"flex flex-col gap-1\">"), "SFC should contain <div class=\"flex flex-col gap-1\">, got:\n{}", sfc);
         assert!(!sfc.contains("gap-4"), "SFC should NOT contain gap-4, got:\n{}", sfc);
+    }
+}
+
+/// PLAN-048 (auto-musk A 线): 跨 store facade 变量名——`ForgeStore` →
+/// `forgeStore`(剥 Store 后缀、首字母小写、回补 Store)。
+fn facade_var_for(dep: &str) -> String {
+    let stem = dep.strip_suffix("Store").unwrap_or(dep);
+    let mut c = stem.chars();
+    match c.next() {
+        Some(f) => format!("{}{}Store", f.to_lowercase().collect::<String>(), c.as_str()),
+        None => format!("{}Store", stem),
     }
 }

@@ -35,6 +35,9 @@ pub struct AuraTsContext {
     /// Ident 改发 facade `store`(vue 轨仅生成单 facade const;多 store 命名
     /// facade 留上游项)。
     pub store_facade_from: Option<String>,
+    /// PLAN-048 (auto-musk A 线): deps[1..] 的跨 store facade 映射
+    /// (store 真名 → facade 变量,如 "ForgeStore" → "forgeStore")。
+    pub store_facades: std::collections::HashMap<String, String>,
     /// Known API function names (need `await` prefix).
     api_functions: Vec<String>,
     /// Plan 012 Batch A (gap 19): state/prop names whose declared type is
@@ -101,6 +104,7 @@ impl AuraTsContext {
             ref_names: HashSet::new(),
             computed_names: HashSet::new(),
             store_facade_from: None,
+            store_facades: Default::default(),
             api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
@@ -215,6 +219,12 @@ impl AuraTsContext {
     /// A1 配套:注入限定 store 源名 → handler 体 Ident 改发 `store` facade。
     pub fn with_store_facade_from(mut self, qualified: String) -> Self {
         self.store_facade_from = Some(qualified);
+        self
+    }
+
+    /// PLAN-048 (auto-musk A 线): 跨 store facade 映射(deps[1..])。
+    pub fn with_store_facades(mut self, map: std::collections::HashMap<String, String>) -> Self {
+        self.store_facades = map;
         self
     }
 
@@ -893,6 +903,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             } else if ctx.store_facade_from.as_deref() == Some(name.as_str()) {
                 // A1 配套:`AuthStore` → facade `store`(见字段注)。
                 write!(out, "store").ok();
+            } else if let Some(var) = ctx.store_facades.get(name.as_str()) {
+                // PLAN-048: deps[1..] 的跨 store facade(如 ForgeStore → forgeStore)。
+                write!(out, "{}", var).ok();
             } else if name.as_str() == "self" || name.as_str() == "." {
                 // In Vue <script setup>, self/this is not needed
                 // Skip output — the field access will be handled by Expr::Dot
