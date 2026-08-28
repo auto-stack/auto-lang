@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-467
-status: reviewed
+status: archived
 feature_name: docs/design 整理 + docs/specs v2 + auto-plan 范式收敛
 author: [zcode]
 created_at: 2026-08-28
@@ -244,3 +244,13 @@ Markdown 文档 + `git mv` + 2 个 Python 脚本（spec-index.py / spec-lint.py�
 ## 待澄清事项
 
 （无——路径映射与不改名裁定已在需求分析节给出依据，如用户不认可 archive/ 保留裁定可在复审时翻转）
+
+---
+
+## spec-sync 回写记录（2026-08-28，/auto-plan:merge）
+
+- `.autoos/specs.json`：P467-1..P467-7 七条幂等入库（reports/goals/architecture/designs/tests/reviews×2）。
+- `docs/specs/goals.md`：新增 GOAL-018（开发范式与知识账本运转）。
+- `docs/specs/INDEX.md`：随本计划重生成（26 项目，新增实验/沙盒组）。
+- module 树：本计划无单一受影响 module（元任务）；overview.md/goals.md 即全局回写载体。
+- 归档：`git mv` → `docs/plans/archive/`，`status: archived`（终态）。
