@@ -150,7 +150,7 @@ UI 归 shell-track**（加法设计，不波及 462 验收项）：
 | T4 | 命令接缝 | `DesktopCommand` 通路（按 T1 定案）+ `LaunchApp` 执行体（registry 查找 → `build_dynamic_component` → allocate_app → 新虚拟窗 → 初位） | 单测：LaunchApp 后 `WmState` 增窗；实机：shell 按钮启动 calculator `[✅ 已完成]` 单测半边全绿（commit a56e3c7a3→重做后干净版）：encode/parse 往返+容错、`launch_app` 增窗即焦点+级联初位、`wm_set_layout` grid 落位、drain 幂等（6 项）；实机半边（shell 按钮启动）随 T5 验收；Close/CloseWindow 空桌面在有 shell 时不再退出进程（空态合法） |
 | T5 | shell App + 任务栏 | `shell.at`（或降级候选）+ `taskbar` widget 登记（I4）：窗口列表/聚焦/关闭/布局切换/召唤按钮 | 实机：任务栏点击聚焦、关闭、切布局、召唤占位 overlay `[✅ 已完成]` commit 9bfb38347：`assets/shell.at` 特权 App（宿主 include_str! 装载）+ `taskbar` 四表登记（schema.rs/aura.at 重生成/render_support/view_builder 双臂，drift fence 绿）+ 底部任务栏层装配 + `sync_shell_windows` 指纹门控注入；实机 MCP 截图证实：全屏桌面底部任务栏渲染双窗按钮组（⊞/标题/×/▦▤▢），诊断输出 `z_order=[1,2]` 证实列表同步正确；**点击交互（聚焦/关闭/切布局/召唤）因用户前台占用顺延至 T8 端到端清单统一执行**；实测修正两处 iced 适配器语义（flex-1 仅主轴、for 多子节点需显式 row 包裹）已回写 shell.at 注释 |
 | T6 | 桌面热键 | Alt+Tab / 布局切换 / SummonLauncher（§3.4） | 实机全键盘流：Alt+Tab 循环、快捷键切布局 `[✅ 已完成]` commit 637f94443：`desktop_hotkey_subscription` 扩展四族键位（Esc 退出已实机验证于 T3；Alt+Tab/Ctrl+Tab 窗口循环走 `WmState::mru` 新近序环——cycle 不重排环序保证连续按压遍历；Ctrl+Alt+G/L/F 布局；Ctrl+Space 召唤 `DesktopEvent::SummonLauncher`，464 前静默臂）+ 3 项单测（三窗轮转环绕/单窗无操作）；实机按键流顺延 T8 端到端清单（前台占用约束同 T5） |
-| T7 | 注册表 | pac.rs 补字段 + `app_registry.rs` 扫描 + 启动失败占位页 + `--apps-dir` | 单测：examples/ui 扫描数 ≥27、字段解析、render 过滤 `[✅ 已完成]` commit cb440ff9d：`ui/app_registry.rs`（平铺 pac.at 行读——auto-man→auto-lang 依赖方向禁用完整 Pac 解析，仅读 title/name/icon/category/render 五字段）+ 5 项单测全绿（examples/ui 扫描 28 条 ≥27、459 回退形态、icon/category 缺省回退、render 过滤、临时目录全形态）+ `DesktopOptions{fullscreen,apps_dir}`（默认仓库 examples/ui）+ pac.rs `icon/category` 字段（auto-man check 绿）+ `LAUNCH_FALLBACK_AT` 占位页；boot 不过滤 render（声明 render 是前端目标非 vm 兼容性——011-calculator 即反例，由 panic 边界+占位页兜底；过滤开关留给 464）；实机 boot 日志证实 `app registry: 28 entries` |
+| T7 | 注册表 | pac.rs 补字段 + `app_registry.rs` 扫描 + 启动失败占位页 + `--apps-dir` | 单测：examples/ui 扫描数 ≥27、字段解析、render 过滤 `[✅ 已完成]` commit cb440ff9d：`ui/app_registry.rs`（平铺 pac.at 行读——auto-man→auto-lang 依赖方向禁用完整 Pac 解析，仅读 title/name/icon/category/render 五字段）+ 5 项单测全绿（examples/ui 扫描 28 条 ≥27、459 回退形态、icon/category 缺省回退、render 过滤、临时目录全形态）+ `DesktopOptions{fullscreen,apps_dir}`（默认仓库 examples/ui）+ pac.rs `icon/category` 字段（auto-man check 绿）+ `LAUNCH_FALLBACK_AT` 占位页；boot 不过滤 render（`render:` = `--render` CLI 默认值，`auto run` ≡ `auto run -r vue`，与 vm 桌面兼容性正交——按声明过滤只剩 2 个可启动 App，§9-3 裁决维持不过滤，由 panic 边界+占位页兜底；过滤开关留给 464）；实机 boot 日志证实 `app registry: 28 entries` |
 | T8 | 回归收尾 | I2 五套 desktop_mcp + 462 验收项复跑；I3 grep；文档 | `cargo t` + 实机清单（§5） `[✅ 已完成]` 全量 `nextest --lib --features ui-iced` 3791 通过（两例外均非本计划回归：`test_md_hidden_classes_parse` **master 上同样失败**（并行会话 style parser 改动所致，实测复核）；`benchmark_downcast_performance` 负载抖动、单跑 3/3 绿）；desktop_behavior 8/8（I2）；auto-man 6/6（pac.rs 触碰面）；I3 grep：`is_desktop()` 10 处配置位门控 + RunMode 分叉恰 2 臂（无第二管线）；462 验收面随 T5/T7 boot 复跑（双虚拟窗 chrome/级联/聚焦渲染 MCP 截图证实）；注册表×LaunchApp 会话级端到端单测落 `app_registry::launch_three_real_apps_via_registry_resolver`（真实 examples/ui 三 App → 三虚拟窗，commit d998abfbd） |
 
 ## 5. 验收（端到端骨架）
@@ -200,21 +200,23 @@ UI 归 shell-track**（加法设计，不波及 462 验收项）：
 - 依赖：462。下游：464（消费接缝）、465（消费布局规范与任务栏契约）。
 - 吸收关系：无（441 由 464 吸收）。
 
-## 9. 待澄清事项（执行期登记，交评审裁决）
+## 9. 待澄清事项（执行期登记；1/2/3 已裁决 2026-08-28）
 
 1. **§5.4 验收项的 `virtual_window` schema 登记未在本计划落地**：462 T1 报告
    §5 已冻结该边界（virtual_window 是 renderer 内部组合、无 .at 消费路径，
-   单端登记即死代码），本计划 T1 报告 §6 沿用；故只落了 `taskbar`。若评审
-   坚持 §5.4 原文，补登记动作很小（四表各一行 + aura.at 重生成）。
+   单端登记即死代码），本计划 T1 报告 §6 沿用；故只落了 `taskbar`。
+   **裁决：同意归 465**（2026-08-28）。
 2. **UI 交互矩阵（任务栏点击聚焦/关闭/切布局/召唤、Alt+Tab 实机按键流）未
    实机执行**：执行期间用户前台被并行会话持续占用，反复抢焦点不可取；已以
    会话级端到端单测（三 App 真实启动）+ 渲染/同步 MCP 截图 + Esc 实机（同
-   订阅路径）替代覆盖。建议随 464 launcher 一并实测（同一桌面流）。
-3. **boot 不按 render 过滤注册表**（T7 偏离计划 §3.5 字面）：实测声明
-   `render:"vue"` 的 App（011-calculator 等）在 vm 桌面运行良好——声明的
-   render 是前端目标而非 vm 兼容性；按声明过滤只剩 2 个可启动 App，无法满足
-   §5.1 的 ≥3 App。`ScanOptions.render` 过滤开关保留（单测钉死），启用决策
-   归 464 launcher。
+   订阅路径）替代覆盖。**裁决：转记 464**——已登记进 `docs/plans/464-launcher-app.md`
+   §5 第 4 项，随 464 launcher 同一桌面流补测（2026-08-28）。
+3. **boot 不按 render 过滤注册表**（T7 偏离计划 §3.5 字面）。
+   **语义澄清（2026-08-28，用户裁定）**：pac.at 的 `render:` 字段 = `--render`
+   CLI 参数的默认值（`auto run` ≡ `auto run -r vue`），是渲染目标的默认声明、
+   与 vm 桌面兼容性正交——按声明过滤只剩 2 个可启动 App，无法满足 §5.1 的
+   ≥3 App。**裁决：维持 boot 不过滤**（桌面内启动一律 vm 渲染；`ScanOptions.render`
+   过滤开关保留、单测钉死，启用决策归 464 launcher）。
 4. **master 预存测试失败**（非本计划引入，已实测复核）：`ui::style::
    plan411_tests::test_md_hidden_classes_parse` 在 master 同样红（并行会话
    对 style parser 的改动使 `md:hidden -ml-2` 解析出 2 类）。建议由该改动
