@@ -77,7 +77,12 @@ node scripts/e2e-vm.mjs             # VM 轨 9 断言
 **数据损坏对账项(重要,双端)**:`~/.config/autoos/roles/assistant.soul.md`
 磁盘上已是 655K 连续反斜杠(08-25 产生,2^k 增长=保存路径每轮翻倍);经
 HTTP 文本管线进 UI 后再翻倍至 1.31M(线上转义形式未还原)。请:①恢复该
-文件(从 .bak 或重写);②定位保存路径的翻倍点(VG13 文本重建手术嫌疑最大);
+文件(从 .bak 或重写);②**翻倍点已定界(上游 2026-08-28 晚)**:`back/api.at` fetchEntityFlat(1052-1064)对原始响应文本调
+   `json.get(t, "sidecar")`——Json.get 对字符串值返回重转义字面量(stdlib.rs:2597,serde
+   parse+to_string;字面量语义为文本工具链承载性设计、ffi_dual 字节级锁定,不可改),unquote 剥引号
+   不解转义 → 内存 2N;putEntitySafe(750)写回即翻倍,2^k 循环。修法(下游):字符串内容取点
+   parse-first——`json.parse(json.get(t, "sidecar"))`;同成语的 fm_name/fm_description/fm_body
+   及一切含反斜杠/引号/换行的内容取点均为潜伏同款,请一并排查;
 ③如定界到上游(escaped 形式当明文交付),带最小复现回传。
 
 **已知未决(非本轮范围)**:collection 模块体(Roles/Skills)在当前上游
