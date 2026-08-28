@@ -33,7 +33,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 453 多 App 会话运行时 | M1 | AppSession/DesktopSession；(AppId,·) 扇出；panic 边界；多 OS 窗口验证 | ✅ 完成 2026-08-28（随 459 验收一并归档） | 452 ✅ |
 | 459 DesktopSession 多窗口化 | M1 收口 | iced daemon 迁移；AppId 递增分配与打标；双 AppSession 双窗口 demo；panic 隔离验证 | ✅ 完成 2026-08-28（C0–C4 + 实机验收，已归档） | 453 ✅ |
 | 462（原提案 454）VirtualWindow + WM | M2 | 路线 A：`virtual_window` 注册 widget、chrome、事件/焦点分区、桌面宿主入口、R4 接缝 v1（`462-virtual-window-wm.md`） | ✅ 完成 2026-08-28（实机双窗 demo 全交互 + `cargo t` 3222 绿 + I2 五套 desktop_mcp 全绿；IME 两项残留转 463） | 459 ✅ |
-| 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell pack+任务栏、layout 三模式+snap、`desktop.*` 命令接缝、workspace 驱动模型、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`；Design 25 §3/§4.1/§6 对齐） | 🔄 执行中（plan-455 worktree；T4–T6 已有实施记录） | 462 |
+| 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell pack+任务栏、layout 三模式+snap、`desktop.*` 命令接缝、workspace 驱动模型、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`；Design 25 §3/§4.1/§6 对齐） | ✅ 完成 2026-08-28（复审通过 + 合入归档 + specs 沉淀 P463-1..4） | 462 ✅ |
 | 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 已立项 2026-08-28，未开工（M1 子阶段可先行） | 462+463 |
 | 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳 + E1/E2 接缝语义（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |
 | shell-track（未立项，提案） | M3+ | **AutoShell 统一层**（Design 25）：状态投影协议 v1 + dock/switcher/pager/通知中心/settings/桌面本体，全部 AutoUI DSL 声明、双端同源（I7–I9） | 提案（依赖 463/464；缩略挂 386、shell IME 挂 457） | 463+464 |
