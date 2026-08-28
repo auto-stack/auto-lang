@@ -15,10 +15,11 @@ OUT = SPECS / "INDEX.md"
 GROUPS = {
     "语言核心": ["auto-lang", "auto-val", "auto-atom", "a2r-std", "stdlib", "aavm"],
     "工具链": ["auto-cli", "auto-man", "auto-gen", "auto-lsp", "auto-vm",
-               "auto-cache", "auto-bindgen", "auto-macros"],
+               "auto-cache", "auto-bindgen", "auto-macros", "shim-metadata"],
     "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
-                    "playground-vue", "website", "blocks"],
-    "外围/验证": ["parity"],
+                    "playground-vue", "website", "blocks", "autoui-skill"],
+    "外围/验证": ["parity", "a2r-actor-tests"],
+    "实验/沙盒": ["auto-cosmic"],
 }
 
 STATUS_RE = re.compile(r"^>\s*\*\*Status\*\*:\s*(\S+)", re.M)
@@ -66,7 +67,8 @@ def main():
         "",
         "> **本文件由 `scripts/spec-index.py` 生成，请勿手改。**",
         "> 规约见 [README.md](README.md)；设计见 "
-        "[docs/design/plan-spec-hybrid-model.md](../design/plan-spec-hybrid-model.md)。",
+        "[docs/design/26-autoplan-spec-ledger.md](../design/26-autoplan-spec-ledger.md)；"
+        "全局总览见 [overview.md](overview.md)、目标账本见 [goals.md](goals.md)。",
         "",
     ]
     for group, members in GROUPS.items():

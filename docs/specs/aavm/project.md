@@ -1,6 +1,7 @@
 # aavm
 
-> **Status**: experimental(v2;Plan 429-434 系列收口)
+> **Status**: experimental
+> 备注：v2；Plan 429-434 系列收口
 > 路径:`auto/lib`(v1 已封存于 `auto/lib-legacy/`)| 转译:`auto build`(pac.at)/ `auto trans`
 
 Auto 自举编译器实验(AAVM v2):用 Auto 语言写的编译器前端 + 字节码 VM +

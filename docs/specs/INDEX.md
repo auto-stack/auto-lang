@@ -1,7 +1,7 @@
 # Specs 全局索引
 
 > **本文件由 `scripts/spec-index.py` 生成，请勿手改。**
-> 规约见 [README.md](README.md)；设计见 [docs/design/plan-spec-hybrid-model.md](../design/plan-spec-hybrid-model.md)。
+> 规约见 [README.md](README.md)；设计见 [docs/design/26-autoplan-spec-ledger.md](../design/26-autoplan-spec-ledger.md)；全局总览见 [overview.md](overview.md)、目标账本见 [goals.md](goals.md)。
 
 ## 语言核心
 
@@ -84,14 +84,14 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| lib/lexer.at / token.at / pos.at | 词法分析与位置跟踪 | experimental |
-| lib/parser.at / ast.at | 语法分析与 AST | experimental |
-| lib/typeinfer.at / generics.at | 类型推导与泛型 | experimental |
-| lib/eval.at | 树遍历求值 | experimental |
-| lib/vm.at / opcode.at | 字节码 VM 与指令集 | experimental |
-| lib/codegen.at / a2r.at | 代码生成与 Rust 转译辅助 | experimental |
-| lib/error.at | 错误类型 | experimental |
-| pac.at / greet_mod.at | 包定义与示例模块 | experimental |
+| lib/token.at | TokenKind 139 变体 + keyword_kind/kind_name | 432 完结(M1) |
+| lib/lexer.at | tokenize + dump;434 增 f-string/三引号(D38c) | 432 完结(M1)+434 |
+| lib/parser.at | parse_dump S-expr 直出;434 增泛型实例/type-decl/enum-decl(D38a/b) | 432 完结(M2)+434 |
+| lib/typeinfo.at | typecheck_dump(.type 推断层) | 432 完结(M3) |
+| lib/codegen.at | cg_compile 字节码(I{op,s,n} 载体) | 432 完结(M4) |
+| lib/engine.at | ev_run 栈式 VM(Val 判别结构/数组 arena) | 432 完结(M5) |
+| lib/a2r.at | AA2R:主 a2r 核心子集的 Auto 版(Plan 434) | 434(见其文件头 Snapshot) |
+| pac.at | 包定义(`auto build` 转译入口) | experimental |
 
 </details>
 
@@ -107,6 +107,7 @@
 | auto-cache | active | 7 | [auto-cache/project.md](auto-cache/project.md) |
 | auto-bindgen | active | 4 | [auto-bindgen/project.md](auto-bindgen/project.md) |
 | auto-macros | active | 2 | [auto-macros/project.md](auto-macros/project.md) |
+| shim-metadata | active | 2 | [shim-metadata/project.md](shim-metadata/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -210,6 +211,15 @@
 
 </details>
 
+<details><summary>shim-metadata 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| lib | 提取 + 分类 + shim 生成（进程内 API） | active |
+| bin | 离线 CLI 入口 | active |
+
+</details>
+
 ## UI/Web 生态
 
 | Project | 状态 | 模块数 | 项目卡 |
@@ -221,6 +231,7 @@
 | playground-vue | active | 4 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 7 | [website/project.md](website/project.md) |
 | blocks | active | 4 | [blocks/project.md](blocks/project.md) |
+| autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
 
 <details><summary>auto-playground 模块明细</summary>
 
@@ -306,11 +317,21 @@
 
 </details>
 
+<details><summary>autoui-skill 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| SKILL.md | 技能入口：C1–C9 generator contracts | active |
+| patterns / reference / templates | 生成模式库与参考实现 | active |
+
+</details>
+
 ## 外围/验证
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
 | parity | active | 6 | [parity/project.md](parity/project.md) |
+| a2r-actor-tests | test-only | 2 | [a2r-actor-tests/project.md](a2r-actor-tests/project.md) |
 
 <details><summary>parity 模块明细</summary>
 
@@ -322,5 +343,31 @@
 | auto-parity/report / tap | 报告与 TAP 格式输出 | active |
 | libs | 20+ 三方库移植样例（一致性语料） | active |
 | docs | parity-guide / known-divergences / dashboard | active |
+
+</details>
+
+<details><summary>a2r-actor-tests 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| lib | 测试支撑（转译→构建→运行→对拍） | test-only |
+| tests/actor_parity | actor 套件对拍用例（a2r_std 以 path 引入） | test-only |
+
+</details>
+
+## 实验/沙盒
+
+| Project | 状态 | 模块数 | 项目卡 |
+|---|---|---|---|
+| auto-cosmic | experimental | 4 | [auto-cosmic/project.md](auto-cosmic/project.md) |
+
+<details><summary>auto-cosmic 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| ports | 系统端口接口（通知/电源等）+ mock 实现 | active |
+| demo | 时钟 + 电池小程序（验收样例） | active |
+| host-libcosmic | VTree→libcosmic Element 真实 lowering（Linux）/ Windows headless 回退 | partial（lowering TODO，见债务簿 365 条目） |
+| ports-linux | zbus/UPower/D-Bus 真实适配 | partial（通知 D-Bus push 集成 TODO） |
 
 </details>
