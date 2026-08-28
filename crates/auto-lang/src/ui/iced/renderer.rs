@@ -8478,6 +8478,24 @@ fn compare_pngs(
             tail_tasks.push(iced::widget::operation::focus(id));
         }
 
+        // Plan 464 T3：`__focus_input` 状态约定 —— app 侧把该状态写 "1" 请求
+        // 聚焦其输入框（palette「打开即聚焦」P3；desktop 召唤路径 T4 宿主同款
+        // 写法）。消费即清零（防重复聚焦）；Id 用 Plan 047 的 vm input 统一
+        // 稳定 Id prompt_input。desktop 多 App 同 Id 冲突为 v1 已知边界
+        // （launcher 层最上、召唤场景无竞争输入框；462 焦点分区命名空间跟进）。
+        if matches!(
+            state.component.read_state("__focus_input"),
+            Ok(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        ) {
+            if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
+                eprintln!("[464-FOCUS] __focus_input consumed (update_inner tail)");
+            }
+            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
+            tail_tasks.push(iced::widget::operation::focus(iced::widget::Id::new(
+                "prompt_input",
+            )));
+        }
+
         // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {
             *state.window_size.borrow_mut() = size;
