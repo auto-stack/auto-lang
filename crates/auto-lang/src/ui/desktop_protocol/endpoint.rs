@@ -17,6 +17,7 @@
 // ```
 
 use super::codec::CodecError;
+use super::transport::TransportError;
 use super::message::{
     ControlMsg, DrawList, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
 };
@@ -34,6 +35,8 @@ pub enum ProtocolError {
     VersionMismatch(u16),
     /// 孵化材料解析失败（app_name 未知 / 编译失败——携带宿主侧原因）。
     ResolveFailed(String),
+    /// 共享内存操作失败（S9）。
+    Shm(TransportError),
 }
 
 impl From<CodecError> for ProtocolError {
@@ -187,6 +190,37 @@ impl<S: FrameSource> AppEndpoint<S> {
         }))
     }
 
+    /// 产一帧走共享内存变体（S9）：载荷编码进 `shm` 的 `slot` 槽，
+    /// 管道上只过 FrameReadyShared 元数据。Active 才可。
+    pub fn produce_frame_shared(
+        &mut self,
+        shm: &super::shm::SharedFrameBuffer,
+        damage: Option<WRect>,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.last_slot,
+        };
+        self.last_slot = slot;
+        self.next_frame_id += 1;
+        let payload = self.session.render_frame();
+        let mut encoded = Vec::new();
+        payload.encode(&mut encoded);
+        shm.write_slot(slot, &encoded).map_err(ProtocolError::Shm)?;
+        let len = encoded.len() as u32;
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyShared {
+            wid: self.wid.expect("Active 即有 wid"),
+            frame_id: self.next_frame_id,
+            slot,
+            damage,
+            revision: self.session.revision(),
+            len,
+        }))
+    }
+
     /// app 主动请求退出：Active → Closing，产出 ExitRequest。
     pub fn send_exit(&mut self) -> Result<ProtocolMsg, ProtocolError> {
         if self.state != AppState::Active {
@@ -321,6 +355,8 @@ pub enum HostAction {
     /// 帧合成：写入 surface 的 slot（双缓冲翻面）；适配层随合成回 FrameAck
     /// （frame_id 原样回带）。
     ComposeFrame { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, payload: DrawList },
+    /// 共享内存变体（S9）：适配层从 shm 槽读载荷解码后合成。
+    ComposeFrameShared { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, len: u32 },
     /// app 确认退出/请求退出：回收虚拟窗（462 Close 语义）。
     ReclaimWindow { wid: u64 },
     /// 观测上行转发（MCP 代理的最小落点）。
@@ -385,6 +421,27 @@ impl HostEndpoint {
                     slot,
                     revision,
                     payload,
+                }])
+            }
+            (
+                HostState::Active,
+                ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyShared {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage: _,
+                    revision,
+                    len,
+                }),
+            ) => {
+                let surface = self.surface.expect("Active 即有 surface");
+                Ok(vec![HostAction::ComposeFrameShared {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    len,
                 }])
             }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。

@@ -247,7 +247,9 @@ impl HandshakeMsg {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameMsg {
     /// host→app。缓冲槽分配/重分配（握手隐含一次 alloc(2)；Resize 后同型）。
-    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32 },
+    /// `shm` = 共享内存段名（S9：`autodesk-shm-<surface>` 约定；None = 纯
+    /// 管道帧，Stage 1 loopback 形态）。
+    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32, shm: Option<String> },
     /// host→app。回收全部槽（窗口关闭/独立出去）。
     BufferRelease { surface: u64 },
     /// host→app。虚拟窗尺寸变更（重协商缓冲）。
@@ -276,12 +278,19 @@ impl FrameMsg {
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::BufferAlloc { surface, slots, width, height } => {
+            Self::BufferAlloc { surface, slots, width, height, shm } => {
                 put_u8(out, Self::BUFFER_ALLOC);
                 put_u64(out, *surface);
                 put_u8(out, *slots);
                 put_f32(out, *width);
                 put_f32(out, *height);
+                match shm {
+                    Some(name) => {
+                        put_bool(out, true);
+                        put_string(out, name);
+                    }
+                    None => put_bool(out, false),
+                }
             }
             Self::BufferRelease { surface } => {
                 put_u8(out, Self::BUFFER_RELEASE);
@@ -347,7 +356,8 @@ impl FrameMsg {
                 let slots = r.u8()?;
                 let width = r.f32()?;
                 let height = r.f32()?;
-                Self::BufferAlloc { surface, slots, width, height }
+                let shm = if r.bool()? { Some(r.string()?) } else { None };
+                Self::BufferAlloc { surface, slots, width, height, shm }
             }
             Self::BUFFER_RELEASE => Self::BufferRelease { surface: r.u64()? },
             Self::RESIZE => {
@@ -906,6 +916,14 @@ mod tests {
             slots: 2,
             width: 480.0,
             height: 320.0,
+            shm: Some("autodesk-shm-42".into()),
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+            surface: 43,
+            slots: 2,
+            width: 100.0,
+            height: 80.0,
+            shm: None,
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }));
         round_trip(ProtocolMsg::Frame(FrameMsg::Resize { surface: 42, width: 640.0, height: 400.0 }));
