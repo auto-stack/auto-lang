@@ -15119,14 +15119,16 @@ mod tests {
             render: "vm".to_string(),
         }];
         inject_dock_pinned(&mut ds);
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("__dock_enabled") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
-            other => panic!("__dock_enabled 读回异常: {other:?}"),
-        }
-        match app.component.read_state("__dock_position") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
-            other => panic!("__dock_position 读回异常: {other:?}"),
+        {
+            let app = ds.apps.get(&id).unwrap();
+            match app.component.read_state("__dock_enabled") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+                other => panic!("__dock_enabled 读回异常: {other:?}"),
+            }
+            match app.component.read_state("__dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
+                other => panic!("__dock_position 读回异常: {other:?}"),
+            }
         }
         let pinned = t3_read_array(&ds, "__dock_pinned");
         assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
@@ -15135,6 +15137,50 @@ mod tests {
         assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
         let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
         assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
+
+        // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
+        // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
+        let app = ds.apps.get_mut(&id).unwrap();
+        let _ = app.component.write_state_vec(
+            "__wm_workspaces",
+            vec![
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("0".into())),
+                    ("name", auto_val::Value::Str("Desktop 1".into())),
+                    ("current", auto_val::Value::Str("1".into())),
+                    ("label", auto_val::Value::Str("1".into())),
+                ])),
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("1".into())),
+                    ("name", auto_val::Value::Str("Desktop 2".into())),
+                    ("current", auto_val::Value::Str("".into())),
+                    ("label", auto_val::Value::Str("2".into())),
+                ])),
+            ],
+        );
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceAdd", &[])
+            .expect("WorkspaceAdd handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => {
+                assert_eq!(s.to_string(), "workspace_add", "pager + 写 workspace_add 记录")
+            }
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
+        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceClose", &[auto_val::Value::str("1")])
+            .expect("WorkspaceClose handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                s.to_string(),
+                "workspace_close\t1",
+                "pager × 写 workspace_close 记录"
+            ),
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表
