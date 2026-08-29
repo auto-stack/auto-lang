@@ -42,7 +42,7 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -63,6 +63,14 @@ iced-layout-tests = ["ui-iced", "dep:iced_test"]
 # ui-iced: 面板适配落在 aura_view_builder（ui-interpreter 门控），其测试
 # 与 mcp 链路依赖 iced 后端（iced_adapter/编码）。
 autodown = ["ui-iced", "dep:autodown-core"]
+
+# Plan 473: 原生窗口 dock（假洞 Phase 1）——Win32 适配层。windows dep 为
+# optional + target 门控：仅 Windows × ui-iced（隐含 native-dock）时实际编译，
+# 默认档构建零开销；非 Windows 走同名 no-op 模块。
+native-dock = ["dep:windows"]
+# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
+# test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
+test-native-dock = ["ui-iced", "native-dock"]
 
 [dependencies]
 auto-val = { path = "../auto-val" }
@@ -173,6 +181,19 @@ trans = "0.4.0"
 syn = { version = "2", features = ["full", "parsing", "printing"] }
 fastrand = "2.4.1"
 stacker = "0.1.25"
+
+# Plan 473: native window dock Win32 adapter（发现/几何/样式/层级/WinEventHook）。
+# optional + cfg(windows) 双门控：仅 Windows × native-dock feature（ui-iced 隐含）
+# 时编译；版本取 0.58（Cargo.lock 已有，零新增外部版本）。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_System_LibraryLoader",
+] }
 
 [dev-dependencies]
 criterion = "0.5"

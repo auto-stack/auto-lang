@@ -7,9 +7,12 @@
 //! 状态机事件由宿主层（session / renderer）从 shell 命令面与 WinEventHook
 //! 翻译而来；转移产生的 [`SlotAction`] 由宿主层驱动 win32 层执行。
 
-#[cfg(windows)]
+// Win32 适配：cfg(windows) × native-dock feature（ui-iced 隐含启用）双门控——
+// feature 门控使 Windows 上非 ui 构建（默认档）不引入 windows crate 编译开销；
+// 其余情形（非 Windows / 未启用 feature）编译同名 no-op 模块，宿主层无需 cfg。
+#[cfg(all(windows, feature = "native-dock"))]
 pub mod win32;
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "native-dock")))]
 #[path = "win32_noop.rs"]
 pub mod win32;
 
@@ -269,10 +272,10 @@ pub fn detect_user_drag(cur: Rect, slot: Rect, threshold_px: i32) -> bool {
     (cur.x - slot.x).abs() > threshold_px || (cur.y - slot.y).abs() > threshold_px
 }
 
-/// 写读回探测：请求尺寸与实际读回不一致（窗口拒绝缩到请求值）时，
-/// 把实际值缓存为 min-size 估计；一致则返回 None（无新信息）。
+/// 写读回探测：请求缩到 `requested` 而读回的 `actual` 更大（窗口拒绝缩小）
+/// 时，把实际值缓存为 min-size 估计；读回与请求一致则返回 None（无新信息）。
 pub fn observe_min_size_estimate(requested: Size, actual: Size) -> Option<Size> {
-    (actual.w < requested.w || actual.h < requested.h).then_some(actual)
+    (actual.w > requested.w || actual.h > requested.h).then_some(actual)
 }
 
 /// 局部逻辑坐标 → 屏幕物理坐标映射器。
@@ -483,13 +486,20 @@ mod tests {
 
     #[test]
     fn min_size_estimate_cached_only_when_clamped() {
+        // 请求 400x300 读回 400x300：窗口服从，无新信息
         assert_eq!(
             observe_min_size_estimate(Size::new(400, 300), Size::new(400, 300)),
             None
         );
+        // 请求 400x300 读回 360x300：读回更小（窗口比请求还小，非拒绝缩小），无新信息
         assert_eq!(
             observe_min_size_estimate(Size::new(400, 300), Size::new(360, 300)),
-            Some(Size::new(360, 300))
+            None
+        );
+        // 请求缩到 40x30 读回 136x39：窗口拒绝缩到请求值 → 实际值即 min-size 估计
+        assert_eq!(
+            observe_min_size_estimate(Size::new(40, 30), Size::new(136, 39)),
+            Some(Size::new(136, 39))
         );
     }
 }
