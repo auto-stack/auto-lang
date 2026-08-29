@@ -995,6 +995,14 @@ impl DynamicComponent {
         }
     }
 
+    /// PLAN-051 T8 诊断辅助：暴露 bridge 的 VM fn 调用与列表展开。
+    pub fn bridge_call_for_test(&self, name: &str, args: &[auto_val::Value]) -> Result<auto_val::Value, String> {
+        self.bridge.call_vm_fn(name, args).map_err(|e| e.to_string())
+    }
+    pub fn bridge_index_list_all_for_test(&self, id: usize) -> Vec<auto_val::Value> {
+        self.bridge.index_list_all(id)
+    }
+
     pub fn fire_init(&mut self) {
         // Plan 333: run imported module-level initializers (var notes = ... etc.)
         // before Init, so globals have defined values when Init reads them.
@@ -1150,16 +1158,25 @@ impl DynamicComponent {
                 // PLAN-051 C2 ①: 声明式——子 msg 变体派发后回送宿主
                 // `on<name>` 绑定（musk `send(str)` + `onsend: .SendInput($event)`
                 // 形态；载荷 = 子 handler 收到的首实参，无实参回落输入值）。
-                if let Some(route) = crate::ui::child_emit::lookup_route(
-                    &emit_widget,
-                    &format!("on{}", clean_name),
-                ) {
-                    let payload = args
-                        .first()
-                        .cloned()
-                        .or_else(|| input_value.clone().map(|t| auto_val::Value::Str(t.into())))
-                        .unwrap_or(auto_val::Value::Nil);
-                    self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                let emit_key = format!("on{}", clean_name);
+                match crate::ui::child_emit::lookup_route(&emit_widget, &emit_key) {
+                    Some(route) => {
+                        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                            eprintln!(
+                                "[VM-EMIT] {}.{} -> {}.{} (declarative) args={:?} input={:?}",
+                                emit_widget, clean_name, route.parent_widget, route.handler, args, input_value
+                            );
+                        }
+                        let payload = args
+                            .first()
+                            .cloned()
+                            .or_else(|| input_value.clone().map(|t| auto_val::Value::Str(t.into())))
+                            .unwrap_or(auto_val::Value::Nil);
+                        self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                    }
+                    None => {
+                        // 非错：未绑定回调的子 msg 不回送（vue 同语义）。
+                    }
                 }
                 // PLAN-051 C2 ②: 体内式——被剥离的 `on_send(.draft)` 按前置
                 // 快照实参回送（017-chat DoSend → on_send(.draft) →
@@ -1871,6 +1888,78 @@ mod tests {
             View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
             _ => 0,
         }
+    }
+
+    /// PLAN-051 T8 回归锁: let 绑定调用结果作 for-in 源+循环内 push+return
+    /// 列表(musk messageDisplayBlocks 形态)。实机勘察:直接以调用结果作迭代源
+    /// (for b in fn(...))触发 VM 栈失衡(返回值错位)——上游债登记,let 绑定绕开。
+    #[test]
+    fn plan051_list_iteration_let_bound_call_result() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "fn inner51e(msg obj) obj {
+",
+            "    var r list = []
+",
+            "    r.push({kind: \"text\", text: msg.content})
+",
+            "    return r
+",
+            "}
+",
+            "fn mk51e(msg obj, streaming bool) List {
+",
+            "    var out = []
+",
+            "    let src = inner51e(msg)
+",
+            "    for b in src {
+",
+            "        out.push({ kind: \"text\", text: b.text })
+",
+            "    }
+",
+            "    return out
+",
+            "}
+",
+            "widget Root51e {
+",
+            "    model { var n int = 0 }
+",
+            "    view { col { text \"x\" } }
+",
+            "}
+",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        let mut root = None;
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                crate::ast::Stmt::WidgetDecl(d) => root = Some(d.clone()),
+                _ => {}
+            }
+        }
+        let root_decl = root.expect("root");
+        let widget = crate::aura::extract_widget_from_decl(&root_decl).unwrap();
+        let comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &root_decl, &[], &widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            import_stmts, &std::collections::HashMap::new(), false,
+        ).expect("comp");
+        let msgv = auto_val::Value::Obj(auto_val::Obj::new().with("content", auto_val::Value::str("nihao-body")));
+        let v = comp.bridge_call_for_test("mk51e", &[msgv, auto_val::Value::Bool(false)]).expect("call");
+        eprintln!("[DBG51E] mk51e -> {:?}", v);
+        let rows = match &v {
+            auto_val::Value::Int(id) if *id >= 4_000_000 => comp.bridge_index_list_all_for_test(*id as usize),
+            auto_val::Value::VmRef(r) => comp.bridge_index_list_all_for_test(r.id),
+            _ => vec![],
+        };
+        assert_eq!(rows.len(), 1, "list 应含 1 元素; got {:?}", rows);
     }
 
     /// Round-trip the onclick payload encoding the renderer uses to carry args

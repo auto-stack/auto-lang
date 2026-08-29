@@ -962,10 +962,13 @@ impl<'a> AuraViewBuilder<'a> {
                     Err(e) => {
                         // PLAN-051 C3: state 读 miss → computed 求值回退
                         //（musk filteredMessages 链式 fn 调用形态的 for 源）。
-                        match self
+                        let dbg_vec = self
                             .eval_computed(state_name, bindings)
-                            .and_then(|v| self.value_to_iter_vec(&v))
-                        {
+                            .and_then(|v| self.value_to_iter_vec(&v));
+                        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                            eprintln!("[VM-FOR] {} computed fallback rows={:?}", state_name, dbg_vec.as_ref().map(|v| v.len()));
+                        }
+                        match dbg_vec {
                             Some(v) => v,
                             None => {
                                 log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
@@ -9651,6 +9654,84 @@ mod tests {
             }
             _ => panic!("Expected View::Input"),
         }
+    }
+
+    /// PLAN-051 T8: for 循环多实例子组件的 props 逐实例隔离——musk 会话列表
+    /// `for s in .store.session_list { NavListItem { id: .s.id, onactivate:
+    /// .SelectSession($event) } }`，NavListItem 内部 `onclick: .activate(.id)`。
+    /// 此前子 props 全写统一根态（同名字段互相覆盖），`.id` 烘焙读到碰撞值
+    /// （实机：activate 载荷恒为当前活跃会话 id，切换失效）。期望：子 builder
+    /// 带 per-instance prop 覆盖层，两实例按钮的 onclick 实参各为自己的 id。
+    #[test]
+    fn plan051_child_prop_override_per_instance() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "widget Item51d {
+",
+            "    msg { activate(str) }
+",
+            "    view { button { onclick: .activate(.id) } }
+",
+            "    on { .activate(id) -> {} }
+",
+            "}
+",
+            "widget List51d {
+",
+            "    model { var ids []str = [\"aaa\", \"bbb\"] }
+",
+            "    view { col { for s in .ids { Item51d { id: .s } } } }
+",
+            "}
+",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for st in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = st {
+                decls.push(d.clone());
+            }
+        }
+        // 声明序：Item51d 先、List51d 后 —— 根 = List51d（末声明）。
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract List51d");
+        let child_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract Item51d");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child_widget);
+        let bridge = VmBridge::new(&root_widget).unwrap();
+        let builder = AuraViewBuilder::with_registry(&bridge, "List51d", &registry);
+        let view = builder.build(&root_widget.view_tree);
+        // 收集两实例按钮的 onclick 实参。
+        fn collect_button_args(
+            v: &View<DynamicMessage>,
+            out: &mut Vec<String>,
+        ) {
+            match v {
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children {
+                        collect_button_args(c, out);
+                    }
+                }
+                View::Button { onclick, .. } => {
+                    if let DynamicMessage::Typed { args, .. } = onclick {
+                        for a in args {
+                            if let Value::Str(s) = a {
+                                out.push(s.as_str().to_string());
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut got: Vec<String> = Vec::new();
+        collect_button_args(&view, &mut got);
+        assert_eq!(got.len(), 2, "两实例各一按钮; got {:?}", got);
+        assert!(got.contains(&"aaa".to_string()), "实例 aaa 的实参必须为己 id: {:?}", got);
+        assert!(got.contains(&"bbb".to_string()), "实例 bbb 的实参必须为己 id: {:?}", got);
     }
 
     /// PLAN-050 T9+C1 残余收尾: 按钮内容子树布局方向——按钮样式带 `flex`
