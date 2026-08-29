@@ -207,6 +207,9 @@ where
         View::Empty => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 409 §10 续 5: Overlay 在 VNode 转换里降级为 Empty(VM-only 概念)。
         View::Overlay { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
+        // 无内容语义),同 Overlay 降级 Text/Empty。
+        View::MouseArea { .. } => (VNodeKind::Text, VNodeProps::Empty),
         // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
         View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
 

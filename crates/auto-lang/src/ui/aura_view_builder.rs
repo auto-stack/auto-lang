@@ -1248,6 +1248,12 @@ impl<'a> AuraViewBuilder<'a> {
             // (此前落 unknown fallback → View::Empty,VM 轨 svg 完全不渲染)。
             // 镜像 convert_element 的同名臂(文件 D-GAP 规则)。
             "svg" => self.convert_svg_image(props, children, bindings),
+            // Plan 484: hover 命中区 —— 透明 mouse_area(仅 enter/exit 事件
+            // 转发,无视觉)。chart 组件 tooltip 的命中原语;尺寸/绝对定位由
+            // style 承担,children 通常为空。
+            "mouse-area" | "mouse_area" | "mouseArea" => {
+                self.convert_mouse_area(props, events, children, path, id_map, probe, bindings)
+            }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -2172,6 +2178,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
             // (此前落 unknown fallback → View::Empty)。与 tracked 层同名臂镜像。
             "svg" => self.convert_svg_image(props, children, bindings),
+            // Plan 484: hover 命中区 —— 与 tracked 层同名臂镜像(文件 D-GAP 规则)。
+            "mouse-area" | "mouse_area" | "mouseArea" => {
+                self.convert_mouse_area_untracked(props, events, children, bindings)
+            }
 
             // PLAN-050 T7 (C5): use.web component 声明的图标组件（lucide 集，
             // `Folder { size: 14 }`）→ View::Image{lucide:kebab}，renderer 以
@@ -6894,6 +6904,87 @@ let tabs_inner = View::Row {
     /// svg::Handle 缓存路径渲染(单色 currentColor 文档走画时着色,多彩文档
     /// 原样)。此前 svg/path 落 unknown-tag fallback → View::Empty,VM 轨
     /// 完全不渲染(musk-038 T9 canary 对侧的 native canary)。
+    /// Plan 484: hover 命中区 untracked 臂(convert_mouse_area 的镜像)。
+    /// 无 text probing 需求,children 走 untracked 拼接展开。
+    fn convert_mouse_area_untracked(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let on_enter = aura_events_get_base(events, "onmouseenter")
+            .or_else(|| aura_events_get_base(events, "onhover"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_exit = aura_events_get_base(events, "onmouseleave")
+            .or_else(|| aura_events_get_base(events, "onhoverout"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let style = self.extract_style_with(props, bindings);
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced(children, bindings)
+            .into_iter()
+            .filter(|v| !is_visually_empty(v))
+            .collect();
+        let content = if child_views.is_empty() {
+            View::Empty
+        } else {
+            let mut builder = View::<DynamicMessage>::col();
+            for child in child_views {
+                builder = builder.child(child);
+            }
+            builder.build()
+        };
+        View::MouseArea {
+            content: Box::new(content),
+            on_enter,
+            on_exit,
+            style,
+        }
+    }
+
+    /// Plan 484: hover 命中区 → View::MouseArea。onmouseenter/onmouseleave
+    /// 经通用事件解析(event_to_message_with,支持绑定/字面量参数)→
+    /// DynamicMessage::Typed → dispatch 进 VM handler。children 走拼接展开
+    /// (通常为空,占位尺寸由 style 的 w-[..]/h-[..] 承担)。
+    fn convert_mouse_area(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let on_enter = aura_events_get_base(events, "onmouseenter")
+            .or_else(|| aura_events_get_base(events, "onhover"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_exit = aura_events_get_base(events, "onmouseleave")
+            .or_else(|| aura_events_get_base(events, "onhoverout"))
+            .map(|event| self.event_to_message_with(event, bindings));
+        let style = self.extract_style_with(props, bindings);
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced_source(children, path, id_map, probe, bindings)
+            .into_iter()
+            .filter(|v| !is_visually_empty(v))
+            .collect();
+        let content = if child_views.is_empty() {
+            View::Empty
+        } else {
+            let mut builder = View::<DynamicMessage>::col();
+            for child in child_views {
+                builder = builder.child(child);
+            }
+            builder.build()
+        };
+        View::MouseArea {
+            content: Box::new(content),
+            on_enter,
+            on_exit,
+            style,
+        }
+    }
+
     fn convert_svg_image(
         &self,
         props: &HashMap<String, AuraPropValue>,
@@ -7923,6 +8014,49 @@ mod tests {
                 assert_eq!(content, "Count: 42");
             }
             _ => panic!("Expected View::Text"),
+        }
+    }
+
+    // ========================================================================
+    // Plan 484 — mouse-area hover 命中区
+    // ========================================================================
+
+    #[test]
+    fn test_mouse_area_conversion_events_and_style() {
+        let widget = make_test_widget("Chart", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Chart");
+
+        // 事件形态对齐解析器输出:handler 名 + params 分列(parse_event_value),
+        // 而非 with_event 辅助的原始串。
+        let mut node = AuraNode::element("mouse-area")
+            .with_prop("style", Expr::Str("w-[64px] h-[240px]".into()));
+        if let AuraNode::Element { events, .. } = &mut node {
+            events.insert("onmouseenter".to_string(), AuraEvent {
+                handler: ".Hover".to_string(),
+                params: vec!["0".to_string()],
+            });
+            events.insert("onmouseleave".to_string(), AuraEvent {
+                handler: ".HoverOut".to_string(),
+                params: vec![],
+            });
+        }
+        let view = builder.build(&node);
+
+        match view {
+            View::MouseArea { on_enter, on_exit, style, .. } => {
+                let enter = on_enter.expect("onmouseenter must resolve to a message");
+                match enter {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "Hover");
+                        assert_eq!(args.len(), 1, "literal arg 0 must ride along");
+                    }
+                    other => panic!("Expected Typed message, got: {:?}", other),
+                }
+                assert!(on_exit.is_some(), "onmouseleave must resolve to a message");
+                assert!(style.is_some(), "size classes must parse into style");
+            }
+            other => panic!("Expected View::MouseArea, got: {:?}", other),
         }
     }
 

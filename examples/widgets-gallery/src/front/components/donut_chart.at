@@ -1,17 +1,34 @@
-// components/donut_chart.at - AutoDonutChart component (Plan 437 Phase 2 ④)
+// components/donut_chart.at - AutoDonutChart component (Plan 437 Phase 2 ④ → Plan 484 v2)
 //
-// 官方 Auto 实现的圆环图(d3-arc 风格:外弧 A → 内弧回程 Z,大弧标志
-// span>π)。角度由数据占比循环累进计算,math.cos/sin 直调(§0.6.H 三层
-// 缺陷已修,防御性直线几何按计划指示顺势清理恢复循环形态)。
-// 渲染端 v1 = SVG 子树直通(442 A4)。纪律(§0.6.D)同 line_chart.at。
+// 圆环图(d3-arc 风格:外弧 A → 内弧回程 Z,大弧标志 span>π),角度由
+// 数据占比循环累进计算,math.cos/sin 直调。渲染端 v1 = SVG 子树直通。
+//
+// 484 v2:图例升级为逐行结构(色块 + 名 + 占比)并兼任 hover 命中区
+// (扇区弧形无法矩形命中,hover 图例 → tooltip 锚定扇区中角,半径 81 =
+// 内外中值);tooltip 锚点/内容 Init 预计算,hovered str 门控显隐。
+// props: legend/tooltip/labels(单系列,无 fields/axis/curve)。
+// codegen 纪律同 line_chart.at 头注。
+//
+// # Usage
+// donut-chart (data: .traffic, index: "l", field: "v") {}
 
-widget AutoDonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"]) {
+widget AutoDonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
     msg { Init }
 
     model {
-        // 几何输出(Init 计算):每片 { d: path, c: color } 段记录
+        // 每片 { d: path, c: color }
         segs List = []
-        legend str = ""
+        // 图例 { c: color, s: style, name: str, i: int }
+        legendItems List = []
+        tipXs List = []
+        tipYs List = []
+        tipTitles List = []
+        tipBodies List = []
+        hovered str = "false"
+        tipX str = ""
+        tipY str = ""
+        tipTitle str = ""
+        tipBody str = ""
     }
 
     on {
@@ -28,11 +45,17 @@ widget AutoDonutChart (data: List, index: str = "l", field: str = "v", colors: L
             var rOut float = 100.0
             var rIn float = 62.0
             var a0 float = -1.5707963267948966
-            // ---- 每片:外弧 A → 内弧回程 Z(laf = span > π) ----
             var outSegs List = []
+            var outLegend List = []
+            var outTipX List = []
+            var outTipY List = []
+            var outTipTitle List = []
+            var outTipBody List = []
             var cs = .colors
             var ccount int = cs.len()
-            var k int = 0
+            var lname = .labels
+            var iname = .index
+            var k = 0
             for d in .data {
                 var vf float = d[.field]
                 var span float = 6.283185307179586 * vf / totalf
@@ -59,43 +82,76 @@ widget AutoDonutChart (data: List, index: str = "l", field: str = "v", colors: L
                     ci = ccount - 1
                 }
                 var color = cs[ci]
-                outSegs.push({ d: dstr, c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]" })
+                outSegs.push({ d: dstr, c: color })
+                // 图例项:labels[k] 优先回落 index 字段值;占比整数运算
+                var lv = d[iname]
+                var vi = d[.field]
+                var pct int = vi * 100 / total
+                var name = lv
+                if lname.len() > k {
+                    name = lname[k]
+                }
+                outLegend.push({ c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]", name: name, i: k })
+                // tooltip 锚点:扇区中角、半径 81;右半左移防溢出
+                var mid float = a0 + span / 2.0
+                var tx float = cx + 81.0 * math.cos(mid)
+                if tx > 380.0 {
+                    tx = tx - 160.0
+                }
+                var ty float = cy + 81.0 * math.sin(mid)
+                outTipX.push(f"${tx}")
+                outTipY.push(f"${ty}")
+                outTipTitle.push(name)
+                outTipBody.push(f"${lv} ${vi} (${pct}%)")
                 a0 = a1
                 k = k + 1
             }
             .segs = outSegs
-            // ---- 图例(标签 + 占比%) ----
-            var iname = .index
-            var fname = .field
-            var outLegend = ""
-            for d in .data {
-                var lv = d[fname]
-                var vi = d[fname]
-                var pct int = vi * 100 / total
-                if outLegend == "" {
-                    outLegend = f"${lv} ${pct}%"
-                } else {
-                    outLegend = outLegend + f"   ${lv} ${pct}%"
-                }
-            }
-            .legend = outLegend
+            .legendItems = outLegend
+            .tipXs = outTipX
+            .tipYs = outTipY
+            .tipTitles = outTipTitle
+            .tipBodies = outTipBody
         }
+
+        .Hover(i) -> {
+            .hovered = "true"
+            .tipX = .tipXs[i]
+            .tipY = .tipYs[i]
+            .tipTitle = .tipTitles[i]
+            .tipBody = .tipBodies[i]
+        }
+        .HoverOut -> { .hovered = "false" }
     }
 
     view {
         col (style: "w-full items-center gap-3") {
-            svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
-                circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
-                for seg in .segs {
-                    path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+            col (style: "relative") {
+                svg (viewBox: "0 0 560 300", style: "w-full h-auto max-w-md") {
+                    circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
+                    for seg in .segs {
+                        path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                    }
+                }
+                if .tooltip && .hovered == "true" {
+                    col (style: f"absolute top-[{.tipY}px] left-[{.tipX}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                        text .tipTitle { style: "text-xs font-semibold text-foreground" }
+                        text .tipBody { style: "text-xs text-muted-foreground" }
+                    }
                 }
             }
-            row (style: "gap-4") {
-                for seg in .segs {
-                    span (key: seg["c"], style: seg["s"]) {}
+            if .legend {
+                col (style: "gap-1") {
+                    for li in .legendItems {
+                        mouse-area (key: li["i"], onmouseenter: .Hover(li.i), onmouseleave: .HoverOut) {
+                            row (style: "items-center gap-2") {
+                                span (key: li["c"], style: li["s"]) {}
+                                text li["name"] { style: "text-xs text-muted-foreground" }
+                            }
+                        }
+                    }
                 }
             }
-            text .legend { style: "text-xs text-muted-foreground" }
         }
     }
 }

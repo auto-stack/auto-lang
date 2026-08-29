@@ -1,21 +1,46 @@
-// components/bar_chart.at - AutoBarChart component (Plan 437 Phase 2 ②)
+// components/bar_chart.at - AutoBarChart component (Plan 437 Phase 2 ② → Plan 484 v2)
 //
-// 官方 Auto 实现的柱形图(band scale:槽宽 = 内宽/n,槽内 60% 均分给
-// 各系列;每柱一个 M/h/v/h/Z 子路径,整系列合成单条 path,fill 填充)。
-// 渲染端 v1 = SVG 子树直通(442 A4)。纪律(§0.6.D)同 line_chart.at。
+// 柱形图:band scale(槽宽 = 510/n,grouped 槽内 60% 均分系列;stacked
+// 单列前缀和堆叠)。渲染端 v1 = SVG 子树直通(442 A4)。
+//
+// 484 v2:nice-ticks 刻度/网格/图例/hover tooltip(x 索引竖带命中)/
+// axis/grid/legend/tooltip/labels props + type: "grouped"|"stacked"
+// (沿用 shadcn 旧名)。stacked 变体 Init 内双算双存(segs/segsS 等成对
+// 字段),view 按 type prop 选择——包组件 Init 内 prop 字符串比较会破坏
+// codegen(484 实证,详见计划 M1 与 chart-components.md 已知坑)。
+// 其他实证纪律:条件引用的局部变量紧邻使用点声明;f-string 含字面量 []
+// 时插值用 {};handler 带参无需 msg 声明。
+//
+// # Usage
+// bar-chart (data: .sales, index: "q", fields: ["a", "b"], type: "stacked") {}
 
-widget AutoBarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors: List<str> = ["#2563eb"]) {
+widget AutoBarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, type: str = "grouped") {
     msg { Init }
 
     model {
-        // 几何输出(Init 计算):每系列 { d: path, c: color } 段记录
         segs List = []
+        segsS List = []
         labels str = ""
+        ticks List = []
+        ticksS List = []
+        gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
+        legendItems List = []
+        bands List = []
+        tipXs List = []
+        tipYs List = []
+        tipYsS List = []
+        tipTitles List = []
+        tipBodies List = []
+        hovered str = "false"
+        tipX str = ""
+        tipY str = ""
+        tipTitle str = ""
+        tipBody str = ""
     }
 
     on {
         .Init -> {
-            // ---- 全系列共享 y 域 ----
+            // ---- grouped 域:系列值最大 ----
             var vmax int = 0
             for d in .data {
                 for f in .fields {
@@ -25,10 +50,40 @@ widget AutoBarChart (data: List, index: str = "q", fields: List<str> = ["v"], co
                     }
                 }
             }
-            var vmaxf float = vmax
+            // ---- nice step:int 域 1-2-5 阶梯(退化域 4/1) ----
+            var step int = 1
+            if vmax > 4 {
+                var guard = 0
+                while step * 4 < vmax && guard < 12 {
+                    var mm = step
+                    while mm >= 10 {
+                        mm = mm / 10
+                    }
+                    if mm == 2 {
+                        step = step * 5 / 2
+                    } else {
+                        step = step * 2
+                    }
+                    guard = guard + 1
+                }
+            }
+            var domain int = step * 4
+            if domain < vmax {
+                domain = step * 5
+            }
+            var domainf float = domain
+            var outTicks List = []
+            var tj = 4
+            while tj > 0 {
+                var val int = step * tj
+                outTicks.push({ label: f"${val}" })
+                tj = tj - 1
+            }
+            outTicks.push({ label: "0" })
+            .ticks = outTicks
+
             var bottom float = 260.0
-            var span float = 250.0
-            // ---- band scale:槽宽 = 510/n,槽内 60% 按系列均分 ----
+            var span float = 240.0
             var n int = .data.len()
             var nf float = n
             var slot float = 510.0 / nf
@@ -36,54 +91,277 @@ widget AutoBarChart (data: List, index: str = "q", fields: List<str> = ["v"], co
             var kf float = ks
             var inner float = slot * 0.6
             var barw float = inner / kf
-            var outSegs List = []
             var cs = .colors
             var ccount int = cs.len()
-            var k int = 0
+            var iname = .index
+
+            // ---- stacked 域:逐 index 累计和最大(独立第二遍) ----
+            var vmaxS int = 0
+            for d in .data {
+                var cum int = 0
+                for f in .fields {
+                    var v0 = d[f]
+                    cum = cum + v0
+                }
+                if cum > vmaxS {
+                    vmaxS = cum
+                }
+            }
+            var stepS int = 1
+            if vmaxS > 4 {
+                var guardS = 0
+                while stepS * 4 < vmaxS && guardS < 12 {
+                    var mmS = stepS
+                    while mmS >= 10 {
+                        mmS = mmS / 10
+                    }
+                    if mmS == 2 {
+                        stepS = stepS * 5 / 2
+                    } else {
+                        stepS = stepS * 2
+                    }
+                    guardS = guardS + 1
+                }
+            }
+            var domainS int = stepS * 4
+            if domainS < vmaxS {
+                domainS = stepS * 5
+            }
+            var domainSf float = domainS
+            var outTicksS List = []
+            var tjS = 4
+            while tjS > 0 {
+                var valS int = stepS * tjS
+                outTicksS.push({ label: f"${valS}" })
+                tjS = tjS - 1
+            }
+            outTicksS.push({ label: "0" })
+            .ticksS = outTicksS
+
+            // ---- grouped 段记录 ----
+            var outSegs List = []
+            var outLegend List = []
+            var k = 0
             for f in .fields {
                 var dstr = ""
                 var i = 0
                 for d in .data {
                     var vf float = d[f]
+                    var ytop float = bottom - vf / domainf * span
+                    var hf float = bottom - ytop
                     var xf float = 40.0 + i * slot + slot * 0.2 + k * barw
-                    var yf float = bottom - vf / vmaxf * span
-                    var hf float = bottom - yf
-                    dstr = dstr + f"M${xf} ${yf} h${barw} v${hf} h-${barw} Z "
+                    dstr = dstr + f"M${xf} ${ytop} h${barw} v${hf} h-${barw} Z "
                     i = i + 1
                 }
                 var ci int = k
                 if ci >= ccount {
                     ci = ccount - 1
                 }
-                outSegs.push({ d: dstr, c: cs[ci] })
+                var color = cs[ci]
+                outSegs.push({ d: dstr, c: color })
+                var name = f
+                var lname = .labels
+                if lname.len() > k {
+                    name = lname[k]
+                }
+                outLegend.push({ c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]", name: name })
                 k = k + 1
             }
             .segs = outSegs
-            // ---- x 轴标签 ----
-            var iname = .index
-            var outLabels = ""
-            for d in .data {
-                if outLabels == "" {
-                    outLabels = d[iname]
-                } else {
-                    outLabels = outLabels + "     " + d[iname]
+            .legendItems = outLegend
+
+            // ---- stacked 段记录(前缀和底边) ----
+            var outSegsS List = []
+            var kS = 0
+            for f in .fields {
+                var dstrS = ""
+                var iS = 0
+                for d in .data {
+                    var vfS float = d[f]
+                    var before int = 0
+                    var k2 = 0
+                    for f2 in .fields {
+                        if k2 < kS {
+                            var v2 = d[f2]
+                            before = before + v2
+                        }
+                        k2 = k2 + 1
+                    }
+                    var beforef float = before
+                    var allf float = vfS + beforef
+                    var ytopS float = bottom - allf / domainSf * span
+                    var ybase float = bottom - beforef / domainSf * span
+                    var hfS float = ybase - ytopS
+                    var xfS float = 40.0 + iS * slot + slot * 0.2
+                    dstrS = dstrS + f"M${xfS} ${ytopS} h${inner} v${hfS} h-${inner} Z "
+                    iS = iS + 1
                 }
+                var ciS int = kS
+                if ciS >= ccount {
+                    ciS = ccount - 1
+                }
+                outSegsS.push({ d: dstrS, c: cs[ciS] })
+                kS = kS + 1
+            }
+            .segsS = outSegsS
+
+            // ---- x 轴标签(≤8 抽样) ----
+            var keep int = 1
+            if n > 8 {
+                keep = n / 8 + 1
+            }
+            var outLabels = ""
+            var i2 = 0
+            for d in .data {
+                if i2 % keep == 0 {
+                    if outLabels == "" {
+                        outLabels = d[iname]
+                    } else {
+                        outLabels = outLabels + "   " + d[iname]
+                    }
+                }
+                i2 = i2 + 1
             }
             .labels = outLabels
+
+            // ---- 命中竖带 + tooltip 锚点/内容(双域 tipY) ----
+            var outBands List = []
+            var outTipX List = []
+            var outTipY List = []
+            var outTipYS List = []
+            var outTipTitle List = []
+            var outTipBody List = []
+            var i3 = 0
+            for d in .data {
+                outBands.push({ i: i3, s: f"w-[{slot}px] h-full" })
+                var cx float = 40.0 + i3 * slot + slot / 2.0
+                var tx float = cx
+                if tx > 380.0 {
+                    tx = cx - 160.0
+                }
+                outTipX.push(f"${tx}")
+                // grouped 锚点:该 index 系列值最大者的柱顶
+                var imax int = 0
+                for f3 in .fields {
+                    var v3 = d[f3]
+                    if v3 > imax {
+                        imax = v3
+                    }
+                }
+                var imaxf float = imax
+                var ay float = bottom - imaxf / domainf * span
+                outTipY.push(f"${ay}")
+                // stacked 锚点:该 index 累计和顶
+                var cum3 int = 0
+                for f4 in .fields {
+                    var v4 = d[f4]
+                    cum3 = cum3 + v4
+                }
+                var cum3f float = cum3
+                var ayS float = bottom - cum3f / domainSf * span
+                outTipYS.push(f"${ayS}")
+                outTipTitle.push(d[iname])
+                var body = ""
+                var k3 = 0
+                for f5 in .fields {
+                    var name2 = f5
+                    var lname2 = .labels
+                    if lname2.len() > k3 {
+                        name2 = lname2[k3]
+                    }
+                    if body == "" {
+                        body = f"${name2} ${d[f5]}"
+                    } else {
+                        body = body + "\n" + f"${name2} ${d[f5]}"
+                    }
+                    k3 = k3 + 1
+                }
+                outTipBody.push(body)
+                i3 = i3 + 1
+            }
+            .bands = outBands
+            .tipXs = outTipX
+            .tipYs = outTipY
+            .tipYsS = outTipYS
+            .tipTitles = outTipTitle
+            .tipBodies = outTipBody
         }
+
+        .Hover(i) -> {
+            .hovered = "true"
+            .tipX = .tipXs[i]
+            .tipY = .tipYs[i]
+            .tipTitle = .tipTitles[i]
+            .tipBody = .tipBodies[i]
+        }
+        .HoverOut -> { .hovered = "false" }
     }
 
     view {
-        col (style: "w-full") {
-            svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
-                path (d: "M40 72.5 H550 M40 135 H550 M40 197.5 H550", stroke: "#e2e8f0", stroke-width: "1") {}
-                line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                for seg in .segs {
-                    path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+        col (style: "w-full gap-1") {
+            row (style: "items-stretch w-full") {
+                if .axis == "auto" {
+                    col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                        if .type == "stacked" {
+                            for t in .ticksS {
+                                text t["label"] { style: "text-[10px] text-muted-foreground" }
+                            }
+                        } else {
+                            for t in .ticks {
+                                text t["label"] { style: "text-[10px] text-muted-foreground" }
+                            }
+                        }
+                    }
+                }
+                col (style: "flex-1") {
+                    col (style: "relative") {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                            if .grid {
+                                path (d: .gridPath, stroke: "#e2e8f0", stroke-width: "1") {}
+                            }
+                            line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            if .type == "stacked" {
+                                for seg in .segsS {
+                                    path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                }
+                            } else {
+                                for seg in .segs {
+                                    path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                }
+                            }
+                        }
+                        if .tooltip {
+                            col (style: "absolute top-[20px] left-[40px] z-50 w-[510px] h-[240px]") {
+                                row (style: "h-full") {
+                                    for b in .bands {
+                                        mouse-area (key: b["i"], style: b["s"], onmouseenter: .Hover(b.i), onmouseleave: .HoverOut) {}
+                                    }
+                                }
+                            }
+                            if .hovered == "true" {
+                                col (style: f"absolute top-[{.tipY}px] left-[{.tipX}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                                    text .tipTitle { style: "text-xs font-semibold text-foreground" }
+                                    text .tipBody { style: "text-xs text-muted-foreground whitespace-pre-line" }
+                                }
+                            }
+                        }
+                    }
+                    if .axis == "auto" {
+                        row (style: "justify-between px-12 pt-1") {
+                            text .labels { style: "text-xs text-muted-foreground" }
+                        }
+                    }
                 }
             }
-            row (style: "justify-between px-12 pt-1") {
-                text .labels { style: "text-xs text-muted-foreground" }
+            if .legend {
+                row (style: "gap-4 pt-1 px-2") {
+                    for li in .legendItems {
+                        row (key: li["c"], style: "items-center gap-1") {
+                            span (key: li["c"], style: li["s"]) {}
+                            text li["name"] { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                }
             }
         }
     }

@@ -506,6 +506,17 @@ pub enum View<M: Clone + Debug> {
         open: bool,
         on_dismiss: Option<M>,
     },
+
+    /// Plan 484: 透明 hover 命中区 —— chart 组件 tooltip 的命中原语。
+    /// mouse_area 包裹 content(通常为空容器,由 style 定宽高/绝对定位),
+    /// 光标进入/离开发 on_enter/on_exit 消息(走通用事件分发 → VM handler)。
+    /// vue 端映射 div + @mouseenter/@mouseleave。无视觉,仅事件转发。
+    MouseArea {
+        content: Box<View<M>>,
+        on_enter: Option<M>,
+        on_exit: Option<M>,
+        style: Option<Style>,
+    },
 }
 
 /// Plan 422: 弹层锚定方式。
@@ -1358,6 +1369,13 @@ impl<M: Clone + Debug> View<M> {
                 base: Box::new(base.map_msg_with_arc(f)),
                 content: Box::new(content.map_msg_with_arc(f)),
                 position,
+            },
+            // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
+            View::MouseArea { content, on_enter, on_exit, style } => View::MouseArea {
+                content: Box::new(content.map_msg_with_arc(f)),
+                on_enter: on_enter.map(|m| f(m)),
+                on_exit: on_exit.map(|m| f(m)),
+                style,
             },
             // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。
             View::Popover { anchor, content, placement, open, on_dismiss } => {
