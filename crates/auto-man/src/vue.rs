@@ -2019,6 +2019,48 @@ export default router
                 }
             }
         }
+        // Also scan pac.at for local path dependencies if not already in deps/
+        let pac_path = root_dir.join("pac.at");
+        if let Ok(content) = fs::read_to_string(&pac_path) {
+            let lines: Vec<&str> = content.lines().collect();
+            let mut i = 0;
+            while i < lines.len() {
+                let line = lines[i].trim();
+                if line.starts_with("dep ") {
+                    let dep_name = line["dep ".len()..]
+                        .trim()
+                        .trim_matches(|c| c == '"' || c == '{' || c == ' ')
+                        .trim();
+                    if !dep_name.is_empty() && !out.iter().any(|(n, _)| n == dep_name) {
+                        for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
+                            let sub_line = lines[j].trim();
+                            if sub_line.starts_with("path:") {
+                                let p = sub_line["path:".len()..]
+                                    .trim()
+                                    .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
+                                if !p.is_empty() {
+                                    let local_path = root_dir.join(p);
+                                    if local_path.is_dir() {
+                                        if local_path.join("src").join("front").is_dir() {
+                                            out.push((dep_name.to_string(), local_path.join("src").join("front")));
+                                        } else if local_path.join("front").is_dir() {
+                                            out.push((dep_name.to_string(), local_path.join("front")));
+                                        } else {
+                                            out.push((dep_name.to_string(), local_path));
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                            if sub_line == "}" {
+                                break;
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
+        }
         out
     }
 
@@ -3111,10 +3153,8 @@ export default router
 
         // Write App.vue (the root component)
         let app_vue_path = src_dir.join("App.vue");
-        if !app_vue_path.exists() {
-            fs::write(&app_vue_path, &self.app_vue_code)
-                .map_err(|e| format!("Failed to write App.vue: {}", e))?;
-        }
+        fs::write(&app_vue_path, &self.app_vue_code)
+            .map_err(|e| format!("Failed to write App.vue: {}", e))?;
 
         // Write main.ts
         let uses_autodown = self

@@ -109,7 +109,7 @@ def field_of(state_text, name):
     """Extract `name: value` from autoui_state / press_sequence output.
 
     Strips surrounding quotes (VM state renders str fields as `"5"`)."""
-    m = re.search(rf"{name}:\s*(\S+)", state_text)
+    m = re.search(rf"\b{name}:\s*(\S+)", state_text)
     return m.group(1).strip('"').strip("'") if m else None
 
 
