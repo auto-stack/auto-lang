@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-474
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-json-float-dot-read-fix
 author: [zhaopuming, zcode]
 created_at: 2026-08-29
@@ -8,8 +8,10 @@ updated_at: 2026-08-29
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - "docs/specs/auto-lang/vm/overview.md: 现状补记——CALL_SPEC 数学分发 nanbox 对齐（一元 i32 化石/二元参数序倒置根因，plan011④/Plan 474）+ 三层回归载具 vm_json_float_read_tests"
+touched_goals:
+  - "GOAL-003: VM 侧数值语义正确性（floor/powf 等 CALL_SPEC 数学族），VM/a2r/原生三方一致性的 VM 半边"
 
 affects: [auto-lang/vm, auto-val]   # 受影响的 specs 路径
 current_step: 8
@@ -146,7 +148,24 @@ VM 解释器路径下，经宿主桥/JSON 进入前端的浮点数据不可信�
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zcode（独立复审会话，2026-08-29）；方法：verify-don't-trust——plan 文本 vs worktree 真实 diff 逐项对勘 + 全部验证复跑。
+
+**真实 diff 对勘**（plan-474-dev，09e64c391..HEAD）：2 commits（d55f98b0e/85a0600b9）、3 文件、+367/−18——engine.rs 两 hunk（一元 nv 透传/二元原地调用）、tests.rs +1 行注册、vm_json_float_read_tests.rs 340 行。与计划声称一致，无未申报改动。
+
+**逐条验收**：
+
+1. **最小复现 + 实测误读值记录** — ✅。三层载具齐备（脚本 13 用例/位级/widget handler）；RED 实测值留痕于测试注释与提交信息（-515396076=0xE147AE14 / 1113105367=0x4258A3D7）；判定分支按计划走 GREEN→扩展载体至 RED。
+2. **修复后行为矩阵** — ✅。复审复跑：脚本 13/13、widget 1/1（floor/ceil/round/sqrt/powf × json/字面量接收者）、位级 GET_FIELD 位级精确；Int/Str/Bool/缺键路径以语言事实基线钉住（bool 印 1、缺键印 None 系显示旁支，登记待澄清#3）。
+3. **零警告/零残留** — ✅（附注）。cargo check 警告 master 158 == worktree 158（**零新增**；存量 158 为全仓独立债务，非本 diff 引入）；engine.rs 新增行 TODO/FIXME/eprintln/dbg 计数为 **0**（diff 内 16 处 eprintln 全在测试文件，系仓内既定测试诊断模式）。
+4. **cargo tf 全量** — ✅。复审门禁复跑 **3249/3249 绿**（95 skipped 特性门控）；VM 文件加跑 cargo tv：3 失败（m4 语料 b13_is_enum.at + cookbook×2）经 master 基线对勘**签名逐字节一致**，系并行会话引入的存量，本案零新增（已记录于 S7，移交相应会话/review 台账）。
+5. **④ 债销账 + 移交登记** — ✅。KNOWN-DEBT-AND-RISKS.md ④ 条目已翻 ✅（含定性修正：证伪「-2.0f32 哨兵注入」假设，实录「值相关位错读」根因）；os-config 移交项登记于待澄清#1 及债条目下游段。
+6. **根因级修复** — ✅。diff 审读：一元分支 nv 透传（无转换、无哨兵）、二元分支原地调用（依赖并文档化 rust_fn 逆序弹参约定，powf 实测验证）；无消费方白名单、无 scope 缩水。
+
+**活体端到端**（超出计划验收的加强项）— ✅：os-config 现场（plan-011-dev + 本修复构建）`sys_probe3 = 51 (unknown)`（floor(51.55) 正确，修复前 -536870912）；临时探针补丁已还原、现场干净。
+
+**遗漏/延后/workaround 猎扫**：无未申报延后；f-string 用例摘除系语言事实（插值不展开，待澄清#5 登记非静默）；待澄清#3/#4/#5 为执行中新发现的旁支债务候选（非计划任务缩水），已记录待小计划清偿。
+
+**结论**：6/6 全过，无阻断债务 → **status: reviewed**，移交 `/auto-plan:merge`。
 
 ## 待澄清事项
 
