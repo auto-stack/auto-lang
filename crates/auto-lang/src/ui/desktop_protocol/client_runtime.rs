@@ -491,6 +491,13 @@ pub struct ClientPump {
     spent: bool,
 }
 
+/// 进程级泵起点（诊断时间戳基准）。
+static PUMP_T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+fn t0() -> std::time::Instant {
+    *PUMP_T0.get_or_init(std::time::Instant::now)
+}
+
 impl ClientPump {
     /// 建泵即发 Hello（Detached → Handshaking）。
     pub fn new(
@@ -555,7 +562,9 @@ impl ClientPump {
                         return Some(done);
                     }
                 }
-                Some(Err(_codec)) => return self.on_disconnect(),
+                Some(Err(e)) => {
+                    return self.on_disconnect();
+                }
                 None => {
                     if self.app_end.is_eof() {
                         return self.on_disconnect();
@@ -567,6 +576,11 @@ impl ClientPump {
     }
 
     /// 产品路径：阻塞主循环（真实 child 进程主线程）。
+    ///
+    /// 空闲等待用 `recv_wait` 阻塞——但 recv_wait 是**消费性弹出**，
+    /// 等到的消息必须派发（不能丢弃）：此前 `let _ = recv_wait(..)` 把
+    /// 握手 Welcome 弹掉，child 以 Handshaking 状态收到 BufferAlloc 被
+    /// 状态机拒绝（S2 smoke 现场根因）。
     pub fn run(mut self) -> (ClientExit, AppProjector) {
         loop {
             if let Some(done) = self.step() {
@@ -577,8 +591,26 @@ impl ClientPump {
                 std::thread::sleep(std::time::Duration::from_millis(
                     self.reconnect.as_ref().map(|p| p.interval_ms).unwrap_or(5).max(1) as u64,
                 ));
-            } else {
-                let _ = self.app_end.recv_wait(25);
+                continue;
+            }
+            match self.app_end.recv_wait(25) {
+                Some(Ok(msg)) => {
+                    if let Some(done) = self.dispatch(msg) {
+                        return done;
+                    }
+                }
+                Some(Err(_codec)) => {
+                    if let Some(done) = self.on_disconnect() {
+                        return done;
+                    }
+                }
+                None => {
+                    if self.app_end.is_eof() {
+                        if let Some(done) = self.on_disconnect() {
+                            return done;
+                        }
+                    }
+                }
             }
         }
     }

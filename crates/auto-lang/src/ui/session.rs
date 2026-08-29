@@ -1144,6 +1144,13 @@ impl DesktopSession {
         Self::empty(None)
     }
 
+    /// 测试专用：无参开桌面（内部自铸 iced 窗 Id；跨 crate 集成测试
+    /// 无 iced 依赖时的开桌口）。Plan 480 S2。
+    #[doc(hidden)]
+    pub fn __test_open_desktop(&mut self) {
+        self.open_desktop(iced::window::Id::unique());
+    }
+
     /// 459 §2.3：递增分配新 AppId 并登记 App（boot 期调用，一 App 一窗）。
     pub fn allocate_app(&mut self, component: DynamicComponent) -> AppId {
         self.next_app += 1;
