@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-474
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing                # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-json-float-dot-read-fix
 author: [zhaopuming, zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-val]   # 受影响的 specs 路径
-current_step: 0
+current_step: 6
 total_steps: 8
 ---
 
@@ -128,11 +128,17 @@ VM 解释器路径下，经宿主桥/JSON 进入前端的浮点数据不可信�
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 - **S1**：master 上 commit 本 plan + `.next-id`（475）；创建 worktree `git worktree add .worktrees/plan-474-dev -b plan-474-dev`。验证：`git -C .worktrees/plan-474-dev log --oneline -1` 指向 master 头。
+  [✅ 已完成] plan+.next-id 已提交（09e64c391）；worktree HEAD=09e64c391（master 头），status→executing（2026-08-29）
 - **S2**：新建 `crates/auto-lang/src/tests/vm_json_float_read_tests.rs`（Double Dot 读位级断言 + floor + Int/Str/Bool/Null 用例骨架），在 `crates/auto-lang/src/lib.rs` 测试区加 `mod vm_json_float_read_tests;`。验证：`cargo t vm_json_float` —— 记录 RED 实测值（预期见 0xC0000000 或判定分支走 GREEN）。
+  [✅ 已完成] 判定 **GREEN（基础链无辜）**：脚本级 11 用例全过（print/floor/算术/int 槽/局部/对象字段），位级 GET_FIELD == encode_f64(54.16) 精确。模块注册落 `src/tests.rs`（tests/ 目录约定）。bool 控制组实测基线 `print(obj.ok)` 印 `1`（显示旁支，登记待澄清#3）。
 - **S3**：按阶段 B 打点二分（P1→P4）＋静态扫（-2.0 字面量 / decode_f32 调用面 / expr_type_hint Dot 分支），把注入点收敛到具体 file:line，证据（探针输出）记入本节。验证：注入点唯一且可解释 0xC0000000 来源。
+  [✅ 已完成] **注入点 = engine.rs CALL_SPEC 数学分支（修前 :5996-6026）**。活体复现（os-config plan-011-dev + AUTOUI_MCP_PORT + autoui_state）六探针定位：Dot 读/int 槽/×1.0/÷1.0 全正确，唯 `.floor()` 坏（52.94 → -536870912/0xE0000000，值相关）。仓内 widget 级 RED（handler_App_Init）双指纹破案：probe_b=Int(-515396076)=decode_i32(54.16 裸 f64 低32 0xE147AE14)、probe_c=Int(1113105367)=decode_i32(f32(54.16) 位型 0x4258A3D7)。disasm 实锤：handler 内 `.floor()` 编译为 **CALL_SPEC**（脚本路径走 CALL_NAT 故绿）——`read_i32(receiver_pos)/push_i32/pop_i32` 三处 i32 化石把浮点 nv 位型当整数值。-2.0 哨兵假设证伪；用户现场 54.16→-1073741824 属同族（CALL_SPEC 内联数学分发，具体子链随版本略异）。
 - **S4**：在注入点实施根因修复（tag 守卫/tag-first；改 `crates/auto-lang/src/vm/` 或 `crates/auto-val/src/nano_value.rs` 消费侧，不动写入侧三级已排除路径）。验证：`cargo t vm_json_float` 全绿。
+  [✅ 已完成] engine.rs CALL_SPEC 一元/二元数学分支改 **NanoValue 透传**（read_nv/push_nv/pop_nv；shim 的 VMConvertible f64 pop 自带 TAG_F32→f64 提升与裸 f64 直读，无需转换）。widget 级测试转绿（probe_b/probe_c 均 54.0）。worktree commit d55f98b0e。
 - **S5**：补齐回归矩阵剩余用例（f-string 插值、缺键 null、bool 比较），探针全摘除。验证：`grep -rn 'P474' crates/ | wc -l` == 0 且 `cargo t vm_json_float` 绿。
+  [✅ 已完成] 缺键（实测显示形态 `None`）与 bool 比较（实测印 `1`，#3 显示旁支族）以语言事实基线钉住；f-string 插值在本 harness 对 str/局部均不展开（存量现象，与 ④ 无关，登记待澄清#5，用例摘除）。widget 端补 ceil/round/sqrt（一元族）+ **powf（二元族）——发现并根治二元分支第二处化石**：rust_fn 宏逆序弹参，CALL_SPEC 布局天然对齐，原 receiver 拷贝压顶致参数序倒置（powf 算成 2.0^54.16），改原地调用。脚本 13/13 + widget 全绿，`grep -rn 'P474' crates/`（测试外）== 0。worktree commit（S5 段）。
 - **S6**：`cargo check -p auto-lang` 零警告；`cargo t 340` `cargo t 437`（浮点族邻近模块）绿。
+  [✅ 已完成] 警告数 master 基线 158 == worktree 158（**零新增**；仓库存量警告系独立债务）。`cargo t 340` 5/5、`cargo t math` 16/16 绿；`cargo t 437` 在 fast 档 0 匹配（437 用例在特性门控后，全量档覆盖）。**活体端到端复验 GREEN**：os-config worktree（探针临时补丁）+ 本 worktree 构建的 auto CLI 跑 `auto run -r vm` + MCP autoui_state——`sys_probe3 = 51 (unknown)`（floor(51.55) 正确，修复前 -536870912），五探针全对；探针补丁已 `git checkout` 还原，os-config worktree 干净。注意：首次复验曾因 Git Bash PATH 需 POSIX 形式（`/d/...` 而非 `D:/...`）跑错旧二进制，已纠正。
 - **S7**：全量门禁 `cargo tf` 一次通过（Plan 466 档位）。
 - **S8**：回 master 更新 `docs/plans/KNOWN-DEBT-AND-RISKS.md` ④ 条目 ✅（附修复 commit）；`/auto-plan:review` 独立复审；折叠 master、归档本 plan（`docs/plans/archive/`）、清理 worktree。
 
@@ -143,4 +149,7 @@ VM 解释器路径下，经宿主桥/JSON 进入前端的浮点数据不可信�
 ## 待澄清事项
 
 1. （移交，非本计划体）os-config 撤 T12 整数化绕法的时序：本计划折叠 master 后由 os-config 侧会话执行，其 e2e-vm 全绿后走 T11 收口。
-2. 若阶段 A 判定 GREEN（仓内基础链无辜），注入点在 vm_bridge/UI 链时是否拆独立 plan：届时按改动面大小定，≤3 文件则留本计划，超出则拆 M2。
+2. 若阶段 A 判定 GREEN（仓内基础链无辜），注入点在 vm_bridge/UI 链时是否拆独立 plan：届时按改动面大小定，≤3 文件则留本计划，超出则拆 M2。（已定：注入点在 engine CALL_SPEC，改动 1 文件+测试，留本计划，不拆。）
+3. （S2 观测旁支）json bool 字段 `print(obj.ok)` 印 `1` 而非字面量形态 `true`（`let b = true; print(b)` 印 true）——json 字段读取链的类型提示/显示路径旁支不一致，非 ④ 值损坏（GET_FIELD bool 臂 push encode_bool 正确）。已在回归测试以实测基线钉住；根治（显示形态统一）建议另立 L0/小计划。
+4. （S3 观测旁支）`decode_tagged_nv`（engine.rs:645）缺 `is_null` 臂——null nv 落 `_ => Value::Int(0)`；SET_FIELD 存 null 值字段会失真。与 ④ 无关（④ 走浮点），建议随 #3 一并小修。
+5. （S5 观测旁支）f-string 插值在 run_with_capture 语境对 str 局部也不展开（`f"hello {s}"` 印原文 `{s}`），而 perf_benchmark_tests.rs:187 有同型用法——存量现象，与 ④ 无关；建议独立核查 f-string 插值的生效条件（feature/语法变体/harness 差异）。
