@@ -135,7 +135,12 @@ impl VTreeAtomBuilder {
     fn attach_widget_props(node: &mut Node, props: &VNodeProps) {
         match props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => node.set_prop("content", Value::Str(content.clone().into())),
+            VNodeProps::Text { content, selectable } => {
+                node.set_prop("content", Value::Str(content.clone().into()));
+                if *selectable {
+                    node.set_prop("selectable", Value::Str("true".into()));
+                }
+            }
             VNodeProps::Button { label, disabled } => {
                 node.set_prop("label", Value::Str(label.clone().into()));
                 if *disabled {
@@ -298,7 +303,7 @@ mod tests {
         tree.add_node(VNode::new(
             VNodeId::new(1),
             VNodeKind::Text,
-            VNodeProps::Text { content: "Hello".into() },
+            VNodeProps::Text { content: "Hello".into(), selectable: false },
         ));
         tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
         tree.add_node(VNode::new(

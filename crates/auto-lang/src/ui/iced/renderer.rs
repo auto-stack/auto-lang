@@ -2504,7 +2504,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
-            AbstractView::Text { content, style } => {
+            AbstractView::Text { content, style, .. } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
                 let is_code = style.as_ref()
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
@@ -4365,6 +4365,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                 AbstractView::Text {
                     content: display,
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,
@@ -4446,7 +4447,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     match view {
         AbstractView::Empty => AbstractView::Empty,
 
-        AbstractView::Text { content, style } => AbstractView::Text { content, style },
+        AbstractView::Text { content, style, selectable } => AbstractView::Text { content, style, selectable },
 
         AbstractView::Button {
             label,
@@ -10951,7 +10952,7 @@ fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
     use crate::ui::vnode::{VNodeKind, VNodeProps};
     let child_count = node.children.len();
     match (&node.kind, &node.props) {
-        (VNodeKind::Text, VNodeProps::Text { content }) => {
+        (VNodeKind::Text, VNodeProps::Text { content, .. }) => {
             let snippet: String = content.chars().take(20).collect();
             if content.chars().count() > 20 {
                 format!("\"{}…\"", snippet)
@@ -11675,7 +11676,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
+            VNodeProps::Text { content, .. } => col = col.push(kv_row("content", content.clone())),
             VNodeProps::Button { label, .. } => col = col.push(kv_row("label", label.clone())),
             VNodeProps::Input {
                 placeholder,
@@ -12986,7 +12987,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
         let _ = (key, is_final);
-        AbstractView::<M>::Text { content: value.to_owned(), style: None }.into_iced()
+        AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
 
@@ -13624,7 +13625,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
                 let _ = use_ade;
                 let el: iced::Element<'static, IcedMessage> =
-                    AbstractView::Text { content: value, style: None }.into_iced();
+                    AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el
             }
         }
@@ -14817,7 +14818,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => {
+            VNodeProps::Text { content, .. } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("content", content.clone()))
             }
             VNodeProps::Button { label, .. } => {
@@ -16350,10 +16351,11 @@ mod tests {
     fn test_table_header_style_recursive() {
         let mut v: AbstractView<TestMessage> = AbstractView::Row {
             children: vec![
-                AbstractView::Text { content: "Prop".to_string(), style: None },
+                AbstractView::Text { content: "Prop".to_string(), style: None, selectable: false },
                 AbstractView::Text {
                     content: "Type".to_string(),
                     style: Some(Style { classes: vec![], hover_classes: vec![] }),
+                    selectable: false,
                 },
             ],
             spacing: 0,
@@ -16598,6 +16600,7 @@ mod tests {
                 AbstractView::Text {
                     content: "Su".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,

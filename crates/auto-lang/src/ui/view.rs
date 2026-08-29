@@ -228,6 +228,9 @@ pub enum View<M: Clone + Debug> {
     Text {
         content: String,
         style: Option<Style>,  // ✅ NEW: Unified styling support
+        /// Plan 481: opt-in selection & copy (drag/double-click/Ctrl+C on
+        /// iced via SelectableText). Default false; vue 端仅作语义声明。
+        selectable: bool,
     },
 
     /// Button with label, click handler, and optional styling
@@ -892,6 +895,7 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             ViewBuilderKind::Text => View::Text {
                 content: self.text_content,
                 style: self.style,
+                selectable: false,
             },
             ViewBuilderKind::Button => View::Button {
                 disabled: false,
@@ -963,6 +967,7 @@ impl<M: Clone + Debug> View<M> {
         View::Text {
             content: content.into(),
             style: Some(Style::parse(style_str).expect("Invalid style")),
+            selectable: false,
         }
     }
 
@@ -1370,7 +1375,7 @@ impl<M: Clone + Debug> View<M> {
                     on_dismiss: on_dismiss.map(|m| f(m)),
                 }
             }
-            View::Text { content, style } => View::Text { content, style },
+            View::Text { content, style, selectable } => View::Text { content, style, selectable },
             View::Button { label, content, onclick, style, on_right_click, disabled } => View::Button {
                 label,
                 content: content.map(|c| Box::new(c.map_msg_with_arc(f))),
@@ -2449,14 +2454,14 @@ impl<M: Clone + Debug> TextArg<M> for () {
 impl<M: Clone + Debug> TextArg<M> for &str {
     type Output = View<M>;
     fn into_text(self) -> View<M> {
-        View::Text { content: self.to_string(), style: None }
+        View::Text { content: self.to_string(), style: None, selectable: false }
     }
 }
 
 impl<M: Clone + Debug> TextArg<M> for String {
     type Output = View<M>;
     fn into_text(self) -> View<M> {
-        View::Text { content: self, style: None }
+        View::Text { content: self, style: None, selectable: false }
     }
 }
 
@@ -2529,7 +2534,7 @@ mod tests {
     fn test_text_with_style() {
         let view: TestView = View::text_styled("Hello", "text-lg font-bold");
         match view {
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 assert_eq!(content, "Hello");
                 assert!(style.is_some());
                 let classes = &style.unwrap().classes;
