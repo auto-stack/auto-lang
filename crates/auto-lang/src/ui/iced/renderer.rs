@@ -1843,6 +1843,68 @@ fn apply_container_style<M: Clone + Debug + 'static>(
 /// the shared `apply_row_style` (width/height/margin/visual wrap + id).
 /// Plan 412: flex-row-reverse flips children; items-stretch wraps each child
 /// in a height-Fill container (iced has no cross-axis stretch alignment).
+/// Plan-050 T4/C2: 单侧边框的 1px 填充条模拟——推广 table_row_rule 先例
+/// （iced 容器边框四边整圈,无法单侧;按类串 border-b/t/l/r 在对应方向拼一条
+/// border-border 色 1px 线）。无单侧边框类时原样返回。
+fn apply_side_borders<M: Clone + Debug + 'static>(
+    el: iced::Element<'static, M>,
+    is: Option<&IcedStyle>,
+) -> iced::Element<'static, M> {
+    let Some(is) = is else { return el };
+    if !(is.border_bottom || is.border_top || is.border_left || is.border_right) {
+        return el;
+    }
+    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    let line_style = move |_: &_| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+        ..Default::default()
+    };
+    let hline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fixed(0.0)),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(1.0))
+        .style(line_style)
+        .into()
+    };
+    let vline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fixed(0.0))
+                .height(iced::Length::Fill),
+        )
+        .width(iced::Length::Fixed(1.0))
+        .height(iced::Length::Fill)
+        .style(line_style)
+        .into()
+    };
+    let mut el = el;
+    if is.border_top {
+        el = iced::widget::Column::with_children(vec![hline(), el])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_bottom {
+        el = iced::widget::Column::with_children(vec![el, hline()])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_left {
+        el = iced::widget::Row::with_children(vec![vline(), el])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    if is.border_right {
+        el = iced::widget::Row::with_children(vec![el, vline()])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    el
+}
+
 fn build_row<M: Clone + Debug + 'static>(
     mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
@@ -1884,7 +1946,7 @@ fn build_row<M: Clone + Debug + 'static>(
     if let Some(p) = trail {
         row_widget = row_widget.push(spacer(p));
     }
-    apply_row_style(row_widget, padding, style, widget_id)
+    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
@@ -1952,7 +2014,7 @@ fn build_column<M: Clone + Debug + 'static>(
     // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
     // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
     // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
-    apply_column_style(col_widget, padding, style, widget_id)
+    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -1968,7 +2030,11 @@ fn build_container<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let cont = container(child);
-    apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id)
+    let iced_style = style.map(IcedStyle::from_style);
+    apply_side_borders(
+        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id),
+        iced_style.as_ref(),
+    )
 }
 
 /// Build a Scrollable around a single pre-built child. Width/height come
@@ -14249,6 +14315,17 @@ mod tests {
         let is = p050_style(vec![StyleClass::ItemsStart]);
         let (_, v) = plan050_content_align(Some(&is));
         assert_eq!(v, Some(iced::alignment::Vertical::Top));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_side_border_flags_parse() {
+        let is = p050_style(vec![StyleClass::BorderBottom, StyleClass::BorderRight]);
+        assert!(is.border_bottom && is.border_right);
+        assert!(!is.border_top && !is.border_left);
+        let is = p050_style(vec![StyleClass::BorderTop, StyleClass::BorderLeft]);
+        assert!(is.border_top && is.border_left);
+        assert!(!is.border_bottom && !is.border_right);
     }
 
     #[test]

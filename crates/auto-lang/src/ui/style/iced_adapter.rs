@@ -103,6 +103,11 @@ pub struct IcedStyle {
     pub border: bool,
     pub border_width: Option<f32>,
     pub border_color: Option<iced::Color>,
+    // PLAN-050 C2: 单侧边框（renderer 以 1px 填充条模拟）
+    pub border_bottom: bool,
+    pub border_top: bool,
+    pub border_left: bool,
+    pub border_right: bool,
 
     // Typography (L2)
     pub font_size: Option<IcedFontSize>,
@@ -296,6 +301,10 @@ impl IcedStyle {
             border: false,
             border_width: None,
             border_color: None,
+            border_bottom: false,
+            border_top: false,
+            border_left: false,
+            border_right: false,
             font_size: None,
             font_weight: None,
             font_family: None,
@@ -624,6 +633,18 @@ impl IcedStyle {
             }
 
             // ========== Border (L2) ==========
+            StyleClass::BorderBottom => {
+                self.border_bottom = true;
+            }
+            StyleClass::BorderTop => {
+                self.border_top = true;
+            }
+            StyleClass::BorderLeft => {
+                self.border_left = true;
+            }
+            StyleClass::BorderRight => {
+                self.border_right = true;
+            }
             StyleClass::Border => {
                 self.border = true;
                 self.border_width = Some(1.0);
