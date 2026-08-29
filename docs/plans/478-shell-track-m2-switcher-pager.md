@@ -1,18 +1,24 @@
 ---
 plan_id: PLAN-478
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m2-switcher-pager
 author: [zcode]
 created_at: 2026-08-29T00:00:00+08:00
-updated_at: 2026-08-29T00:00:00+08:00
+updated_at: 2026-08-29T15:45:00+08:00
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——状态投影协议 v1 → v1.1：__wm_workspaces 条目增 label（1 基人读标签，宿主投影）；指纹分区段扩 label、尾接 mru 段；DesktopBus 动词词表增 workspace_add/workspace_close/send_to（§6 变更记录 + 向后兼容声明；文件名不变，vue 端以 v1.1 为对拍基线）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——桌面热键表：Ctrl+Tab 自 CycleWindow 直循环改道 switcher 召唤/推进（update 臂 visible 三态；Alt+Tab 保留循环，463 键位 v1 不动）；新增 Ctrl+Alt+Shift+←/→ SendFocusedTo（shift 先序判定）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——dock：workspace 切换条升格 pager（1 基标签、当前分区高亮、每分区 × 删除——宿主 toast 门（非空不删/末分区保底）、尾部 + 增分区即入新分区；双分支同步）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——switcher overlay（assets/switcher.at 进程内嵌特权 App，464 同型第二枚 overlay 槽：DesktopState.switcher_app + HostCtx.switcher_fields + split_mut 三路/split_ref_switcher/switcher_visible + summon_switcher MRU 快照注入（B12 平行列表 mru_wids/titles/icons + call_handler RebuildMru）+ 快照序键盘流（Tab/←→/Enter/Esc bind + 点击聚焦）+ 键盘独占/Esc 仲裁/仅 visible 推层装配）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——__wm_mru 投影（当前分区 MRU 序，条目同 __wm_wins 六字段，switcher 专用合同面）+ 分区删除/跨区发送驱动语义（WmState::remove_workspace 窗口重排相邻前驱/下标压实/current clamp/焦点让渡；move_win_to_workspace clamp+焦点让渡+恒等保持；mru_in_workspace 投影序辅助；WmCommand::SendFocusedTo+WorkspaceStep）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——shell-track M2 落地（switcher overlay Ctrl+Tab MRU 面板 + workspace pager 增删/高亮/1 基标签 + send_to 跨区发送 + 协议 v1.1 vue 对拍基线；M3 通知中心/M4 settings 待续）"
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -147,21 +153,76 @@ switcher 搜索过滤（launcher 职能）；vue 端投影对拍实现（465/she
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | 施工图 | D1 overlay 槽复用形态（DesktopState 扩展面）/ D2 pager 细节（label 投影 vs .at 拼接、非空分区 × 行为）/ D3 协议 v1.1 增量清单 / Ctrl+Tab 改道路径，报告 `docs/plans/reports/478-t1-blueprint.md` | 评审通过（/auto-plan:review 承载正式评审） |
-| T2 | 驱动侧扩展 | `ui/session.rs`：`remove_workspace`/`move_win_to_workspace` + DesktopCommand 三新臂 encode/parse + `WmCommand::SendFocusedTo` + `__wm_mru` 投影序辅助 | TDD：新增单测 RED→GREEN（cargo nextest -E 'test(workspace) or test(mru)'） |
-| T3 | 协议 v1.1 + 热键 | `sync_shell_windows` 增 `__wm_mru`/`label` + 指纹扩展；`schema/projection-protocol-v1.md` 升版 v1.1（变更记录节）；热键 `Ctrl+Alt+Shift+←/→` + `Ctrl+Tab` 改道 switcher 召唤 | 投影单测扩展绿 + cargo check |
-| T4 | switcher overlay | `crates/auto-lang/assets/switcher.at` 新建 + `ui/shell.rs` 装载 + DesktopState `switcher_app/switcher_fields/split_ref_switcher` + `summon_switcher/advance/confirm` 执行体 + view assembly overlay 层 | 无头单测（464 summon 同型）+ cargo t ui:: |
-| T5 | dock pager | `assets/shell.at` 切换条升格（高亮/1 基标签/`+`/`×`）+ `on` 新消息臂 | shell.at 装载冒烟测 + cargo t ui:: |
-| T6 | 实机验收 | ui_desktop 全流程：switcher 键盘流 + pager 交互 + send_to 隐现 | MCP 截图归档 `reports/assets/478-t6/` + 交互清单报告 |
-| T7 | 回归收尾 | I2 五套 desktop_mcp + `cargo t` 全量 + I7/I9 grep + tracker/Design 25 §6 M2 完成注记 | 全绿 |
+| T1 | 施工图 | D1 overlay 槽复用形态（DesktopState 扩展面）/ D2 pager 细节（label 投影 vs .at 拼接、非空分区 × 行为）/ D3 协议 v1.1 增量清单 / Ctrl+Tab 改道路径，报告 `docs/plans/reports/478-t1-blueprint.md` | 评审通过（/auto-plan:review 承载正式评审） | [✅ 已完成] 报告落 `reports/478-t1-blueprint.md`（commit 8ed27a906）：switcher_fields 落 HostCtx（464 借用冲突同型修正）、无 switcher_entry（内嵌装载）、× 取 toast 门（待澄清①默认）、Ctrl+Tab→SummonSwitcher 改道/Alt+Tab 不动、__wm_mru=当前分区 MRU 序 |
+| T2 | 驱动侧扩展 | `ui/session.rs`：`remove_workspace`/`move_win_to_workspace` + DesktopCommand 三新臂 encode/parse + `WmCommand::SendFocusedTo` + `__wm_mru` 投影序辅助 | TDD：新增单测 RED→GREEN（cargo nextest -E 'test(workspace) or test(mru)'） | [✅ 已完成] RED(E0599 精确命中新 API)→GREEN 15/15（commit 04c16e5a8）；注：session.rs 测试须 `--features ui-iced`（ui 模块 feature 门控）；宿主执行臂（+入新分区/×toast 门/send_to）随 T2 落 renderer.rs 保编译绿 |
+| T3 | 协议 v1.1 + 热键 | `sync_shell_windows` 增 `__wm_mru`/`label` + 指纹扩展；`schema/projection-protocol-v1.md` 升版 v1.1（变更记录节）；热键 `Ctrl+Alt+Shift+←/→` + `Ctrl+Tab` 改道 switcher 召唤 | 投影单测扩展绿 + cargo check | [✅ 已完成] 投影 6/6 绿（v1 四测零回归 + v1.1 mru 序/label/过滤/指纹段）+ cargo check 绿（commit 后注）；协议 v1.1 文内升版（§6 变更记录 + 向后兼容声明）；Ctrl+Alt+G/L/F 字母键位保持 463 行为（shift 守卫不加字母块，仅方向键先序截走） |
+| T4 | switcher overlay | `crates/auto-lang/assets/switcher.at` 新建 + `ui/shell.rs` 装载 + DesktopState `switcher_app/switcher_fields/split_ref_switcher` + `summon_switcher/advance/confirm` 执行体 + view assembly overlay 层 | 无头单测（464 summon 同型）+ cargo t ui:: | [✅ 已完成] `switcher_summon_advance_confirm_roundtrip` 绿（真 switcher.at 直载：懒挂载/MRU 快照 rows 序/Advance 环走/confirm 写 focus 记录自隐+drain 可达）+ `cargo t ui::` 605/605（commit 4c936c8ef）；注：handler 自建 rows 物化为 VmRef/ObjectData（测试解引用先例） |
+| T5 | dock pager | `assets/shell.at` 切换条升格（高亮/1 基标签/`+`/`×`）+ `on` 新消息臂 | shell.at 装载冒烟测 + cargo t ui:: | [✅ 已完成] `desktop_shell_at_builds_with_dock_defaults` 扩展绿（真 shell.at 编译装载 + v1.1 投影注入 + WorkspaceAdd/WorkspaceClose 记录断言）+ `cargo t ui::` 605/605（commit 38c908fb0） |
+| T6 | 实机验收 | ui_desktop 全流程：switcher 键盘流 + pager 交互 + send_to 隐现 | MCP 截图归档 `reports/assets/478-t6/` + 交互清单报告 | [✅ 已完成] 报告 `reports/478-t6-live-acceptance.md`（commit e3e59c967）：pager 实机渲染 PASS（`10-initial.png`）；switcher 键盘流/pager 点击/send_to 注入通道受阻（前台竞争，472 #5–#8 同款先例）按测试设计预案转 headless 指针成文——新增 `workspace_v11_host_arms_add_close_send`（宿主臂全语义含 × toast 门）绿；驱动脚本 `test_478_t6.py` 留前台空闲重跑入口 |
+| T7 | 回归收尾 | I2 五套 desktop_mcp + `cargo t` 全量 + I7/I9 grep + tracker/Design 25 §6 M2 完成注记 | 全绿 | [✅ 已完成] I2 五套 14/11/11/19/26 全绿（472 基线同数）+ `cargo t` 3236/3236 + ui-iced 档 3879/3879（478 新测试全数所在档）+ I7 grep shell.at 零几何、I9 grep 列表全消费 `__wm_*` 投影 + tracker M2 行/Design 25 §6 M1/M2 完成注记回写（commit 136cc5fa2） |
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zcode（/auto-plan:review）· **时间**：2026-08-29 15:40 +08:00 ·
+**基线**：plan-478-dev @ 136cc5fa2（vs adba84aa0，+1549/−81，12 文件）
+
+### 逐条验收判定
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | Ctrl+Tab 召唤 switcher（MRU 序/图标+标题/选中高亮），Tab/←→ 推进、Enter 聚焦、Esc 隐匿、点击聚焦 | **pass**（逻辑全链 headless + 实机键流按 472 先例成文） | `switcher_summon_advance_confirm_roundtrip` 绿（真 switcher.at：懒挂载→MRU 快照 rows 序→Advance 环走→confirm 写 `focus\t<wid>`+自隐→drain 得 FocusWindow）；点击=rows onclick `.Focus(r.wid)`（switcher.at:66/73）；Esc 三路（bind/escape_forward/ExitDesktop 仲裁 renderer.rs:9251）；键位映射 renderer.rs:6004 分支+SummonSwitcher 臂 renderer.rs:9203。实机键注两次 frontmost_pid_mismatch 被拒（用户会话活跃，472 #5–#8 同款），headless 指针+驱动脚本重跑入口成文于 `reports/478-t6-live-acceptance.md` |
+| 2 | pager 当前高亮 + 1 基标签；+ 即入新分区；空分区 × 删（含窗重排相邻）；切换隐现 | **pass**（渲染实机 + 交互 headless，同先例） | 实机截图 `assets/478-t6/10-initial.png`（1 高亮/2 muted/×/+/布局键）；`workspace_v11_host_arms_add_close_send` 绿（+即入/×非空 toast 不删/×空删+clamp/末分区保底 toast）；驱动 `workspace_remove_rehomes_windows_and_clamps`/`..._transfers_focus`/`..._guards_last_partition_and_out_of_range` 绿；隐现=472 投影切换反射测（存量绿）+ shell.at 冒烟（真源写 `workspace_add`/`workspace_close\t<n>` 记录）绿 |
+| 3 | Ctrl+Alt+Shift+←/→ 聚焦窗发送相邻分区（隐现且状态保留）——计划明文允许 headless | **pass** | `workspace_v11_host_arms_add_close_send`（SendTo 恒等焦点保持/隐分区焦点让渡臂）+ `workspace_move_win_to_hidden_and_same_partition`（归属迁移/焦点让渡/z_order.contains 窗保留/clamp）绿；热键→命令映射（shift 先序）+ 宿主 SendFocusedTo 环切对称臂编译绿 |
+| 4 | 协议 v1.1 发布（向后兼容声明）；新增单测全绿 + cargo t 全量绿 + I2 五套绿 | **pass** | `schema/projection-protocol-v1.md` 文内升版 v1.1（§2 字段表/§3 指纹式/§4 三动词/§6 变更记录+兼容声明）；本复审重跑 **cargo tf 3237/3237 绿**（含 1M churn）+ **ui-iced 全档 3880/3880 绿**（478 全部 19 个新增测试所在档）；I2 五套 T7 实测 14/11/11/19/26 全绿（最终代码构建，472 基线同数） |
+
+### 遗漏 / 延后 / Workaround 扫描
+
+- **遗漏**：计划任务逐项对账 diff——无缺失子项。472 遗留 debt 三条全收口
+  （标题归 switcher：rows 显示 title ✓；切换条原始下标：1 基 label ✓；
+  CycleWindow 关系：Ctrl+Tab 改道、Alt+Tab 保留（T1 定案+待澄清②兑现）✓）。
+- **延后**：vue 端对拍/缩略图/重命名持久化/switcher 搜索均为计划**非目标**
+  明文，非擅改；「半透明卡片」以 launcher 同级视觉兑现（T1 §5.1 记录，
+  alpha 类双端覆盖度未证不做，验收无透明度项）——已知限制，非缺陷。
+- **Workaround**：diff TODO/FIXME/HACK 扫描零命中；新增 eprintln 两条均为
+  464 同型错误路径日志（RebuildMru 失败/装配 panic 边界），非调试残留；
+  B12 平行列表为既定同型传输形态（协议 §2 注记），非 workaround。
+
+### 健康检查
+
+- 编译警告 183 = master 基线 183，**零新增**（分支/主干同数对跑确认）。
+- rustfmt 差异仅存量位置（session.rs:26 等，master 同位一致），新增代码零违例。
+- stray print 零；I7 grep shell.at 零几何操作、I9 grep 窗口/分区列表全消费
+  `__wm_*` 投影（T7）。
+
+### 偏差记录（code vs 计划文字，均为 T1 依据性修正且已施工图成文）
+
+1. `switcher_fields` 落 `HostCtx`（计划写 DesktopState）——464 借用冲突硬约束。
+2. 无 `switcher_entry` 字段——switcher.at 进程内嵌（shell pack 同级特权组件），
+   无注册表降级分支，与计划「懒挂载 assets/switcher.at」语义一致。
+3. Ctrl+Alt+G/L/F 未加 shift 守卫——实施时发现守卫会收窄 463 字母键位行为，
+   改为方向键 send_to 分支先序截走（T3 修正，463 行为零变化）。
+
+### 债务候选（登记 KNOWN-DEBT-AND-RISKS.md）
+
+- **P478-1**（低）：switcher 键盘流/pager 点击/send_to 的 OS 键注实机截图
+  缺采（前台竞争，472 先例成文）。补采路径：前台空闲时
+  `MCP_PORT=<port> python examples/ui/028-launcher/tests/test_478_t6.py`。
+- **P478-2**（低，既有）：Ctrl+Space 在 switcher 开启时叠召唤 launcher 不设防
+  （T1 蓝图 R4，v1 接受，Esc 逐层退可达）。
+
+### 结论
+
+四条验收全 pass、无未授权延后、无未登记 workaround → **status: reviewed**，
+可进入 `/auto-plan:merge`（折叠加 specs 沉淀）。
 
 ## 待澄清事项
 
-- D2 中「非空分区 × 删除」交互取（置灰 vs toast 提示 vs 窗口重排直删）
-  待 T1 施工图定案；无用户强偏好则取 toast 提示（最少意外）。
+- ~~D2 中「非空分区 × 删除」交互取（置灰 vs toast 提示 vs 窗口重排直删）
+  待 T1 施工图定案；无用户强偏好则取 toast 提示（最少意外）。~~
+  **已定案（T1，2026-08-29）**：取 toast 门——× 恒可点，非空分区 → toast
+  提示不删；驱动层 `remove_workspace` 仍支持非空重排（验收②括注语义，
+  单测覆盖）。见 `reports/478-t1-blueprint.md` §3。
 - Alt+Tab 是否在非 Windows 平台（Linux/macOS 宿主）也改道 switcher——
   v1 先不动（463 键位定案范围外），登记 M3+ 评估。
+  **T1 施工图兑现（§2）**：Ctrl+Tab 改道 switcher，Alt+Tab 保留
+  `CycleWindow`（463 键位 v1 不动）；M3+ 评估挂 tracker 478 行。

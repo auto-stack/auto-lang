@@ -51,14 +51,16 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 478 | 实机键流补采 | switcher 键盘流/pager 点击/send_to 的 OS 键注实机截图缺采（前台竞争 frontmost_pid_mismatch，472 同款先例）；逻辑 headless 全链覆盖（19 新测试含宿主臂 toast 门）。补采：前台空闲跑 `examples/ui/028-launcher/tests/test_478_t6.py`。 | `reports/478-t6-live-acceptance.md` + `reports/478-t1-blueprint.md` §8 R1 |
+| 478 | Ctrl+Space 叠召唤不设防 | switcher 开启时 Ctrl+Space 仍会叠召唤 launcher（双 overlay 堆叠合法，Esc 逐层退可达）；v1 接受，M3 通知中心/表面仲裁时统一。 | `reports/478-t1-blueprint.md` §8 R4 |
 | 476 | slot 范围外项（v1） | teleport、动态 slot 名（`slot(name: expr)`）、多层 widget 嵌套 slot 透传未实现（需求 009 §3.7 明示范围外）；`for` 循环体内直接出现的 outlet 走非拼接兜底路径（单子直通/多子 Column 包装，轴向不随容器）。 | `docs/plans/476-vm-slot-substitution.md` 目标 7 + D5 |
 | 476 | 多子填充 probe 共享路径 | 源索引编号容器（scroll/container/grid tracked 双胎）下 outlet 的多个展开子视图共享 outlet 源索引——多子填充时后写 probe 条目覆盖先写（MCP 快照少一行绑定，vtree/渲染/事件不受影响）；musk 现网具名槽填充均为单子节点，未触发。 | `ui/aura_view_builder.rs` expand_children_spliced_source 注释 |
 | 476 | VM registry 仅注册 use 导入 widget | `auto run -r vm` 的 WidgetRegistry 只收 `use` 导入的 widget（lib.rs run_file_dynamic_ui_inner）——同项目隐式组件调用（无 use）落 tag fallback（children 包装直渲染，组件自身视图丢失）；033-slots 此前即此假阳性（填充"可见"实为 fallback 直出）。示例须 `use x: X` 导入才走真组件路径。 | `crates/auto-lang/src/lib.rs` 2b 段 + 033 app.at Plan 476 注释 |
 | 476 | ui 模块测试盲区 | `cargo check -p auto-lang`/`cargo t`/`cargo tf` 默认特性不含 `ui` feature——ui/（aura_view_builder、iced renderer 等）源码与测试**不在日常档编译运行**，须显式 `--features ui-iced`（本计划 T5 发现：首轮 check 对 ui 改动是空转）。 | `crates/auto-lang/src/lib.rs` `#[cfg(feature = "ui")] pub mod ui` |
 | 472 | dock 实机注入项（×关闭/切换条/键盘流） | 沙箱输入注入与前台竞争：click dispatch 身份校验失败/坐标过期、键盘注入需前台被用户会话抢回——×关闭、切换条点击、召唤 launcher、布局热键四项实机未点验（464 同款先例）。语义 headless 全覆盖（T2 分区 7 测+T3 投影反射测+动词解析测+wm_remove_win 测），后续注入通道升级或真机人工点验补跑。 | `reports/472-t5-live-acceptance.md` §1 #5-8 |
-| 472 | dock 焦点窗标题文本未做 | T1 施工图 §4 提及焦点窗 title 文本缀于运行窗分组前，实现为纯图标组；标题展示归 M2 switcher（其正职），非缺失语义。 | `reports/472-t1-projection-blueprint.md` §4 + `assets/shell.at` |
-| 472 | shell.at dock 双分支重复 | top/bottom 两个 if 分支各持一份任务栏标记（DSL 无局部模板复用）；v1 自证瑕疵，M2 pack 化时收敛。 | `assets/shell.at` view 注释 |
-| 472 | workspace 条显示原始下标 | 切换条按钮显示分区 id "0/1"（0 基串）；人读标签（1 基/命名/高亮态强化）归 M2 pager。 | `assets/shell.at` + `schema/projection-protocol-v1.md` §2.2 |
+| ~~472~~ | ~~dock 焦点窗标题文本未做~~ | **✅ 478 收口**：标题展示归 switcher rows（图标+title），472 遗留 debt 兑现。 | `assets/switcher.at` + Plan 478 |
+| 472 | shell.at dock 双分支重复 | top/bottom 两个 if 分支各持一份任务栏标记（DSL 无局部模板复用）；v1 自证瑕疵，M3 pack 化时收敛（478 pager 升格维持双分支现状）。 | `assets/shell.at` view 注释 |
+| ~~472~~ | ~~workspace 条显示原始下标~~ | **✅ 478 收口**：pager 1 基人读标签（宿主投影 `label`）+ 当前分区高亮，472 遗留 debt 兑现。 | `assets/shell.at` + `schema/projection-protocol-v1.md` v1.1 §2 |
 | 465 | a2vue 组件路径 prop 直通 | shadcn 组件路径对任意自定义 prop（如 virtual_window 的 `win: w`）不透传（v-for :key 路径仅子组件/外部门组件走 v-bind 形态）；宿主叶子自读 WmStore 不依赖该透传，.at 直书桌面为后续需求时补齐。 | `ui_gen/vue.rs` is_shadcn_component 属性发射路径 + `reports/465-t4-wm-dom-leaf.md` §3 |
 | 465 | reka portal 族窗口逸出 | dialog/modal/dropdown 等经 reka DialogPortal **DOM 重挂** document.body（T2 实测：CSS containing block 不可收敛，DOM 搬家≠CSS fixed）；v1 登记限制清单+启动警告，不改写 portal 语义；正规解 = 生成器 DialogContent 模板 `DialogPortal :to` + provide/inject 注入窗容器（generator 级改写，后续）。 | `ui_gen/vue.rs:14483` DialogContent 模板 + `reports/465-t2-containment-spike.md` §1① |
 | 465 | document 监听跨窗广播 | App 自注册的 `.window/.document` 全局监听天然跨窗触发（T2 实测：单键双窗计数同涨）；桌面热键走捕获段+stopImmediatePropagation 自保；受害 App 白名单先行。 | `assets/wm/keyboard.ts` + `reports/465-t2-containment-spike.md` §1③ |
