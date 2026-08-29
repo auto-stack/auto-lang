@@ -195,7 +195,7 @@ widget App {
 
                         // Charts group (Plan 437)
                         text "Charts" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-item (to: "/line-chart", icon: "activity", label: "AutoLineChart")
+                        nav-item (to: "/line-chart", icon: "activity", label: "LineChart")
                         nav-item (to: "/bar-chart", icon: "bar-chart-3", label: "BarChart")
                         nav-item (to: "/area-chart", icon: "area-chart", label: "AreaChart")
                         nav-item (to: "/donut-chart", icon: "circle", label: "DonutChart")

@@ -15,9 +15,9 @@
 //
 // # Usage
 // use { package: official from "../components" }
-// auto-line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
+// line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
-widget AutoLineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
+widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
     msg { Init }
 
     model {

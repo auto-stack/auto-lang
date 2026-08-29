@@ -16653,76 +16653,6 @@ widget W {
     // charts, input, checkbox, tabs-with-model, radiogroup).
 
     #[test]
-    fn test_generate_shadcn_attrs_area_chart() {
-        // Real parse path (plan 012 batch C): `data: .monthlyRevenue` parses
-        // to Dot(Ident("self"), "monthlyRevenue"), not a bare Ident.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
-widget W {
-    model { var monthlyRevenue list = [] }
-    view {
-        area-chart(data: .monthlyRevenue, categories: ["desktop", "mobile"], index: "month", show-x-axis: false)
-    }
-}
-"#);
-        assert!(sfc.contains(":data=\"monthlyRevenue\""), "data binding:\n{}", sfc);
-        assert!(sfc.contains(":categories="), "categories bound:\n{}", sfc);
-        assert!(sfc.contains("index=\"month\""), "index attr:\n{}", sfc);
-        assert!(sfc.contains(":show-x-axis=\"false\""), "show-x-axis bound:\n{}", sfc);
-    }
-
-    #[test]
-    fn test_generate_shadcn_attrs_bar_chart() {
-        // Real parse path (plan 012 batch C).
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
-widget W {
-    model { var quarterlySales list = [] }
-    view {
-        bar-chart(data: .quarterlySales, type: "stacked", rounded-corners: true)
-    }
-}
-"#);
-        assert!(sfc.contains(":data=\"quarterlySales\""), "data binding:\n{}", sfc);
-        assert!(sfc.contains("type=\"stacked\""), "type attr:\n{}", sfc);
-        assert!(sfc.contains(":rounded-corners=\"true\""), "rounded-corners bound:\n{}", sfc);
-    }
-
-    #[test]
-    fn test_generate_shadcn_attrs_line_chart_with_curve() {
-        // Real parse path (plan 012 batch C): also locks the observable effect
-        // of the internal `use_curve_type` flag — the CurveType import.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
-widget W {
-    model { var d list = [] }
-    view {
-        line-chart(data: .d, curve-type: "monotone")
-    }
-}
-"#);
-        assert!(sfc.contains(":curve-type=\"CurveType.MonotoneX\""), "curve-type:\n{}", sfc);
-        assert!(
-            sfc.contains("import { CurveType } from '@unovis/ts'"),
-            "CurveType import (use_curve_type effect):\n{}",
-            sfc
-        );
-    }
-
-    #[test]
-    fn test_generate_shadcn_attrs_donut_chart() {
-        // Real parse path (plan 012 batch C): `value-formatter: .formatValue`
-        // parses to Dot(Ident("self"), "formatValue"), not a bare Ident.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
-widget W {
-    model { var d list = [] }
-    view {
-        donut-chart(data: .d, category: "source", value-formatter: .formatValue)
-    }
-}
-"#);
-        assert!(sfc.contains("category=\"source\""), "category attr:\n{}", sfc);
-        assert!(sfc.contains(":value-formatter=\"formatValue\""), "value-formatter bound:\n{}", sfc);
-    }
-
-    #[test]
     fn test_charts_gallery_compiles() {
         // Integration test: compile the charts gallery app.at and verify output
         use crate::ui_build_shadcn;
@@ -16960,10 +16890,9 @@ widget W {
         let scroll = registry.get("scroll").unwrap();
         let m = scroll.backend("vue").unwrap();
         assert!(m.import.as_deref().unwrap_or("").contains("scroll-area"));
-        // 唯一带 extras 的家族:chart(ChartTooltip/ChartLegend/ChartStyle)
-        let chart = registry.get("chart").unwrap();
-        let mc = chart.backend("vue").unwrap();
-        assert!(mc.extra_components.iter().any(|c| c == "ChartTooltip"));
+        // Plan 484: chart 家族(ChartTooltip/ChartLegend/ChartStyle extras)
+        // 已随 shadcn-vue chart 路线退役——裸名让位 official 包 Auto 组件。
+        assert!(registry.get("chart").is_none(), "shadcn chart family must be retired");
     }
 
     // ========================================

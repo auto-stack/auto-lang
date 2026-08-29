@@ -14,7 +14,7 @@
 // # Usage
 // bar-chart (data: .sales, index: "q", fields: ["a", "b"], type: "stacked") {}
 
-widget AutoBarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, type: str = "grouped") {
+widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, type: str = "grouped") {
     msg { Init }
 
     model {

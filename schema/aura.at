@@ -1991,35 +1991,6 @@ element alerttitle {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element areachart {
-    tag: "areachart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "AreaChart", import: "@/components/ui/chart-area", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "curve-type", type: "string", description: "CurveType value (basis cardinal monotone step natural ...)" }
-        { name: "show-gradient", type: "union:bool,state_ref", description: "Gradient fill under curve" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis area chart (shadcn-vue chart-area). No events in v1."
-}
-
 element aspect_ratio {
     tag: "aspect_ratio"
     category: "layout"
@@ -2122,35 +2093,6 @@ element avatarimage {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element barchart {
-    tag: "barchart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "BarChart", import: "@/components/ui/chart-bar", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "type", type: "one_of:grouped,stacked", description: "Bar grouping mode" }
-        { name: "rounded-corners", type: "union:bool,state_ref", description: "Rounded bar corners" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis bar chart (shadcn-vue chart-bar). No events in v1."
 }
 
 element box {
@@ -2435,49 +2377,6 @@ element cardtitle {
     ]
     allows_children: true
     description: "Card title"
-}
-
-element chart {
-    tag: "chart"
-    category: "content"
-    tier: "web_component"
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
-    vue: { component: "ChartContainer", import: "@/components/ui/chart", extras: ["ChartTooltip", "ChartLegend", "ChartStyle"], npm: "@unovis/vue@^1.6.7" }
-    sub_widgets: ["chartlegend", "charttooltip"]
-    props: [
-        { name: "config", type: "union:string,state_ref", description: "Chart config object (per-series color and label keys)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis chart container (shadcn-vue ChartContainer); wraps a chart family component. No events in v1."
-}
-
-element chartlegend {
-    tag: "chartlegend"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "ChartLegend", import: "@/components/ui/chart" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Chart legend (slot content of chart container). No props or events in v1 beyond class."
-}
-
-element charttooltip {
-    tag: "charttooltip"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "ChartTooltip", import: "@/components/ui/chart" }
-    props: [
-        { name: "indicator", type: "one_of:dot,line,square,dashed", description: "Tooltip marker shape" }
-        { name: "hide-label", type: "union:bool,state_ref", description: "Hide the series label row" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Chart tooltip (slot content of chart container). No events in v1."
 }
 
 element chatmessage {
@@ -3055,31 +2954,6 @@ element dialogtrigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element donutchart {
-    tag: "donutchart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DonutChart", import: "@/components/ui/chart-donut", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per arc" }
-        { name: "category", type: "string", description: "Numeric value field name" }
-        { name: "index", type: "string", description: "Arc label field name" }
-        { name: "colors", type: "state_ref", description: "Per-arc color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed arc opacity" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Arc legend" }
-        { name: "type", type: "one_of:grouped,stacked", description: "Arc grouping mode" }
-        { name: "value-formatter", type: "state_ref", description: "Arc value formatter fn" }
-        { name: "sort-function", type: "state_ref", description: "Arc sort fn" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis donut chart (shadcn-vue chart-donut). No events in v1."
-}
-
 element drawer {
     tag: "drawer"
     category: "overlay"
@@ -3548,34 +3422,6 @@ element kbd {
     ]
     allows_children: true
     description: "Keyboard key display"
-}
-
-element linechart {
-    tag: "linechart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "LineChart", import: "@/components/ui/chart-line", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "curve-type", type: "string", description: "CurveType value (basis cardinal monotone step natural ...)" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis line chart (shadcn-vue chart-line). No events in v1."
 }
 
 element loading {

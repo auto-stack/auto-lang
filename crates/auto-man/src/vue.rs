@@ -123,11 +123,8 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/toggle-group", "toggle-group"),
     ("@/components/ui/aspect-ratio", "aspect-ratio"),
     ("@/components/ui/button-group", "button-group"),
-    ("@/components/ui/chart", "chart"),
-    ("@/components/ui/chart-area", "chart-area"),
-    ("@/components/ui/chart-bar", "chart-bar"),
-    ("@/components/ui/chart-line", "chart-line"),
-    ("@/components/ui/chart-donut", "chart-donut"),
+    // Plan 484: shadcn-vue chart 族脚手架(chart/chart-area/-bar/-line/-donut)
+    // 退役——chart 由 official 包 Auto 组件承担,不再依赖 @unovis。
     ("@/components/ui/collapsible", "collapsible"),
     ("@/components/ui/input-group", "input-group"),
     ("@/components/ui/input-otp", "input-otp"),
@@ -187,11 +184,6 @@ const OPTIONAL_DEPS: &[(&str, &str)] = &[
     ("zod", "^3.25.76"),
     ("embla-carousel-vue", "^8.5.1"),
     ("@vueuse/core", "^10.7.0"),
-    // PLAN-457: bundled chart scaffolds (chart / chart-area / -bar / -line /
-    // -donut) import @unovis — previously the shadcn-vue CLI installed these
-    // as a side effect of `add`; now declared up front.
-    ("@unovis/vue", "^1.6.7"),
-    ("@unovis/ts", "^1.6.7"),
 ];
 
 /// Plan 442 P0-1: which optional dependency groups the generated code
@@ -224,9 +216,6 @@ pub struct VueDependencyUsage {
     /// table (ash-gui's package.json regeneration dropped @vueuse and
     /// vue-tsc failed on the fresh gen tree).
     pub vueuse_scaffold: bool,
-    /// PLAN-457: chart components (chart / chart-area / -bar / -line /
-    /// -donut) whose bundled scaffolds import @unovis/vue + @unovis/ts.
-    pub chart: bool,
     /// UI components whose scaffold imports class-variance-authority (button / avatar / badge / alert / navigation-menu).
     pub cva_scaffold: bool,
     /// UI components whose scaffold imports reka-ui.
@@ -280,12 +269,6 @@ impl VueDependencyUsage {
                 // @vueuse/core (pre-existing fresh-install gap, hit while
                 // verifying 015-notes).
                 || corpus.contains("@/components/ui/separator'"),
-            // PLAN-457: any chart-family component pulls @unovis.
-            chart: corpus.contains("@/components/ui/chart'")
-                || corpus.contains("@/components/ui/chart-area'")
-                || corpus.contains("@/components/ui/chart-bar'")
-                || corpus.contains("@/components/ui/chart-line'")
-                || corpus.contains("@/components/ui/chart-donut'"),
             cva_scaffold: corpus.contains("@/components/ui/button'")
                 || corpus.contains("@/components/ui/avatar'")
                 || corpus.contains("@/components/ui/badge'")
@@ -360,11 +343,6 @@ impl VueDependencyUsage {
         // table scaffolds — detected via `vueuse_scaffold`.
         if self.carousel || self.sidebar || self.vueuse_scaffold {
             pkgs.push("@vueuse/core");
-        }
-        // PLAN-457: bundled chart scaffolds import @unovis/vue (+ /ts types).
-        if self.chart {
-            pkgs.push("@unovis/vue");
-            pkgs.push("@unovis/ts");
         }
         pkgs
     }
@@ -4990,7 +4968,6 @@ render: \"vm\"
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
-            chart: true,
             ..Default::default()
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
@@ -5003,8 +4980,9 @@ render: \"vm\"
         assert!(pkg.contains("\"zod\""), "{pkg}");
         assert!(pkg.contains("\"embla-carousel-vue\""), "{pkg}");
         assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
-        assert!(pkg.contains("\"@unovis/vue\""), "{pkg}");
-        assert!(pkg.contains("\"@unovis/ts\""), "{pkg}");
+        // Plan 484: @unovis 随 shadcn chart 族脚手架退役,不再出现在任何
+        // 生成物依赖中(负断言)。
+        assert!(!pkg.contains("unovis"), "{pkg}");
         // A single consumed group doesn't drag the others in.
         let only_toast = VueDependencyUsage { toast: true, ..Default::default() };
         let pkg = generate_package_json("demo", false, false, &[], &only_toast);

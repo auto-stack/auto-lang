@@ -12,7 +12,7 @@
 // # Usage
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
-widget AutoDonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
+widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
     msg { Init }
 
     model {

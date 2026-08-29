@@ -1997,48 +1997,9 @@ impl WidgetRegistry {
         });
         self.register(list_item);
 
-        // === Charts (shadcn-vue + Unovis) ===
-        // AreaChart
-        let mut area_chart = WidgetSpec::new("AreaChart", WidgetCategory::Data)
-            .with_alias("area-chart");
-        area_chart.has_children = false;
-        self.register(area_chart);
-
-        // BarChart
-        let mut bar_chart = WidgetSpec::new("BarChart", WidgetCategory::Data)
-            .with_alias("bar-chart");
-        bar_chart.has_children = false;
-        self.register(bar_chart);
-
-        // LineChart
-        let mut line_chart = WidgetSpec::new("LineChart", WidgetCategory::Data)
-            .with_alias("line-chart");
-        line_chart.has_children = false;
-        self.register(line_chart);
-
-        // DonutChart
-        let mut donut_chart = WidgetSpec::new("DonutChart", WidgetCategory::Data)
-            .with_alias("donut-chart");
-        donut_chart.has_children = false;
-        self.register(donut_chart);
-
-        // Chart (shared container/primitives)
-        let mut chart = WidgetSpec::new("Chart", WidgetCategory::Data)
-            .with_alias("chart");
-        chart.has_children = true;
-        self.register(chart);
-
-        // ChartTooltip
-        let mut chart_tooltip = WidgetSpec::new("ChartTooltip", WidgetCategory::Data)
-            .with_alias("chart-tooltip");
-        chart_tooltip.has_children = false;
-        self.register(chart_tooltip);
-
-        // ChartLegend
-        let mut chart_legend = WidgetSpec::new("ChartLegend", WidgetCategory::Data)
-            .with_alias("chart-legend");
-        chart_legend.has_children = false;
-        self.register(chart_legend);
+        // Plan 484: shadcn-vue chart 族注册退役(AreaChart/BarChart/LineChart/
+        // DonutChart/Chart/ChartTooltip/ChartLegend)——裸名让位 official 包
+        // Auto 组件(bar-chart = LineChart 族 Auto 实现)。vue 发射臂随之死代码化。
     }
 
     fn register_semantic_widgets(&mut self) {

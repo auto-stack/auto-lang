@@ -17,7 +17,7 @@
 // use { package: official from "../components" }
 // area-chart (data: .revenue, index: "month", fields: ["a", "b"]) {}
 
-widget AutoAreaChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
+widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
     msg { Init }
 
     model {
