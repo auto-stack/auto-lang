@@ -1138,6 +1138,36 @@ mod tests {
         assert!((bg.a - 127.0 / 255.0).abs() < 1e-4, "50% alpha → 127/255, got {}", bg.a);
     }
 
+    // PLAN-050 T8 (C6): absolute 定位工具类在 VM 轨的降级契约——解析不报错、
+    // 不产生任何样式类（iced 无浮层,position 类整体丢弃=文档流内联展开）,
+    // 而同串的布局/外观类（宽度/底色/边框/圆角/阴影）必须存活。settings_menu
+    // 面板类串依赖此形态:vue 轨 absolute 浮层,VM 轨同名串降级内联面板。
+    #[test]
+    fn plan050_absolute_utilities_degrade_to_inline_flow() {
+        let s = Style::parse(
+            "absolute bottom-full left-0 mb-2 min-w-[220px] w-full bg-card border border-border rounded-[10px] shadow-md p-2.5 flex flex-col",
+        )
+        .expect("面板类串必须可解析");
+        // 定位类解析为 Absolute/LeftOffset 变体（iced_adapter:"store but will
+        // be ignored" —— 渲染端不消费即文档流内联展开,这正是 VM 降级形态）。
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)),
+            "absolute 应解析为 Absolute 变体"
+        );
+        assert!(
+            !matches!(IcedStyle::from_style(&s).position, None),
+            "IcedStyle.position 应记录 Absolute（渲染端忽略=内联降级）"
+        );
+        // 外观/布局类存活
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))), "w-full 必须存活");
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+            "bg-card 必须存活"
+        );
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Border)), "border 必须存活");
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol)), "flex-col 必须存活");
+    }
+
     #[test]
     fn test_convert_color() {
         let white = convert_color(&Color::White);
