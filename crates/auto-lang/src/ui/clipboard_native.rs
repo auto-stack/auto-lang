@@ -241,4 +241,35 @@ mod tests {
         assert_eq!(blob.len(), 22);
         assert!(parse_dropfiles(&blob).is_empty());
     }
+
+    // ── T2: Win32 files 集成（windows × native-clipboard 档） ────────
+    // headless guard（418 arboard 同款语义）：剪贴板打不开（CI 服务会话/
+    // 无窗口站）时 clipboard_files_set 返回 false，测试静默跳过而非红。
+    // 剪贴板是进程全局资源：cargo test 同进程并行时用互斥锁串行化
+    // （nextest 每测试独立进程，锁为空转）。
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    static CLIPBOARD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    #[test]
+    fn clipboard_files_set_get_roundtrip() {
+        let _lock = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // CF_HDROP 是纯路径列表——文件不必存在即可往返（Explorer 粘贴
+        // 才需要真实文件）。中文路径覆盖宽串全链。
+        let paths = vec![
+            std::path::PathBuf::from("C:\\plan485-tests\\示例 目录\\文件一.txt"),
+            std::path::PathBuf::from("C:\\plan485-tests\\second-file.png"),
+        ];
+        if !clipboard_files_set(&paths) {
+            return; // headless CI guard
+        }
+        let got = clipboard_files_get();
+        let want: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(got, want);
+    }
 }
