@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-483
-status: executing                # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-text-input-double-focus
 author: [zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 1
+current_step: 8
 total_steps: 9
 ---
 
@@ -272,20 +272,29 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   形态；README.md 复现步骤）。对齐 005-login 目录布局。
   验证：`auto run -r vm` 启动渲染正常，真键盘复现双焦点/双投递（截图或文字
   证据记入本计划）。[Category A：无 Rust 改动，禁 cargo t]
-  [✅ 已完成] c5333cd82。真键盘(PostMessage WM_CHAR/WM_LBUTTON 通道)复现:
-  username 输入 "admin" 正常(r2);点击 password 后键入 "admin"(5 键)→
-  r4/r5 实锤 **username="adminadmin"**、password=掩码"•••••"(状态双污染,
-  与 musk 实测一致);r3/r5 中 username 无焦点环但键盘双投递——焦点环视觉
-  单显、键盘语义双投递(两框 is_focused 均 Some),时序细节留 T3 探针判定。
-  证据:examples/ui/042-two-inputs-child/evidence/r1-r5.png。
-  环境注记:computer-use 前台输入被并行会话焦点抢占/全屏帧持续 stale,
-  改用 DPI-aware PrintWindow + PostMessage 直投(等效 OS 输入,不依赖前台)。
+  [✅ 已完成] c5333cd82（example 落盘）。**复现通道勘误（T3 期间发现）**：
+  本环境 OS 级键盘注入不可达——PostMessage WM_CHAR/WM_KEYDOWN（含正确
+  scancode lParam、前台态）对 winit 0.30 均无效；computer-use 前台通道被
+  并行会话焦点抢占/像素帧持续 stale。T1 初版「视觉取证」（r4/r5
+  username=adminadmin）经中性提示重验确认为**视觉模型诱导性幻觉**（MCP
+  autoui_vtree 真值：两框恒空）——该组 png 已删，复现证据改由 T3 机制级
+  无头复现（e8c26a92a,双红测试）+ musk 真键盘实测（上游 011）承担。
+  042 example 保留为 T5 验收载体（README 记录手工复现步骤）。
 - **T2 红测试**
   `crates/auto-lang/src/ui/iced/renderer.rs` 测试模块新增红测试 A 两例
   （vm_two_inputs_focus_is_exclusive / vm_two_inputs_ids_distinct）+
   derive_input_id 单测占位（T4 实装纯函数后启用）。
   验证：`cargo test -p auto-lang --lib --features ui-iced two_inputs`——
   两例如期红（双投递消息/同 Id）。
+  [✅ 已完成] e8c26a92a（line_edit_tests 模块,iced-layout-tests 门控——
+  iced_test 依赖挂该特性,验证命令实为
+  `cargo test -p auto-lang --lib --features iced-layout-tests p483`）。
+  **双红**：`p483_vm_two_inputs_have_distinct_iced_ids`（两框同 Id
+  "prompt_input"）+ `p483_focus_op_then_typing_stays_single_delivery`
+  （注入产线同款 focus operation 后打字,UserChanged+PassChanged 齐发=
+  机制级双投递复现）;**三绿控制组**：静态树点击打字单投递 / 真实 042
+  形态（parse→registry→component→render_dynamic_view e2e）bounds 不重叠
+  且单投递 / 跨重建（UserInterface+into_cache 换 Element）单投递。
 - **T3 诊断取证（探针，临时）**
   在 renderer.rs 四个 focus 调用点（6744/8506/9889/9925）加 eprintln 探针
   （沿 ASH_DEBUG_FOCUS 既有开关），并在 042 运行中记录：点击 password 前后
@@ -293,6 +302,11 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   机制（A 共享 Id focus op / B 槽位错位粘焦 / C overlay 捕获）。结论写入
   本节下方「根因结论」；探针撤除（不进合入提交）。
   验证：结论段落 + 判定依据（日志摘录）落档。
+  [✅ 已完成] 探针 6 处（5 focus 位点+Input 臂构建现场）+ AUTO_DEBUG_MSGS
+  入口门实测后全部撤除（合入提交零残留）。判定过程：探针证明 042 直发
+  键盘不可达→OS 注入放弃；三层无头验证（静态树/真实形态/跨重建）全绿
+  →排除 B 槽位错位与 C overlay/布局重叠;iced_widget 0.14.2 源码实锤
+  text_input 无 Tab 臂 → 机制 A 的 Tab 触发链闭环（详见根因结论）。
 - **T4 主修复（Id 唯一化 + 登记表 + 改址）**
   renderer.rs：删 13698-13700 覆盖；新增 `derive_input_id` 纯函数并收敛两
   路径（render_dynamic_view Input 臂 + IntoIcedElement 3097 臂，
@@ -302,6 +316,21 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   验证：`cargo check -p auto-lang` 零警告 → T2 测试转绿
   （`cargo test -p auto-lang --lib --features ui-iced two_inputs`）→
   `cargo t ui`。
+  [✅ 已完成] 5f10fca0f（T4 主体）+ c613a7704（merge master 同步,带入 482
+  nav_contract 特性门修复 3e173633d——worktree 基点早于该修复,曾致
+  cargo t ui 编译失败,merge 后 774 测全绿）。实现:derive_input_id 纯函数
+  （主键 widget+event,兜底三元组,build_input_shape 泛型路径行为持平）;
+  render_dynamic_view Input 臂删除固定 prompt_input 覆盖,改派生唯一 Id
+  （主键在 on_change move 前取好）;session.rs devtools 增 input_ids 登记
+  （RefCell<Vec<Id>>）;collect_input_ids 依 DFS 序收集
+  （Column/Row/List/Container/Scrollable/Grid/Overlay/Popover 八容器臂）;
+  dynamic_view 每次脏重建清填;五聚焦点改址:Tab fallback（8532）/
+  tail-refocus（9917）/初始聚焦（9933）/__focus_input（9951）/launcher
+  召唤（6764）→ 登记表首个,空表退 prompt_input_id/旧字面量（无匹配=
+  空聚焦,安全降级）。验证:cargo check 零新警告;p483 六测全绿
+  （distinct_iced_ids 与 focus_op_then_typing 双红转绿——机制级红测改
+  聚焦「首个 input 派生 Id」,跨修复前后均有意义）;cargo t ui 774 全绿。
+  D3 条件分支确认无需启用（T3 已排除 B/C 机制）。
 - **T5 example 真机验证**
   `auto run -r vm`（042）：真键盘点击 password 输入 admin——单焦点环、
   user 值不变、Login 流程可完成；`auto run`（Vue 模式）对照正常；
@@ -309,6 +338,20 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   （D:\autostack\auto-musk，plan-050-dev worktree 对照）：admin/admin 登录
   可完成（若 musk 环境不可达，登记顺延并在 042 上以等价断言代验）。
   验证：四项证据（截图/文字）记入本计划。
+  [✅ 已完成] 2026-08-29 实机（修复版 worktree 二进制,MCP 通道取状态真值
+  ——OS 级键盘注入在本环境对 winit 无效,真键盘 Tab 复验顺延真人清单,见
+  待澄清 1/5）:
+  ① 042 VM:双框 MCP type 各自独立写回（user/pass 互不污染）→ Login 按钮
+  press → handler .LoginChild.Submit → state_changes authed:false→true →
+  根条件翻转显示 "in"、inputs 清零（完整登录流程）;
+  ② 042 Vue:auto run 编译+Vite 服务正常（title=two-inputs-child）;
+  ③ 003-converter VM:C/F 双向 MCP type 驱动,行为与 master 二进制**逐值
+  一致**（正向 C=100→f=0 的 MCP-type 路径怪癖为既有语义,master 同样表现,
+  非本修复回归;反向 F=32→c=0 正确）;
+  ④ musk 登录页（plan-050-dev@4e184b9,修复版二进制）:password 框 MCP
+  type "admin" → 归因 .LoginPage.PasswordChanged（T6 修复实机生效）→
+  password="admin" 独立写回,username 无污染;password:true 掩码声明呈现
+  正常。admin/admin 真键盘全流程因输入通道限制列入真人清单。
 - **T6 autoui_type 顺修**
   mcp_server.rs:2207 execute_action_vnode 加临时探针（vnode.path vs 命中
   placeholder）跑 042 确认错位层 → 修 renderer.rs:8302-8313 双生产者不一致
@@ -338,12 +381,25 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   refocus 路径抽查（ASh prompt 场景）；`cargo test -p auto-lang --lib
   --features ui-iced` 全绿；终检 `cargo tf`（合入前一次，Category B）。
   验证：命令输出摘要记入本计划。
+  [✅ 已完成] ① 028-launcher 修复版二进制启动正常(MCP 响应;召唤式 UI 默认
+  不可见属设计,热键召唤聚焦路径由改址代码+p483 测试覆盖);② ui-iced 全量
+  (cargo test):本分支 5 败(plan050×2/notif×2/code_editor_natives)与
+  master 基线同集合零交集——master 同口径全量 6 败(多 dock×1),dock 差异
+  经二分+存储取证定位为 **P483-2 环境债**(VM storage CWD 落盘跨进程存活,
+  worktree CWD 被本计划实机运行污染,清理 %TEMP%/auto-vm-storage/{hash}.json
+  的 shell.dock.* 后单测即绿,非代码回归;已登记);③ **cargo tf 3260/3260
+  全绿**。
 - **T8 债登记与文档**
   `docs/plans/KNOWN-DEBT-AND-RISKS.md`：登记 aura_N 流 scroll/container/grid
   源索引编号错位嫌疑（D-GAP-4 同型，未修，仅 vnode 流已修）与 462 多 App
   焦点命名空间现状声明；docs/specs/auto-lang/ui/overview.md 若需提及
   input Id 登记表机制，补一段（与 review 的 spec-impact 填写衔接）。
   验证：diff 审阅。
+  [✅ 已完成] KNOWN-DEBT-AND-RISKS.md 增 P483-1..5(aura_N 编号错位嫌疑/
+  storage 测试密闭性/真键盘复验顺延/MCP closure oninput 正向怪癖/462 焦点
+  命名空间现状);ui/overview.md 已知坑节补「VM input 焦点寻址(Plan 483)」
+  段(唯一 Id+登记表+严禁回退固定 prompt_input);042 evidence 幻觉截图
+  撤除+README 复现步骤补 Tab 触发链与自动化等价断言(06473bb5b)。
 - **T9 独立复审（/auto-plan:review 范式）**
   清单审计（验收标准逐项对码取证）、遗漏/延后/workaround 扫描、health
   check（零警告/格式/无残留探针 print）、填 spec-impact 元数据
@@ -353,7 +409,40 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
 
 ### 根因结论（T3 填写）
 
-（待 T3 诊断后填写：主触发机制判定 + 依据）
+**主触发机制 = A（共享 Id 的 focus operation）,Tab 触发链。证据链逐环实锤：**
+
+1. **共享 Id（缺陷本体）**：VM 主路径 `render_dynamic_view` Input 臂
+   （renderer.rs:13700 邻域）把每个 text_input 的 Id 无条件覆盖为固定
+   `"prompt_input"`——抵消 `build_input_shape`（1a8516b5b）派生的唯一 Id。
+   红测试 `p483_vm_two_inputs_have_distinct_iced_ids` 锁定（两框
+   `Id(Custom("prompt_input"))` 相等）。
+2. **触发器 = 未捕获 Tab**：iced_widget 0.14.2 `text_input.rs` 的按键臂仅
+   Enter/Backspace/Delete/Home/End/ArrowLeft/ArrowRight/Escape（源码逐臂
+   核对）——**无 Tab 臂**,聚焦框内按 Tab 不被捕获 → 本仓
+   `keyboard_event_message`（renderer.rs:6328-6339）对未捕获 Tab 发
+   `__focus_prompt` → update 8532 臂 `focus(prompt_input_id)`（session.rs:166
+   默认字面量 `"prompt_input"`）。musk 登录流「username 输完按 Tab 切框」
+   是标准操作——与用户实测时序吻合（username 已有 "admin" 后从第一个
+   password 键起整段双投递成 "adminadmin"）。
+3. **双置焦语义**：iced_core `Focus` operation（focusable.rs:29-57）对
+   **所有** Id 匹配的 focusable 逐个 `state.focus()` → 两框同 Id → 双
+   `is_focused=Some` → 双焦点环/光标双闪（musk 症状 1）。
+4. **键盘双投递**：Column 无条件扇出 + text_input 键盘守卫仅判
+   `is_focused`（text_input.rs:910）→ 两框各消费各的 on_input →
+   UsernameChanged/PasswordChanged 齐发（musk 症状 2/3）。机制级无头复现：
+   红测试 `p483_focus_op_then_typing_stays_single_delivery`（注入产线同款
+   focus operation 后 typewrite,UserChanged×N + PassChanged×N 齐发）。
+5. **排除项（三层绿控制组）**：静态树点击/打字单投递;真实 042 形态
+   （条件子 widget+嵌套 labeled col）e2e bounds 不重叠且单投递（排除布局
+   塌陷/C overlay/扇出断裂）;跨重建（UserInterface+into_cache 换 Element,
+   镜像 iced daemon 槽位 diff）单投递（排除 B 槽位错位粘焦）。
+6. **对照组不对称解释**：003-converter 用户测试为鼠标点击切框（无 Tab）,
+   且单 input 聚焦下未捕获 Tab 不发生（Tab 时无聚焦框或用户未按）——
+   042/musk 形态按了 Tab 即触发。
+
+**修复含义**：T4 主修复（唯一稳定 Id + 渲染期登记表 + 四聚焦点改址）同时
+切断环 1（不再共享）与环 2 的寻址（focus 目标解析到唯一 input）,机制级
+红测试即转绿;D3 条件分支（槽位稳定/unfocus）**无需启用**（B/C 已排除）。
 
 ## 复审记录
 
@@ -363,6 +452,9 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
 
 1. **musk 真机实测执行方**：T5 默认由本计划执行者在 auto-musk 仓对照实测
    （参照 473 先例可 E2E 代验）；若环境不可达则顺延为真人清单并登记。
+   **已收束（T5）**：MCP 通道实机代验完成（password 归因/独立写回 ✓）；
+   真键盘 admin/admin 全流程与 Tab 复验顺延真人清单（P483-3，环境键盘
+   注入对 winit 无效）。
 2. **D3 条件分支形态**依 T3 结论二选一或均不启用（计划内已约束为最小侵入）。
 3. 042 example 编号取 042（041 之后、459 之前空闲段）；若与其他并行计划撞号，
    以 examples/ui 目录实际空闲号顺延并同步 README。

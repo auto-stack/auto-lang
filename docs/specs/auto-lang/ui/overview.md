@@ -103,6 +103,15 @@ widget Counter {
 
 ## 已知坑
 
+- **VM input 焦点寻址（Plan 483）**：VM 轨 text_input 每框派生唯一稳定 Id
+  （`derive_input_id`：on_change 的 widget+event 主键、placeholder/width/
+  password 三元组兜底），渲染期 `collect_input_ids` 依 DFS 序登记进
+  per-App `devtools.input_ids`；自动聚焦路径（`__focus_input` 约定/未捕获
+  Tab→`__focus_prompt`/PromptBar refocus/launcher 召唤）一律按登记表取首个
+  input Id 寻址——**严禁**回退「全窗固定 `prompt_input`」写法（iced Focus
+  operation 对同 Id 的全部 focusable 一次全置焦 ⇒ 多 input 视图双焦点+
+  键盘双投递，上游 auto-musk 011）。焦点跨重建由 iced Tree 槽位 diff 保持
+  （Plan 047 on_submit 语义不受影响）。
 - VM 组件三缺口（449 实测）：回调 props 退化（组件一律无 props 读 store 规避）、快照组件子树不可见、
   片段参数化条件不求值——修好前 041 组件化受限。
 - 446 批五（U2–U6）在 worktree 待 merge；463 合入后需实测内存给 386 提供数据。

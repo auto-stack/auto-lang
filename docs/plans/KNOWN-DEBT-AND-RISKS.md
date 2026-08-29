@@ -214,3 +214,32 @@
 - **P481-6 实机 Ctrl+C→系统剪贴板末步**：单测+simulator 双证键路，实机
   最后一步被用户在用桌面阻断（详见 archive/481 §T5 留痕）；桌面空闲 30 秒
   可闭环。
+
+### P483（2026-08-29，Plan 483 VM 双 input 双焦点/键盘双投递复审前登记）
+
+- **P483-1 aura_N 快照流 scroll/container/grid 源索引编号错位嫌疑**：
+  `expand_children_spliced_source`（源索引编号+视觉空后置过滤）与
+  traverse_view 的幸存槽位编号在「inputs 前有被丢弃空兄弟」位形下可整体
+  偏移（D-GAP-4 已修 column/row 同型，scroll/container/grid 未跟进）——
+  仅影响 aura_N 派发流，本计划只修了 vnode_N 流（find_view_by_path 委托
+  extract_children_ref）。后续：三容器改对齐 traverse_view 编号。
+- **P483-2 VM storage 测试密闭性（cwd 落盘 + libtest 单进程顺序污染）**：
+  stdlib storage 镜像按 CWD 哈希落盘跨进程存活（stdlib.rs storage_file），
+  desktop_shell dock 测试的 storage_raw_remove 只清内存、get 惰性合并磁盘
+  可带回旧值——desktop 运行过的检出 CWD 下 dock/notif 族测试假红（本次
+  实锤：master 全量 6 败全为该环境基线，清理 %TEMP%/auto-vm-storage/
+  {cwd-hash}.json 的 shell.dock.* 后转绿）。后续：涉 storage 的测试统一
+  AUTO_VM_STORAGE_FILE 隔离，或 remove 同步清磁盘镜像。
+- **P483-3 真键盘 Tab 双投递实机复验顺延**：根因链（text_input 无 Tab 臂
+  →__focus_prompt→focus 同 Id 全置焦）已由 iced_test 机制级复现+六测锁定，
+  但本环境 OS 级键盘注入对 winit 0.30 无效（PostMessage WM_CHAR/WM_KEYDOWN
+  均不达）、computer-use 前台通道被并行会话抢占——真人键盘 Tab 复验
+  （042 README 步骤 + musk admin/admin 全流程）列入真人清单。
+- **P483-4 MCP autoui_type 对 closure oninput 的正向派生怪癖（master 既有）**：
+  003-converter 经 autoui_type 输 celsius=100 → fahrenheit 落 0 而非 212
+  （master 二进制同表现；反向 F→C 正确）——MCP type 路径对闭包 oninput 的
+  写序/清空语义与真键盘路径有差，非 Plan 483 回归，converter 真键盘联动
+  以真人清单兜底。
+- **P483-5 462 多 App 焦点命名空间现状**：input_ids 登记表已按 App 会话
+  隔离（devtools per-App），但跨 App 全局 Tab 顺序/焦点分区仍为 v1 边界
+  （Plan 462 立项跟进，本计划未扩展）。
