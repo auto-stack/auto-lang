@@ -16,9 +16,14 @@
 // 剪贴板是进程全局资源：Win32 集成测试须 set→get 即时往返，且用进程内
 // 互斥锁防同进程并行测试互相污染（nextest 每测试独立进程，锁为空转）。
 
+#[cfg(all(windows, feature = "native-clipboard"))]
 use std::path::PathBuf;
 
 // ── Win32 clipboard format IDs（稳定 ABI 常量，免引 Win32_System_Ole）──
+#[cfg(all(windows, feature = "native-clipboard"))]
+const CF_DIB: u32 = 8;
+#[cfg(all(windows, feature = "native-clipboard"))]
+const CF_DIBV5: u32 = 17;
 #[cfg(all(windows, feature = "native-clipboard"))]
 const CF_HDROP: u32 = 15;
 
@@ -82,19 +87,194 @@ pub fn parse_dropfiles(bytes: &[u8]) -> Vec<String> {
     paths
 }
 
+// ── DIB (CF_DIB / CF_DIBV5) codec 纯函数（全平台，T1） ─────────────────
+// 尽力而为边界（Plan 485 待澄清#2 定稿）：只支持 32bpp 未压缩
+// （BI_RGB / BI_BITFIELDS）+ 标准 BGR 掩码；24bpp/16bpp/调色板/RLE 等
+// 罕见变体一律 None（截图工具与现代浏览器均写 DIBV5 或 PNG）。
+
+/// BITMAPINFOHEADER（CF_DIB 旧头）大小。
+pub const BITMAPINFOHEADER_SIZE: usize = 40;
+/// BITMAPV5HEADER 大小（bV5Size 字段合法上限，亦为本方 image_set 写出值）。
+pub const BITMAPV5HEADER_SIZE: usize = 124;
+/// Plan 485 待澄清#3 定稿：>64MP 直接 None（防误爆内存）。
+pub const MAX_IMAGE_PIXELS: u64 = 64_000_000;
+
+const BI_RGB: u32 = 0;
+const BI_BITFIELDS: u32 = 3;
+/// 标准 32bpp 内存掩码（小端 DWORD 即 BGRA 字节序）。
+const STD_RGB_MASKS: (u32, u32, u32) = (0x00FF_0000, 0x0000_FF00, 0x0000_00FF);
+
+/// 解析出的 DIB 几何与像素定位。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DibInfo {
+    pub width: i32,
+    pub height: i32, // 正 = bottom-up（Win32 常规），负 = top-down
+    pub bit_count: u16,
+    pub compression: u32,
+    pub red_mask: u32,
+    pub green_mask: u32,
+    pub blue_mask: u32,
+    pub alpha_mask: u32, // 0 = 无 alpha 字节语义
+    pub pixel_offset: usize,
+}
+
+fn le_u32(b: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
+}
+fn le_i32(b: &[u8], at: usize) -> i32 {
+    i32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
+}
+fn le_u16(b: &[u8], at: usize) -> u16 {
+    u16::from_le_bytes([b[at], b[at + 1]])
+}
+
+/// Parse a DIB header (BITMAPINFOHEADER 40 / V4 108 / V5 124) and locate
+/// the pixel array. None on truncation or 尽力而为边界外的形状。
+pub fn parse_dib_header(bytes: &[u8]) -> Option<DibInfo> {
+    if bytes.len() < BITMAPINFOHEADER_SIZE {
+        return None;
+    }
+    let size = le_u32(bytes, 0) as usize;
+    let width = le_i32(bytes, 4);
+    let height = le_i32(bytes, 8);
+    let bit_count = le_u16(bytes, 14);
+    let compression = le_u32(bytes, 16);
+    let clr_used = le_u32(bytes, 32);
+    if width <= 0 || height == 0 || bit_count != 32 {
+        return None;
+    }
+    if compression != BI_RGB && compression != BI_BITFIELDS {
+        return None; // RLE / JPEG / PNG 压缩等变体退 None
+    }
+    let (r, g, b, a, header_end) = if size == BITMAPINFOHEADER_SIZE {
+        if compression == BI_BITFIELDS {
+            // INFOHEADER + BITFIELDS：3 掩码 DWORD 紧跟头后（无 alpha 掩码）。
+            if bytes.len() < 52 {
+                return None;
+            }
+            (le_u32(bytes, 40), le_u32(bytes, 44), le_u32(bytes, 48), 0, 52)
+        } else {
+            let (r, g, b) = STD_RGB_MASKS;
+            (r, g, b, 0, 40)
+        }
+    } else if (52..=bytes.len()).contains(&size) && size >= 56 {
+        // V4(108) / V5(124)：掩码在头内固定偏移 40..52。
+        (
+            le_u32(bytes, 40),
+            le_u32(bytes, 44),
+            le_u32(bytes, 48),
+            le_u32(bytes, 52),
+            size,
+        )
+    } else {
+        return None; // 未知 biSize
+    };
+    let mut pixel_offset = header_end;
+    if clr_used > 0 {
+        pixel_offset += clr_used as usize * 4;
+    }
+    if pixel_offset > bytes.len() {
+        return None;
+    }
+    Some(DibInfo {
+        width,
+        height,
+        bit_count,
+        compression,
+        red_mask: r,
+        green_mask: g,
+        blue_mask: b,
+        alpha_mask: a,
+        pixel_offset,
+    })
+}
+
+/// 32bpp BGRA DIB 像素 → 紧凑 top-down RGBA8。行序翻转与 stride 在此
+/// 纯函数处理；非标准掩码 / 截断 / 超 64MP → None。
+pub fn dib_bgra_to_rgba(info: &DibInfo, bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let w = info.width as u32;
+    let h = info.height.unsigned_abs();
+    if w as u64 * h as u64 > MAX_IMAGE_PIXELS {
+        return None;
+    }
+    if (info.red_mask, info.green_mask, info.blue_mask) != STD_RGB_MASKS {
+        return None;
+    }
+    if info.alpha_mask != 0 && info.alpha_mask != 0xFF00_0000 {
+        return None;
+    }
+    let stride = w as usize * 4; // 32bpp 行必 4 对齐
+    let rows_bytes = stride.checked_mul(h as usize)?;
+    let pixels = bytes.get(info.pixel_offset..info.pixel_offset + rows_bytes)?;
+    let top_down = info.height < 0;
+    let mut rgba = Vec::with_capacity(w as usize * h as usize * 4);
+    for row in 0..h as usize {
+        let src_row = if top_down { row } else { h as usize - 1 - row };
+        let line = &pixels[src_row * stride..src_row * stride + stride];
+        for px in line.chunks_exact(4) {
+            rgba.push(px[2]); // R
+            rgba.push(px[1]); // G
+            rgba.push(px[0]); // B
+            // 无 alpha 掩码（BI_RGB / 旧头）时 alpha 字节不可信，视为不透明。
+            rgba.push(if info.alpha_mask == 0 { 255 } else { px[3] });
+        }
+    }
+    Some((w, h, rgba))
+}
+
+/// 紧凑 top-down RGBA8 → CF_DIBV5 blob（124 头 + BI_BITFIELDS 标准
+/// 掩码 + bottom-up BGRA 行）。image_set 的写出口。
+pub fn rgba_to_dibv5(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    let stride = width as usize * 4;
+    let mut blob = vec![0u8; BITMAPV5HEADER_SIZE + stride * height as usize];
+    blob[0..4].copy_from_slice(&(BITMAPV5HEADER_SIZE as u32).to_le_bytes());
+    blob[4..8].copy_from_slice(&(width as i32).to_le_bytes());
+    blob[8..12].copy_from_slice(&(height as i32).to_le_bytes()); // 正 = bottom-up
+    blob[12..14].copy_from_slice(&1u16.to_le_bytes()); // planes
+    blob[14..16].copy_from_slice(&32u16.to_le_bytes()); // bit count
+    blob[16..20].copy_from_slice(&BI_BITFIELDS.to_le_bytes());
+    blob[20..24].copy_from_slice(&(rows_bytes_of(stride, height)).to_le_bytes());
+    blob[40..44].copy_from_slice(&STD_RGB_MASKS.0.to_le_bytes());
+    blob[44..48].copy_from_slice(&STD_RGB_MASKS.1.to_le_bytes());
+    blob[48..52].copy_from_slice(&STD_RGB_MASKS.2.to_le_bytes());
+    blob[52..56].copy_from_slice(&0xFF00_0000u32.to_le_bytes()); // alpha mask
+    blob[56..60].copy_from_slice(&0x7352_4742u32.to_le_bytes()); // LCS_sRGB
+    for row in 0..height as usize {
+        let src = &rgba[row * stride..row * stride + stride];
+        let dst_row = height as usize - 1 - row;
+        let dst = &mut blob[BITMAPV5HEADER_SIZE + dst_row * stride
+            ..BITMAPV5HEADER_SIZE + dst_row * stride + stride];
+        for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+            d[0] = s[2]; // B
+            d[1] = s[1]; // G
+            d[2] = s[0]; // R
+            d[3] = s[3]; // A
+        }
+    }
+    blob
+}
+
+fn rows_bytes_of(stride: usize, height: u32) -> u32 {
+    (stride * height as usize) as u32
+}
+
 // ── Win32 bridge (windows × native-clipboard 双门控) ───────────────────
 // 以下每函数都遵守同一约定：任一步失败返回空值（G3 的 Windows 内延展——
 // 剪贴板被占用/无权限时同样静默降级，不 panic）。
 
 #[cfg(all(windows, feature = "native-clipboard"))]
-use windows::Win32::Foundation::{GlobalFree, HANDLE};
+use windows::core::w;
+#[cfg(all(windows, feature = "native-clipboard"))]
+use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
-    OpenClipboard, SetClipboardData,
+    OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 #[cfg(all(windows, feature = "native-clipboard"))]
-use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+use windows::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
@@ -189,6 +369,105 @@ pub fn clipboard_files_set(paths: &[PathBuf]) -> bool {
     }
 }
 
+// ── Win32 image bridge (windows × native-clipboard) ────────────────────
+
+/// image_get 产物：PNG 落 temp 后的元数据（G2 Record：path/width/height）。
+pub struct TempImage {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Read an image from the OS clipboard as a temp PNG file. Format
+/// priority: CF_DIBV5 → CF_DIB → registered "PNG". None when no image
+/// format is present or anything fails (含 64MP 防爆拒收).
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn clipboard_image_get() -> Option<TempImage> {
+    let _guard = ClipboardGuard::open()?;
+    if let Ok(h) = unsafe { GetClipboardData(CF_DIBV5) } {
+        if let Some(img) = dib_handle_to_png(h) {
+            return Some(img);
+        }
+    }
+    if let Ok(h) = unsafe { GetClipboardData(CF_DIB) } {
+        if let Some(img) = dib_handle_to_png(h) {
+            return Some(img);
+        }
+    }
+    let png_fmt = unsafe { RegisterClipboardFormatW(w!("PNG")) };
+    if png_fmt != 0 {
+        if let Ok(h) = unsafe { GetClipboardData(png_fmt) } {
+            if let Some(img) = png_handle_to_file(h) {
+                return Some(img);
+            }
+        }
+    }
+    None
+}
+
+/// HGLOBAL 内容拷出（GlobalSize 定长，GlobalLock 后整块复制）。
+#[cfg(all(windows, feature = "native-clipboard"))]
+fn hglobal_bytes(h: HANDLE) -> Option<Vec<u8>> {
+    let hglobal = HGLOBAL(h.0);
+    let size = unsafe { GlobalSize(hglobal) };
+    if size == 0 {
+        return None;
+    }
+    let ptr = unsafe { GlobalLock(hglobal) };
+    if ptr.is_null() {
+        return None;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, size).to_vec() };
+    unsafe {
+        let _ = GlobalUnlock(hglobal);
+    }
+    Some(bytes)
+}
+
+#[cfg(all(windows, feature = "native-clipboard"))]
+fn dib_handle_to_png(h: HANDLE) -> Option<TempImage> {
+    let bytes = hglobal_bytes(h)?;
+    let info = parse_dib_header(&bytes)?;
+    let (w, h_px, rgba) = dib_bgra_to_rgba(&info, &bytes)?;
+    let path = temp_png_path();
+    image::save_buffer(&path, &rgba, w, h_px, image::ColorType::Rgba8).ok()?;
+    Some(TempImage {
+        path,
+        width: w,
+        height: h_px,
+    })
+}
+
+#[cfg(all(windows, feature = "native-clipboard"))]
+fn png_handle_to_file(h: HANDLE) -> Option<TempImage> {
+    let bytes = hglobal_bytes(h)?;
+    // 只读头部拿尺寸（不整图解码），过 64MP 防线后才落盘。
+    let dims = image::ImageReader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    if dims.0 as u64 * dims.1 as u64 > MAX_IMAGE_PIXELS {
+        return None;
+    }
+    let path = temp_png_path();
+    std::fs::write(&path, &bytes).ok()?;
+    Some(TempImage {
+        path,
+        width: dims.0,
+        height: dims.1,
+    })
+}
+
+#[cfg(all(windows, feature = "native-clipboard"))]
+fn temp_png_path() -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("auto-clipboard-img-{nanos}.png"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +550,92 @@ mod tests {
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
         assert_eq!(got, want);
+    }
+
+    // ── T1: DIB codec 纯单元（全平台档） ────────────────────────────
+
+    fn synthetic_rgba_2x3() -> (u32, u32, Vec<u8>) {
+        // 合成 2×3 像素含 alpha 梯度（24 字节 RGBA，每字节不同）。
+        let rgba: Vec<u8> = (0..2u32 * 3 * 4).map(|i| (i * 7 + 13) as u8).collect();
+        (2, 3, rgba)
+    }
+
+    #[test]
+    fn dibv5_roundtrip_2x3_with_alpha() {
+        let (w, h, rgba) = synthetic_rgba_2x3();
+        let blob = rgba_to_dibv5(w, h, &rgba);
+        let info = parse_dib_header(&blob).unwrap();
+        assert_eq!(info.width, 2);
+        assert_eq!(info.height, 3); // bottom-up 写出为正高
+        assert_eq!(info.compression, 3 /* BI_BITFIELDS */);
+        assert_eq!(info.bit_count, 32);
+        assert_eq!(info.pixel_offset, BITMAPV5HEADER_SIZE); // 124 头后即像素
+        assert_eq!(blob.len(), BITMAPV5HEADER_SIZE + 2 * 3 * 4); // stride=8/行
+        let (w2, h2, rgba2) = dib_bgra_to_rgba(&info, &blob).unwrap();
+        assert_eq!((w2, h2), (2, 3));
+        assert_eq!(rgba2, rgba); // 行序+字节序往返无损（含 alpha）
+    }
+
+    #[test]
+    fn dib_row_order_bottom_up_vs_top_down() {
+        // 1×2 两行：bottom-up blob 行 0 存源末行；负高 top-down 解读保持 blob 序。
+        let src = [10u8, 20, 30, 40, 50, 60, 70, 80];
+        let blob = rgba_to_dibv5(1, 2, &src);
+        // bottom-up（正高）回读 → 与源完全一致（rgba_to_dibv5 已翻行）。
+        let info = parse_dib_header(&blob).unwrap();
+        let (_, _, rgba) = dib_bgra_to_rgba(&info, &blob).unwrap();
+        assert_eq!(rgba, src);
+        // 同一 blob 改负高（top-down 语义）→ 首行变 blob 首行 = 源末行。
+        let mut td = blob.clone();
+        td[8..12].copy_from_slice(&(-2i32).to_le_bytes());
+        let info_td = parse_dib_header(&td).unwrap();
+        let (_, _, rgba_td) = dib_bgra_to_rgba(&info_td, &td).unwrap();
+        assert_eq!(&rgba_td[..4], &src[4..8]);
+        assert_eq!(&rgba_td[4..], &src[..4]);
+    }
+
+    #[test]
+    fn dib_parse_rejects_unsupported_shapes() {
+        // 截断。
+        assert!(parse_dib_header(&[0u8; 10]).is_none());
+        let mk_header = |bit_count: u16, compression: u32, height: i32| {
+            let mut b = vec![0u8; BITMAPINFOHEADER_SIZE];
+            b[0..4].copy_from_slice(&40u32.to_le_bytes());
+            b[4..8].copy_from_slice(&1i32.to_le_bytes()); // width
+            b[8..12].copy_from_slice(&height.to_le_bytes());
+            b[14..16].copy_from_slice(&bit_count.to_le_bytes());
+            b[16..20].copy_from_slice(&compression.to_le_bytes());
+            b
+        };
+        // 24bpp（bit_count）。
+        assert!(parse_dib_header(&mk_header(24, 0, 1)).is_none());
+        // RLE 压缩（compression=2）。
+        assert!(parse_dib_header(&mk_header(32, 2, 1)).is_none());
+        // 零高。
+        assert!(parse_dib_header(&mk_header(32, 0, 0)).is_none());
+        // 像素区截断：头声称 1×1 但 blob 只有头。
+        assert!(dib_bgra_to_rgba(&parse_dib_header(&mk_header(32, 0, 1)).unwrap(), &mk_header(32, 0, 1)).is_none());
+        // 64MP 防爆：解析几何成功但转换拒绝。
+        let mut huge = mk_header(32, 0, 1);
+        huge[4..8].copy_from_slice(&80_000i32.to_le_bytes()); // 80000×80000=6.4G
+        huge[8..12].copy_from_slice(&80_000i32.to_le_bytes());
+        let info = parse_dib_header(&huge).unwrap();
+        assert!(dib_bgra_to_rgba(&info, &huge).is_none());
+    }
+
+    // ── T2: Win32 image 集成（windows × native-clipboard 档） ────────
+
+    #[cfg(all(windows, feature = "native-clipboard", feature = "ui-clipboard"))]
+    #[test]
+    fn clipboard_image_get_none_without_image() {
+        let _lock = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // 文本剪贴板可用性即 headless guard：打不开则跳过。
+        if !crate::ui::clipboard::clipboard_set("plan485-image-none") {
+            return;
+        }
+        // 仅文本（EmptyClipboard 后 set 文本，无任何图像格式）→ None。
+        assert!(clipboard_image_get().is_none());
     }
 }
