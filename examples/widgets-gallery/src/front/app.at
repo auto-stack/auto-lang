@@ -156,93 +156,93 @@ widget App {
                     scroll (style: "flex-1 px-3 py-4") {
                         // Overview group
                         text "Overview" (style: "mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/", icon: "home", label: "Home") {}
+                        nav-item (to: "/", icon: "home", label: "Home")
 
                         // Layout group (Plan 412: 布局专区,插在 Overview 之后)
                         text "Layout" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/row", icon: "arrow-right", label: "Row") {}
-                        nav-link (to: "/col", icon: "arrow-down", label: "Column") {}
-                        nav-link (to: "/center", icon: "plus", label: "Center") {}
-                        nav-link (to: "/flex", icon: "move-horizontal", label: "Flex") {}
-                        nav-link (to: "/alignment", icon: "align-center", label: "Alignment") {}
-                        nav-link (to: "/spacing", icon: "space", label: "Spacing") {}
-                        nav-link (to: "/sizing", icon: "ruler", label: "Sizing") {}
-                        nav-link (to: "/scroll", icon: "chevrons-down", label: "Scroll") {}
-                        nav-link (to: "/position", icon: "layers", label: "Position") {}
-                        nav-link (to: "/responsive", icon: "monitor", label: "Responsive") {}
-                        nav-link (to: "/grid", icon: "layout-grid", label: "Grid") {}
-                        nav-link (to: "/grid-span", icon: "square-stack", label: "GridSpan") {}
+                        nav-item (to: "/row", icon: "arrow-right", label: "Row")
+                        nav-item (to: "/col", icon: "arrow-down", label: "Column")
+                        nav-item (to: "/center", icon: "plus", label: "Center")
+                        nav-item (to: "/flex", icon: "move-horizontal", label: "Flex")
+                        nav-item (to: "/alignment", icon: "align-center", label: "Alignment")
+                        nav-item (to: "/spacing", icon: "space", label: "Spacing")
+                        nav-item (to: "/sizing", icon: "ruler", label: "Sizing")
+                        nav-item (to: "/scroll", icon: "chevrons-down", label: "Scroll")
+                        nav-item (to: "/position", icon: "layers", label: "Position")
+                        nav-item (to: "/responsive", icon: "monitor", label: "Responsive")
+                        nav-item (to: "/grid", icon: "layout-grid", label: "Grid")
+                        nav-item (to: "/grid-span", icon: "square-stack", label: "GridSpan")
 
                         // Form group
                         text "Form" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/button", icon: "mouse-pointer-click", label: "Button") {}
-                        nav-link (to: "/calendar", icon: "layout-grid", label: "Calendar") {}
-                        nav-link (to: "/checkbox", icon: "square-stack", label: "Checkbox") {}
-                        nav-link (to: "/code-editor", icon: "type", label: "CodeEditor") {}
-                        nav-link (to: "/combobox", icon: "command", label: "Combobox") {}
-                        nav-link (to: "/datepicker", icon: "layout-grid", label: "DatePicker") {}
-                        nav-link (to: "/form", icon: "layout-grid", label: "Form") {}
-                        nav-link (to: "/input", icon: "type", label: "Input") {}
-                        nav-link (to: "/label", icon: "type", label: "Label") {}
-                        nav-link (to: "/radiogroup", icon: "layout-grid", label: "RadioGroup") {}
-                        nav-link (to: "/select", icon: "layout-grid", label: "Select") {}
-                        nav-link (to: "/slider", icon: "layout-grid", label: "Slider") {}
-                        nav-link (to: "/switch", icon: "square-stack", label: "Switch") {}
-                        nav-link (to: "/textarea", icon: "type", label: "Textarea") {}
-                        nav-link (to: "/toggle", icon: "square-stack", label: "Toggle") {}
-                        nav-link (to: "/togglegroup", icon: "layout-grid", label: "ToggleGroup") {}
+                        nav-item (to: "/button", icon: "mouse-pointer-click", label: "Button")
+                        nav-item (to: "/calendar", icon: "layout-grid", label: "Calendar")
+                        nav-item (to: "/checkbox", icon: "square-stack", label: "Checkbox")
+                        nav-item (to: "/code-editor", icon: "type", label: "CodeEditor")
+                        nav-item (to: "/combobox", icon: "command", label: "Combobox")
+                        nav-item (to: "/datepicker", icon: "layout-grid", label: "DatePicker")
+                        nav-item (to: "/form", icon: "layout-grid", label: "Form")
+                        nav-item (to: "/input", icon: "type", label: "Input")
+                        nav-item (to: "/label", icon: "type", label: "Label")
+                        nav-item (to: "/radiogroup", icon: "layout-grid", label: "RadioGroup")
+                        nav-item (to: "/select", icon: "layout-grid", label: "Select")
+                        nav-item (to: "/slider", icon: "layout-grid", label: "Slider")
+                        nav-item (to: "/switch", icon: "square-stack", label: "Switch")
+                        nav-item (to: "/textarea", icon: "type", label: "Textarea")
+                        nav-item (to: "/toggle", icon: "square-stack", label: "Toggle")
+                        nav-item (to: "/togglegroup", icon: "layout-grid", label: "ToggleGroup")
 
                         // Charts group (Plan 437)
                         text "Charts" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/line-chart", icon: "activity", label: "AutoLineChart") {}
-                        nav-link (to: "/bar-chart", icon: "bar-chart-3", label: "BarChart") {}
-                        nav-link (to: "/area-chart", icon: "area-chart", label: "AreaChart") {}
-                        nav-link (to: "/donut-chart", icon: "circle", label: "DonutChart") {}
+                        nav-item (to: "/line-chart", icon: "activity", label: "AutoLineChart")
+                        nav-item (to: "/bar-chart", icon: "bar-chart-3", label: "BarChart")
+                        nav-item (to: "/area-chart", icon: "area-chart", label: "AreaChart")
+                        nav-item (to: "/donut-chart", icon: "circle", label: "DonutChart")
 
                         // Display group
                         text "Display" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/aspectratio", icon: "image", label: "AspectRatio") {}
-                        nav-link (to: "/avatar", icon: "image", label: "Avatar") {}
-                        nav-link (to: "/badge", icon: "bell", label: "Badge") {}
-                        nav-link (to: "/card", icon: "square-stack", label: "Card") {}
-                        nav-link (to: "/carousel", icon: "layout-grid", label: "Carousel") {}
-                        nav-link (to: "/datatable", icon: "layout-grid", label: "DataTable") {}
-                        nav-link (to: "/skeleton", icon: "layout-grid", label: "Skeleton") {}
-                        nav-link (to: "/table", icon: "layout-grid", label: "Table") {}
+                        nav-item (to: "/aspectratio", icon: "image", label: "AspectRatio")
+                        nav-item (to: "/avatar", icon: "image", label: "Avatar")
+                        nav-item (to: "/badge", icon: "bell", label: "Badge")
+                        nav-item (to: "/card", icon: "square-stack", label: "Card")
+                        nav-item (to: "/carousel", icon: "layout-grid", label: "Carousel")
+                        nav-item (to: "/datatable", icon: "layout-grid", label: "DataTable")
+                        nav-item (to: "/skeleton", icon: "layout-grid", label: "Skeleton")
+                        nav-item (to: "/table", icon: "layout-grid", label: "Table")
 
                         // Feedback group
                         text "Feedback" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/alert", icon: "bell", label: "Alert") {}
-                        nav-link (to: "/progress", icon: "layout-grid", label: "Progress") {}
-                        nav-link (to: "/sonner", icon: "bell", label: "Sonner") {}
-                        nav-link (to: "/toast", icon: "bell", label: "Toast") {}
-                        nav-link (to: "/tooltip", icon: "bell", label: "Tooltip") {}
+                        nav-item (to: "/alert", icon: "bell", label: "Alert")
+                        nav-item (to: "/progress", icon: "layout-grid", label: "Progress")
+                        nav-item (to: "/sonner", icon: "bell", label: "Sonner")
+                        nav-item (to: "/toast", icon: "bell", label: "Toast")
+                        nav-item (to: "/tooltip", icon: "bell", label: "Tooltip")
 
                         // Navigation group
                         text "Navigation" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb") {}
-                        nav-link (to: "/command", icon: "command", label: "Command") {}
-                        nav-link (to: "/menubar", icon: "layout-grid", label: "Menubar") {}
-                        nav-link (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu") {}
-                        nav-link (to: "/navlink", icon: "navigation", label: "NavLink") {}
-                        nav-link (to: "/pagination", icon: "layout-grid", label: "Pagination") {}
-                        nav-link (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea") {}
-                        nav-link (to: "/separator", icon: "layout-grid", label: "Separator") {}
-                        nav-link (to: "/sidebar", icon: "layout-grid", label: "Sidebar") {}
-                        nav-link (to: "/tabs", icon: "layout-grid", label: "Tabs") {}
+                        nav-item (to: "/breadcrumb", icon: "navigation", label: "Breadcrumb")
+                        nav-item (to: "/command", icon: "command", label: "Command")
+                        nav-item (to: "/menubar", icon: "layout-grid", label: "Menubar")
+                        nav-item (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu")
+                        nav-item (to: "/navlink", icon: "navigation", label: "NavLink")
+                        nav-item (to: "/pagination", icon: "layout-grid", label: "Pagination")
+                        nav-item (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea")
+                        nav-item (to: "/separator", icon: "layout-grid", label: "Separator")
+                        nav-item (to: "/sidebar", icon: "layout-grid", label: "Sidebar")
+                        nav-item (to: "/tabs", icon: "layout-grid", label: "Tabs")
 
                         // Overlay group
                         text "Overlay" (style: "mt-4 mb-1.5 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground") {}
-                        nav-link (to: "/accordion", icon: "layout-grid", label: "Accordion") {}
-                        nav-link (to: "/alertdialog", icon: "bell", label: "AlertDialog") {}
-                        nav-link (to: "/collapsible", icon: "layout-grid", label: "Collapsible") {}
-                        nav-link (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu") {}
-                        nav-link (to: "/dialog", icon: "square-stack", label: "Dialog") {}
-                        nav-link (to: "/drawer", icon: "layout-grid", label: "Drawer") {}
-                        nav-link (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu") {}
-                        nav-link (to: "/hovercard", icon: "layout-grid", label: "HoverCard") {}
-                        nav-link (to: "/popover", icon: "layout-grid", label: "Popover") {}
-                        nav-link (to: "/sheet", icon: "square-stack", label: "Sheet") {}
+                        nav-item (to: "/accordion", icon: "layout-grid", label: "Accordion")
+                        nav-item (to: "/alertdialog", icon: "bell", label: "AlertDialog")
+                        nav-item (to: "/collapsible", icon: "layout-grid", label: "Collapsible")
+                        nav-item (to: "/contextmenu", icon: "layout-grid", label: "ContextMenu")
+                        nav-item (to: "/dialog", icon: "square-stack", label: "Dialog")
+                        nav-item (to: "/drawer", icon: "layout-grid", label: "Drawer")
+                        nav-item (to: "/dropdownmenu", icon: "layout-grid", label: "DropdownMenu")
+                        nav-item (to: "/hovercard", icon: "layout-grid", label: "HoverCard")
+                        nav-item (to: "/popover", icon: "layout-grid", label: "Popover")
+                        nav-item (to: "/sheet", icon: "square-stack", label: "Sheet")
                     }
                 }
 

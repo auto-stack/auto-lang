@@ -15071,6 +15071,22 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
+    /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
+    /// 此处以测试锁住。
+    #[test]
+    fn nav_family_lucide_icons_present() {
+        for name in [
+            "message-square", "list-todo", "scroll", "book-open",
+            "chevron-down", "chevron-right", "search",
+        ] {
+            assert!(
+                lucide_svg(name).is_some(),
+                "nav 组件族图标 {name} 缺失于 lucide_svg 内嵌集"
+            );
+        }
+    }
+
     use super::*;
 
     // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
