@@ -1,3 +1,8 @@
+// Plan 476: `use panel: Panel` makes the VM track register Panel in the
+// WidgetRegistry (VM only registers `use`-imported widgets), so this example
+// exercises the real child-widget slot path instead of the tag fallback.
+use panel: Panel
+
 widget App {
     msg { Clicked }
 
