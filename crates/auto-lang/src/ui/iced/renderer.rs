@@ -5972,13 +5972,16 @@ fn keyboard_subscription_ext(
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
 /// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
 /// - Esc：调试退出（全屏无框桌面无关闭按钮）；
-/// - Alt+Tab / Ctrl+Tab：窗口循环（Windows OS 吞 Alt+Tab，Ctrl+Tab 兜底）；
+/// - Alt+Tab：窗口循环（POSIX WM 惯例，OS 不拦即达；463 定案 v1 不动）；
+/// - Ctrl+Tab：switcher 召唤/推进（478 改道——旧窗口循环直循环退役入
+///   overlay 路径；Windows 实测可达键位）；
 /// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
+/// - Ctrl+Alt+←/→：分区环切；Ctrl+Alt+Shift+←/→：聚焦窗发送相邻分区（478）；
 /// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::{DesktopMessage as DM, WmCommand};
+    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -5998,15 +6001,30 @@ fn desktop_hotkey_subscription(
             if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
                 return Some(DM::Wm(WmCommand::ExitDesktop));
             }
-            // 窗口循环：Tab + Alt（POSIX WM 惯例，OS 不拦即达）或 Ctrl
-            //（Windows 实测可达的兜底键位，T1 报告 §7 定案）。
-            if matches!(key, Key::Named(Named::Tab))
-                && (modifiers.alt() || modifiers.control())
-                && !modifiers.shift()
-            {
-                return Some(DM::Wm(WmCommand::CycleWindow));
+            // Plan 478 T3：Tab 键位分层——Ctrl+Tab 改道 switcher 召唤/推进
+            //（overlay 打开时由 update 臂转 .Advance，T1 施工图 §2）；
+            // Alt+Tab 保留窗口循环（463 键位 v1 不动）。
+            if matches!(key, Key::Named(Named::Tab)) && !modifiers.shift() {
+                if modifiers.control() && !modifiers.alt() {
+                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+                }
+                if modifiers.alt() && !modifiers.control() {
+                    return Some(DM::Wm(WmCommand::CycleWindow));
+                }
+            }
+            // Plan 478 T3：send_to 热键（先行判定——下方 Ctrl+Alt 分支对
+            // shift 不敏感，须在此截走 Shift 组合）。
+            if modifiers.control() && modifiers.alt() && modifiers.shift() {
+                if matches!(key, Key::Named(Named::ArrowRight)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
+                }
+                if matches!(key, Key::Named(Named::ArrowLeft)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
+                }
             }
             // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
+            // 方向键 Shift 组合已被上方 send_to 分支截走，此块无需 shift 守卫
+            // （字母键位保持 463 行为不变）。
             if modifiers.control() && modifiers.alt() {
                 if let Key::Character(c) = &key {
                     let mode = match c.to_lowercase().as_str() {
@@ -6377,6 +6395,75 @@ fn summon_launcher(
         .map(move |m| DM::App(launcher, m))
 }
 
+/// Plan 478 T4：switcher overlay 召唤执行体（Ctrl+Tab 热键；T1 施工图 §5.2，
+/// 464 summon_launcher 同型）。懒挂载（`assets/switcher.at` 进程内嵌——无
+/// 注册表依赖，构建失败 toast）→ 下行注入 MRU 快照：`mru_wids`/`mru_titles`/
+/// `mru_icons` 平行字符串列表（B12 规避，launcher apps_* 同型）+ 合同面
+/// `__wm_mru`（协议 v1.1 Obj 数组）+ `hosted`/`visible` 置位 → 显式
+/// `call_handler("RebuildMru")`（宿主写状态不触发 handler）重建 rows + sel
+/// 复位。快照语义：召唤时点定序，打开期间推进不重注。无输入控件——无
+/// `__focus_input`/聚焦任务（键盘路由走订阅独占，R12）。
+fn summon_switcher(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.switcher_app.is_none() {
+        match crate::ui::shell::build_switcher_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.switcher_app = Some(app_id);
+            }
+            Err(err) => {
+                push_desktop_toast(state, "error", &format!("switcher 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    let switcher = state.desktop.switcher_app.expect("switcher mounted");
+    // 2. MRU 快照（当前分区；焦点环不跨分区——退役 Ctrl+Tab 语义延续）。
+    let Some(host) = state.host.as_ref() else {
+        return iced::Task::none();
+    };
+    let mut wids: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut mru_objs: Vec<auto_val::Value> = Vec::new();
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let focused = host.wm.focused == Some(wid);
+        wids.push(auto_val::Value::Str(v.wid.0.to_string().into()));
+        titles.push(auto_val::Value::Str(v.title.clone().into()));
+        let icon = v
+            .registry_id
+            .as_ref()
+            .and_then(|id| {
+                state
+                    .desktop
+                    .registry_entries
+                    .iter()
+                    .find(|e| &e.id == id)
+            })
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        icons.push(auto_val::Value::Str(icon.into()));
+        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+    }
+    if let Some(app) = state.apps.get_mut(&switcher) {
+        let _ = app.component.write_state_vec("mru_wids", wids);
+        let _ = app.component.write_state_vec("mru_titles", titles);
+        let _ = app.component.write_state_vec("mru_icons", icons);
+        let _ = app.component.write_state_vec("__wm_mru", mru_objs);
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重建 rows（sel 复位在 handler 内）+ 刷 view
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildMru", &[]) {
+            eprintln!("[session] switcher RebuildMru failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    iced::Task::none()
+}
+
 /// Plan 464 T4：shell + launcher 的 DesktopBus 联合排空与执行。
 /// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
 fn drain_and_execute_desktop_commands(
@@ -6388,6 +6475,10 @@ fn drain_and_execute_desktop_commands(
     let mut cmds = state.drain_desktop_commands();
     if let Some(la) = state.desktop.launcher_app {
         cmds.extend(state.drain_app_desktop_commands(la));
+    }
+    // Plan 478 T4：switcher 上行（focus 确认记录）同管线联合排空。
+    if let Some(sw) = state.desktop.switcher_app {
+        cmds.extend(state.drain_app_desktop_commands(sw));
     }
     if cmds.is_empty() {
         return (false, Vec::new());
@@ -6462,6 +6553,38 @@ fn execute_desktop_commands(
                     }
                 }
             }
+            // Plan 478 T2：pager `+` —— 新增分区并即入（验收②）。
+            DC::WorkspaceAdd => {
+                let id = state.host.as_mut().map(|h| h.wm.add_workspace());
+                if let Some(id) = id {
+                    state.wm_set_workspace(id);
+                }
+            }
+            // Plan 478 T2：pager `×` —— 宿主策略门（T1 施工图 §3，待澄清①
+            // 定案取 toast 最少意外）：非空分区不删仅提示；末分区 no-op 提示。
+            DC::WorkspaceClose(n) => {
+                let has_wins = state
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.wins.values().any(|v| v.workspace == n))
+                    .unwrap_or(false);
+                if has_wins {
+                    push_desktop_toast(
+                        state,
+                        "error",
+                        &format!("分区 {} 含窗口，请先移动或关闭", n + 1),
+                    );
+                } else {
+                    let before = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    state.wm_remove_workspace(n);
+                    let after = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    if before.is_some() && before == after {
+                        push_desktop_toast(state, "error", "至少保留一个分区");
+                    }
+                }
+            }
+            // Plan 478 T2：send_to 动词（跨分区发送；窗口随分区隐现）。
+            DC::SendTo(wid, n) => state.wm_move_win_to_workspace(wid, n),
         }
     }
     (false, tasks)
@@ -6552,6 +6675,31 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
+/// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
+/// entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与条件渲染
+/// 都走字符串语义（dashboard/041 对象列表同型）。icon 自注册表实时查
+/// （registry_entries 唯一事实源；未登记/无条目回退 "app-window"）。
+fn projection_win_entry(
+    registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
+    v: &crate::ui::session::VWinState,
+    focused: bool,
+) -> auto_val::Value {
+    let icon = v
+        .registry_id
+        .as_ref()
+        .and_then(|id| registry_entries.iter().find(|e| &e.id == id))
+        .map(|e| e.icon.clone())
+        .unwrap_or_else(|| "app-window".to_string());
+    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        ("wid", auto_val::Value::Str(v.wid.0.to_string().into())),
+        ("title", auto_val::Value::Str(v.title.clone().into())),
+        ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
+        ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
+        ("icon", auto_val::Value::Str(icon.into())),
+    ]))
+}
+
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
 /// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
@@ -6559,6 +6707,9 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 /// "逐窗;|meta|逐分区;"。窗口列表为**跨分区全集**（dock 运行指示消费），
 /// 虚拟窗层绘制自过滤。指纹未变则跳过写（防每帧 churn），写后置 shell
 /// view_dirty。每 update 周期在排空点邻位调用（O(窗数) 串接，便宜）。
+/// Plan 478 T3 升级 **v1.1**：新增 `__wm_mru`（当前分区 MRU 序，switcher
+/// 消费）、`__wm_workspaces.label`（1 基标签）；指纹分区段扩 label、
+/// 尾接 mru 段（§3 式）。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -6567,30 +6718,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
-        // entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与
-        // 条件渲染都走字符串语义（dashboard/041 对象列表同型）。
-        // Plan 472 T3：icon 自注册表实时查（registry_entries 唯一事实源；
-        // 未登记/无条目回退 "app-window"）。
-        let icon = v
-            .registry_id
-            .as_ref()
-            .and_then(|id| {
-                state
-                    .desktop
-                    .registry_entries
-                    .iter()
-                    .find(|e| &e.id == id)
-            })
-            .map(|e| e.icon.clone())
-            .unwrap_or_else(|| "app-window".to_string());
-        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
-            ("wid", auto_val::Value::Str(wid.0.to_string().into())),
-            ("title", auto_val::Value::Str(v.title.clone().into())),
-            ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
-            ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
-            ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
-            ("icon", auto_val::Value::Str(icon.into())),
-        ])));
+        wins.push(projection_win_entry(
+            &state.desktop.registry_entries,
+            v,
+            focused,
+        ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
@@ -6618,16 +6750,31 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         }
     }
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
+    // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
+    // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
     let mut workspaces: Vec<auto_val::Value> = Vec::new();
     fp.push('|');
     for ws in &host.wm.workspaces {
         let current = host.wm.current_workspace == ws.id;
+        let label = (ws.id + 1).to_string();
         workspaces.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(ws.id.to_string().into())),
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
+            ("label", auto_val::Value::Str(label.clone().into())),
         ])));
-        fp.push_str(&format!("{}:{},", ws.id, current as u8));
+        fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
+    }
+    // Plan 478 T3 v1.1：__wm_mru 段——当前分区 MRU 序（switcher 消费，
+    // dock 不受影响；焦点环不跨分区 472 语义延续）。指纹尾段逐窗 "{wid};"。
+    let mut mru: Vec<auto_val::Value> = Vec::new();
+    fp.push('|');
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        if let Some(v) = host.wm.wins.get(&wid) {
+            let focused = host.wm.focused == Some(wid);
+            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+        }
+        fp.push_str(&format!("{};", wid.0));
     }
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
@@ -6641,6 +6788,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     }
     let _ = app.component.write_state_vec("__wm_wins", wins);
     let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
+    let _ = app.component.write_state_vec("__wm_mru", mru);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
@@ -9049,6 +9197,21 @@ fn compare_pngs(
                     DesktopEvent::SummonLauncher => {
                         return summon_launcher(state);
                     }
+                    // Plan 478 T4：Ctrl+Tab 改道——switcher 可见 → .Advance
+                    // 直投（选中环走，仅 sel 变更不触发 drain）；否则召唤。
+                    DesktopEvent::SummonSwitcher => {
+                        if state.switcher_visible() {
+                            if let Some(sw) = state.desktop.switcher_app {
+                                let msg = IcedMessage {
+                                    widget: String::new(),
+                                    event: "Advance".to_string(),
+                                    input_value: None,
+                                };
+                                return update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                            }
+                        }
+                        return summon_switcher(state);
+                    }
                 }
                 iced::Task::none()
             }
@@ -9081,7 +9244,11 @@ fn compare_pngs(
                     // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层退出
                     // （P3：清词→退网格→关闭；app 内 bind 路径处理），不退桌面。
                     WmCommand::ExitDesktop => {
-                        if state.launcher_visible() {
+                        // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层
+                        // 退出（P3：清词→退网格→关闭）。Plan 478 T4：switcher
+                        // 可见时 Esc 归 switcher 自隐（app 内 bind 路径处理），
+                        // 不退桌面。
+                        if state.launcher_visible() || state.switcher_visible() {
                             return iced::Task::none();
                         }
                         return iced::exit();
@@ -9116,6 +9283,26 @@ fn compare_pngs(
                     // 臂尾 sync_shell_windows 即时刷新投影）。
                     WmCommand::NextWorkspace => state.wm_next_workspace(),
                     WmCommand::PrevWorkspace => state.wm_prev_workspace(),
+                    // Plan 478 T2：发送聚焦窗到相邻分区（Ctrl+Alt+Shift+←/→；
+                    // 目标 = 环切对称，与 next/prev_workspace 同肌肉记忆）。
+                    WmCommand::SendFocusedTo(step) => {
+                        use crate::ui::session::WorkspaceStep;
+                        let target = state.host.as_ref().and_then(|h| {
+                            let len = h.wm.workspaces.len();
+                            if len == 0 {
+                                return None;
+                            }
+                            let cur = h.wm.current_workspace;
+                            let t = match step {
+                                WorkspaceStep::Prev => (cur + len - 1) % len,
+                                WorkspaceStep::Next => (cur + 1) % len,
+                            };
+                            h.wm.focused.map(|w| (w, t))
+                        });
+                        if let Some((wid, t)) = target {
+                            state.wm_move_win_to_workspace(wid, t);
+                        }
+                    }
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
                     WmCommand::StartDrag { wid } => {
@@ -9366,6 +9553,24 @@ fn compare_pngs(
                 };
                 layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
             }
+            // Plan 478 T4：switcher overlay 层（launcher 层邻位顶层；仅
+            // visible 时推层——T1 施工图 §1.5，隐匿由 visible 翻转后本周期
+            // 视图重建生效，召唤/隐匿两臂显式置 view_dirty 保险）。
+            if state.switcher_visible() {
+                let switcher_app = state.desktop.switcher_app.expect("switcher checked");
+                let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
+                let switcher_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] switcher 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] switcher view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -9489,8 +9694,12 @@ fn compare_pngs(
                     // MCP/DevTools 单 App 语义见 453 T8 冻结，463+ 再解）。
                     // Plan 464 T4：launcher overlay 可见时独占键盘（P3 全键盘
                     // 流——输入/方向键进 palette，不漏进底层虚拟窗）。
+                    // Plan 478 T4：switcher overlay 可见时同样独占（Tab/←→/
+                    // Enter/Esc 进面板，不漏进底层虚拟窗）。
                     let focused = if state.is_desktop() {
-                        state.wm_focused_app() == Some(app_id) && !state.launcher_visible()
+                        state.wm_focused_app() == Some(app_id)
+                            && !state.launcher_visible()
+                            && !state.switcher_visible()
                     } else {
                         true
                     };
@@ -9513,6 +9722,25 @@ fn compare_pngs(
                         let bindings = app.component.key_bindings().clone();
                         subs.push(keyboard_subscription_ext(
                             la,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // Plan 478 T4：switcher overlay 的键盘订阅（launcher 块同型；
+            // escape_forward 统一传——Esc 被 Captured 时宿主转发同一事件）。
+            if state.is_desktop() && state.switcher_visible() {
+                if let (Some(sw), Some(host)) =
+                    (state.desktop.switcher_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&sw) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            sw,
                             host.window,
                             bindings,
                             true,
@@ -14369,6 +14597,7 @@ mod tests {
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_workspaces = []
+        var __wm_mru = []
     }
     view { col { text "shell" } }
 }
@@ -14610,6 +14839,221 @@ mod tests {
         assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
     }
 
+    // ---- Plan 478 T3：投影协议 v1.1（__wm_mru + workspaces label + 指纹扩展）----
+
+    /// v1.1：`__wm_mru` = 当前分区 MRU 序（front=最近聚焦，条目同
+    /// `__wm_wins` 六字段）+ `__wm_workspaces.label` 1 基人读标签。
+    #[test]
+    fn projection_v11_mru_order_and_workspace_label() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        t3_add_win(&mut ds, "Beta");
+        let c = t3_add_win(&mut ds, "Gamma");
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 3, "当前分区全集（boot 窗全在分区 0）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), c.0.to_string(), "MRU front=最近聚焦");
+        assert_eq!(t3_obj_str(first, "title"), "Gamma", "条目同 __wm_wins 六字段");
+        // 聚焦 a → MRU 前插，投影序随之。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string(), "聚焦后 front=a");
+
+        // label = 1 基人读标签（宿主投影，避开 .at 算术——T1 施工图 §4.1）。
+        let wss = t3_read_array(&ds, "__wm_workspaces");
+        assert_eq!(wss.len(), 2);
+        let auto_val::Value::Obj(ws0) = &wss[0] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws0, "label"), "1");
+        let auto_val::Value::Obj(ws1o) = &wss[1] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws1o, "label"), "2");
+    }
+
+    /// v1.1：mru 投影按当前分区过滤（焦点环不跨分区，472 语义延续）+
+    /// 指纹 v1.1 段（分区段含 label、尾接 mru 段）门控翻转。
+    #[test]
+    fn projection_v11_mru_filters_partition_and_fingerprint_segments() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0
+        ds.wm_set_workspace(1);
+        let b = t3_add_win(&mut ds, "Beta"); // ws1
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1, "mru 过滤当前分区（不跨分区）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), b.0.to_string());
+
+        // 指纹 v1.1：分区段 "{id}:{current},{label};" + 尾段 mru "{wid};"。
+        let fp = match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => s.to_string(),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        };
+        assert!(fp.contains("0:0,1;1:1,2;"), "指纹分区段含 label: {fp}");
+        assert!(fp.ends_with(&format!("|{};", b.0)), "指纹尾接 mru 段: {fp}");
+
+        // 切回分区 0：mru 段翻转 → 指纹变 → 重写。
+        ds.wm_set_workspace(0);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1);
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string());
+    }
+
+    // ---- Plan 478 T4：switcher overlay（summon/advance/confirm 无头流；
+    // 464 summon_launcher_mounts_and_injects 同型。switcher.at 为进程内嵌
+    // 资产——本测直载真源，非裁剪副本）----
+
+    /// switcher 召唤推进确认无头流：懒挂载（真 assets/switcher.at）+ MRU
+    /// 快照注入（rows 序 = MRU 序）→ Advance 环走 sel → confirm（Focus
+    /// handler）写 `focus\t<wid>` 记录 + 自隐 → drain 可达执行体。
+    #[test]
+    fn switcher_summon_advance_confirm_roundtrip() {
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // boot MRU 序：b（最近）, a。
+        let _task = summon_switcher(&mut ds);
+        assert!(ds.switcher_visible(), "召唤后 switcher visible");
+        let sw = ds.desktop.switcher_app.expect("懒挂载完成");
+        {
+            let app = ds.apps.get(&sw).unwrap();
+            let rows = app.component.read_state("rows").expect("rows 读回");
+            let rows = match rows {
+                auto_val::Value::Array(a) => a.values,
+                auto_val::Value::VmRef(ref r) => t3_deref_list(app, r.id as u64, "rows"),
+                auto_val::Value::Int(id) => t3_deref_list(app, id as u64, "rows"),
+                other => panic!("rows 应为数组: {other:?}"),
+            };
+            assert_eq!(rows.len(), 2, "MRU 快照全量（RebuildMru 重建）");
+            // handler 自建对象物化为 VmRef 堆对象（VM ObjectData）——解引用读字段。
+            let auto_val::Value::VmRef(ref r0) = &rows[0] else {
+                panic!("rows 条目应为 VmRef 对象: {:?}", rows[0])
+            };
+            let vm = app.component.bridge().vm();
+            let heap_obj = vm.get_heap_object(r0.id as u64).expect("rows[0] 堆对象");
+            let guard = heap_obj.read().unwrap();
+            let od = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .expect("rows[0] 为 ObjectData");
+            assert_eq!(
+                match od.get(&auto_val::ValueKey::from("wid".to_string())) {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    other => panic!("wid 字段异常: {other:?}"),
+                },
+                b.0.to_string(),
+                "rows 序 = MRU 序（front=最近聚焦）"
+            );
+        }
+        // Advance：sel 0→1（handler 直调——与宿主 Ctrl+Tab 直投 .Advance
+        // 消息同落同一 handler；DM::App 分派管线为 464 已证路径）。
+        let app = ds.apps.get_mut(&sw).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Advance", &[])
+            .expect("Advance handler");
+        match app.component.read_state("sel") {
+            Ok(auto_val::Value::Int(1)) => {}
+            other => panic!("Advance 后 sel 应为 1: {other:?}"),
+        }
+        // confirm（Enter 同落 Focus handler）：写 focus 记录 + 自隐。
+        app.component
+            .bridge_mut()
+            .call_handler("Focus", &[auto_val::Value::str(b.0.to_string())])
+            .expect("Focus handler");
+        match app.component.read_state("visible") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "confirm 后自隐"),
+            other => panic!("visible 读回异常: {other:?}"),
+        }
+        // 上行记录可达宿主执行体。
+        let cmds = ds.drain_app_desktop_commands(sw);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::FocusWindow(b)],
+            "confirm → focus 动词记录"
+        );
+    }
+
+    // ---- Plan 478 T6：宿主臂无头覆盖（注入通道受限项的 headless 指针，
+    // 472 T5 先例成文）——WorkspaceAdd 增分区即入 / WorkspaceClose toast 门
+    // 与末分区保底 / SendTo 跨区发送。----
+    #[test]
+    fn workspace_v11_host_arms_add_close_send() {
+        use crate::ui::session::DesktopCommand as DC;
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0，焦点窗
+        // `+`：增分区并即入新分区（验收②）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceAdd]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 3);
+            assert_eq!(host.wm.current_workspace, 2, "增分区即入新分区");
+            assert_eq!(host.wm.wins[&a].workspace, 0, "原窗归属不变");
+        }
+        // `send_to`：a 发往当前分区 2（发前先聚焦 a）= 恒等迁移（焦点保持）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.wins[&a].workspace, 2);
+        ds.wm_focus(a);
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(a), "当前分区发送焦点保持");
+        // `×`：分区 2 含窗 → toast 提示不删（T1 定案：toast 门最少意外）。
+        let toasts_before = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 3, "非空分区不删");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_before,
+            "非空 × 出 toast 提示"
+        );
+        // send_to 隐分区：a 发回分区 0 → 焦点让渡（分区 2 空 → None）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 0)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.wins[&a].workspace, 0);
+            assert_eq!(host.wm.focused, None, "隐分区发送焦点让渡");
+        }
+        // `×`：分区 2 已空 → 删除；current clamp 2→1。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 2);
+            assert_eq!(host.wm.current_workspace, 1, "current clamp");
+        }
+        // `×`：删到单分区再删 → 末分区保底 no-op + toast。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(1)]);
+        assert!(!exit);
+        let toasts_mid = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(0)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区保底");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_mid,
+            "末分区 × 出 toast 提示"
+        );
+    }
+
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
 
     /// activate：未运行 → launch（带 registry_id 回填）；运行中 → 聚焦不新增窗。
@@ -14738,14 +15182,16 @@ mod tests {
             render: "vm".to_string(),
         }];
         inject_dock_pinned(&mut ds);
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("__dock_enabled") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
-            other => panic!("__dock_enabled 读回异常: {other:?}"),
-        }
-        match app.component.read_state("__dock_position") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
-            other => panic!("__dock_position 读回异常: {other:?}"),
+        {
+            let app = ds.apps.get(&id).unwrap();
+            match app.component.read_state("__dock_enabled") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+                other => panic!("__dock_enabled 读回异常: {other:?}"),
+            }
+            match app.component.read_state("__dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
+                other => panic!("__dock_position 读回异常: {other:?}"),
+            }
         }
         let pinned = t3_read_array(&ds, "__dock_pinned");
         assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
@@ -14754,6 +15200,50 @@ mod tests {
         assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
         let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
         assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
+
+        // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
+        // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
+        let app = ds.apps.get_mut(&id).unwrap();
+        let _ = app.component.write_state_vec(
+            "__wm_workspaces",
+            vec![
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("0".into())),
+                    ("name", auto_val::Value::Str("Desktop 1".into())),
+                    ("current", auto_val::Value::Str("1".into())),
+                    ("label", auto_val::Value::Str("1".into())),
+                ])),
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("1".into())),
+                    ("name", auto_val::Value::Str("Desktop 2".into())),
+                    ("current", auto_val::Value::Str("".into())),
+                    ("label", auto_val::Value::Str("2".into())),
+                ])),
+            ],
+        );
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceAdd", &[])
+            .expect("WorkspaceAdd handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => {
+                assert_eq!(s.to_string(), "workspace_add", "pager + 写 workspace_add 记录")
+            }
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
+        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceClose", &[auto_val::Value::str("1")])
+            .expect("WorkspaceClose handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                s.to_string(),
+                "workspace_close\t1",
+                "pager × 写 workspace_close 记录"
+            ),
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

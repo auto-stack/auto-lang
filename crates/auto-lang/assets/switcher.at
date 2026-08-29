@@ -1,0 +1,179 @@
+// switcher overlay pack（特权 .at App —— 宿主进程内编译装载，不进 examples/ui；
+// Plan 478 T4，464 launcher overlay 同型的第二枚 overlay 槽）。
+//
+// 形态：Ctrl+Tab 召唤的窗口切换器——MRU 序窗口面板（lucide 图标 + 标题，
+// 472 debt「标题展示归 switcher」在此收口），键盘流选中确认聚焦。
+// 键位分层（478 T1 施工图 §2）：本 App 自 bind 裸 Tab/←→/Enter/Esc 管选中；
+// 宿主 Ctrl+Tab 走事件投递（可见时 .Advance 直投推进，否则召唤）——两路不打架。
+//
+// 接缝（协议 v1.1，schema/projection-protocol-v1.md）：
+//   出：`__desktop_cmd`（`focus\t<wid>` 确认记录；宿主读+清）
+//   入：召唤时快照注入——`mru_wids`/`mru_titles`/`mru_icons` 平行字符串列表
+//       （B12：宿主注入 Obj 数组的 handler 字段读失效，launcher apps_* 同型；
+//       `RebuildMru` 由宿主显式调用重建 handler 自有 rows）、`__wm_mru`
+//       （合同面 Obj 数组，本 App 声明不 handler 消费）、`hosted`/`visible`。
+// 快照语义：召唤时点定序，打开期间 Advance 不重注（MRU 切换器惯例）。
+// 消费者唯一：宿主 renderer 的 summon_switcher / switcher 键盘订阅。
+widget Switcher {
+    msg { Init, RebuildMru, Advance, Back, Pick, Focus(str), Escape }
+
+    model {
+        // ---- 接缝状态（desktop 宿主注入）----
+        var visible str = "0"       // overlay 门控：宿主召唤置 "1"
+        var hosted str = "0"        // 宿主挂载时写 "1"
+        var __desktop_cmd str = ""  // 上行命令总线（focus 确认记录）
+        var __wm_mru = []           // 协议 v1.1 合同面（声明不 handler 消费）
+
+        // ---- MRU 快照（宿主注入平行字符串列表；B12 规避）----
+        var mru_wids = []
+        var mru_titles = []
+        var mru_icons = []
+
+        // ---- 面板状态（handler 自建 rows；view 消费 + handler 下标读安全）----
+        var sel int = 0             // 选中索引（app 内自建焦点索引）
+        var rows = []               // {i,wid,title,icon}
+        var nres int = 0            // 条目数（view 条件用，替代模板 .len()）
+    }
+
+    view {
+        if .visible == "1" {
+            // ---- 打开态：全屏暗底 + 居中卡片（launcher palette 同级视觉）----
+            col {
+                style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                spacer { style: "h-40 w-full" }
+                col {
+                    style: "w-full max-w-lg bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
+
+                    // 标题行
+                    row {
+                        style: "flex items-center gap-2 px-4 py-3 border-b border-gray-700"
+                        text "Switch Window" { style: "text-gray-300 text-sm" }
+                        text "MRU" { style: "ml-auto text-xs text-gray-500" }
+                    }
+
+                    // 窗口列表（MRU 序；空态）
+                    col {
+                        style: "w-full"
+                        if .nres == 0 {
+                            col {
+                                style: "flex flex-col items-center py-8"
+                                text "No windows" { style: "text-gray-400 text-sm" }
+                            }
+                        }
+                        for r in .rows {
+                            if .sel == r.i {
+                                row {
+                                    onclick: .Focus(r.wid)
+                                    style: "flex items-center gap-3 px-4 py-2 bg-blue-900 cursor-pointer"
+                                    icon (name: r.icon) { style: "h-5 w-5" }
+                                    text r.title { style: "text-white text-sm font-medium" }
+                                }
+                            } else {
+                                row {
+                                    onclick: .Focus(r.wid)
+                                    style: "flex items-center gap-3 px-4 py-2 hover:bg-gray-700 cursor-pointer"
+                                    icon (name: r.icon) { style: "h-5 w-5" }
+                                    text r.title { style: "text-gray-100 text-sm" }
+                                }
+                            }
+                        }
+                    }
+
+                    // 底部提示行
+                    row {
+                        style: "flex items-center gap-4 px-4 py-2 border-t border-gray-700"
+                        text "Tab/←→ select" { style: "text-xs text-gray-500" }
+                        text "Enter focus" { style: "text-xs text-gray-500" }
+                        text "Esc cancel" { style: "text-xs text-gray-500" }
+                    }
+                }
+                spacer { style: "h-40 w-full" }
+            }
+        } else {
+            // ---- 隐藏态：透明空层（不挡桌面点击；装配层仅 visible 时推层）----
+            col {
+                style: "w-full h-full"
+            }
+        }
+    }
+
+    bind {
+        "Tab" -> .Advance
+        "ArrowRight" -> .Advance
+        "ArrowLeft" -> .Back
+        "Enter" -> .Pick
+        "Escape" -> .Escape
+    }
+
+    on {
+        .Init -> {
+            .visible = "0"
+            .sel = 0
+            .RebuildMru()
+        }
+
+        // 宿主召唤时显式调用（宿主写状态不触发 handler）：平行列表 →
+        // handler 自有 rows（此后 .Pick 下标读安全），sel 复位 0（计划 D1）。
+        .RebuildMru -> {
+            .rows = []
+            .nres = 0
+            .sel = 0
+            var idx int = 0
+            while idx < .mru_wids.len() {
+                var row = { i: idx, wid: .mru_wids[idx], title: .mru_titles[idx], icon: .mru_icons[idx] }
+                .rows.push(row)
+                idx = idx + 1
+            }
+            .nres = .rows.len()
+        }
+
+        // 选中推进（快照序内环走；不重注——MRU 切换器惯例）。
+        .Advance -> {
+            if .visible == "1" {
+                if .nres > 0 {
+                    if .sel < .nres - 1 {
+                        .sel = .sel + 1
+                    } else {
+                        .sel = 0
+                    }
+                }
+            }
+        }
+
+        .Back -> {
+            if .visible == "1" {
+                if .nres > 0 {
+                    if .sel > 0 {
+                        .sel = .sel - 1
+                    } else {
+                        .sel = .nres - 1
+                    }
+                }
+            }
+        }
+
+        // Enter：聚焦选中行（同点击）。
+        .Pick -> {
+            if .visible == "1" {
+                if .nres > 0 {
+                    if .sel < .nres {
+                        .Focus(.rows[.sel].wid)
+                    }
+                }
+            }
+        }
+
+        // 确认聚焦：写上行总线 + 自隐（宿主排空执行 FocusWindow）。
+        .Focus(wid) -> {
+            .__desktop_cmd = "focus\t" + wid
+            .visible = "0"
+        }
+
+        // Esc 取消：自隐不聚焦。
+        .Escape -> {
+            if .visible == "1" {
+                .visible = "0"
+            }
+        }
+    }
+}
