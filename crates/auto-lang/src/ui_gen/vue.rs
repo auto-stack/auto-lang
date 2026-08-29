@@ -1545,7 +1545,7 @@ impl VueGenerator {
                             }
                             _ => self.prop_to_text_content(value)?,
                         };
-                        content.push_str(&format!("{}  <span class=\"truncate\">{}</span>\n", cind, frag));
+                        content.push_str(&format!("{}  <span class=\"nav-name truncate\">{}</span>\n", cind, frag));
                     }
                 }
                 if has_desc {
