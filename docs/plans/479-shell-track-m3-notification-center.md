@@ -1,15 +1,21 @@
 ---
 plan_id: PLAN-479
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m3-notification-center
 author: [zcode]
 created_at: 2026-08-29T16:30:00+08:00
-updated_at: 2026-08-29T16:45:00+08:00
+updated_at: 2026-08-29T16:55:00+08:00
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——状态投影协议 v1.1 → v1.2：新增 __wm_notes（通知历史全量 {id,kind,msg,at} Obj 数组）/__wm_notes_unread（未读串，badge 消费）两投影；指纹尾接 |notes:{len}:{front_id}:{unread}; 段（len/front 双段覆盖容量环绕与 dismiss 组合）；DesktopBus 词表 v1.2 增 notify（msg 单行约束）/notes_toggle/notes_clear/notes_dismiss 四动词（§6 变更记录+向后兼容声明；文件名不变，vue 端以 v1.2 为对拍基线）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——dock：双分支行尾增通知铃铛钮 + 未读 badge（__wm_notes_unread 条件消费，空串/零双守卫；onclick NotificationToggle → notes_toggle 总线动词，宿主臂落 toggle 执行体）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——桌面 toast 管线升格「浮现+历史聚合」双面：既有 8 处 push_desktop_toast 调用点（LaunchApp 成败/分区删除门/overlay 装载降级）改道 push_notification 单入口（入史+未读+落盘+浮现+面板活更新五步；浮现行为不变）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——通知中心 overlay（assets/notification_center.at 进程内嵌特权 App，第三枚 overlay 槽：右下锚定卡片 w-80 避 toast 区；DesktopState.notification_app + HostCtx.notification_fields + split_mut 第四路/split_ref_notification/notification_visible + toggle_notification_center 懒挂载/快照注入（B12 平行列表 note_ids/kinds/msgs/ats + call_handler RebuildNotes）/开面板未读清零/toggle 自隐 + Esc 仲裁链第四路/键盘独占/escape_forward 订阅/仅 visible 推层装配；kind 图标 success→check/error→x/info→info）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——通知历史域与持久化（NotificationEntry{id,kind,msg,at=HH:MM}/NOTES_CAP=50 FIFO MRU + notes_next_id/notes_unread；storage 定长槽 shell.notes.0..9 每槽一条目 JSON（persist_notes 变更全量重写/restore_notifications boot 读回坏槽即止，desktop_dock_edges 邻位接线；未读不落盘）；DesktopCommand Notify/NotesToggle/NotesClear/NotesDismiss 四臂 encode+parse 双轨分符+坏载荷跳过 + 宿主执行臂 + drain 四路联合排空）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——shell-track M3 落地（S6 通知中心：toast 双面聚合 + dock 铃铛/badge + notify 出向动词 + storage 持久化 + 协议 v1.2；M4 settings/OS 桥 457/386/缩略 386 待续）"
 
 affects: [auto-lang/ui]
 current_step: 7
@@ -194,6 +200,51 @@ v1.2（纯增量，双端同版基线照旧）。
 ## 复审记录
 
 （/auto-plan:review 填写）
+
+**复审人**：zcode（/auto-plan:review）· **时间**：2026-08-29 16:35 +08:00 ·
+**基线**：worktree plan-479-dev @ 6bbb42e36（T1–T7 + review 注记 7 提交）
+
+### 验收标准逐条复核（verify, don't trust）
+
+| # | 验收项 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 通知产生：既有 toast 自动入史 + `notify` 动词（headless 断言）浮现+入史+未读+1 | **pass** | diff 实查 8 处改道（6473/6477/6486/6551/6706/6716/6731/6733 邻位）+ DC::Notify 臂；`notif_push_dual_face_history_and_toast`/`notif_end_to_end_toggle_dismiss_restore` 绿；**实机铁证**：分区 × 非空门 toast 真实落盘 storage slot0（T6 报告 §1 #2） |
+| 2 | 实机：badge 数字正确；面板交互（MRU 序/图标/时间串/清零/逐条 ×/全部清除）；Esc 关闭 | **pass**（按测试设计预案） | 铃铛实机渲染 PASS（10-initial.png）；面板交互实机项前台竞争受阻（用户会话活跃）——计划测试设计/T6 验证列**预先授权**按 472/478 先例转 headless 指针：`notif_center_summon_headless`（真 .at 全链：懒挂载/rows MRU 序/清零/Dismiss/ClearAll/Escape）+ `notif_shell_at_smoke_toggle_and_badge`；驱动脚本重跑入口成文 |
+| 3 | 持久化：定长槽落盘 + boot 恢复（headless round-trip 绿 + 实机重启历史仍在） | **pass** | `notif_storage_roundtrip_slots`（12→10 槽截断/MRU 序/坏槽跳过）+ e2e 绿；实机：二次 boot 正常渲染（20-restart-restored.png）+ storage 槽位原样铁证；**复审注记**：两帧 PNG 确定性渲染逐字节相同，可视恢复证据强度已在 T6 报告 §3 澄清 |
+| 4 | 协议 v1.2 发布 + 全部新增单测绿 + `cargo t` 全量绿 + I2 五套绿 | **pass** | schema/projection-protocol-v1.md 文内升版 v1.2（§2/§3/§4/§5/§6 齐备）；notif 10/10；`cargo tf` **3254/3254 绿**（本轮复审门，含 1M churn）；ui-iced 全档 **3912/3913**（唯一失败为 master 既有，见下）；I2 五套复审重跑 14/11/11/19/26 全绿（0 失败） |
+
+### 全量门与 master 既有失败裁定
+
+- `cargo tf`（full 档含 1M churn）3254/3254 绿——非 ui-iced 档零回归。
+- ui-iced 全档唯一失败 `vm::native::tests::code_editor_natives::vm_code_editor_natives_end_to_end`：
+  **裁定为 master 既有、非本计划回归**——(a) 默认检出（无 479 代码）同败复现；
+  (b) 本计划 diff 仅触及 ui/*、assets/*.at、docs、examples 测试脚本与 schema，
+  与 vm::native/code editor 零交集。疑 Plan 474 并行会话期望迁移遗留，建议
+  单独跟进（不阻本计划）。
+
+### 遗漏/延后/workaround 扫描
+
+- **遗漏**：无——T2 四臂+8 改道、T3 四路+装配+仲裁、T4 双分支铃铛（grep=2）、
+  T5 boot 接线（renderer.rs:7377）、T7 tracker/Design 25 注记均在 diff 实证。
+- **延后**：非目标清单（动作按钮 v2/勿扰 M4/OS 桥 457·386/vue 投影 465）为
+  立项时既定边界，非执行期静默缩减。
+- **workaround**：零新增 TODO/FIXME（diff 扫描空）；v1.1 金样指纹断言随版
+  升级（mru 尾段→notes 尾段）系协议 §3 v1.2 规范变更的从动，已双向成文。
+- **执行期记录在案的偏差**：nextest 过滤器字面 `test(notif or note)` 非法
+  定案改写 `test(notif)`（等价覆盖，计划 T2 证据列注记）；I2 图表套件运行
+  即重写 tick 率敏感 golden（两次还原，非本计划产物）。
+
+### 债务候选（KNOWN-DEBT-AND-RISKS 登记）
+
+- P479-1（master 级，非本计划引入）：`vm_code_editor_natives_end_to_end`
+  ui-iced 档失败，疑 474 并行会话遗留——建议独立修复计划承接。
+- P479-2：面板可视交互（badge 翻转/逐条 ×/全部清除/Esc 实机照）留驱动脚本
+  前台空闲重跑——headless 全语义已绿，非功能缺口。
+
+### 结论
+
+四条验收全 pass、全量门绿（master 既有失败已裁定隔离）、无未授权偏差 →
+**status: reviewed**，可入 /auto-plan:merge。
 
 ## 待澄清事项
 
