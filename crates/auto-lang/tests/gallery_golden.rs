@@ -112,10 +112,14 @@ fn assert_ui_imports_resolve(full_text: &str) {
         }
     }
     let local_ui_pkgs = ["data-table", "nav-link", "toast"];
+    // Plan 482: PLAN-457 打包快照(assets/shadcn-ui/<pkg>)同为独立来源——
+    // nav/ 即由此物化(离线 write-if-missing,见 vue_shadcn::materialize)。
+    let bundled_root = root.join("crates/auto-man/assets/shadcn-ui");
     let bad: Vec<String> = pkgs
         .iter()
         .filter(|p| {
             !registry_root.join(p.as_str()).is_dir()
+                && !bundled_root.join(p.as_str()).is_dir()
                 && !installable.contains(*p)
                 && !local_ui_pkgs.contains(&p.as_str())
         })

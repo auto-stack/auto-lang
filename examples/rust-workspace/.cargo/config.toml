@@ -1,2 +1,2 @@
 [build]
-target-dir = "../../autostack/auto-lang/target"
+target-dir = "../../target"
