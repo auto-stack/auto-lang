@@ -102,6 +102,9 @@ fn get_support_details(tag: &str) -> TagSupport {
         "row" => TagSupport::full(),
         // Plan 463 T5: taskbar —— 桌面 shell 底栏（Iced 映射 row 语义,Full）。
         "taskbar" => TagSupport::full(),
+        // Plan 462: virtual_window —— iced 实现于 ui/iced/virtual_window.rs,Full
+        // (P6-3 围栏要求 schema 元素的 iced 级别在静态详情表有臂)。
+        "virtual_window" => TagSupport::full(),
         "center" => TagSupport::full(),
         "container" | "div" => TagSupport::full(),
 

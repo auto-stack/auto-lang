@@ -1033,7 +1033,7 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
         out.push_str(&format!("  kind: {}\n", vnode.kind));
         // Show label/content from props
         match &vnode.props {
-            crate::ui::vnode::VNodeProps::Text { content } => {
+            crate::ui::vnode::VNodeProps::Text { content, .. } => {
                 out.push_str(&format!("  text: {}\n", content));
             }
             crate::ui::vnode::VNodeProps::Button { label, .. } => {
@@ -2615,7 +2615,7 @@ fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_jso
 fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
     use crate::ui::vnode::VNodeProps;
     match props {
-        VNodeProps::Text { content } => content.clone(),
+        VNodeProps::Text { content, .. } => content.clone(),
         VNodeProps::Button { label, .. } => label.clone(),
         VNodeProps::Input { placeholder, value, .. } => format!("{} {}", placeholder, value),
         VNodeProps::Textarea { placeholder, value } => format!("{} {}", placeholder, value),
@@ -2697,7 +2697,7 @@ fn aura_vtree_node(
 
     // Extract label from props (text content / button label).
     let label = match &node.props {
-        VNodeProps::Text { content } => Some(content.clone()),
+        VNodeProps::Text { content, .. } => Some(content.clone()),
         VNodeProps::Button { label, .. } => Some(label.clone()),
         VNodeProps::Checkbox { label, .. } => Some(label.clone()),
         VNodeProps::Radio { label, .. } => Some(label.clone()),
@@ -2917,7 +2917,7 @@ mod tests_314 {
         let root = VNode::new(VNodeId::new(0), VNodeKind::Column, VNodeProps::Layout { spacing: 8, padding: 4 });
         tree.set_root(root);
         // child: Text (id 1)
-        let text = VNode::new(VNodeId::new(1), VNodeKind::Text, VNodeProps::Text { content: "Hello".into() });
+        let text = VNode::new(VNodeId::new(1), VNodeKind::Text, VNodeProps::Text { content: "Hello".into(), selectable: false });
         tree.add_node(text);
         tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
         // child: Button (id 2)

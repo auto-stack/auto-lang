@@ -862,6 +862,7 @@ impl<'a> AuraViewBuilder<'a> {
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,
+                    selectable: false,
                 }
             }
             AuraNode::Outlet => {
@@ -1133,6 +1134,7 @@ impl<'a> AuraViewBuilder<'a> {
                 View::Text {
                     content: format!("<{} />", name),
                     style: None,
+                    selectable: false,
                 }
             }
             AuraNode::Outlet => {
@@ -1927,6 +1929,7 @@ impl<'a> AuraViewBuilder<'a> {
         View::Text {
             content: resolved,
             style: None,
+            selectable: false,
         }
     }
 
@@ -2056,9 +2059,13 @@ impl<'a> AuraViewBuilder<'a> {
             };
         }
 
+        // Plan 481:opt-in selectable(v1 默认 false)。text/label 同臂。
+        let selectable = self.extract_bool(props, "selectable").unwrap_or(false);
+
         View::Text {
             content,
             style,
+            selectable,
         }
     }
 
@@ -2310,12 +2317,14 @@ impl<'a> AuraViewBuilder<'a> {
                     let name_view = View::Text {
                         content: name,
                         style: Style::parse("text-base font-semibold uppercase tracking-wider text-muted-foreground").ok(),
+                        selectable: false,
                     };
                     let mut title_kids: Vec<View<DynamicMessage>> = vec![dot, name_view];
                     if !count.is_empty() {
                         title_kids.push(View::Text {
                             content: format!("({})", count),
                             style: Style::parse("text-xs text-muted-foreground").ok(),
+                            selectable: false,
                         });
                     }
                     let title = View::Row {
@@ -2499,6 +2508,7 @@ let tabs_inner = View::Row {
                         let code_text = View::Text {
                             content: code,
                             style: Style::parse("font-mono text-sm text-zinc-50").ok(),
+                            selectable: false,
                         };
                         let code_area = View::Container {
                             child: Box::new(code_text),
@@ -2533,6 +2543,7 @@ let tabs_inner = View::Row {
                         child: Box::new(View::Text {
                             content: lang_label,
                             style: Style::parse("text-xs font-medium").ok(),
+                            selectable: false,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
@@ -2549,6 +2560,7 @@ let tabs_inner = View::Row {
                     let code_text = View::Text {
                         content: code,
                         style: Style::parse(&format!("font-mono text-sm text-zinc-50{lang_class}")).ok(),
+                        selectable: false,
                     };
                     let code_area = View::Container {
                         child: Box::new(code_text),
@@ -2629,6 +2641,7 @@ let tabs_inner = View::Row {
                         View::Text {
                             content: text,
                             style: Style::parse(text_style).ok(),
+                            selectable: false,
                         }
                     };
                     // 可点击列头(排序):带 onclick 的 th/table-head 渲染为
@@ -2678,6 +2691,7 @@ let tabs_inner = View::Row {
                     return View::Text {
                         content,
                         style: Style::parse(style).ok(),
+                        selectable: false,
                     };
                 }
                 if tag == "quote" || tag == "blockquote" {
@@ -2685,7 +2699,7 @@ let tabs_inner = View::Row {
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
                     let inner = if views.is_empty() {
-                        View::Text { content: String::new(), style: None }
+                        View::Text { content: String::new(), style: None, selectable: false }
                     } else if views.len() == 1 {
                         views.into_iter().next().unwrap()
                     } else {
@@ -2712,6 +2726,7 @@ let tabs_inner = View::Row {
                         kids.push(View::Text {
                             content: title,
                             style: Style::parse(title_style).ok(),
+                            selectable: false,
                         });
                     }
                     kids.extend(children
@@ -2756,6 +2771,7 @@ let tabs_inner = View::Row {
                         child: Box::new(View::Text {
                             content: source,
                             style: Style::parse("font-mono text-sm").ok(),
+                            selectable: false,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-card p-4 w-full").ok(),
@@ -2769,6 +2785,7 @@ let tabs_inner = View::Row {
                         child: Box::new(View::Text {
                             content: query,
                             style: Style::parse("font-mono text-xs text-muted-foreground").ok(),
+                            selectable: false,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border p-3 w-full").ok(),
@@ -2780,6 +2797,7 @@ let tabs_inner = View::Row {
                         child: Box::new(View::Text {
                             content: format!("↪ {target}"),
                             style: Style::parse("text-sm text-muted-foreground").ok(),
+                            selectable: false,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-muted p-3 w-full").ok(),
@@ -2827,11 +2845,13 @@ let tabs_inner = View::Row {
                     let mut text_kids: Vec<View<DynamicMessage>> = vec![View::Text {
                         content: name.clone(),
                         style: Style::parse("font-medium text-sm").ok(),
+                        selectable: false,
                     }];
                     if !desc.is_empty() {
                         text_kids.push(View::Text {
                             content: desc,
                             style: Style::parse("text-xs text-muted-foreground").ok(),
+                            selectable: false,
                         });
                     }
                     let text_col = View::Column {
@@ -3076,12 +3096,14 @@ let tabs_inner = View::Row {
             return View::Text {
                 content: format!("<outlet: page {} not loaded>", route.module),
                 style: None,
+                selectable: false,
             };
         }
         // No route matched the current path.
         View::Text {
             content: format!("<outlet: no route for {}>", current),
             style: None,
+            selectable: false,
         }
     }
 
@@ -3225,18 +3247,19 @@ let tabs_inner = View::Row {
                     });
                 } else {
                     // Emoji / literal text icon.
-                    parts.push(View::Text { content: icon, style: None });
+                    parts.push(View::Text { content: icon, style: None, selectable: false });
                 }
             }
             if !label.is_empty() || !desc.is_empty() {
                 let mut texts: Vec<View<DynamicMessage>> = Vec::new();
                 if !label.is_empty() {
-                    texts.push(View::Text { content: label.clone(), style: None });
+                    texts.push(View::Text { content: label.clone(), style: None, selectable: false });
                 }
                 if !desc.is_empty() {
                     texts.push(View::Text {
                         content: desc,
                         style: Style::parse(nc::TEXT_DESC).ok(),
+                        selectable: false,
                     });
                 }
                 // flex-1 pushes the badge to the row's trailing edge (iced
@@ -3257,6 +3280,7 @@ let tabs_inner = View::Row {
                 parts.push(View::Text {
                     content: badge,
                     style: Style::parse(nc::BADGE_PILL).ok(),
+                    selectable: false,
                 });
             }
             if parts.is_empty() {
@@ -3365,14 +3389,16 @@ let tabs_inner = View::Row {
                     args: vec![auto_val::Value::str(&key)],
                 },
             };
-            let chevron = if open { "chevron-down" } else { "chevron-right" };
+            // Plan 482:文本 chevron(▾/▸)——与非 shadcn vue 内联轨同构。
+            let chevron = if open { "▾" } else { "▸" };
             let content = Box::new(View::Row {
                 children: vec![
-                    View::Image {
-                        src: format!("lucide:{}", chevron),
-                        style: Style::parse("h-4 w-4 shrink-0 text-muted-foreground").ok(),
+                    View::Text {
+                        content: chevron.to_string(),
+                        style: Style::parse("text-[11px] text-muted-foreground w-[14px] shrink-0").ok(),
+                        selectable: false,
                     },
-                    View::Text { content: label.clone(), style: None },
+                    View::Text { content: label.clone(), style: None, selectable: false },
                 ],
                 spacing: 0,
                 padding: 0,
@@ -3400,6 +3426,7 @@ let tabs_inner = View::Row {
             View::Text {
                 content: label,
                 style: Style::parse(nc::GROUP_LABEL).ok(),
+                selectable: false,
             }
         };
 
@@ -3463,9 +3490,11 @@ let tabs_inner = View::Row {
 
         View::Row {
             children: vec![
-                View::Image {
-                    src: "lucide:search".to_string(),
-                    style: Style::parse(nc::ICON_MD).ok(),
+                // 🔍 文本字形——与非 shadcn vue 轨同构（免 lucide 集依赖）。
+                View::Text {
+                    content: "🔍".to_string(),
+                    style: Style::parse(&format!("{} text-muted-foreground", nc::ICON_MD)).ok(),
+                    selectable: false,
                 },
                 input.build(),
             ],
@@ -4313,7 +4342,7 @@ let tabs_inner = View::Row {
 
         let child = if children.is_empty() {
             match self.extract_string(props, "text") {
-                Some(t) if !t.is_empty() => View::Text { content: t, style: None },
+                Some(t) if !t.is_empty() => View::Text { content: t, style: None, selectable: false },
                 _ => View::Empty,
             }
         } else if children.len() == 1 {
@@ -4450,6 +4479,7 @@ let tabs_inner = View::Row {
                                 View::Text {
                                     content: String::new(),
                                     style: Style::parse("w-4 h-3 shrink-0").ok(),
+                                    selectable: false,
                                 }
                             };
                             let content = View::Row {
@@ -4458,6 +4488,7 @@ let tabs_inner = View::Row {
                                     View::Text {
                                         content: a.title.clone(),
                                         style: Style::parse("text-[12px] text-zinc-200").ok(),
+                                        selectable: false,
                                     },
                                     View::Text {
                                         content: a.shortcut.clone().unwrap_or_default(),
@@ -4465,6 +4496,7 @@ let tabs_inner = View::Row {
                                             "text-[11px] text-zinc-500 ml-auto w-14",
                                         )
                                         .ok(),
+                                        selectable: false,
                                     },
                                 ],
                                 spacing: 0,
@@ -4885,6 +4917,7 @@ let tabs_inner = View::Row {
         let child = View::Text {
             content: "".to_string(),
             style: None,
+            selectable: false,
         };
         let mut builder = View::container(child);
         builder = builder.center_x().center_y();
@@ -5013,9 +5046,13 @@ let tabs_inner = View::Row {
             };
         }
 
+        // Plan 481:opt-in selectable(v1 默认 false)。与 tracked 变体同型。
+        let selectable = self.extract_bool(props, "selectable").unwrap_or(false);
+
         View::Text {
             content: styled_content,
             style,
+            selectable,
         }
     }
 
@@ -5196,6 +5233,7 @@ let tabs_inner = View::Row {
                 views.push(View::Text {
                     content: label.clone(),
                     style: text_style,
+                    selectable: false,
                 });
             }
             views.extend(
@@ -5328,6 +5366,7 @@ let tabs_inner = View::Row {
                 child_views.push(View::Text {
                     content: text,
                     style: None,
+                    selectable: false,
                 });
             }
         }
@@ -5757,6 +5796,7 @@ let tabs_inner = View::Row {
         View::Text {
             content: resolved,
             style: None,
+            selectable: false,
         }
     }
 
@@ -7373,7 +7413,7 @@ mod tests {
             .with_prop("level", Expr::Int(2))
             .with_child(AuraNode::text("Title"));
         match builder.build(&node) {
-            View::Text { content, style } => {
+            View::Text { content, style, .. } => {
                 assert_eq!(content, "Title");
                 let expected = Style::parse("text-3xl font-bold text-primary mt-8 mb-4").unwrap();
                 assert_eq!(style.expect("heading style").classes, expected.classes);
@@ -7438,7 +7478,7 @@ mod tests {
                         // title 头 + 1 个内容子
                         assert_eq!(children.len(), 2);
                         match &children[0] {
-                            View::Text { content, style } => {
+                            View::Text { content, style, .. } => {
                                 assert_eq!(content, "小心");
                                 // 无 alpha 的 text-amber-400 保持色板枚举形态
                                 // (容器 border-amber-500/40 带 alpha 才转 Rgba)。
@@ -7816,6 +7856,43 @@ mod tests {
                 other => panic!("expected Typed ToggleCollapse, got {:?}", other),
             },
             other => panic!("text-with-onclick must convert to Button, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_text_selectable_passthrough() {
+        // Plan 481:text/label 声明 selectable: true(opt-in)→ View::Text
+        // 携带 selectable,供 iced renderer 分流到 SelectableText。
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("text")
+            .with_prop("text", Expr::Str("select me".into()))
+            .with_prop("selectable", Expr::Bool(true));
+        match builder.build(&node) {
+            View::Text { content, selectable, .. } => {
+                assert_eq!(content, "select me");
+                assert!(selectable, "selectable: true must ride View::Text");
+            }
+            other => panic!("expected View::Text, got {:?}", other),
+        }
+
+        // label 同臂同型
+        let node = AuraNode::element("label")
+            .with_prop("text", Expr::Str("label me".into()))
+            .with_prop("selectable", Expr::Bool(true));
+        match builder.build(&node) {
+            View::Text { selectable, .. } => assert!(selectable, "label selectable"),
+            other => panic!("expected View::Text, got {:?}", other),
+        }
+
+        // 缺省(不声明)= false
+        let node = AuraNode::element("text")
+            .with_prop("text", Expr::Str("plain".into()));
+        match builder.build(&node) {
+            View::Text { selectable, .. } => assert!(!selectable, "default off"),
+            other => panic!("expected View::Text, got {:?}", other),
         }
     }
 
@@ -9605,7 +9682,7 @@ mod tests {
         }
     }
 
-    /// nav(search:true)：首子为搜索行（SEARCH_ROW 类 Row：lucide:search +
+    /// nav(search:true)：首子为搜索行（SEARCH_ROW 类 Row：🔍 文本 +
     /// Input），其余子节点跟列。
     #[test]
     fn test_nav_search_row() {
@@ -9627,7 +9704,7 @@ mod tests {
                     View::Row { children: row_children, style, .. } => {
                         let classes = style.as_ref().expect("搜索行 style").classes.clone();
                         assert!(classes_contain(&classes, nc::SEARCH_ROW), "搜索行契约类缺失");
-                        assert!(matches!(&row_children[0], View::Image { src, .. } if src.starts_with("lucide:search")));
+                        assert!(matches!(&row_children[0], View::Text { content, .. } if content == "🔍"), "搜索图标应为 🔍 文本字形");
                         assert!(matches!(&row_children[1], View::Input { .. }), "第二个应为输入框");
                     }
                     other => panic!("搜索行应为 Row,得到 {other:?}"),

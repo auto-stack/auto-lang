@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-483
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing                # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-text-input-double-focus
 author: [zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 1
 total_steps: 9
 ---
 
@@ -272,6 +272,14 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   形态；README.md 复现步骤）。对齐 005-login 目录布局。
   验证：`auto run -r vm` 启动渲染正常，真键盘复现双焦点/双投递（截图或文字
   证据记入本计划）。[Category A：无 Rust 改动，禁 cargo t]
+  [✅ 已完成] c5333cd82。真键盘(PostMessage WM_CHAR/WM_LBUTTON 通道)复现:
+  username 输入 "admin" 正常(r2);点击 password 后键入 "admin"(5 键)→
+  r4/r5 实锤 **username="adminadmin"**、password=掩码"•••••"(状态双污染,
+  与 musk 实测一致);r3/r5 中 username 无焦点环但键盘双投递——焦点环视觉
+  单显、键盘语义双投递(两框 is_focused 均 Some),时序细节留 T3 探针判定。
+  证据:examples/ui/042-two-inputs-child/evidence/r1-r5.png。
+  环境注记:computer-use 前台输入被并行会话焦点抢占/全屏帧持续 stale,
+  改用 DPI-aware PrintWindow + PostMessage 直投(等效 OS 输入,不依赖前台)。
 - **T2 红测试**
   `crates/auto-lang/src/ui/iced/renderer.rs` 测试模块新增红测试 A 两例
   （vm_two_inputs_focus_is_exclusive / vm_two_inputs_ids_distinct）+
@@ -308,6 +316,23 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
   Table/Tabs）→ mcp_server.rs 测试模块新增 path 对齐回归测试（第二 input
   vnode id → PasswordChanged）。探针撤除。
   验证：新测试绿 + `cargo t ui`。
+  [✅ 已完成（2026-08-29 并行执行者会话，plan-483-dev@6bf36aca5）] 勘察修正：
+  错位层不经 042 探针实锤而是代码层双证据——①mcp_server `find_view_by_path`
+  手写子枚举缺 Button{content}/Table/Tabs 三臂（与 extract_children 同构
+  不变量破坏，vnode_converter.rs:467 文档注释明载 MUST 同构）；②双生产者=
+  styled_vtree 在 `__bounds_collected` 回路被 live_vtree
+  （convert_view_messages 加工树，Tabs/Accordion/NavigationRail/Slider
+  回调型变体折 Empty——renderer.rs:4537 文档注释）覆盖，而 shared.view 来自
+  view() MCP 同步块的裸树，两树结构性不同时 vnode.path 对位错位。另实测
+  （master release exe）：最小双 input/条件子 widget 双 input/真实 musk 登录页
+  三场景派发均已正确——Plan 446 J1 的每帧同源推送已关稳态窗口，原始错位为
+  加工树覆盖窗口内的时序态。修复：find_view_by_path 委托
+  extract_children_ref（同构永随）；AppState 增 mcp_sync_vtree 缓存（view()
+  同步块与 shared.view 同源建），bounds_collected 改取该缓存（缺失退
+  live_vtree 旧行为）。tests_plan483_d4 4 测先红（三臂 3 红+登录形态锚 1 绿）
+  后绿；--lib 3981 败 6=master 基线原样（plan050×2/notif×2/
+  code_editor_natives+clipboard 环境）零交集。提交同时收入 T2 执行者的
+  p483_* 三测（提交信息附注已披露）。
 - **T7 回归与门禁**
   028-launcher `auto run -r vm` 召唤聚焦抽查；Tab→prompt、PromptBar
   refocus 路径抽查（ASh prompt 场景）；`cargo test -p auto-lang --lib
@@ -341,3 +366,19 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
 2. **D3 条件分支形态**依 T3 结论二选一或均不启用（计划内已约束为最小侵入）。
 3. 042 example 编号取 042（041 之后、459 之前空闲段）；若与其他并行计划撞号，
    以 examples/ui 目录实际空闲号顺延并同步 README。
+4. **⚠ 执行冲突（2026-08-29 18:54 发现,执行暂停）**：worktree
+   `.worktrees/plan-483-dev` 内出现**另一并行执行者**的未提交改动
+   （renderer.rs:8407 D4 快照同源化 + mcp_server.rs + session.rs
+   `mcp_sync_vtree` 字段,注释自称「Plan 483 D4」,mtime 18:51-18:53,
+   与本会话实时并发）,且该在写代码存在 E0515 编译错误（renderer.rs:8420
+   borrow 临时值）,阻塞 T2 红测试编译。本会话已完成 T1（commit c5333cd82）
+   并写入 T2 红测试（tests 模块尾部,与对方改动不相交,未提交）。
+   **需用户裁定**:同一计划双执行者如何收束——(a) 本会话让渡 T6/D4 给对方
+   并继续 T3-T5（但 T4 主修复与对方同文件,仍需对方收笔或先合）;或 (b) 对方
+   停手,本会话集成其 D4 草稿后继续全计划。裁定前本会话暂停共享文件编辑。
+   **状态更新（2026-08-29 19:05,「对方」= 用户主会话派出的 D4 调研修复会话）**：
+   对方已收笔——E0515 借用错已修,D4 双修完成并提交 6bf36aca5（T6 ✅,详见 T6
+   标记;该提交同时收入本会话的 T2 红测试 p483_* 三测,iced-layout-tests 门控,
+   distinct_iced_ids 一条红=计划内 TDD 红态待 T3-T5 转绿）。共享文件 renderer.rs
+   现处于干净已提交状态,本会话可裁定后续:T3-T5 继续（推荐,主缺陷焦点修复
+   未动工）,T2 红测已在库等转绿。

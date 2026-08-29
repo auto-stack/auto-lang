@@ -445,6 +445,7 @@ Form label
 |------|------|---------|-------------|
 | `for` | `string` | — | Associated form control ID |
 | `text` | `string` | — | Label text |
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
@@ -538,23 +539,76 @@ Menubar container
 
 ### `nav`
 
-`builtin_widget` · `nav` · web: `native` · iced: `unknown` · category: `content`
+`builtin_widget` · `nav` · web: `native` · iced: `full` · category: `navigation`
 
-P1 extracted from production tables; props TBD
+Navigation container; search:true renders an integrated search row (Plan 482)
 
 别名:`Nav`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `search` | `bool` | false | Integrate a search input row at the top of the nav (Plan 482) |
+| `search_placeholder` | `string` | — | Placeholder text for the integrated search row |
+| `search_value` | `expr` | — | Search text state binding (e.g. .store.search); required with search: true |
+| `onsearch` | `msg_ref` | — | Message on search input (carries the input string, like input oninput) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+子件:`nav-item` `nav-group`
+
+---
+
+### `nav-group`
+
+`builtin_widget` · `nav-group` · web: `component` · iced: `full` · category: `navigation`
+
+Navigation group: label header + item column, optionally collapsible (Plan 482)
+
+别名:`nav_group` `navgroup` `NavGroup`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `string` | — | Group header label |
+| `collapsible` | `bool` | false | Header is clickable to fold/unfold (chevron indicator) |
+| `open` | `expr` | — | Fold state binding; defaults true. Unbound + collapsible uses built-in per-group state |
+| `ontoggle` | `msg_ref` | — | Message on header click (when bound); otherwise built-in state toggles |
+| `indent` | `bool` | false | Indent member items (tree feel, pl-3) |
+| `class` | `union: string|class_binding` | — | CSS class(es) |
+
+---
+
+### `nav-item`
+
+`builtin_widget` · `nav-item` · web: `component` · iced: `full` · category: `navigation`
+
+[demo →](/examples/widgets-gallery/navitem)
+
+Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link
+
+别名:`nav_item` `navitem` `NavItem`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `to` | `string` | — | Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given |
+| `onclick` | `msg_ref` | — | Click message (state mode) for store-driven switching |
+| `active` | `expr` | — | Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens) |
+| `exact` | `bool` | false | Route auto-detection uses exact match only |
+| `icon` | `string` | — | Left icon: lucide name (svg both ends) or literal emoji text |
+| `label` | `string` | — | Primary text |
+| `desc` | `string` | — | Secondary line (two-line layout) |
+| `badge` | `string` | — | Right-side badge pill |
+| `disabled` | `bool` | false | Grayed out, not clickable |
+| `size` | `one_of: sm|md|lg` | md | md=h-9 single line; lg=py-[10px] two-line; sm=h-7 |
+| `class` | `union: string|class_binding` | — | Extra classes appended after the built-in nav-item classes (escape hatch) |
 
 ---
 
 ### `nav-link`
 
-`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `content`
+`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `navigation`
 
 [demo →](/examples/widgets-gallery/navlink)
 
-P1 extracted from production tables; props TBD
+DEPRECATED (Plan 482): use nav-item instead — richer states (active/hover/disabled), icon/desc/badge slots, router + onclick modes
 
 别名:`nav_link` `navlink`
 
@@ -688,6 +742,20 @@ Visual divider
 
 ---
 
+### `slot`
+
+`builtin_widget` · `slot` · web: `none` · iced: `unknown` · category: `content`
+
+Slot: outlet in component definition; named-slot fill in component invocation
+
+别名:`Slot`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `name` | `string` | — | Slot name (named slot target or outlet) |
+
+---
+
 ### `small`
 
 `builtin_widget` · `small` · web: `none` · iced: `unknown` · category: `content`
@@ -762,9 +830,9 @@ _props 待声明_
 
 ### `taskbar`
 
-`builtin_widget` · `taskbar` · web: `none` · iced: `full` · category: `navigation`
+`builtin_widget` · `taskbar` · web: `component` · iced: `full` · category: `navigation`
 
-Desktop shell taskbar (bottom bar)
+Desktop shell taskbar (bottom bar); web leaf = @/wm/Taskbar (Plan 465 I4, same registration source as iced 463)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -780,7 +848,9 @@ Text content (literal or interpolated)
 
 别名:`Text`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 
 ---
 
@@ -835,6 +905,22 @@ Toast notification container (alias)
 P1 extracted from production tables; props TBD
 
 _props 待声明_
+
+---
+
+### `virtual_window`
+
+`builtin_widget` · `virtual_window` · web: `component` · iced: `full` · category: `content`
+
+Virtual window leaf: positioned/clipped chrome with (AppId,event) routing attrs; iced impl = ui/iced/virtual_window.rs (462), DOM impl = @/wm/VirtualWindow (465 T4)
+
+别名:`VirtualWindow`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `win` | `string` | — | Window state object {wid,appId,title,rect,z,focused} from the host WmStore (Plan 465 T4) |
+| `title` | `string` | — | Title bar text (fallback when win.title absent) |
+| `class` | `union: string|class_binding` | — | Client-area classes |
 
 ---
 

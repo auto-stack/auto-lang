@@ -188,3 +188,29 @@
 | 473 | 验收顺延 | 🟡 | native dock 真人冒烟清单顺延（用户 2026-08-29 裁定 E2E 代验）：B1 拖拽手势（Phase 1 无 dock 用户触发面）、B5 实机模态、B6 IME、B9 多显示器缩放矩阵（仅单屏 200% 覆盖）、D1 Chrome 实机、B8 退出恢复整链实机、C1 真提权进程 | Phase 1 假洞的可自动断言部分已由 fixture E2E 六测试覆盖（B1/B2/B3/C3/C4/C5/B7）；触发面（shell UI/手势）建议随 Phase 1.5 立项；多屏可独立自动化补测 | tools/native-fixture/README.md；docs/plans/473-vm-native-window-dock.md 待澄清⑦ | 2026-08-29 |
 
 *最后更新：2026-08-29（446 下游结算回执收口:数据损坏条目 ✅（下游 parse-first 8a7b85f+soul.md 重写 639B）、渲染回归降级观察（03/04 在 c83435764 未复现）;新登 446-R1 applyAccent 撞名/446-R2 merged 链接面诊断（🟡节）、422 并入 vue popover 半缺口、446-R3 store_import_prefix CLI/446-R4 state 对象数组投影（增强节）;specs ui/vm plans.md 446 行对齐 archived;2026-08-27（复核归档批:413/414/421/422/423/449 六计划归档,遗留登记 7 条(413 人工验收/421 natives 桥接/422 popover 边界/414 Phase B 族/423 RC 安全×2/449 组件三缺口+越界读 bug),418 menubar 估位条目随 422 P2 落地退役;Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+
+### P482（2026-08-29，Plan 482 nav 组件族复审登记）
+
+- **P482-1 musk rail 双端视觉复跑**：web 全栈冒烟（需 backend+auth 流程）与
+  VM 轨 rail 截图未随 052 执行（build+产物核验替代）；归 musk PLAN-050 parity
+  线复跑。nav-item 组件本体已在 auto-lang 015/018 双端实测。
+- **P482-2 015-notes 搜索过滤缺位**：nav(search:) 已把死输入框接线到
+  store.Search，但笔记列表过滤逻辑在重构前后均不存在（行为保持，非回归）；
+  store 侧投影补过滤为后续小改。
+- **P482-3 015-notes 置顶标记丢失**：原 NoteItem 的 📌 pinned emoji 在
+  nav-item 化时未迁移（icon 槽被文件夹树语义占用，条件 icon 表达式 VM 求值
+  未验证）；置顶语义仍可经 Pinned 页签触达。
+- **P482-4 nav-item title/desc tooltip 通道**：os-config regen.sh 仍以部署侧
+  :title 补偿截断 desc 悬停提示——组件属性候选（title: prop 双端映射），
+  上游组件演进项。
+- **P481-5 482 nav-item/nav-group vue import 围栏红（master 现红）**：
+  schema_drift P6-2 报 `nav-item`/`nav-group` 的 vue import
+  `@/components/ui/nav` 无独立来源（组件包不存在于 gallery 生成树/官方包/
+  安装表）。482 合入 master（b78ad7050）时被既有 `[view_builder] Slot`
+  红遮蔽（围栏快速失败），481 合并修复 Slot 后揭出。根因同 P479/473 系：
+  `cargo tf` 只跑 `--lib`，`--test schema_drift` 不在日常/合入门禁。修复
+  三选一见围栏消息（官方包补导出 / cmd_vue.rs 安装表补条目 / LOCAL_UI_PKGS
+  登记本地组件并写明实现位置）——需 482 意图裁定，归 nav 线后续。
+- **P481-6 实机 Ctrl+C→系统剪贴板末步**：单测+simulator 双证键路，实机
+  最后一步被用户在用桌面阻断（详见 archive/481 §T5 留痕）；桌面空闲 30 秒
+  可闭环。

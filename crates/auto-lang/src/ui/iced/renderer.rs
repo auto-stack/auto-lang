@@ -2577,7 +2577,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
-            AbstractView::Text { content, style } => {
+            AbstractView::Text { content, style, selectable, .. } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
                 let is_code = style.as_ref()
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
@@ -2600,6 +2600,76 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     }
                     let el: iced::Element<'static, M> = rich.into();
+                    if let Some(ref s) = style {
+                        wrap_with_margin(el, &IcedStyle::from_style(s))
+                    } else {
+                        el
+                    }
+                } else if selectable {
+                    // Plan 481: SelectableText 分流 —— 与下方 text 构造链同参
+                    // 镜像(缺省 false 路径零改动,I3 配置差异形态)。label 无
+                    // 独立 View 变体(aura_view_builder 折叠为 Text),此臂即
+                    // text/label 共用分流点。
+                    use crate::ui::iced::selectable_text::SelectableText;
+                    let mut st = SelectableText::new(content.clone());
+
+                    if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
+
+                        if let Some(fs) = effective_font_size(&iced_style) {
+                            st = st.size(fs);
+                        }
+                        if let Some(color) = iced_style.text_color {
+                            st = st.color(color);
+                        } else if let Some((r, g, b)) =
+                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                        {
+                            st = st.color(iced::Color::from_rgb8(r, g, b));
+                        }
+                        if let Some(ref weight) = iced_style.font_weight {
+                            st = st.font(font_weight_to_iced(weight));
+                        }
+                        if let Some(ref family) = iced_style.font_family {
+                            let fam = match family.as_str() {
+                                "serif" => iced::font::Family::Serif,
+                                "mono" => iced::font::Family::Monospace,
+                                _ => iced::font::Family::SansSerif,
+                            };
+                            let weight = iced_style
+                                .font_weight
+                                .as_ref()
+                                .map(font_weight_to_iced)
+                                .unwrap_or(iced::Font::DEFAULT);
+                            st = st.font(iced::Font {
+                                family: fam,
+                                weight: weight.weight,
+                                stretch: weight.stretch,
+                                style: weight.style,
+                            });
+                        }
+                        if let Some(ref w) = iced_style.width {
+                            st = st.width(iced_length(w));
+                        }
+                        if let Some(ref align) = iced_style.text_align {
+                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            if iced_style.width.is_none() {
+                                st = st.width(iced::Length::Fill);
+                            }
+                            match align {
+                                IcedTextAlign::Center => {
+                                    st = st.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                IcedTextAlign::Right => {
+                                    st = st.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                IcedTextAlign::Left => {}
+                            }
+                        }
+                    }
+
+                    let el: iced::Element<'static, M> = st.into();
                     if let Some(ref s) = style {
                         wrap_with_margin(el, &IcedStyle::from_style(s))
                     } else {
@@ -2771,7 +2841,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
-                    if let Some(svg_str) = lucide_svg(icon_name) {
+                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
                         // Plan 409 §10 续: PUA icon(button label 内嵌的 nav-link
                         // 图标)与文字同色 —— button 的 text_color,无则 OnBackground
                         // (renderer §3.4,避免 resvg 把 currentColor 画成黑色)。
@@ -3690,7 +3760,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                    if let Some(svg_str) = lucide_svg(icon_name) {
+                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
                         // 像素的 RGB 整体替换(按 (handle,size,color) 缓存,引擎
@@ -4080,6 +4150,17 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
 /// Plan 408: Return a complete SVG string for a lucide icon name.
 /// The SVG uses 16x16 viewport (scaled from lucide's 24x24), stroke-based
 /// rendering matching lucide's visual style.
+/// Plan 482: lucide_svg returns bare shape fragments (no <svg> root) —
+/// resvg refuses to parse them, so every `lucide:` icon rendered EMPTY
+/// (pre-existing gap hit by the nav search icon; also affects the PUA
+/// button-icon path). Wrap into a full stroke-based document here.
+fn lucide_svg_doc(name: &str) -> Option<String> {
+    let frag = lucide_svg(name)?;
+    Some(format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
+    ))
+}
+
 fn lucide_svg(name: &str) -> Option<&'static str> {
     // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
     // Each entry is the inner elements only.
@@ -4471,6 +4552,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                 AbstractView::Text {
                     content: display,
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,
@@ -4552,7 +4634,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     match view {
         AbstractView::Empty => AbstractView::Empty,
 
-        AbstractView::Text { content, style } => AbstractView::Text { content, style },
+        AbstractView::Text { content, style, selectable } => AbstractView::Text { content, style, selectable },
 
         AbstractView::Button {
             label,
@@ -11557,7 +11639,7 @@ fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
     use crate::ui::vnode::{VNodeKind, VNodeProps};
     let child_count = node.children.len();
     match (&node.kind, &node.props) {
-        (VNodeKind::Text, VNodeProps::Text { content }) => {
+        (VNodeKind::Text, VNodeProps::Text { content, .. }) => {
             let snippet: String = content.chars().take(20).collect();
             if content.chars().count() > 20 {
                 format!("\"{}…\"", snippet)
@@ -12281,7 +12363,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
+            VNodeProps::Text { content, .. } => col = col.push(kv_row("content", content.clone())),
             VNodeProps::Button { label, .. } => col = col.push(kv_row("label", label.clone())),
             VNodeProps::Input {
                 placeholder,
@@ -13592,7 +13674,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
         let _ = (key, is_final);
-        AbstractView::<M>::Text { content: value.to_owned(), style: None }.into_iced()
+        AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
 
@@ -14284,7 +14366,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
                 let _ = use_ade;
                 let el: iced::Element<'static, IcedMessage> =
-                    AbstractView::Text { content: value, style: None }.into_iced();
+                    AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el
             }
         }
@@ -15477,7 +15559,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => {
+            VNodeProps::Text { content, .. } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("content", content.clone()))
             }
             VNodeProps::Button { label, .. } => {
@@ -15695,6 +15777,22 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
+    /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
+    /// 此处以测试锁住。
+    #[test]
+    fn nav_family_lucide_icons_present() {
+        for name in [
+            "message-square", "list-todo", "scroll", "book-open",
+            "chevron-down", "chevron-right", "search",
+        ] {
+            assert!(
+                lucide_svg(name).is_some(),
+                "nav 组件族图标 {name} 缺失于 lucide_svg 内嵌集"
+            );
+        }
+    }
+
     use super::*;
 
     // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
@@ -17010,10 +17108,11 @@ mod tests {
     fn test_table_header_style_recursive() {
         let mut v: AbstractView<TestMessage> = AbstractView::Row {
             children: vec![
-                AbstractView::Text { content: "Prop".to_string(), style: None },
+                AbstractView::Text { content: "Prop".to_string(), style: None, selectable: false },
                 AbstractView::Text {
                     content: "Type".to_string(),
                     style: Some(Style { classes: vec![], hover_classes: vec![] }),
+                    selectable: false,
                 },
             ],
             spacing: 0,
@@ -17258,6 +17357,7 @@ mod tests {
                 AbstractView::Text {
                     content: "Su".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,

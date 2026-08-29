@@ -1420,7 +1420,38 @@ impl VueGenerator {
             static_cls.push(' ');
             static_cls.push_str(nc::ITEM_DISABLED);
         }
+        // Plan 482 补:用户静态 class 并入基类串（重复 class 属性在 Vue 模板
+        // 里后者胜出且告警）；绑定态 class 保留独立 :class。
+        if let Some(user) = props.get("class").or_else(|| props.get("style")) {
+            if let Some(u) = self.extract_string_value(user) {
+                if !u.trim().is_empty() {
+                    static_cls.push(' ');
+                    static_cls.push_str(u.trim());
+                }
+            }
+        }
         let mut inline_attrs: Vec<String> = vec![format!("class=\"{}\"", static_cls)];
+        if let Some(state_ref) = props.get("class").or_else(|| props.get("style"))
+            .and_then(|v| if self.extract_string_value(v).is_some() { None } else { self.extract_state_ref(v) })
+        {
+            inline_attrs.push(format!(":class=\"{}\"", state_ref));
+        }
+        // Plan 482 补:data-active 语义锚(测试/无障碍;os-config e2e 同款用法)。
+        if let Some(value) = props.get("active") {
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(true)) => {
+                    inline_attrs.push("data-active=\"true\"".to_string());
+                }
+                AuraPropValue::Expr(crate::ast::Expr::Bool(false)) => {
+                    inline_attrs.push("data-active=\"false\"".to_string());
+                }
+                AuraPropValue::Expr(expr) => {
+                    let cond = self.bound_value_or_warn(expr, "nav-item active", "false");
+                    inline_attrs.push(format!(":data-active=\"!!({})\"", cond));
+                }
+                _ => {}
+            }
+        }
         if !static_active && !static_disabled {
             if let Some(value) = props.get("active") {
                 if let AuraPropValue::Expr(expr) = value {
@@ -1514,7 +1545,7 @@ impl VueGenerator {
                             }
                             _ => self.prop_to_text_content(value)?,
                         };
-                        content.push_str(&format!("{}  <span class=\"truncate\">{}</span>\n", cind, frag));
+                        content.push_str(&format!("{}  <span class=\"nav-name truncate\">{}</span>\n", cind, frag));
                     }
                 }
                 if has_desc {
@@ -1671,14 +1702,14 @@ impl VueGenerator {
             self.used_handlers.insert(handler_name);
             toggle_attr = format!(" @click=\"{}\"", handler_fn);
         }
-        let chevron_cls = "h-4 w-4 shrink-0 text-muted-foreground";
+        let chevron_cls = "text-[11px] text-muted-foreground w-[14px] shrink-0";
         html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
         html.push_str(&format!(
             "{}  <button type=\"button\" class=\"{} {}\"{}>\n",
             ind, nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER, toggle_attr
         ));
-        html.push_str(&format!("{}    <ChevronDown v-if=\"{}\" class=\"{}\" />\n", ind, open_js, chevron_cls));
-        html.push_str(&format!("{}    <ChevronRight v-else class=\"{}\" />\n", ind, chevron_cls));
+        html.push_str(&format!("{}    <span v-if=\"{}\" class=\"{}\">▾</span>\n", ind, open_js, chevron_cls));
+        html.push_str(&format!("{}    <span v-else class=\"{}\">▸</span>\n", ind, chevron_cls));
         html.push_str(&format!("{}    <span class=\"truncate\">{}</span>\n", ind, Self::escape_html_text(&label)));
         html.push_str(&format!("{}  </button>\n", ind));
         html.push_str(&format!("{}  <div v-show=\"{}\" class=\"{}\">\n", ind, open_js, content_cls));
@@ -1718,17 +1749,28 @@ impl VueGenerator {
         };
         html.push_str(&format!("{}<nav{}>\n", ind, attr_str));
 
-        // 搜索行：icon + input（v-model 绑定 + onsearch 处理器）。
+        // 搜索行：icon + input（:value 绑定 + onsearch 处理器）。
         html.push_str(&format!("{}  <div class=\"{}\">\n", ind, nc::SEARCH_ROW));
-        self.lucide_icons.insert("Search".to_string());
-        html.push_str(&format!(
-            "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
-            ind, nc::ICON_MD
-        ));
+        if self.is_shadcn() {
+            self.lucide_icons.insert("Search".to_string());
+            html.push_str(&format!(
+                "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
+                ind, nc::ICON_MD
+            ));
+        } else {
+            // 非 shadcn 轨：🔍 文本字形——与 VM 端同构，免 lucide 依赖。
+            html.push_str(&format!(
+                "{}    <span class=\"{} text-muted-foreground shrink-0\">🔍</span>\n",
+                ind, nc::ICON_MD
+            ));
+        }
         let mut input_attrs: Vec<String> = vec![format!("class=\"{}\"", nc::SEARCH_INPUT)];
+        // Plan 482 修正：search_value 可能是子组件 prop（如 NavTree(search:)），
+        // v-model 写 prop 编译报错——统一发 :value，状态更新交给 onsearch
+        // handler（携带输入文本）回写。
         if let Some(value) = props.get("search_value") {
             if let Some(state_ref) = self.extract_state_ref(value) {
-                input_attrs.push(format!("v-model=\"{}\"", state_ref));
+                input_attrs.push(format!(":value=\"{}\"", state_ref));
             } else if let AuraPropValue::Expr(expr) = value {
                 let js = self.bound_value_or_warn(expr, "nav search_value", "''");
                 input_attrs.push(format!(":value=\"{}\"", js));
@@ -5104,6 +5146,12 @@ impl VueGenerator {
                         if key == "text" {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
+                        }
+                        // Plan 481: selectable: true → 显式 user-select: text
+                        // (防应用级 none 吞掉;不 continue,保留下方通用
+                        // :selectable 绑定透传作 a2vue 金样锚点)。
+                        if key == "selectable" && self.extract_bool_value(value) {
+                            attrs.push("style=\"user-select: text\"".to_string());
                         }
                         // Special handling for codeblock's code prop - render as content
                         if key == "code" && (tag == "codeblock" || tag == "code-block") {
@@ -9608,12 +9656,27 @@ impl VueGenerator {
                 // `:class` exprs and conditional ternaries (Batch A gap 20).
                 // Without this the shadcn path silently dropped `class:`.
                 self.push_native_classes(&mut attrs, tag, props);
+                // Plan 481: selectable: true → 显式 user-select: text(防应用级
+                // none 吞掉;浏览器默认可选是 vue 现状,prop 双端语义声明 +
+                // a2vue 金样锚点)。静态 style 与 :style 绑定 Vue 合并,不冲突。
+                if let Some(value) = props.get("selectable") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("style=\"user-select: text\"".to_string());
+                    }
+                }
             }
 
             // === Text (Typography) ===
             "text" | "Text" | "span" | "Span" | "p" | "P" => {
                 // Extract class/style for Tailwind
                 self.push_style_class(&mut attrs, props);
+                // Plan 481: selectable: true → 显式 user-select: text
+                // (同 label 臂;缺省零改动)。
+                if let Some(value) = props.get("selectable") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("style=\"user-select: text\"".to_string());
+                    }
+                }
                 // Text content becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
@@ -15180,6 +15243,36 @@ mod tests {
     /// through (`$event.line, $event.column` / `$event.x, $event.y`); a
     /// single declared param receives the whole `$event`; a param-less
     /// handler stays a plain reference.
+    /// Plan 481:text/label 声明 selectable: true → vue 输出显式
+    /// `style="user-select: text"`(防应用级 none 吞掉);缺省零改动。
+    #[test]
+    fn test_text_selectable_emits_user_select() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SelText {
+    view {
+        col {
+            text "pick me" { selectable: true }
+            text "plain" {}
+            label "form label" { selectable: true }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("user-select: text"),
+            "selectable: true must emit explicit user-select style:
+{sfc}"
+        );
+        // 两个声明位(text+label)都带显式化 → 出现 2 次。
+        assert_eq!(
+            sfc.matches("user-select: text").count(),
+            2,
+            "text and label each emit once:
+{sfc}"
+        );
+        // plain text 不声明 → 不出现额外 user-select(仅 2 次)已由上式锁定。
+    }
+
     #[test]
     fn test_code_editor_events_payload_threading() {
         let sfc = gen_sfc_from_widget_src_shadcn(r##"
@@ -17748,7 +17841,7 @@ widget NavDemo {
 {sfc}");
         assert!(sfc.contains("nav-search"), "搜索行:
 {sfc}");
-        assert!(sfc.contains("v-model=\"q\""), "搜索 v-model:
+        assert!(sfc.contains(":value=\"q\""), "搜索 :value 绑定:
 {sfc}");
         assert!(sfc.contains("@input="), "onsearch 处理器:
 {sfc}");
@@ -17800,7 +17893,7 @@ widget NavPlain {
 {sfc}");
         assert!(sfc.contains("v-show="), "折叠组 v-show:
 {sfc}");
-        assert!(sfc.contains("ChevronDown"), "折叠 chevron:
+        assert!(sfc.contains("▾"), "折叠 chevron 文本字形:
 {sfc}");
         assert!(sfc.contains("nav-search"), "搜索行:
 {sfc}");
@@ -22717,6 +22810,14 @@ widget NullProbe {
     fn test_a2vue_shadcn_col_dynamic_class() {
         test_a2vue_shadcn("009_shadcn_col_dynamic_class")
             .expect("a2vue shadcn col dynamic class mismatch");
+    }
+
+    /// Plan 481 a2vue golden: text/label `selectable: true` 往返 —— 输出携带
+    /// 显式 `style="user-select: text"`;缺省零输出(金样锁 prop 透传,不锁
+    /// 选区行为——vue 端跟随浏览器原生)。
+    #[test]
+    fn test_a2vue_text_selectable() {
+        test_a2vue("011_text_selectable").expect("a2vue 011_text_selectable mismatch");
     }
 
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style

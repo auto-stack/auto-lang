@@ -260,6 +260,7 @@ fn convert_text(node: &Node) -> ConversionResult<View<String>> {
         Ok(View::Text {
             content,
             style: Some(style),
+            selectable: false,
         })
     } else {
         Ok(View::text(content))

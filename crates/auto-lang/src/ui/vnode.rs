@@ -186,7 +186,10 @@ pub enum VNodeProps {
     Empty,
 
     /// 文本属性
-    Text { content: String },
+    ///
+    /// Plan 481:`selectable` 为 opt-in(缺省 false)——true 时 iced 端渲染
+    /// SelectableText(拖选/双击/Ctrl+C),快照/MCP 面同步可见。
+    Text { content: String, selectable: bool },
 
     /// 按钮属性(disabled 进 vtree —— Plan 423 P3,MCP 快照可见)
     Button { label: String, disabled: bool },
@@ -734,7 +737,8 @@ mod tests {
         let mut tree = VTree::new();
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Hello".to_string()
+            content: "Hello".to_string(),
+            selectable: false,
         });
 
         tree.set_root(node);
@@ -749,7 +753,8 @@ mod tests {
         let mut tree = VTree::new();
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string()
+            content: "Test".to_string(),
+            selectable: false,
         });
 
         tree.add_node(node);
@@ -781,19 +786,20 @@ mod tests {
         let mut tree = VTree::new();
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Original".to_string()
+            content: "Original".to_string(),
+            selectable: false,
         });
 
         tree.set_root(node);
 
         if let Some(node_mut) = tree.get_mut(id) {
-            if let VNodeProps::Text { content } = &mut node_mut.props {
+            if let VNodeProps::Text { content, .. } = &mut node_mut.props {
                 *content = "Modified".to_string();
             }
         }
 
         let retrieved = tree.get(id).unwrap();
-        if let VNodeProps::Text { content } = &retrieved.props {
+        if let VNodeProps::Text { content, .. } = &retrieved.props {
             assert_eq!(content, "Modified");
         }
     }
@@ -812,7 +818,8 @@ mod tests {
         // 创建子节点
         let child_id = tree.next_id();
         let child = VNode::new(child_id, VNodeKind::Text, VNodeProps::Text {
-            content: "Child".to_string()
+            content: "Child".to_string(),
+            selectable: false,
         })
         .with_parent(root_id);
 
@@ -852,6 +859,7 @@ mod tests {
                 VNodeKind::Text,
                 VNodeProps::Text {
                     content: format!("Child{}", i),
+                    selectable: false,
                 },
             )
             .with_parent(root_id);
@@ -879,7 +887,8 @@ mod tests {
 
         let child_id = tree.next_id();
         let child = VNode::new(child_id, VNodeKind::Text, VNodeProps::Text {
-            content: "Child".to_string()
+            content: "Child".to_string(),
+            selectable: false,
         })
         .with_parent(root_id);
 
@@ -897,7 +906,8 @@ mod tests {
 
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Orphan".to_string()
+            content: "Orphan".to_string(),
+            selectable: false,
         })
         .with_parent(VNodeId(999)); // 不存在的父节点
 
@@ -930,7 +940,8 @@ mod tests {
             grandchild_id,
             VNodeKind::Text,
             VNodeProps::Text {
-                content: "Grandchild".to_string()
+                content: "Grandchild".to_string(),
+                selectable: false,
             }
         )
         .with_parent(child_id);
@@ -961,7 +972,8 @@ mod tests {
             text_id,
             VNodeKind::Text,
             VNodeProps::Text {
-                content: "Hello".to_string()
+                content: "Hello".to_string(),
+                selectable: false,
             }
         )
         .with_parent(root_id);
@@ -1000,7 +1012,8 @@ mod tests {
 
         let id = tree.next_id();
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string()
+            content: "Test".to_string(),
+            selectable: false,
         });
 
         tree.set_root(node);
@@ -1023,7 +1036,8 @@ mod tests {
     fn test_vnode_with_label() {
         let id = VNodeId::new(1);
         let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string()
+            content: "Test".to_string(),
+            selectable: false,
         })
         .with_label("MyTextNode");
 
@@ -1033,7 +1047,7 @@ mod tests {
     #[test]
     fn vnode_has_path_and_source_span() {
         let id = VNodeId::new(1);
-        let mut node = VNode::new(id, VNodeKind::Text, VNodeProps::Text { content: "x".into() });
+        let mut node = VNode::new(id, VNodeKind::Text, VNodeProps::Text { content: "x".into(), selectable: false });
         assert!(node.path.is_empty());
         assert!(node.source_span.is_none());
 

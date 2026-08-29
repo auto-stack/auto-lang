@@ -22,7 +22,9 @@ const props = withDefaults(
     open?: boolean
     indent?: boolean
   }>(),
-  { label: "", collapsible: false, indent: false },
+  // open: undefined must be explicit — Vue Boolean props otherwise cast an
+  // absent value to false, breaking the "unbound = defaults open" contract.
+  { label: "", collapsible: false, indent: false, open: undefined },
 )
 
 const emit = defineEmits<{ toggle: [] }>()

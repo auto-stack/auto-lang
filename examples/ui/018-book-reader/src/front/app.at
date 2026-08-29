@@ -25,22 +25,13 @@ widget App {
                     text "📖" { style: "text-xl" }
                     text "AutoRead" { style: "font-bold text-lg text-foreground" }
                 }
-                col {
-                    style: "p-3 gap-1 flex-1"
-                    link (to: "/") {
-                        row {
-                            style: "items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            text "📚" { style: "text-base" }
-                            text "Library" {}
-                        }
-                    }
-                    link (to: "/settings") {
-                        row {
-                            style: "items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            text "⚙️" { style: "text-base" }
-                            text "Settings" {}
-                        }
-                    }
+                nav {
+                    style: "p-3 gap-1 flex-1 flex flex-col"
+                    // Plan 482: nav-item(to:) 路由模式 —— Vue hash URL + 浏览器
+                    // 返回；VM __navigate + router.back() 历史栈。选中态主色调
+                    // 高亮由 to 自动判定（/ 对 /book/1 不误亮——前缀段匹配）。
+                    nav-item (to: "/", exact: true, icon: "📚", label: "Library")
+                    nav-item (to: "/settings", icon: "⚙️", label: "Settings")
                 }
                 // Runtime dark/light toggle (handmade ThemeToggle.vue escape hatch).
                 row {

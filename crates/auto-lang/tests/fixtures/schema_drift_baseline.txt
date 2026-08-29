@@ -202,6 +202,7 @@ render_not_in_rs	toast_provider
 render_not_in_rs	tooltip
 render_not_in_rs	tr
 render_not_in_rs	video
+render_not_in_rs	virtual_window
 render_not_in_vb	accordion
 render_not_in_vb	accordion-content
 render_not_in_vb	accordion-item
@@ -267,6 +268,7 @@ render_not_in_vb	toggle
 render_not_in_vb	tooltip
 render_not_in_vb	tr
 render_not_in_vb	video
+render_not_in_vb	virtual_window
 rs_not_in_render	accordion_content
 rs_not_in_render	accordion_item
 rs_not_in_render	accordion_trigger
@@ -605,7 +607,6 @@ rs_not_in_vb	sidebar_menu_button
 rs_not_in_vb	sidebar_menu_item
 rs_not_in_vb	sidebar_provider
 rs_not_in_vb	sidebar_trigger
-rs_not_in_vb	slot
 rs_not_in_vb	stepper
 rs_not_in_vb	stepper_description
 rs_not_in_vb	stepper_indicator
@@ -634,6 +635,7 @@ vb0_not_in_vb1	toolbar
 vb1_not_in_vb0	Select
 vb1_not_in_vb0	select
 vb_not_in_render	Select
+vb_not_in_render	Slot
 vb_not_in_render	a
 vb_not_in_render	b
 vb_not_in_render	em
@@ -646,10 +648,12 @@ vb_not_in_render	link
 vb_not_in_render	menubar
 vb_not_in_render	sep
 vb_not_in_render	separator
+vb_not_in_render	slot
 vb_not_in_render	small
 vb_not_in_render	strong
 vb_not_in_render	toolbar
 vb_not_in_rs	Select
+vb_not_in_rs	Slot
 vb_not_in_rs	a
 vb_not_in_rs	article
 vb_not_in_rs	aside

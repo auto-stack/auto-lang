@@ -1,0 +1,12 @@
+// a2vue golden case 011 — text/label selectable 显式化 (Plan 481)。
+// 验证 `selectable: true` 往返:vue 输出携带显式 `style="user-select: text"`
+// (防应用级 none 吞掉;缺省不声明则零输出)。
+widget TextSelectable {
+    view {
+        col {
+            text "pick me" { selectable: true }
+            text "plain" {}
+            label "form label" { selectable: true }
+        }
+    }
+}
