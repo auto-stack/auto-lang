@@ -384,7 +384,9 @@ pub struct WmState {
     /// Plan 463 T4：当前布局模式（Free = 用户位置即真值；切换经
     /// `DesktopSession::wm_set_layout` 统一应用）。
     pub layout: LayoutMode,
-    /// Plan 472 T2：workspace 分区表（默认单分区，462/463 行为路径等价）。
+    /// Plan 472 T2：workspace 分区表。pack 默认 2 分区（T5 补记：单分区
+    /// 下切换条/环切无物可切，验收「窗口随分区隐现」要求 ≥2；空分区对
+    /// 462/463 可见行为零影响——命中/绘制/排布按窗口过滤，空分区不可见）。
     pub workspaces: Vec<Workspace>,
     /// Plan 472 T2：当前分区下标（可见/命中/焦点环/排布的过滤基准）。
     pub current_workspace: usize,
@@ -402,7 +404,10 @@ impl WmState {
             last_cursor: Cell::new(iced::Point::ORIGIN),
             mru: Vec::new(),
             layout: LayoutMode::default(),
-            workspaces: vec![Workspace { id: 0, name: "Desktop 1".to_string() }],
+            workspaces: vec![
+                Workspace { id: 0, name: "Desktop 1".to_string() },
+                Workspace { id: 1, name: "Desktop 2".to_string() },
+            ],
             current_workspace: 0,
         }
     }
@@ -1831,13 +1836,16 @@ mod tests {
     }
 
     #[test]
-    fn workspace_additive_default_single_partition() {
+    fn workspace_additive_default_two_partitions() {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "V");
         let wid = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
         let host = ds.host.as_ref().unwrap();
-        assert_eq!(host.wm.workspaces.len(), 1, "默认单分区（463 行为等价）");
+        // T5 补记：pack 默认 2 分区（切换条/环切有物可切；空分区不可见，
+        // 462/463 可见行为等价）。新窗落当前分区 0。
+        assert_eq!(host.wm.workspaces.len(), 2);
         assert_eq!(host.wm.workspaces[0].id, 0);
+        assert_eq!(host.wm.workspaces[1].name, "Desktop 2");
         assert_eq!(host.wm.current_workspace, 0);
         assert_eq!(host.wm.wins[&wid].workspace, 0, "新窗入当前分区");
     }
@@ -1847,8 +1855,8 @@ mod tests {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "A");
         let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0));
-        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
-        ds.wm_set_workspace(ws1);
+        // pack 默认分区 1（T5 补记：默认 2 分区）。
+        ds.wm_set_workspace(1);
         {
             let host = ds.host.as_ref().unwrap();
             assert_eq!(host.wm.current_workspace, 1);
@@ -1867,6 +1875,7 @@ mod tests {
         let host = ds.host.as_ref().unwrap();
         assert_eq!(host.wm.current_workspace, 0, "next 环切回 0");
         assert_eq!(host.wm.focused, Some(a), "回切分区焦点=该分区栈顶窗");
+        let _ = b;
     }
 
     #[test]
@@ -1874,8 +1883,7 @@ mod tests {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "A");
         let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0));
-        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
-        ds.wm_set_workspace(ws1);
+        ds.wm_set_workspace(1);
         let app2 = insert_app(&mut ds, "B");
         let b = ds.wm_add_win(app2, "B".into(), t2_rect(0.0, 0.0));
         {
@@ -1901,8 +1909,7 @@ mod tests {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "A");
         let _a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0));
-        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
-        ds.wm_set_workspace(ws1);
+        ds.wm_set_workspace(1);
         let app2 = insert_app(&mut ds, "B");
         let b = ds.wm_add_win(app2, "B".into(), t2_rect(0.0, 0.0));
         let app3 = insert_app(&mut ds, "C");
@@ -1962,9 +1969,8 @@ mod tests {
     fn launch_app_cascade_index_counts_current_partition() {
         let mut ds = t4_session_with_resolver();
         let w0 = ds.launch_app("probe").expect("launch in ws0");
-        // 新空分区再启动：级联 index 应为 0（隐分区窗不占级联位）。
-        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
-        ds.wm_set_workspace(ws1);
+        // 空分区再启动：级联 index 应为 0（隐分区窗不占级联位）。
+        ds.wm_set_workspace(1);
         let w1 = ds.launch_app("probe").expect("launch in ws1");
         let host = ds.host.as_ref().unwrap();
         let r0 = *host.wm.wins[&w0].rect.borrow();

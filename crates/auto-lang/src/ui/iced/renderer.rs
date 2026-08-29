@@ -14324,7 +14324,7 @@ mod tests {
             other => panic!("__wm_meta 读回异常: {other:?}"),
         }
         let wss = t3_read_array(&ds, "__wm_workspaces");
-        assert_eq!(wss.len(), 1, "默认单分区");
+        assert_eq!(wss.len(), 2, "pack 默认 2 分区（T5 补记）");
         let auto_val::Value::Obj(ws) = &wss[0] else {
             panic!("workspace 条目应为 Obj")
         };
@@ -14388,8 +14388,7 @@ mod tests {
     fn projection_v1_reflects_workspace_switch() {
         let mut ds = t3_session_with_shell();
         let a = t3_add_win(&mut ds, "Alpha");
-        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
-        ds.wm_set_workspace(ws1);
+        ds.wm_set_workspace(1); // pack 默认分区 1（T5 补记：默认 2 分区）
         let b = t3_add_win(&mut ds, "Beta");
         sync_shell_windows(&mut ds);
 
@@ -14403,7 +14402,7 @@ mod tests {
         assert_eq!(t3_obj_str(second, "focused"), "1", "分区 1 焦点 = Beta");
 
         let wss = t3_read_array(&ds, "__wm_workspaces");
-        assert_eq!(wss.len(), 2);
+        assert_eq!(wss.len(), 2, "pack 默认 2 分区");
         let auto_val::Value::Obj(ws0) = &wss[0] else { panic!("Obj") };
         assert_eq!(t3_obj_str(ws0, "current"), "", "分区 0 非当前");
         let auto_val::Value::Obj(ws1o) = &wss[1] else { panic!("Obj") };
