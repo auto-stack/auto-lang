@@ -5850,6 +5850,21 @@ fn keyboard_subscription(
     focused: bool,
     desktop_mode: bool,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    keyboard_subscription_ext(app, my_window, key_bindings, focused, desktop_mode, false)
+}
+
+/// Plan 464 T5：`escape_forward` —— Esc 被焦点输入框/IME 捕获（Captured）时
+/// bind 路径收不到按键；launcher 的 Esc 逐层退出依赖宿主转发同一 .Escape
+/// （幂等：handler 以 visible=="1" 门控，与 bind 双派发亦安全）。仅 launcher
+/// overlay 的订阅传 true。
+fn keyboard_subscription_ext(
+    app: crate::ui::session::AppId,
+    my_window: iced::window::Id,
+    key_bindings: HashMap<String, String>,
+    focused: bool,
+    desktop_mode: bool,
+    escape_forward: bool,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
     // Plan 462：identity 加入 focused —— desktop 模式焦点翻转即重订阅，
     // 闭包内按焦点门控（R12：键盘只进焦点虚拟窗口的 App）。
@@ -5863,8 +5878,32 @@ fn keyboard_subscription(
             if window != my_window || !focused {
                 return None;
             }
-            keyboard_event_message(event, status, &key_bindings, !desktop_mode)
-                .map(move |m| DM::App(app, m))
+            if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event
+                {
+                    eprintln!("[464-KEY] app={app:?} key={key:?} status={status:?}");
+                }
+            }
+            let is_escape = matches!(
+                &event,
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                })
+            );
+            match keyboard_event_message(event, status, &key_bindings, !desktop_mode) {
+                Some(m) => Some(DM::App(app, m)),
+                // Captured 捕获的 Esc：bind 路径不可达 —— launcher 场景转发
+                None if escape_forward && is_escape => Some(DM::App(
+                    app,
+                    IcedMessage {
+                        widget: String::new(),
+                        event: "Escape".to_string(),
+                        input_value: None,
+                    },
+                )),
+                None => None,
+            }
         },
     )
 }
@@ -6031,6 +6070,9 @@ fn keyboard_event_message(
                     crate::ui::action_config::action_config()
                         .and_then(|cfg| cfg.handler_for_key(&key_str).map(str::to_owned))
                 });
+            if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                eprintln!("[464-BIND] key_str={key_str:?} handler={handler:?} status={status:?}");
+            }
             if let Some(handler) = handler {
                 // Strip the leading dot from ".Digit1" → "Digit1"
                 let event_name = if let Some(stripped) = handler.strip_prefix('.') {
@@ -6189,13 +6231,121 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
 /// 退出进程（shell 缺位时关掉最后一个虚拟窗沿用 462 daemon 语义；有 shell
 /// 时空桌面是合法态，持续存活等待启动）。
+/// Plan 464 T4：launcher overlay 召唤执行体（Ctrl+Space 热键事件与 shell
+/// ⊞ 总线记录同落此处）。首次懒挂载（build_dynamic_component 自动触发
+/// .Init：装载 storage recent + 网格行），随后下行注入：
+/// `apps`（真注册表清单，R10——ln/lt 预小写由宿主供给，匹配零 .at 依赖）、
+/// `hosted`（隐藏独立模式开关）、`visible`（overlay 置位）、
+/// `__focus_input`（聚焦请求，T3 约定）。同步调 ApplyFilter 重算 ranked
+/// （宿主写状态不触发 handler，须显式重算）；返回聚焦任务（打开即聚焦，
+/// P3；update_inner 尾部的 __focus_input 消费在下一 launcher 消息周期
+/// 再生效——双保险）。注册表无 launcher 时 toast 降级（441 fallback 边界）。
+fn summon_launcher(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::DesktopMessage as DM;
+    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+        eprintln!("[464-SUMMON] summon_launcher entered, mounted={}", state.desktop.launcher_app.is_some());
+    }
+    // 1. 懒挂载
+    if state.desktop.launcher_app.is_none() {
+        let Some(entry) = state.desktop.launcher_entry.clone() else {
+            push_desktop_toast(state, "error", "launcher 不可用（注册表未含 028-launcher）");
+            return iced::Task::none();
+        };
+        let Ok(code) = std::fs::read_to_string(&entry) else {
+            push_desktop_toast(state, "error", "launcher 源读取失败");
+            return iced::Task::none();
+        };
+        match crate::build_dynamic_component(&code, Some(entry.to_string_lossy().as_ref())) {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.launcher_app = Some(app_id);
+            }
+            Err(err) => {
+                push_desktop_toast(state, "error", &format!("launcher 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    let launcher = state.desktop.launcher_app.expect("launcher mounted");
+    // 2. 下行注入（真注册表 + hosted/visible/聚焦请求）。
+    // 注入形态 = 平行字符串列表（Obj 数组的 VM handler 字段读失效——
+    // B12 同族，`injected_obj_array_for_field_read` 探针钉死 "0,0"；
+    // 字符串列表下标读保真）。ln/lt 预小写由宿主供给。
+    let entries = state.desktop.registry_entries.clone();
+    let mut names: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut cats: Vec<auto_val::Value> = Vec::new();
+    let mut lns: Vec<auto_val::Value> = Vec::new();
+    let mut lts: Vec<auto_val::Value> = Vec::new();
+    for e in &entries {
+        names.push(auto_val::Value::Str(e.id.clone().into()));
+        titles.push(auto_val::Value::Str(e.title.clone().into()));
+        icons.push(auto_val::Value::Str(e.icon.clone().into()));
+        cats.push(auto_val::Value::Str(e.category.clone().into()));
+        lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
+        lts.push(auto_val::Value::Str(e.title.to_lowercase().into()));
+    }
+    if let Some(app) = state.apps.get_mut(&launcher) {
+        let _ = app.component.write_state_vec("apps_names", names);
+        let _ = app.component.write_state_vec("apps_titles", titles);
+        let _ = app.component.write_state_vec("apps_icons", icons);
+        let _ = app.component.write_state_vec("apps_cats", cats);
+        let _ = app.component.write_state_vec("apps_lns", lns);
+        let _ = app.component.write_state_vec("apps_lts", lts);
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重算 ranked/网格行 + 刷 view
+        if let Err(err) = app.component.bridge_mut().call_handler("ApplyFilter", &[]) {
+            eprintln!("[session] launcher ApplyFilter failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    // 3. 聚焦（打开即聚焦 P3；任务回 DM::App(launcher) 对齐消息形状）
+    iced::widget::operation::focus(iced::widget::Id::new("prompt_input"))
+        .map(move |m| DM::App(launcher, m))
+}
+
+/// Plan 464 T4：shell + launcher 的 DesktopBus 联合排空与执行。
+/// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
+fn drain_and_execute_desktop_commands(
+    state: &mut crate::ui::session::DesktopSession,
+) -> (
+    bool,
+    Vec<iced::Task<crate::ui::session::DesktopMessage>>,
+) {
+    let mut cmds = state.drain_desktop_commands();
+    if let Some(la) = state.desktop.launcher_app {
+        cmds.extend(state.drain_app_desktop_commands(la));
+    }
+    if cmds.is_empty() {
+        return (false, Vec::new());
+    }
+    if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+        eprintln!("[464-DRAIN] {} commands", cmds.len());
+    }
+    execute_desktop_commands(state, cmds)
+}
+
+/// Plan 464 T4：执行桌面命令（返回 (是否退出进程, 产生的任务)）。
+/// SummonLauncher 产生的任务（聚焦）由调用方 batch 回 iced。
 fn execute_desktop_commands(
     state: &mut crate::ui::session::DesktopSession,
     cmds: Vec<crate::ui::session::DesktopCommand>,
-) -> bool {
+) -> (bool, Vec<iced::Task<crate::ui::session::DesktopMessage>>) {
     use crate::ui::session::DesktopCommand as DC;
+    let mut tasks: Vec<iced::Task<crate::ui::session::DesktopMessage>> = Vec::new();
     for cmd in cmds {
         match cmd {
+            DC::SummonLauncher => {
+                if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+                    eprintln!("[464-SUMMON] bus summon command");
+                }
+                tasks.push(summon_launcher(state));
+            }
             DC::LaunchApp(name) => match state.launch_app(&name) {
                 Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
                 Err(err) => {
@@ -6231,14 +6381,14 @@ fn execute_desktop_commands(
                         .map(|h| h.wm.wins.is_empty())
                         .unwrap_or(false)
                 {
-                    return true;
+                    return (true, Vec::new());
                 }
             }
             DC::FocusWindow(wid) => state.wm_focus(wid),
             DC::SetLayout(mode) => state.wm_set_layout(mode),
         }
     }
-    false
+    (false, tasks)
 }
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
@@ -6613,9 +6763,10 @@ fn compare_pngs(
                         entries.len(),
                         apps_dir.display()
                     );
+                    let resolver_entries = entries.clone();
                     session.desktop.app_resolver =
                         Some(std::sync::Arc::new(move |name: &str| {
-                            entries.iter().find(|e| e.id == name).and_then(|e| {
+                            resolver_entries.iter().find(|e| e.id == name).and_then(|e| {
                                 let code = std::fs::read_to_string(&e.entry).ok()?;
                                 Some(crate::ui::session::LaunchSpec {
                                     code,
@@ -6624,6 +6775,18 @@ fn compare_pngs(
                                 })
                             })
                         }));
+                    // Plan 464 T4：launcher 入口 + 注册表快照（召唤注入用）。
+                    // 入口匹配：id "launcher" 或 "-launcher" 结尾（441 预订
+                    // 028-launcher；459 回退形态同名规则）。
+                    session.desktop.registry_entries = entries;
+                    if let Some(e) = session
+                        .desktop
+                        .registry_entries
+                        .iter()
+                        .find(|e| e.id == "launcher" || e.id.ends_with("-launcher"))
+                    {
+                        session.desktop.launcher_entry = Some(e.entry.clone());
+                    }
                 }
                 (session, open_task.discard())
             }
@@ -8478,6 +8641,24 @@ fn compare_pngs(
             tail_tasks.push(iced::widget::operation::focus(id));
         }
 
+        // Plan 464 T3：`__focus_input` 状态约定 —— app 侧把该状态写 "1" 请求
+        // 聚焦其输入框（palette「打开即聚焦」P3；desktop 召唤路径 T4 宿主同款
+        // 写法）。消费即清零（防重复聚焦）；Id 用 Plan 047 的 vm input 统一
+        // 稳定 Id prompt_input。desktop 多 App 同 Id 冲突为 v1 已知边界
+        // （launcher 层最上、召唤场景无竞争输入框；462 焦点分区命名空间跟进）。
+        if matches!(
+            state.component.read_state("__focus_input"),
+            Ok(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        ) {
+            if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
+                eprintln!("[464-FOCUS] __focus_input consumed (update_inner tail)");
+            }
+            let _ = state.component.write_state("__focus_input", auto_val::Value::str(""));
+            tail_tasks.push(iced::widget::operation::focus(iced::widget::Id::new(
+                "prompt_input",
+            )));
+        }
+
         // Plan 402: pending window resize。
         if let Some(size) = state.pending_window_resize.borrow_mut().take() {
             *state.window_size.borrow_mut() = size;
@@ -8536,13 +8717,22 @@ fn compare_pngs(
                        msg: crate::ui::session::DesktopMessage|
           -> iced::Task<crate::ui::session::DesktopMessage> {
         use crate::ui::session::{DesktopEvent, DesktopMessage as DM, WmCommand};
-        // Plan 463 T4：DesktopBus 排空 #1 —— 任意消息周期开头先消费 shell
-        // 命令（`__toast` 同型读+清；400ms 帧泵兜底空闲期，命令至多 400ms 达）。
-        if state.desktop.shell_app.is_some() {
-            let cmds = state.drain_desktop_commands();
-            if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
-                return iced::exit();
+        if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
+            match &msg {
+                DM::App(ref app_id, ref m) => {
+                    eprintln!("[464-UPD] DM::App({app_id:?}, {})", m.event);
+                }
+                DM::Desktop(ref ev) => {
+                    eprintln!("[464-UPD] DM::Desktop({ev:?})");
+                }
+                _ => {}
             }
+        }
+        // Plan 463 T4：DesktopBus 排空原在此处（任意消息周期开头）。Plan 464
+        // T4：summon 命令产生 iced 任务，需在能返回 Task 的排空点执行——排空
+        // 移至 DM::App 臂尾（按钮同周期即达，463 T4 语义）+ ServiceTick 臂
+        // （400ms 兜底，覆盖空闲期）。本点仅保留注入。
+        if state.desktop.shell_app.is_some() {
             // Plan 463 T5：窗口列表/布局注入（指纹门控，每周期一次兜底；
             // DM::Wm 臂尾有同周期即时版）。
             sync_shell_windows(state);
@@ -8613,12 +8803,21 @@ fn compare_pngs(
                     }
                     // Plan 462：desktop 帧泵 —— 空更新，仅驱动 view 重算
                     //（MCP 截图请求在 view 投递 / update 消费）。
-                    DesktopEvent::ServiceTick => {}
-                    // Plan 463 T6：launcher 召唤 —— 464 前无消费者（静默；
-                    // overlay 槽挂载点见 view_desktop_fn 的 shell 层后位）。
+                    // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
+                    // 兜底；shell/launcher 命令至多 400ms 达）。
+                    DesktopEvent::ServiceTick => {
+                        let (exit, tasks) = drain_and_execute_desktop_commands(state);
+                        if exit {
+                            return iced::exit();
+                        }
+                        if !tasks.is_empty() {
+                            return iced::Task::batch(tasks);
+                        }
+                    }
+                    // Plan 464 T4：launcher 召唤消费 —— 懒挂载 + 下行注入 +
+                    // 打开即聚焦（返回聚焦任务）。
                     DesktopEvent::SummonLauncher => {
-                        #[cfg(debug_assertions)]
-                        eprintln!("[desktop] SummonLauncher (no consumer yet; plan 464)");
+                        return summon_launcher(state);
                     }
                 }
                 iced::Task::none()
@@ -8628,15 +8827,18 @@ fn compare_pngs(
                 // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
                 // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
                 // 按钮路径不受帧泵节拍限制（T1 报告 §2.3）。
+                // Plan 464 T4：shell + launcher 联合排空；summon 任务与
+                // 本消息任务 batch 回 iced。
+                let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                if exit {
+                    return iced::exit();
+                }
                 if state.desktop.shell_app.is_some() {
-                    let cmds = state.drain_desktop_commands();
-                    if !cmds.is_empty() && execute_desktop_commands(state, cmds) {
-                        return iced::exit();
-                    }
                     // shell 自身按钮路径：本周期命令已执行，列表即时同步。
                     sync_shell_windows(state);
                 }
-                task
+                tasks.push(task);
+                iced::Task::batch(tasks)
             }
             DM::Wm(cmd) => {
                 // Plan 462：WM 命令臂。独立模式不产生该变体（防御性忽略，
@@ -8646,7 +8848,12 @@ fn compare_pngs(
                 }
                 match cmd {
                     // Plan 463 T3：Esc = 桌面调试退出（全屏无框无关闭按钮）。
+                    // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层退出
+                    // （P3：清词→退网格→关闭；app 内 bind 路径处理），不退桌面。
                     WmCommand::ExitDesktop => {
+                        if state.launcher_visible() {
+                            return iced::Task::none();
+                        }
                         return iced::exit();
                     }
                     // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
@@ -8904,6 +9111,23 @@ fn compare_pngs(
                 };
                 layers.push(shell_client.map(move |m| DM::App(shell_app, m)));
             }
+            // Plan 464 T4：launcher overlay 层（Stack 顶层；隐藏态渲染透明
+            // 空层不挡桌面点击——app.at else 分支）。垫片视图同 shell。
+            if state.desktop.launcher_app.is_some() {
+                let launcher_app = state.desktop.launcher_app.expect("launcher checked");
+                let build = || state.split_ref_launcher().map(|v| dynamic_view(v, false));
+                let launcher_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] launcher 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] launcher view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -9025,8 +9249,10 @@ fn compare_pngs(
                     // 独立模式恒 true —— 每窗过滤照旧，行为不变。F12 DevTools
                     // 面板在 desktop 模式禁用（面板固定 widget id 会同窗撞车；
                     // MCP/DevTools 单 App 语义见 453 T8 冻结，463+ 再解）。
+                    // Plan 464 T4：launcher overlay 可见时独占键盘（P3 全键盘
+                    // 流——输入/方向键进 palette，不漏进底层虚拟窗）。
                     let focused = if state.is_desktop() {
-                        state.wm_focused_app() == Some(app_id)
+                        state.wm_focused_app() == Some(app_id) && !state.launcher_visible()
                     } else {
                         true
                     };
@@ -9037,6 +9263,25 @@ fn compare_pngs(
                         focused,
                         state.is_desktop(),
                     ));
+                }
+            }
+            // Plan 464 T4：launcher overlay 的键盘订阅（可见时独占；
+            // 无 OS 窗——挂宿主窗，focused=true 门控在闭包内过滤）。
+            if state.is_desktop() && state.launcher_visible() {
+                if let (Some(la), Some(host)) =
+                    (state.desktop.launcher_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&la) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            la,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
                 }
             }
             if let Some(primary) = state.primary_app() {
@@ -13823,6 +14068,153 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表
+    /// 覆盖 mock / hosted / visible 置位 / ApplyFilter 同步重算）。键流与
+    /// 启动后隐匿半边走 ui_desktop 实机（T4 验收 §5.1）。
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn summon_launcher_mounts_and_injects() {
+        use crate::ui::app_registry::AppRegistryEntry;
+
+        // 临时 launcher 源（裁剪形态：seam 状态 + ApplyFilter 可调用）
+        let dir = std::env::temp_dir().join("autoui-464-summon-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let src = dir.join("app.at");
+        std::fs::write(
+            &src,
+            r#"widget TestLauncher {
+    model {
+        var visible str = "0"
+        var hosted str = "0"
+        var __focus_input str = "0"
+        var apps_names = []
+        var ranked = []
+        var nres int = 0
+    }
+    msg { ApplyFilter }
+    view { col { text "palette" } }
+    on {
+        .ApplyFilter -> {
+            .ranked = []
+            var i int = 0
+            while i < .apps_names.len() {
+                var row = { name: .apps_names[i] }
+                .ranked.push(row)
+                i = i + 1
+            }
+            .nres = .ranked.len()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let entry = |id: &str, title: &str| AppRegistryEntry {
+            id: id.to_string(),
+            title: title.to_string(),
+            icon: "app-window".to_string(),
+            category: "app".to_string(),
+            entry: std::path::PathBuf::from(id),
+            render: "vue".to_string(),
+        };
+
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        ds.desktop.launcher_entry = Some(src);
+        ds.desktop.registry_entries =
+            vec![entry("011-calculator", "Calculator"), entry("028-launcher", "launcher")];
+
+        let _focus_task = summon_launcher(&mut ds);
+        let _ = &entry;
+
+        // 懒挂载 + visible 置位（launcher_visible 读回）
+        assert!(ds.desktop.launcher_app.is_some(), "launcher 应已挂载");
+        assert!(ds.launcher_visible(), "召唤后 visible 应为 1");
+
+        let la = ds.desktop.launcher_app.unwrap();
+        let app = ds.apps.get(&la).expect("launcher app in session");
+        // hosted 置位（隐藏独立模式开关）
+        match app.component.read_state("hosted") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+            other => panic!("hosted 读回异常: {other:?}"),
+        }
+        // 聚焦请求置位（update_inner 尾部下个消息周期消费）
+        match app.component.read_state("__focus_input") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+            other => panic!("__focus_input 读回异常: {other:?}"),
+        }
+        // 真注册表注入覆盖 mock + ApplyFilter 同步重算（nres = 2）
+        match app.component.read_state("nres") {
+            Ok(auto_val::Value::Int(n)) => assert_eq!(n, 2, "ApplyFilter 应按注入清单重算"),
+            other => panic!("nres 读回异常: {other:?}"),
+        }
+    }
+
+    /// Plan 464 T4 探针：宿主 write_state_vec 注入 Obj 数组后，VM 侧
+    /// `for a in .apps` + `a.title` 字段读（任务栏同型）是否保真。
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn injected_obj_array_for_field_read() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::build_dynamic_component(
+            r#"widget Probe {
+    model {
+        var apps_names = []
+        var apps_titles = []
+        var joined str = ""
+    }
+    msg { Collect }
+    view { col { text .joined } }
+    on {
+        .Collect -> {
+            .joined = ""
+            var i int = 0
+            while i < .apps_names.len() {
+                .joined = .joined + .apps_titles[i] + ","
+                i = i + 1
+            }
+        }
+    }
+}
+"#,
+            None,
+        )
+        .unwrap();
+        let id = ds.allocate_app(comp);
+        // 串列并行注入（Obj 数组的 VM handler 字段读失效——上面断言钉死；
+        // 字符串列表的下标读另测）
+        let apps = vec![
+            auto_val::Value::Str("011-calculator".into()),
+            auto_val::Value::Str("028-launcher".into()),
+        ];
+        let titles = vec![
+            auto_val::Value::Str("Calculator".into()),
+            auto_val::Value::Str("launcher".into()),
+        ];
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let _ = app.component.write_state_vec("apps_names", apps);
+            let _ = app.component.write_state_vec("apps_titles", titles);
+        }
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let r = app.component.bridge_mut().call_handler("Collect", &[]);
+            if let Err(e) = r {
+                panic!("Collect failed: {e}");
+            }
+        }
+        let app = ds.apps.get(&id).unwrap();
+        match app.component.read_state("joined") {
+            Ok(auto_val::Value::Str(ref s)) => {
+                assert_eq!(s.to_string(), "Calculator,launcher,", "for 绑定字段读保真")
+            }
+            other => panic!("joined 读回异常: {other:?}"),
+        }
+        let _ = ds;
+    }
 
     #[derive(Clone, Copy, Debug)]
     enum TestMessage {

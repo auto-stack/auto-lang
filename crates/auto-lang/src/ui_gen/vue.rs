@@ -567,6 +567,10 @@ pub struct VueGenerator {
     /// wins, mirroring the vm's shortcut_bindings collision rule). Emitted as
     /// the global keydown fallback layer in generate_script.
     actions_key_bindings: Vec<(String, String)>,
+    /// Plan 464 T2: `bind {}` 块 key → handler fn name。vm 侧经
+    /// keyboard_subscription 查 key_bindings；vue 侧此前无对应层（bind 静默
+    /// 失效），补 `__autoBindKeymap` window keydown 层（emit 紧邻 actions 层）。
+    bind_key_bindings: Vec<(String, String)>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -721,6 +725,7 @@ impl VueGenerator {
             ext_composables: Vec::new(),
             current_actions: None,
             actions_key_bindings: Vec::new(),
+            bind_key_bindings: Vec::new(),
             facade_ref_fields: std::collections::HashMap::new(),
             setup_locals: Vec::new(),
             setup_ref_fields: std::collections::HashMap::new(),
@@ -1049,6 +1054,7 @@ impl VueGenerator {
         self.current_setup_stmts = None;
         self.current_actions = None;
         self.actions_key_bindings.clear();
+        self.bind_key_bindings.clear();
     }
 
     /// Convert kebab-case icon name to PascalCase Lucide component name
@@ -1347,6 +1353,19 @@ impl VueGenerator {
                 }
                 let handler_fn = self.pattern_to_handler_name(&a.handler);
                 self.actions_key_bindings.push((key, handler_fn));
+            }
+        }
+
+        // Plan 464 T2: `bind {}` 块 → bind_key_bindings（vm keyboard_subscription
+        // 的 key_bindings 同源；AuraWidget 已把 bind 块化简为该 map，handler
+        // 形如 ".MoveUp"，剥点得 fn 名——vm keyboard_event_message 同规则）。
+        // 排序保证生成输出稳定（HashMap 无序）。
+        if !widget.key_bindings.is_empty() {
+            let mut entries: Vec<(&String, &String)> = widget.key_bindings.iter().collect();
+            entries.sort();
+            for (key, handler) in entries {
+                let handler_fn = handler.strip_prefix('.').unwrap_or(handler).to_string();
+                self.bind_key_bindings.push((key.clone(), handler_fn));
             }
         }
 
@@ -1753,7 +1772,7 @@ impl VueGenerator {
         }
         // Plan 451 P2: `actions {}`-declared shortcuts register a window
         // keydown fallback layer (mounted/unmounted, same lifecycle).
-        if !self.actions_key_bindings.is_empty() {
+        if !self.actions_key_bindings.is_empty() || !self.bind_key_bindings.is_empty() {
             if !imports.contains(&"onMounted") {
                 imports.push("onMounted");
             }
@@ -2861,6 +2880,57 @@ impl VueGenerator {
             ));
             script.push_str("onMounted(() => {\n  window.addEventListener('keydown', __autoActionsKeydown)\n})\n\n");
             script.push_str("onUnmounted(() => {\n  window.removeEventListener('keydown', __autoActionsKeydown)\n})\n\n");
+        }
+
+        // Plan 464 T2: `bind {}` 块 → 全局 keydown 层。键名与 vm key_str 同名
+        // （ArrowUp/Enter/Escape/Tab/Backspace/"Ctrl+ "），查表命中即派发。
+        // 与 actions 回退层的差异：输入框守卫只让位「会进文本」的键（单字符/
+        // Backspace）——vm 单行 input 不捕获方向键/Escape/Tab，palette 键盘流
+        // 依赖这组键在打字时仍可达（464 T2 验收原案 fill→↓×2→Enter）。
+        // Enter 双派发（此处 keydown + input onenter 的 keyup）幂等无害。
+        if !self.bind_key_bindings.is_empty() {
+            let keymap_ty = if self.use_typescript {
+                ": Record<string, () => void>"
+            } else {
+                ""
+            };
+            script.push_str(&format!(
+                "const __autoBindKeymap{} = {{\n",
+                keymap_ty
+            ));
+            for (key, handler) in &self.bind_key_bindings {
+                script.push_str(&format!("  '{}': {},\n", key, handler));
+            }
+            script.push_str("}\n");
+            let target_cast = if self.use_typescript {
+                "const t = e.target as HTMLElement | null\n    "
+            } else {
+                "const t = e.target\n    "
+            };
+            let fn_sig = if self.use_typescript {
+                "function __autoBindKeydown(e: KeyboardEvent) {"
+            } else {
+                "function __autoBindKeydown(e) {"
+            };
+            script.push_str(&format!(
+                "{fn_sig}\n\
+                 \x20 const hasModifier = e.ctrlKey || e.altKey || e.metaKey\n\
+                 \x20 let key = e.key\n\
+                 \x20 if (!hasModifier) {{\n\
+                 \x20   {target_cast}\
+                 if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) && (key.length === 1 || key === 'Backspace')) return\n\
+                 \x20 }}\n\
+                 \x20 if (key.length === 1) key = key.toLowerCase()\n\
+                 \x20 const combo = (e.ctrlKey || e.metaKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + key\n\
+                 \x20 const fn = __autoBindKeymap[combo]\n\
+                 \x20 if (fn) {{\n\
+                 \x20   e.preventDefault()\n\
+                 \x20   fn()\n\
+                 \x20 }}\n\
+                 }}\n\n"
+            ));
+            script.push_str("onMounted(() => {\n  window.addEventListener('keydown', __autoBindKeydown)\n})\n\n");
+            script.push_str("onUnmounted(() => {\n  window.removeEventListener('keydown', __autoBindKeydown)\n})\n\n");
         }
 
         // Note: auto-edit-mode onMounted was previously hardcoded here (Plan 367 P0-3
@@ -17584,6 +17654,63 @@ widget App {
     }
 }
 "#;
+
+    /// Plan 464 T2: `bind {}` 块 → 全局 keydown 层（`__autoBindKeymap`）。
+    /// vm 侧对应 keyboard_subscription 的 key_bindings 查找；vue 此前无该层，
+    /// bind 块静默失效（011-calculator 键盘仅 vm 可用）。命名键（方向键/
+    /// Escape/Tab/Enter）即使焦点在 input 上也照常派发（vm 单行 input 不捕获
+    /// 这组键——palette 键盘流的前提）；单字符/Backspace 在输入框内让位给
+    /// 打字（镜像 vm Captured 语义）。
+    #[test]
+    fn test_bind_block_keydown_layer() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget L {
+    msg Msg { MoveUp, MoveDown, Pick, Dismiss, Open }
+    model { var n int = 0 }
+    view { col { input { value: .n } } }
+    bind {
+        "ArrowUp" -> .MoveUp
+        "ArrowDown" -> .MoveDown
+        "Enter" -> .Pick
+        "Escape" -> .Dismiss
+        "Ctrl+ " -> .Open
+    }
+    on {
+        .MoveUp -> { .n = 1 }
+        .MoveDown -> { .n = 2 }
+        .Pick -> { .n = 3 }
+        .Dismiss -> { .n = 4 }
+        .Open -> { .n = 5 }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("'ArrowDown': MoveDown"),
+            "named key entry:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("'Ctrl+ ': Open"),
+            "ctrl+space combo entry:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.addEventListener('keydown', __autoBindKeydown)"),
+            "bind keydown registered:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("window.removeEventListener('keydown', __autoBindKeydown)"),
+            "bind keydown removed on unmount:\n{}",
+            sfc
+        );
+        // 输入框守卫只让位单字符/Backspace，命名键照常派发。
+        assert!(
+            sfc.contains("key === 'Backspace'"),
+            "typing guard skips only char/backspace in inputs:\n{}",
+            sfc
+        );
+    }
 
     /// 快捷键 → 全局 keydown 回退层（normalize_shortcut 判定形态：单字符键
     /// 小写、修饰键归一），onMounted/onUnmounted 成对注册。
