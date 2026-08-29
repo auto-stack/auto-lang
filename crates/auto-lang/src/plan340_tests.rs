@@ -401,6 +401,270 @@ widget App {
         );
     }
 
+    /// plan-022 Phase 4 slice 3 (auto-down jade): `{*param}` wildcard path
+    /// templates (axum `{*path}` convention, e.g. `GET /api/wiki/{*path}`)
+    /// must splice the positional arg like `{param}` does. Before the fix
+    /// the `{*path}` placeholder matched nothing: the URL kept the literal
+    /// `{*path}` (404 on any backend) and the arg fell through to the body
+    /// bucket (silently dropped for GET).
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_wildcard_path_param_in_api_http_rewrite() {
+        use crate::compile::CompileSession;
+        use crate::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type WikiDoc = { frontmatter str, body str }
+
+#[api(method = "GET", path = "/api/wiki/{*path}")]
+pub fn read_wiki(path str) WikiDoc {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: read_wiki
+
+widget App {
+    model {
+        var doc = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Open -> {
+            .doc = read_wiki("notes/hello.ad").body
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
+            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts, &aliases, true,
+        )
+        .expect("synthesize split");
+
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        // 通配占位符必须被 splice，不得整段落入 URL 常量。
+        let wild_hits: Vec<&String> = pool.iter().filter(|s| s.contains("{*path}")).collect();
+        assert!(
+            wild_hits.is_empty(),
+            "wildcard placeholder must be spliced, found literal in consts: {:?}",
+            wild_hits
+        );
+        // URL 前缀分段存在（按 {*path} 切开拼接）。
+        assert!(
+            pool.iter().any(|s| s.contains("/api/wiki/")),
+            "expected URL prefix segment in string pool: {:?}",
+            pool
+        );
+        // 且不存在 CALL reloc（改写发生）。
+        let has_reloc = module.relocs.iter().any(|r| {
+            r.reloc_type == crate::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "read_wiki" || r.symbol_name.ends_with("read_wiki"))
+        });
+        assert!(
+            !has_reloc,
+            "split mode: read_wiki should be rewritten to HTTP, not a CALL reloc"
+        );
+    }
+
+    /// plan-022 Phase 4 slice 3 (auto-down jade): bodyless methods (GET/
+    /// DELETE) must turn non-path args into a query string (`?q=…&limit=…`).
+    /// Before the fix non-path args were collected for the JSON body and
+    /// then silently dropped for GET — `/api/search?q=x&limit=5` style
+    /// endpoints were unreachable from the VM front.
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_get_query_params_in_api_http_rewrite() {
+        use crate::compile::CompileSession;
+        use crate::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type SearchResponse = { query str }
+
+#[api(method = "GET", path = "/api/search")]
+pub fn search(q str, limit int) SearchResponse {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: search
+
+widget App {
+    model {
+        var hits = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Search -> {
+            .hits = search("hello world", 5).query
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    crate::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<crate::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
+            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget, &[], import_stmts, &aliases, true,
+        )
+        .expect("synthesize split");
+
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        assert!(
+            pool.iter().any(|s| s.contains("?q=")),
+            "expected query lead-in `?q=` in string pool: {:?}",
+            pool
+        );
+        assert!(
+            pool.iter().any(|s| s.contains("&limit=")),
+            "expected query continuation `&limit=` in string pool: {:?}",
+            pool
+        );
+        // 参数值不得被静默丢弃：既不进 query 也不进 body（GET 无 body 键）。
+        assert!(
+            !pool.iter().any(|s| s.contains("\"q\":")),
+            "GET args must become query params, not a JSON body: {:?}",
+            pool
+        );
+    }
+
+    /// plan-022 Phase 4 slice 3: `auto.url.encode_path` native — percent-
+    /// encode each `/`-separated segment, preserving the separators (axum
+    /// `{*path}` wildcard client parity: the browser fetch keeps `/` raw so
+    /// the server-side per-segment percent-decode reconstructs the path).
+    #[test]
+    fn test_url_encode_path_native() {
+        let code = r#"
+let p = Url.encode_path("notes/Hello World.ad")
+print(p)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "encode_path should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 encode_path = [{}]", stdout);
+        assert!(
+            stdout.contains("notes/Hello%20World.ad"),
+            "expected slash-preserving encode, got: [{}]",
+            stdout
+        );
+    }
+
     /// Regression: a `#[api]` fn returning a 1-slot scalar (uint/int) and
     /// called as a bare statement must NOT emit POP_N(2). The HTTP rewrite
     /// pushes a single NanoValue (from `auto.json.to_value`), but before the
