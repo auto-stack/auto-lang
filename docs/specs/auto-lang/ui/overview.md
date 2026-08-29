@@ -1,7 +1,7 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-08-28（Plan 471，蒸馏 437–465 桌面线计划）
+> 最近刷新：2026-08-29（Plan 465 归档回写：vue 端虚拟桌面落地）
 
 ## 职责
 
@@ -25,13 +25,18 @@ widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery com
 VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
 派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
 
-**桌面线（452→459→462→463 落地，464/465 已设计未开工，386 暂缓）**：
+**桌面线（452→459→462→463→465 落地，464 未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget
 （Stack/clip/mouse_area 组合）+ WmState/Wid + DM::Wm 消息 + 桌面级键盘路由 → 463 桌面 shell：
 全屏 borderless 宿主 + 任务栏 overlay + free/grid/master-stack 排布纯函数 + pac.at 应用注册表 +
-DesktopBus v0。464（launcher 为普通 App，Ctrl+Space 召唤 + `desktop.launch` 真启动）与 465
-（vue 页面级虚拟桌面，每窗 createApp 隔离）已立项设计。386 RenderQueue（路线 B 分离渲染）复活
+DesktopBus v0。**465 vue 端虚拟桌面已落地**（M4）：`auto run --desktop` 宿主 scaffold
+（auto-man `generate_desktop_host`：scan_apps 过滤 + `src/apps-registry.ts` 静态 import 注册表 +
+子组件/stores 合并）+ WM 运行时（auto-man `assets/wm/`：store.ts WmStore、layout.ts 布局 TS
+直译〔I6 与 layout.rs 共享期望值表 layout_cases.json〕、keyboard.ts R12 热键捕获段、
+VirtualWindow/Taskbar.vue DOM 叶——schema/aura.at `vue:` 登记源两端同源）；E1 `(AppId,event)`
+注入形状与 E2 AppWindow 叶枚举成文（`docs/plans/reports/465-t4-wm-dom-leaf.md`）；
+tauri 全屏壳复用同一宿主页。464（launcher 为普通 App，真源挂 overlay 槽后 I5/T6 复验）未开工。386 RenderQueue（路线 B 分离渲染）复活
 条件 2/3 就绪、明确暂缓。设计源：[Design 23/24/25](../../../design/autoui/README.md)。
 
 **vue 轨（codegen 正确性 + 工程化）**：444 修五类 vue-tsc 缺陷（回调通道/emits 名册派生/变体断言）；
