@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-473
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-window-dock
 author: [zhaopuming]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 8
+current_step: 10
 total_steps: 10
 ---
 
@@ -307,9 +307,11 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
 9. **T4 手动冒烟**：按 §测试设计 T4 清单在自机执行（Explorer/notepad/Chrome/
    管理员记事本/IME/双屏），结果逐行记入本文件 §验收标准下。
    验证：清单每项有结果注记（PASS/FAIL+说明）。
+   [✅ 已完成（2026-08-29 用户裁定：E2E 代验，真人清单顺延）] Phase 1 无 dock 用户触发面（拖拽手势未排入/shell 无按钮，见待澄清⑦）→ 真人清单不可达；可自动断言部分由 T8 fixture E2E 6/6 代验（B1/B2/B3/B7/C3/C4/C5）。顺延项（C1 提权 / B6 IME / B9 双屏 / 真实 app 视觉确认 / B1 手势）→ 复审登记 KNOWN-DEBT 或随 Phase 1.5（shell UI/手势）执行。
 10. **收尾**：健康检查（零警告、无调试打印残留）、`cargo t ui`、状态翻
     `execution_done`，勾选全部 [✅]。
     验证：`cargo check -p auto-lang && cargo t ui`。
+    [✅ 已完成] 零新增警告（分支 183 vs master 基线 197 同口径）；native_dock 生产代码无调试打印残留；`cargo check`/`cargo t --features ui-iced ui` 1374/1374、test-native-dock 全量 29/29、E2E 6/6 全绿（2026-08-29）。非 Windows check 受 openssl-sys 交叉环境限制本机不可执行（既有依赖，见待澄清⑦），留 CI/复审核验。
 
 ## 复审记录
 
@@ -352,7 +354,8 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
   T9 整体顺延；(b) 验收时临时注入 `__desktop_cmd`（shell .at 调试赋值）代
   触发，真实 app 视觉确认仍需在环。E2E（T8）已覆盖 B1-B8 的可自动断言部分
   （几何/状态机/事件），剩余真人为 C1 提权 / B6 IME / B9 双屏 / 真实 app
-  视觉确认。**本计划状态停 executing**，T9/T10 未勾。
+  视觉确认。**2026-08-29 用户裁定：E2E 代验成立，真人清单顺延**（复审登记
+  KNOWN-DEBT 或随 Phase 1.5 执行），状态据此翻 execution_done。
   另：非 Windows 目标 `cargo check` 因 openssl-sys 交叉编译环境（native-tls
   既有依赖）本机不可执行，noop 路径以 API 面逐一对照保证，留 CI/复审核验。
 - **② Win32 `hWndInsertAfter` 语义勘误（T2 实测确立）**：`SetWindowPos` 的
