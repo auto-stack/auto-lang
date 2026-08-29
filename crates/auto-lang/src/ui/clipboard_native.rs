@@ -265,7 +265,7 @@ fn rows_bytes_of(stride: usize, height: u32) -> u32 {
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::core::w;
 #[cfg(all(windows, feature = "native-clipboard"))]
-use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
+use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, WAIT_OBJECT_0};
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
@@ -276,7 +276,43 @@ use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
 };
 #[cfg(all(windows, feature = "native-clipboard"))]
+use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
+#[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
+
+/// 跨进程命名互斥（测试专用）：nextest 每测试一进程并行，剪贴板是机器级
+/// 全局资源——本方 files/image 测试的 EmptyClipboard 会清掉相邻进程
+/// set→get 窗口里的内容（Plan 485 T9 实测打红了 418 的 arboard 往返）。
+/// 同会话所有剪贴板集成测试（含 ui/clipboard.rs 的 418 用例）经
+/// [`Self::acquire`] 串行化；进程内 Mutex 不足以覆盖此形态。
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub struct GlobalClipboardTestLock(HANDLE);
+
+#[cfg(all(windows, feature = "native-clipboard"))]
+impl GlobalClipboardTestLock {
+    /// 同会话命名互斥；等待至多 30s（并行测试队头让行），拿不到返回 None
+    /// （调用方按 headless 语义跳过）。
+    pub fn acquire() -> Option<Self> {
+        unsafe {
+            let h = CreateMutexW(None, false, w!("auto-lang-clipboard-tests")).ok()?;
+            if WaitForSingleObject(h, 30_000) != WAIT_OBJECT_0 {
+                let _ = windows::Win32::Foundation::CloseHandle(h);
+                return None;
+            }
+            Some(Self(h))
+        }
+    }
+}
+
+#[cfg(all(windows, feature = "native-clipboard"))]
+impl Drop for GlobalClipboardTestLock {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = ReleaseMutex(self.0);
+            let _ = windows::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
 
 /// RAII clipboard open guard（Drop 时 CloseClipboard）。
 #[cfg(all(windows, feature = "native-clipboard"))]
@@ -581,6 +617,10 @@ mod tests {
     #[cfg(all(windows, feature = "native-clipboard"))]
     #[test]
     fn clipboard_files_set_get_roundtrip() {
+        let _global = match GlobalClipboardTestLock::acquire() {
+            Some(g) => g,
+            None => return, // 拿锁超时视同 headless 跳过
+        };
         let _lock = CLIPBOARD_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -677,6 +717,10 @@ mod tests {
     #[cfg(all(windows, feature = "native-clipboard", feature = "ui-clipboard"))]
     #[test]
     fn clipboard_image_get_none_without_image() {
+        let _global = match GlobalClipboardTestLock::acquire() {
+            Some(g) => g,
+            None => return,
+        };
         let _lock = CLIPBOARD_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -691,6 +735,10 @@ mod tests {
     #[cfg(all(windows, feature = "native-clipboard"))]
     #[test]
     fn clipboard_image_set_get_roundtrip() {
+        let _global = match GlobalClipboardTestLock::acquire() {
+            Some(g) => g,
+            None => return,
+        };
         let _lock = CLIPBOARD_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());

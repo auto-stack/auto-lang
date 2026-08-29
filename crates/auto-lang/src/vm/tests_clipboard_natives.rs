@@ -30,6 +30,13 @@ fn pop_heap_id(vm: &AutoVM, task: &mut AutoTask) -> u64 {
 
 #[test]
 fn clipboard_files_and_image_via_vm_shims() {
+    // 跨进程命名互斥：与 ui::clipboard_native / ui::clipboard 的剪贴板
+    // 集成测试互斥（nextest 多进程并行会互清剪贴板，见 T9 修复注）。
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    let _global = match crate::ui::clipboard_native::GlobalClipboardTestLock::acquire() {
+        Some(g) => g,
+        None => return,
+    };
     let vm = make_vm();
     let mut task = AutoTask::new(0, 1024, 0);
 
