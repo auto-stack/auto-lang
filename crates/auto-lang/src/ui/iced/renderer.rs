@@ -8407,11 +8407,17 @@ fn compare_pngs(
                         // (Task 4); if the panel/MCP just started they may still be
                         // None on the very first round-trip, in which case we skip
                         // (the tool degrades to "UI not yet rendered").
-                        let vtree_borrow = state.app.live_vtree.borrow();
+                        // Plan 483 D4：vtree 源取 mcp_sync_vtree（与
+                        // shared.view 同一份裸 View 建的快照）——此前取
+                        // live_vtree（convert_view_messages 加工树，Tabs 族
+                        // 折 Empty）会造成 styled_vtree 与 shared.view 的
+                        // path 空间错位，MCP vnode 派发落错节点。缓存缺失
+                        // （同步块未跑过）时退回 live_vtree（旧行为）。
+                        let vtree_borrow = state.app.mcp_sync_vtree.borrow();
+                        let live_borrow = state.app.live_vtree.borrow();
                         let cache_borrow = state.app.live_cache.borrow();
-                        if let (Some(vtree), Some(cache)) =
-                            (vtree_borrow.as_ref(), cache_borrow.as_ref())
-                        {
+                        let vtree_src = vtree_borrow.as_ref().or(live_borrow.as_ref());
+                        if let (Some(vtree), Some(cache)) = (vtree_src, cache_borrow.as_ref()) {
                             let snap = crate::ui::mcp_server::StyledNodeSnapshot::from_live(
                                 state.component.widget_name(),
                                 vtree,
@@ -10938,9 +10944,13 @@ fn dynamic_view(
             );
             mcp.set_styled_vtree(crate::ui::mcp_server::StyledNodeSnapshot {
                 widget_name: state.component.widget_name().to_string(),
-                vtree,
+                vtree: vtree.clone(),
                 computed: std::collections::HashMap::new(),
             });
+            // Plan 483 D4：缓存这份与 shared.view 同源的 vtree，供
+            // `__bounds_collected` 回路覆盖 styled_vtree 时取用（见
+            // AppState::mcp_sync_vtree 文档注释——禁止改用 live_vtree 源）。
+            *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
         }
         mcp.update(view, id_map, state_vals, input_map, view_template, state.component.key_bindings().clone());
         // Sync window size for layout annotations (Plan 281)
@@ -17463,6 +17473,111 @@ mod line_edit_tests {
         let vii = line_edit_keymap("vi-insert");
         assert!(vii.contains_key("escape"));
         assert!(vii.contains_key("ctrl.k"));
+    }
+
+    // ---- Plan 483: VM 双 input 双焦点/键盘双投递(上游 auto-musk 011) ----
+    // 042-two-inputs-child / musk 登录页同构:条件渲染子 widget 内两个
+    // input(不同 placeholder、各自 on_change)。走 VM 主路径
+    // render_dynamic_view(非泛型 IntoIcedElement 路径)构建 Element。
+
+    /// 双 input 列(VM 主路径同构输入)。on_change 挂 IcedMessage,
+    /// widget/event 对齐 042 example 的 LoginChild/UserChanged|PassChanged。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_two_input_view() -> AbstractView<IcedMessage> {
+        let user = AbstractView::Input {
+            placeholder: "Enter username".to_string(),
+            value: String::new(),
+            on_change: Some(IcedMessage {
+                widget: "LoginChild".to_string(),
+                event: "UserChanged".to_string(),
+                input_value: None,
+            }),
+            on_submit: None,
+            width: None,
+            password: false,
+            style: None,
+        };
+        let pass = AbstractView::Input {
+            placeholder: "Enter password".to_string(),
+            value: String::new(),
+            on_change: Some(IcedMessage {
+                widget: "LoginChild".to_string(),
+                event: "PassChanged".to_string(),
+                input_value: None,
+            }),
+            on_submit: None,
+            width: None,
+            password: true,
+            style: None,
+        };
+        AbstractView::Column {
+            children: vec![user, pass],
+            spacing: 8,
+            padding: 8,
+            style: None,
+        }
+    }
+
+    /// 红:VM 路径两个 input 的 iced Id 必须互异。iced 的 Focus operation
+    /// 对所有同 Id 的 focusable 逐个置焦(focusable.rs)——同 Id 即一次
+    /// focus() 全置焦,__focus_input/Tab/refocus 等任一路径触发即双焦点,
+    /// 键盘事件随之双投递(042 evidence r4/r5:username="adminadmin")。
+    /// 现状(红):两 input 同为 "prompt_input"(13700 整体覆盖)。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_vm_two_inputs_have_distinct_iced_ids() {
+        use iced::Rectangle;
+        use iced_test::selector::{Candidate, Selector};
+
+        let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+
+        let first: (String, Rectangle) = ui
+            .find(|c: Candidate<'_>| match c {
+                Candidate::Focusable { id, bounds, .. } => {
+                    Some((format!("{:?}", id), bounds))
+                }
+                _ => None,
+            })
+            .expect("at least one focusable (username input)");
+
+        let second: String = ui
+            .find(|c: Candidate<'_>| match c {
+                Candidate::Focusable { id, bounds, .. }
+                    if bounds.y > first.1.y + first.1.height =>
+                {
+                    Some(format!("{:?}", id))
+                }
+                _ => None,
+            })
+            .expect("second focusable below the first (password input)");
+
+        assert_ne!(
+            first.0, second,
+            "VM 主路径两个 input 的 iced Id 必须互异(同 Id ⇒ iced focus \
+             operation 一次全置焦 ⇒ 双焦点/键盘双投递,Plan 483)"
+        );
+    }
+
+    /// 控制组(修复前后都须绿):静态树内点击第二个 input 后键入文本,
+    /// 仅聚焦框的 on_change 触发——锁定正常单投递不回归。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_click_and_type_delivers_to_focused_input_only() {
+        let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+
+        ui.click("Enter password").expect("password input found by placeholder");
+        let _ = ui.typewrite("admin");
+
+        let msgs: Vec<IcedMessage> = ui.into_messages().collect();
+        assert!(!msgs.is_empty(), "typing must produce on_change messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "PassChanged",
+                "keystrokes must only reach the focused input; got {m:?}"
+            );
+        }
     }
 }
 
