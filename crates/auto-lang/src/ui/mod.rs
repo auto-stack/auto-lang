@@ -49,6 +49,11 @@ pub mod app_registry;
 #[cfg(feature = "ui-iced")]
 pub mod desktop_protocol;
 
+// Plan 473：原生窗口 dock（NativeSlot，假洞 Phase 1）。纯逻辑层零依赖全平台
+// 单测；Win32 适配 #[cfg(windows)] 门控在 native_dock/win32.rs，非 Windows
+// 以同名 no-op 模块顶替。
+pub mod native_dock;
+
 // Plan 442 A3: web-ecosystem ext imports on the VM render target
 // (adapter-chain loading + platform stubs).
 pub mod ext_stubs;
