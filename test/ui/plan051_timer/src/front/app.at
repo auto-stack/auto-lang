@@ -1,0 +1,20 @@
+// app.at — PLAN-051 C7 timer block 语料：根 widget 计时器（无门控）+ store 门控计时器。
+use ticker_store: TickerStore
+
+widget App {
+    msg { LocalTick }
+    model {
+        var local_count int = 0
+    }
+    timer {
+        LocalTick (every_ms: 40)
+    }
+    view {
+        col {
+            text f"local=${.local_count} poll=${.store.poll_count}"
+        }
+    }
+    on {
+        .LocalTick -> { .local_count = .local_count + 1 }
+    }
+}

@@ -2237,6 +2237,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -2270,6 +2271,7 @@ mod tests {
         // Create a widget with multiple state variables
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "UserProfile".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -2330,6 +2332,7 @@ mod tests {
         // Create a stateless widget
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "StaticHeader".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2444,6 +2447,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestWidget".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2509,6 +2513,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TraitTest".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2958,6 +2963,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestCardVariant".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3011,6 +3017,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestCardOutlined".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3060,6 +3067,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestCardDefault".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3220,6 +3228,7 @@ widget TestCardVariant {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestNestedCard".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -3292,6 +3301,7 @@ fn test_text_with_flex_style() {
 
     let widget = AuraWidget {
         actions: None,
+        timers: Vec::new(),
         name: "TestTextStyle".to_string(),
         state_vars: vec![],
         computed: vec![],

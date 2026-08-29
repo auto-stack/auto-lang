@@ -43,11 +43,22 @@ pub struct SpanInfo {
 ///
 /// This is the primary structure extracted from a `widget` declaration.
 /// It contains:
-/// - State variables (model)
-/// - View tree (pure layout, no logic)
+/// - State tree (model)
+/// - View tree (pure layout and bindings)
 /// - Event handlers (logic payload)
 /// - Routes (for router widgets, Plan 105)
 /// - Lifecycle methods (Plan 05-Nav)
+#[derive(Debug, Clone)]
+/// Plan 051 C7: timer 块条目的 Aura 形态（vue codegen / VM 收集消费）。
+pub struct AuraTimerEntry {
+    /// msg 变体名（派发目标）。
+    pub event: String,
+    /// 周期毫秒（解析期已钳 ≥16）。
+    pub every_ms: u64,
+    /// 门控条件源文本（actions enabled_if 约定；None = 恒派发）。
+    pub when: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuraWidget {
     /// Widget name (e.g., "Counter")
@@ -82,6 +93,9 @@ pub struct AuraWidget {
 
     /// Tick interval in ms — when set, the runtime emits .Tick events at this interval
     pub tick_interval: Option<u32>,
+
+    /// Plan 051 C7: `timer { ... }` 块条目（周期计时器）。
+    pub timers: Vec<AuraTimerEntry>,
 
     /// Handler parameter names: maps handler pattern to parameter list
     /// e.g., ".AddItem" -> ["text"] for .AddItem(text) -> { ... }
@@ -407,6 +421,9 @@ pub struct AuraStore {
     /// lives for the app lifetime — the same semantics jade previously
     /// hand-wrote in its facade modules); other backends ignore them.
     pub watchers: Vec<AuraWatch>,
+
+    /// Plan 051 C7: `timer { ... }` 块条目（store 计时器，应用生命周期）。
+    pub timers: Vec<AuraTimerEntry>,
 
     /// Module-level plain functions declared in the store file but OUTSIDE the
     /// `store { ... }` block (e.g. `fn format_git_label(...)` helper). The vue
@@ -1169,6 +1186,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -1258,6 +1276,7 @@ mod tests {
         // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),

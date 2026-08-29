@@ -160,6 +160,7 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
                                 computed: store_decl.computed.clone(),
                                 setup: None, // Plan 426 field; test support defaults
                                 actions: None,
+            timer: None,
                                 view: None,
                                 on: store_decl.on.clone(),
                                 bind: None,
@@ -204,6 +205,7 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
                 computed: store_decl.computed.clone(),
                                 setup: None, // Plan 426 field; test support defaults
                                 actions: None,
+            timer: None,
                 view: None,
                 on: store_decl.on.clone(),
                 bind: None,
@@ -233,6 +235,7 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
                     computed: store_decl.computed.clone(),
                     setup: None,
                     actions: None,
+            timer: None,
                     view: None,
                     on: store_decl.on.clone(),
                     bind: None,

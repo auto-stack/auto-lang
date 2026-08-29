@@ -2254,6 +2254,16 @@ impl VueGenerator {
                 imports.push("nextTick");
             }
         }
+        // Plan 051 C7: timer 块需要 onMounted + onUnmounted（发射点晚于
+        // import 语句生成，须在此声明需求）。
+        if !widget.timers.is_empty() {
+            if !imports.contains(&"onMounted") {
+                imports.push("onMounted");
+            }
+            if !imports.contains(&"onUnmounted") {
+                imports.push("onUnmounted");
+            }
+        }
         // Timer/tick mechanism needs onMounted + onUnmounted
         if widget.tick_interval.is_some() {
             // The tick timer (`const tickTimer = ref<...>(null)`) always uses
@@ -3573,6 +3583,36 @@ impl VueGenerator {
             }
 
             script.push_str("onUnmounted(() => {\n  if (tickTimer.value !== null) {\n    clearInterval(tickTimer.value)\n  }\n})\n\n");
+        }
+
+        // Plan 051 C7: timer 块条目——onMounted setInterval / onUnmounted
+        // clearInterval；`when` 门控在回调内求值（假跳过本拍，计时不停）。
+        if !widget.timers.is_empty() {
+            for t in &widget.timers {
+                let var = format!("__timer_{}", t.event);
+                let body = widget
+                    .handlers
+                    .get(&format!(".{}", t.event))
+                    .and_then(|p| self.generate_handler_body(p).ok())
+                    .unwrap_or_default();
+                let guard = match t.when.as_deref() {
+                    Some(c) => Self::timer_condition_to_js(c),
+                    None => "true".to_string(),
+                };
+                script.push_str(&format!(
+                    "let {var} = null
+const __t51_on_{ev} = () => {{ if ({guard}) {{ {body} }} }}
+onMounted(() => {{ {var} = setInterval(__t51_on_{ev}, {ms}) }})
+onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }} }})
+
+",
+                    var = var,
+                    ev = t.event,
+                    guard = guard,
+                    body = body,
+                    ms = t.every_ms,
+                ));
+            }
         }
 
         // Generate previewcard state variables and copyCode function
@@ -6472,6 +6512,28 @@ impl VueGenerator {
     }
 
     /// Convert AURA condition to Vue expression
+    /// Plan 051 C7: timer `when` 条件 → script 语境 JS 表达式。script 里
+    /// 状态是 ref（需 `.value`）：`.field` → `field.value`；`.a.b` →
+    /// `a.value.b`；非点前缀原样返回（调用侧约定简单布尔式）。
+    fn timer_condition_to_js(condition: &str) -> String {
+        let c = condition.trim();
+        if !c.starts_with('.') {
+            return c.to_string();
+        }
+        let segs: Vec<&str> = c
+            .trim_start_matches('.')
+            .split('.')
+            .filter(|s| !s.is_empty())
+            .collect();
+        match segs.split_first() {
+            Some((first, rest)) if !rest.is_empty() => {
+                format!("{}.value.{}", first, rest.join("."))
+            }
+            Some((first, _)) => format!("{}.value", first),
+            None => "false".to_string(),
+        }
+    }
+
     fn convert_condition(&mut self, condition: &str) -> String {
         // Convert .var to var, .len to .length, etc.
         let mut result = condition.trim().to_string();
@@ -14110,6 +14172,11 @@ export function cn(...inputs: ClassValue[]) {
             }
             code.push('\n');
         }
+        // Plan 051 C7: store timer 单例旗标（模块级）。
+        if !store.timers.is_empty() {
+            code.push_str("let __t51_timers_started = false
+");
+        }
         // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions get the
         // same per-URL module-level guard.
         if !store.stream_handlers.is_empty() {
@@ -14160,6 +14227,30 @@ export function cn(...inputs: ClassValue[]) {
                 action_name, async_kw, params, body
             ));
             action_names.push(action_name);
+        }
+
+        // Plan 051 C7: store timer 条目——模块级 started 旗标保证单例
+        // composable 多次调用只建一条 interval（沿 stream_guard 先例）；
+        // `when` 门控在回调内对模块级 ref 求值。
+        if !store.timers.is_empty() {
+            code.push_str("        if (!__t51_timers_started) {
+            __t51_timers_started = true
+");
+            for t in &store.timers {
+                let guard = match t.when.as_deref() {
+                    Some(c) => Self::timer_condition_to_js(c),
+                    None => "true".to_string(),
+                };
+                code.push_str(&format!(
+                    "            setInterval(() => {{ if ({guard}) {{ {ev}() }} }}, {ms})
+",
+                    guard = guard,
+                    ev = t.event,
+                    ms = t.every_ms,
+                ));
+            }
+            code.push_str("        }
+");
         }
 
         // Plan 444 (ash-shell-057 ④): store actions with VM-only native
@@ -16083,6 +16174,7 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -20985,6 +21077,7 @@ store Files {
                 decorators: vec![],
             }],
             messages: vec![],
+            timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
                 (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
@@ -21051,6 +21144,7 @@ store Files {
                 decorators: vec![],
             }],
             messages: vec![],
+            timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
                 (".Delta(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".ToolCall(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
@@ -21118,6 +21212,7 @@ store Files {
             name: "MultiStreamStore".to_string(),
             state_vars: vec![],
             messages: vec![],
+            timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
                 (".RunOutput(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
@@ -21205,6 +21300,7 @@ store PlainStore {
             name: "MyStore".to_string(),
             state_vars: vec![],
             messages: vec![],
+            timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
                 (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
                 (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),

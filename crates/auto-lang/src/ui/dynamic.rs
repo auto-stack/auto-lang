@@ -144,6 +144,23 @@ pub struct DynamicComponent {
     /// Plan 482: VM 路由历史栈(浏览器 back 的对等物)。`set_route` 时压入
     /// 旧路由,`__navigate_back` / `router.back()`(经 __nav_back_pending)弹出。
     route_history: Vec<String>,
+
+    /// Plan 051 C7: timer 块条目（root widget + store-as-child decl 三源
+    /// 收集；renderer 据此建订阅、update 据此走 fire_timer 门控派发）。
+    timers: Vec<TimerEntryRuntime>,
+}
+
+/// Plan 051 C7: 运行期计时器条目（widget 名 + 事件名 + 周期 + 门控）。
+#[derive(Debug, Clone)]
+pub struct TimerEntryRuntime {
+    /// 归属 widget/store 名（派发目标命名空间）。
+    pub widget: String,
+    /// msg 变体名。
+    pub event: String,
+    /// 周期毫秒。
+    pub every_ms: u64,
+    /// 门控条件源文本（None = 恒派发；假 → 丢弃本拍，不停止底层计时）。
+    pub when: Option<String>,
 }
 
 /// Plan 409 §10 续 19: preview-card 的展开/tab 状态(局部 UI state)。
@@ -226,6 +243,7 @@ impl DynamicComponent {
             preview_states: Default::default(),
             nav_group_states: Default::default(),
             route_history: Default::default(),
+            timers: Vec::new(),
         })
     }
 
@@ -299,6 +317,7 @@ impl DynamicComponent {
             preview_states: Default::default(),
             nav_group_states: Default::default(),
             route_history: Default::default(),
+            timers: Vec::new(),
         })
     }
 
@@ -375,6 +394,37 @@ impl DynamicComponent {
             .map(|r| r.routes.clone())
             .unwrap_or_default();
 
+        // Plan 051 C7: 收集 timer 条目——root decl + child decls（含
+        // store→无视图 child WidgetDecl 转换体，lib.rs 转换位已带 timer）+
+        // import_stmts 里仍未转换的 StoreDecl（兜底三源，按 widget 名去重）。
+        let mut timers: Vec<TimerEntryRuntime> = Vec::new();
+        {
+            let mut seen: std::collections::HashSet<String> = Default::default();
+            let mut push = |d_name: &str, tb: &Option<crate::ast::ui::TimerBlock>| {
+                if let Some(tb) = tb {
+                    for e in &tb.entries {
+                        if seen.insert(format!("{}::{}", d_name, e.event)) {
+                            timers.push(TimerEntryRuntime {
+                                widget: d_name.to_string(),
+                                event: e.event.as_str().to_string(),
+                                every_ms: e.every_ms,
+                                when: e.when.clone(),
+                            });
+                        }
+                    }
+                }
+            };
+            push(root_decl.name.as_str(), &root_decl.timer);
+            for d in child_decls {
+                push(d.name.as_str(), &d.timer);
+            }
+            for stmt in import_stmts.iter() {
+                if let crate::ast::Stmt::StoreDecl(sd) = stmt {
+                    push(sd.name.as_str(), &sd.timer);
+                }
+            }
+        }
+
         Ok(Self {
             bridge,
             view_template,
@@ -393,6 +443,7 @@ impl DynamicComponent {
             preview_states: Default::default(),
             nav_group_states: Default::default(),
             route_history: Default::default(),
+            timers,
         })
     }
 
@@ -433,6 +484,7 @@ impl DynamicComponent {
             preview_states: Default::default(),
             nav_group_states: Default::default(),
             route_history: Default::default(),
+            timers: Vec::new(),
         })
     }
     // ========================================================================
@@ -443,6 +495,67 @@ impl DynamicComponent {
     ///
     /// Returns the current value of the named state field, or an error if the
     /// field does not exist.
+    /// Plan 051 C7: (widget, event) 是否 timer 条目——update 侧据此分流
+    /// 到 fire_timer（门控）而非通用事件路径。
+    pub fn is_timer_entry(&self, widget: &str, event: &str) -> bool {
+        self.timers.iter().any(|t| t.widget == widget && t.event == event)
+    }
+
+    /// Plan 051 C7: timer 条目表（renderer 建订阅用）。
+    pub fn timer_entries(&self) -> &[TimerEntryRuntime] {
+        &self.timers
+    }
+
+    /// Plan 051 C7: 派发一条计时器拍——`when` 门控在派发前对根态求值，
+    /// 假则丢弃本拍（底层计时不停）。返回是否实际派发；条目不存在
+    /// 返回 false（update 侧据此走通用事件路径或不动作）。
+    pub fn fire_timer(&mut self, widget: &str, event: &str) -> bool {
+        let Some(entry) = self
+            .timers
+            .iter()
+            .find(|t| t.widget == widget && t.event == event)
+        else {
+            return false;
+        };
+        if let Some(when) = &entry.when {
+            if !self.timer_guard_passes(when) {
+                return false;
+            }
+        }
+        self.on_with_input_for(widget, event, None);
+        true
+    }
+
+    /// Plan 051 C7: when 门控求值——store→child 转换把 store 字段平面
+    /// 并入根态（lib.rs 注释），故 `.field` 走平面读；`.a.b` 多段形态
+    /// 先整路径后末段降级。读不到按假处理（保守拦截）。
+    fn timer_guard_passes(&self, when: &str) -> bool {
+        let path = when.trim().trim_start_matches('.');
+        if path.is_empty() {
+            return false;
+        }
+        let segs: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+        let mut tries: Vec<String> = vec![path.to_string()];
+        if segs.len() > 1 {
+            if let Some(last) = segs.last() {
+                tries.push((*last).to_string());
+            }
+        }
+        for t in tries {
+            if let Ok(v) = self.read_state(&t) {
+                return match v {
+                    auto_val::Value::Bool(b) => b,
+                    auto_val::Value::Str(ref s) => {
+                        matches!(s.as_str(), "true" | "1" | "on")
+                    }
+                    auto_val::Value::Int(n) => n != 0,
+                    _ => false,
+                };
+            }
+        }
+        false
+    }
+
     pub fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
         self.bridge
             .read_state(field_name)
@@ -2014,6 +2127,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -2170,6 +2284,7 @@ mod tests {
     fn test_view_with_state_binding() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2350,6 +2465,7 @@ mod tests {
     fn test_view_with_button_and_event() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2444,6 +2560,7 @@ mod tests {
     fn test_write_state_updates_view() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -2639,6 +2756,7 @@ mod tests {
         // Reload with a different view template
         let new_widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),

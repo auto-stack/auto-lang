@@ -5486,6 +5486,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -5515,6 +5516,7 @@ mod tests {
     fn test_simple_counter() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Counter".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "count".to_string(),
@@ -5567,6 +5569,7 @@ mod tests {
             name: "PanelDoc".to_string(),
             state_vars: vec![],
             messages: vec![],
+            timers: Vec::new(),
             view_tree,
             handlers: std::collections::BTreeMap::new(),
             props: vec![],
@@ -5733,6 +5736,7 @@ widget Counter {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Playground".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -5866,6 +5870,7 @@ widget Counter {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Playground".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -5968,6 +5973,7 @@ fn main() {{}}
     fn test_state_snapshot_scalar_override() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "App".to_string(),
             state_vars: vec![
                 AuraStateDef {
@@ -6039,6 +6045,7 @@ fn main() {{}}
     fn test_state_snapshot_no_scalars_no_override() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "OnlyCollections".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "items".to_string(),
@@ -6079,6 +6086,7 @@ fn main() {{}}
     fn test_state_snapshot_recurses_into_store() {
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "App".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "search".to_string(),
@@ -6127,6 +6135,7 @@ fn main() {{}}
         // (avoid NotesStore { store: NotesStore } infinite recursion).
         let store_widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "NotesStore".to_string(),
             state_vars: vec![AuraStateDef {
                 name: "dark_mode".to_string(),
@@ -6310,6 +6319,7 @@ fn main() {{}}
     fn widget_with_msg(variants: Vec<AuraMsgVariant>) -> AuraWidget {
         AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Shell".to_string(),
             state_vars: vec![],
             computed: vec![],

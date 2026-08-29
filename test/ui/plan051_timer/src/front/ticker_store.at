@@ -1,0 +1,15 @@
+// ticker_store.at — PLAN-051 C7 timer block 语料：store 计时器（带 when 门控）。
+store TickerStore {
+    msg { PollTick, SetGate }
+    model {
+        var poll_count int = 0
+        var gate_open bool = false
+    }
+    timer {
+        PollTick (every_ms: 50, when: .gate_open)
+    }
+    on {
+        .PollTick -> { .poll_count = .poll_count + 1 }
+        .SetGate(v) -> { .gate_open = v }
+    }
+}

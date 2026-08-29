@@ -3408,6 +3408,7 @@ fn build_dynamic_component_inner(
                                     expose: Vec::new(),
  setup: None,
                     actions: None,
+            timer: store_decl.timer.clone(),
                                 });
                             }
                         }
@@ -3522,6 +3523,7 @@ fn build_dynamic_component_inner(
                                     expose: Vec::new(),
  setup: None,
                     actions: None,
+            timer: store_decl.timer.clone(),
                                 });
                             }
                         }
@@ -3590,6 +3592,7 @@ fn build_dynamic_component_inner(
                 expose: Vec::new(),
  setup: None,
                     actions: None,
+            timer: store_decl.timer.clone(),
             };
             store_as_child_decls.push(fake_widget);
         }
@@ -3623,6 +3626,7 @@ fn build_dynamic_component_inner(
                     expose: Vec::new(),
  setup: None,
                     actions: None,
+            timer: store_decl.timer.clone(),
                 });
             }
         }
@@ -6030,6 +6034,8 @@ mod plan442_store_facade_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
 mod plan051_ext_widget_tests;
+// Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
+mod plan051_timer_tests;
 
 // Plan 442 A5: one-shot scheduler primitives regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]

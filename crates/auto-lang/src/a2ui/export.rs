@@ -494,6 +494,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -558,6 +559,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "Test".to_string(),
             state_vars: vec![],
             computed: vec![],

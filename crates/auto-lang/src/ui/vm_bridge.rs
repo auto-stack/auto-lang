@@ -1914,6 +1914,7 @@ widget OpProbeOrig {
             lifecycle: vec![],
             setup: None, // Plan 426 field; test helper default
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),

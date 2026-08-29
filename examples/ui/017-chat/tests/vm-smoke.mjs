@@ -166,7 +166,26 @@ async function main() {
     console.log("[vm-smoke] D ok — Enter 发送闭环（onenter 声明派发）");
   }
 
-  console.log("[vm-smoke] PASS — 017-chat VM 轨发送闭环四断言全绿");
+  // ── E. timer 块 → ClockTick 周期派发（Plan 051 C7）──
+  {
+    // 起点读一次 clock_secs，等 2.5s（周期 1s）再读，应 ≥ +2。
+    const readClock = async () => {
+      const st = await mcpCall("autoui_state", {});
+      const m = st.match(/clock_secs: (\d+)/);
+      return m ? Number(m[1]) : null;
+    };
+    const before = await readClock();
+    if (before === null) { fail(`clock_secs 状态缺失（timer 块未装载？）\n状态：\n${await mcpCall("autoui_state", {})}`); return; }
+    await new Promise((r) => setTimeout(r, 2500));
+    const after = await readClock();
+    if (after === null || after - before < 2) {
+      fail(`timer 未周期派发：clock_secs ${before} → ${after}（等 2.5s 应 ≥ +2）`);
+      return;
+    }
+    console.log(`[vm-smoke] E ok — timer 块周期派发（clock_secs ${before} → ${after}）`);
+  }
+
+  console.log("[vm-smoke] PASS — 017-chat VM 轨五断言全绿（A seed/B type/C 按钮/D Enter/E timer）");
 }
 
 main().finally(() => {
