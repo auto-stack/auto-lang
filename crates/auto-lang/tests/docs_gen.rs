@@ -103,6 +103,9 @@ const DOC_TODO_BASELINE: &[&str] = &[
     "navdestination",
     // Plan 463 desktop shell 新增(taskbar),文档化跟随该计划的文档批次。
     "taskbar",
+    // Plan 473(桌面 dock 线)并入的 virtual_window——该线只跑了 --lib 门禁,
+    // docs_gen 围栏在此暴露缺口;文档化归 473 后续批次(Plan 482 裁定旁置)。
+    "virtualwindow",
 ];
 
 fn gallery_page_folds() -> BTreeSet<String> {

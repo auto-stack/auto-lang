@@ -2757,7 +2757,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let end = label.find('\u{EE02}').unwrap_or(label.len());
                     let icon_name = &label[3..end.min(label.len())];
                     let text_label = &label[end.saturating_add(3).min(label.len())..];
-                    if let Some(svg_str) = lucide_svg(icon_name) {
+                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
                         // Plan 409 §10 续: PUA icon(button label 内嵌的 nav-link
                         // 图标)与文字同色 —— button 的 text_color,无则 OnBackground
                         // (renderer §3.4,避免 resvg 把 currentColor 画成黑色)。
@@ -3676,7 +3676,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                    if let Some(svg_str) = lucide_svg(icon_name) {
+                    if let Some(svg_str) = lucide_svg_doc(icon_name) {
                         // Plan 409 §10 组 C → 2026-08-21 方案 A(ash-gui hover):
                         // 画时着色 —— svg::Style.color 由 iced 光栅化器把不透明
                         // 像素的 RGB 整体替换(按 (handle,size,color) 缓存,引擎
@@ -4066,6 +4066,17 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
 /// Plan 408: Return a complete SVG string for a lucide icon name.
 /// The SVG uses 16x16 viewport (scaled from lucide's 24x24), stroke-based
 /// rendering matching lucide's visual style.
+/// Plan 482: lucide_svg returns bare shape fragments (no <svg> root) —
+/// resvg refuses to parse them, so every `lucide:` icon rendered EMPTY
+/// (pre-existing gap hit by the nav search icon; also affects the PUA
+/// button-icon path). Wrap into a full stroke-based document here.
+fn lucide_svg_doc(name: &str) -> Option<String> {
+    let frag = lucide_svg(name)?;
+    Some(format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">{frag}</svg>"
+    ))
+}
+
 fn lucide_svg(name: &str) -> Option<&'static str> {
     // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
     // Each entry is the inner elements only.
@@ -15588,6 +15599,22 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
+    /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
+    /// 此处以测试锁住。
+    #[test]
+    fn nav_family_lucide_icons_present() {
+        for name in [
+            "message-square", "list-todo", "scroll", "book-open",
+            "chevron-down", "chevron-right", "search",
+        ] {
+            assert!(
+                lucide_svg(name).is_some(),
+                "nav 组件族图标 {name} 缺失于 lucide_svg 内嵌集"
+            );
+        }
+    }
+
     use super::*;
 
     // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----

@@ -217,6 +217,8 @@ pub struct VueDependencyUsage {
     pub form: bool,
     pub carousel: bool,
     pub sidebar: bool,
+    /// Plan 482: nav scaffold (NavItem.vue imports RouterLink) → vue-router.
+    pub nav_scaffold: bool,
     /// Plan 444 (ash-shell-057 ⑥): ui components whose scaffold imports
     /// @vueuse/core besides carousel/sidebar — progress / scroll-area /
     /// table (ash-gui's package.json regeneration dropped @vueuse and
@@ -241,6 +243,7 @@ impl VueDependencyUsage {
             form: corpus.contains("@/components/ui/form'"),
             carousel: corpus.contains("@/components/ui/carousel'"),
             sidebar: corpus.contains("@/components/ui/sidebar'"),
+            nav_scaffold: corpus.contains("@/components/ui/nav'"),
             // Every scaffolded ui component that imports @vueuse/core.
             // Keep in sync with the scaffolds' import lines.
             vueuse_scaffold: corpus.contains("@/components/ui/progress'")
@@ -272,7 +275,11 @@ impl VueDependencyUsage {
                 || corpus.contains("@/components/ui/tags-input'")
                 || corpus.contains("@/components/ui/toggle'")
                 || corpus.contains("@/components/ui/toggle-group'")
-                || corpus.contains("@/components/ui/tooltip'"),
+                || corpus.contains("@/components/ui/tooltip'")
+                // Plan 482: separator scaffold imports reactiveOmit from
+                // @vueuse/core (pre-existing fresh-install gap, hit while
+                // verifying 015-notes).
+                || corpus.contains("@/components/ui/separator'"),
             // PLAN-457: any chart-family component pulls @unovis.
             chart: corpus.contains("@/components/ui/chart'")
                 || corpus.contains("@/components/ui/chart-area'")
@@ -429,7 +436,9 @@ fn generate_package_json(
         ("lucide-vue-next".to_string(), "^0.312.0".to_string()),
         ("prismjs".to_string(), "^1.29.0".to_string()),
     ];
-    if has_routes {
+    if has_routes || usage.nav_scaffold {
+        // Plan 482: nav 脚手架（NavItem.vue 的 RouterLink 多态）同样需要
+        // vue-router——无 routes 但用了 nav-item(to:) 的应用由此覆盖。
         deps.push(("vue-router".to_string(), "^4.2.0".to_string()));
     }
     // Plan musk-022 Phase 2: vue-i18n dependency when i18n is enabled.
@@ -1280,6 +1289,21 @@ fn write_project_files(
     i18n: &I18nConfig,
     locale_files: &[String],
 ) -> Result<(), String> {
+    // Plan 482: uses_autodown 的 main.ts 引 `@autodown/engine/style.css`，但
+    // pac npm_deps 通常只链接 editor/core——engine 缺声明导致 vite 解析失败
+    // （015-notes 全新安装现场）。从 editor 链接路径推导同级 engine 链接。
+    let mut extra_deps_owned: Vec<(String, String)> = extra_deps.to_vec();
+    let has_editor_link = extra_deps_owned.iter().any(|(n, _)| n == "@autodown/editor");
+    let has_engine = extra_deps_owned.iter().any(|(n, _)| n == "@autodown/engine");
+    if has_editor_link && !has_engine {
+        if let Some((_, ver)) = extra_deps_owned.iter().find(|(n, _)| n == "@autodown/editor") {
+            if let Some(engine_ver) = ver.strip_suffix("editor").map(|p| format!("{p}engine")) {
+                extra_deps_owned.push(("@autodown/engine".to_string(), engine_ver));
+            }
+        }
+    }
+    let extra_deps: &[(String, String)] = &extra_deps_owned;
+
     // package.json
     let package_json = generate_package_json(name, has_routes, i18n.enabled, extra_deps, usage);
     fs::write(output_path.join("package.json"), package_json)

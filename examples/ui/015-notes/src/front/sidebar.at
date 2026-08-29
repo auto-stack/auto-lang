@@ -1,23 +1,20 @@
 // sidebar.at — NavTree widget (Plan 360: card-based modern UI).
-// Plan 367 P2: refactored with view fn + else-if to ~140 lines (from 337).
+// Plan 367 P2: refactored with view fn + else-if (from 337 lines).
+// Plan 482: rebuilt on the nav component family — nav(search:) integrated
+// search row, nav-group folder sections, nav-item note entries with built-in
+// hover/active states (replaces hand-rolled button + if-style-string items).
 
 use notes_store: NotesStore
 
-// Plan 367 P2-3: view fragment for note list items — eliminates 15x copy-paste.
-view fn NoteItem(note: Note, active: bool, indent: str) {
-    button {
-        row {
-            style: "items-center gap-1"
-            if note.pinned { text "📌" { style: "text-xs" } }
-            text note.title { style: "block truncate" }
-        }
-        text note.time { style: "block text-xs text-muted-foreground mt-0.5" }
+// Plan 482: nav-item based note entry — hover/active styling comes from the
+// nav contract; desc renders the timestamp as the second line.
+view fn NoteNav(note: Note, active: bool) {
+    nav-item {
+        label: note.title
+        desc: note.time
+        active: active
         onclick: .SelectNote(i)
-        style: if active {
-            "w-full text-left py-2 rounded-lg bg-accent text-accent-foreground"
-        } else {
-            "w-full text-left py-2 rounded-lg text-foreground hover:bg-accent/50 transition-colors"
-        }
+        style: "py-1"
     }
 }
 
@@ -26,16 +23,17 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
         SelectAll, SelectPinned, SelectRecent,
         SelectTag(str), SelectNote(int),
         NewNote, NewNoteInFolder(str),
-        ToggleDarkMode, SetAccent(str)
+        ToggleDarkMode, SetAccent(str), SearchChanged(str)
     }
 
     view {
         col {
             style: "w-80 bg-card rounded-xl shadow-sm flex flex-col h-full overflow-hidden flex-shrink-0"
 
-            // View mode tabs
+            // View mode tabs — segmented control (a filter, not navigation;
+            // deliberately kept outside the nav family).
             row {
-                style: "gap-1 m-3 p-1 bg-muted rounded-lg"
+                style: "gap-1 m-3 mb-2 p-1 bg-muted rounded-lg"
                 button "All" {
                     onclick: .SelectAll
                     style: if .active_folder == "all" { "flex-1 px-2 py-1 text-xs font-medium rounded-md bg-card text-card-foreground shadow-sm" } else { "flex-1 px-2 py-1 text-xs rounded-md text-muted-foreground hover:text-foreground transition-colors" }
@@ -50,91 +48,77 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
                 }
             }
 
-            // Search input
-            row {
-                style: "mx-3 mb-2 items-center gap-2 px-3 py-1.5 bg-muted rounded-lg"
-                text "🔍" { style: "text-sm opacity-50" }
-                input {
-                    placeholder: "Search notes..."
-                    value: .search
-                    style: "flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                }
-            }
+            // Plan 482: nav container with integrated search row (search: true)
+            // + collapsible folder groups + nav-item entries.
+            nav (search: true, search_placeholder: "Search notes...",
+                 search_value: .search, onsearch: .SearchChanged,
+                 style: "flex-1 min-h-0 overflow-y-auto flex flex-col px-2 pb-2") {
 
-            // Tag filters
-            row {
-                style: "flex-wrap gap-1 px-3 mb-2"
-                for t in .store.all_tags {
-                    button t {
-                        onclick: .SelectTag(t)
-                        style: if .store.active_tag == t { "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium" } else { "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors" }
+                // Tag filters (chips row as a nav child)
+                row {
+                    style: "flex-wrap gap-1 px-1 mb-1"
+                    for t in .store.all_tags {
+                        button t {
+                            onclick: .SelectTag(t)
+                            style: if .store.active_tag == t { "px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium" } else { "px-2 py-0.5 text-xs rounded-full bg-muted text-muted-foreground hover:bg-accent transition-colors" }
+                        }
                     }
                 }
-            }
-
-            // Note tree (scrollable)
-            col {
-                style: "flex-1 overflow-y-auto px-2 gap-0.5"
 
                 if .active_folder == "all" {
-                    row {
-                        style: "px-2 py-1 items-center"
-                        text "📁 Notes" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
-                        button "+" { onclick: .NewNote, style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors" }
-                    }
-                    for i, note in .store.notes {
-                        if note.folder == "" {
-                            if .store.active_tag == "" {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
-                            } else if note.tags.contains(.store.active_tag) {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
+                    nav-group (label: "Notes") {
+                        for i, note in .store.notes {
+                            if note.folder == "" {
+                                if .store.active_tag == "" {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                } else if note.tags.contains(.store.active_tag) {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                }
                             }
                         }
                     }
-                    row {
-                        style: "px-2 py-1 items-center mt-2"
-                        text "📁 Work" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
-                        button "+" { onclick: .NewNoteInFolder("work"), style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors" }
-                    }
-                    for i, note in .store.notes {
-                        if note.folder == "work" {
-                            if .store.active_tag == "" {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
-                            } else if note.tags.contains(.store.active_tag) {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
+                    nav-group (label: "Work") {
+                        for i, note in .store.notes {
+                            if note.folder == "work" {
+                                if .store.active_tag == "" {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                } else if note.tags.contains(.store.active_tag) {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                }
                             }
                         }
                     }
-                    row {
-                        style: "px-2 py-1 items-center mt-2"
-                        text "📁 Personal" { style: "text-xs font-bold text-muted-foreground uppercase flex-1 tracking-wide" }
-                        button "+" { onclick: .NewNoteInFolder("personal"), style: "text-xs text-muted-foreground hover:text-primary w-5 h-5 flex items-center justify-center rounded hover:bg-accent transition-colors" }
-                    }
-                    for i, note in .store.notes {
-                        if note.folder == "personal" {
-                            if .store.active_tag == "" {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
-                            } else if note.tags.contains(.store.active_tag) {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-5")
+                    nav-group (label: "Personal") {
+                        for i, note in .store.notes {
+                            if note.folder == "personal" {
+                                if .store.active_tag == "" {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                } else if note.tags.contains(.store.active_tag) {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                }
                             }
                         }
                     }
                 } else if .active_folder == "pinned" {
-                    for i, note in .store.notes {
-                        if note.pinned {
-                            if .store.active_tag == "" {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
-                            } else if note.tags.contains(.store.active_tag) {
-                                NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
+                    nav-group (label: "Pinned") {
+                        for i, note in .store.notes {
+                            if note.pinned {
+                                if .store.active_tag == "" {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                } else if note.tags.contains(.store.active_tag) {
+                                    NoteNav(note: note, active: i == .store.active_id)
+                                }
                             }
                         }
                     }
                 } else if .active_folder == "recent" {
-                    for i, note in .store.notes {
-                        if .store.active_tag == "" {
-                            NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
-                        } else if note.tags.contains(.store.active_tag) {
-                            NoteItem(note: note, active: i == .store.active_id, indent: "px-3")
+                    nav-group (label: "Recent") {
+                        for i, note in .store.notes {
+                            if .store.active_tag == "" {
+                                NoteNav(note: note, active: i == .store.active_id)
+                            } else if note.tags.contains(.store.active_tag) {
+                                NoteNav(note: note, active: i == .store.active_id)
+                            }
                         }
                     }
                 }
@@ -169,5 +153,9 @@ widget NavTree(active_folder: str, active_id: int, active_tag: str, search: str)
         .NewNoteInFolder(f) -> { store.NewNoteInFolder(f) }
         .ToggleDarkMode -> { store.ToggleDarkMode() }
         .SetAccent(name) -> { store.SetAccent(name) }
+        // Plan 482: nav(search:) integrated row wires the previously dead
+        // input to the store (search filtering itself remains a store-side
+        // follow-up, unchanged from before).
+        .SearchChanged(q) -> { store.Search(q) }
     }
 }

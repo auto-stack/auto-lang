@@ -1,0 +1,115 @@
+// pages/navitem.at - NavItem / NavGroup component documentation page (Plan 482)
+
+widget NavItemPage {
+    model { activeTab str = "preview", picked str = "inbox" }
+
+    view {
+        col {
+            h1 "NavItem"
+            text "NavItem is the Plan 482 navigation item: built-in hover / active / disabled states driven by a shared dual-backend class contract, a left icon slot (lucide name or emoji), an optional second description line, and a right badge pill. Router mode (to:) renders a vue RouterLink on web and dispatches __navigate on the VM; state mode (onclick + active) drives store-based switching. Group items with NavGroup (optionally collapsible)."
+
+            h2 "Installation"
+            codeblock (lang: "bash", code: "# NavItem/NavGroup ship with the scaffold (src/components/ui/nav)") {}
+
+            h2 "States"
+            preview-card (id: "navitem-states") {
+                col {
+                    style: "gap-1 max-w-xs"
+                    nav-item (onclick: .Pick("inbox"), active: .picked == "inbox", icon: "inbox", label: "Inbox")
+                    nav-item (onclick: .Pick("drafts"), active: .picked == "drafts", icon: "file", label: "Drafts")
+                    nav-item (icon: "settings", label: "Settings", disabled: true)
+                }
+            }
+
+            h2 "Sizes and two-line entries"
+            preview-card (id: "navitem-sizes") {
+                col {
+                    style: "gap-1 max-w-xs"
+                    nav-item (icon: "home", label: "Default (md)")
+                    nav-item (size: "sm", icon: "type", label: "Small (sm)")
+                    nav-item (size: "lg", icon: "monitor", label: "Display (lg)", desc: "Second line description", active: true)
+                }
+            }
+
+            h2 "With Badge"
+            preview-card (id: "navitem-badge") {
+                col {
+                    style: "gap-1 max-w-xs"
+                    nav-item (icon: "mail", label: "Inbox", badge: "12")
+                    nav-item (icon: "check", label: "Tasks", badge: "3")
+                }
+            }
+
+            h2 "Icons: lucide name or emoji"
+            preview-card (id: "navitem-icons") {
+                col {
+                    style: "gap-1 max-w-xs"
+                    nav-item (icon: "book-open", label: "Lucide icon (svg both ends)")
+                    nav-item (icon: "📚", label: "Emoji icon (text both ends)")
+                }
+            }
+
+            h2 "Groups (NavGroup)"
+            preview-card (id: "navitem-groups") {
+                col {
+                    style: "gap-1 max-w-xs"
+                    nav-group (label: "Workspace") {
+                        nav-item (icon: "layers", label: "Overview")
+                        nav-item (icon: "folder", label: "Files")
+                    }
+                    nav-group (label: "Collapsible", collapsible: true) {
+                        nav-item (size: "sm", icon: "square", label: "Nested item")
+                    }
+                }
+            }
+
+            h2 "Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "to" td "string" td "—" td "Route address (router mode): RouterLink on web, __navigate on VM" }
+                    tr { td "onclick" td "msg_ref" td "—" td "Click message (state mode) for store-driven switching" }
+                    tr { td "active" td "expr(bool)" td "auto" td "Selected override; with to: auto-detected (exact or prefix match)" }
+                    tr { td "exact" td "bool" td "false" td "Route auto-detection uses exact match only" }
+                    tr { td "icon" td "string" td "—" td "Left icon: lucide name (svg) or literal emoji text" }
+                    tr { td "label" td "string" td "—" td "Primary text" }
+                    tr { td "desc" td "string" td "—" td "Secondary line (two-line layout)" }
+                    tr { td "badge" td "string" td "—" td "Right-side badge pill" }
+                    tr { td "disabled" td "bool" td "false" td "Grayed out, not clickable" }
+                    tr { td "size" td "sm|md|lg" td "md" td "Item height/padding preset" }
+                    tr { td "class" td "string" td "—" td "Extra classes appended after the contract classes" }
+                }
+            }
+
+            h2 "NavGroup Properties"
+            table {
+                thead {
+                    tr {
+                        th "Property"
+                        th "Type"
+                        th "Default"
+                        th "Description"
+                    }
+                }
+                tbody {
+                    tr { td "label" td "string" td "—" td "Group header label" }
+                    tr { td "collapsible" td "bool" td "false" td "Header is clickable to fold/unfold (chevron)" }
+                    tr { td "open" td "expr(bool)" td "true" td "Fold state binding; unbound + collapsible uses built-in state" }
+                    tr { td "ontoggle" td "msg_ref" td "—" td "Message on header click; otherwise built-in state toggles" }
+                    tr { td "indent" td "bool" td "false" td "Indent member items (tree feel)" }
+                }
+            }
+        }
+    }
+
+    on {
+        .Pick(id) -> { .picked = id }
+    }
+}

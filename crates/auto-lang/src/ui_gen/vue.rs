@@ -1726,9 +1726,12 @@ impl VueGenerator {
             ind, nc::ICON_MD
         ));
         let mut input_attrs: Vec<String> = vec![format!("class=\"{}\"", nc::SEARCH_INPUT)];
+        // Plan 482 修正：search_value 可能是子组件 prop（如 NavTree(search:)），
+        // v-model 写 prop 编译报错——统一发 :value，状态更新交给 onsearch
+        // handler（携带输入文本）回写。
         if let Some(value) = props.get("search_value") {
             if let Some(state_ref) = self.extract_state_ref(value) {
-                input_attrs.push(format!("v-model=\"{}\"", state_ref));
+                input_attrs.push(format!(":value=\"{}\"", state_ref));
             } else if let AuraPropValue::Expr(expr) = value {
                 let js = self.bound_value_or_warn(expr, "nav search_value", "''");
                 input_attrs.push(format!(":value=\"{}\"", js));
@@ -17748,7 +17751,7 @@ widget NavDemo {
 {sfc}");
         assert!(sfc.contains("nav-search"), "搜索行:
 {sfc}");
-        assert!(sfc.contains("v-model=\"q\""), "搜索 v-model:
+        assert!(sfc.contains(":value=\"q\""), "搜索 :value 绑定:
 {sfc}");
         assert!(sfc.contains("@input="), "onsearch 处理器:
 {sfc}");

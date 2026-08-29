@@ -89,6 +89,7 @@ pub fn parity_tokens() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "ui")]
     use crate::ui::style::StyleClass;
 
     /// Every parity token must be understood by the VM style parser — this is
