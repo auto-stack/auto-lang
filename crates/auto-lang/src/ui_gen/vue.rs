@@ -4580,6 +4580,12 @@ impl VueGenerator {
                             text_content = Some(self.prop_to_text_content(value)?);
                             continue;
                         }
+                        // Plan 481: selectable: true → 显式 user-select: text
+                        // (防应用级 none 吞掉;不 continue,保留下方通用
+                        // :selectable 绑定透传作 a2vue 金样锚点)。
+                        if key == "selectable" && self.extract_bool_value(value) {
+                            attrs.push("style=\"user-select: text\"".to_string());
+                        }
                         // Special handling for codeblock's code prop - render as content
                         if key == "code" && (tag == "codeblock" || tag == "code-block") {
                             text_content = Some(self.prop_to_text_content(value)?);
@@ -22139,6 +22145,14 @@ widget NullProbe {
     fn test_a2vue_shadcn_col_dynamic_class() {
         test_a2vue_shadcn("009_shadcn_col_dynamic_class")
             .expect("a2vue shadcn col dynamic class mismatch");
+    }
+
+    /// Plan 481 a2vue golden: text/label `selectable: true` 往返 —— 输出携带
+    /// 显式 `style="user-select: text"`;缺省零输出(金样锁 prop 透传,不锁
+    /// 选区行为——vue 端跟随浏览器原生)。
+    #[test]
+    fn test_a2vue_text_selectable() {
+        test_a2vue("011_text_selectable").expect("a2vue 011_text_selectable mismatch");
     }
 
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style
