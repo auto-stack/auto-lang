@@ -15,6 +15,7 @@
 |---|---|---|---|
 | v1.0 | 2026-08-29 | 初版：五通道消息 + 二进制编解码 + 双端状态机 + loopback 传输 + 462 会话绑定 | Plan 386 S1–S7 |
 | v1.1 | 2026-08-29 | 真两进程增量：命名管道传输 / 共享内存帧缓冲 / broker + 入口裁决 / L2 detach-attach（`PROTOCOL_VERSION` 仍为 1——全部为追加式演进，见 §1 纪律） | Plan 386 S8–S12 |
+| v1.2 | 2026-08-29 | 真桌面壳增量：通用 client 运行时 / broker 桌面接入 + 多 App 驻留宿主 / 多 App 压测与内存实测 / 弹性重连 / L1 换窗 / L3 v2a 快照迁移（`StateSnapshot` tag 11 追加；`PROTOCOL_VERSION` 仍为 1） | Plan 480 S1–S10 |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -31,6 +32,19 @@
 | broker | `adjudicate()` 入口裁决三步（①`--autodesk-client=<pipe>` ②探测 broker ping ③Standalone）+ `Broker::serve_once`/`request_incubation`（DesktopBus 同形 `incubate` 记录，per-app 管道名分配 + 先行 listen + 转连；ping 吞弃） | `broker.rs` |
 | L2 迁移 | `ControlMsg::L2Detach/L2Detached/L2AttachRequest`（tag 8/9/10 追加）+ App 态 `Standalone`：Active→L2Detach→Standalone→L2Detached→宿主回收→connect()（同入口）→Active；**revision 不归零 = 状态未动** | `endpoint.rs` |
 | 两进程验证 | re-exec 集成测试：spawn 子进程（双模 ① 路径）→ 孵化 → 共享内存帧随点击递增 → L2 Standalone → 子进程 stdout 状态标记（`count=3 rev=4`）= app 进程持有状态的跨进程证据 | `dual_mode.rs` |
+
+## 1.2 v1.2 增量（Stage 3 真桌面壳落地，Plan 480）
+
+| 增量 | 内容 | 落点 |
+|---|---|---|
+| client 运行时 | `AppProjector`（AuraNode view → DrawList 最小投影器 v1：text/button + 线性堆叠、button 命中区推导、prop text/label + FStr 插值代入 VM 状态；带参 handler 不投影）+ `ClientPump`（可步进协议泵：握手 → Active → 输入 → handler → shm 产帧 → L2 处理；`run()` 阻塞主循环供真实 child 进程；动态组件持 Rc 非 Send，不跨线程） | `client_runtime.rs` |
+| broker 桌面接入 | `DesktopSession::enable_broker`（serve 线程受理孵化，端点搬运排队；`ProtocolHost` 持 `&mut session` 不可跨线程）+ `attach_pending_incubations`/`pump_broker_clients`（属主线程落地/泵帧；desktop boot 开 broker、ServiceTick 帧泵周期消费）；`auto run` 双模入口 `--autodesk-client=<pipe>` / `--autodesk-incubate` / `--app386=<name>`（③ 无标记现行行为零改动） | `session.rs` / `renderer.rs` / `crates/auto/src/cmd_autodesk.rs` |
+| 多 App 驻留宿主 | `stage3::BrokerClient`（per-app 端点+表面+shm 驻留 `broker_clients` 表）——v1.1 单 client 的"多 App 并发归 Stage 3"兑现；`broker_pointer_down` 按 WM 命中窗归属路由输入 | `stage3.rs` / `session.rs` |
+| 压测与内存 | N=3/5 child 全 Active → 逐 App 点击帧递增 → 30s 稳定存活（re-exec 真协议主循环）；内存采样 `K32GetProcessMemoryInfo`（零新依赖）+ N=1/3/5 边际增量报告（Private 口径 4.8MiB/App 临界达标，WS 口径 23.2MiB/App 未达标——度量+判定形态） | `stage3.rs` / `docs/plans/reports/480-memory-baseline.md` |
+| 弹性重连 | child EOF → `ReconnectPolicy` 预算内重试连回同一 per-app 管道 → 同一 projector 重建端点续跑（VM 状态/revision 原地） | `client_runtime.rs` |
+| L1 换窗 | `DesktopSession::detach_surface_to_os_window` / `attach_surface_back`：虚拟窗 ↔ 独立 OS 窗登记翻转（`wm_remove_win` ↔ `iced::window::open`+`register_window`），App/VM 对象原地 | `session.rs` |
+| L3 v2a 快照 | `ControlMsg::StateSnapshot{wid,payload}`（tag 11 追加，host→app）：载荷 = revision + 原始状态字段（Int/Double/Bool/Str；复合类型 Nil 占位）；child `on_control` 逐字段写回 + revision 续接，应用后产帧同步宿主 | `message.rs` / `client_runtime.rs` / `stage3.rs` |
+| 缺陷修复 | shm 段名 `autodesk-shm-<surface>` 全局撞名（Windows `CreateFileMappingW` 同名 = 打开既有段）→ 加 pid 前缀——压测暴露的真多宿主缺陷 | `host.rs` / `session.rs` |
 
 ## 2. Wire Format（信封）
 
@@ -103,8 +117,10 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
 | `ReclaimWindow` → 进程内移除 | 进程退出 → 回收虚拟窗（462 Close 语义） | 窗随 App 消亡 |
 | `ObserveMsg` 收件箱 | desktop_mcp per-app 端口代理 | 观测通道可代理 |
 
-窗口形态迁移 L1/L3（autoshell §7.1）不在协议 v1 范围——L1 是宿主侧 WM
-操作拼装，L3 需要 AutoVM 状态序列化（v2a 快照重启）。
+窗口形态迁移 L1/L3（autoshell §7.1）：v1.2 已落地（L1 = 宿主侧 WM 登记翻转
+`detach_surface_to_os_window`/`attach_surface_back`；L3 v2a = `StateSnapshot`
+快照注入恢复）。像素级投影保真与 live-iced 渲染器换接仍归后续（投影器 v1
+以 text/button + 线性堆叠为界）。
 
 ## 6. 偏差与决策记录（对 Plan 386 原文的修正）
 
@@ -117,9 +133,18 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
    真实参与孵化/命中/回收；live-iced 渲染器换接 `dynamic_view` → 协议客户端
    留 Stage 2 随真 transport 一起做——I1 评审已证零删除替换可达）。
 3. 单客户端 v1：`HostEndpoint` 一次只持一个客户端；多 App 并发复用同一
-   协议归 Stage 3（多 App + 形态迁移）。
+   协议归 Stage 3（多 App + 形态迁移）——v1.2 已兑现（`BrokerClient`
+   驻留多 client 宿主；`HostEndpoint` 单例本身不动，多 App = 每连接一份）。
 
-## 7. 验证（Stage 1 + Stage 2 增量）
+## 7. 验证（Stage 1 + Stage 2 + Stage 3 增量）
+
+- **Stage 3（v1.2，Plan 480，56 测试 ×2 连跑全绿）**：投影快照/命中派发
+  （prop + FStr 插值）、真实 `auto` 二进制双进程 smoke、`enable_broker`
+  + `request_incubation` 双端连通落 462 会话、N=3/5 压测（孵化→全 Active
+  →逐 App 点击帧递增→30s 稳定存活→收尾退出码 0）、内存边际增量采样
+  （N=1/3/5，数字见报告）、弹性重连（server drop → 存活等待 → 重建管道
+  → count/revision 连续）、L1 往返状态连续、L3 v2a 快照注入（迁移前后
+  count 一致 + revision 延续）。
 
 - **Stage 2（v1.1，44 测试 ×N 连跑全绿）**：命名管道 FIFO/残帧/EOF、
   shm 跨端读写 + DrawList 槽内往返、broker 全链孵化（通真实 462 会话）、
