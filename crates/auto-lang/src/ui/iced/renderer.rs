@@ -9174,6 +9174,8 @@ fn compare_pngs(
             .map(|v| v.as_str().to_string()).unwrap_or_default();
 
         let msg_input_snapshot = msg.input_value.clone();
+        if msg.input_value.is_some() {
+        }
         state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
 
         // Plan 055 D5(补实现,此前缺失):BlockItem.ToggleCollapse(id) 的 .at handler
@@ -17556,6 +17558,282 @@ mod line_edit_tests {
             first.0, second,
             "VM 主路径两个 input 的 iced Id 必须互异(同 Id ⇒ iced focus \
              operation 一次全置焦 ⇒ 双焦点/键盘双投递,Plan 483)"
+        );
+    }
+
+    /// Plan 483 T3:042 真实形态端到端(parse→registry→DynamicComponent→
+    /// view_with_debug_gated→render_dynamic_view VM 主路径)。镜像
+    /// plan437_child_init_tests::build_inline 的生产构建路径;子 widget
+    /// 以 kebab tag 直接实例化(免 use 导入),根 widget 持 .authed 条件。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_build_login_shape() -> crate::ui::dynamic::DynamicComponent {
+        use crate::ast::Stmt;
+        let src = r##"
+widget App {
+    model {
+        var authed bool = false
+    }
+    view {
+        if .authed != true {
+            login-child
+        } else {
+            text "in"
+        }
+    }
+}
+
+widget LoginChild {
+    msg { Submit, UserChanged, PassChanged }
+    model {
+        var user str = ""
+        var pass str = ""
+    }
+    view {
+        col {
+            col {
+                row {
+                    text "TwoInputs"
+                }
+                col {
+                    col {
+                        label "Username"
+                        input {
+                            value: .user
+                            oninput: .UserChanged
+                            placeholder: "Enter username"
+                        }
+                    }
+                    col {
+                        label "Password"
+                        input {
+                            value: .pass
+                            oninput: .PassChanged
+                            placeholder: "Enter password"
+                        }
+                    }
+                    button {
+                        onclick: .Submit
+                        text "Login"
+                    }
+                }
+            }
+        }
+    }
+    on {
+        .UserChanged -> { .user = .user }
+        .PassChanged -> { .pass = .pass }
+        .Submit -> { .authed = true }
+    }
+}
+"##;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut root_decl = None;
+        let mut view_widget = None;
+        let mut child_decls = Vec::new();
+        for stmt in &ast.stmts {
+            if let Stmt::WidgetDecl(decl) = stmt {
+                if root_decl.is_none() {
+                    root_decl = Some(decl.clone());
+                    view_widget = Some(
+                        crate::aura::extract_widget_from_decl(decl)
+                            .map_err(|e| e.to_string())
+                            .unwrap(),
+                    );
+                } else {
+                    child_decls.push(decl.clone());
+                }
+            }
+        }
+        let root_decl = root_decl.expect("root widget");
+        let view_widget = view_widget.expect("view widget");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        for d in &child_decls {
+            let w = crate::aura::extract_widget_from_decl(d)
+                .map_err(|e| e.to_string())
+                .unwrap();
+            registry.register(w);
+        }
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &root_decl,
+            &child_decls,
+            &view_widget,
+            registry,
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component builds")
+    }
+
+    /// T3 布局假说:真实 042 形态下两个 input 的 bounds 必须不重叠、
+    /// 非零高——重叠则一次点击落双框(双双 is_focused=Some),静态树即
+    /// 双投递;这也直接复现/排除「子 widget 拼接形态布局塌陷」。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_login_shape_inputs_disjoint_and_delivery_single() {
+        use iced_test::selector::Bounded;
+
+        let comp = p483_build_login_shape();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let view = convert_view_messages(view);
+        let el = render_dynamic_view(view, None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+
+        let bu = ui.find("Enter username").expect("username placeholder").bounds();
+        let bp = ui.find("Enter password").expect("password placeholder").bounds();
+        assert!(bu.height > 0.0, "username input must have height: {bu:?}");
+        assert!(bp.height > 0.0, "password input must have height: {bp:?}");
+        assert!(
+            bp.y >= bu.y + bu.height,
+            "inputs must not overlap (click would hit both): user={bu:?} pass={bp:?}"
+        );
+
+        ui.click("Enter password").expect("click password");
+        let _ = ui.typewrite("admin");
+        let msgs: Vec<IcedMessage> = ui.into_messages().collect();
+        assert!(!msgs.is_empty(), "typing must produce on_change messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "PassChanged",
+                "login-shape: keystrokes must only reach the focused input; got {m:?}"
+            );
+        }
+    }
+
+    /// T3 追击:跨「view 重建」的焦点保持。活应用里 view 以 2.5+/s 重建
+    /// (desktop 帧泵/心跳),击键之间必然夹着重建;Simulator 单帧静态树
+    /// 无法覆盖。这里手工搭迷你仿真:UserInterface + into_cache 重建
+    /// (iced daemon 的真机制:Cache 保留 Tree 状态、按槽位 diff)。
+    /// 断言:点击 password→键 a→重建(pass="a" 形态)→键 d,全程仅
+    /// PassChanged 消息;若 UserChanged 混入=双投递在重建路径复现。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_rebuild_between_keystrokes_keeps_single_delivery() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::renderer::Headless;
+        use iced_test::runtime::core::{Event, Size};
+        use iced_test::runtime::user_interface;
+
+        // 借 Simulator 定位 password 框中心(独立实例,仅取 bounds)。
+        let el_probe = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut probe = iced_test::simulator(el_probe);
+        use iced_test::selector::Bounded;
+        let bp = probe.find("Enter password").expect("password bounds").bounds();
+        let center = iced::Point::new(bp.x + bp.width / 2.0, bp.y + bp.height / 2.0);
+
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
+        )
+        .expect("headless renderer");
+        let size = Size::new(1024.0, 768.0);
+
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        fn feed(ui: &mut user_interface::UserInterface<'_, IcedMessage, iced::Theme, iced::Renderer>,
+                events: &[Event],
+                center: iced::Point,
+                renderer: &mut iced::Renderer,
+                msgs: &mut Vec<IcedMessage>) {
+            let _ = ui.update(
+                events,
+                iced::mouse::Cursor::Available(center),
+                renderer,
+                &mut clipboard::Null,
+                msgs,
+            );
+        }
+
+        // 帧 1:双空框;点击 password + 键入 "a"。
+        let view_a = p483_two_input_view();
+        let el_a = render_dynamic_view(view_a, None, &mut Vec::new());
+        let mut ui = user_interface::UserInterface::build(el_a, size, user_interface::Cache::default(), &mut renderer);
+        let mut click_events: Vec<Event> = Vec::new();
+        click_events.push(Event::Mouse(iced::mouse::Event::CursorMoved { position: center }));
+        click_events.extend(iced_test::simulator::click());
+        feed(&mut ui, &click_events, center, &mut renderer, &mut msgs);
+        let ev_a: Vec<Event> = iced_test::simulator::typewrite("a").collect();
+        feed(&mut ui, &ev_a, center, &mut renderer, &mut msgs);
+
+        // 帧 2:重建(pass="a" 形态,结构同产线 dynamic_view 重建)。
+        let mut view_b = p483_two_input_view();
+        if let AbstractView::Column { children, .. } = &mut view_b {
+            if let AbstractView::Input { value, .. } = &mut children[1] {
+                *value = "a".to_string();
+            }
+        }
+        let el_b = render_dynamic_view(view_b, None, &mut Vec::new());
+        let cache = ui.into_cache();
+        let mut ui2 = user_interface::UserInterface::build(el_b, size, cache, &mut renderer);
+
+        // 帧 2:键入 "d" —— 若重建错移焦点,UserChanged 将混入(红)。
+        let ev_d: Vec<Event> = iced_test::simulator::typewrite("d").collect();
+        feed(&mut ui2, &ev_d, center, &mut renderer, &mut msgs);
+
+        assert!(!msgs.is_empty(), "must produce on_change messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "PassChanged",
+                "delivery across rebuild must stay single-focus; got {m:?}"
+            );
+        }
+    }
+
+    /// T3 机制级端到端(根因复现):产线触发链 = iced text_input 不捕获
+    /// Tab(iced_widget 0.14.2 源码无 Tab 臂)→ 未捕获 Tab 进
+    /// keyboard_event_message → FOCUS_PROMPT_EVENT → update 8532 臂
+    /// focus(prompt_input_id=="prompt_input") → iced Focus operation 对
+    /// **所有**同 Id focusable 置焦。本测试注入同一 focus operation 后
+    /// 打字,断言仅单框消费;当前(红):两框同 Id "prompt_input" →
+    /// UserChanged 与 PassChanged 齐发(= musk "adminadmin" 双投递)。
+    /// 修复后(绿):各框唯一 Id → 聚焦首个 input 的 Id 仅命中一个框。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p483_focus_op_then_typing_stays_single_delivery() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::renderer::Headless;
+        use iced_test::runtime::core::{Event, Size};
+        use iced_test::runtime::user_interface;
+        use iced_test::selector::Bounded;
+
+        let el_probe = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut probe = iced_test::simulator(el_probe);
+        let bu = probe.find("Enter username").expect("username bounds").bounds();
+        let center = iced::Point::new(bu.x + bu.width / 2.0, bu.y + bu.height / 2.0);
+
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
+        )
+        .expect("headless renderer");
+        let size = Size::new(1024.0, 768.0);
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+
+        let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut ui = user_interface::UserInterface::build(
+            el, size, user_interface::Cache::default(), &mut renderer,
+        );
+
+        // 产线等价:未捕获 Tab 后 8532 臂发出的 focus(prompt_input_id) Task
+        // 在视图重建后经 operate 打到树上(iced daemon 同机制)。
+        let mut focus_op = iced_test::runtime::core::widget::operation::focusable::focus(
+            iced::widget::Id::new("prompt_input"),
+        );
+        ui.operate(&mut renderer, &mut focus_op);
+
+        let events: Vec<Event> = iced_test::simulator::typewrite("admin").collect();
+        let _ = ui.update(
+            &events,
+            iced::mouse::Cursor::Unavailable,
+            &mut renderer,
+            &mut clipboard::Null,
+            &mut msgs,
+        );
+
+        let user_msgs = msgs.iter().filter(|m| m.event == "UserChanged").count();
+        let pass_msgs = msgs.iter().filter(|m| m.event == "PassChanged").count();
+        assert!(
+            user_msgs == 0 || pass_msgs == 0,
+            "focus op must not multi-focus: UserChanged x{user_msgs} + PassChanged x{pass_msgs} (双投递,Plan 483)"
         );
     }
 
