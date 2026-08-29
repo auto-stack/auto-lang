@@ -3739,9 +3739,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                     let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
                     let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
-                    let handle = get_or_create_svg_handle(&src, doc.as_bytes().to_vec());
-                    let mut svg_widget = svg(handle);
-                    if doc.contains("currentColor") {
+                    // 混合色文档(静态色 + currentColor,如 donut 的灰底环 +
+                    // accent 主弧)不能用整体 tint:tint 栅格化后全像素替换,
+                    // 静态色环也被涂成主色(概要页 Memory donut 全黑的根因)。
+                    // 改为构建期把 currentColor 字面量内联替换成实际色值——
+                    // 文档不再含 currentColor,多彩路径保持各像素原色。
+                    let (doc, tint) = if doc.contains("currentColor") {
                         let base_color = is
                             .as_ref()
                             .and_then(|is| is.text_color)
@@ -3751,6 +3754,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 )
                                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                             })
+                            .unwrap_or(iced::Color::BLACK);
+                        let css = format!(
+                            "#{:02x}{:02x}{:02x}",
+                            (base_color.r * 255.0).round() as u8,
+                            (base_color.g * 255.0).round() as u8,
+                            (base_color.b * 255.0).round() as u8,
+                        );
+                        (doc.replace("currentColor", &css), base_color.a < 1.0)
+                    } else {
+                        (doc.to_string(), false)
+                    };
+                    let handle = get_or_create_svg_handle(&src, doc.as_bytes().to_vec());
+                    let mut svg_widget = svg(handle);
+                    if tint {
+                        let base_color = is
+                            .as_ref()
+                            .and_then(|is| is.text_color)
                             .unwrap_or(iced::Color::BLACK);
                         svg_widget = svg_widget.style(move |_, _| iced::widget::svg::Style {
                             color: Some(base_color),
