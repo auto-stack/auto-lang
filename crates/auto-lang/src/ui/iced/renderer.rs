@@ -2150,6 +2150,16 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     style: Option<&Style>,
 ) -> iced::widget::TextInput<'static, M> {
     let mut input_widget = text_input(placeholder, value);
+    // PLAN-050(用户实测): 无显式 Id 的 text_input 在同视图多输入场景共享
+    // 编辑器状态——光标双闪、键盘文本进所有输入框(login 的 password 击键
+    // 追加进 user 框)。以 placeholder+width+password 派生稳定 Id 逐框区分
+    // (stable across rebuilds;同三元组的输入仍共享——与旧行为持平,不多化)。
+    let derived_id: iced::widget::Id = format!(
+        "auto_input_{}_{}_{}",
+        placeholder, width.unwrap_or(0), password
+    )
+    .into();
+    input_widget = input_widget.id(derived_id);
     if password {
         input_widget = input_widget.secure(true);
     }
