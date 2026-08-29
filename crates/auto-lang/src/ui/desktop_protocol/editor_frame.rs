@@ -31,7 +31,7 @@ pub fn rgba8(c: &Rgba) -> Rgba8 {
 /// 当前行 → 选区/搜索 → 文本 → caret → preedit → 滚动条）。
 pub fn lower_editor_frame(list: &EditorDrawList) -> DrawList {
     let mut ops: Vec<DrawOp> = Vec::new();
-    let mut quad = |rect: crate::ui::code_editor::draw::Rect, color: &Rgba, ops: &mut Vec<DrawOp>| {
+    let quad = |rect: crate::ui::code_editor::draw::Rect, color: &Rgba, ops: &mut Vec<DrawOp>| {
         ops.push(DrawOp::Quad {
             rect: WRect::new(rect.x, rect.y, rect.w, rect.h),
             color: rgba8(color),
@@ -128,6 +128,7 @@ impl EditorFrameSource {
         let mut font_system = FontSystem::new();
         let config = CodeEditorConfig {
             lang: lang.to_string(),
+            font_size,
             ..CodeEditorConfig::default()
         };
         let core = CodeEditorCore::new(key, config, &mut font_system);
