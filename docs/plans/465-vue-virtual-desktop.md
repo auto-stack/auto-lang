@@ -1,6 +1,28 @@
+---
+plan_id: PLAN-465
+status: reviewed
+feature_name: Vue 虚拟桌面——Web / tauri 宿主（M4）
+author: [zcode]
+created_at: 2026-08-28T00:00:00+08:00
+updated_at: 2026-08-29T10:30:00+08:00
+
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——桌面线状态推进（465 落地：vue 页面级虚拟桌面、WM DOM 叶）；virtual_window/taskbar 登记源（schema/aura.at）现含 vue 端映射（@/wm/*），与 iced 实现同源"
+  - "docs/specs/auto-man/project.md: 修改——vue/tauri 管线新增 desktop 宿主 scaffold 段（auto run --desktop/--apps + AUTO_DESKTOP env）；pkg add_packages dev 臂 --dev→-D（pnpm v11 兼容）；tauri conf 桌面全屏窗口"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——桌面 vue 宿主运行时（auto-man assets/wm：store.ts WmStore + layout.ts 463 布局 TS 直译 + keyboard.ts R12 热键捕获段 + VirtualWindow/Taskbar.vue DOM 叶；E1 (AppId,event) 注入形状与 E2 AppWindow 叶枚举成文 reports/465-t4-wm-dom-leaf.md）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——I6 布局共享期望值表 layout_cases.json（双端消费：ui/layout.rs 测试 + scripts/ui-layout-parity.mjs，17 例）"
+  - "docs/specs/auto-man/project.md: 新增组件——desktop 宿主 scaffold（generate_desktop_host：scan_apps render:vue 过滤 → src/apps/<id>/App.vue 预生成 + src/apps-registry.ts 静态 import 注册表 + src/components|stores 合并 + shadcn/npm 依赖 union）；examples/desktop-host E2E 载体项目"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——Web 端（vue/tauri）虚拟桌面落地，双端（iced/vue）同源登记与 I6 布局对拍闭环（M4）"
+
+current_step: 8
+total_steps: 8
+---
+
 # Plan 465: Vue 虚拟桌面（Web / tauri 宿主，M4）
 
-> **状态**：已立项 2026-08-28，未开工
+> **状态**：reviewed（2026-08-29 复审通过，待 /auto-plan:merge）
 > **来源**：产品需求「平台扩展：支持 WEB 平台（vue/tauri）」（Design 24 §1 N2）；
 > 里程碑 M4（Design 23 §6 提案编号 456，实际编号经程序跟踪文件解析为本号）。
 > **架构依据**：Design 23（R2 Web=DOM 子树、R4 接缝「DOM 节点」叶、R5「Web 永远是
@@ -113,14 +135,14 @@ R12 的 tauri 增强臂）。
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | 宿主 scaffold 施工图 | 宿主模式命名/触发（`--desktop` vs `render:"desktop"`）、registry 生成器位置（auto-man vue.rs）、shell 来源（shell.at 转译 vs 模板）定案；报告 `reports/465-t1-host-blueprint.md` | 评审通过 |
-| T2 | containment spike | §3.3 表格四项实测（modal/teleport/监听/主题）+ DOM 焦点策略定案 | spike 记录 + 截图入报告 |
-| T3 | registry 生成器 | 构建期扫 apps 目录 → `src/apps-registry.ts`（动态 import 映射） | 单测：生成物含全部 vm/vue 兼容 App；vite 构建通过 |
-| T4 | WmStore + virtual_window DOM 叶 | `virtual_window` a2vue 实现 + WmStore（rect/z/focus）+ 拖拽/resize/hit-test + 布局 TS 直译；事件路由按 **E1 `(AppId, event)` 注入形状**、`AppWindow` 叶子枚举入 WM 语义规范（E2，消费 I1 评审报告） | a2vue 金样（I4）+ 布局对拍单测（与 463 期望值表共享） |
-| T5 | 多挂载生命周期 | launch（动态 import+createApp+容器挂载）/close（unmount）/panic 兜底（errorCaptured 崩溃页 ≈ 459 崩溃页语义） | Playwright：连续启动 ≥3 个 vue App、关闭回收、崩溃页隔离 |
-| T6 | shell/launcher/热键 | taskbar DOM 实现 + 028-launcher 挂 overlay + document 键盘路由（召唤/Alt+Tab/布局） | Playwright 全键盘流：Ctrl+Space→搜索→Enter→新窗；Alt+Tab 聚焦轮转 |
-| T7 | tauri 壳 | 宿主页 tauri 打包全屏（可选：global-shortcut） | `auto run --render tauri`（宿主项目）实机全屏桌面可用 |
-| T8 | 对拍与收尾 | 与 iced 桌面对拍清单执行（I4/I5/I6）；双端截图矩阵；文档 | 对拍记录 + `cargo t`（a2vue 金样/能力锁绿） |
+| T1 | 宿主 scaffold 施工图 | 宿主模式命名/触发（`--desktop` vs `render:"desktop"`）、registry 生成器位置（auto-man vue.rs）、shell 来源（shell.at 转译 vs 模板）定案；报告 `reports/465-t1-host-blueprint.md` | 评审通过 |[✅ 已完成] `docs/plans/reports/465-t1-host-blueprint.md` 定案三决策：`auto run --desktop`+env 注入、registry 落 auto-man vue.rs（复用 scan_apps render:"vue" 过滤）、宿主 App.vue 内置模板 1:1 镜像 shell.at（差异表登记，正式评审由 /auto-plan:review 承载）
+| T2 | containment spike | §3.3 表格四项实测（modal/teleport/监听/主题）+ DOM 焦点策略定案 | spike 记录 + 截图入报告 |[✅ 已完成] `docs/plans/reports/465-t2-containment-spike.md` + 4 截图：dialog/teleport 经 reka Portal DOM 重挂 BODY（CSS containing block 无效，限制清单）；document 监听跨窗双涨（热键走捕获段）；单主题证实；Tab 篱笆定案（捕获段+手动循环焦点，不用 inert）；双 createApp 多挂载独立运行证实
+| T3 | registry 生成器 | 构建期扫 apps 目录 → `src/apps-registry.ts`（动态 import 映射） | 单测：生成物含全部 vm/vue 兼容 App；vite 构建通过 |[✅ 已完成] auto-man vue.rs `generate_desktop_host`：26 个 render:"vue" App 扫描 → 20 入册（api/router/ext/i18n 越界白名单跳过）；静态 import 映射 `src/apps-registry.ts`；子组件/stores/npm deps/shadcn 组件 union 落宿主；单测 desktop_registry_maps_vue_apps_only 绿；宿主项目 vite build 2146 模块 2.50s 通过（examples/desktop-host E2E 载体入库）
+| T4 | WmStore + virtual_window DOM 叶 | `virtual_window` a2vue 实现 + WmStore（rect/z/focus）+ 拖拽/resize/hit-test + 布局 TS 直译；事件路由按 **E1 `(AppId, event)` 注入形状**、`AppWindow` 叶子枚举入 WM 语义规范（E2，消费 I1 评审报告） | a2vue 金样（I4）+ 布局对拍单测（与 463 期望值表共享） |[✅ 已完成] schema/aura.at 登记 virtual_window/taskbar(vue:@/wm/*)+registry spec+a2vue 金样 test_a2vue_virtual_window 绿；E1/E2 成文 reports/465-t4-wm-dom-leaf.md；assets/wm 五件(store/layout/keyboard/两叶)经 rust_embed 落宿主；layout_cases.json 共享表 17 例双端绿(Rust ui-iced + node scripts/ui-layout-parity.mjs)；已知缺口：a2vue 组件路径任意 prop 直通(宿主叶子自读 store 不依赖,KNOWN-DEBT 候选)
+| T5 | 多挂载生命周期 | launch（动态 import+createApp+容器挂载）/close（unmount）/panic 兜底（errorCaptured 崩溃页 ≈ 459 崩溃页语义） | Playwright：连续启动 ≥3 个 vue App、关闭回收、崩溃页隔离 |[✅ 已完成] 宿主 shell 升级 WmStore z-stack（launch 动态 import → attachClient ref 回调挂载；close=unmount+容器移除+焦点让渡；errorHandler→crashed 崩溃页）；Playwright 实证：3 App 级联启动、grid 排布（I6 几何）、关窗回收、Alt+Tab 轮转、崩溃页隔离（crash 注入 counter；截图 reports/assets/465-t5/）
+| T6 | shell/launcher/热键 | taskbar DOM 实现 + 028-launcher 挂 overlay + document 键盘路由（召唤/Alt+Tab/布局） | Playwright 全键盘流：Ctrl+Space→搜索→Enter→新窗；Alt+Tab 聚焦轮转 |[✅ 已完成] taskbar DOM 叶（T4 登记+Taskbar.vue）+ 宿主消费；document 捕获段键盘路由（keyboard.ts：Ctrl+Space 召唤/Alt+Tab 轮转/Ctrl+Alt+f/g/m 布局/Tab 篱笆）；464 占位槽升级搜索过滤流；Playwright 全键盘流实证（Ctrl+Space→搜索 count→Enter→新窗；截图 reports/assets/465-t6/）；028-launcher 真源挂载按 §8 待 464 合入后复验
+| T7 | tauri 壳 | 宿主页 tauri 打包全屏（可选：global-shortcut） | `auto run --render tauri`（宿主项目）实机全屏桌面可用 |[✅ 已完成] AUTO_DESKTOP 透传 tauri 管线（desktop 刷新 + tauri.conf fullscreen + devUrl 随 --front-port）；顺修两处管线阻断：pkg add `--dev`→`-D`（pnpm v11 拒绝且 node_modules 启发式吞错）、update_tauri_lib_rs 仅在 commands 产物存在时注册（无 api 项目 E0583）；实机验证：tauri dev 编译 35s + 全屏窗口上屏（taskbar 可见，进程 app.exe active）；global-shortcut 可选项未做（登记后续）
+| T8 | 对拍与收尾 | 与 iced 桌面对拍清单执行（I4/I5/I6）；双端截图矩阵；文档 | 对拍记录 + `cargo t`（a2vue 金样/能力锁绿） |[✅ 已完成] reports/465-t8-parity-record.md：I4 金样 10/10 绿、I5 零分叉兑现（464 合入后复验）、I6 共享表 17 例双端绿、E1/E2 成文核销、单 App vue 零回归实测（无 wm/registry 泄漏）；scoped 门禁全绿（a2vue 10 + capabilities 82 + parity 17 + registry 1）；全量 `cargo t` 归 /auto-plan:review 门禁（work 技能收尾禁全量）
 
 ## 5. 验收
 
@@ -158,3 +180,39 @@ R12 的 tauri 增强臂）。
 - 依赖：462（契约）；并行：463/464；T6/T8 需要 463/464 实际合入后复验。
 - 后续入口：BroadcastChannel 跨窗协作、iframe 隔离档、每窗主题、系统级热键深化
   ——均登记 Design 24 后续，不在本批。
+
+## 9. 复审记录（/auto-plan:review，2026-08-29）
+
+**Reviewer**: zcode（auto-plan-review）· **入口状态**: execution_done ·
+**worktree**: `.worktrees/plan-465-dev`（基 cf05b4868，8 commits，工作区净）
+
+### 9.1 逐项验收（重验证据）
+
+| # | 验收项 | 判定 | 证据（本复审重跑） |
+|---|---|---|---|
+| 1 | web 端到端：宿主页→launcher 召唤→**≥4 App**→grid/master-stack→拖拽/缩放/关闭→Playwright 全绿 | **PASS** | 重跑四连：4 App（hello-world/counter/login/pricing-table）+ master-stack 上屏（`reports/assets/465-review/20-review-4apps.png`：master 左 55%+右列三窗均分，≣ 高亮）；拖拽 (+120,+60)→(200,140) 逐像素吻合、SE 缩放 +80/+50→720×530、grid 重排回 (0,0,1280,752)（`21-review-drag-resize.png`，坐标级断言 ALL PASS）；关窗/键盘流 T5/T6 既有实证复认 |
+| 2 | tauri 端到端全屏可用 | **PASS** | T7 实机：tauri dev 编译 35.42s → app.exe 全屏上屏（taskbar 可见，进程 active 记录；webview 持续重绘致 CUA 帧过期，交互由同页 Playwright 覆盖） |
+| 3 | I4 两端同源登记+金样 | **PASS** | `test_a2vue_virtual_window` 绿（a2vue 全家桶 10/10）；aura.at vue:→registry overlay 机制核对（Plan 435 P4-4 路径） |
+| 4 | I5 028-launcher 零分叉 | **PASS（部分顺延）** | 本批对 028-launcher 零接触（§7 避让兑现；464 未合入，master 无此目录）；真源挂 overlay 归 464 后复验（计划 §8 预授权，非 silent deferral） |
+| 5 | I6 期望值表双端共享 | **PASS** | layout_cases.json 17 例：Rust `layout_parity_cases_shared_table` 绿 + `node scripts/ui-layout-parity.mjs` 17/17（本复审重跑） |
+| 6 | E1/E2 加法操作+成文 | **PASS** | iced 侧零触碰（`git log -- crates/auto-lang/src/ui/iced/` 基线后无新提交）；规范文 `reports/465-t4-wm-dom-leaf.md` §1–2 |
+| 7 | 单 App vue 零回归 | **PASS** | 002-counter 重生成：无 src/wm/、无 apps-registry.ts，App.vue 为 App 本体 |
+| 8 | 全量门禁 `cargo tf` | **PASS** | **3234/3234 passed, 89 skipped**（含 1M churn str_churn_bounded_large；本计划未触 VM/transpiler/book，tv/tt/tb 不适用） |
+
+### 9.2 遗漏/延后/workaround 猎查
+
+- **遗漏**：未发现 Done 项丢子件。T4 金样不含 win prop 透传——已在执行期登记
+  KNOWN-DEBT（宿主叶子自读 store 不依赖），非 silent drop。
+- **延后**（均有计划内授权，非擅自缩范围）：I5 真源复验待 464（§8 明文）；
+  global-shortcut 可选项未做（§3.4 明文"可选"）；BroadcastChannel/iframe/每窗主题
+  为计划 §1 非目标。
+- **workaround**：KNOWN-DEBT 4 条（prop 直通缺口/reka portal 逸出/document 广播/
+  pkg 吞错启发式）均 T2/T4/T7 执行期主动登记，无隐藏 hack；diff 内 TODO/FIXME
+  扫描为零；新增代码零编译警告（现存 193 条警告全部基线既有，`is_api_use` 等在
+  cf05b4868 已存在）。
+
+### 9.3 结论
+
+**全部验收项 PASS，无未授权缩水** → `status: reviewed`。
+spec-impact 元数据已填（§frontmatter），`/auto-plan:merge` 可直接消费；
+worktree/branch 留置，fold+清理归 merge。
