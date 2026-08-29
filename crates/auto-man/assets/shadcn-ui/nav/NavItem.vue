@@ -81,8 +81,8 @@ const root = computed(() => (props.to && !props.disabled ? RouterLink : "button"
     <span v-else-if="icon" :class="'inline-flex items-center justify-center ' + iconClasses">{{ icon }}</span>
     <slot>
       <span :class="textsClasses">
-        <span class="truncate">{{ label }}</span>
-        <span v-if="desc" :class="TEXT_DESC + ' truncate'">{{ desc }}</span>
+        <span class="nav-name truncate">{{ label }}</span>
+        <span v-if="desc" :class="'nav-desc ' + TEXT_DESC + ' truncate'">{{ desc }}</span>
       </span>
     </slot>
     <span v-if="badge" :class="BADGE_PILL">{{ badge }}</span>
