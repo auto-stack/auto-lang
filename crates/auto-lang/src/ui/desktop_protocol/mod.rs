@@ -48,6 +48,8 @@ pub mod message;
 #[cfg(feature = "ui-iced")]
 pub mod shm;
 #[cfg(feature = "ui-iced")]
+pub mod stage3;
+#[cfg(feature = "ui-iced")]
 pub mod transport;
 
 /// 协议版本（信封头携带；不一致拒收——`CodecError::UnsupportedVersion`）。

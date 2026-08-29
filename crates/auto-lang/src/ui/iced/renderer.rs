@@ -9332,11 +9332,12 @@ fn compare_pngs(
                     // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
                     // 兜底；shell/launcher 命令至多 400ms 达）。
                     DesktopEvent::ServiceTick => {
-                        // Plan 480 S3：broker 孵化落地（有排队连接才泵，零
-                        // 排队时此调用无成本）。
+                        // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
+                        // （有在册/排队连接才有成本，零排队两调用皆空转）。
                         if state.pending_incubations() > 0 {
                             state.attach_pending_incubations(5000);
                         }
+                        state.pump_broker_clients();
                         let (exit, tasks) = drain_and_execute_desktop_commands(state);
                         if exit {
                             return iced::exit();

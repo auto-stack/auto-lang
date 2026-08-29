@@ -897,11 +897,16 @@ pub struct DesktopSession {
     /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
     /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
     pub host: Option<HostCtx>,
-    /// Plan 480 S3：broker 孵化连接排队——`enable_broker` 的 serve 线程
+    /// Plan 480 S3/S4：broker 孵化连接排队——`enable_broker` 的 serve 线程
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
     #[cfg(feature = "ui-iced")]
     pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>)>>>,
+    /// Plan 480 S4：已落地的孵化连接表（per-app 管道名 → 连接状态）——
+    /// 多 App 共享 host 的"每 App 一份"端点/表面驻留；ServiceTick 帧泵
+    /// 周期 `pump_broker_clients` 驱动帧合成/回收。
+    #[cfg(feature = "ui-iced")]
+    pub(crate) broker_clients: BTreeMap<String, crate::ui::desktop_protocol::stage3::BrokerClient>,
     /// Plan 480 S3：`enable_broker` serve 线程的停止旗标（boot 期进程级
     /// 常驻；持有以便将来显式停机）。
     #[cfg(feature = "ui-iced")]
@@ -972,6 +977,8 @@ impl DesktopSession {
             host: None,
             #[cfg(feature = "ui-iced")]
             broker_pending: Arc::new(Mutex::new(Vec::new())),
+            #[cfg(feature = "ui-iced")]
+            broker_clients: BTreeMap::new(),
             #[cfg(feature = "ui-iced")]
             broker_stop: None,
         }
@@ -1171,39 +1178,266 @@ impl DesktopSession {
             .expect("spawn broker serve thread");
     }
 
-    /// Plan 480 S3：孵化落地（属主线程；desktop 模式由 ServiceTick 帧泵
-    /// 周期调用）——drain 排队连接，每条走 ProtocolHost 的 ResolveAndAttach
-    /// 路径（resolver = 桌面既有 app registry）泵到 Active。返回本次落地
-    /// 的虚拟窗列表。
+    /// Plan 480 S3/S4：孵化落地（属主线程；desktop 模式由 ServiceTick 帧泵
+    /// 周期调用）——drain 排队连接，每条建 [`stage3::BrokerClient`] 并泵到
+    /// Active（ProtocolHost ResolveAndAttach 同款动作臂，resolver = 桌面
+    /// 既有 app registry）。**连接驻留** `broker_clients`（多 App 共享
+    /// host：落地后持续泵帧/回收）。返回本次落地的虚拟窗列表。
     #[cfg(feature = "ui-iced")]
     pub fn attach_pending_incubations(&mut self, budget_per_app_ms: u32) -> Vec<Wid> {
-        use crate::ui::desktop_protocol::host::ProtocolHost;
+        use crate::ui::desktop_protocol::stage3::BrokerClient;
         let pending: Vec<_> = std::mem::take(&mut *self.broker_pending.lock().unwrap());
         if pending.is_empty() {
             return Vec::new();
         }
-        let resolver = self.desktop.app_resolver.clone();
+        let mut clients = std::mem::take(&mut self.broker_clients);
         let mut wids = Vec::new();
-        for (pipe, mut end) in pending {
-            let pipe_for_log = pipe.clone();
-            let registry = resolver.clone();
-            let mut host = ProtocolHost::new(self, move |app: &str| {
-                let registry =
-                    registry.as_ref().ok_or_else(|| "app registry unavailable".to_string())?;
-                let spec = registry(app)
-                    .ok_or_else(|| format!("app not found: {app}"))?;
-                let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
-                    .map_err(|e| format!("build `{app}` failed: {e}"))?;
-                Ok(comp)
-            });
-            match host.pump_incubation(&mut end, budget_per_app_ms) {
-                Some(wid) => wids.push(wid),
+        for (pipe, end) in pending {
+            let mut client = BrokerClient::new(pipe, end);
+            match Self::broker_attach_one(self, &mut client, budget_per_app_ms) {
+                Some(wid) => {
+                    wids.push(wid);
+                    clients.insert(client.pipe.clone(), client);
+                }
                 None => eprintln!(
-                    "[autodesk-broker] incubation `{pipe_for_log}` failed to reach Active (budget)"
+                    "[autodesk-broker] incubation `{}` failed to reach Active (budget)",
+                    client.pipe
                 ),
             }
         }
+        self.broker_clients = clients;
         wids
+    }
+
+    /// 孵化 attach 单连接：端点泵到宿主 Active（预算收敛）。
+    /// `self` 与 `client` 借用分离（map 已被 `mem::take` 取出）。
+    #[cfg(feature = "ui-iced")]
+    fn broker_attach_one(
+        session: &mut DesktopSession,
+        client: &mut crate::ui::desktop_protocol::stage3::BrokerClient,
+        budget_ms: u32,
+    ) -> Option<Wid> {
+        use crate::ui::desktop_protocol::endpoint::HostState;
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
+        while std::time::Instant::now() < deadline {
+            if client.endpoint.state == HostState::Active {
+                return client.wid;
+            }
+            match client.end.try_recv() {
+                Some(Ok(msg)) => {
+                    let actions = match client.endpoint.on_message(msg) {
+                        Ok(a) => a,
+                        Err(_) => return None,
+                    };
+                    let replies = session.broker_apply_actions(client, actions);
+                    for reply in replies {
+                        let _ = client.end.send(&reply);
+                    }
+                }
+                Some(Err(_)) => return None,
+                None => std::thread::sleep(std::time::Duration::from_millis(5)),
+            }
+        }
+        None
+    }
+
+    /// Plan 480 S4：多 client 日常泵——drain 全部在册连接（帧合成/Ack、
+    /// 回收、上行）；断连/协议错的连接摘除。ServiceTick 帧泵周期调用。
+    #[cfg(feature = "ui-iced")]
+    pub fn pump_broker_clients(&mut self) {
+        if self.broker_clients.is_empty() {
+            return;
+        }
+        let mut clients = std::mem::take(&mut self.broker_clients);
+        let mut dead = Vec::new();
+        for (pipe, client) in clients.iter_mut() {
+            let mut alive = true;
+            loop {
+                match client.end.try_recv() {
+                    Some(Ok(msg)) => {
+                        let actions = match client.endpoint.on_message(msg) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                alive = false;
+                                break;
+                            }
+                        };
+                        let replies = self.broker_apply_actions(client, actions);
+                        for reply in replies {
+                            let _ = client.end.send(&reply);
+                        }
+                    }
+                    Some(Err(_)) => {
+                        alive = false;
+                        break;
+                    }
+                    None => {
+                        alive = alive && !client.end.is_eof();
+                        break;
+                    }
+                }
+            }
+            if !alive {
+                dead.push(pipe.clone());
+            }
+        }
+        for pipe in dead {
+            clients.remove(&pipe);
+        }
+        self.broker_clients = clients;
+    }
+
+    /// Plan 480 S4：桌面级指针按下路由——WM 命中 → 聚焦 → (Wid, event)
+    /// 注入**命中窗所属 client** 的连接。返回是否路由成功。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_pointer_down(&mut self, x: f32, y: f32, button: crate::ui::desktop_protocol::message::MouseButton) -> bool {
+        use crate::ui::desktop_protocol::message::InputMsg;
+        use crate::ui::desktop_protocol::message::ProtocolMsg;
+        let wid = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.hit_test(x, y) {
+                Some(w) => w,
+                None => return false,
+            }
+        };
+        self.wm_focus(wid);
+        let rect = {
+            let Some(host) = self.host.as_ref() else { return false };
+            match host.wm.wins.get(&wid) {
+                Some(v) => *v.rect.borrow(),
+                None => return false,
+            }
+        };
+        let input = ProtocolMsg::Input(InputMsg::PointerPressed {
+            wid: wid.0,
+            button,
+            x: x - rect.x,
+            y: y - rect.y,
+            modifiers: 0,
+        });
+        for client in self.broker_clients.values_mut() {
+            if client.wid == Some(wid) {
+                return client.end.send(&input).is_ok();
+            }
+        }
+        false
+    }
+
+    /// 宿主动作落会话（与 `host::ProtocolHost::handle` 的动作臂同构；
+    /// per-client 表面/shm/wid 映射挂在 [`stage3::BrokerClient`] 上）。
+    #[cfg(feature = "ui-iced")]
+    fn broker_apply_actions(
+        &mut self,
+        client: &mut crate::ui::desktop_protocol::stage3::BrokerClient,
+        actions: Vec<crate::ui::desktop_protocol::endpoint::HostAction>,
+    ) -> Vec<crate::ui::desktop_protocol::message::ProtocolMsg> {
+        use crate::ui::desktop_protocol::endpoint::HostAction;
+        use crate::ui::desktop_protocol::message::{FrameMsg, ProtocolMsg};
+        use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
+        use crate::ui::desktop_protocol::host::rect_to_wire;
+        let mut to_app = Vec::new();
+        for action in actions {
+            match action {
+                HostAction::ResolveAndAttach { app_name, title, width, height, .. } => {
+                    // 注册表解析 → 编译装载（ResolveFailed = 弃连）。
+                    let component = (|| {
+                        let registry = self.desktop.app_resolver.as_ref()?;
+                        let spec = registry(&app_name)?;
+                        crate::build_dynamic_component(&spec.code, spec.source_path.as_deref()).ok()
+                    })();
+                    let Some(component) = component else { continue };
+                    client.app_name = Some(app_name.clone());
+                    let app_id = self.allocate_app(component);
+                    let title = if title.is_empty() { app_name } else { title };
+                    let rect = iced::Rectangle::new(
+                        iced::Point::new(16.0, 16.0),
+                        iced::Size::new(width, height),
+                    );
+                    let wid = self.wm_add_win(app_id, title, rect);
+                    let surface = client.surfaces.alloc(width, height);
+                    client.wid_surface.insert(wid.0, surface);
+                    let shm_name = format!("autodesk-shm-{surface}");
+                    let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, 16384) else {
+                        continue;
+                    };
+                    client.shm.insert(surface, shm);
+                    match client.endpoint.activate(app_id.0, wid.0, surface, rect_to_wire(&rect)) {
+                        Ok(welcome) => {
+                            to_app.push(welcome);
+                            to_app.push(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                                surface,
+                                slots: 2,
+                                width,
+                                height,
+                                shm: Some(shm_name),
+                            }));
+                            client.app_id = Some(app_id);
+                            client.wid = Some(wid);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+                HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
+                    if let Some(freed) = client.surfaces.compose(surface, slot, payload) {
+                        to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                            wid,
+                            frame_id,
+                            slot: freed,
+                        }));
+                    }
+                }
+                HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
+                    let ready = client
+                        .shm
+                        .get(&surface)
+                        .and_then(|shm| shm.read_slot(slot).ok())
+                        .and_then(|payload| {
+                            crate::ui::desktop_protocol::shm::draw_list_from_slot_payload(&payload)
+                                .ok()
+                        });
+                    if let Some(payload) = ready {
+                        if let Some(freed) = client.surfaces.compose(surface, slot, payload) {
+                            to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                wid,
+                                frame_id,
+                                slot: freed,
+                            }));
+                        }
+                    }
+                }
+                HostAction::ReclaimWindow { wid } => {
+                    // 462 Close 语义：窗随 App 移除，表面释放，通知 app。
+                    let wid = Wid(wid);
+                    let app_id = self.wm_remove_win(wid);
+                    if let Some(app_id) = app_id {
+                        self.apps.remove(&app_id);
+                    }
+                    if let Some(surface) = client.wid_surface.remove(&wid.0) {
+                        client.shm.remove(&surface);
+                        client.surfaces.release(surface);
+                        to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
+                    }
+                    if client.wid == Some(wid) {
+                        client.wid = None;
+                        client.app_id = None;
+                    }
+                }
+                HostAction::ObserveUp { .. } => {
+                    // 观测上行：MCP 代理落点（v1 压测不消费）。
+                }
+            }
+        }
+        to_app
+    }
+
+    /// Plan 480 S4：测试/渲染断言口——wid → 该 client 当前合成面。
+    #[cfg(feature = "ui-iced")]
+    pub fn broker_composed(&self, wid: Wid) -> Option<&crate::ui::desktop_protocol::message::DrawList> {
+        self.broker_clients
+            .values()
+            .find(|c| c.wid == Some(wid))
+            .and_then(|c| c.composed())
     }
 
     /// Plan 480 S3：测试口——排队中的孵化连接数。
