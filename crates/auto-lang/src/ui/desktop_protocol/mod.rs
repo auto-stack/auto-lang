@@ -30,6 +30,8 @@ pub mod codec;
 #[cfg(feature = "ui-iced")]
 pub mod demo;
 #[cfg(feature = "ui-iced")]
+pub mod editor_frame;
+#[cfg(feature = "ui-iced")]
 pub mod endpoint;
 #[cfg(feature = "ui-iced")]
 pub mod host;
