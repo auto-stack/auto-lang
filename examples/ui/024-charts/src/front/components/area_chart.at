@@ -1,4 +1,4 @@
-// components/line_chart.at - AutoAreaChart component (Plan 437 Phase 2 ③ → Plan 484 v2)
+// components/line_chart.at - AreaChart component (Plan 437 Phase 2 ③ → Plan 484 v2)
 //
 // 面积图:折线下探底边闭合 Z(fill 0.25 叠加)+ 顶边描边;curve = "monotone" 走 d3 curveMonotoneX
 // (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通

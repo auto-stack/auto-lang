@@ -1,4 +1,4 @@
-// components/line_chart.at - AutoLineChart component (Plan 437 Phase 2 ① → Plan 484 v2)
+// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2)
 //
 // 折线图:linear scale + path;curve = "monotone" 走 d3 curveMonotoneX
 // (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通
