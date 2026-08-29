@@ -2297,16 +2297,13 @@ impl AuraSchema {
             description: "Button group container",
         });
 
-        // === Chart ===
-        elements.insert("chart", ElementDef {
-            tag: "chart",
-            category: ElementCategory::Content,
-            props: vec![
-                PropDef { name: "config", type_: PropType::String, required: false, default: None, description: "Chart config object" },
-                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
-            ],
+        // === MouseArea (Plan 484) ===
+        elements.insert("mouse-area", ElementDef {
+            tag: "mouse-area",
+            category: ElementCategory::Overlay,
+            props: vec![],
             allows_children: true,
-            description: "Chart container",
+            description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive.",
         });
 
         // === Collapsible ===

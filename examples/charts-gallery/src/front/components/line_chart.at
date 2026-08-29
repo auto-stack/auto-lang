@@ -1,0 +1,346 @@
+// components/line_chart.at - AutoLineChart component (Plan 437 Phase 2 ① → Plan 484 v2)
+//
+// 折线图:linear scale + path;curve = "monotone" 走 d3 curveMonotoneX
+// (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通
+// (vue 442 A4 直通臂 / VM svgdoc 通道)。
+//
+// 484 v2:nice-ticks 刻度/网格线/图例/hover tooltip(x 索引竖带命中)/
+// axis/grid/legend/tooltip/labels/curve props。曲线变体在 Init 内双算双存
+// (segs/segsM),view 按 curve prop 选择——包组件 Init 内 prop 字符串比较
+// 会破坏 codegen(484 实证,详见计划 M1 与 chart-components.md 已知坑)。
+// 其他实证纪律:
+// - 条件引用的局部变量紧邻使用点声明(首个 for 之后);
+// - f-string 内含字面量 [] 时插值必须用 {} 形式,不能用 ${};
+// - handler 带参无需 msg 声明(声明带参 msg 反而破坏包子组件编译)。
+//
+// # Usage
+// use { package: official from "../components" }
+// line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
+
+widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
+    msg { Init }
+
+    model {
+        segs List = []
+        segsM List = []
+        labels str = ""
+        ticks List = []
+        gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
+        legendItems List = []
+        bands List = []
+        tipXs List = []
+        tipYs List = []
+        tipTitles List = []
+        tipBodies List = []
+        hovered str = "false"
+        tipX str = ""
+        tipY str = ""
+        tipTitle str = ""
+        tipBody str = ""
+    }
+
+    on {
+        .Init -> {
+            // ---- 全系列共享 y 域 ----
+            var vmax int = 0
+            for d in .data {
+                for f in .fields {
+                    var v = d[f]
+                    if v > vmax {
+                        vmax = v
+                    }
+                }
+            }
+            // ---- nice step:int 域 1-2-5 阶梯(退化域 4/1) ----
+            var step int = 1
+            if vmax > 4 {
+                var guard = 0
+                while step * 4 < vmax && guard < 12 {
+                    var mm = step
+                    while mm >= 10 {
+                        mm = mm / 10
+                    }
+                    if mm == 2 {
+                        step = step * 5 / 2
+                    } else {
+                        step = step * 2
+                    }
+                    guard = guard + 1
+                }
+            }
+            var domain int = step * 4
+            if domain < vmax {
+                domain = step * 5
+            }
+            var domainf float = domain
+            var outTicks List = []
+            var tj = 4
+            while tj > 0 {
+                var val int = step * tj
+                outTicks.push({ label: f"${val}" })
+                tj = tj - 1
+            }
+            outTicks.push({ label: "0" })
+            .ticks = outTicks
+
+            var left float = 40.0
+            var plotTop float = 20.0
+            var right float = 550.0
+            var bottom float = 260.0
+            var n int = .data.len()
+            var stepf float = 1.0
+            if n > 1 {
+                var nf float = n - 1
+                stepf = (right - left) / nf
+            }
+            var outLegend List = []
+            var cs = .colors
+            var ccount int = cs.len()
+
+            // ---- 线性变体 ----
+            var outSegs List = []
+            var k = 0
+            for f in .fields {
+                var ys List = []
+                for d in .data {
+                    var vf float = d[f]
+                    var yv float = bottom - vf / domainf * (bottom - plotTop)
+                    ys.push(yv)
+                }
+                var dstr = ""
+                var i = 0
+                for d in .data {
+                    var xf float = left + i * stepf
+                    var yf = ys[i]
+                    if i == 0 {
+                        dstr = f"M ${xf} ${yf}"
+                    } else {
+                        dstr = dstr + f" L ${xf} ${yf}"
+                    }
+                    i = i + 1
+                }
+                var ci int = k
+                if ci >= ccount {
+                    ci = ccount - 1
+                }
+                var color = cs[ci]
+                outSegs.push({ d: dstr, c: color })
+                var name = f
+                var lname = .labels
+                if lname.len() > k {
+                    name = lname[k]
+                }
+                outLegend.push({ c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]", name: name })
+                k = k + 1
+            }
+            .segs = outSegs
+            .legendItems = outLegend
+
+            // ---- monotone 变体(d3 curveMonotoneX,切线取相邻割线均值,
+            // 异号归零防过冲,端点取单侧;索引值先守卫提取再算术) ----
+            var outSegsM List = []
+            var kM = 0
+            for f in .fields {
+                var ysM List = []
+                for d in .data {
+                    var vfM float = d[f]
+                    var yvM float = bottom - vfM / domainf * (bottom - plotTop)
+                    ysM.push(yvM)
+                }
+                var dstrM = ""
+                var iM = 0
+                for d in .data {
+                    var xfM float = left + iM * stepf
+                    var yfM = ysM[iM]
+                    if iM > 0 {
+                        var hM float = stepf
+                        var ycur = ysM[iM]
+                        var yprev = ysM[iM - 1]
+                        var yprev2 = yprev
+                        if iM > 1 {
+                            yprev2 = ysM[iM - 2]
+                        }
+                        var ynext = yfM
+                        if iM < n - 1 {
+                            ynext = ysM[iM + 1]
+                        }
+                        var dm float = (ycur - yprev) / hM
+                        var pm float = dm
+                        if iM > 1 {
+                            pm = (ycur - yprev2) / (2.0 * hM)
+                        }
+                        var pp float = dm
+                        if iM < n - 1 {
+                            pp = (ynext - ycur) / hM
+                        }
+                        var m0 float = (pm + pp) / 2.0
+                        if dm * pp <= 0.0 {
+                            m0 = 0.0
+                        }
+                        var pm1 float = dm
+                        var pm1v float = (ynext - yprev) / (2.0 * hM)
+                        if iM < n - 1 {
+                            pm1 = pm1v
+                        }
+                        var mn float = (dm + pm1) / 2.0
+                        if dm * pm1 <= 0.0 {
+                            mn = 0.0
+                        }
+                        var c1x float = xfM - hM / 3.0
+                        var c1y float = yfM - m0 * hM / 3.0
+                        var c2x float = xfM + hM / 3.0
+                        var c2y float = yfM + mn * hM / 3.0
+                        var xn float = xfM + hM
+                        dstrM = dstrM + f" C ${c1x} ${c1y} ${c2x} ${c2y} ${xn} ${ynext}"
+                    } else {
+                        dstrM = f"M ${xfM} ${yfM}"
+                    }
+                    iM = iM + 1
+                }
+                var ciM int = kM
+                if ciM >= ccount {
+                    ciM = ccount - 1
+                }
+                outSegsM.push({ d: dstrM, c: cs[ciM] })
+                kM = kM + 1
+            }
+            .segsM = outSegsM
+
+            // ---- x 轴标签(≤8 抽样) ----
+            var iname = .index
+            var keep int = 1
+            if n > 8 {
+                keep = n / 8 + 1
+            }
+            var outLabels = ""
+            var i2 = 0
+            for d in .data {
+                if i2 % keep == 0 {
+                    if outLabels == "" {
+                        outLabels = d[iname]
+                    } else {
+                        outLabels = outLabels + "   " + d[iname]
+                    }
+                }
+                i2 = i2 + 1
+            }
+            .labels = outLabels
+
+            // ---- 命中竖带 + tooltip 锚点/内容(逐索引预计算) ----
+            var nf3 float = n
+            var slot float = (right - left) / nf3
+            var outBands List = []
+            var outTipX List = []
+            var outTipY List = []
+            var outTipTitle List = []
+            var outTipBody List = []
+            var i3 = 0
+            for d in .data {
+                outBands.push({ i: i3, s: f"w-[{slot}px] h-full" })
+                var cx float = left + i3 * slot + slot / 2.0
+                var tx float = cx
+                if tx > 380.0 {
+                    tx = cx - 160.0
+                }
+                outTipX.push(f"${tx}")
+                outTipY.push("28")
+                outTipTitle.push(d[iname])
+                var body = ""
+                var k2 = 0
+                for f2 in .fields {
+                    var name2 = f2
+                    var lname2 = .labels
+                    if lname2.len() > k2 {
+                        name2 = lname2[k2]
+                    }
+                    if body == "" {
+                        body = f"${name2} ${d[f2]}"
+                    } else {
+                        body = body + "\n" + f"${name2} ${d[f2]}"
+                    }
+                    k2 = k2 + 1
+                }
+                outTipBody.push(body)
+                i3 = i3 + 1
+            }
+            .bands = outBands
+            .tipXs = outTipX
+            .tipYs = outTipY
+            .tipTitles = outTipTitle
+            .tipBodies = outTipBody
+        }
+
+        .Hover(i) -> {
+            .hovered = "true"
+            .tipX = .tipXs[i]
+            .tipY = .tipYs[i]
+            .tipTitle = .tipTitles[i]
+            .tipBody = .tipBodies[i]
+        }
+        .HoverOut -> { .hovered = "false" }
+    }
+
+    view {
+        col (style: "w-full gap-1") {
+            row (style: "items-stretch w-full") {
+                if .axis == "auto" {
+                    col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                        for t in .ticks {
+                            text t["label"] { style: "text-[10px] text-muted-foreground" }
+                        }
+                    }
+                }
+                col (style: "flex-1") {
+                    col (style: "relative") {
+                        svg (viewBox: "0 0 560 300", style: "w-full h-auto") {
+                            if .grid {
+                                path (d: .gridPath, stroke: "#e2e8f0", stroke-width: "1") {}
+                            }
+                            line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
+                            if .curve == "monotone" {
+                                for seg in .segsM {
+                                    path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                }
+                            } else {
+                                for seg in .segs {
+                                    path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                }
+                            }
+                        }
+                        if .tooltip {
+                            col (style: "absolute top-[20px] left-[40px] z-50 w-[510px] h-[240px]") {
+                                row (style: "h-full") {
+                                    for b in .bands {
+                                        mouse-area (key: b["i"], style: b["s"], onmouseenter: .Hover(b.i), onmouseleave: .HoverOut) {}
+                                    }
+                                }
+                            }
+                            if .hovered == "true" {
+                                col (style: f"absolute top-[{.tipY}px] left-[{.tipX}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                                    text .tipTitle { style: "text-xs font-semibold text-foreground" }
+                                    text .tipBody { style: "text-xs text-muted-foreground whitespace-pre-line" }
+                                }
+                            }
+                        }
+                    }
+                    if .axis == "auto" {
+                        row (style: "justify-between px-10 pt-1") {
+                            text .labels { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                }
+            }
+            if .legend {
+                row (style: "gap-4 pt-1 px-2") {
+                    for li in .legendItems {
+                        row (key: li["c"], style: "items-center gap-1") {
+                            span (key: li["c"], style: li["s"]) {}
+                            text li["name"] { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

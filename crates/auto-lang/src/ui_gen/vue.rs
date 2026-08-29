@@ -16654,36 +16654,39 @@ widget W {
 
     #[test]
     fn test_charts_gallery_compiles() {
-        // Integration test: compile the charts gallery app.at and verify output
-        use crate::ui_build_shadcn;
-        let result = ui_build_shadcn("../../examples/charts-gallery/src/front/app.at", None);
+        // Integration test (Plan 484 M3): the rebuilt charts-gallery consumes
+        // the official Auto chart components via bare tags; vue gen must
+        // compile and emit the package component SFC refs (LineChart etc.),
+        // NOT the retired shadcn/unovis chart family.
+        // 包感知入口(generate_component_from_file 链):裸名 tag 经
+        // use{package} → known_sub_widgets 折叠解析为包组件 SFC 引用。
+        use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
+        let result = generate_component_from_file(
+            std::path::Path::new("../../examples/charts-gallery/src/front/app.at"),
+            ComponentGenOptions { shadcn: Some(true), ..Default::default() },
+        );
         assert!(result.is_ok(), "charts gallery should compile: {:?}", result.err());
-        let code = result.unwrap();
+        let result = result.unwrap();
+        let code = result.vue_code;
 
-        // Verify chart component tags are present
-        assert!(code.contains("<AreaChart"), "AreaChart tag missing");
-        assert!(code.contains("<BarChart"), "BarChart tag missing");
-        assert!(code.contains("<LineChart"), "LineChart tag missing");
-        assert!(code.contains("<DonutChart"), "DonutChart tag missing");
+        // Auto component SFC refs (package components, bare-name fold)
+        assert!(code.contains("<LineChart"), "LineChart tag missing: {code}");
+        assert!(code.contains("<BarChart"), "BarChart tag missing: {code}");
+        assert!(code.contains("<AreaChart"), "AreaChart tag missing: {code}");
+        assert!(code.contains("<DonutChart"), "DonutChart tag missing: {code}");
 
-        // Verify chart imports are present
-        assert!(code.contains("@/components/ui/chart-area"), "chart-area import missing");
-        assert!(code.contains("@/components/ui/chart-bar"), "chart-bar import missing");
-        assert!(code.contains("@/components/ui/chart-line"), "chart-line import missing");
-        assert!(code.contains("@/components/ui/chart-donut"), "chart-donut import missing");
+        // Retired shadcn/unovis chart family must NOT appear
+        assert!(!code.contains("chart-area"), "retired chart-area scaffold leaked");
+        assert!(!code.contains("unovis"), "retired @unovis dependency leaked");
+        assert!(!code.contains("CurveType"), "retired CurveType mapping leaked");
 
-        // Verify key props are emitted
-        assert!(code.contains(":data=\"monthlyRevenue\""), "monthlyRevenue data binding missing");
-        assert!(code.contains("index=\"month\""), "month index missing");
-        assert!(code.contains("type=\"stacked\""), "stacked type missing");
-        assert!(code.contains(":curve-type=\"CurveType.MonotoneX\""), "curve type missing");
-        assert!(code.contains("category=\"source\""), "donut category missing");
-        assert!(code.contains(":colors="), "colors binding missing");
-
-        // Verify CurveType import
-        assert!(code.contains("import { CurveType } from '@unovis/ts'"), "CurveType import missing");
+        // Key props are emitted
+        assert!(code.contains("monthlyRevenue"), "monthlyRevenue data binding missing");
+        assert!(code.contains(":index=\"'month'\""), "month index missing");
+        assert!(code.contains("stacked"), "stacked type missing");
+        assert!(code.contains("trafficSource"), "trafficSource binding missing");
+        assert!(code.contains("colors"), "colors binding missing");
     }
-
     #[test]
     fn test_generate_shadcn_attrs_button() {
         let mut gen = VueGenerator::new_shadcn();

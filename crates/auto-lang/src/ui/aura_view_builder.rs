@@ -1251,7 +1251,7 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 484: hover 命中区 —— 透明 mouse_area(仅 enter/exit 事件
             // 转发,无视觉)。chart 组件 tooltip 的命中原语;尺寸/绝对定位由
             // style 承担,children 通常为空。
-            "mouse-area" | "mouse_area" | "mouseArea" => {
+            "mouse-area" => {
                 self.convert_mouse_area(props, events, children, path, id_map, probe, bindings)
             }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
@@ -2179,7 +2179,7 @@ impl<'a> AuraViewBuilder<'a> {
             // (此前落 unknown fallback → View::Empty)。与 tracked 层同名臂镜像。
             "svg" => self.convert_svg_image(props, children, bindings),
             // Plan 484: hover 命中区 —— 与 tracked 层同名臂镜像(文件 D-GAP 规则)。
-            "mouse-area" | "mouse_area" | "mouseArea" => {
+            "mouse-area" => {
                 self.convert_mouse_area_untracked(props, events, children, bindings)
             }
 

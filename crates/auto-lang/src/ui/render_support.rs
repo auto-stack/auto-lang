@@ -254,10 +254,14 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["style", "items"],
             "navigation component not implemented — renders as Column",
         ),
-        "chart" | "canvas" => TagSupport::fallback(
+        // Plan 484: 原生 chart tag 退役(裸名由 official 包 Auto 组件承接,
+        // 不再落到此表);canvas 保留 fallback 待 v2。
+        "canvas" => TagSupport::fallback(
             &["style", "data", "type"],
-            "chart/canvas not implemented",
+            "canvas not implemented (v2 canvas bridge pending)",
         ),
+        // Plan 484: hover 命中区——iced mouse_area 事件转发,与 col/row 同级
+        "mouse-area" => TagSupport::full(),
         "video" | "audio" | "media" => TagSupport::fallback(
             &["src", "controls", "autoplay", "style"],
             "media component not implemented",

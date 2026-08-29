@@ -1589,8 +1589,7 @@ impl WidgetRegistry {
         // Plan 484: MouseArea — 透明 hover 命中区(chart tooltip 的命中原语,
         // 亦为通用 hover 逃生舱)。VM = iced mouse_area(on_enter/on_exit);
         // vue = div + @mouseenter/@mouseleave;无视觉,仅事件转发。
-        let mut mouse_area = WidgetSpec::new("MouseArea", WidgetCategory::Overlay)
-            .with_alias("mouse-area");
+        let mut mouse_area = WidgetSpec::new("MouseArea", WidgetCategory::Overlay);
         mouse_area.has_children = true;
         self.register(mouse_area);
 
