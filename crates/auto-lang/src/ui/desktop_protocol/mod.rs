@@ -28,6 +28,8 @@
 #[cfg(feature = "ui-iced")]
 pub mod codec;
 #[cfg(feature = "ui-iced")]
+pub mod broker;
+#[cfg(feature = "ui-iced")]
 pub mod demo;
 #[cfg(feature = "ui-iced")]
 pub mod editor_frame;

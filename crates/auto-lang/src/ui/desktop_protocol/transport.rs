@@ -28,6 +28,14 @@ pub enum TransportError {
     Io(String),
     /// 对端已关闭（读得 0 字节 / 管道破裂）。
     Eof,
+    /// 载荷解码失败（透传 codec 语义）。
+    Codec(CodecError),
+}
+
+impl From<CodecError> for TransportError {
+    fn from(e: CodecError) -> Self {
+        Self::Codec(e)
+    }
 }
 
 /// 一条通道的两端同语义面（loopback 与命名管道共用）。
@@ -44,6 +52,11 @@ pub trait Transport {
     /// 对端断开检测（EOF 后调用方按"等待重连"弹性语义处理）。
     fn is_eof(&self) -> bool {
         false
+    }
+
+    /// 原始字节直写（线级破坏注入 / 测试残帧用；默认不支持）。
+    fn write_raw(&self, _bytes: &[u8]) -> Result<(), TransportError> {
+        Err(TransportError::Io("write_raw unsupported".into()))
     }
 
     /// 有界等待弹出一条。管道交付是异步的（读线程从 OS 缓冲搬运），
@@ -115,6 +128,27 @@ impl Transport for LoopbackEnd {
 // Windows 命名管道（tokio named_pipe + 常驻多线程 runtime）
 // ---------------------------------------------------------------------------
 
+impl Transport for Box<dyn Transport + Send> {
+    fn send(&mut self, msg: &ProtocolMsg) -> Result<(), TransportError> {
+        (**self).send(msg)
+    }
+    fn try_recv(&mut self) -> Option<Result<ProtocolMsg, CodecError>> {
+        (**self).try_recv()
+    }
+    fn pending(&self) -> usize {
+        (**self).pending()
+    }
+    fn is_eof(&self) -> bool {
+        (**self).is_eof()
+    }
+    fn recv_wait(&mut self, timeout_ms: u32) -> Option<Result<ProtocolMsg, CodecError>> {
+        (**self).recv_wait(timeout_ms)
+    }
+    fn write_raw(&self, bytes: &[u8]) -> Result<(), TransportError> {
+        (**self).write_raw(bytes)
+    }
+}
+
 #[cfg(windows)]
 #[cfg(windows)]
 mod pipe {
@@ -123,7 +157,7 @@ mod pipe {
     use std::thread::JoinHandle;
 
     use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions};
+    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
     use tokio::sync::oneshot;
 
     use crate::ui::desktop_protocol::codec::CodecError;
@@ -161,12 +195,12 @@ mod pipe {
 
     impl PendingServer {
         /// 等待客户端连入（孵化路径一次性），随后 split 出读写两半。
-        pub fn wait_connect(mut self) -> Result<PipeEnd<NamedPipeServer>, TransportError> {
+        pub fn wait_connect(mut self) -> Result<Box<dyn Transport + Send>, TransportError> {
             let server = &mut self.server;
             self.rt
                 .block_on(async { server.connect().await })
                 .map_err(|e| TransportError::Io(e.to_string()))?;
-            Ok(PipeEnd::spawn(self.rt, self.server))
+            Ok(PipeEnd::spawn_boxed(self.rt, self.server))
         }
 
         pub fn addr(&self) -> &str {
@@ -178,15 +212,16 @@ mod pipe {
     pub fn connect(
         name: &str,
         timeout_ms: u32,
-    ) -> Result<PipeEnd<tokio::net::windows::named_pipe::NamedPipeClient>, TransportError> {
+    ) -> Result<Box<dyn Transport + Send>, TransportError> {
         let rt = std::sync::Arc::new(make_rt());
         let deadline =
             std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
         loop {
             match rt.block_on(async { ClientOptions::new().open(addr_of(name)) }) {
-                Ok(c) => return Ok(PipeEnd::spawn(rt, c)),
-                Err(e) if e.raw_os_error() == Some(231) => {
-                    // ERROR_PIPE_BUSY：等一会儿重试。
+                Ok(c) => return Ok(PipeEnd::spawn_boxed(rt, c)),
+                Err(e) if matches!(e.raw_os_error(), Some(231) | Some(2)) => {
+                    // 231 = ERROR_PIPE_BUSY；2 = ERROR_FILE_NOT_FOUND
+                    // （serve 侧 listen 未就绪的启动竞态）——等一会儿重试。
                     if std::time::Instant::now() >= deadline {
                         return Err(TransportError::Io(format!("connect {name}: {e}")));
                     }
@@ -218,6 +253,14 @@ mod pipe {
     }
 
     impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> PipeEnd<T> {
+        /// 类型擦除构造（broker/request 返回值统一为 Box<dyn Transport + Send>）。
+        pub fn spawn_boxed(
+            rt: std::sync::Arc<tokio::runtime::Runtime>,
+            pipe: T,
+        ) -> Box<dyn Transport + Send> {
+            Box::new(Self::spawn(rt, pipe))
+        }
+
         fn spawn(rt: std::sync::Arc<tokio::runtime::Runtime>, pipe: T) -> Self {
             let rt_reader = std::sync::Arc::clone(&rt);
             let (read_half, write_half) = tokio::io::split(pipe);
@@ -261,16 +304,16 @@ mod pipe {
             }
         }
 
-        /// 原始字节直写（分帧破坏注入 / 测试残帧用）。
-        pub fn write_raw(&self, bytes: &[u8]) -> Result<(), TransportError> {
+    }
+
+    impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Transport for PipeEnd<T> {
+        fn write_raw(&self, bytes: &[u8]) -> Result<(), TransportError> {
             let mut w = self.writer.lock().unwrap();
             self.rt
                 .block_on(async { w.write_all(bytes).await })
                 .map_err(|e| TransportError::Io(e.to_string()))
         }
-    }
 
-    impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Transport for PipeEnd<T> {
         fn send(&mut self, msg: &ProtocolMsg) -> Result<(), TransportError> {
             let framed = frame_bytes(&msg.encode());
             let mut w = self.writer.lock().unwrap();
