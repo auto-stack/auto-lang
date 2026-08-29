@@ -1170,7 +1170,9 @@ impl VueGenerator {
                 // Plan 435 P4:包引用不产 ES import —— 包组件经 ComponentRegistry
                 // 注册,tag 走 sub-widget 生成路径(api 层已并入 sub_widgets)。
                 crate::ast::ExtImportKind::Package => continue,
-                crate::ast::ExtImportKind::Fn | crate::ast::ExtImportKind::Composable => {
+                crate::ast::ExtImportKind::Fn
+                | crate::ast::ExtImportKind::ExplicitFn
+                | crate::ast::ExtImportKind::Composable => {
                     self.ext_import_lines.push((
                         symbols.clone(),
                         false,
@@ -13245,7 +13247,7 @@ export function cn(...inputs: ClassValue[]) {
             match imp.kind {
                 // Plan 435 P4:包引用无模块转发语义(包组件按需生成)。
                 crate::ast::ui::ExtImportKind::Package => continue,
-                crate::ast::ui::ExtImportKind::Fn => {
+                crate::ast::ui::ExtImportKind::Fn | crate::ast::ui::ExtImportKind::ExplicitFn => {
                     // import:供本模块 wrapper fn 体内引用(仅实际使用的符号);
                     // export:纯转发(Plan 424)——把符号递给调用方。export-from
                     // 不引入局部绑定,两行共存合法。

@@ -221,6 +221,10 @@ pub enum ExtImportKind {
     /// `fn: name from "path"` — a plain TS function/constant, callable from
     /// `on` handlers and `computed` expressions.
     Fn,
+    /// PLAN-051 C4: `use.web.fn name from "path"` — 显式 fn 别名声明（点分
+    /// kind 形态）。语义同 Fn；VM 装载器对 .at 目标做导出校验（typo 编译期
+    /// 报错，不再静默落 stub）。裸/空格旧形式仍为 Fn（不校验）。
+    ExplicitFn,
     /// `component: Name from "path"` — an external Vue component,
     /// instantiable in the `view` tree with props and events.
     Component,
