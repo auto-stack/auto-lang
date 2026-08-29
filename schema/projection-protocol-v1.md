@@ -1,6 +1,6 @@
-# AutoShell 状态投影协议 v1.1（S2 接缝合同）
+# AutoShell 状态投影协议 v1.2（S2 接缝合同）
 
-> **版本**：v1.1（2026-08-29，Plan 478 T3 落码；v1 见 §6 变更记录）。双端同
+> **版本**：v1.2（2026-08-29，Plan 479 T4 落码；v1/v1.1 见 §6 变更记录）。双端同
 > 版本：vm 端（auto-lang `ui/iced/renderer.rs::sync_shell_windows`，本版实现
 > 方）与 vue 端（465/shell-track 后续，按本文档实现同版本对拍）。
 > **定位**：Design 25 §3 S2 的正式化——宿主把驱动事实投影为 shell App 的
@@ -25,6 +25,8 @@
 | `__wm_workspaces` | Obj 数组 `{id:str, name:str, current:str, label:str}` | 分区清单；`id` = 下标串；`name` = pack 默认 "Desktop N"（M4 settings 可覆盖）；`current` = `"1"/""`；`label` = 1 基人读标签（= id+1 十进制串；**宿主投影**，避开 .at 字符串算术——pager 按钮文本消费） | 宿主写 | v1（label：v1.1） |
 | `__wm_mru` | Obj 数组（条目同 `__wm_wins` 六字段） | **当前分区**的窗口按 MRU 序（front = 最近聚焦；退役 Ctrl+Tab 焦点环语义延续——焦点环不跨分区，472 定案）。switcher overlay 专用消费面，dock 消费不受影响。switcher **handler** 侧消费走宿主召唤时的伴随平行字符串列表（`mru_wids`/`mru_titles`/`mru_icons` + `call_handler("RebuildMru")` 建 handler 自有 rows，B12 规避——464 launcher `apps_*`/`ranked` 同型；`__wm_mru` 本体保持合同面对拍形态） | 宿主写 | v1.1 |
 | `__wm_running` | str `",id1,id2,"` | 运行中 app id 集合的**派生串**（pinned 运行指示的 view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源；T4 增补） | 宿主写 | v1 |
+| `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
+| `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
 
@@ -33,7 +35,9 @@
 - 宿主每 update 周期在 DesktopBus 排空点邻位重算投影（O(窗数) 串接）。
 - `__wm_fp` = 逐窗 `"{wid}:{focused},{workspace};"` 串接 + `"|{__wm_meta}"` +
   `"|"` + 逐分区 `"{id}:{current},{label};"` 串接 + `"|"` + 逐 mru 窗
-  `"{wid};"` 串接（v1.1：分区段扩 label、尾接 mru 段）。
+  `"{wid};"` 串接 + `"|notes:{len}:{front_id}:{unread};"`（v1.1：分区段扩
+  label、尾接 mru 段；v1.2：尾接 notes 段——len/front_id 双段覆盖容量环绕
+  与 dismiss 组合、unread 独立第三段，任何历史/未读变化必翻其一）。
 - **指纹未变 → 整组跳过写**（防每帧 churn，不置 dirty）；**有变 → 整组原子
   换装**（wins/meta/workspaces/mru/fp 全写）+ shell `view_dirty` 置位触发
   重渲染。投影无部分更新。
@@ -61,17 +65,36 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `workspace_add` | （无参记录） | 新增分区（追加尾部）并即入新分区（pager `+`） | 478 |
 | `workspace_close` | 分区下标 n | 删除分区（窗口重排相邻前驱 + 下标压实 + current clamp）；**宿主策略门**：非空分区 toast 提示不删、末分区保底（≥1） | 478 |
 | `send_to` | wid、分区下标 n | 跨分区发送窗口（归属迁移、焦点让渡、随分区隐现） | 478 |
+| `notify` | kind、msg | App 主动请求通知——入史 + 未读 +1（面板可见时不加）+ toast 浮现三联动（`push_notification` 单入口，持久化落 `shell.notes.0..9`）。约束：**msg 单行**（记录层按 `\n` 切分）；kind 约定 success/error/info，未知值浮现面按默认配色、面板按 info 兜底 | 479 |
+| `notes_toggle` | （无参记录） | 通知中心面板开合（dock 铃铛钮；宿主臂落 `toggle_notification_center`：懒挂载 → 快照注入 + RebuildNotes → 打开即未读清零；可见再拨即自隐） | 479 |
+| `notes_clear` | （无参记录） | 清空通知历史 + 落盘（面板「全部清除」） | 479 |
+| `notes_dismiss` | 通知 id | 按 id 删除单条通知 + 落盘（面板「逐条 ×」） | 479 |
 
 ## 5. 对拍与验收（I8/I9）
 
 - vm 端实现金样：`ui/iced/renderer.rs` tests `projection_*` 六测（v1 往返/
   指纹门控/分区切换反射/registry icon + v1.1 mru 序与 label/mru 过滤与
-  指纹段）。
+  指纹段）+ `notif_*` 八测（v1.2 动词往返/历史 FIFO/未读语义/持久化槽
+  round-trip/双面一体/面板召唤/notes 投影与指纹段）。
 - vue 端（465 后续）按本表实现同版本投影 + 同指纹规则，对拍项登记后
   消费本文件作基线；版本升级 = 文件名/版本号 + 双端同步 + 对拍重跑。
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.2（2026-08-29，Plan 479 T4）
+
+- **新增投影** `__wm_notes` / `__wm_notes_unread`（§2）：通知历史全量
+  {id,kind,msg,at} Obj 数组 + 未读计数串（dock 铃铛 badge 消费）；面板
+  handler 侧消费走伴随平行字符串列表（`note_*` + `RebuildNotes`，B12
+  规避注记同 `__wm_mru`）。
+- **新增动词** `notify` / `notes_toggle` / `notes_clear` / `notes_dismiss`
+  （§4，词表 v1.2；notify 含 msg 单行约束）。
+- **指纹扩展**（§3）：尾接 notes 段 `"|notes:{len}:{front_id}:{unread};"`。
+- **向后兼容声明**：纯增量字段/动词——v1/v1.1 消费者（dock 任务栏、布局
+  键、pinned 运行指示、pager、switcher）零破坏；`__wm_notes` 对 shell
+  为合同面（dock 不消费），`__wm_fp` 为门控内部串。vue 端（未实现）以
+  本版为对拍基线；文件名不变，双端同步对拍在 vue 端落地时执行（§5）。
 
 ### v1.1（2026-08-29，Plan 478 T3）
 

@@ -4,12 +4,13 @@
 // 一处引用）。
 //
 // 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
-// Plan 478 T3 升版 v1.1——合同 schema/projection-protocol-v1.md——字段表/
-// 指纹门控/动词词表）：
+// Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2——合同
+// schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
 //   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
 //       summon/workspace/workspace_next/activate + v1.1 增量
-//       workspace_add/workspace_close/send_to）
+//       workspace_add/workspace_close/send_to + v1.2 增量
+//       notify/notes_toggle/notes_clear/notes_dismiss）
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
 //       数组，跨分区全集，dock 运行窗列表源）
 //       `__wm_workspaces`（{id,name,current,label} Obj 数组，分区切换条
@@ -19,6 +20,10 @@
 //       `__wm_running`（",id1,id2," 运行中 app 集合派生串，pinned 运行
 //       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
 //       `__wm_meta`（"layout\tfocused_wid"，布局按钮态）
+//       `__wm_notes`（v1.2：通知历史 {id,kind,msg,at} Obj 数组；合同面，
+//       dock 不直接消费）
+//       `__wm_notes_unread`（v1.2：未读计数串；铃铛 badge 条件消费——
+//       缺省空串不出 badge）
 // dock 数据级配置（协议 v1 §6）：storage 键 shell.dock.pinned / position /
 // enabled，缺席回退 pack 默认（bottom / 启用 / 固定 calculator+todo+notes）。
 // position/enabled 由 Init 读入；pinned 由宿主读键并解析 {id,icon} 注入
@@ -32,7 +37,8 @@ widget Desktop {
         LayoutFree, LayoutGrid, LayoutStack,
         WinFocus(str), WinClose(str),
         ActivateApp(str), SetWorkspace(str), WorkspaceNext,
-        WorkspaceAdd, WorkspaceClose(str)
+        WorkspaceAdd, WorkspaceClose(str),
+        NotificationToggle
     }
 
     model {
@@ -42,6 +48,8 @@ widget Desktop {
         var __wm_running str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
+        var __wm_notes = []            // 协议 v1.2 合同面（dock 不直接消费）
+        var __wm_notes_unread str = "" // 协议 v1.2：未读串（badge 条件消费）
         // __dock_pinned = 宿主注入 {id,icon} Obj 数组（storage shell.dock.pinned
         // 覆盖 > pack 默认三枚；icon 宿主自注册表解析——.at 无注册表访问权）。
         var __dock_pinned = []
@@ -134,6 +142,20 @@ widget Desktop {
                             onclick: .LayoutFree
                             style: "h-8 w-10 px-0 text-xs"
                         }
+                        // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
+                        // 开关走 notes_toggle 总线动词，清除钮在面板内）。
+                        row {
+                            style: "items-center gap-0"
+                            button (icon: "bell") {
+                                onclick: .NotificationToggle
+                                style: "h-9 w-9 px-0 text-sm"
+                            }
+                            if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
+                                text .__wm_notes_unread {
+                                    style: "text-xs text-error font-semibold"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -217,6 +239,20 @@ widget Desktop {
                             onclick: .LayoutFree
                             style: "h-8 w-10 px-0 text-xs"
                         }
+                        // Plan 479 T4：通知中心铃铛 + 未读 badge（v1.2；
+                        // 开关走 notes_toggle 总线动词，清除钮在面板内）。
+                        row {
+                            style: "items-center gap-0"
+                            button (icon: "bell") {
+                                onclick: .NotificationToggle
+                                style: "h-9 w-9 px-0 text-sm"
+                            }
+                            if .__wm_notes_unread != "0" && .__wm_notes_unread != "" {
+                                text .__wm_notes_unread {
+                                    style: "text-xs text-error font-semibold"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -250,5 +286,8 @@ widget Desktop {
         // Plan 478 T5：pager 增/删分区（协议 v1.1 动词；非空/末分区门在宿主臂）。
         .WorkspaceAdd -> { .__desktop_cmd = "workspace_add" }
         .WorkspaceClose(id) -> { .__desktop_cmd = "workspace_close\t" + id }
+        // Plan 479 T4：通知中心开关（协议 v1.2 无参动词；宿主臂落
+        // toggle_notification_center 执行体——开面板即未读清零）。
+        .NotificationToggle -> { .__desktop_cmd = "notes_toggle" }
     }
 }

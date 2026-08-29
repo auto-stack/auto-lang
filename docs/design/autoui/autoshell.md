@@ -147,6 +147,14 @@ shell-track（立项时分配计划号，提案依赖 463/464）
       增删分区；send_to 跨区发送；协议升版 v1.1 —— __wm_mru/label/三动词，
       vue 端对拍基线；T6 键流实机项按 472 注入通道先例 headless 指针成文）
   M3 通知中心（S6）
+      ✅ Plan 479 execution_done 2026-08-29（463 瞬时 toast 升格双面——
+      dock 铃铛+未读 badge + 第三枚 overlay 槽 assets/notification_center.at
+      （右下锚定：懒挂载/快照注入 RebuildNotes/键盘独占/Esc 仲裁/仅
+      visible 推层）；`notify`/`notes_toggle`/`notes_clear`/`notes_dismiss`
+      动词（词表 v1.2）；storage 定长槽 shell.notes.0..9 持久化（boot 恢复，
+      launcher recent 同型）；协议升版 v1.2 —— __wm_notes/__wm_notes_unread
+      + 指纹 |notes:{len}:{front_id}:{unread}; 段；T6 面板交互实机项按
+      472/478 注入通道先例 headless 指针成文，铃铛渲染/落盘/boot 恢复实机 PASS）
   M4 系统 settings（S7，接 auto-os-config）
   M5 桌面本体（S9：壁纸/图标/虚拟文件夹）
   ⏸ 缩略管理（S3 真缩略）→ 挂 386 复活（离屏快照=路线 B lite；v1 图标占位）
