@@ -103,6 +103,12 @@ const DOC_TODO_BASELINE: &[&str] = &[
     "navdestination",
     // Plan 463 desktop shell 新增(taskbar),文档化跟随该计划的文档批次。
     "taskbar",
+    // Plan 481:slot 升 builtin_widget(plan050 视图管线已消费)但属语言级
+    // slot 机制(Plan 476 实现),非画廊组件——文档化另行批次。
+    "slot",
+    // Plan 465 T4 桌面 shell 叶子 virtual_window:WM 投影叶非用户组件,
+    // 文档化跟随桌面线文档批次(taskbar 同批;fold 键去下划线)。
+    "virtualwindow",
 ];
 
 fn gallery_page_folds() -> BTreeSet<String> {

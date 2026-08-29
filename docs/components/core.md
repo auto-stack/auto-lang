@@ -445,6 +445,7 @@ Form label
 |------|------|---------|-------------|
 | `for` | `string` | — | Associated form control ID |
 | `text` | `string` | — | Label text |
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
@@ -688,6 +689,20 @@ Visual divider
 
 ---
 
+### `slot`
+
+`builtin_widget` · `slot` · web: `none` · iced: `unknown` · category: `content`
+
+Slot: outlet in component definition; named-slot fill in component invocation
+
+别名:`Slot`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `name` | `string` | — | Slot name (named slot target or outlet) |
+
+---
+
 ### `small`
 
 `builtin_widget` · `small` · web: `none` · iced: `unknown` · category: `content`
@@ -762,9 +777,9 @@ _props 待声明_
 
 ### `taskbar`
 
-`builtin_widget` · `taskbar` · web: `none` · iced: `full` · category: `navigation`
+`builtin_widget` · `taskbar` · web: `component` · iced: `full` · category: `navigation`
 
-Desktop shell taskbar (bottom bar)
+Desktop shell taskbar (bottom bar); web leaf = @/wm/Taskbar (Plan 465 I4, same registration source as iced 463)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -780,7 +795,9 @@ Text content (literal or interpolated)
 
 别名:`Text`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 
 ---
 
@@ -835,6 +852,22 @@ Toast notification container (alias)
 P1 extracted from production tables; props TBD
 
 _props 待声明_
+
+---
+
+### `virtual_window`
+
+`builtin_widget` · `virtual_window` · web: `component` · iced: `full` · category: `content`
+
+Virtual window leaf: positioned/clipped chrome with (AppId,event) routing attrs; iced impl = ui/iced/virtual_window.rs (462), DOM impl = @/wm/VirtualWindow (465 T4)
+
+别名:`VirtualWindow`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `win` | `string` | — | Window state object {wid,appId,title,rect,z,focused} from the host WmStore (Plan 465 T4) |
+| `title` | `string` | — | Title bar text (fallback when win.title absent) |
+| `class` | `union: string|class_binding` | — | Client-area classes |
 
 ---
 

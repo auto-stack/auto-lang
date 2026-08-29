@@ -713,6 +713,7 @@ impl AuraSchema {
             category: ElementCategory::Typography,
             props: vec![
                 // Text content is inline, not a named prop
+                PropDef { name: "selectable", type_: PropType::Bool, required: false, default: Some("false"), description: "Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481)" },
             ],
             allows_children: false,
             description: "Text content (literal or interpolated)",
@@ -2846,6 +2847,7 @@ impl AuraSchema {
             props: vec![
                 PropDef { name: "for", type_: PropType::String, required: false, default: None, description: "Associated form control ID" },
                 PropDef { name: "text", type_: PropType::String, required: false, default: None, description: "Label text" },
+                PropDef { name: "selectable", type_: PropType::Bool, required: false, default: Some("false"), description: "Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481)" },
                 PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
             ],
             allows_children: true,
