@@ -121,4 +121,83 @@ mod plan442_ext_link_tests {
         dc.on_with_input("Refresh", None);
         assert_eq!(state_str(&dc, "adapter"), "refreshed");
     }
+
+    /// PLAN-050 T9 (C7): void ext stub must read as None — musk
+    /// WorkspaceSelector 的 `.current = ws_load_current().await`（子 Init 每帧
+    /// 重放）此前把 void 哨兵 Int(0) 写进 `obj = None` 模型变量，
+    /// `.current != None` 恒真而 `.current.name` 落空 → rail 底部渲染裸
+    /// "${currentName}"。stub 改返 Nil 后 computed 应落 else 分支。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan050_void_stub_reads_as_none_in_computed() {
+        fn collect_texts(
+            view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Vec<String>,
+        ) {
+            use crate::ui::view::View;
+            match view {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Button { label, content, .. } => {
+                    out.push(label.clone());
+                    if let Some(c) = content.as_ref() {
+                        collect_texts(c, out);
+                    }
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        collect_texts(c, out);
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+                View::Grid { cells, .. } => {
+                    for c in cells {
+                        collect_texts(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let rel = "test/ui/plan050_stub_nil/src/front/app.at";
+        let candidates = [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ];
+        let path = candidates.into_iter().flatten().find(|p| p.exists()).expect("corpus app.at");
+        let dc = crate::plan370_test_support::build_component_from_app(&path).expect("build component");
+
+        // stub 赋值结果必须读作 Nil（此前为 Int(0) void 哨兵）。
+        eprintln!("DEBUG state[current] = {:?}", dc.read_state("current"));
+        eprintln!("DEBUG fn_table has ws_load_current = {:?}", dc.debug_fn_table().iter().any(|(n, _)| n.contains("ws_load_current")));
+        eprintln!("DEBUG fn names: {:?}", dc.debug_fn_table().iter().map(|(n, _)| n.clone()).collect::<Vec<_>>());
+        assert_eq!(dc.read_state("current").unwrap(), Value::Nil, "void stub assignment must yield Nil");
+
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut texts = Vec::new();
+        collect_texts(&view, &mut texts);
+        assert!(
+            texts.iter().any(|t| t.contains("选择工作目录")),
+            "computed else 分支必须上屏; got {:?}",
+            texts
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("${currentName}")),
+            "裸 placeholder 不得漏出; got {:?}",
+            texts
+        );
+        // i18n.t() 文本位：查表命中 → 文案上屏（此前提取畸形 + 求值恒空）。
+        assert!(
+            texts.iter().any(|t| t.contains("设置")),
+            "i18n.t 查表文案必须上屏; got {:?}",
+            texts
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("$t(")),
+            "$t 标记不得漏出; got {:?}",
+            texts
+        );
+    }
 }

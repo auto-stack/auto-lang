@@ -1887,7 +1887,7 @@ impl<'a> AuraViewBuilder<'a> {
         path: &mut Vec<usize>,
         probe: &mut BuildProbe,
     ) -> String {
-        let mut result = template.to_string();
+        let mut result = resolve_i18n_template(template);
         // Only build the probe path when there is at least one binding to record;
         // an empty `tpl_bindings` needs no probe entries.
         if !tpl_bindings.is_empty() {
@@ -5173,7 +5173,7 @@ let tabs_inner = View::Row {
     /// Resolve a string interpolation template containing `${.field}` references.
     /// Resolve interpolation with loop variable bindings support.
     fn resolve_interpolation_with(&self, template: &str, tpl_bindings: &[String], loop_bindings: &Bindings) -> String {
-        let mut result = template.to_string();
+        let mut result = resolve_i18n_template(template);
 
         for field_name in tpl_bindings {
             // Plan 057 (2.4, ash-gui 表格): 深层点路径绑定(如 .output.Table.atom_type
@@ -5350,6 +5350,17 @@ let tabs_inner = View::Row {
             // 颜色整体消失)。委托 resolve_expr_to_value 的 Index 臂
             // (含 VmRef 记录物化)后取 display 形态。
             Expr::Index(_, _) => {
+                match self.resolve_expr_to_value(expr, bindings) {
+                    Some(v) => value_to_display_string(&v),
+                    None => String::new(),
+                }
+            }
+            // PLAN-050 T9 (C7): t("k")/i18n.t("k") 文本/prop 位——经查表
+            // 取文案（未命中回落 key），此前无 Call 臂 → 恒空串。
+            Expr::Call(call) => {
+                if let Some(key) = call_expr_t_key(call) {
+                    return crate::ui::i18n_lookup::lookup(&key).unwrap_or(key);
+                }
                 match self.resolve_expr_to_value(expr, bindings) {
                     Some(v) => value_to_display_string(&v),
                     None => String::new(),
@@ -5577,6 +5588,12 @@ let tabs_inner = View::Row {
             // the cwd abbreviation computed and siblings. Generic dispatch stays in
             // the VM; this is the view-build fast path only.
             Expr::Call(call) => {
+                // PLAN-050 T9 (C7): t("k")/i18n.t("k") prop 位最小查表。
+                if let Some(key) = call_expr_t_key(call) {
+                    return Some(Value::Str(
+                        crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key).into(),
+                    ));
+                }
                 if let Expr::Dot(recv_expr, method) = call.name.as_ref() {
                     let recv = self.resolve_expr_to_value(recv_expr, bindings)?;
                     let arg = |i: usize| -> Option<i32> {
@@ -6407,6 +6424,47 @@ let tabs_inner = View::Row {
 // ============================================================================
 // Free helper functions
 // ============================================================================
+
+/// PLAN-050 T9 (C7): 模板里的 `$t(KEY)` 标记 → i18n 查表替换（未命中回落
+/// key 本身）。提取侧对 `t("k")`/`i18n.t("k")` 文本产出该标记（见
+/// extract.rs call_name_t_key）。
+fn resolve_i18n_template(template: &str) -> String {
+    if !template.contains("$t(") {
+        return template.to_string();
+    }
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find("$t(") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        if let Some(end) = after.find(')') {
+            let key = &after[..end];
+            out.push_str(&crate::ui::i18n_lookup::lookup(key).unwrap_or_else(|| key.to_string()));
+            rest = &after[end + 1..];
+        } else {
+            out.push_str("$t(");
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// PLAN-050 T9 (C7): 表达式位 t("k")/i18n.t("k") 识别（title 等 prop 位）。
+fn call_expr_t_key(call: &crate::ast::Call) -> Option<String> {
+    let is_t_name = match call.name.as_ref() {
+        Expr::Ident(name) => name.as_str() == "t",
+        Expr::Dot(_, method) => method.as_str() == "t",
+        _ => false,
+    };
+    if !is_t_name {
+        return None;
+    }
+    match call.args.args.first()? {
+        crate::ast::Arg::Pos(Expr::Str(s)) => Some(s.to_string()),
+        _ => None,
+    }
+}
 
 /// Plan 049: evaluate a child model-var `initial` expression to a Value WITHOUT
 /// a VM. Mirrors `eval_expr_to_value` (vm_bridge.rs) for the literal cases so
@@ -8540,6 +8598,66 @@ mod tests {
         assert!(
             !builder.eval_condition_with("store.authenticated", &Bindings::new()),
             "token=nil: bare truthy check must be FALSE"
+        );
+    }
+
+    /// PLAN-050 T9 (C7): WorkspaceSelector 形态复现——子 widget computed
+    /// `currentName => if .current != None { .current.name } else { "选择工作目录" }`
+    /// + model `var current obj = None` + 父裸调用。musk VM 实测 rail 底部
+    /// 渲染裸 "${currentName}"（vtree content 证据），computed 求值链在该
+    /// 形态下断裂落 literal fallback。期望：else 分支值上屏、裸串不漏。
+    #[test]
+    fn plan050_child_computed_text_resolves_not_raw_placeholder() {
+        use crate::parser::Parser;
+
+        let child_src = concat!(
+            "widget Selector {\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    model {\n",
+            "        var current obj = None\n",
+            "    }\n",
+            "    view {\n",
+            "        button {\n",
+            "            span { text .currentName }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(child_src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let child = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
+
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = AuraNode::Component {
+            name: "Selector".to_string(),
+            props: vec![],
+            events: HashMap::new(),
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        assert!(
+            view_contains_text(&view, "选择工作目录"),
+            "computed else 分支值必须上屏; got: {:?}",
+            view
+        );
+        assert!(
+            !view_contains_text(&view, "${currentName}"),
+            "裸 placeholder 不得漏出"
         );
     }
 }

@@ -184,6 +184,17 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
 
         // Call expression: could be a UI element constructor
         Expr::Call(call) => {
+            // PLAN-050 T9 (C7): t("k") / i18n.t("k") 文本形态——此前落到
+            // 元素构造臂产出 tag="t"/"div" 的畸形元素树，文本整体为空
+            // (musk 设置面板选项文案全空的提取侧根因)。产出 $t(k) 标记
+            // 文本节点，渲染期经 i18n_lookup 查表。
+            let t_key = call_name_t_key(call);
+            if let Some(key) = t_key {
+                return Ok(AuraNode::Text(AuraTextContent::Interpolated {
+                    template: format!("$t({})", key),
+                    bindings: vec![],
+                }));
+            }
             // Extract tag name from call name
             let tag = match call.name.as_ref() {
                 Expr::Ident(name) => name.as_str().to_string(),
@@ -292,6 +303,24 @@ pub fn extract_view_tree(expr: &Expr) -> ExtractResult<AuraNode> {
             "Cannot extract view tree from: {:?}",
             expr
         ))),
+    }
+}
+
+/// PLAN-050 T9 (C7): t("k") / i18n.t("k") 形态识别——名字为裸 `t` 或
+/// 方法 `t`（任意接收者，i18n/composables 的 useI18n 实例），首参为
+/// 字符串字面量时返回该 key。其他调用形态一律 None（走原臂）。
+fn call_name_t_key(call: &crate::ast::Call) -> Option<String> {
+    let is_t_name = match call.name.as_ref() {
+        Expr::Ident(name) => name.as_str() == "t",
+        Expr::Dot(_, method) => method.as_str() == "t",
+        _ => false,
+    };
+    if !is_t_name {
+        return None;
+    }
+    match call.args.args.first()? {
+        crate::ast::Arg::Pos(Expr::Str(s)) => Some(s.to_string()),
+        _ => None,
     }
 }
 

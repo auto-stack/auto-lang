@@ -669,6 +669,11 @@ impl AutoVM {
             return auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize });
         } else if auto_val::is_list(nv) {
             return auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_list(nv) as usize });
+        } else if auto_val::is_null(nv) {
+            // PLAN-050 T9: tag-null 字段赋值此前落兜底 Int(0)——`x = f()` 而 f
+            // return None 时 `.x != None` 恒真、`.x.field` 落空（musk
+            // WorkspaceSelector rail 底部裸 "${currentName}" 根因）。
+            return auto_val::Value::Nil;
         }
         auto_val::Value::Int(0)
     }
@@ -8415,7 +8420,11 @@ self.rc_release(a_nv);
                     // Wait for future completion (blocking)
                     // Stack: [..., future_bits]
                     // Returns: value when ready
-                    let future_bits = task.ram.pop_i32();
+                    // PLAN-050 T9: pop_nv/push_nv 全程保标签——此前 pop_i32 把
+                    // await 的同步值（含 return None 的 null nv）按 raw i32
+                    // 重推（identity 路径），null 被拍平成 Int(-2147483647)。
+                    let future_nv = task.ram.pop_nv();
+                    let future_bits = auto_val::decode_i32(future_nv);
 
                     // Check if this is a valid future encoding
                     if (future_bits & 0xFF) == 0xF0 {
@@ -8434,14 +8443,14 @@ self.rc_release(a_nv);
                                     if let Some(ref r) = result {
                                         Self::push_value(task, r, self);
                                     } else {
-                                        task.ram.push_i32(0); // No result = nil
+                                        task.ram.push_nv(auto_val::encode_null()); // No result = nil
                                     }
                                 }
                                 FutureState::Failed => {
                                     // Future failed - return nil
                                     vm_debug!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
                                     drop(future);
-                                    task.ram.push_i32(0);
+                                    task.ram.push_nv(auto_val::encode_null());
                                 }
                                 FutureState::Pending => {
                                     // Plan 224: Return AwaitFuture signal for frame-level handling
@@ -8454,11 +8463,11 @@ self.rc_release(a_nv);
                         } else {
                             // Future not found - return nil
                             vm_debug!("DEBUG: AWAIT_FUTURE: id={} not found in registry", future_id);
-                            task.ram.push_i32(0);
+                            task.ram.push_nv(auto_val::encode_null());
                         }
                     } else {
-                        // Not a future - push back as-is (identity)
-                        task.ram.push_i32(future_bits);
+                        // Not a future - push back as-is (identity, tag-preserving)
+                        task.ram.push_nv(future_nv);
                     }
                 }
                 OpCode::POLL_FUTURE => {
@@ -8696,10 +8705,14 @@ self.rc_release(a_nv);
         loop {
             match self.execute_single_frame(task, BODY_BUDGET) {
                 FrameResult::Return => {
-                    // Body completed — read result from stack top
+                    // Body completed — read result from stack top.
+                    // PLAN-050 T9: pop_nv+decode_tagged_nv（与 RET 的 write_nv
+                    // 对齐）——此前 pop_i32+decode_tagged_value 把 nanobox
+                    // 标签位当 raw i32 重解码，return None 的 null nv 被拍平
+                    // 成 Int(0)/Int(-1)，`.x = f().await` 后 `.x != None` 恒真。
                     if task.ram.sp > task.bp + 1 {
-                        let raw = task.ram.pop_i32();
-                        result_value = self.decode_tagged_value(raw);
+                        let raw = task.ram.pop_nv();
+                        result_value = self.decode_tagged_nv(raw);
                     }
                     break;
                 }

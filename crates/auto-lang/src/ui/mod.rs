@@ -106,6 +106,9 @@ pub mod widget_registry;
 #[cfg(feature = "ui-interpreter")]
 pub mod state_migration;
 
+#[cfg(feature = "ui-interpreter")]
+pub mod i18n_lookup;
+
 #[cfg(feature = "ui-headless")]
 pub mod headless;
 
