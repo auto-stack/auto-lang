@@ -167,8 +167,9 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
             if is_dark { Some((9, 14, 26)) } else { Some((255, 255, 255)) }
         }
         // --card: 222.2 47.4% 10%(亮于 --background,与 vue 暗色卡片浮起方向一致)
+        // light 对齐 auto-os-config 基准 #f9f9f9(Win11 风格,2026-08-29 对拍)。
         Color::Surface => {
-            if is_dark { Some((13, 21, 38)) } else { Some((249, 250, 251)) } // gray-50(light 沿用)
+            if is_dark { Some((13, 21, 38)) } else { Some((249, 249, 249)) }
         }
         Color::Error => Some((239, 68, 68)),
         Color::Warning => Some((234, 179, 8)),
@@ -185,12 +186,17 @@ pub fn resolve_semantic_rgb(color: &Color) -> Option<(u8, u8, u8)> {
         }
         Color::OnDestructive => Some((248, 250, 252)),
         // --foreground: 210 40% 98%
+        // light 对齐 auto-os-config 基准 #1a1a1a / #616161(中灰次级文本)。
         Color::OnBackground => {
-            if is_dark { Some((248, 250, 252)) } else { Some((17, 24, 39)) }
+            if is_dark { Some((248, 250, 252)) } else { Some((26, 26, 26)) }
         }
         // --muted-foreground: 215.4 16.3% 65.1%
         Color::OnSurface => {
-            if is_dark { Some((151, 163, 181)) } else { Some((107, 114, 128)) }
+            if is_dark { Some((151, 163, 181)) } else { Some((97, 97, 97)) }
+        }
+        // --border 语义(light #e0e0e0 基准 / dark 对齐 resolve_border_rgb)
+        Color::Border => {
+            if is_dark { Some((39, 39, 42)) } else { Some((224, 224, 224)) }
         }
         _ => None,
     }
