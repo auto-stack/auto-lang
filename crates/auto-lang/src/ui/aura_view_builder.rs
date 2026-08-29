@@ -3464,9 +3464,10 @@ let tabs_inner = View::Row {
 
         View::Row {
             children: vec![
-                View::Image {
-                    src: "lucide:search".to_string(),
-                    style: Style::parse(nc::ICON_MD).ok(),
+                // 🔍 文本字形——与非 shadcn vue 轨同构（免 lucide 集依赖）。
+                View::Text {
+                    content: "🔍".to_string(),
+                    style: Style::parse(&format!("{} text-muted-foreground", nc::ICON_MD)).ok(),
                 },
                 input.build(),
             ],
@@ -9606,7 +9607,7 @@ mod tests {
         }
     }
 
-    /// nav(search:true)：首子为搜索行（SEARCH_ROW 类 Row：lucide:search +
+    /// nav(search:true)：首子为搜索行（SEARCH_ROW 类 Row：🔍 文本 +
     /// Input），其余子节点跟列。
     #[test]
     fn test_nav_search_row() {
@@ -9628,7 +9629,7 @@ mod tests {
                     View::Row { children: row_children, style, .. } => {
                         let classes = style.as_ref().expect("搜索行 style").classes.clone();
                         assert!(classes_contain(&classes, nc::SEARCH_ROW), "搜索行契约类缺失");
-                        assert!(matches!(&row_children[0], View::Image { src, .. } if src.starts_with("lucide:search")));
+                        assert!(matches!(&row_children[0], View::Text { content, .. } if content == "🔍"), "搜索图标应为 🔍 文本字形");
                         assert!(matches!(&row_children[1], View::Input { .. }), "第二个应为输入框");
                     }
                     other => panic!("搜索行应为 Row,得到 {other:?}"),

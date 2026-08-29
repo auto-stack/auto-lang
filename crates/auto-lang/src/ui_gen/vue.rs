@@ -1749,13 +1749,21 @@ impl VueGenerator {
         };
         html.push_str(&format!("{}<nav{}>\n", ind, attr_str));
 
-        // 搜索行：icon + input（v-model 绑定 + onsearch 处理器）。
+        // 搜索行：icon + input（:value 绑定 + onsearch 处理器）。
         html.push_str(&format!("{}  <div class=\"{}\">\n", ind, nc::SEARCH_ROW));
-        self.lucide_icons.insert("Search".to_string());
-        html.push_str(&format!(
-            "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
-            ind, nc::ICON_MD
-        ));
+        if self.is_shadcn() {
+            self.lucide_icons.insert("Search".to_string());
+            html.push_str(&format!(
+                "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
+                ind, nc::ICON_MD
+            ));
+        } else {
+            // 非 shadcn 轨：🔍 文本字形——与 VM 端同构，免 lucide 依赖。
+            html.push_str(&format!(
+                "{}    <span class=\"{} text-muted-foreground shrink-0\">🔍</span>\n",
+                ind, nc::ICON_MD
+            ));
+        }
         let mut input_attrs: Vec<String> = vec![format!("class=\"{}\"", nc::SEARCH_INPUT)];
         // Plan 482 修正：search_value 可能是子组件 prop（如 NavTree(search:)），
         // v-model 写 prop 编译报错——统一发 :value，状态更新交给 onsearch
