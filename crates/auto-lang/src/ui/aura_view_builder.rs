@@ -3247,18 +3247,19 @@ let tabs_inner = View::Row {
                     });
                 } else {
                     // Emoji / literal text icon.
-                    parts.push(View::Text { content: icon, style: None });
+                    parts.push(View::Text { content: icon, style: None, selectable: false });
                 }
             }
             if !label.is_empty() || !desc.is_empty() {
                 let mut texts: Vec<View<DynamicMessage>> = Vec::new();
                 if !label.is_empty() {
-                    texts.push(View::Text { content: label.clone(), style: None });
+                    texts.push(View::Text { content: label.clone(), style: None, selectable: false });
                 }
                 if !desc.is_empty() {
                     texts.push(View::Text {
                         content: desc,
                         style: Style::parse(nc::TEXT_DESC).ok(),
+                        selectable: false,
                     });
                 }
                 // flex-1 pushes the badge to the row's trailing edge (iced
@@ -3279,6 +3280,7 @@ let tabs_inner = View::Row {
                 parts.push(View::Text {
                     content: badge,
                     style: Style::parse(nc::BADGE_PILL).ok(),
+                    selectable: false,
                 });
             }
             if parts.is_empty() {
@@ -3394,8 +3396,9 @@ let tabs_inner = View::Row {
                     View::Text {
                         content: chevron.to_string(),
                         style: Style::parse("text-[11px] text-muted-foreground w-[14px] shrink-0").ok(),
+                        selectable: false,
                     },
-                    View::Text { content: label.clone(), style: None },
+                    View::Text { content: label.clone(), style: None, selectable: false },
                 ],
                 spacing: 0,
                 padding: 0,
@@ -3423,6 +3426,7 @@ let tabs_inner = View::Row {
             View::Text {
                 content: label,
                 style: Style::parse(nc::GROUP_LABEL).ok(),
+                selectable: false,
             }
         };
 
@@ -3490,6 +3494,7 @@ let tabs_inner = View::Row {
                 View::Text {
                     content: "🔍".to_string(),
                     style: Style::parse(&format!("{} text-muted-foreground", nc::ICON_MD)).ok(),
+                    selectable: false,
                 },
                 input.build(),
             ],
