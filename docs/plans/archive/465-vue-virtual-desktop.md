@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-465
-status: reviewed
+status: archived
 feature_name: Vue 虚拟桌面——Web / tauri 宿主（M4）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
@@ -22,7 +22,7 @@ total_steps: 8
 
 # Plan 465: Vue 虚拟桌面（Web / tauri 宿主，M4）
 
-> **状态**：reviewed（2026-08-29 复审通过，待 /auto-plan:merge）
+> **状态**：archived（2026-08-29 merge 终态）
 > **来源**：产品需求「平台扩展：支持 WEB 平台（vue/tauri）」（Design 24 §1 N2）；
 > 里程碑 M4（Design 23 §6 提案编号 456，实际编号经程序跟踪文件解析为本号）。
 > **架构依据**：Design 23（R2 Web=DOM 子树、R4 接缝「DOM 节点」叶、R5「Web 永远是

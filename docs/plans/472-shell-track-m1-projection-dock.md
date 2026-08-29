@@ -1,6 +1,21 @@
+---
+plan_id: PLAN-472
+status: executing
+author: [zcode]
+created_at: 2026-08-28T00:00:00+08:00
+updated_at: 2026-08-29T00:00:00+08:00
+
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []
+
+current_step: 0
+total_steps: 6
+---
+
 # Plan 472: shell-track M1——状态投影协议 v1 + dock（AutoShell 第一步）
 
-> **状态**：已立项 2026-08-28，未开工（多 agent 可领取）
+> **状态**：executing（2026-08-29 领取开工）
 > **来源**：Design 25（`docs/design/autoui/autoshell.md`）shell-track M1；463/464
 > 已交付接缝与第一表面，本计划是 AutoShell 统一层的地基。
 > **架构依据**：Design 25 §3（内核/用户态分界、DesktopBus）、§4.1（默认 shell pack
