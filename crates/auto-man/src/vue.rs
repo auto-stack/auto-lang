@@ -133,6 +133,9 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/input-otp", "input-otp"),
     ("@/components/ui/kbd", "kbd"),
     ("@/components/ui/menubar", "menubar"),
+    // Plan 482: AutoUI nav-item/nav-group scaffold (own component, not an
+    // upstream shadcn snapshot — see assets/shadcn-ui/SNAPSHOT.md).
+    ("@/components/ui/nav", "nav"),
     ("@/components/ui/native-select", "native-select"),
     ("@/components/ui/range-calendar", "range-calendar"),
     ("@/components/ui/resizable", "resizable"),

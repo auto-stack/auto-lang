@@ -29,3 +29,7 @@ tools/shadcn-snapshot/snapshot.sh <scratch-dir>
 ```
 
 升级快照时：重跑脚本 → 覆盖本目录 → 烘焙 Sonner 补丁 → 更新本文件日期。
+
+- **AutoUI own components (not upstream snapshots)**: `nav/`（Plan 482
+  NavItem/NavGroup，nav-item/nav-group 双端 class 契约的 Vue 侧镜像，
+  由 auto-lang `ui::nav_contract` 单测锁定，不走 shadcn CLI 抓取）。

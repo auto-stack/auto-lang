@@ -517,18 +517,24 @@ element menubar {
 
 element nav {
     tag: "nav"
-    category: "unknown"
+    category: "navigation"
     tier: "builtin_widget"
     aliases: ["Nav"]
-    backends: { web: "native", iced: "unknown", gpui: "unknown" }
-    props: []
+    backends: { web: "native", iced: "full", gpui: "unknown" }
+    props: [
+        { name: "search", type: "bool", default: "false", description: "Integrate a search input row at the top of the nav (Plan 482)" }
+        { name: "search_placeholder", type: "string", description: "Placeholder text for the integrated search row" }
+        { name: "search_value", type: "expr", description: "Search text state binding (e.g. .store.search); required with search: true" }
+        { name: "onsearch", type: "msg_ref", description: "Message on search input (carries the input string, like input oninput)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "Navigation container; search:true renders an integrated search row (Plan 482)"
 }
 
 element nav-link {
     tag: "nav-link"
-    category: "unknown"
+    category: "navigation"
     tier: "builtin_widget"
     aliases: ["nav_link", "navlink"]
     backends: { web: "component", iced: "partial", gpui: "unknown" }
@@ -538,7 +544,26 @@ element nav-link {
         { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
     ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "DEPRECATED (Plan 482): use nav-item instead — richer states (active/hover/disabled), icon/desc/badge slots, router + onclick modes"
+}
+
+element nav-group {
+    tag: "nav-group"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["nav_group", "navgroup", "NavGroup"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "NavGroup", import: "@/components/ui/nav" }
+    props: [
+        { name: "label", type: "string", description: "Group header label" }
+        { name: "collapsible", type: "bool", default: "false", description: "Header is clickable to fold/unfold (chevron indicator)" }
+        { name: "open", type: "expr", description: "Fold state binding; defaults true. Unbound + collapsible uses built-in per-group state" }
+        { name: "ontoggle", type: "msg_ref", description: "Message on header click (when bound); otherwise built-in state toggles" }
+        { name: "indent", type: "bool", default: "false", description: "Indent member items (tree feel, pl-3)" }
+        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
+    ]
+    allows_children: true
+    description: "Navigation group: label header + item column, optionally collapsible (Plan 482)"
 }
 
 element p {
@@ -1551,14 +1576,28 @@ element menu-item {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element nav_item {
-    tag: "nav_item"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
+element nav-item {
+    tag: "nav-item"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["nav_item", "navitem", "NavItem"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "NavItem", import: "@/components/ui/nav" }
+    props: [
+        { name: "to", type: "string", description: "Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given" }
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode) for store-driven switching" }
+        { name: "active", type: "expr", description: "Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens)" }
+        { name: "exact", type: "bool", default: "false", description: "Route auto-detection uses exact match only" }
+        { name: "icon", type: "string", description: "Left icon: lucide name (svg both ends) or literal emoji text" }
+        { name: "label", type: "string", description: "Primary text" }
+        { name: "desc", type: "string", description: "Secondary line (two-line layout)" }
+        { name: "badge", type: "string", description: "Right-side badge pill" }
+        { name: "disabled", type: "bool", default: "false", description: "Grayed out, not clickable" }
+        { name: "size", type: "one_of:sm,md,lg", default: "md", description: "md=h-9 single line; lg=py-[10px] two-line; sm=h-7" }
+        { name: "class", type: "union:string,class_binding", description: "Extra classes appended after the built-in nav-item classes (escape hatch)" }
+    ]
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link"
 }
 
 element nav_menu_indicator {
