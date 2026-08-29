@@ -1,0 +1,21 @@
+[package]
+name = "native-fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+# Plan 473：可编程原生窗口夹具——独立项目（非 workspace 成员，
+# 空 [workspace] 表脱离上层 workspace），仅供 native dock E2E 驱动。
+[workspace]
+
+[dependencies]
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+    "Win32_System_LibraryLoader",
+] }
+
+[profile.release]
+opt-level = 2
