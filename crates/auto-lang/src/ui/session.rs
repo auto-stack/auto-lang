@@ -381,6 +381,11 @@ pub enum WmCommand {
     /// `DesktopCommand::SetWorkspace/NextWorkspace` 同落 WmState 分区方法）。
     NextWorkspace,
     PrevWorkspace,
+    /// Plan 473 T6：槽位框 chrome——最小化按钮（`ShowWindow(SW_MINIMIZE)`）。
+    NativeSlotMin(crate::ui::native_dock::NativeSlotId),
+    /// Plan 473 T6：槽位框 chrome——关闭按钮（`PostMessageW(WM_CLOSE)`，
+    /// 给目标 app 正常关闭机会）。
+    NativeSlotClose(crate::ui::native_dock::NativeSlotId),
     /// Plan 478 T2：把聚焦窗发送到相邻分区（Ctrl+Alt+Shift+←/→ 热键）。
     /// 宿主解析 focused + 目标 = (current ± 1 + N) % N 后落
     /// `move_win_to_workspace`（见 [`WorkspaceStep`]）。
@@ -446,6 +451,19 @@ pub struct WmState {
     pub workspaces: Vec<Workspace>,
     /// Plan 472 T2：当前分区下标（可见/命中/焦点环/排布的过滤基准）。
     pub current_workspace: usize,
+    /// Plan 473：原生窗口槽位注册表（NativeSlot 与 VirtualWindow 同为 WM
+    /// 布局单元；布局参与见 T5，宿主装配/几何同步见 T6）。
+    pub native_slots: BTreeMap<crate::ui::native_dock::NativeSlotId, crate::ui::native_dock::NativeSlot>,
+    /// Plan 473：槽位 id 分配器（单调递增，会话生命周期内不复用）。
+    pub next_native_slot_id: u64,
+    /// Plan 473 T5：槽位本地（iced 逻辑）矩形缓存——布局引擎的输入域
+    /// （NativeSlot.slot_rect 为屏幕物理坐标，两域在 T6 宿主排水时换算）。
+    pub native_slot_local_rects:
+        BTreeMap<crate::ui::native_dock::NativeSlotId, iced::Rectangle>,
+    /// Plan 473 T5：relayout 产生的待同步槽位几何（本地逻辑矩形）。
+    /// T6 宿主装配排水：换算屏幕物理坐标 → win32 set_bounds → slot_rect 回写。
+    pub pending_native_geometry:
+        Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
 }
 
 impl WmState {
@@ -465,6 +483,10 @@ impl WmState {
                 Workspace { id: 1, name: "Desktop 2".to_string() },
             ],
             current_workspace: 0,
+            native_slots: BTreeMap::new(),
+            next_native_slot_id: 0,
+            native_slot_local_rects: BTreeMap::new(),
+            pending_native_geometry: Vec::new(),
         }
     }
 
@@ -528,6 +550,87 @@ impl WmState {
             .copied()
             .filter(|w| self.wins.get(w).map(|v| v.workspace) == Some(ws))
             .collect()
+    }
+
+    // --- Plan 473 T4：原生窗口槽位（native dock）注册表与状态机推进 ---
+
+    /// 登记原生窗口槽位候选（[`crate::ui::native_dock::SlotState::Candidate`]）。
+    /// `local_rect` 为槽位的宿主窗本地逻辑矩形（布局引擎输入域，T5）；
+    /// `slot_rect` 为屏幕物理矩形（Win32 域）。返回分配的槽位 id；宿主层
+    /// 随后推进状态机（DockRequested → 几何写读回 → DockConfirmed /
+    /// DockFailed），并把本地矩形同步项排入 `pending_native_geometry`。
+    pub fn add_native_slot(
+        &mut self,
+        hwnd: isize,
+        pid: u32,
+        title: String,
+        pre_dock_bounds: crate::ui::native_dock::Rect,
+        slot_rect: crate::ui::native_dock::Rect,
+        local_rect: iced::Rectangle,
+    ) -> crate::ui::native_dock::NativeSlotId {
+        use crate::ui::native_dock::{NativeHwnd, NativeSlot, NativeSlotId};
+        self.next_native_slot_id += 1;
+        let id = NativeSlotId(self.next_native_slot_id);
+        self.native_slots.insert(
+            id,
+            NativeSlot::new_candidate(
+                id,
+                NativeHwnd(hwnd),
+                pid,
+                title,
+                pre_dock_bounds,
+                slot_rect,
+            ),
+        );
+        self.native_slot_local_rects.insert(id, local_rect);
+        self.pending_native_geometry.push((id, local_rect));
+        id
+    }
+
+    /// Plan 473 T5：排空待同步槽位几何（读+清幂等；宿主层换算后写 Win32）。
+    pub fn drain_native_geometry(
+        &mut self,
+    ) -> Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)> {
+        std::mem::take(&mut self.pending_native_geometry)
+    }
+
+    /// Plan 473 T6：按 hwnd 反查槽位 id（WinEventHook 事件归位用）。
+    pub fn native_slot_id_of_hwnd(
+        &self,
+        hwnd: isize,
+    ) -> Option<crate::ui::native_dock::NativeSlotId> {
+        self.native_slots
+            .values()
+            .find(|s| s.hwnd.0 == hwnd)
+            .map(|s| s.id)
+    }
+
+    /// 推进槽位状态机一步；终态（Rejected/Restored）自动从注册表移除。
+    /// 返回 `(宿主层要执行的动作, 是否已移除)`；未知 id 返回 `(Idle, false)`。
+    pub fn advance_native_slot(
+        &mut self,
+        id: crate::ui::native_dock::NativeSlotId,
+        event: crate::ui::native_dock::SlotEvent,
+    ) -> (crate::ui::native_dock::SlotAction, bool) {
+        use crate::ui::native_dock::SlotAction;
+        let Some(slot) = self.native_slots.get_mut(&id) else {
+            return (SlotAction::Idle, false);
+        };
+        let action = slot.handle(event);
+        let terminal = slot.is_terminal();
+        if terminal {
+            self.native_slots.remove(&id);
+        }
+        (action, terminal)
+    }
+
+    /// 移除槽位（宿主层完成恢复动作后的注册表清理；正常路径经
+    /// [`Self::advance_native_slot`] 终态自动移除，本方法供异常路径兜底）。
+    pub fn remove_native_slot(
+        &mut self,
+        id: crate::ui::native_dock::NativeSlotId,
+    ) -> Option<crate::ui::native_dock::NativeSlot> {
+        self.native_slots.remove(&id)
     }
 
     /// z 序自顶向下的命中测试（返回最上层含点窗口；仅当前分区参与）。
@@ -771,6 +874,12 @@ pub enum DesktopCommand {
     /// （窗在隐藏分区先切分区）聚焦其窗；未运行 → launch（.at 无法跨列表
     /// 反查 wid，保持 shell 零智能）。
     ActivateApp(String),
+    /// Plan 473：原生窗口收编（native dock，Phase 1 假洞）。按 pid（枚举
+    /// 首个可见顶层窗）或 hwnd（十六进制）定位目标；宿主代解 Win32 发现。
+    DockNative(NativeTarget),
+    /// Plan 473：解除收编——恢复 pre-dock bounds/样式后移除槽位（slot id
+    /// 取自投影 `__wm_native_slots`）。
+    UndockNative(u64),
     /// Plan 478 T2：新增分区（pager `+`；宿主臂随即入新分区）。
     WorkspaceAdd,
     /// Plan 478 T2：删除分区（pager `×`；非空/末分区门在宿主臂 toast）。
@@ -789,6 +898,43 @@ pub enum DesktopCommand {
     NotesClear,
     /// Plan 479 T2：按 id 删除单条通知 + 落盘（面板「逐条 ×」）。
     NotesDismiss(u64),
+}
+
+/// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeTarget {
+    ByPid(u32),
+    ByHwnd(isize),
+}
+
+impl NativeTarget {
+    /// 记录参数段编码：`pid=123` / `hwnd=0x1a2b`。
+    pub fn encode_arg(&self) -> String {
+        match self {
+            NativeTarget::ByPid(p) => format!("pid={p}"),
+            NativeTarget::ByHwnd(h) => format!("hwnd={h:#x}"),
+        }
+    }
+
+    /// 记录参数段解析（hwnd 接受 `0x` 十六进制或十进制）。
+    pub fn parse_arg(arg: &str) -> Option<Self> {
+        let (key, val) = arg.split_once('=')?;
+        match key {
+            "pid" => val.parse::<u32>().ok().map(NativeTarget::ByPid),
+            "hwnd" => {
+                let v = val
+                    .strip_prefix("0x")
+                    .or_else(|| val.strip_prefix("0X"))
+                    .unwrap_or(val);
+                if val.starts_with("0x") || val.starts_with("0X") {
+                    isize::from_str_radix(v, 16).ok().map(NativeTarget::ByHwnd)
+                } else {
+                    val.parse::<isize>().ok().map(NativeTarget::ByHwnd)
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 impl DesktopCommand {
@@ -820,6 +966,12 @@ impl DesktopCommand {
             DesktopCommand::NextWorkspace => "workspace_next".to_string(),
             DesktopCommand::ActivateApp(name) => {
                 format!("activate{}{name}", Self::FIELD_SEP)
+            }
+            DesktopCommand::DockNative(target) => {
+                format!("dock_native{}{}", Self::FIELD_SEP, target.encode_arg())
+            }
+            DesktopCommand::UndockNative(slot) => {
+                format!("undock_native{}{}", Self::FIELD_SEP, slot)
             }
             DesktopCommand::WorkspaceAdd => "workspace_add".to_string(),
             DesktopCommand::WorkspaceClose(n) => {
@@ -888,6 +1040,8 @@ impl DesktopCommand {
                     "activate" if !arg.is_empty() => {
                         Some(DesktopCommand::ActivateApp(arg.to_string()))
                     }
+                    "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
+                    "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
@@ -1005,6 +1159,10 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
+    /// Plan 473 T6：原生窗口槽位的 WinEventHook 事件（hwnd 反查槽位在
+    /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
+    /// Destroy → B7 槽位回收）。
+    NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1016,6 +1174,79 @@ pub enum DesktopEvent {
 pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
     iced::time::every(std::time::Duration::from_millis(ms))
         .map(|_| DesktopMessage::Desktop(DesktopEvent::ServiceTick))
+}
+
+/// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程
+/// （OUTOFCONTEXT），mpsc 短轮询（16ms，事件低频）收到事件后转为
+/// [`DesktopEvent::NativeSlotHwnd`]。流因钩子退出而终止时，下一轮订阅
+/// diff 按恒等 recipe 重新拉起（自愈）。
+#[cfg(windows)]
+pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
+    use crate::ui::native_dock::win32::{spawn_event_hook, NativeSlotEventHook};
+
+    struct NativeDockEventRecipe;
+
+    impl std::hash::Hash for NativeDockEventRecipe {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            "auto-lang-native-dock-events".hash(state);
+        }
+    }
+
+    impl iced_futures::subscription::Recipe for NativeDockEventRecipe {
+        type Output = DesktopMessage;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::StreamExt;
+            iced_futures::futures::stream::unfold(
+                None::<(NativeSlotEventHook, std::sync::mpsc::Receiver<crate::ui::native_dock::NativeSlotEvent>)>,
+                |state| async move {
+                    let Some((hook, rx)) = state else {
+                        // 惰性启动；槽位被占用时退避后终止流（重订阅自愈）。
+                        return match spawn_event_hook(true) {
+                            Ok(pair) => Some((None, Some(pair))),
+                            Err(_) => {
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                None
+                            }
+                        };
+                    };
+                    // std 通道 + 短轮询（事件低频；不阻塞执行器工作线程）。
+                    // 空拍以 Some(None) 表示、流级 filter_map 剔除（直接 yield
+                    // None = 流终止，AppTickRecipe 459 同款教训）。
+                    match rx.try_recv() {
+                        Ok(evt) => Some((
+                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotHwnd(
+                                evt.hwnd.0,
+                                evt.kind,
+                            ))),
+                            Some((hook, rx)),
+                        )),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                            Some((None, Some((hook, rx))))
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+                    }
+                },
+            )
+            .filter_map(|msg| async move { msg })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativeDockEventRecipe)
+}
+
+#[cfg(not(windows))]
+pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
+    iced::Subscription::none()
 }
 
 impl AppSession {
@@ -2436,6 +2667,162 @@ mod tests {
         let r1 = *host.wm.wins[&w1].rect.borrow();
         assert_eq!((r1.x, r1.y), (r0.x, r0.y), "空分区首窗级联 index=0");
         assert_eq!(host.wm.wins[&w1].workspace, 1, "启动窗入当前分区");
+    }
+
+    // ---- Plan 473 T4：native dock 动词 + 槽位注册表 ----
+
+    #[test]
+    fn native_dock_verbs_parse_and_encode() {
+        use crate::ui::session::NativeTarget;
+        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制）。
+        let cmds = vec![
+            DesktopCommand::DockNative(NativeTarget::ByPid(4242)),
+            DesktopCommand::DockNative(NativeTarget::ByHwnd(0x1a2b)),
+            DesktopCommand::UndockNative(7),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(payload.contains("pid=4242"), true);
+        assert_eq!(payload.contains("hwnd=0x1a2b"), true);
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // hwnd 十进制直写。
+        assert_eq!(
+            DesktopCommand::parse_records("dock_native\u{1f}hwnd=9988"),
+            vec![DesktopCommand::DockNative(NativeTarget::ByHwnd(9988))]
+        );
+        // 坏记录跳过：未知键 / 非数字 slot / 空 arg。
+        assert!(DesktopCommand::parse_records("dock_native\u{1f}foo=1").is_empty());
+        assert!(DesktopCommand::parse_records("undock_native\u{1f}abc").is_empty());
+        assert!(DesktopCommand::parse_records("dock_native\u{1f}").is_empty());
+    }
+
+    #[test]
+    fn native_slot_registry_lifecycle() {
+        use crate::ui::native_dock::{NativeSlotId, Rect, SlotAction, SlotEvent, SlotState};
+        let mut ds = desktop_session_with_host();
+        let id = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.add_native_slot(
+                0x1234,
+                4242,
+                "fixture".into(),
+                Rect::new(100, 100, 800, 600),
+                Rect::new(1200, 100, 640, 480),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)),
+            )
+        };
+        assert_eq!(id, NativeSlotId(1), "槽位 id 单调分配");
+        let host = ds.host.as_mut().unwrap();
+        // DockRequested → Docking + SyncGeometry（宿主执行 win32 写读回）。
+        let (action, removed) = host.wm.advance_native_slot(id, SlotEvent::DockRequested);
+        assert_eq!(action, SlotAction::SyncGeometry(Rect::new(1200, 100, 640, 480)));
+        assert!(!removed);
+        assert_eq!(host.wm.native_slots[&id].state, SlotState::Docking);
+        // DockConfirmed → Docked（驻留注册表）。
+        let (action, removed) = host.wm.advance_native_slot(id, SlotEvent::DockConfirmed);
+        assert_eq!(action, SlotAction::Idle);
+        assert!(!removed);
+        assert_eq!(host.wm.native_slots[&id].state, SlotState::Docked);
+        // UndockRequested → Undocking + 恢复动作携带 pre-dock bounds。
+        let (action, removed) = host.wm.advance_native_slot(id, SlotEvent::UndockRequested);
+        assert_eq!(
+            action,
+            SlotAction::RestoreAndRemove {
+                bounds: Rect::new(100, 100, 800, 600)
+            }
+        );
+        assert!(!removed);
+        // RestoreCompleted → 终态自动移除。
+        let (_, removed) = host.wm.advance_native_slot(id, SlotEvent::RestoreCompleted);
+        assert!(removed);
+        assert!(!host.wm.native_slots.contains_key(&id));
+        // 未知 id 推进 = (Idle, false) 防御。
+        let (action, removed) = host.wm.advance_native_slot(id, SlotEvent::DockRequested);
+        assert_eq!(action, SlotAction::Idle);
+        assert!(!removed);
+    }
+
+    #[test]
+    fn native_slot_reject_removes_slot() {
+        use crate::ui::native_dock::{RejectReason, Rect, SlotEvent};
+        let mut ds = desktop_session_with_host();
+        let id = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.add_native_slot(
+                0x4321,
+                7,
+                "elevated".into(),
+                Rect::new(0, 0, 400, 300),
+                Rect::new(10, 10, 400, 300),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(400.0, 300.0)),
+            )
+        };
+        let host = ds.host.as_mut().unwrap();
+        host.wm.advance_native_slot(id, SlotEvent::DockRequested);
+        // C1：UIPI 拒绝 → Rejected 终态 → 自动移除（shell 侧 toast 由宿主执行）。
+        let (_, removed) = host
+            .wm
+            .advance_native_slot(id, SlotEvent::DockFailed(RejectReason::Elevated));
+        assert!(removed, "Rejected 终态应自动出注册表");
+    }
+
+    #[test]
+    fn native_slot_joins_grid_layout_and_emits_sync() {
+        use crate::ui::native_dock::{NativeSlotId, Rect, Size};
+        let mut ds = desktop_session_with_host();
+        let id = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.add_native_slot(
+                0x1234,
+                4242,
+                "fixture".into(),
+                Rect::new(100, 100, 800, 600),
+                Rect::new(1200, 100, 640, 480),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)),
+            )
+        };
+        // 两个虚拟窗 + 1 槽位 = 3 单元；grid cols=⌈√3⌉=2 rows=2。
+        let app = insert_app(&mut ds, "A");
+        let _a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0));
+        let app2 = insert_app(&mut ds, "B");
+        let _b = ds.wm_add_win(app2, "B".into(), t2_rect(0.0, 0.0));
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let sync = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.drain_native_geometry()
+        };
+        // dock 登记 + grid relayout 各推入一次。
+        assert_eq!(sync.len(), 2, "dock 初位 + relayout 各一项");
+        let (sid, r) = sync[1];
+        assert_eq!(sid, id);
+        // 视口 1280x800 扣 taskbar(bottom 48) → usable 1280x752；
+        // 2 列 2 行：槽位排第 3 位 = (0, 376, 640, 376)。
+        assert_eq!((r.x, r.y, r.width, r.height), (0.0, 376.0, 640.0, 376.0));
+        // 本地缓存同步更新（下轮排布输入）。
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.native_slot_local_rects[&id], r);
+        // C3：min-size 不足时 best-effort 扩张（640 宽 < 700 → 扩到 700）。
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .native_slots
+            .get_mut(&id)
+            .unwrap()
+            .min_size_est = Some(Size::new(700, 100));
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let sync = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.drain_native_geometry()
+        };
+        assert_eq!(sync.last().unwrap().1.width, 700.0, "min-size 不足应扩张槽位");
+        // free 模式恒等：不产生同步项。
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
     }
 
     // ---- Plan 479 T2：协议 v1.2 通知动词（notify/notes_toggle/
