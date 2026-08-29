@@ -243,3 +243,12 @@
 - **P483-5 462 多 App 焦点命名空间现状**：input_ids 登记表已按 App 会话
   隔离（devtools per-App），但跨 App 全局 Tab 顺序/焦点分区仍为 v1 边界
   （Plan 462 立项跟进，本计划未扩展）。
+
+- **P480-R1 enable_broker 停机旗标无生产调用点**：`DesktopSession::enable_broker`
+  的 stop 旗标 boot 期置 false 后无显式停机接线（serve 线程进程级常驻为
+  v1 设计，代码注释注明；probe 连接可唤醒退出）——显式停机归桌面退出
+  流程后续接线。
+- **P480-R2 内存基线为 debug 测试宿主口径**：480-memory-baseline.md 数字
+  采自 nextest debug 测试二进制（非 release 产品 `auto`）；release + strip
+  复核点已在报告 §3 明示（不影响"度量+判定"验收形态，Private 口径
+  4.81MiB/App 临界达标结论随口径标注）。

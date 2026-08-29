@@ -50,7 +50,7 @@ fn key_to_string(key: &Key) -> String {
 /// event (→ `events`, emitted `@click` etc.) vs a callback prop (→ `props`,
 /// emitted `:on_select="Handler"`). Only the common DOM event names are
 /// native; anything else starting with `on` is a callback prop.
-fn is_native_event_key(key: &str) -> bool {
+pub fn is_native_event_key(key: &str) -> bool {
     // Plan 402: strip `.prevent`/`.stop` modifiers (e.g. oncontextmenu.prevent)
     // before checking, so the base event name is recognized.
     let base = key.split('.').next().unwrap_or(key);

@@ -1,0 +1,14 @@
+// renderer.at — PLAN-051 C4 regression corpus: 渲染域 PORT（声明面）。
+// use.web component Markdown 指向此处；VM 目标装载器经 adapter 链取
+// renderer.vm.at（musk 真源同构），web 目标注入富文本挂载。
+
+widget Markdown(source: str, streaming: bool) {
+    view {
+        div {
+            style: "rich-web-renderer"
+            text .source
+        }
+    }
+}
+
+fn helperFn() str { return "web-rich" }

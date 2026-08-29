@@ -1,0 +1,22 @@
+// renderer.vm.at — PLAN-051 C4 regression corpus: 渲染域 VM adapter
+// （musk ports/renderer.vm.at 同构——PLAN-047 T4 文本降级）。同名 widget
+// Markdown 经 C4 widget 臂注册进视图 registry，消息正文以 pre-wrap 纯文本
+// 渲染；comrok 富文本 native 为上游项（KNOWN-DEBT 047 登记）。
+
+widget Markdown(source: str, streaming: bool) {
+    view {
+        div {
+            style: "vm-markdown-plain"
+            text .source
+        }
+    }
+    style {
+.vm-markdown-plain {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+}
+    }
+}
+
+fn helperFn() str { return "vm-plain-degraded" }

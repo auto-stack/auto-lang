@@ -6320,16 +6320,45 @@ impl<'a> Parser<'a> {
     pub fn use_web_stmt(&mut self) -> AutoResult<Stmt> {
         // Already consumed: use . web
 
-        let kind = match self.cur.text.as_str() {
-            "component" => {
+        // PLAN-051 C4: 点分 kind 限定符——`use.web.fn/component/composable`
+        // 与 use.rust/use.py 点分家族一致（用户裁定 2026-08-29）；旧空格
+        // 形式（`use.web component X`）与裸形式（无 kind = Fn）兼容等价。
+        let kind = if self.is_kind(TokenKind::Dot) {
+            self.next();
+            // `fn` 是关键字 token（TokenKind::Fn），不能走 expect_ident_str。
+            let k = if self.cur.text.as_str() == "fn" {
                 self.next();
-                ExtImportKind::Component
+                "fn".to_string()
+            } else {
+                self.expect_ident_str()?.to_string()
+            };
+            match k.as_str() {
+                "fn" => ExtImportKind::ExplicitFn,
+                "component" => ExtImportKind::Component,
+                "composable" => ExtImportKind::Composable,
+                other => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Unknown use.web.<kind> '{}' — expected fn / component / composable",
+                            other
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
             }
-            "composable" => {
-                self.next();
-                ExtImportKind::Composable
+        } else {
+            match self.cur.text.as_str() {
+                "component" => {
+                    self.next();
+                    ExtImportKind::Component
+                }
+                "composable" => {
+                    self.next();
+                    ExtImportKind::Composable
+                }
+                _ => ExtImportKind::Fn,
             }
-            _ => ExtImportKind::Fn,
         };
 
         let mut symbols: Vec<Name> = Vec::new();
@@ -12628,7 +12657,7 @@ impl<'a> Parser<'a> {
                     message: format!(
                         "Expected 'from' in widget use block ({} imports require a source path), got '{}'",
                         match kind {
-                            ExtImportKind::Fn => "fn",
+                            ExtImportKind::Fn | ExtImportKind::ExplicitFn => "fn",
                             ExtImportKind::Composable => "composable",
                             ExtImportKind::Component => "component",
                             ExtImportKind::Package => "package",

@@ -971,6 +971,30 @@ impl DynamicComponent {
     /// `VmBridge::call_handler`. Called before the Iced event loop starts so
     /// initial state (e.g. `build_month_grid(...)`) is populated before the
     /// first render.
+    /// PLAN-051 C2: 派发宿主回调路由。统一 state 架构下父 handler 与子
+    /// handler 共享同一根态对象（ensure_child_state 直写根态），故直接以
+    /// 当前 state_obj_id 调用父 widget 的 namespaced handler。
+    fn dispatch_parent_route(
+        &mut self,
+        child: &str,
+        event: &str,
+        route: &crate::ui::child_emit::ParentRoute,
+        payload: auto_val::Value,
+    ) {
+        let state_id = self.bridge.state_obj_id();
+        match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &[payload]) {
+            Ok(()) => {
+                self.dirty = true;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[VM-EMIT] {}.{} -> {}.{} failed: {}",
+                    child, event, route.parent_widget, route.handler, e
+                );
+            }
+        }
+    }
+
     pub fn fire_init(&mut self) {
         // Plan 333: run imported module-level initializers (var notes = ... etc.)
         // before Init, so globals have defined values when Init reads them.
@@ -1102,6 +1126,17 @@ impl DynamicComponent {
             let _pre_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
             let _pre_idx = self.bridge.read_state("active_index").ok();
         }
+        // PLAN-051 C2: 子→父回调两形态。
+        // 体内式实参快照必须发生在子 handler 执行**前**——源序里
+        // `on_send(.draft)` 先于 `.draft = ""`，剥离改造后调用移到 handler
+        // 之后回放，读 state 会拿到清空值。
+        let emit_widget = if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
+        let stripped_calls = crate::ui::child_emit::lookup_stripped(&emit_widget, &clean_name);
+        let mut stripped_payloads: Vec<(String, auto_val::Value)> = Vec::with_capacity(stripped_calls.len());
+        for sc in &stripped_calls {
+            let payload = eval_stripped_arg(&self.bridge, sc.arg.as_deref());
+            stripped_payloads.push((sc.callback.clone(), payload));
+        }
         let t0 = std::time::Instant::now();
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
@@ -1112,6 +1147,36 @@ impl DynamicComponent {
                 let handler_ms = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
                 self.dirty = true;
+                // PLAN-051 C2 ①: 声明式——子 msg 变体派发后回送宿主
+                // `on<name>` 绑定（musk `send(str)` + `onsend: .SendInput($event)`
+                // 形态；载荷 = 子 handler 收到的首实参，无实参回落输入值）。
+                if let Some(route) = crate::ui::child_emit::lookup_route(
+                    &emit_widget,
+                    &format!("on{}", clean_name),
+                ) {
+                    let payload = args
+                        .first()
+                        .cloned()
+                        .or_else(|| input_value.clone().map(|t| auto_val::Value::Str(t.into())))
+                        .unwrap_or(auto_val::Value::Nil);
+                    self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                }
+                // PLAN-051 C2 ②: 体内式——被剥离的 `on_send(.draft)` 按前置
+                // 快照实参回送（017-chat DoSend → on_send(.draft) →
+                // App.SendMessage(text) 形态）。
+                for (callback, payload) in stripped_payloads {
+                    match crate::ui::child_emit::lookup_route(&emit_widget, &callback) {
+                        Some(route) => {
+                            self.dispatch_parent_route(&emit_widget, &clean_name, &route, payload);
+                        }
+                        None => {
+                            eprintln!(
+                                "[VM-EMIT] {}.{} calls {} but no parent route recorded",
+                                emit_widget, clean_name, callback
+                            );
+                        }
+                    }
+                }
                 // Plan 401/VM-routing: after a handler may have navigated
                 // (router.push → __current_route), re-resolve the route params
                 // into __route_params so page handlers can read them via
@@ -1163,6 +1228,43 @@ impl DynamicComponent {
 /// Format: `{event}(\u{1F}{typechar}\u{1F}{value})*` — zero or more type-tagged
 /// args, supporting multi-arg handlers like `.Reveal(cell.x, cell.y)` (Plan 402
 /// bug 4). Previously only a single arg was decoded.
+/// PLAN-051 C2: 剥离回调实参文本的快照求值——`this.draft` / `.draft` 单段
+/// state 路径读统一根态，`"You"`/`42`/`true` 字面量直取，裸标识符读态失败
+/// 回落字符串；其余形态 Nil + 诊断（最小集，双样点外形态留扩展）。
+fn eval_stripped_arg(
+    bridge: &crate::ui::vm_bridge::VmBridge,
+    arg: Option<&str>,
+) -> auto_val::Value {
+    let Some(t) = arg else { return auto_val::Value::Nil };
+    let t = t.trim();
+    if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
+        || (t.starts_with('\'') && t.ends_with('\'') && t.len() >= 2)
+    {
+        return auto_val::Value::Str(t[1..t.len() - 1].into());
+    }
+    if let Ok(i) = t.parse::<i32>() {
+        return auto_val::Value::Int(i);
+    }
+    match t {
+        "true" => return auto_val::Value::Bool(true),
+        "false" => return auto_val::Value::Bool(false),
+        _ => {}
+    }
+    let path = t
+        .strip_prefix("this.")
+        .or_else(|| t.strip_prefix('.'))
+        .unwrap_or(t);
+    if path.is_empty() || path.contains('(') {
+        eprintln!("[VM-EMIT] stripped arg form unsupported: {}", t);
+        return auto_val::Value::Nil;
+    }
+    if let Ok(v) = bridge.read_state(path) {
+        v
+    } else {
+        auto_val::Value::Str(t.into())
+    }
+}
+
 pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {
     const SEP: char = '\u{1F}';
     let Some(idx) = event_name.find(SEP) else {
@@ -1536,6 +1638,240 @@ mod tests {
     use crate::aura::{AuraNode, AuraStateDef, AuraEvent, AuraPropValue, AuraTextContent};
     use crate::ast::Type;
     use std::collections::HashMap;
+
+    /// PLAN-051 C2 测试公共件：parse 多 widget 源 →
+    /// (decl 列表, root 视图 widget, registry)。合成走 from_decl 路径
+    /// （生产 VM 同款——AuraWidget 路径无 strip_callback_calls，体内
+    /// on_* 调用会链接失败）。
+    fn parse_widgets_for_decls(
+        src: &str,
+    ) -> (
+        Vec<crate::ast::WidgetDecl>,
+        AuraWidget,
+        crate::ui::widget_registry::WidgetRegistry,
+    ) {
+        use crate::parser::Parser;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for s in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = s {
+                decls.push(d.clone());
+            }
+        }
+        assert!(!decls.is_empty(), "至少一个 widget 声明");
+        let root_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        for d in &decls[1..] {
+            let w = crate::aura::extract::extract_widget_from_decl(d).expect("extract child");
+            registry.register(w);
+        }
+        (decls, root_widget, registry)
+    }
+
+    /// PLAN-051 T3 (C2 ②体内式): 017-chat 契约——子 handler 体内
+    /// `on_send(.draft)` 此前被 strip_callback_calls 静默剥除（D-GAP-4），
+    /// App.SendMessage 永不触发。期望：DoSend 派发后宿主收到**快照实参**
+    /// （源序 on_send(.draft) 先于 .draft=""，快照必须发生在子 handler
+    /// 执行前），且 draft 照常清空。
+    #[test]
+    fn plan051_emit_inbody_callback_routes_to_parent() {
+        let src = concat!(
+            "widget App51a {\n",
+            "    msg { SendMessage(str) }\n",
+            "    model { var sent str = \"\" }\n",
+            "    view { col { Composer51a(on_send: .SendMessage) } }\n",
+            "    on {\n",
+            "        .SendMessage(text) -> { .sent = text }\n",
+            "    }\n",
+            "}\n",
+            "widget Composer51a(on_send: msg) {\n",
+            "    msg { DoSend }\n",
+            "    model { var draft str = \"\" }\n",
+            "    view { input (value: .draft, onenter: .DoSend) }\n",
+            "    on {\n",
+            "        .DoSend -> {\n",
+            "            if .draft.trim() != \"\" {\n",
+            "                on_send(.draft)\n",
+            "                .draft = \"\"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        // view() 一次以记录回调路由（render_child_widget → child_emit::ROUTES）。
+        let _ = comp.view();
+        comp.write_state("draft", auto_val::Value::str("hello plan051")).unwrap();
+        comp.on_with_input_for("Composer51a", "DoSend", None);
+        assert_eq!(
+            comp.read_state("sent").expect("sent 字段"),
+            auto_val::Value::str("hello plan051"),
+            "宿主 SendMessage 必须收到快照实参（非清空后的空串）"
+        );
+        assert_eq!(
+            comp.read_state("draft").expect("draft 字段"),
+            auto_val::Value::str(""),
+            "子 handler 照常清空 draft"
+        );
+    }
+
+    /// PLAN-051 T3 (C2 ①声明式): musk 契约——子 msg `send(str)` 派发后
+    /// 宿主 `onsend: .SendInput($event)` 收到 msg 载荷。此前无通用路由
+    /// （renderer 只有 PromptBar 特判），SendInput 静默不触发。
+    #[test]
+    fn plan051_emit_msg_variant_routes_to_parent() {
+        let src = concat!(
+            "widget CV51b {\n",
+            "    msg { SendInput(str) }\n",
+            "    model { var got str = \"\" }\n",
+            "    view { col { MI51b(onsend: .SendInput($event)) } }\n",
+            "    on {\n",
+            "        .SendInput(t) -> { .got = t }\n",
+            "    }\n",
+            "}\n",
+            "widget MI51b {\n",
+            "    msg { send(str) }\n",
+            "    model { var text str = \"\" }\n",
+            "    view { textarea (value: .text, oninput: .send(.text)) }\n",
+            "    on {\n",
+            "        .send(t) -> {\n",
+            "            if t != \"\" {\n",
+            "                .text = \"\"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let (decls, root_widget, registry) = parse_widgets_for_decls(src);
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        let _ = comp.view();
+        comp.write_state("text", auto_val::Value::str("musk roundtrip")).unwrap();
+        // 模拟按钮/Enter 派发：.send(mention_trim(.text)) → 编码载荷 send␟s␟…
+        comp.on_with_input_for("MI51b", "send\u{1F}s\u{1F}musk roundtrip", None);
+        assert_eq!(
+            comp.read_state("got").expect("got 字段"),
+            auto_val::Value::str("musk roundtrip"),
+            "宿主 SendInput($event) 必须收到子 msg 载荷"
+        );
+        assert_eq!(
+            comp.read_state("text").expect("text 字段"),
+            auto_val::Value::str(""),
+            "子 handler 照常清空 text"
+        );
+    }
+
+    /// PLAN-051 T4 (C3): musk 契约——`for msg in .filteredMessages` 以
+    /// computed 为 for 源（链式纯 fn 调用形态）。此前 resolve_iterable/
+    /// ForLoop 转换只读 state（KD-047 UPSTREAM①），miss 即 WARN + 列表空。
+    /// 期望：state miss → computed 求值（裸 fn 别名经 VM 执行）→ 行数渲染。
+    #[test]
+    fn plan051_computed_for_source_fn_call_chain() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "fn tail51c(items: List) -> List {
+",
+            "    return items
+",
+            "}
+",
+            "fn pass51c(items: List, q: str) -> List {
+",
+            "    return tail51c(items)
+",
+            "}
+",
+            "widget Root51c {
+",
+            "    model { var messages []str = []
+    var chat_search str = \"\" }
+",
+            "    view { col { List51c {} } }
+",
+            "}
+",
+            "widget List51c {
+",
+            "    model { var n int = 0 }
+",
+            "    computed { filtered => pass51c(.messages, .chat_search) }
+",
+            "    view { col { for m in .filtered { text \"row\" } } }
+",
+            "}
+",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        assert_eq!(decls.len(), 2, "root + child");
+        let root_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        // 三条消息入 state（heap ListData 形态，与生产 var x = []; push 一致）。
+        comp.write_state_vec(
+            "messages",
+            vec![auto_val::Value::str("m1"), auto_val::Value::str("m2"), auto_val::Value::str("m3")],
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let rows = count_text_nodes(&view, "row");
+        assert_eq!(rows, 3, "computed for 源必须解出 3 行（链式 fn 调用经 VM 执行）");
+    }
+
+    /// PLAN-051 T4 测试辅助：统计 View 树中内容等于 label 的 Text 节点数。
+    fn count_text_nodes(view: &View<DynamicMessage>, label: &str) -> usize {
+        match view {
+            View::Text { content, .. } => usize::from(content == label),
+            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            _ => 0,
+        }
+    }
 
     /// Round-trip the onclick payload encoding the renderer uses to carry args
     /// across iced's Send boundary. Mirrors `encode_payload` (renderer.rs) by
