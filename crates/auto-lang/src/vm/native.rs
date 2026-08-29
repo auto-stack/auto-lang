@@ -821,6 +821,114 @@ pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     Ok(())
 }
 
+// ── Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ─────
+// 降级契约（G3）：非 Windows / 未开 `native-clipboard` 时走下方降级臂，
+// 返回空表 / false / null —— .at 代码零平台分支。ui 桥在
+// `ui/clipboard_native.rs`（Win32 双门控同 native-dock）。
+
+/// `clipboard_files_get() -> List<str>`（Explorer Ctrl+C 后取路径列表）。
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let paths = crate::ui::clipboard_native::clipboard_files_get();
+    let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+    for p in paths {
+        list.push(auto_val::Value::Str(auto_val::AutoStr::from(p)));
+    }
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+/// `clipboard_files_set(paths: List<str>) -> Bool`（Explorer Ctrl+V 落地）。
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn shim_clipboard_files_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+            for v in &list.elems {
+                if let auto_val::Value::Str(s) = v {
+                    paths.push(std::path::PathBuf::from(s.as_str()));
+                }
+            }
+        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+            paths.extend(list.elems.iter().map(std::path::PathBuf::from));
+        }
+    }
+    let ok = crate::ui::clipboard_native::clipboard_files_set(&paths);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `clipboard_image_get() -> {path,width,height} | None`（DIBV5→PNG 存
+/// temp；Record 走 heap ObjectData，Plan 390 §15 H3b 形态）。
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn shim_clipboard_image_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use auto_val::{AutoStr, Value, ValueKey};
+    match crate::ui::clipboard_native::clipboard_image_get() {
+        Some(img) => {
+            let mut rec = crate::vm::types::ObjectData::new();
+            rec.set(
+                ValueKey::Str(AutoStr::from("path")),
+                Value::Str(AutoStr::from(img.path.to_string_lossy())),
+            );
+            rec.set(ValueKey::Str(AutoStr::from("width")), Value::Int(img.width as i32));
+            rec.set(
+                ValueKey::Str(AutoStr::from("height")),
+                Value::Int(img.height as i32),
+            );
+            let id = vm.insert_heap_object(rec);
+            vm.rc_push_id(task, id as u64);
+        }
+        None => task.ram.push_nv(auto_val::encode_null()),
+    }
+    Ok(())
+}
+
+/// `clipboard_image_set(png_path: str) -> Bool`
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string_arg(task, vm);
+    let ok = crate::ui::clipboard_native::clipboard_image_set(std::path::Path::new(&path));
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// 降级臂（G3）：空表。
+#[cfg(not(all(windows, feature = "native-clipboard")))]
+pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let list = crate::vm::types::ListData::<auto_val::Value>::new();
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+/// 降级臂（G3）：false（仍弹出实参保持栈纪律）。
+#[cfg(not(all(windows, feature = "native-clipboard")))]
+pub fn shim_clipboard_files_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_arg_i32(task);
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+/// 降级臂（G3）：None → null。
+#[cfg(not(all(windows, feature = "native-clipboard")))]
+pub fn shim_clipboard_image_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
+/// 降级臂（G3）：false（仍弹出实参）。
+#[cfg(not(all(windows, feature = "native-clipboard")))]
+pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_string_arg(task, vm);
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
 // ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
 // Both return "" on cancel/unavailable (headless CI included).
 

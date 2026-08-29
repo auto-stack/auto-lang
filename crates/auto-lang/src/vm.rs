@@ -99,6 +99,11 @@ mod tests_closures;
 mod tests_collections;
 mod tests_chart_geometry;
 
+// Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返；
+// 门控 native-clipboard——测试用 image crate 造合成 PNG）。
+#[cfg(all(test, feature = "native-clipboard"))]
+mod tests_clipboard_natives;
+
 // TODO: Create tests_bigvm.rs file
 // #[cfg(test)]
 // mod tests_bigvm;

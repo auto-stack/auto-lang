@@ -42,6 +42,11 @@ macro_rules! for_each_native {
             (2924, NATIVE_CODE_EDITOR_PASTE, shim_code_editor_paste, "auto.code_editor.paste"),
             (2925, NATIVE_CLIPBOARD_TEXT, shim_clipboard_text, "auto.clipboard.text"),
             (2926, NATIVE_CLIPBOARD_SET_TEXT, shim_clipboard_set_text, "auto.clipboard.set_text"),
+            // === Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ===
+            (2934, NATIVE_CLIPBOARD_FILES_GET, shim_clipboard_files_get, "auto.clipboard.files_get"),
+            (2935, NATIVE_CLIPBOARD_FILES_SET, shim_clipboard_files_set, "auto.clipboard.files_set"),
+            (2936, NATIVE_CLIPBOARD_IMAGE_GET, shim_clipboard_image_get, "auto.clipboard.image_get"),
+            (2937, NATIVE_CLIPBOARD_IMAGE_SET, shim_clipboard_image_set, "auto.clipboard.image_set"),
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
             (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
@@ -708,6 +713,12 @@ macro_rules! for_each_bigvm_native {
             ("auto.code_editor.paste", 2924, Bool),
             ("auto.clipboard.text", 2925, String),
             ("auto.clipboard.set_text", 2926, Bool),
+            // === Plan 485: native clipboard files/images (image_get 返回
+            // {path,width,height} Record 或 null，ret tag 取 Map) ===
+            ("auto.clipboard.files_get", 2934, List),
+            ("auto.clipboard.files_set", 2935, Bool),
+            ("auto.clipboard.image_get", 2936, Map),
+            ("auto.clipboard.image_set", 2937, Bool),
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
             ("auto.file.basename", 2929, String),
