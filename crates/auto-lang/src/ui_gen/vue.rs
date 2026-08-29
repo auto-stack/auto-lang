@@ -1421,6 +1421,26 @@ impl VueGenerator {
             static_cls.push_str(nc::ITEM_DISABLED);
         }
         let mut inline_attrs: Vec<String> = vec![format!("class=\"{}\"", static_cls)];
+        // Plan 482 补:用户 class 追加（shadcn 路径同款逃生通道）。
+        if let Some(cls) = self.nav_user_class_attr(props) {
+            inline_attrs.push(cls);
+        }
+        // Plan 482 补:data-active 语义锚(测试/无障碍;os-config e2e 同款用法)。
+        if let Some(value) = props.get("active") {
+            match value {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(true)) => {
+                    inline_attrs.push("data-active=\"true\"".to_string());
+                }
+                AuraPropValue::Expr(crate::ast::Expr::Bool(false)) => {
+                    inline_attrs.push("data-active=\"false\"".to_string());
+                }
+                AuraPropValue::Expr(expr) => {
+                    let cond = self.bound_value_or_warn(expr, "nav-item active", "false");
+                    inline_attrs.push(format!(":data-active=\"!!({})\"", cond));
+                }
+                _ => {}
+            }
+        }
         if !static_active && !static_disabled {
             if let Some(value) = props.get("active") {
                 if let AuraPropValue::Expr(expr) = value {
