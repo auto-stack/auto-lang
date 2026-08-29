@@ -6462,9 +6462,182 @@ fn execute_desktop_commands(
                     }
                 }
             }
+            // Plan 473 T4：原生窗口收编/解除（native dock Phase 1；执行体见下）。
+            DC::DockNative(target) => execute_dock_native(state, target),
+            DC::UndockNative(slot) => execute_undock_native(state, slot),
         }
     }
     (false, tasks)
+}
+
+/// Plan 473 T4：原生窗口收编执行体（`dock_native` 命令路径）。Win32 发现/几何
+/// 经 `native_dock::win32`；状态机经 `WmState::advance_native_slot` 推进。
+/// 槽位矩形为可用区级联占位——布局参与由 T5 接管；局部→物理 DPI 换算（本步
+/// 以 scale=1 近似，缩放屏几何暂偏）、z 序沉降与 chrome 装配见 T6（待澄清④）。
+/// 拒绝/失败均 toast（C1/C3 提示语义），不留半收编窗口。
+#[cfg(windows)]
+fn execute_dock_native(
+    state: &mut crate::ui::session::DesktopSession,
+    target: crate::ui::session::NativeTarget,
+) {
+    use crate::ui::native_dock::{win32 as ndw, NativeHwnd, RejectReason, SlotEvent};
+
+    if !state.is_desktop() {
+        push_desktop_toast(state, "error", "原生窗口 dock 仅桌面模式可用");
+        return;
+    }
+    // ① 定位：pid 枚举首个可见顶层窗 / hwnd 直传。
+    let hwnd = match target {
+        crate::ui::session::NativeTarget::ByPid(pid) => ndw::find_top_level_by_pid(pid),
+        crate::ui::session::NativeTarget::ByHwnd(h) => {
+            let h = NativeHwnd(h);
+            ndw::is_alive(h).then_some(h)
+        }
+    };
+    let Some(hwnd) = hwnd else {
+        push_desktop_toast(state, "error", RejectReason::HwndNotFound.message());
+        return;
+    };
+    // ② C5：已最大化窗口先 restore 再摆；记 pre-dock 基线。
+    if ndw::is_maximized(hwnd) {
+        let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
+    }
+    let Some(pre_bounds) = ndw::get_bounds(hwnd) else {
+        push_desktop_toast(state, "error", RejectReason::HwndNotFound.message());
+        return;
+    };
+    let title = ndw::get_title(hwnd).unwrap_or_else(|| "native".into());
+    let pid = ndw::pid_of(hwnd).unwrap_or(0);
+    // ③ 槽位矩形：可用区 1/3 级联占位（T5 起由布局引擎分配）。
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let slot_count = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.native_slots.len())
+        .unwrap_or(0);
+    let slot_logical = crate::ui::layout::cascade_rect(
+        slot_count,
+        iced::Size::new(usable.width * 0.35, usable.height * 0.55),
+        usable,
+    );
+    let slot_rect = crate::ui::native_dock::Rect::new(
+        slot_logical.x as i32,
+        slot_logical.y as i32,
+        slot_logical.width as i32,
+        slot_logical.height as i32,
+    );
+    // C3 clamp：min-size 首装未知记 0，几何写读回后缓存估计。
+    let (win_rect, fitted_slot) =
+        match crate::ui::native_dock::clamp_to_slot(pre_bounds.size(), slot_rect, crate::ui::native_dock::Size::new(0, 0), slot_rect)
+        {
+            Ok(v) => v,
+            Err(reason) => {
+                push_desktop_toast(state, "error", reason.message());
+                return;
+            }
+        };
+    // ④ 登记 Candidate → 剥样式 → DockRequested → 几何写入 → DockConfirmed。
+    let id = {
+        let host = state.host.as_mut().expect("desktop checked");
+        host.wm
+            .add_native_slot(hwnd.0, pid, title.clone(), pre_bounds, fitted_slot)
+    };
+    let saved_style = match ndw::strip_chrome(hwnd) {
+        Ok(s) => s,
+        Err(_) => {
+            dock_fail(state, id, RejectReason::Elevated);
+            return;
+        }
+    };
+    if let Some(host) = state.host.as_mut() {
+        if let Some(slot) = host.wm.native_slots.get_mut(&id) {
+            slot.pre_dock_style = saved_style;
+        }
+    }
+    let action = {
+        let host = state.host.as_mut().expect("desktop checked");
+        host.wm.advance_native_slot(id, SlotEvent::DockRequested).0
+    };
+    let crate::ui::native_dock::SlotAction::SyncGeometry(rect) = action else {
+        return;
+    };
+    if let Err(err) = ndw::set_bounds(hwnd, rect) {
+        let _ = ndw::restore_chrome(hwnd, saved_style);
+        let reason = match err {
+            ndw::DockError::Elevated => RejectReason::Elevated,
+            _ => RejectReason::HwndNotFound,
+        };
+        dock_fail(state, id, reason);
+        return;
+    }
+    // ⑤ min-size 写读回探测（不可信窗口防御）+ Win11 直角 + 确认入局。
+    if let Some(host) = state.host.as_mut() {
+        if let Some(slot) = host.wm.native_slots.get_mut(&id) {
+            if let Some(actual) = ndw::probe_bounds(hwnd, rect) {
+                slot.min_size_est = crate::ui::native_dock::observe_min_size_estimate(rect.size(), actual.size());
+            }
+        }
+    }
+    let _ = ndw::set_square_corners(hwnd);
+    if let Some(host) = state.host.as_mut() {
+        host.wm.advance_native_slot(id, SlotEvent::DockConfirmed);
+    }
+    push_desktop_toast(state, "success", &format!("已收编 {title}"));
+}
+
+/// dock 失败统一出口：状态机走 Rejected 终态（注册表自动移除）+ toast。
+#[cfg(windows)]
+fn dock_fail(
+    state: &mut crate::ui::session::DesktopSession,
+    id: crate::ui::native_dock::NativeSlotId,
+    reason: crate::ui::native_dock::RejectReason,
+) {
+    use crate::ui::native_dock::SlotEvent;
+    if let Some(host) = state.host.as_mut() {
+        host.wm.advance_native_slot(id, SlotEvent::DockFailed(reason));
+    }
+    push_desktop_toast(state, "error", reason.message());
+}
+
+#[cfg(not(windows))]
+fn execute_dock_native(
+    state: &mut crate::ui::session::DesktopSession,
+    _target: crate::ui::session::NativeTarget,
+) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
+}
+
+/// Plan 473 T4：解除收编执行体（`undock_native` 命令路径；B2 语义）——
+/// 状态机 Docked→Undocking→恢复 pre-dock bounds/样式→RestoreCompleted
+/// （终态自动出注册表）。
+#[cfg(windows)]
+fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::{win32 as ndw, NativeSlotId, SlotEvent};
+    let id = NativeSlotId(slot_id);
+    let found = state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id)).map(|slot| {
+        (slot.hwnd, slot.pre_dock_bounds, slot.pre_dock_style, slot.title_cache.clone())
+    });
+    let Some((hwnd, bounds, style, title)) = found else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+        return;
+    };
+    if let Some(host) = state.host.as_mut() {
+        host.wm.advance_native_slot(id, SlotEvent::UndockRequested);
+    }
+    let _ = ndw::set_bounds(hwnd, bounds);
+    if style != 0 {
+        let _ = ndw::restore_chrome(hwnd, style);
+    }
+    if let Some(host) = state.host.as_mut() {
+        host.wm.advance_native_slot(id, SlotEvent::RestoreCompleted);
+    }
+    push_desktop_toast(state, "success", &format!("已恢复 {title}"));
+}
+
+#[cfg(not(windows))]
+fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
 }
 
 /// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
