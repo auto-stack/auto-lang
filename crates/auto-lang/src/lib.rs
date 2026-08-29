@@ -3700,6 +3700,31 @@ fn build_dynamic_component_inner(
         || std::env::var("AUTO_BACKEND")
             .map(|v| !v.trim().is_empty())
             .unwrap_or(false);
+    // PLAN-050 T7 (C5): use.web component 名单注册——builder 图标组件臂的
+    // 生产数据源（import_stmts 不含 UseWeb,Plan 442 ext 流单独消费）。每次
+    // 装载整体替换。all_child_decls 此处已定型（child 装载循环已收尾）。
+    // 来源两路:根 AST 顶层 use.web（musk app.at 形态）+ widget 内嵌
+    // ext_imports（decl 携带形态）。
+    {
+        let mut names: Vec<String> = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::UseWeb(entries) = stmt {
+                for e in entries {
+                    if matches!(e.kind, crate::ast::ui::ExtImportKind::Component) {
+                        names.extend(e.symbols.iter().map(|n| n.to_string()));
+                    }
+                }
+            }
+        }
+        for decl in std::iter::once(&root_decl).chain(all_child_decls.iter()) {
+            for ext in &decl.ext_imports {
+                if matches!(ext.kind, crate::ast::ui::ExtImportKind::Component) {
+                    names.extend(ext.symbols.iter().map(|n| n.to_string()));
+                }
+            }
+        }
+        crate::ui::aura_view_builder::register_imported_components(names);
+    }
     let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &all_child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
         .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 

@@ -2015,17 +2015,26 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert an AuraNode::Element to a View variant based on the tag name.
-    /// PLAN-050 T7 (C5): tag 是否为本层 import_stmts 里 `use.web component`
-    /// 声明的外部组件名（musk 图标即此形态——ports/icons.at → lucide）。
+    /// PLAN-050 T7 (C5): tag 是否为 `use.web component` 声明的外部组件名
+    /// （musk 图标即此形态——ports/icons.at → lucide）。两个来源：单测直传
+    /// 的 import_stmts，以及装载器经 register_imported_components 注册的
+    /// 进程级表（生产管线 import_stmts 不含 UseWeb——Plan 442 ext 流单独
+    /// 消费——故后者是主路径）。
     fn is_imported_component(&self, tag: &str) -> bool {
-        let Some(stmts) = self.import_stmts else { return false };
-        stmts.iter().any(|s| match s {
-            crate::ast::Stmt::UseWeb(entries) => entries.iter().any(|e| {
-                matches!(e.kind, crate::ast::ui::ExtImportKind::Component)
-                    && e.symbols.iter().any(|n| n.as_str() == tag)
-            }),
-            _ => false,
-        })
+        if let Some(stmts) = self.import_stmts {
+            if stmts.iter().any(|s| match s {
+                crate::ast::Stmt::UseWeb(entries) => entries.iter().any(|e| {
+                    matches!(e.kind, crate::ast::ui::ExtImportKind::Component)
+                        && e.symbols.iter().any(|n| n.as_str() == tag)
+                }),
+                _ => false,
+            }) {
+                return true;
+            }
+        }
+        imported_components_registry()
+            .map(|set| set.contains(tag))
+            .unwrap_or(false)
     }
 
     /// PLAN-050 T7 (C5): 图标组件 → View::Image{lucide:kebab}。size prop
@@ -6475,6 +6484,28 @@ let tabs_inner = View::Row {
 // ============================================================================
 // Free helper functions
 // ============================================================================
+
+/// PLAN-050 T7 (C5): 生产管线的 use.web component 名单（lib.rs 装载期从
+/// root+child decls 的 ext_imports 收集注册；每次装载整体替换）。builder
+/// 的图标组件臂按此判定。
+static IMPORTED_COMPONENT_NAMES: std::sync::RwLock<Option<std::collections::HashSet<String>>> =
+    std::sync::RwLock::new(None);
+
+pub fn register_imported_components(names: Vec<String>) {
+    if let Ok(mut guard) = IMPORTED_COMPONENT_NAMES.write() {
+        *guard = Some(names.into_iter().collect());
+    }
+}
+
+pub fn clear_imported_components() {
+    if let Ok(mut guard) = IMPORTED_COMPONENT_NAMES.write() {
+        *guard = None;
+    }
+}
+
+fn imported_components_registry() -> Option<std::collections::HashSet<String>> {
+    IMPORTED_COMPONENT_NAMES.read().ok().and_then(|g| g.clone())
+}
 
 /// PLAN-050 T7 (C5): PascalCase 图标名 → lucide kebab-case（MessageSquare →
 /// message-square;Loader2/Trash2 → loader-2/trash-2,数字段前也加连字符）。
