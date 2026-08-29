@@ -3148,14 +3148,60 @@ let tabs_inner = View::Row {
         }
     }
 
+    /// PLAN-051 C2: 把 Component 调用位上的回调绑定（`onsend: .SendInput($event)`
+    /// / `on_send: .SendMessage` 形态）记入 child_emit 路由表。实测该绑定落
+    /// Component 节点的 **events**（AuraEvent 已解析形态）；props 路径（Plan 345
+    /// 非 native on* 分流的 Expr 原样形态）作兜底双扫。DOM-native 键（onclick/
+    /// oninput/…）不是 emit 回调，跳过。键按父侧声明原样（"onsend"/"on_send"/…），
+    /// 派发侧以 "on"+子 msg 名（声明式）或剥离调用名（体内式）查表。每帧重建
+    /// 重放，同键后写覆盖。
+    fn record_child_callback_routes_for(
+        parent_widget: String,
+        child_name: String,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+    ) {
+        for (key, ev) in events.iter() {
+            if !key.starts_with("on") || crate::aura::extract::is_native_event_key(key) {
+                continue;
+            }
+            crate::ui::child_emit::record_route(
+                &child_name,
+                key,
+                crate::ui::child_emit::ParentRoute {
+                    parent_widget: parent_widget.clone(),
+                    handler: ev.handler.trim_start_matches('.').to_string(),
+                    params: ev.params.clone(),
+                },
+            );
+        }
+        for (key, pv) in props.iter() {
+            if !key.starts_with("on") {
+                continue;
+            }
+            let AuraPropValue::Expr(expr) = pv else { continue };
+            let Some((handler, params)) = callback_prop_route(expr) else { continue };
+            crate::ui::child_emit::record_route(
+                &child_name,
+                key,
+                crate::ui::child_emit::ParentRoute {
+                    parent_widget: parent_widget.clone(),
+                    handler,
+                    params,
+                },
+            );
+        }
+    }
+
     fn render_child_widget(
         &self,
         child_widget: &crate::aura::AuraWidget,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
+        events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
         // Init 会触发(fire_init),视图中实例化的子组件 Init 从不运行,
@@ -3198,13 +3244,14 @@ let tabs_inner = View::Row {
         &self,
         child_widget: &crate::aura::AuraWidget,
         props: &HashMap<String, AuraPropValue>,
-        _events: &HashMap<String, AuraEvent>,
+        events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
         probe: &mut BuildProbe,
         slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
+        Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
@@ -6816,6 +6863,45 @@ fn parse_event_param_literal(param: &str) -> Value {
 }
 
 /// Convert a Value to a display string suitable for UI rendering.
+/// PLAN-051 C2: Component 调用位回调 prop 的 Expr → (handler 名, params)。
+/// 覆盖两形态：`.SendMessage`（裸引用，无参）与 `.SendInput($event)`
+/// （调用，`$event` 占位）。前导点 parser 规整为 `this.` 前缀或裸 `.` 前缀
+/// Ident 两种都收。
+fn callback_prop_route(expr: &crate::ast::Expr) -> Option<(String, Vec<String>)> {
+    use crate::ast::Expr as E;
+    let self_field = |obj: &E, field: &str| -> Option<String> {
+        match obj {
+            E::Ident(n) => {
+                let s = n.as_str();
+                (s == "self" || s == "." || s.is_empty()).then(|| field.to_string())
+            }
+            _ => None,
+        }
+    };
+    match expr {
+        E::Call(call) => {
+            let handler = match call.name.as_ref() {
+                E::Ident(n) => n.as_str().trim_start_matches('.').to_string(),
+                E::Dot(obj, field) => self_field(obj, field.as_str())?,
+                _ => return None,
+            };
+            let params = call
+                .args
+                .args
+                .iter()
+                .filter_map(|a| match a {
+                    crate::ast::Arg::Pos(E::Ident(n)) => Some(n.as_str().to_string()),
+                    _ => None,
+                })
+                .collect();
+            Some((handler, params))
+        }
+        E::Ident(n) => Some((n.as_str().trim_start_matches('.').to_string(), vec![])),
+        E::Dot(obj, field) => Some((self_field(obj, field.as_str())?, vec![])),
+        _ => None,
+    }
+}
+
 fn value_to_display_string(value: &Value) -> String {
     match value {
         Value::Int(i) => i.to_string(),

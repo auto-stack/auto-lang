@@ -1187,11 +1187,67 @@ fn synthesize_handler_fn_from_decl(
 /// `on_delete()`, `on_tags_changed()`, etc. are routed by the renderer
 /// (DynamicMessage → parent handler), not by the VM. Removing them from the
 /// compiled body prevents linker errors for undefined symbols.
-fn strip_callback_calls(stmts: &mut Vec<Stmt>) {
+/// PLAN-051 C2: 返回被剥离的调用（回调名 + 实参 AST）——派发侧（dynamic.rs
+/// on_with_input_for）在子 handler 执行**前**按实参快照求值、执行后经
+/// child_emit 路由表派发到宿主 handler（源序里 on_send(.draft) 先于
+/// .draft=""，剥离后续跑会读到清空值，故必须前置快照）。
+fn strip_callback_calls(stmts: &mut Vec<Stmt>) -> Vec<crate::ui::child_emit::StrippedCall> {
+    let mut stripped = Vec::new();
     for stmt in stmts.iter_mut() {
-        strip_callback_calls_stmt(stmt);
+        stripped.extend(strip_callback_calls_stmt(stmt));
     }
-    stmts.retain(|stmt| !is_noop_callback_call(stmt));
+    let mut top_level = Vec::new();
+    let mut keep = Vec::with_capacity(stmts.len());
+    for stmt in std::mem::take(stmts) {
+        if is_noop_callback_call(&stmt) {
+            if let Stmt::Expr(Expr::Call(call)) = &stmt {
+                top_level.push(stripped_call_record(call));
+            }
+        } else {
+            keep.push(stmt);
+        }
+    }
+    *stmts = keep;
+    top_level.extend(stripped);
+    top_level
+}
+
+/// `on_send(.draft)` 调用 → StrippedCall 记录（首个位置实参的文本形式：
+/// `this.draft` / `"You"` / `42`——Expr 非 Send，进程级表存文本）。
+fn stripped_call_record(call: &crate::ast::Call) -> crate::ui::child_emit::StrippedCall {
+    let callback = match call.name.as_ref() {
+        Expr::Ident(name) => name.as_str().to_string(),
+        _ => String::new(),
+    };
+    let arg = call.args.args.iter().find_map(|a| match a {
+        Arg::Pos(e) => stripped_arg_text(e),
+        _ => None,
+    });
+    crate::ui::child_emit::StrippedCall { callback, arg }
+}
+
+/// 实参 AST → 文本（ Ident/Dot 前导点两形态、字面量；其余 None 派发侧 Nil）。
+fn stripped_arg_text(e: &Expr) -> Option<String> {
+    match e {
+        Expr::Ident(n) => Some(n.as_str().to_string()),
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(n)
+                if n.as_str() == "self"
+                    || n.as_str() == "."
+                    || n.as_str().is_empty()
+                    || n.as_str() == STATE_PARAM =>
+            {
+                // STATE_PARAM 形态来自 rewrite_state_refs 的前置重写
+                // （.draft → __state.draft），语义同 this.draft。
+                Some(format!("this.{}", field.as_str()))
+            }
+            _ => None,
+        },
+        Expr::Str(s) => Some(format!("\"{}\"", s.as_str())),
+        Expr::Int(i) => Some(i.to_string()),
+        Expr::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
 }
 
 fn is_noop_callback_call(stmt: &Stmt) -> bool {
@@ -1203,44 +1259,40 @@ fn is_noop_callback_call(stmt: &Stmt) -> bool {
     false
 }
 
-fn strip_callback_calls_stmt(stmt: &mut Stmt) {
+fn strip_callback_calls_stmt(stmt: &mut Stmt) -> Vec<crate::ui::child_emit::StrippedCall> {
     match stmt {
         Stmt::If(If { branches, else_ }) => {
+            let mut out = Vec::new();
             for Branch { body, .. } in branches.iter_mut() {
-                strip_callback_calls(&mut body.stmts);
+                out.extend(strip_callback_calls(&mut body.stmts));
             }
             if let Some(eb) = else_ {
-                strip_callback_calls(&mut eb.stmts);
+                out.extend(strip_callback_calls(&mut eb.stmts));
             }
+            out
         }
-        Stmt::For(f) => {
-            strip_callback_calls(&mut f.body.stmts);
-        }
-        Stmt::Block(b) => {
-            strip_callback_calls(&mut b.stmts);
-        }
-        Stmt::Fn(fn_decl) => {
-            strip_callback_calls(&mut fn_decl.body.stmts);
-        }
-        Stmt::Expr(e) => {
-            strip_callback_calls_expr(e);
-        }
-        _ => {}
+        Stmt::For(f) => strip_callback_calls(&mut f.body.stmts),
+        Stmt::Block(b) => strip_callback_calls(&mut b.stmts),
+        Stmt::Fn(fn_decl) => strip_callback_calls(&mut fn_decl.body.stmts),
+        Stmt::Expr(e) => strip_callback_calls_expr(e),
+        _ => Vec::new(),
     }
 }
 
-fn strip_callback_calls_expr(e: &mut Expr) {
+fn strip_callback_calls_expr(e: &mut Expr) -> Vec<crate::ui::child_emit::StrippedCall> {
     match e {
         Expr::Block(b) => strip_callback_calls(&mut b.stmts),
         Expr::If(If { branches, else_ }) => {
-            for Branch { body, .. } in branches {
-                strip_callback_calls(&mut body.stmts);
+            let mut out = Vec::new();
+            for Branch { body, .. } in branches.iter_mut() {
+                out.extend(strip_callback_calls(&mut body.stmts));
             }
             if let Some(eb) = else_ {
-                strip_callback_calls(&mut eb.stmts);
+                out.extend(strip_callback_calls(&mut eb.stmts));
             }
+            out
         }
-        _ => {}
+        _ => Vec::new(),
     }
 }
 
@@ -1290,8 +1342,13 @@ fn synthesize_handler_fn_from_decl_with_store(
     // Plan 370 D-GAP-4: for child widgets, strip callback prop calls (on_delete,
     // on_tags_changed, etc.) — they're routed by the renderer (DynamicMessage),
     // not the VM. Replacing them with no-op prevents linker errors.
+    // PLAN-051 C2: 剥离同时登记 child_emit::STRIPPED 表，派发侧按快照实参
+    // 经 ROUTES 表回送宿主 handler（on_send(.draft) 不再静默消失）。
     if widget_name != root_widget_name {
-        strip_callback_calls(&mut stmts);
+        let stripped_calls = strip_callback_calls(&mut stmts);
+        let full = handler_fn_name(event_pattern);
+        let bare_event = full.strip_prefix("handler_").unwrap_or(full.as_str()).to_string();
+        crate::ui::child_emit::record_stripped(widget_name, &bare_event, stripped_calls);
     }
 
     let body = Body {
