@@ -103,6 +103,11 @@ pub struct IcedStyle {
     pub border: bool,
     pub border_width: Option<f32>,
     pub border_color: Option<iced::Color>,
+    // PLAN-050 C2: 单侧边框（renderer 以 1px 填充条模拟）
+    pub border_bottom: bool,
+    pub border_top: bool,
+    pub border_left: bool,
+    pub border_right: bool,
 
     // Typography (L2)
     pub font_size: Option<IcedFontSize>,
@@ -296,6 +301,10 @@ impl IcedStyle {
             border: false,
             border_width: None,
             border_color: None,
+            border_bottom: false,
+            border_top: false,
+            border_left: false,
+            border_right: false,
             font_size: None,
             font_weight: None,
             font_family: None,
@@ -624,6 +633,18 @@ impl IcedStyle {
             }
 
             // ========== Border (L2) ==========
+            StyleClass::BorderBottom => {
+                self.border_bottom = true;
+            }
+            StyleClass::BorderTop => {
+                self.border_top = true;
+            }
+            StyleClass::BorderLeft => {
+                self.border_left = true;
+            }
+            StyleClass::BorderRight => {
+                self.border_right = true;
+            }
             StyleClass::Border => {
                 self.border = true;
                 self.border_width = Some(1.0);
@@ -1098,6 +1119,53 @@ mod tests {
         // hover bg-muted/60 wins over bg-transparent: semi-opaque surface.
         let bg = is.background_color.expect("hover bg must be set");
         assert!(bg.a > 0.0 && bg.a < 1.0, "expected muted/60 alpha, got {}", bg.a);
+    }
+
+    // PLAN-050 T6 (C4): bg-<token>/<nn> 全链 alpha 保留——解析侧 Plan 409 已库
+    // (test_semantic_color_with_alpha_is_dark_aware),此处钉住渲染侧:经
+    // from_style/convert_color 进 IcedStyle.background_color 后 alpha 不得拍平,
+    // renderer Background::Color 直绘即得半透明高亮(rail 激活底色 bg-primary/10)。
+    #[test]
+    fn plan050_bg_alpha_survives_to_iced_style() {
+        let style = Style::parse("bg-primary/10").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is.background_color.expect("bg-primary/10 must set background_color");
+        assert!((bg.a - 25.0 / 255.0).abs() < 1e-4, "10% alpha → 25/255, got {}", bg.a);
+        // 非语义色同样保 alpha:bg-gray-500/50 → 127/255。
+        let style = Style::parse("bg-gray-500/50").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is.background_color.expect("bg-gray-500/50 must set background_color");
+        assert!((bg.a - 127.0 / 255.0).abs() < 1e-4, "50% alpha → 127/255, got {}", bg.a);
+    }
+
+    // PLAN-050 T8 (C6): absolute 定位工具类在 VM 轨的降级契约——解析不报错、
+    // 不产生任何样式类（iced 无浮层,position 类整体丢弃=文档流内联展开）,
+    // 而同串的布局/外观类（宽度/底色/边框/圆角/阴影）必须存活。settings_menu
+    // 面板类串依赖此形态:vue 轨 absolute 浮层,VM 轨同名串降级内联面板。
+    #[test]
+    fn plan050_absolute_utilities_degrade_to_inline_flow() {
+        let s = Style::parse(
+            "absolute bottom-full left-0 mb-2 min-w-[220px] w-full bg-card border border-border rounded-[10px] shadow-md p-2.5 flex flex-col",
+        )
+        .expect("面板类串必须可解析");
+        // 定位类解析为 Absolute/LeftOffset 变体（iced_adapter:"store but will
+        // be ignored" —— 渲染端不消费即文档流内联展开,这正是 VM 降级形态）。
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)),
+            "absolute 应解析为 Absolute 变体"
+        );
+        assert!(
+            !matches!(IcedStyle::from_style(&s).position, None),
+            "IcedStyle.position 应记录 Absolute（渲染端忽略=内联降级）"
+        );
+        // 外观/布局类存活
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))), "w-full 必须存活");
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+            "bg-card 必须存活"
+        );
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Border)), "border 必须存活");
+        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol)), "flex-col 必须存活");
     }
 
     #[test]

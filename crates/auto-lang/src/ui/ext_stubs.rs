@@ -368,13 +368,19 @@ pub(crate) fn synthesize_stub_fn(name: &str, arity: usize) -> Stmt {
             destructure: None,
         })
         .collect();
+    // PLAN-050 T9: 显式 return None——空 body 在 VM 里落 void 哨兵 Int(0)，
+    // 被 `x = stub().await` 写进 `obj = None` 模型变量后 `.x != None` 恒真
+    // 而 `.x.field` 落空（musk WorkspaceSelector 的 rail 底部裸
+    // "${currentName}" 即此）。Nil 与 Option/None 语义对齐。
+    let mut body = Body::new();
+    body.stmts.push(Stmt::Return(Box::new(Expr::None)));
     let f = Fn {
         kind: FnKind::Function,
         name: FnName::from(name),
         parent: None,
         params,
-        body: Body::new(),
-        ret: crate::ast::Type::Void,
+        body,
+        ret: crate::ast::Type::Unknown,
         ret_name: None,
         is_static: false,
         is_pub: true,

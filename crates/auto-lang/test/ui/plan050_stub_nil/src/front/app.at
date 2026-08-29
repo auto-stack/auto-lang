@@ -1,0 +1,33 @@
+// app.at — PLAN-050 T9 (C7) regression corpus: void ext stub must read as
+// None, not Int(0). Mirrors auto-musk's WorkspaceSelector shape: the child
+// model var `current obj = None` is assigned from a web-only helper
+// (`ws_load_current`) in an `.Init` handler. Before the fix the platform
+// stub returned the VM void sentinel Int(0), so `.current != None` was
+// true and `.current.name` failed → the view rendered the raw
+// "${currentName}" placeholder instead of the computed else branch.
+
+use.web ws_load_current from "src/front/ws.ts"
+
+
+widget App {
+    model {
+        var current obj = None
+    }
+
+    computed {
+        currentName => if .current != None { .current.name } else { "选择工作目录" }
+    }
+
+    on {
+        .Init -> {
+            .current = ws_load_current().await
+        }
+    }
+
+    view {
+        button {
+            span { text .currentName }
+        }
+        text i18n.t("settings.title")
+    }
+}

@@ -3207,6 +3207,14 @@ fn build_dynamic_component_inner(
     let widget = widget.ok_or("No widget declaration found")?;
     let root_decl = root_decl.ok_or("No widget declaration found")?;
 
+    // PLAN-050 T9 (C7): VM 轨 t() 插值查表——front 根目录 i18n/{lang}.json
+    // 存在则装载（默认 zh, AUTO_LOCALE 可覆）；缺席 = 空表静默。
+    if let Some(file_path) = path {
+        if let Some(base_dir) = std::path::Path::new(file_path).parent() {
+            crate::ui::i18n_lookup::load_from_dir(base_dir);
+        }
+    }
+
     // Plan 451: root widget 的 `actions {}` 块安装 DSL 动作配置（优先于
     // auto-atom 外挂文件；热重载经 action_config::reload_action_config
     // 重读本源文件）。消费点（键盘回退层/menubar·toolbar 合成/MCP 同源）

@@ -1267,6 +1267,36 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
         .into()
 }
 
+/// Plan-050 C1: content-subtree 按钮的内容对齐决策——web flex 语义到 iced
+/// 容器对齐的最小映射（仅消费四界面布局用到的组合；未命中返回 None = 维持
+/// iced Button 默认内容居中）。justify-content 优先于 text-align（前者是
+/// 布局声明，后者是文本对齐兜底）。
+fn plan050_content_align(
+    is: Option<&IcedStyle>,
+) -> (
+    Option<iced::alignment::Horizontal>,
+    Option<iced::alignment::Vertical>,
+) {
+    use iced::alignment::{Horizontal, Vertical};
+    let Some(is) = is else { return (None, None) };
+    let h = match is.justify_content {
+        Some(crate::ui::style::iced_adapter::IcedJustify::Start) => Some(Horizontal::Left),
+        Some(crate::ui::style::iced_adapter::IcedJustify::End) => Some(Horizontal::Right),
+        Some(crate::ui::style::iced_adapter::IcedJustify::Center) => Some(Horizontal::Center),
+        _ => is.text_align.map(|a| match a {
+            crate::ui::style::iced_adapter::IcedTextAlign::Left => Horizontal::Left,
+            crate::ui::style::iced_adapter::IcedTextAlign::Center => Horizontal::Center,
+            crate::ui::style::iced_adapter::IcedTextAlign::Right => Horizontal::Right,
+        }),
+    };
+    let v = is.align_items.map(|a| match a {
+        crate::ui::style::iced_adapter::IcedAlign::Start => Vertical::Top,
+        crate::ui::style::iced_adapter::IcedAlign::Center => Vertical::Center,
+        crate::ui::style::iced_adapter::IcedAlign::End => Vertical::Bottom,
+    });
+    (h, v)
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -1813,6 +1843,68 @@ fn apply_container_style<M: Clone + Debug + 'static>(
 /// the shared `apply_row_style` (width/height/margin/visual wrap + id).
 /// Plan 412: flex-row-reverse flips children; items-stretch wraps each child
 /// in a height-Fill container (iced has no cross-axis stretch alignment).
+/// Plan-050 T4/C2: 单侧边框的 1px 填充条模拟——推广 table_row_rule 先例
+/// （iced 容器边框四边整圈,无法单侧;按类串 border-b/t/l/r 在对应方向拼一条
+/// border-border 色 1px 线）。无单侧边框类时原样返回。
+fn apply_side_borders<M: Clone + Debug + 'static>(
+    el: iced::Element<'static, M>,
+    is: Option<&IcedStyle>,
+) -> iced::Element<'static, M> {
+    let Some(is) = is else { return el };
+    if !(is.border_bottom || is.border_top || is.border_left || is.border_right) {
+        return el;
+    }
+    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    let line_style = move |_: &_| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+        ..Default::default()
+    };
+    let hline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fixed(0.0)),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(1.0))
+        .style(line_style)
+        .into()
+    };
+    let vline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fixed(0.0))
+                .height(iced::Length::Fill),
+        )
+        .width(iced::Length::Fixed(1.0))
+        .height(iced::Length::Fill)
+        .style(line_style)
+        .into()
+    };
+    let mut el = el;
+    if is.border_top {
+        el = iced::widget::Column::with_children(vec![hline(), el])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_bottom {
+        el = iced::widget::Column::with_children(vec![el, hline()])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_left {
+        el = iced::widget::Row::with_children(vec![vline(), el])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    if is.border_right {
+        el = iced::widget::Row::with_children(vec![el, vline()])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    el
+}
+
 fn build_row<M: Clone + Debug + 'static>(
     mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
@@ -1854,7 +1946,7 @@ fn build_row<M: Clone + Debug + 'static>(
     if let Some(p) = trail {
         row_widget = row_widget.push(spacer(p));
     }
-    apply_row_style(row_widget, padding, style, widget_id)
+    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
@@ -1922,7 +2014,7 @@ fn build_column<M: Clone + Debug + 'static>(
     // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
     // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
     // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
-    apply_column_style(col_widget, padding, style, widget_id)
+    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -1938,7 +2030,11 @@ fn build_container<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let cont = container(child);
-    apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id)
+    let iced_style = style.map(IcedStyle::from_style);
+    apply_side_borders(
+        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id),
+        iced_style.as_ref(),
+    )
 }
 
 /// Build a Scrollable around a single pre-built child. Width/height come
@@ -2761,6 +2857,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else {
                     button_content
                 };
+                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
+                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
+                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
+                // 承载对齐;未命中维持 iced 默认居中。
+                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
+                let button_content: iced::Element<'static, M> =
+                    if p050_ax.is_some() || p050_ay.is_some() {
+                        let mut c = iced::widget::container(button_content)
+                            .width(iced::Length::Fill);
+                        if let Some(ax) = p050_ax { c = c.align_x(ax); }
+                        if let Some(ay) = p050_ay { c = c.align_y(ay); }
+                        c.into()
+                    } else {
+                        button_content
+                    };
                 let mut btn = button(button_content);
                 // Plan 423 P3: disabled 态 —— 不挂 on_press(点击无消息);
                 // inspect 捕获模式同样不挂(原语义)。灰样式在下方 style 段追加。
@@ -3930,6 +4041,36 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         // Plan 414 §2: auto-edit 状态栏 Console 开关(Zed 式终端图标)
         "terminal" => r#"<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>"#,
         "monitor" => r#"<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>"#,
+        // PLAN-050 T7 (C5): musk 图标桥补齐——27 枚 lucide 路径数据取自
+        // musk src/front/lib/icons_data.at（0.460.0 生成物,单一真源对拍），
+        // 消费 aura_view_builder 的图标组件臂（use.web component → lucide:）。
+                "book-open" => r#"<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>"#,
+        "clock" => r#"<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>"#,
+        "copy-check" => r#"<path d="m12 15 2 2 4-4"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>"#,
+        "download" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>"#,
+        "external-link" => r#"<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>"#,
+        "eye" => r#"<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>"#,
+        "file" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
+        "file-icon" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
+        "file-text" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>"#,
+        "folder-input" => r#"<path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/>"#,
+        "folder-plus" => r#"<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
+        "help-circle" => r#"<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>"#,
+        "inbox" => r#"<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>"#,
+        "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
+        "list-todo" => r#"<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
+        "loader-2" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
+        "message-square" => r#"<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>"#,
+        "moon" => r#"<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>"#,
+        "orbit" => r#"<circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M10.4 21.9a10 10 0 0 0 9.941-15.416"/><path d="M13.5 2.1a10 10 0 0 0-9.841 15.416"/>"#,
+        "panel-left" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>"#,
+        "pencil" => r#"<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>"#,
+        "scroll" => r#"<path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>"#,
+        "send" => r#"<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>"#,
+        "sun" => r#"<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>"#,
+        "unlink" => r#"<path d="M15 7h2a5 5 0 0 1 0 10h-2m-6 0H7A5 5 0 0 1 7 7h2"/>"#,
+        "upload-cloud" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>"#,
+        "wrench" => r#"<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>"#,
         _ => return None,
     };
     // Use a small static cache to avoid re-formatting.
@@ -14588,6 +14729,58 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 mod tests {
     use super::*;
 
+    // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
+    fn p050_style(classes: Vec<StyleClass>) -> IcedStyle {
+        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new() })
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_justify_start_is_left() {
+        let is = p050_style(vec![StyleClass::Flex, StyleClass::JustifyStart]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+        assert_eq!(v, None);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_text_left_fallback() {
+        let is = p050_style(vec![StyleClass::TextLeft]);
+        let (h, _) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_items_start_is_top() {
+        let is = p050_style(vec![StyleClass::ItemsStart]);
+        let (_, v) = plan050_content_align(Some(&is));
+        assert_eq!(v, Some(iced::alignment::Vertical::Top));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_side_border_flags_parse() {
+        let is = p050_style(vec![StyleClass::BorderBottom, StyleClass::BorderRight]);
+        assert!(is.border_bottom && is.border_right);
+        assert!(!is.border_top && !is.border_left);
+        let is = p050_style(vec![StyleClass::BorderTop, StyleClass::BorderLeft]);
+        assert!(is.border_top && is.border_left);
+        assert!(!is.border_bottom && !is.border_right);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_none_keeps_centered_default() {
+        let is = p050_style(vec![]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+        let (h, v) = plan050_content_align(None);
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+    }
     // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
 
     const T3_SHELL_AT: &str = r#"widget ShellProbe {

@@ -278,6 +278,11 @@ pub enum StyleClass {
     // ========== Border (L2) ==========
     /// Border: border (default width and color)
     Border,
+    // PLAN-050 C2: 单侧边框（iced 四边整圈的缺口,renderer 以 1px 填充条模拟）
+    BorderBottom,
+    BorderTop,
+    BorderLeft,
+    BorderRight,
 
     /// Border: 0 (no border) - L2
     Border0,
@@ -1229,6 +1234,20 @@ impl StyleClass {
             return Ok(StyleClass::Border0);
         }
 
+        // PLAN-050 C2: 单侧边框（须先于 border-N/border-{color} 的前缀分支）
+        if class == "border-b" {
+            return Ok(StyleClass::BorderBottom);
+        }
+        if class == "border-t" {
+            return Ok(StyleClass::BorderTop);
+        }
+        if class == "border-l" {
+            return Ok(StyleClass::BorderLeft);
+        }
+        if class == "border-r" {
+            return Ok(StyleClass::BorderRight);
+        }
+
         // Parse border-N (numeric width, e.g. border-2, border-4)
         if let Some(rest) = class.strip_prefix("border-") {
             if let Ok(width) = rest.parse::<f32>() {
@@ -1823,6 +1842,11 @@ mod tests {
     #[test]
     fn test_parse_border() {
         assert_eq!(StyleClass::parse_single("border"), Ok(StyleClass::Border));
+        // PLAN-050 C2
+        assert_eq!(StyleClass::parse_single("border-b"), Ok(StyleClass::BorderBottom));
+        assert_eq!(StyleClass::parse_single("border-t"), Ok(StyleClass::BorderTop));
+        assert_eq!(StyleClass::parse_single("border-l"), Ok(StyleClass::BorderLeft));
+        assert_eq!(StyleClass::parse_single("border-r"), Ok(StyleClass::BorderRight));
         assert_eq!(StyleClass::parse_single("border-0"), Ok(StyleClass::Border0));
         assert!(matches!(StyleClass::parse_single("border-white"), Ok(StyleClass::BorderColor(_))));
         assert!(matches!(StyleClass::parse_single("border-red-500"), Ok(StyleClass::BorderColor(_))));
