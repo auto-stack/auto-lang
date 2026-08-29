@@ -54,6 +54,14 @@ pub struct AppState {
     pub live_vtree: RefCell<Option<crate::ui::vnode::VTree>>,
     pub live_probe: RefCell<Option<crate::ui::debug::BuildProbe>>,
     pub live_cache: RefCell<Option<crate::ui::debug::InspectorCache>>,
+    /// Plan 483 D4：MCP 同源 vtree 缓存——view() 的 MCP 同步块用**与
+    /// shared.view 同一份裸 View** 建的 vtree 快照。`__bounds_collected`
+    /// 覆盖 styled_vtree 时必须以此为源（而非 live_vtree：后者来自
+    /// convert_view_messages 加工后的树，Tabs/Accordion/NavigationRail/Slider
+    /// 回调型变体被折为 Empty，结构与裸树不同 → vnode.path 对位错位）。
+    /// computed/bounds 仍由 live_cache 经 from_live 合并（id 为 path 派生，
+    /// 结构稳定时两树 id 一致）。
+    pub mcp_sync_vtree: RefCell<Option<crate::ui::vnode::VTree>>,
     /// VNode→View 转换管线缓存。
     pub view_dirty: RefCell<bool>,
     pub cached_converted_view: RefCell<Option<crate::ui::view::View<IcedMessage>>>,
@@ -76,6 +84,7 @@ impl AppState {
             live_vtree: RefCell::new(None),
             live_probe: RefCell::new(None),
             live_cache: RefCell::new(None),
+            mcp_sync_vtree: RefCell::new(None),
             // boot 同款初值：首帧必须重建转换缓存（renderer.rs:5928）。
             view_dirty: RefCell::new(true),
             cached_converted_view: RefCell::new(None),
@@ -121,6 +130,10 @@ pub struct DevToolsState {
     pub inspector_scroll_id: iced::widget::Id,
     pub elements_scroll_id: iced::widget::Id,
     pub prompt_input_id: iced::widget::Id,
+    /// Plan 483: 当前视图 input 的派生 Id(遍历序,dynamic_view 每次脏
+    /// 重建清填)。聚焦路径按此寻址唯一 input,取代共享字面量
+    /// "prompt_input"(同 Id 会被 iced Focus operation 一次全置焦)。
+    pub input_ids: std::cell::RefCell<Vec<iced::widget::Id>>,
     pub needs_prompt_refocus: Cell<bool>,
     pub last_textarea_key: RefCell<Option<String>>,
     pub blocklist_scroll_id: iced::widget::Id,
@@ -164,6 +177,7 @@ impl DevToolsState {
             inspector_scroll_id: iced::widget::Id::unique(),
             elements_scroll_id: iced::widget::Id::unique(),
             prompt_input_id: iced::widget::Id::new("prompt_input"),
+            input_ids: std::cell::RefCell::new(Vec::new()),
             needs_prompt_refocus: Cell::new(false),
             last_textarea_key: RefCell::new(None),
             blocklist_scroll_id: iced::widget::Id::new("blocklist_scroll"),

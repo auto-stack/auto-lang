@@ -1,0 +1,22 @@
+// front/auth_store.at — 登录态单例 store(镜像 auto-musk auth_store 最小集)。
+// Plan 483 最小复现:条件装配的子 widget 内双 input 双焦点/键盘双投递。
+store AuthStore {
+    model {
+        var authed bool = false
+        var error str = ""
+    }
+
+    msg Msg {
+        SetAuthed(bool),
+        SetError(str),
+    }
+
+    on {
+        .SetAuthed(ok) -> {
+            .authed = ok
+        }
+        .SetError(e) -> {
+            .error = e
+        }
+    }
+}

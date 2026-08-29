@@ -2106,28 +2106,14 @@ fn find_view_by_path<'a>(
     view: &'a View<DynamicMessage>,
     path: &[u16],
 ) -> Option<&'a View<DynamicMessage>> {
+    // Plan 483 D4: 子枚举委托 vnode_converter::extract_children_ref（与 vtree
+    // 建 path 的 extract_children 同构、随其同步维护），替换此前手写枚举——
+    // 手写版缺 Button{content}/Table/Tabs 臂，vnode.path 走 typed View 树会
+    // 在这些子树下失步（autoui_type 归因错位族）。同构不变量见
+    // extract_children_ref 文档注释。
     let mut current = view;
     for &idx in path {
-        let children: Vec<&View<DynamicMessage>> = match current {
-            View::Column { children, .. } | View::Row { children, .. } => {
-                children.iter().collect()
-            }
-            View::Grid { cells, .. } => cells.iter().collect(),
-            View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
-            View::List { items, .. } => items.iter().collect(),
-            // Plan 422: 弹层子序与 extract_children/vtree 同步 —— widget 锚
-            // 为子 0(触发按钮),content 为子 1(面板项)。缺此臂时 menubar
-            // 触发按钮的 MCP 点击分派会静默失败(walk 在 Popover 处断掉)。
-            View::Popover { anchor, content, .. } => {
-                let mut out: Vec<&View<DynamicMessage>> = Vec::new();
-                if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
-                    out.push(w.as_ref());
-                }
-                out.push(content.as_ref());
-                out
-            }
-            _ => return None,
-        };
+        let children = crate::ui::vnode_converter::extract_children_ref(current);
         current = children.get(idx as usize)?;
     }
     Some(current)
@@ -3041,5 +3027,133 @@ mod tests_314 {
         let shared: SharedStateHandle = Arc::new(Mutex::new(SharedState::new("Demo".into())));
         let res = dispatch_tool_static(&shared, "autoui_vtree", json!({}));
         assert!(res["isError"].as_bool().unwrap_or(false), "should error: {res}");
+    }
+}
+
+// ============================================================================
+// Plan 483 D4: autoui_type 归因对位回归 —— find_view_by_path 的子枚举必须与
+// vtree 侧（vnode_converter::extract_children）同构，否则 vnode.path 走 typed
+// View 树会落到错误节点（password id 派发 UsernameChanged 现场族）。
+// ============================================================================
+
+#[cfg(test)]
+mod tests_plan483_d4 {
+    use super::*;
+    use crate::ui::vnode::VNodeKind;
+    use crate::ui::vnode_converter::view_to_vtree_with_paths;
+    use crate::ui::view::TabsPosition;
+
+    fn typed_msg(event: &str) -> DynamicMessage {
+        DynamicMessage::Typed {
+            widget_name: "LoginPage".to_string(),
+            event_name: event.to_string(),
+            args: vec![],
+        }
+    }
+
+    fn input(placeholder: &str, event: &str) -> View<DynamicMessage> {
+        View::Input {
+            placeholder: placeholder.to_string(),
+            value: String::new(),
+            on_change: Some(typed_msg(event)),
+            on_submit: None,
+            width: None,
+            password: placeholder.contains("password"),
+            style: None,
+        }
+    }
+
+    fn label(text: &str) -> View<DynamicMessage> {
+        // Plan 481 selectable 字段(merge master 后补;合成标签非用户内容,false)。
+        View::Text { content: text.to_string(), style: None, selectable: false }
+    }
+
+    fn column(children: Vec<View<DynamicMessage>>) -> View<DynamicMessage> {
+        View::Column { children, spacing: 0, padding: 0, style: None }
+    }
+
+    /// 找 vtree 中第 n 个（0 起）Input 节点的 path。
+    fn nth_input_path(tree: &VTree, n: usize) -> Vec<u16> {
+        let mut seen = 0;
+        for node in tree.nodes.iter() {
+            if matches!(node.kind, VNodeKind::Input) {
+                if seen == n {
+                    return node.path.clone();
+                }
+                seen += 1;
+            }
+        }
+        panic!("only {seen} Input node(s) in vtree, wanted index {n}");
+    }
+
+    /// 通用断言：给定 view，其第 n 个 Input 的 vnode path 必须走
+    /// find_view_by_path 命中同一 Input 且 type handler 是期望事件。
+    fn assert_nth_input_dispatches(view: &View<DynamicMessage>, n: usize, want_event: &str) {
+        let tree = view_to_vtree_with_paths(view.clone(), |_| None);
+        let path = nth_input_path(&tree, n);
+        let found = find_view_by_path(view, &path)
+            .unwrap_or_else(|| panic!("path {path:?} did not resolve in typed view"));
+        let (widget, event) = extract_action_from_view(found, "type")
+            .unwrap_or_else(|| panic!("no type handler on node at {path:?}"));
+        assert_eq!(
+            (widget.as_str(), event.as_str()),
+            ("LoginPage", want_event),
+            "path {path:?} resolved to wrong node/handler"
+        );
+    }
+
+    /// 登录页形态回归锚（green-before-and-after）：嵌套 col 的双输入，
+    /// 第二个 input 的 path 必须派发 PasswordChanged。
+    #[test]
+    fn plan483_second_input_in_login_shape_dispatches_password() {
+        let view = column(vec![
+            column(vec![label("Username"), input("Enter username", "UsernameChanged")]),
+            column(vec![label("Password"), input("Enter password", "PasswordChanged")]),
+        ]);
+        assert_nth_input_dispatches(&view, 1, "PasswordChanged");
+    }
+
+    /// Button content 子树（Plan 409 §6 `link (to:) { … }` 形态）内的 input
+    /// 可寻址：extract_children 把 content 计为子 0，walk 必须同构。
+    #[test]
+    fn plan483_input_inside_button_content_resolves() {
+        let view = column(vec![View::Button {
+            label: "Card".to_string(),
+            onclick: typed_msg("Pressed"),
+            style: None,
+            on_right_click: None,
+            content: Some(Box::new(column(vec![input("Enter password", "PasswordChanged")]))),
+            disabled: false,
+        }]);
+        assert_nth_input_dispatches(&view, 0, "PasswordChanged");
+    }
+
+    /// Table 单元格内的 input 可寻址：extract_children 把 headers+rows 拍平
+    /// 为子序列，walk 必须同构。
+    #[test]
+    fn plan483_input_inside_table_cell_resolves() {
+        let view = View::Table {
+            headers: vec![label("Field")],
+            rows: vec![vec![input("Enter password", "PasswordChanged")]],
+            spacing: 0,
+            col_spacing: 0,
+            style: None,
+        };
+        assert_nth_input_dispatches(&view, 0, "PasswordChanged");
+    }
+
+    /// Tabs content 内的 input 可寻址：extract_children 计 contents 为子
+    /// 序列，walk 必须同构。
+    #[test]
+    fn plan483_input_inside_tabs_resolves() {
+        let view = View::Tabs {
+            labels: vec!["One".to_string()],
+            contents: vec![column(vec![input("Enter password", "PasswordChanged")])],
+            selected: 0,
+            position: TabsPosition::Top,
+            on_select: None,
+            style: None,
+        };
+        assert_nth_input_dispatches(&view, 0, "PasswordChanged");
     }
 }
