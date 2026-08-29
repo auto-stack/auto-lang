@@ -1,0 +1,152 @@
+// notification_center overlay pack（特权 .at App —— 宿主进程内编译装载，
+// 不进 examples/ui；Plan 479 T3，464/478 overlay 槽同型的第三枚）。
+//
+// 形态：notes_toggle 召唤的通知中心——历史列表面板（右下锚定卡片，避开
+// bottom-center toast 区；T1 施工图定案 2），逐条 × / 全部清除 / Esc 关。
+// 无键盘导航（v1）——bind 仅 Escape。
+//
+// 接缝（协议 v1.2，schema/projection-protocol-v1.md）：
+//   出：`__desktop_cmd`（`notes_dismiss\t<id>` 逐条删 / `notes_clear` 全清；
+//       宿主读+清；开关经 shell 铃铛钮的 notes_toggle，不在本 App）
+//   入：召唤时快照注入——note_ids/note_kinds/note_msgs/note_ats 平行字符串
+//       列表（B12：宿主注入 Obj 数组的 handler 字段读失效，launcher apps_*
+//       同型；`RebuildNotes` 由宿主显式调用重建 handler 自有 rows）、
+//       `__wm_notes`/`__wm_notes_unread`（合同面 Obj 数组/串，本 App 声明不
+//       handler 消费）、`hosted`/`visible`。
+// 快照语义：召唤时点定序；打开期间新通知/删除由宿主重注入（479
+// refresh_notification_panel——打开期间列表活更新）。
+// 消费者唯一：宿主 renderer 的 toggle_notification_center /
+// refresh_notification_panel / 通知面板键盘订阅。
+widget NotificationCenter {
+    msg { Init, RebuildNotes, Escape, Dismiss(str), ClearAll }
+
+    model {
+        // ---- 接缝状态（desktop 宿主注入）----
+        var visible str = "0"       // overlay 门控：宿主召唤置 "1"
+        var hosted str = "0"        // 宿主挂载时写 "1"
+        var __desktop_cmd str = ""  // 上行命令总线（dismiss/clear 记录）
+        var __wm_notes = []         // 协议 v1.2 合同面（声明不 handler 消费）
+        var __wm_notes_unread str = ""  // 协议 v1.2 合同面（badge 源在 shell）
+
+        // ---- 通知快照（宿主注入平行字符串列表；B12 规避）----
+        var note_ids = []
+        var note_kinds = []
+        var note_msgs = []
+        var note_ats = []
+
+        // ---- 面板状态（handler 自建 rows；view 消费 + handler 下标读安全）----
+        var rows = []               // {i,id,kind,msg,at}
+        var nrows int = 0           // 条目数（view 条件用，替代模板 .len()）
+    }
+
+    view {
+        if .visible == "1" {
+            // ---- 打开态：右下锚定卡片（T1 定案 2；顶部 flex-1 压下、
+            // 左侧 flex-1 压右、底部 h-16 让位 h-12 dock）----
+            col {
+                style: "w-full h-full"
+                spacer { style: "flex-1 w-full" }
+                row {
+                    style: "w-full"
+                    spacer { style: "flex-1 h-80" }
+                    col {
+                        style: "w-80 bg-gray-800 rounded-xl shadow-2xl overflow-hidden"
+
+                        // 标题行：通知 + 全部清除
+                        row {
+                            style: "flex items-center px-4 py-3 border-b border-gray-700"
+                            text "通知" { style: "text-gray-200 text-sm font-semibold" }
+                            button "全部清除" {
+                                onclick: .ClearAll
+                                style: "ml-auto h-7 px-2 text-xs text-muted-foreground"
+                            }
+                        }
+
+                        // 历史列表（MRU 序；空态）
+                        col {
+                            style: "w-full"
+                            if .nrows == 0 {
+                                col {
+                                    style: "flex flex-col items-center py-8"
+                                    text "暂无通知" { style: "text-gray-400 text-sm" }
+                                }
+                            }
+                            for r in .rows {
+                                row {
+                                    style: "flex items-center gap-3 px-4 py-2 border-b border-gray-700 cursor-pointer"
+                                    if r.kind == "success" {
+                                        icon (name: "check") { style: "h-4 w-4 text-success" }
+                                    } else {
+                                        if r.kind == "error" {
+                                            icon (name: "x") { style: "h-4 w-4 text-error" }
+                                        } else {
+                                            icon (name: "info") { style: "h-4 w-4 text-muted-foreground" }
+                                        }
+                                    }
+                                    col {
+                                        style: "flex-1 gap-0"
+                                        text r.msg { style: "text-gray-100 text-sm" }
+                                        text r.at { style: "text-gray-500 text-xs" }
+                                    }
+                                    button "×" {
+                                        onclick: .Dismiss(r.id)
+                                        style: "h-7 w-7 px-0 text-xs text-muted-foreground"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    spacer { style: "w-3 h-80" }
+                }
+                spacer { style: "h-16 w-full" }
+            }
+        } else {
+            // ---- 隐藏态：透明空层（不挡桌面点击；装配层仅 visible 时推层）----
+            col {
+                style: "w-full h-full"
+            }
+        }
+    }
+
+    bind {
+        "Escape" -> .Escape
+    }
+
+    on {
+        .Init -> {
+            .visible = "0"
+            .RebuildNotes()
+        }
+
+        // 宿主召唤/活更新时显式调用（宿主写状态不触发 handler）：平行列表 →
+        // handler 自有 rows（此后 .Dismiss 参数源安全），MRU 序 front=最新。
+        .RebuildNotes -> {
+            .rows = []
+            .nrows = 0
+            var idx int = 0
+            while idx < .note_ids.len() {
+                var row = { i: idx, id: .note_ids[idx], kind: .note_kinds[idx], msg: .note_msgs[idx], at: .note_ats[idx] }
+                .rows.push(row)
+                idx = idx + 1
+            }
+            .nrows = .rows.len()
+        }
+
+        // 逐条 ×：写上行总线（删除执行 + 落盘 + 重注入在宿主臂）。
+        .Dismiss(id) -> {
+            .__desktop_cmd = "notes_dismiss\t" + id
+        }
+
+        // 全部清除：写上行总线。
+        .ClearAll -> {
+            .__desktop_cmd = "notes_clear"
+        }
+
+        // Esc 关闭：自隐（未读已在打开时清零，关闭不加未读——visible 门控）。
+        .Escape -> {
+            if .visible == "1" {
+                .visible = "0"
+            }
+        }
+    }
+}

@@ -184,6 +184,21 @@ impl DevToolsState {
 // 桌面域 · 基础设施（施工图 §1.3 + 裁定 M1 / 结构外全局态收敛）
 // ---------------------------------------------------------------------------
 
+/// Plan 479 T2：通知中心历史条目（S6 双面一体的「史」半边；toast 为「浮」
+/// 半边）。at = 入史时刻 HH:MM 本地时间串（宿主侧格式化，478 label 同型——
+/// 避开 .at 算术）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NotificationEntry {
+    pub id: u64,
+    pub kind: String,
+    pub msg: String,
+    pub at: String,
+}
+
+/// Plan 479 T1 定案：通知历史内存容量（FIFO，front=最新；落盘独立 10 槽
+/// `shell.notes.0..9`，见 renderer `persist_notes`/`restore_notifications`）。
+pub(crate) const NOTES_CAP: usize = 50;
+
 pub struct DesktopState {
     /// 裁定 M1：原 `LAST_MODIFIERS` thread-local 与 DynamicState.current_modifiers
     /// 合并为唯一事实源；读点经访问器替换。
@@ -195,6 +210,15 @@ pub struct DesktopState {
     pub mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     pub toasts: RefCell<Vec<ToastReq>>,
     pub toast_next_id: Cell<u64>,
+    /// Plan 479 T2：通知历史（S6 聚合面；MRU 序 front=最新，容量
+    /// [`NOTES_CAP`] FIFO）。写入唯一入口 = renderer `push_notification`
+    /// （双面一体：入史 + toast + 未读）。
+    pub notifications: RefCell<Vec<NotificationEntry>>,
+    /// Plan 479 T2：通知条目 id 分配器（单调递增；面板「逐条 ×」寻址）。
+    pub notes_next_id: Cell<u64>,
+    /// Plan 479 T2：未读计数（面板不可见时入史 +1；开面板清零；不落盘，
+    /// boot 恢复后恒 0）。
+    pub notes_unread: Cell<u64>,
     /// Plan 463 T5：shell 特权 App 的 AppId（DesktopBus 双向锚点；
     /// None = 未装载 shell，独立模式恒 None）。
     pub shell_app: Option<AppId>,
@@ -209,6 +233,9 @@ pub struct DesktopState {
     /// Plan 478 T4：switcher overlay App 的 AppId。首次 Ctrl+Tab 召唤时
     /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
     pub switcher_app: Option<AppId>,
+    /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
+    /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
+    pub notification_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -237,11 +264,15 @@ impl DesktopState {
             mcp_shared,
             toasts: RefCell::new(Vec::new()),
             toast_next_id: Cell::new(1),
+            notifications: RefCell::new(Vec::new()),
+            notes_next_id: Cell::new(1),
+            notes_unread: Cell::new(0),
             shell_app: None,
             app_resolver: None,
             shell_fields: ShellFields::default(),
             launcher_app: None,
             switcher_app: None,
+            notification_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -747,6 +778,17 @@ pub enum DesktopCommand {
     /// Plan 478 T2：跨分区发送窗口（`send_to` 动词；switcher/pager 后续
     /// 表面消费）。
     SendTo(Wid, usize),
+    /// Plan 479 T2：App 主动请求通知（`notify\t<kind>\t<msg>`；v1.2）。
+    /// 入史 + 未读 + toast 浮现三联动（push_notification 单入口）。
+    /// 约束：msg 单行（记录层按 \n 切分）。
+    Notify(String, String),
+    /// Plan 479 T3：通知中心面板开合（`notes_toggle` 无参动词；dock 铃铛钮
+    /// 路径，宿主臂落 toggle_notification_center 执行体）。
+    NotesToggle,
+    /// Plan 479 T2：清空通知历史 + 落盘（面板「全部清除」）。
+    NotesClear,
+    /// Plan 479 T2：按 id 删除单条通知 + 落盘（面板「逐条 ×」）。
+    NotesDismiss(u64),
 }
 
 impl DesktopCommand {
@@ -792,6 +834,16 @@ impl DesktopCommand {
                     n
                 )
             }
+            // Plan 479 T2：协议 v1.2 通知动词（kind/msg 均经 FIELD_SEP 分段；
+            // msg 可含空格与 FIELD_SEP——parse 取首分符，尾部完整保留）。
+            DesktopCommand::Notify(kind, msg) => {
+                format!("notify{}{kind}{}{msg}", Self::FIELD_SEP, Self::FIELD_SEP)
+            }
+            DesktopCommand::NotesToggle => "notes_toggle".to_string(),
+            DesktopCommand::NotesClear => "notes_clear".to_string(),
+            DesktopCommand::NotesDismiss(id) => {
+                format!("notes_dismiss{}{}", Self::FIELD_SEP, id)
+            }
         }
     }
 
@@ -817,6 +869,14 @@ impl DesktopCommand {
                 if rec == "workspace_add" {
                     return Some(DesktopCommand::WorkspaceAdd);
                 }
+                // Plan 479 T2：v1.2 无参动词前置（notes 前缀不互吞：
+                // notes_toggle/notes_clear 近形于 notes_dismiss）。
+                if rec == "notes_toggle" {
+                    return Some(DesktopCommand::NotesToggle);
+                }
+                if rec == "notes_clear" {
+                    return Some(DesktopCommand::NotesClear);
+                }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
                     "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
@@ -838,6 +898,19 @@ impl DesktopCommand {
                             w.parse::<u64>().ok().zip(n.parse::<usize>().ok())
                         })
                         .map(|(w, n)| DesktopCommand::SendTo(Wid(w), n)),
+                    // Plan 479 T2：协议 v1.2 通知动词。notify 对 arg 二次
+                    // split（send_to 先例）——kind ∈ success/error/info 约定，
+                    // 未知 kind 宿主侧 info 兜底不弃单（浮现面宽）。
+                    "notify" => arg
+                        .split_once([Self::FIELD_SEP, '\t'])
+                        .map(|(kind, msg)| {
+                            DesktopCommand::Notify(kind.to_string(), msg.to_string())
+                        })
+                        .filter(|c| !matches!(c, DesktopCommand::Notify(k, _) if k.is_empty())),
+                    "notes_dismiss" => arg
+                        .parse::<u64>()
+                        .ok()
+                        .map(|id| DesktopCommand::NotesDismiss(id)),
                     _ => None,
                 }
             })
@@ -877,6 +950,8 @@ pub struct HostCtx {
     pub shell_fields: ShellFields,
     pub launcher_fields: ShellFields,
     pub switcher_fields: ShellFields,
+    /// Plan 479 T3：通知中心 overlay 同型垫片（第三枚 overlay 槽）。
+    pub notification_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -972,6 +1047,7 @@ impl DesktopSession {
             shell_fields: ShellFields::default(),
             launcher_fields: ShellFields::default(),
             switcher_fields: ShellFields::default(),
+            notification_fields: ShellFields::default(),
         });
     }
 
@@ -1216,7 +1292,9 @@ impl DesktopSession {
             let is_launcher = self.desktop.launcher_app == Some(id);
             // Plan 478 T4：switcher overlay 同型（windowless 拆借第三路）。
             let is_switcher = self.desktop.switcher_app == Some(id);
-            if !is_shell && !is_launcher && !is_switcher {
+            // Plan 479 T3：通知中心 overlay（windowless 拆借第四路）。
+            let is_notification = self.desktop.notification_app == Some(id);
+            if !is_shell && !is_launcher && !is_switcher && !is_notification {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -1236,12 +1314,19 @@ impl DesktopSession {
                     &mut host.launcher_fields.initial_resize_done,
                     &mut host.launcher_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_switcher {
                 (
                     &mut host.switcher_fields.window_size,
                     &mut host.switcher_fields.pending_window_resize,
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.notification_fields.window_size,
+                    &mut host.notification_fields.pending_window_resize,
+                    &mut host.notification_fields.initial_resize_done,
+                    &mut host.notification_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -1427,6 +1512,39 @@ impl DesktopSession {
         matches!(
             self.apps
                 .get(&sw)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// Plan 479 T3：通知中心 overlay App 的拆借视图（view 装配的通知面板
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_switcher`] 相同，
+    /// 字段走 [`HostCtx::notification_fields`]）。
+    pub fn split_ref_notification(&self) -> Option<SessionViewRef<'_>> {
+        let panel = self.desktop.notification_app?;
+        let app = self.apps.get(&panel)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: panel,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.notification_fields.window_size,
+            pending_window_resize: &host.notification_fields.pending_window_resize,
+            initial_resize_done: &host.notification_fields.initial_resize_done,
+            initial_focus_done: &host.notification_fields.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 479 T3：通知中心 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::switcher_visible`] 同型）。未挂载恒 false。
+    pub fn notification_visible(&self) -> bool {
+        let Some(panel) = self.desktop.notification_app else { return false };
+        matches!(
+            self.apps
+                .get(&panel)
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
@@ -2318,6 +2436,46 @@ mod tests {
         let r1 = *host.wm.wins[&w1].rect.borrow();
         assert_eq!((r1.x, r1.y), (r0.x, r0.y), "空分区首窗级联 index=0");
         assert_eq!(host.wm.wins[&w1].workspace, 1, "启动窗入当前分区");
+    }
+
+    // ---- Plan 479 T2：协议 v1.2 通知动词（notify/notes_toggle/
+    // notes_clear/notes_dismiss；workspace_v11 同型）----
+
+    #[test]
+    fn notif_commands_encode_parse_round_trip() {
+        let cmds = vec![
+            DesktopCommand::Notify("success".to_string(), "已启动 calc".to_string()),
+            DesktopCommand::NotesToggle,
+            DesktopCommand::NotesClear,
+            DesktopCommand::NotesDismiss(3),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 双轨分符：shell.at 控件字符串只可直书 \t；notify msg 可含空格。
+        assert_eq!(
+            DesktopCommand::parse_records(
+                "notify\tsuccess\t已启动 calc\u{1e}notes_toggle\u{1e}notes_clear\u{1e}notes_dismiss\t3"
+            ),
+            cmds
+        );
+        // msg 含第二分符：split_once 取首分符，msg 尾部完整保留。
+        assert_eq!(
+            DesktopCommand::parse_records("notify\u{1f}error\u{1f}a\u{1f}b"),
+            vec![DesktopCommand::Notify(
+                "error".to_string(),
+                "a\u{1f}b".to_string()
+            )]
+        );
+        // 坏载荷跳过不 panic（notify 缺段 / dismiss 坏 id / 空 kind）。
+        assert!(
+            DesktopCommand::parse_records("notify\u{1f}success").is_empty(),
+            "notify 缺 msg 段跳过"
+        );
+        assert!(DesktopCommand::parse_records("notes_dismiss\u{1f}abc").is_empty());
     }
 }
 
