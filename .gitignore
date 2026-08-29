@@ -140,6 +140,8 @@ test_temp.txt
 # Local migration backups (pre-spec-migration snapshots)
 /.backup/
 *.json
+# I6 双端共享布局期望值表（465 T4 产出；472 T2 修复入库）
+!crates/auto-lang/src/ui/layout_cases.json
 __pycache__/
 *.pyc
 .worktree/

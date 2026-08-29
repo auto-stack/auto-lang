@@ -5958,6 +5958,13 @@ fn desktop_hotkey_subscription(
                         return Some(DM::Wm(WmCommand::SetLayout(mode)));
                     }
                 }
+                // Plan 472 T2：分区切换 Ctrl+Alt+→/←（环切；dock 切换条同语义）。
+                if matches!(key, Key::Named(Named::ArrowRight)) {
+                    return Some(DM::Wm(WmCommand::NextWorkspace));
+                }
+                if matches!(key, Key::Named(Named::ArrowLeft)) {
+                    return Some(DM::Wm(WmCommand::PrevWorkspace));
+                }
             }
             // launcher 召唤：Ctrl+Space（中文系统 IME 抢键时 Ctrl+Alt+Space
             // 天然覆盖——同键位族不细分 alt）；464 前事件无消费者（update 臂静默）。
@@ -6386,6 +6393,10 @@ fn execute_desktop_commands(
             }
             DC::FocusWindow(wid) => state.wm_focus(wid),
             DC::SetLayout(mode) => state.wm_set_layout(mode),
+            // Plan 472 T2：分区切换（dock 切换条/workspace_next；调用臂尾
+            // sync_shell_windows 刷新投影）。
+            DC::SetWorkspace(n) => state.wm_set_workspace(n),
+            DC::NextWorkspace => state.wm_next_workspace(),
         }
     }
     (false, tasks)
@@ -8882,6 +8893,10 @@ fn compare_pngs(
                     // DesktopCommand::SetLayout 同落 wm_set_layout；
                     // 臂尾 sync_shell_windows 即时刷新任务栏按钮态）。
                     WmCommand::SetLayout(mode) => state.wm_set_layout(mode),
+                    // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
+                    // 臂尾 sync_shell_windows 即时刷新投影）。
+                    WmCommand::NextWorkspace => state.wm_next_workspace(),
+                    WmCommand::PrevWorkspace => state.wm_prev_workspace(),
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
                     WmCommand::StartDrag { wid } => {
@@ -9057,6 +9072,10 @@ fn compare_pngs(
             let mut layers: Vec<iced::Element<'_, DM>> = Vec::new();
             for &wid in &host.wm.z_order {
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
+                // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
+                if vwin.workspace != host.wm.current_workspace {
+                    continue;
+                }
                 let app_id = vwin.app;
                 let probe_hit = panic_probe_enabled()
                     && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst)
