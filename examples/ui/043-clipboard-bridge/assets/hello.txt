@@ -1,0 +1,2 @@
+你好,剪贴板! Plan 485 clipboard-bridge 示例文件。
+This file is a set payload for CF_HDROP round-trip demo.
