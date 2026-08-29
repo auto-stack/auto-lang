@@ -75,7 +75,16 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
         let mut matched = true;
         for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
             if let Some(param_name) = rs.strip_prefix(':') {
-                params.push((param_name.to_string(), ps.to_string()));
+                // Plan 022 (auto-down): Path params must arrive
+                // percent-DECODED (axum Path semantics): the front calls
+                // encodeURIComponent on wiki titles ("Hello%20World.ad"),
+                // and the undecoded form misses the file on disk.
+                let decoded = url_decode(ps);
+                if let Some(wild_name) = param_name.strip_prefix('*') {
+                    params.push((wild_name.to_string(), decoded));
+                } else {
+                    params.push((param_name.to_string(), decoded));
+                }
             } else if *rs == "*" || rs.starts_with('*') {
                 // Plan 346: Wildcard route — matches any remaining segments.
                 continue;
