@@ -1,3 +1,19 @@
+---
+plan_id: PLAN-386
+status: executing
+feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
+author: [zcode]
+created_at: 2026-08-28T00:00:00+08:00
+updated_at: 2026-08-29T10:25:00+08:00
+
+supersedes_spec_components: []
+new_spec_components: []
+touched_goals: []
+
+current_step: 0
+total_steps: 7
+---
+
 # Plan 386: AutoUI RenderQueue / 分离渲染架构（路线 B：进程外 App 与桌面协议）
 
 > **状态**：🔄 **复活（2026-08-28，用户裁定）。Stage 1 即刻可开工**；Stage 2/3
@@ -143,3 +159,71 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
 - **Design Doc 20**：分离架构的完整设计（AutoTree / RenderCommand /
   RenderQueue / Compositor）。
 - **Plan 364**：a2r COSMIC 就绪——复刻 app 的语言能力前置。
+
+## 执行步骤（Phase 1 / Stage 1：桌面协议 loopback，2026-08-29 复活执行）
+
+前置自检（§0 表）：462 ✅ + Design 25 §7 蓝图 ✅ + I1 ✅。施工图 =
+`docs/design/autoui/autoshell.md` §7/§7.1。执行 worktree =
+`.worktrees/plan-386-dev`（分支 `plan-386-dev`，整计划一个）。
+模块代码全部 `#[cfg(feature = "ui-iced")]`；验证一律 `--features ui-iced`
+（该 feature 非 default，`cargo tf` 不覆盖本模块）。
+
+- [ ] **S1 协议模块骨架**：新建 `crates/auto-lang/src/ui/desktop_protocol/`
+  （`mod.rs` 定义 `PROTOCOL_VERSION: u32 = 1` + 五通道总览文档），
+  在 `crates/auto-lang/src/ui/mod.rs` 以
+  `#[cfg(feature = "ui-iced")] pub mod desktop_protocol;` 登记。
+  验证: `cargo check -p auto-lang --features ui-iced`
+- [ ] **S2 五通道消息 + 二进制编解码（TDD）**：`message.rs`（孵化握手含
+  字体注册；帧 = DrawList + damage + CacheControl；输入含 IME 三变体，
+  (Wid, event) 编码；控制双向含 DesktopBus 载荷；观测最小集）+
+  `codec.rs`（信封 = magic "APDL" + u16 version + u8 channel + u32 len；
+  逐消息 encode/decode，零新依赖）。测试：全变体 round-trip、每通道
+  1 条 golden bytes、坏 magic / 版本不符 / 未知 tag 拒收。
+  验证: `cargo t desktop_protocol --features ui-iced`
+- [ ] **S3 双端状态机 + loopback（TDD）**：`endpoint.rs`（AppEndpoint:
+  Detached→Handshaking→Active→Closing→Detached；HostEndpoint:
+  Listening→Active；非法迁移返回 ProtocolError）+ `loopback.rs`
+  （双向字节管道：send 侧编码成字节过线，recv 侧解码——编解码真实过线）。
+  验证: 同 S2
+- [ ] **S4 HostEndpoint 绑定真实 462 DesktopSession**：`host.rs` ——
+  Hello→`allocate_app` + `wm_add_win` + SurfaceStore（双缓冲槽模拟共享
+  纹理）分配→Welcome；输入→`WmState::hit_test`→(Wid, InputMsg)；
+  控制 Close/ExitRequest→`wm_remove_win` + App 回收（462 Close 语义）；
+  FrameAck 槽位归还。
+  验证: 同 S2
+- [ ] **S5 loopback demo（行为与直挂无差）**：`demo.rs` —— 内联计数器 .at
+  （`build_dynamic_component`）走协议全链：握手→帧 0（"count: 0"）→
+  宿主 `hit_test` 命中→(Wid, click) 注入→VM handler 执行→帧 1
+  （"count: 1"）合成进虚拟窗 surface；等价断言 = 直挂孪生组件同输入后
+  `read_state` 相等 + 帧内容相等；控制 Close→虚拟窗回收；观测 Log 到达宿主。
+  验证: 同 S2
+- [ ] **S6 041-auto-edit golden（413 §7 三点落位）**：`editor_frame.rs` ——
+  `EditorDrawList`→帧载荷纯函数 lowering（quads / text runs / gutter /
+  caret / preedit，`revision` 随帧）；golden：编辑器 core 打字→帧含预期
+  text runs；IME preedit/commit 输入事件→帧含 preedit 覆盖 / 文本落盘；
+  CacheControl 以 revision + fold_hidden 为缓存键。
+  验证: 同 S2
+- [ ] **S7 协议规范文档（版本化）**：`docs/design/autoui/desktop-protocol-v1.md`
+  （版本表 / 五通道消息表 / wire format / 状态机 / Stage 2 换 transport
+  面 / 413 三点落位 / DrawList v1 偏差记录）+ 登记
+  `docs/design/00-intro.md`；阶段 scoped 验证全绿。
+  验证: `cargo check -p auto-lang --features ui-iced` &&
+  `cargo t desktop_protocol --features ui-iced`
+
+**Pre-fold 门禁（折入 master 前，流程性）**：`cargo tf` 全绿 +
+`cargo t desktop_protocol --features ui-iced` 显式绿（ui-iced 非 default，
+tf 不编译本模块，二者缺一不可）。
+
+## 待澄清事项
+
+- ①（执行期决定，review 时请确认）：**帧通道载荷 v1 = `DrawList`**
+  （quad + text run 最小显示列表；`EditorDrawList` 同型 lowering），
+  **不含**全量 VTree→RenderCommand lowering——原"工作项 Stage 1"的
+  逐 example golden lowering 已被 §0 复活重构（2026-08-28）取代；
+  全量 lowering 归 Stage 2（载荷真跨进程时）。依据：`code_editor/draw.rs`
+  头注"Plan 386 Stage 1 serializes it to quads and text runs"、§0
+  "frame 用内存缓冲模拟共享纹理"、Design 25 §7 帧通道定位。
+- ②（范围边界）：loopback demo 为 **headless 验证**（462 会话对象级，
+  `DesktopSession`/`WmState` 真实参与）；live-iced 渲染器换接
+  （`dynamic_view`→协议客户端）留 Stage 2 随真 transport 一起做——
+  I1 评审已证零删除替换可达。

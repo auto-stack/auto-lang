@@ -724,12 +724,29 @@ element taskbar {
     tag: "taskbar"
     category: "navigation"
     tier: "builtin_widget"
-    backends: { web: "none", iced: "full", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "Taskbar", import: "@/wm/Taskbar" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "Bar chrome classes (h-/w-/bg-/border- land on the bar)" }
     ]
     allows_children: true
-    description: "Desktop shell taskbar (bottom bar)"
+    description: "Desktop shell taskbar (bottom bar); web leaf = @/wm/Taskbar (Plan 465 I4, same registration source as iced 463)"
+}
+
+element virtual_window {
+    tag: "virtual_window"
+    category: "container"
+    tier: "builtin_widget"
+    aliases: ["VirtualWindow"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "VirtualWindow", import: "@/wm/VirtualWindow" }
+    props: [
+        { name: "win", type: "string", description: "Window state object {wid,appId,title,rect,z,focused} from the host WmStore (Plan 465 T4)" }
+        { name: "title", type: "string", description: "Title bar text (fallback when win.title absent)" }
+        { name: "class", type: "union:string,class_binding", description: "Client-area classes" }
+    ]
+    allows_children: true
+    description: "Virtual window leaf: positioned/clipped chrome with (AppId,event) routing attrs; iced impl = ui/iced/virtual_window.rs (462), DOM impl = @/wm/VirtualWindow (465 T4)"
 }
 
 element text {

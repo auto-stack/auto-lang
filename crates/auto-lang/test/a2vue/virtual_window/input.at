@@ -1,0 +1,24 @@
+// a2vue golden case (Plan 465 T4) — desktop virtual_window + taskbar leaves.
+// Verifies: I4 same-registration-source vue mapping (schema/aura.at vue: lines
+// → @/wm/* component imports) + children slot + prop passthrough. The DOM
+// implementations live in auto-man assets/wm (host scaffold); iced impl in
+// ui/iced/virtual_window.rs (462).
+widget DesktopDemo {
+    model {
+        var wins = []
+    }
+
+    view {
+        col {
+            style: "w-full h-full"
+            for w in .wins {
+                virtual_window (win: w) {
+                    button "client" { onclick: () => {} }
+                }
+            }
+            taskbar {
+                button "⊞" { onclick: () => {} }
+            }
+        }
+    }
+}

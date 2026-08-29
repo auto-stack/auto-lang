@@ -1,5 +1,21 @@
+// app.at — Article Feed.
+// Features top title bar with Settings dropdown panel (Theme: Light/Dark + Accent: 5 colors).
+// Default theme: Dark mode.
 widget App {
+    msg {
+        ToggleSettings,
+        SetTheme(str),
+        SetAccent(str),
+        ReadArticle1,
+        ReadArticle2,
+        ReadArticle3
+    }
+
     model {
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var settings_open bool = false
+
         // Header
         var header_title str = "Blog Posts"
         var header_subtitle str = "Discover the latest trends, tips, and best practices in modern web development. From UI components to design systems, stay updated with our expert insights."
@@ -27,108 +43,387 @@ widget App {
     }
 
     view {
-        center {
+        col {
+            // ── Top Title Bar ──
+            row {
+                row {
+                    span "📰" {
+                        style: "text-xl"
+                    }
+                    span "Article Feed" {
+                        style: if .dark_mode {
+                            "text-base font-bold text-zinc-100"
+                        } else {
+                            "text-base font-bold text-gray-900"
+                        }
+                    }
+                    span "009" {
+                        style: if .dark_mode {
+                            "text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-medium"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium"
+                        }
+                    }
+                    style: "gap-2.5 items-center"
+                }
+
+                spacer
+
+                // Settings Trigger Button
+                button "⚙ Settings" {
+                    variant: if .settings_open { "default" } else { "outline" }
+                    onclick: .ToggleSettings
+                    style: "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                }
+                style: if .dark_mode {
+                    "w-full px-8 py-3.5 items-center border-b border-zinc-800 bg-zinc-900/60"
+                } else {
+                    "w-full px-8 py-3.5 items-center border-b border-gray-200 bg-white/80"
+                }
+            }
+
+            // ── Settings Dropdown Panel (When Open) ──
+            if .settings_open {
+                row {
+                    spacer
+                    col {
+                        // Theme Section
+                        col {
+                            span "THEME" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                                }
+                            }
+                            row {
+                                button "☀️ Light" {
+                                    onclick: .SetTheme("light")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    }
+                                }
+                                button "🌙 Dark" {
+                                    onclick: .SetTheme("dark")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-colors"
+                                    }
+                                }
+                                style: "w-full gap-2 mt-1"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        // Accent Section
+                        col {
+                            span "ACCENT COLOR" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide mt-1.5"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1.5"
+                                }
+                            }
+                            row {
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("indigo")
+                                    style: if .accent_color == "indigo" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("coral")
+                                    style: if .accent_color == "coral" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("ocean")
+                                    style: if .accent_color == "ocean" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("sage")
+                                    style: if .accent_color == "sage" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("amber")
+                                    style: if .accent_color == "amber" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                style: "w-full gap-3 mt-1 items-center"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        style: if .dark_mode {
+                            "w-64 p-4 rounded-xl bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        } else {
+                            "w-64 p-4 rounded-xl bg-white text-gray-900 border border-gray-200 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        }
+                    }
+                    style: "w-full z-50"
+                }
+            }
+
+            // ── Main Article Feed Content ──
             col {
-                // Header
+                // Section Header
                 col {
                     h2 .header_title {
-                        style: "text-3xl font-bold text-gray-900"
+                        style: if .dark_mode {
+                            "text-3xl font-extrabold text-zinc-100 tracking-tight text-center"
+                        } else {
+                            "text-3xl font-extrabold text-gray-900 tracking-tight text-center"
+                        }
                     }
                     span .header_subtitle {
-                        style: "text-gray-500 text-center max-w-xl"
+                        style: if .dark_mode {
+                            "text-sm text-zinc-400 text-center max-w-xl mt-1"
+                        } else {
+                            "text-sm text-gray-500 text-center max-w-xl mt-1"
+                        }
                     }
-                    style: "gap-3 items-center"
+                    style: "gap-1 items-center mb-2"
                 }
 
                 // Article 1
                 row {
                     col {
-                        style: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
+                        span "📖" {
+                            style: "text-3xl opacity-60"
+                        }
+                        style: if .dark_mode {
+                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                        } else {
+                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                        }
                     }
                     col {
-                        span .art1_tag {
-                            style: "text-sm text-gray-500"
+                        row {
+                            span .art1_tag {
+                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                            }
+                            style: "items-center"
                         }
                         row {
                             span .art1_author
                             span "·"
                             span .art1_date
-                            style: "text-sm text-gray-500 gap-1"
+                            style: if .dark_mode {
+                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                            } else {
+                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                            }
                         }
                         h3 .art1_title {
-                            style: "text-lg font-semibold text-gray-900 mt-1"
+                            style: if .dark_mode {
+                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            } else {
+                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            }
                         }
                         span .art1_excerpt {
-                            style: "text-sm text-gray-600 mt-1"
+                            style: if .dark_mode {
+                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                            } else {
+                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                            }
                         }
-                        span "Read more →" {
-                            style: "text-sm text-blue-500 font-medium mt-2"
+                        button "Read more →" {
+                            variant: "ghost"
+                            onclick: .ReadArticle1
+                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
                         }
-                        style: "gap-1"
+                        style: "gap-1 flex-1"
                     }
-                    style: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
+                    style: if .dark_mode {
+                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                    } else {
+                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                    }
                 }
 
                 // Article 2
                 row {
                     col {
-                        style: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
+                        span "♿" {
+                            style: "text-3xl opacity-60"
+                        }
+                        style: if .dark_mode {
+                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                        } else {
+                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                        }
                     }
                     col {
-                        span .art2_tag {
-                            style: "text-sm text-gray-500"
+                        row {
+                            span .art2_tag {
+                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                            }
+                            style: "items-center"
                         }
                         row {
                             span .art2_author
                             span "·"
                             span .art2_date
-                            style: "text-sm text-gray-500 gap-1"
+                            style: if .dark_mode {
+                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                            } else {
+                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                            }
                         }
                         h3 .art2_title {
-                            style: "text-lg font-semibold text-gray-900 mt-1"
+                            style: if .dark_mode {
+                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            } else {
+                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            }
                         }
                         span .art2_excerpt {
-                            style: "text-sm text-gray-600 mt-1"
+                            style: if .dark_mode {
+                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                            } else {
+                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                            }
                         }
-                        span "Read more →" {
-                            style: "text-sm text-blue-500 font-medium mt-2"
+                        button "Read more →" {
+                            variant: "ghost"
+                            onclick: .ReadArticle2
+                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
                         }
-                        style: "gap-1"
+                        style: "gap-1 flex-1"
                     }
-                    style: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
+                    style: if .dark_mode {
+                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                    } else {
+                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                    }
                 }
 
                 // Article 3
                 row {
                     col {
-                        style: "w-32 h-32 rounded-lg bg-gray-100 shrink-0"
+                        span "🎨" {
+                            style: "text-3xl opacity-60"
+                        }
+                        style: if .dark_mode {
+                            "w-32 h-32 rounded-xl bg-zinc-800/80 border border-zinc-700/50 shrink-0 items-center justify-center"
+                        } else {
+                            "w-32 h-32 rounded-xl bg-gray-100 border border-gray-200/50 shrink-0 items-center justify-center"
+                        }
                     }
                     col {
-                        span .art3_tag {
-                            style: "text-sm text-gray-500"
+                        row {
+                            span .art3_tag {
+                                style: "text-xs font-semibold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary"
+                            }
+                            style: "items-center"
                         }
                         row {
                             span .art3_author
                             span "·"
                             span .art3_date
-                            style: "text-sm text-gray-500 gap-1"
+                            style: if .dark_mode {
+                                "text-xs text-zinc-400 gap-1.5 items-center mt-1"
+                            } else {
+                                "text-xs text-gray-500 gap-1.5 items-center mt-1"
+                            }
                         }
                         h3 .art3_title {
-                            style: "text-lg font-semibold text-gray-900 mt-1"
+                            style: if .dark_mode {
+                                "text-lg font-bold text-zinc-100 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            } else {
+                                "text-lg font-bold text-gray-900 mt-1 hover:text-primary transition-colors cursor-pointer"
+                            }
                         }
                         span .art3_excerpt {
-                            style: "text-sm text-gray-600 mt-1"
+                            style: if .dark_mode {
+                                "text-sm text-zinc-400 mt-1 leading-relaxed"
+                            } else {
+                                "text-sm text-gray-600 mt-1 leading-relaxed"
+                            }
                         }
-                        span "Read more →" {
-                            style: "text-sm text-blue-500 font-medium mt-2"
+                        button "Read more →" {
+                            variant: "ghost"
+                            onclick: .ReadArticle3
+                            style: "p-0 h-auto text-sm text-primary font-semibold mt-2 hover:underline cursor-pointer"
                         }
-                        style: "gap-1"
+                        style: "gap-1 flex-1"
                     }
-                    style: "bg-white rounded-lg border border-gray-200 shadow-sm p-6 gap-6 items-start"
+                    style: if .dark_mode {
+                        "bg-zinc-900 rounded-2xl border border-zinc-800 p-6 gap-6 items-start shadow-lg w-full transition-all hover:border-zinc-700"
+                    } else {
+                        "bg-white rounded-2xl border border-gray-200 p-6 gap-6 items-start shadow-sm w-full transition-all hover:border-gray-300"
+                    }
                 }
 
-                style: "w-full max-w-3xl p-8 gap-6 bg-gray-50 min-h-screen"
+                style: "w-full flex-1 px-8 py-6 gap-6 items-center justify-start max-w-4xl mx-auto"
+            }
+
+            style: if .dark_mode {
+                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+            } else {
+                "w-full min-h-screen bg-gray-50 text-gray-900"
             }
         }
+    }
+
+    on {
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(name) -> { .accent_color = name }
+        .ReadArticle1 -> { print("Reading article 1") }
+        .ReadArticle2 -> { print("Reading article 2") }
+        .ReadArticle3 -> { print("Reading article 3") }
     }
 }

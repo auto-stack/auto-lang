@@ -1430,8 +1430,12 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         // Width
         if let Some(ref w) = is.width {
             col = col.width(iced_length(w));
-        } else if let Some(mw) = is.max_width {
-            col = col.width(iced::Length::Fill).max_width(mw);
+        }
+        if let Some(mw) = is.max_width {
+            if is.width.is_none() {
+                col = col.width(iced::Length::Fill);
+            }
+            col = col.max_width(mw);
         }
         // Height — skip when justify needs it on container instead
         let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
@@ -1461,6 +1465,7 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         }
     }
 
+    let col_max_width = iced_style.as_ref().and_then(|is| is.max_width);
     let needs_wrap = justify_center || justify_end || has_visual;
     let mt = iced_style.as_ref().and_then(|is| is.margin_top).unwrap_or(0.0);
     let mb = iced_style.as_ref().and_then(|is| is.margin_bottom).unwrap_or(0.0);
@@ -1473,9 +1478,45 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         let mut cont = container(col);
         cont = cont.padding(pd);
         if justify_center {
-            cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).center_y(iced::Length::Fill);
+            let col_w = if let Some(ref is) = iced_style {
+                if let Some(ref w) = is.width {
+                    iced_length(w)
+                } else {
+                    iced::Length::Fill
+                }
+            } else {
+                iced::Length::Fill
+            };
+            let col_h = if let Some(ref is) = iced_style {
+                if let Some(ref h) = is.height {
+                    iced_length(h)
+                } else {
+                    iced::Length::Fill
+                }
+            } else {
+                iced::Length::Fill
+            };
+            cont = cont.width(col_w).height(col_h).center_y(col_h);
         } else if justify_end {
-            cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
+            let col_w = if let Some(ref is) = iced_style {
+                if let Some(ref w) = is.width {
+                    iced_length(w)
+                } else {
+                    iced::Length::Fill
+                }
+            } else {
+                iced::Length::Fill
+            };
+            let col_h = if let Some(ref is) = iced_style {
+                if let Some(ref h) = is.height {
+                    iced_length(h)
+                } else {
+                    iced::Length::Fill
+                }
+            } else {
+                iced::Length::Fill
+            };
+            cont = cont.width(col_w).height(col_h).align_y(iced::alignment::Vertical::Bottom);
         } else {
             // Non-justify wrap: propagate column's width and height to container
             if let Some(ref is) = iced_style {
@@ -1500,6 +1541,19 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 });
             }
         }
+        if let Some(id) = widget_id { cont = cont.id(id); }
+        cont.into()
+    } else if col_max_width.is_some() {
+        let mut cont = container(col.padding(pd));
+        if let Some(ref is) = iced_style {
+            let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                || is.width.is_none();
+            if col_width_fill { cont = cont.width(iced::Length::Fill); }
+            let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                || is.min_height.map_or(false, |mh| mh >= 9999.0);
+            if col_height_fill { cont = cont.height(iced::Length::Fill); }
+        }
+        if let Some(mw) = col_max_width { cont = cont.max_width(mw); }
         if let Some(id) = widget_id { cont = cont.id(id); }
         cont.into()
     } else if let Some(id) = widget_id {
@@ -12155,6 +12209,36 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
     }
 }
 
+/// Recursively extract the maximum z-index declared on a view or its subtree.
+fn extract_max_z_index<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> i32 {
+    let self_z = extract_view_style(view)
+        .and_then(|s| {
+            s.classes.iter().find_map(|c| match c {
+                StyleClass::ZIndex(z) => Some(*z as i32),
+                _ => None,
+            })
+        })
+        .unwrap_or(0);
+
+    let child_z = match view {
+        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } => {
+            children.iter().map(extract_max_z_index).max().unwrap_or(0)
+        }
+        AbstractView::Container { child, .. } => extract_max_z_index(child),
+        _ => 0,
+    };
+
+    self_z.max(child_z)
+}
+
+/// Check if a view has absolute positioning or positive z-index elevating it above normal flow.
+fn is_elevated_view<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
+    let is_abs = extract_view_style(view)
+        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
+        .unwrap_or(false);
+    is_abs || extract_max_z_index(view) > 0
+}
+
 /// Short tag for a View variant, used as debug hover ID prefix.
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
@@ -12184,6 +12268,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Grid { .. } => "grid",
     }
 }
+
 
 fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
     match view {
@@ -12369,42 +12454,64 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
-            // Plan 409 §10 续 6:relative 容器的 absolute 子元素应脱流叠层。
-            // iced 无 absolute 定位,若任其进 normal 流会占据空间 —— 例如 Home
-            // Hero 的 blur 光晕圆(h-64 w-64)会把内容面板往下挤。这里按
-            // StyleClass::Absolute 分区:normal 子元素仍走 build_column 作 base;
-            // absolute 子元素用 iced::widget::stack 叠在 base 之上(参考 Overlay
-            // 分支 renderer.rs:1384),并用 clip 复现 overflow-hidden。stack 的
-            // 尺寸由 base 决定,overlay 落在原点 (0,0) 且不挤压 base —— 接近
-            // CSS absolute "脱流不占位" 的语义(精确定位 offset 暂不支持)。
-            let mut normal: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
-            let mut absolute: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
-            for (i, child) in children.into_iter().enumerate() {
-                let is_abs = extract_view_style(&child)
-                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
-                    .unwrap_or(false);
-                if is_abs { absolute.push((i, child)); } else { normal.push((i, child)); }
-            }
-            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
-            for (i, child) in normal.into_iter() {
-                path.push(i);
-                els.push(render_dynamic_view(child, debug_ctx, path));
-                path.pop();
-            }
-            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-            let base = build_column(els, spacing, padding, style.as_ref(), widget_id);
-            let el = if absolute.is_empty() {
-                base
-            } else {
-                // Stack::new() 无参;首个 push 为 base 层(决定 stack 尺寸),
-                // 随后 absolute 子元素作为 overlay 叠在其上,不挤压 base。
-                let mut stk = iced::widget::Stack::new().push(base);
-                for (i, child) in absolute.into_iter() {
+
+            let has_elevated = children.iter().any(is_elevated_view);
+
+            let el = if !has_elevated {
+                let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
+                for (i, child) in children.into_iter().enumerate() {
                     path.push(i);
-                    let abs_el = render_dynamic_view(child, debug_ctx, path);
+                    els.push(render_dynamic_view(child, debug_ctx, path));
                     path.pop();
-                    stk = stk.push(iced::widget::opaque(abs_el));
                 }
+                let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
+                build_column(els, spacing, padding, style.as_ref(), widget_id)
+            } else {
+                let mut base_items: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
+                let mut elevated_indices: Vec<usize> = Vec::new();
+
+                for (i, child) in children.iter().enumerate() {
+                    if is_elevated_view(child) {
+                        elevated_indices.push(i);
+                    } else {
+                        base_items.push((i, child.clone()));
+                    }
+                }
+
+                let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(base_items.len());
+                for (i, child) in base_items {
+                    path.push(i);
+                    base_els.push(render_dynamic_view(child, debug_ctx, path));
+                    path.pop();
+                }
+                let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
+                let base = build_column(base_els, spacing, padding, style.as_ref(), widget_id);
+
+                let mut stk = iced::widget::Stack::new().push(base);
+
+                for &elev_idx in &elevated_indices {
+                    let is_abs = extract_view_style(&children[elev_idx]).map_or(false, |s| {
+                        s.classes.iter().any(|c| matches!(c, StyleClass::Absolute))
+                    });
+
+                    if is_abs {
+                        path.push(elev_idx);
+                        let abs_el = render_dynamic_view(children[elev_idx].clone(), debug_ctx, path);
+                        path.pop();
+                        stk = stk.push(abs_el);
+                    } else {
+                        let eff_spacing = effective_spacing(spacing, style.as_ref(), false);
+                        let mut overlay_col = column([]).spacing(eff_spacing).width(iced::Length::Fill);
+                        for j in 0..=elev_idx {
+                            path.push(j);
+                            let child_el = render_dynamic_view(children[j].clone(), debug_ctx, path);
+                            path.pop();
+                            overlay_col = overlay_col.push(child_el);
+                        }
+                        stk = stk.push(overlay_col);
+                    }
+                }
+
                 let clip = style.as_ref()
                     .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
                     .unwrap_or(false);

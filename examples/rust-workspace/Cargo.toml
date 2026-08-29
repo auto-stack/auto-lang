@@ -3,6 +3,7 @@ members = [
     "011-calculator",
     "012-stopwatch",
     "013-todo",
+    "013-todo-back",
     "014-weather",
     "015-notes",
     "015-notes-back",
@@ -25,6 +26,7 @@ members = [
     "plan-047-dev-back",
     "plan-048-dev-back",
     "plan-049-dev-back",
+    "poc-hello-back",
     "pricing-table",
     "profile-card",
     "stats-board"

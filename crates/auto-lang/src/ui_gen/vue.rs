@@ -22038,6 +22038,13 @@ widget NullProbe {
         );
     }
 
+    /// Plan 465 T4 (I4): desktop virtual_window/taskbar leaves resolve to the
+    /// @/wm/* components registered in schema/aura.at (`vue:` mapping).
+    #[test]
+    fn test_a2vue_virtual_window() {
+        test_a2vue_shadcn("virtual_window").expect("a2vue virtual_window golden mismatch");
+    }
+
     #[test]
     fn test_a2vue_counter() {
         test_a2vue("001_counter").expect("a2vue counter golden mismatch");

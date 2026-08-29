@@ -9,7 +9,7 @@ supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 
-current_step: 0
+current_step: 2
 total_steps: 6
 ---
 
@@ -103,8 +103,8 @@ shell 侧零几何、动词表外无特权命令）。
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | 施工图 | §3.2 接缝对账定案 + §3.1 投影 schema v1 草案 + shell.at 改名幅度，报告 `reports/472-t1-projection-blueprint.md` | 评审通过 |
-| T2 | workspace 驱动模型 | §3.3：WmState 加法增域 + DesktopCommand 增臂 + 分区过滤 | `cargo t`（新增单测：分区命中/切换/窗口归属） |
+| T1 | 施工图 | §3.2 接缝对账定案 + §3.1 投影 schema v1 草案 + shell.at 改名幅度，报告 `reports/472-t1-projection-blueprint.md` | 评审通过 |[✅ 已完成] `docs/plans/reports/472-t1-projection-blueprint.md`（基线 master 35ff3c3c3）定案：DesktopBus 保留候选 B 传输、`desktop.*` 降格动词词表（8 动词含新增 workspace/workspace_next/activate）、builtin 语法化 v2；投影协议 v1 字段表（__wm_wins 增 workspace/app/icon + __wm_workspaces 新增）+ 指纹规则成文，载体 schema/projection-protocol-v1.md；workspace 成员派生微决策（VWinState.workspace 过滤，不设 Workspace.wins 二级事实）；dock 图标/pinned/配置链设计（storage 键 shell.dock.*，缺省回退 pack 默认）；DesktopShell→Desktop 改名幅度=声明处 1 处（grep 核验）；正式评审由 /auto-plan:review 承载（465 T1 先例）
+| T2 | workspace 驱动模型 | §3.3：WmState 加法增域 + DesktopCommand 增臂 + 分区过滤 | `cargo t`（新增单测：分区命中/切换/窗口归属） |[✅ 已完成] WmState 增 workspaces+current_workspace、VWinState.workspace 成员派生；DesktopCommand 增 SetWorkspace/NextWorkspace（`workspace\t<n>`/`workspace_next` 动词，后者无参记录 parse 先行判定）；WmCommand Next/Prev 臂 + Ctrl+Alt+←/→ 热键；过滤六点全落（hit_test/cycle_focus/焦点回退/apply_layout/绘制层/级联 index）；TDD 7 新单测 RED→GREEN（workspace_*/apply_layout_filters_by_current_workspace）；ui:: 全套 556/556 绿。附带两笔 master 既有红修复：①465 I6 layout_cases.json 被 .gitignore `*.json` 吞掉未入库（fresh checkout 双端同挂）——按 465 报告 17 例类别重建+gitignore 例外，Rust+TS 双端 parity 17/17 复绿；②test_md_hidden_classes_parse stale 断言按 NegativeMargin* 新语义更新（master 基线复现红，与本计划改动无关）
 | T3 | 投影协议 v1 落码 | `__wm_*` 族 formalize + `__wm_workspaces` + 指纹规则成文 + schema 文档（v1） | 单测：投影往返/指纹门控；schema 文档评审 |
 | T4 | dock 升级 | shell.at 重写（图标/pinned/运行指示/workspace 条）+ auto-os-config 配置合并 | 实机：dock 全交互 + 配置生效 |
 | T5 | 实机验收 | ui_desktop 全流程：启动多 App → dock 操作 → workspace 切换（窗口随分区隐现）→ 召唤 launcher → 布局切换 | MCP 截图 + 实机交互清单 |

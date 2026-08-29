@@ -935,6 +935,20 @@ impl WidgetRegistry {
     }
 
     fn register_navigation_widgets(&mut self) {
+        // Plan 465 T4 (I4): desktop shell leaves — virtual_window + taskbar.
+        // Registration source = schema/aura.at (vue: mapping to @/wm/* gets
+        // overlaid from there; iced implementation = ui/iced/virtual_window.rs
+        // + renderer shell, 462/463).
+        let mut virtual_window = WidgetSpec::new("VirtualWindow", WidgetCategory::Layout)
+            .with_alias("virtual_window");
+        virtual_window.has_children = true;
+        self.register(virtual_window);
+
+        let mut taskbar = WidgetSpec::new("Taskbar", WidgetCategory::Navigation)
+            .with_alias("taskbar");
+        taskbar.has_children = true;
+        self.register(taskbar);
+
         // Swiper
         let mut swiper = WidgetSpec::new("Swiper", WidgetCategory::Navigation)
             .with_alias("swiper");
