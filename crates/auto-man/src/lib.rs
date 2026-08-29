@@ -42,6 +42,7 @@ pub mod vue;
 
 // PLAN-457: bundled shadcn-vue ui component snapshots (offline cold start)
 pub mod vue_shadcn;
+pub mod wm_assets;
 
 // Phase 6: Tauri project support (Plan 130)
 pub mod tauri;

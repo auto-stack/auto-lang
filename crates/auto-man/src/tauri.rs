@@ -52,6 +52,12 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
         project.generate()?;
     }
 
+    // Plan 465 T7: desktop host shell + registry refresh on every run
+    // (AUTO_DESKTOP propagates from `auto run --render tauri --desktop`).
+    if crate::vue::desktop_mode() {
+        project.generate_desktop_host()?;
+    }
+
     // Step 2: Generate API client code (if api.at exists)
     current_step += 1;
     println!();
@@ -115,7 +121,12 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     // (must run AFTER tauri init because --force overwrites src-tauri/src/)
     if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
         println!("  ⚠ API generation skipped: {}", e);
-    } else {
+    } else if tauri_dir.join("src").join("commands.rs").is_file()
+        || tauri_dir.join("src").join("commands").is_dir()
+    {
+        // Plan 465 T7: only register commands when the api generator actually
+        // emitted them — a no-api project (desktop host) must keep the tauri
+        // init's vanilla lib.rs, or `mod commands` fails to compile (E0583).
         update_tauri_lib_rs(&tauri_dir)?;
     }
 
@@ -126,6 +137,25 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     run_tauri_dev(root_dir)?;
 
     Ok(())
+}
+
+/// Plan 465 T7: desktop host window config — fullscreen webview (R5:
+/// 一个 tauri 全屏 webview = 一个虚拟桌面). JSON-edit `app.windows[0]`:
+/// `fullscreen: true`（无该数组/对象形态时尽力而为跳过，不硬造）。
+fn apply_desktop_window_config(conf: &str) -> AutoResult<String> {
+    let mut v: serde_json::Value = serde_json::from_str(conf)
+        .map_err(|e| format!("Failed to parse tauri.conf.json: {}", e))?;
+    let Some(windows) = v["app"]["windows"].as_array_mut() else {
+        return Ok(conf.to_string());
+    };
+    if let Some(first) = windows.first_mut() {
+        first["fullscreen"] = serde_json::Value::Bool(true);
+        println!("  {} Tauri desktop window: fullscreen", "✓".bright_green());
+    }
+    serde_json::to_string_pretty(&v)
+        .map(|s| format!("{}
+", s))
+        .map_err(|e| e.into())
 }
 
 /// Plan 151: Update src-tauri/Cargo.toml to depend on ../../rust
@@ -264,7 +294,19 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
         let content = std::fs::read_to_string(&tauri_conf)
             .map_err(|e| format!("Failed to read tauri.conf.json: {}", e))?;
         // Replace default port 5173 with 3000
-        let updated = content.replace("\"http://localhost:5173\"", "\"http://localhost:3000\"");
+        let mut updated = content.replace("\"http://localhost:5173\"", "\"http://localhost:3000\"");
+        // Plan 465 T7: desktop host window — fullscreen (R5: 一个 tauri 全屏
+        // webview = 一个虚拟桌面) + honor AUTO_FRONT_PORT so `--front-port`
+        // keeps the devUrl and the vite server in sync.
+        if crate::vue::desktop_mode() {
+            if let Some(port) = std::env::var("AUTO_FRONT_PORT").ok().filter(|p| !p.is_empty()) {
+                updated = updated.replace(
+                    "http://localhost:3000",
+                    &format!("http://localhost:{}", port),
+                );
+            }
+            updated = apply_desktop_window_config(&updated)?;
+        }
         std::fs::write(&tauri_conf, updated)
             .map_err(|e| format!("Failed to write tauri.conf.json: {}", e))?;
         println!("  ✓ Updated tauri.conf.json to use port 3000");

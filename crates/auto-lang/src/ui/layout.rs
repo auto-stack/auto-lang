@@ -562,6 +562,111 @@ mod tests {
         assert!(out.is_none());
     }
 
+    // ---- I6 对拍：共享期望值表（Plan 465 T4）----
+    // 同一 layout_cases.json 约束 TS 直译（scripts/ui-layout-parity.mjs）；
+    // 改布局语义时两侧同改 + 表同改。
+
+    #[test]
+    fn layout_parity_cases_shared_table() {
+        let raw = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/ui/layout_cases.json"
+        ))
+        .expect("shared layout cases file");
+        let v: serde_json::Value = serde_json::from_str(&raw).expect("cases json parse");
+        let vp = &v["viewport"];
+        let viewport = rect(
+            vp[0].as_f64().unwrap() as f32,
+            vp[1].as_f64().unwrap() as f32,
+            vp[2].as_f64().unwrap() as f32,
+            vp[3].as_f64().unwrap() as f32,
+        );
+        let reserved = ReservedEdges {
+            bottom: v["reservedTaskbar"].as_f64().unwrap() as f32,
+            ..Default::default()
+        };
+
+        let arr = |n: &serde_json::Value| -> Vec<f32> {
+            n.as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect()
+        };
+        let mut checked = 0usize;
+        for case in v["cases"].as_array().unwrap() {
+            let kind = case["kind"].as_str().unwrap();
+            match kind {
+                "usable" => {
+                    let u = usable_rect(viewport, reserved);
+                    let e = arr(&case["expected"]);
+                    assert_rect(u, e[0], e[1], e[2], e[3]);
+                    checked += 1;
+                }
+                "layout" => {
+                    let n = case["n"].as_u64().unwrap() as usize;
+                    let focused = case["focused"].as_u64().map(|i| i as usize);
+                    let free_rects: Option<Vec<(f32, f32, f32, f32)>> = case.get("freeRects").map(|fr| {
+                        fr.as_array().unwrap().iter().map(|r| {
+                            let a = arr(r);
+                            (a[0], a[1], a[2], a[3])
+                        }).collect()
+                    });
+                    let input: Vec<WindowState> = (0..n)
+                        .map(|i| WindowState {
+                            wid: Wid(i as u64 + 1),
+                            rect: match &free_rects {
+                                Some(fr) => rect(fr[i].0, fr[i].1, fr[i].2, fr[i].3),
+                                None => rect(0.0, 0.0, 1.0, 1.0),
+                            },
+                            focused: focused == Some(i),
+                        })
+                        .collect();
+                    let out = layout(
+                        LayoutMode::from_name(case["mode"].as_str().unwrap()),
+                        &input,
+                        viewport,
+                        reserved,
+                    );
+                    if let Some(last) = case.get("expectedLast") {
+                        let e = arr(last);
+                        assert_rect(out[out.len() - 1].1, e[0], e[1], e[2], e[3]);
+                    } else {
+                        for (i, exp) in case["expected"].as_array().unwrap().iter().enumerate() {
+                            let e = arr(exp);
+                            assert_rect(out[i].1, e[0], e[1], e[2], e[3]);
+                        }
+                    }
+                    checked += 1;
+                }
+                "cascade" => {
+                    let sz = arr(&case["size"]);
+                    let r = cascade_rect(
+                        case["index"].as_u64().unwrap() as usize,
+                        iced::Size::new(sz[0], sz[1]),
+                        usable_rect(viewport, reserved),
+                    );
+                    let e = arr(&case["expected"]);
+                    assert_rect(r, e[0], e[1], e[2], e[3]);
+                    checked += 1;
+                }
+                "snap" => {
+                    let c = arr(&case["cursor"]);
+                    let out = snap_preview(
+                        iced::Point::new(c[0], c[1]),
+                        usable_rect(viewport, reserved),
+                    );
+                    if case["expected"].is_null() {
+                        assert!(out.is_none(), "snap case {} expected none", case["name"]);
+                    } else {
+                        let r = out.expect("snap case expected Some");
+                        let e = arr(&case["expected"]);
+                        assert_rect(r, e[0], e[1], e[2], e[3]);
+                    }
+                    checked += 1;
+                }
+                _ => panic!("unknown case kind: {}", kind),
+            }
+        }
+        assert!(checked >= 15, "table must stay populated, got {}", checked);
+    }
+
     // ---- LayoutMode 传输名 ----
 
     #[test]

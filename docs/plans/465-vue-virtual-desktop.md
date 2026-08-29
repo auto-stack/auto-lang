@@ -175,6 +175,19 @@ R12 的 tauri 增强臂）。
   （归 464）；若与 463 同期改 `schema/aura.at`，错峰合入。
 - **消费**：462 widget 契约、463 布局规范与注册表清单逻辑、464 launcher 源。
 
+## 7.5 待澄清事项（执行期记录，供 /auto-plan:review 裁定）
+
+- **T1「评审通过」门禁**：施工图（`reports/465-t1-host-blueprint.md`）三决策
+  （`--desktop`+env 注入 / registry 落 auto-man vue.rs / 宿主模板镜像 shell.at）
+  按 work 范式以报告+实做承载，正式裁定归本轮 review。
+- **全量 `cargo t` 未跑**：work 技能收尾禁全量（scoped 门禁全绿见 T8 表）；
+  全量回归归 review 门禁（含 `cargo tv/tt/tb` 按触碰面裁量）。
+- **I5/T6/T8 的 464 复验**：028-launcher 真源挂 overlay、I5 零分叉终验——
+  按 §8 待 464 合入后执行（本批占位槽已全键盘流可用）。
+- **tauri global-shortcut**（可选项）未做；系统级热键深化登记 Design 24 后续。
+- **构建环境注记**：plan worktree 内构建需 `.worktrees/auto-down` junction →
+  `D:utostackuto-down`（本批已建；结构与 463 book junction 同型）。
+
 ## 8. 关联
 
 - 依赖：462（契约）；并行：463/464；T6/T8 需要 463/464 实际合入后复验。

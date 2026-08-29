@@ -3125,6 +3125,180 @@ export default router
         Ok(())
     }
 
+    // =====================================================================
+    // Plan 465: desktop host scaffold (T3)
+    // =====================================================================
+
+    /// Plan 465 T3: desktop-host mode (`auto run --desktop` -> AUTO_DESKTOP=1).
+    /// Full-scans each app dir via `VueProject::from_workspace` (sub-component
+    /// widgets + store composables + npm deps, not just the entry file),
+    /// writes shared pieces into the host project (src/apps/<id>/App.vue root,
+    /// src/components/, src/stores/), then emits the build-time registry
+    /// `src/apps-registry.ts` and the host shell `src/App.vue`.
+    /// v1 scope: front-only, single-view apps — apps needing an API client,
+    /// router pages, ext files or i18n locales are skipped with a warning
+    /// (registered limitation; see plan §3.3 known-limits approach).
+    pub fn generate_desktop_host(&self) -> AutoResult<()> {
+        let apps_dir = desktop_apps_dir(&self.root_dir)?;
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            &apps_dir,
+            &auto_lang::ui::app_registry::ScanOptions {
+                render: Some("vue".to_string()),
+            },
+        );
+        println!(
+            "{} {} (from {}, render: vue)",
+            "  Desktop apps:".bright_cyan(),
+            entries.len(),
+            apps_dir.display()
+        );
+
+        let src_dir = self.output_dir.join("src");
+        let apps_src = src_dir.join("apps");
+        fs::create_dir_all(&apps_src)
+            .map_err(|e| format!("Failed to create src/apps: {}", e))?;
+        let components_dir = src_dir.join("components");
+        let stores_dir = src_dir.join("stores");
+
+        let mut shadcn_needed: Vec<String> = Vec::new();
+        let mut registry_rows: Vec<(String, String, String, String)> = Vec::new();
+        let mut npm_merge: Vec<(String, String)> = Vec::new();
+        let mut claimed_stores: HashSet<String> = HashSet::new();
+        let mut claimed_components: HashSet<String> = HashSet::new();
+        let mut app_corpus_total = String::new();
+
+        for e in &entries {
+            let app_root = apps_dir.join(&e.id);
+            let vp = match VueProject::from_workspace(&app_root) {
+                Ok(v) => v,
+                Err(err) => {
+                    println!("  {} app {} skipped: {}", "⚠".bright_yellow(), e.id, err);
+                    continue;
+                }
+            };
+
+            // v1 scope guards — the corpus covers the root SFC and every
+            // sub-component SFC of this app.
+            let mut corpus = vp.app_vue_code.clone();
+            for (_, _, code, _) in &vp.components {
+                corpus.push_str(code);
+            }
+            for (_, code) in &vp.store_files {
+                corpus.push_str(code);
+            }
+            let skip = if corpus.contains("@/lib/api") || corpus.contains("from '@/api") {
+                Some("needs API client (v1 desktop is front-only)")
+            } else if vp.has_routes {
+                Some("has router pages (v1 desktop is single-view)")
+            } else if corpus.contains("@/ext/") {
+                Some("needs ext files")
+            } else if corpus.contains("@/locales/") || vp.i18n.enabled {
+                Some("needs i18n locales")
+            } else {
+                None
+            };
+            if let Some(reason) = skip {
+                println!("  {} app {} skipped: {}", "⚠".bright_yellow(), e.id, reason);
+                continue;
+            }
+
+            app_corpus_total.push_str(&corpus);
+
+            // Store composables into the shared src/stores/ namespace
+            // (first-wins on filename collisions).
+            for (filename, code) in &vp.store_files {
+                fs::create_dir_all(&stores_dir)?;
+                let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                if claimed_stores.insert(clean_name.to_string()) {
+                    fs::write(stores_dir.join(clean_name), code)?;
+                }
+            }
+
+            // Sub-component SFCs into src/components/<Widget>.vue — matches
+            // the generated `@/components/<Widget>.vue` imports (first-wins).
+            for (_, _name, code, widget_name) in &vp.components {
+                if widget_name == "app" {
+                    continue;
+                }
+                fs::create_dir_all(&components_dir)?;
+                let file = components_dir.join(format!("{}.vue", widget_name));
+                if claimed_components.insert(widget_name.clone()) {
+                    fs::write(&file, code)
+                        .map_err(|e| format!("Failed to write {}: {}", file.display(), e))?;
+                }
+                for comp in detect_shadcn_components(code) {
+                    if !shadcn_needed.contains(&comp) {
+                        shadcn_needed.push(comp);
+                    }
+                }
+            }
+            for comp in detect_shadcn_components(&vp.app_vue_code) {
+                if !shadcn_needed.contains(&comp) {
+                    shadcn_needed.push(comp);
+                }
+            }
+
+            // Cross-app npm deps (pac `deps:`) merged into package.json
+            // before the install step of the same run.
+            for (name, ver) in &vp.npm_deps {
+                if !npm_merge.iter().any(|(n, _)| n == name) {
+                    npm_merge.push((name.clone(), ver.clone()));
+                }
+            }
+
+            // Root SFC per app.
+            let app_dir = apps_src.join(&e.id);
+            fs::create_dir_all(&app_dir)
+                .map_err(|e| format!("Failed to create {}: {}", app_dir.display(), e))?;
+            fs::write(app_dir.join("App.vue"), &vp.app_vue_code)
+                .map_err(|e| format!("Failed to write {}/App.vue: {}", app_dir.display(), e))?;
+            registry_rows.push((e.id.clone(), e.title.clone(), e.icon.clone(), e.category.clone()));
+        }
+
+        // App-referenced shadcn components are absent from the host's own
+        // detection set — materialize them directly (idempotent, skips
+        // existing files).
+        if !shadcn_needed.is_empty() {
+            let report = crate::vue_shadcn::materialize(&self.output_dir, &shadcn_needed)?;
+            if report.written > 0 {
+                println!(
+                    "  {} App ui components: {} copied",
+                    "✓".bright_green(),
+                    report.written
+                );
+            }
+        }
+
+        // App code consumes optional dep groups the host's own dependency
+        // usage doesn't see (Plan 442 conditional emission) — union them in
+        // via the same marker detector over the app corpus.
+        let app_usage = VueDependencyUsage::detect(&app_corpus_total);
+        for (pkg, ver) in OPTIONAL_DEPS {
+            if app_usage.required_packages().contains(pkg)
+                && !npm_merge.iter().any(|(n, _)| n == pkg)
+            {
+                npm_merge.push(((*pkg).to_string(), (*ver).to_string()));
+            }
+        }
+
+        // WM runtime assets (store/layout/keyboard/leaves) — overwrite every
+        // run; owned by the generator.
+        crate::wm_assets::materialize(&self.output_dir)?;
+
+        merge_host_npm_deps(&self.output_dir, &npm_merge)?;
+
+        fs::write(src_dir.join("apps-registry.ts"), generate_apps_registry(&registry_rows))
+            .map_err(|e| format!("Failed to write apps-registry.ts: {}", e))?;
+        fs::write(src_dir.join("App.vue"), generate_host_app_vue())
+            .map_err(|e| format!("Failed to write host App.vue: {}", e))?;
+        println!(
+            "  {} Desktop host: src/App.vue + src/apps-registry.ts ({} apps)",
+            "✓".bright_green(),
+            registry_rows.len()
+        );
+        Ok(())
+    }
+
     /// Run package manager install
     pub fn npm_install(&self) -> AutoResult<()> {
         let pm = crate::pkg::display_name();
@@ -3987,6 +4161,12 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
         project.ensure_code_editor_component()?;
     }
 
+    // Plan 465: the desktop host shell + app registry must refresh on EVERY
+    // run (apps may change) — same reasoning as the index.html rewrite below.
+    if desktop_mode() {
+        project.generate_desktop_host()?;
+    }
+
     // Plan 458: index.html carries the theme default (`class="dark"`) and the
     // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
     // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
@@ -4236,9 +4416,284 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
     Ok((result.vue_code, names, result.store_composables))
 }
 
+// =====================================================================
+// Plan 465 T3: desktop host scaffolding free functions
+// =====================================================================
+
+/// Desktop-host mode flag (`auto run --desktop` injects AUTO_DESKTOP=1).
+/// Same env-injection idiom as AUTO_UI_THEME / AUTO_VM_WINDOW.
+pub fn desktop_mode() -> bool {
+    std::env::var("AUTO_DESKTOP").ok().as_deref() == Some("1")
+}
+
+/// Apps directory for the desktop registry: `--apps` flag value via
+/// AUTO_DESKTOP_APPS env wins; default is `<workspace>/examples/ui`
+/// (the acceptance-scenario value). Missing dir is an error here —
+/// a desktop host with zero apps is a misfire, not a valid page.
+fn desktop_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
+    if let Some(d) = std::env::var_os("AUTO_DESKTOP_APPS") {
+        return Ok(PathBuf::from(d));
+    }
+    let default = root_dir.join("examples").join("ui");
+    if default.is_dir() {
+        return Ok(default);
+    }
+    Err(format!(
+        "Desktop mode needs an apps directory: set AUTO_DESKTOP_APPS or create {}",
+        default.display()
+    )
+    .into())
+}
+
+/// Plan 465 T3: merge cross-app npm deps (pac `deps:` of scanned apps)
+/// into the host package.json — idempotent; runs before the install step
+/// of the same run.
+fn merge_host_npm_deps(output_dir: &Path, deps: &[(String, String)]) -> AutoResult<()> {
+    if deps.is_empty() {
+        return Ok(());
+    }
+    let pkg_path = output_dir.join("package.json");
+    if !pkg_path.is_file() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(&pkg_path)?;
+    let mut pkg: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("Failed to parse {}: {}", pkg_path.display(), e))?;
+    let mut added = 0usize;
+    for (name, ver) in deps {
+        if pkg["dependencies"][name].is_string() {
+            continue;
+        }
+        pkg["dependencies"][name] = serde_json::Value::String(ver.clone());
+        added += 1;
+    }
+    if added > 0 {
+        fs::write(&pkg_path, serde_json::to_string_pretty(&pkg).map_err(|e| e.to_string())?)?;
+        println!("  {} App dependencies added: {}", "✓".bright_green(), added);
+    }
+    Ok(())
+}
+
+/// Build-time app registry: static `import()` path map — every path is a
+/// string literal so vite's import analysis can pre-bundle the chunks
+/// (runtime-joined paths are not supported).
+fn generate_apps_registry(entries: &[(String, String, String, String)]) -> String {
+    let mut rows = String::new();
+    for (id, title, icon, category) in entries {
+        // {:?} produces a quoted, escaped TS-compatible string literal.
+        rows.push_str(&format!(
+            "  {{ id: {:?}, title: {:?}, icon: {:?}, category: {:?}, load: () => import({:?}) }},\n",
+            id, title, icon, category, format!("./apps/{}/App.vue", id)
+        ));
+    }
+    format!(
+        r#"// Generated by auto-man — build-time app registry (Plan 465 T3). DO NOT EDIT.
+// Regenerated on every `auto run --desktop` from the scanned apps directory.
+import type {{ Component }} from 'vue'
+
+export interface AppEntry {{
+  id: string
+  title: string
+  icon: string
+  category: string
+  load: () => Promise<{{ default: Component }}>
+}}
+
+export const APPS: AppEntry[] = [
+{rows}]
+
+export function findApp(id: string): AppEntry | undefined {{
+  return APPS.find((a) => a.id === id)
+}}
+"#
+    )
+}
+
+/// Host shell (Plan 465 T5): WmStore z-stack + taskbar + launcher overlay
+/// slot. Taskbar/overlay structure mirrors 463 shell.at (T1 blueprint §5);
+/// the overlay is the 464-launcher slot (placeholder panel until 464 lands).
+fn generate_host_app_vue() -> String {
+    r#"<script setup lang="ts">
+// Plan 465: desktop host shell (auto-generated; rewritten on every
+// `--desktop` run). WmStore z-stack + taskbar + launcher overlay slot.
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { APPS, findApp } from './apps-registry'
+import {
+  wm,
+  launchWindow,
+  focusAtPoint,
+  setViewport,
+  attachClient,
+} from './wm/store'
+import { installDesktopKeyboard } from './wm/keyboard'
+import Taskbar from './wm/Taskbar.vue'
+import VirtualWindow from './wm/VirtualWindow.vue'
+
+const overlayOpen = ref(false)
+const desktopEl = ref<HTMLElement | null>(null)
+// Plan 465 T6: 464-launcher 占位槽的搜索流（真 launcher 落地后换源，I5 复验）。
+const query = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+const filtered = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return APPS
+  return APPS.filter((a) => a.title.toLowerCase().includes(q) || a.id.toLowerCase().includes(q))
+})
+
+async function launch(id: string): Promise<void> {
+  overlayOpen.value = false
+  const entry = findApp(id)
+  if (!entry) return
+  try {
+    const mod = await entry.load()
+    launchWindow(entry.id, entry.title, mod.default)
+  } catch (err) {
+    console.error(`[desktop] launch failed: ${id}`, err)
+  }
+}
+
+function launchFirst(): void {
+  const first = filtered.value[0]
+  if (first) void launch(first.id)
+}
+
+function setClient(w: (typeof wm.wins)[number], el: unknown): void {
+  attachClient(w, el)
+}
+
+function toggleOverlay(): void {
+  overlayOpen.value = !overlayOpen.value
+}
+
+watch(overlayOpen, (open) => {
+  if (open) {
+    query.value = ''
+    void nextTick(() => searchInput.value?.focus())
+  }
+})
+
+onMounted(() => {
+  setViewport(window.innerWidth, window.innerHeight)
+  installDesktopKeyboard({ summonLauncher: toggleOverlay })
+})
+</script>
+
+<template>
+  <div class="w-full h-full flex flex-col bg-background">
+    <div ref="desktopEl" class="desktop-area flex-1 relative overflow-hidden">
+      <VirtualWindow v-for="w in wm.wins" :key="w.wid" :win="w">
+        <template v-if="!w.crashed">
+          <div :ref="(el) => setClient(w, el)" class="w-full h-full" />
+        </template>
+        <div v-else class="w-full h-full flex items-center justify-center bg-background">
+          <p class="text-sm text-muted-foreground">[AutoUI 会话] 视图构建异常（plan-453 边界兜底）</p>
+        </div>
+      </VirtualWindow>
+      <div
+        v-if="overlayOpen"
+        class="absolute inset-0 flex items-start justify-center pt-24 bg-black/50"
+        style="z-index: 9999"
+        @click.self="overlayOpen = false"
+      >
+        <div class="w-96 max-h-96 overflow-auto rounded-lg border border-border bg-card shadow-xl p-2">
+          <input
+            ref="searchInput"
+            v-model="query"
+            class="w-full h-9 px-3 mb-2 text-sm rounded border border-border bg-background outline-none focus:border-primary"
+            placeholder="search apps… (Enter launches the first match)"
+            @keydown.enter="launchFirst"
+          >
+          <button
+            v-for="a in filtered"
+            :key="a.id"
+            class="w-full h-10 px-3 flex items-center gap-2 text-sm rounded hover:bg-accent text-left"
+            @click="launch(a.id)"
+          >
+            <span class="truncate">{{ a.title }}</span>
+            <span class="ml-auto text-xs text-muted-foreground shrink-0">{{ a.category }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <Taskbar @summon="toggleOverlay" />
+  </div>
+</template>
+"#
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 465 T3: build-time desktop registry — the render:"vue" filter
+    /// passes only vue-declared apps, and every entry's dynamic import path
+    /// is a string literal (vite-analyzable).
+    #[test]
+    fn desktop_registry_maps_vue_apps_only() {
+        let tmp = std::env::temp_dir().join(format!("auto465-reg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let ui = tmp.join("examples").join("ui");
+        let app_at = "widget App {
+  model { var n int = 0 }
+  view { col { text `${.n}` } }
+}
+";
+        std::fs::create_dir_all(ui.join("001-alpha").join("src").join("front")).unwrap();
+        std::fs::write(
+            ui.join("001-alpha").join("pac.at"),
+            "name: \"alpha\"
+render: \"vue\"
+",
+        )
+        .unwrap();
+        std::fs::write(ui.join("001-alpha").join("src").join("front").join("app.at"), app_at).unwrap();
+        std::fs::create_dir_all(ui.join("002-beta").join("src").join("front")).unwrap();
+        std::fs::write(
+            ui.join("002-beta").join("pac.at"),
+            "name: \"beta\"
+render: \"vm\"
+",
+        )
+        .unwrap();
+        std::fs::write(ui.join("002-beta").join("src").join("front").join("app.at"), app_at).unwrap();
+
+        let entries = auto_lang::ui::app_registry::scan_apps(
+            &ui,
+            &auto_lang::ui::app_registry::ScanOptions {
+                render: Some("vue".to_string()),
+            },
+        );
+        assert_eq!(
+            entries.len(),
+            1,
+            "only the vue-declared app passes the filter: {:?}",
+            entries
+        );
+
+        let rows: Vec<(String, String, String, String)> = entries
+            .iter()
+            .map(|e| {
+                (
+                    e.id.clone(),
+                    e.title.clone(),
+                    e.icon.clone(),
+                    e.category.clone(),
+                )
+            })
+            .collect();
+        let ts = generate_apps_registry(&rows);
+        assert!(ts.contains("\"001-alpha\""), "registry maps the vue app:
+{ts}");
+        assert!(
+            ts.contains("import(\"./apps/001-alpha/App.vue\")"),
+            "static import literal required:
+{ts}"
+        );
+        assert!(!ts.contains("002-beta"), "vm-declared app excluded:
+{ts}");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
 
     /// Plan 442 P0-1: apps that consume none of the optional features
     /// declare none of the optional deps (the pre-442 scaffold hardcoded
