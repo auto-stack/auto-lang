@@ -135,6 +135,15 @@ pub struct DynamicComponent {
     /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab),跨 view() 重建持久。
     /// 非 VM state(.at model 未声明),与 routes/computed 同范式由 DynamicComponent 持有。
     pub(crate) preview_states: std::collections::HashMap<String, PreviewCardUiState>,
+
+    /// Plan 482: nav-group 内置开合态(未绑定 `open` 的可折叠组),键为
+    /// `__nav_group_open:<label>`;由 `__nav_toggle` 内部消息翻转,跨 view()
+    /// 重建持久(同 preview_states 范式)。
+    pub(crate) nav_group_states: std::collections::HashMap<String, bool>,
+
+    /// Plan 482: VM 路由历史栈(浏览器 back 的对等物)。`set_route` 时压入
+    /// 旧路由,`__navigate_back` / `router.back()`(经 __nav_back_pending)弹出。
+    route_history: Vec<String>,
 }
 
 /// Plan 409 §10 续 19: preview-card 的展开/tab 状态(局部 UI state)。
@@ -215,6 +224,8 @@ impl DynamicComponent {
             routes: Vec::new(),
             computed: Vec::new(),
             preview_states: Default::default(),
+            nav_group_states: Default::default(),
+            route_history: Default::default(),
         })
     }
 
@@ -286,6 +297,8 @@ impl DynamicComponent {
             routes: Vec::new(),
             computed: Vec::new(),
             preview_states: Default::default(),
+            nav_group_states: Default::default(),
+            route_history: Default::default(),
         })
     }
 
@@ -378,6 +391,8 @@ impl DynamicComponent {
             routes,
             computed,
             preview_states: Default::default(),
+            nav_group_states: Default::default(),
+            route_history: Default::default(),
         })
     }
 
@@ -416,6 +431,8 @@ impl DynamicComponent {
             routes: Vec::new(),
             computed: Vec::new(),
             preview_states: Default::default(),
+            nav_group_states: Default::default(),
+            route_history: Default::default(),
         })
     }
     // ========================================================================
@@ -567,7 +584,7 @@ impl DynamicComponent {
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
     pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_preview_states(&self.preview_states);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_preview_states(&self.preview_states).with_nav_group_states(&self.nav_group_states);
         builder.build_with_debug(&self.view_template)
     }
 
@@ -581,17 +598,63 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed).with_preview_states(&self.preview_states);
+        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed).with_preview_states(&self.preview_states).with_nav_group_states(&self.nav_group_states);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
 
     /// Plan 401/VM-routing: set the current route (from a `link` click) and
     /// re-resolve its params. Called by the iced renderer when it intercepts a
     /// `__navigate` message carrying the target path.
+    /// Plan 482: the previous route is pushed onto the in-memory history stack
+    /// (VM's browser-back equivalent) before the switch; capped at 50.
     pub fn set_route(&mut self, path: &str) {
+        if let Ok(auto_val::Value::Str(prev)) = self.bridge.read_state("__current_route") {
+            if !prev.is_empty() && prev.as_str() != path {
+                self.route_history.push(prev.to_string());
+                if self.route_history.len() > 50 {
+                    self.route_history.remove(0);
+                }
+            }
+        }
         let _ = self.bridge.write_state("__current_route", auto_val::Value::str(path));
         self.sync_route_params();
         self.dirty = true;
+    }
+
+    /// Plan 482: pop the route history stack and switch back. Empty stack →
+    /// no-op (returns false). Does NOT re-push the outgoing route (a back
+    /// must not grow the stack).
+    pub fn navigate_back(&mut self) -> bool {
+        let Some(prev) = self.route_history.pop() else {
+            return false;
+        };
+        let _ = self.bridge.write_state("__current_route", auto_val::Value::str(&prev));
+        self.sync_route_params();
+        self.dirty = true;
+        true
+    }
+
+    /// Plan 482: flip a nav-group's built-in open state (key =
+    /// `__nav_group_open:<label>`); returns the new value. The view rebuild
+    /// picks it up via `with_nav_group_states`.
+    pub fn toggle_nav_group(&mut self, key: &str) -> bool {
+        let next = !self.nav_group_states.get(key).copied().unwrap_or(true);
+        self.nav_group_states.insert(key.to_string(), next);
+        next
+    }
+
+    /// Plan 482: post-handler hook — `router.back()` in handler code is
+    /// rewritten to `__state.__nav_back_pending = true`; the update loop
+    /// calls this after the handler ran. Consuming the flag performs the pop.
+    fn consume_nav_back_pending(&mut self) {
+        let pending = matches!(
+            self.bridge.read_state("__nav_back_pending"),
+            Ok(v) if v.as_bool()
+        );
+        if pending {
+            let _ = self.bridge.write_state("__nav_back_pending", auto_val::Value::Bool(false));
+            self.navigate_back();
+        }
     }
 
     /// Plan 401/VM-routing: re-resolve the current route's dynamic segments
@@ -1054,6 +1117,9 @@ impl DynamicComponent {
                 // into __route_params so page handlers can read them via
                 // router.param("id"). The handler set the path; we parse it.
                 self.sync_route_params();
+                // Plan 482: router.back() rewrote to __nav_back_pending=true —
+                // consume it now that the handler finished writing state.
+                self.consume_nav_back_pending();
                 // Force a view rebuild to measure render time
                 let _ = self.view_with_debug_gated(false);
                 let render_ms = t1.elapsed().as_millis();
@@ -1533,6 +1599,53 @@ mod tests {
             exposes: Vec::new(),
             setup: None,
         }
+    }
+
+    // ── Plan 482: 路由历史栈 / nav-group 内置态 ──────────────────────────
+
+    fn nav_test_widget() -> crate::aura::AuraWidget {
+        make_test_widget("NavApp", vec![AuraStateDef {
+            name: "__current_route".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("/".into()),
+            decorators: vec![],
+        }])
+    }
+
+    #[test]
+    fn test_nav_route_history_push_and_back() {
+        let widget = nav_test_widget();
+        let mut comp = DynamicComponent::new(&widget).unwrap();
+
+        // "/" → "/a" → "/b"：历史栈 ["/", "/a"]。
+        comp.set_route("/a");
+        comp.set_route("/b");
+        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/b");
+
+        // back → "/a"，再 back → "/"，空栈 back 为 no-op。
+        assert!(comp.navigate_back());
+        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/a");
+        assert!(comp.navigate_back());
+        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+        assert!(!comp.navigate_back(), "空栈 no-op");
+        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+
+        // 重复路由不压栈。
+        comp.set_route("/x");
+        comp.set_route("/x");
+        comp.navigate_back();
+        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+    }
+
+    #[test]
+    fn test_nav_toggle_group_state_explicit() {
+        let widget = nav_test_widget();
+        let mut comp = DynamicComponent::new(&widget).unwrap();
+        let key = "__nav_group_open:分组";
+        // 缺省视为 true → 第一次翻转为 false。
+        assert!(!comp.toggle_nav_group(key));
+        // 再翻回 true。
+        assert!(comp.toggle_nav_group(key));
     }
 
     #[test]

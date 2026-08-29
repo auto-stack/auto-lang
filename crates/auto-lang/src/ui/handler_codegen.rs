@@ -123,6 +123,26 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
     // "push"); we rewrite the whole statement into a state assignment so the
     // outlet renderer (which reads __current_route) re-renders the new page.
     // Handles both bare statement form and the legacy `nav(...)` NavCall form.
+    // Plan 482: `router.back()` → `__state.__nav_back_pending = true` — the
+    // post-handler hook (dynamic::consume_nav_back_pending) pops the history
+    // stack and restores the previous route (browser-back equivalent).
+    if let Stmt::Expr(Expr::Call(call)) = stmt {
+        if let Expr::Dot(obj, method) = call.name.as_ref() {
+            if let Expr::Ident(name) = obj.as_ref() {
+                if name.as_str() == "router" && method.as_str() == "back" {
+                    *stmt = Stmt::Expr(Expr::Bina(
+                        Box::new(Expr::Dot(
+                            Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                            Name::from("__nav_back_pending"),
+                        )),
+                        auto_val::Op::Asn,
+                        Box::new(Expr::Bool(true)),
+                    ));
+                    return;
+                }
+            }
+        }
+    }
     let nav_path = match stmt {
         Stmt::Expr(Expr::Call(call)) => {
             if let Expr::Dot(obj, method) = call.name.as_ref() {
@@ -1628,6 +1648,37 @@ mod tests {
 
     fn make_state_fields(names: &[&str]) -> HashSet<String> {
         names.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Plan 482: `router.back()` → `__state.__nav_back_pending = true`
+    /// （post-handler 钩子消费该标记弹历史栈）。
+    #[test]
+    fn rewrites_router_back_to_pending_flag() {
+        let mut stmt = Stmt::Expr(Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident(Name::from("router"))),
+                Name::from("back"),
+            )),
+            args: Args { args: vec![] },
+            type_args: vec![],
+            generic_args: vec![],
+            pos: None,
+            ret: crate::ast::Type::Void,
+        }));
+        rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &make_state_fields(&[]));
+        match &stmt {
+            Stmt::Expr(Expr::Bina(lhs, Op::Asn, rhs)) => {
+                match lhs.as_ref() {
+                    Expr::Dot(obj, field) => {
+                        assert!(matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "__state"));
+                        assert_eq!(field.as_str(), "__nav_back_pending");
+                    }
+                    other => panic!("期望 __state.__nav_back_pending 赋值,得到 {other:?}"),
+                }
+                assert!(matches!(rhs.as_ref(), Expr::Bool(true)));
+            }
+            other => panic!("期望赋值语句,得到 {other:?}"),
+        }
     }
 
     #[test]

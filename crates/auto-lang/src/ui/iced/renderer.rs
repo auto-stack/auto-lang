@@ -7693,6 +7693,15 @@ fn compare_pngs(
         // "__navigate\u{1F}s\u{1F}/book/1"). Intercept it, set the route, and
         // skip normal handler dispatch (it's a synthetic internal event).
         if msg.event.starts_with("__navigate") {
+            // Plan 482: "__navigate_back" (router.back() / nav back button)
+            // pops the history stack — must not fall into the path-parsing
+            // branch above (its payload carries no path).
+            if msg.event.starts_with("__navigate_back") {
+                if state.component.navigate_back() {
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+                return iced::Task::none();
+            }
             let path = msg.event
                 .split(PAYLOAD_SEP)
                 .nth(2)
@@ -7700,6 +7709,23 @@ fn compare_pngs(
                 .to_string();
             state.component.set_route(&path);
             *state.app.view_dirty.borrow_mut() = true;
+            return iced::Task::none();
+        }
+
+        // Plan 482: nav-group built-in fold toggle ("__nav_toggle\u{1F}s\u{1F}<key>")
+        // — flips the per-group open state (DynamicComponent), view rebuilds.
+        if msg.event.starts_with("__nav_toggle") {
+            let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            debug_assert_eq!(name, "__nav_toggle");
+            if let Some(auto_val::Value::Str(key)) = args.first() {
+                state.component.toggle_nav_group(key.as_str());
+                *state.app.view_dirty.borrow_mut() = true;
+            }
+            return iced::Task::none();
+        }
+
+        // Plan 482: inert nav-item click (no to:/onclick) — graceful no-op.
+        if msg.event.starts_with("__noop") {
             return iced::Task::none();
         }
 

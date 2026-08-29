@@ -1,7 +1,7 @@
 //! Plan 482: nav-item / nav-group class-token contract — the single source of
 //! truth shared by both backends.
 //!
-//! - VM side: `aura_view_builder` builds `View::Button`/container styles from
+//! - VM side: `ui/aura_view_builder` builds `View::Button`/container styles from
 //!   these constants (tokens must be parseable by `StyleClass::parse_single`,
 //!   i.e. survive the iced adapter — integer spacing steps or `[…]` arbitrary
 //!   values; no `uppercase`/`tracking-*` web-only visual effects).
@@ -94,6 +94,7 @@ mod tests {
     /// Every parity token must be understood by the VM style parser — this is
     /// the pixel-parity gate for the contract (unknown tokens are silently
     /// dropped by `Style::parse`, so we assert per-token parse success).
+    #[cfg(feature = "ui")]
     #[test]
     fn nav_contract_tokens_parse_on_vm() {
         let tokens = parity_tokens();
@@ -111,6 +112,7 @@ mod tests {
 
     /// The active/hover strings survive `Style::parse` with the hover list
     /// populated (the iced button renderer consumes `hover_classes`).
+    #[cfg(feature = "ui")]
     #[test]
     fn nav_contract_hover_parses_into_hover_classes() {
         let style = crate::ui::style::Style::parse(ITEM_HOVER).unwrap();

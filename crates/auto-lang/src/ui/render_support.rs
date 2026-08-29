@@ -154,9 +154,14 @@ fn get_support_details(tag: &str) -> TagSupport {
         "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
             TagSupport::full()
         }
+        // Plan 482: nav 组件族 —— nav-item/nav-group 全支持（契约类三态 +
+        // icon/desc/badge 槽 + to/onclick 双模式）；nav 容器另支持 search:*
+        // 集成搜索行；nav-link 已被 nav-item 取代（保留兼容）。
+        "nav-item" | "nav_item" => TagSupport::full(),
+        "nav-group" | "nav_group" => TagSupport::full(),
         "nav-link" | "nav_link" => TagSupport::partial(
             &["exact", "disabled"],
-            "renders as a link-styled button (label + optional icon); router props like exact ignored",
+            "DEPRECATED (Plan 482): renders as a link-styled button (label + optional icon); use nav-item instead",
         ),
         "badge" | "chip" => TagSupport::partial(
             &["class"],

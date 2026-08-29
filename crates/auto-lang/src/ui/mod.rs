@@ -23,8 +23,6 @@ pub mod clipboard;
 pub mod action_config;
 pub mod view;
 pub mod vnode;
-// Plan 482: nav-item/nav-group class-token contract shared by both backends.
-pub mod nav_contract;
 pub mod vnode_converter;
 pub mod node_converter;
 pub mod app;
