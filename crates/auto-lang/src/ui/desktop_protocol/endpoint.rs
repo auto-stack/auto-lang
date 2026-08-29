@@ -57,6 +57,9 @@ pub enum AppState {
     Active,
     /// 收到 Close 或已发 ExitRequest，等宿主回收确认。
     Closing,
+    /// L2"独立出去"：自管表面（自开 OS 窗/独立渲染循环），会话状态
+    /// 不动；仅等 `request_attach()` 回归或进程退出。
+    Standalone,
 }
 
 impl AppState {
@@ -66,6 +69,7 @@ impl AppState {
             Self::Handshaking => "Handshaking",
             Self::Active => "Active",
             Self::Closing => "Closing",
+            Self::Standalone => "Standalone",
         }
     }
 }
@@ -140,8 +144,10 @@ impl<S: FrameSource> AppEndpoint<S> {
     }
 
     /// 发起孵化握手：Detached → Handshaking，产出 Hello。
+    /// L2 回归（Standalone → Handshaking）走同一入口：session/revision
+    /// 原样保留——revision 不归零即"状态未动"的协议级证据。
     pub fn connect(&mut self) -> Result<ProtocolMsg, ProtocolError> {
-        if self.state != AppState::Detached {
+        if !matches!(self.state, AppState::Detached | AppState::Standalone) {
             return Err(ProtocolError::WrongState {
                 state: self.state.name(),
                 msg: "connect()",
@@ -222,6 +228,15 @@ impl<S: FrameSource> AppEndpoint<S> {
                         self.session.on_control(&control);
                         self.state = Closing;
                         Ok(vec![ProtocolMsg::Control(ControlMsg::ExitRequest {
+                            wid: self.wid.expect("Active 即有 wid"),
+                        })])
+                    }
+                    ControlMsg::L2Detach { .. } => {
+                        // L2"独立出去"：会话/状态不动，表面交还宿主；
+                        // app 进程此后自管渲染（Stage 2 = 自开 OS 窗）。
+                        self.session.on_control(&control);
+                        self.state = AppState::Standalone;
+                        Ok(vec![ProtocolMsg::Control(ControlMsg::L2Detached {
                             wid: self.wid.expect("Active 即有 wid"),
                         })])
                     }
@@ -381,6 +396,17 @@ impl HostEndpoint {
                 self.surface = None;
                 Ok(vec![HostAction::ReclaimWindow { wid }])
             }
+            // L2 确认：app 已切自管表面 → 回收虚拟窗（462 Close 语义），
+            // 回 Listening 等 L2 重挂（Hello 复用孵化路径）。
+            (HostState::Active, ProtocolMsg::Control(ControlMsg::L2Detached { wid })) => {
+                self.state = HostState::Listening;
+                self.app_id = None;
+                self.wid = None;
+                self.surface = None;
+                Ok(vec![HostAction::ReclaimWindow { wid }])
+            }
+            // L2 重挂意向（信息性；真正的孵化凭随后的 Hello）。
+            (_, ProtocolMsg::Control(ControlMsg::L2AttachRequest { .. })) => Ok(vec![]),
             (HostState::Active, ProtocolMsg::Control(control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. } | ControlMsg::DesktopBus { .. }))) => {
                 // 控制上行在此端点只做透传记录；落点在适配层（title→chrome、
                 // notify→通知中心、bus→DesktopCommand 执行体）。
@@ -417,6 +443,19 @@ impl HostEndpoint {
         self.wid = Some(wid);
         self.surface = Some(surface);
         Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect }))
+    }
+
+    /// L2"独立出去"：产出 L2Detach（发往 app；回收等 L2Detached 回来）。
+    pub fn l2_detach(&self) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != HostState::Active {
+            return Err(ProtocolError::WrongState {
+                state: host_name(&self.state),
+                msg: "l2_detach()",
+            });
+        }
+        Ok(ProtocolMsg::Control(ControlMsg::L2Detach {
+            wid: self.wid.expect("Active 即有 wid"),
+        }))
     }
 
     /// 宿主主动关闭：产出 Close（发往 app；回收等 ExitRequest 回来）。
@@ -465,6 +504,9 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             ControlMsg::Notify { .. } => "Control::Notify",
             ControlMsg::ExitRequest { .. } => "Control::ExitRequest",
             ControlMsg::DesktopBus { .. } => "Control::DesktopBus",
+            ControlMsg::L2Detach { .. } => "Control::L2Detach",
+            ControlMsg::L2Detached { .. } => "Control::L2Detached",
+            ControlMsg::L2AttachRequest { .. } => "Control::L2AttachRequest",
         },
         ProtocolMsg::Observe(m) => match m {
             ObserveMsg::Attach { .. } => "Observe::Attach",
@@ -672,6 +714,64 @@ mod tests {
                 msg: ObserveMsg::Log { wid: 3, level: super::super::message::LogLevel::Info, message: "ready".into() }
             }]
         );
+    }
+
+    #[test]
+    fn l2_detach_attach_round_trip_state_continuous() {
+        let mut app = AppEndpoint::new(StubSource::new(), "counter", "c", 480.0, 320.0);
+        let mut host = HostEndpoint::listen();
+        let _ = activate_pair(&mut app, &mut host);
+
+        // 活跃期点击两次 → revision 前进。
+        for _ in 0..2 {
+            app.on_message(ProtocolMsg::Input(InputMsg::PointerPressed {
+                wid: 3,
+                button: MouseButton::Left,
+                x: 1.0,
+                y: 1.0,
+                modifiers: 0,
+            }))
+            .unwrap();
+        }
+        let rev_before = app.session.revision();
+        assert_eq!(rev_before, 3);
+
+        // L2 独立出去：宿主 L2Detach → app Standalone + L2Detached 确认
+        // → 宿主 ReclaimWindow + 回 Listening。
+        let detach = host.l2_detach().unwrap();
+        let replies = app.on_message(detach).unwrap();
+        assert_eq!(app.state, AppState::Standalone);
+        assert_eq!(
+            replies,
+            vec![ProtocolMsg::Control(ControlMsg::L2Detached { wid: 3 })]
+        );
+        let actions = host.on_message(replies[0].clone()).unwrap();
+        assert_eq!(actions, vec![HostAction::ReclaimWindow { wid: 3 }]);
+        assert_eq!(host.state, HostState::Listening);
+
+        // Standalone 期间产帧拒绝（表面已交还）。
+        assert_eq!(app.produce_frame(None), Err(ProtocolError::NotActive));
+
+        // L2 重挂：connect() 从 Standalone 走同一握手，session 原样。
+        let hello = app.connect().unwrap();
+        assert_eq!(app.state, AppState::Handshaking);
+        let actions = host.on_message(hello).unwrap();
+        assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
+        // 新 wid/surface（宿主重新分配）。
+        let welcome = host.activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        app.on_message(welcome).unwrap();
+        assert_eq!(app.state, AppState::Active);
+        assert_eq!(app.wid, Some(9));
+        assert_eq!(app.app_id, Some(1));
+
+        // revision 连续 = 状态未动的协议级证据。
+        assert_eq!(app.session.revision(), rev_before, "L2 往返 revision 不归零");
+        // 且会话仍可产帧/响应输入。
+        let f = app.produce_frame(None).unwrap();
+        let ProtocolMsg::Frame(FrameMsg::FrameReady { revision, .. }) = &f else {
+            panic!("期待 FrameReady");
+        };
+        assert_eq!(*revision, rev_before);
     }
 
     #[test]
