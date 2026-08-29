@@ -2504,7 +2504,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
-            AbstractView::Text { content, style, .. } => {
+            AbstractView::Text { content, style, selectable, .. } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
                 let is_code = style.as_ref()
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
@@ -2527,6 +2527,76 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     }
                     let el: iced::Element<'static, M> = rich.into();
+                    if let Some(ref s) = style {
+                        wrap_with_margin(el, &IcedStyle::from_style(s))
+                    } else {
+                        el
+                    }
+                } else if selectable {
+                    // Plan 481: SelectableText 分流 —— 与下方 text 构造链同参
+                    // 镜像(缺省 false 路径零改动,I3 配置差异形态)。label 无
+                    // 独立 View 变体(aura_view_builder 折叠为 Text),此臂即
+                    // text/label 共用分流点。
+                    use crate::ui::iced::selectable_text::SelectableText;
+                    let mut st = SelectableText::new(content.clone());
+
+                    if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
+
+                        if let Some(fs) = effective_font_size(&iced_style) {
+                            st = st.size(fs);
+                        }
+                        if let Some(color) = iced_style.text_color {
+                            st = st.color(color);
+                        } else if let Some((r, g, b)) =
+                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                        {
+                            st = st.color(iced::Color::from_rgb8(r, g, b));
+                        }
+                        if let Some(ref weight) = iced_style.font_weight {
+                            st = st.font(font_weight_to_iced(weight));
+                        }
+                        if let Some(ref family) = iced_style.font_family {
+                            let fam = match family.as_str() {
+                                "serif" => iced::font::Family::Serif,
+                                "mono" => iced::font::Family::Monospace,
+                                _ => iced::font::Family::SansSerif,
+                            };
+                            let weight = iced_style
+                                .font_weight
+                                .as_ref()
+                                .map(font_weight_to_iced)
+                                .unwrap_or(iced::Font::DEFAULT);
+                            st = st.font(iced::Font {
+                                family: fam,
+                                weight: weight.weight,
+                                stretch: weight.stretch,
+                                style: weight.style,
+                            });
+                        }
+                        if let Some(ref w) = iced_style.width {
+                            st = st.width(iced_length(w));
+                        }
+                        if let Some(ref align) = iced_style.text_align {
+                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            if iced_style.width.is_none() {
+                                st = st.width(iced::Length::Fill);
+                            }
+                            match align {
+                                IcedTextAlign::Center => {
+                                    st = st.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                IcedTextAlign::Right => {
+                                    st = st.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                IcedTextAlign::Left => {}
+                            }
+                        }
+                    }
+
+                    let el: iced::Element<'static, M> = st.into();
                     if let Some(ref s) = style {
                         wrap_with_margin(el, &IcedStyle::from_style(s))
                     } else {
