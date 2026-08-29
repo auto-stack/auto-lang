@@ -92,7 +92,7 @@
 | 440 | 027-file-manager | 📋 草案 | plans/ | 双栏 Finder；422 contextmenu 首战；fs 走后端 use.rust |
 | 441 | 028-launcher | 📋 被 464 吸收 | plans/ | 升级真注册表+真启动；焦点原语移交 462 |
 | 442 | cross-platform-closure | 🟡（C3 观察期） | plans/ | musk 后端切 AutoVM；A4 SVG 直通为 437 渲染基座 |
-| 446 | vm-backend-os-config-field-report | 🟡（批五转正中） | plans/ | 实战上报 VM 渲染薄弱点清偿；A1 多 store 消歧编译期报错 |
+| 446 | vm-backend-os-config-field-report | ✅（archived） | archive/ | 实战上报 VM 渲染薄弱点清偿；A1 多 store 消歧编译期报错；批五收口+下游结算完成（2026-08-29，reports/446-downstream-settlement.md） |
 | 448 | autoui-syntax-improvements | 🟡（A/B 已实施） | plans/ | msg 去名 + 内联 lambda 简写；铸名提前到 parser（ADR-10） |
 | 455 | auto-ui-parity | 🟡（矩阵 ~9 绿/8+ 待审计） | plans/ | 全示例双端 parity 审计；标准下沉引擎规范（ADR-17） |
 | 458 | auto-ui-theme-system | 🟡（施工修订回填） | plans/ | theme/accent 一等配置三通道；双端默认 dark+indigo |
