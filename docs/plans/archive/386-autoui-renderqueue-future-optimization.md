@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-386
-status: reviewed
+status: archived
 feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
@@ -269,7 +269,7 @@ tf 不编译本模块，二者缺一不可）。
   （① `--autodesk-client=<pipe>` 孵化标记 ② 探测
   `\.\pipeutodesk-broker` ③ standalone）+ broker 侦听与孵化交接
   （分配 per-app 管道名回传）。验证同上
-- [ ] **S11 L2 detach/attach 协议消息**：endpoint 追加 `L2Detach`
+- [✅ 已完成] **S11 L2 detach/attach 协议消息**：endpoint 追加 `L2Detach`
   （host→app：Active→Standalone，表面释放、VM 状态不动——路线 B 的
   核心红利）+ `L2AttachRequest`（app→host：重孵化握手续用既有状态）；
   协议文档记录 L2 语义。验证同上
@@ -351,5 +351,5 @@ broker/spawn）归 shell-track 后续计划。
 
 ### 结论
 
-**全部验收判据 pass，无阻塞债务 → `status: reviewed`。**
+**全部验收判据 pass，无阻塞债务 → `status: archived`。**
 下一步：`/auto-plan:merge`（spec-impact 元数据已填充如上，供 merge 直接消费）。
