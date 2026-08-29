@@ -32,6 +32,8 @@ pub mod broker;
 #[cfg(feature = "ui-iced")]
 pub mod demo;
 #[cfg(feature = "ui-iced")]
+pub mod dual_mode;
+#[cfg(feature = "ui-iced")]
 pub mod editor_frame;
 #[cfg(feature = "ui-iced")]
 pub mod endpoint;
