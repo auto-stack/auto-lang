@@ -64,6 +64,107 @@ impl BrokerClient {
 }
 
 // ---------------------------------------------------------------------------
+// S5：child 进程内存采样（Windows `K32GetProcessMemoryInfo` FFI，零新
+// 依赖）。度量口径 = **边际增量**（N=1→3→5 每增一个 child 的均摊增量，
+// 见计划待澄清①）；WorkingSet / PrivateUsage 双字段。
+// ---------------------------------------------------------------------------
+
+/// 一次进程内存采样（字节）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessMemorySample {
+    /// WorkingSet（物理驻留）。
+    pub working_set: u64,
+    /// PrivateUsage（提交私有字节；比 WorkingSet 更贴近"App 净增成本"）。
+    pub private_bytes: u64,
+}
+
+#[cfg(windows)]
+mod mem_ffi {
+    // kernel32 导出（Win7+；避免引入 psapi.lib 链接面）。
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> isize;
+        fn CloseHandle(hObject: isize) -> i32;
+        fn K32GetProcessMemoryInfo(
+            hProcess: isize,
+            ppsmemCounters: *mut PROCESS_MEMORY_COUNTERS,
+            cb: u32,
+        ) -> i32;
+    }
+
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+
+    /// PROCESS_MEMORY_COUNTERS + EX 尾字段 PrivateUsage（cb 按全结构
+    /// 传入，PSAPI 会把 PrivateUsage 一并填充）。
+    #[repr(C)]
+    pub struct PROCESS_MEMORY_COUNTERS {
+        pub cb: u32,
+        pub PageFaultCount: u32,
+        pub PeakWorkingSetSize: usize,
+        pub WorkingSetSize: usize,
+        pub QuotaPeakPagedPoolUsage: usize,
+        pub QuotaPagedPoolUsage: usize,
+        pub QuotaPeakNonPagedPoolUsage: usize,
+        pub QuotaNonPagedPoolUsage: usize,
+        pub PagefileUsage: usize,
+        pub PeakPagefileUsage: usize,
+        pub PrivateUsage: usize,
+    }
+
+    pub fn query(pid: u32) -> Result<super::ProcessMemorySample, String> {
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle == 0 {
+                return Err(format!("OpenProcess({pid}): {}", std::io::Error::last_os_error()));
+            }
+            let mut counters = PROCESS_MEMORY_COUNTERS {
+                cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+                PageFaultCount: 0,
+                PeakWorkingSetSize: 0,
+                WorkingSetSize: 0,
+                QuotaPeakPagedPoolUsage: 0,
+                QuotaPagedPoolUsage: 0,
+                QuotaPeakNonPagedPoolUsage: 0,
+                QuotaNonPagedPoolUsage: 0,
+                PagefileUsage: 0,
+                PeakPagefileUsage: 0,
+                PrivateUsage: 0,
+            };
+            let ok = K32GetProcessMemoryInfo(
+                handle,
+                &mut counters,
+                counters.cb,
+            );
+            let _ = CloseHandle(handle);
+            if ok == 0 {
+                return Err(format!(
+                    "K32GetProcessMemoryInfo({pid}): {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            Ok(super::ProcessMemorySample {
+                working_set: counters.WorkingSetSize as u64,
+                private_bytes: counters.PrivateUsage as u64,
+            })
+        }
+    }
+}
+
+/// 采样一个进程的内存（字节）。非 Windows 平台返回 Err（v1 压测宿主
+/// = Windows 桌面；Linux memfd 宿主见 shm.rs 注记）。
+pub fn sample_process_memory(pid: u32) -> Result<ProcessMemorySample, String> {
+    #[cfg(windows)]
+    {
+        mem_ffi::query(pid)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        Err("memory sampling is windows-only in v1".into())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 压测 harness：N child → broker 孵化 → 全 Active → 逐 App 点击帧递增 →
 // 30s 稳定存活（子进程 = 测试二进制 re-exec 走真协议主循环）。
 // ---------------------------------------------------------------------------
@@ -125,6 +226,50 @@ mod tests {
         }
     }
 
+    /// re-exec 子进程（剥离 NEXTEST_* 守护）。
+    fn spawn_children(broker_pipe: &str, names: &[String]) -> Vec<std::process::Child> {
+        let exe = std::env::current_exe().expect("current_exe");
+        let mut children = Vec::new();
+        for app in names {
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args(["stage3_child_body", "--test-threads", "1", "--nocapture"])
+                .env(CHILD_BROKER_ENV, broker_pipe)
+                .env(CHILD_APP_ENV, app)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::inherit());
+            for (k, _) in std::env::vars() {
+                if k.starts_with("NEXTEST_") {
+                    cmd.env_remove(&k);
+                }
+            }
+            children.push(cmd.spawn().expect("spawn child"));
+        }
+        children
+    }
+
+    /// 孵化 attach 至 `want` 个落地（30s 预算）。
+    fn attach_until(session: &mut DesktopSession, want: usize) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while session.broker_clients.values().filter_map(|c| c.wid).count() < want
+            && std::time::Instant::now() < deadline
+        {
+            session.attach_pending_incubations(2000);
+            session.pump_broker_clients();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// child 总内存采样（逐 pid WorkingSet/PrivateUsage 求和）。
+    fn sample_children_total(children: &[std::process::Child]) -> Option<ProcessMemorySample> {
+        let mut total = ProcessMemorySample { working_set: 0, private_bytes: 0 };
+        for child in children {
+            let s = sample_process_memory(child.id()).ok()?;
+            total.working_set += s.working_set;
+            total.private_bytes += s.private_bytes;
+        }
+        Some(total)
+    }
+
     /// N App 压测主体：spawn → 孵化 attach → 全 Active → 逐 App 点击帧
     /// 递增 → `stability_secs` 稳定存活（期间持续泵帧）→ 收尾 Close。
     fn stress_body(n: usize, stability_secs: u64) {
@@ -153,36 +298,12 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
-        // ---- spawn N 个 child（re-exec 测试二进制；剥离 NEXTEST_* 守护）。
-        let exe = std::env::current_exe().expect("current_exe");
-        let mut children = Vec::new();
-        for app in &names {
-            let mut cmd = std::process::Command::new(&exe);
-            cmd.args(["stage3_child_body", "--test-threads", "1", "--nocapture"])
-                .env(CHILD_BROKER_ENV, &broker_pipe)
-                .env(CHILD_APP_ENV, app)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::inherit());
-            for (k, _) in std::env::vars() {
-                if k.starts_with("NEXTEST_") {
-                    cmd.env_remove(&k);
-                }
-            }
-            children.push(cmd.spawn().expect("spawn child"));
-        }
+        // ---- spawn N 个 child（re-exec；剥离 NEXTEST_* 守护）。
+        let mut children = spawn_children(&broker_pipe, &names);
 
         // ---- 孵化 attach 循环：直到 N 个全落地（30s 预算）。
-        let mut landed: Vec<Wid> = Vec::new();
-        let attach_deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        while landed.len() < n && std::time::Instant::now() < attach_deadline {
-            session.attach_pending_incubations(2000);
-            session.pump_broker_clients();
-            landed = session.broker_clients.values().filter_map(|c| c.wid).collect();
-            if landed.len() == n {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        attach_until(&mut session, n);
+        let landed: Vec<Wid> = session.broker_clients.values().filter_map(|c| c.wid).collect();
         assert_eq!(landed.len(), n, "全部 child 孵化落地（30s 预算）");
         assert_eq!(session.apps.len(), n, "n 条 AppSession");
         for (i, app) in names.iter().enumerate() {
@@ -244,6 +365,13 @@ mod tests {
             assert_eq!(session.broker_clients.len(), n, "client 全在册");
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
+        // ---- S5 采样集成：稳定窗末采集 N=child 全体内存（数字供 S6 报告）。
+        if let Some(total) = sample_children_total(&children) {
+            println!(
+                "AUTO480-MEM stage=N{n} working_set={}B private={}B",
+                total.working_set, total.private_bytes
+            );
+        }
 
         // ---- 收尾：逐 client Close → ExitRequest → 回收；child 退出码 0。
         let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
@@ -291,5 +419,111 @@ mod tests {
     #[test]
     fn stage3_multi_app_stress_n5() {
         stress_body(5, 30);
+    }
+
+    /// S5 采样单测 + N=1/3/5 边际增量数字生成：阶段化 spawn（1 → 3 →
+    /// 5 child），每阶段 settle 后采全体 child WorkingSet/PrivateUsage；
+    /// 断言数值 >0 且 N=5 > N=1；边际增量打印供 S6 报告引用。
+    #[test]
+    fn stage3_memory_baseline_n1_3_5() {
+        use std::sync::atomic::AtomicBool;
+
+        let broker_pipe = format!("autodesk-broker-s4-mem-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let names: Vec<String> = (0..5).map(|i| format!("mem-{i}")).collect();
+        let src = STRESS_SRC.to_string();
+        let known = names.clone();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                if known.iter().any(|n| n == name) {
+                    Some(LaunchSpec {
+                        code: src.clone(),
+                        source_path: None,
+                        title: Some(name.to_string()),
+                    })
+                } else {
+                    None
+                }
+            }));
+        let stop = Arc::new(AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // 阶段化 spawn+attach：1 → 3 → 5。attach 是 drain-all 语义，故
+        // 每批先 spawn 再 attach；批次间 settle 1.5s 后采样（早批次多出
+        // 的 settle 时间使边际估计偏保守——对 1-5MB/App 判定方向安全）。
+        let mut children: Vec<std::process::Child> = Vec::new();
+        let mut samples = Vec::new();
+        for (stage, want) in [1usize, 3, 5].into_iter().enumerate() {
+            let batch = &names[children.len()..want];
+            children.extend(spawn_children(&broker_pipe, batch));
+            attach_until(&mut session, want);
+            let landed = session.broker_clients.values().filter_map(|c| c.wid).count();
+            assert_eq!(landed, want, "阶段 N={want} 全落地");
+            session.pump_broker_clients();
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let total = sample_children_total(&children).expect("windows 采样");
+            samples.push(total);
+            println!(
+                "AUTO480-MEM stage=N{want} children={want} working_set={}B ({:.1}MiB) private={}B ({:.1}MiB)",
+                total.working_set,
+                total.working_set as f64 / 1048576.0,
+                total.private_bytes,
+                total.private_bytes as f64 / 1048576.0,
+            );
+        }
+
+        // 判定：数值 >0；N=5 > N=1（边际增量为正）。
+        for (stage, s) in samples.iter().enumerate() {
+            assert!(s.working_set > 0, "N={} WorkingSet > 0", [1, 3, 5][stage]);
+            assert!(s.private_bytes > 0, "N={} PrivateUsage > 0", [1, 3, 5][stage]);
+        }
+        assert!(samples[2].working_set > samples[0].working_set, "N=5 WorkingSet > N=1");
+        assert!(samples[2].private_bytes > samples[0].private_bytes, "N=5 PrivateUsage > N=1");
+
+        // 边际增量（S6 报告口径）：(N=5 − N=1) / 4。
+        let ws_marginal = (samples[2].working_set - samples[0].working_set) / 4;
+        let priv_marginal = (samples[2].private_bytes - samples[0].private_bytes) / 4;
+        println!(
+            "AUTO480-MEM marginal-per-app working_set={ws_marginal}B ({:.2}MiB) private={priv_marginal}B ({:.2}MiB)",
+            ws_marginal as f64 / 1048576.0,
+            priv_marginal as f64 / 1048576.0,
+        );
+
+        // 收尾：Close 全部 → child 退出。
+        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
+            session
+                .broker_clients
+                .values_mut()
+                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+                .collect();
+        for (pipe, close) in closes {
+            if let Some(close) = close {
+                if let Some(c) = session.broker_clients.get_mut(&pipe) {
+                    let _ = c.end.send(&close);
+                }
+            }
+        }
+        for _ in 0..300 {
+            session.pump_broker_clients();
+            if session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let mut children = children;
+        for child in children.iter_mut() {
+            let start = std::time::Instant::now();
+            let status = loop {
+                if let Some(st) = child.try_wait().expect("try_wait") {
+                    break st;
+                }
+                assert!(start.elapsed() < std::time::Duration::from_secs(30), "child 收尾超时");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            };
+            assert!(status.success(), "child 退出码 {status}");
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
     }
 }
