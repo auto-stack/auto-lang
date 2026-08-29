@@ -22,7 +22,7 @@ async function resolvePlaywright() {
 
 async function main() {
   const url = process.argv[2] || 'http://localhost:5199';
-  const outDir = path.resolve('examples/ui/009-article-feed/src/front/tests/screenshots');
+  const outDir = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([a-zA-Z]:)/, '$1')), '../src/front/tests/screenshots');
   fs.mkdirSync(outDir, { recursive: true });
 
   const chromium = await resolvePlaywright();
