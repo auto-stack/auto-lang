@@ -2456,7 +2456,11 @@ fn resolve_module_path(
         None
     };
 
-    // 向上遍历查找 deps 目录 (如 src/front/ -> src/ -> root/deps/)
+    // 向上遍历查找 deps 目录 (如 src/front/ -> src/ -> root/deps/) 或 pac.at 中的本地 path 依赖
+    let (dep_name, _) = match module.find('.') {
+        Some(dot) => (&module[..dot], &module[dot + 1..]),
+        None => (module, ""),
+    };
     let mut curr_dir = Some(base_dir);
     for _ in 0..4 {
         if let Some(d) = curr_dir {
@@ -2464,6 +2468,61 @@ fn resolve_module_path(
             if deps_candidate.is_dir() {
                 if let Some(p) = probe_dep(&deps_candidate) {
                     return Some(p);
+                }
+            }
+            // Check if d has a pac.at with local path dependencies
+            let pac_file = d.join("pac.at");
+            if pac_file.is_file() {
+                if let Ok(content) = std::fs::read_to_string(&pac_file) {
+                    if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
+                        let slice = &content[pos..];
+                        if let Some(path_pos) = slice.find("path:") {
+                            let path_slice = &slice[path_pos + 5..];
+                            let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
+                            if !path_line.is_empty() {
+                                let local_dep_dir = d.join(path_line);
+                                if local_dep_dir.is_dir() {
+                                    let (_, sub) = match module.find('.') {
+                                        Some(dot) => (&module[..dot], &module[dot + 1..]),
+                                        None => (module, ""),
+                                    };
+                                    if sub.is_empty() {
+                                        let candidates = [
+                                            local_dep_dir.join("src").join("front").join("app.at"),
+                                            local_dep_dir.join("src").join("front").join("mod.at"),
+                                            local_dep_dir.join("src").join("mod.at"),
+                                            local_dep_dir.join("mod.at"),
+                                            local_dep_dir.join(format!("{}.at", dep_name)),
+                                        ];
+                                        for c in candidates {
+                                            if c.exists() {
+                                                return Some(c);
+                                            }
+                                        }
+                                    } else {
+                                        let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
+                                        let candidates = [
+                                            local_dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
+                                            local_dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
+                                            local_dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
+                                            local_dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
+                                            local_dep_dir.join("src").join(format!("{}.at", sub_rel)),
+                                            local_dep_dir.join("src").join(&sub_rel).join("mod.at"),
+                                            local_dep_dir.join("front").join(format!("{}.at", sub_rel)),
+                                            local_dep_dir.join("front").join(&sub_rel).join("mod.at"),
+                                            local_dep_dir.join(format!("{}.at", sub_rel)),
+                                            local_dep_dir.join(&sub_rel).join("mod.at"),
+                                        ];
+                                        for c in candidates {
+                                            if c.exists() {
+                                                return Some(c);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             curr_dir = d.parent();

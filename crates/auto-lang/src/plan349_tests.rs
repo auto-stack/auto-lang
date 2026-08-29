@@ -91,7 +91,7 @@ print(ok)
         assert!(result.is_ok(), "download should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
         eprintln!("plan349 download stdout = [{}]", stdout);
-        assert!(stdout.contains("1"), "expected success (1), got: [{}]", stdout);
+        assert!(stdout.contains("true"), "expected success, got: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
 
         // Verify file content
         let content = std::fs::read_to_string(&file_path).unwrap_or_default();
@@ -124,7 +124,7 @@ print(ok)
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
         eprintln!("plan349 resume stdout = [{}]", stdout);
-        assert!(stdout.contains("1"), "expected success, got: [{}]", stdout);
+        assert!(stdout.contains("true"), "expected success, got: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
 
         // Verify file: first 10 bytes + rest.
         let content = std::fs::read(&file_path).unwrap_or_default();

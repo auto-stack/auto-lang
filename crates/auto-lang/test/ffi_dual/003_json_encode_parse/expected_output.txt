@@ -1,5 +1,5 @@
 "hello"
 "auto"
 number
-1
-0
+true
+false

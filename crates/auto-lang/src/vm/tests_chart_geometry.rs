@@ -261,7 +261,9 @@ fn test_geo_math_trig() {
         f"${s}-${c}"
     "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "1-1");
+    // Plan 474 待澄清#5: BUILD_FSTR tag-first 后印真值 f64——sin(截断π/2)
+    // = 0.999999999999999（原经 f32 显示圆整成 "1"，属显示伪影非值语义）。
+    assert_eq!(result, "0.999999999999999-1");
 }
 
 

@@ -139,7 +139,7 @@ print(pt.to_string())
 "#
     );
     let (_, stdout) = run_with_capture(&src).expect("run");
-    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\n1\n7\n1\n7\n42\n3\n4\norigin\n(3, 4) origin";
+    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\ntrue\n7\ntrue\n7\n42\n3\n4\norigin\n(3, 4) origin"; // Plan 474 待澄清#3: bool 显示形态 true/false
     assert_eq!(stdout.trim(), expected, "dep method e2e output mismatch:\n{stdout}");
 
     // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)

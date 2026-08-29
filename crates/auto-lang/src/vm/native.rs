@@ -1327,8 +1327,10 @@ pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 }
             }
             // TAG_BOOL（sentinel: i32::MIN = true, i32::MIN+1 = false）
+            // Plan 474 待澄清#3: 显示形态对齐 Rust 式语义 true/false（原打
+            // "1"/"0"——json bool 字段 print 与真值语义混淆的旁支根源）。
             t if t == 3 => {
-                vm_print(vm, if auto_val::decode_bool(nv) { "1" } else { "0" });
+                vm_print(vm, if auto_val::decode_bool(nv) { "true" } else { "false" });
             }
             // TAG_NULL
             t if t == 4 => {
@@ -1373,14 +1375,13 @@ pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
                 } else { format!("<invalid bigint: {}>", id) };
                 vm_print(vm, &printed);
             }
-            // TAG_I32（含 bool sentinel 兜底 + 正数 heap handle 探测，兼容 shim_print_i32）
+            // TAG_I32（正数 heap handle 探测，兼容 shim_print_i32）。
+            // Plan 474 待澄清#3: 原 bool 哨兵特判（i32::MIN→"1"、MIN+1→"0"）
+            // 摘除——TAG_BOOL 已由上方 tag==3 臂处理，此处特判只会把真整数
+            // i32::MIN/i32::MIN+1 误显为 1/0。
             _ => {
                 let val = auto_val::decode_i32(nv);
-                if val == -2147483648 {
-                    vm_print(vm, "1");
-                } else if val == -2147483647 {
-                    vm_print(vm, "0");
-                } else if val > 0 {
+                if val > 0 {
                     let handle = val as u64;
                     if let Some(obj) = vm.get_heap_object(handle) {
                         let guard = obj.read().unwrap();
@@ -1477,14 +1478,15 @@ pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
             } else {
                 vm_print(vm, &format!("<invalid object: {}>", handle));
             }
+        } else if auto_val::is_bool(nv) {
+            // Plan 474 待澄清#3: bool 按 tag 判定打印 true/false。原实现对
+            // TAG_BOOL 的哨兵 payload 走 decode_i32 后按值特判打 "1"/"0"——
+            // decode 不分 tag，真整数 i32::MIN/i32::MIN+1 会被同路误打，且
+            // bool 显示形态与 Rust 式语义不符。
+            vm_print(vm, if auto_val::decode_bool(nv) { "true" } else { "false" });
         } else {
             let val = auto_val::decode_i32(nv);
-            // Boolean sentinel values
-            if val == -2147483648 {
-                vm_print(vm, "1");
-            } else if val == -2147483647 {
-                vm_print(vm, "0");
-            } else if val > 0 {
+            if val > 0 {
                 // Check if positive value is a heap object handle
                 let handle = val as u64;
                 if let Some(obj) = vm.get_heap_object(handle) {

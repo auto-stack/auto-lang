@@ -206,6 +206,9 @@ pub struct DesktopState {
     /// Plan 464 T4：launcher overlay App 的 AppId。首次 SummonLauncher 时
     /// 懒挂载（v1 前无消费者不推空层——462 overlay 槽约定）；独立模式恒 None。
     pub launcher_app: Option<AppId>,
+    /// Plan 478 T4：switcher overlay App 的 AppId。首次 Ctrl+Tab 召唤时
+    /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
+    pub switcher_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -238,6 +241,7 @@ impl DesktopState {
             app_resolver: None,
             shell_fields: ShellFields::default(),
             launcher_app: None,
+            switcher_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -314,6 +318,13 @@ pub enum WmInteraction {
     },
 }
 
+/// Plan 478 T2：相邻分区方向（send_to 热键载荷；环切对称）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceStep {
+    Prev,
+    Next,
+}
+
 /// chrome / 桌面层热键发往 WM 的命令（`DesktopMessage::Wm` 载荷）。
 #[derive(Debug, Clone)]
 pub enum WmCommand {
@@ -339,6 +350,10 @@ pub enum WmCommand {
     /// `DesktopCommand::SetWorkspace/NextWorkspace` 同落 WmState 分区方法）。
     NextWorkspace,
     PrevWorkspace,
+    /// Plan 478 T2：把聚焦窗发送到相邻分区（Ctrl+Alt+Shift+←/→ 热键）。
+    /// 宿主解析 focused + 目标 = (current ± 1 + N) % N 后落
+    /// `move_win_to_workspace`（见 [`WorkspaceStep`]）。
+    SendFocusedTo(WorkspaceStep),
 }
 
 /// Plan 472 T2：workspace 分区（463 §3.6 转正实施）。成员关系不设二级列表
@@ -560,6 +575,62 @@ impl WmState {
         }
     }
 
+    /// Plan 478 T2：删除分区（T1 施工图 §3；UI 侧非空/末分区 toast 门在
+    /// 宿主臂——本方法为纯驱动）。窗口重排相邻前驱（n=0 并入后继，与
+    /// 下标压实等价：后继分区整体 -1）；current clamp；焦点让渡——被删
+    /// 分区即 current 或焦点窗不在 clamp 后的 current 分区 → 焦点 =
+    /// current 顶窗（所见即所得），否则保持。单分区/越界 no-op（保底
+    /// ≥1 分区）。
+    pub fn remove_workspace(&mut self, n: usize) {
+        if self.workspaces.len() <= 1 || n >= self.workspaces.len() {
+            return;
+        }
+        let removed_was_current = self.current_workspace == n;
+        let target = n.saturating_sub(1);
+        for v in self.wins.values_mut() {
+            if v.workspace == n {
+                v.workspace = target;
+            } else if v.workspace > n {
+                v.workspace -= 1;
+            }
+        }
+        self.workspaces.remove(n);
+        self.current_workspace = self.current_workspace.min(self.workspaces.len() - 1);
+        let focused_in_current = self
+            .focused
+            .is_some_and(|w| self.wins.get(&w).map(|v| v.workspace) == Some(self.current_workspace));
+        if removed_was_current || !focused_in_current {
+            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+        }
+    }
+
+    /// Plan 478 T2：跨分区移动窗口（send_to 动词/热键共用底座）。n clamp
+    /// 合法域；发往非当前分区时若移动的是焦点窗 → 焦点让渡当前分区顶窗
+    /// （焦点环不跨分区，472 语义）；发往当前分区 = 恒等（焦点保持）。
+    pub fn move_win_to_workspace(&mut self, wid: Wid, n: usize) {
+        if self.workspaces.is_empty() {
+            return;
+        }
+        let Some(v) = self.wins.get_mut(&wid) else {
+            return;
+        };
+        let n = n.min(self.workspaces.len() - 1);
+        v.workspace = n;
+        if n != self.current_workspace && self.focused == Some(wid) {
+            self.focused = self.wins_in_workspace(self.current_workspace).last().copied();
+        }
+    }
+
+    /// Plan 478 T2：MRU 序（front=最近聚焦）过滤指定分区 → `__wm_mru`
+    /// 投影序辅助（协议 v1.1；退役 Ctrl+Tab 焦点环语义延续，不跨分区）。
+    pub fn mru_in_workspace(&self, ws: usize) -> Vec<Wid> {
+        self.mru
+            .iter()
+            .copied()
+            .filter(|w| self.wins.get(w).map(|v| v.workspace) == Some(ws))
+            .collect()
+    }
+
     /// 聚焦 = 记录焦点 + 置顶（z_order 尾部 + z 单调刷新）+ MRU 前插。
     pub fn focus(&mut self, wid: Wid) {
         if !self.wins.contains_key(&wid) {
@@ -669,6 +740,13 @@ pub enum DesktopCommand {
     /// （窗在隐藏分区先切分区）聚焦其窗；未运行 → launch（.at 无法跨列表
     /// 反查 wid，保持 shell 零智能）。
     ActivateApp(String),
+    /// Plan 478 T2：新增分区（pager `+`；宿主臂随即入新分区）。
+    WorkspaceAdd,
+    /// Plan 478 T2：删除分区（pager `×`；非空/末分区门在宿主臂 toast）。
+    WorkspaceClose(usize),
+    /// Plan 478 T2：跨分区发送窗口（`send_to` 动词；switcher/pager 后续
+    /// 表面消费）。
+    SendTo(Wid, usize),
 }
 
 impl DesktopCommand {
@@ -701,6 +779,19 @@ impl DesktopCommand {
             DesktopCommand::ActivateApp(name) => {
                 format!("activate{}{name}", Self::FIELD_SEP)
             }
+            DesktopCommand::WorkspaceAdd => "workspace_add".to_string(),
+            DesktopCommand::WorkspaceClose(n) => {
+                format!("workspace_close{}{}", Self::FIELD_SEP, n)
+            }
+            DesktopCommand::SendTo(wid, n) => {
+                format!(
+                    "send_to{}{}{}{}",
+                    Self::FIELD_SEP,
+                    wid.0,
+                    Self::FIELD_SEP,
+                    n
+                )
+            }
         }
     }
 
@@ -721,6 +812,11 @@ impl DesktopCommand {
                 if rec == "workspace_next" {
                     return Some(DesktopCommand::NextWorkspace);
                 }
+                // Plan 478 T2：v1.1 增量无参动词同款前置（workspace 前缀
+                // 不互吞：workspace_add 近形于 workspace）。
+                if rec == "workspace_add" {
+                    return Some(DesktopCommand::WorkspaceAdd);
+                }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
                     "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
@@ -732,6 +828,16 @@ impl DesktopCommand {
                     "activate" if !arg.is_empty() => {
                         Some(DesktopCommand::ActivateApp(arg.to_string()))
                     }
+                    // Plan 478 T2：协议 v1.1 增量动词。
+                    "workspace_close" => {
+                        arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
+                    }
+                    "send_to" => arg
+                        .split_once([Self::FIELD_SEP, '\t'])
+                        .and_then(|(w, n)| {
+                            w.parse::<u64>().ok().zip(n.parse::<usize>().ok())
+                        })
+                        .map(|(w, n)| DesktopCommand::SendTo(Wid(w), n)),
                     _ => None,
                 }
             })
@@ -767,8 +873,10 @@ pub struct HostCtx {
     /// Plan 464 T4：windowless 特权 App（shell / launcher overlay）的窗口级
     /// 字段垫片（原 shell_fields 挂 DesktopState——与 update 侧 `&mut desktop`
     /// 拆借冲突，移入 HostCtx 与 self.desktop 分离，同 host.wm 方式）。
+    /// Plan 478 T4：switcher overlay 同型垫片（T1 施工图 §1.2 修正面）。
     pub shell_fields: ShellFields,
     pub launcher_fields: ShellFields,
+    pub switcher_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -822,6 +930,10 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
+    /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
+    /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
+    /// 否则懒挂载召唤（T4 执行体）。
+    SummonSwitcher,
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -859,6 +971,7 @@ impl DesktopSession {
             wm: WmState::new(),
             shell_fields: ShellFields::default(),
             launcher_fields: ShellFields::default(),
+            switcher_fields: ShellFields::default(),
         });
     }
 
@@ -910,6 +1023,22 @@ impl DesktopSession {
     pub fn wm_prev_workspace(&mut self) {
         if let Some(host) = self.host.as_mut() {
             host.wm.prev_workspace();
+        }
+    }
+
+    /// Plan 478 T2：删除分区（dock ×/宿主臂共用；见
+    /// [`WmState::remove_workspace`]）。
+    pub fn wm_remove_workspace(&mut self, n: usize) {
+        if let Some(host) = self.host.as_mut() {
+            host.wm.remove_workspace(n);
+        }
+    }
+
+    /// Plan 478 T2：跨分区移动窗口（send_to 动词/热键共用；
+    /// 见 [`WmState::move_win_to_workspace`]）。
+    pub fn wm_move_win_to_workspace(&mut self, wid: Wid, n: usize) {
+        if let Some(host) = self.host.as_mut() {
+            host.wm.move_win_to_workspace(wid, n);
         }
     }
 
@@ -1085,7 +1214,9 @@ impl DesktopSession {
         if self.window_of_app(id).is_none() {
             let is_shell = self.desktop.shell_app == Some(id);
             let is_launcher = self.desktop.launcher_app == Some(id);
-            if !is_shell && !is_launcher {
+            // Plan 478 T4：switcher overlay 同型（windowless 拆借第三路）。
+            let is_switcher = self.desktop.switcher_app == Some(id);
+            if !is_shell && !is_launcher && !is_switcher {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -1098,12 +1229,19 @@ impl DesktopSession {
                     &mut host.shell_fields.initial_resize_done,
                     &mut host.shell_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_launcher {
                 (
                     &mut host.launcher_fields.window_size,
                     &mut host.launcher_fields.pending_window_resize,
                     &mut host.launcher_fields.initial_resize_done,
                     &mut host.launcher_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.switcher_fields.window_size,
+                    &mut host.switcher_fields.pending_window_resize,
+                    &mut host.switcher_fields.initial_resize_done,
+                    &mut host.switcher_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -1256,6 +1394,39 @@ impl DesktopSession {
         matches!(
             self.apps
                 .get(&la)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// Plan 478 T4：switcher overlay App 的拆借视图（view 装配的 switcher
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_launcher`] 相同，
+    /// 字段走 [`HostCtx::switcher_fields`]）。
+    pub fn split_ref_switcher(&self) -> Option<SessionViewRef<'_>> {
+        let switcher = self.desktop.switcher_app?;
+        let app = self.apps.get(&switcher)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: switcher,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.switcher_fields.window_size,
+            pending_window_resize: &host.switcher_fields.pending_window_resize,
+            initial_resize_done: &host.switcher_fields.initial_resize_done,
+            initial_focus_done: &host.switcher_fields.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 478 T4：switcher overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::launcher_visible`] 同型）。未挂载恒 false。
+    pub fn switcher_visible(&self) -> bool {
+        let Some(sw) = self.desktop.switcher_app else { return false };
+        matches!(
+            self.apps
+                .get(&sw)
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
@@ -1952,6 +2123,166 @@ mod tests {
         );
         // 坏载荷跳过：非数字下标。
         assert!(DesktopCommand::parse_records("workspace\u{1f}abc").is_empty());
+    }
+
+    // ---- Plan 478 T2：分区删除/跨区发送/MRU 投影序（T1 施工图 §3）----
+
+    #[test]
+    fn workspace_remove_rehomes_windows_and_clamps() {
+        let mut ds = desktop_session_with_host();
+        ds.host.as_mut().unwrap().wm.add_workspace(); // 3 分区
+        let app = insert_app(&mut ds, "A");
+        let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0)); // ws0
+        let app2 = insert_app(&mut ds, "B");
+        let b = ds.wm_add_win(app2, "B".into(), t2_rect(5.0, 5.0)); // ws0
+        ds.wm_set_workspace(1);
+        let app3 = insert_app(&mut ds, "C");
+        let c = ds.wm_add_win(app3, "C".into(), t2_rect(0.0, 0.0)); // ws1
+        ds.wm_set_workspace(2);
+        let app4 = insert_app(&mut ds, "D");
+        let d = ds.wm_add_win(app4, "D".into(), t2_rect(0.0, 0.0)); // ws2, focused
+        assert_eq!(ds.host.as_ref().unwrap().wm.current_workspace, 2);
+
+        // 删中间分区 1：c 重排相邻前驱（并入分区 0），后继下标压实（d: 2→1），
+        // current clamp 2→1；焦点窗 d 重排后仍在 current 分区 → 焦点保持。
+        ds.wm_remove_workspace(1);
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.workspaces.len(), 2);
+        assert_eq!(host.wm.wins[&a].workspace, 0);
+        assert_eq!(host.wm.wins[&b].workspace, 0);
+        assert_eq!(host.wm.wins[&c].workspace, 0, "被删分区窗重排相邻前驱");
+        assert_eq!(host.wm.wins[&d].workspace, 1, "后继分区下标压实");
+        assert_eq!(host.wm.current_workspace, 1, "current clamp");
+        assert_eq!(host.wm.focused, Some(d), "重排后仍在 current 的焦点窗保持");
+        // 窗全保留（分区删除 ≠ 关窗）。
+        assert_eq!(host.wm.wins.len(), 4);
+    }
+
+    #[test]
+    fn workspace_remove_current_partition_transfers_focus() {
+        let mut ds = desktop_session_with_host();
+        ds.host.as_mut().unwrap().wm.add_workspace(); // 3 分区
+        let app = insert_app(&mut ds, "A");
+        let _a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0)); // ws0
+        ds.wm_set_workspace(1);
+        let app2 = insert_app(&mut ds, "B");
+        let b = ds.wm_add_win(app2, "B".into(), t2_rect(0.0, 0.0)); // ws1, focused
+        ds.wm_set_workspace(2);
+        let app3 = insert_app(&mut ds, "C");
+        let c = ds.wm_add_win(app3, "C".into(), t2_rect(0.0, 0.0)); // ws2, focused
+        // 删当前分区 1：b 重排到 0，current 保持 1（旧 ws2 压实），
+        // 焦点让渡现分区顶窗（重排窗不跨分区抢焦点——所见即所得）。
+        ds.wm_remove_workspace(1);
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.wins[&b].workspace, 0);
+        assert_eq!(host.wm.wins[&c].workspace, 1);
+        assert_eq!(host.wm.current_workspace, 1);
+        assert_eq!(host.wm.focused, Some(c), "删当前分区：焦点让渡现分区顶窗");
+    }
+
+    #[test]
+    fn workspace_remove_guards_last_partition_and_out_of_range() {
+        let mut ds = desktop_session_with_host();
+        // 默认 2 分区：删 1 剩 1；再删 → no-op（保底 ≥1 分区）；越界 no-op。
+        ds.wm_remove_workspace(1);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1);
+        ds.wm_remove_workspace(0);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区 no-op");
+        ds.wm_remove_workspace(5);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "越界 no-op");
+    }
+
+    #[test]
+    fn workspace_move_win_to_hidden_and_same_partition() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "A");
+        let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0)); // ws0
+        let app2 = insert_app(&mut ds, "B");
+        let b = ds.wm_add_win(app2, "B".into(), t2_rect(10.0, 10.0)); // ws0, focused
+        // 发送 b 到隐分区 1：归属迁移 + 焦点让渡当前分区顶窗 + 窗保留（隐现）。
+        ds.wm_move_win_to_workspace(b, 1);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.wins[&b].workspace, 1);
+            assert_eq!(host.wm.focused, Some(a), "隐分区发送：焦点让渡当前分区顶窗");
+            assert!(host.wm.z_order.contains(&b), "窗保留（随分区隐现）");
+        }
+        // 发送到当前分区 = 恒等（归属不变，焦点保持）。
+        ds.wm_move_win_to_workspace(a, 0);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.wins[&a].workspace, 0);
+            assert_eq!(host.wm.focused, Some(a), "当前分区发送焦点保持");
+        }
+        // clamp：越界下标压到合法域（末分区）。
+        ds.wm_move_win_to_workspace(b, 9);
+        assert_eq!(ds.host.as_ref().unwrap().wm.wins[&b].workspace, 1);
+    }
+
+    #[test]
+    fn mru_in_workspace_orders_and_filters() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "A");
+        let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0)); // ws0
+        let app2 = insert_app(&mut ds, "B");
+        let b = ds.wm_add_win(app2, "B".into(), t2_rect(10.0, 10.0)); // ws0
+        let app3 = insert_app(&mut ds, "C");
+        let c = ds.wm_add_win(app3, "C".into(), t2_rect(20.0, 20.0)); // ws0
+        // boot 装载序 = MRU 序（front=最近聚焦）：c, b, a。
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.mru_in_workspace(0),
+            vec![c, b, a]
+        );
+        // 聚焦 a → MRU 前插。
+        ds.wm_focus(a);
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.mru_in_workspace(0),
+            vec![a, c, b]
+        );
+        // b 移入隐分区 → 分区过滤各自可见。
+        ds.wm_move_win_to_workspace(b, 1);
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.mru_in_workspace(0),
+            vec![a, c]
+        );
+        assert_eq!(ds.host.as_ref().unwrap().wm.mru_in_workspace(1), vec![b]);
+    }
+
+    #[test]
+    fn workspace_v11_commands_encode_parse_round_trip() {
+        let cmds = vec![
+            DesktopCommand::WorkspaceAdd,
+            DesktopCommand::WorkspaceClose(2),
+            DesktopCommand::SendTo(Wid(7), 1),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 双轨分符：shell.at 控件字符串只可直书 \t。
+        assert_eq!(
+            DesktopCommand::parse_records(
+                "workspace_add\u{1e}workspace_close\t2\u{1e}send_to\t7\t1"
+            ),
+            cmds
+        );
+        // 坏载荷跳过不 panic。
+        assert!(DesktopCommand::parse_records("workspace_close\u{1f}abc").is_empty());
+        assert!(
+            DesktopCommand::parse_records("send_to\u{1f}1").is_empty(),
+            "send_to 缺第二参数跳过"
+        );
+        // v1 动词不受 v1.1 增量影响（workspace 前缀不互吞：无参/近形词先判定）。
+        assert_eq!(
+            DesktopCommand::parse_records("workspace\u{1f}1"),
+            vec![DesktopCommand::SetWorkspace(1)]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("workspace_next"),
+            vec![DesktopCommand::NextWorkspace]
+        );
     }
 
     // ---- Plan 472 T4：dock 升级（activate 动词；T1 施工图 §2.4）----

@@ -571,6 +571,8 @@ pub struct VueGenerator {
     /// keyboard_subscription 查 key_bindings；vue 侧此前无对应层（bind 静默
     /// 失效），补 `__autoBindKeymap` window keydown 层（emit 紧邻 actions 层）。
     bind_key_bindings: Vec<(String, String)>,
+    /// Module-level plain functions attached to the widget file (e.g. `fn eval_expr(...)`).
+    pub module_fns: Vec<crate::aura::AuraModuleFn>,
 }
 
 /// A Vue component declared in a widget-level `use { component: ... }` block.
@@ -730,7 +732,14 @@ impl VueGenerator {
             setup_locals: Vec::new(),
             setup_ref_fields: std::collections::HashMap::new(),
             current_setup_stmts: None,
+            module_fns: Vec::new(),
         }
+    }
+
+    /// Attach module-level plain functions from the source file
+    pub fn with_module_fns(mut self, module_fns: Vec<crate::aura::AuraModuleFn>) -> Self {
+        self.module_fns = module_fns;
+        self
     }
 
     /// Set known sub-widget names (to avoid shadcn name collisions)
@@ -2775,6 +2784,27 @@ impl VueGenerator {
                 script.push_str("  editing.value = false\n");
             }
             script.push_str("}\n\n");
+            }
+        }
+
+        // Emit module-level plain functions attached to the widget file (e.g. `fn eval_expr(...)`)
+        if !self.module_fns.is_empty() {
+            let ctx = self.handler_ts_ctx();
+            for mfn in &self.module_fns {
+                let param_list = mfn.params.iter()
+                    .map(|p| format!("{}: any", p))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_anno = if mfn.ret_ts.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", mfn.ret_ts)
+                };
+                script.push_str(&format!("function {}({}){} {{\n", mfn.name, param_list, ret_anno));
+                let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
+                let indented = Self::indent_body(&body, "  ");
+                script.push_str(&indented);
+                script.push_str("\n}\n\n");
             }
         }
 

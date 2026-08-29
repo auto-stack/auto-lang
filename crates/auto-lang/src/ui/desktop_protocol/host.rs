@@ -198,9 +198,10 @@ impl<'a> ProtocolHost<'a> {
     /// chrome 命中（标题栏/把手）在 live 集成由 update 壳层先行；v1
     /// loopback 把窗内按下全量转 app（chrome 拦截是渲染器层职责）。
     pub fn pointer_down(&mut self, x: f32, y: f32, button: MouseButton) -> Option<ProtocolMsg> {
-        let host = self.session.host.as_ref()?;
-        let wid = host.wm.hit_test(x, y)?;
-        drop(host);
+        let wid = {
+            let host = self.session.host.as_ref()?;
+            host.wm.hit_test(x, y)?
+        };
         self.session.wm_focus(wid);
         let rect = {
             let host = self.session.host.as_ref()?;
