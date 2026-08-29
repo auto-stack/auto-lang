@@ -72,8 +72,9 @@ z 序（自上而下）                    归属
 - `win32.rs`：Win32 适配层（发现/几何/样式/层级/WinEventHook），只在本层出现
   `windows` crate 调用；
 - 集成点（改造既有文件）：
-  - `ui/session.rs`：WM 注册表扩展 NativeSlot 条目；`__desktop_cmd` 命令族新增
-    `dock_native` / `undock_native`；
+  - `ui/session.rs`：WM 注册表扩展 NativeSlot 条目；命令面新增 `dock_native` /
+    `undock_native`——**以 472 投影协议 v1 的 `desktop.*` 动词表为载体注册**
+    （472 合入后对齐，见 §待澄清事项排程依赖），不直扩旧 `__desktop_cmd`；
   - `ui/iced/virtual_window.rs`：NativeSlot 作为布局单元参与矩形分配；
   - `ui/iced/renderer.rs`：`run_dynamic_desktop` 装配适配层（事件通道 →
     `DesktopMessage`；layout pass 后局部→屏幕坐标同步；槽位框按钮 → Win32 操作）。
@@ -169,6 +170,9 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
   + `GetWindowRect(桌面hWnd)` 原点 = 屏幕物理坐标。
 
 ### 3. session / WM 集成
+
+> 命令面定案原则：走 472 投影协议 v1 的 `desktop.*` 动词表（动词注册 + 投影
+> 字段扩展），不再直扩旧 `__desktop_cmd`——以 472 合入后的实际接口为准。
 
 - `DesktopState`/WM 注册表新增 `native_slots: BTreeMap<NativeSlotId, NativeSlot>`；
 - `__desktop_cmd` 新增：
@@ -305,6 +309,13 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
 
 ## 待澄清事项
 
+- **排程依赖（2026-08-29 核验）**：472（投影协议 v1 + shell dock）executing 4/6，
+  未合入改动与本期 T4–T6 集成面完全重叠（session.rs +328 / renderer.rs +558 /
+  layout.rs）且引入 `desktop.*` 动词词表 → **本期开工前置 = 472 复审合入**，届时
+  T4 按其实际协议注册 dock_native/undock_native。386 Stage 1（桌面协议 v1 五通道）
+  已折入 master（c22bb76f1），本期天然建在其上；剩余 Stage 2/3 梯次解锁，不阻塞。
+- 命名区分：472 的 "dock" = 桌面任务栏（shell dock）；本期 = 原生窗口收编
+  （native dock / NativeSlot）。文档与代码统一用 native dock 措辞避免撞名。
 - 假设成立性：vm 桌面为全屏壳拓扑（session.rs R2 单 OS 窗口）→ Phase 4 真洞
   方向保留；若未来改为并存普通窗口拓扑，Phase 4 转为"假洞+按需覆盖层"路线。
 - Windows 版本基线：corner preference 仅 Win11，Win10 静默降级（直角窗口本就
