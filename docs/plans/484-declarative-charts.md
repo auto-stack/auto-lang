@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-484
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: 声明式 chart 原语（bar-chart 裸名 + 轴/图例自动化）
 author: [zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [docs/specs/auto-lang/ui, examples/widgets-gallery, examples/ui/024-charts, examples/charts-gallery]
-current_step: 0
+current_step: 5
 total_steps: 6
 ---
 
@@ -142,13 +142,13 @@ VM 轨已有"props 播种 → Init 重放（纯派生幂等）"；本计划不�
 
 （原子任务在 M0 决议后细化展开；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] M0 契约与命名决议（含用户确认剩余待澄清项），修订 chart-components.md
-- [ ] M1 四组件 props v2（nice-ticks/网格/图例/axis props）
-- [ ] M2 裸名接线 + shadcn chart 族退役 + 全仓改名迁移
-- [ ] M3 charts-gallery 重建（同形状、Auto 底座、双端）
-- [ ] M4 024-charts 组件化迁移（内联几何退役）
-- [ ] M5 双端一致性验证 + golden 更新
-- [ ] M6 复审（逐项验收 + 遗漏扫描）与归档准备
+- [ ] M0 契约与命名决议（含用户确认剩余待澄清项），修订 chart-components.md [✅ 已完成] 契约 v2 全量落库（裸名映射/props v2 表/nice-ticks 规格/退化域/tooltip 命中区模型含 x 竖带与 donut 图例命中/stacked+monotone 算法规格/shadcn 五注册+资产退役清单），commit 6af3d8bc9
+- [ ] M1 四组件 props v2（nice-ticks/网格/图例/axis props） [✅ 已完成] MouseArea 基础 widget（registry/view/builder/renderer/snapshot/vnode 六层接线 + 单测）；四组件 v2（nice-ticks 1-2-5 阶梯/固定 y 位网格/图例/labels/≤8 抽样/bar stacked 前缀和/line+area monotone 单调三次插值/hover 竖带+锚点 tooltip）；plan437 e2e 四路由绿（gallery_chart_components_render_geometry）+ mouse_area 单测绿；commit c5f8ea3d4。实证 codegen 坑（已记档 chart-components.md 与组件头注）：包组件 Init 内 prop 字符串比较破坏 codegen→双算双存 view 选边；f-string 含字面量 [] 必须用 {} 插值；条件引用局部变量紧邻使用点声明；带参 msg 声明破坏包子组件编译→handler 裸挂
+- [ ] M2 裸名接线 + shadcn chart 族退役 + 全仓改名迁移 [✅ 已完成] registry 七注册/schema 七元素/auto-man 五脚手架+unovis 依赖组全删（-1330 行）；四组件裸名化（LineChart→bar-chart 等折叠解析）+widgets-gallery 页面/app.at/SPEC.md 迁移，全仓 auto-*-chart 零残留；退役路线单测 4 删 1 改（负断言存档）；plan437 e2e 绿；schema_drift/docs_gen/auto-man 全绿；test_charts_gallery_compiles 预期红（M3 重建后转绿并重写断言）；commit 0e0df44f7
+- [ ] M3 charts-gallery 重建（同形状、Auto 底座、双端） [✅ 已完成] 六图卡（area 四系列/bar grouped/bar stacked/line monotone/donut/area 自定色）换 official 包裸名原语，pac 升双端（render vue + port 4039）；test_charts_gallery_compiles 重写为 Auto 路线断言（包折叠 SFC 引用 + unovis/CurveType 负断言）绿；schema_drift 栅栏绿（mouse-area 入册三表同步、chart 元素退役、kitchen-sink/core.md 再生、DOC_EXCLUDE 折叠形式注记）；commit 7f28b7906
+- [ ] M4 024-charts 组件化迁移（内联几何退役） [✅ 已完成] app.at 806→226 行，三份内联几何退役改四类裸名原语消费；流式滑窗（.Tick 追点/滑窗/Reset 不变式）语义不变，几何重算交组件 Init 重放；plan484_chart_component_tests 双示例回归入库（组件冒烟 + gallery 裸名渲染 + 遗留几何负断言）；全量 cargo t 3270/3270 绿；commit 6a884149a
+- [ ] M5 双端一致性验证 + golden 更新 [✅ 已完成] gallery_golden vue 全项目基线复核更新（差异面 = chart 组件/页/kitchen-sink，其余 80 文件 hash 不变）后绿；VM 轨 plan437 四路由 + plan484 双示例 in-process 几何断言绿；ui-iced 全套 --no-fail-fast 复跑（唯一红 = 存量 plan050，master 同红已归属）
+- [ ] M6 复审（逐项验收 + 遗漏扫描）与归档准备 [✅ 已完成] 六里程碑全勾;scoped 门禁复绿（cargo check ui-iced、plan437/plan484/gallery_golden/schema_drift/docs_gen/auto-man 238 测试）;ui-iced 全套 --no-fail-fast 4040 跑 4037 绿,3 红（plan050×2/code_editor_natives）均 master 存量基线（master 同跑 5 红,子集归属在案）;状态翻转 execution_done,待 /auto-plan:review
 
 ## 复审记录
 
