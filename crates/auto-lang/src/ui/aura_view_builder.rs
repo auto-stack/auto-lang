@@ -4722,12 +4722,61 @@ let tabs_inner = View::Row {
             match views.len() {
                 0 => None,
                 1 => Some(Box::new(views.into_iter().next().unwrap())),
-                _ => Some(Box::new(View::Column {
-                    children: views,
-                    spacing: 0,
-                    padding: 0,
-                    style: None,
-                })),
+                // PLAN-050 C1 残余收尾: 布局方向按按钮自身 flex 类——`flex`（行,
+                // Tailwind 默认）包 Row,`flex-col` 才 Column;gap→spacing,
+                // items-*/justify-* 随 style 下传（renderer row/column 臂消费
+                // 对齐）。此前恒 Column → 图标叠文字上方且整体居中（vue 轨
+                // flex 行形态）。
+                _ => {
+                    let is_col = style.as_ref().map_or(false, |s| {
+                        s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol))
+                    });
+                    let spacing = style
+                        .as_ref()
+                        .and_then(|s| {
+                            s.classes.iter().find_map(|c| match c {
+                                StyleClass::Gap(g) => Some(g.to_pixels()),
+
+                                _ => None,
+                            })
+                        })
+                        .unwrap_or(0);
+                    let layout_style = style.as_ref().map(|s| Style {
+                        classes: s
+                            .classes
+                            .iter()
+                            .filter(|c| {
+                                matches!(
+                                    c,
+                                    StyleClass::ItemsCenter
+                                        | StyleClass::ItemsStart
+                                        | StyleClass::ItemsEnd
+                                        | StyleClass::JustifyStart
+                                        | StyleClass::JustifyEnd
+                                        | StyleClass::JustifyCenter
+                                        | StyleClass::JustifyBetween
+                                )
+                            })
+                            .cloned()
+                            .collect(),
+                        hover_classes: Vec::new(),
+                    });
+                    if is_col {
+                        Some(Box::new(View::Column {
+                            children: views,
+                            spacing,
+                            padding: 0,
+                            style: layout_style,
+                        }))
+                    } else {
+                        Some(Box::new(View::Row {
+                            children: views,
+                            spacing,
+                            padding: 0,
+                            style: layout_style,
+                        }))
+                    }
+                }
             }
         } else {
             None
@@ -8761,6 +8810,56 @@ mod tests {
             !view_contains_text(&view, "${currentName}"),
             "裸 placeholder 不得漏出"
         );
+    }
+
+    /// PLAN-050 T9+C1 残余收尾: 按钮内容子树布局方向——按钮样式带 `flex`
+    /// （行,默认）时多子内容必须包 Row（gap→spacing,items-*/justify-* 类
+    /// 随 style 下传供 renderer row 臂消费）;`flex-col` 才包 Column。此前
+    /// 恒 Column → rail 导航钮图标叠在文字上方、整体居中（vue 轨 flex 行）。
+    #[test]
+    fn plan050_button_content_subtree_flex_row_direction() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        // 结构子内容:图标组件 + 文本子节点 → content 子树
+        let node = AuraNode::element("button")
+            .with_prop(
+                "style",
+                Expr::Str("w-full flex items-center justify-start gap-2 px-3 py-2".into()),
+            )
+            .with_child(AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())))
+            .with_child(AuraNode::text("会话"));
+        let view = builder.build(&node);
+        let View::Button { content: Some(content), .. } = view else {
+            panic!("期望带 content 子树的 Button");
+        };
+        match *content {
+            View::Row { spacing, style, .. } => {
+                assert!((f32::from(spacing) - 8.0).abs() < f32::EPSILON, "gap-2 → spacing 8; got {}", spacing);
+                let st = style.expect("items-*/justify-* 应随 style 下传");
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::ItemsCenter)),
+                    "items-center 应在 Row style"
+                );
+                assert!(
+                    st.classes.iter().any(|c| matches!(c, StyleClass::JustifyStart)),
+                    "justify-start 应在 Row style"
+                );
+            }
+            other => panic!("期望 Row（flex 行）,得到其他布局"),
+        }
+
+        // flex-col → Column（原行为保留）
+        let node = AuraNode::element("button")
+            .with_prop("style", Expr::Str("flex flex-col items-center gap-1".into()))
+            .with_child(AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())))
+            .with_child(AuraNode::text("B"));
+        let view = builder.build(&node);
+        let View::Button { content: Some(content), .. } = view else {
+            panic!("期望带 content 子树的 Button");
+        };
+        assert!(matches!(*content, View::Column { .. }), "flex-col 应包 Column");
     }
 
     /// PLAN-050 T7 (C5): use.web component 声明的图标组件（`Folder { size: 14 }`）
