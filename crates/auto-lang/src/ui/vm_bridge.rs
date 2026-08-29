@@ -949,7 +949,11 @@ impl VmBridge {
                 .collect();
             parts.sort();
             parts.join(" ")
-        } else if let Some(od) = guard.as_any().downcast_ref::<crate::vm::object_data::ObjectData>() {
+        } else if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+            // 2026-08-29 定性:engine CREATE_OBJ 分配的是 vm::types::ObjectData
+            // (全仓 25 处);vm::object_data::ObjectData 无任何分配点。此探针此前
+            // downcast 到后者→恒 miss,是 plan011 ③「10 轮探针脱靶/未知变体」
+            // 之谜的一半(另一半:③ 本身是 e2e navVisible 假阳性,VM 无 bug)。
             let open = od.get(&"open".into());
             let m1 = od.get(&"m1".into());
             format!("ObjectData open={:?} m1={:?}", open.map(|v| v.to_string()), m1.map(|v| v.to_string()))

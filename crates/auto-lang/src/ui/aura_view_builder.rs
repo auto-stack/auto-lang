@@ -246,8 +246,16 @@ impl<'a> AuraViewBuilder<'a> {
         if name == "view_groups" {
             let peek = |b: &crate::ui::vm_bridge::VmBridge, v: &Vec<auto_val::Value>| -> String {
                 let list_id = match v.first() {
-                    Some(auto_val::Value::VmRef(r)) => format!("elems@{}", r.id),
-                    Some(auto_val::Value::Int(i)) => format!("elems@{}", i),
+                    Some(auto_val::Value::VmRef(r)) => {
+                        // [P011B] v 已是元素列表(非原始字段),first() 是第一个
+                        // 组对象本身——打它的堆类型快照(type_tag + 字段)。
+                        eprintln!("[P011B] elem0 snapshot {}", b.debug_obj_snapshot(r.id));
+                        format!("obj@{}", r.id)
+                    }
+                    Some(auto_val::Value::Int(i)) => {
+                        eprintln!("[P011B] elem0 snapshot {}", b.debug_obj_snapshot(*i as usize));
+                        format!("obj@{}", i)
+                    }
                     other => return format!("first={:.40}", other.map(|x| x.to_string()).unwrap_or_default()),
                 };
                 let elems = match v.first() {
