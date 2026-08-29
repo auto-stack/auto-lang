@@ -35,6 +35,13 @@
 - `tmp/479-t6-storage.json`：机会性实机通知落盘铁证（§1 #2；JSON 槽位形态
   = T1 定案 4 全量重写 10 槽语义）。
 
+> **复审注记（/auto-plan:review）**：两帧 PNG 经 md5 比对**逐字节相同**——
+> 桌面初态为确定性渲染（同窗同坞、badge 两次皆隐：boot 恢复语义即未读归
+> 零），第二帧证明「二次 boot 正常渲染无 panic」，**不**单独构成「历史恢复」
+> 的可视证据；恢复语义的实证 = storage 铁证（§1 #2/重启后槽位原样）+
+> headless 金样 `notif_storage_roundtrip_slots`。可视面板交互项留待前台
+> 空闲重跑（驱动脚本入口）。
+
 ## 4. 执行期发现
 
 1. 前台竞争与 472/478 完全同款：trusted host 校验 frontmost，用户会话活跃
