@@ -39,6 +39,8 @@ pub mod host;
 pub mod loopback;
 #[cfg(feature = "ui-iced")]
 pub mod message;
+#[cfg(feature = "ui-iced")]
+pub mod transport;
 
 /// 协议版本（信封头携带；不一致拒收——`CodecError::UnsupportedVersion`）。
 /// v1 = 本计划 Stage 1 定稿（见 `docs/design/autoui/desktop-protocol-v1.md`）。
@@ -48,6 +50,7 @@ pub use codec::{CodecError, Channel};
 pub use endpoint::{AppEndpoint, FrameSource, HostEndpoint, HostAction, HostState, ProtocolError};
 pub use host::{ProtocolHost, SurfaceStore};
 pub use loopback::{loopback_pair, LoopbackEnd};
+pub use transport::{Transport, TransportError};
 pub use message::{
     ControlMsg, DrawList, DrawOp, FontBlob, FrameMsg, HandshakeMsg, InputMsg, ObserveMsg,
     ProtocolMsg, Rgba8, WRect,
