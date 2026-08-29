@@ -558,22 +558,32 @@ impl<'a> AuraViewBuilder<'a> {
             if let Ok(arr) = self.read_state_as_vec(stripped) {
                 return Some(arr);
             }
+            // PLAN-051 C3 (KD-047 UPSTREAM①清偿): state 读 miss → computed
+            // 求值回退——musk `for msg in .filteredMessages` 以 computed 为
+            // for 源，此前直接 None → WARN 刷屏 + 气泡列表整体空。
+            if let Some(v) = self.eval_computed(stripped, bindings) {
+                return self.value_to_iter_vec(&v);
+            }
             return None;
         }
         // Dotted path — build an Expr and resolve. `.note.tags` →
         // Dot(Dot(Ident("."), "note"), "tags").
         let expr = Self::parse_dot_path_to_expr(iterable)?;
         let val = self.resolve_expr_to_value(&expr, bindings)?;
+        self.value_to_iter_vec(&val)
+    }
+
+    /// PLAN-051 C3: computed/state 求值结果 → 迭代 Vec。Value::Array 直取；
+    /// Int ≥4M / VmRef 为堆 ListData 引用，经 bridge 展开。
+    fn value_to_iter_vec(&self, val: &auto_val::Value) -> Option<Vec<auto_val::Value>> {
         match val {
             auto_val::Value::Array(arr) => Some(arr.iter().cloned().collect()),
             // Plan 390 §15 H3b: arrays are ListData<Value> in heap_objects (4M+).
-            auto_val::Value::Int(id) if id >= 4_000_000 => {
+            auto_val::Value::Int(id) if *id >= 4_000_000 => {
                 // Heap array id — deref via bridge
-                Some(self.bridge.index_list_all(id as usize))
+                Some(self.bridge.index_list_all(*id as usize))
             }
-            auto_val::Value::VmRef(r) => {
-                Some(self.bridge.index_list_all(r.id))
-            }
+            auto_val::Value::VmRef(r) => Some(self.bridge.index_list_all(r.id)),
             _ => None,
         }
     }
@@ -922,8 +932,18 @@ impl<'a> AuraViewBuilder<'a> {
                 match self.read_state_as_vec(state_name) {
                     Ok(v) => v,
                     Err(e) => {
-                        log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
-                        return View::Empty;
+                        // PLAN-051 C3: state 读 miss → computed 求值回退
+                        //（musk filteredMessages 链式 fn 调用形态的 for 源）。
+                        match self
+                            .eval_computed(state_name, bindings)
+                            .and_then(|v| self.value_to_iter_vec(&v))
+                        {
+                            Some(v) => v,
+                            None => {
+                                log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
+                                return View::Empty;
+                            }
+                        }
                     }
                 }
                 }
@@ -5759,6 +5779,38 @@ let tabs_inner = View::Row {
                     return Some(Value::Str(
                         crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key).into(),
                     ));
+                }
+                // PLAN-051 C3: 裸 fn 名调用——computed 体内的 use.web helper
+                // 别名链（musk filteredMessages => chatSearchFilter(
+                // chatActivePath(.store.messages, ...), ...)）。实参逐个递归
+                // 求值后经 bridge.call_vm_fn 在 VM 内执行（裸名/限定名双查）。
+                // 失败沿既有保守语义返回 None（回落字面量/空）。
+                if let Expr::Ident(fname) = call.name.as_ref() {
+                    let mut arg_vals: Vec<Value> = Vec::with_capacity(call.args.args.len());
+                    let mut complete = true;
+                    for a in &call.args.args {
+                        match a {
+                            crate::ast::Arg::Pos(e) => {
+                                match self.resolve_expr_to_value(e, bindings) {
+                                    Some(v) => arg_vals.push(v),
+                                    None => {
+                                        complete = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            _ => {
+                                complete = false;
+                                break;
+                            }
+                        }
+                    }
+                    if complete {
+                        if let Ok(v) = self.bridge.call_vm_fn(fname.as_str(), &arg_vals) {
+                            return Some(v);
+                        }
+                    }
+                    return None;
                 }
                 if let Expr::Dot(recv_expr, method) = call.name.as_ref() {
                     let recv = self.resolve_expr_to_value(recv_expr, bindings)?;

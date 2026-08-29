@@ -1716,6 +1716,97 @@ mod tests {
         );
     }
 
+    /// PLAN-051 T4 (C3): musk 契约——`for msg in .filteredMessages` 以
+    /// computed 为 for 源（链式纯 fn 调用形态）。此前 resolve_iterable/
+    /// ForLoop 转换只读 state（KD-047 UPSTREAM①），miss 即 WARN + 列表空。
+    /// 期望：state miss → computed 求值（裸 fn 别名经 VM 执行）→ 行数渲染。
+    #[test]
+    fn plan051_computed_for_source_fn_call_chain() {
+        use crate::parser::Parser;
+        let src = concat!(
+            "fn tail51c(items: List) -> List {
+",
+            "    return items
+",
+            "}
+",
+            "fn pass51c(items: List, q: str) -> List {
+",
+            "    return tail51c(items)
+",
+            "}
+",
+            "widget Root51c {
+",
+            "    model { var messages []str = []
+    var chat_search str = \"\" }
+",
+            "    view { col { List51c {} } }
+",
+            "}
+",
+            "widget List51c {
+",
+            "    model { var n int = 0 }
+",
+            "    computed { filtered => pass51c(.messages, .chat_search) }
+",
+            "    view { col { for m in .filtered { text \"row\" } } }
+",
+            "}
+",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        assert_eq!(decls.len(), 2, "root + child");
+        let root_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        // 三条消息入 state（heap ListData 形态，与生产 var x = []; push 一致）。
+        comp.write_state_vec(
+            "messages",
+            vec![auto_val::Value::str("m1"), auto_val::Value::str("m2"), auto_val::Value::str("m3")],
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let rows = count_text_nodes(&view, "row");
+        assert_eq!(rows, 3, "computed for 源必须解出 3 行（链式 fn 调用经 VM 执行）");
+    }
+
+    /// PLAN-051 T4 测试辅助：统计 View 树中内容等于 label 的 Text 节点数。
+    fn count_text_nodes(view: &View<DynamicMessage>, label: &str) -> usize {
+        match view {
+            View::Text { content, .. } => usize::from(content == label),
+            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            _ => 0,
+        }
+    }
+
     /// Round-trip the onclick payload encoding the renderer uses to carry args
     /// across iced's Send boundary. Mirrors `encode_payload` (renderer.rs) by
     /// building the encoded string with the same format/separator.

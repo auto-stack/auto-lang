@@ -130,6 +130,32 @@ pub struct VmBridge {
     /// shifted the handler frame — `.todos` writes landed on a garbage object
     /// id in 013-todo's AddTodo).
     handler_param_counts: std::collections::HashMap<(String, String), usize>,
+
+    /// PLAN-051 C3: use.web 引入的 fn 别名 → 模块限定名映射（装载器按文件
+    /// stem 限定，如 chatActivePath → forge_helpers.chatActivePath）。computed
+    /// 求值面的裸 fn 调用经 [`VmBridge::call_vm_fn`] 按此解析真实导出名。
+    import_aliases: std::collections::HashMap<String, String>,
+}
+
+/// PLAN-051 C3: 栈顶 nanbox → Value（call_vm_fn 返回值解码；与
+/// vm/native.rs nv_to_value 同构——该函数私有，此处本地副本）。字符串以
+/// 池索引形态返回 Int（调用方按需另行解码；列表/对象为 id/VmRef 原样）。
+fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
+    if auto_val::is_i32(nv) {
+        Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_list(nv) {
+        Value::Int(auto_val::decode_list(nv) as i32)
+    } else if auto_val::is_object(nv) {
+        Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+    } else if auto_val::is_string(nv) {
+        Value::Int(auto_val::decode_string(nv) as i32)
+    } else if auto_val::is_null(nv) {
+        Value::Nil
+    } else if auto_val::is_bool(nv) {
+        Value::Bool(auto_val::decode_bool(nv))
+    } else {
+        Value::Int(auto_val::decode_i32(nv))
+    }
 }
 
 /// Audit B12(b): collect `(widget, event) -> declared param count` from an
@@ -292,6 +318,7 @@ impl VmBridge {
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
+            import_aliases: import_aliases.clone(),
         })
     }
 
@@ -447,6 +474,7 @@ impl VmBridge {
             widget_name,
             child_state_map: std::cell::RefCell::new(std::collections::HashMap::new()),
             handler_param_counts,
+            import_aliases: import_aliases.clone(),
         })
     }
 
@@ -1003,6 +1031,48 @@ impl VmBridge {
     /// (rc_push_id / rc_push_str_idx / add_string / call_fn_by_name) is fully
     /// interior-mutable, and the render phase (AuraViewBuilder holds `&VmBridge`)
     /// needs to fire child-widget Init handlers after seeding props.
+    /// PLAN-051 C3: 按名调用 VM 模块级函数并取返回值。use.web 引入的 helper
+    /// 别名（computed 体里的链式纯 fn 调用，如 musk filteredMessages =>
+    /// chatSearchFilter(chatActivePath(...), ...)）在 VM 的落点由此可达——
+    /// 名字解析序：裸名 → import_aliases 限定名。返回值按栈顶 nanbox 解码
+    /// （列表为 heap id Int ≥4M，由调用方 index_list_all 展开）。
+    pub fn call_vm_fn(&self, name: &str, args: &[Value]) -> Result<Value> {
+        let candidates = [Some(name.to_string()), self.import_aliases.get(name).cloned()];
+        let fn_name = candidates
+            .into_iter()
+            .flatten()
+            .find(|n| self.vm.flash.exports_by_name.contains_key(n))
+            .ok_or_else(|| VmBridgeError::HandlerNotFound(name.to_string()))?;
+
+        let mut task = AutoTask::new(0, 4096, 0);
+        for a in args {
+            match a {
+                Value::Str(s) => {
+                    let idx = self.vm.add_string(s.as_bytes().to_vec());
+                    self.vm.rc_push_str_idx(&mut task, idx as usize);
+                }
+                // PLAN-051 C3: 堆引用实参必须按 tag 编码——push_value 对
+                // VmRef/大 Int 落 push_i32(0) 占位(注释自述"not passed as
+                // scalar args"),列表参数(≥4M ListData id)整个变 0。
+                Value::Int(id) if *id >= 4_000_000 => {
+                    task.ram.push_nv(auto_val::encode_list(*id as u32));
+                }
+                Value::VmRef(r) if r.id >= 4_000_000 => {
+                    task.ram.push_nv(auto_val::encode_list(r.id as u32));
+                }
+                Value::VmRef(r) => {
+                    task.ram.push_nv(auto_val::encode_object(r.id as u32));
+                }
+                other => push_value(&mut task.ram, other),
+            }
+        }
+        self.vm
+            .call_fn_by_name(&mut task, &fn_name, args.len())
+            .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
+        let nv = task.ram.pop_nv();
+        Ok(nv_to_pub_value(nv))
+    }
+
     pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
 
