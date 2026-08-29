@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-479
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: shell-track-m3-notification-center
 author: [zcode]
 created_at: 2026-08-29T16:30:00+08:00

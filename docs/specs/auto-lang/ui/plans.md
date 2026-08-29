@@ -104,3 +104,4 @@
 | 386 | autoui-renderqueue | ⏸ 暂缓（复活条件 2/3 就绪） | plans/ | 路线 B 分离渲染（100MB→1-5MB/app），蓝图 Design 25 §7 |
 | 476 | vm-slot-substitution | ✅（reviewed→archived） | archive/ | VM 轨 slot 替换：SlotFills 父作用域捕获 + outlet 臂 + 五容器×双胎兄弟拼接；清偿 musk KD-048 UPSTREAM① |
 | 478 | shell-track-m2-switcher-pager | ✅（reviewed→archived） | archive/ | shell-track M2：switcher overlay（Ctrl+Tab 召唤 MRU 面板，第二枚 overlay 槽）+ dock 升格 pager（1 基标签/高亮/增删分区）+ send_to 跨区发送 + 投影协议 v1.1（__wm_mru/label/三动词，vue 对拍基线） |
+| 479 | shell-track-m3-notification-center | ✅（reviewed→archived） | archive/ | shell-track M3：通知中心（S6）——463 瞬时 toast 升格「浮现+历史聚合」双面（dock 铃铛+未读 badge + 第三枚 overlay 槽 notification_center.at 右下锚定面板：逐条 ×/全部清除/Esc）+ notify/notes_toggle/notes_clear/notes_dismiss 动词（词表 v1.2）+ storage 定长槽 shell.notes.0..9 持久化（boot 恢复）+ 投影协议 v1.2（__wm_notes/__wm_notes_unread/指纹 notes 段，vue 对拍基线） |
