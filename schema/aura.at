@@ -521,6 +521,7 @@ element nav {
     tier: "builtin_widget"
     aliases: ["Nav"]
     backends: { web: "native", iced: "full", gpui: "unknown" }
+    sub_widgets: ["nav-item", "nav-group"]
     props: [
         { name: "search", type: "bool", default: "false", description: "Integrate a search input row at the top of the nav (Plan 482)" }
         { name: "search_placeholder", type: "string", description: "Placeholder text for the integrated search row" }

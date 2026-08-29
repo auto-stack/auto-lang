@@ -49,6 +49,7 @@ widget App {
         "/menubar" -> use menubar
         "/navigationmenu" -> use navigationmenu
         "/navlink" -> use navlink
+        "/navitem" -> use navitem
         "/pagination" -> use pagination
         "/popover" -> use popover
         "/position" -> use position
@@ -225,6 +226,7 @@ widget App {
                         nav-item (to: "/menubar", icon: "layout-grid", label: "Menubar")
                         nav-item (to: "/navigationmenu", icon: "navigation", label: "NavigationMenu")
                         nav-item (to: "/navlink", icon: "navigation", label: "NavLink")
+                        nav-item (to: "/navitem", icon: "mouse-pointer-click", label: "NavItem")
                         nav-item (to: "/pagination", icon: "layout-grid", label: "Pagination")
                         nav-item (to: "/scrollarea", icon: "layout-grid", label: "ScrollArea")
                         nav-item (to: "/separator", icon: "layout-grid", label: "Separator")
