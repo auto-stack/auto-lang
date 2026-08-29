@@ -6403,8 +6403,11 @@ fn execute_desktop_commands(
 }
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
-/// 同型约定）。窗口列表（wid/title/focused 对象数组）+ 布局/焦点元数据
-/// 写入 shell 声明状态；指纹未变则跳过写（防每帧 churn），写后置 shell
+/// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
+/// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
+/// workspace/app/icon 字段、新增 `__wm_workspaces` 分区投影、指纹段扩为
+/// "逐窗;|meta|逐分区;"。窗口列表为**跨分区全集**（dock 运行指示消费），
+/// 虚拟窗层绘制自过滤。指纹未变则跳过写（防每帧 churn），写后置 shell
 /// view_dirty。每 update 周期在排空点邻位调用（O(窗数) 串接，便宜）。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
@@ -6416,12 +6419,30 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         let focused = host.wm.focused == Some(wid);
         // entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与
         // 条件渲染都走字符串语义（dashboard/041 对象列表同型）。
+        // Plan 472 T3：icon 自注册表实时查（registry_entries 唯一事实源；
+        // 未登记/无条目回退 "app-window"）。
+        let icon = v
+            .registry_id
+            .as_ref()
+            .and_then(|id| {
+                state
+                    .desktop
+                    .registry_entries
+                    .iter()
+                    .find(|e| &e.id == id)
+            })
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
         wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
             ("wid", auto_val::Value::Str(wid.0.to_string().into())),
             ("title", auto_val::Value::Str(v.title.clone().into())),
             ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
+            ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+            ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
+            ("icon", auto_val::Value::Str(icon.into())),
         ])));
-        fp.push_str(&format!("{}:{},", wid.0, focused as u8));
+        // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
+        fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
     let layout_name = match host.wm.layout {
         crate::ui::layout::LayoutMode::Free => "free",
@@ -6431,6 +6452,18 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let focused_wid = host.wm.focused.map(|w| w.0.to_string()).unwrap_or_default();
     let meta = format!("{}\t{}", layout_name, focused_wid);
     fp.push_str(&format!("|{}", meta));
+    // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
+    let mut workspaces: Vec<auto_val::Value> = Vec::new();
+    fp.push('|');
+    for ws in &host.wm.workspaces {
+        let current = host.wm.current_workspace == ws.id;
+        workspaces.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("id", auto_val::Value::Str(ws.id.to_string().into())),
+            ("name", auto_val::Value::Str(ws.name.clone().into())),
+            ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
+        ])));
+        fp.push_str(&format!("{}:{},", ws.id, current as u8));
+    }
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -6442,6 +6475,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         return;
     }
     let _ = app.component.write_state_vec("__wm_wins", wins);
+    let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
@@ -14087,6 +14121,231 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
+
+    const T3_SHELL_AT: &str = r#"widget ShellProbe {
+    model {
+        var __desktop_cmd str = ""
+        var __wm_wins = []
+        var __wm_meta str = ""
+        var __wm_fp str = ""
+        var __wm_workspaces = []
+    }
+    view { col { text "shell" } }
+}
+"#;
+
+    const T3_WIN_AT: &str = "widget T3Win {\n    model { var n int = 0 }\n    view { text \"${.n}\" }\n}\n";
+
+    fn t3_session_with_shell() -> crate::ui::session::DesktopSession {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::build_dynamic_component(T3_SHELL_AT, None).unwrap();
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        ds
+    }
+
+    fn t3_add_win(ds: &mut crate::ui::session::DesktopSession, title: &str) -> crate::ui::session::Wid {
+        let comp = crate::build_dynamic_component(T3_WIN_AT, None).unwrap();
+        let app = ds.allocate_app(comp);
+        ds.wm_add_win(
+            app,
+            title.to_string(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(200.0, 150.0)),
+        )
+    }
+
+    fn t3_read(ds: &crate::ui::session::DesktopSession, field: &str) -> auto_val::Value {
+        let shell = ds.desktop.shell_app.unwrap();
+        ds.apps
+            .get(&shell)
+            .unwrap()
+            .component
+            .read_state(field)
+            .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"))
+    }
+
+    /// 数组读回：声明 `var x = []` 的字段经 write_state_vec 后可能物化为
+    /// VmRef 指向 ListData 堆对象（EDGE-16 同型）——测试侧解引用取元素。
+    fn t3_read_array(ds: &crate::ui::session::DesktopSession, field: &str) -> Vec<auto_val::Value> {
+        let shell = ds.desktop.shell_app.unwrap();
+        let app = ds.apps.get(&shell).unwrap();
+        let val = app
+            .component
+            .read_state(field)
+            .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"));
+        match val {
+            auto_val::Value::Array(a) => a.values,
+            auto_val::Value::VmRef(r) => {
+                let vm = app.component.bridge().vm();
+                let obj = vm
+                    .get_heap_object(r.id as u64)
+                    .unwrap_or_else(|| panic!("{field} 堆对象 {} 不存在", r.id));
+                let guard = obj.read().unwrap();
+                let list = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    .unwrap_or_else(|| panic!("{field} 堆对象不是 ListData"));
+                list.elems.clone()
+            }
+            other => panic!("{field} 既非数组也非列表引用: {other:?}"),
+        }
+    }
+
+    fn t3_obj_str(o: &auto_val::Obj, key: &str) -> String {
+        match o.get(key) {
+            Some(auto_val::Value::Str(s)) => s.to_string(),
+            other => panic!("字段 {key} 异常: {other:?}"),
+        }
+    }
+
+    /// 投影往返：wins 条目字段集 v1（wid/title/focused/workspace/app/icon）+
+    /// meta + workspaces（默认单分区 current）+ 指纹非空。
+    #[test]
+    fn projection_v1_roundtrip_wins_meta_workspaces() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        sync_shell_windows(&mut ds);
+
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert_eq!(wins.len(), 2, "投影窗口数");
+        let auto_val::Value::Obj(first) = &wins[0] else {
+            panic!("wins 条目应为 Obj: {:?}", wins[0])
+        };
+        assert_eq!(t3_obj_str(first, "title"), "Alpha");
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string());
+        assert_eq!(t3_obj_str(first, "workspace"), "0", "v1 新字段：分区归属");
+        assert_eq!(t3_obj_str(first, "app"), "", "boot 窗 registry_id 缺省空串");
+        assert_eq!(t3_obj_str(first, "icon"), "app-window", "icon 缺省回退");
+        assert_eq!(t3_obj_str(first, "focused"), "", "后开窗为焦点");
+        let auto_val::Value::Obj(second) = &wins[1] else {
+            panic!("wins 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(second, "focused"), "1");
+
+        match t3_read(&ds, "__wm_meta") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), format!("free\t{}", b.0)),
+            other => panic!("__wm_meta 读回异常: {other:?}"),
+        }
+        let wss = t3_read_array(&ds, "__wm_workspaces");
+        assert_eq!(wss.len(), 1, "默认单分区");
+        let auto_val::Value::Obj(ws) = &wss[0] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws, "id"), "0");
+        assert_eq!(t3_obj_str(ws, "name"), "Desktop 1");
+        assert_eq!(t3_obj_str(ws, "current"), "1");
+
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(!s.to_string().is_empty(), "指纹已置"),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+    }
+
+    /// 指纹门控：无 WM 变化 → 跳过重写（哨兵不被覆盖、dirty 不置位）；
+    /// WM 变化（焦点切换）→ 整组重写 + view_dirty 置位。
+    #[test]
+    fn projection_fingerprint_gates_rewrite_and_view_dirty() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        t3_add_win(&mut ds, "Beta");
+        sync_shell_windows(&mut ds);
+        let shell = ds.desktop.shell_app.unwrap();
+        // 哨兵：无变化时第二次同步不得覆盖。
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__wm_meta", auto_val::Value::str("sentinel"))
+            .unwrap();
+        *ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .state
+            .view_dirty
+            .borrow_mut() = false;
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_meta") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "sentinel", "指纹未变跳过重写"),
+            other => panic!("__wm_meta 读回异常: {other:?}"),
+        }
+        assert!(
+            !*ds.apps.get(&shell).unwrap().state.view_dirty.borrow(),
+            "跳过时不置 dirty"
+        );
+        // WM 变化：焦点切回 Alpha → meta 重写 + dirty 置位。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_meta") {
+            auto_val::Value::Str(s) => assert_eq!(s.to_string(), format!("free\t{}", a.0)),
+            other => panic!("__wm_meta 读回异常: {other:?}"),
+        }
+        assert!(
+            *ds.apps.get(&shell).unwrap().state.view_dirty.borrow(),
+            "有变重写并置 dirty"
+        );
+    }
+
+    /// 分区切换反映到投影：workspaces current 翻转 + wins focused 段随焦点
+    /// 让渡重算（跨分区窗保留在全集，workspace 字段不动）。
+    #[test]
+    fn projection_v1_reflects_workspace_switch() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
+        ds.wm_set_workspace(ws1);
+        let b = t3_add_win(&mut ds, "Beta");
+        sync_shell_windows(&mut ds);
+
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert_eq!(wins.len(), 2, "全集投影（跨分区）");
+        let auto_val::Value::Obj(first) = &wins[0] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(first, "workspace"), "0", "Alpha 仍在分区 0");
+        let auto_val::Value::Obj(second) = &wins[1] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(second, "wid"), b.0.to_string());
+        assert_eq!(t3_obj_str(second, "workspace"), "1");
+        assert_eq!(t3_obj_str(second, "focused"), "1", "分区 1 焦点 = Beta");
+
+        let wss = t3_read_array(&ds, "__wm_workspaces");
+        assert_eq!(wss.len(), 2);
+        let auto_val::Value::Obj(ws0) = &wss[0] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(ws0, "current"), "", "分区 0 非当前");
+        let auto_val::Value::Obj(ws1o) = &wss[1] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(ws1o, "current"), "1", "分区 1 当前");
+        let _ = a;
+    }
+
+    /// registry_id → app/icon 字段（launch_app 回填；icon 自注册表实时查）。
+    #[test]
+    fn projection_v1_registry_icon_and_app_fields() {
+        use crate::ui::app_registry::AppRegistryEntry;
+        let mut ds = t3_session_with_shell();
+        ds.desktop.registry_entries = vec![AppRegistryEntry {
+            id: "011-calculator".to_string(),
+            title: "calculator".to_string(),
+            icon: "calculator".to_string(),
+            category: "tool".to_string(),
+            entry: std::path::PathBuf::from("011-calculator"),
+            render: "vm".to_string(),
+        }];
+        ds.desktop.app_resolver =
+            Some(std::sync::Arc::new(|name: &str| {
+                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    code: T3_WIN_AT.to_string(),
+                    source_path: None,
+                    title: Some("calculator".to_string()),
+                })
+            }));
+        ds.launch_app("011-calculator").expect("launch");
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert_eq!(wins.len(), 1);
+        let auto_val::Value::Obj(o) = &wins[0] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(o, "app"), "011-calculator", "launch 回填 registry_id");
+        assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
+    }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表
     /// 覆盖 mock / hosted / visible 置位 / ApplyFilter 同步重算）。键流与

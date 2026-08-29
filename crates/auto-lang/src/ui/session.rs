@@ -349,6 +349,9 @@ pub struct VWinState {
     pub z: u64,
     /// Plan 472 T2：所属 workspace 分区下标（换分区=切换可见分区，窗全保留）。
     pub workspace: usize,
+    /// Plan 472 T3：注册表 id（launch_app 回填；boot 窗 None → 投影 app=""),
+    /// 投影 icon 自 `DesktopState.registry_entries` 实时查（唯一事实源）。
+    pub registry_id: Option<String>,
     // --- WindowEntry 四字段的 desktop 版（split_*_at 拆借消费）---
     pub window_size: RefCell<iced::Size>,
     pub pending_window_resize: RefCell<Option<iced::Size>>,
@@ -413,6 +416,7 @@ impl WmState {
                 rect: RefCell::new(rect),
                 z: self.next_z,
                 workspace: self.current_workspace,
+                registry_id: None,
                 window_size: RefCell::new(size),
                 pending_window_resize: RefCell::new(None),
                 initial_resize_done: Cell::new(false),
@@ -949,6 +953,12 @@ impl DesktopSession {
         let rect = crate::ui::layout::cascade_rect(index, size, usable);
         let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
         let wid = self.wm_add_win(app_id, title, rect);
+        // Plan 472 T3：回填注册表 id（投影 app/icon 字段与 dock pinned 消费）。
+        if let Some(host) = self.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&wid) {
+                v.registry_id = Some(name.to_string());
+            }
+        }
         if layout != LayoutMode::Free {
             self.wm_set_layout(layout);
         }
