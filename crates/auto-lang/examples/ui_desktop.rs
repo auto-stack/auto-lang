@@ -6,7 +6,7 @@
 //! 指定注册表：`... -- --fullscreen --apps-dir examples/ui`
 //! panic 隔离演示沿用 459：`AUTOUI_PANIC_PROBE=1`（事件名 `__panic_probe`）。
 
-use auto_lang::ui::iced::{run_dynamic_desktop, run_dynamic_desktop_fullscreen, DesktopOptions};
+use auto_lang::ui::iced::{run_dynamic_desktop_fullscreen, run_dynamic_desktop_with_options, DesktopOptions};
 use std::path::PathBuf;
 
 const APP_A: &str = include_str!("../../../examples/ui/459-dual-app/app.at");
@@ -35,14 +35,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let comp_a = auto_lang::build_dynamic_component(APP_A, None)?;
     let comp_b = auto_lang::build_dynamic_component(APP_B, None)?;
+    // Plan 472 T5：窗口模式同样装配注册表（dock pinned/launch 依赖；
+    // 463 只给了全屏路径）。
+    let opts = DesktopOptions {
+        fullscreen,
+        apps_dir: Some(apps_dir),
+    };
     if fullscreen {
-        let opts = DesktopOptions {
-            fullscreen: true,
-            apps_dir: Some(apps_dir),
-        };
         run_dynamic_desktop_fullscreen(vec![comp_a, comp_b], opts)?;
     } else {
-        run_dynamic_desktop(vec![comp_a, comp_b])?;
+        run_dynamic_desktop_with_options(vec![comp_a, comp_b], opts)?;
     }
     Ok(())
 }

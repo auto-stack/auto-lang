@@ -247,7 +247,9 @@ impl AuraWidget {
 
 /// Extract the slot name from a `slot` element's `name` prop
 /// (`""` = default slot when the prop is absent).
-fn slot_element_name(props: &HashMap<String, AuraPropValue>) -> String {
+/// Plan 476: pub(crate) — the VM view builder reuses this to match call-site
+/// fills (`slot(name: "x") { … }`) against widget-view outlets.
+pub(crate) fn slot_element_name(props: &HashMap<String, AuraPropValue>) -> String {
     match props.get("name") {
         Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(s))) => s.to_string(),

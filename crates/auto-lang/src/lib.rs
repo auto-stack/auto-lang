@@ -2409,6 +2409,69 @@ fn resolve_module_path(
             return Some(p);
         }
     }
+
+    // Plan 475: 检索项目根的 `deps/` 目录中的依赖包 (e.g. `use common.header` -> `deps/common/src/front/header.at`)
+    let probe_dep = |deps_dir: &std::path::Path| -> Option<std::path::PathBuf> {
+        let (dep_name, sub) = match module.find('.') {
+            Some(dot) => (&module[..dot], &module[dot + 1..]),
+            None => (module, ""),
+        };
+        let dep_dir = deps_dir.join(dep_name);
+        if !dep_dir.is_dir() {
+            return None;
+        }
+        if sub.is_empty() {
+            let candidates = [
+                dep_dir.join("src").join("front").join("app.at"),
+                dep_dir.join("src").join("front").join("mod.at"),
+                dep_dir.join("src").join("mod.at"),
+                dep_dir.join("mod.at"),
+                dep_dir.join(format!("{}.at", dep_name)),
+            ];
+            for c in candidates {
+                if c.exists() {
+                    return Some(c);
+                }
+            }
+        } else {
+            let sub_rel = sub.replace('.', std::path::MAIN_SEPARATOR_STR);
+            let candidates = [
+                dep_dir.join("src").join("front").join(format!("{}.at", sub_rel)),
+                dep_dir.join("src").join("front").join(&sub_rel).join("mod.at"),
+                dep_dir.join("src").join("back").join(format!("{}.at", sub_rel)),
+                dep_dir.join("src").join("back").join(&sub_rel).join("mod.at"),
+                dep_dir.join("src").join(format!("{}.at", sub_rel)),
+                dep_dir.join("src").join(&sub_rel).join("mod.at"),
+                dep_dir.join("front").join(format!("{}.at", sub_rel)),
+                dep_dir.join("front").join(&sub_rel).join("mod.at"),
+                dep_dir.join(format!("{}.at", sub_rel)),
+                dep_dir.join(&sub_rel).join("mod.at"),
+            ];
+            for c in candidates {
+                if c.exists() {
+                    return Some(c);
+                }
+            }
+        }
+        None
+    };
+
+    // 向上遍历查找 deps 目录 (如 src/front/ -> src/ -> root/deps/)
+    let mut curr_dir = Some(base_dir);
+    for _ in 0..4 {
+        if let Some(d) = curr_dir {
+            let deps_candidate = d.join("deps");
+            if deps_candidate.is_dir() {
+                if let Some(p) = probe_dep(&deps_candidate) {
+                    return Some(p);
+                }
+            }
+            curr_dir = d.parent();
+        } else {
+            break;
+        }
+    }
+
     None
 }
 

@@ -4,14 +4,14 @@ status: executing
 feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-29T10:25:00+08:00
+updated_at: 2026-08-29T13:10:00+08:00
 
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 
-current_step: 0
-total_steps: 7
+current_step: 7
+total_steps: 14
 ---
 
 # Plan 386: AutoUI RenderQueue / 分离渲染架构（路线 B：进程外 App 与桌面协议）
@@ -168,51 +168,101 @@ IPC/分离 compositor。但在 Plan 365 实施过程中明确了：
 模块代码全部 `#[cfg(feature = "ui-iced")]`；验证一律 `--features ui-iced`
 （该 feature 非 default，`cargo tf` 不覆盖本模块）。
 
-- [ ] **S1 协议模块骨架**：新建 `crates/auto-lang/src/ui/desktop_protocol/`
+- [✅ 已完成] **S1 协议模块骨架**（`ui/desktop_protocol/` 六文件 + mod 登记 + `PROTOCOL_VERSION=1`；`cargo check -p auto-lang --features ui-iced` 绿）：新建 `crates/auto-lang/src/ui/desktop_protocol/`
   （`mod.rs` 定义 `PROTOCOL_VERSION: u32 = 1` + 五通道总览文档），
   在 `crates/auto-lang/src/ui/mod.rs` 以
   `#[cfg(feature = "ui-iced")] pub mod desktop_protocol;` 登记。
   验证: `cargo check -p auto-lang --features ui-iced`
-- [ ] **S2 五通道消息 + 二进制编解码（TDD）**：`message.rs`（孵化握手含
+- [✅ 已完成] **S2 五通道消息 + 二进制编解码（TDD）**（message.rs 全变体 round-trip 5 测试 + 每通道 golden bytes + 坏 magic/版本/未知 tag/DrawOp tag 拒收；nextest 27 测试全绿）：`message.rs`（孵化握手含
   字体注册；帧 = DrawList + damage + CacheControl；输入含 IME 三变体，
   (Wid, event) 编码；控制双向含 DesktopBus 载荷；观测最小集）+
   `codec.rs`（信封 = magic "APDL" + u16 version + u8 channel + u32 len；
   逐消息 encode/decode，零新依赖）。测试：全变体 round-trip、每通道
   1 条 golden bytes、坏 magic / 版本不符 / 未知 tag 拒收。
   验证: `cargo t desktop_protocol --features ui-iced`
-- [ ] **S3 双端状态机 + loopback（TDD）**：`endpoint.rs`（AppEndpoint:
+- [✅ 已完成] **S3 双端状态机 + loopback（TDD）**（AppEndpoint Detached→Handshaking→Active→Closing→Detached / HostEndpoint Listening⇄Active 全迁移测试 + 非法迁移 WrongState/VersionMismatch/NotActive 拒收；loopback FIFO + 线上破坏 BadMagic）：`endpoint.rs`（AppEndpoint:
   Detached→Handshaking→Active→Closing→Detached；HostEndpoint:
   Listening→Active；非法迁移返回 ProtocolError）+ `loopback.rs`
   （双向字节管道：send 侧编码成字节过线，recv 侧解码——编解码真实过线）。
   验证: 同 S2
-- [ ] **S4 HostEndpoint 绑定真实 462 DesktopSession**：`host.rs` ——
+- [✅ 已完成] **S4 HostEndpoint 绑定真实 462 DesktopSession**（incubation 测试断言 AppSession/VWinState/焦点/表面真实就位；pointer_down 走 WmState::hit_test→本地坐标；reclaim 测试断言窗/App/表面同清 + BufferRelease 通知）：`host.rs` ——
   Hello→`allocate_app` + `wm_add_win` + SurfaceStore（双缓冲槽模拟共享
   纹理）分配→Welcome；输入→`WmState::hit_test`→(Wid, InputMsg)；
   控制 Close/ExitRequest→`wm_remove_win` + App 回收（462 Close 语义）；
   FrameAck 槽位归还。
   验证: 同 S2
-- [ ] **S5 loopback demo（行为与直挂无差）**：`demo.rs` —— 内联计数器 .at
+- [✅ 已完成] **S5 loopback demo（行为与直挂无差）**（counter_loopback_demo_parity_with_direct_mount：握手→帧 0→3 次协议点击→帧 3；state_parity/frame_parity/reclaimed 全真；零击退化路径同绿）：`demo.rs` —— 内联计数器 .at
   （`build_dynamic_component`）走协议全链：握手→帧 0（"count: 0"）→
   宿主 `hit_test` 命中→(Wid, click) 注入→VM handler 执行→帧 1
   （"count: 1"）合成进虚拟窗 surface；等价断言 = 直挂孪生组件同输入后
   `read_state` 相等 + 帧内容相等；控制 Close→虚拟窗回收；观测 Log 到达宿主。
   验证: 同 S2
-- [ ] **S6 041-auto-edit golden（413 §7 三点落位）**：`editor_frame.rs` ——
+- [✅ 已完成] **S6 041-auto-edit golden（413 §7 三点落位）**
+  （`editor_frame.rs`：lower 纯函数 + EditorFrameSource；golden =
+  打字落盘随帧 text runs 过线、IME preedit 上帧→commit 落盘推版本、
+  (revision,fold_hidden) 缓存键随帧产出且版本化、协议 CharTyped 与 core
+  直喂 EditorInput 无差；驱动对象 = 编辑器 core（413 §7 薄切片语义，
+  041 的 .at E2E 需 live iced，归 Stage 2））：`editor_frame.rs` ——
   `EditorDrawList`→帧载荷纯函数 lowering（quads / text runs / gutter /
   caret / preedit，`revision` 随帧）；golden：编辑器 core 打字→帧含预期
   text runs；IME preedit/commit 输入事件→帧含 preedit 覆盖 / 文本落盘；
   CacheControl 以 revision + fold_hidden 为缓存键。
   验证: 同 S2
-- [ ] **S7 协议规范文档（版本化）**：`docs/design/autoui/desktop-protocol-v1.md`
+- [✅ 已完成] **S7 协议规范文档（版本化）**
+  （`docs/design/autoui/desktop-protocol-v1.md`：版本表/wire format/五通道
+  消息表/状态机/Stage 2 换 transport 面/偏差记录三条；登记
+  `docs/design/autoui/README.md` 索引。scoped 验证 = desktop_protocol 31 绿
+  + session 25 绿）：`docs/design/autoui/desktop-protocol-v1.md`
   （版本表 / 五通道消息表 / wire format / 状态机 / Stage 2 换 transport
   面 / 413 三点落位 / DrawList v1 偏差记录）+ 登记
   `docs/design/00-intro.md`；阶段 scoped 验证全绿。
   验证: `cargo check -p auto-lang --features ui-iced` &&
   `cargo t desktop_protocol --features ui-iced`
 
+**Phase 2 立项（2026-08-29，用户裁定开工）**：前置核实通过——463/464
+均已归档（`docs/plans/archive/`），常驻 shell/launcher 接线实证
+（renderer 启动挂 shell；SummonLauncher 懒挂载 + Ctrl+Space 消费）。
+开工依据 = §0 Stage 2 行 + autoshell §7.1 入口裁决三步。
+
+**Phase 1 结果（2026-08-29）**：S1–S7 全部完成；Stage 1 交付物 =
+协议模块 `ui/desktop_protocol/`（7 文件）+ 版本化规范文档 + loopback demo
+（`counter_loopback_demo_parity_with_direct_mount`：帧/输入/控制/观测经协议
+通路渲染进 462 虚拟窗口，state/frame parity 与直挂无差，Close 回收落地）。
+Stage 2 前置仍待：463/464 合入（常驻 shell/launcher 就位）。
+
 **Pre-fold 门禁（折入 master 前，流程性）**：`cargo tf` 全绿 +
 `cargo t desktop_protocol --features ui-iced` 显式绿（ui-iced 非 default，
 tf 不编译本模块，二者缺一不可）。
+
+- [ ] **S8 传输层抽象 + Windows 命名管道**：`transport.rs` —— 通道 trait
+  （send/try_recv/pending，与 loopback 同语义；u32 长度前缀分帧）；
+  loopback 收编为首个实现；named_pipe 实现 = 复用 tokio
+  `net::windows::named_pipe`（autovm_daemon Plan 269 同款，零新依赖；
+  `#[cfg(windows)]`，非 Windows 保持 loopback-only 可编译）。
+  验证: `cargo t desktop_protocol --features ui-iced`
+- [ ] **S9 共享内存帧缓冲**：`shm.rs` —— Windows FFI
+  CreateFileMappingW/MapViewOfFile 双槽帧缓冲（`#[cfg(windows)]`）+
+  `FrameMsg::FrameReadyShared{offset,len}` 追加（演进纪律：只追加不改义；
+  大帧载荷走共享内存、控制面消息照走管道）。验证同上
+- [ ] **S10 broker + 入口裁决**：`broker.rs` —— `adjudicate()` 三步
+  （① `--autodesk-client=<pipe>` 孵化标记 ② 探测
+  `\.\pipeutodesk-broker` ③ standalone）+ broker 侦听与孵化交接
+  （分配 per-app 管道名回传）。验证同上
+- [ ] **S11 L2 detach/attach 协议消息**：endpoint 追加 `L2Detach`
+  （host→app：Active→Standalone，表面释放、VM 状态不动——路线 B 的
+  核心红利）+ `L2AttachRequest`（app→host：重孵化握手续用既有状态）；
+  协议文档记录 L2 语义。验证同上
+- [ ] **S12 双模 exe + 两进程集成测试**：`examples/ui_client_demo`
+  （三态裁决真 exe：client = 计数器协议循环；standalone = iced 窗，
+  `ui_dual_app` 同款门控）+ 集成测试（re-exec 子进程模式：真管道 +
+  共享内存 + 孵化/帧/输入/L2 全生命周期双端断言）。验证同上
+- [ ] **S13 Phase 2 文档 + 收尾**：协议文档版本表追加（共享内存
+  transport / broker / 新变体 / L2 语义）；scoped 验证全绿
+  （desktop_protocol + session）。验证: cargo check + 上述模块测试
+  ---
+
+**Pre-fold 门禁（Phase 2 折入 master 前）**：`cargo tf` 全绿 +
+`cargo t desktop_protocol --features ui-iced` 显式绿。
 
 ## 待澄清事项
 

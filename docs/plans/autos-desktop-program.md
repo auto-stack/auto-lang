@@ -36,7 +36,7 @@ App 一次编写处处原生。里程碑 M0-M6 详见 Design 23 §6。
 | 463（原提案 455）桌面 shell | M3 | 全屏 borderless、shell pack+任务栏、layout 三模式+snap、`desktop.*` 命令接缝、workspace 驱动模型、桌面热键、pac.at 注册表（`463-desktop-shell-auto-arrange.md`；Design 25 §3/§4.1/§6 对齐） | ✅ 完成 2026-08-28（复审通过 + 合入归档 + specs 沉淀 P463-1..4） | 462 ✅ |
 | 464 Launcher App（吸收 441） | M3 组成 | `examples/ui/028-launcher`：palette+网格双形态、模糊搜索、键盘流、真注册表+`LaunchApp`（`464-launcher-app.md`） | 已立项 2026-08-28，未开工（M1 子阶段可先行） | 462+463 |
 | 465（原提案 456）Vue 虚拟桌面 | M4 | DOM 嵌入 + 多挂载宿主（`createApp`/虚拟窗）+ registry 构建期生成 + tauri 全屏壳 + E1/E2 接缝语义（`465-vue-virtual-desktop.md`） | 已立项 2026-08-28，未开工 | 462 契约（与 463/464 并行） |
-| 472 shell-track M1 | M3+ | **AutoShell 地基**：状态投影协议 v1（`__wm_*` 族 schema 化）+ workspace 驱动模型补课（463 §3.6 未实施）+ dock 升级（图标/pinned/配置）（`472-shell-track-m1-projection-dock.md`） | 已立项 2026-08-28，未开工 | 463 ✅ + 464（T5 实机验收以 464 合入为准） |
+| 472 shell-track M1 | M3+ | **AutoShell 地基**：状态投影协议 v1（`__wm_*` 族 schema 化）+ workspace 驱动模型补课（463 §3.6 未实施）+ dock 升级（图标/pinned/配置）（`472-shell-track-m1-projection-dock.md`） | ✅ execution_done 2026-08-29（T1–T6 全落；cargo t 3234/3234 绿；协议合同 schema/projection-protocol-v1.md；复审以 /auto-plan:review 承载） | 463 ✅ + 464 ✅ |
 | shell-track M2+（未立项，提案） | M3+ | switcher overlay + workspace pager（消费 472 产出）/通知中心/settings/桌面本体（Design 25 §6） | 提案（依赖 472；缩略挂 386、shell IME 挂 457） | 472 |
 | 457 Smithay 宿主 | M5 | Linux 原生合成器宿主，复用桌面 shell | 提案中 | 462+463 |
 | 386（**已复活**） | M6 | 路线 B：桌面协议五通道 + 双模 exe + 形态迁移，Stage 1-3 重构见 386 文件 §0 | 🔄 复活 2026-08-28（Stage 1 即刻可开工，前置仅 462✅+蓝图；Stage 2 待 463/464，Stage 3 含内存实测验收） | Stage1: 462✅；Stage2: +463/464 |

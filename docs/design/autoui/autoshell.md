@@ -60,6 +60,14 @@
   升级为**版本化投影协议**（进 schema，双端同版本）；vue 端对应物 =
   in-page reactive store（465，单页无跨窗）。
 
+> **2026-08-29 对账注记（Plan 472 T1，回写）**：S1 v1 传输按 463 实装落定为
+> 候选 B（`__desktop_cmd` 状态变量总线），本节原"候选 A 转正"修订为：`desktop.*`
+> 是 S1 的**动词词表规范**（launch/focus/close/layout/summon/workspace/
+> workspace_next/activate，版本化见 `schema/projection-protocol-v1.md`），
+> 其 builtin 语法化为 v2 备选（触发条件：命令需返回值/类型化参数）。
+> 分界语义（驱动唯一事实、I7–I9）不变。S2 已由 472 T3 落码为
+> 投影协议 v1（`__wm_*` 族 + 指纹门控，schema/projection-protocol-v1.md）。
+
 新增不变式：
 
 - **I7（R9 强化）**：shell .at 代码出现 rect/坐标/z 的直接操作即违例。

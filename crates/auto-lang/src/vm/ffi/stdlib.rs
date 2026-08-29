@@ -585,6 +585,14 @@ pub fn storage_host_publish(key: &str, value: String) {
     storage_persist();
 }
 
+/// Plan 472 T4：host-side read（与 [`storage_host_publish`] 对偶）——
+/// load-once 后读，非 .at 运行时组件（renderer boot 的 dock 配置边距）
+/// 与 .at storage.get 同源同契约。
+pub fn storage_host_read(key: &str) -> Option<String> {
+    storage_load();
+    STORAGE_MAP.lock().unwrap().get(key).cloned()
+}
+
 // ── Plan 309 Task 1.2 P5: PATH FFI ──────────────────────────────────────
 // TODO: Env.path_add/prepend/remove FFI deferred — #[rust_fn] registration
 // requires BIGVM_NATIVES updates in native.rs. The shell-side env.path

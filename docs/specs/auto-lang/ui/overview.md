@@ -1,7 +1,7 @@
 # ui（AURA / UI 引擎 / 桌面运行时）
 
 > **Status**: active（主战场：vue 轨 codegen 成熟化 + VM 轨视觉 parity + 虚拟桌面线推进中）
-> 最近刷新：2026-08-29（Plan 465 归档回写：vue 端虚拟桌面落地）
+> 最近刷新：2026-08-29（Plan 472 归档回写：AutoShell 地基——投影协议 v1 + workspace 分区 + dock）
 
 ## 职责
 
@@ -25,6 +25,11 @@ widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery com
 VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
 派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
 
+**slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
+`slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；
+机制为构建期 `SlotFills` 父 builder 捕获 + 五容器×双胎兄弟拼接，
+详见 [design/slot-substitution.md](design/slot-substitution.md)。
+
 **桌面线（452→459→462→463→465 落地，464 未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget
@@ -36,7 +41,7 @@ DesktopBus v0。**465 vue 端虚拟桌面已落地**（M4）：`auto run --deskt
 直译〔I6 与 layout.rs 共享期望值表 layout_cases.json〕、keyboard.ts R12 热键捕获段、
 VirtualWindow/Taskbar.vue DOM 叶——schema/aura.at `vue:` 登记源两端同源）；E1 `(AppId,event)`
 注入形状与 E2 AppWindow 叶枚举成文（`docs/plans/reports/465-t4-wm-dom-leaf.md`）；
-tauri 全屏壳复用同一宿主页。464（launcher 为普通 App，真源挂 overlay 槽后 I5/T6 复验）未开工。386 RenderQueue（路线 B 分离渲染）复活
+tauri 全屏壳复用同一宿主页。**464 launcher 已落地**（SummonLauncher 懒挂载 + 真注册表平行串列注入 + windowless 特权 App 拆借垫片）。**472 AutoShell 地基已落地（shell-track M1）**：DesktopBus v1 对账定案（候选 B 传输 + `desktop.*` 动词词表 8 动词，Design 25 §3 注记回写）+ 投影协议 v1 合同 （`schema/projection-protocol-v1.md`：`__wm_*` 六字段全集/`__wm_workspaces`/指纹门控，双端对拍基线）+ workspace 分区驱动（WmState 加法增域、默认 2 分区、过滤六点）+ shell.at 升格 `widget Desktop` dock（图标化/pinned activate/切换条/`shell.dock.*` 数据级配置，pinned 宿主解析 {id,icon} 注入）。M2（switcher/pager）消费面就绪。386 RenderQueue（路线 B 分离渲染）复活
 条件 2/3 就绪、明确暂缓。设计源：[Design 23/24/25](../../../design/autoui/README.md)。
 
 **vue 轨（codegen 正确性 + 工程化）**：444 修五类 vue-tsc 缺陷（回调通道/emits 名册派生/变体断言）；

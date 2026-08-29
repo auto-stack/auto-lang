@@ -5993,36 +5993,44 @@ impl AutoVM {
                         // CALL_SPEC stack: [..., receiver, arg0, ..., argN-1]
                         // Pop args in reverse, then pop receiver as f64, apply math, push result
                         // For unary math methods (0 args): receiver is the f64 value
+                        // Plan 474: 接收者/结果必须按 NanoValue 透传。原实现
+                        // read_i32/push_i32/pop_i32 是 nanbox 前 i32 栈约定的化石：
+                        // 裸 f64（encode_f64=原始位）被读成低 32 位、TAG_F32 被
+                        // 读成 payload 位型——`__json_object` 浮点字段 `.floor()`
+                        // 返回位型垃圾（plan011④：54.16 → -515396076）。shim 的
+                        // VMConvertible f64 pop 自带 TAG_F32→f64 提升与裸 f64
+                        // 直读（convert.rs），此处无需任何转换。
                         if arg_count == 0 {
-                            // Unary math: receiver is the f64 value on stack
-                            // Receiver is at receiver_pos, we need to:
-                            // 1. Pop and discard the receiver from CALL_SPEC layout
-                            // 2. Replace it with the math result
-                            let recv_val = task.ram.read_i32(receiver_pos);
-                            task.ram.push_i32(recv_val);
+                            // Unary math: receiver is the float value on stack.
+                            // 1. Copy the receiver nv (tag-intact) to the top
+                            // 2. Shim pops it and pushes the result
+                            // 3. Replace the original receiver slot with the result
+                            let recv_nv = task.ram.read_nv(receiver_pos);
+                            task.ram.push_nv(recv_nv);
                             if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                 shim(task, self)?;
                             } else {
                                 return Err(VMError::MissingNative(native_id));
                             }
-                            let return_val = task.ram.pop_i32();
-                            // Remove old receiver (1 item)
-                            task.ram.pop_i32();
-                            task.ram.push_i32(return_val);
+                            let return_nv = task.ram.pop_nv();
+                            // Remove old receiver (1 slot)
+                            task.ram.pop_nv();
+                            task.ram.push_nv(return_nv);
                         } else {
-                            // Binary math (e.g., powf): receiver + 1 arg
-                            let recv_val = task.ram.read_i32(receiver_pos);
-                            task.ram.push_i32(recv_val);
+                            // Binary+ math (e.g., powf/atan2): CALL_SPEC layout
+                            // [recv, arg0..argN-1] 与 rust_fn shim 的逆序弹出
+                            // 约定（宏按声明序逆序 pop：末参在栈顶）天然对齐
+                            // ——shim 首参(receiver 值)在窗口底、末参(argN-1)
+                            // 在栈顶，即 recv.powf(arg) 语义。原地调用即可，
+                            // shim 消费整个窗口并留结果于栈顶。原实现把
+                            // receiver 拷贝压顶，在逆序弹出下变成「末参收到
+                            // receiver 值」的参数序倒置（54.16.powf(2.0) 算成
+                            // 2.0^54.16，Plan 474 实测）。
                             if let Some(shim) = self.native_interface.get(native_id).cloned() {
                                 shim(task, self)?;
                             } else {
                                 return Err(VMError::MissingNative(native_id));
                             }
-                            let return_val = task.ram.pop_i32();
-                            for _ in 0..=arg_count {
-                                task.ram.pop_i32();
-                            }
-                            task.ram.push_i32(return_val);
                         }
                     } else if let Some(native_id) = self.native_interface.resolve(&func_name) {
                         // Plan 200 Task 3.3: Fallback to native registry for type.method natives

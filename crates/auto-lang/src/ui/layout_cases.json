@@ -1,0 +1,42 @@
+{
+  "_header": "Plan 465 T4 (I6) 布局期望值表——双端共享：Rust ui/layout.rs::layout_parity_cases_shared_table 与 node scripts/ui-layout-parity.mjs 消费同一份。改布局语义必须两侧同改 + 表同改。注：本文件曾被 .gitignore 的 *.json 规则吞掉（465 T4 提交未入库，fresh checkout 双端同挂），2026-08-29 Plan 472 T2 按 465 报告记载的 17 例类别重建并加 gitignore 例外。",
+  "viewport": [0, 0, 1280, 800],
+  "reservedTaskbar": 48,
+  "cases": [
+    { "kind": "usable", "name": "usable_excludes_taskbar_bottom", "expected": [0, 0, 1280, 752] },
+
+    { "kind": "layout", "name": "grid_one_window_fills_usable", "mode": "grid", "n": 1, "focused": null,
+      "expected": [[0, 0, 1280, 752]] },
+    { "kind": "layout", "name": "grid_two_side_by_side", "mode": "grid", "n": 2, "focused": null,
+      "expected": [[0, 0, 640, 752], [640, 0, 640, 752]] },
+    { "kind": "layout", "name": "grid_three_2x2_row_major", "mode": "grid", "n": 3, "focused": null,
+      "expected": [[0, 0, 640, 376], [640, 0, 640, 376], [0, 376, 640, 376]] },
+    { "kind": "layout", "name": "grid_four_2x2", "mode": "grid", "n": 4, "focused": null,
+      "expected": [[0, 0, 640, 376], [640, 0, 640, 376], [0, 376, 640, 376], [640, 376, 640, 376]] },
+    { "kind": "layout", "name": "grid_five_3cols_2rows", "mode": "grid", "n": 5, "focused": null,
+      "expected": [[0, 0, 426.667, 376], [426.667, 0, 426.667, 376], [853.333, 0, 426.667, 376], [0, 376, 426.667, 376], [426.667, 376, 426.667, 376]] },
+    { "kind": "layout", "name": "grid_nine_3x3", "mode": "grid", "n": 9, "focused": null,
+      "expectedLast": [853.333, 501.333, 426.667, 250.667] },
+
+    { "kind": "layout", "name": "master_stack_two_focused_left", "mode": "master-stack", "n": 2, "focused": 1,
+      "expected": [[704, 0, 576, 752], [0, 0, 704, 752]] },
+    { "kind": "layout", "name": "master_stack_three_two_right_split", "mode": "master-stack", "n": 3, "focused": 0,
+      "expected": [[0, 0, 704, 752], [704, 0, 576, 376], [704, 376, 576, 376]] },
+    { "kind": "layout", "name": "master_stack_no_focus_falls_back_last", "mode": "master-stack", "n": 2, "focused": null,
+      "expected": [[704, 0, 576, 752], [0, 0, 704, 752]] },
+    { "kind": "layout", "name": "master_stack_single_fills_usable", "mode": "master-stack", "n": 1, "focused": null,
+      "expected": [[0, 0, 1280, 752]] },
+
+    { "kind": "layout", "name": "free_keeps_user_rects", "mode": "free", "n": 2, "focused": 1,
+      "freeRects": [[10, 20, 300, 200], [500, 80, 400, 300]],
+      "expected": [[10, 20, 300, 200], [500, 80, 400, 300]] },
+
+    { "kind": "cascade", "name": "cascade_offsets_by_48", "size": [600, 400], "index": 1,
+      "expected": [128, 128, 600, 400] },
+
+    { "kind": "snap", "name": "snap_left_edge_half", "cursor": [3, 300], "expected": [0, 0, 640, 752] },
+    { "kind": "snap", "name": "snap_right_edge_half", "cursor": [1279, 300], "expected": [640, 0, 640, 752] },
+    { "kind": "snap", "name": "snap_boundary_exactly_8px", "cursor": [8, 300], "expected": [0, 0, 640, 752] },
+    { "kind": "snap", "name": "snap_middle_none", "cursor": [640, 376], "expected": null }
+  ]
+}

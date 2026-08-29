@@ -167,11 +167,16 @@ mod plan411_tests {
 
     #[test]
     fn test_md_hidden_classes_parse() {
-        // Plan 411: prefix stripping yields exactly [Hidden]; negative margin
-        // utilities are unknown and silently skipped (as with other unknowns).
+        // Plan 411: prefix stripping yields Hidden；-ml-2 曾按未知类跳过，
+        // class.rs 增 NegativeMargin* 族（pricing-table 打磨）后按序解析为
+        // [Hidden, NegativeMarginLeft]（472 T2 修复 stale 断言，master 既有红）。
         let s = Style::parse("md:hidden -ml-2").unwrap();
-        assert_eq!(s.classes.len(), 1);
+        assert_eq!(s.classes.len(), 2);
         assert!(matches!(s.classes[0], crate::ui::style::StyleClass::Hidden));
+        assert!(matches!(
+            s.classes[1],
+            crate::ui::style::StyleClass::NegativeMarginLeft(_)
+        ));
     }
 
     #[test]
