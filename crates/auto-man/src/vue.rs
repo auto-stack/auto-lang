@@ -1981,12 +1981,60 @@ export default router
             route_defs.join(",\n")
         )
     }
+
+    /// Recursively collect all `.at` files under a directory
+    fn collect_at_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    Self::collect_at_files_recursive(&path, out);
+                } else if path.extension().map(|e| e == "at").unwrap_or(false) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+
+    /// Collect front directories for all dependencies under root_dir/deps/
+    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf)> {
+        let deps_dir = root_dir.join("deps");
+        let mut out = Vec::new();
+        if let Ok(entries) = fs::read_dir(&deps_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let dep_name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    if path.join("src").join("front").is_dir() {
+                        out.push((dep_name, path.join("src").join("front")));
+                    } else if path.join("front").is_dir() {
+                        out.push((dep_name, path.join("front")));
+                    } else {
+                        out.push((dep_name, path));
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Create a new Vue project context from a workspace directory
     pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
         if !pac_path.exists() {
             return Err("pac.at not found in workspace".into());
         }
+
+        // Plan 475: Ensure declared dependencies (including local path deps) are materialized
+        if let Ok(config) = auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
+            let mut pac = crate::pac::Pac::new(config);
+            let _ = pac.resolve();
+        }
+        let dep_front_dirs = Self::collect_dep_front_dirs(root_dir);
 
         let pac_content = fs::read_to_string(&pac_path)
             .map_err(|e| format!("Failed to read pac.at: {}", e))?;
@@ -2065,31 +2113,36 @@ export default router
         // callback bindings against this map.
         let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
-            for entry in fs::read_dir(&front_dir)
-                .map_err(|e| format!("Failed to read front directory: {}", e))?
-            {
-                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-                let path = entry.path();
+            let mut scan_dirs = vec![front_dir.clone()];
+            for (_dep_name, dep_front) in &dep_front_dirs {
+                scan_dirs.push(dep_front.clone());
+            }
 
-                if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-                    // Skip app.at and pac.at
-                    if file_name == "app.at" || file_name == "pac.at" {
-                        continue;
-                    }
-                    // Quick-scan to collect widget names (lightweight parse)
-                    if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
-                        for widget in &widgets {
-                            sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
-                            sub_widget_models.insert(
-                                widget.name.clone(),
-                                widget.state_vars.iter().map(|sv| sv.name.clone()).collect(),
-                            );
-                            sub_widget_msgs.insert(
-                                widget.name.clone(),
-                                auto_lang::ui_gen::VueGenerator::widget_emit_set(widget),
-                            );
-                            sub_widget_names.push(widget.name.clone());
+            for dir in scan_dirs {
+                if let Ok(entries) = fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "at").unwrap_or(false) {
+                            let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                            // Skip app.at and pac.at
+                            if file_name == "app.at" || file_name == "pac.at" {
+                                continue;
+                            }
+                            // Quick-scan to collect widget names (lightweight parse)
+                            if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                                for widget in &widgets {
+                                    sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
+                                    sub_widget_models.insert(
+                                        widget.name.clone(),
+                                        widget.state_vars.iter().map(|sv| sv.name.clone()).collect(),
+                                    );
+                                    sub_widget_msgs.insert(
+                                        widget.name.clone(),
+                                        auto_lang::ui_gen::VueGenerator::widget_emit_set(widget),
+                                    );
+                                    sub_widget_names.push(widget.name.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -2107,20 +2160,8 @@ export default router
         // defineModel; everything else stays `ref` (deep reactivity).
         let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> = Default::default();
         {
-            fn collect_at_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
-                if let Ok(entries) = fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() {
-                            collect_at_files_recursive(&path, out);
-                        } else if path.extension().map(|e| e == "at").unwrap_or(false) {
-                            out.push(path);
-                        }
-                    }
-                }
-            }
             // Same file set the real pass below compiles: app.at, the direct
-            // .at siblings of front_dir, and pages/ recursively.
+            // .at siblings of front_dir, pages/ recursively, and deps.
             let mut prescan_files: Vec<PathBuf> = Vec::new();
             if app_at.exists() {
                 prescan_files.push(app_at.clone());
@@ -2138,7 +2179,10 @@ export default router
             }
             let pages_dir = front_dir.join("pages");
             if pages_dir.exists() {
-                collect_at_files_recursive(&pages_dir, &mut prescan_files);
+                Self::collect_at_files_recursive(&pages_dir, &mut prescan_files);
+            }
+            for (_dep_name, dep_front) in &dep_front_dirs {
+                Self::collect_at_files_recursive(dep_front, &mut prescan_files);
             }
             for path in &prescan_files {
                 // app.at + front siblings see the cross-file channel map;
@@ -2469,6 +2513,110 @@ export default router
             }
         }
 
+        // Plan 475: Compile widgets from deps/*/src/front into components/
+        for (dep_name, dep_front) in &dep_front_dirs {
+            let mut dep_at_files: Vec<PathBuf> = Vec::new();
+            Self::collect_at_files_recursive(dep_front, &mut dep_at_files);
+            dep_at_files.sort();
+            for path in dep_at_files {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                if file_name == "pac.at" {
+                    continue;
+                }
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                    path.to_str().unwrap(),
+                    None,
+                    Some(root_dir.to_str().unwrap()),
+                    Some(shadcn),
+                    Some(default_classes),
+                ) {
+                    Ok((vue_code, widgets, stores)) => {
+                        collect_ext_import_files(&widgets, &mut ext_file_set);
+                        let components = detect_shadcn_components(&vue_code);
+                        for comp in &components {
+                            all_shadcn_components.insert(comp.clone());
+                        }
+                        all_store_files.extend(stores);
+                        let file_store_deps = auto_lang::extract_store_deps_from_file(
+                            path.to_str().unwrap()
+                        );
+                        for widget in &widgets {
+                            if let Some(ref routes) = widget.routes {
+                                all_routes.extend(routes.routes.clone());
+                            }
+                            let gen = if shadcn {
+                                VueGenerator::new_shadcn()
+                            } else {
+                                VueGenerator::new()
+                            };
+                            let mut gen = gen
+                                .with_default_classes(default_classes)
+                                .with_sub_widgets(sub_widget_names.clone())
+                                .with_sub_widget_models(sub_widget_models.clone())
+                                .with_sub_widget_msgs(sub_widget_msgs.clone())
+                                .with_bound_model_channels(
+                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                );
+                            if !widget.api_imports.is_empty() {
+                                gen = gen.with_project_api_functions(widget.api_imports.clone());
+                            }
+                            if !file_store_deps.is_empty() {
+                                gen = gen.with_store_deps(file_store_deps.clone());
+                            }
+                            match gen.generate(widget) {
+                                Ok(widget_code) => {
+                                    let comp_names = detect_shadcn_components(&widget_code);
+                                    for comp in &comp_names {
+                                        all_shadcn_components.insert(comp.clone());
+                                    }
+                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                        &path.display().to_string(),
+                                        &gen.last_validation_warnings,
+                                    );
+                                    let stem = path.file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("component");
+                                    all_components.push(("".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                }
+                                Err(e) => {
+                                    println!("{} Failed to generate dep widget {} from {}: {}", "Warning:".bright_yellow(), widget.name, dep_name, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let fn_only = e.to_string().contains("No widget or store declarations");
+                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                            return Err(format!("Failed to compile dep file {}: {}", path.display(), e).into());
+                        }
+                        println!("{} Failed to compile dep file {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                    }
+                }
+            }
+        }
+
+        // Plan 475: Merge npm_deps and styles from deps/*/pac.at
+        let mut npm_deps = parse_npm_deps(&pac_content);
+        let mut style_files = parse_style_files(&pac_content);
+        for (_dep_name, dep_front) in &dep_front_dirs {
+            let dep_pac = dep_front.parent().and_then(|p| p.parent()).map(|p| p.join("pac.at"))
+                .or_else(|| dep_front.parent().map(|p| p.join("pac.at")));
+            if let Some(p) = dep_pac {
+                if let Ok(content) = fs::read_to_string(&p) {
+                    for dep in parse_npm_deps(&content) {
+                        if !npm_deps.iter().any(|(name, _)| name == &dep.0) {
+                            npm_deps.push(dep);
+                        }
+                    }
+                    for style in parse_style_files(&content) {
+                        if !style_files.contains(&style) {
+                            style_files.push(style);
+                        }
+                    }
+                }
+            }
+        }
+
         let shadcn_components: Vec<String> = all_shadcn_components.into_iter().collect();
         let has_routes = !all_routes.is_empty();
 
@@ -2491,8 +2639,8 @@ export default router
             app_vue_code,
             components: all_components,
             routes: all_routes,
-            npm_deps: parse_npm_deps(&pac_content),
-            style_files: parse_style_files(&pac_content),
+            npm_deps,
+            style_files,
             i18n: parse_i18n(&pac_content),
             ext_files: ext_file_set.into_iter().collect(),
             store_files: all_store_files,
@@ -5581,3 +5729,70 @@ fn test_plan443_cross_file_bound_model_channels() {
         "Board must not use defineModel:\n{board_vue}"
     );
 }
+
+#[test]
+fn test_plan475_dep_widgets_scanned_and_compiled() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    fs::write(root.join("pac.at"), "name: \"plan475-app\"\n").unwrap();
+    let front = root.join("src").join("front");
+    fs::create_dir_all(&front).unwrap();
+    fs::write(
+        front.join("app.at"),
+        r#"
+widget App {
+    view {
+        col {
+            ExampleHeader(title: "Hello")
+            text "Main App Content"
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    // Create deps/common/src/front/header.at
+    let dep_front = root.join("deps").join("common").join("src").join("front");
+    fs::create_dir_all(&dep_front).unwrap();
+    fs::write(
+        dep_front.join("header.at"),
+        r#"
+widget ExampleHeader(title: str) {
+    view {
+        row {
+            text .title
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let project = crate::vue::VueProject::from_workspace(root)
+        .expect("plan475 workspace must load");
+    project.generate().expect("plan475 generate must succeed");
+
+    let components = root
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
+    let header_vue = fs::read_to_string(components.join("ExampleHeader.vue"))
+        .expect("ExampleHeader.vue must be generated from deps");
+    let app_vue = fs::read_to_string(
+        root.join("gen").join("front").join("vue").join("src").join("App.vue"),
+    )
+    .expect("App.vue must exist");
+
+    assert!(
+        app_vue.contains("<ExampleHeader"),
+        "App.vue should render <ExampleHeader:\n{app_vue}"
+    );
+    assert!(
+        header_vue.contains("ExampleHeader"),
+        "ExampleHeader.vue content:\n{header_vue}"
+    );
+}
+

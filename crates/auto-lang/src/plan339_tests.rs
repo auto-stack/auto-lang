@@ -453,4 +453,21 @@ pub fn create_note(title str, body str) Note {
             Err(e) => panic!("016-calendar VmBridge init failed: {:?}", e),
         }
     }
+
+    #[test]
+    fn test_plan475_resolve_module_path_deps() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project_root = temp_dir.path();
+        let front_dir = project_root.join("src").join("front");
+        let dep_front = project_root.join("deps").join("common").join("src").join("front");
+        fs::create_dir_all(&front_dir).unwrap();
+        fs::create_dir_all(&dep_front).unwrap();
+
+        let header_file = dep_front.join("header.at");
+        fs::write(&header_file, "widget Header {}").unwrap();
+
+        let resolved = crate::resolve_module_path(&front_dir, "common.header");
+        assert!(resolved.is_some(), "Must resolve common.header via deps/");
+        assert_eq!(resolved.unwrap(), header_file);
+    }
 }
