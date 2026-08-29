@@ -220,7 +220,7 @@ on {
             .dark_mode = true
         }
     }
-    .SetAccent(name) -> { .accent_color = name }
+    .SetAccent(c) -> { .accent_color = c }
 }
 ```
 

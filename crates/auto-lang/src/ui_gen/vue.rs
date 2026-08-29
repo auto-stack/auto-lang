@@ -2563,7 +2563,7 @@ impl VueGenerator {
             // var, since gallery apps hardcode `<html class="dark">`.
             if self.has_accent_color {
                 if handler_name == "SetAccent" {
-                    body.push_str("; applyAccent(name, document.documentElement.classList.contains('dark'))");
+                    body.push_str("; applyAccent(accent_color.value, document.documentElement.classList.contains('dark'))");
                 } else if handler_name == "ToggleDarkMode" {
                     body.push_str("; applyAccent(accent_color.value, document.documentElement.classList.contains('dark'))");
                 }
@@ -3199,7 +3199,7 @@ impl VueGenerator {
                     .clone()
                     .unwrap_or_else(|| "dark_mode".to_string());
                 script.push_str(&format!(
-                    "// Plan 458: keep the accent in sync across theme flips.\nwatch({}, (v) => applyAccent(accent_color.value, v))\n",
+                    "// Plan 458: keep the accent and html dark class in sync across theme flips.\nwatch({}, (v) => {{\n  document.documentElement.classList.toggle('dark', v)\n  applyAccent(accent_color.value, v)\n}})\n",
                     dark_var
                 ));
             }
@@ -13490,7 +13490,7 @@ export function cn(...inputs: ClassValue[]) {
             };
             if has_accent {
                 if action_name == "SetAccent" {
-                    body.push_str("; applyAccent(name, dark_mode.value)");
+                    body.push_str("; applyAccent(accent_color.value, dark_mode.value)");
                 } else if action_name == "ToggleDarkMode" {
                     body.push_str("; applyAccent(accent_color.value, dark_mode.value)");
                 }
@@ -22498,7 +22498,7 @@ widget ThemeApp {
             sfc
         );
         assert!(
-            sfc.contains("applyAccent(name, document.documentElement.classList.contains('dark'))"),
+            sfc.contains("applyAccent(accent_color.value, document.documentElement.classList.contains('dark'))"),
             "SetAccent handler must call applyAccent with the new accent:\n{}",
             sfc
         );

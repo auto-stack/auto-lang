@@ -1,7 +1,22 @@
+// app.at — Contact Form.
+// Features top title bar with Settings dropdown panel (Theme: Light/Dark + Accent: 5 colors).
+// Default theme: Dark mode.
 widget App {
-    msg { NameChanged, EmailChanged, MessageChanged, Submit }
+    msg {
+        ToggleSettings,
+        SetTheme(str),
+        SetAccent(str),
+        NameChanged,
+        EmailChanged,
+        MessageChanged,
+        Submit
+    }
 
     model {
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var settings_open bool = false
+
         var name str = ""
         var email str = ""
         var message str = ""
@@ -11,115 +26,421 @@ widget App {
         var faq1_q str = "What are your business hours?"
         var faq1_a str = "Our support team is available Monday through Friday, 9am to 6pm EST. For urgent matters outside these hours, please email urgent@company.com."
         var faq2_q str = "How long does it take to get a response?"
+        var faq2_a str = "Our team typically responds to all inquiries within 24 hours during business days."
         var faq3_q str = "Do you offer phone support?"
+        var faq3_a str = "Phone support is available for Enterprise plan subscribers. Free and Starter plans receive email and community support."
         var faq4_q str = "Can I schedule a demo?"
+        var faq4_a str = "Yes! Contact our sales team using the form and select demo request to schedule a live 30-minute walkthrough."
         var faq5_q str = "What information should I include in my message?"
+        var faq5_a str = "Please provide your project context, current stack, expected timeline, and any specific requirements or questions."
     }
 
     view {
-        center {
-            col {
-                // Header
-                col {
-                    h2 "How can we help?" {
-                        style: "text-3xl font-bold text-gray-900"
+        col {
+            // ── Top Title Bar ──
+            row {
+                row {
+                    span "✉️" {
+                        style: "text-xl"
                     }
-                    span "Check our FAQ for quick answers or send us a message." {
-                        style: "text-gray-500"
+                    span "Contact Form" {
+                        style: if .dark_mode {
+                            "text-base font-bold text-zinc-100"
+                        } else {
+                            "text-base font-bold text-gray-900"
+                        }
                     }
-                    style: "gap-2 items-center"
+                    span "010" {
+                        style: if .dark_mode {
+                            "text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-medium"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium"
+                        }
+                    }
+                    style: "gap-2.5 items-center"
                 }
 
-                // Two-column layout
+                spacer
+
+                // Settings Trigger Button
+                button "⚙ Settings" {
+                    variant: if .settings_open { "default" } else { "outline" }
+                    onclick: .ToggleSettings
+                    style: "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                }
+                style: if .dark_mode {
+                    "w-full px-8 py-3.5 items-center border-b border-zinc-800 bg-zinc-900/60"
+                } else {
+                    "w-full px-8 py-3.5 items-center border-b border-gray-200 bg-white/80"
+                }
+            }
+
+            // ── Settings Dropdown Panel (When Open) ──
+            if .settings_open {
                 row {
-                    // Left: FAQ
+                    spacer
+                    col {
+                        // Theme Section
+                        col {
+                            span "THEME" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                                }
+                            }
+                            row {
+                                button "☀️ Light" {
+                                    onclick: .SetTheme("light")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    }
+                                }
+                                button "🌙 Dark" {
+                                    onclick: .SetTheme("dark")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-colors"
+                                    }
+                                }
+                                style: "w-full gap-2 mt-1"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        // Accent Section (5 Palettes)
+                        col {
+                            span "ACCENT COLOR" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide mt-1.5"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1.5"
+                                }
+                            }
+                            row {
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("indigo")
+                                    style: if .accent_color == "indigo" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("coral")
+                                    style: if .accent_color == "coral" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("ocean")
+                                    style: if .accent_color == "ocean" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-blue-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("sage")
+                                    style: if .accent_color == "sage" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("amber")
+                                    style: if .accent_color == "amber" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                style: "w-full gap-3 mt-1 items-center"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        style: if .dark_mode {
+                            "w-64 p-4 rounded-xl bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        } else {
+                            "w-64 p-4 rounded-xl bg-white text-gray-900 border border-gray-200 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        }
+                    }
+                    style: "w-full z-50"
+                }
+            }
+
+            // ── Main Contact Form & FAQ Content ──
+            col {
+                // Section Header
+                col {
+                    h2 "How can we help?" {
+                        style: if .dark_mode {
+                            "text-3xl font-extrabold text-zinc-100 tracking-tight text-center"
+                        } else {
+                            "text-3xl font-extrabold text-gray-900 tracking-tight text-center"
+                        }
+                    }
+                    span "Check our FAQ for quick answers or send us a message." {
+                        style: if .dark_mode {
+                            "text-sm text-zinc-400 text-center max-w-xl mt-1"
+                        } else {
+                            "text-sm text-gray-500 text-center max-w-xl mt-1"
+                        }
+                    }
+                    style: "gap-1 items-center mb-2"
+                }
+
+                // Two-column Layout
+                row {
+                    // Left Column: FAQ Card
                     col {
                         h3 "Frequently Asked Questions" {
-                            style: "text-lg font-semibold text-gray-900"
+                            style: if .dark_mode {
+                                "text-lg font-bold text-zinc-100 mb-2"
+                            } else {
+                                "text-lg font-bold text-gray-900 mb-2"
+                            }
                         }
                         col {
                             col {
                                 span .faq1_q {
-                                    style: "font-medium text-gray-900 text-sm"
+                                    style: if .dark_mode {
+                                        "font-semibold text-zinc-200 text-sm"
+                                    } else {
+                                        "font-semibold text-gray-900 text-sm"
+                                    }
                                 }
                                 span .faq1_a {
-                                    style: "text-sm text-gray-500 mt-1"
+                                    style: if .dark_mode {
+                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                    } else {
+                                        "text-sm text-gray-600 mt-1 leading-relaxed"
+                                    }
                                 }
-                                style: "py-3 border-b border-gray-200"
+                                style: if .dark_mode {
+                                    "py-3 border-b border-zinc-800"
+                                } else {
+                                    "py-3 border-b border-gray-200"
+                                }
                             }
                             col {
                                 span .faq2_q {
-                                    style: "font-medium text-gray-900 text-sm"
+                                    style: if .dark_mode {
+                                        "font-semibold text-zinc-200 text-sm"
+                                    } else {
+                                        "font-semibold text-gray-900 text-sm"
+                                    }
                                 }
-                                style: "py-3 border-b border-gray-200"
+                                span .faq2_a {
+                                    style: if .dark_mode {
+                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                    } else {
+                                        "text-sm text-gray-600 mt-1 leading-relaxed"
+                                    }
+                                }
+                                style: if .dark_mode {
+                                    "py-3 border-b border-zinc-800"
+                                } else {
+                                    "py-3 border-b border-gray-200"
+                                }
                             }
                             col {
                                 span .faq3_q {
-                                    style: "font-medium text-gray-900 text-sm"
+                                    style: if .dark_mode {
+                                        "font-semibold text-zinc-200 text-sm"
+                                    } else {
+                                        "font-semibold text-gray-900 text-sm"
+                                    }
                                 }
-                                style: "py-3 border-b border-gray-200"
+                                span .faq3_a {
+                                    style: if .dark_mode {
+                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                    } else {
+                                        "text-sm text-gray-600 mt-1 leading-relaxed"
+                                    }
+                                }
+                                style: if .dark_mode {
+                                    "py-3 border-b border-zinc-800"
+                                } else {
+                                    "py-3 border-b border-gray-200"
+                                }
                             }
                             col {
                                 span .faq4_q {
-                                    style: "font-medium text-gray-900 text-sm"
+                                    style: if .dark_mode {
+                                        "font-semibold text-zinc-200 text-sm"
+                                    } else {
+                                        "font-semibold text-gray-900 text-sm"
+                                    }
                                 }
-                                style: "py-3 border-b border-gray-200"
+                                span .faq4_a {
+                                    style: if .dark_mode {
+                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                    } else {
+                                        "text-sm text-gray-600 mt-1 leading-relaxed"
+                                    }
+                                }
+                                style: if .dark_mode {
+                                    "py-3 border-b border-zinc-800"
+                                } else {
+                                    "py-3 border-b border-gray-200"
+                                }
                             }
                             col {
                                 span .faq5_q {
-                                    style: "font-medium text-gray-900 text-sm"
+                                    style: if .dark_mode {
+                                        "font-semibold text-zinc-200 text-sm"
+                                    } else {
+                                        "font-semibold text-gray-900 text-sm"
+                                    }
+                                }
+                                span .faq5_a {
+                                    style: if .dark_mode {
+                                        "text-sm text-zinc-400 mt-1 leading-relaxed"
+                                    } else {
+                                        "text-sm text-gray-600 mt-1 leading-relaxed"
+                                    }
                                 }
                                 style: "py-3"
                             }
                             style: "w-full"
                         }
-                        style: "flex-1 gap-4"
+                        style: if .dark_mode {
+                            "flex-1 p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-lg gap-3"
+                        } else {
+                            "flex-1 p-6 rounded-2xl bg-white border border-gray-200 shadow-sm gap-3"
+                        }
                     }
 
-                    // Right: Contact Form
+                    // Right Column: Contact Form Card
                     col {
                         h3 "Still have questions?" {
-                            style: "text-lg font-semibold text-gray-900"
+                            style: if .dark_mode {
+                                "text-lg font-bold text-zinc-100 mb-2"
+                            } else {
+                                "text-lg font-bold text-gray-900 mb-2"
+                            }
                         }
                         col {
                             col {
                                 span "Name *" {
-                                    style: "text-sm font-medium text-gray-700"
+                                    style: if .dark_mode {
+                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                    } else {
+                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                    }
                                 }
                                 input { placeholder: "Your name", value: .name, oninput: .NameChanged }
-                                style: "gap-1"
+                                style: "gap-1.5 w-full"
                             }
                             col {
                                 span "Email *" {
-                                    style: "text-sm font-medium text-gray-700"
+                                    style: if .dark_mode {
+                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                    } else {
+                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                    }
                                 }
                                 input { placeholder: "you@example.com", value: .email, oninput: .EmailChanged }
-                                style: "gap-1"
+                                style: "gap-1.5 w-full"
                             }
                             col {
                                 span "Message *" {
-                                    style: "text-sm font-medium text-gray-700"
+                                    style: if .dark_mode {
+                                        "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                    } else {
+                                        "text-xs font-semibold text-gray-700 uppercase tracking-wide"
+                                    }
                                 }
                                 textarea { placeholder: "How can we help?", value: .message, oninput: .MessageChanged }
-                                style: "gap-1"
+                                style: "gap-1.5 w-full"
+                            }
+                            if .submitted {
+                                row {
+                                    span "✓" { style: "text-emerald-500 font-bold text-base" }
+                                    span "Thank you! Your message has been sent." {
+                                        style: if .dark_mode {
+                                            "text-sm font-medium text-emerald-400"
+                                        } else {
+                                            "text-sm font-medium text-emerald-600"
+                                        }
+                                    }
+                                    style: if .dark_mode {
+                                        "w-full p-3 rounded-lg bg-emerald-950/50 border border-emerald-800 gap-2 items-center mt-1"
+                                    } else {
+                                        "w-full p-3 rounded-lg bg-emerald-50 border border-emerald-200 gap-2 items-center mt-1"
+                                    }
+                                }
                             }
                             button "Send Message" {
                                 onclick: .Submit
-                                style: "w-full py-2.5 bg-gray-900 text-white rounded-lg font-semibold mt-4"
+                                style: "w-full py-2.5 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors cursor-pointer mt-2"
                             }
                             style: "w-full gap-4"
                         }
-                        style: "flex-1 gap-4"
+                        style: if .dark_mode {
+                            "flex-1 p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-lg gap-3"
+                        } else {
+                            "flex-1 p-6 rounded-2xl bg-white border border-gray-200 shadow-sm gap-3"
+                        }
                     }
-                    style: "gap-8"
+                    style: "w-full gap-6 items-start"
                 }
 
-                style: "w-full max-w-4xl p-8 gap-6 bg-white min-h-screen"
+                style: "w-full flex-1 px-8 py-6 gap-6 items-center justify-start max-w-5xl mx-auto"
+            }
+
+            style: if .dark_mode {
+                "w-full min-h-screen bg-zinc-950 text-zinc-100"
+            } else {
+                "w-full min-h-screen bg-gray-50 text-gray-900"
             }
         }
     }
 
     on {
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(c) -> { .accent_color = c }
         .NameChanged -> {
             .name = .name
         }

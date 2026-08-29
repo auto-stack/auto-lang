@@ -1,0 +1,196 @@
+// common/src/front/header.at — Reusable Example Header with Theme & Accent Settings
+
+widget ExampleHeader(icon: str, title: str, badge: str) {
+    msg {
+        ToggleSettings,
+        SetTheme(str),
+        SetAccent(str)
+    }
+
+    model {
+        var dark_mode bool = true
+        var accent_color str = "indigo"
+        var settings_open bool = false
+    }
+
+    view {
+        col {
+            // ── Top Title Bar ──
+            row {
+                row {
+                    span icon {
+                        style: "text-xl"
+                    }
+                    span title {
+                        style: if .dark_mode {
+                            "text-base font-bold text-zinc-100"
+                        } else {
+                            "text-base font-bold text-gray-900"
+                        }
+                    }
+                    span badge {
+                        style: if .dark_mode {
+                            "text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-medium"
+                        } else {
+                            "text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-medium"
+                        }
+                    }
+                    style: "gap-2.5 items-center"
+                }
+
+                spacer
+
+                // Settings Trigger Button
+                button "⚙ Settings" {
+                    variant: if .settings_open { "default" } else { "outline" }
+                    onclick: .ToggleSettings
+                    style: "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                }
+                style: if .dark_mode {
+                    "w-full px-8 py-3.5 items-center border-b border-zinc-800 bg-zinc-900/60"
+                } else {
+                    "w-full px-8 py-3.5 items-center border-b border-gray-200 bg-white/80"
+                }
+            }
+
+            // ── Settings Dropdown Panel (When Open) ──
+            if .settings_open {
+                row {
+                    spacer
+                    col {
+                        // Theme Section
+                        col {
+                            span "THEME" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+                                }
+                            }
+                            row {
+                                button "☀️ Light" {
+                                    onclick: .SetTheme("light")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-zinc-800 text-zinc-300 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    }
+                                }
+                                button "🌙 Dark" {
+                                    onclick: .SetTheme("dark")
+                                    style: if .dark_mode {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-semibold shadow-sm"
+                                    } else {
+                                        "flex-1 px-3 py-1.5 text-xs rounded-lg bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-colors"
+                                    }
+                                }
+                                style: "w-full gap-2 mt-1"
+                            }
+                            style: "w-full gap-1"
+                        }
+
+                        // Accent Section (5 Palettes)
+                        col {
+                            span "ACCENT COLOR" {
+                                style: if .dark_mode {
+                                    "text-xs font-semibold text-zinc-400 uppercase tracking-wide mt-1.5"
+                                } else {
+                                    "text-xs font-semibold text-gray-500 uppercase tracking-wide mt-1.5"
+                                }
+                            }
+                            row {
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("indigo")
+                                    style: if .accent_color == "indigo" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-indigo-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("coral")
+                                    style: if .accent_color == "coral" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-rose-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("ocean")
+                                    style: if .accent_color == "ocean" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-sky-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-sky-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-sky-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("sage")
+                                    style: if .accent_color == "sage" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-emerald-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                button "" {
+                                    variant: "ghost"
+                                    onclick: .SetAccent("amber")
+                                    style: if .accent_color == "amber" {
+                                        if .dark_mode {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-white ring-2 ring-white ring-offset-2 ring-offset-zinc-900"
+                                        } else {
+                                            "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 border-2 border-zinc-900 ring-2 ring-zinc-900 ring-offset-2 ring-offset-white"
+                                        }
+                                    } else {
+                                        "w-6 h-6 p-0 rounded-full min-w-0 aspect-square shrink-0 bg-amber-500 opacity-80 hover:opacity-100"
+                                    }
+                                }
+                                style: "w-full gap-2 mt-1 items-center"
+                            }
+                            style: "w-full gap-1"
+                        }
+                        style: if .dark_mode {
+                            "w-64 p-4 rounded-xl bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        } else {
+                            "w-64 p-4 rounded-xl bg-white text-gray-900 border border-gray-200 shadow-2xl gap-3 mr-8 -mb-40 z-50"
+                        }
+                    }
+                    style: "w-full"
+                }
+            }
+            style: "w-full"
+        }
+    }
+
+    on {
+        .ToggleSettings -> { .settings_open = !.settings_open }
+        .SetTheme(t) -> {
+            if t == "light" {
+                .dark_mode = false
+            }
+            if t == "dark" {
+                .dark_mode = true
+            }
+        }
+        .SetAccent(c) -> { .accent_color = c }
+    }
+}
