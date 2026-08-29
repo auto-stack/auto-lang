@@ -1,83 +1,213 @@
-// Plan 463 T5：桌面 shell（特权 .at App —— 宿主进程内编译装载，不进 examples/ui）。
-// R1/R8 首落：shell 组件本身是 AutoUI App。双向接缝（T1 报告 §2/§3 定案）：
-//   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录 "verb\targ"，
-//       多条以 "\n" 连接；生产侧控件字符串不可直书 \u{1E}/\u{1F}，宿主解析
-//       两套分隔符等价接受）
-//   入：`__wm_wins`（宿主 write_state_vec 注入 {wid,title,focused} 对象数组，
-//       任务栏窗口列表渲染源）
-//       `__wm_meta`（宿主注入 "layout\tfocused_wid"，布局按钮态）
+// 桌面 shell pack（特权 .at App —— 宿主进程内编译装载，不进 examples/ui）。
+// R1/R8 首落：shell 组件本身是 AutoUI App。根声明 `widget Desktop`
+// （Design 25 §4.1 谱系；463 的 DesktopShell 于 472 T4 改名，全仓仅本文件
+// 一处引用）。
+//
+// 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
+// 合同 schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
+//   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
+//       "verb\targ"，多条以 "\n" 连接。v1 词表：launch/close/focus/layout/
+//       summon/workspace/workspace_next/activate）
+//   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
+//       数组，跨分区全集，dock 运行窗列表源）
+//       `__wm_workspaces`（{id,name,current} Obj 数组，分区切换条源）
+//       `__wm_running`（",id1,id2," 运行中 app 集合派生串，pinned 运行
+//       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
+//       `__wm_meta`（"layout\tfocused_wid"，布局按钮态）
+// dock 数据级配置（协议 v1 §6）：storage 键 shell.dock.pinned / position /
+// enabled，缺席回退 pack 默认（bottom / 启用 / 固定 calculator+todo+notes）。
+// position/enabled 由 Init 读入；pinned 由宿主读键并解析 {id,icon} 注入
+// （图标源 = 注册表，I9）。auto-os-config settings 写手 = shell-track M4；
+// v1 由外部预置键（AUTO_VM_STORAGE_FILE 指向预写 JSON）。
 // 消费者唯一：宿主 renderer 的 DesktopBus 双排空点（462/463 update 壳层）。
-// 464 launcher 将挂 SummonLauncher 召唤出的 overlay 槽（本文件只发事件）。
-widget DesktopShell {
+// launcher overlay 槽：SummonLauncher 召唤（464），本文件只发事件。
+widget Desktop {
     msg {
         SummonLauncher,
         LayoutFree, LayoutGrid, LayoutStack,
-        WinFocus(str), WinClose(str)
+        WinFocus(str), WinClose(str),
+        ActivateApp(str), SetWorkspace(str), WorkspaceNext
     }
 
     model {
         var __desktop_cmd str = ""
         var __wm_wins = []
+        var __wm_workspaces = []
+        var __wm_running str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
+        // __dock_pinned = 宿主注入 {id,icon} Obj 数组（storage shell.dock.pinned
+        // 覆盖 > pack 默认三枚；icon 宿主自注册表解析——.at 无注册表访问权）。
+        var __dock_pinned = []
+        var __dock_position str = "bottom"
+        var __dock_enabled str = "1"
     }
 
     view {
         col {
             style: "w-full h-full"
-            // 任务栏以上让位给虚拟窗层：flex-1 在 iced 适配器只映射主轴
-            // （row=宽），纵向撑开须显式 h-full（T5 实测修正）。
-            spacer {
-                style: "w-full h-full"
-            }
-            taskbar {
-                style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-t"
+            // dock 位置数据级可配（top/bottom）：col 内以 if 分支换序承载。
+            // v1 已知瑕疵：任务栏标记在两分支各一份（DSL 无局部模板复用；
+            // M2 pack 化时收敛）。
+            if .__dock_position == "top" {
+                if .__dock_enabled == "1" {
+                    taskbar {
+                        style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-b"
 
-                button "⊞" {
-                    onclick: .SummonLauncher
-                    style: "h-8 w-10 px-0 text-xs"
-                }
-
-                for w in .__wm_wins {
-                    row {
-                        style: "gap-1 items-center"
-                        button (text: w.title) {
-                            onclick: .WinFocus(w.wid)
-                            style: "h-8 px-3 text-xs max-w-48"
+                        button "⊞" {
+                            onclick: .SummonLauncher
+                            style: "h-8 w-10 px-0 text-xs"
                         }
-                        button "×" {
-                            onclick: .WinClose(w.wid)
-                            style: "h-8 w-7 px-0 text-xs text-muted-foreground"
+                        for p in .__dock_pinned {
+                            row {
+                                style: "items-center gap-0"
+                                button (icon: p.icon) {
+                                    onclick: .ActivateApp(p.id)
+                                    style: "h-9 w-9 px-0 text-sm"
+                                }
+                                if .__wm_running.contains("," + p.id + ",") {
+                                    text "●" {
+                                        style: "text-success text-xs"
+                                    }
+                                }
+                            }
+                        }
+                        for w in .__wm_wins {
+                            row {
+                                style: "items-center gap-0"
+                                button (icon: w.icon) {
+                                    onclick: .WinFocus(w.wid)
+                                    style: "h-9 w-9 px-0 text-sm"
+                                }
+                                button "×" {
+                                    onclick: .WinClose(w.wid)
+                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                }
+                            }
+                        }
+                        spacer {
+                            style: "flex-1 h-8"
+                        }
+                        for ws in .__wm_workspaces {
+                            button (text: ws.id) {
+                                onclick: .SetWorkspace(ws.id)
+                                style: "h-8 w-8 px-0 text-xs"
+                            }
+                        }
+                        button "⇥" {
+                            onclick: .WorkspaceNext
+                            style: "h-8 w-8 px-0 text-xs"
+                        }
+                        button "▦" {
+                            onclick: .LayoutGrid
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                        button "▤" {
+                            onclick: .LayoutStack
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                        button "▢" {
+                            onclick: .LayoutFree
+                            style: "h-8 w-10 px-0 text-xs"
                         }
                     }
                 }
+            }
+            // 虚拟窗层让位（flex-1 在 iced 适配器只映射主轴（row=宽），
+            // 纵向撑开须显式 h-full —— 463 T5 实测修正）。
+            spacer {
+                style: "w-full h-full"
+            }
+            if .__dock_position != "top" {
+                if .__dock_enabled == "1" {
+                    taskbar {
+                        style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-t"
 
-                spacer {
-                    style: "flex-1 h-8"
-                }
-
-                button "▦" {
-                    onclick: .LayoutGrid
-                    style: "h-8 w-10 px-0 text-xs"
-                }
-                button "▤" {
-                    onclick: .LayoutStack
-                    style: "h-8 w-10 px-0 text-xs"
-                }
-                button "▢" {
-                    onclick: .LayoutFree
-                    style: "h-8 w-10 px-0 text-xs"
+                        button "⊞" {
+                            onclick: .SummonLauncher
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                        for p in .__dock_pinned {
+                            row {
+                                style: "items-center gap-0"
+                                button (icon: p.icon) {
+                                    onclick: .ActivateApp(p.id)
+                                    style: "h-9 w-9 px-0 text-sm"
+                                }
+                                if .__wm_running.contains("," + p.id + ",") {
+                                    text "●" {
+                                        style: "text-success text-xs"
+                                    }
+                                }
+                            }
+                        }
+                        for w in .__wm_wins {
+                            row {
+                                style: "items-center gap-0"
+                                button (icon: w.icon) {
+                                    onclick: .WinFocus(w.wid)
+                                    style: "h-9 w-9 px-0 text-sm"
+                                }
+                                button "×" {
+                                    onclick: .WinClose(w.wid)
+                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                }
+                            }
+                        }
+                        spacer {
+                            style: "flex-1 h-8"
+                        }
+                        for ws in .__wm_workspaces {
+                            button (text: ws.id) {
+                                onclick: .SetWorkspace(ws.id)
+                                style: "h-8 w-8 px-0 text-xs"
+                            }
+                        }
+                        button "⇥" {
+                            onclick: .WorkspaceNext
+                            style: "h-8 w-8 px-0 text-xs"
+                        }
+                        button "▦" {
+                            onclick: .LayoutGrid
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                        button "▤" {
+                            onclick: .LayoutStack
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                        button "▢" {
+                            onclick: .LayoutFree
+                            style: "h-8 w-10 px-0 text-xs"
+                        }
+                    }
                 }
             }
         }
     }
 
     on {
+        .Init -> {
+            // dock 配置读入（storage，018/025 先例；键值全字符串）。缺席
+            // 回退 pack 默认——覆盖链：运行时配置 > pack 声明默认（§4.1）。
+            // pinned 列表由宿主解析注入（__dock_pinned；registry 图标源在
+            // 宿主侧，shell.at Init 不再读 shell.dock.pinned——472 T5）。
+            var pos str = storage.get("shell.dock.position")
+            if pos == "top" {
+                .__dock_position = "top"
+            }
+            var en str = storage.get("shell.dock.enabled")
+            if en == "false" {
+                .__dock_enabled = "0"
+            }
+        }
         .SummonLauncher -> { .__desktop_cmd = "summon\tlauncher" }
         .LayoutFree -> { .__desktop_cmd = "layout\tfree" }
         .LayoutGrid -> { .__desktop_cmd = "layout\tgrid" }
         .LayoutStack -> { .__desktop_cmd = "layout\tmaster-stack" }
         .WinFocus(wid) -> { .__desktop_cmd = "focus\t" + wid }
         .WinClose(wid) -> { .__desktop_cmd = "close\t" + wid }
+        .ActivateApp(app) -> { .__desktop_cmd = "activate\t" + app }
+        .SetWorkspace(id) -> { .__desktop_cmd = "workspace\t" + id }
+        .WorkspaceNext -> { .__desktop_cmd = "workspace_next" }
     }
 }

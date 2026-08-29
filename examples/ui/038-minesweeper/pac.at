@@ -2,4 +2,5 @@ name: "minesweeper"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+icon: "bomb"
 front_port: 4038

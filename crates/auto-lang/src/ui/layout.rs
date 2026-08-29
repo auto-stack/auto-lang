@@ -125,6 +125,10 @@ pub fn apply_layout(
         .iter()
         .filter_map(|wid| {
             let v = wm.wins.get(wid)?;
+            // Plan 472 T2：只排当前分区（隐分区窗保持用户几何）。
+            if v.workspace != wm.current_workspace {
+                return None;
+            }
             Some(WindowState {
                 wid: *wid,
                 rect: *v.rect.borrow(),
@@ -690,5 +694,24 @@ mod tests {
         assert_eq!(a, b);
         // 输入快照未被改写（值语义保证；这里守恒输入矩形供回归）。
         assert_rect(input[0].rect, 10.0, 20.0, 300.0, 200.0);
+    }
+
+    // ---- Plan 472 T2：分区过滤（apply_layout 只排当前分区）----
+
+    #[test]
+    fn apply_layout_filters_by_current_workspace() {
+        use crate::ui::session::{AppId, WmState};
+        let mut wm = WmState::new();
+        let _a = wm.add_win(AppId(1), "A".into(), rect(0.0, 0.0, 100.0, 100.0));
+        let ws1 = wm.add_workspace();
+        wm.set_workspace(ws1);
+        let _b = wm.add_win(AppId(2), "B".into(), rect(0.0, 0.0, 100.0, 100.0));
+        wm.layout = LayoutMode::Grid;
+        apply_layout(&mut wm, VIEWPORT, ReservedEdges::taskbar());
+        let ra = *wm.wins[&Wid(1)].rect.borrow();
+        let rb = *wm.wins[&Wid(2)].rect.borrow();
+        // Grid 只排当前分区：B 独占可用区；A（隐分区）保持用户几何。
+        assert_rect(rb, 0.0, 0.0, 1280.0, 752.0);
+        assert_rect(ra, 0.0, 0.0, 100.0, 100.0);
     }
 }
