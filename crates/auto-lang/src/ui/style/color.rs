@@ -21,6 +21,9 @@ pub enum Color {
     OnBackground,
     OnSurface,
     OnDestructive,
+    /// Border 语义色(shadcn --border)——此前误映射 Surface(卡片底色,light
+    /// 近白,边框不可见)。light 对齐 auto-os-config 基准 #e0e0e0,dark #27272a。
+    Border,
 
     // Tailwind palette colors (basic set for L1)
     Slate(u16),    // slate-50 to slate-900
@@ -117,8 +120,9 @@ impl Color {
             "success" => Ok(Color::Success),
             "warning" => Ok(Color::Warning),
             "info" => Ok(Color::Info),
-            // "border" / "input" / "ring" → subtle surface
-            "border" | "input" | "ring" => Ok(Color::Surface),
+            // "border" → 独立 Border 语义(theme.rs 双盘);input/ring 保持底色语义
+            "border" => Ok(Color::Border),
+            "input" | "ring" => Ok(Color::Surface),
             // Conduit/RealWorld brand green (#5cb85c) — used by 023-realworld.
             "brand-green" | "brand" => Ok(Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c }),
             _ => {
@@ -208,6 +212,7 @@ impl Color {
             Color::OnSecondary => (15, 23, 42),    // dark secondary foreground in light mode
             Color::OnDestructive => (248, 250, 252), // white text on destructive red
             Color::OnBackground => (17, 24, 39),     // near-black
+            Color::Border => (224, 224, 224),        // #e0e0e0 (light)
             Color::OnSurface => (107, 114, 128),     // gray-500
             _ => (128, 128, 128),
         }
