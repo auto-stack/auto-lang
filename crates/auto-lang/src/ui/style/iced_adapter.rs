@@ -1121,6 +1121,23 @@ mod tests {
         assert!(bg.a > 0.0 && bg.a < 1.0, "expected muted/60 alpha, got {}", bg.a);
     }
 
+    // PLAN-050 T6 (C4): bg-<token>/<nn> 全链 alpha 保留——解析侧 Plan 409 已库
+    // (test_semantic_color_with_alpha_is_dark_aware),此处钉住渲染侧:经
+    // from_style/convert_color 进 IcedStyle.background_color 后 alpha 不得拍平,
+    // renderer Background::Color 直绘即得半透明高亮(rail 激活底色 bg-primary/10)。
+    #[test]
+    fn plan050_bg_alpha_survives_to_iced_style() {
+        let style = Style::parse("bg-primary/10").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is.background_color.expect("bg-primary/10 must set background_color");
+        assert!((bg.a - 25.0 / 255.0).abs() < 1e-4, "10% alpha → 25/255, got {}", bg.a);
+        // 非语义色同样保 alpha:bg-gray-500/50 → 127/255。
+        let style = Style::parse("bg-gray-500/50").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is.background_color.expect("bg-gray-500/50 must set background_color");
+        assert!((bg.a - 127.0 / 255.0).abs() < 1e-4, "50% alpha → 127/255, got {}", bg.a);
+    }
+
     #[test]
     fn test_convert_color() {
         let white = convert_color(&Color::White);
