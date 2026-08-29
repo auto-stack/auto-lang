@@ -9083,12 +9083,27 @@ impl VueGenerator {
                 // `:class` exprs and conditional ternaries (Batch A gap 20).
                 // Without this the shadcn path silently dropped `class:`.
                 self.push_native_classes(&mut attrs, tag, props);
+                // Plan 481: selectable: true → 显式 user-select: text(防应用级
+                // none 吞掉;浏览器默认可选是 vue 现状,prop 双端语义声明 +
+                // a2vue 金样锚点)。静态 style 与 :style 绑定 Vue 合并,不冲突。
+                if let Some(value) = props.get("selectable") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("style=\"user-select: text\"".to_string());
+                    }
+                }
             }
 
             // === Text (Typography) ===
             "text" | "Text" | "span" | "Span" | "p" | "P" => {
                 // Extract class/style for Tailwind
                 self.push_style_class(&mut attrs, props);
+                // Plan 481: selectable: true → 显式 user-select: text
+                // (同 label 臂;缺省零改动)。
+                if let Some(value) = props.get("selectable") {
+                    if self.extract_bool_value(value) {
+                        attrs.push("style=\"user-select: text\"".to_string());
+                    }
+                }
                 // Text content becomes slot content
                 if let Some(value) = props.get("text") {
                     slot_content = self.prop_to_text_content(value).ok();
@@ -14655,6 +14670,36 @@ mod tests {
     /// through (`$event.line, $event.column` / `$event.x, $event.y`); a
     /// single declared param receives the whole `$event`; a param-less
     /// handler stays a plain reference.
+    /// Plan 481:text/label 声明 selectable: true → vue 输出显式
+    /// `style="user-select: text"`(防应用级 none 吞掉);缺省零改动。
+    #[test]
+    fn test_text_selectable_emits_user_select() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget SelText {
+    view {
+        col {
+            text "pick me" { selectable: true }
+            text "plain" {}
+            label "form label" { selectable: true }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("user-select: text"),
+            "selectable: true must emit explicit user-select style:
+{sfc}"
+        );
+        // 两个声明位(text+label)都带显式化 → 出现 2 次。
+        assert_eq!(
+            sfc.matches("user-select: text").count(),
+            2,
+            "text and label each emit once:
+{sfc}"
+        );
+        // plain text 不声明 → 不出现额外 user-select(仅 2 次)已由上式锁定。
+    }
+
     #[test]
     fn test_code_editor_events_payload_threading() {
         let sfc = gen_sfc_from_widget_src_shadcn(r##"
