@@ -1446,6 +1446,72 @@ impl DesktopSession {
         self.broker_pending.lock().unwrap().len()
     }
 
+    /// Plan 480 S8 —— L1 同进程换窗（虚拟窗 → 独立 OS 窗）：App/VM 对象
+    /// **原地不动**，仅表面宿主翻转——`wm_remove_win` 摘除虚拟窗，
+    /// `iced::window::open` 铸新 OS 窗并 `register_window`（459 多窗路径
+    /// `run_dynamic_iced_multi` 承接独立窗渲染；本 API 只做登记翻转）。
+    /// 返回新 OS 窗 Id。
+    pub fn detach_surface_to_os_window(&mut self, app: AppId) -> Result<iced::window::Id, String> {
+        // 摘除该 App 的虚拟窗（标题/几何带到新 OS 窗）。
+        let (wid, _title, rect) = {
+            let host = self
+                .host
+                .as_ref()
+                .ok_or("detach_surface_to_os_window: desktop mode required")?;
+            let found = host
+                .wm
+                .wins
+                .iter()
+                .find(|(_, v)| v.app == app)
+                .map(|(wid, v)| (*wid, v.title.clone(), *v.rect.borrow()));
+            found.ok_or_else(|| format!("no virtual window for {app:?}"))?
+        };
+        self.wm_remove_win(wid);
+        // 铸新 OS 窗（Task 由运行时消费；登记语义即刻生效；标题由应用级
+        // title_fn 按 windows 登记解析——与 459 standalone 开窗同款）。
+        let (win_id, task) = iced::window::open(iced::window::Settings {
+            size: iced::Size::new(rect.width, rect.height),
+            position: iced::window::Position::Specific(iced::Point::new(rect.x, rect.y)),
+            ..Default::default()
+        });
+        drop(task); // 开窗 Task 无运行时消费方（登记即生效）；drop = 不派发
+        let size = iced::Size::new(rect.width, rect.height);
+        self.register_window(win_id, app, size);
+        Ok(win_id)
+    }
+
+    /// Plan 480 S8 —— L1 同进程换窗（独立 OS 窗 → 虚拟窗）：App/VM 不动，
+    /// 注销 OS 窗登记并 `wm_add_win` 回 WM（几何按 462 boot 同款级联初位
+    /// 回归，布局随后可由 `wm_set_layout` 整场重排）。返回新虚拟窗 Wid。
+    pub fn attach_surface_back(&mut self, app: AppId) -> Result<Wid, String> {
+        // 找该 App 的 OS 窗登记并注销。
+        let win_id = self
+            .windows
+            .iter()
+            .find(|(_, e)| e.app == app)
+            .map(|(id, _)| *id)
+            .ok_or_else(|| format!("no os window for {app:?}"))?;
+        self.unregister_window(&win_id);
+        // 回 WM：标题沿用 App 的 widget 名（标题已随 detach 带去 OS 窗；
+        // v1 回归用 widget 名，几何由 WM 级联/布局接管）。
+        let title = self
+            .apps
+            .get(&app)
+            .map(|a| a.component.widget_name().to_string())
+            .unwrap_or_else(|| "app".to_string());
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
+        let size = iced::Size::new(
+            (usable.width * 0.6).max(360.0),
+            (usable.height * 0.6).max(280.0),
+        );
+        let index = self.host.as_ref().map(|h| h.wm.wins.len()).unwrap_or(0);
+        let rect = iced::Rectangle::new(
+            iced::Point::new(80.0 + 48.0 * index as f32, 80.0 + 48.0 * index as f32),
+            size,
+        );
+        Ok(self.wm_add_win(app, title, rect))
+    }
+
     /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回当前分区的
     /// 全部虚拟窗（几何批量写点唯一性：rect 只经 `apply_layout`/WM 交互改）。
     /// free 模式为恒等写回（用户位置即真值）。
@@ -2022,6 +2088,62 @@ mod tests {
         let mut ds = DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
         ds
+    }
+
+    /// Plan 480 S8 —— L1 同进程换窗：detach → OS 窗登记翻转（虚拟窗摘除
+    /// + windows 登记）→ attach → 回 WM；App/VM 对象原地（count 连续，
+    /// 同一 AppId 实体），新 Wid 重新铸造。
+    #[test]
+    fn l1_surface_transfer_round_trip_state_continuous() {
+        let mut ds = desktop_session_with_host();
+        let app = insert_app(&mut ds, "L1App");
+        let wid_a = ds.wm_add_win(
+            app,
+            "L1App".into(),
+            iced::Rectangle::new(iced::Point::new(10.0, 20.0), iced::Size::new(480.0, 320.0)),
+        );
+        // VM 状态推进（等价一次点击后的状态）。
+        ds.apps
+            .get_mut(&app)
+            .unwrap()
+            .component
+            .write_state("count", auto_val::Value::Int(7))
+            .unwrap();
+        let count_before = match ds.apps[&app].component.read_state("count") {
+            Ok(auto_val::Value::Int(n)) => n,
+            other => panic!("count: {other:?}"),
+        };
+        assert_eq!(count_before, 7);
+
+        // ---- detach：虚拟窗摘除 + OS 窗登记。
+        let os_win = ds.detach_surface_to_os_window(app).expect("detach");
+        assert!(
+            !ds.host.as_ref().unwrap().wm.wins.contains_key(&wid_a),
+            "虚拟窗已摘除"
+        );
+        assert_eq!(ds.app_of_window(&os_win), Some(app), "OS 窗登记翻转");
+        assert_eq!(ds.windows.len(), 1, "windows 注册表 = 该 OS 窗");
+        // App/VM 对象未动：状态跨形态连续。
+        assert_eq!(
+            ds.apps[&app].component.read_state("count"),
+            Ok(auto_val::Value::Int(7)),
+            "detach 不动 App/VM"
+        );
+
+        // ---- attach：回 WM，登记翻转回去。
+        let wid_b = ds.attach_surface_back(app).expect("attach");
+        assert!(
+            ds.host.as_ref().unwrap().wm.wins.contains_key(&wid_b),
+            "虚拟窗重新登记"
+        );
+        assert!(ds.windows.is_empty(), "OS 窗登记注销");
+        assert_ne!(wid_b, wid_a, "attach 铸新 Wid");
+        // 同一 AppId 实体：状态仍连续。
+        assert_eq!(
+            ds.apps[&app].component.read_state("count"),
+            Ok(auto_val::Value::Int(7)),
+            "attach 后 App/VM 原地（count 连续）"
+        );
     }
 
     #[test]
