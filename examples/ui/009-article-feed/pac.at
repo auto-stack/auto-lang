@@ -4,3 +4,7 @@ scene: "ui"
 render: "vue"
 theme: "dark"
 accent: "indigo"
+
+dep "common" {
+    path: "../common"
+}
