@@ -2547,6 +2547,90 @@ impl VueGenerator {
         }
         script.push('\n');
 
+        // defineProps FIRST: state var initializers can read props
+        // (`model { var draft str = .code }` → `ref(props.code)`) and are
+        // EAGER — emitted before defineProps they hit the TDZ
+        // (ReferenceError at runtime; found live in autodown plan-023's
+        // CodeEditorBlock). Computeds are lazy so they never tripped it.
+        // (auto-down debt #1, 2026-08-29)
+
+        // Plan 367 P1-1: custom type names that need importing from api.ts.
+        // Collected from prop types (recursively) AND from defineEmits
+        // payloads below; the import statement itself is emitted after both
+        // blocks, later in this function.
+        let mut custom_types: Vec<String> = Vec::new();
+
+        // Generate defineProps if widget has props (sub-widget component)
+        // Plan 028 F6: props with declared defaults wrap in
+        // `withDefaults(defineProps, {...})` so the default VALUES apply at
+        // runtime, not just `?:` optionality.
+        if !widget.props.is_empty() {
+            let has_defaults = widget.props.iter()
+                .any(|p| p.default.is_some() && !Self::prop_is_emitted_callback(p, widget));
+            script.push_str(if has_defaults {
+                "const props = withDefaults(defineProps<{\n"
+            } else {
+                "const props = defineProps<{\n"
+            });
+            for prop in &widget.props {
+                // Plan 367 P1-1: map Auto types to TS types instead of using 'any'.
+                // Plan 043 M5 B-1: `on_*: msg` callback props are typed from the
+                // msg variant payload — `on_pick` for `Pick(str)` yields
+                // `(arg0: string) => void`, not `() => void` (which rejected the
+                // parent's `(name: any) => void` handler with TS2322).
+                // Plan 043 M5 R4: skip `on_*` callback props with a matching
+                // msg variant entirely — the parent wires them via the emit
+                // (`@Run`), so a required `on_run` prop would make the parent's
+                // object literal miss it (TS2345).
+                if Self::prop_is_emitted_callback(prop, widget) {
+                    continue;
+                }
+                let ts_type = Self::prop_to_ts_type(prop, widget);
+                // Track custom types for import generation. Recurse into
+                // containers (List<Block>, []ToolEntry, Option<T>, ...) so a
+                // nested custom type still triggers `import type { ... }`.
+                Self::collect_custom_types(&prop.type_info, &mut custom_types);
+                if prop.default.is_some() {
+                    script.push_str(&format!("  {}?: {}\n", prop.name, ts_type));
+                } else {
+                    script.push_str(&format!("  {}: {}\n", prop.name, ts_type));
+                }
+            }
+            if has_defaults {
+                // The macro form is `withDefaults(defineProps<{...}>(), {...})`
+                // — the `()` after the type argument is required: without it
+                // `defineProps<{...}>` parses as an instantiation expression
+                // and vue-tsc no longer recognizes the macro (props collapse
+                // to `unknown`, TS2344/TS2339 all over the SFC).
+                script.push_str("}>(), {\n");
+                for prop in &widget.props {
+                    if Self::prop_is_emitted_callback(prop, widget) {
+                        continue;
+                    }
+                    if let Some(default_expr) = &prop.default {
+                        let default_js = self.expr_to_js(default_expr)?;
+                        // withDefaults' InferDefault rejects a `null` default
+                        // for non-nullable prop types (e.g. `any[]`). The DSL
+                        // uses `= null` as "optional, unset" for callback/array
+                        // props; cast so the declared prop type stays intact.
+                        let ts_type = Self::prop_to_ts_type(prop, widget);
+                        let default_js = if default_js.trim() == "null"
+                            && ts_type != "any"
+                            && !ts_type.contains("null")
+                        {
+                            format!("({default_js} as any)")
+                        } else {
+                            default_js
+                        };
+                        script.push_str(&format!("  {}: {},\n", prop.name, default_js));
+                    }
+                }
+                script.push_str("})\n\n");
+            } else {
+                script.push_str("}>()\n\n");
+            }
+        }
+
         // Generate state variables: bound model channels compile to
         // defineModel; everything else stays a plain ref.
         for state in &widget.state_vars {
@@ -2676,82 +2760,6 @@ impl VueGenerator {
 
         if !widget.computed.is_empty() {
             script.push('\n');
-        }
-
-        // Plan 367 P1-1: custom type names that need importing from api.ts.
-        // Collected from prop types (recursively) AND from defineEmits
-        // payloads below; the import is emitted after both blocks.
-        let mut custom_types: Vec<String> = Vec::new();
-
-        // Generate defineProps if widget has props (sub-widget component)
-        // Plan 028 F6: props with declared defaults wrap in
-        // `withDefaults(defineProps, {...})` so the default VALUES apply at
-        // runtime, not just `?:` optionality.
-        if !widget.props.is_empty() {
-            let has_defaults = widget.props.iter()
-                .any(|p| p.default.is_some() && !Self::prop_is_emitted_callback(p, widget));
-            script.push_str(if has_defaults {
-                "const props = withDefaults(defineProps<{\n"
-            } else {
-                "const props = defineProps<{\n"
-            });
-            for prop in &widget.props {
-                // Plan 367 P1-1: map Auto types to TS types instead of using 'any'.
-                // Plan 043 M5 B-1: `on_*: msg` callback props are typed from the
-                // msg variant payload — `on_pick` for `Pick(str)` yields
-                // `(arg0: string) => void`, not `() => void` (which rejected the
-                // parent's `(name: any) => void` handler with TS2322).
-                // Plan 043 M5 R4: skip `on_*` callback props with a matching
-                // msg variant entirely — the parent wires them via the emit
-                // (`@Run`), so a required `on_run` prop would make the parent's
-                // object literal miss it (TS2345).
-                if Self::prop_is_emitted_callback(prop, widget) {
-                    continue;
-                }
-                let ts_type = Self::prop_to_ts_type(prop, widget);
-                // Track custom types for import generation. Recurse into
-                // containers (List<Block>, []ToolEntry, Option<T>, ...) so a
-                // nested custom type still triggers `import type { ... }`.
-                Self::collect_custom_types(&prop.type_info, &mut custom_types);
-                if prop.default.is_some() {
-                    script.push_str(&format!("  {}?: {}\n", prop.name, ts_type));
-                } else {
-                    script.push_str(&format!("  {}: {}\n", prop.name, ts_type));
-                }
-            }
-            if has_defaults {
-                // The macro form is `withDefaults(defineProps<{...}>(), {...})`
-                // — the `()` after the type argument is required: without it
-                // `defineProps<{...}>` parses as an instantiation expression
-                // and vue-tsc no longer recognizes the macro (props collapse
-                // to `unknown`, TS2344/TS2339 all over the SFC).
-                script.push_str("}>(), {\n");
-                for prop in &widget.props {
-                    if Self::prop_is_emitted_callback(prop, widget) {
-                        continue;
-                    }
-                    if let Some(default_expr) = &prop.default {
-                        let default_js = self.expr_to_js(default_expr)?;
-                        // withDefaults' InferDefault rejects a `null` default
-                        // for non-nullable prop types (e.g. `any[]`). The DSL
-                        // uses `= null` as "optional, unset" for callback/array
-                        // props; cast so the declared prop type stays intact.
-                        let ts_type = Self::prop_to_ts_type(prop, widget);
-                        let default_js = if default_js.trim() == "null"
-                            && ts_type != "any"
-                            && !ts_type.contains("null")
-                        {
-                            format!("({default_js} as any)")
-                        } else {
-                            default_js
-                        };
-                        script.push_str(&format!("  {}: {},\n", prop.name, default_js));
-                    }
-                }
-                script.push_str("})\n\n");
-            } else {
-                script.push_str("}>()\n\n");
-            }
         }
 
         // Widget-level `expose { ... }`: exposed `on` handlers must be
@@ -5557,6 +5565,30 @@ impl VueGenerator {
                 // Vue syntax: v-for="(item, index) in list" (value first, index second)
                 // So we need to swap the order for Vue
                 let iterable_name = iterable.trim_start_matches('.');
+                // R012 (auto-down debt #2, 2026-08-29): a single-segment root
+                // member as the v-for source MUST resolve to a declared
+                // prop/state/computed — a name mismatch (`.header_cells` vs
+                // prop `headerCells`) otherwise emits `v-for="... in
+                // header_cells"` over `undefined`: a SILENT empty render with
+                // no runtime error (found live in autodown plan-023's
+                // TableEditorBlock).
+                if iterable.starts_with('.')
+                    && !iterable_name.contains('.')
+                    && iterable_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && !iterable_name.is_empty()
+                    && !self.prop_names.iter().any(|n| n == iterable_name)
+                    && !self.state_names.iter().any(|n| n == iterable_name)
+                    && !self.computed_names.contains(iterable_name)
+                {
+                    self.warn(
+                        "R012",
+                        crate::ui_gen::validators::Severity::Error,
+                        format!(
+                            "v-for source `.{}` matches no declared prop/state/computed — likely a name mismatch; the generated v-for iterates undefined and renders nothing silently",
+                            iterable_name
+                        ),
+                    );
+                }
                 // Auto-add search filter when widget has a 'search' state and iterates over an array
                 let v_for_iterable = if self.state_names.iter().any(|n| n == "search")
                     && self.state_names.iter().any(|n| n == iterable_name) {
