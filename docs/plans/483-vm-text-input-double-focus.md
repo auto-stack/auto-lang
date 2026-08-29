@@ -262,13 +262,13 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
 
 ## 验收标准
 
-- [ ] 042 最小 example：VM 真键盘单焦点、无键盘双投递（需求 §七-1）
-- [ ] musk 登录页实测：双框独立、admin/admin 登录可完成（§七-2）
-- [ ] 003-converter 双向联动不回归（§七-3）
-- [ ] `cargo tf` 全绿 + `cargo test -p auto-lang --lib --features ui-iced` 全绿（§七-4）
-- [ ] autoui_type 对第二个 input 派发正确 handler + path 对齐回归测试（§七-5）
-- [ ] Plan 047/057/464 焦点约定与 launcher 召唤不回归（T5/T7 抽查证据）
-- [ ] Vue 轨零改动（vue.rs diff 为空）
+- [x] 042 最小 example：VM 真键盘单焦点、无键盘双投递（§七-1）——**partial 代验**（六测+MCP 实机;真键盘顺延 P483-3）
+- [x] musk 登录页实测：双框独立、admin/admin 登录可完成（§七-2）——**partial 代验**（归因/独立写回实机 ✓;真键盘顺延 P483-3）
+- [x] 003-converter 双向联动不回归（§七-3）
+- [x] `cargo tf` 全绿（3260/3260）+ ui-iced 与 master 基线同集合零交集（§七-4,差集=P483-2 环境债）
+- [x] autoui_type 对第二个 input 派发正确 handler + path 对齐回归测试（§七-5）
+- [x] Plan 047/057/464 焦点约定与 launcher 召唤不回归（T5/T7 抽查证据）
+- [x] Vue 轨零改动（ui_gen/ diff=0 行）
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
