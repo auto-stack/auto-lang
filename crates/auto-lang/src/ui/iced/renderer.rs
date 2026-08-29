@@ -6462,6 +6462,38 @@ fn execute_desktop_commands(
                     }
                 }
             }
+            // Plan 478 T2：pager `+` —— 新增分区并即入（验收②）。
+            DC::WorkspaceAdd => {
+                let id = state.host.as_mut().map(|h| h.wm.add_workspace());
+                if let Some(id) = id {
+                    state.wm_set_workspace(id);
+                }
+            }
+            // Plan 478 T2：pager `×` —— 宿主策略门（T1 施工图 §3，待澄清①
+            // 定案取 toast 最少意外）：非空分区不删仅提示；末分区 no-op 提示。
+            DC::WorkspaceClose(n) => {
+                let has_wins = state
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.wins.values().any(|v| v.workspace == n))
+                    .unwrap_or(false);
+                if has_wins {
+                    push_desktop_toast(
+                        state,
+                        "error",
+                        &format!("分区 {} 含窗口，请先移动或关闭", n + 1),
+                    );
+                } else {
+                    let before = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    state.wm_remove_workspace(n);
+                    let after = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    if before.is_some() && before == after {
+                        push_desktop_toast(state, "error", "至少保留一个分区");
+                    }
+                }
+            }
+            // Plan 478 T2：send_to 动词（跨分区发送；窗口随分区隐现）。
+            DC::SendTo(wid, n) => state.wm_move_win_to_workspace(wid, n),
         }
     }
     (false, tasks)
@@ -9116,6 +9148,26 @@ fn compare_pngs(
                     // 臂尾 sync_shell_windows 即时刷新投影）。
                     WmCommand::NextWorkspace => state.wm_next_workspace(),
                     WmCommand::PrevWorkspace => state.wm_prev_workspace(),
+                    // Plan 478 T2：发送聚焦窗到相邻分区（Ctrl+Alt+Shift+←/→；
+                    // 目标 = 环切对称，与 next/prev_workspace 同肌肉记忆）。
+                    WmCommand::SendFocusedTo(step) => {
+                        use crate::ui::session::WorkspaceStep;
+                        let target = state.host.as_ref().and_then(|h| {
+                            let len = h.wm.workspaces.len();
+                            if len == 0 {
+                                return None;
+                            }
+                            let cur = h.wm.current_workspace;
+                            let t = match step {
+                                WorkspaceStep::Prev => (cur + len - 1) % len,
+                                WorkspaceStep::Next => (cur + 1) % len,
+                            };
+                            h.wm.focused.map(|w| (w, t))
+                        });
+                        if let Some((wid, t)) = target {
+                            state.wm_move_win_to_workspace(wid, t);
+                        }
+                    }
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
                     WmCommand::StartDrag { wid } => {
