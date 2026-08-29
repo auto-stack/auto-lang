@@ -30,6 +30,8 @@ pub mod codec;
 #[cfg(feature = "ui-iced")]
 pub mod broker;
 #[cfg(feature = "ui-iced")]
+pub mod client_runtime;
+#[cfg(feature = "ui-iced")]
 pub mod demo;
 #[cfg(feature = "ui-iced")]
 pub mod dual_mode;
@@ -45,6 +47,8 @@ pub mod loopback;
 pub mod message;
 #[cfg(feature = "ui-iced")]
 pub mod shm;
+#[cfg(feature = "ui-iced")]
+pub mod stage3;
 #[cfg(feature = "ui-iced")]
 pub mod transport;
 

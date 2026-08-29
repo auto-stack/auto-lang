@@ -312,4 +312,78 @@ mod tests {
         assert_eq!(app.session.count(), 1, "broker 孵化的 app 可输入");
         let _ = (FrameMsg::CacheControl { wid: 0, drop_keys: vec![] }, HandshakeMsg::Ready);
     }
+
+    /// Plan 480 S3：`DesktopSession::enable_broker` 桌面模式集成——serve
+    /// 线程受理 `request_incubation`，`attach_pending_incubations` 经
+    /// ProtocolHost ResolveAndAttach 路径落真实 462 会话（App + 虚拟窗 +
+    /// 表面），注册表 resolver 按 app 名编译装载。
+    #[test]
+    fn enable_broker_incubates_into_real_session() {
+        use crate::ui::session::{AppId, DesktopSession};
+        use std::sync::atomic::AtomicBool;
+
+        const SRC: &str = "widget Broker386 { model { var count int = 0 } view { text `c: ${.count}` } }\n";
+        let broker_pipe = format!("autodesk-broker-s3-{}", std::process::id());
+
+        // 桌面侧：真实 462 会话 + 注册表 resolver + enable_broker。
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let code = SRC.to_string();
+        session.desktop.app_resolver =
+            Some(std::sync::Arc::new(move |name: &str| {
+                if name == "broker386" {
+                    Some(crate::ui::session::LaunchSpec {
+                        code: code.clone(),
+                        source_path: None,
+                        title: Some("Broker386".into()),
+                    })
+                } else {
+                    None
+                }
+            }));
+        let stop = Arc::new(AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // app 侧（同进程模拟 child）：request_incubation 双端连通。
+        let (pipe_name, mut app_end) =
+            request_incubation(&broker_pipe, "broker386", 5000).unwrap();
+        assert!(pipe_name.contains("-app-"), "per-app 管道名 {pipe_name}");
+
+        // 端点握手材料：Hello 发出后，attach 泵宿主侧到 Active。
+        let src = SRC;
+        let component = crate::build_dynamic_component(src, None).unwrap();
+        let mut app = AppEndpoint::new(
+            CounterSource::new(component),
+            "broker386",
+            "Broker386",
+            480.0,
+            320.0,
+        );
+        app_end.send(&app.connect().unwrap()).unwrap();
+
+        // attach：等待 serve 线程转交 → 泵到 Active → 462 对象落地。
+        let mut wid = None;
+        for _ in 0..200 {
+            let landed = session.attach_pending_incubations(2000);
+            if let Some(w) = landed.first() {
+                wid = Some(*w);
+                break;
+            }
+            // app 侧消费 Welcome/BufferAlloc（attach 回发在端上）。
+            while let Some(loaded) = app_end.recv_wait(5) {
+                let _ = app.on_message(loaded.expect("解码"));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid = wid.expect("孵化落地虚拟窗");
+        assert!(session.apps.contains_key(&AppId(1)), "AppSession 已登记");
+        assert!(
+            session.host.as_ref().unwrap().wm.wins.contains_key(&wid),
+            "虚拟窗已登记"
+        );
+
+        // 停机：置位 + probe 连接唤醒阻塞中的 serve 循环。
+        stop.store(true, Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
 }

@@ -149,7 +149,10 @@ impl<'a> ProtocolHost<'a> {
                     // ③ 表面（含共享内存段）分配 + Welcome/BufferAlloc 回发。
                     let surface = self.surfaces.alloc(width, height);
                     self.wid_surface.insert(wid.0, surface);
-                    let shm_name = format!("autodesk-shm-{surface}");
+                    // 全局唯一：pid 前缀防跨进程同名段（Windows
+                    // CreateFileMappingW 同名=打开既有段，Plan 480 压测暴露）。
+                    let shm_name =
+                        format!("autodesk-shm-{}-{surface}", std::process::id());
                     let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
                         .map_err(ProtocolError::Shm)?;
                     self.shm_buffers.insert(surface, shm);
@@ -259,6 +262,38 @@ impl<'a> ProtocolHost<'a> {
             self.endpoint.app_id.map(AppId),
             self.endpoint.wid.map(Wid),
         )
+    }
+
+    /// 孵化连接泵到 Active（Plan 480 S3）：Hello → ResolveAndAttach →
+    /// Welcome/BufferAlloc 回发。宿主侧 Active 即落地完成（app 的
+    /// Ready 是 no-op 例行收尾，不等）；预算内未收敛返回 None，调用方
+    /// 弃置该连接。回发经 `end` 送回 app 侧。
+    pub fn pump_incubation(
+        &mut self,
+        end: &mut Box<dyn super::transport::Transport + Send>,
+        budget_ms: u32,
+    ) -> Option<Wid> {
+        use super::endpoint::HostState;
+        let deadline = std::time::Instant::now()
+            + std::time::Duration::from_millis(budget_ms as u64);
+        while std::time::Instant::now() < deadline {
+            if self.endpoint.state == HostState::Active {
+                return self.endpoint.wid.map(Wid);
+            }
+            match end.try_recv() {
+                Some(Ok(msg)) => {
+                    if self.handle(&msg).is_err() {
+                        return None;
+                    }
+                    for reply in std::mem::take(&mut self.to_app) {
+                        let _ = end.send(&reply);
+                    }
+                }
+                Some(Err(_)) => return None,
+                None => std::thread::sleep(std::time::Duration::from_millis(5)),
+            }
+        }
+        None
     }
 }
 

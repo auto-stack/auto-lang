@@ -8153,6 +8153,13 @@ fn compare_pngs(
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
                 // ——pinned 常驻，图标回退 "app-window"）。
                 inject_dock_pinned(&mut session);
+                // Plan 480 S3：真桌面壳孵化通道——broker 常驻受理 spawn 孵化
+                // （`auto --autodesk-incubate` 经 `request_incubation` 连入，
+                // ServiceTick 帧泵周期 attach 落 462 会话）。
+                session.enable_broker(
+                    crate::ui::desktop_protocol::broker::BROKER_PIPE,
+                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                );
                 (session, open_task.discard())
             }
             RunMode::Standalone => {
@@ -10217,6 +10224,12 @@ fn compare_pngs(
                     // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
                     // 兜底；shell/launcher 命令至多 400ms 达）。
                     DesktopEvent::ServiceTick => {
+                        // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
+                        // （有在册/排队连接才有成本，零排队两调用皆空转）。
+                        if state.pending_incubations() > 0 {
+                            state.attach_pending_incubations(5000);
+                        }
+                        state.pump_broker_clients();
                         let (exit, tasks) = drain_and_execute_desktop_commands(state);
                         if exit {
                             return iced::exit();

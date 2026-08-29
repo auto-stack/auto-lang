@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 mod cmd_a2c_stdlib;
 mod cmd_block;
+mod cmd_autodesk;
 mod cmd_ui;
 mod cmd_docs;
 mod cmd_watch;
@@ -861,6 +862,21 @@ fn real_main(cli: Cli) -> Result<()> {
             if !ai_mode {
                 init_logger();
                 println_logo();
+            }
+            // Plan 480 S2: 双模入口裁决——孵化标记在册 → 协议 client 循环
+            // （走完即返回）；无标记 = ③ 独立形态，现行行为零改动。
+            if let Some(client_result) = cmd_autodesk::run_if_client_entry(&args) {
+                client_result.map_err(|e| {
+                    if ai_mode {
+                        eprintln!("{}", format_error_json(&AutoError::Msg(e)));
+                        std::process::exit(1);
+                    }
+                    miette::miette!("{e}")
+                })?;
+                if !ai_mode {
+                    println!("------------- end --------------");
+                }
+                return Ok(());
             }
             let dir = dir.unwrap_or_else(|| ".".to_string());
             let config = load_am_config().unwrap_or_default();
