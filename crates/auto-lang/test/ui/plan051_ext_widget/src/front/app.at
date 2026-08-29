@@ -1,0 +1,27 @@
+// app.at — PLAN-051 C4 regression corpus: `use.web component` 的 VM widget
+// 形态（adapter 链 renderer.at → renderer.vm.at 中的同名 widget 注册进
+// 视图 registry）。修复前：装载器 fn-only，Markdown 无 VM 落点 →
+// view 中 Markdown 节点 fallback 空白（KD-047 ②）。
+
+use.web component Markdown from "src/front/ports/renderer.at"
+use.web.fn helperFn from "src/front/ports/renderer.at"
+
+widget App {
+    msg { Init }
+
+    model {
+        var body str = "none"
+    }
+
+    on {
+        .Init -> {
+            .body = helperFn()
+        }
+    }
+
+    view {
+        col {
+            Markdown { source: .body, streaming: false }
+        }
+    }
+}

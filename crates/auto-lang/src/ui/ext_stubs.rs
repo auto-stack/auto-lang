@@ -44,6 +44,9 @@ pub(crate) fn ext_stubs_enabled() -> bool {
 pub(crate) struct ExtImportRef {
     pub symbols: Vec<String>,
     pub path: String,
+    /// PLAN-051 C4: 携带声明 kind（ExplicitFn 校验 / Component widget 注册
+    /// 消费）。
+    pub kind: crate::ast::ExtImportKind,
 }
 
 /// Collect ext imports from an AST's top-level `use.web` statements.
@@ -55,6 +58,7 @@ pub(crate) fn collect_useweb_imports(stmts: &[Stmt]) -> Vec<ExtImportRef> {
                 out.push(ExtImportRef {
                     symbols: imp.symbols.iter().map(|s| s.to_string()).collect(),
                     path: imp.path.to_string(),
+                    kind: imp.kind,
                 });
             }
         }
@@ -70,6 +74,7 @@ pub(crate) fn collect_widget_ext_imports(decls: &[crate::ast::ui::WidgetDecl]) -
             out.push(ExtImportRef {
                 symbols: imp.symbols.iter().map(|s| s.to_string()).collect(),
                 path: imp.path.to_string(),
+                kind: imp.kind,
             });
         }
     }

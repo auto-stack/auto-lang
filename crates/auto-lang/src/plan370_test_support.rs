@@ -263,6 +263,7 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
 
     // Mirror of production Plan 442 A3: `use.web` ext imports (adapter-chain
     // loading + platform stubs) via the shared production helper.
+    let mut ext_widget_decls: Vec<crate::ast::ui::WidgetDecl> = Vec::new();
     crate::load_ext_imports_for_vm(
         &base_dir,
         &ast,
@@ -274,7 +275,17 @@ pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicCompone
         &mut import_session,
         None,
         &mut import_aliases,
-    );
+        &mut ext_widget_decls,
+    )
+    .expect("ext imports");
+    // PLAN-051 C4: adapter widget 注册（与生产 build_dynamic_component_inner
+    // 同款——use.web component 的 VM widget 形态进视图 registry）。
+    for wd in &ext_widget_decls {
+        if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
+            all_child_decls.push(wd.clone());
+            registry.register(w);
+        }
+    }
 
     let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
         &root_decl,

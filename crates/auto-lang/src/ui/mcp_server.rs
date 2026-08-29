@@ -1756,6 +1756,44 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
 
 // ── Tool: autoui_keyboard (Plan 299 Phase 3) ──
 
+/// PLAN-051 T2 (C1): Enter 的焦点 input 声明查找（纯视图层，便于单测）。
+/// onenter（on_submit，017-chat 形态）优先；textarea 的
+/// onkeydown.enter.*（构建期规整为 "enter"，musk 形态）次之。
+/// 返回 (handler 消息, 当前值) 供 tool_keyboard 合成 Submit 派发。
+fn enter_handler_in_view(view: &View<DynamicMessage>) -> Option<(DynamicMessage, String)> {
+    match view {
+        View::Input { on_submit, value, .. } => {
+            on_submit.clone().map(|m| (m, value.clone()))
+        }
+        View::Textarea { on_submit, keydown, value, .. } => {
+            if let Some(m) = on_submit {
+                return Some((m.clone(), value.clone()));
+            }
+            keydown.get("enter").cloned().map(|m| (m, value.clone()))
+        }
+        _ => None,
+    }
+}
+
+/// PLAN-051 T2 (C1): MCP 键盘 Enter 不再落根 widget 的 `key_<key>` 回退
+/// （017-chat 实测 `App.key_enter failed` 即此路）——按 tool_type 同款
+/// 解析（styled_vtree 首个 Input/Textarea 作焦点代理）查声明并派发。
+fn enter_dispatch_for_input(shared: &SharedState) -> Option<ActionMessage> {
+    let vid = find_first_input_vnode(shared)?;
+    let snap = shared.styled_vtree.as_ref()?;
+    let vnode = snap.vtree.get(vid)?;
+    let view = shared.view.as_ref()?;
+    let target = find_view_by_path(view, &vnode.path)?;
+    let (msg, value) = enter_handler_in_view(target)?;
+    let (w, e) = extract_dyn_msg(&msg)?;
+    let widget = if w.is_empty() { shared.widget_name.clone() } else { w };
+    Some(ActionMessage {
+        target: ActionTarget::Event { widget, event: e },
+        action: UiActionType::Submit,
+        value: Some(value),
+    })
+}
+
 fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
     let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
@@ -1780,11 +1818,10 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
             value: None,
         }
     } else {
-        // EDGE-01: Build the key_str the same way keyboard_subscription does
-        // (renderer.rs:2621-2653) and look up the handler in key_bindings
-        // (which now includes element-attribute onkeydown.* bindings collected
-        // by collect_onkeydown_bindings_with_registry). If found, dispatch the
-        // handler directly; otherwise fall back to the legacy key_<lower>.
+        // PLAN-051 C1: Enter 先查焦点 input 的声明（onenter /
+        // onkeydown.enter.*）——命中即派发该 handler，不再落根 widget
+        // 的 key_enter（017-chat onenter 断链与 musk enter.exact.prevent
+        // 断链的 MCP 通道侧修复；.prevent 语义=声明优先于全局绑定）。
         let has_ctrl = _modifiers.iter().any(|m| m.eq_ignore_ascii_case("ctrl"));
         let has_alt = _modifiers.iter().any(|m| m.eq_ignore_ascii_case("alt"));
         let key_str = if has_ctrl || has_alt {
@@ -1797,6 +1834,14 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         } else {
             key.to_string()
         };
+        if key_str == "Enter" {
+            if let Some(enter_msg) = enter_dispatch_for_input(&shared) {
+                return match shared.send_action(enter_msg) {
+                    Ok(()) => text_result("Key sent: Enter (routed to focused input declaration)".to_string()),
+                    Err(e) => error_result(format!("Failed to send key event: {}", e)),
+                };
+            }
+        }
         // Look up in key_bindings (ArrowUp / Ctrl+r / Tab / etc).
         if let Some(handler_entry) = shared.key_bindings.get(&key_str) {
             // handler_entry is "WidgetName.HandlerName" (EDGE-01 format) or
@@ -3027,6 +3072,75 @@ mod tests_314 {
         let shared: SharedStateHandle = Arc::new(Mutex::new(SharedState::new("Demo".into())));
         let res = dispatch_tool_static(&shared, "autoui_vtree", json!({}));
         assert!(res["isError"].as_bool().unwrap_or(false), "should error: {res}");
+    }
+
+    /// PLAN-051 T2 (C1): Enter 键的焦点 input 声明查找契约——
+    /// 017-chat 形态（input onenter→on_submit）与 musk 形态
+    /// （textarea 无 onenter、keydown 表带规整后 "enter"）都必须命中；
+    /// 无声明返回 None（回落既有 key_bindings / key_ 链）。
+    #[test]
+    fn plan051_enter_handler_in_view_prefers_declaration() {
+        // 017-chat 形态: input onenter → on_submit
+        let input = View::Input {
+            placeholder: "Type a message...".into(),
+            value: "hello".into(),
+            on_change: None,
+            on_submit: Some(DynamicMessage::Typed {
+                widget_name: "Composer".into(),
+                event_name: "DoSend".into(),
+                args: vec![],
+            }),
+            width: None,
+            password: false,
+            style: None,
+        };
+        let (msg, val) = enter_handler_in_view(&input).expect("onenter input 必须命中");
+        assert_eq!(val, "hello");
+        match msg {
+            DynamicMessage::Typed { event_name, .. } => assert_eq!(event_name, "DoSend"),
+            _ => panic!("Expected Typed message"),
+        }
+
+        // musk 形态: textarea 无 onenter，keydown 表带 "enter"
+        let mut keydown = std::collections::HashMap::new();
+        keydown.insert(
+            "enter".to_string(),
+            DynamicMessage::Typed {
+                widget_name: "MentionInput".into(),
+                event_name: "send".into(),
+                args: vec![auto_val::Value::str("draft text")],
+            },
+        );
+        let ta = View::Textarea {
+            placeholder: String::new(),
+            value: "draft text".into(),
+            on_change: None,
+            on_submit: None,
+            height: None,
+            style: None,
+            highlight: vec![],
+            ghost: String::new(),
+            keydown,
+            keymap: "emacs".into(),
+        };
+        let (msg, val) = enter_handler_in_view(&ta).expect("keydown enter 必须命中");
+        assert_eq!(val, "draft text");
+        match msg {
+            DynamicMessage::Typed { event_name, .. } => assert_eq!(event_name, "send"),
+            _ => panic!("Expected Typed message"),
+        }
+
+        // 无声明: None
+        let bare = View::Input {
+            placeholder: String::new(),
+            value: String::new(),
+            on_change: None,
+            on_submit: None,
+            width: None,
+            password: false,
+            style: None,
+        };
+        assert!(enter_handler_in_view(&bare).is_none(), "无声明必须回落既有链");
     }
 }
 

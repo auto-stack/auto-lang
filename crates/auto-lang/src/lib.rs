@@ -2590,7 +2590,11 @@ pub(crate) fn load_ext_imports_for_vm(
     import_session: &mut crate::compile::CompileSession,
     override_scenario: Option<&crate::session::CompilerSession>,
     import_aliases: &mut std::collections::HashMap<String, String>,
-) {
+    // PLAN-051 C4: adapter 链解析到的 .at 目标内、与导入符号同名的 widget
+    // 声明（ports renderer.vm.at 的 Markdown 纯文本降级等）——调用方注册进
+    // 视图 registry + child_decls，激活 use.web component 的 VM widget 形态。
+    ext_widget_decls: &mut Vec<crate::ast::ui::WidgetDecl>,
+) -> Result<(), String> {
     let mut ext_imports = crate::ui::ext_stubs::collect_useweb_imports(&ast.stmts);
     ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
         std::slice::from_ref(root_decl),
@@ -2610,7 +2614,7 @@ pub(crate) fn load_ext_imports_for_vm(
         }
     }
     if ext_imports.is_empty() {
-        return;
+        return Ok(());
     }
     let (loaded_adapters, nested) = crate::ui::ext_stubs::load_at_ext_imports(
         base_dir,
@@ -2644,8 +2648,45 @@ pub(crate) fn load_ext_imports_for_vm(
     }
     ext_imports.extend(nested);
 
+    // PLAN-051 C4 widget 臂：逐 adapter 解析 widget 声明（同名符号命中）+
+    // ExplicitFn 导出校验（typo 编译期报错，替代静默落 stub——裸形式不校验，
+    // 沿"可能是函数/对象/常量"的含糊语义）。
+    let mut adapter_fn_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (adapter, symbols) in &loaded_adapters {
+        let Ok(code) = std::fs::read_to_string(adapter) else { continue };
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let Ok(adapter_ast) = parser.parse() else { continue };
+        for stmt in &adapter_ast.stmts {
+            match stmt {
+                crate::ast::Stmt::WidgetDecl(wd) => {
+                    if symbols.iter().any(|s| s == wd.name.as_str()) {
+                        ext_widget_decls.push(wd.clone());
+                    }
+                }
+                crate::ast::Stmt::Fn(f) => {
+                    // 记录裸名供校验（collect_module_imports 重命名前形态）。
+                    adapter_fn_names.insert(f.name.to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+    for imp in &ext_imports {
+        if imp.kind == crate::ast::ExtImportKind::ExplicitFn && imp.path.ends_with(".at") {
+            for sym in &imp.symbols {
+                if !adapter_fn_names.contains(sym) {
+                    return Err(format!(
+                        "use.web.fn '{}': .at 目标 {} 未导出名为 '{}' 的顶层 fn（显式 fn 声明校验，PLAN-051 C4）",
+                        sym, imp.path, sym
+                    ));
+                }
+            }
+        }
+    }
+
     if !crate::ui::ext_stubs::ext_stubs_enabled() {
-        return;
+        return Ok(());
     }
     // Symbols already defined (adapter fns, root/imported fns — qualified or
     // plain) must not be stubbed.
@@ -2667,7 +2708,7 @@ pub(crate) fn load_ext_imports_for_vm(
         }
     }
     if targets.is_empty() {
-        return;
+        return Ok(());
     }
     let mut arities = std::collections::HashMap::new();
     crate::ui::ext_stubs::scan_call_arities(&ast.stmts, &targets, &mut arities);
@@ -2684,6 +2725,7 @@ pub(crate) fn load_ext_imports_for_vm(
         );
         import_stmts.push(crate::ui::ext_stubs::synthesize_stub_fn(name, arity));
     }
+    Ok(())
 }
 
 /// PascalCase → snake_case (compact local variant of ui_gen::api's helper;
@@ -3674,6 +3716,7 @@ fn build_dynamic_component_inner(
         let base_dir = std::path::Path::new(file_path)
             .parent()
             .unwrap_or(std::path::Path::new("."));
+        let mut ext_widget_decls: Vec<crate::ast::ui::WidgetDecl> = Vec::new();
         load_ext_imports_for_vm(
             base_dir,
             &ast,
@@ -3685,7 +3728,18 @@ fn build_dynamic_component_inner(
             &mut import_session,
             override_scenario,
             &mut import_aliases,
-        );
+            &mut ext_widget_decls,
+        )
+        .map_err(|e| format!("ext imports (use.web) failed: {}", e))?;
+        // PLAN-051 C4: adapter widget 注册——use.web component 的 VM widget
+        // 形态（renderer.vm.at Markdown 纯文本降级）进视图 registry +
+        // child_decls（handlers 一并编译进单 VM 模块）。
+        for wd in &ext_widget_decls {
+            if let Ok(w) = crate::aura::extract_widget_from_decl(wd) {
+                all_child_decls.push(wd.clone());
+                registry.register(w);
+            }
+        }
     }
 
     // Plan 340: AUTO_VM_MERGE=0 (i.e. --no-merge) enables API-over-HTTP:
@@ -5975,6 +6029,7 @@ mod plan442_store_facade_tests;
 // Plan 442 A3: `use.web` ext link regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_ext_link_tests;
+mod plan051_ext_widget_tests;
 
 // Plan 442 A5: one-shot scheduler primitives regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]

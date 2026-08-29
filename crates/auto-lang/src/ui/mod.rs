@@ -31,6 +31,9 @@ pub mod style;
 pub mod debug;
 pub mod vm_bridge;
 pub mod handler_codegen;
+// PLAN-051 C2：子→父 msg 参数回调通用路由表（handler_codegen 无 feature 门，
+// 故本模块同样不门控）。
+pub mod child_emit;
 #[cfg(feature = "ui-iced")]
 pub mod session;
 
