@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-473
-status: execution_done        # drafting → executing → execution_done → reviewed → archived
+status: reviewed              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-window-dock
 author: [zhaopuming]
 created_at: 2026-08-29
 updated_at: 2026-08-29
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——WM 注册表与命令面扩展：WmState 增 native_slots/native_slot_local_rects/pending_native_geometry 三域 + add/advance/remove_native_slot + drain_native_geometry；DesktopBus 词表增 dock_native（pid=/hwnd= 双定位）/undock_native 两动词（encode+parse 双轨，NativeTarget 参数段）；DesktopCommand::DockNative/UndockNative + WmCommand::NativeSlotMin/NativeSlotClose + DesktopEvent::NativeSlotHwnd 三通道"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——布局引擎与宿主装配：apply_layout 槽位伪 Wid（u63 段）参与 grid/master-stack 同轮排布 + min-size best-effort 扩张（C3）+ free 恒等；renderer 增 sync_native_geometry 排水（CoordMapper 桌面窗原点×GetDpiForWindow 缩放 + 标题条/边框客户区内缩 + sink_desktop_below z 序重申）、native_dock_event_subscription（Recipe 惯例 16ms 短轮询泵）、槽位框 chrome 层（标题条+min/close 按钮）、C2 独占全屏拒绝臂、C4 拖走/B7 回收事件臂、ExitDesktop B8 批量恢复"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增子系统——native_dock 模块（crates/auto-lang/src/ui/native_dock/{mod,win32,win32_noop}.rs）：NativeSlot 模型（Candidate→Docking→Docked→Undocking→Restored/Rejected 状态机 + clamp_to_slot/detect_user_drag/observe_min_size_estimate/CoordMapper 纯逻辑）+ Win32 适配层（EnumWindows+PID 发现/几何写读回 DWM ext-frame/样式剥离还原/corner 偏好/sink_desktop_below z 序/ShowWindow/WM_CLOSE/WinEventHook 五事件/mutex 分立防回调死锁/.get_bounds_window 窗口矩形域/set_process_dpi_aware_per_monitor_v2）；feature 阶梯 native-dock（windows dep optional+target 双门控）/test-native-dock（=ui-iced+native-dock）；非 Windows 同名 no-op"
+  - "docs/specs/auto-lang/ui/overview.md: 新增测试基建——tools/native-fixture 可编程原生窗口夹具（独立 Cargo 项目，JSON-lines 协议 start/bounds/close + --title/--min-size/--stubborn/--spawn-modal/--self-close 参数；Phase 3 拖源占位）+ crates/auto-lang/tests/native_dock_e2e.rs 真第三方进程 E2E（B1/B2/B3/C3/C4/C5/B7 六测试）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——native dock（假洞 Phase 1）落地：外部 OS 原生窗口作为 NativeSlot 收编进 vm 桌面 WM 布局（与 AutoUI 虚拟窗混排/几何跟随/dock-undock 生命周期/焦点原生）；真洞/剪贴板/OLE 拖放留 Phase 2-4"
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 10
@@ -315,7 +320,47 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审人**：zcode（/auto-plan:review）· **时间**：2026-08-29 17:49 +08:00 ·
+**基线**：worktree plan-473-dev @ 0be5e6f9c（T1–T8 共 8 提交 + master 合并 92311a637 + C2 补丁）
+
+### 全量门（用户点名补跑）
+
+- master 合入分支（58 提交分叉，session/renderer 两文件冲突取并集解净），`cargo tf`
+  **3255/3255 绿** ×2（合并态一轮 + C2 补丁后一轮，含 1M churn 档）——合并未引入回归。
+- 用户实机证据：合并态新开 VM 窗口 **converter 双温度联动正常**（master 侧 plan-050
+  输入框 Id 派生修复在合并态生效；兼作 T9 顺延清单中「真实 app 交互确认」一条 PASS）。
+
+### 验收标准逐条复核（verify, don't trust）
+
+| # | 验收项 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 矩阵 ✓ 项（B1–B9、C1–C5、D1）：T1/T2/T3 自动化全绿 + T4 手动留痕 | **pass（按 2026-08-29 用户裁定路径）** | T1 14/14；T2 geometry 11/11（+covers_rect）；T3 events 4/4；T5 布局混排（B4）单测；E2E 6/6（B1 pid 发现+几何落槽/B2 pre-dock 恢复/B3 relayout 跟随/C3 min-size/C4 stubborn 拖走/C5 最大化先 restore/B7 DESTROY+进程退出）；C1/C2 状态机与检测路径单测+执行臂；B8 restore_all_native_slots 实现+恢复原语 E2E。真人项（B5 实机模态/B6 IME/B9 多屏矩阵/D1 Chrome/B1 手势）经用户裁定 E2E 代验+顺延（待澄清⑦） |
+| 2 | `cargo check` 零警告；非 Windows 目标 check 通过 | **partial（已记录）** | 零新增警告（分支 ui-iced 档 183 vs master 同口径 197，本期文件零警告命中）；非 Windows check 本机受 openssl-sys 交叉限制不可执行（reqwest native-tls 既有依赖，非本期引入）——noop 路径 API 面逐一对照，留 CI 核验（债 P473-1） |
+| 3 | `cargo t native_dock` / `--features test-native-dock native_dock` / `cargo t ui` 不回归 | **pass** | ui-iced 档 native_dock 15/15；test-native-dock 全量 30/30（+covers_rect）；session 62/62（含 478/479 合并侧）；ui 1374/1374 |
+| 4 | 桌面退出无残留：docked 窗口恢复 pre-dock bounds 与样式 | **pass（原语级）** | ExitDesktop 臂 restore_all_native_slots（bounds+style+corner 三还原）；恢复原语 E2E B2 断言绿；整链实机随真人清单顺延 |
+| 5 | 夹具 README 含驱动协议与参数表 | **pass** | tools/native-fixture/README.md：参数表 5 项+协议 3 事件+驱动示例+Phase 3 占位 |
+
+### 遗漏/延后/workaround 扫描
+
+- **遗漏（发现并当场清偿）**：C2 独占全屏拒绝——`ExclusiveFullscreen` 只有枚举与文案、
+  无任何产出路径（计划矩阵误勾）。复审中补齐 `covers_rect` 判据 + execute_dock_native
+  检测臂 + T2 单测（提交 0be5e6f9c），补后 tf 重跑全绿。
+- **延后（已授权）**：真人冒烟清单顺延——用户 2026-08-29 明确裁定（待澄清⑦）；
+  A 类/D2–D5 非目标 = 立项边界；图标缓存/手势 = 计划文本既定增强候选。
+- **workaround**：T4 的 scale=1 坐标近似与级联占位均已在 T5/T6 偿还（DPI 排水 +
+  布局参与），无残留；TODO 仅 fixture Phase 3 占位注释（计划 §详细设计 5 明文要求）。
+
+### 债务候选（已登记 KNOWN-DEBT-AND-RISKS）
+
+- P473-1：非 Windows `cargo check` 未本机验证（openssl-sys 交叉限制）→ CI 核验。
+- P473-2：真人冒烟顺延清单（B1 手势/B5 实机/B6 IME/B9 多屏/D1 Chrome/B8 整链/C1 提权）
+  → 随 Phase 1.5（shell dock 触发面/手势）执行。
+- P473-3：B9 仅单屏 200% 缩放覆盖（E2E DPI 双声明），多显示器缩放组合未自动化。
+
+### 结论
+
+五条验收 4 pass + 1 partial（partial 项为环境限制非代码缺陷，已立债跟踪）；全量门绿；
+无未授权偏差 → **status: reviewed**，可入 /auto-plan:merge。
 
 ## 待澄清事项
 
