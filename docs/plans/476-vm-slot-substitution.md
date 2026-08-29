@@ -1,18 +1,19 @@
 ---
 plan_id: PLAN-476
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-slot-substitution
 author: [zcode]
 created_at: 2026-08-29
 updated_at: 2026-08-29
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: []  # 无取代——补缺性新机制（审查裁定）
+new_spec_components:
+  - ui/aura_view_builder:slot-substitution（SlotFills 父作用域捕获 + outlet 渲染臂 + 五容器×双胎兄弟拼接）
+touched_goals: [GOAL-007]      # AutoUI 跨端视觉一致（vue/vm slot parity 缺口闭合）
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -276,40 +277,101 @@ struct SlotFills<'a> {
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T1** `crates/auto-lang/src/aura/types.rs`：`slot_element_name`（:250）
+- [x] **T1** `crates/auto-lang/src/aura/types.rs`：`slot_element_name`（:250）
   改 `pub(crate)`；`crates/auto-lang/src/ui/aura_view_builder.rs`：新增
   `SlotFills<'a>` 结构 + `AuraViewBuilder.slot_fills` 字段（含全部构造点补
   `None`）+ `extract_slot_fills` helper + `is_slot_outlet` 判定 helper。
   验证：`cargo check -p auto-lang`。
-- [ ] **T2** `aura_view_builder.rs`：`render_child_widget`(:2798)/
+- [x] **T2** `aura_view_builder.rs`：`render_child_widget`(:2798)/
   `render_child_widget_tracked`(:2840) 增 `slot_fills` 参数并设入子 builder；
   四个 registry 命中点（:548/:789/:1024/:2463）提取 fills 并传入；
   `render_outlet` 调用点传 `None`。
   验证：`cargo check -p auto-lang`。
-- [ ] **T3** `aura_view_builder.rs`：`convert_element`(:1726) 与
+- [x] **T3** `aura_view_builder.rs`：`convert_element`(:1726) 与
   `convert_element_tracked_ctx`(:819) 增 `"slot" | "Slot"` 臂 →
   `render_slot_outlet`（u+t 双胎：匹配 fill 单子直通/多子 Column 兜底/父作用域
   转换；无 fill 渲染 outlet fallback children/Empty）。
   验证：`cargo t slot`（新增单测 1/4/5 随本步落）。
-- [ ] **T4** `aura_view_builder.rs`：`convert_children_spliced`（u+t）helper +
+- [x] **T4** `aura_view_builder.rs`：`convert_children_spliced`（u+t）helper +
   十个容器转换器接线（untracked :2881/:2972/:3017/:3173/:3245；tracked
   :1042/:1115/:1170/:1322/:1431）。
   验证：`cargo t slot`（单测 6/7 随本步落）。
-- [ ] **T5** 单测补齐：测试设计 7 项全部落在 tests 模块（含父作用域胜出
+- [x] **T5** 单测补齐：测试设计 7 项全部落在 tests 模块（含父作用域胜出
   2、事件路由 3）。
   验证：`cargo t aura_view_builder`（或 `cargo t iced` 快速档）全绿。
-- [ ] **T6** 实机验证：`examples/capability-tests/033-slots` 下 `auto run -r vm`
+- [x] **T6** 实机验证：`examples/capability-tests/033-slots` 下 `auto run -r vm`
   + autoui-verifier `test_vm_mcp.py`：快照含 fill 内容、点击计数递增；
   `auto run` vue 轨对照正常。
   验证：VM 快照/交互证据记录于本节。
-- [ ] **T7** 终局门禁 + 复审：`cargo tf` 全量绿；`/auto-plan:review` 四步
+- [x] **T7** 终局门禁 + 复审：`cargo tf` 全量绿；`/auto-plan:review` 四步
   （清单审计/遗漏扫描/健康检查/spec-impact 元数据）；范围外项登记
   `docs/plans/KNOWN-DEBT-AND-RISKS.md`。
   验证：`cargo tf` 输出 + review 记录。
 
+
+### 执行证据（worktree plan-476-dev）
+
+- [x] T1 [✅ 已完成] `cargo check` 过（注：ui 模块在 `ui` feature 门后，check 需
+  `--features ui-iced` 才真正编译本文件——见 T5 勘误）；`SlotFills`/`slot_fills`
+  字段/`extract_slot_fills`/`slot_outlet_parts`/`slot_element_name` pub(crate) 落位。
+- [x] T2 [✅ 已完成] 四个 registry 命中点 + `render_outlet`(None) 接线；
+  `slot_fills_for` 统一组装。
+- [x] T3 [✅ 已完成] `convert_element`/`convert_element_tracked_ctx` 增
+  `"slot"|"Slot"` 臂 → `render_slot_outlet`(_tracked_ctx)（fill 单子直通/多子
+  Column 兜底/未命中 fallback children 子作用域求值）。
+- [x] T4 [✅ 已完成] `expand_children_spliced`(u) / `expand_one_child_spliced`(t)
+  / `expand_children_spliced_resulting`(t-幸存槽位) / `expand_children_spliced_source`(t-源索引)
+  + `expand_one_child_untracked`；十容器接线（col/row/container/scroll/grid u+t）。
+- [x] T5 [✅ 已完成] 7 单测全绿（`cargo test -p auto-lang --lib --features ui-iced
+  test_slot`：12 passed 含 7 新增）；模块回归 49/49 全绿。
+  **勘误**：AGENTS.md 的 `cargo check -p auto-lang`/`cargo t` 默认特性不含 `ui`
+  feature——ui 模块测试不在日常档，须 `--features ui-iced` 触发（Plan 476 发现，
+  复审时在 KNOWN-DEBT 登记测试盲区）。
+
+- [x] T6 [✅ 已完成] 实机验证（关键勘误：VM registry 只注册 `use` 导入 widget——
+  033 原示例无 use 导入，Panel 落 tag fallback（children 直出）造成"填充可见"假阳性；
+  补 `use panel: Panel` 后走真组件路径）：
+  - **worktree exe**（plan-476-dev）VM 快照：`row { text "Settings"; text "3 pending" }`
+    + 默认槽 col{Notifications, button}——填充渲染在 outlet 位置、Panel 自身视图在；
+    点击填充按钮 → `handler: .App.Clicked`、`clicks: 0 -> 1`、快照刷新 "clicked 1 times"
+    （事件路由父 handler + 父 state 逐帧重求值，需求 §3.2/3.3/3.4 实机闭环）。
+  - **master exe 对照**（同改后示例）：`row { text "Settings" }` 两 outlet 全空——
+    musk KD-048 症状精确复现，修复前后对照成立。
+  - **vue 轨**：`auto gen` 产物正确（`import Panel` + `<template #header>` +
+    `<slot name="header"/>`/`<slot/>` 双 outlet），use 导入形态零回归。
+- [x] T7 [✅ 已完成] `cargo tf` **3237/3237 全绿**（95 skipped 特性门控）；另跑
+  `--features ui-iced` 档 **3876/3876 全绿**（含 ui 模块全量，超出验收 3 字面档）。
+  KNOWN-DEBT 登记 4 条（范围外项/probe 共享路径/registry use 门/测试盲区）。
+
 ## 复审记录
 
-（/auto-plan:review 填写）
+**独立复审（/auto-plan:review 范式，2026-08-29，ZCode）——结论：PASS，status → reviewed**
+
+1. **清单审计（4/4 PASS）**：
+   - 验收 1（033 VM 实机）：PASS——快照结构对齐 panel.at 声明（row>[title, 具名填充]、
+     col>[默认填充]），交互/计数证据在 T6。
+   - 验收 2（7 单测）：PASS——`--features ui-iced test_slot` 12 passed（7 新增），
+     模块 49/49。
+   - 验收 3（全量门禁）：PASS——cargo tf 3237/3237 + ui-iced 档 3876/3876。
+   - 验收 4（vue 零回归）：PASS——codegen 产物正确，cargo tf 无新失败。
+   - 验收 5（musk 零源改动受益）：机制等价证据链闭合（master 对照复现症状）；
+     musk 侧实机验收归 musk 仓后续批次（plan 原文如此约定）。
+   - 验收 6（debt 登记）：PASS——KNOWN-DEBT 4 条（476 前缀）。
+2. **遗漏/延后/workaround 扫描**：D3 四命中点/D5 十容器/D4 双臂逐一对码确认；
+   延后项（for 内 outlet、probe 共享路径）均已登记；无未经批准的 deferral；
+   033 的 use 导入为语义修正（附因注释），非 workaround。
+3. **健康检查**：新增代码零警告（cargo check --features ui-iced 下本文件仅
+   3 处存量警告：5609/5753/6179，均在非本次改动段）；无 debug print 残留；
+   rustfmt——该文件 master 基线即全局非 fmt-clean（~400 处存量差异），本次新增
+   段落遵循周边风格，不重排污染 diff（裁定记录在案）。
+4. **spec-impact 元数据**：supersedes 无（补缺性机制，无组件被取代）；
+   new = ui/aura_view_builder:slot-substitution；touched = GOAL-007。
+5. **过程勘误（记录供后续计划借鉴）**：
+   - `cargo check -p auto-lang`/`cargo t`/`cargo tf` 默认特性**不含 ui feature**——
+     ui/ 模块不在日常档编译（已登记 KNOWN-DEBT）；ui 改动的 check/test 须显式
+     `--features ui-iced`。
+   - 本仓存在并发会话（477/478 同期施工+文档同步进程），取号后需复查 .next-id
+     实际提交值（本次骨架被同步进程扫走、.next-id 终值 479，无撞号）。
 
 ## 待澄清事项
 

@@ -25,6 +25,11 @@ widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery com
 VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
 派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
 
+**slot 替换（plan-476 落地）**：VM 轨 widget 插座/填充与 vue 轨语义对齐——调用位
+`slot(name:X){..}`/裸子节点渲染到子 widget outlet，父作用域求值+父事件路由+逐帧重求值；
+机制为构建期 `SlotFills` 父 builder 捕获 + 五容器×双胎兄弟拼接，
+详见 [design/slot-substitution.md](design/slot-substitution.md)。
+
 **桌面线（452→459→462→463→465 落地，464 未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget

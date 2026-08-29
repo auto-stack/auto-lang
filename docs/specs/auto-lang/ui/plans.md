@@ -102,3 +102,4 @@
 | 465 | vue-virtual-desktop | ✅ | archive/ | vue 页=虚拟桌面，每窗 createApp 隔离（ADR-16 设计） |
 | 472 | shell-track-m1-projection-dock | ✅（reviewed→archived） | archive/ | AutoShell 地基：投影协议 v1（schema/projection-protocol-v1.md）+ DesktopBus v1 对账定案（候选 B + 8 动词词表）+ workspace 分区驱动 + dock 升级（图标/pinned/配置链） |
 | 386 | autoui-renderqueue | ⏸ 暂缓（复活条件 2/3 就绪） | plans/ | 路线 B 分离渲染（100MB→1-5MB/app），蓝图 Design 25 §7 |
+| 476 | vm-slot-substitution | ✅（reviewed→archived） | archive/ | VM 轨 slot 替换：SlotFills 父作用域捕获 + outlet 臂 + 五容器×双胎兄弟拼接；清偿 musk KD-048 UPSTREAM① |
