@@ -6508,7 +6508,8 @@ fn execute_dock_native(
     if ndw::is_maximized(hwnd) {
         let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
     }
-    let Some(pre_bounds) = ndw::get_bounds(hwnd) else {
+    // pre-dock 捕获走窗口矩形域（与恢复 set_bounds 同域，忠实还原）。
+    let Some(pre_bounds) = ndw::get_bounds_window(hwnd) else {
         push_desktop_toast(state, "error", RejectReason::HwndNotFound.message());
         return;
     };

@@ -64,6 +64,7 @@ pub fn sink_desktop_below(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<(),
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowMode {
     Restore,
+    Maximize,
     Minimize,
     Hide,
 }

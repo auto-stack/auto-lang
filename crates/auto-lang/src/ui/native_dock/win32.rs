@@ -23,14 +23,16 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::HiDpi::{
+    GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
     GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
     IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG, PostMessageW, PostThreadMessageW,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, GWL_STYLE, SW_HIDE,
-    SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE,
+    SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
     WS_CAPTION, WS_THICKFRAME,
 };
@@ -223,6 +225,19 @@ pub fn get_bounds(target: NativeHwnd) -> Option<Rect> {
     None
 }
 
+/// 读回原始窗口矩形（`GetWindowRect` 域；含不可见边框）。pre-dock
+/// bounds 捕获必须用本函数——恢复走 `set_bounds`（同为窗口矩形域），
+/// 用 DWM 可视边界捕获会对带边框窗口产生 ~10px 级恢复偏差（T8 实测）。
+pub fn get_bounds_window(target: NativeHwnd) -> Option<Rect> {
+    if !alive(target) {
+        return None;
+    }
+    let mut r = RECT::default();
+    unsafe { GetWindowRect(hwnd_of(target), &mut r) }
+        .ok()
+        .map(|_| rect_of_win(r))
+}
+
 /// 写读回探测：请求设为 `requested` 并读回实际矩形（不可信窗口的
 /// min-size 探测手段；配合 [`crate::ui::native_dock::observe_min_size_estimate`]
 /// 缓存估计值）。
@@ -298,6 +313,13 @@ pub fn set_corner_preference(target: NativeHwnd, pref: DWM_WINDOW_CORNER_PREFERE
     .is_ok()
 }
 
+/// 声明本进程 per-monitor v2 DPI 感知（测试/嵌入宿主用；生产 iced/winit
+/// 进程自带声明，重复声明无害返回 false）。声明后 SetWindowPos /
+/// GetWindowRect / DWM 读回统一物理像素坐标域（虚拟化关闭）。
+pub fn set_process_dpi_aware_per_monitor_v2() -> bool {
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) }.is_ok()
+}
+
 /// 读回目标窗口的 DPI 缩放比（`GetDpiForWindow / 96`；失败按 1.0）。
 /// 宿主层局部逻辑坐标 → 屏幕物理坐标换算的缩放源（与 winit 一致）。
 pub fn dpi_scale_of(target: NativeHwnd) -> f64 {
@@ -371,6 +393,7 @@ pub fn sink_desktop_below(desktop: NativeHwnd, slot: NativeHwnd) -> Result<(), D
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowMode {
     Restore,
+    Maximize,
     Minimize,
     Hide,
 }
@@ -381,6 +404,7 @@ pub fn show_window(target: NativeHwnd, mode: ShowMode) -> Result<(), DockError> 
     }
     let cmd = match mode {
         ShowMode::Restore => SW_RESTORE,
+        ShowMode::Maximize => SW_MAXIMIZE,
         ShowMode::Minimize => SW_MINIMIZE,
         ShowMode::Hide => SW_HIDE,
     };

@@ -79,8 +79,10 @@ mod win {
     }
 
     fn emit(line: &str) {
-        println!("{line}");
-        let _ = std::io::stdout().flush();
+        // 忽略写失败（宿主 kill 后管道断开；panic 会污染测试输出）。
+        let mut out = std::io::stdout();
+        let _ = writeln!(out, "{line}");
+        let _ = out.flush();
     }
 
     fn class_name() -> &'static [u16] {
@@ -170,6 +172,11 @@ mod win {
     pub fn run(opts: Opts) -> i32 {
         OPTS.set(opts.clone()).ok();
         unsafe {
+            // 与驱动方（测试/宿主进程）对齐 DPI 感知：per-monitor v2 下
+            // SetWindowPos 坐标域 = 物理像素，跨进程几何写读回不失真。
+            let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+                windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            );
             let Ok(hmodule) = GetModuleHandleW(None) else {
                 return 1;
             };
