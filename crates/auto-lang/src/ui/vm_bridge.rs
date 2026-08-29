@@ -929,6 +929,35 @@ impl VmBridge {
 
     /// Plan 320: read a state field from a SPECIFIC child widget's state object
     /// (by heap id), not the root widget's state.
+    /// [P011] 诊断:堆对象字段快照(临时,plan011 ③ renderer 失效排查)。
+    pub fn debug_obj_snapshot(&self, id: usize) -> String {
+        use crate::vm::generic_registry::GenericInstanceData;
+        let Some(obj) = self.vm.get_heap_object(id as u64) else {
+            return format!("id {}: not-found", id);
+        };
+        let guard = obj.read().unwrap();
+        eprintln!("[P011] snap type_tag={:?}", guard.type_tag());
+        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+            let mut parts: Vec<String> = inst.field_names.iter().enumerate()
+                .map(|(i, n)| format!("{}={}", n,
+                    inst.fields.get(i).map(|f| match f {
+                        auto_val::Value::Bool(b) => b.to_string(),
+                        auto_val::Value::Int(i2) => i2.to_string(),
+                        auto_val::Value::Str(s2) => s2.to_string(),
+                        other => format!("{:?}", std::mem::discriminant(other)),
+                    }).unwrap_or_default()))
+                .collect();
+            parts.sort();
+            parts.join(" ")
+        } else if let Some(od) = guard.as_any().downcast_ref::<crate::vm::object_data::ObjectData>() {
+            let open = od.get(&"open".into());
+            let m1 = od.get(&"m1".into());
+            format!("ObjectData open={:?} m1={:?}", open.map(|v| v.to_string()), m1.map(|v| v.to_string()))
+        } else {
+            format!("id {}: non-generic", id)
+        }
+    }
+
     pub fn read_child_state(&self, child_state_id: u64, field_name: &str) -> Result<auto_val::Value> {
         use crate::vm::generic_registry::GenericInstanceData;
         let obj = self.vm.get_heap_object(child_state_id)

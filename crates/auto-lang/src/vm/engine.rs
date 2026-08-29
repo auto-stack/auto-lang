@@ -4902,6 +4902,9 @@ impl AutoVM {
                                 auto_val::Value::VmRef(r) => Some(r.id as u64),
                                 _ => None,
                             });
+                            if format!("{:?}", key).contains("view_groups") {
+                                eprintln!("[P011W] SET ObjectData.view_groups nv_raw={:#x}", u64::from(value_nv));
+                            }
                             obj.set(key, {
                                 self.decode_tagged_nv(value_nv)
                             });
@@ -4912,6 +4915,9 @@ impl AutoVM {
                                     auto_val::Value::VmRef(r) => Some(r.id as u64),
                                     _ => None,
                                 });
+                                if field_name == "view_groups" {
+                                    eprintln!("[P011W] SET Generic.view_groups nv_raw={:#x}", u64::from(value_nv));
+                                }
                                 inst.set_field(idx, {
                                     self.decode_tagged_nv(value_nv)
                                 }).map_err(|e| VMError::RuntimeError(e))?;

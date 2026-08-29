@@ -581,6 +581,14 @@ impl DynamicComponent {
         &self,
         capture_probe: bool,
     ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
+        {
+            let ex = self.bridge.read_state("expanded").map(|v| v.to_string()).unwrap_or_default();
+            let vg = self.bridge.read_state_as_vec("view_groups").map(|v| v.iter().map(|it| match it {
+                auto_val::Value::Obj(o) => o.get_str_of("open").to_string(),
+                _ => "?".to_string(),
+            }).collect::<Vec<_>>().join(",")).unwrap_or_default();
+            eprintln!("[P011] BUILD entry expanded={} vg_open=[{}] capture={}", ex, vg, capture_probe);
+        }
         let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts).with_routes(&self.routes).with_computed(&self.computed).with_preview_states(&self.preview_states);
         builder.build_with_debug_gated(&self.view_template, capture_probe)
     }
@@ -1049,6 +1057,14 @@ impl DynamicComponent {
                 let handler_ms = t0.elapsed().as_millis();
                 let t1 = std::time::Instant::now();
                 self.dirty = true;
+                {
+                    let ex = self.bridge.read_state("expanded").map(|v| v.to_string()).unwrap_or_default();
+                    let vg = self.bridge.read_state_as_vec("view_groups").map(|v| v.iter().map(|it| match it {
+                        auto_val::Value::Obj(o) => o.get_str_of("open").to_string(),
+                        _ => "?".to_string(),
+                    }).collect::<Vec<_>>().join(",")).unwrap_or_default();
+                    eprintln!("[P011] handler-ok dirty={} expanded={} vg_open=[{}]", self.dirty, ex, vg);
+                }
                 // Plan 401/VM-routing: after a handler may have navigated
                 // (router.push → __current_route), re-resolve the route params
                 // into __route_params so page handlers can read them via
