@@ -6395,6 +6395,75 @@ fn summon_launcher(
         .map(move |m| DM::App(launcher, m))
 }
 
+/// Plan 478 T4：switcher overlay 召唤执行体（Ctrl+Tab 热键；T1 施工图 §5.2，
+/// 464 summon_launcher 同型）。懒挂载（`assets/switcher.at` 进程内嵌——无
+/// 注册表依赖，构建失败 toast）→ 下行注入 MRU 快照：`mru_wids`/`mru_titles`/
+/// `mru_icons` 平行字符串列表（B12 规避，launcher apps_* 同型）+ 合同面
+/// `__wm_mru`（协议 v1.1 Obj 数组）+ `hosted`/`visible` 置位 → 显式
+/// `call_handler("RebuildMru")`（宿主写状态不触发 handler）重建 rows + sel
+/// 复位。快照语义：召唤时点定序，打开期间推进不重注。无输入控件——无
+/// `__focus_input`/聚焦任务（键盘路由走订阅独占，R12）。
+fn summon_switcher(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.switcher_app.is_none() {
+        match crate::ui::shell::build_switcher_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.switcher_app = Some(app_id);
+            }
+            Err(err) => {
+                push_desktop_toast(state, "error", &format!("switcher 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    let switcher = state.desktop.switcher_app.expect("switcher mounted");
+    // 2. MRU 快照（当前分区；焦点环不跨分区——退役 Ctrl+Tab 语义延续）。
+    let Some(host) = state.host.as_ref() else {
+        return iced::Task::none();
+    };
+    let mut wids: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut mru_objs: Vec<auto_val::Value> = Vec::new();
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let focused = host.wm.focused == Some(wid);
+        wids.push(auto_val::Value::Str(v.wid.0.to_string().into()));
+        titles.push(auto_val::Value::Str(v.title.clone().into()));
+        let icon = v
+            .registry_id
+            .as_ref()
+            .and_then(|id| {
+                state
+                    .desktop
+                    .registry_entries
+                    .iter()
+                    .find(|e| &e.id == id)
+            })
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        icons.push(auto_val::Value::Str(icon.into()));
+        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+    }
+    if let Some(app) = state.apps.get_mut(&switcher) {
+        let _ = app.component.write_state_vec("mru_wids", wids);
+        let _ = app.component.write_state_vec("mru_titles", titles);
+        let _ = app.component.write_state_vec("mru_icons", icons);
+        let _ = app.component.write_state_vec("__wm_mru", mru_objs);
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重建 rows（sel 复位在 handler 内）+ 刷 view
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildMru", &[]) {
+            eprintln!("[session] switcher RebuildMru failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    iced::Task::none()
+}
+
 /// Plan 464 T4：shell + launcher 的 DesktopBus 联合排空与执行。
 /// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
 fn drain_and_execute_desktop_commands(
@@ -6406,6 +6475,10 @@ fn drain_and_execute_desktop_commands(
     let mut cmds = state.drain_desktop_commands();
     if let Some(la) = state.desktop.launcher_app {
         cmds.extend(state.drain_app_desktop_commands(la));
+    }
+    // Plan 478 T4：switcher 上行（focus 确认记录）同管线联合排空。
+    if let Some(sw) = state.desktop.switcher_app {
+        cmds.extend(state.drain_app_desktop_commands(sw));
     }
     if cmds.is_empty() {
         return (false, Vec::new());
@@ -9124,10 +9197,21 @@ fn compare_pngs(
                     DesktopEvent::SummonLauncher => {
                         return summon_launcher(state);
                     }
-                    // Plan 478 T3：Ctrl+Tab 改道——召唤/推进 switcher。
-                    // 执行体（summon_switcher / .Advance 直投）T4 接线；
-                    // 本臂先静默保编译绿。
-                    DesktopEvent::SummonSwitcher => {}
+                    // Plan 478 T4：Ctrl+Tab 改道——switcher 可见 → .Advance
+                    // 直投（选中环走，仅 sel 变更不触发 drain）；否则召唤。
+                    DesktopEvent::SummonSwitcher => {
+                        if state.switcher_visible() {
+                            if let Some(sw) = state.desktop.switcher_app {
+                                let msg = IcedMessage {
+                                    widget: String::new(),
+                                    event: "Advance".to_string(),
+                                    input_value: None,
+                                };
+                                return update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                            }
+                        }
+                        return summon_switcher(state);
+                    }
                 }
                 iced::Task::none()
             }
@@ -9160,7 +9244,11 @@ fn compare_pngs(
                     // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层退出
                     // （P3：清词→退网格→关闭；app 内 bind 路径处理），不退桌面。
                     WmCommand::ExitDesktop => {
-                        if state.launcher_visible() {
+                        // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层
+                        // 退出（P3：清词→退网格→关闭）。Plan 478 T4：switcher
+                        // 可见时 Esc 归 switcher 自隐（app 内 bind 路径处理），
+                        // 不退桌面。
+                        if state.launcher_visible() || state.switcher_visible() {
                             return iced::Task::none();
                         }
                         return iced::exit();
@@ -9465,6 +9553,24 @@ fn compare_pngs(
                 };
                 layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
             }
+            // Plan 478 T4：switcher overlay 层（launcher 层邻位顶层；仅
+            // visible 时推层——T1 施工图 §1.5，隐匿由 visible 翻转后本周期
+            // 视图重建生效，召唤/隐匿两臂显式置 view_dirty 保险）。
+            if state.switcher_visible() {
+                let switcher_app = state.desktop.switcher_app.expect("switcher checked");
+                let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
+                let switcher_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] switcher 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] switcher view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -9588,8 +9694,12 @@ fn compare_pngs(
                     // MCP/DevTools 单 App 语义见 453 T8 冻结，463+ 再解）。
                     // Plan 464 T4：launcher overlay 可见时独占键盘（P3 全键盘
                     // 流——输入/方向键进 palette，不漏进底层虚拟窗）。
+                    // Plan 478 T4：switcher overlay 可见时同样独占（Tab/←→/
+                    // Enter/Esc 进面板，不漏进底层虚拟窗）。
                     let focused = if state.is_desktop() {
-                        state.wm_focused_app() == Some(app_id) && !state.launcher_visible()
+                        state.wm_focused_app() == Some(app_id)
+                            && !state.launcher_visible()
+                            && !state.switcher_visible()
                     } else {
                         true
                     };
@@ -9612,6 +9722,25 @@ fn compare_pngs(
                         let bindings = app.component.key_bindings().clone();
                         subs.push(keyboard_subscription_ext(
                             la,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // Plan 478 T4：switcher overlay 的键盘订阅（launcher 块同型；
+            // escape_forward 统一传——Esc 被 Captured 时宿主转发同一事件）。
+            if state.is_desktop() && state.switcher_visible() {
+                if let (Some(sw), Some(host)) =
+                    (state.desktop.switcher_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&sw) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            sw,
                             host.window,
                             bindings,
                             true,
@@ -14785,6 +14914,81 @@ mod tests {
             panic!("Obj")
         };
         assert_eq!(t3_obj_str(first, "wid"), a.0.to_string());
+    }
+
+    // ---- Plan 478 T4：switcher overlay（summon/advance/confirm 无头流；
+    // 464 summon_launcher_mounts_and_injects 同型。switcher.at 为进程内嵌
+    // 资产——本测直载真源，非裁剪副本）----
+
+    /// switcher 召唤推进确认无头流：懒挂载（真 assets/switcher.at）+ MRU
+    /// 快照注入（rows 序 = MRU 序）→ Advance 环走 sel → confirm（Focus
+    /// handler）写 `focus\t<wid>` 记录 + 自隐 → drain 可达执行体。
+    #[test]
+    fn switcher_summon_advance_confirm_roundtrip() {
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // boot MRU 序：b（最近）, a。
+        let _task = summon_switcher(&mut ds);
+        assert!(ds.switcher_visible(), "召唤后 switcher visible");
+        let sw = ds.desktop.switcher_app.expect("懒挂载完成");
+        {
+            let app = ds.apps.get(&sw).unwrap();
+            let rows = app.component.read_state("rows").expect("rows 读回");
+            let rows = match rows {
+                auto_val::Value::Array(a) => a.values,
+                auto_val::Value::VmRef(ref r) => t3_deref_list(app, r.id as u64, "rows"),
+                auto_val::Value::Int(id) => t3_deref_list(app, id as u64, "rows"),
+                other => panic!("rows 应为数组: {other:?}"),
+            };
+            assert_eq!(rows.len(), 2, "MRU 快照全量（RebuildMru 重建）");
+            // handler 自建对象物化为 VmRef 堆对象（VM ObjectData）——解引用读字段。
+            let auto_val::Value::VmRef(ref r0) = &rows[0] else {
+                panic!("rows 条目应为 VmRef 对象: {:?}", rows[0])
+            };
+            let vm = app.component.bridge().vm();
+            let heap_obj = vm.get_heap_object(r0.id as u64).expect("rows[0] 堆对象");
+            let guard = heap_obj.read().unwrap();
+            let od = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .expect("rows[0] 为 ObjectData");
+            assert_eq!(
+                match od.get(&auto_val::ValueKey::from("wid".to_string())) {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    other => panic!("wid 字段异常: {other:?}"),
+                },
+                b.0.to_string(),
+                "rows 序 = MRU 序（front=最近聚焦）"
+            );
+        }
+        // Advance：sel 0→1（handler 直调——与宿主 Ctrl+Tab 直投 .Advance
+        // 消息同落同一 handler；DM::App 分派管线为 464 已证路径）。
+        let app = ds.apps.get_mut(&sw).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Advance", &[])
+            .expect("Advance handler");
+        match app.component.read_state("sel") {
+            Ok(auto_val::Value::Int(1)) => {}
+            other => panic!("Advance 后 sel 应为 1: {other:?}"),
+        }
+        // confirm（Enter 同落 Focus handler）：写 focus 记录 + 自隐。
+        app.component
+            .bridge_mut()
+            .call_handler("Focus", &[auto_val::Value::str(b.0.to_string())])
+            .expect("Focus handler");
+        match app.component.read_state("visible") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "confirm 后自隐"),
+            other => panic!("visible 读回异常: {other:?}"),
+        }
+        // 上行记录可达宿主执行体。
+        let cmds = ds.drain_app_desktop_commands(sw);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::FocusWindow(b)],
+            "confirm → focus 动词记录"
+        );
     }
 
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----

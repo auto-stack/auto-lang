@@ -206,6 +206,9 @@ pub struct DesktopState {
     /// Plan 464 T4：launcher overlay App 的 AppId。首次 SummonLauncher 时
     /// 懒挂载（v1 前无消费者不推空层——462 overlay 槽约定）；独立模式恒 None。
     pub launcher_app: Option<AppId>,
+    /// Plan 478 T4：switcher overlay App 的 AppId。首次 Ctrl+Tab 召唤时
+    /// 懒挂载（launcher 同型 overlay 槽约定）；独立模式恒 None。
+    pub switcher_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -238,6 +241,7 @@ impl DesktopState {
             app_resolver: None,
             shell_fields: ShellFields::default(),
             launcher_app: None,
+            switcher_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -869,8 +873,10 @@ pub struct HostCtx {
     /// Plan 464 T4：windowless 特权 App（shell / launcher overlay）的窗口级
     /// 字段垫片（原 shell_fields 挂 DesktopState——与 update 侧 `&mut desktop`
     /// 拆借冲突，移入 HostCtx 与 self.desktop 分离，同 host.wm 方式）。
+    /// Plan 478 T4：switcher overlay 同型垫片（T1 施工图 §1.2 修正面）。
     pub shell_fields: ShellFields,
     pub launcher_fields: ShellFields,
+    pub switcher_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -965,6 +971,7 @@ impl DesktopSession {
             wm: WmState::new(),
             shell_fields: ShellFields::default(),
             launcher_fields: ShellFields::default(),
+            switcher_fields: ShellFields::default(),
         });
     }
 
@@ -1207,7 +1214,9 @@ impl DesktopSession {
         if self.window_of_app(id).is_none() {
             let is_shell = self.desktop.shell_app == Some(id);
             let is_launcher = self.desktop.launcher_app == Some(id);
-            if !is_shell && !is_launcher {
+            // Plan 478 T4：switcher overlay 同型（windowless 拆借第三路）。
+            let is_switcher = self.desktop.switcher_app == Some(id);
+            if !is_shell && !is_launcher && !is_switcher {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -1220,12 +1229,19 @@ impl DesktopSession {
                     &mut host.shell_fields.initial_resize_done,
                     &mut host.shell_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_launcher {
                 (
                     &mut host.launcher_fields.window_size,
                     &mut host.launcher_fields.pending_window_resize,
                     &mut host.launcher_fields.initial_resize_done,
                     &mut host.launcher_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.switcher_fields.window_size,
+                    &mut host.switcher_fields.pending_window_resize,
+                    &mut host.switcher_fields.initial_resize_done,
+                    &mut host.switcher_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -1378,6 +1394,39 @@ impl DesktopSession {
         matches!(
             self.apps
                 .get(&la)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// Plan 478 T4：switcher overlay App 的拆借视图（view 装配的 switcher
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_launcher`] 相同，
+    /// 字段走 [`HostCtx::switcher_fields`]）。
+    pub fn split_ref_switcher(&self) -> Option<SessionViewRef<'_>> {
+        let switcher = self.desktop.switcher_app?;
+        let app = self.apps.get(&switcher)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: switcher,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.switcher_fields.window_size,
+            pending_window_resize: &host.switcher_fields.pending_window_resize,
+            initial_resize_done: &host.switcher_fields.initial_resize_done,
+            initial_focus_done: &host.switcher_fields.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 478 T4：switcher overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::launcher_visible`] 同型）。未挂载恒 false。
+    pub fn switcher_visible(&self) -> bool {
+        let Some(sw) = self.desktop.switcher_app else { return false };
+        matches!(
+            self.apps
+                .get(&sw)
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
