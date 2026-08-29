@@ -7372,6 +7372,9 @@ fn compare_pngs(
                 // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
                 // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
                 session.desktop.dock_edges = desktop_dock_edges();
+                // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
+                // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
+                restore_notifications(&mut session);
                 // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
                 // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
                 match crate::ui::shell::build_shell_component() {
@@ -15205,12 +15208,16 @@ mod tests {
         assert_eq!(t3_obj_str(first, "wid"), b.0.to_string());
 
         // 指纹 v1.1：分区段 "{id}:{current},{label};" + 尾段 mru "{wid};"。
+        // Plan 479 v1.2：mru 段后尾接 notes 段（协议 §3——金样随版升级）。
         let fp = match t3_read(&ds, "__wm_fp") {
             auto_val::Value::Str(s) => s.to_string(),
             other => panic!("__wm_fp 读回异常: {other:?}"),
         };
         assert!(fp.contains("0:0,1;1:1,2;"), "指纹分区段含 label: {fp}");
-        assert!(fp.ends_with(&format!("|{};", b.0)), "指纹尾接 mru 段: {fp}");
+        assert!(
+            fp.contains(&format!("|{};|notes:", b.0)),
+            "指纹 mru 段后接 notes 段（v1.2 尾段）: {fp}"
+        );
 
         // 切回分区 0：mru 段翻转 → 指纹变 → 重写。
         ds.wm_set_workspace(0);
@@ -15596,6 +15603,61 @@ mod tests {
             vec![crate::ui::session::DesktopCommand::NotesToggle],
             "铃铛钮 → notes_toggle 动词"
         );
+    }
+
+    /// Plan 479 T5：无头端到端——notify → 投影 badge → notes_toggle 开面板
+    /// （未读清零）→ Dismiss 逐条删 → 落盘断言 → 新会话 boot 重读（接线 =
+    /// boot Desktop 分支 dock_edges 邻位调 restore_notifications，实机链路
+    /// T6 验收）。
+    #[test]
+    fn notif_end_to_end_toggle_dismiss_restore() {
+        let path = t2_isolate_storage("e2e");
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        // ① notify：notify 动词 → 入史 + 未读（面板关）。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::Notify(
+                "success".to_string(),
+                "hello world".to_string(),
+            )],
+        );
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1, "notify 入史");
+        assert_eq!(ds.desktop.notes_unread.get(), 1);
+        // ② badge：投影同步 → 未读串可达 shell。
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("1"));
+        // ③ 开面板：notes_toggle → visible + 未读清零。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::NotesToggle],
+        );
+        assert!(ds.notification_visible());
+        assert_eq!(ds.desktop.notes_unread.get(), 0, "开面板清零");
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("0"));
+        // ④ 逐条 ×：面板 Dismiss → 上行 → 宿主臂删除 + 落盘。
+        let target = ds.desktop.notifications.borrow()[0].id;
+        let panel = ds.desktop.notification_app.expect("面板已挂载");
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Dismiss", &[auto_val::Value::str(target.to_string())])
+            .expect("Dismiss handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        let (_, _tasks) = execute_desktop_commands(&mut ds, cmds);
+        assert!(ds.desktop.notifications.borrow().is_empty(), "dismiss 后历史空");
+        // ⑤ 落盘断言：slot0 = 空串（全量重写语义）。
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.notes.0").as_deref(),
+            Some(""),
+            "空历史落盘为空槽"
+        );
+        // ⑥ 重读：新会话 restore（boot 同函数）→ 空历史，无 panic。
+        let mut ds2 = t3_session_with_shell();
+        restore_notifications(&mut ds2);
+        assert!(ds2.desktop.notifications.borrow().is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 
     // ---- Plan 478 T6：宿主臂无头覆盖（注入通道受限项的 headless 指针，
