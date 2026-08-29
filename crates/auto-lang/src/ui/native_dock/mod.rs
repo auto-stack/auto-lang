@@ -101,6 +101,25 @@ impl RejectReason {
 /// 用户拖动判定阈值默认值（逻辑像素；比较前宿主层按 DPI 换算为物理像素）。
 pub const USER_DRAG_THRESHOLD_PX: i32 = 32;
 
+/// 钩子线程交付的窗口级事件（win32 层产出、宿主层消费；平台无关数据，
+/// no-op 平台同型定义维持 API 面）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeSlotEvent {
+    pub hwnd: NativeHwnd,
+    pub kind: NativeSlotEventKind,
+}
+
+/// 计划 §2 事件清单：生命周期（Destroy）、几何（LocationChange/MoveSizeEnd）、
+/// 显示态（MinimizeStart/End）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeSlotEventKind {
+    MoveSizeEnd,
+    MinimizeStart,
+    MinimizeEnd,
+    LocationChange,
+    Destroy,
+}
+
 /// 槽位状态机状态（转移图见 Plan 473 §详细设计 1）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotState {

@@ -339,6 +339,11 @@ pub enum WmCommand {
     /// `DesktopCommand::SetWorkspace/NextWorkspace` 同落 WmState 分区方法）。
     NextWorkspace,
     PrevWorkspace,
+    /// Plan 473 T6：槽位框 chrome——最小化按钮（`ShowWindow(SW_MINIMIZE)`）。
+    NativeSlotMin(crate::ui::native_dock::NativeSlotId),
+    /// Plan 473 T6：槽位框 chrome——关闭按钮（`PostMessageW(WM_CLOSE)`，
+    /// 给目标 app 正常关闭机会）。
+    NativeSlotClose(crate::ui::native_dock::NativeSlotId),
 }
 
 /// Plan 472 T2：workspace 分区（463 §3.6 转正实施）。成员关系不设二级列表
@@ -541,6 +546,17 @@ impl WmState {
         &mut self,
     ) -> Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)> {
         std::mem::take(&mut self.pending_native_geometry)
+    }
+
+    /// Plan 473 T6：按 hwnd 反查槽位 id（WinEventHook 事件归位用）。
+    pub fn native_slot_id_of_hwnd(
+        &self,
+        hwnd: isize,
+    ) -> Option<crate::ui::native_dock::NativeSlotId> {
+        self.native_slots
+            .values()
+            .find(|s| s.hwnd.0 == hwnd)
+            .map(|s| s.id)
     }
 
     /// 推进槽位状态机一步；终态（Rejected/Restored）自动从注册表移除。
@@ -960,6 +976,10 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
+    /// Plan 473 T6：原生窗口槽位的 WinEventHook 事件（hwnd 反查槽位在
+    /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
+    /// Destroy → B7 槽位回收）。
+    NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -967,6 +987,79 @@ pub enum DesktopEvent {
 pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
     iced::time::every(std::time::Duration::from_millis(ms))
         .map(|_| DesktopMessage::Desktop(DesktopEvent::ServiceTick))
+}
+
+/// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程
+/// （OUTOFCONTEXT），mpsc 短轮询（16ms，事件低频）收到事件后转为
+/// [`DesktopEvent::NativeSlotHwnd`]。流因钩子退出而终止时，下一轮订阅
+/// diff 按恒等 recipe 重新拉起（自愈）。
+#[cfg(windows)]
+pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
+    use crate::ui::native_dock::win32::{spawn_event_hook, NativeSlotEventHook};
+
+    struct NativeDockEventRecipe;
+
+    impl std::hash::Hash for NativeDockEventRecipe {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            "auto-lang-native-dock-events".hash(state);
+        }
+    }
+
+    impl iced_futures::subscription::Recipe for NativeDockEventRecipe {
+        type Output = DesktopMessage;
+
+        fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+            std::hash::Hash::hash(self, state);
+        }
+
+        fn stream(
+            self: Box<Self>,
+            _input: iced_futures::subscription::EventStream,
+        ) -> iced_futures::BoxStream<Self::Output> {
+            use iced_futures::futures::stream::StreamExt;
+            iced_futures::futures::stream::unfold(
+                None::<(NativeSlotEventHook, std::sync::mpsc::Receiver<crate::ui::native_dock::NativeSlotEvent>)>,
+                |state| async move {
+                    let Some((hook, rx)) = state else {
+                        // 惰性启动；槽位被占用时退避后终止流（重订阅自愈）。
+                        return match spawn_event_hook(true) {
+                            Ok(pair) => Some((None, Some(pair))),
+                            Err(_) => {
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                None
+                            }
+                        };
+                    };
+                    // std 通道 + 短轮询（事件低频；不阻塞执行器工作线程）。
+                    // 空拍以 Some(None) 表示、流级 filter_map 剔除（直接 yield
+                    // None = 流终止，AppTickRecipe 459 同款教训）。
+                    match rx.try_recv() {
+                        Ok(evt) => Some((
+                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotHwnd(
+                                evt.hwnd.0,
+                                evt.kind,
+                            ))),
+                            Some((hook, rx)),
+                        )),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => {
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                            Some((None, Some((hook, rx))))
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+                    }
+                },
+            )
+            .filter_map(|msg| async move { msg })
+            .boxed()
+        }
+    }
+
+    iced_futures::subscription::from_recipe(NativeDockEventRecipe)
+}
+
+#[cfg(not(windows))]
+pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
+    iced::Subscription::none()
 }
 
 impl AppSession {

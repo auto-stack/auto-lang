@@ -6395,7 +6395,13 @@ fn drain_and_execute_desktop_commands(
     if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
         eprintln!("[464-DRAIN] {} commands", cmds.len());
     }
-    execute_desktop_commands(state, cmds)
+    let (exit, tasks) = execute_desktop_commands(state, cmds);
+    if !exit {
+        // Plan 473 T6：命令驱动的 relayout（布局切换/关闭/launch）即刻
+        // 排水槽位几何，不等 400ms 帧泵。
+        sync_native_geometry(state);
+    }
+    (exit, tasks)
 }
 
 /// Plan 464 T4：执行桌面命令（返回 (是否退出进程, 产生的任务)）。
@@ -6528,7 +6534,7 @@ fn execute_dock_native(
         slot_logical.height as i32,
     );
     // C3 clamp：min-size 首装未知记 0，几何写读回后缓存估计。
-    let (win_rect, fitted_slot) =
+    let (_, fitted_slot) =
         match crate::ui::native_dock::clamp_to_slot(pre_bounds.size(), slot_rect, crate::ui::native_dock::Size::new(0, 0), slot_rect)
         {
             Ok(v) => v,
@@ -6537,7 +6543,8 @@ fn execute_dock_native(
                 return;
             }
         };
-    // ④ 登记 Candidate → 剥样式 → DockRequested → 几何写入 → DockConfirmed。
+    // ④ 登记 Candidate → 剥样式 → DockRequested → 几何排水（DPI 换算 +
+    // 写入客户区 + z 序沉降）→ min-size 探测 → DockConfirmed。
     let id = {
         let host = state.host.as_mut().expect("desktop checked");
         host.wm
@@ -6555,27 +6562,20 @@ fn execute_dock_native(
             slot.pre_dock_style = saved_style;
         }
     }
-    let action = {
+    {
         let host = state.host.as_mut().expect("desktop checked");
-        host.wm.advance_native_slot(id, SlotEvent::DockRequested).0
-    };
-    let crate::ui::native_dock::SlotAction::SyncGeometry(rect) = action else {
-        return;
-    };
-    if let Err(err) = ndw::set_bounds(hwnd, rect) {
-        let _ = ndw::restore_chrome(hwnd, saved_style);
-        let reason = match err {
-            ndw::DockError::Elevated => RejectReason::Elevated,
-            _ => RejectReason::HwndNotFound,
-        };
-        dock_fail(state, id, reason);
-        return;
+        host.wm.advance_native_slot(id, SlotEvent::DockRequested);
     }
+    // T6：几何经排水管线落地（替代 T4 的 scale=1 直写近似，待澄清④偿还）。
+    sync_native_geometry(state);
     // ⑤ min-size 写读回探测（不可信窗口防御）+ Win11 直角 + 确认入局。
     if let Some(host) = state.host.as_mut() {
         if let Some(slot) = host.wm.native_slots.get_mut(&id) {
-            if let Some(actual) = ndw::probe_bounds(hwnd, rect) {
-                slot.min_size_est = crate::ui::native_dock::observe_min_size_estimate(rect.size(), actual.size());
+            if let Some(actual) = ndw::get_bounds(hwnd) {
+                slot.min_size_est = crate::ui::native_dock::observe_min_size_estimate(
+                    slot.slot_rect.size(),
+                    actual.size(),
+                );
             }
         }
     }
@@ -6611,16 +6611,29 @@ fn execute_dock_native(
 /// Plan 473 T4：解除收编执行体（`undock_native` 命令路径；B2 语义）——
 /// 状态机 Docked→Undocking→恢复 pre-dock bounds/样式→RestoreCompleted
 /// （终态自动出注册表）。
+/// Plan 473 T6：解除收编核心（undock 命令路径与 C4 用户拖走共用）——
+/// 状态机 Docked→Undocking→恢复 pre-dock bounds/样式/圆角→RestoreCompleted
+/// （终态自动出注册表）+ 本地矩形缓存清理。返回槽位是否存在。
 #[cfg(windows)]
-fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
-    use crate::ui::native_dock::{win32 as ndw, NativeSlotId, SlotEvent};
-    let id = NativeSlotId(slot_id);
-    let found = state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id)).map(|slot| {
-        (slot.hwnd, slot.pre_dock_bounds, slot.pre_dock_style, slot.title_cache.clone())
-    });
-    let Some((hwnd, bounds, style, title)) = found else {
-        push_desktop_toast(state, "error", "未知原生槽位");
-        return;
+fn undock_native_slot(
+    state: &mut crate::ui::session::DesktopSession,
+    id: crate::ui::native_dock::NativeSlotId,
+) -> bool {
+    use crate::ui::native_dock::{win32 as ndw, SlotEvent};
+    let found = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&id))
+        .map(|slot| {
+            (
+                slot.hwnd,
+                slot.pre_dock_bounds,
+                slot.pre_dock_style,
+                slot.title_cache.clone(),
+            )
+        });
+    let Some((hwnd, bounds, style, _title)) = found else {
+        return false;
     };
     if let Some(host) = state.host.as_mut() {
         host.wm.advance_native_slot(id, SlotEvent::UndockRequested);
@@ -6629,17 +6642,207 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id
     if style != 0 {
         let _ = ndw::restore_chrome(hwnd, style);
     }
+    let _ = ndw::restore_corner_preference(hwnd);
     if let Some(host) = state.host.as_mut() {
         host.wm.advance_native_slot(id, SlotEvent::RestoreCompleted);
         host.wm.native_slot_local_rects.remove(&id);
     }
-    push_desktop_toast(state, "success", &format!("已恢复 {title}"));
+    true
+}
+
+#[cfg(windows)]
+fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::NativeSlotId;
+    if undock_native_slot(state, NativeSlotId(slot_id)) {
+        push_desktop_toast(state, "success", "已恢复原生窗口");
+    } else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+    }
 }
 
 #[cfg(not(windows))]
 fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
     push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
 }
+
+/// Plan 473 T6：槽位几何排水——本地逻辑矩形 → 屏幕物理坐标（桌面窗原点
+/// + per-monitor DPI 缩放，§2 DPI 段），写入槽位客户区（标题条以下、边框
+/// 环内缩，chrome 露出），重申 z 序不变量（`sink_desktop_below`，勘误②），
+/// 回写 `slot_rect`。幂等：pending 为空即零开销。
+#[cfg(windows)]
+fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+    use crate::ui::native_dock::{win32 as ndw, CoordMapper, LogicalRect};
+
+    if state
+        .host
+        .as_ref()
+        .map(|h| h.wm.pending_native_geometry.is_empty())
+        .unwrap_or(true)
+    {
+        return;
+    }
+    let desktop_hwnd = match ndw::find_largest_own_window() {
+        Some(h) => h,
+        None => return,
+    };
+    let scale = ndw::dpi_scale_of(desktop_hwnd);
+    let Some(frame) = ndw::get_bounds(desktop_hwnd) else {
+        return;
+    };
+    let mapper = CoordMapper {
+        origin_x: frame.x as f64,
+        origin_y: frame.y as f64,
+        scale,
+    };
+    let pending = {
+        let host = state.host.as_mut().expect("desktop checked");
+        host.wm.drain_native_geometry()
+    };
+    for (id, local) in pending {
+        // 客户区 = 槽位去掉顶部标题条与左右/底部边框环（chrome 露出）。
+        let client = LogicalRect {
+            x: local.x + BORDER,
+            y: local.y + TITLEBAR_H,
+            w: (local.width - 2.0 * BORDER).max(1.0),
+            h: (local.height - TITLEBAR_H - BORDER).max(1.0),
+        };
+        let phys = mapper.local_to_screen(client);
+        let Some(hwnd) = state
+            .host
+            .as_ref()
+            .and_then(|h| h.wm.native_slots.get(&id))
+            .map(|s| s.hwnd)
+        else {
+            continue;
+        };
+        let _ = ndw::set_bounds(hwnd, phys);
+        let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
+        if let Some(slot) = state
+            .host
+            .as_mut()
+            .expect("desktop checked")
+            .wm
+            .native_slots
+            .get_mut(&id)
+        {
+            slot.slot_rect = phys;
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn sync_native_geometry(_state: &mut crate::ui::session::DesktopSession) {}
+
+/// Plan 473 T6：WinEventHook 事件处理（B7 回收 / C4 拖走 undock；
+/// LocationChange 在自同步与最小化时不误判）。未命中槽位（噪声/他窗）
+/// 静默忽略。
+#[cfg(windows)]
+fn handle_native_slot_event(
+    state: &mut crate::ui::session::DesktopSession,
+    hwnd_value: isize,
+    kind: crate::ui::native_dock::NativeSlotEventKind,
+) {
+    use crate::ui::native_dock::{
+        win32 as ndw, NativeSlotEventKind, SlotEvent, USER_DRAG_THRESHOLD_PX,
+    };
+    let Some(id) = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slot_id_of_hwnd(hwnd_value))
+    else {
+        return;
+    };
+    match kind {
+        NativeSlotEventKind::LocationChange | NativeSlotEventKind::MoveSizeEnd => {
+            // C4：位置变化后偏离槽位超阈值判用户拖走（最小化/自同步不误判）。
+            let info = state.host.as_ref().and_then(|h| {
+                let s = h.wm.native_slots.get(&id)?;
+                Some((s.hwnd, s.slot_rect, s.title_cache.clone()))
+            });
+            let Some((hwnd, slot_rect, title)) = info else {
+                return;
+            };
+            if ndw::is_minimized(hwnd) {
+                return;
+            }
+            let Some(cur) = ndw::get_bounds(hwnd) else {
+                return;
+            };
+            let threshold = (USER_DRAG_THRESHOLD_PX as f64 * ndw::dpi_scale_of(hwnd)) as i32;
+            if crate::ui::native_dock::detect_user_drag(cur, slot_rect, threshold) {
+                if undock_native_slot(state, id) {
+                    let layout = state
+                        .host
+                        .as_ref()
+                        .map(|h| h.wm.layout)
+                        .unwrap_or_default();
+                    state.wm_set_layout(layout);
+                    sync_native_geometry(state);
+                    push_desktop_toast(state, "success", &format!("已恢复 {title}"));
+                }
+            }
+        }
+        NativeSlotEventKind::Destroy => {
+            // B7：目标自毁 → 回收槽位并 relayout（不留僵尸框）。
+            let removed = state
+                .host
+                .as_mut()
+                .map(|h| h.wm.advance_native_slot(id, SlotEvent::TargetClosed).1)
+                .unwrap_or(false);
+            if removed {
+                if let Some(host) = state.host.as_mut() {
+                    host.wm.native_slot_local_rects.remove(&id);
+                }
+                let layout = state
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.layout)
+                    .unwrap_or_default();
+                state.wm_set_layout(layout);
+                sync_native_geometry(state);
+                push_desktop_toast(state, "success", "原生窗口已关闭，槽位已回收");
+            }
+        }
+        NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
+    }
+}
+
+#[cfg(not(windows))]
+fn handle_native_slot_event(
+    _state: &mut crate::ui::session::DesktopSession,
+    _hwnd_value: isize,
+    _kind: crate::ui::native_dock::NativeSlotEventKind,
+) {
+}
+
+/// Plan 473 T6 / B8：桌面退出批量恢复——不吞窗口：全部 docked 槽位恢复
+/// pre-dock bounds/样式/圆角。注册表随进程退出回收，无需逐项出表。
+#[cfg(windows)]
+fn restore_all_native_slots(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::native_dock::win32 as ndw;
+    let slots: Vec<_> = state
+        .host
+        .as_ref()
+        .map(|h| {
+            h.wm
+                .native_slots
+                .values()
+                .map(|s| (s.hwnd, s.pre_dock_bounds, s.pre_dock_style))
+                .collect()
+        })
+        .unwrap_or_default();
+    for (hwnd, bounds, style) in slots {
+        let _ = ndw::set_bounds(hwnd, bounds);
+        if style != 0 {
+            let _ = ndw::restore_chrome(hwnd, style);
+        }
+        let _ = ndw::restore_corner_preference(hwnd);
+    }
+}
+
+#[cfg(not(windows))]
+fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
@@ -9218,6 +9421,10 @@ fn compare_pngs(
                             return iced::Task::batch(tasks);
                         }
                     }
+                    // Plan 473 T6：原生槽位 WinEventHook 事件（C4 拖走 / B7 回收）。
+                    DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
+                        handle_native_slot_event(state, hwnd_value, kind);
+                    }
                     // Plan 464 T4：launcher 召唤消费 —— 懒挂载 + 下行注入 +
                     // 打开即聚焦（返回聚焦任务）。
                     DesktopEvent::SummonLauncher => {
@@ -9258,6 +9465,9 @@ fn compare_pngs(
                         if state.launcher_visible() {
                             return iced::Task::none();
                         }
+                        // Plan 473 T6 / B8：退出不吞窗口——全部 docked 槽位
+                        // 恢复 pre-dock bounds/样式后再退出。
+                        restore_all_native_slots(state);
                         return iced::exit();
                     }
                     // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
@@ -9285,7 +9495,34 @@ fn compare_pngs(
                     // Plan 463 T6：布局切换热键臂（与 shell 总线
                     // DesktopCommand::SetLayout 同落 wm_set_layout；
                     // 臂尾 sync_shell_windows 即时刷新任务栏按钮态）。
-                    WmCommand::SetLayout(mode) => state.wm_set_layout(mode),
+                    WmCommand::SetLayout(mode) => {
+                        state.wm_set_layout(mode);
+                        // Plan 473 T6：热键 relayout 即刻排水槽位几何。
+                        sync_native_geometry(state);
+                    }
+                    // Plan 473 T6：槽位框 chrome 按钮（最小化/关闭——
+                    // 关闭走 WM_CLOSE 给目标 app 正常关闭机会）。
+                    WmCommand::NativeSlotMin(id) => {
+                        #[cfg(windows)]
+                        if let Some(slot) =
+                            state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id))
+                        {
+                            use crate::ui::native_dock::win32 as ndw;
+                            let _ = ndw::show_window(slot.hwnd, ndw::ShowMode::Minimize);
+                        }
+                        #[cfg(not(windows))]
+                        let _ = id;
+                    }
+                    WmCommand::NativeSlotClose(id) => {
+                        #[cfg(windows)]
+                        if let Some(slot) =
+                            state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id))
+                        {
+                            let _ = crate::ui::native_dock::win32::request_close(slot.hwnd);
+                        }
+                        #[cfg(not(windows))]
+                        let _ = id;
+                    }
                     // Plan 472 T2：分区切换热键臂（同落 WmState 分区方法；
                     // 臂尾 sync_shell_windows 即时刷新投影）。
                     WmCommand::NextWorkspace => state.wm_next_workspace(),
@@ -9503,6 +9740,17 @@ fn compare_pngs(
                     vwin, focused, client,
                 ));
             }
+            // Plan 473 T6：槽位框 chrome 层（虚拟窗之上；中央透明不绘制——
+            // 原生窗口在 OS z 序上盖住槽位客户区，标题条/边框环露出桌面侧）。
+            for (slot_id, slot) in host.wm.native_slots.clone() {
+                if let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) {
+                    layers.push(crate::ui::iced::virtual_window::native_slot_element(
+                        slot_id,
+                        &slot.title_cache,
+                        *local,
+                    ));
+                }
+            }
             // Plan 463 T5：shell 层（任务栏；z-stack 之上常驻）。底部锚定
             // 由 shell.at 根 col（h-full + 纵向 spacer）落实——dynamic_view
             // 根是 Fill×Fill toast-Stack，装配层 align 无从发力（实测）。
@@ -9715,6 +9963,11 @@ fn compare_pngs(
                 // 只订一份;到期的移除逻辑在 update 的 __toast_tick 分支。
                 if !state.desktop.toasts.borrow().is_empty() {
                     subs.push(app_tick(primary, "__toast_tick", 250));
+                }
+                // Plan 473 T6：原生槽位 WinEventHook 事件泵（windows 实现；
+                // 非 Windows 平台为空订阅）。
+                if state.is_desktop() {
+                    subs.push(crate::ui::session::native_dock_event_subscription());
                 }
                 // MCP action channel — polls for injected actions from AI agent (Plan 278)
                 subs.push(mcp_action_subscription(primary));

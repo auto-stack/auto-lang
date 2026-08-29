@@ -9,19 +9,21 @@
 //! 版本注记：windows 0.58 的 `HWND` 为 `*mut c_void`（非 isize），
 //! 与 [`NativeHwnd`] 的 isize 存储形态在本文件边界互转。
 
-use crate::ui::native_dock::{NativeHwnd, Rect};
+use crate::ui::native_dock::{NativeHwnd, NativeSlotEvent, NativeSlotEventKind, Rect};
 use std::sync::mpsc;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use windows::core::HRESULT;
 use windows::Win32::Foundation::{
     ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DEFAULT, DWMWCP_DONOTROUND,
+    DWM_WINDOW_CORNER_PREFERENCE,
 };
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
@@ -275,15 +277,61 @@ fn apply_frame_change(target: NativeHwnd) -> Result<(), DockError> {
 /// Win11 直角偏好（`DWMWCP_DONOTROUND`）；Win10 无此属性 → false
 /// （静默降级：直角诉求退化为保留系统圆角，不致命）。
 pub fn set_square_corners(target: NativeHwnd) -> bool {
+    set_corner_preference(target, DWMWCP_DONOTROUND)
+}
+
+/// undock 恢复系统默认圆角（与 [`set_square_corners`] 成对）。
+pub fn restore_corner_preference(target: NativeHwnd) -> bool {
+    set_corner_preference(target, DWMWCP_DEFAULT)
+}
+
+/// Win11 圆角偏好通用写入口（Win10 无此属性 → false，静默降级）。
+pub fn set_corner_preference(target: NativeHwnd, pref: DWM_WINDOW_CORNER_PREFERENCE) -> bool {
     unsafe {
         DwmSetWindowAttribute(
             hwnd_of(target),
             DWMWA_WINDOW_CORNER_PREFERENCE,
-            &DWMWCP_DONOTROUND as *const _ as *const core::ffi::c_void,
-            core::mem::size_of_val(&DWMWCP_DONOTROUND) as u32,
+            &pref as *const _ as *const core::ffi::c_void,
+            core::mem::size_of_val(&pref) as u32,
         )
     }
     .is_ok()
+}
+
+/// 读回目标窗口的 DPI 缩放比（`GetDpiForWindow / 96`；失败按 1.0）。
+/// 宿主层局部逻辑坐标 → 屏幕物理坐标换算的缩放源（与 winit 一致）。
+pub fn dpi_scale_of(target: NativeHwnd) -> f64 {
+    if !alive(target) {
+        return 1.0;
+    }
+    (unsafe { GetDpiForWindow(hwnd_of(target)) }) as f64 / 96.0
+}
+
+/// 发现本进程最大的可见顶层窗口（全屏壳拓扑下即桌面 OS 窗口；与
+/// `vm/native.rs` 的 main_hwnd 同型启发式，进程级缓存一次——桌面为
+/// 一次启动单实例拓扑）。
+pub fn find_largest_own_window() -> Option<NativeHwnd> {
+    static CACHE: std::sync::OnceLock<Option<NativeHwnd>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let me = std::process::id();
+            let mut best: Option<(NativeHwnd, i64)> = None;
+            let _ = enum_top_level(|hwnd| {
+                if window_pid(hwnd) != me || !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+                    return true;
+                }
+                let mut r = RECT::default();
+                if unsafe { GetWindowRect(hwnd, &mut r) }.is_ok() {
+                    let area = (r.right - r.left) as i64 * (r.bottom - r.top) as i64;
+                    if best.map_or(true, |(_, a)| area > a) {
+                        best = Some((NativeHwnd(hwnd_value(hwnd)), area));
+                    }
+                }
+                true
+            });
+            best.map(|(h, _)| h)
+        })
+        .clone()
 }
 
 // ---------------------------------------------------------------------------
@@ -369,24 +417,6 @@ pub fn is_maximized(target: NativeHwnd) -> bool {
 // events：WinEventHook 事件层（专用钩子线程 OUTOFCONTEXT → mpsc）
 // ---------------------------------------------------------------------------
 
-/// 钩子线程交付的窗口级事件（已过滤非窗口对象与空句柄）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NativeSlotEvent {
-    pub hwnd: NativeHwnd,
-    pub kind: NativeSlotEventKind,
-}
-
-/// 计划 §2 事件清单：生命周期（Destroy）、几何（LocationChange/MoveSizeEnd）、
-/// 显示态（MinimizeStart/End）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NativeSlotEventKind {
-    MoveSizeEnd,
-    MinimizeStart,
-    MinimizeEnd,
-    LocationChange,
-    Destroy,
-}
-
 /// Win32 `EVENT_*` 常量 → 事件种类（纯函数；单测锁定映射表）。
 pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
     match event {
@@ -406,29 +436,31 @@ struct HookShared {
 
 /// 钩子数据槽位：WinEventProc 无用户上下文参数，通道经全局槽位转交。
 /// 回调侧只短暂拿读锁（绝不阻塞钩子线程的消息泵）；
-/// 占用互斥（同进程仅一个钩子实例）由 [`HOOK_OCCUPIED`] 单独承担——
-/// 两者若合用一把锁，回调会在占用期间永久阻塞钩子线程（死锁，T3 实测）。
+/// 占用互斥（同进程仅一个钩子实例）由 [`HOOK_OCCUPIED`] 原子交换实现——
+/// 不用持锁守卫跨生命周期（MutexGuard 非 Send，进不了订阅异步流状态）。
 static HOOK_SHARED: RwLock<Option<HookShared>> = RwLock::new(None);
-static HOOK_OCCUPIED: Mutex<()> = Mutex::new(());
+static HOOK_OCCUPIED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 钩子线程句柄：Drop 时投递 WM_QUIT、清空槽位并回收线程。
+/// 钩子线程句柄：Drop 时投递 WM_QUIT、清空槽位、释放占用并回收线程。
 pub struct NativeSlotEventHook {
-    _occupancy: std::sync::MutexGuard<'static, ()>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for NativeSlotEventHook {
     fn drop(&mut self) {
-        let thread_id = HOOK_SHARED.read().ok().and_then(|g| g.as_ref().map(|s| s.thread_id));
+        use std::sync::atomic::Ordering;
+        let thread_id =
+            HOOK_SHARED.read().ok().and_then(|g| g.as_ref().map(|s| s.thread_id));
         if let Some(tid) = thread_id {
             unsafe {
                 let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
             }
         }
-        // 先清数据槽：解钩完成前的残留回调不再投递，再回收线程
+        // 先清数据槽：解钩完成前的残留回调不再投递，再回收线程。
         if let Ok(mut g) = HOOK_SHARED.write() {
             *g = None;
         }
+        HOOK_OCCUPIED.store(false, Ordering::SeqCst);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
@@ -443,18 +475,8 @@ impl Drop for NativeSlotEventHook {
 pub fn spawn_event_hook(
     skip_own_process: bool,
 ) -> Result<(NativeSlotEventHook, mpsc::Receiver<NativeSlotEvent>), DockError> {
-    let occupancy = HOOK_OCCUPIED.lock().map_err(|_| DockError::Api {
-        op: "hook occupancy poisoned",
-        code: 0,
-    })?;
-    if HOOK_SHARED
-        .read()
-        .map_err(|_| DockError::Api {
-            op: "hook slot poisoned",
-            code: 0,
-        })?
-        .is_some()
-    {
+    use std::sync::atomic::Ordering;
+    if HOOK_OCCUPIED.swap(true, Ordering::SeqCst) {
         return Err(DockError::Api {
             op: "hook already running",
             code: 0,
@@ -499,30 +521,38 @@ pub fn spawn_event_hook(
                 let _ = UnhookWinEvent(h);
             }
         })
-        .map_err(|e| DockError::Api {
-            op: "spawn hook thread",
-            code: e.raw_os_error().unwrap_or(0) as u32,
+        .map_err(|e| {
+            HOOK_OCCUPIED.store(false, Ordering::SeqCst);
+            DockError::Api {
+                op: "spawn hook thread",
+                code: e.raw_os_error().unwrap_or(0) as u32,
+            }
         })?;
-    let (thread_id, _installed) = ready_rx.recv().map_err(|_| DockError::Api {
-        op: "hook thread died",
-        code: 0,
-    })?;
+    let ready = ready_rx.recv().map_err(|_| {
+        HOOK_OCCUPIED.store(false, Ordering::SeqCst);
+        DockError::Api {
+            op: "hook thread died",
+            code: 0,
+        }
+    });
+    let Ok((thread_id, _installed)) = ready else {
+        let _ = thread.join();
+        return Err(DockError::Api {
+            op: "hook thread died",
+            code: 0,
+        });
+    };
     match HOOK_SHARED.write() {
         Ok(mut g) => *g = Some(HookShared { tx, thread_id }),
         Err(_) => {
+            HOOK_OCCUPIED.store(false, Ordering::SeqCst);
             return Err(DockError::Api {
                 op: "hook slot poisoned",
                 code: 0,
-            })
+            });
         }
     }
-    Ok((
-        NativeSlotEventHook {
-            _occupancy: occupancy,
-            thread: Some(thread),
-        },
-        rx,
-    ))
+    Ok((NativeSlotEventHook { thread: Some(thread) }, rx))
 }
 
 unsafe extern "system" fn winevent_proc(

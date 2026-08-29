@@ -26,10 +26,12 @@ use iced::{Alignment, Border, Color, Element, Length, Padding, Shadow, Vector};
 
 use crate::ui::session::{DesktopMessage, ResizeEdge, VWinState, WmCommand};
 
-const TITLEBAR_H: f32 = 28.0;
+/// 标题条高度（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
+pub(crate) const TITLEBAR_H: f32 = 28.0;
 const EDGE: f32 = 6.0;
 const CORNER: f32 = 14.0;
-const BORDER: f32 = 1.0;
+/// 边框宽（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
+pub(crate) const BORDER: f32 = 1.0;
 
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
@@ -190,4 +192,71 @@ fn handle<'a>(
     .align_x(Alignment::Start)
     .align_y(Alignment::Start)
     .into()
+}
+
+/// Plan 473 T6：原生窗口槽位框 chrome——槽位顶部标题条（标题 + 最小化 +
+/// 关闭）+ 1px 边框环；中央透明不绘制（假洞：原生窗口在 OS z 序上盖住
+/// 槽位客户区）。原生窗口实际摆放到标题条以下客户区——内缩换算见
+/// renderer `sync_native_geometry`（与本模块 TITLEBAR_H/BORDER 同源）。
+pub fn native_slot_element<'a>(
+    slot_id: crate::ui::native_dock::NativeSlotId,
+    title: &str,
+    rect: iced::Rectangle,
+) -> Element<'a, DesktopMessage> {
+    let min_btn = mouse_area(
+        container(text("—").size(12))
+            .width(Length::Fixed(22.0))
+            .height(Length::Fixed(TITLEBAR_H - 6.0))
+            .center(Length::Fill),
+    )
+    .on_press(DesktopMessage::Wm(WmCommand::NativeSlotMin(slot_id)));
+
+    let close_btn = mouse_area(
+        container(text("×").size(13))
+            .width(Length::Fixed(22.0))
+            .height(Length::Fixed(TITLEBAR_H - 6.0))
+            .center(Length::Fill),
+    )
+    .on_press(DesktopMessage::Wm(WmCommand::NativeSlotClose(slot_id)));
+
+    let titlebar = row![
+        container(text(title.to_string()).size(12))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_y(Length::Fill)
+            .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
+        min_btn,
+        close_btn,
+    ]
+    .spacing(4.0)
+    .width(Length::Fill)
+    .height(Length::Fixed(TITLEBAR_H));
+
+    // 标题条 + 透明客户区（槽位洞：原生窗口从桌面窗 z 上方露出）。
+    let body = column![
+        titlebar,
+        container(text("")).width(Length::Fill).height(Length::Fill),
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    let slot_box = container(body)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_t| Style {
+            border: Border {
+                color: token(crate::ui::style::Color::Surface),
+                width: BORDER,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        });
+
+    container(slot_box)
+        .width(Length::Fixed(rect.width))
+        .height(Length::Fixed(rect.height))
+        .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
+        .align_x(Alignment::Start)
+        .align_y(Alignment::Start)
+        .into()
 }
