@@ -6353,30 +6353,7 @@ fn execute_desktop_commands(
                 }
                 tasks.push(summon_launcher(state));
             }
-            DC::LaunchApp(name) => match state.launch_app(&name) {
-                Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
-                Err(err) => {
-                    push_desktop_toast(state, "error", &err);
-                    // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
-                    // 可见反馈窗代替白屏；占位页自身构建失败则仅 toast。
-                    if let Ok(comp) = crate::ui::shell::build_launch_fallback(&name) {
-                        let app_id = state.allocate_app(comp);
-                        let usable = crate::ui::layout::usable_rect(
-                            state.host_viewport(),
-                            crate::ui::layout::ReservedEdges::taskbar(),
-                        );
-                        let index = state
-                            .host
-                            .as_ref()
-                            .map(|h| h.wm.wins.len())
-                            .unwrap_or(0);
-                        let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
-                        let rect = crate::ui::layout::cascade_rect(index, size, usable);
-                        let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
-                        state.wm_focus(wid);
-                    }
-                }
-            },
+            DC::LaunchApp(name) => execute_launch_app(state, &name),
             DC::CloseWindow(wid) => {
                 if let Some(app) = state.wm_remove_win(wid) {
                     state.apps.remove(&app);
@@ -6397,9 +6374,81 @@ fn execute_desktop_commands(
             // sync_shell_windows 刷新投影）。
             DC::SetWorkspace(n) => state.wm_set_workspace(n),
             DC::NextWorkspace => state.wm_next_workspace(),
+            // Plan 472 T4：dock 固定图标点击——运行中 →（隐藏分区先切分区）
+            // 聚焦其窗；未运行 → launch（与 LaunchApp 臂同执行体）。
+            DC::ActivateApp(name) => {
+                let target = state.host.as_ref().and_then(|h| {
+                    h.wm
+                        .wins
+                        .iter()
+                        .find(|(_, v)| v.registry_id.as_deref() == Some(name.as_str()))
+                        .map(|(wid, v)| (*wid, v.workspace))
+                });
+                match target {
+                    Some((wid, ws)) => {
+                        let current = state
+                            .host
+                            .as_ref()
+                            .map(|h| h.wm.current_workspace)
+                            .unwrap_or(0);
+                        if ws != current {
+                            state.wm_set_workspace(ws);
+                        }
+                        state.wm_focus(wid);
+                    }
+                    None => {
+                        execute_launch_app(state, &name);
+                    }
+                }
+            }
         }
     }
     (false, tasks)
+}
+
+/// LaunchApp 执行体（463 T4 主体抽出；472 T4 起被 LaunchApp/ActivateApp
+/// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
+fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
+    match state.launch_app(name) {
+        Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
+        Err(err) => {
+            push_desktop_toast(state, "error", &err);
+            // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
+            // 可见反馈窗代替白屏；占位页自身构建失败则仅 toast。
+            if let Ok(comp) = crate::ui::shell::build_launch_fallback(name) {
+                let app_id = state.allocate_app(comp);
+                let usable = crate::ui::layout::usable_rect(
+                    state.host_viewport(),
+                    state.desktop.dock_edges,
+                );
+                let index = state
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.wins.len())
+                    .unwrap_or(0);
+                let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
+                let rect = crate::ui::layout::cascade_rect(index, size, usable);
+                let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
+                state.wm_focus(wid);
+            }
+        }
+    }
+}
+
+/// Plan 472 T4：dock 数据级配置 → 布局预留边（协议 v1 §6：storage 键
+/// `shell.dock.position` top/bottom、`shell.dock.enabled`；缺席回退 pack
+/// 默认 bottom/48）。boot 期读一次写 `DesktopState.dock_edges`（v1 不做
+/// 运行时热更；auto-os-config settings 写手为 shell-track M4）。
+pub(crate) fn desktop_dock_edges() -> crate::ui::layout::ReservedEdges {
+    let mut edges = crate::ui::layout::ReservedEdges::taskbar();
+    if crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref() == Some("false") {
+        return crate::ui::layout::ReservedEdges::default();
+    }
+    if crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref() == Some("top") {
+        edges.bottom = 0.0;
+        edges.top = crate::ui::layout::TASKBAR_HEIGHT;
+    }
+    edges
 }
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
@@ -6452,6 +6501,21 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let focused_wid = host.wm.focused.map(|w| w.0.to_string()).unwrap_or_default();
     let meta = format!("{}\t{}", layout_name, focused_wid);
     fp.push_str(&format!("|{}", meta));
+    // Plan 472 T4：运行中 app 集合派生串（",id1,id2,"；pinned 运行指示的
+    // view 条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实源）。
+    let mut running = String::from(",");
+    let mut seen: Vec<&str> = Vec::new();
+    for &wid in &host.wm.z_order {
+        if let Some(v) = host.wm.wins.get(&wid) {
+            if let Some(id) = v.registry_id.as_deref() {
+                if !seen.contains(&id) {
+                    seen.push(id);
+                    running.push_str(id);
+                    running.push(',');
+                }
+            }
+        }
+    }
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
     let mut workspaces: Vec<auto_val::Value> = Vec::new();
     fp.push('|');
@@ -6477,6 +6541,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("__wm_wins", wins);
     let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
+    let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -6783,6 +6848,9 @@ fn compare_pngs(
                     );
                     session.wm_add_win(app_id, title, rect);
                 }
+                // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
+                // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
+                session.desktop.dock_edges = desktop_dock_edges();
                 // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
                 // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
                 match crate::ui::shell::build_shell_component() {
@@ -14167,7 +14235,8 @@ mod tests {
     }
 
     /// 数组读回：声明 `var x = []` 的字段经 write_state_vec 后可能物化为
-    /// VmRef 指向 ListData 堆对象（EDGE-16 同型）——测试侧解引用取元素。
+    /// VmRef/Int(id) 指向 ListData 堆对象（EDGE-16/Plan 390 H3b 同型）——
+    /// 测试侧解引用取元素。
     fn t3_read_array(ds: &crate::ui::session::DesktopSession, field: &str) -> Vec<auto_val::Value> {
         let shell = ds.desktop.shell_app.unwrap();
         let app = ds.apps.get(&shell).unwrap();
@@ -14178,19 +14247,44 @@ mod tests {
         match val {
             auto_val::Value::Array(a) => a.values,
             auto_val::Value::VmRef(r) => {
-                let vm = app.component.bridge().vm();
-                let obj = vm
-                    .get_heap_object(r.id as u64)
-                    .unwrap_or_else(|| panic!("{field} 堆对象 {} 不存在", r.id));
-                let guard = obj.read().unwrap();
-                let list = guard
-                    .as_any()
-                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
-                    .unwrap_or_else(|| panic!("{field} 堆对象不是 ListData"));
-                list.elems.clone()
+                t3_deref_list(app, r.id as u64, field)
             }
+            auto_val::Value::Int(id) => t3_deref_list(app, id as u64, field),
             other => panic!("{field} 既非数组也非列表引用: {other:?}"),
         }
+    }
+
+    fn t3_deref_list(
+        app: &crate::ui::session::AppSession,
+        id: u64,
+        field: &str,
+    ) -> Vec<auto_val::Value> {
+        let vm = app.component.bridge().vm();
+        let obj = vm
+            .get_heap_object(id)
+            .unwrap_or_else(|| panic!("{field} 堆对象 {id} 不存在"));
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
+            return list.elems.clone();
+        }
+        // `.split(",")` 等 string 方法产物是 ListData<String>（单型列表）。
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<std::string::String>>()
+        {
+            return list
+                .elems
+                .iter()
+                .map(|s| auto_val::Value::Str(s.clone().into()))
+                .collect();
+        }
+        panic!(
+            "{field} 堆对象非 ListData（type_tag={:?}）",
+            guard.type_tag()
+        )
     }
 
     fn t3_obj_str(o: &auto_val::Obj, key: &str) -> String {
@@ -14345,6 +14439,139 @@ mod tests {
         let auto_val::Value::Obj(o) = &wins[0] else { panic!("Obj") };
         assert_eq!(t3_obj_str(o, "app"), "011-calculator", "launch 回填 registry_id");
         assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
+    }
+
+    // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
+
+    /// activate：未运行 → launch（带 registry_id 回填）；运行中 → 聚焦不新增窗。
+    #[test]
+    fn activate_app_focuses_running_or_launches_new() {
+        let mut ds = t3_session_with_shell();
+        ds.desktop.app_resolver =
+            Some(std::sync::Arc::new(|name: &str| {
+                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    code: T3_WIN_AT.to_string(),
+                    source_path: None,
+                    title: Some("calculator".to_string()),
+                })
+            }));
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::ActivateApp(
+                "011-calculator".to_string(),
+            )],
+        );
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.wins.len(), 1, "未运行 activate → 启动新窗");
+        assert!(
+            host.wm
+                .wins
+                .values()
+                .all(|v| v.registry_id.as_deref() == Some("011-calculator")),
+            "launch 路径回填 registry_id"
+        );
+        let wid = host.wm.focused.unwrap();
+        // 已运行 → 聚焦原窗，不新增。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::ActivateApp(
+                "011-calculator".to_string(),
+            )],
+        );
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.wins.len(), 1, "运行中 activate 不新增窗");
+        assert_eq!(host.wm.focused, Some(wid));
+    }
+
+    /// activate：目标窗在隐藏分区 → 先切分区再聚焦（dock 点击跨分区召唤）。
+    #[test]
+    fn activate_app_switches_to_hidden_workspace() {
+        let mut ds = t3_session_with_shell();
+        ds.desktop.app_resolver =
+            Some(std::sync::Arc::new(|name: &str| {
+                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                    code: T3_WIN_AT.to_string(),
+                    source_path: None,
+                    title: Some("calculator".to_string()),
+                })
+            }));
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::ActivateApp(
+                "011-calculator".to_string(),
+            )],
+        );
+        let wid = ds.host.as_ref().unwrap().wm.focused.unwrap();
+        let ws1 = ds.host.as_mut().unwrap().wm.add_workspace();
+        ds.wm_set_workspace(ws1);
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::ActivateApp(
+                "011-calculator".to_string(),
+            )],
+        );
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.current_workspace, 0, "activate 切回窗所在分区");
+        assert_eq!(host.wm.focused, Some(wid));
+    }
+
+    /// dock 数据级配置 → 布局预留边（协议 v1 §6：shell.dock.* 缺席回退
+    /// pack 默认 bottom/48；top 反转；enabled=false 全零）。进程内写读，
+    /// 尾部清理防并行污染。
+    #[test]
+    fn desktop_dock_edges_reads_storage_overrides() {
+        let key_pos = "shell.dock.position";
+        let key_en = "shell.dock.enabled";
+        crate::vm::ffi::stdlib::storage_raw_remove(key_pos);
+        crate::vm::ffi::stdlib::storage_raw_remove(key_en);
+
+        // 缺省 → pack 默认（bottom 48）。
+        let e = desktop_dock_edges();
+        assert_eq!(e.bottom, crate::ui::layout::TASKBAR_HEIGHT);
+        assert_eq!(e.top, 0.0);
+
+        // position=top → 预留翻转到顶。
+        crate::vm::ffi::stdlib::storage_raw_set(key_pos.into(), "top".into());
+        let e = desktop_dock_edges();
+        assert_eq!(e.top, crate::ui::layout::TASKBAR_HEIGHT);
+        assert_eq!(e.bottom, 0.0);
+
+        // enabled=false → dock 关，零预留。
+        crate::vm::ffi::stdlib::storage_raw_set(key_en.into(), "false".into());
+        let e = desktop_dock_edges();
+        assert_eq!(e.bottom, 0.0);
+        assert_eq!(e.top, 0.0);
+
+        crate::vm::ffi::stdlib::storage_raw_remove(key_pos);
+        crate::vm::ffi::stdlib::storage_raw_remove(key_en);
+    }
+
+    /// 资产 shell.at（widget Desktop）装载冒烟：编译 + fire_init 读 storage
+    /// 缺席回退 pack 默认（enabled=1 / position=bottom / pinned 默认表）。
+    #[test]
+    fn desktop_shell_at_builds_with_dock_defaults() {
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.pinned");
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+        let comp = crate::ui::shell::build_shell_component().expect("shell.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(id);
+        let app = ds.apps.get(&id).unwrap();
+        match app.component.read_state("__dock_enabled") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+            other => panic!("__dock_enabled 读回异常: {other:?}"),
+        }
+        match app.component.read_state("__dock_position") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
+            other => panic!("__dock_position 读回异常: {other:?}"),
+        }
+        let pinned = t3_read_array(&ds, "__dock_pinned");
+        assert!(
+            pinned.iter().any(|v| matches!(v, auto_val::Value::Str(s) if s.to_string() == "011-calculator")),
+            "pinned pack 默认表已注入（fire_init）：{pinned:?}"
+        );
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

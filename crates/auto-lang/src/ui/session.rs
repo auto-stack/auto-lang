@@ -214,6 +214,11 @@ pub struct DesktopState {
     /// 注入 launcher 的平行字符串列表（真注册表，R10）——resolver 闭包只按
     /// 名取 LaunchSpec，不暴露清单，故单独留这份。
     pub registry_entries: Vec<crate::ui::app_registry::AppRegistryEntry>,
+    /// Plan 472 T4：dock 数据级配置解析后的布局预留边（boot 期读
+    /// `shell.dock.*` storage 键，见 renderer `desktop_dock_edges`；缺席
+    /// 回退 pack 默认 bottom/48）。会话域统一取本字段——核心路径（布局/
+    /// 级联）不再直读进程级 storage，单测无污染。
+    pub dock_edges: crate::ui::layout::ReservedEdges,
 }
 
 impl DesktopState {
@@ -230,6 +235,7 @@ impl DesktopState {
             launcher_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
+            dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
         }
     }
 
@@ -644,6 +650,10 @@ pub enum DesktopCommand {
     SetWorkspace(usize),
     /// Plan 472 T2：(current+1)%N 环切。
     NextWorkspace,
+    /// Plan 472 T4：dock 固定图标点击（协议 v1 §4）。宿主代解：运行中 →
+    /// （窗在隐藏分区先切分区）聚焦其窗；未运行 → launch（.at 无法跨列表
+    /// 反查 wid，保持 shell 零智能）。
+    ActivateApp(String),
 }
 
 impl DesktopCommand {
@@ -673,6 +683,9 @@ impl DesktopCommand {
                 format!("workspace{}{}", Self::FIELD_SEP, n)
             }
             DesktopCommand::NextWorkspace => "workspace_next".to_string(),
+            DesktopCommand::ActivateApp(name) => {
+                format!("activate{}{name}", Self::FIELD_SEP)
+            }
         }
     }
 
@@ -701,6 +714,9 @@ impl DesktopCommand {
                     "layout" => Some(DesktopCommand::SetLayout(LayoutMode::from_name(arg))),
                     "summon" => Some(DesktopCommand::SummonLauncher),
                     "workspace" => arg.parse::<usize>().ok().map(DesktopCommand::SetWorkspace),
+                    "activate" if !arg.is_empty() => {
+                        Some(DesktopCommand::ActivateApp(arg.to_string()))
+                    }
                     _ => None,
                 }
             })
@@ -941,7 +957,7 @@ impl DesktopSession {
             .map_err(|e| format!("build `{name}` failed: {e}"))?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
         let app_id = self.allocate_app(comp);
-        let usable = crate::ui::layout::usable_rect(self.host_viewport(), ReservedEdges::taskbar());
+        let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
         // Plan 472 T2：级联 index 按当前分区窗数计（隐分区窗不占级联位）。
         let index = self
             .host
@@ -965,15 +981,17 @@ impl DesktopSession {
         Ok(wid)
     }
 
-    /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回全部虚拟窗
-    /// （几何批量写点唯一性：rect 只经 `apply_layout`/WM 交互改）。
+    /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回当前分区的
+    /// 全部虚拟窗（几何批量写点唯一性：rect 只经 `apply_layout`/WM 交互改）。
+    /// free 模式为恒等写回（用户位置即真值）。
     pub fn wm_set_layout(&mut self, mode: LayoutMode) {
         let viewport = self.host_viewport();
+        let edges = self.desktop.dock_edges;
         let Some(host) = self.host.as_mut() else {
             return;
         };
         host.wm.layout = mode;
-        crate::ui::layout::apply_layout(&mut host.wm, viewport, ReservedEdges::taskbar());
+        crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
     }
 
     /// 测试专用：无 App 的空会话（路由表 / 桌面状态单测用）。
@@ -1917,6 +1935,27 @@ mod tests {
         );
         // 坏载荷跳过：非数字下标。
         assert!(DesktopCommand::parse_records("workspace\u{1f}abc").is_empty());
+    }
+
+    // ---- Plan 472 T4：dock 升级（activate 动词；T1 施工图 §2.4）----
+
+    #[test]
+    fn activate_verb_parse_and_encode() {
+        assert_eq!(
+            DesktopCommand::parse_records("activate\u{1f}011-calculator"),
+            vec![DesktopCommand::ActivateApp("011-calculator".to_string())]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("activate\t028-launcher"),
+            vec![DesktopCommand::ActivateApp("028-launcher".to_string())],
+            "\\t 分隔符双轨等价"
+        );
+        assert_eq!(
+            DesktopCommand::ActivateApp("028-launcher".to_string()).encode(),
+            "activate\u{1f}028-launcher"
+        );
+        // 空 arg 跳过（launch 同款守卫）。
+        assert!(DesktopCommand::parse_records("activate\u{1f}").is_empty());
     }
 
     #[test]
