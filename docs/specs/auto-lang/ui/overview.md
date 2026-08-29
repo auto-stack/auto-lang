@@ -54,7 +54,7 @@ tauri 全屏壳复用同一宿主页。**464 launcher 已落地**（SummonLaunch
 入口裁决 + L2 detach-attach，re-exec 两进程集成验证，状态保持经 revision
 连续性证明）；spawn-client 双态启动 + broker 孵化中转就绪，live-iced 渲染
 消费面换接与 Stage 3 多 App 内存实测归 shell-track/后续。设计源：
-[Design 23/24/25](../../../design/autoui/README.md)、[桌面协议 v1.1](../../../design/autoui/desktop-protocol-v1.md)。
+[Design 23/24/25](../../../design/autoui/README.md)、[桌面协议 v1.1](../../../design/autoui/desktop-protocol-v1.md)。。**480 路线 B Stage 3 已落地（v1.2，收官）**：真桌面壳孵化通道（`ui/desktop_protocol/client_runtime.rs` AppProjector 投影器 v1——AuraNode→DrawList text/button+线性堆叠+button 命中区+prop/FStr 插值代入 VM 状态；ClientPump 协议泵 step/run 双形态；`auto run --autodesk-client=<pipe>`/`--autodesk-incubate`/`--app386=<name>` 双模入口，无标记行为零改动；`DesktopSession::enable_broker` serve 线程 + ServiceTick 帧泵周期落地）+ BrokerClient 驻留多 App 宿主（`broker_clients` 表，N=3/5 压测全 Active/逐 App 点击帧递增/30s 存活）+ 弹性重连（EOF→预算内重试连回，VM 状态/revision 原地）+ L1 换窗（`detach_surface_to_os_window`/`attach_surface_back` 登记翻转，App/VM 原地）+ L3 v2a 快照迁移（`ControlMsg::StateSnapshot` tag 11 注入恢复，count/revision 连续）+ 内存边际增量基线（Private 4.81MiB/App 临界达标·WS 23.17MiB/App 未达标——度量+判定形态，`docs/plans/reports/480-memory-baseline.md`）+ 修复 recv_wait 丢消息/shm 段名跨进程撞名两真缺陷（`autodesk-shm-<pid>-<surface>`）。像素级投影保真与 live-iced 渲染器换接归后续。
 
 **vue 轨（codegen 正确性 + 工程化）**：444 修五类 vue-tsc 缺陷（回调通道/emits 名册派生/变体断言）；
 443 defineModel 降级收窄（bound_model_channels 预扫）；451 actions/menubar/toolbar/快捷键消费补进
