@@ -1158,6 +1158,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.url.decode_query", 2003, Void),
             ("auto.url.encode_path", 2013, Void),
             ("auto.url.parse", 2006, Void),
+            // plan-022 (auto-down): `.length` property aliases (see
+            // NATIVE_ID_ENTRIES) — Int return type for codegen typing.
+            ("auto.list.length", 103, Int),
+            ("auto.str.length", 170, Int),
             ("auto.url.scheme", 2007, Void),
             ("auto.url.host", 2008, Void),
             ("auto.url.port", 2009, Void),
@@ -1989,6 +1993,13 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.url.decode", 2001),
     ("auto.url.encode_path", 2013),
     ("auto.url.encode_query", 2002),
+    // plan-022 (auto-down): property-form `.length` — the JS-side spelling
+    // engine/vue/front sources use. The Dot builtin-native lookup builds
+    // "List.length"/"str.length" → canonical here; without these lazy
+    // entries the access falls through to GET_FIELD and yields 0 on heap
+    // lists. IDs alias the catalog len shims (103 / 170).
+    ("auto.list.length", 103),
+    ("auto.str.length", 170),
     ("auto.url.decode_query", 2003),
     ("auto.url.parse", 2006),
     ("auto.url.scheme", 2007),

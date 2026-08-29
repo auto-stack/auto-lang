@@ -79,6 +79,40 @@ mod plan046_obj_natives {
         }
     }
 
+    /// plan-022 (auto-down jade): property-form `.length` on a list — the
+    /// JS-side spelling engine/vue/front sources use pervasively — must
+    /// route to the list-len native. Before the alias existed the Dot
+    /// builtin-native lookup built "List.length" → canonical
+    /// "auto.list.length", found nothing, and the access fell through to
+    /// GET_FIELD, which misses on heap lists and yields 0. (Untyped/dynamic
+    /// receivers stay on the plan-454 WIP track; this pins the typed forms.)
+    #[test]
+    fn list_length_property_routes_to_len_native() {
+        let out = run(
+            "fn main() {\n\
+             \x20   let xs = [\"a\", \"b\", \"c\"]\n\
+             \x20   print(xs.length)\n\
+             \x20   let n = xs.length\n\
+             \x20   print(n)\n\
+             }\n",
+        )
+        .expect("list .length property must run");
+        assert!(out.contains("3"), "expected 3 twice, got: {out}");
+        assert!(!out.contains("0"), "length must not fall through to 0, got: {out}");
+    }
+
+    #[test]
+    fn str_length_property_routes_to_len_native() {
+        let out = run(
+            "fn main() {\n\
+             \x20   let s = \"abcd\"\n\
+             \x20   print(s.length)\n\
+             }\n",
+        )
+        .expect("str .length property must run");
+        assert!(out.contains("4"), "expected 4, got: {out}");
+    }
+
     /// T2 full-chain (CLOSED by plan-454 Phase E): Object.values typed as
     /// Array at compile time so for-in lowers via temp-handle+index+GET_ELEM
     /// channel instead of the iterator mismatch (E5b).
