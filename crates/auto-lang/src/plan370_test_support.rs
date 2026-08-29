@@ -72,6 +72,8 @@ pub(crate) fn build_example_component(example: &str) -> Option<DynamicComponent>
 #[cfg(feature = "ui-interpreter")]
 pub(crate) fn build_component_from_app(manifest: &Path) -> Option<DynamicComponent> {
     let base_dir = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
+    // PLAN-050 T9: 与生产 build_dynamic_component 同款 i18n 查表装载。
+    crate::ui::i18n_lookup::load_from_dir(&base_dir);
     let code = fs::read_to_string(manifest).unwrap();
 
     // 1. Parse + extract root widget

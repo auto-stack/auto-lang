@@ -3,3 +3,9 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 icon: "calculator"
+theme: "dark"
+accent: "indigo"
+
+dep "common" {
+    path: "../common"
+}

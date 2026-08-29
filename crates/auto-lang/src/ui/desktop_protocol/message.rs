@@ -247,7 +247,9 @@ impl HandshakeMsg {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameMsg {
     /// host→app。缓冲槽分配/重分配（握手隐含一次 alloc(2)；Resize 后同型）。
-    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32 },
+    /// `shm` = 共享内存段名（S9：`autodesk-shm-<surface>` 约定；None = 纯
+    /// 管道帧，Stage 1 loopback 形态）。
+    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32, shm: Option<String> },
     /// host→app。回收全部槽（窗口关闭/独立出去）。
     BufferRelease { surface: u64 },
     /// host→app。虚拟窗尺寸变更（重协商缓冲）。
@@ -260,6 +262,9 @@ pub enum FrameMsg {
     /// app→host。缓存失效提示（键域由生产者定义；编辑器 = revision×fold
     /// 组合键，413 §7.3）。
     CacheControl { wid: u64, drop_keys: Vec<u64> },
+    /// app→host。帧就绪（**共享内存变体**，S9）：payload 在 `slot` 槽内
+    /// （`[u32 len][DrawList 编码]`），管道上只过元数据——大帧不走管道。
+    FrameReadyShared { wid: u64, frame_id: u64, slot: u8, damage: Option<WRect>, revision: u64, len: u32 },
 }
 
 impl FrameMsg {
@@ -269,15 +274,23 @@ impl FrameMsg {
     const FRAME_READY: u8 = 4;
     const FRAME_ACK: u8 = 5;
     const CACHE_CONTROL: u8 = 6;
+    const FRAME_READY_SHARED: u8 = 7;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::BufferAlloc { surface, slots, width, height } => {
+            Self::BufferAlloc { surface, slots, width, height, shm } => {
                 put_u8(out, Self::BUFFER_ALLOC);
                 put_u64(out, *surface);
                 put_u8(out, *slots);
                 put_f32(out, *width);
                 put_f32(out, *height);
+                match shm {
+                    Some(name) => {
+                        put_bool(out, true);
+                        put_string(out, name);
+                    }
+                    None => put_bool(out, false),
+                }
             }
             Self::BufferRelease { surface } => {
                 put_u8(out, Self::BUFFER_RELEASE);
@@ -318,6 +331,21 @@ impl FrameMsg {
                     put_u64(out, *k);
                 }
             }
+            Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len } => {
+                put_u8(out, Self::FRAME_READY_SHARED);
+                put_u64(out, *wid);
+                put_u64(out, *frame_id);
+                put_u8(out, *slot);
+                match damage {
+                    Some(d) => {
+                        put_bool(out, true);
+                        d.encode(out);
+                    }
+                    None => put_bool(out, false),
+                }
+                put_u64(out, *revision);
+                put_u32(out, *len);
+            }
         }
     }
 
@@ -328,7 +356,8 @@ impl FrameMsg {
                 let slots = r.u8()?;
                 let width = r.f32()?;
                 let height = r.f32()?;
-                Self::BufferAlloc { surface, slots, width, height }
+                let shm = if r.bool()? { Some(r.string()?) } else { None };
+                Self::BufferAlloc { surface, slots, width, height, shm }
             }
             Self::BUFFER_RELEASE => Self::BufferRelease { surface: r.u64()? },
             Self::RESIZE => {
@@ -360,6 +389,15 @@ impl FrameMsg {
                     drop_keys.push(r.u64()?);
                 }
                 Self::CacheControl { wid, drop_keys }
+            }
+            Self::FRAME_READY_SHARED => {
+                let wid = r.u64()?;
+                let frame_id = r.u64()?;
+                let slot = r.u8()?;
+                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let revision = r.u64()?;
+                let len = r.u32()?;
+                Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -564,6 +602,16 @@ pub enum ControlMsg {
     /// 编码串（`launch\u{1F}<name>` 等——shell.at 写入侧格式，宿主
     /// `DesktopCommand::parse_records` 直解析）。
     DesktopBus { wid: u64, record: String },
+    /// host→app。L2"独立出去"：路线 B 客户端进程收到后切自管表面
+    /// （自开 OS 窗/独立渲染循环），**VM 状态不动**；回 `L2Detached`
+    /// 确认后宿主回收虚拟窗（autoshell §7.1 L2）。
+    L2Detach { wid: u64 },
+    /// app→host。`L2Detach` 的确认（宿主随即 ReclaimWindow）。
+    L2Detached { wid: u64 },
+    /// app→host。L2"进入 AutoDesk"：Standalone 的 app 请求重挂；
+    /// 宿主按孵化处理（新 wid+surface），app 会话状态连续
+    /// （revision 不归零 = 状态未动的协议级证据）。
+    L2AttachRequest { wid: u64 },
 }
 
 impl ControlMsg {
@@ -575,7 +623,10 @@ impl ControlMsg {
             | Self::TitleChanged { wid, .. }
             | Self::Notify { wid, .. }
             | Self::ExitRequest { wid }
-            | Self::DesktopBus { wid, .. } => *wid,
+            | Self::DesktopBus { wid, .. }
+            | Self::L2Detach { wid }
+            | Self::L2Detached { wid }
+            | Self::L2AttachRequest { wid } => *wid,
         }
     }
 
@@ -616,6 +667,18 @@ impl ControlMsg {
                 put_u64(out, *wid);
                 put_string(out, record);
             }
+            Self::L2Detach { wid } => {
+                put_u8(out, 8);
+                put_u64(out, *wid);
+            }
+            Self::L2Detached { wid } => {
+                put_u8(out, 9);
+                put_u64(out, *wid);
+            }
+            Self::L2AttachRequest { wid } => {
+                put_u8(out, 10);
+                put_u64(out, *wid);
+            }
         }
     }
 
@@ -650,6 +713,9 @@ impl ControlMsg {
                 let record = r.string()?;
                 Self::DesktopBus { wid, record }
             }
+            8 => Self::L2Detach { wid: r.u64()? },
+            9 => Self::L2Detached { wid: r.u64()? },
+            10 => Self::L2AttachRequest { wid: r.u64()? },
             tag => return Err(CodecError::UnknownTag(tag)),
         })
     }
@@ -850,6 +916,14 @@ mod tests {
             slots: 2,
             width: 480.0,
             height: 320.0,
+            shm: Some("autodesk-shm-42".into()),
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+            surface: 43,
+            slots: 2,
+            width: 100.0,
+            height: 80.0,
+            shm: None,
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }));
         round_trip(ProtocolMsg::Frame(FrameMsg::Resize { surface: 42, width: 640.0, height: 400.0 }));
@@ -877,6 +951,14 @@ mod tests {
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::FrameAck { wid: 3, frame_id: 7, slot: 1 }));
         round_trip(ProtocolMsg::Frame(FrameMsg::CacheControl { wid: 3, drop_keys: vec![1, 2, 0xDEAD_BEEF] }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyShared {
+            wid: 3,
+            frame_id: 11,
+            slot: 1,
+            damage: Some(WRect::new(0.0, 0.0, 480.0, 320.0)),
+            revision: 12,
+            len: 4096,
+        }));
     }
 
     #[test]
@@ -910,6 +992,9 @@ mod tests {
             ControlMsg::Notify { wid: 3, summary: "编译完成".into(), body: "0 warnings".into() },
             ControlMsg::ExitRequest { wid: 3 },
             ControlMsg::DesktopBus { wid: 3, record: "launch\u{1f}counter".into() },
+            ControlMsg::L2Detach { wid: 3 },
+            ControlMsg::L2Detached { wid: 3 },
+            ControlMsg::L2AttachRequest { wid: 3 },
         ];
         for m in msgs {
             assert_eq!(m.wid(), 3, "wid 提取器");

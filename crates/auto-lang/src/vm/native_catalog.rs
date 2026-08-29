@@ -324,6 +324,11 @@ macro_rules! for_each_native {
             // localStorage bridge uses the JS shape (getItem -> None when
             // missing) over the Plan 401 session KV store.
             (2000, NATIVE_URL_ENCODE, shim_url_encode, "auto.url.encode"),
+            // plan-022 (auto-down): axum {*path} wildcard client encode —
+            // segments encoded, `/` separators preserved (browser fetch
+            // parity). 2004's ENCODE_PATH_SEGMENT const is hand-declared in
+            // stdlib.rs with no shim; this entry mints its own id.
+            (2013, NATIVE_URL_ENCODE_PATH, shim_url_encode_path, "auto.url.encode_path"),
             (2771, NATIVE_LOCALSTORAGE_GET_ITEM, shim_localstorage_get_item, "auto.localstorage.get_item"),
             (2772, NATIVE_LOCALSTORAGE_SET_ITEM, shim_localstorage_set_item, "auto.localstorage.set_item"),
             (2773, NATIVE_LOCALSTORAGE_REMOVE_ITEM, shim_localstorage_remove_item, "auto.localstorage.remove_item"),
@@ -1151,6 +1156,7 @@ macro_rules! for_each_bigvm_native {
             ("auto.url.decode", 2001, Void),
             ("auto.url.encode_query", 2002, Void),
             ("auto.url.decode_query", 2003, Void),
+            ("auto.url.encode_path", 2013, Void),
             ("auto.url.parse", 2006, Void),
             ("auto.url.scheme", 2007, Void),
             ("auto.url.host", 2008, Void),
@@ -1981,6 +1987,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.toml.to_string", 2751),
     ("auto.url.encode", 2000),
     ("auto.url.decode", 2001),
+    ("auto.url.encode_path", 2013),
     ("auto.url.encode_query", 2002),
     ("auto.url.decode_query", 2003),
     ("auto.url.parse", 2006),

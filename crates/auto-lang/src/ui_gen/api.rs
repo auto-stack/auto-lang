@@ -744,6 +744,7 @@ pub fn generate_component_from_file(
                 .with_default_classes(default_classes)
                 .with_store_deps(store_deps.clone())
                 .with_store_import_prefix(store_import_prefix.clone())
+                .with_module_fns(module_fns.clone())
                 .with_sub_widgets(all_sub_widgets.clone())
                 .with_sub_widget_models(sub_widget_models.clone())
                 .with_sub_widget_msgs(sub_widget_msgs.clone());
@@ -780,6 +781,7 @@ pub fn generate_component_from_file(
             .with_default_classes(default_classes)
             .with_store_deps(store_deps.clone())
             .with_store_import_prefix(store_import_prefix.clone())
+            .with_module_fns(module_fns.clone())
             .with_sub_widgets(all_sub_widgets.clone())
             .with_sub_widget_models(sub_widget_models.clone())
             .with_sub_widget_msgs(sub_widget_msgs.clone())

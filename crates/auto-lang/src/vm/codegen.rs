@@ -4528,24 +4528,32 @@ impl Codegen {
         let mut path = format!("{}{}", base_url, api.path);
         let mut body_arg_indices: Vec<usize> = Vec::new();
         for (ai, expr) in arg_exprs.iter().enumerate() {
-            // Only positional args map to path params by position. Two
+            // Only positional args map to path params by position. Three
             // placeholder spellings: `{param}` (musk/vue convention, e.g.
-            // "/api/chats/session/{id}") and `:param` (legacy). Brace wins
-            // when both would match.
+            // "/api/chats/session/{id}"), `{*param}` (axum wildcard, e.g.
+            // "/api/wiki/{*path}" — plan-022), and `:param` (legacy). Brace
+            // wins when both would match.
             let param_name = api.params.get(ai).cloned().unwrap_or_default();
             let brace = format!("{{{}}}", param_name);
+            let wild = format!("{{*{}}}", param_name);
             let colon = format!(":{}", param_name);
-            let placeholder = if !param_name.is_empty() && path.contains(&brace) {
-                brace
+            // Single segments get full percent-encoding (axum Path decodes
+            // on the wire — identity for unreserved chars, so existing
+            // plain-id URLs are unchanged); wildcards keep `/` separators
+            // (server-side per-segment decode reconstructs the path).
+            let (placeholder, encode_native) = if !param_name.is_empty() && path.contains(&brace) {
+                (brace, Some("auto.url.encode"))
+            } else if !param_name.is_empty() && path.contains(&wild) {
+                (wild, Some("auto.url.encode_path"))
             } else if path.contains(&colon) {
-                colon
+                (colon, Some("auto.url.encode"))
             } else {
                 body_arg_indices.push(ai);
                 continue;
             };
             // Splice the arg into the path at the placeholder: emit a
             // LOAD_STR + arg + STR_CAT chain via emit_url_with_param.
-            self.emit_url_with_param(&path, &placeholder, expr)?;
+            self.emit_url_with_param(&path, &placeholder, expr, encode_native)?;
             path = String::new(); // marker: URL already emitted
         }
         // If no path-param substitution happened (path unchanged), emit the
@@ -4557,6 +4565,29 @@ impl Codegen {
         // 2. Determine the HTTP native name and whether a body is needed.
         let method = api.method.to_uppercase();
         let needs_body = matches!(method.as_str(), "POST" | "PUT" | "PATCH");
+
+        // 2.5 (plan-022): bodyless methods carry their non-path args as a
+        // query string. Previously the args were collected for the JSON
+        // body and then silently dropped here, leaving `?q=…&limit=…`
+        // style endpoints unreachable from the VM front. Values are
+        // percent-encoded (identity for int/bool stringifications).
+        if !needs_body && !body_arg_indices.is_empty() {
+            for (qi, &ai) in body_arg_indices.iter().enumerate() {
+                let pname = api
+                    .params
+                    .get(ai)
+                    .cloned()
+                    .unwrap_or_else(|| format!("arg{}", ai));
+                let sep = if qi == 0 { "?" } else { "&" };
+                self.emit_str_const_push(&format!("{}{}=", sep, pname));
+                self.emit(OpCode::STR_CAT);
+                self.compile_expr(&arg_exprs[ai])?;
+                self.emit(OpCode::TO_STR);
+                self.emit_call_nat_by_name("auto.url.encode", 1)?;
+                self.emit(OpCode::STR_CAT);
+            }
+        }
+
         let http_native = match method.as_str() {
             "GET" => "auto.http.get_json",
             "POST" => "auto.http.post_json",
@@ -4666,6 +4697,7 @@ impl Codegen {
         path: &str,
         placeholder: &str,
         arg_expr: &Expr,
+        encode_native: Option<&str>,
     ) -> AutoResult<()> {
         // Split path at the placeholder.
         let (before, after) = path.split_once(placeholder)
@@ -4678,6 +4710,12 @@ impl Codegen {
         // produce a debug string, so path params should be int/str — the common
         // case for :id segments).
         self.emit(OpCode::TO_STR);
+        // Optional percent-encoding pass (plan-022): full encode for single
+        // segments, slash-preserving encode for `{*path}` wildcards (the
+        // native no-ops on unreserved chars, so plain-id URLs are unchanged).
+        if let Some(native) = encode_native {
+            self.emit_call_nat_by_name(native, 1)?;
+        }
         self.emit(OpCode::STR_CAT); // before + arg
         if !after.is_empty() {
             self.emit_str_const_push(after);

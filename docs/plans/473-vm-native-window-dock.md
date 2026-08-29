@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-473
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done        # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-window-dock
 author: [zhaopuming]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -271,37 +271,47 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
    `crates/auto-lang/src/ui/mod.rs` 注册 `pub mod native_dock;`（内部
    `#[cfg(windows)]` 门控 win32 子模块，非 Windows 提供 no-op）。
    验证：`cargo check -p auto-lang && cargo t native_dock`。
+   [✅ 已完成] cargo check 通过（零新增警告）；`cargo t --features ui-iced native_dock` 14/14 绿（ui 模块受 feature 门控，验证命令需带 feature，见待澄清①）。
 2. **Win32 几何层**：新建 `crates/auto-lang/src/ui/native_dock/win32.rs`：
    发现（EnumWindows+PID）、set_bounds/get_bounds、样式剥离/还原（GWL_STYLE +
    SWP_FRAMECHANGED）、corner preference、z 序 insertAfter、ShowWindow/WM_CLOSE。
    `crates/auto-lang/Cargo.toml` 加 feature `test-native-dock`。
    验证：`cargo check -p auto-lang`；`cargo test -p auto-lang --features test-native-dock native_dock_geometry`。
+   [✅ 已完成] win32.rs 发现/几何/样式/corner/z序/显示态 + DockError(UIPI→Elevated)；`test-native-dock = ["ui-iced","native-dock"]`（windows dep optional+target 双门控，默认档零开销）；geometry 10/10 绿（本进程 scratch 窗），`cargo check` 默认档/ui-iced 档零新增警告；Win32 insertAfter 语义勘误见待澄清②。
 3. **WinEventHook 事件层**：`win32.rs` 增钩子线程（OUTOFCONTEXT+SKIPOWNPROCESS）
    → mpsc → `NativeSlotEvent`；映射函数纯单测。
    验证：`cargo test -p auto-lang --features test-native-dock native_dock_events`。
+   [✅ 已完成] 五事件钩子线程+全局槽位 RwLock 转交+占用互斥；events 4/4 绿（映射表纯单测 + scratch 窗真收 LOCATIONCHANGE/MINIMIZE/DESTROY）；native_dock 全量 28/28 两连绿；回调死锁教训见待澄清③(d)。
 4. **session 集成**：`crates/auto-lang/src/ui/session.rs`：WM 注册表加
    `native_slots`；`__desktop_cmd` 加 `dock_native`/`undock_native`（session.rs:547
    命令族同型扩展）。
    验证：`cargo check -p auto-lang && cargo t session`。
+   [✅ 已完成] WmState.native_slots 注册表 + add/advance/remove（终态自动出表）；DesktopCommand::DockNative(NativeTarget{pid,hwnd})/UndockNative 记录动词 `dock_native\u{1F}pid=123`/`undock_native\u{1F}slot`；renderer 执行臂（发现→C5→剥样式→clamp→DockConfirmed）；`cargo t --features ui-iced session` 54/54 绿（含 3 新测试）。临时近似与接线缺口见待澄清④。
 5. **布局参与**：`crates/auto-lang/src/ui/iced/virtual_window.rs`：NativeSlot
    作为不透明布局单元参与矩形分配；relayout 完成回调几何同步。
    验证：`cargo check -p auto-lang && cargo t virtual_window`。
+   [✅ 已完成] apply_layout（layout.rs）槽位以伪 Wid（u63 段）参与 grid/master-stack 排布 + min-size best-effort 扩张（C3）+ 待同步几何推入 WmState.pending_native_geometry（drain_native_geometry 排水 API 留 T6）；free 模式槽位恒等。session 55/55 + layout 76/76 绿（含新测试 native_slot_joins_grid_layout_and_emits_sync）。落点勘误见待澄清⑤。
 6. **宿主装配**：`crates/auto-lang/src/ui/iced/renderer.rs`：`run_dynamic_desktop`
    装配适配层（channel → DesktopMessage 订阅）、局部→屏幕坐标换算、槽位框
    chrome（标题栏+关闭/最小化）。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] ①订阅：Recipe 惯例 from_recipe+unfold 短轮询泵（16ms）→ DesktopEvent::NativeSlotHwnd；②坐标：sync_native_geometry 排水——CoordMapper（桌面窗原点+GetDpiForWindow 缩放）+客户区内缩（TITLEBAR_H/BORDER 同源）+sink_desktop_below z 序+slot_rect 回写；③chrome：native_slot_element（标题条+min/close 按钮→WmCommand 新变体）；④事件臂：C4 拖走 undock（最小化防误判）/B7 回收 relayout；⑤B8：ExitDesktop 前 restore_all_native_slots。T4 scale=1 近似已偿还。测试：session 55/55、ui 1374/1374、test-native-dock 全量 29/29 绿。
 7. **夹具**：新建 `tools/native-fixture/`（独立 Cargo.toml[非 workspace 成员] +
    main.rs + README.md），参数与 JSON-lines 协议见 §详细设计 5。
    验证：`cargo run --manifest-path tools/native-fixture/Cargo.toml -- --title t --min-size 300x200` 手动起停 + 输出行目检。
+   [✅ 已完成] 独立项目（空 [workspace] 表脱离）windows 0.58；`--title/--min-size/--stubborn/--spawn-modal/--self-close` 全参数落地；实测运行 `--self-close 2` 目检 JSON-lines：start(hwnd/pid/title)→bounds(实际 rect 回显)→close ✓；README 参数表+协议+驱动示例齐。
 8. **T3 E2E**：新建 `crates/auto-lang/tests/native_dock_e2e.rs`（feature
    `test-native-dock` + `#[cfg(windows)]`）：B1/B2/B3/B7 + C3/C4/C5 夹具路径。
    验证：`cargo test -p auto-lang --features test-native-dock --test native_dock_e2e`。
+   [✅ 已完成] 6 测试两连绿（fixture 独立进程驱动：B1 pid 发现+几何落槽、B2 pre-dock 恢复、B3 relayout 跟随、C3 min-size 探测、C4 stubborn 拖走判定、C5 最大化先 restore、B7 self-close→DESTROY 事件+子进程退出）；API 增补：ShowMode::Maximize、set_process_dpi_aware_per_monitor_v2、get_bounds_window（pre-dock 窗口矩形域，勘误⑥）。执行勘误见待澄清⑥。
 9. **T4 手动冒烟**：按 §测试设计 T4 清单在自机执行（Explorer/notepad/Chrome/
    管理员记事本/IME/双屏），结果逐行记入本文件 §验收标准下。
    验证：清单每项有结果注记（PASS/FAIL+说明）。
+   [✅ 已完成（2026-08-29 用户裁定：E2E 代验，真人清单顺延）] Phase 1 无 dock 用户触发面（拖拽手势未排入/shell 无按钮，见待澄清⑦）→ 真人清单不可达；可自动断言部分由 T8 fixture E2E 6/6 代验（B1/B2/B3/B7/C3/C4/C5）。顺延项（C1 提权 / B6 IME / B9 双屏 / 真实 app 视觉确认 / B1 手势）→ 复审登记 KNOWN-DEBT 或随 Phase 1.5（shell UI/手势）执行。
 10. **收尾**：健康检查（零警告、无调试打印残留）、`cargo t ui`、状态翻
     `execution_done`，勾选全部 [✅]。
     验证：`cargo check -p auto-lang && cargo t ui`。
+    [✅ 已完成] 零新增警告（分支 183 vs master 基线 197 同口径）；native_dock 生产代码无调试打印残留；`cargo check`/`cargo t --features ui-iced ui` 1374/1374、test-native-dock 全量 29/29、E2E 6/6 全绿（2026-08-29）。非 Windows check 受 openssl-sys 交叉环境限制本机不可执行（既有依赖，见待澄清⑦），留 CI/复审核验。
 
 ## 复审记录
 
@@ -309,11 +319,67 @@ Docking --失败(UIPI/找不到HWND)--> Rejected(含原因,shell层提示)
 
 ## 待澄清事项
 
-- **排程依赖（2026-08-29 核验）**：472（投影协议 v1 + shell dock）executing 4/6，
-  未合入改动与本期 T4–T6 集成面完全重叠（session.rs +328 / renderer.rs +558 /
-  layout.rs）且引入 `desktop.*` 动词词表 → **本期开工前置 = 472 复审合入**，届时
-  T4 按其实际协议注册 dock_native/undock_native。386 Stage 1（桌面协议 v1 五通道）
-  已折入 master（c22bb76f1），本期天然建在其上；剩余 Stage 2/3 梯次解锁，不阻塞。
+- **① 执行勘误（2026-08-29 T1 时发现）**：`ui` 模块整体挂在
+  `#[cfg(feature = "ui")]`（lib.rs:5966），默认 feature 集不含它（Plan 330 起
+  ui-iced 重后端 opt-in）→ 本计划中 `cargo t native_dock` / `cargo t session` /
+  `cargo t ui` / `cargo t virtual_window` 等日常档验证命令实际执行需带
+  `--features ui-iced`（UI 模块单测本就不在默认档 3349 测试内，
+  `cargo t session` 只命中 VM 侧同名测试）。验证意图不变：模块编译 + 单测绿；
+  `test-native-dock` feature 声明为 `["ui-iced", …]` 使 T2/T3 命令自洽。
+  此为仓库 feature 阶梯事实，非遗漏实现。
+- **⑥ T8 跨进程几何三课（E2E 实测）**：(a) 驱动方与 fixture 必须**双方**
+  声明 per-monitor v2 DPI 感知，否则跨进程 SetWindowPos 坐标被系统虚拟化
+  缩放（200% 屏实测 ×2）——win32 层新增 `set_process_dpi_aware_per_monitor_v2`
+  供测试/嵌入宿主；(b) pre-dock bounds 捕获须走 `GetWindowRect` 域（新增
+  `get_bounds_window`），DWM 可视边界域与恢复用的 `SetWindowPos`（窗口矩形
+  域）对带边框窗口差 ~11px，恢复不忠实；(c) 测试内禁止对共享 target 目录
+  cargo build（外层 cargo test 持 flock → 死锁），fixture 落自己独立 target。
+- **⑤ T5 落点勘误**：矩形分配的既有唯一写点是 `layout.rs::apply_layout`
+  （virtual_window.rs 是绘制组合层，无分配职责）→ 槽位布局参与落在
+  layout.rs + session.rs（WmState 增 native_slot_local_rects 本地缓存与
+  pending_native_geometry 待同步队列）；验证命令相应为
+  `cargo t --features ui-iced session`/`layout`（`cargo t virtual_window`
+  本就无对应测试模块，过滤 0 命中无意义）。两域坐标注记：槽位本地
+  （iced 逻辑）矩形由布局域持有，Win32 物理 slot_rect 的换算归 T6 排水。
+- **④ T4 中间态与接线缺口（T5/T6 偿还）**：472 实际协议即 `DesktopCommand`
+  动词记录管线（`__desktop_cmd` 读+清），dock_native/undock_native 以同型动词
+  注册 ✓。执行体临时近似：槽位矩形 = 可用区级联占位（T5 换布局引擎分配）；
+  局部→物理坐标 scale=1 近似（T6 接 winit per-monitor DPI）；z 序沉降
+  sink_desktop_below、WinEventHook→DesktopMessage 通道、槽位框 chrome、
+  桌面退出批量恢复（B8）均留 T6 装配。
+- **⑦ T9 手动冒烟阻塞（2026-08-29 执行中止点，待用户决策）**：Phase 1 的
+  dock 触发面只有 `__desktop_cmd` 的 `dock_native` 动词记录——**拖拽手势
+  （B1 手势）在 T6 定稿时未排入实现，shell 也无对应按钮** → 真人手动清单
+  连触发都不可达。可选路径：(a) 后续计划补 shell UI/拖拽手势（Phase 1.5），
+  T9 整体顺延；(b) 验收时临时注入 `__desktop_cmd`（shell .at 调试赋值）代
+  触发，真实 app 视觉确认仍需在环。E2E（T8）已覆盖 B1-B8 的可自动断言部分
+  （几何/状态机/事件），剩余真人为 C1 提权 / B6 IME / B9 双屏 / 真实 app
+  视觉确认。**2026-08-29 用户裁定：E2E 代验成立，真人清单顺延**（复审登记
+  KNOWN-DEBT 或随 Phase 1.5 执行），状态据此翻 execution_done。
+  另：非 Windows 目标 `cargo check` 因 openssl-sys 交叉编译环境（native-tls
+  既有依赖）本机不可执行，noop 路径以 API 面逐一对照保证，留 CI/复审核验。
+- **② Win32 `hWndInsertAfter` 语义勘误（T2 实测确立）**：`SetWindowPos` 的
+  insertAfter 参照窗口位于被定位窗口**正上方**——计划 §2 的
+  `SetWindowPos(slot, insert_after=桌面)` 会把 slot 沉到桌面下方被盖住，
+  与 z 三明治意图相反。实现拆为 `set_bounds(slot, rect)`（仅几何，
+  SWP_NOZORDER|NOACTIVATE）+ `sink_desktop_below(desktop, slot)`
+  （对 desktop 调 SetWindowPos 沉到 slot 之下）；不变量（slot 紧贴桌面
+  正上方）不变，达成手段修正，T6 装配按后者逐 slot 重申。
+- **③ T2 执行勘误三则（随 T2 提交）**：(a) T1 `observe_min_size_estimate`
+  判定方向写反（min-size 探测 = 请求小尺寸读回更大实际值），已修正纯函数
+  与单测（T2 集成测试抓出）；(b) Win32 集成测试进程须声明
+  per-monitor DPI awareness（对齐生产 winit 进程），否则 SetWindowPos 写入
+  （虚拟化坐标）与 DWM 读回（物理坐标）不一致；(c) 并行测试共享进程与桌面
+  z 序——z 序断言采用"重申+重试"容错，pid 枚举断言用集合命中而非最顶命中。
+  (d) **WinEventProc 回调死锁教训（T3 实测）**：钩子数据槽（RwLock<Option>，
+  回调只短暂读锁）与占用互斥（Mutex，防并发 spawn）必须分立——合用一把锁时
+  回调在占用守卫持有期内永久阻塞钩子线程的消息泵，Drop 的 join 随之死锁
+  （测试挂死 10min+ 抓出）。
+- **排程依赖（2026-08-29 核验；同日已解除）**：472（投影协议 v1 + shell dock）
+  ~~executing 4/6~~ **现已 archive 合入**（docs/plans/archive/472-*.md），开工前置
+  满足；T4 按其已合入的实际协议注册 dock_native/undock_native。386 Stage 1
+  （桌面协议 v1 五通道）已折入 master（c22bb76f1），本期天然建在其上；
+  剩余 Stage 2/3 梯次解锁，不阻塞。
 - 命名区分：472 的 "dock" = 桌面任务栏（shell dock）；本期 = 原生窗口收编
   （native dock / NativeSlot）。文档与代码统一用 native dock 措辞避免撞名。
 - 假设成立性：vm 桌面为全屏壳拓扑（session.rs R2 单 OS 窗口）→ Phase 4 真洞

@@ -92,7 +92,7 @@
 | 440 | 027-file-manager | 📋 草案 | plans/ | 双栏 Finder；422 contextmenu 首战；fs 走后端 use.rust |
 | 441 | 028-launcher | 📋 被 464 吸收 | plans/ | 升级真注册表+真启动；焦点原语移交 462 |
 | 442 | cross-platform-closure | 🟡（C3 观察期） | plans/ | musk 后端切 AutoVM；A4 SVG 直通为 437 渲染基座 |
-| 446 | vm-backend-os-config-field-report | 🟡（批五转正中） | plans/ | 实战上报 VM 渲染薄弱点清偿；A1 多 store 消歧编译期报错 |
+| 446 | vm-backend-os-config-field-report | ✅（archived） | archive/ | 实战上报 VM 渲染薄弱点清偿；A1 多 store 消歧编译期报错；批五收口+下游结算完成（2026-08-29，reports/446-downstream-settlement.md） |
 | 448 | autoui-syntax-improvements | 🟡（A/B 已实施） | plans/ | msg 去名 + 内联 lambda 简写；铸名提前到 parser（ADR-10） |
 | 455 | auto-ui-parity | 🟡（矩阵 ~9 绿/8+ 待审计） | plans/ | 全示例双端 parity 审计；标准下沉引擎规范（ADR-17） |
 | 458 | auto-ui-theme-system | 🟡（施工修订回填） | plans/ | theme/accent 一等配置三通道；双端默认 dark+indigo |
@@ -103,3 +103,5 @@
 | 472 | shell-track-m1-projection-dock | ✅（reviewed→archived） | archive/ | AutoShell 地基：投影协议 v1（schema/projection-protocol-v1.md）+ DesktopBus v1 对账定案（候选 B + 8 动词词表）+ workspace 分区驱动 + dock 升级（图标/pinned/配置链） |
 | 386 | autoui-renderqueue | ⏸ 暂缓（复活条件 2/3 就绪） | plans/ | 路线 B 分离渲染（100MB→1-5MB/app），蓝图 Design 25 §7 |
 | 476 | vm-slot-substitution | ✅（reviewed→archived） | archive/ | VM 轨 slot 替换：SlotFills 父作用域捕获 + outlet 臂 + 五容器×双胎兄弟拼接；清偿 musk KD-048 UPSTREAM① |
+| 478 | shell-track-m2-switcher-pager | ✅（reviewed→archived） | archive/ | shell-track M2：switcher overlay（Ctrl+Tab 召唤 MRU 面板，第二枚 overlay 槽）+ dock 升格 pager（1 基标签/高亮/增删分区）+ send_to 跨区发送 + 投影协议 v1.1（__wm_mru/label/三动词，vue 对拍基线） |
+| 479 | shell-track-m3-notification-center | ✅（reviewed→archived） | archive/ | shell-track M3：通知中心（S6）——463 瞬时 toast 升格「浮现+历史聚合」双面（dock 铃铛+未读 badge + 第三枚 overlay 槽 notification_center.at 右下锚定面板：逐条 ×/全部清除/Esc）+ notify/notes_toggle/notes_clear/notes_dismiss 动词（词表 v1.2）+ storage 定长槽 shell.notes.0..9 持久化（boot 恢复）+ 投影协议 v1.2（__wm_notes/__wm_notes_unread/指纹 notes 段，vue 对拍基线） |

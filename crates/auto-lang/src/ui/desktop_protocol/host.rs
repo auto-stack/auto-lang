@@ -108,6 +108,8 @@ pub struct ProtocolHost<'a> {
     pub observe_inbox: Vec<ObserveMsg>,
     /// wid → surface 句柄。
     wid_surface: BTreeMap<u64, u64>,
+    /// surface → 共享内存帧缓冲（S9：FrameReadyShared 载荷源）。
+    shm_buffers: BTreeMap<u64, super::shm::SharedFrameBuffer>,
     /// 孵化材料解析器。
     resolver: Box<dyn FnMut(&str) -> Result<DynamicComponent, String> + 'a>,
 }
@@ -125,6 +127,7 @@ impl<'a> ProtocolHost<'a> {
             control_inbox: Vec::new(),
             observe_inbox: Vec::new(),
             wid_surface: BTreeMap::new(),
+            shm_buffers: BTreeMap::new(),
             resolver: Box::new(resolver),
         }
     }
@@ -143,9 +146,13 @@ impl<'a> ProtocolHost<'a> {
                     let title = if title.is_empty() { app_name.clone() } else { title };
                     let rect = Rectangle::new(Point::new(16.0, 16.0), Size::new(width, height));
                     let wid = self.session.wm_add_win(app_id, title, rect);
-                    // ③ 表面分配 + Welcome/BufferAlloc 回发。
+                    // ③ 表面（含共享内存段）分配 + Welcome/BufferAlloc 回发。
                     let surface = self.surfaces.alloc(width, height);
                     self.wid_surface.insert(wid.0, surface);
+                    let shm_name = format!("autodesk-shm-{surface}");
+                    let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
+                        .map_err(ProtocolError::Shm)?;
+                    self.shm_buffers.insert(surface, shm);
                     let welcome = self.endpoint.activate(
                         app_id.0,
                         wid.0,
@@ -158,6 +165,7 @@ impl<'a> ProtocolHost<'a> {
                         slots: 2,
                         width,
                         height,
+                        shm: Some(shm_name),
                     }));
                 }
                 HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
@@ -169,6 +177,25 @@ impl<'a> ProtocolHost<'a> {
                         }));
                     }
                 }
+                HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
+                    // 从共享内存槽读载荷 → 解码 → 与管道帧同路合成。
+                    let ready = self
+                        .shm_buffers
+                        .get(&surface)
+                        .and_then(|shm| shm.read_slot(slot).ok())
+                        .and_then(|payload| {
+                            super::shm::draw_list_from_slot_payload(&payload).ok()
+                        });
+                    if let Some(payload) = ready {
+                        if let Some(freed) = self.surfaces.compose(surface, slot, payload) {
+                            self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                                wid,
+                                frame_id,
+                                slot: freed,
+                            }));
+                        }
+                    }
+                }
                 HostAction::ReclaimWindow { wid } => {
                     // 462 Close 语义：窗随 App 移除，表面释放，通知 app。
                     let app_id = self.session.wm_remove_win(Wid(wid));
@@ -176,6 +203,7 @@ impl<'a> ProtocolHost<'a> {
                         self.session.apps.remove(&app_id);
                     }
                     if let Some(surface) = self.wid_surface.remove(&wid) {
+                        self.shm_buffers.remove(&surface);
                         self.surfaces.release(surface);
                         self.to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                     }
@@ -198,9 +226,10 @@ impl<'a> ProtocolHost<'a> {
     /// chrome 命中（标题栏/把手）在 live 集成由 update 壳层先行；v1
     /// loopback 把窗内按下全量转 app（chrome 拦截是渲染器层职责）。
     pub fn pointer_down(&mut self, x: f32, y: f32, button: MouseButton) -> Option<ProtocolMsg> {
-        let host = self.session.host.as_ref()?;
-        let wid = host.wm.hit_test(x, y)?;
-        drop(host);
+        let wid = {
+            let host = self.session.host.as_ref()?;
+            host.wm.hit_test(x, y)?
+        };
         self.session.wm_focus(wid);
         let rect = {
             let host = self.session.host.as_ref()?;

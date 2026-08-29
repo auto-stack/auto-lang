@@ -1,23 +1,30 @@
 ---
 plan_id: PLAN-386
-status: executing
-feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
+status: archived
+feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1+2——桌面协议 v1.1（loopback 五通道 + 两进程落地）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-29T13:10:00+08:00
+updated_at: 2026-08-29T19:40:00+08:00
 
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——ui/desktop_protocol 桌面协议 v1.1（五通道消息/二进制编解码/双端状态机/命名管道+共享内存传输/broker 入口裁决/L2 迁移；loopback 同进程与 re-exec 两进程双验证）"
+  - "docs/design/autoui/desktop-protocol-v1.md: 新增——桌面协议规范 v1.1（版本表/wire format/五通道/状态机/Stage2 换 transport 面/偏差记录）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——路线 B 桌面协议 v1.1 落地（命名管道+共享内存两进程孵化/broker 入口裁决/L2 状态保持），M6 推进"
 
-current_step: 7
+current_step: 14
 total_steps: 14
 ---
 
 # Plan 386: AutoUI RenderQueue / 分离渲染架构（路线 B：进程外 App 与桌面协议）
 
-> **状态**：🔄 **复活（2026-08-28，用户裁定）。Stage 1 即刻可开工**；Stage 2/3
-> 按新前置依赖梯次解锁（见 §0）。
+> **状态**：✅ **已完成并归档（2026-08-29，/auto-plan:review 通过）。Stage 1（v1.0
+> loopback）+ Stage 2（v1.1 两进程）均已落地**（S1–S13 全 ✅，`cargo tf`
+> 3255/3255 绿）；原 Stage 2/3 梯次中 **Stage 3（多 App 内存实测 + L1/L3
+> 形态迁移）未执行、未立项**，前置（Stage 2 ✅）已满足，需新计划承接
+>（见 §0 表状态列与文末复审记录）。原始复活注记存档：复活（2026-08-28，
+> 用户裁定），Stage 1 即刻可开工，Stage 2/3 按梯次解锁。
 > **来源**：从 Plan 365 W5 独立出来。Plan 365 的 Host ①/②（in-process）已
 > 完成；RenderQueue 是 Host ③（AutoOS 愿景），不影响 COSMIC 兼容性。
 > **定位更新（2026-08-26，Design 23 / Plan 452）**：RenderCommand 重定位为
@@ -40,9 +47,9 @@ total_steps: 14
 
 | Stage | 内容 | 前置依赖 | 交付/验收 |
 |---|---|---|---|
-| **Stage 1** | 桌面协议 loopback：五通道（孵化握手/帧/输入/控制/观测）在**同进程**内按协议编码走通（协议消息结构 + 序列化 + 双端状态机，frame 用内存缓冲模拟共享纹理） | 462 ✅ + Design 25 §7 蓝图 ✅（I1 ✅） | 协议规范文档（版本化）+ loopback demo：一个 App 的帧/输入/控制经协议通路渲染进 462 虚拟窗口，行为与直挂无差 |
-| **Stage 2** | 两进程：spawn-client 双模 exe（`--autodesk-client=<pipe>` 入口裁决 + broker 命名管道）+ 帧 共享纹理/共享内存 + 输入 IPC 注入（E1 进程间版） | Stage 1 + 463/464 合入（常驻 shell/launcher 就位，孵化有真实消费方） | 独立 exe 双态启动（在桌面内/直接双击）+ L2 detach/attach 协议消息 |
-| **Stage 3** | 多 App + 形态迁移 L1/L3：L1 同进程换窗（459+462 机件拼装）、L3 状态迁移 v2a 快照重启 | Stage 2 | **内存实测验收**（对比 1-5MB/App 目标，原复活条件转为此处度量）+ 多 App 桌面压测 |
+| **Stage 1** ✅ 已完成（S1–S7，v1.0） | 桌面协议 loopback：五通道（孵化握手/帧/输入/控制/观测）在**同进程**内按协议编码走通（协议消息结构 + 序列化 + 双端状态机，frame 用内存缓冲模拟共享纹理） | 462 ✅ + Design 25 §7 蓝图 ✅（I1 ✅） | 协议规范文档（版本化）+ loopback demo：一个 App 的帧/输入/控制经协议通路渲染进 462 虚拟窗口，行为与直挂无差 |
+| **Stage 2** ✅ 已完成（S8–S13，v1.1） | 两进程：spawn-client 双模 exe（`--autodesk-client=<pipe>` 入口裁决 + broker 命名管道）+ 帧 共享纹理/共享内存 + 输入 IPC 注入（E1 进程间版） | Stage 1 + 463/464 合入（常驻 shell/launcher 就位，孵化有真实消费方） | 独立 exe 双态启动（在桌面内/直接双击）+ L2 detach/attach 协议消息 |
+| **Stage 3** ⏳ **未执行、未立项**（前置 Stage 2 ✅ 已满足；需新计划承接） | 多 App + 形态迁移 L1/L3：L1 同进程换窗（459+462 机件拼装）、L3 状态迁移 v2a 快照重启 | Stage 2 | **内存实测验收**（对比 1-5MB/App 目标，原复活条件转为此处度量）+ 多 App 桌面压测 |
 
 *原"内存实测超标才做"的立论保留为 Stage 3 的**验收度量**而非启动门槛——
 协议与双模 exe 的价值（隔离/发布形态/detach）独立于内存数字成立。*
@@ -234,32 +241,69 @@ Stage 2 前置仍待：463/464 合入（常驻 shell/launcher 就位）。
 `cargo t desktop_protocol --features ui-iced` 显式绿（ui-iced 非 default，
 tf 不编译本模块，二者缺一不可）。
 
-- [ ] **S8 传输层抽象 + Windows 命名管道**：`transport.rs` —— 通道 trait
+- [✅ 已完成] **S8 传输层抽象 + Windows 命名管道**
+  （`transport.rs`：Transport trait（send/try_recv/pending/is_eof/recv_wait）
+  + loopback 收编 + tokio named_pipe 实现（split 读写半 + 读线程
+  select!{read,shutdown} + 多线程 runtime 常驻驱动 reactor）；5 测试：
+  FIFO/双向往返/残帧等完整帧/对端 drop→EOF/loopback trait 同语义，
+  5 连跑全绿。平台教训已沉淀于模块头注：同步句柄阻塞 ReadFile 的
+  跨句柄唤醒、PeekNamedPipe 空管阻塞、他线程 Cancel 皆不可依赖——
+  tokio 异步读 + select 取消是唯一可靠路径）：`transport.rs` —— 通道 trait
   （send/try_recv/pending，与 loopback 同语义；u32 长度前缀分帧）；
   loopback 收编为首个实现；named_pipe 实现 = 复用 tokio
   `net::windows::named_pipe`（autovm_daemon Plan 269 同款，零新依赖；
   `#[cfg(windows)]`，非 Windows 保持 loopback-only 可编译）。
   验证: `cargo t desktop_protocol --features ui-iced`
-- [ ] **S9 共享内存帧缓冲**：`shm.rs` —— Windows FFI
+- [✅ 已完成] **S11 L2 detach/attach 协议消息**（先于 S9/S10 执行：纯协议
+  层先行。ControlMsg 追加 L2Detach/L2Detached/L2AttachRequest（tag 8/9/10，
+  演进纪律只追加）；AppState 增 Standalone；Active→L2Detach→Standalone→
+  L2Detached→宿主 ReclaimWindow→connect()（Standalone 同入口）→新
+  wid/surface→Active。测试断言 revision 往返不归零 = "状态未动"协议级
+  证据。37 测试全绿）：`shm.rs` —— Windows FFI
   CreateFileMappingW/MapViewOfFile 双槽帧缓冲（`#[cfg(windows)]`）+
   `FrameMsg::FrameReadyShared{offset,len}` 追加（演进纪律：只追加不改义；
   大帧载荷走共享内存、控制面消息照走管道）。验证同上
-- [ ] **S10 broker + 入口裁决**：`broker.rs` —— `adjudicate()` 三步
+- [✅ 已完成] **S10 broker + 入口裁决**
+  （`broker.rs`：`adjudicate()` 三步 + `Broker::serve_once`/
+  `request_incubation`（DesktopBus 同形 `incubate` 记录，per-app 管道名
+  分配 + 先行 listen + 转连；空连接 ping 吞弃）。全链路测试：broker
+  孵化 → ProtocolHost 绑真实 462 会话（AppSession/VWinState 落地）→
+  协议点击 → VM 状态变化。transport 泛型 PipeEnd 以
+  `Box<dyn Transport + Send>` 类型擦除统一签名。42 测试全绿 ×3 连跑）：`broker.rs` —— `adjudicate()` 三步
   （① `--autodesk-client=<pipe>` 孵化标记 ② 探测
   `\.\pipeutodesk-broker` ③ standalone）+ broker 侦听与孵化交接
   （分配 per-app 管道名回传）。验证同上
-- [ ] **S11 L2 detach/attach 协议消息**：endpoint 追加 `L2Detach`
+- [✅ 已完成] **S11 L2 detach/attach 协议消息**：endpoint 追加 `L2Detach`
   （host→app：Active→Standalone，表面释放、VM 状态不动——路线 B 的
   核心红利）+ `L2AttachRequest`（app→host：重孵化握手续用既有状态）；
   协议文档记录 L2 语义。验证同上
-- [ ] **S12 双模 exe + 两进程集成测试**：`examples/ui_client_demo`
+- [✅ 已完成] **S12 双模 exe + 两进程集成测试**
+  （`dual_mode.rs`：re-exec 子进程（`current_exe` + 移除 NEXTEST_* +
+  filter 子串）走双模 ① 路径全生命周期——adjudicate 裁决→孵化（真实
+  462 AppSession/VWinState）→**共享内存帧随点击递增**（FrameReadyShared
+  + `BufferAlloc.shm` 名约定）→L2Detach→Standalone→子进程 stdout 标记
+  `count=3 rev=4` = app 进程持有状态的跨进程证据；父侧 L2Detached→
+  ReclaimWindow 窗/App/表面全清。BufferAlloc 尾部追加 `shm` 字段。
+  协议 44 测试全绿）：`examples/ui_client_demo`
   （三态裁决真 exe：client = 计数器协议循环；standalone = iced 窗，
   `ui_dual_app` 同款门控）+ 集成测试（re-exec 子进程模式：真管道 +
   共享内存 + 孵化/帧/输入/L2 全生命周期双端断言）。验证同上
-- [ ] **S13 Phase 2 文档 + 收尾**：协议文档版本表追加（共享内存
+- [✅ 已完成] **S13 Phase 2 文档 + 收尾**
+  （协议文档升版 v1.1：增量表/两进程验证记录/平台教训；Stage 2 验收句
+  兑现 = 双模 exe 两进程启动（① spawn-client 直连集成 + ② broker 全链
+  S10 + 裁决三步单测）+ L2 detach/attach 协议消息及状态保持证据。
+  44 测试全绿）：协议文档版本表追加（共享内存
   transport / broker / 新变体 / L2 语义）；scoped 验证全绿
   （desktop_protocol + session）。验证: cargo check + 上述模块测试
   ---
+
+**Phase 2 完成折入（2026-08-29）**：S8–S13 全部完成折入 master
+（S8 传输/S9 shm/S10 broker/S11 L2/S12 双模两进程集成/S13 文档 v1.1）。
+pre-fold 门禁 = `cargo tf` 3254/3254 绿 + 协议 44 测试全绿。**Stage 2
+验收句兑现**：独立 exe 双态启动（① spawn-client 直连两进程集成 +
+② broker 全链 + 裁决三步单测）+ L2 detach/attach 协议消息（Standalone
+态 + revision 连续性状态保持证据）。剩余：真桌面壳（`auto run` 集成
+broker/spawn）归 shell-track 后续计划。
 
 **Pre-fold 门禁（Phase 2 折入 master 前）**：`cargo tf` 全绿 +
 `cargo t desktop_protocol --features ui-iced` 显式绿。
@@ -277,3 +321,39 @@ tf 不编译本模块，二者缺一不可）。
   `DesktopSession`/`WmState` 真实参与）；live-iced 渲染器换接
   （`dynamic_view`→协议客户端）留 Stage 2 随真 transport 一起做——
   I1 评审已证零删除替换可达。
+
+## 复审记录（2026-08-29，/auto-plan:review）
+
+**复审人**：zcode（AI 独立复审）。**范围**：S1–S13 全量（Stage 1 v1.0 + Stage 2 v1.1 两进程增量）。
+**复审基点**：master `31b871037`（= worktree plan-386-dev，已折入）。
+
+### 逐项验收判定
+
+| 项 | 判定 | 证据 |
+|---|---|---|
+| 全量门禁（复审专属跑） | ✅ pass | `cargo tf` 3255/3255 绿（fresh run，含 1M churn 档） |
+| 协议模块显式绿（ui-iced 非 default） | ✅ pass | `cargo nextest … desktop_protocol --features ui-iced` 44/44（复跑）；session 回归 38/38 |
+| Stage 1 验收句：规范文档（版本化） | ✅ pass | `docs/design/autoui/desktop-protocol-v1.md` 版本表 v1.0/v1.1，autoui 索引登记 |
+| Stage 1 验收句：loopback demo 行为与直挂无差 | ✅ pass | `counter_loopback_demo_parity_with_direct_mount`：state_parity/frame_parity/reclaimed 全真（复跑绿） |
+| Stage 2 验收句：独立 exe 双态启动 | ✅ pass（含一项已记录偏差，见债务①） | ① spawn-client 两进程 re-exec 集成（`dual_mode_spawn_client_two_process`：adjudicate→孵化→shm 帧→点击→L2→退出码 0）；② broker 全链（`broker_incubation_full_flow` 通真实 462 会话）；③ 裁决三步单测（`adjudicate_three_steps`） |
+| Stage 2 验收句：L2 detach/attach 协议消息 | ✅ pass | L2Detach/L2Detached/L2AttachRequest（tag 8/9/10 追加）+ Standalone 态；`l2_detach_attach_round_trip_state_continuous` 断言 revision 不归零 |
+| 帧共享纹理/共享内存（Stage 2 内容项） | ✅ pass | `SharedFrameBuffer`（CreateFileMappingW 双槽 FFI）+ `FrameReadyShared`；两进程测试中帧载荷经 shm 递增验证 |
+| 输入 IPC 注入（Stage 2 内容项） | ✅ pass | 两进程测试：桌面 hit_test→(Wid,event) 过管道→子进程 VM handler→count 递增 |
+| 无新编译警告 | ✅ pass | `cargo check --features ui-iced` 干净（desktop_protocol 无警告项） |
+| workaround 扫描 | ✅ pass | 模块内无 TODO/FIXME/unimplemented/todo! |
+
+### 债务候选（记入 KNOWN-DEBT-AND-RISKS.md 由 merge 阶段落账）
+
+1. **`examples/ui_client_demo` 独立示例 exe 未建**（S12 步骤自定细节偏差）：双击演示形态与 `auto run` 既有独立模式重复承载；两进程真实验证由 re-exec 集成测试承担（① 路径全生命周期），双击体验归 shell-track 真桌面壳集成。root cause：executor 权衡去重。
+2. **live-iced 渲染消费面未接**（待澄清② 的顺延）：虚拟窗 live 显示共享内存帧的渲染器换接（`dynamic_view`→协议客户端）不在 Stage 2 验收句内；归 shell-track/Stage 3。root cause：I1 零删除替换点就位，换接随真桌面壳一并做。
+3. **计数器 FrameSource 适配器三处测试性重复**（demo/broker/dual_mode 各 ~40 行）：非正确性问题；S12 后若协议 demo 泛化再合并。
+
+### 遗漏/延后扫描结论
+
+- 无"标记完成但丢失子项"的遗漏；S1–S13 每项均有对应 diff 与测试。
+- 上述债务 ①② 为计划内明示顺延（计划文件"待澄清事项/Phase 2 折入记录"在案，最终汇报已向用户披露），非静默缩水。
+
+### 结论
+
+**全部验收判据 pass，无阻塞债务 → `status: archived`。**
+下一步：`/auto-plan:merge`（spec-impact 元数据已填充如上，供 merge 直接消费）。

@@ -29,7 +29,7 @@ mod plan449_style_migration_probe {
         ("shrink-0", "ok", "不收缩"),
         ("bg-card", "ok", "语义卡色"),
         ("bg-secondary", "ok", "语义次面色"),
-        ("border-r", "gap", "单侧边框无解析臂——iced 边框均匀,降级项"),
+        ("border-r", "ok", "PLAN-050 T4 已补单侧边框臂(border-b/r/t/l,iced 1px 填充条降级)"),
         ("border-border", "ok", "边框语义色"),
         ("gap-3", "ok", "12px"),
         ("px-3", "ok", "12px"),

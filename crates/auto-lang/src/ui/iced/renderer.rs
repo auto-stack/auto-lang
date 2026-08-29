@@ -1267,6 +1267,36 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
         .into()
 }
 
+/// Plan-050 C1: content-subtree 按钮的内容对齐决策——web flex 语义到 iced
+/// 容器对齐的最小映射（仅消费四界面布局用到的组合；未命中返回 None = 维持
+/// iced Button 默认内容居中）。justify-content 优先于 text-align（前者是
+/// 布局声明，后者是文本对齐兜底）。
+fn plan050_content_align(
+    is: Option<&IcedStyle>,
+) -> (
+    Option<iced::alignment::Horizontal>,
+    Option<iced::alignment::Vertical>,
+) {
+    use iced::alignment::{Horizontal, Vertical};
+    let Some(is) = is else { return (None, None) };
+    let h = match is.justify_content {
+        Some(crate::ui::style::iced_adapter::IcedJustify::Start) => Some(Horizontal::Left),
+        Some(crate::ui::style::iced_adapter::IcedJustify::End) => Some(Horizontal::Right),
+        Some(crate::ui::style::iced_adapter::IcedJustify::Center) => Some(Horizontal::Center),
+        _ => is.text_align.map(|a| match a {
+            crate::ui::style::iced_adapter::IcedTextAlign::Left => Horizontal::Left,
+            crate::ui::style::iced_adapter::IcedTextAlign::Center => Horizontal::Center,
+            crate::ui::style::iced_adapter::IcedTextAlign::Right => Horizontal::Right,
+        }),
+    };
+    let v = is.align_items.map(|a| match a {
+        crate::ui::style::iced_adapter::IcedAlign::Start => Vertical::Top,
+        crate::ui::style::iced_adapter::IcedAlign::Center => Vertical::Center,
+        crate::ui::style::iced_adapter::IcedAlign::End => Vertical::Bottom,
+    });
+    (h, v)
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -1813,6 +1843,68 @@ fn apply_container_style<M: Clone + Debug + 'static>(
 /// the shared `apply_row_style` (width/height/margin/visual wrap + id).
 /// Plan 412: flex-row-reverse flips children; items-stretch wraps each child
 /// in a height-Fill container (iced has no cross-axis stretch alignment).
+/// Plan-050 T4/C2: 单侧边框的 1px 填充条模拟——推广 table_row_rule 先例
+/// （iced 容器边框四边整圈,无法单侧;按类串 border-b/t/l/r 在对应方向拼一条
+/// border-border 色 1px 线）。无单侧边框类时原样返回。
+fn apply_side_borders<M: Clone + Debug + 'static>(
+    el: iced::Element<'static, M>,
+    is: Option<&IcedStyle>,
+) -> iced::Element<'static, M> {
+    let Some(is) = is else { return el };
+    if !(is.border_bottom || is.border_top || is.border_left || is.border_right) {
+        return el;
+    }
+    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    let line_style = move |_: &_| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+        ..Default::default()
+    };
+    let hline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fixed(0.0)),
+        )
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fixed(1.0))
+        .style(line_style)
+        .into()
+    };
+    let vline = || -> iced::Element<'static, M> {
+        iced::widget::container(
+            iced::widget::Space::new()
+                .width(iced::Length::Fixed(0.0))
+                .height(iced::Length::Fill),
+        )
+        .width(iced::Length::Fixed(1.0))
+        .height(iced::Length::Fill)
+        .style(line_style)
+        .into()
+    };
+    let mut el = el;
+    if is.border_top {
+        el = iced::widget::Column::with_children(vec![hline(), el])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_bottom {
+        el = iced::widget::Column::with_children(vec![el, hline()])
+            .width(iced::Length::Fill)
+            .into();
+    }
+    if is.border_left {
+        el = iced::widget::Row::with_children(vec![vline(), el])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    if is.border_right {
+        el = iced::widget::Row::with_children(vec![el, vline()])
+            .height(iced::Length::Fill)
+            .into();
+    }
+    el
+}
+
 fn build_row<M: Clone + Debug + 'static>(
     mut children: Vec<iced::Element<'static, M>>,
     spacing: u16,
@@ -1854,7 +1946,7 @@ fn build_row<M: Clone + Debug + 'static>(
     if let Some(p) = trail {
         row_widget = row_widget.push(spacer(p));
     }
-    apply_row_style(row_widget, padding, style, widget_id)
+    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
@@ -1922,7 +2014,7 @@ fn build_column<M: Clone + Debug + 'static>(
     // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
     // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
     // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
-    apply_column_style(col_widget, padding, style, widget_id)
+    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id), iced_style.as_ref())
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -1938,7 +2030,11 @@ fn build_container<M: Clone + Debug + 'static>(
     widget_id: Option<String>,
 ) -> iced::Element<'static, M> {
     let cont = container(child);
-    apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id)
+    let iced_style = style.map(IcedStyle::from_style);
+    apply_side_borders(
+        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id),
+        iced_style.as_ref(),
+    )
 }
 
 /// Build a Scrollable around a single pre-built child. Width/height come
@@ -2054,6 +2150,16 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     style: Option<&Style>,
 ) -> iced::widget::TextInput<'static, M> {
     let mut input_widget = text_input(placeholder, value);
+    // PLAN-050(用户实测): 无显式 Id 的 text_input 在同视图多输入场景共享
+    // 编辑器状态——光标双闪、键盘文本进所有输入框(login 的 password 击键
+    // 追加进 user 框)。以 placeholder+width+password 派生稳定 Id 逐框区分
+    // (stable across rebuilds;同三元组的输入仍共享——与旧行为持平,不多化)。
+    let derived_id: iced::widget::Id = format!(
+        "auto_input_{}_{}_{}",
+        placeholder, width.unwrap_or(0), password
+    )
+    .into();
+    input_widget = input_widget.id(derived_id);
     if password {
         input_widget = input_widget.secure(true);
     }
@@ -2761,6 +2867,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else {
                     button_content
                 };
+                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
+                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
+                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
+                // 承载对齐;未命中维持 iced 默认居中。
+                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
+                let button_content: iced::Element<'static, M> =
+                    if p050_ax.is_some() || p050_ay.is_some() {
+                        let mut c = iced::widget::container(button_content)
+                            .width(iced::Length::Fill);
+                        if let Some(ax) = p050_ax { c = c.align_x(ax); }
+                        if let Some(ay) = p050_ay { c = c.align_y(ay); }
+                        c.into()
+                    } else {
+                        button_content
+                    };
                 let mut btn = button(button_content);
                 // Plan 423 P3: disabled 态 —— 不挂 on_press(点击无消息);
                 // inspect 捕获模式同样不挂(原语义)。灰样式在下方 style 段追加。
@@ -3875,6 +3996,9 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         "list-checks" => r#"<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
         "notebook" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/>"#,
         "bell" => r#"<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>"#,
+        // Plan 479 T3：通知面板 kind 图标（success→check / error→x / info 兜底；
+        // T1 施工图定案 5）。
+        "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
         "command" => r#"<path d="M15 6a3 3 0 1 0-3 3"/><path d="M6 15a3 3 0 1 0 3-3"/><path d="M9 9h6v6H9z"/>"#,
         // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
         "square" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/>"#,
@@ -3930,6 +4054,36 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
         // Plan 414 §2: auto-edit 状态栏 Console 开关(Zed 式终端图标)
         "terminal" => r#"<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>"#,
         "monitor" => r#"<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>"#,
+        // PLAN-050 T7 (C5): musk 图标桥补齐——27 枚 lucide 路径数据取自
+        // musk src/front/lib/icons_data.at（0.460.0 生成物,单一真源对拍），
+        // 消费 aura_view_builder 的图标组件臂（use.web component → lucide:）。
+                "book-open" => r#"<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>"#,
+        "clock" => r#"<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>"#,
+        "copy-check" => r#"<path d="m12 15 2 2 4-4"/><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>"#,
+        "download" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>"#,
+        "external-link" => r#"<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>"#,
+        "eye" => r#"<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>"#,
+        "file" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
+        "file-icon" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>"#,
+        "file-text" => r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>"#,
+        "folder-input" => r#"<path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/>"#,
+        "folder-plus" => r#"<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>"#,
+        "help-circle" => r#"<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>"#,
+        "inbox" => r#"<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>"#,
+        "info" => r#"<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>"#,
+        "list-todo" => r#"<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
+        "loader-2" => r#"<path d="M21 12a9 9 0 1 1-6.219-8.56"/>"#,
+        "message-square" => r#"<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>"#,
+        "moon" => r#"<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>"#,
+        "orbit" => r#"<circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M10.4 21.9a10 10 0 0 0 9.941-15.416"/><path d="M13.5 2.1a10 10 0 0 0-9.841 15.416"/>"#,
+        "panel-left" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>"#,
+        "pencil" => r#"<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>"#,
+        "scroll" => r#"<path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>"#,
+        "send" => r#"<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>"#,
+        "sun" => r#"<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>"#,
+        "unlink" => r#"<path d="M15 7h2a5 5 0 0 1 0 10h-2m-6 0H7A5 5 0 0 1 7 7h2"/>"#,
+        "upload-cloud" => r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>"#,
+        "wrench" => r#"<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>"#,
         _ => return None,
     };
     // Use a small static cache to avoid re-formatting.
@@ -5972,13 +6126,16 @@ fn keyboard_subscription_ext(
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
 /// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
 /// - Esc：调试退出（全屏无框桌面无关闭按钮）；
-/// - Alt+Tab / Ctrl+Tab：窗口循环（Windows OS 吞 Alt+Tab，Ctrl+Tab 兜底）；
+/// - Alt+Tab：窗口循环（POSIX WM 惯例，OS 不拦即达；463 定案 v1 不动）；
+/// - Ctrl+Tab：switcher 召唤/推进（478 改道——旧窗口循环直循环退役入
+///   overlay 路径；Windows 实测可达键位）；
 /// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
+/// - Ctrl+Alt+←/→：分区环切；Ctrl+Alt+Shift+←/→：聚焦窗发送相邻分区（478）；
 /// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::{DesktopMessage as DM, WmCommand};
+    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -5998,15 +6155,30 @@ fn desktop_hotkey_subscription(
             if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
                 return Some(DM::Wm(WmCommand::ExitDesktop));
             }
-            // 窗口循环：Tab + Alt（POSIX WM 惯例，OS 不拦即达）或 Ctrl
-            //（Windows 实测可达的兜底键位，T1 报告 §7 定案）。
-            if matches!(key, Key::Named(Named::Tab))
-                && (modifiers.alt() || modifiers.control())
-                && !modifiers.shift()
-            {
-                return Some(DM::Wm(WmCommand::CycleWindow));
+            // Plan 478 T3：Tab 键位分层——Ctrl+Tab 改道 switcher 召唤/推进
+            //（overlay 打开时由 update 臂转 .Advance，T1 施工图 §2）；
+            // Alt+Tab 保留窗口循环（463 键位 v1 不动）。
+            if matches!(key, Key::Named(Named::Tab)) && !modifiers.shift() {
+                if modifiers.control() && !modifiers.alt() {
+                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+                }
+                if modifiers.alt() && !modifiers.control() {
+                    return Some(DM::Wm(WmCommand::CycleWindow));
+                }
+            }
+            // Plan 478 T3：send_to 热键（先行判定——下方 Ctrl+Alt 分支对
+            // shift 不敏感，须在此截走 Shift 组合）。
+            if modifiers.control() && modifiers.alt() && modifiers.shift() {
+                if matches!(key, Key::Named(Named::ArrowRight)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
+                }
+                if matches!(key, Key::Named(Named::ArrowLeft)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
+                }
             }
             // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
+            // 方向键 Shift 组合已被上方 send_to 分支截走，此块无需 shift 守卫
+            // （字母键位保持 463 行为不变）。
             if modifiers.control() && modifiers.alt() {
                 if let Key::Character(c) = &key {
                     let mode = match c.to_lowercase().as_str() {
@@ -6296,6 +6468,140 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
     }
 }
 
+/// Plan 479 T2：通知入史唯一入口（S6 双面一体——「史」入列 +「浮」toast）。
+/// 顺序：入史（MRU front 插入，FIFO 容量 [`crate::ui::session::NOTES_CAP`]）
+/// → 未读（面板不可见时 +1）→ 落盘（10 槽全量重写）→ toast 浮现（既有
+/// 管线不变）→ 面板开着则重注入（打开期间列表活更新）。既有 8 处
+/// push_desktop_toast 调用点（LaunchApp 成败/分区删除门/overlay 装载降级）
+/// 已改道本入口——行为增量 = 多入史，浮现不变。
+fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
+    let id = {
+        let next = state.desktop.notes_next_id.get();
+        state.desktop.notes_next_id.set(next.wrapping_add(1));
+        next
+    };
+    // at = 入史时刻 HH:MM 本地时间（宿主侧格式化，T1 定案 3）。
+    let at = chrono::Local::now().format("%H:%M").to_string();
+    {
+        let mut notes = state.desktop.notifications.borrow_mut();
+        notes.insert(
+            0,
+            crate::ui::session::NotificationEntry {
+                id,
+                kind: kind.to_string(),
+                msg: msg.to_string(),
+                at,
+            },
+        );
+        notes.truncate(crate::ui::session::NOTES_CAP);
+    }
+    if !state.notification_visible() {
+        state
+            .desktop
+            .notes_unread
+            .set(state.desktop.notes_unread.get() + 1);
+    }
+    persist_notes(state);
+    push_desktop_toast(state, kind, msg);
+    refresh_notification_panel(state);
+}
+
+/// Plan 479 T2：通知历史落盘——定长 10 槽 `shell.notes.0..9`（T1 定案 4；
+/// slot0 = MRU front；每槽一条目 JSON，空槽 = ""，变更后全量重写）。
+/// launcher.recent_apps 定长槽同型；`storage_host_publish` 写侧对偶。
+fn persist_notes(state: &crate::ui::session::DesktopSession) {
+    let notes = state.desktop.notifications.borrow();
+    for slot in 0..10usize {
+        let value = notes
+            .get(slot)
+            .map(|n| {
+                serde_json::json!({
+                    "id": n.id, "kind": n.kind, "msg": n.msg, "at": n.at
+                })
+                .to_string()
+            })
+            .unwrap_or_default();
+        crate::vm::ffi::stdlib::storage_host_publish(&format!("shell.notes.{slot}"), value);
+    }
+}
+
+/// Plan 479 T2：boot 期通知历史恢复（`storage_host_read` 读侧对偶）。
+/// slot 序即 MRU 序；空/坏槽即止（写侧恒全量前缀）。未读不恢复（会话
+/// 概念，恒 0 起步）；`notes_next_id` 推进到已恢复最大 id 之上（新条目
+/// 不与历史撞 id）。desktop boot 接线见 T5（dock_edges 邻位）。
+pub(crate) fn restore_notifications(state: &mut crate::ui::session::DesktopSession) {
+    let mut restored: Vec<crate::ui::session::NotificationEntry> = Vec::new();
+    for slot in 0..10usize {
+        let Some(raw) =
+            crate::vm::ffi::stdlib::storage_host_read(&format!("shell.notes.{slot}"))
+        else {
+            break;
+        };
+        if raw.is_empty() {
+            break;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            break;
+        };
+        let id = v.get("id").and_then(|x| x.as_u64());
+        let kind = v.get("kind").and_then(|x| x.as_str());
+        let msg = v.get("msg").and_then(|x| x.as_str());
+        let at = v.get("at").and_then(|x| x.as_str());
+        let (Some(id), Some(kind), Some(msg), Some(at)) = (id, kind, msg, at) else {
+            break;
+        };
+        restored.push(crate::ui::session::NotificationEntry {
+            id,
+            kind: kind.to_string(),
+            msg: msg.to_string(),
+            at: at.to_string(),
+        });
+    }
+    if let Some(max_id) = restored.iter().map(|n| n.id).max() {
+        state
+            .desktop
+            .notes_next_id
+            .set(state.desktop.notes_next_id.get().max(max_id + 1));
+    }
+    *state.desktop.notifications.borrow_mut() = restored;
+}
+
+/// Plan 479 T2：面板开着时重注入通知快照（note_* 平行字符串串列 +
+/// `RebuildNotes` handler 重建 rows——宿主写状态不触发 handler，switcher
+/// 召唤注入同型）。面板未挂载/不可见时零操作。
+fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
+    let Some(panel) = state.desktop.notification_app else {
+        return;
+    };
+    if !state.notification_visible() {
+        return;
+    }
+    let mut ids: Vec<auto_val::Value> = Vec::new();
+    let mut kinds: Vec<auto_val::Value> = Vec::new();
+    let mut msgs: Vec<auto_val::Value> = Vec::new();
+    let mut ats: Vec<auto_val::Value> = Vec::new();
+    {
+        let notes = state.desktop.notifications.borrow();
+        for n in notes.iter() {
+            ids.push(auto_val::Value::Str(n.id.to_string().into()));
+            kinds.push(auto_val::Value::Str(n.kind.clone().into()));
+            msgs.push(auto_val::Value::Str(n.msg.clone().into()));
+            ats.push(auto_val::Value::Str(n.at.clone().into()));
+        }
+    }
+    let Some(app) = state.apps.get_mut(&panel) else {
+        return;
+    };
+    let _ = app.component.write_state_vec("note_ids", ids);
+    let _ = app.component.write_state_vec("note_kinds", kinds);
+    let _ = app.component.write_state_vec("note_msgs", msgs);
+    let _ = app.component.write_state_vec("note_ats", ats);
+    if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
+        eprintln!("[session] notification RebuildNotes failed: {err}");
+    }
+    *app.state.view_dirty.borrow_mut() = true;
+}
+
 /// Plan 463 T4：执行 DesktopBus 命令序列（T1 报告 §5）。返回 true = 请求
 /// 退出进程（shell 缺位时关掉最后一个虚拟窗沿用 462 daemon 语义；有 shell
 /// 时空桌面是合法态，持续存活等待启动）。
@@ -6318,11 +6624,11 @@ fn summon_launcher(
     // 1. 懒挂载
     if state.desktop.launcher_app.is_none() {
         let Some(entry) = state.desktop.launcher_entry.clone() else {
-            push_desktop_toast(state, "error", "launcher 不可用（注册表未含 028-launcher）");
+            push_notification(state, "error", "launcher 不可用（注册表未含 028-launcher）");
             return iced::Task::none();
         };
         let Ok(code) = std::fs::read_to_string(&entry) else {
-            push_desktop_toast(state, "error", "launcher 源读取失败");
+            push_notification(state, "error", "launcher 源读取失败");
             return iced::Task::none();
         };
         match crate::build_dynamic_component(&code, Some(entry.to_string_lossy().as_ref())) {
@@ -6331,7 +6637,7 @@ fn summon_launcher(
                 state.desktop.launcher_app = Some(app_id);
             }
             Err(err) => {
-                push_desktop_toast(state, "error", &format!("launcher 装载失败: {err}"));
+                push_notification(state, "error", &format!("launcher 装载失败: {err}"));
                 return iced::Task::none();
             }
         }
@@ -6377,6 +6683,140 @@ fn summon_launcher(
         .map(move |m| DM::App(launcher, m))
 }
 
+/// Plan 478 T4：switcher overlay 召唤执行体（Ctrl+Tab 热键；T1 施工图 §5.2，
+/// 464 summon_launcher 同型）。懒挂载（`assets/switcher.at` 进程内嵌——无
+/// 注册表依赖，构建失败 toast）→ 下行注入 MRU 快照：`mru_wids`/`mru_titles`/
+/// `mru_icons` 平行字符串列表（B12 规避，launcher apps_* 同型）+ 合同面
+/// `__wm_mru`（协议 v1.1 Obj 数组）+ `hosted`/`visible` 置位 → 显式
+/// `call_handler("RebuildMru")`（宿主写状态不触发 handler）重建 rows + sel
+/// 复位。快照语义：召唤时点定序，打开期间推进不重注。无输入控件——无
+/// `__focus_input`/聚焦任务（键盘路由走订阅独占，R12）。
+fn summon_switcher(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.switcher_app.is_none() {
+        match crate::ui::shell::build_switcher_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.switcher_app = Some(app_id);
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("switcher 装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    let switcher = state.desktop.switcher_app.expect("switcher mounted");
+    // 2. MRU 快照（当前分区；焦点环不跨分区——退役 Ctrl+Tab 语义延续）。
+    let Some(host) = state.host.as_ref() else {
+        return iced::Task::none();
+    };
+    let mut wids: Vec<auto_val::Value> = Vec::new();
+    let mut titles: Vec<auto_val::Value> = Vec::new();
+    let mut icons: Vec<auto_val::Value> = Vec::new();
+    let mut mru_objs: Vec<auto_val::Value> = Vec::new();
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let focused = host.wm.focused == Some(wid);
+        wids.push(auto_val::Value::Str(v.wid.0.to_string().into()));
+        titles.push(auto_val::Value::Str(v.title.clone().into()));
+        let icon = v
+            .registry_id
+            .as_ref()
+            .and_then(|id| {
+                state
+                    .desktop
+                    .registry_entries
+                    .iter()
+                    .find(|e| &e.id == id)
+            })
+            .map(|e| e.icon.clone())
+            .unwrap_or_else(|| "app-window".to_string());
+        icons.push(auto_val::Value::Str(icon.into()));
+        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+    }
+    if let Some(app) = state.apps.get_mut(&switcher) {
+        let _ = app.component.write_state_vec("mru_wids", wids);
+        let _ = app.component.write_state_vec("mru_titles", titles);
+        let _ = app.component.write_state_vec("mru_icons", icons);
+        let _ = app.component.write_state_vec("__wm_mru", mru_objs);
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重建 rows（sel 复位在 handler 内）+ 刷 view
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildMru", &[]) {
+            eprintln!("[session] switcher RebuildMru failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    iced::Task::none()
+}
+
+/// Plan 479 T3：通知中心 overlay 召唤执行体（notes_toggle 总线动词；T1
+/// 施工图定案 1，summon_switcher 同型第三枚）。懒挂载（assets/
+/// notification_center.at 进程内嵌——无注册表依赖，装载失败走
+/// push_notification 降级）→ 可见即自隐（toggle 语义），隐时打开：快照注入
+/// note_ids/note_kinds/note_msgs/note_ats 平行字符串列表（B12 规避）+
+/// `hosted`/`visible` 置位 → 显式 `call_handler("RebuildNotes")`（宿主写
+/// 状态不触发 handler）重建 rows + **未读清零**（打开即读）。无输入控件
+/// ——无 `__focus_input`/聚焦任务（Esc 关闭走订阅独占，R12）。
+fn toggle_notification_center(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.notification_app.is_none() {
+        match crate::ui::shell::build_notification_center_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.notification_app = Some(app_id);
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("通知中心装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    // 2. toggle：可见 → 自隐（未读不动——打开时已清零）。
+    if state.notification_visible() {
+        let panel = state.desktop.notification_app.expect("panel checked");
+        if let Some(app) = state.apps.get_mut(&panel) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+        return iced::Task::none();
+    }
+    // 3. 打开：快照注入 + 重建 rows + 未读清零 + 刷 view。
+    let panel = state.desktop.notification_app.expect("panel mounted");
+    let mut ids: Vec<auto_val::Value> = Vec::new();
+    let mut kinds: Vec<auto_val::Value> = Vec::new();
+    let mut msgs: Vec<auto_val::Value> = Vec::new();
+    let mut ats: Vec<auto_val::Value> = Vec::new();
+    {
+        let notes = state.desktop.notifications.borrow();
+        for n in notes.iter() {
+            ids.push(auto_val::Value::Str(n.id.to_string().into()));
+            kinds.push(auto_val::Value::Str(n.kind.clone().into()));
+            msgs.push(auto_val::Value::Str(n.msg.clone().into()));
+            ats.push(auto_val::Value::Str(n.at.clone().into()));
+        }
+    }
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app.component.write_state_vec("note_ids", ids);
+        let _ = app.component.write_state_vec("note_kinds", kinds);
+        let _ = app.component.write_state_vec("note_msgs", msgs);
+        let _ = app.component.write_state_vec("note_ats", ats);
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
+            eprintln!("[session] notification RebuildNotes failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    state.desktop.notes_unread.set(0);
+    iced::Task::none()
+}
+
 /// Plan 464 T4：shell + launcher 的 DesktopBus 联合排空与执行。
 /// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
 fn drain_and_execute_desktop_commands(
@@ -6388,6 +6828,14 @@ fn drain_and_execute_desktop_commands(
     let mut cmds = state.drain_desktop_commands();
     if let Some(la) = state.desktop.launcher_app {
         cmds.extend(state.drain_app_desktop_commands(la));
+    }
+    // Plan 478 T4：switcher 上行（focus 确认记录）同管线联合排空。
+    if let Some(sw) = state.desktop.switcher_app {
+        cmds.extend(state.drain_app_desktop_commands(sw));
+    }
+    // Plan 479 T3：通知中心上行（notes_dismiss/notes_clear）联合排空。
+    if let Some(panel) = state.desktop.notification_app {
+        cmds.extend(state.drain_app_desktop_commands(panel));
     }
     if cmds.is_empty() {
         return (false, Vec::new());
@@ -6471,6 +6919,62 @@ fn execute_desktop_commands(
             // Plan 473 T4：原生窗口收编/解除（native dock Phase 1；执行体见下）。
             DC::DockNative(target) => execute_dock_native(state, target),
             DC::UndockNative(slot) => execute_undock_native(state, slot),
+            // Plan 478 T2：pager `+` —— 新增分区并即入（验收②）。
+            DC::WorkspaceAdd => {
+                let id = state.host.as_mut().map(|h| h.wm.add_workspace());
+                if let Some(id) = id {
+                    state.wm_set_workspace(id);
+                }
+            }
+            // Plan 478 T2：pager `×` —— 宿主策略门（T1 施工图 §3，待澄清①
+            // 定案取 toast 最少意外）：非空分区不删仅提示；末分区 no-op 提示。
+            DC::WorkspaceClose(n) => {
+                let has_wins = state
+                    .host
+                    .as_ref()
+                    .map(|h| h.wm.wins.values().any(|v| v.workspace == n))
+                    .unwrap_or(false);
+                if has_wins {
+                    push_notification(
+                        state,
+                        "error",
+                        &format!("分区 {} 含窗口，请先移动或关闭", n + 1),
+                    );
+                } else {
+                    let before = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    state.wm_remove_workspace(n);
+                    let after = state.host.as_ref().map(|h| h.wm.workspaces.len());
+                    if before.is_some() && before == after {
+                        push_notification(state, "error", "至少保留一个分区");
+                    }
+                }
+            }
+            // Plan 478 T2：send_to 动词（跨分区发送；窗口随分区隐现）。
+            DC::SendTo(wid, n) => state.wm_move_win_to_workspace(wid, n),
+            // Plan 479 T2：notify 动词（App 主动请求通知；入史 + 未读 +
+            // 浮现三联动，push_notification 单入口）。
+            DC::Notify(kind, msg) => push_notification(state, &kind, &msg),
+            // Plan 479 T2：notes_clear / notes_dismiss（面板「全部清除」/
+            // 「逐条 ×」）——历史变更 + 落盘 + 面板开着则重注入。未读不动
+            // （两按钮只在面板内可达，此刻未读恒 0）。
+            DC::NotesClear => {
+                state.desktop.notifications.borrow_mut().clear();
+                persist_notes(state);
+                refresh_notification_panel(state);
+            }
+            DC::NotesDismiss(id) => {
+                state
+                    .desktop
+                    .notifications
+                    .borrow_mut()
+                    .retain(|n| n.id != id);
+                persist_notes(state);
+                refresh_notification_panel(state);
+            }
+            // Plan 479 T3：notes_toggle（dock 铃铛钮；召唤执行体，T1 定案 1）。
+            DC::NotesToggle => {
+                tasks.push(toggle_notification_center(state));
+            }
         }
     }
     (false, tasks)
@@ -6849,9 +7353,9 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 /// 两臂共用）。失败转 toast + 占位页（Design 24 §6.5）。
 fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str) {
     match state.launch_app(name) {
-        Ok(_wid) => push_desktop_toast(state, "success", &format!("已启动 {name}")),
+        Ok(_wid) => push_notification(state, "success", &format!("已启动 {name}")),
         Err(err) => {
-            push_desktop_toast(state, "error", &err);
+            push_notification(state, "error", &err);
             // Plan 463 T7：启动失败占位页（Design 24 §6.5）——
             // 可见反馈窗代替白屏；占位页自身构建失败则仅 toast。
             if let Ok(comp) = crate::ui::shell::build_launch_fallback(name) {
@@ -6930,6 +7434,31 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
+/// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
+/// entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与条件渲染
+/// 都走字符串语义（dashboard/041 对象列表同型）。icon 自注册表实时查
+/// （registry_entries 唯一事实源；未登记/无条目回退 "app-window"）。
+fn projection_win_entry(
+    registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
+    v: &crate::ui::session::VWinState,
+    focused: bool,
+) -> auto_val::Value {
+    let icon = v
+        .registry_id
+        .as_ref()
+        .and_then(|id| registry_entries.iter().find(|e| &e.id == id))
+        .map(|e| e.icon.clone())
+        .unwrap_or_else(|| "app-window".to_string());
+    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        ("wid", auto_val::Value::Str(v.wid.0.to_string().into())),
+        ("title", auto_val::Value::Str(v.title.clone().into())),
+        ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
+        ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
+        ("icon", auto_val::Value::Str(icon.into())),
+    ]))
+}
+
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
 /// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
@@ -6937,6 +7466,12 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 /// "逐窗;|meta|逐分区;"。窗口列表为**跨分区全集**（dock 运行指示消费），
 /// 虚拟窗层绘制自过滤。指纹未变则跳过写（防每帧 churn），写后置 shell
 /// view_dirty。每 update 周期在排空点邻位调用（O(窗数) 串接，便宜）。
+/// Plan 478 T3 升级 **v1.1**：新增 `__wm_mru`（当前分区 MRU 序，switcher
+/// 消费）、`__wm_workspaces.label`（1 基标签）；指纹分区段扩 label、
+/// 尾接 mru 段（§3 式）。
+/// Plan 479 T4 升级 **v1.2**：新增 `__wm_notes`（通知历史全量 {id,kind,msg,
+/// at} Obj 数组）+ `__wm_notes_unread`（未读串，badge 消费）；指纹尾接
+/// `|notes:{len}:{front_id}:{unread};` 段（T1 施工图定案 6）。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -6945,30 +7480,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
-        // entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与
-        // 条件渲染都走字符串语义（dashboard/041 对象列表同型）。
-        // Plan 472 T3：icon 自注册表实时查（registry_entries 唯一事实源；
-        // 未登记/无条目回退 "app-window"）。
-        let icon = v
-            .registry_id
-            .as_ref()
-            .and_then(|id| {
-                state
-                    .desktop
-                    .registry_entries
-                    .iter()
-                    .find(|e| &e.id == id)
-            })
-            .map(|e| e.icon.clone())
-            .unwrap_or_else(|| "app-window".to_string());
-        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
-            ("wid", auto_val::Value::Str(wid.0.to_string().into())),
-            ("title", auto_val::Value::Str(v.title.clone().into())),
-            ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
-            ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
-            ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
-            ("icon", auto_val::Value::Str(icon.into())),
-        ])));
+        wins.push(projection_win_entry(
+            &state.desktop.registry_entries,
+            v,
+            focused,
+        ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
@@ -6996,17 +7512,58 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         }
     }
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
+    // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
+    // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
     let mut workspaces: Vec<auto_val::Value> = Vec::new();
     fp.push('|');
     for ws in &host.wm.workspaces {
         let current = host.wm.current_workspace == ws.id;
+        let label = (ws.id + 1).to_string();
         workspaces.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(ws.id.to_string().into())),
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
+            ("label", auto_val::Value::Str(label.clone().into())),
         ])));
-        fp.push_str(&format!("{}:{},", ws.id, current as u8));
+        fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
     }
+    // Plan 478 T3 v1.1：__wm_mru 段——当前分区 MRU 序（switcher 消费，
+    // dock 不受影响；焦点环不跨分区 472 语义延续）。指纹尾段逐窗 "{wid};"。
+    let mut mru: Vec<auto_val::Value> = Vec::new();
+    fp.push('|');
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        if let Some(v) = host.wm.wins.get(&wid) {
+            let focused = host.wm.focused == Some(wid);
+            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+        }
+        fp.push_str(&format!("{};", wid.0));
+    }
+    // Plan 479 T4 v1.2：__wm_notes 段——通知历史全量 Obj 数组（badge 消费
+    // unread 串；通知中心面板本体走快照注入，switcher __wm_mru 同型）。
+    // 指纹尾段 "|notes:{len}:{front_id}:{unread};"（T1 定案 6——len/front_id
+    // 双段覆盖 cap 环绕与 dismiss 组合，unread 独立第三段）。
+    let mut notes_objs: Vec<auto_val::Value> = Vec::new();
+    let notes_snapshot: Vec<crate::ui::session::NotificationEntry> =
+        state.desktop.notifications.borrow().clone();
+    for n in &notes_snapshot {
+        notes_objs.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("id", auto_val::Value::Str(n.id.to_string().into())),
+            ("kind", auto_val::Value::Str(n.kind.clone().into())),
+            ("msg", auto_val::Value::Str(n.msg.clone().into())),
+            ("at", auto_val::Value::Str(n.at.clone().into())),
+        ])));
+    }
+    let notes_front = notes_snapshot
+        .first()
+        .map(|n| n.id.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    let notes_unread = state.desktop.notes_unread.get();
+    fp.push_str(&format!(
+        "|notes:{}:{}:{};",
+        notes_snapshot.len(),
+        notes_front,
+        notes_unread
+    ));
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -7019,8 +7576,13 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     }
     let _ = app.component.write_state_vec("__wm_wins", wins);
     let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
+    let _ = app.component.write_state_vec("__wm_mru", mru);
+    let _ = app.component.write_state_vec("__wm_notes", notes_objs);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
+    let _ = app
+        .component
+        .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -7339,6 +7901,9 @@ fn compare_pngs(
                 // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
                 // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
                 session.desktop.dock_edges = desktop_dock_edges();
+                // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
+                // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
+                restore_notifications(&mut session);
                 // Plan 463 T5：shell 特权 App —— 进程内编译装载（R1/R8
                 // 首落）。装载失败不阻断桌面（无任务栏的退化桌面，stderr 可见）。
                 match crate::ui::shell::build_shell_component() {
@@ -9431,6 +9996,21 @@ fn compare_pngs(
                     DesktopEvent::SummonLauncher => {
                         return summon_launcher(state);
                     }
+                    // Plan 478 T4：Ctrl+Tab 改道——switcher 可见 → .Advance
+                    // 直投（选中环走，仅 sel 变更不触发 drain）；否则召唤。
+                    DesktopEvent::SummonSwitcher => {
+                        if state.switcher_visible() {
+                            if let Some(sw) = state.desktop.switcher_app {
+                                let msg = IcedMessage {
+                                    widget: String::new(),
+                                    event: "Advance".to_string(),
+                                    input_value: None,
+                                };
+                                return update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                            }
+                        }
+                        return summon_switcher(state);
+                    }
                 }
                 iced::Task::none()
             }
@@ -9463,7 +10043,14 @@ fn compare_pngs(
                     // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层退出
                     // （P3：清词→退网格→关闭；app 内 bind 路径处理），不退桌面。
                     WmCommand::ExitDesktop => {
-                        if state.launcher_visible() {
+                        // Plan 464 T4：launcher 可见时 Esc 归 launcher 逐层
+                        // 退出（P3：清词→退网格→关闭）。Plan 478 T4：switcher
+                        // 可见时 Esc 归 switcher 自隐（app 内 bind 路径处理），
+                        // 不退桌面。Plan 479 T3：通知中心可见时同理自隐。
+                        if state.launcher_visible()
+                            || state.switcher_visible()
+                            || state.notification_visible()
+                        {
                             return iced::Task::none();
                         }
                         // Plan 473 T6 / B8：退出不吞窗口——全部 docked 槽位
@@ -9528,6 +10115,26 @@ fn compare_pngs(
                     // 臂尾 sync_shell_windows 即时刷新投影）。
                     WmCommand::NextWorkspace => state.wm_next_workspace(),
                     WmCommand::PrevWorkspace => state.wm_prev_workspace(),
+                    // Plan 478 T2：发送聚焦窗到相邻分区（Ctrl+Alt+Shift+←/→；
+                    // 目标 = 环切对称，与 next/prev_workspace 同肌肉记忆）。
+                    WmCommand::SendFocusedTo(step) => {
+                        use crate::ui::session::WorkspaceStep;
+                        let target = state.host.as_ref().and_then(|h| {
+                            let len = h.wm.workspaces.len();
+                            if len == 0 {
+                                return None;
+                            }
+                            let cur = h.wm.current_workspace;
+                            let t = match step {
+                                WorkspaceStep::Prev => (cur + len - 1) % len,
+                                WorkspaceStep::Next => (cur + 1) % len,
+                            };
+                            h.wm.focused.map(|w| (w, t))
+                        });
+                        if let Some((wid, t)) = target {
+                            state.wm_move_win_to_workspace(wid, t);
+                        }
+                    }
                     // 标题栏按下 = 聚焦置顶 + 进入拖拽（grab 偏移按
                     // last_cursor 现算；后续 move/release 走 DM::Window 拦截）。
                     WmCommand::StartDrag { wid } => {
@@ -9789,6 +10396,41 @@ fn compare_pngs(
                 };
                 layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
             }
+            // Plan 478 T4：switcher overlay 层（launcher 层邻位顶层；仅
+            // visible 时推层——T1 施工图 §1.5，隐匿由 visible 翻转后本周期
+            // 视图重建生效，召唤/隐匿两臂显式置 view_dirty 保险）。
+            if state.switcher_visible() {
+                let switcher_app = state.desktop.switcher_app.expect("switcher checked");
+                let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
+                let switcher_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] switcher 缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] switcher view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+            }
+            // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
+            // visible 时推层——第三枚 overlay 槽，switcher 同款语义）。
+            if state.notification_visible() {
+                let panel_app = state.desktop.notification_app.expect("panel checked");
+                let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
+                let panel_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 通知面板缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] notification view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -9912,8 +10554,14 @@ fn compare_pngs(
                     // MCP/DevTools 单 App 语义见 453 T8 冻结，463+ 再解）。
                     // Plan 464 T4：launcher overlay 可见时独占键盘（P3 全键盘
                     // 流——输入/方向键进 palette，不漏进底层虚拟窗）。
+                    // Plan 478 T4：switcher overlay 可见时同样独占（Tab/←→/
+                    // Enter/Esc 进面板，不漏进底层虚拟窗）。
+                    // Plan 479 T3：通知中心可见时同样独占（Esc 进面板）。
                     let focused = if state.is_desktop() {
-                        state.wm_focused_app() == Some(app_id) && !state.launcher_visible()
+                        state.wm_focused_app() == Some(app_id)
+                            && !state.launcher_visible()
+                            && !state.switcher_visible()
+                            && !state.notification_visible()
                     } else {
                         true
                     };
@@ -9936,6 +10584,45 @@ fn compare_pngs(
                         let bindings = app.component.key_bindings().clone();
                         subs.push(keyboard_subscription_ext(
                             la,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // Plan 478 T4：switcher overlay 的键盘订阅（launcher 块同型；
+            // escape_forward 统一传——Esc 被 Captured 时宿主转发同一事件）。
+            if state.is_desktop() && state.switcher_visible() {
+                if let (Some(sw), Some(host)) =
+                    (state.desktop.switcher_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&sw) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            sw,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // Plan 479 T3：通知中心的键盘订阅（switcher 块同型第四块；
+            // escape_forward 统一传——Esc Captured 转发，幂等由 handler
+            // visible 门控保证）。
+            if state.is_desktop() && state.notification_visible() {
+                if let (Some(panel), Some(host)) =
+                    (state.desktop.notification_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&panel) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            panel,
                             host.window,
                             bindings,
                             true,
@@ -14788,6 +15475,58 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 mod tests {
     use super::*;
 
+    // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
+    fn p050_style(classes: Vec<StyleClass>) -> IcedStyle {
+        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new() })
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_justify_start_is_left() {
+        let is = p050_style(vec![StyleClass::Flex, StyleClass::JustifyStart]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+        assert_eq!(v, None);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_text_left_fallback() {
+        let is = p050_style(vec![StyleClass::TextLeft]);
+        let (h, _) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_items_start_is_top() {
+        let is = p050_style(vec![StyleClass::ItemsStart]);
+        let (_, v) = plan050_content_align(Some(&is));
+        assert_eq!(v, Some(iced::alignment::Vertical::Top));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_side_border_flags_parse() {
+        let is = p050_style(vec![StyleClass::BorderBottom, StyleClass::BorderRight]);
+        assert!(is.border_bottom && is.border_right);
+        assert!(!is.border_top && !is.border_left);
+        let is = p050_style(vec![StyleClass::BorderTop, StyleClass::BorderLeft]);
+        assert!(is.border_top && is.border_left);
+        assert!(!is.border_bottom && !is.border_right);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_none_keeps_centered_default() {
+        let is = p050_style(vec![]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+        let (h, v) = plan050_content_align(None);
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+    }
     // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
 
     const T3_SHELL_AT: &str = r#"widget ShellProbe {
@@ -14797,6 +15536,9 @@ mod tests {
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_workspaces = []
+        var __wm_mru = []
+        var __wm_notes = []
+        var __wm_notes_unread str = ""
     }
     view { col { text "shell" } }
 }
@@ -15038,6 +15780,580 @@ mod tests {
         assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
     }
 
+    // ---- Plan 478 T3：投影协议 v1.1（__wm_mru + workspaces label + 指纹扩展）----
+
+    /// v1.1：`__wm_mru` = 当前分区 MRU 序（front=最近聚焦，条目同
+    /// `__wm_wins` 六字段）+ `__wm_workspaces.label` 1 基人读标签。
+    #[test]
+    fn projection_v11_mru_order_and_workspace_label() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        t3_add_win(&mut ds, "Beta");
+        let c = t3_add_win(&mut ds, "Gamma");
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 3, "当前分区全集（boot 窗全在分区 0）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), c.0.to_string(), "MRU front=最近聚焦");
+        assert_eq!(t3_obj_str(first, "title"), "Gamma", "条目同 __wm_wins 六字段");
+        // 聚焦 a → MRU 前插，投影序随之。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string(), "聚焦后 front=a");
+
+        // label = 1 基人读标签（宿主投影，避开 .at 算术——T1 施工图 §4.1）。
+        let wss = t3_read_array(&ds, "__wm_workspaces");
+        assert_eq!(wss.len(), 2);
+        let auto_val::Value::Obj(ws0) = &wss[0] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws0, "label"), "1");
+        let auto_val::Value::Obj(ws1o) = &wss[1] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws1o, "label"), "2");
+    }
+
+    /// v1.1：mru 投影按当前分区过滤（焦点环不跨分区，472 语义延续）+
+    /// 指纹 v1.1 段（分区段含 label、尾接 mru 段）门控翻转。
+    #[test]
+    fn projection_v11_mru_filters_partition_and_fingerprint_segments() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0
+        ds.wm_set_workspace(1);
+        let b = t3_add_win(&mut ds, "Beta"); // ws1
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1, "mru 过滤当前分区（不跨分区）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), b.0.to_string());
+
+        // 指纹 v1.1：分区段 "{id}:{current},{label};" + 尾段 mru "{wid};"。
+        // Plan 479 v1.2：mru 段后尾接 notes 段（协议 §3——金样随版升级）。
+        let fp = match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => s.to_string(),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        };
+        assert!(fp.contains("0:0,1;1:1,2;"), "指纹分区段含 label: {fp}");
+        assert!(
+            fp.contains(&format!("|{};|notes:", b.0)),
+            "指纹 mru 段后接 notes 段（v1.2 尾段）: {fp}"
+        );
+
+        // 切回分区 0：mru 段翻转 → 指纹变 → 重写。
+        ds.wm_set_workspace(0);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1);
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string());
+    }
+
+    // ---- Plan 478 T4：switcher overlay（summon/advance/confirm 无头流；
+    // 464 summon_launcher_mounts_and_injects 同型。switcher.at 为进程内嵌
+    // 资产——本测直载真源，非裁剪副本）----
+
+    /// switcher 召唤推进确认无头流：懒挂载（真 assets/switcher.at）+ MRU
+    /// 快照注入（rows 序 = MRU 序）→ Advance 环走 sel → confirm（Focus
+    /// handler）写 `focus\t<wid>` 记录 + 自隐 → drain 可达执行体。
+    #[test]
+    fn switcher_summon_advance_confirm_roundtrip() {
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // boot MRU 序：b（最近）, a。
+        let _task = summon_switcher(&mut ds);
+        assert!(ds.switcher_visible(), "召唤后 switcher visible");
+        let sw = ds.desktop.switcher_app.expect("懒挂载完成");
+        {
+            let app = ds.apps.get(&sw).unwrap();
+            let rows = app.component.read_state("rows").expect("rows 读回");
+            let rows = match rows {
+                auto_val::Value::Array(a) => a.values,
+                auto_val::Value::VmRef(ref r) => t3_deref_list(app, r.id as u64, "rows"),
+                auto_val::Value::Int(id) => t3_deref_list(app, id as u64, "rows"),
+                other => panic!("rows 应为数组: {other:?}"),
+            };
+            assert_eq!(rows.len(), 2, "MRU 快照全量（RebuildMru 重建）");
+            // handler 自建对象物化为 VmRef 堆对象（VM ObjectData）——解引用读字段。
+            let auto_val::Value::VmRef(ref r0) = &rows[0] else {
+                panic!("rows 条目应为 VmRef 对象: {:?}", rows[0])
+            };
+            let vm = app.component.bridge().vm();
+            let heap_obj = vm.get_heap_object(r0.id as u64).expect("rows[0] 堆对象");
+            let guard = heap_obj.read().unwrap();
+            let od = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .expect("rows[0] 为 ObjectData");
+            assert_eq!(
+                match od.get(&auto_val::ValueKey::from("wid".to_string())) {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    other => panic!("wid 字段异常: {other:?}"),
+                },
+                b.0.to_string(),
+                "rows 序 = MRU 序（front=最近聚焦）"
+            );
+        }
+        // Advance：sel 0→1（handler 直调——与宿主 Ctrl+Tab 直投 .Advance
+        // 消息同落同一 handler；DM::App 分派管线为 464 已证路径）。
+        let app = ds.apps.get_mut(&sw).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Advance", &[])
+            .expect("Advance handler");
+        match app.component.read_state("sel") {
+            Ok(auto_val::Value::Int(1)) => {}
+            other => panic!("Advance 后 sel 应为 1: {other:?}"),
+        }
+        // confirm（Enter 同落 Focus handler）：写 focus 记录 + 自隐。
+        app.component
+            .bridge_mut()
+            .call_handler("Focus", &[auto_val::Value::str(b.0.to_string())])
+            .expect("Focus handler");
+        match app.component.read_state("visible") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "confirm 后自隐"),
+            other => panic!("visible 读回异常: {other:?}"),
+        }
+        // 上行记录可达宿主执行体。
+        let cmds = ds.drain_app_desktop_commands(sw);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::FocusWindow(b)],
+            "confirm → focus 动词记录"
+        );
+    }
+
+    // ---- Plan 479 T2：通知历史/未读/持久化/双面一体（施工图 §1）----
+    // push_notification 系单测须先隔离 storage（STORAGE_MAP 进程级全局 +
+    // storage_file() 按 cwd 哈希回退；nextest 每测独立进程 + 各自临时文件，
+    // 互不污染、不落开发者共享库）。
+    fn t2_isolate_storage(tag: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "auto-479-notif-{}-{}.json",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+        path
+    }
+
+    /// FIFO 容量与 MRU 序：front=最新、NOTES_CAP=50 环绕（最旧弹出）。
+    #[test]
+    fn notif_history_fifo_capacity_and_mru_order() {
+        let _guard = t2_isolate_storage("fifo");
+        let mut ds = t3_session_with_shell();
+        push_notification(&mut ds, "success", "first");
+        push_notification(&mut ds, "error", "second");
+        push_notification(&mut ds, "info", "third");
+        {
+            let notes = ds.desktop.notifications.borrow();
+            assert_eq!(notes.len(), 3);
+            assert_eq!(notes[0].msg, "third", "front=最新（MRU 序）");
+            assert_eq!(notes[2].msg, "first");
+            assert_eq!(notes[0].kind, "info");
+            assert_eq!(notes[0].at.len(), 5, "at = HH:MM 五字符");
+            assert_eq!(&notes[0].at[2..3], ":");
+            assert!(notes[0].id > notes[2].id, "id 单调递增");
+        }
+        for i in 0..60 {
+            push_notification(&mut ds, "info", &format!("bulk{i}"));
+        }
+        let notes = ds.desktop.notifications.borrow();
+        assert_eq!(notes.len(), 50, "NOTES_CAP=50 FIFO 环绕");
+        assert_eq!(notes[0].msg, "bulk59");
+        assert_eq!(notes[49].msg, "bulk10", "容量截断丢最旧");
+    }
+
+    /// 未读语义：面板关 +1 / 面板开不加 / 开面板清零 / boot 恢复后 0。
+    #[test]
+    fn notif_unread_semantics_panel_visibility() {
+        let _guard = t2_isolate_storage("unread");
+        let mut ds = t3_session_with_shell();
+        push_notification(&mut ds, "success", "one");
+        assert_eq!(ds.desktop.notes_unread.get(), 1, "面板缺席（不可见）+1");
+        // 挂载可见探针 App（真面板 T3 落码；本测只消费 visible 判定位）。
+        let probe_at = "widget NotifProbe {\n    model { var visible str = \"0\" }\n    view { if .visible == \"1\" { text \"on\" } }\n}\n";
+        let comp = crate::build_dynamic_component(probe_at, None).unwrap();
+        let probe = ds.allocate_app(comp);
+        ds.desktop.notification_app = Some(probe);
+        push_notification(&mut ds, "success", "two");
+        assert_eq!(ds.desktop.notes_unread.get(), 2, "挂载但 visible=0 仍 +1");
+        if let Some(app) = ds.apps.get_mut(&probe) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        }
+        assert!(ds.notification_visible(), "探针 visible 判定可达");
+        push_notification(&mut ds, "success", "three");
+        assert_eq!(
+            ds.desktop.notes_unread.get(),
+            2,
+            "面板可见时不加未读"
+        );
+        // 模拟开面板清零（真执行体 T3 落码）。
+        ds.desktop.notes_unread.set(0);
+        assert_eq!(ds.desktop.notes_unread.get(), 0);
+        // boot 恢复后未读恒 0（会话概念不落盘）。
+        restore_notifications(&mut ds);
+        assert_eq!(ds.desktop.notes_unread.get(), 0, "boot 恢复未读归零");
+    }
+
+    /// 持久化槽 round-trip：写 10 槽（slot0=MRU front）→ 新会话 boot 读回；
+    /// 坏槽跳过；超 10 条截断只落前 10。
+    #[test]
+    fn notif_storage_roundtrip_slots() {
+        let path = t2_isolate_storage("roundtrip");
+        let mut ds = t3_session_with_shell();
+        for i in 0..12 {
+            push_notification(&mut ds, "success", &format!("m{i}"));
+        }
+        // 槽位形态：slot0 = 最新，仅 10 槽落盘。
+        let slot0 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.0")
+            .expect("slot0 已写");
+        assert!(slot0.contains("\"msg\":\"m11\""), "slot0=MRU front: {slot0}");
+        assert!(slot0.contains("\"kind\":\"success\""));
+        let slot11 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.11");
+        assert!(slot11.is_none() || slot11.as_deref() == Some(""),
+            "仅 10 槽，无 slot11");
+        let slot9 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.9")
+            .expect("slot9 已写");
+        assert!(slot9.contains("\"msg\":\"m2\""), "最旧落盘到 slot9: {slot9}");
+        // 新会话 boot 恢复（读侧）。
+        let mut ds2 = t3_session_with_shell();
+        restore_notifications(&mut ds2);
+        {
+            let notes = ds2.desktop.notifications.borrow();
+            assert_eq!(notes.len(), 10, "落盘 10 条全恢复（12 条内存截断 10）");
+            assert_eq!(notes[0].msg, "m11", "恢复序 = MRU 序");
+            assert_eq!(notes[9].msg, "m2");
+            assert_eq!(notes[0].kind, "success");
+            assert!(notes[0].id > 0, "id 恢复保真");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// push_notification 双面一体：单调用 = 入史 + toast + 未读三联动。
+    #[test]
+    fn notif_push_dual_face_history_and_toast() {
+        let _guard = t2_isolate_storage("dual");
+        let mut ds = t3_session_with_shell();
+        push_notification(&mut ds, "error", "boom");
+        {
+            let notes = ds.desktop.notifications.borrow();
+            assert_eq!(notes.len(), 1, "入史");
+            assert_eq!(notes[0].kind, "error");
+            assert_eq!(notes[0].msg, "boom");
+        }
+        let toasts = ds.desktop.toasts.borrow();
+        assert_eq!(toasts.len(), 1, "同步浮现");
+        assert_eq!(toasts[0].kind, "error");
+        assert_eq!(toasts[0].msg, "boom");
+        assert_eq!(ds.desktop.notes_unread.get(), 1, "未读联动");
+    }
+
+    // ---- Plan 479 T3：通知中心面板（summon/dismiss/clearAll 无头流；
+    // switcher_summon_advance_confirm_roundtrip 同型。notification_center.at
+    // 为进程内嵌资产——本测直载真源，非裁剪副本）----
+
+    /// notes_toggle 召唤无头流：懒挂载（真 assets/notification_center.at）+
+    /// 快照注入（rows 序 = 历史 MRU 序）+ 开面板未读清零 → Dismiss 写
+    /// `notes_dismiss\t<id>` + ClearAll 写 `notes_clear` + Escape 自隐。
+    #[test]
+    fn notif_center_summon_headless() {
+        let _guard = t2_isolate_storage("panel");
+        let mut ds = t3_session_with_shell();
+        assert!(ds.desktop.notification_app.is_none(), "未召唤不挂载");
+        let _a = t3_add_win(&mut ds, "Alpha");
+        // 两条通知入史（面板关 → 未读 2）。
+        push_notification(&mut ds, "success", "welcome");
+        push_notification(&mut ds, "error", "launch failed");
+        assert_eq!(ds.desktop.notes_unread.get(), 2);
+        // 召唤（NotesToggle 臂同执行体）。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::NotesToggle],
+        );
+        assert!(ds.notification_visible(), "召唤后面板 visible");
+        let panel = ds.desktop.notification_app.expect("懒挂载完成");
+        assert_eq!(ds.desktop.notes_unread.get(), 0, "开面板未读清零");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            let rows = app.component.read_state("rows").expect("rows 读回");
+            let rows = match rows {
+                auto_val::Value::Array(a) => a.values,
+                auto_val::Value::VmRef(ref r) => t3_deref_list(app, r.id as u64, "rows"),
+                auto_val::Value::Int(id) => t3_deref_list(app, id as u64, "rows"),
+                other => panic!("rows 应为数组: {other:?}"),
+            };
+            assert_eq!(rows.len(), 2, "快照全量（RebuildNotes 重建）");
+            let auto_val::Value::VmRef(ref r0) = &rows[0] else {
+                panic!("rows[0] 应为 VmRef 对象: {:?}", rows[0])
+            };
+            let vm = app.component.bridge().vm();
+            let heap_obj = vm.get_heap_object(r0.id as u64).expect("rows[0] 堆对象");
+            let guard = heap_obj.read().unwrap();
+            let od = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .expect("rows[0] 为 ObjectData");
+            assert_eq!(
+                match od.get(&auto_val::ValueKey::from("msg".to_string())) {
+                    Some(auto_val::Value::Str(s)) => s.to_string(),
+                    other => panic!("msg 字段异常: {other:?}"),
+                },
+                "launch failed",
+                "rows 序 = 历史 MRU 序（front=最新）"
+            );
+        }
+        // 逐条 ×：Dismiss(id) 写上行记录 + 可达宿主执行体（历史删除）。
+        let target = {
+            let notes = ds.desktop.notifications.borrow();
+            notes.iter().find(|n| n.msg == "launch failed").unwrap().id
+        };
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Dismiss", &[auto_val::Value::str(target.to_string())])
+            .expect("Dismiss handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::NotesDismiss(target)],
+            "逐条 × → notes_dismiss 动词记录"
+        );
+        let (_, _tasks) = execute_desktop_commands(&mut ds, cmds);
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1, "宿主臂删除");
+        // 全部清除：ClearAll 写 notes_clear + 执行后历史空。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("ClearAll", &[])
+            .expect("ClearAll handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert_eq!(cmds, vec![crate::ui::session::DesktopCommand::NotesClear]);
+        let (_, _tasks) = execute_desktop_commands(&mut ds, cmds);
+        assert!(ds.desktop.notifications.borrow().is_empty(), "全部清除");
+        // Esc 自隐。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        assert!(!ds.notification_visible(), "Esc 后自隐");
+    }
+
+    /// Plan 479 T4：投影 v1.2——`__wm_notes`（历史 Obj 数组 {id,kind,msg,at}）
+    /// + `__wm_notes_unread`（串）+ 指纹 notes 段 `|notes:{len}:{front}:{unread};`
+    /// 门控翻转（T1 定案 6）。
+    #[test]
+    fn notif_projection_notes_and_fingerprint() {
+        let _guard = t2_isolate_storage("proj");
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        sync_shell_windows(&mut ds);
+        assert_eq!(
+            t3_read(&ds, "__wm_notes_unread"),
+            auto_val::Value::str("0"),
+            "零历史初值（宿主已同步——.at model 缺省空串不出 badge）"
+        );
+        assert!(t3_read_array(&ds, "__wm_notes").is_empty());
+        // 入史两条 → 投影全量 + 未读串 + 指纹段。
+        push_notification(&mut ds, "success", "first");
+        push_notification(&mut ds, "error", "second");
+        sync_shell_windows(&mut ds);
+        let notes = t3_read_array(&ds, "__wm_notes");
+        assert_eq!(notes.len(), 2, "__wm_notes 全量投影");
+        let auto_val::Value::Obj(front) = &notes[0] else {
+            panic!("notes 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(front, "msg"), "second", "MRU 序 front=最新");
+        assert_eq!(t3_obj_str(front, "kind"), "error");
+        assert_eq!(t3_obj_str(front, "at").len(), 5, "at = HH:MM");
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("2"));
+        let fp = match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => s.to_string(),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        };
+        let front_id = match &notes[0] {
+            auto_val::Value::Obj(o) => t3_obj_str(o, "id"),
+            other => panic!("Obj expected: {other:?}"),
+        };
+        assert!(
+            fp.contains(&format!("|notes:2:{front_id}:2;")),
+            "指纹 notes 段: {fp}"
+        );
+        // 开面板清零 → 指纹翻 → 未读串归 0（同 len 同 front，仅 unread 段变）。
+        ds.desktop.notes_unread.set(0);
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("0"));
+        // 无变化 → 指纹门控跳过（幂等）。
+        let fp_before = t3_read(&ds, "__wm_fp").clone();
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_fp"), fp_before, "指纹未变零写");
+    }
+
+    /// Plan 479 T4：真 assets/shell.at 冒烟——铃铛钮/badge 视图编译（构建
+    /// 即检语法）+ NotificationToggle → `notes_toggle` 动词记录接线。
+    #[test]
+    fn notif_shell_at_smoke_toggle_and_badge() {
+        let mut ds = t3_session_with_shell();
+        // 换装真 shell 资产（t3_session_with_shell 挂的是裁剪探针）。
+        let shell = ds.desktop.shell_app.expect("probe shell");
+        let real =
+            crate::ui::shell::build_shell_component().expect("真 shell.at 编译（铃铛+badge 语法）");
+        ds.apps.remove(&shell);
+        ds.desktop.shell_app = Some(ds.allocate_app(real));
+        // badge 面：宿主写未读串（写状态不触发 handler——与生产投影一致）。
+        let shell = ds.desktop.shell_app.expect("real shell");
+        if let Some(app) = ds.apps.get_mut(&shell) {
+            let _ = app
+                .component
+                .write_state("__wm_notes_unread", auto_val::Value::str("3"));
+        }
+        // 铃铛面：NotificationToggle handler → notes_toggle 记录可达宿主。
+        let app = ds.apps.get_mut(&shell).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NotificationToggle", &[])
+            .expect("NotificationToggle handler");
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::NotesToggle],
+            "铃铛钮 → notes_toggle 动词"
+        );
+    }
+
+    /// Plan 479 T5：无头端到端——notify → 投影 badge → notes_toggle 开面板
+    /// （未读清零）→ Dismiss 逐条删 → 落盘断言 → 新会话 boot 重读（接线 =
+    /// boot Desktop 分支 dock_edges 邻位调 restore_notifications，实机链路
+    /// T6 验收）。
+    #[test]
+    fn notif_end_to_end_toggle_dismiss_restore() {
+        let path = t2_isolate_storage("e2e");
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        // ① notify：notify 动词 → 入史 + 未读（面板关）。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::Notify(
+                "success".to_string(),
+                "hello world".to_string(),
+            )],
+        );
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1, "notify 入史");
+        assert_eq!(ds.desktop.notes_unread.get(), 1);
+        // ② badge：投影同步 → 未读串可达 shell。
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("1"));
+        // ③ 开面板：notes_toggle → visible + 未读清零。
+        let (_, _tasks) = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::NotesToggle],
+        );
+        assert!(ds.notification_visible());
+        assert_eq!(ds.desktop.notes_unread.get(), 0, "开面板清零");
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("0"));
+        // ④ 逐条 ×：面板 Dismiss → 上行 → 宿主臂删除 + 落盘。
+        let target = ds.desktop.notifications.borrow()[0].id;
+        let panel = ds.desktop.notification_app.expect("面板已挂载");
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Dismiss", &[auto_val::Value::str(target.to_string())])
+            .expect("Dismiss handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        let (_, _tasks) = execute_desktop_commands(&mut ds, cmds);
+        assert!(ds.desktop.notifications.borrow().is_empty(), "dismiss 后历史空");
+        // ⑤ 落盘断言：slot0 = 空串（全量重写语义）。
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.notes.0").as_deref(),
+            Some(""),
+            "空历史落盘为空槽"
+        );
+        // ⑥ 重读：新会话 restore（boot 同函数）→ 空历史，无 panic。
+        let mut ds2 = t3_session_with_shell();
+        restore_notifications(&mut ds2);
+        assert!(ds2.desktop.notifications.borrow().is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // ---- Plan 478 T6：宿主臂无头覆盖（注入通道受限项的 headless 指针，
+    // 472 T5 先例成文）——WorkspaceAdd 增分区即入 / WorkspaceClose toast 门
+    // 与末分区保底 / SendTo 跨区发送。----
+    #[test]
+    fn workspace_v11_host_arms_add_close_send() {
+        use crate::ui::session::DesktopCommand as DC;
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0，焦点窗
+        // `+`：增分区并即入新分区（验收②）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceAdd]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 3);
+            assert_eq!(host.wm.current_workspace, 2, "增分区即入新分区");
+            assert_eq!(host.wm.wins[&a].workspace, 0, "原窗归属不变");
+        }
+        // `send_to`：a 发往当前分区 2（发前先聚焦 a）= 恒等迁移（焦点保持）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.wins[&a].workspace, 2);
+        ds.wm_focus(a);
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(a), "当前分区发送焦点保持");
+        // `×`：分区 2 含窗 → toast 提示不删（T1 定案：toast 门最少意外）。
+        let toasts_before = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 3, "非空分区不删");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_before,
+            "非空 × 出 toast 提示"
+        );
+        // send_to 隐分区：a 发回分区 0 → 焦点让渡（分区 2 空 → None）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 0)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.wins[&a].workspace, 0);
+            assert_eq!(host.wm.focused, None, "隐分区发送焦点让渡");
+        }
+        // `×`：分区 2 已空 → 删除；current clamp 2→1。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 2);
+            assert_eq!(host.wm.current_workspace, 1, "current clamp");
+        }
+        // `×`：删到单分区再删 → 末分区保底 no-op + toast。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(1)]);
+        assert!(!exit);
+        let toasts_mid = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(0)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区保底");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_mid,
+            "末分区 × 出 toast 提示"
+        );
+    }
+
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
 
     /// activate：未运行 → launch（带 registry_id 回填）；运行中 → 聚焦不新增窗。
@@ -15166,14 +16482,16 @@ mod tests {
             render: "vm".to_string(),
         }];
         inject_dock_pinned(&mut ds);
-        let app = ds.apps.get(&id).unwrap();
-        match app.component.read_state("__dock_enabled") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
-            other => panic!("__dock_enabled 读回异常: {other:?}"),
-        }
-        match app.component.read_state("__dock_position") {
-            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
-            other => panic!("__dock_position 读回异常: {other:?}"),
+        {
+            let app = ds.apps.get(&id).unwrap();
+            match app.component.read_state("__dock_enabled") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
+                other => panic!("__dock_enabled 读回异常: {other:?}"),
+            }
+            match app.component.read_state("__dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "bottom"),
+                other => panic!("__dock_position 读回异常: {other:?}"),
+            }
         }
         let pinned = t3_read_array(&ds, "__dock_pinned");
         assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
@@ -15182,6 +16500,50 @@ mod tests {
         assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
         let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
         assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
+
+        // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
+        // 新消息臂写总线记录（workspace_add / workspace_close\t<n>）。
+        let app = ds.apps.get_mut(&id).unwrap();
+        let _ = app.component.write_state_vec(
+            "__wm_workspaces",
+            vec![
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("0".into())),
+                    ("name", auto_val::Value::Str("Desktop 1".into())),
+                    ("current", auto_val::Value::Str("1".into())),
+                    ("label", auto_val::Value::Str("1".into())),
+                ])),
+                auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                    ("id", auto_val::Value::Str("1".into())),
+                    ("name", auto_val::Value::Str("Desktop 2".into())),
+                    ("current", auto_val::Value::Str("".into())),
+                    ("label", auto_val::Value::Str("2".into())),
+                ])),
+            ],
+        );
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceAdd", &[])
+            .expect("WorkspaceAdd handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => {
+                assert_eq!(s.to_string(), "workspace_add", "pager + 写 workspace_add 记录")
+            }
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
+        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
+        app.component
+            .bridge_mut()
+            .call_handler("WorkspaceClose", &[auto_val::Value::str("1")])
+            .expect("WorkspaceClose handler");
+        match app.component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(
+                s.to_string(),
+                "workspace_close\t1",
+                "pager × 写 workspace_close 记录"
+            ),
+            other => panic!("__desktop_cmd 读回异常: {other:?}"),
+        }
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

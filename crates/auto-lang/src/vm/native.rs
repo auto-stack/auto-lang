@@ -7407,6 +7407,44 @@ pub fn shim_url_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     Ok(())
 }
 
+/// `auto.url.encode_path(s)` — percent-encode each `/`-separated segment,
+/// preserving the separators. Client parity for axum `{*path}` wildcards
+/// (plan-022 auto-down): the browser keeps `/` raw in fetch URLs so the
+/// server-side per-segment percent-decode (5441dda28) reconstructs the
+/// path; a full `auto.url.encode` would send `%2F`, which wildcard
+/// captures hand back still-encoded.
+/// Stack: s -> encoded.
+pub fn shim_url_encode_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let s_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, s_nv);
+        let s = if auto_val::is_string(s_nv) {
+            let idx = auto_val::decode_string(s_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(s_nv).to_string()
+        };
+        let encoded = s
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).to_string())
+            .collect::<Vec<_>>()
+            .join("/");
+        let idx = {
+            let mut strings = vm.strings.write().unwrap();
+            strings.push(encoded.into_bytes());
+            strings.len() - 1
+        };
+        task.ram.push_nv(auto_val::encode_string(idx as u32));
+    }
+    Ok(())
+}
+
 /// `localStorage.getItem(key) -> stored string or None`
 /// Stack: key -> value|None (None for a missing key — musk's
 /// `saved != None` checks depend on it; session-scoped like storage.*).
