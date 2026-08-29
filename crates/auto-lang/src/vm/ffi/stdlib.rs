@@ -8861,7 +8861,7 @@ fn main() {
         let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(
             lines,
-            vec!["world", "world", "world", "6", "7", "1"],
+            vec!["world", "world", "world", "6", "7", "true"], // Plan 474 待澄清#3: bool 显示形态 true/false
             "VM str semantics: substr(len) / slice(end) / find(idx[, from])"
         );
     }

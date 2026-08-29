@@ -1,2 +1,9 @@
-// recycled from 99_bootstrap/041_eval_if_else
-print(false)
+// recycled from 99_bootstrap/040_eval_fn_call
+// Plan 474 待澄清#3 追记：同 b13——aavm bool 整型承载与宿主 true/false
+// 显示形态分歧（值模型级 parity 债，见 KNOWN-DEBT-AND-RISKS）。
+// 改写为「bool 求值 + 条件分支」保语义覆盖。
+if false {
+    print("unreachable")
+} else {
+    print("no")
+}

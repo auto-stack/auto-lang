@@ -82,13 +82,12 @@ let obj = Json.to_value(js)
     #[test]
     fn json_bool_field_compare() {
         // GET_FIELD bool 臂 push encode_bool（Plan 402 §13.10）——比较语义回归。
-        // 实测基线：bool 值 print 形态为 `1`（待澄清#3 显示旁支），比较结果
-        // 真=true 亦印 1。
+        // 待澄清#3 已修（print is_bool 臂）：bool 打印 true/false 形态。
         let stdout = run_code(&format!("{PRELUDE}print(obj.ok == true)"));
         eprintln!("[P474] bool-compare = [{}]", stdout);
         assert!(
-            stdout.contains("1") || stdout.contains("true"),
-            "expected 1/true, got: [{}]",
+            stdout.contains("true"),
+            "expected true, got: [{}]",
             stdout
         );
     }
@@ -110,14 +109,70 @@ let obj = Json.to_value(js)
 
     #[test]
     fn json_bool_field_dot_read() {
-        // 实测基线（S2 观测，2026-08-29）：json bool 字段 print 印出 `1` 而非
-        // 字面量形态的 `true`（`let b = true; print(b)` 印 true）——显示/类型
-        // 提示路径的旁支不一致，非 ④ 值损坏；已登记 plan 474 待澄清#3。
+        // 待澄清#3（已修）：print shim 原缺 is_bool 臂，TAG_BOOL 哨兵 payload
+        // 被按 i32 解码特判打印 "1"/"0"（且真整数 i32::MIN 同路误打）；修后
+        // tag 守卫优先，bool 一律 true/false。
         let stdout = run_code(&format!("{PRELUDE}print(obj.ok)"));
         eprintln!("[P474] bool-field = [{}]", stdout);
         assert!(
-            stdout.contains("1"),
-            "expected 1 (observed baseline), got: [{}]",
+            stdout.contains("true"),
+            "expected true, got: [{}]",
+            stdout
+        );
+    }
+
+    #[test]
+    fn bool_literal_print_form() {
+        // 待澄清#3 直测：字面量 bool 的 print 形态（原同印 1，修后 true）
+        let stdout = run_code("let b = false\nprint(b)");
+        eprintln!("[P474] bool-literal = [{}]", stdout);
+        assert!(
+            stdout.contains("false"),
+            "expected false, got: [{}]",
+            stdout
+        );
+    }
+
+    #[test]
+    fn int_min_prints_numerically() {
+        // 待澄清#3 顺修：真整数 i32::MIN 不再被 bool 哨兵特判误打为 "1"
+        let stdout = run_code("let n = -2147483648\nprint(n)");
+        eprintln!("[P474] int-min = [{}]", stdout);
+        assert!(
+            stdout.contains("-2147483648"),
+            "expected -2147483648, got: [{}]",
+            stdout
+        );
+    }
+
+    #[test]
+    fn json_null_field_set_preserves_nil() {
+        // 待澄清#4 直测：decode_tagged_nv 补 is_null 臂——null nv 写字段
+        // 存 Value::Nil（原落 _ => Int(0) 兜底失真）。经缺键读 null → 写入
+        // 对象字面量字段 → 读回仍为 null 形态。
+        let stdout = run_code(&format!(
+            "{PRELUDE}let o = {{\"f\": 0}}\no.f = obj.no_such_field\nprint(o.f)"
+        ));
+        eprintln!("[P474] null-field = [{}]", stdout);
+        assert!(
+            stdout.contains("None") || stdout.contains("null") || stdout.contains("nil"),
+            "expected None/null/nil preserved through SET_FIELD, got: [{}]",
+            stdout
+        );
+    }
+
+    #[test]
+    fn json_float_fstring_interpolation() {
+        // 待澄清#5 钉正：f-string 插值语法是 `${expr}` / `$ident`（parser
+        // fstr 文法），`{expr}` 是字面文本——原用例语法写错，非引擎缺陷。
+        // 覆盖「json 浮点 → 局部 → 插值」消费链。
+        let stdout = run_code(&format!(
+            "{PRELUDE}let x = obj.storage_free_gb\nprint(f\"value=${{x}}\")"
+        ));
+        eprintln!("[P474] f-string = [{}]", stdout);
+        assert!(
+            stdout.contains("54.16"),
+            "expected 54.16 in f-string, got: [{}]",
             stdout
         );
     }

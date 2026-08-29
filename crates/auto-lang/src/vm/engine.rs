@@ -665,6 +665,12 @@ impl AutoVM {
             return auto_val::Value::Float(auto_val::decode_f32(nv) as f64);
         } else if auto_val::is_f64(nv) {
             return auto_val::Value::Double(auto_val::decode_f64(nv));
+        } else if auto_val::is_null(nv) {
+            // Plan 474 待澄清#4: null nv 原落 _ => Value::Int(0) 兜底——
+            // SET_FIELD 存 null 值字段失真（json null / __json_object 缺键
+            // 读回的 encode_null 再写字段会变成 Int(0)）。归一到 VM 侧
+            // null 约定 Value::Nil（json_to_vm_value 的 Null 臂同款）。
+            return auto_val::Value::Nil;
         } else if auto_val::is_object(nv) {
             return auto_val::Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize });
         } else if auto_val::is_list(nv) {
@@ -2879,7 +2885,29 @@ impl AutoVM {
                     let strings = self.strings.read().unwrap();
                     for i in (0..part_count as usize).rev() {
                         let tag = type_tags[i];
-                        let s = match tag {
+                        // Plan 474 待澄清#5: 运行期 tag-first 转换。原实现盲信
+                        // 编译期 expr_type_hint 标签——json/unknown 局部落 Int
+                        // 提示时，裸 f64（encode_f64=原始位）被按 i32 解码成
+                        // 低 32 位位型垃圾（54.16 → -515396076，与 ④ 同族）。
+                        // 栈上实际 nv tag 优先，编译期标签仅作兜底（Int 兜底
+                        // 中 TAG_BOOL 哨兵特判随之摘除——bool 已被上方 tag 检查
+                        // 截走，残留分支只会把真整数 i32::MIN 误显为 true/false）。
+                        let s = {
+                            let nv = task.ram.peek_nv(0);
+                            if auto_val::is_f64(nv) {
+                                let val = auto_val::decode_f64(task.ram.pop_nv());
+                                format!("{}", val)
+                            } else if auto_val::is_f32(nv) {
+                                let val = auto_val::decode_f32(task.ram.pop_nv());
+                                format!("{}", val)
+                            } else if auto_val::is_bool(nv) {
+                                let b = auto_val::decode_bool(task.ram.pop_nv());
+                                if b { "true".to_string() } else { "false".to_string() }
+                            } else if auto_val::is_null(nv) {
+                                task.ram.pop_nv();
+                                "None".to_string()
+                            } else {
+                                match tag {
                             2 => {
                                 let val = task.ram.pop_f64();
                                 format!("{}", val)
@@ -2904,10 +2932,6 @@ impl AutoVM {
                                     StackTag::Int(bits) => {
                                         if bits == -1 {
                                             "None".to_string()
-                                        } else if bits == i32::MIN {
-                                            "true".to_string()
-                                        } else if bits == i32::MIN + 1 {
-                                            "false".to_string()
                                         } else {
                                             bits.to_string()
                                         }
@@ -2926,10 +2950,6 @@ impl AutoVM {
                                     StackTag::Int(bits) => {
                                         if bits == -1 {
                                             "None".to_string()
-                                        } else if bits == i32::MIN {
-                                            "true".to_string()
-                                        } else if bits == i32::MIN + 1 {
-                                            "false".to_string()
                                         } else if bits >= 4000000 {
                                             // Heap object — format as struct instance
                                             use crate::vm::generic_registry::GenericInstanceData;
@@ -3021,6 +3041,8 @@ impl AutoVM {
                                     }
                                 }
                             }
+                            }
+                        }
                         };
                         parts.push(s);
                     }
@@ -5101,7 +5123,7 @@ impl AutoVM {
                                         // + 份额入栈;原裸 push 无计数覆盖)。
                                         self.intern_runtime_str(task, s.as_bytes().to_vec());
                                     }
-                                    auto_val::Value::Nil => task.ram.push_i32(0),
+                                    auto_val::Value::Nil => task.ram.push_nv(auto_val::encode_null()), // Plan 474 待澄清#4 读侧闭环: Nil 字段读回 null nv(原 push_i32(0),与 Plan 044 __json_object 缺键 null 不一致)
                                     // Plan 073: Nested objects/arrays - push their ID
                                     auto_val::Value::VmRef(vm_ref) => {
                                         // Plan 419: 子对象引用入栈 +1。
@@ -5158,7 +5180,7 @@ impl AutoVM {
                                             // 016-calendar today 参数槽悬垂根因)。
                                             self.intern_runtime_str(task, s.as_bytes().to_vec());
                                         }
-                                        auto_val::Value::Nil => task.ram.push_i32(0),
+                                        auto_val::Value::Nil => task.ram.push_nv(auto_val::encode_null()), // Plan 474 待澄清#4 读侧闭环: Nil 字段读回 null nv(原 push_i32(0),与 Plan 044 __json_object 缺键 null 不一致)
                                         auto_val::Value::VmRef(vm_ref) => {
                                             // Plan 419: 子对象引用入栈 +1。
                                             self.rc_push(task, auto_val::encode_object(vm_ref.id as u32));

@@ -52,7 +52,7 @@ print(data)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("1"), "destroy should return true: [{}]", stdout);
+        assert!(stdout.contains("true"), "destroy should return true: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态 true/false
         assert!(stdout.contains("null"), "get after destroy should be null: [{}]", stdout);
     }
 
@@ -318,7 +318,7 @@ print(ok)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("0"), "set nonexistent should fail: [{}]", stdout);
+        assert!(stdout.contains("false"), "set nonexistent should fail: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
     }
 
     // ── tls_client_cert native ───────────────────────────────────────

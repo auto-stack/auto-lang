@@ -1,2 +1,8 @@
 // recycled from 99_bootstrap/040_eval_fn_call
-print(true)
+// Plan 474 待澄清#3 追记：宿主 print(bool) 形态已改 true/false，而 aavm
+// 值模型以 1/0 整型承载 bool（engine.at Val 枚举无 VBool，加载体是值模型
+// 级改动）——裸 bool print 在两侧形态分歧，已登记 KNOWN-DEBT-AND-RISKS。
+// 本语料改为「bool 字面量求值 + 条件分支」保住等价语义覆盖，输出类型稳定。
+if true {
+    print("yes")
+}

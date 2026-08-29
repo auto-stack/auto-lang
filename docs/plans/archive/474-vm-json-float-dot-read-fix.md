@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-474
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-json-float-dot-read-fix
 author: [zhaopuming, zcode]
 created_at: 2026-08-29
@@ -171,6 +171,6 @@ VM 解释器路径下，经宿主桥/JSON 进入前端的浮点数据不可信�
 
 1. （移交，非本计划体）os-config 撤 T12 整数化绕法的时序：本计划折叠 master 后由 os-config 侧会话执行，其 e2e-vm 全绿后走 T11 收口。
 2. 若阶段 A 判定 GREEN（仓内基础链无辜），注入点在 vm_bridge/UI 链时是否拆独立 plan：届时按改动面大小定，≤3 文件则留本计划，超出则拆 M2。（已定：注入点在 engine CALL_SPEC，改动 1 文件+测试，留本计划，不拆。）
-3. （S2 观测旁支）json bool 字段 `print(obj.ok)` 印 `1` 而非字面量形态 `true`（`let b = true; print(b)` 印 true）——json 字段读取链的类型提示/显示路径旁支不一致，非 ④ 值损坏（GET_FIELD bool 臂 push encode_bool 正确）。已在回归测试以实测基线钉住；根治（显示形态统一）建议另立 L0/小计划。
-4. （S3 观测旁支）`decode_tagged_nv`（engine.rs:645）缺 `is_null` 臂——null nv 落 `_ => Value::Int(0)`；SET_FIELD 存 null 值字段会失真。与 ④ 无关（④ 走浮点），建议随 #3 一并小修。
-5. （S5 观测旁支）f-string 插值在 run_with_capture 语境对 str 局部也不展开（`f"hello {s}"` 印原文 `{s}`），而 perf_benchmark_tests.rs:187 有同型用法——存量现象，与 ④ 无关；建议独立核查 f-string 插值的生效条件（feature/语法变体/harness 差异）。
+3. 【已清偿 2026-08-29，master 直接修复（用户授权免立项）】json bool 字段 `print(obj.ok)` 印 `1`。根因：`shim_print_unified`（Plan 377 print 统一路由）TAG_BOOL 臂故意打 "1"/"0"；且其 `_ =>` TAG_I32 兜底与 `shim_print_str`/BUILD_FSTR 兜底的 bool 哨兵特判（i32::MIN→"1"）把真整数 i32::MIN 一并误显。修复：TAG_BOOL 臂改打 true/false，三处哨兵特判摘除（tag==3 已前置截走 bool）。回归：bool_literal_print_form / json_bool_field_* / int_min_prints_numerically。
+4. 【已清偿 2026-08-29】`decode_tagged_nv` 缺 `is_null` 臂——补 Value::Nil（与 json_to_vm_value Null 臂同款）；读侧闭环：GET_FIELD 两处 Nil 臂由 `push_i32(0)` 改 `push encode_null`（与 Plan 044 __json_object 缺键 null 对齐，null==0 比较语义随之纠正）。回归：json_null_field_set_preserves_nil / json_missing_key_reads_null。
+5. 【已定性+顺修 2026-08-29】两层：(a) 语法事实——插值形式是 `${expr}`/`$ident`（parser fstr 文法），`{expr}` 是字面文本，原用例语法写错非引擎缺陷；(b) 顺藤揪出真 bug——BUILD_FSTR 盲信编译期 expr_type_hint 标签，json/unknown 局部落 Int 提示时裸 f64 被按 i32 解码（`${x}` 打出 -515396076=0xE147AE14，④ 同族指纹）。修复：运行期 tag-first（f64/f32/bool/null 按 nv tag 转换，编译期标签仅兜底；兜底中 bool 哨兵特判摘除）。回归：json_float_fstring_interpolation（54.16 经 ${} 插值精确）。
