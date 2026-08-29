@@ -1,0 +1,17 @@
+// front/app.at — 根 widget:条件装配 LoginChild 子 widget。
+//
+// Plan 483 最小复现:`if !authed { LoginChild }` 条件渲染子 widget,
+// 子 widget 视图含两个 input——VM(iced) 轨该形态下出现双焦点/键盘
+// 双投递(对照:根级双输入 003-converter 正常)。
+use auth_store: AuthStore
+use login_child: LoginChild
+
+widget App {
+    view {
+        if store.authed != true {
+            LoginChild
+        } else {
+            text "in" { style: "text-2xl p-8" }
+        }
+    }
+}

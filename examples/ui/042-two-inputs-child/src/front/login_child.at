@@ -1,0 +1,109 @@
+// front/login_child.at — 条件渲染的子 widget:双 input 登录表单。
+//
+// Plan 483 最小复现载体(镜像 auto-musk src/front/login.at 缺陷形态):
+//   条件装配(app.at `if !authed { LoginChild }`)的子 widget 内两个
+//   input(不同 placeholder、各自 oninput/v-model marker)+ 表单内
+//   `if store.error` 条件文本块 + 提交按钮。
+// 预期行为:点击 password 框 → 仅 password 有焦点环;在 password 输入
+// "admin" → user 值不变(键盘单投递)。
+widget LoginChild {
+    msg Msg {
+        Submit,
+        ToggleMode,
+        UserChanged,
+        PassChanged,
+    }
+
+    model {
+        var user str = ""
+        var pass str = ""
+        var register_mode bool = false
+    }
+
+    view {
+        col {
+            style: "min-h-screen items-center justify-center bg-background"
+            col {
+                style: "w-full max-w-sm p-8 bg-card border border-border rounded-xl shadow-lg gap-6"
+                // 品牌
+                row {
+                    style: "items-center gap-3 mb-2"
+                    text "🔧" { style: "text-2xl" }
+                    h1 "TwoInputs" { style: "text-2xl font-bold text-foreground" }
+                }
+                // 表单
+                col {
+                    style: "gap-4"
+                    col {
+                        style: "gap-1"
+                        label "Username" { style: "text-sm font-medium text-muted-foreground" }
+                        input {
+                            value: .user
+                            oninput: .UserChanged
+                            placeholder: "Enter username"
+                            style: "px-2.5 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        }
+                    }
+                    col {
+                        style: "gap-1"
+                        label "Password" { style: "text-sm font-medium text-muted-foreground" }
+                        input {
+                            value: .pass
+                            oninput: .PassChanged
+                            placeholder: "Enter password"
+                            style: "px-2.5 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        }
+                    }
+                    // 错误显示(条件文本块——musk 同款)
+                    if store.error != "" {
+                        text store.error { style: "px-3 py-2 rounded-md bg-destructive/10 text-destructive text-sm" }
+                    }
+                    // 提交按钮
+                    button {
+                        onclick: .Submit
+                        style: "py-2.5 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                        text "Login"
+                    }
+                }
+                // 切换模式(保留 musk 形态的第二条件块)
+                col {
+                    style: "mt-1 text-center"
+                    button {
+                        onclick: .ToggleMode
+                        style: "bg-transparent border-none text-primary text-sm underline cursor-pointer hover:opacity-80"
+                        if .register_mode {
+                            text "Already have an account?"
+                        } else {
+                            text "No account: Register"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        // v-model 语义 marker handler(U5,镜像 musk login.at)。
+        .UserChanged -> { .user = .user }
+        .PassChanged -> { .pass = .pass }
+
+        .ToggleMode -> {
+            .register_mode = !.register_mode
+            AuthStore.SetError("")
+        }
+
+        // Submit: admin/admin → 登录成功(store.authed 翻真,根条件切换);
+        // 否则置 error(驱动表单内条件文本块出现/消失)。
+        .Submit -> {
+            if .user == "admin" {
+                if .pass == "admin" {
+                    AuthStore.SetAuthed(true)
+                } else {
+                    AuthStore.SetError("bad credentials")
+                }
+            } else {
+                AuthStore.SetError("bad credentials")
+            }
+        }
+    }
+}
