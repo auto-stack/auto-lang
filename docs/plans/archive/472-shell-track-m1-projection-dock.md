@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-472
-status: reviewed
+status: archived
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
 updated_at: 2026-08-29T00:00:00+08:00
@@ -189,3 +189,17 @@ shell 侧零几何、动词表外无特权命令）。
 
 四项验收全 PASS（#1 带成文环境 debt），全量门禁 cargo tf 3235/3235 绿，
 无未批准 deferral。**status → reviewed**，可进入 /auto-plan:merge。
+
+---
+
+## spec-sync 回写记录（/auto-plan:merge，2026-08-29）
+
+- `.autoos/specs.json` upsert 4 条：P472-1 goals（shell-track M1 四目标）/
+  P472-2 designs（投影协议 v1 + DesktopBus 对账 + workspace 微决策 + dock 设计）/
+  P472-3 tests（cargo tf 3235 + I2 五套 + I7/I9 + 实机清单）/ P472-4 reviews（复审记录），
+  均带 `file` + `related: [PLAN-472]` 追溯。
+- module 回写：`docs/specs/auto-lang/ui/overview.md` 桌面运行时现状段（464 落地 +
+  472 AutoShell 地基）、`ui/plans.md` 追加 472 行（顺带修 464/465 stale 状态行）、
+  `docs/specs/goals.md` GOAL-009 推进注记。
+- Design 25 §3 对账注记已于 T6 回写（候选 B 定案 + 投影协议 v1 指针）。
+- 索引再生：`python scripts/spec-index.py`（本次 merge 一并执行）。

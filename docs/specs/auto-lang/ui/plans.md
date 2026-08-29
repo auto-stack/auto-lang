@@ -98,6 +98,7 @@
 | 458 | auto-ui-theme-system | 🟡（施工修订回填） | plans/ | theme/accent 一等配置三通道；双端默认 dark+indigo |
 | 462 | virtual-window-wm | ✅ | plans/ | 路线 A 地基：VirtualWindow+WmState+DM::Wm+桌面键盘路由（ADR-14） |
 | 463 | desktop-shell-auto-arrange | ✅（execution_done） | plans/ | 全屏桌面+任务栏+排布纯函数+DesktopBus v0+pac.at 注册表（ADR-15） |
-| 464 | launcher-app | 📋 已立项 | plans/ | launcher 为普通 App 经 overlay 召唤；desktop.launch 真启动 |
-| 465 | vue-virtual-desktop | 📋 已立项 | plans/ | vue 页=虚拟桌面，每窗 createApp 隔离（ADR-16 设计） |
+| 464 | launcher-app | ✅ | archive/ | launcher 为普通 App 经 overlay 召唤；desktop.launch 真启动（真注册表模糊排序 + windowless 拆借垫片） |
+| 465 | vue-virtual-desktop | ✅ | archive/ | vue 页=虚拟桌面，每窗 createApp 隔离（ADR-16 设计） |
+| 472 | shell-track-m1-projection-dock | ✅（reviewed→archived） | archive/ | AutoShell 地基：投影协议 v1（schema/projection-protocol-v1.md）+ DesktopBus v1 对账定案（候选 B + 8 动词词表）+ workspace 分区驱动 + dock 升级（图标/pinned/配置链） |
 | 386 | autoui-renderqueue | ⏸ 暂缓（复活条件 2/3 就绪） | plans/ | 路线 B 分离渲染（100MB→1-5MB/app），蓝图 Design 25 §7 |
