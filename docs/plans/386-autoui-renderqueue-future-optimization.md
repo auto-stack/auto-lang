@@ -1,14 +1,17 @@
 ---
 plan_id: PLAN-386
-status: executing
+status: reviewed
 feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-29T19:00:00+08:00
+updated_at: 2026-08-29T19:40:00+08:00
 
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——ui/desktop_protocol 桌面协议 v1.1（五通道消息/二进制编解码/双端状态机/命名管道+共享内存传输/broker 入口裁决/L2 迁移；loopback 同进程与 re-exec 两进程双验证）"
+  - "docs/design/autoui/desktop-protocol-v1.md: 新增——桌面协议规范 v1.1（版本表/wire format/五通道/状态机/Stage2 换 transport 面/偏差记录）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——路线 B 桌面协议 v1.1 落地（命名管道+共享内存两进程孵化/broker 入口裁决/L2 状态保持），M6 推进"
 
 current_step: 14
 total_steps: 14
@@ -314,3 +317,39 @@ broker/spawn）归 shell-track 后续计划。
   `DesktopSession`/`WmState` 真实参与）；live-iced 渲染器换接
   （`dynamic_view`→协议客户端）留 Stage 2 随真 transport 一起做——
   I1 评审已证零删除替换可达。
+
+## 复审记录（2026-08-29，/auto-plan:review）
+
+**复审人**：zcode（AI 独立复审）。**范围**：S1–S13 全量（Stage 1 v1.0 + Stage 2 v1.1 两进程增量）。
+**复审基点**：master `31b871037`（= worktree plan-386-dev，已折入）。
+
+### 逐项验收判定
+
+| 项 | 判定 | 证据 |
+|---|---|---|
+| 全量门禁（复审专属跑） | ✅ pass | `cargo tf` 3255/3255 绿（fresh run，含 1M churn 档） |
+| 协议模块显式绿（ui-iced 非 default） | ✅ pass | `cargo nextest … desktop_protocol --features ui-iced` 44/44（复跑）；session 回归 38/38 |
+| Stage 1 验收句：规范文档（版本化） | ✅ pass | `docs/design/autoui/desktop-protocol-v1.md` 版本表 v1.0/v1.1，autoui 索引登记 |
+| Stage 1 验收句：loopback demo 行为与直挂无差 | ✅ pass | `counter_loopback_demo_parity_with_direct_mount`：state_parity/frame_parity/reclaimed 全真（复跑绿） |
+| Stage 2 验收句：独立 exe 双态启动 | ✅ pass（含一项已记录偏差，见债务①） | ① spawn-client 两进程 re-exec 集成（`dual_mode_spawn_client_two_process`：adjudicate→孵化→shm 帧→点击→L2→退出码 0）；② broker 全链（`broker_incubation_full_flow` 通真实 462 会话）；③ 裁决三步单测（`adjudicate_three_steps`） |
+| Stage 2 验收句：L2 detach/attach 协议消息 | ✅ pass | L2Detach/L2Detached/L2AttachRequest（tag 8/9/10 追加）+ Standalone 态；`l2_detach_attach_round_trip_state_continuous` 断言 revision 不归零 |
+| 帧共享纹理/共享内存（Stage 2 内容项） | ✅ pass | `SharedFrameBuffer`（CreateFileMappingW 双槽 FFI）+ `FrameReadyShared`；两进程测试中帧载荷经 shm 递增验证 |
+| 输入 IPC 注入（Stage 2 内容项） | ✅ pass | 两进程测试：桌面 hit_test→(Wid,event) 过管道→子进程 VM handler→count 递增 |
+| 无新编译警告 | ✅ pass | `cargo check --features ui-iced` 干净（desktop_protocol 无警告项） |
+| workaround 扫描 | ✅ pass | 模块内无 TODO/FIXME/unimplemented/todo! |
+
+### 债务候选（记入 KNOWN-DEBT-AND-RISKS.md 由 merge 阶段落账）
+
+1. **`examples/ui_client_demo` 独立示例 exe 未建**（S12 步骤自定细节偏差）：双击演示形态与 `auto run` 既有独立模式重复承载；两进程真实验证由 re-exec 集成测试承担（① 路径全生命周期），双击体验归 shell-track 真桌面壳集成。root cause：executor 权衡去重。
+2. **live-iced 渲染消费面未接**（待澄清② 的顺延）：虚拟窗 live 显示共享内存帧的渲染器换接（`dynamic_view`→协议客户端）不在 Stage 2 验收句内；归 shell-track/Stage 3。root cause：I1 零删除替换点就位，换接随真桌面壳一并做。
+3. **计数器 FrameSource 适配器三处测试性重复**（demo/broker/dual_mode 各 ~40 行）：非正确性问题；S12 后若协议 demo 泛化再合并。
+
+### 遗漏/延后扫描结论
+
+- 无"标记完成但丢失子项"的遗漏；S1–S13 每项均有对应 diff 与测试。
+- 上述债务 ①② 为计划内明示顺延（计划文件"待澄清事项/Phase 2 折入记录"在案，最终汇报已向用户披露），非静默缩水。
+
+### 结论
+
+**全部验收判据 pass，无阻塞债务 → `status: reviewed`。**
+下一步：`/auto-plan:merge`（spec-impact 元数据已填充如上，供 merge 直接消费）。
