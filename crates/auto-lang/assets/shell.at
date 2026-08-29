@@ -15,9 +15,10 @@
 //       指示条件消费——.at 无法跨列表聚合，宿主派生保持 I9 单一事实）
 //       `__wm_meta`（"layout\tfocused_wid"，布局按钮态）
 // dock 数据级配置（协议 v1 §6）：storage 键 shell.dock.pinned / position /
-// enabled，Init 读入，缺席回退本文件 pack 默认（bottom / 启用 / 三枚固定）。
-// auto-os-config settings 写手 = shell-track M4；v1 由外部预置键
-// （AUTO_VM_STORAGE_FILE 指向预写 JSON）。
+// enabled，缺席回退 pack 默认（bottom / 启用 / 固定 calculator+todo+notes）。
+// position/enabled 由 Init 读入；pinned 由宿主读键并解析 {id,icon} 注入
+// （图标源 = 注册表，I9）。auto-os-config settings 写手 = shell-track M4；
+// v1 由外部预置键（AUTO_VM_STORAGE_FILE 指向预写 JSON）。
 // 消费者唯一：宿主 renderer 的 DesktopBus 双排空点（462/463 update 壳层）。
 // launcher overlay 槽：SummonLauncher 召唤（464），本文件只发事件。
 widget Desktop {
@@ -35,6 +36,8 @@ widget Desktop {
         var __wm_running str = ""
         var __wm_meta str = ""
         var __wm_fp str = ""
+        // __dock_pinned = 宿主注入 {id,icon} Obj 数组（storage shell.dock.pinned
+        // 覆盖 > pack 默认三枚；icon 宿主自注册表解析——.at 无注册表访问权）。
         var __dock_pinned = []
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
@@ -58,11 +61,11 @@ widget Desktop {
                         for p in .__dock_pinned {
                             row {
                                 style: "items-center gap-0"
-                                button (icon: p) {
-                                    onclick: .ActivateApp(p)
+                                button (icon: p.icon) {
+                                    onclick: .ActivateApp(p.id)
                                     style: "h-9 w-9 px-0 text-sm"
                                 }
-                                if .__wm_running.contains("," + p + ",") {
+                                if .__wm_running.contains("," + p.id + ",") {
                                     text "●" {
                                         style: "text-success text-xs"
                                     }
@@ -127,11 +130,11 @@ widget Desktop {
                         for p in .__dock_pinned {
                             row {
                                 style: "items-center gap-0"
-                                button (icon: p) {
-                                    onclick: .ActivateApp(p)
+                                button (icon: p.icon) {
+                                    onclick: .ActivateApp(p.id)
                                     style: "h-9 w-9 px-0 text-sm"
                                 }
-                                if .__wm_running.contains("," + p + ",") {
+                                if .__wm_running.contains("," + p.id + ",") {
                                     text "●" {
                                         style: "text-success text-xs"
                                     }
@@ -186,18 +189,8 @@ widget Desktop {
         .Init -> {
             // dock 配置读入（storage，018/025 先例；键值全字符串）。缺席
             // 回退 pack 默认——覆盖链：运行时配置 > pack 声明默认（§4.1）。
-            // 串列注入走 while+push（launcher 同款；列表字段整体重赋值
-            // 不换堆对象，split 产物落不进声明槽——fire_init 实测）。
-            var pinned str = storage.get("shell.dock.pinned")
-            if pinned == "" {
-                pinned = "011-calculator,013-todo,015-notes"
-            }
-            var parts = pinned.split(",")
-            var i int = 0
-            while i < parts.len() {
-                .__dock_pinned.push(parts[i])
-                i = i + 1
-            }
+            // pinned 列表由宿主解析注入（__dock_pinned；registry 图标源在
+            // 宿主侧，shell.at Init 不再读 shell.dock.pinned——472 T5）。
             var pos str = storage.get("shell.dock.position")
             if pos == "top" {
                 .__dock_position = "top"
