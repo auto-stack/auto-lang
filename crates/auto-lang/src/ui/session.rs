@@ -897,6 +897,15 @@ pub struct DesktopSession {
     /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
     /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
     pub host: Option<HostCtx>,
+    /// Plan 480 S3：broker 孵化连接排队——`enable_broker` 的 serve 线程
+    /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
+    /// `attach_pending_incubations` 在属主线程消费落 462 会话。
+    #[cfg(feature = "ui-iced")]
+    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>)>>>,
+    /// Plan 480 S3：`enable_broker` serve 线程的停止旗标（boot 期进程级
+    /// 常驻；持有以便将来显式停机）。
+    #[cfg(feature = "ui-iced")]
+    pub(crate) broker_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -961,6 +970,10 @@ impl DesktopSession {
             focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
             host: None,
+            #[cfg(feature = "ui-iced")]
+            broker_pending: Arc::new(Mutex::new(Vec::new())),
+            #[cfg(feature = "ui-iced")]
+            broker_stop: None,
         }
     }
 
@@ -1123,6 +1136,80 @@ impl DesktopSession {
             self.wm_set_layout(layout);
         }
         Ok(wid)
+    }
+
+    /// Plan 480 S3：真桌面壳孵化通道——broker 常驻 serve 线程循环
+    /// `Broker::serve_once` 受理孵化（探测 ping 吞掉；停机旗标置位后由
+    /// 一记 probe 连接唤醒退出）。accepted 连接排队 [`Self::broker_pending`]；
+    /// ProtocolHost 持 `&mut session` 不可跨线程，落会话由属主线程经
+    /// [`Self::attach_pending_incubations`] 执行。
+    #[cfg(feature = "ui-iced")]
+    pub fn enable_broker(
+        &mut self,
+        pipe_name: &str,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        use crate::ui::desktop_protocol::broker::Broker;
+        use std::sync::atomic::Ordering;
+        let mut broker = Broker::on_pipe(pipe_name.to_string());
+        let pending = Arc::clone(&self.broker_pending);
+        self.broker_stop = Some(Arc::clone(&stop));
+        std::thread::Builder::new()
+            .name("autodesk-broker-serve".into())
+            .spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    match broker.serve_once() {
+                        Ok(Some((pipe, end))) => pending.lock().unwrap().push((pipe, end)),
+                        Ok(None) => {} // 探测 ping：吞掉重听
+                        Err(_) => {
+                            // 管道竞态/对端早断：退避后重听（防忙转）。
+                            std::thread::sleep(std::time::Duration::from_millis(20));
+                        }
+                    }
+                }
+            })
+            .expect("spawn broker serve thread");
+    }
+
+    /// Plan 480 S3：孵化落地（属主线程；desktop 模式由 ServiceTick 帧泵
+    /// 周期调用）——drain 排队连接，每条走 ProtocolHost 的 ResolveAndAttach
+    /// 路径（resolver = 桌面既有 app registry）泵到 Active。返回本次落地
+    /// 的虚拟窗列表。
+    #[cfg(feature = "ui-iced")]
+    pub fn attach_pending_incubations(&mut self, budget_per_app_ms: u32) -> Vec<Wid> {
+        use crate::ui::desktop_protocol::host::ProtocolHost;
+        let pending: Vec<_> = std::mem::take(&mut *self.broker_pending.lock().unwrap());
+        if pending.is_empty() {
+            return Vec::new();
+        }
+        let resolver = self.desktop.app_resolver.clone();
+        let mut wids = Vec::new();
+        for (pipe, mut end) in pending {
+            let pipe_for_log = pipe.clone();
+            let registry = resolver.clone();
+            let mut host = ProtocolHost::new(self, move |app: &str| {
+                let registry =
+                    registry.as_ref().ok_or_else(|| "app registry unavailable".to_string())?;
+                let spec = registry(app)
+                    .ok_or_else(|| format!("app not found: {app}"))?;
+                let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
+                    .map_err(|e| format!("build `{app}` failed: {e}"))?;
+                Ok(comp)
+            });
+            match host.pump_incubation(&mut end, budget_per_app_ms) {
+                Some(wid) => wids.push(wid),
+                None => eprintln!(
+                    "[autodesk-broker] incubation `{pipe_for_log}` failed to reach Active (budget)"
+                ),
+            }
+        }
+        wids
+    }
+
+    /// Plan 480 S3：测试口——排队中的孵化连接数。
+    #[cfg(feature = "ui-iced")]
+    pub fn pending_incubations(&self) -> usize {
+        self.broker_pending.lock().unwrap().len()
     }
 
     /// Plan 463 T4：布局切换 —— 存储模式并把 layout() 结果写回当前分区的
