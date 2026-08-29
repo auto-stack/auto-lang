@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-476
-status: reviewed                 # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-slot-substitution
 author: [zcode]
 created_at: 2026-08-29
