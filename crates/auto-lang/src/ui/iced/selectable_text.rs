@@ -155,11 +155,16 @@ impl SelectableText {
                 state.last_click = Some((now, p));
                 true
             }
-            mouse::Event::CursorMoved { .. } => {
+            // CursorMoved 的事件坐标即新位置(iced 的 cursor.position() 在
+            // 事件分发时仍为移动前的旧值——单步跳变时选区会恒空)。
+            mouse::Event::CursorMoved { position } => {
                 if !state.dragging {
                     return false;
                 }
-                let Some(p) = local else { return false };
+                let p = Point::new(
+                    position.x - bounds.x,
+                    position.y - bounds.y,
+                );
                 let para = Point::new(p.x - anchor.x, p.y - anchor.y);
                 let g = Self::hit_at(state, para).min(self.content.len());
                 state.selection.extend_to(g);
@@ -891,6 +896,72 @@ mod tests {
         assert!(
             statuses.iter().any(|s| matches!(s, iced::event::Status::Captured)),
             "drag gestures must be captured by the real pipeline: {statuses:?}"
+        );
+    }
+
+    /// T3 管线链路(iced-layout-tests 档):真实 iced 事件流中 Ctrl+C 键盘
+    /// 事件同样送达 widget update 并被捕获(无选区静默/有选区捕获——
+    /// 运行时与单测同机制,实机剩余变量仅窗口焦点)。
+    #[cfg(feature = "iced-layout-tests")]
+    #[test]
+    fn text_selection_simulator_ctrl_c_captured() {
+        use iced::keyboard::{self, key, Key};
+        use iced_test::simulator;
+
+        let ui: iced::Element<'static, (), iced::Theme, iced::Renderer> =
+            SelectableText::new("hello world").size(16).into();
+        let mut sim = simulator(ui);
+        sim.point_at(iced::Point::new(40.0, 8.0));
+
+        // 无选区:Ctrl+C 必须不捕获(不抢编辑器快捷键)。
+        let idle = sim.simulate([iced::Event::Keyboard(
+            keyboard::Event::KeyPressed {
+                key: Key::Character("c".into()),
+                modified_key: Key::Character("c".into()),
+                physical_key: key::Physical::Unidentified(
+                    key::NativeCode::Unidentified,
+                ),
+                location: keyboard::Location::Standard,
+                modifiers: keyboard::Modifiers::CTRL,
+                text: None,
+                repeat: false,
+            },
+        )]);
+        assert!(
+            idle.iter().all(|s| matches!(s, iced::event::Status::Ignored)),
+            "idle Ctrl+C must pass through: {idle:?}"
+        );
+
+        // 拖选后有选区:Ctrl+C 必须捕获(进剪贴板路径)。
+        sim.simulate([
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
+                iced::mouse::Button::Left,
+            )),
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+                position: iced::Point::new(60.0, 8.0),
+            }),
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                iced::mouse::Button::Left,
+            )),
+        ]);
+        let with_sel = sim.simulate([iced::Event::Keyboard(
+            keyboard::Event::KeyPressed {
+                key: Key::Character("c".into()),
+                modified_key: Key::Character("c".into()),
+                physical_key: key::Physical::Unidentified(
+                    key::NativeCode::Unidentified,
+                ),
+                location: keyboard::Location::Standard,
+                modifiers: keyboard::Modifiers::CTRL,
+                text: None,
+                repeat: false,
+            },
+        )]);
+        assert!(
+            with_sel
+                .iter()
+                .any(|s| matches!(s, iced::event::Status::Captured)),
+            "Ctrl+C with selection must be captured: {with_sel:?}"
         );
     }
 }
