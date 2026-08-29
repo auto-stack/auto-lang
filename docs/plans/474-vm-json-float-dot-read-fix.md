@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-474
-status: executing                # drafting → executing → execution_done → reviewed → archived
+status: execution_done           # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-json-float-dot-read-fix
 author: [zhaopuming, zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, auto-val]   # 受影响的 specs 路径
-current_step: 6
+current_step: 8
 total_steps: 8
 ---
 
@@ -140,7 +140,9 @@ VM 解释器路径下，经宿主桥/JSON 进入前端的浮点数据不可信�
 - **S6**：`cargo check -p auto-lang` 零警告；`cargo t 340` `cargo t 437`（浮点族邻近模块）绿。
   [✅ 已完成] 警告数 master 基线 158 == worktree 158（**零新增**；仓库存量警告系独立债务）。`cargo t 340` 5/5、`cargo t math` 16/16 绿；`cargo t 437` 在 fast 档 0 匹配（437 用例在特性门控后，全量档覆盖）。**活体端到端复验 GREEN**：os-config worktree（探针临时补丁）+ 本 worktree 构建的 auto CLI 跑 `auto run -r vm` + MCP autoui_state——`sys_probe3 = 51 (unknown)`（floor(51.55) 正确，修复前 -536870912），五探针全对；探针补丁已 `git checkout` 还原，os-config worktree 干净。注意：首次复验曾因 Git Bash PATH 需 POSIX 形式（`/d/...` 而非 `D:/...`）跑错旧二进制，已纠正。
 - **S7**：全量门禁 `cargo tf` 一次通过（Plan 466 档位）。
+  [✅ 已完成] `cargo tf` **3249/3249 全绿**（95 skipped 为特性门控）。按 auto-plan-work pre-fold 规则加跑 `cargo tv`（VM 文件档）：3 失败（`aavm2_m4::test_aavm2_m4_codegen_corpus`、`cookbook_vm_tests::cb_asynchronous_channel`、`cb_devtools_log_error`）——**master 基线同样红且失败签名逐字节一致**（m4 同语料 b13_is_enum.at 同断言点），系并行会话近期提交引入的存量，与本案运行时改动无涉（m4 为静态字节码对比，本案未动 codegen）。存量失败移交 review/相应会话处置，本案零新增失败。
 - **S8**：回 master 更新 `docs/plans/KNOWN-DEBT-AND-RISKS.md` ④ 条目 ✅（附修复 commit）；`/auto-plan:review` 独立复审；折叠 master、归档本 plan（`docs/plans/archive/`）、清理 worktree。
+  [⏭ 移交] 本步的复审/折叠/归档/债条目终笔按范式分别由 `/auto-plan:review` 与 `/auto-plan:merge` 执行（auto-plan-work 纪律：execution_done 即止，不代跑后段）。修复提交在 plan-474-dev 分支：d55f98b0e（S4 一元透传）、85a0600b9（S5 二元序倒置+矩阵）。
 
 ## 复审记录
 
