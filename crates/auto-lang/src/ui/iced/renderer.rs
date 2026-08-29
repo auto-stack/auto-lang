@@ -5972,13 +5972,16 @@ fn keyboard_subscription_ext(
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
 /// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
 /// - Esc：调试退出（全屏无框桌面无关闭按钮）；
-/// - Alt+Tab / Ctrl+Tab：窗口循环（Windows OS 吞 Alt+Tab，Ctrl+Tab 兜底）；
+/// - Alt+Tab：窗口循环（POSIX WM 惯例，OS 不拦即达；463 定案 v1 不动）；
+/// - Ctrl+Tab：switcher 召唤/推进（478 改道——旧窗口循环直循环退役入
+///   overlay 路径；Windows 实测可达键位）；
 /// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
+/// - Ctrl+Alt+←/→：分区环切；Ctrl+Alt+Shift+←/→：聚焦窗发送相邻分区（478）；
 /// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::{DesktopMessage as DM, WmCommand};
+    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -5998,15 +6001,30 @@ fn desktop_hotkey_subscription(
             if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
                 return Some(DM::Wm(WmCommand::ExitDesktop));
             }
-            // 窗口循环：Tab + Alt（POSIX WM 惯例，OS 不拦即达）或 Ctrl
-            //（Windows 实测可达的兜底键位，T1 报告 §7 定案）。
-            if matches!(key, Key::Named(Named::Tab))
-                && (modifiers.alt() || modifiers.control())
-                && !modifiers.shift()
-            {
-                return Some(DM::Wm(WmCommand::CycleWindow));
+            // Plan 478 T3：Tab 键位分层——Ctrl+Tab 改道 switcher 召唤/推进
+            //（overlay 打开时由 update 臂转 .Advance，T1 施工图 §2）；
+            // Alt+Tab 保留窗口循环（463 键位 v1 不动）。
+            if matches!(key, Key::Named(Named::Tab)) && !modifiers.shift() {
+                if modifiers.control() && !modifiers.alt() {
+                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+                }
+                if modifiers.alt() && !modifiers.control() {
+                    return Some(DM::Wm(WmCommand::CycleWindow));
+                }
+            }
+            // Plan 478 T3：send_to 热键（先行判定——下方 Ctrl+Alt 分支对
+            // shift 不敏感，须在此截走 Shift 组合）。
+            if modifiers.control() && modifiers.alt() && modifiers.shift() {
+                if matches!(key, Key::Named(Named::ArrowRight)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
+                }
+                if matches!(key, Key::Named(Named::ArrowLeft)) {
+                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
+                }
             }
             // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
+            // 方向键 Shift 组合已被上方 send_to 分支截走，此块无需 shift 守卫
+            // （字母键位保持 463 行为不变）。
             if modifiers.control() && modifiers.alt() {
                 if let Key::Character(c) = &key {
                     let mode = match c.to_lowercase().as_str() {
@@ -6584,6 +6602,31 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
+/// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
+/// entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与条件渲染
+/// 都走字符串语义（dashboard/041 对象列表同型）。icon 自注册表实时查
+/// （registry_entries 唯一事实源；未登记/无条目回退 "app-window"）。
+fn projection_win_entry(
+    registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
+    v: &crate::ui::session::VWinState,
+    focused: bool,
+) -> auto_val::Value {
+    let icon = v
+        .registry_id
+        .as_ref()
+        .and_then(|id| registry_entries.iter().find(|e| &e.id == id))
+        .map(|e| e.icon.clone())
+        .unwrap_or_else(|| "app-window".to_string());
+    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+        ("wid", auto_val::Value::Str(v.wid.0.to_string().into())),
+        ("title", auto_val::Value::Str(v.title.clone().into())),
+        ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
+        ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
+        ("icon", auto_val::Value::Str(icon.into())),
+    ]))
+}
+
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
 /// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
@@ -6591,6 +6634,9 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
 /// "逐窗;|meta|逐分区;"。窗口列表为**跨分区全集**（dock 运行指示消费），
 /// 虚拟窗层绘制自过滤。指纹未变则跳过写（防每帧 churn），写后置 shell
 /// view_dirty。每 update 周期在排空点邻位调用（O(窗数) 串接，便宜）。
+/// Plan 478 T3 升级 **v1.1**：新增 `__wm_mru`（当前分区 MRU 序，switcher
+/// 消费）、`__wm_workspaces.label`（1 基标签）；指纹分区段扩 label、
+/// 尾接 mru 段（§3 式）。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -6599,30 +6645,11 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
-        // entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与
-        // 条件渲染都走字符串语义（dashboard/041 对象列表同型）。
-        // Plan 472 T3：icon 自注册表实时查（registry_entries 唯一事实源；
-        // 未登记/无条目回退 "app-window"）。
-        let icon = v
-            .registry_id
-            .as_ref()
-            .and_then(|id| {
-                state
-                    .desktop
-                    .registry_entries
-                    .iter()
-                    .find(|e| &e.id == id)
-            })
-            .map(|e| e.icon.clone())
-            .unwrap_or_else(|| "app-window".to_string());
-        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
-            ("wid", auto_val::Value::Str(wid.0.to_string().into())),
-            ("title", auto_val::Value::Str(v.title.clone().into())),
-            ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
-            ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
-            ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
-            ("icon", auto_val::Value::Str(icon.into())),
-        ])));
+        wins.push(projection_win_entry(
+            &state.desktop.registry_entries,
+            v,
+            focused,
+        ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
     }
@@ -6650,16 +6677,31 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         }
     }
     // Plan 472 T3：workspace 分区投影段（协议 v1 §2.2/§2.3）。
+    // Plan 478 T3 v1.1：条目增 `label`（1 基人读标签，宿主投影——避开 .at
+    // 字符串算术）；指纹分区段扩展 "{id}:{current},{label};"。
     let mut workspaces: Vec<auto_val::Value> = Vec::new();
     fp.push('|');
     for ws in &host.wm.workspaces {
         let current = host.wm.current_workspace == ws.id;
+        let label = (ws.id + 1).to_string();
         workspaces.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
             ("id", auto_val::Value::Str(ws.id.to_string().into())),
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
+            ("label", auto_val::Value::Str(label.clone().into())),
         ])));
-        fp.push_str(&format!("{}:{},", ws.id, current as u8));
+        fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
+    }
+    // Plan 478 T3 v1.1：__wm_mru 段——当前分区 MRU 序（switcher 消费，
+    // dock 不受影响；焦点环不跨分区 472 语义延续）。指纹尾段逐窗 "{wid};"。
+    let mut mru: Vec<auto_val::Value> = Vec::new();
+    fp.push('|');
+    for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
+        if let Some(v) = host.wm.wins.get(&wid) {
+            let focused = host.wm.focused == Some(wid);
+            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+        }
+        fp.push_str(&format!("{};", wid.0));
     }
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
@@ -6673,6 +6715,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     }
     let _ = app.component.write_state_vec("__wm_wins", wins);
     let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
+    let _ = app.component.write_state_vec("__wm_mru", mru);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
@@ -9081,6 +9124,10 @@ fn compare_pngs(
                     DesktopEvent::SummonLauncher => {
                         return summon_launcher(state);
                     }
+                    // Plan 478 T3：Ctrl+Tab 改道——召唤/推进 switcher。
+                    // 执行体（summon_switcher / .Advance 直投）T4 接线；
+                    // 本臂先静默保编译绿。
+                    DesktopEvent::SummonSwitcher => {}
                 }
                 iced::Task::none()
             }
@@ -14421,6 +14468,7 @@ mod tests {
         var __wm_meta str = ""
         var __wm_fp str = ""
         var __wm_workspaces = []
+        var __wm_mru = []
     }
     view { col { text "shell" } }
 }
@@ -14660,6 +14708,83 @@ mod tests {
         let auto_val::Value::Obj(o) = &wins[0] else { panic!("Obj") };
         assert_eq!(t3_obj_str(o, "app"), "011-calculator", "launch 回填 registry_id");
         assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
+    }
+
+    // ---- Plan 478 T3：投影协议 v1.1（__wm_mru + workspaces label + 指纹扩展）----
+
+    /// v1.1：`__wm_mru` = 当前分区 MRU 序（front=最近聚焦，条目同
+    /// `__wm_wins` 六字段）+ `__wm_workspaces.label` 1 基人读标签。
+    #[test]
+    fn projection_v11_mru_order_and_workspace_label() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        t3_add_win(&mut ds, "Beta");
+        let c = t3_add_win(&mut ds, "Gamma");
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 3, "当前分区全集（boot 窗全在分区 0）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), c.0.to_string(), "MRU front=最近聚焦");
+        assert_eq!(t3_obj_str(first, "title"), "Gamma", "条目同 __wm_wins 六字段");
+        // 聚焦 a → MRU 前插，投影序随之。
+        ds.wm_focus(a);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("mru 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string(), "聚焦后 front=a");
+
+        // label = 1 基人读标签（宿主投影，避开 .at 算术——T1 施工图 §4.1）。
+        let wss = t3_read_array(&ds, "__wm_workspaces");
+        assert_eq!(wss.len(), 2);
+        let auto_val::Value::Obj(ws0) = &wss[0] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws0, "label"), "1");
+        let auto_val::Value::Obj(ws1o) = &wss[1] else {
+            panic!("workspace 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(ws1o, "label"), "2");
+    }
+
+    /// v1.1：mru 投影按当前分区过滤（焦点环不跨分区，472 语义延续）+
+    /// 指纹 v1.1 段（分区段含 label、尾接 mru 段）门控翻转。
+    #[test]
+    fn projection_v11_mru_filters_partition_and_fingerprint_segments() {
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0
+        ds.wm_set_workspace(1);
+        let b = t3_add_win(&mut ds, "Beta"); // ws1
+        sync_shell_windows(&mut ds);
+
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1, "mru 过滤当前分区（不跨分区）");
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), b.0.to_string());
+
+        // 指纹 v1.1：分区段 "{id}:{current},{label};" + 尾段 mru "{wid};"。
+        let fp = match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => s.to_string(),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        };
+        assert!(fp.contains("0:0,1;1:1,2;"), "指纹分区段含 label: {fp}");
+        assert!(fp.ends_with(&format!("|{};", b.0)), "指纹尾接 mru 段: {fp}");
+
+        // 切回分区 0：mru 段翻转 → 指纹变 → 重写。
+        ds.wm_set_workspace(0);
+        sync_shell_windows(&mut ds);
+        let mru = t3_read_array(&ds, "__wm_mru");
+        assert_eq!(mru.len(), 1);
+        let auto_val::Value::Obj(first) = &mru[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(t3_obj_str(first, "wid"), a.0.to_string());
     }
 
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----

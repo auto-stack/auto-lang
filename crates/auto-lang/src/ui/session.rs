@@ -924,6 +924,10 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
+    /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
+    /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
+    /// 否则懒挂载召唤（T4 执行体）。
+    SummonSwitcher,
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
