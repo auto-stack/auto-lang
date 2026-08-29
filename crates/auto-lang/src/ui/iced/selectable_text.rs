@@ -18,7 +18,9 @@ use iced::advanced::graphics::text::Paragraph as GraphicsParagraph;
 use iced::advanced::text::paragraph::{Paragraph as _, Plain};
 use iced::advanced::widget::text::{self as text_widget, Format};
 use iced::advanced::widget::tree::{self, Tag, Tree};
-use iced::advanced::{Layout, Renderer as _, Widget};
+use iced::advanced::{Clipboard, Layout, Renderer as _, Shell, Widget};
+use iced::event::Event;
+use iced::keyboard::{self, key, Key};
 use iced::mouse;
 use iced::{
     Color, Element, Font, Length, Pixels, Point, Rectangle, Size, Theme,
@@ -27,6 +29,12 @@ use iced::alignment::{self};
 use iced::advanced::text::{Alignment, LineHeight, Shaping, Wrapping};
 
 use super::selection::Selection;
+
+/// 双击判定窗口(与主流编辑器一致的 500ms)。
+const DOUBLE_CLICK_WINDOW: std::time::Duration =
+    std::time::Duration::from_millis(500);
+/// 双击判定位移阈值(逻辑像素):超过视为重新按下。
+const DOUBLE_CLICK_SLOP: f32 = 4.0;
 
 /// 可选文本 widget。参数面与 `iced::widget::Text` 对齐(渲染面子集:
 /// size/font/color/width/height/align/line_height/shaping/wrapping)。
@@ -95,6 +103,112 @@ impl SelectableText {
         self.format.wrapping = wrapping;
         self
     }
+
+    // -------------------------------------------------------------------
+    // 手势集(v1):拖选 / 双击选词 / 单击清除 / Ctrl+C 复制 / Esc 清除。
+    // 独立于 iced 事件流的纯处理函数(单测直接驱动),update 只做坐标
+    // 换算与捕获状态上报。
+    // -------------------------------------------------------------------
+
+    /// 段落局部坐标命中 → 全局字节偏移。
+    fn hit_at(state: &State, para_local: Point) -> usize {
+        hit_global(state.paragraph.raw().buffer(), &state.line_starts, para_local)
+    }
+
+    /// 鼠标手势。`local` = 光标相对 widget 原点坐标(无可用时 None);
+    /// `anchor` = 段落绘制锚点(local - anchor = 段落局部坐标);
+    /// `bounds` = widget 界。返回是否捕获。
+    fn handle_mouse(
+        &self,
+        state: &mut State,
+        event: &mouse::Event,
+        local: Option<Point>,
+        anchor: Point,
+        bounds: Rectangle,
+    ) -> bool {
+        match event {
+            mouse::Event::ButtonPressed(mouse::Button::Left) => {
+                let Some(p) = local else { return false };
+                if !bounds.contains(p) {
+                    return false;
+                }
+                let para = Point::new(p.x - anchor.x, p.y - anchor.y);
+                let g = Self::hit_at(state, para).min(self.content.len());
+                // 双击判定:窗口内 + 近位点。
+                let now = std::time::Instant::now();
+                let is_double = state
+                    .last_click
+                    .map(|(t, lp)| {
+                        now.duration_since(t) <= DOUBLE_CLICK_WINDOW
+                            && (lp.x - p.x).abs() < DOUBLE_CLICK_SLOP
+                            && (lp.y - p.y).abs() < DOUBLE_CLICK_SLOP
+                    })
+                    .unwrap_or(false);
+                if is_double {
+                    state.selection.select_word(&self.content, g);
+                } else {
+                    // 按下即锚定(单击不拖 → anchor==head 自然清空)。
+                    state.selection.anchor = g;
+                    state.selection.head = g;
+                }
+                state.dragging = true;
+                state.last_click = Some((now, p));
+                true
+            }
+            mouse::Event::CursorMoved { .. } => {
+                if !state.dragging {
+                    return false;
+                }
+                let Some(p) = local else { return false };
+                let para = Point::new(p.x - anchor.x, p.y - anchor.y);
+                let g = Self::hit_at(state, para).min(self.content.len());
+                state.selection.extend_to(g);
+                true
+            }
+            mouse::Event::ButtonReleased(mouse::Button::Left) => {
+                if state.dragging {
+                    state.dragging = false;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// 键盘手势:Ctrl+C 复制(捕获);Esc 清选区(不捕获,不夺全局流)。
+    fn handle_keyboard(
+        &self,
+        state: &mut State,
+        event: &keyboard::Event,
+        clipboard: &mut dyn Clipboard,
+    ) -> bool {
+        match event {
+            keyboard::Event::KeyPressed {
+                key: Key::Character(c),
+                modifiers,
+                ..
+            } if c.as_str().eq_ignore_ascii_case("c")
+                && modifiers.control()
+                && !state.selection.is_empty() =>
+            {
+                clipboard.write(
+                    iced::advanced::clipboard::Kind::Standard,
+                    state.selection.selected_text(&self.content).to_owned(),
+                );
+                true
+            }
+            keyboard::Event::KeyPressed {
+                key: Key::Named(key::Named::Escape),
+                ..
+            } if !state.selection.is_empty() => {
+                state.selection.clear();
+                false
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Widget 本地状态(进 iced widget Tree,G2:不进桌面会话)。
@@ -108,6 +222,10 @@ pub struct State {
     pub line_starts: Vec<usize>,
     /// 上次 shaping 的内容(layout 时内容变化则重算 line_starts)。
     pub last_content: String,
+    /// 拖选中(ButtonPressed 置位、ButtonReleased 复位)。
+    pub dragging: bool,
+    /// 上次单击的(时刻, widget 局部坐标)——双击判定。
+    pub last_click: Option<(std::time::Instant, Point)>,
 }
 
 impl Default for State {
@@ -117,6 +235,8 @@ impl Default for State {
             selection: Selection::new(),
             line_starts: vec![0],
             last_content: String::new(),
+            dragging: false,
+            last_click: None,
         }
     }
 }
@@ -207,6 +327,64 @@ where
             text_widget::Style { color: self.color },
             viewport,
         );
+    }
+
+    /// 步骤 5:手势集接线。鼠标事件在 widget 界内捕获(拖选/双击/单击
+    /// 清除);Ctrl+C 有选区时捕获并写剪贴板;Esc 清选区但不捕获(不夺
+    /// 全局 Esc 流,弹层/对话框语义不受影响)。
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _renderer: &iced::Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        _viewport: &Rectangle,
+    ) {
+        let bounds = layout.bounds();
+        let state = tree.state.downcast_mut::<State>();
+
+        let anchor = {
+            let paragraph = state.paragraph.raw();
+            bounds.anchor(
+                paragraph.min_bounds(),
+                paragraph.align_x(),
+                paragraph.align_y(),
+            )
+        };
+
+        let captured = match event {
+            Event::Mouse(mouse_event) => {
+                let local = cursor
+                    .position()
+                    .map(|p| Point::new(p.x - bounds.x, p.y - bounds.y));
+                self.handle_mouse(state, mouse_event, local, anchor, bounds)
+            }
+            Event::Keyboard(kb_event) => {
+                self.handle_keyboard(state, kb_event, clipboard)
+            }
+            _ => false,
+        };
+        if captured {
+            shell.capture_event();
+        }
+    }
+
+    fn mouse_interaction(
+        &self,
+        _tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        _viewport: &Rectangle,
+        _renderer: &iced::Renderer,
+    ) -> mouse::Interaction {
+        if cursor.is_over(layout.bounds()) {
+            mouse::Interaction::Text
+        } else {
+            mouse::Interaction::default()
+        }
     }
 }
 
@@ -457,6 +635,204 @@ mod tests {
         assert!(r.x >= 10.0 && r.y >= 5.0, "rect anchored: {r:?}");
     }
 
+    // ------------------------------------------------------------------
+    // T2 交互测试(text_selection 前缀):手势集驱动,真实 shaping 段落。
+    // ------------------------------------------------------------------
+
+    /// 测试剪贴板:捕获写入内容。
+    #[derive(Default)]
+    struct TestClipboard {
+        written: Option<String>,
+    }
+    impl iced::advanced::Clipboard for TestClipboard {
+        fn read(&self, _kind: iced::advanced::clipboard::Kind) -> Option<String> {
+            None
+        }
+        fn write(&mut self, _kind: iced::advanced::clipboard::Kind, contents: String) {
+            self.written = Some(contents);
+        }
+    }
+
+    /// KeyPressed 事件构造(补齐 0.14 的 modified_key/physical/location/repeat)。
+    fn kp(key: Key, modifiers: keyboard::Modifiers) -> keyboard::Event {
+        keyboard::Event::KeyPressed {
+            modified_key: key.clone(),
+            key,
+            physical_key: keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+            location: keyboard::Location::Standard,
+            modifiers,
+            text: None,
+            repeat: false,
+        }
+    }
+
+    /// 构造带真实 shaping 段落的 State(锚点取原点,与 bounds==段落盒一致)。
+    fn shaped_state(content: &str) -> State {
+        use iced::advanced::text::Text;
+        let plain = Plain::new(Text {
+            content: content.to_string(),
+            bounds: Size::new(400.0, 200.0),
+            size: Pixels(16.0),
+            ..spike_text_default_str()
+        });
+        State {
+            line_starts: line_starts(content),
+            last_content: content.to_string(),
+            ..State {
+                paragraph: plain,
+                ..State::default()
+            }
+        }
+    }
+
+    fn spike_text_default_str() -> iced::advanced::Text<String, Font> {
+        iced::advanced::Text {
+            content: String::new(),
+            bounds: Size::new(f32::MAX, f32::MAX),
+            size: Pixels(16.0),
+            line_height: LineHeight::default(),
+            font: Font::default(),
+            align_x: Alignment::default(),
+            align_y: alignment::Vertical::Top,
+            shaping: Shaping::default(),
+            wrapping: Wrapping::default(),
+        }
+    }
+
+    const W: &str = "hello world";
+
+    fn press(widget: &SelectableText, state: &mut State, x: f32, y: f32) -> bool {
+        widget.handle_mouse(
+            state,
+            &mouse::Event::ButtonPressed(mouse::Button::Left),
+            Some(Point::new(x, y)),
+            Point::ORIGIN,
+            Rectangle::new(Point::ORIGIN, Size::new(400.0, 100.0)),
+        )
+    }
+
+    fn r#move(widget: &SelectableText, state: &mut State, x: f32, y: f32) -> bool {
+        widget.handle_mouse(
+            state,
+            &mouse::Event::CursorMoved { position: Point::new(x, y) },
+            Some(Point::new(x, y)),
+            Point::ORIGIN,
+            Rectangle::new(Point::ORIGIN, Size::new(400.0, 100.0)),
+        )
+    }
+
+    fn release(widget: &SelectableText, state: &mut State) -> bool {
+        widget.handle_mouse(
+            state,
+            &mouse::Event::ButtonReleased(mouse::Button::Left),
+            Some(Point::ORIGIN),
+            Point::ORIGIN,
+            Rectangle::new(Point::ORIGIN, Size::new(400.0, 100.0)),
+        )
+    }
+
+    #[test]
+    fn text_selection_drag_selects_range() {
+        // 按下 "hello" 首部 → 拖到 world 中段 → 释放:选中非空、以词边界为界。
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        assert!(press(&w, &mut state, 2.0, 8.0), "press captured");
+        assert!(r#move(&w, &mut state, 48.0, 8.0), "drag captured");
+        assert!(release(&w, &mut state), "release captured");
+        assert!(!state.dragging);
+        let sel = state.selection.selected_text(W);
+        assert!(!sel.is_empty(), "drag selects text");
+        assert!(W.contains(sel), "selection is a substring: {sel:?}");
+        assert!(sel.starts_with('h'), "starts at press point: {sel:?}");
+    }
+
+    #[test]
+    fn text_selection_drag_backward() {
+        // 右→左拖:归一区间,选中文本相同语义。
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        press(&w, &mut state, 48.0, 8.0);
+        r#move(&w, &mut state, 2.0, 8.0);
+        release(&w, &mut state);
+        let sel = state.selection.selected_text(W);
+        assert!(sel.starts_with('h'), "backward drag still from left: {sel:?}");
+    }
+
+    #[test]
+    fn text_selection_double_click_selects_word() {
+        // 两次快速近位按下 → 词选(整词,无半个词)。
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        press(&w, &mut state, 40.0, 8.0);
+        release(&w, &mut state);
+        assert!(press(&w, &mut state, 41.0, 8.0), "second press captured");
+        let sel = state.selection.selected_text(W);
+        assert!(
+            sel == "hello" || sel == "world",
+            "double-click picks a whole word, got {sel:?}"
+        );
+    }
+
+    #[test]
+    fn text_selection_single_click_after_drag_clears() {
+        // 已有选区后,异位点单击(超 4px 位移,非双击)→ 清空。
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        press(&w, &mut state, 40.0, 8.0);
+        release(&w, &mut state);
+        press(&w, &mut state, 41.0, 8.0); // 双击词选
+        assert!(!state.selection.is_empty());
+        press(&w, &mut state, 3.0, 8.0); // 异位单击
+        release(&w, &mut state);
+        assert!(state.selection.is_empty(), "distant click clears");
+    }
+
+    #[test]
+    fn text_selection_esc_clears_non_capturing() {
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        press(&w, &mut state, 40.0, 8.0);
+        press(&w, &mut state, 41.0, 8.0); // 词选
+        assert!(!state.selection.is_empty());
+        let mut cb = TestClipboard::default();
+        let captured = w.handle_keyboard(
+            &mut state,
+            &kp(Key::Named(key::Named::Escape), Default::default()),
+            &mut cb,
+        );
+        assert!(!captured, "Esc must NOT capture (global flows keep it)");
+        assert!(state.selection.is_empty(), "Esc clears selection");
+    }
+
+    #[test]
+    fn text_selection_ctrl_c_writes_clipboard() {
+        let w = SelectableText::new(W);
+        let mut state = shaped_state(W);
+        press(&w, &mut state, 40.0, 8.0);
+        press(&w, &mut state, 41.0, 8.0); // 词选
+        let word = state.selection.selected_text(W).to_string();
+        assert!(!word.is_empty());
+
+        let mut cb = TestClipboard::default();
+        let captured = w.handle_keyboard(
+            &mut state,
+            &kp(Key::Character("c".into()), keyboard::Modifiers::CTRL),
+            &mut cb,
+        );
+        assert!(captured, "Ctrl+C captures when selection non-empty");
+        assert_eq!(cb.written.as_deref(), Some(word.as_str()));
+
+        // 无选区时 Ctrl+C 不捕获不写(不抢编辑器快捷键)。
+        let mut cb2 = TestClipboard::default();
+        state.selection.clear();
+        let captured2 = w.handle_keyboard(
+            &mut state,
+            &kp(Key::Character("c".into()), keyboard::Modifiers::CTRL),
+            &mut cb2,
+        );
+        assert!(!captured2 && cb2.written.is_none());
+    }
+
     /// 多行文本的 hit → (行,偏移) → 全局换算正确性(shaping 真实行切分)。
     #[test]
     fn t06_spike_multiline_global_mapping() {
@@ -486,5 +862,35 @@ mod tests {
         let sel = Selection { anchor: 0, head: 17 }; // "one\ntwo words\nth"
         let rects = selection_rects(buffer, &sel, &starts, Point::new(0.0, 0.0));
         assert!(rects.len() >= 3, "one rect per touched line, got {}", rects.len());
+    }
+
+    /// T2 管线冒烟(iced_test simulator,feature `iced-layout-tests`):
+    /// 真实 iced 事件流 press→move→release 全程无 panic 且事件被捕获
+    /// (shell.capture_event → Status::Captured)。
+    #[cfg(feature = "iced-layout-tests")]
+    #[test]
+    fn text_selection_simulator_pipeline_smoke() {
+        use iced_test::simulator;
+
+        let ui: iced::Element<'static, (), iced::Theme, iced::Renderer> =
+            SelectableText::new("hello world").size(16).into();
+        let mut sim = simulator(ui);
+        sim.point_at(iced::Point::new(30.0, 8.0));
+
+        let statuses = sim.simulate([
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
+                iced::mouse::Button::Left,
+            )),
+            iced::Event::Mouse(iced::mouse::Event::CursorMoved {
+                position: iced::Point::new(60.0, 8.0),
+            }),
+            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                iced::mouse::Button::Left,
+            )),
+        ]);
+        assert!(
+            statuses.iter().any(|s| matches!(s, iced::event::Status::Captured)),
+            "drag gestures must be captured by the real pipeline: {statuses:?}"
+        );
     }
 }

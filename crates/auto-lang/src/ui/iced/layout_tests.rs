@@ -148,6 +148,7 @@ fn center_column_items_center_centers_narrow_child() {
                 children: vec![View::Text {
                     content: "AAAAAAAAAAAAAAAAAAAA".to_string(),
                     style: None,
+                    selectable: false,
                 }],
                 spacing: 0,
                 padding: 0,
