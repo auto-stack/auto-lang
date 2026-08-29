@@ -121,6 +121,55 @@ pub struct AuraViewBuilder<'a> {
     computed: Option<&'a [crate::aura::AuraComputed]>,
     /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab)。
     preview_states: Option<&'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>>,
+    /// Plan 476: 调用位传入的 slot 填充（widget-call children 中的
+    /// `slot(name: X) { … }` / 裸子节点）。子 widget 视图里的 outlet 按
+    /// 名字匹配后切回 `SlotFills::parent`（父作用域 builder）求值填充。
+    /// None = 本层无填充（普通构建路径零变化）。
+    slot_fills: Option<&'a SlotFills<'a>>,
+}
+
+/// Plan 476: widget 调用位的 slot 填充集。
+///
+/// `parent` 是父作用域 builder 的直接引用——widget_name /
+/// override_state_obj_id / computed / routes / registry 等"父作用域"全部由它
+/// 载，fill 求值时切回它即可，无需拷贝字段或改造作用域栈。`bindings` 是调用
+/// 位的循环变量绑定（fill 内 `.item` 等按调用位解析）。`fills` 的键 "" 为
+/// 默认槽（bare `slot { … }` 的 children + 非 slot 裸子节点，Vue 语义）。
+///
+/// 生命周期自洽：本结构在 `render_child_widget*` 调用栈内构造，借给子
+/// builder（`slot_fills` 字段），子构建在同一栈内完成，随后一同消亡。
+struct SlotFills<'a> {
+    parent: &'a AuraViewBuilder<'a>,
+    fills: HashMap<String, Vec<&'a AuraNode>>,
+    bindings: &'a Bindings,
+}
+
+/// Plan 476: 节点是否为 slot outlet 元素；是则返回其 (props, children)。
+fn slot_outlet_parts(node: &AuraNode) -> Option<(&HashMap<String, AuraPropValue>, &[AuraNode])> {
+    match node {
+        AuraNode::Element { tag, props, children, .. } if tag == "slot" || tag == "Slot" => {
+            Some((props, children))
+        }
+        _ => None,
+    }
+}
+
+/// Plan 476: 从 widget 调用位的 children 提取 slot 填充（对齐 vue.rs
+/// `slot_child_to_html` 语义）：`slot(name: X) { … }` → fills[X] = 其
+/// children；bare `slot { … }` → children 追加 fills[""]；非 slot 裸子节点
+/// → 追加 fills[""]（Vue 默认槽语义——此前这些子节点在 VM 轨被整体丢弃）。
+/// 无任何填充时返回空 map（调用方据此跳过 SlotFills 装配）。
+fn extract_slot_fills(children: &[AuraNode]) -> HashMap<String, Vec<&AuraNode>> {
+    let mut fills: HashMap<String, Vec<&AuraNode>> = HashMap::new();
+    for child in children {
+        if let Some((props, fill_children)) = slot_outlet_parts(child) {
+            let name = crate::aura::slot_element_name(props);
+            fills.entry(name).or_default().extend(fill_children.iter());
+        } else {
+            fills.entry(String::new()).or_default().push(child);
+        }
+    }
+    fills
 }
 
 impl<'a> AuraViewBuilder<'a> {
@@ -140,6 +189,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            slot_fills: None,
         }
     }
 
@@ -158,6 +208,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            slot_fills: None,
         }
     }
 
@@ -180,6 +231,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            slot_fills: None,
         }
     }
 
@@ -211,6 +263,247 @@ impl<'a> AuraViewBuilder<'a> {
     /// VmBridge at build time.
     pub fn build(&self, node: &AuraNode) -> View<DynamicMessage> {
         self.convert_node_with(node, &Bindings::new())
+    }
+
+    /// Plan 476: 组装 widget 调用位的 slot 填充集（children 无任何填充时
+    /// 返回 None，走既有零变化路径）。parent 捕获 self（父作用域 builder），
+    /// bindings 捕获调用位循环变量——fill 求值时切回二者即得父作用域。
+    fn slot_fills_for<'s>(&'s self, children: &'s [AuraNode], bindings: &'s Bindings) -> Option<SlotFills<'s>> {
+        let fills = extract_slot_fills(children);
+        if fills.is_empty() {
+            None
+        } else {
+            Some(SlotFills { parent: self, fills, bindings })
+        }
+    }
+
+    /// Plan 476: 渲染子 widget 视图里的 slot outlet（非拼接上下文的直转路径，
+    /// 即 outlet 不在五大容器 children 里的罕见位形）。命中调用位填充 → 切回
+    /// 父作用域 builder 求值 fill 子节点（单子直通、多子 Column 兜底——拼接
+    /// 感知容器 `expand_children_spliced` 会把多子作兄弟展开，不走这里）；
+    /// 未命中 → 渲染 outlet 自身 children 作 fallback 内容（子作用域，对齐
+    /// vue `generate_slot_outlet_html`）；双空 → Empty。
+    fn render_slot_outlet(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let name = crate::aura::slot_element_name(props);
+        if let Some(fills) = self.slot_fills.and_then(|f| f.fills.get(&name)) {
+            let sf = self.slot_fills.unwrap();
+            let views: Vec<View<DynamicMessage>> = fills
+                .iter()
+                .map(|n| sf.parent.convert_node_with(n, sf.bindings))
+                .filter(|v| !is_visually_empty(v))
+                .collect();
+            return if views.is_empty() {
+                View::Empty
+            } else if views.len() == 1 {
+                views.into_iter().next().unwrap()
+            } else {
+                View::Column { children: views, spacing: 0, padding: 0, style: None }
+            };
+        }
+        // Fallback 内容（子作用域求值）
+        if children.is_empty() {
+            View::Empty
+        } else {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !is_visually_empty(v))
+                .collect();
+            if views.is_empty() {
+                View::Empty
+            } else if views.len() == 1 {
+                views.into_iter().next().unwrap()
+            } else {
+                View::Column { children: views, spacing: 0, padding: 0, style: None }
+            }
+        }
+    }
+
+    /// Plan 476: `render_slot_outlet` 的 tracked 双胎——fill 子节点经父作用域
+    /// builder 的 tracked 转换继续 path/id_map/probe，编号按幸存槽位推进
+    /// （D-GAP-4 RESULTING-slot 约定，同 convert_column_tracked_ctx）。
+    fn render_slot_outlet_tracked_ctx(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let name = crate::aura::slot_element_name(props);
+        let mut views: Vec<View<DynamicMessage>> = Vec::new();
+        let mut slot_idx = 0usize;
+        if let Some(fills) = self.slot_fills.and_then(|f| f.fills.get(&name)) {
+            let sf = self.slot_fills.unwrap();
+            for n in fills {
+                path.push(slot_idx);
+                let v = sf.parent.convert_node_tracked_ctx(n, path, id_map, probe, sf.bindings);
+                path.pop();
+                if is_visually_empty(&v) {
+                    continue;
+                }
+                views.push(v);
+                slot_idx += 1;
+            }
+        } else {
+            for n in children {
+                path.push(slot_idx);
+                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+                path.pop();
+                if is_visually_empty(&v) {
+                    continue;
+                }
+                views.push(v);
+                slot_idx += 1;
+            }
+        }
+        if views.is_empty() {
+            View::Empty
+        } else if views.len() == 1 {
+            views.into_iter().next().unwrap()
+        } else {
+            View::Column { children: views, spacing: 0, padding: 0, style: None }
+        }
+    }
+
+    /// Plan 476: 拼接感知的 children 转换（Vue 布局精确语义）：slot outlet
+    /// 命中 fill 时其各子节点作为**多个兄弟**视图产出（父作用域求值；布局
+    /// 轴向由本容器决定），而非单包装；outlet 未命中 fill → 其 fallback
+    /// children（子作用域）；普通节点 → 常规单视图。**不做视觉空过滤**——
+    /// 各容器沿用既有过滤规则处置展开产物，非 outlet 路径零行为变化。
+    fn expand_children_spliced(
+        &self,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
+        let mut views: Vec<View<DynamicMessage>> = Vec::new();
+        for n in children {
+            views.extend(self.expand_one_child_untracked(n, bindings));
+        }
+        views
+    }
+
+    /// Plan 476: 单个 child 节点的拼接展开（untracked）：outlet 命中 fill →
+    /// 父作用域转换产出 0..N 视图；未命中 → fallback children（子作用域）；
+    /// 普通节点 → 1 视图。返回未过滤的产出。
+    fn expand_one_child_untracked(&self, n: &AuraNode, bindings: &Bindings) -> Vec<View<DynamicMessage>> {
+        if let Some((props, outlet_children)) = slot_outlet_parts(n) {
+            let name = crate::aura::slot_element_name(props);
+            let mut produced: Vec<View<DynamicMessage>> = Vec::new();
+            match self.slot_fills.and_then(|f| f.fills.get(&name)) {
+                Some(fills) => {
+                    let sf = self.slot_fills.unwrap();
+                    for node in fills {
+                        produced.push(sf.parent.convert_node_with(node, sf.bindings));
+                    }
+                }
+                None => {
+                    for node in outlet_children {
+                        produced.push(self.convert_node_with(node, bindings));
+                    }
+                }
+            }
+            produced
+        } else {
+            vec![self.convert_node_with(n, bindings)]
+        }
+    }
+
+    /// Plan 476: `expand_children_spliced` 的 tracked 双胎之一——**幸存槽位
+    /// 编号**（D-GAP-4 RESULTING-slot 约定；convert_column/row_tracked_ctx
+    /// 专用）：视觉空视图出列、不占槽位，后续子节点左移。
+    fn expand_children_spliced_resulting(
+        &self,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
+        let mut views: Vec<View<DynamicMessage>> = Vec::new();
+        let mut slot_idx = 0usize;
+        for n in children {
+            let produced = self.expand_one_child_spliced(n, path, id_map, probe, bindings, slot_idx);
+            for v in produced {
+                if is_visually_empty(&v) {
+                    continue;
+                }
+                views.push(v);
+                slot_idx += 1;
+            }
+        }
+        views
+    }
+
+    /// Plan 476: `expand_children_spliced` 的 tracked 双胎之二——**源索引
+    /// 编号**（convert_scroll/container/grid_tracked_ctx 既有约定：按原始
+    /// children 下标记 path，视觉空后置过滤）。outlet 的多个展开子视图共享
+    /// outlet 自身的源索引——多子填充时后写的 probe 条目覆盖先写的（快照
+    /// 降级，vtree/渲染/事件不受影响），v1 已知限制登记 KNOWN-DEBT。
+    fn expand_children_spliced_source(
+        &self,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
+        let mut views: Vec<View<DynamicMessage>> = Vec::new();
+        for (i, n) in children.iter().enumerate() {
+            let produced = self.expand_one_child_spliced(n, path, id_map, probe, bindings, i);
+            views.extend(produced);
+        }
+        views
+    }
+
+    /// Plan 476: 单个 child 节点的拼接展开（tracked）：outlet 命中 fill →
+    /// 父作用域 tracked 转换产出 0..N 视图（依次记 path 段 base_idx 起）；
+    /// 未命中 → fallback children（子作用域）；普通节点 → 1 视图。
+    /// 返回未过滤的产出（调用方按各自约定过滤/编号）。
+    fn expand_one_child_spliced(
+        &self,
+        n: &AuraNode,
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+        base_idx: usize,
+    ) -> Vec<View<DynamicMessage>> {
+        if let Some((props, outlet_children)) = slot_outlet_parts(n) {
+            let name = crate::aura::slot_element_name(props);
+            let mut produced: Vec<View<DynamicMessage>> = Vec::new();
+            match self.slot_fills.and_then(|f| f.fills.get(&name)) {
+                Some(fills) => {
+                    let sf = self.slot_fills.unwrap();
+                    for node in fills {
+                        path.push(base_idx);
+                        let v = sf.parent.convert_node_tracked_ctx(node, path, id_map, probe, sf.bindings);
+                        path.pop();
+                        produced.push(v);
+                    }
+                }
+                None => {
+                    for node in outlet_children {
+                        path.push(base_idx);
+                        let v = self.convert_node_tracked_ctx(node, path, id_map, probe, bindings);
+                        path.pop();
+                        produced.push(v);
+                    }
+                }
+            }
+            produced
+        } else {
+            path.push(base_idx);
+            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
+            path.pop();
+            vec![v]
+        }
     }
 
     /// Plan 320: read a state field. When override_state_obj_id is set (rendering
@@ -534,7 +827,9 @@ impl<'a> AuraViewBuilder<'a> {
                         let prop_values: HashMap<String, AuraPropValue> = props.iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                             .collect();
-                        return self.render_child_widget(child_widget, &prop_values, events, bindings);
+                        // Plan 476: 调用位 children 里的 slot 填充传给子构建器。
+                        let fills = self.slot_fills_for(children, bindings);
+                        return self.render_child_widget(child_widget, &prop_values, events, bindings, fills.as_ref());
                     }
                 }
                 View::Text {
@@ -786,9 +1081,11 @@ impl<'a> AuraViewBuilder<'a> {
                             .collect();
                         // D-GAP-4: tracked variant so the child subtree's
                         // style/event bindings reach the BuildProbe (snapshot).
+                        // Plan 476: slot 填充透传(tracked 双胎)。
+                        let fills = self.slot_fills_for(children, bindings);
                         return self.render_child_widget_tracked(
                             child_widget, &prop_values, events, bindings,
-                            path, id_map, probe,
+                            path, id_map, probe, fills.as_ref(),
                         );
                     }
                 }
@@ -871,6 +1168,10 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         match tag {
+            // Plan 476: slot outlet——按调用位填充渲染（父作用域求值），
+            // 未命中渲染 fallback children。五大容器的 children 走拼接
+            // 展开（expand_children_spliced*），此臂覆盖其余位形。
+            "slot" | "Slot" => self.render_slot_outlet_tracked_ctx(props, children, path, id_map, probe, bindings),
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
             "row" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -1022,9 +1323,11 @@ impl<'a> AuraViewBuilder<'a> {
                     if let Some(child_widget) = registry.get(tag) {
                         // D-GAP-4: tracked variant so the child subtree's
                         // style/event bindings reach the BuildProbe (snapshot).
+                        // Plan 476: slot 填充透传(tracked 双胎)。
+                        let fills = self.slot_fills_for(children, bindings);
                         return self.render_child_widget_tracked(
                             child_widget, props, events, bindings,
-                            path, id_map, probe,
+                            path, id_map, probe, fills.as_ref(),
                         );
                     }
                 }
@@ -1058,19 +1361,9 @@ impl<'a> AuraViewBuilder<'a> {
         // are dropped from the built column, shifting later siblings left;
         // recording at the post-filter position keeps probe/VTree paths
         // identical by construction (mirrors convert_row_tracked_ctx).
-        let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
-        let mut slot: usize = 0;
-        for n in children {
-            path.push(slot);
-            let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-            path.pop();
-            if is_visually_empty(&v) {
-                // Plan 370 (Issue 1): drop visually-empty spacers (see convert_column).
-                continue;
-            }
-            child_views.push(v);
-            slot += 1;
-        }
+        // Plan 476: 拼接感知收集——slot outlet 的 fill 子节点作兄弟展开
+        // (父作用域 tracked 转换,编号同幸存槽位约定)。
+        let child_views = self.expand_children_spliced_resulting(children, path, id_map, probe, bindings);
 
         // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
         // 布局语义被类覆盖(元素语义为默认,显式类优先)。
@@ -1127,15 +1420,10 @@ impl<'a> AuraViewBuilder<'a> {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .enumerate()
-            .map(|(i, n)| {
-                path.push(i);
-                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                path.pop();
-                v
-            })
+        // Plan 476: 拼接感知收集(源索引编号) + 视觉空后置过滤(既有行为)。
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced_source(children, path, id_map, probe, bindings)
+            .into_iter()
             .filter(|v| !is_visually_empty(v))
             .collect();
 
@@ -1292,10 +1580,12 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
                 other => {
-                    path.push(cell_idx);
-                    let v = self.convert_node_tracked_ctx(other, path, id_map, probe, bindings);
-                    path.pop();
-                    if !matches!(v, View::Empty) {
+                    // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟 cell
+                    // 展开(父作用域 tracked 转换;空 cell 不占格)。
+                    for v in self.expand_one_child_spliced(other, path, id_map, probe, bindings, cell_idx) {
+                        if matches!(v, View::Empty) {
+                            continue;
+                        }
                         cells.push(v);
                         cell_idx += 1;
                     }
@@ -1383,14 +1673,15 @@ impl<'a> AuraViewBuilder<'a> {
                     }
                 }
                 _ => {
-                    path.push(slot);
-                    let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                    path.pop();
-                    if is_visually_empty(&v) {
-                        continue;
+                    // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟展开
+                    // (父作用域 tracked 转换,编号同幸存槽位约定)。
+                    for v in self.expand_one_child_spliced(n, path, id_map, probe, bindings, slot) {
+                        if is_visually_empty(&v) {
+                            continue;
+                        }
+                        child_views.push(v);
+                        slot += 1;
                     }
-                    child_views.push(v);
-                    slot += 1;
                 }
             }
         }
@@ -1442,15 +1733,10 @@ impl<'a> AuraViewBuilder<'a> {
         let height = self.extract_u16(props, "height");
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .enumerate()
-            .map(|(i, n)| {
-                path.push(i);
-                let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                path.pop();
-                v
-            })
+        // Plan 476: 拼接感知收集(源索引编号) + 视觉空后置过滤(既有行为)。
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced_source(children, path, id_map, probe, bindings)
+            .into_iter()
             .filter(|v| !is_visually_empty(v))
             .collect();
 
@@ -1737,6 +2023,10 @@ impl<'a> AuraViewBuilder<'a> {
             return View::Empty;
         }
         match tag {
+            // Plan 476: slot outlet——按调用位填充渲染（父作用域求值），
+            // 未命中渲染 fallback children。五大容器的 children 走拼接
+            // 展开（expand_children_spliced），此臂覆盖其余位形。
+            "slot" | "Slot" => self.render_slot_outlet(props, children, bindings),
             // Core layout widgets
             "col" | "column" => self.convert_column(props, children, bindings),
             "row" => self.convert_row(props, children, bindings),
@@ -2462,7 +2752,9 @@ let tabs_inner = View::Row {
                 // Check if this tag matches a registered child widget
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(tag) {
-                        return self.render_child_widget(child_widget, props, events, bindings);
+                        // Plan 476: 调用位 children 里的 slot 填充传给子构建器。
+                        let fills = self.slot_fills_for(children, bindings);
+                        return self.render_child_widget(child_widget, props, events, bindings, fills.as_ref());
                     }
                 }
 
@@ -2662,7 +2954,8 @@ let tabs_inner = View::Row {
             if let Some(page_widget) = registry.get_by_route_module(&route.module) {
                 let empty_props: HashMap<String, AuraPropValue> = HashMap::new();
                 let empty_events: HashMap<String, AuraEvent> = HashMap::new();
-                return self.render_child_widget(page_widget, &empty_props, &empty_events, bindings);
+                // Plan 476: 页面路由无调用位填充,outlet 页面不带 slot fills。
+                return self.render_child_widget(page_widget, &empty_props, &empty_events, bindings, None);
             }
             // Page widget not registered → show a textual placeholder so the
             // gap is visible (e.g. "page book_detail not loaded").
@@ -2801,6 +3094,7 @@ let tabs_inner = View::Row {
         props: &HashMap<String, AuraPropValue>,
         _events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
+        slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -2813,6 +3107,8 @@ let tabs_inner = View::Row {
 
         // Build a child view builder using the SAME bridge but with
         // override_state_obj_id pointing to the child's state object.
+        // Plan 476: slot_fills 透传——子视图的 outlet 命中时切回父作用域
+        // (fills.parent) 求值填充,父 state/computed/事件路由随之生效。
         let child_builder = AuraViewBuilder {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
@@ -2822,6 +3118,7 @@ let tabs_inner = View::Row {
             routes: None,
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
+            slot_fills,
         };
 
         child_builder.build(&child_widget.view_tree)
@@ -2846,12 +3143,14 @@ let tabs_inner = View::Row {
         path: &mut Vec<usize>,
         id_map: &mut DebugIdMap,
         probe: &mut BuildProbe,
+        slot_fills: Option<&SlotFills>,
     ) -> View<DynamicMessage> {
         let child_state_id = self.prepare_child_render_state(child_widget, props, bindings);
         // Plan 437 Phase 2: 同 render_child_widget —— 子组件 Init 补发
         // (tracked 双胎保持同一渲染语义)。
         self.fire_child_init_if_any(child_widget, child_state_id);
 
+        // Plan 476: slot_fills 透传(untracked 双胎同款语义)。
         let child_builder = AuraViewBuilder {
             bridge: self.bridge,
             widget_name: child_widget.name.clone(),
@@ -2861,6 +3160,7 @@ let tabs_inner = View::Row {
             routes: None,
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
+            slot_fills,
         };
 
         child_builder.convert_node_tracked_ctx(
@@ -2890,9 +3190,10 @@ let tabs_inner = View::Row {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .map(|n| self.convert_node_with(n, bindings))
+        // Plan 476: 拼接感知收集(slot outlet 的 fill 子节点作兄弟展开)。
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced(children, bindings)
+            .into_iter()
             // Plan 370 (Issue 1): drop visually-empty children (View::Empty
             // or View::Text with blank content). False `if` branches and
             // non-matching `for` iterations yield these, and the renderer
@@ -2981,9 +3282,10 @@ let tabs_inner = View::Row {
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .map(|n| self.convert_node_with(n, bindings))
+        // Plan 476: 拼接感知收集 + 视觉空过滤(既有行为)。
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced(children, bindings)
+            .into_iter()
             .filter(|v| !is_visually_empty(v))
             .collect();
 
@@ -3046,7 +3348,9 @@ let tabs_inner = View::Row {
                     child_views.extend(self.for_loop_iterations(var, index, iterable, body, bindings));
                 }
                 _ => {
-                    child_views.push(self.convert_node_with(n, bindings));
+                    // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟展开
+                    // (父作用域求值,横向 spread 与本 row 语义一致)。
+                    child_views.extend(self.expand_one_child_untracked(n, bindings));
                 }
             }
         }
@@ -3213,6 +3517,7 @@ let tabs_inner = View::Row {
         // Flatten `for`-loop children into individual cells: a bare `for`
         // inside a grid must yield one cell per iteration, not a single
         // wrapping Column (Plan 323). Other children convert to one cell each.
+        // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟 cell 展开。
         let cells: Vec<View<DynamicMessage>> = children
             .iter()
             .flat_map(|n| match n {
@@ -3220,8 +3525,10 @@ let tabs_inner = View::Row {
                     self.for_loop_iterations(var, index, iterable, body, bindings)
                 }
                 other => {
-                    let v = self.convert_node_with(other, bindings);
-                    if matches!(v, View::Empty) { Vec::new() } else { vec![v] }
+                    self.expand_one_child_untracked(other, bindings)
+                        .into_iter()
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect::<Vec<_>>()
                 }
             })
             .collect();
@@ -3253,9 +3560,10 @@ let tabs_inner = View::Row {
         let height = self.extract_u16(props, "height");
         let style = self.extract_style_with(props, bindings); // Plan 057 (2.5)
 
-        let child_views: Vec<View<DynamicMessage>> = children
-            .iter()
-            .map(|n| self.convert_node_with(n, bindings))
+        // Plan 476: 拼接感知收集 + 视觉空过滤(既有行为)。
+        let child_views: Vec<View<DynamicMessage>> = self
+            .expand_children_spliced(children, bindings)
+            .into_iter()
             .filter(|v| !is_visually_empty(v))
             .collect();
 
@@ -6843,6 +7151,309 @@ mod tests {
             bridge.read_state("collapsed").unwrap(),
             Value::Bool(false),
             "child model var default must be seeded into root state"
+        );
+    }
+
+    // ========================================================================
+    // Plan 476 — slot（内容模板）替换机制测试
+    // ========================================================================
+
+    /// 递归查找 View 树中是否含指定文本（Text.content 或 Button.label）。
+    fn view_contains_text(view: &View<DynamicMessage>, needle: &str) -> bool {
+        match view {
+            View::Text { content, .. } => content.contains(needle),
+            View::Button { label, content, .. } => {
+                label.contains(needle)
+                    || content.as_ref().map_or(false, |c| view_contains_text(c, needle))
+            }
+            View::Row { children, .. } | View::Column { children, .. } => {
+                children.iter().any(|c| view_contains_text(c, needle))
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                view_contains_text(child, needle)
+            }
+            View::Grid { cells, .. } => cells.iter().any(|c| view_contains_text(c, needle)),
+            _ => false,
+        }
+    }
+
+    /// 构造"父视图内调用子 widget 并传 slot 填充"的父 view_tree。
+    fn slot_call_node(child_tag: &str, fill_children: Vec<AuraNode>) -> AuraNode {
+        AuraNode::Component {
+            name: child_tag.to_string(),
+            props: vec![],
+            events: HashMap::new(),
+            children: fill_children,
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    /// 子 widget 视图：col > (header_text, slot outlet)。
+    fn child_with_outlet(name_prop: Option<&str>, header: &str) -> AuraNode {
+        let mut outlet = AuraNode::element("slot");
+        if let Some(n) = name_prop {
+            outlet = outlet.with_prop("name", Expr::Str(n.into()));
+        }
+        AuraNode::element("col")
+            .with_child(AuraNode::text(header))
+            .with_child(outlet)
+    }
+
+    #[test]
+    fn test_slot_named_fill_renders_at_outlet() {
+        // 父调用 Child 传 slot(name:"header"){ text "X" }——填充必须渲染在
+        // 子视图 outlet 位置（此前整个填充被丢弃）。
+        let child = make_test_widget("Child", vec![]);
+        let child_widget_view = child_with_outlet(Some("header"), "title");
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("header".into()))
+                .with_child(AuraNode::text("FILL-MARKER")),
+        ]);
+        let _ = child_widget_view; // view_tree 在下方整体赋值（child 需 mut）
+        let mut child = child;
+        child.view_tree = child_widget_view;
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        assert!(
+            view_contains_text(&view, "FILL-MARKER"),
+            "named slot fill must render at the outlet; got: {:?}",
+            view
+        );
+        assert!(view_contains_text(&view, "title"), "child's own view must still render");
+    }
+
+    #[test]
+    fn test_slot_fill_resolves_parent_scope() {
+        // 父 state label="parent-value"、子 state label="child-value"——
+        // fill 内 text .label 必须解析到父作用域。
+        let child = make_test_widget("Child", vec![
+            AuraStateDef {
+                name: "label".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("child-value".into()),
+                decorators: vec![],
+            },
+        ]);
+        let mut child = child;
+        child.view_tree = child_with_outlet(Some("x"), "hdr");
+        let mut parent = make_test_widget("Parent", vec![
+            AuraStateDef {
+                name: "label".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("parent-value".into()),
+                decorators: vec![],
+            },
+        ]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("x".into()))
+                .with_child(AuraNode::element("text").with_prop("text", Expr::Ident(".label".into()))),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        assert!(
+            view_contains_text(&view, "parent-value"),
+            "fill must resolve state in the PARENT scope; got: {:?}",
+            view
+        );
+        assert!(
+            !view_contains_text(&view, "child-value"),
+            "child's same-named field must not leak into the fill"
+        );
+    }
+
+    #[test]
+    fn test_slot_fill_event_routes_to_parent() {
+        // fill 内 button onclick: .Clicked → Typed.widget_name 必须是父名。
+        let child = make_test_widget("Child", vec![]);
+        let mut child = child;
+        child.view_tree = child_with_outlet(Some("x"), "hdr");
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("x".into()))
+                .with_child(AuraNode::element("button").with_event("onclick", ".Clicked")),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        // 深度找 Button 断言其 onclick 路由到父 widget。
+        fn find_button(view: &View<DynamicMessage>) -> Option<&DynamicMessage> {
+            match view {
+                View::Button { onclick, content, .. } => {
+                    if content.is_some() {
+                        if let Some(c) = content { if let Some(m) = find_button(c) { return Some(m); } }
+                    }
+                    Some(onclick)
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    children.iter().find_map(find_button)
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => find_button(child),
+                _ => None,
+            }
+        }
+        match find_button(&view) {
+            Some(DynamicMessage::Typed { widget_name, .. }) => {
+                assert_eq!(widget_name, "Parent", "fill events must route to the parent widget");
+            }
+            other => panic!("fill button must carry a Typed message, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_slot_unmatched_name_not_rendered_and_fallback_renders() {
+        // fill 名不匹配任何 outlet → 不渲染；outlet 自带 children 且无匹配
+        // fill → fallback 内容（子作用域）渲染。
+        let child = make_test_widget("Child", vec![]);
+        let mut child = child;
+        child.view_tree = AuraNode::element("col").with_child(
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("real".into()))
+                .with_child(AuraNode::text("FALLBACK")),
+        );
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("nope".into()))
+                .with_child(AuraNode::text("GHOST")),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        assert!(
+            !view_contains_text(&view, "GHOST"),
+            "unmatched fill name must not render"
+        );
+        assert!(
+            view_contains_text(&view, "FALLBACK"),
+            "outlet fallback children must render when no fill matches; got {:?}",
+            view
+        );
+    }
+
+    #[test]
+    fn test_slot_default_fill_from_bare_children() {
+        // 调用位裸子节点（无 slot 包装）→ 渲染到子视图默认 outlet（slot 无名）。
+        let child = make_test_widget("Child", vec![]);
+        let mut child = child;
+        child.view_tree = child_with_outlet(None, "hdr");
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::text("DEFAULT-FILL"),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        assert!(
+            view_contains_text(&view, "DEFAULT-FILL"),
+            "bare children must land in the default outlet; got {:?}",
+            view
+        );
+    }
+
+    #[test]
+    fn test_slot_multi_child_fill_spliced_as_siblings() {
+        // fill 2 子节点在子视图 row outlet → 2 个兄弟视图（Row children 数
+        // 递增），而非单包装视图。
+        let child = make_test_widget("Child", vec![]);
+        let mut child = child;
+        child.view_tree = AuraNode::element("row").with_child(
+            AuraNode::element("slot").with_prop("name", Expr::Str("acts".into())),
+        );
+        let mut parent = make_test_widget("Parent", vec![]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("acts".into()))
+                .with_child(AuraNode::text("B1"))
+                .with_child(AuraNode::text("B2")),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let view = builder.build(&parent.view_tree);
+        match view {
+            View::Row { ref children, .. } => {
+                // outlet 展开为 2 个兄弟文本视图（未被包成单一节点）
+                assert_eq!(children.len(), 2, "fill children must splice as siblings: {:?}", children);
+                assert!(view_contains_text(&view, "B1"));
+                assert!(view_contains_text(&view, "B2"));
+            }
+            other => panic!("expected Row root, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_slot_fill_probe_tracked() {
+        // build_with_debug 后 fill 子树的 state binding 进入 BuildProbe
+        // snapshot（tracked 双胎覆盖）。
+        let child = make_test_widget("Child", vec![]);
+        let mut child = child;
+        child.view_tree = child_with_outlet(Some("x"), "hdr");
+        let mut parent = make_test_widget("Parent", vec![
+            AuraStateDef {
+                name: "greeting".to_string(),
+                type_info: Type::StrSlice,
+                initial: Expr::Str("hello".into()),
+                decorators: vec![],
+            },
+        ]);
+        parent.view_tree = slot_call_node("Child", vec![
+            AuraNode::element("slot")
+                .with_prop("name", Expr::Str("x".into()))
+                .with_child(AuraNode::Text(AuraTextContent::Interpolated {
+                    template: "G: ${.greeting}".to_string(),
+                    bindings: vec!["greeting".to_string()],
+                })),
+        ]);
+
+        let bridge = VmBridge::new(&parent).unwrap();
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        registry.register(child);
+        let builder = AuraViewBuilder::with_registry(&bridge, "Parent", &registry);
+
+        let (view, _id_map, probe) = builder.build_with_debug(&parent.view_tree);
+        assert!(
+            view_contains_text(&view, "hello"),
+            "interpolated fill content must render (parent scope); got {:?}",
+            view
+        );
+        let snap = probe.snapshot();
+        let has_fill_binding = snap.values().any(|e| {
+            e.state_bindings.iter().any(|b| b.expr.contains("greeting"))
+        });
+        assert!(
+            has_fill_binding,
+            "fill subtree's state binding must reach the BuildProbe (tracked path); snap: {:?}",
+            snap
         );
     }
 
