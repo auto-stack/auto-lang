@@ -13,13 +13,24 @@
 
 | 版本 | 日期 | 变更 | 关联 |
 |---|---|---|---|
-| v1 | 2026-08-29 | 初版：五通道消息 + 二进制编解码 + 双端状态机 + loopback 传输 + 462 会话绑定 | Plan 386 S1–S7 |
+| v1.0 | 2026-08-29 | 初版：五通道消息 + 二进制编解码 + 双端状态机 + loopback 传输 + 462 会话绑定 | Plan 386 S1–S7 |
+| v1.1 | 2026-08-29 | 真两进程增量：命名管道传输 / 共享内存帧缓冲 / broker + 入口裁决 / L2 detach-attach（`PROTOCOL_VERSION` 仍为 1——全部为追加式演进，见 §1 纪律） | Plan 386 S8–S12 |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
   拒收孵化；信封层版本不符 → `CodecError::UnsupportedVersion` 拒收。
 - **演进纪律**：只许追加（新变体 tag、新通道号），不许改义/重排既有 tag；
   载荷种类（`DrawList` 的 kind tag）与通道各自独立编号。
+
+## 1.1 v1.1 增量（Stage 2 两进程落地）
+
+| 增量 | 内容 | 落点 |
+|---|---|---|
+| 传输层 | `Transport` trait（send/try_recv/pending/is_eof/recv_wait）；loopback 收编为实现之一；Windows 命名管道（tokio named_pipe + split 读写半 + select!{read,shutdown} 常驻 runtime）| `transport.rs` |
+| 共享内存帧 | `SharedFrameBuffer`（CreateFileMappingW 双槽，`[u32 len][payload]`）+ `FrameMsg::FrameReadyShared{wid,frame_id,slot,damage,revision,len}`（tag 7 追加）+ `BufferAlloc.shm: Option<String>`（尾部追加，约定名 `autodesk-shm-<surface>`）——大帧走 shm、管道只过元数据 | `shm.rs` / `message.rs` |
+| broker | `adjudicate()` 入口裁决三步（①`--autodesk-client=<pipe>` ②探测 broker ping ③Standalone）+ `Broker::serve_once`/`request_incubation`（DesktopBus 同形 `incubate` 记录，per-app 管道名分配 + 先行 listen + 转连；ping 吞弃） | `broker.rs` |
+| L2 迁移 | `ControlMsg::L2Detach/L2Detached/L2AttachRequest`（tag 8/9/10 追加）+ App 态 `Standalone`：Active→L2Detach→Standalone→L2Detached→宿主回收→connect()（同入口）→Active；**revision 不归零 = 状态未动** | `endpoint.rs` |
+| 两进程验证 | re-exec 集成测试：spawn 子进程（双模 ① 路径）→ 孵化 → 共享内存帧随点击递增 → L2 Standalone → 子进程 stdout 状态标记（`count=3 rev=4`）= app 进程持有状态的跨进程证据 | `dual_mode.rs` |
 
 ## 2. Wire Format（信封）
 
@@ -108,7 +119,17 @@ Host : Listening --Hello(版本校验)--> (ResolveAndAttach) --activate()--> Act
 3. 单客户端 v1：`HostEndpoint` 一次只持一个客户端；多 App 并发复用同一
    协议归 Stage 3（多 App + 形态迁移）。
 
-## 7. 验证（Stage 1 验收）
+## 7. 验证（Stage 1 + Stage 2 增量）
+
+- **Stage 2（v1.1，44 测试 ×N 连跑全绿）**：命名管道 FIFO/残帧/EOF、
+  shm 跨端读写 + DrawList 槽内往返、broker 全链孵化（通真实 462 会话）、
+  L2 往返 revision 连续、**双模两进程集成**（re-exec 子进程：
+  adjudicate→孵化→共享内存帧→点击→L2 Standalone→状态标记）。
+- 平台教训（Win32 管道，已沉淀 `transport.rs` 头注）：同步句柄阻塞
+  ReadFile 的跨句柄唤醒、PeekNamedPipe 空管阻塞、他线程 CancelIoEx/
+  CancelSynchronousIo 均不可依赖——overlapped/async IO + select 取消
+  是唯一可靠路径。
+
 
 - 协议测试 31 项（`cargo t desktop_protocol --features ui-iced` 全绿）：
   全消息 round-trip、每通道 golden bytes、坏 magic/版本/未知 tag 拒收、
