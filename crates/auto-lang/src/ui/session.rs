@@ -1357,7 +1357,9 @@ impl DesktopSession {
                     let wid = self.wm_add_win(app_id, title, rect);
                     let surface = client.surfaces.alloc(width, height);
                     client.wid_surface.insert(wid.0, surface);
-                    let shm_name = format!("autodesk-shm-{surface}");
+                    // 全局唯一：pid 前缀防跨进程同名段（同 host.rs 注记）。
+                    let shm_name =
+                        format!("autodesk-shm-{}-{surface}", std::process::id());
                     let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, 16384) else {
                         continue;
                     };

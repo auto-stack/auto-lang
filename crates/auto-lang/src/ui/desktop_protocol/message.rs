@@ -612,6 +612,10 @@ pub enum ControlMsg {
     /// 宿主按孵化处理（新 wid+surface），app 会话状态连续
     /// （revision 不归零 = 状态未动的协议级证据）。
     L2AttachRequest { wid: u64 },
+    /// host→app。L3 v2a 快照迁移（Plan 480 S9）：融合态 App 的 AutoVM
+    /// 状态快照注入恢复。载荷编码 = client_runtime 的 encode_state_snapshot
+    /// （revision + 原始状态字段）。
+    StateSnapshot { wid: u64, payload: Vec<u8> },
 }
 
 impl ControlMsg {
@@ -626,7 +630,8 @@ impl ControlMsg {
             | Self::DesktopBus { wid, .. }
             | Self::L2Detach { wid }
             | Self::L2Detached { wid }
-            | Self::L2AttachRequest { wid } => *wid,
+            | Self::L2AttachRequest { wid }
+            | Self::StateSnapshot { wid, .. } => *wid,
         }
     }
 
@@ -679,6 +684,11 @@ impl ControlMsg {
                 put_u8(out, 10);
                 put_u64(out, *wid);
             }
+            Self::StateSnapshot { wid, payload } => {
+                put_u8(out, 11);
+                put_u64(out, *wid);
+                put_bytes(out, payload);
+            }
         }
     }
 
@@ -716,6 +726,11 @@ impl ControlMsg {
             8 => Self::L2Detach { wid: r.u64()? },
             9 => Self::L2Detached { wid: r.u64()? },
             10 => Self::L2AttachRequest { wid: r.u64()? },
+            11 => {
+                let wid = r.u64()?;
+                let payload = r.bytes()?;
+                Self::StateSnapshot { wid, payload }
+            }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
     }

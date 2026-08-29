@@ -149,7 +149,10 @@ impl<'a> ProtocolHost<'a> {
                     // ③ 表面（含共享内存段）分配 + Welcome/BufferAlloc 回发。
                     let surface = self.surfaces.alloc(width, height);
                     self.wid_surface.insert(wid.0, surface);
-                    let shm_name = format!("autodesk-shm-{surface}");
+                    // 全局唯一：pid 前缀防跨进程同名段（Windows
+                    // CreateFileMappingW 同名=打开既有段，Plan 480 压测暴露）。
+                    let shm_name =
+                        format!("autodesk-shm-{}-{surface}", std::process::id());
                     let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
                         .map_err(ProtocolError::Shm)?;
                     self.shm_buffers.insert(surface, shm);

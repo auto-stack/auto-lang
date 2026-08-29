@@ -147,9 +147,22 @@ impl FrameSource for AppProjector {
     }
 
     fn on_control(&mut self, control: &ControlMsg) {
-        if let ControlMsg::Resize { width, height, .. } = control {
-            self.width = *width;
-            self.height = *height;
+        match control {
+            ControlMsg::Resize { width, height, .. } => {
+                self.width = *width;
+                self.height = *height;
+            }
+            // Plan 480 S9：L3 v2a 快照注入恢复——逐字段写回 VM 状态并
+            // 续接快照 revision（融合态 → child 的状态迁移落点）。
+            ControlMsg::StateSnapshot { payload, .. } => {
+                if let Ok((revision, fields)) = decode_state_snapshot(payload) {
+                    for (field, value) in fields {
+                        let _ = self.component.write_state(&field, value);
+                    }
+                    self.rev = revision;
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -429,6 +442,75 @@ fn is_wide(c: char) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// L3 v2a 快照载荷编码（S9）
+// ---------------------------------------------------------------------------
+
+/// 快照字段值的线格式种类：1 Int / 2 Double / 3 Bool / 4 Str；其余
+/// 类型 v2a 不迁移（count 类原始状态为界，见计划待澄清边界）。
+pub fn encode_state_snapshot(revision: u64, fields: &[(String, auto_val::Value)]) -> Vec<u8> {
+    use crate::ui::desktop_protocol::codec::{put_string, put_u32, put_u64, put_u8};
+    let mut out = Vec::new();
+    put_u64(&mut out, revision);
+    put_u32(&mut out, fields.len() as u32);
+    for (name, value) in fields {
+        put_string(&mut out, name);
+        match value {
+            auto_val::Value::Int(i) => {
+                put_u8(&mut out, 1);
+                put_u64(&mut out, *i as i64 as u64);
+            }
+            auto_val::Value::Double(d) => {
+                put_u8(&mut out, 2);
+                put_u64(&mut out, d.to_bits());
+            }
+            auto_val::Value::Bool(b) => {
+                put_u8(&mut out, 3);
+                put_u8(&mut out, u8::from(*b));
+            }
+            auto_val::Value::Str(st) => {
+                put_u8(&mut out, 4);
+                put_string(&mut out, st);
+            }
+            auto_val::Value::String(st) => {
+                put_u8(&mut out, 4);
+                put_string(&mut out, st.as_str());
+            }
+            _ => {
+                // 不可迁移字段：占位 Nil（值域外类型不静默丢失语义——
+                // 记 Nil 并由调用方 read_state 校验承担）。
+                put_u8(&mut out, 0);
+            }
+        }
+    }
+    out
+}
+
+/// 解码快照载荷 → (revision, 字段表)。未知种类 = Nil 占位。
+pub fn decode_state_snapshot(payload: &[u8]) -> Result<(u64, Vec<(String, auto_val::Value)>), String> {
+    use crate::ui::desktop_protocol::codec::Reader;
+    let mut r = Reader::new(payload);
+    let revision = r.u64().map_err(|e| format!("{e:?}"))?;
+    let count = r.u32().map_err(|e| format!("{e:?}"))?;
+    let mut fields = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let name = r.string().map_err(|e| format!("{e:?}"))?;
+        let kind = r.u8().map_err(|e| format!("{e:?}"))?;
+        let value = match kind {
+            1 => auto_val::Value::Int(r.u64().map_err(|e| format!("{e:?}"))? as i32),
+            2 => {
+                let bits = r.u64().map_err(|e| format!("{e:?}"))?;
+                auto_val::Value::Double(f64::from_bits(bits))
+            }
+            3 => auto_val::Value::Bool(r.u8().map_err(|e| format!("{e:?}"))? != 0),
+            4 => auto_val::Value::Str(r.string().map_err(|e| format!("{e:?}"))?.into()),
+            _ => auto_val::Value::Nil,
+        };
+        fields.push((name, value));
+    }
+    Ok((revision, fields))
+}
+
+// ---------------------------------------------------------------------------
 // ClientPump：协议主循环
 // ---------------------------------------------------------------------------
 
@@ -653,6 +735,17 @@ impl ClientPump {
                     let _ = self.app_end.send(&reply);
                 }
                 self.finish(ClientExit::L2Detached)
+            }
+            ProtocolMsg::Control(ControlMsg::StateSnapshot { .. }) => {
+                let app = self.endpoint.as_mut()?;
+                if app.on_message(msg).is_err() {
+                    return self.on_disconnect();
+                }
+                // 快照已应用：状态跳变 → 产帧同步宿主。
+                if app.state == AppState::Active {
+                    self.push_frame();
+                }
+                None
             }
             ProtocolMsg::Control(ControlMsg::Close { .. }) => {
                 let replies = match self.endpoint.as_mut()?.on_message(msg) {
@@ -954,8 +1047,9 @@ mod tests {
         }
 
         // 泵到 Active（Hello → Welcome/BufferAlloc → Ready；child 另发首帧）。
+        //（等待上限按并行负载放宽：成功即早退，不影响绿跑耗时。）
         let mut wid = None;
-        for _ in 0..200 {
+        for _ in 0..1000 {
             if let Some((exit, _)) = drive(&mut server_end, &mut ph, &mut client) {
                 panic!("Active 前意外出口 {exit:?}");
             }
@@ -974,7 +1068,7 @@ mod tests {
         let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut count_seen = 0;
-        for _ in 0..200 {
+        for _ in 0..1000 {
             if let Some((exit, _)) = drive(&mut server_end, &mut ph, &mut client) {
                 panic!("点击阶段意外出口 {exit:?}");
             }

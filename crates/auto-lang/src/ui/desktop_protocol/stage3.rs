@@ -164,6 +164,17 @@ pub fn sample_process_memory(pid: u32) -> Result<ProcessMemorySample, String> {
     }
 }
 
+/// L3 v2a：融合态 App 的 AutoVM 状态快照编码（revision + 全部原始状态
+/// 字段；复合类型落 Nil 占位，见 client_runtime::encode_state_snapshot）。
+pub fn fused_state_snapshot(
+    component: &crate::ui::dynamic::DynamicComponent,
+    revision: u64,
+) -> Vec<u8> {
+    let fields: Vec<(String, auto_val::Value)> =
+        component.read_all_state().into_iter().collect();
+    super::client_runtime::encode_state_snapshot(revision, &fields)
+}
+
 // ---------------------------------------------------------------------------
 // 压测 harness：N child → broker 孵化 → 全 Active → 逐 App 点击帧递增 →
 // 30s 稳定存活（子进程 = 测试二进制 re-exec 走真协议主循环）。
@@ -591,6 +602,142 @@ mod tests {
         assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
         assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(2), "count 连续");
         assert_eq!(projector.revision(), 3, "revision 连续（1 + 2 次点击）");
+    }
+
+    /// S9 L3 v2a 快照迁移：融合态 App（count=42）→ AutoVM 快照 →
+    /// 孵化 child 注入恢复——composed 帧先同步出 count: 42，点击推进
+    /// 43；revision 延续（快照 41 + 1 次点击 = 42）。
+    #[test]
+    fn stage3_l3_v2a_snapshot_migration() {
+        use crate::ui::desktop_protocol::client_runtime::ClientPump;
+        use crate::ui::desktop_protocol::host::ProtocolHost;
+        use crate::ui::desktop_protocol::message::{ControlMsg, DrawOp, ProtocolMsg as PMsg};
+        use crate::ui::session::DesktopSession;
+
+        const SRC: &str = "widget MigCounter {
+    model { var count int = 0 }
+    view {
+        button \"+\" { onclick: () => {.count += 1} }
+        text `count: ${.count}`
+    }
+}
+";
+
+        // ---- 融合态 App：直挂组件状态推进（等价一段交互后的状态）。
+        let mut fused = crate::build_dynamic_component(SRC, None).expect("fused build");
+        fused
+            .write_state("count", auto_val::Value::Int(42))
+            .expect("write count");
+        let payload = fused_state_snapshot(&fused, 41);
+
+        // 载荷线格式恒等（追加式演进纪律：encode→decode 往返）。
+        let wire = PMsg::Control(ControlMsg::StateSnapshot { wid: 1, payload: payload.clone() });
+        let encoded = wire.encode();
+        let decoded = PMsg::decode(&encoded).expect("decode");
+        assert_eq!(decoded, wire, "StateSnapshot 线格式往返恒等");
+
+        // ---- 孵化 child（真实管道对）并注入快照。
+        let pipe = format!("autodesk-l3-s9-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let config = ClientConfig {
+            app_name: "mig-counter".into(),
+            title: "mig".into(),
+            width: 480.0,
+            height: 320.0,
+        };
+        let app_end = transport::connect(&pipe, 2000).expect("connect");
+        let mut client = ClientPump::new(
+            app_end,
+            {
+                let component = crate::build_dynamic_component(SRC, None).expect("child build");
+                AppProjector::new(component, 480.0, 320.0)
+            },
+            config,
+            None,
+        );
+        let mut server_end = listener.wait_connect().expect("server");
+
+        let mut session = DesktopSession::__test_session();
+        session.__test_open_desktop();
+        let src = SRC;
+        let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
+            if name == "mig-counter" {
+                crate::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
+            } else {
+                Err(format!("unknown app {name}"))
+            }
+        });
+        fn pump(server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, ph: &mut ProtocolHost<'_>) {
+            while let Some(loaded) = server_end.try_recv() {
+                let msg = loaded.expect("解码");
+                ph.handle(&msg).expect("host 状态机");
+                for reply in std::mem::take(&mut ph.to_app) {
+                    let _ = server_end.send(&reply);
+                }
+            }
+        }
+
+        // 泵到 Active + 首帧（此时 child 还在 count: 0）。
+        let mut wid = None;
+        for _ in 0..1000 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if !ph.session.apps.is_empty() {
+                wid = ph.active().1;
+                if ph.composed(wid.expect("wid").0).is_some() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid = wid.expect("child 已孵化");
+
+        // ---- 注入快照：host → StateSnapshot → child 应用 → 产帧同步。
+        server_end
+            .send(&PMsg::Control(ControlMsg::StateSnapshot { wid: wid.0, payload }))
+            .unwrap();
+        let mut injected = false;
+        for _ in 0..1000 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if ph.composed(wid.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 42"))) {
+                injected = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(injected, "快照注入恢复：composed 帧同步出 count: 42（迁移前后一致）");
+
+        // ---- 迁移后可交互：点击推进 43。
+        let injected_click = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        server_end.send(&injected_click).unwrap();
+        let mut clicked = false;
+        for _ in 0..1000 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if ph.composed(wid.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 43"))) {
+                clicked = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(clicked, "迁移后点击推进 count: 43");
+
+        // ---- revision 延续：快照 41 + 1 次点击 = 42。
+        let detach = ph.endpoint.l2_detach().unwrap();
+        server_end.send(&detach).unwrap();
+        let (exit, projector) = loop {
+            pump(&mut server_end, &mut ph);
+            if let Some(done) = client.step() {
+                break done;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
+        assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(43));
+        assert_eq!(projector.revision(), 42, "revision 延续（快照 41 + 点击 1）");
     }
 
     /// S5 采样单测 + N=1/3/5 边际增量数字生成：阶段化 spawn（1 → 3 →

@@ -565,6 +565,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             ControlMsg::L2Detach { .. } => "Control::L2Detach",
             ControlMsg::L2Detached { .. } => "Control::L2Detached",
             ControlMsg::L2AttachRequest { .. } => "Control::L2AttachRequest",
+            ControlMsg::StateSnapshot { .. } => "Control::StateSnapshot",
         },
         ProtocolMsg::Observe(m) => match m {
             ObserveMsg::Attach { .. } => "Observe::Attach",
