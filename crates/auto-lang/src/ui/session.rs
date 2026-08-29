@@ -130,6 +130,10 @@ pub struct DevToolsState {
     pub inspector_scroll_id: iced::widget::Id,
     pub elements_scroll_id: iced::widget::Id,
     pub prompt_input_id: iced::widget::Id,
+    /// Plan 483: 当前视图 input 的派生 Id(遍历序,dynamic_view 每次脏
+    /// 重建清填)。聚焦路径按此寻址唯一 input,取代共享字面量
+    /// "prompt_input"(同 Id 会被 iced Focus operation 一次全置焦)。
+    pub input_ids: std::cell::RefCell<Vec<iced::widget::Id>>,
     pub needs_prompt_refocus: Cell<bool>,
     pub last_textarea_key: RefCell<Option<String>>,
     pub blocklist_scroll_id: iced::widget::Id,
@@ -173,6 +177,7 @@ impl DevToolsState {
             inspector_scroll_id: iced::widget::Id::unique(),
             elements_scroll_id: iced::widget::Id::unique(),
             prompt_input_id: iced::widget::Id::new("prompt_input"),
+            input_ids: std::cell::RefCell::new(Vec::new()),
             needs_prompt_refocus: Cell::new(false),
             last_textarea_key: RefCell::new(None),
             blocklist_scroll_id: iced::widget::Id::new("blocklist_scroll"),
