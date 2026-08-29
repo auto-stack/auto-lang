@@ -221,11 +221,6 @@ impl<'a> AuraViewBuilder<'a> {
     fn read_state(&self, field_name: &str) -> Result<auto_val::Value, String> {
         // Strip "store." prefix for merged store fields
         let name = field_name.strip_prefix("store.").unwrap_or(field_name);
-        if name == "view_groups" || name == "expanded" {
-            let src = if self.override_state_obj_id.is_some() { "child-first" } else { "root" };
-            let v = self.bridge.read_state(name).map(|v| v.to_string()).unwrap_or_else(|_| "err".to_string()).replace(char::is_whitespace, " ");
-            eprintln!("[P011B] read_state {} src={} override={:?} val={:.60}", name, src, self.override_state_obj_id, v);
-        }
         if let Some(child_id) = self.override_state_obj_id {
             // Try child state first, fall back to root state for store fields
             match self.bridge.read_child_state(child_id, name) {
@@ -243,47 +238,6 @@ impl<'a> AuraViewBuilder<'a> {
     /// "store." prefix (store fields are merged into root state as bare names).
     fn read_state_as_vec(&self, field_name: &str) -> Result<Vec<auto_val::Value>, String> {
         let name = field_name.strip_prefix("store.").unwrap_or(field_name);
-        if name == "view_groups" {
-            let peek = |b: &crate::ui::vm_bridge::VmBridge, v: &Vec<auto_val::Value>| -> String {
-                let list_id = match v.first() {
-                    Some(auto_val::Value::VmRef(r)) => {
-                        // [P011B] v 已是元素列表(非原始字段),first() 是第一个
-                        // 组对象本身——打它的堆类型快照(type_tag + 字段)。
-                        eprintln!("[P011B] elem0 snapshot {}", b.debug_obj_snapshot(r.id));
-                        format!("obj@{}", r.id)
-                    }
-                    Some(auto_val::Value::Int(i)) => {
-                        eprintln!("[P011B] elem0 snapshot {}", b.debug_obj_snapshot(*i as usize));
-                        format!("obj@{}", i)
-                    }
-                    other => return format!("first={:.40}", other.map(|x| x.to_string()).unwrap_or_default()),
-                };
-                let elems = match v.first() {
-                    Some(auto_val::Value::VmRef(r)) => b.index_list_all(r.id),
-                    Some(auto_val::Value::Int(i)) => b.index_list_all(*i as usize),
-                    _ => Vec::new(),
-                };
-                let first_open = elems.first().map(|g| match g {
-                    auto_val::Value::Obj(o) => {
-                        let mut s = String::from("{");
-                        for (k, val) in o.iter() {
-                            s.push_str(&format!("{}={:?} ", k, match val { auto_val::Value::Bool(bb) => bb.to_string(), other => other.to_string() }));
-                        }
-                        s.push_str("}");
-                        s
-                    }
-                    other => other.to_string(),
-                }).unwrap_or_default();
-                format!("{} first_open={}", list_id, first_open.replace(char::is_whitespace, " "))
-            };
-            let child_v = if let Some(cid) = self.override_state_obj_id {
-                self.bridge.read_child_state_as_vec(cid, name).map(|v| peek(self.bridge, &v))
-                    .unwrap_or_else(|_| "child:err".to_string())
-            } else { "no-override".to_string() };
-            let root_v = self.bridge.read_state_as_vec(name).map(|v| peek(self.bridge, &v))
-                .unwrap_or_else(|_| "root:err".to_string());
-            eprintln!("[P011B] {} [{}] [{}]", name, child_v, root_v);
-        }
         if let Some(child_id) = self.override_state_obj_id {
             // Try child state first, fall back to root state for store fields
             match self.bridge.read_child_state_as_vec(child_id, name) {

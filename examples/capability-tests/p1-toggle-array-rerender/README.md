@@ -34,9 +34,9 @@ master 构建双验):
 
 [P011]/[P011B]/[P011W] 三层探针(dynamic.rs / aura_view_builder.rs /
 engine.rs / vm_bridge.rs)全程实证 handler 执行、dirty 传播、重建求值、
-builder 双消费者读到同一新鲜 elems——与「VM 无 bug」结论一致。
-(探针自身曾有一处 downcast 认错 `object_data::ObjectData`,已修正为
-`types::ObjectData`,见 vm_bridge.rs `debug_obj_snapshot`。)
+builder 双消费者读到同一新鲜 elems——与「VM 无 bug」结论一致(探针已随
+plan011 ③ 收口移除,全文见分支历史 50c5266e6/ba0416d15;其自身曾 downcast
+认错 `object_data::ObjectData`——双同名陷阱见 KNOWN-DEBT-AND-RISKS 🟡)。
 
 ## os-config 侧映射(③ 真正根因)
 

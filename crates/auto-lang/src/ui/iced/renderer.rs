@@ -9282,7 +9282,6 @@ fn dynamic_view(
     //                         if cache is empty (shouldn't happen normally), rebuild from cached AbstractView.
 
     let dirty = *state.app.view_dirty.borrow();
-    eprintln!("[P011] dynamic_view dirty={} comp_dirty={}", dirty, state.component.is_dirty());
 
     // Fast path: return cached Element when nothing changed.
     if !dirty {
