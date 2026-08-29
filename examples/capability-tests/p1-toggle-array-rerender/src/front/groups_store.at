@@ -1,0 +1,66 @@
+// groups_store.at — p1 canary v2:复刻 os-config modules_store 形态:
+// Toggle handler 内先 whole-replace .expanded,再重建 .view_groups
+// (baked open + 成员投影),视图按 if g.open 条件渲染成员。
+store GroupsStore {
+    model {
+        var expanded Array<str> = []
+        var view_groups Array<any> = []
+        var active_id str = ""
+    }
+
+    msg { Init, Toggle(str) }
+
+    on {
+        .Init -> {
+            var ex = []
+            ex.push("g1")
+            .expanded = ex
+            var vg = []
+            vg.push({ id: "g1", label: "Group One", open: true, m1: "alpha", m2: "beta" })
+            vg.push({ id: "g2", label: "Group Two", open: false, m1: "gamma", m2: "delta" })
+            .view_groups = vg
+        }
+        .Toggle(gid) -> {
+            var has = false
+            for x in .expanded {
+                if x == gid {
+                    has = true
+                }
+            }
+            var ex = []
+            if has {
+                for x in .expanded {
+                    if x != gid {
+                        ex.push(x)
+                    }
+                }
+            }
+            if has == false {
+                for x in .expanded {
+                    ex.push(x)
+                }
+                ex.push(gid)
+            }
+            .expanded = ex
+
+            var vg = []
+            vg.push({ id: "g1", label: "Group One", open: false, m1: "alpha", m2: "beta" })
+            vg.push({ id: "g2", label: "Group Two", open: false, m1: "gamma", m2: "delta" })
+            var i = 0
+            loop {
+                if i >= ex.len() {
+                    break
+                }
+                var cur = ex[i]
+                if cur == "g1" {
+                    vg[0] = { id: "g1", label: "Group One", open: true, m1: "alpha", m2: "beta" }
+                }
+                if cur == "g2" {
+                    vg[1] = { id: "g2", label: "Group Two", open: true, m1: "gamma", m2: "delta" }
+                }
+                i = i + 1
+            }
+            .view_groups = vg
+        }
+    }
+}
