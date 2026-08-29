@@ -193,6 +193,7 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_UI_Accessibility",
     "Win32_UI_HiDpi",
     "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
 ] }
 
 [dev-dependencies]

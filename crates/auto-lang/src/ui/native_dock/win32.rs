@@ -10,17 +10,27 @@
 //! 与 [`NativeHwnd`] 的 isize 存储形态在本文件边界互转。
 
 use crate::ui::native_dock::{NativeHwnd, Rect};
+use std::sync::mpsc;
+use std::sync::{Mutex, RwLock};
 use windows::core::HRESULT;
-use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, BOOL, HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, RECT, WPARAM,
+};
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
 };
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-    IsIconic, IsWindow, IsWindowVisible, IsZoomed, PostMessageW, SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WS_CAPTION, WS_THICKFRAME,
+    DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
+    EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
+    GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
+    IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG, PostMessageW, PostThreadMessageW,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, GWL_STYLE, SW_HIDE,
+    SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WS_CAPTION, WS_THICKFRAME,
 };
 
 /// Win32 dock 操作错误（UIPI 拒绝单独分类，供 shell 层提示）。
@@ -356,6 +366,196 @@ pub fn is_maximized(target: NativeHwnd) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// events：WinEventHook 事件层（专用钩子线程 OUTOFCONTEXT → mpsc）
+// ---------------------------------------------------------------------------
+
+/// 钩子线程交付的窗口级事件（已过滤非窗口对象与空句柄）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeSlotEvent {
+    pub hwnd: NativeHwnd,
+    pub kind: NativeSlotEventKind,
+}
+
+/// 计划 §2 事件清单：生命周期（Destroy）、几何（LocationChange/MoveSizeEnd）、
+/// 显示态（MinimizeStart/End）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeSlotEventKind {
+    MoveSizeEnd,
+    MinimizeStart,
+    MinimizeEnd,
+    LocationChange,
+    Destroy,
+}
+
+/// Win32 `EVENT_*` 常量 → 事件种类（纯函数；单测锁定映射表）。
+pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
+    match event {
+        EVENT_SYSTEM_MOVESIZEEND => Some(NativeSlotEventKind::MoveSizeEnd),
+        EVENT_SYSTEM_MINIMIZESTART => Some(NativeSlotEventKind::MinimizeStart),
+        EVENT_SYSTEM_MINIMIZEEND => Some(NativeSlotEventKind::MinimizeEnd),
+        EVENT_OBJECT_LOCATIONCHANGE => Some(NativeSlotEventKind::LocationChange),
+        EVENT_OBJECT_DESTROY => Some(NativeSlotEventKind::Destroy),
+        _ => None,
+    }
+}
+
+struct HookShared {
+    tx: mpsc::Sender<NativeSlotEvent>,
+    thread_id: u32,
+}
+
+/// 钩子数据槽位：WinEventProc 无用户上下文参数，通道经全局槽位转交。
+/// 回调侧只短暂拿读锁（绝不阻塞钩子线程的消息泵）；
+/// 占用互斥（同进程仅一个钩子实例）由 [`HOOK_OCCUPIED`] 单独承担——
+/// 两者若合用一把锁，回调会在占用期间永久阻塞钩子线程（死锁，T3 实测）。
+static HOOK_SHARED: RwLock<Option<HookShared>> = RwLock::new(None);
+static HOOK_OCCUPIED: Mutex<()> = Mutex::new(());
+
+/// 钩子线程句柄：Drop 时投递 WM_QUIT、清空槽位并回收线程。
+pub struct NativeSlotEventHook {
+    _occupancy: std::sync::MutexGuard<'static, ()>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for NativeSlotEventHook {
+    fn drop(&mut self) {
+        let thread_id = HOOK_SHARED.read().ok().and_then(|g| g.as_ref().map(|s| s.thread_id));
+        if let Some(tid) = thread_id {
+            unsafe {
+                let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
+        // 先清数据槽：解钩完成前的残留回调不再投递，再回收线程
+        if let Ok(mut g) = HOOK_SHARED.write() {
+            *g = None;
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// 启动 WinEventHook 钩子线程：订阅 MoveSizeEnd / MinimizeStart / MinimizeEnd /
+/// LocationChange / Destroy 五事件（OUTOFCONTEXT；`skip_own_process` 时叠加
+/// SKIPOWNPROCESS——生产为 true，测试对本进程 scratch 窗口收事件为 false）。
+/// 返回 `(句柄, 事件接收端)`。同进程同时仅允许一个实例，重复启动报
+/// `DockError::Api`。
+pub fn spawn_event_hook(
+    skip_own_process: bool,
+) -> Result<(NativeSlotEventHook, mpsc::Receiver<NativeSlotEvent>), DockError> {
+    let occupancy = HOOK_OCCUPIED.lock().map_err(|_| DockError::Api {
+        op: "hook occupancy poisoned",
+        code: 0,
+    })?;
+    if HOOK_SHARED
+        .read()
+        .map_err(|_| DockError::Api {
+            op: "hook slot poisoned",
+            code: 0,
+        })?
+        .is_some()
+    {
+        return Err(DockError::Api {
+            op: "hook already running",
+            code: 0,
+        });
+    }
+    let (tx, rx) = mpsc::channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let thread = std::thread::Builder::new()
+        .name("native-dock-winevent".into())
+        .spawn(move || unsafe {
+            let thread_id = GetCurrentThreadId();
+            let flags = WINEVENT_OUTOFCONTEXT
+                | if skip_own_process {
+                    WINEVENT_SKIPOWNPROCESS
+                } else {
+                    0
+                };
+            let mut hooks = Vec::new();
+            for e in [
+                EVENT_SYSTEM_MOVESIZEEND,
+                EVENT_SYSTEM_MINIMIZESTART,
+                EVENT_SYSTEM_MINIMIZEEND,
+                EVENT_OBJECT_DESTROY,
+                EVENT_OBJECT_LOCATIONCHANGE,
+            ] {
+                let h = SetWinEventHook(e, e, HMODULE::default(), Some(winevent_proc), 0, 0, flags);
+                if !h.is_invalid() {
+                    hooks.push(h);
+                }
+            }
+            let _ = ready_tx.send((thread_id, hooks.len()));
+            let mut msg = MSG::default();
+            loop {
+                let got = GetMessageW(&mut msg, HWND::default(), 0, 0);
+                if !got.as_bool() || msg.message == WM_QUIT {
+                    break;
+                }
+                let _ = TranslateMessage(&msg);
+                let _ = DispatchMessageW(&msg);
+            }
+            for h in hooks {
+                let _ = UnhookWinEvent(h);
+            }
+        })
+        .map_err(|e| DockError::Api {
+            op: "spawn hook thread",
+            code: e.raw_os_error().unwrap_or(0) as u32,
+        })?;
+    let (thread_id, _installed) = ready_rx.recv().map_err(|_| DockError::Api {
+        op: "hook thread died",
+        code: 0,
+    })?;
+    match HOOK_SHARED.write() {
+        Ok(mut g) => *g = Some(HookShared { tx, thread_id }),
+        Err(_) => {
+            return Err(DockError::Api {
+                op: "hook slot poisoned",
+                code: 0,
+            })
+        }
+    }
+    Ok((
+        NativeSlotEventHook {
+            _occupancy: occupancy,
+            thread: Some(thread),
+        },
+        rx,
+    ))
+}
+
+unsafe extern "system" fn winevent_proc(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    hwnd: HWND,
+    id_object: i32,
+    _id_child: i32,
+    _idevent_thread: u32,
+    _dwmsevent_time: u32,
+) {
+    if hwnd.is_invalid() || hwnd.0.is_null() {
+        return;
+    }
+    // 仅窗口级对象（OBJID_WINDOW = 0；子对象 LOCATIONCHANGE 不入队）
+    if id_object != 0 {
+        return;
+    }
+    let Some(kind) = map_win_event(event) else {
+        return;
+    };
+    // 读锁 + try 语义：槽位空闲/上锁瞬间直接丢弃事件，绝不阻塞钩子线程
+    if let Ok(guard) = HOOK_SHARED.read() {
+        if let Some(state) = guard.as_ref() {
+            let _ = state.tx.send(NativeSlotEvent {
+                hwnd: NativeHwnd(hwnd.0 as isize),
+                kind,
+            });
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // T2：Win32 几何集成测试——全部针对本进程 scratch 窗口，无第三方依赖
 // ---------------------------------------------------------------------------
 
@@ -378,7 +578,7 @@ mod native_dock_geometry {
     };
 
     /// 本进程 scratch 窗口（DefWindowProc；Drop 时 DestroyWindow）。
-    struct Scratch(HWND);
+    pub(super) struct Scratch(pub(super) HWND);
 
     impl Drop for Scratch {
         fn drop(&mut self) {
@@ -421,7 +621,7 @@ mod native_dock_geometry {
         });
     }
 
-    fn scratch(title: &str) -> Scratch {
+    pub(super) fn scratch(title: &str) -> Scratch {
         ensure_class();
         let mut title_w: Vec<u16> = title.encode_utf16().collect();
         title_w.push(0);
@@ -446,7 +646,7 @@ mod native_dock_geometry {
         Scratch(hwnd)
     }
 
-    fn pump_one(hwnd: HWND) -> bool {
+    pub(super) fn pump_one(hwnd: HWND) -> bool {
         unsafe {
             let mut msg = MSG::default();
             if PeekMessageW(&mut msg, hwnd, 0, 0, PM_REMOVE).as_bool() {
@@ -597,10 +797,13 @@ mod native_dock_geometry {
                 .any(|(h, _, t)| h.0 == hwnd_value(s.0) && t == "find-me"),
             "可见+有标题+pid 过滤应命中本进程 scratch 窗口"
         );
+        // find 结果与两次枚举间的系统窗口增删存在竞态，不做跨调用集合核对，
+        // 改为读回 pid 自洽核对
         let found = find_top_level_by_pid(std::process::id()).expect("存在同进程可见顶层窗口");
-        assert!(
-            same_pid.iter().any(|(h, ..)| h.0 == found.0),
-            "find 结果必须属于本进程可见顶层窗口集合"
+        assert_eq!(
+            pid_of(found),
+            Some(std::process::id()),
+            "find 结果 pid 读回核对"
         );
         assert_eq!(pid_of(NativeHwnd(hwnd_value(s.0))), Some(std::process::id()));
     }
@@ -623,5 +826,121 @@ mod native_dock_geometry {
         assert!(listed
             .iter()
             .any(|(h, _, t)| h.0 == hwnd_value(s.0) && t == "native-dock-listing-probe"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T3：WinEventHook 事件层测试——映射表纯单测 + 本进程 scratch 窗口真实收事件
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, windows, feature = "test-native-dock"))]
+mod native_dock_events {
+    use super::*;
+    use super::native_dock_geometry::{pump_one, scratch};
+    use std::time::Duration;
+
+    /// 事件测试间互斥：全局钩子槽位同进程仅一个实例，并行调度下自旋等位。
+    fn spawn_with_retry() -> (NativeSlotEventHook, mpsc::Receiver<NativeSlotEvent>) {
+        for _ in 0..100 {
+            match spawn_event_hook(false) {
+                Ok(pair) => return pair,
+                Err(_) => std::thread::sleep(Duration::from_millis(100)),
+            }
+        }
+        panic!("钩子槽位 10s 未释放（并行事件测试死锁？）");
+    }
+
+    /// 从全局事件流中等待指定 hwnd 的目标事件（跳过系统噪声），3s 超时。
+    fn wait_for(
+        rx: &mpsc::Receiver<NativeSlotEvent>,
+        hwnd: NativeHwnd,
+        kind: NativeSlotEventKind,
+    ) -> bool {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_millis(500)) {
+                Ok(evt) if evt.hwnd == hwnd && evt.kind == kind => return true,
+                Ok(_) => continue, // 其他窗口/种类噪声
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn map_win_event_covers_matrix() {
+        assert_eq!(
+            map_win_event(EVENT_SYSTEM_MOVESIZEEND),
+            Some(NativeSlotEventKind::MoveSizeEnd)
+        );
+        assert_eq!(
+            map_win_event(EVENT_SYSTEM_MINIMIZESTART),
+            Some(NativeSlotEventKind::MinimizeStart)
+        );
+        assert_eq!(
+            map_win_event(EVENT_SYSTEM_MINIMIZEEND),
+            Some(NativeSlotEventKind::MinimizeEnd)
+        );
+        assert_eq!(
+            map_win_event(EVENT_OBJECT_LOCATIONCHANGE),
+            Some(NativeSlotEventKind::LocationChange)
+        );
+        assert_eq!(
+            map_win_event(EVENT_OBJECT_DESTROY),
+            Some(NativeSlotEventKind::Destroy)
+        );
+        assert_eq!(map_win_event(0x1234), None);
+    }
+
+    #[test]
+    fn hook_receives_location_change() {
+        let (_hook, rx) = spawn_with_retry();
+        let s = scratch("evt-move");
+        let h = NativeHwnd(hwnd_value(s.0));
+        // 两步几何写，保证至少一次位置变化事件
+        set_bounds(h, Rect::new(80, 80, 320, 240)).expect("set_bounds 1");
+        set_bounds(h, Rect::new(90, 100, 320, 240)).expect("set_bounds 2");
+        assert!(
+            wait_for(&rx, h, NativeSlotEventKind::LocationChange),
+            "3s 内未收到 scratch 窗口的 LOCATIONCHANGE"
+        );
+    }
+
+    #[test]
+    fn hook_receives_minimize_lifecycle() {
+        let (_hook, rx) = spawn_with_retry();
+        let s = scratch("evt-min");
+        let h = NativeHwnd(hwnd_value(s.0));
+        show_window(h, ShowMode::Minimize).expect("minimize");
+        assert!(
+            wait_for(&rx, h, NativeSlotEventKind::MinimizeStart),
+            "3s 内未收到 MINIMIZESTART"
+        );
+        show_window(h, ShowMode::Restore).expect("restore");
+        assert!(
+            wait_for(&rx, h, NativeSlotEventKind::MinimizeEnd),
+            "3s 内未收到 MINIMIZEEND"
+        );
+    }
+
+    #[test]
+    fn hook_receives_destroy() {
+        let (_hook, rx) = spawn_with_retry();
+        let s = scratch("evt-close");
+        let h = NativeHwnd(hwnd_value(s.0));
+        request_close(h).expect("request_close");
+        // WM_CLOSE 需宿主线程泵消息才会走 DestroyWindow
+        for _ in 0..100 {
+            if !is_alive(h) {
+                break;
+            }
+            pump_one(s.0);
+        }
+        assert!(
+            wait_for(&rx, h, NativeSlotEventKind::Destroy),
+            "3s 内未收到 DESTROY"
+        );
+        // s 在此 Drop：对已死窗口 DestroyWindow 是 no-op 错误，安全忽略
     }
 }
