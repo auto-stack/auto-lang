@@ -3064,7 +3064,8 @@ mod tests_plan483_d4 {
     }
 
     fn label(text: &str) -> View<DynamicMessage> {
-        View::Text { content: text.to_string(), style: None }
+        // Plan 481 selectable 字段(merge master 后补;合成标签非用户内容,false)。
+        View::Text { content: text.to_string(), style: None, selectable: false }
     }
 
     fn column(children: Vec<View<DynamicMessage>>) -> View<DynamicMessage> {
