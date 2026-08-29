@@ -433,6 +433,35 @@ SEARCH_INPUT   = "w-full bg-transparent border-0 outline-none placeholder:text-m
 
 ## 复审记录
 
+> 2026-08-29 一轮复审见下（随 review 提交 8dd4a3167）。以下为用户指令发起的
+> **二轮独立事后复审**（归档后复审；对"声称完成"重新核验，非信任一轮结论）。
+
+**2026-08-29 /auto-plan:review 二轮（zcode）— PASS（补 1 处沉淀遗漏，当日清偿）**
+
+核验方法：worktree 已折叠，全部对 master HEAD（b78ad7050）与两外部仓 main 重跑。
+
+关键发现与处置：
+1. **补遗 3/4/5 未过全量门禁（本轮主要缺口）**：一轮 review 的 cargo tf 跑在
+   补遗 2（ff7f1f0bd）之后，补遗 3/4/5（nav-name/nav-desc 锚、文本 chevron、
+   搜索图标分轨）在其后提交而未重跑。本轮补跑：**cargo tf 3258/3258 绿**；
+   cargo tv 失败集 = cb_asynchronous_channel + aavm2_m4，与一轮基线裁定
+   （3b2b20b05 复现，master 既有）完全一致，无新增回归。✅
+2. **遗漏 #1（已当场清偿）**：merge 沉淀缺 ui/plans.md 索引行与 overview
+   现状段（479 先例有、482 漏落）——本轮补 482 行 + 导航组件线段落。✅
+3. scoped 门禁 master 重跑：nav 单测 13+4 绿（含 router.back 改写/lucide
+   存在性/双模式 SFC）、docs_gen 4/4、gallery_golden 1/1、auto-man plan_457
+   同步 1/1。✅
+4. 外部仓终态核验：musk main 08d59ce（rail nav-item×4 + .app-rail 锚 +
+   桥选择器）、os-config main 9ca1449（sidebar 组件族 + nav_class 残留仅
+   1 处注释）。✅
+5. Workaround/TODO 扫描：Plan 482 diff 范围内零 TBD/FIXME/HACK/临时标记。✅
+6. 债务复核：P482-1..4 已在 KNOWN-DEBT 登记（musk 视觉复跑/015 搜索过滤/
+   015 置顶标记/title 通道），无未批准延后。✅
+
+结论：维持 archived 终态；沉淀遗漏当日清偿，无阻塞项。
+
+
+
 **2026-08-29 /auto-plan:review（zcode）— PASS（附 4 项债务登记）**
 
 验收逐条核验（对实际代码/运行证据）：
