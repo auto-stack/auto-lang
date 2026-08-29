@@ -50,6 +50,10 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
+| 472 | dock 实机注入项（×关闭/切换条/键盘流） | 沙箱输入注入与前台竞争：click dispatch 身份校验失败/坐标过期、键盘注入需前台被用户会话抢回——×关闭、切换条点击、召唤 launcher、布局热键四项实机未点验（464 同款先例）。语义 headless 全覆盖（T2 分区 7 测+T3 投影反射测+动词解析测+wm_remove_win 测），后续注入通道升级或真机人工点验补跑。 | `reports/472-t5-live-acceptance.md` §1 #5-8 |
+| 472 | dock 焦点窗标题文本未做 | T1 施工图 §4 提及焦点窗 title 文本缀于运行窗分组前，实现为纯图标组；标题展示归 M2 switcher（其正职），非缺失语义。 | `reports/472-t1-projection-blueprint.md` §4 + `assets/shell.at` |
+| 472 | shell.at dock 双分支重复 | top/bottom 两个 if 分支各持一份任务栏标记（DSL 无局部模板复用）；v1 自证瑕疵，M2 pack 化时收敛。 | `assets/shell.at` view 注释 |
+| 472 | workspace 条显示原始下标 | 切换条按钮显示分区 id "0/1"（0 基串）；人读标签（1 基/命名/高亮态强化）归 M2 pager。 | `assets/shell.at` + `schema/projection-protocol-v1.md` §2.2 |
 | 465 | a2vue 组件路径 prop 直通 | shadcn 组件路径对任意自定义 prop（如 virtual_window 的 `win: w`）不透传（v-for :key 路径仅子组件/外部门组件走 v-bind 形态）；宿主叶子自读 WmStore 不依赖该透传，.at 直书桌面为后续需求时补齐。 | `ui_gen/vue.rs` is_shadcn_component 属性发射路径 + `reports/465-t4-wm-dom-leaf.md` §3 |
 | 465 | reka portal 族窗口逸出 | dialog/modal/dropdown 等经 reka DialogPortal **DOM 重挂** document.body（T2 实测：CSS containing block 不可收敛，DOM 搬家≠CSS fixed）；v1 登记限制清单+启动警告，不改写 portal 语义；正规解 = 生成器 DialogContent 模板 `DialogPortal :to` + provide/inject 注入窗容器（generator 级改写，后续）。 | `ui_gen/vue.rs:14483` DialogContent 模板 + `reports/465-t2-containment-spike.md` §1① |
 | 465 | document 监听跨窗广播 | App 自注册的 `.window/.document` 全局监听天然跨窗触发（T2 实测：单键双窗计数同涨）；桌面热键走捕获段+stopImmediatePropagation 自保；受害 App 白名单先行。 | `assets/wm/keyboard.ts` + `reports/465-t2-containment-spike.md` §1③ |
