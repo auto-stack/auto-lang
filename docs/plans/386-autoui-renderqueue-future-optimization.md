@@ -4,13 +4,13 @@ status: executing
 feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-29T13:10:00+08:00
+updated_at: 2026-08-29T17:10:00+08:00
 
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 
-current_step: 7
+current_step: 10
 total_steps: 14
 ---
 
@@ -234,17 +234,35 @@ Stage 2 前置仍待：463/464 合入（常驻 shell/launcher 就位）。
 `cargo t desktop_protocol --features ui-iced` 显式绿（ui-iced 非 default，
 tf 不编译本模块，二者缺一不可）。
 
-- [ ] **S8 传输层抽象 + Windows 命名管道**：`transport.rs` —— 通道 trait
+- [✅ 已完成] **S8 传输层抽象 + Windows 命名管道**
+  （`transport.rs`：Transport trait（send/try_recv/pending/is_eof/recv_wait）
+  + loopback 收编 + tokio named_pipe 实现（split 读写半 + 读线程
+  select!{read,shutdown} + 多线程 runtime 常驻驱动 reactor）；5 测试：
+  FIFO/双向往返/残帧等完整帧/对端 drop→EOF/loopback trait 同语义，
+  5 连跑全绿。平台教训已沉淀于模块头注：同步句柄阻塞 ReadFile 的
+  跨句柄唤醒、PeekNamedPipe 空管阻塞、他线程 Cancel 皆不可依赖——
+  tokio 异步读 + select 取消是唯一可靠路径）：`transport.rs` —— 通道 trait
   （send/try_recv/pending，与 loopback 同语义；u32 长度前缀分帧）；
   loopback 收编为首个实现；named_pipe 实现 = 复用 tokio
   `net::windows::named_pipe`（autovm_daemon Plan 269 同款，零新依赖；
   `#[cfg(windows)]`，非 Windows 保持 loopback-only 可编译）。
   验证: `cargo t desktop_protocol --features ui-iced`
-- [ ] **S9 共享内存帧缓冲**：`shm.rs` —— Windows FFI
+- [✅ 已完成] **S11 L2 detach/attach 协议消息**（先于 S9/S10 执行：纯协议
+  层先行。ControlMsg 追加 L2Detach/L2Detached/L2AttachRequest（tag 8/9/10，
+  演进纪律只追加）；AppState 增 Standalone；Active→L2Detach→Standalone→
+  L2Detached→宿主 ReclaimWindow→connect()（Standalone 同入口）→新
+  wid/surface→Active。测试断言 revision 往返不归零 = "状态未动"协议级
+  证据。37 测试全绿）：`shm.rs` —— Windows FFI
   CreateFileMappingW/MapViewOfFile 双槽帧缓冲（`#[cfg(windows)]`）+
   `FrameMsg::FrameReadyShared{offset,len}` 追加（演进纪律：只追加不改义；
   大帧载荷走共享内存、控制面消息照走管道）。验证同上
-- [ ] **S10 broker + 入口裁决**：`broker.rs` —— `adjudicate()` 三步
+- [✅ 已完成] **S10 broker + 入口裁决**
+  （`broker.rs`：`adjudicate()` 三步 + `Broker::serve_once`/
+  `request_incubation`（DesktopBus 同形 `incubate` 记录，per-app 管道名
+  分配 + 先行 listen + 转连；空连接 ping 吞弃）。全链路测试：broker
+  孵化 → ProtocolHost 绑真实 462 会话（AppSession/VWinState 落地）→
+  协议点击 → VM 状态变化。transport 泛型 PipeEnd 以
+  `Box<dyn Transport + Send>` 类型擦除统一签名。42 测试全绿 ×3 连跑）：`broker.rs` —— `adjudicate()` 三步
   （① `--autodesk-client=<pipe>` 孵化标记 ② 探测
   `\.\pipeutodesk-broker` ③ standalone）+ broker 侦听与孵化交接
   （分配 per-app 管道名回传）。验证同上
@@ -260,6 +278,11 @@ tf 不编译本模块，二者缺一不可）。
   transport / broker / 新变体 / L2 语义）；scoped 验证全绿
   （desktop_protocol + session）。验证: cargo check + 上述模块测试
   ---
+
+**Phase 2 本次增量折入（2026-08-29）**：S8/S9/S10/S11 四块（传输/
+共享内存/broker/L2 协议，42 测试全绿 ×3 连跑）+ `cargo tf` 门禁通过后
+折入 master；S12（双模 exe 集成）与 S13（文档升版）顺延下一 session，
+折入时协议规范文档未含 S12 增量（下次补）。
 
 **Pre-fold 门禁（Phase 2 折入 master 前）**：`cargo tf` 全绿 +
 `cargo t desktop_protocol --features ui-iced` 显式绿。
