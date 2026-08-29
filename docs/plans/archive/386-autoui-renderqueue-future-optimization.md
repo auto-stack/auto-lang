@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-386
 status: archived
-feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
+feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1+2——桌面协议 v1.1（loopback 五通道 + 两进程落地）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
 updated_at: 2026-08-29T19:40:00+08:00
@@ -19,8 +19,12 @@ total_steps: 14
 
 # Plan 386: AutoUI RenderQueue / 分离渲染架构（路线 B：进程外 App 与桌面协议）
 
-> **状态**：🔄 **复活（2026-08-28，用户裁定）。Stage 1 即刻可开工**；Stage 2/3
-> 按新前置依赖梯次解锁（见 §0）。
+> **状态**：✅ **已完成并归档（2026-08-29，/auto-plan:review 通过）。Stage 1（v1.0
+> loopback）+ Stage 2（v1.1 两进程）均已落地**（S1–S13 全 ✅，`cargo tf`
+> 3255/3255 绿）；原 Stage 2/3 梯次中 **Stage 3（多 App 内存实测 + L1/L3
+> 形态迁移）未执行、未立项**，前置（Stage 2 ✅）已满足，需新计划承接
+>（见 §0 表状态列与文末复审记录）。原始复活注记存档：复活（2026-08-28，
+> 用户裁定），Stage 1 即刻可开工，Stage 2/3 按梯次解锁。
 > **来源**：从 Plan 365 W5 独立出来。Plan 365 的 Host ①/②（in-process）已
 > 完成；RenderQueue 是 Host ③（AutoOS 愿景），不影响 COSMIC 兼容性。
 > **定位更新（2026-08-26，Design 23 / Plan 452）**：RenderCommand 重定位为
@@ -43,9 +47,9 @@ total_steps: 14
 
 | Stage | 内容 | 前置依赖 | 交付/验收 |
 |---|---|---|---|
-| **Stage 1** | 桌面协议 loopback：五通道（孵化握手/帧/输入/控制/观测）在**同进程**内按协议编码走通（协议消息结构 + 序列化 + 双端状态机，frame 用内存缓冲模拟共享纹理） | 462 ✅ + Design 25 §7 蓝图 ✅（I1 ✅） | 协议规范文档（版本化）+ loopback demo：一个 App 的帧/输入/控制经协议通路渲染进 462 虚拟窗口，行为与直挂无差 |
-| **Stage 2** | 两进程：spawn-client 双模 exe（`--autodesk-client=<pipe>` 入口裁决 + broker 命名管道）+ 帧 共享纹理/共享内存 + 输入 IPC 注入（E1 进程间版） | Stage 1 + 463/464 合入（常驻 shell/launcher 就位，孵化有真实消费方） | 独立 exe 双态启动（在桌面内/直接双击）+ L2 detach/attach 协议消息 |
-| **Stage 3** | 多 App + 形态迁移 L1/L3：L1 同进程换窗（459+462 机件拼装）、L3 状态迁移 v2a 快照重启 | Stage 2 | **内存实测验收**（对比 1-5MB/App 目标，原复活条件转为此处度量）+ 多 App 桌面压测 |
+| **Stage 1** ✅ 已完成（S1–S7，v1.0） | 桌面协议 loopback：五通道（孵化握手/帧/输入/控制/观测）在**同进程**内按协议编码走通（协议消息结构 + 序列化 + 双端状态机，frame 用内存缓冲模拟共享纹理） | 462 ✅ + Design 25 §7 蓝图 ✅（I1 ✅） | 协议规范文档（版本化）+ loopback demo：一个 App 的帧/输入/控制经协议通路渲染进 462 虚拟窗口，行为与直挂无差 |
+| **Stage 2** ✅ 已完成（S8–S13，v1.1） | 两进程：spawn-client 双模 exe（`--autodesk-client=<pipe>` 入口裁决 + broker 命名管道）+ 帧 共享纹理/共享内存 + 输入 IPC 注入（E1 进程间版） | Stage 1 + 463/464 合入（常驻 shell/launcher 就位，孵化有真实消费方） | 独立 exe 双态启动（在桌面内/直接双击）+ L2 detach/attach 协议消息 |
+| **Stage 3** ⏳ **未执行、未立项**（前置 Stage 2 ✅ 已满足；需新计划承接） | 多 App + 形态迁移 L1/L3：L1 同进程换窗（459+462 机件拼装）、L3 状态迁移 v2a 快照重启 | Stage 2 | **内存实测验收**（对比 1-5MB/App 目标，原复活条件转为此处度量）+ 多 App 桌面压测 |
 
 *原"内存实测超标才做"的立论保留为 Stage 3 的**验收度量**而非启动门槛——
 协议与双模 exe 的价值（隔离/发布形态/detach）独立于内存数字成立。*
