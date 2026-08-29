@@ -348,7 +348,16 @@ pub fn clipboard_files_set(paths: &[PathBuf]) -> bool {
         if EmptyClipboard().is_err() {
             return false;
         }
-        let hglobal = match GlobalAlloc(GMEM_MOVEABLE, blob.len()) {
+        set_hglobal_data(CF_HDROP, &blob)
+    }
+}
+
+/// GlobalAlloc→拷贝→SetClipboardData。成功后所有权归系统；失败自 free
+/// 返回 false。
+#[cfg(all(windows, feature = "native-clipboard"))]
+fn set_hglobal_data(format: u32, bytes: &[u8]) -> bool {
+    unsafe {
+        let hglobal = match GlobalAlloc(GMEM_MOVEABLE, bytes.len()) {
             Ok(h) => h,
             Err(_) => return false,
         };
@@ -357,15 +366,55 @@ pub fn clipboard_files_set(paths: &[PathBuf]) -> bool {
             let _ = GlobalFree(hglobal);
             return false;
         }
-        std::ptr::copy_nonoverlapping(blob.as_ptr(), ptr as *mut u8, blob.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr as *mut u8, bytes.len());
         let _ = GlobalUnlock(hglobal);
-        match SetClipboardData(CF_HDROP, HANDLE(hglobal.0)) {
+        match SetClipboardData(format, HANDLE(hglobal.0)) {
             Ok(_) => true,
             Err(_) => {
                 let _ = GlobalFree(hglobal); // 失败时所有权未转移，自 free
                 false
             }
         }
+    }
+}
+
+/// Write an image file (PNG) to the OS clipboard as CF_DIBV5（32bpp
+/// BI_BITFIELDS BGRA）+ registered "PNG" 双挂（兼容只认 PNG 的接收方）。
+/// `false` on unreadable file / oversized (>64MP) / Win32 failure.
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub fn clipboard_image_set(png_path: &std::path::Path) -> bool {
+    let file_bytes = match std::fs::read(png_path) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let img = match image::load_from_memory(&file_bytes) {
+        Ok(i) => i,
+        Err(_) => return false,
+    };
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 || w as u64 * h as u64 > MAX_IMAGE_PIXELS {
+        return false;
+    }
+    let blob = rgba_to_dibv5(w, h, &rgba);
+    let _guard = match ClipboardGuard::open() {
+        Some(g) => g,
+        None => return false,
+    };
+    unsafe {
+        if EmptyClipboard().is_err() {
+            return false;
+        }
+        if !set_hglobal_data(CF_DIBV5, &blob) {
+            return false;
+        }
+        // DIBV5 为主格式已落地；registered "PNG" 双挂失败不视为整体失败
+        //（只认 PNG 的接收方是少数；DIBV5 是 Win32 通用契约）。
+        let png_fmt = RegisterClipboardFormatW(w!("PNG"));
+        if png_fmt != 0 {
+            let _ = set_hglobal_data(png_fmt, &file_bytes);
+        }
+        true
     }
 }
 
@@ -637,5 +686,34 @@ mod tests {
         }
         // 仅文本（EmptyClipboard 后 set 文本，无任何图像格式）→ None。
         assert!(clipboard_image_get().is_none());
+    }
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    #[test]
+    fn clipboard_image_set_get_roundtrip() {
+        let _lock = CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // 合成 4×3 RGBA→PNG 文件（alpha 梯度），set→get 经 DIBV5 通道往返。
+        let (w, h) = (4u32, 3u32);
+        let rgba: Vec<u8> = (0..w * h * 4).map(|i| (i * 11 + 5) as u8).collect();
+        let png_path = std::env::temp_dir().join("plan485-set-src.png");
+        image::save_buffer(&png_path, &rgba, w, h, image::ColorType::Rgba8).unwrap();
+        if !clipboard_image_set(&png_path) {
+            return; // headless CI guard
+        }
+        let got = clipboard_image_get().expect("image back on clipboard");
+        assert_eq!((got.width, got.height), (w, h));
+        // 像素容差断言：DIBV5 通道是无损转换，走 0 容差精确比对；
+        // 读回 temp PNG 解码比对。
+        let img = image::ImageReader::open(&got.path)
+            .unwrap()
+            .decode()
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(img.dimensions(), (w, h));
+        assert_eq!(img.into_raw(), rgba);
+        let _ = std::fs::remove_file(&got.path);
+        let _ = std::fs::remove_file(&png_path);
     }
 }
