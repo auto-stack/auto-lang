@@ -1,15 +1,26 @@
 ---
 plan_id: PLAN-483
-status: execution_done           # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-text-input-double-focus
 author: [zcode]
 created_at: 2026-08-29
 updated_at: 2026-08-29
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - ui/iced/renderer:focus-id-prompt_input（Plan 047「vm input 统一稳定 Id
+    prompt_input」约定——被 input-focus-addressing 唯一 Id+登记表寻址取代;
+    Plan 464 __focus_input 消费寻址同批改址）
+new_spec_components:
+  - ui/iced/renderer:input-focus-addressing（derive_input_id 每框唯一稳定 Id
+    主键 widget+event/兜底 placeholder+width+password + devtools.input_ids
+    渲染期 DFS 登记 + 五聚焦点寻址:Tab-fallback/tail-refocus/initial/
+    __focus_input/launcher-summon→登记表首个,textarea 优先,空表退
+    prompt_input_id 安全降级）
+  - ui/mcp_server:vnode-path-alignment（find_view_by_path 子枚举委托
+    vnode_converter::extract_children_ref 同构不变量 + AppState.
+    mcp_sync_vtree 与 shared.view 同源快照取代 live_vtree 加工树覆盖）
+touched_goals: [GOAL-007, GOAL-009, GOAL-014]   # VM 焦点/输入 parity 缺口闭合 / 桌面 Shell 焦点约定 / MCP autoui_type
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 8
@@ -446,7 +457,30 @@ username/password 各挂各 handler）、派发回写层正确（on_with_input_f
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**/auto-plan:review 2026-08-29（zcode,复审会话;双执行者成果一并核验）**
+
+复审方法:worktree `.worktrees/plan-483-dev` 内 `git diff master...HEAD`
+逐项对码 + 全部门禁复审现场重跑(不信勾选框)。
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 042 VM 真键盘单焦点/无双投递 | **partial(代验)** | 代验双证:① iced_test 六测（含机制级 focus-op→打字双投递复现转绿+三控制组,`--features iced-layout-tests p483` 复审重跑 6/6）;② 042 实机 MCP 全流程（type→独立写回→Submit→authed 翻转→"in"）。真键盘注入对本环境 winit 0.30 不可达（PostMessage WM_CHAR/WM_KEYDOWN+scancode 实测不达）——顺延真人清单（P483-3,042 README 三步）,沿 473 先例 |
+| 2 | musk 登录页双框独立/admin-admin 可完成 | **partial(代验)** | 修复版二进制+plan-050-dev 实机:password 归因 `.LoginPage.PasswordChanged`、独立写回、user 无污染;admin/admin 真键盘全流程顺延真人（P483-3） |
+| 3 | 003-converter 不回归 | pass | MCP 驱动 C/F 双向,与 master 二进制**逐值一致**（正向 C→F=0 怪癖 master 同现,P483-4 立债非回归） |
+| 4 | cargo tf 全绿 + ui-iced 全绿 | pass | tf 复审重跑 **3260/3260**;ui-iced 5 败=master 基线同集合零交集（master 同口径 6 败,dock 差经二分+%TEMP% 存储取证定位为 P483-2 环境债,清 shell.dock.* 后单测绿,非代码） |
+| 5 | autoui_type 第二 input 归因+path 回归测试 | pass | tests_plan483_d4 复审重跑 4/4（登录形态锚/Button/Table/Tabs 寻址）+ 实机复核 PassChanged |
+| 6 | Plan 047/057/464/launcher 焦点不回归 | pass | 五聚焦点改址链完整（textarea 优先→登记表→prompt_input_id 兜底,git diff 逐点核）;on_submit 跨重建语义由 p483_rebuild 测试锁定;launcher 修复版启动正常。注记:ash prompt 真机 refocus 未驱动（代码审读,低风险） |
+| 7 | Vue 轨零改动 | pass | `git diff master...HEAD -- crates/auto-lang/src/ui_gen/` = 0 行 |
+
+**遗漏/延后/workaround 扫描**:遗漏无（T2 两测以 focus_op 形式交付语义覆盖;
+D3 免启有 T3 排除证据;derive_input_id 单测已交付）;延后三笔均已立债
+（P483-1 aura_N 编号/范围外、P483-3 真键盘复验、P483-4 MCP closure 怪癖/
+master 既有）;workaround 无（diff 零 TODO/临时标记,eprintln/dbg/483-PROBE
+残留=0,cargo check 零新警告）。T1 视觉幻觉证据已撤除并留档勘误。
+
+**裁定:PASS（5 pass + 2 partial）**。两 partial 均为同一环境阻塞（OS 键盘
+注入不可达）的真人清单项,代验证据充分,沿 473 先例（E2E 代验+真人顺延）
+立债放行;最终裁定权随 /auto-plan:merge 呈用户。status→reviewed。
 
 ## 待澄清事项
 
