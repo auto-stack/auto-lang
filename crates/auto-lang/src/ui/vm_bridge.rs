@@ -637,7 +637,18 @@ impl VmBridge {
     /// Plan 370 (Issue 2): return ALL elements of a heap array (ListData),
     /// used by `for` loops over a dotted prop path like `.note.tags`.
     pub fn index_list_all(&self, id: usize) -> Vec<Value> {
-        self.vmref_to_vec(id).unwrap_or_default()
+        let r = self.vmref_to_vec(id);
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            if let Err(e) = &r {
+                if let Some(obj) = self.vm.get_heap_object(id as u64) {
+                    let g = obj.read().unwrap();
+                    eprintln!("[VM-IDX] id={} not-list err={}", id, e);
+                } else {
+                    eprintln!("[VM-IDX] id={} no-heap-object err={}", id, e);
+                }
+            }
+        }
+        r.unwrap_or_default()
     }
 
     pub fn vmref_to_vec(&self, id: usize) -> Result<Vec<Value>> {
@@ -1070,7 +1081,20 @@ impl VmBridge {
             .call_fn_by_name(&mut task, &fn_name, args.len())
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
         let nv = task.ram.pop_nv();
-        Ok(nv_to_pub_value(nv))
+        let out = nv_to_pub_value(nv);
+        // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain——RET 弹栈
+        // 即释放引用,Rust 侧持有的裸 id 会被 RC 回收成悬挂(实机:chatSearchFilter
+        // 返回的列表在 for 回退解引用前对象已消失→rows=0)。v1 暂不配对释放
+        // (computed 每帧新建列表,语义属上游 per-frame 生命周期,债登记 T11)。
+        match &out {
+            Value::Int(id) if *id >= 4_000_000 => { self.vm.rc_retain_id(*id as u64); }
+            Value::VmRef(r) => { self.vm.rc_retain_id(r.id as u64); }
+            _ => {}
+        }
+        if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+            eprintln!("[VM-CALLFN] {} args={:?} -> {:?}", fn_name, args, out);
+        }
+        Ok(out)
     }
 
     pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
@@ -1890,6 +1914,7 @@ widget OpProbeOrig {
             lifecycle: vec![],
             setup: None, // Plan 426 field; test helper default
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),

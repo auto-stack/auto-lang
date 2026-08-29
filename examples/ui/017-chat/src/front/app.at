@@ -1,11 +1,18 @@
 // app.at — Chat shell (Plan musk-022 SSE multi-event end-to-end).
+// Plan 051 C7 试点：header 秒表计时器（timer 块 demo，vue/VM 双轨）。
 use chat_store: ChatStore
 use message_thread: MessageThread
 use composer: Composer
 use back.api: send_message, list_messages, set_typing
 
 widget App {
-    msg { Init, SendMessage(str), Typing(str) }
+    msg { Init, SendMessage(str), Typing(str), ClockTick }
+    model {
+        var clock_secs int = 0
+    }
+    timer {
+        ClockTick (every_ms: 1000)
+    }
     view {
         col {
             style: "w-full h-screen flex-col bg-muted/30 p-3 gap-3"
@@ -16,8 +23,12 @@ widget App {
                     text "💬" { style: "text-xl" }
                     h2 "Chat" { style: "text-lg font-bold text-foreground" }
                 }
-                if .store.loading {
-                    text "Loading…" { style: "text-xs text-muted-foreground" }
+                row {
+                    style: "items-center gap-3"
+                    if .store.loading {
+                        text "Loading…" { style: "text-xs text-muted-foreground" }
+                    }
+                    text f"⏱ ${.clock_secs}s" { style: "text-xs text-muted-foreground tabular-nums" }
                 }
             }
             col {
@@ -29,6 +40,8 @@ widget App {
     }
     on {
         .Init -> { store.Init() }
+        // Plan 051 C7: 每秒 +1（timer 拍进既有 msg 流）。
+        .ClockTick -> { .clock_secs = .clock_secs + 1 }
         .SendMessage(text) -> {
             send_message("You", text)
             store.messages = list_messages()

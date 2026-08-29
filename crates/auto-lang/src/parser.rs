@@ -12225,6 +12225,7 @@ impl<'a> Parser<'a> {
         let mut expose = Vec::new();
         let mut setup: Option<crate::ast::ui::SetupBlock> = None;
         let mut actions: Option<crate::ast::ui::ActionsBlock> = None;
+        let mut timer: Option<crate::ast::ui::TimerBlock> = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -12287,6 +12288,15 @@ impl<'a> Parser<'a> {
                         }.into());
                     }
                 }
+                // Plan 051 C7: timer 声明块（周期计时器）。
+                "timer" => {
+                    if timer.replace(self.parse_timer_block_inner()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `timer` block in widget".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
                 _ => {
                     // Plan 425: view 可选化——widget 体以元素开头(无 view 块)
                     // 时体即视图:首个非块关键字标识符按视图元素解析并自动
@@ -12305,9 +12315,10 @@ impl<'a> Parser<'a> {
                     self.cur = saved_cur;
                     self.prev = saved_prev;
                     if next_is_brace {
-                        const BLOCK_KEYWORDS: [&str; 12] = [
+                        const BLOCK_KEYWORDS: [&str; 13] = [
                             "msg", "model", "computed", "view", "on", "style",
                             "use", "watch", "expose", "routes", "setup", "actions",
+                            "timer",
                         ];
                         if let Some(kw) = BLOCK_KEYWORDS
                             .iter()
@@ -12358,8 +12369,29 @@ impl<'a> Parser<'a> {
             setup,
             expose,
             actions,
+            timer,
         };
         Self::mint_inline_event_handlers(&mut decl)?;
+        // Plan 051 C7: timer 条目头必须命中本 widget 的 msg{} 变体——
+        // 编译期校验（沿 Plan 451 actions handler 校验承诺）。
+        if let Some(ref tb) = decl.timer {
+            let variants: std::collections::HashSet<String> = decl
+                .messages
+                .iter()
+                .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
+                .collect();
+            for e in &tb.entries {
+                if !variants.contains(e.event.as_str()) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "timer: event '{}' has no matching msg variant in widget {}",
+                            e.event, decl.name
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+        }
         // Plan 451: actions 块的 handler 必须命中本 widget 的 on{} 事件——
         // 编译期校验（auto-atom 文件形态要运行时才对得上）。
         if let Some(ref acts) = decl.actions {
@@ -12959,6 +12991,7 @@ impl<'a> Parser<'a> {
         let mut on = None;
         let mut computed = None;
         let mut watch = Vec::new();
+        let mut timer: Option<crate::ast::ui::TimerBlock> = None;
 
         while !self.is_kind(TokenKind::RBrace) {
             self.skip_empty_lines();
@@ -12985,10 +13018,19 @@ impl<'a> Parser<'a> {
                 "watch" => {
                     watch.extend(self.parse_watch_block_inner()?);
                 }
+                // Plan 051 C7: store-level `timer { ... }`（应用生命周期）。
+                "timer" => {
+                    if timer.replace(self.parse_timer_block_inner()?).is_some() {
+                        return Err(SyntaxError::Generic {
+                            message: "duplicate `timer` block in store".into(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
                 _ => {
                     return Err(SyntaxError::Generic {
                         message: format!(
-                            "Expected 'model', 'msg', 'computed', 'on', or 'watch' in store, got '{}'",
+                            "Expected 'model', 'msg', 'computed', 'on', 'watch', or 'timer' in store, got '{}'",
                             ident
                         ),
                         span: pos_to_span(self.cur.pos),
@@ -13000,6 +13042,26 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
 
+        // Plan 051 C7: timer 条目头必须命中本 store 的 msg{} 变体（同
+        // widget 校验承诺）。
+        if let Some(ref tb) = timer {
+            let variants: std::collections::HashSet<String> = messages
+                .iter()
+                .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
+                .collect();
+            for e in &tb.entries {
+                if !variants.contains(e.event.as_str()) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "timer: event '{}' has no matching msg variant in store {}",
+                            e.event, name
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }.into());
+                }
+            }
+        }
+
         Ok(Stmt::StoreDecl(StoreDecl {
             name,
             messages,
@@ -13007,6 +13069,7 @@ impl<'a> Parser<'a> {
             computed,
             on,
             watch,
+            timer,
         }))
     }
 
@@ -13700,6 +13763,115 @@ impl<'a> Parser<'a> {
         Ok(Some(Stmt::ActionsDecl(block)))
     }
 
+    /// Plan 051 C7: `timer { ... }` 块体。已消费 `timer` 标识符。
+    ///
+    /// ```auto
+    /// timer {
+    ///     Tick (every_ms: 1000)
+    ///     PollStream (every_ms: 500, when: .streaming)
+    /// }
+    /// ```
+    ///
+    /// 条目 = 裸名（msg 变体）+ 括号属性列表（沿 actions `action (…)` 形）；
+    /// `when` 复用 `parse_actions_cond_attr`（引号串或裸 DSL 表达式源文本）。
+    fn parse_timer_block_inner(&mut self) -> AutoResult<crate::ast::ui::TimerBlock> {
+        self.expect_ident("timer")?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut entries: Vec<crate::ast::ui::TimerEntry> = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+            if !self.is_kind(TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected timer entry name in timer block, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }.into());
+            }
+            let event: crate::ast::Name = self.cur.text.clone().into();
+            self.next();
+            self.expect(TokenKind::LParen)?;
+
+            let mut every_ms: Option<u64> = None;
+            let mut when: Option<String> = None;
+            loop {
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::RParen) {
+                    self.next();
+                    break;
+                }
+                let key = self.cur.text.to_string();
+                self.next();
+                self.expect(TokenKind::Colon)?;
+                match key.as_str() {
+                    "every_ms" => {
+                        if !self.is_kind(TokenKind::Int) {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "timer: every_ms expects an integer literal, got '{}'",
+                                    self.cur.text
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                        every_ms = Some(self.cur.text.as_str().parse::<u64>().map_err(|_| {
+                            SyntaxError::Generic {
+                                message: format!(
+                                    "timer: invalid every_ms literal '{}'",
+                                    self.cur.text
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                        })?);
+                        self.next();
+                    }
+                    "when" => {
+                        when = Some(self.parse_actions_cond_attr()?);
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "timer: unknown attribute '{}' (expected every_ms / when)",
+                                key
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                }
+                self.skip_empty_lines();
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+
+            let every_ms = every_ms.ok_or_else(|| SyntaxError::Generic {
+                message: format!(
+                    "timer: entry '{}' missing required attribute every_ms",
+                    event
+                ),
+                span: pos_to_span(self.cur.pos),
+            })?;
+            entries.push(crate::ast::ui::TimerEntry {
+                event,
+                // 运行期钳制下限 16ms 防忙轮询（解析期即归一）。
+                every_ms: every_ms.max(16),
+                when,
+            });
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(crate::ast::ui::TimerBlock { entries })
+    }
+
     /// Plan 451: `actions { ... }` 块——动作注册表 + menubar/toolbar 声明
     /// （语法见 ast::ui::ActionsBlock 文档）。enabled_if/checked_if 支持
     /// 引号字符串与裸表达式两种拼写（parse_actions_cond_attr）。
@@ -14251,6 +14423,7 @@ impl<'a> Parser<'a> {
             setup,
             expose: Vec::new(),
             actions: None,
+            timer: None,
         };
         Self::mint_inline_event_handlers(&mut decl)?;
         Ok(Stmt::WidgetDecl(decl))

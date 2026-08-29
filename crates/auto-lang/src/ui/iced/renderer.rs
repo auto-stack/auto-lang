@@ -4926,6 +4926,8 @@ enum AppTickKind {
     Event(&'static str, u64),
     /// 每拍轮询一次进程级通道（fn 指针读全局静态，不捕获）。
     Poll(fn() -> Option<IcedMessage>, u64),
+    /// Plan 051 C7: timer 块条目——按 (widget, event) 命名空间派发。
+    WidgetEvent(String, String, u64),
 }
 
 struct AppTickRecipe {
@@ -4943,6 +4945,7 @@ impl std::hash::Hash for AppTickRecipe {
         match &self.kind {
             AppTickKind::Event(ev, ms) => (*ev, *ms).hash(state),
             AppTickKind::Poll(f, ms) => (*f as usize, *ms).hash(state),
+            AppTickKind::WidgetEvent(w, ev, ms) => (w, ev, *ms).hash(state),
         }
     }
 }
@@ -4961,9 +4964,12 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         use crate::ui::session::DesktopMessage as DM;
         use iced_futures::futures::stream::StreamExt;
 
-        let (event, poll, ms) = match self.kind {
-            AppTickKind::Event(ev, ms) => (Some(ev), None, ms),
-            AppTickKind::Poll(f, ms) => (None, Some(f), ms),
+        let (event, poll, ms, widget_event) = match self.kind {
+            AppTickKind::Event(ev, ms) => (Some(ev), None, ms, None),
+            AppTickKind::Poll(f, ms) => (None, Some(f), ms, None),
+            AppTickKind::WidgetEvent(w, ev, ms) => {
+                (None, None, ms, Some((w, ev)))
+            }
         };
         let app = self.app;
         let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
@@ -4971,13 +4977,19 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         iced_futures::futures::stream::unfold(
-            (interval, app, event, poll),
-            move |(mut iv, app, event, poll)| async move {
+            (interval, app, event, poll, widget_event),
+            move |(mut iv, app, event, poll, widget_event)| async move {
                 let _ = iv.tick().await;
                 let msg = if let Some(ev) = event {
                     Some(IcedMessage {
                         widget: String::new(),
                         event: ev.to_string(),
+                        input_value: None,
+                    })
+                } else if let Some((w, ev)) = &widget_event {
+                    Some(IcedMessage {
+                        widget: w.clone(),
+                        event: ev.clone(),
                         input_value: None,
                     })
                 } else {
@@ -4986,7 +4998,7 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
                 // 空拍（无事件）以 `Some(None)` 项表示、由流级 filter_map 剔除
                 // —— 若直接 yield `None`，unfold 语义是**流终止**（Poll 变体
                 // 首个空轮询即死，459 实测 MCP 动作全丢）。
-                Some((msg.map(|m| DM::App(app, m)), (iv, app, event, poll)))
+                Some((msg.map(|m| DM::App(app, m)), (iv, app, event, poll, widget_event)))
             },
         )
         .filter_map(|msg| async move { msg })
@@ -5002,6 +5014,20 @@ fn app_tick(
     iced_futures::subscription::from_recipe(AppTickRecipe {
         app,
         kind: AppTickKind::Event(event, interval_ms),
+    })
+}
+
+/// Plan 051 C7: timer 块条目订阅——每 `interval_ms` 产一条
+/// `DM::App(app, IcedMessage{widget, event})`（update 侧 fire_timer 门控）。
+fn widget_event_tick(
+    app: crate::ui::session::AppId,
+    widget: &str,
+    event: &str,
+    interval_ms: u64,
+) -> iced::Subscription<crate::ui::session::DesktopMessage> {
+    iced_futures::subscription::from_recipe(AppTickRecipe {
+        app,
+        kind: AppTickKind::WidgetEvent(widget.to_string(), event.to_string(), interval_ms),
     })
 }
 
@@ -9287,7 +9313,13 @@ fn compare_pngs(
         let msg_input_snapshot = msg.input_value.clone();
         if msg.input_value.is_some() {
         }
-        state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
+        // Plan 051 C7: timer 拍走 fire_timer（`when` 门控在派发前对根态
+        // 求值，假丢弃本拍）；非 timer 事件走通用路径不变。
+        if state.component.is_timer_entry(widget_name, &event_name) {
+            state.component.fire_timer(widget_name, &event_name);
+        } else {
+            state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
+        }
 
         // Plan 055 D5(补实现,此前缺失):BlockItem.ToggleCollapse(id) 的 .at handler
         // 是空体,设计上由 renderer emit 给父级翻转 blocks[id].collapsed —— 该桥
@@ -10794,6 +10826,11 @@ fn compare_pngs(
                 // are pending; due callbacks fire in update's __timer_tick arm.
                 if app.component.has_pending_timers() {
                     subs.push(app_tick(app_id, "__timer_tick", 16));
+                }
+                // Plan 051 C7: timer 块条目订阅（每条目一订阅，身份含
+                // widget/event/ms 三元组互不去重）。
+                for t in app.component.timer_entries() {
+                    subs.push(widget_event_tick(app_id, &t.widget, &t.event, t.every_ms));
                 }
                 // F12 DevTools + key bindings（per-App bindings + 本窗过滤）。
                 if let Some(win) = state.window_of_app(app_id) {

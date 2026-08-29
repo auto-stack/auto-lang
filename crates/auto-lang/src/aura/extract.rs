@@ -529,6 +529,23 @@ use crate::ast::{WidgetDecl, StoreDecl, ModelBlock, ViewBlock, OnBlock, BindBloc
 
 /// Extract AuraStore from parsed StoreDecl (Plan 351 / Design 18).
 /// A store is a view-less widget: state + msg + handlers → module-level refs + actions.
+/// Plan 051 C7: timer 块条目提取（WidgetDecl/StoreDecl 同形）。
+fn extract_timer_entries(timer: &Option<crate::ast::ui::TimerBlock>) -> Vec<crate::aura::types::AuraTimerEntry> {
+    timer
+        .as_ref()
+        .map(|tb| {
+            tb.entries
+                .iter()
+                .map(|e| crate::aura::types::AuraTimerEntry {
+                    event: e.event.as_str().to_string(),
+                    every_ms: e.every_ms,
+                    when: e.when.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     let state_vars = if let Some(model) = &decl.model {
         extract_model_fields(model)?
@@ -596,6 +613,8 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
             })
             .collect(),
         module_fns: Vec::new(),
+        // Plan 051 C7: store timer 块条目。
+        timers: extract_timer_entries(&decl.timer),
     })
 }
 
@@ -769,6 +788,7 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         routes,
         lifecycle: lifecycle_events,
         tick_interval,
+        timers: extract_timer_entries(&decl.timer),
         span_map,
         key_bindings: extract_key_bindings(&decl.bind),
         api_imports: Vec::new(),

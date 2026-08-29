@@ -2213,6 +2213,7 @@ mod tests {
             routes: None,
             lifecycle: vec![],
             tick_interval: None,
+            timers: Vec::new(),
             handler_params: HashMap::new(),
             span_map: HashMap::new(),
             key_bindings: HashMap::new(),
@@ -2248,6 +2249,7 @@ mod tests {
         // Create a simple widget without routes (child page - should have @Component only)
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestWidget".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2305,6 +2307,7 @@ mod tests {
         // Test that semantic HTML elements like header are transpiled to Column
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2356,6 +2359,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "App".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2430,6 +2434,7 @@ mod tests {
         // Test that App widget without routes is a simple entry page (no Navigation)
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "App".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2497,6 +2502,7 @@ mod tests {
         // Test that child pages with navigation links have @Consume and are wrapped in NavDestination
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "IndexPage".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2567,6 +2573,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],
@@ -2621,6 +2628,7 @@ mod tests {
 
         let widget = AuraWidget {
             actions: None,
+            timers: Vec::new(),
             name: "TestApp".to_string(),
             state_vars: vec![],
             computed: vec![],

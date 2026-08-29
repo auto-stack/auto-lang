@@ -88,6 +88,10 @@ pub struct WidgetDecl {
     /// `action_config()` 消费（DSL 源优先，外挂文件兜底）；其他后端目前
     /// 忽略（vue 侧消费见 Plan 451 P2）。
     pub actions: Option<ActionsBlock>,
+
+    /// Plan 051 C7: `timer { ... }` 声明块——周期计时器（到点把 msg 变体
+    /// 派发进既有 msg 流，`on {}` 零新增语法）。挂载即启动、卸载即停止。
+    pub timer: Option<TimerBlock>,
 }
 
 /// Plan 451: `actions { ... }` 声明块。
@@ -156,6 +160,40 @@ pub enum MenuItemEntry {
 #[derive(Debug, Clone)]
 pub struct ToolbarBlock {
     pub items: Vec<MenuItemEntry>,
+}
+
+/// Plan 051 C7: `timer { ... }` 声明块。
+///
+/// ```auto
+/// widget Clock {
+///     msg { Tick, PollStream }
+///     timer {
+///         Tick (every_ms: 1000)
+///         PollStream (every_ms: 500, when: .streaming)
+///     }
+///     on { .Tick -> { … } .PollStream -> { … } }
+/// }
+/// ```
+///
+/// 属性括号列表沿 actions `action (id: "…", handler: .ActX)` 先例；
+/// `if` 不作属性名（关键字冲突，actions 用 `enabled_if` 同因）。
+#[derive(Debug, Clone)]
+pub struct TimerBlock {
+    pub entries: Vec<TimerEntry>,
+}
+
+/// 单条计时器声明：`PollStream (every_ms: 500, when: .streaming)`。
+#[derive(Debug, Clone)]
+pub struct TimerEntry {
+    /// 条目头 = msg 变体名（裸名声明形）。须在本 widget/store 的 `msg {}`
+    /// 块声明——解析期校验（沿 Plan 451 actions handler 校验承诺）。
+    pub event: Name,
+    /// 周期毫秒（运行期钳制下限 16ms 防忙轮询）。
+    pub every_ms: u64,
+    /// 门控条件源文本（沿 actions `enabled_if` 约定：引号串或裸 DSL 表达
+    /// 式）。条件假**不派发但不停止底层计时**（纯过滤）；VM 经合并根
+    /// state 求值、vue 经 convert_condition 转译。
+    pub when: Option<String>,
 }
 
 /// Plan 426: `setup { ... }` 前导槽——每实例同步执行、先于首渲染的通用
@@ -302,6 +340,10 @@ pub struct StoreDecl {
     /// store composable (the refs are module-level singletons); other
     /// backends ignore them.
     pub watch: Vec<WatchDecl>,
+
+    /// Plan 051 C7: `timer { ... }` 声明块——store 计时器随应用生命周期
+    /// （同 widget 块语法）。
+    pub timer: Option<TimerBlock>,
 }
 
 // ============================================================================
@@ -991,6 +1033,7 @@ mod tests {
             setup: None,
             actions: None,
             expose: Vec::new(),
+            timer: None,
         };
 
         assert_eq!(widget.name.as_str(), "Counter");

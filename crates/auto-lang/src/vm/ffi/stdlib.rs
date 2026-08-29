@@ -7965,6 +7965,32 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             }
         }
 
+        // ---- Plan 051 T10: Sse 显式降级 + Date.now ----
+        // VM 轨无 SSE 形态（KD-047 G1 阶段2 债）：Sse.open/close 以 no-op
+        // native 显式降级——返回 None 句柄，handler 不再因缺 native 中止
+        // （musk StartStream 的乐观 push 因此得以执行；流式刷新由
+        // PollStream timer 轮询承担，见 PLAN-051 T10）。
+        ("Sse", "open") => {
+            // 形参（url + handler）按调用约定弹出后丢弃；返回 0 作句柄令牌
+            // （消费方仅存取不判别）。
+            let _url: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+            task.ram.push_i32(0);
+        }
+        ("Sse", "close") => {
+            drop(i64::pop_from_stack(task, vm).unwrap_or(0));
+            task.ram.push_i32(0);
+        }
+        // Date.now：epoch 毫秒（musk msgTimeLabel/乐观 push 时间戳消费；
+        // Date.format 富格式仍为上游债——KNOWN-DEBT 051 连带登记）。
+        ("Date", "now") => {
+            let ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            task.ram.push_i64(ms);
+        }
+
         // ---- Stdio ----
         ("Stdio", "piped") => {
             task.ram.push_i32(0);
