@@ -1322,7 +1322,7 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
-            "progress" => self.convert_progress(props),
+            "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
@@ -2250,7 +2250,7 @@ impl<'a> AuraViewBuilder<'a> {
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
 
             // Utility widgets
-            "progress" => self.convert_progress(props),
+            "progress" => self.convert_progress(props, bindings),
             "spacer" => self.convert_spacer(props),
             // Plan 412 §4.3: demo 占位块(纯展示,无 probe 需求)
             "square" => self.convert_square(props, children, bindings),
@@ -4232,12 +4232,15 @@ let tabs_inner = View::Row {
     fn convert_progress(
         &self,
         props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let style = self.extract_style(props);
 
-        // Extract value and max, compute progress ratio
-        let value = self.extract_f64(props, "value").unwrap_or(0.0);
-        let max = self.extract_f64(props, "max").unwrap_or(100.0);
+        // Extract value and max, compute progress ratio. bindings 版:for 循环
+        // 内 `value: item.pct` 的循环变量绑定解析(auto-os-config Storage 卡
+        // 组件化时发现——空 bindings 版循环内恒 0%)。
+        let value = self.extract_f64_with(props, "value", bindings).unwrap_or(0.0);
+        let max = self.extract_f64_with(props, "max", bindings).unwrap_or(100.0);
         let progress = if max > 0.0 {
             (value / max).clamp(0.0, 1.0)
         } else {
