@@ -121,6 +121,9 @@ pub struct AuraViewBuilder<'a> {
     computed: Option<&'a [crate::aura::AuraComputed]>,
     /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab)。
     preview_states: Option<&'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>>,
+    /// Plan 482: nav-group 内置开合态（未绑定 `open` 的可折叠组）。
+    /// 由 DynamicComponent 维护，`__nav_toggle` 内部消息翻转。
+    nav_group_states: Option<&'a std::collections::HashMap<String, bool>>,
     /// Plan 476: 调用位传入的 slot 填充（widget-call children 中的
     /// `slot(name: X) { … }` / 裸子节点）。子 widget 视图里的 outlet 按
     /// 名字匹配后切回 `SlotFills::parent`（父作用域 builder）求值填充。
@@ -189,6 +192,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            nav_group_states: None,
             slot_fills: None,
         }
     }
@@ -208,6 +212,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            nav_group_states: None,
             slot_fills: None,
         }
     }
@@ -231,6 +236,7 @@ impl<'a> AuraViewBuilder<'a> {
             routes: None,
             computed: None,
             preview_states: None,
+            nav_group_states: None,
             slot_fills: None,
         }
     }
@@ -253,6 +259,13 @@ impl<'a> AuraViewBuilder<'a> {
     /// 供 preview-card 渲染时决定是否展开代码 + 哪个 tab。
     pub fn with_preview_states(mut self, states: &'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>) -> Self {
         self.preview_states = Some(states);
+        self
+    }
+
+    /// Plan 482: 传入 nav-group 内置开合态（未绑定 `open` 的可折叠组），
+    /// `__nav_toggle` 内部消息在 update 循环翻转、view 重建时读取。
+    pub fn with_nav_group_states(mut self, states: &'a std::collections::HashMap<String, bool>) -> Self {
+        self.nav_group_states = Some(states);
         self
     }
 
@@ -796,6 +809,20 @@ impl<'a> AuraViewBuilder<'a> {
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
+                // Plan 482: nav-item / nav-group 组件形态分发（Element 形态为主，
+                // 此处镜像 nav-link 的防御性覆盖）。
+                if name == "nav-item" || name == "nav_item" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    return self.convert_nav_item(&prop_map, events, children, bindings);
+                }
+                if name == "nav-group" || name == "nav_group" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    return self.convert_nav_group(&prop_map, events, children, bindings);
+                }
                 // Plan 410: category-section → column (recurse component-card
                 // children). Vue codegen builds a fancy card grid; VM renders a
                 // simple column so the home page's component list isn't blank.
@@ -1048,6 +1075,20 @@ impl<'a> AuraViewBuilder<'a> {
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
                     return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
                 }
+                // Plan 482: nav-item / nav-group 组件形态分发（Element 形态为主，
+                // 此处镜像 nav-link 的防御性覆盖）。
+                if name == "nav-item" || name == "nav_item" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    return self.convert_nav_item(&prop_map, events, children, bindings);
+                }
+                if name == "nav-group" || name == "nav_group" {
+                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                        .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
+                        .collect();
+                    return self.convert_nav_group(&prop_map, events, children, bindings);
+                }
                 // Plan 410: category-section → column (recurse component-card
                 // children). Vue codegen builds a fancy card grid; VM renders a
                 // simple column so the home page's component list isn't blank.
@@ -1188,7 +1229,10 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
-            "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
+            // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
+            // 转换，同 button 先例）。
+            "nav" => self.convert_nav_container(props, events, children, bindings),
+            "aside" | "main" | "header" | "section" | "footer" | "article" => {
                 self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings)
             }
 
@@ -1203,6 +1247,10 @@ impl<'a> AuraViewBuilder<'a> {
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
             "button" | "btn" => self.convert_button(props, events, children, bindings),
+            // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
+            // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
+            "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
+            "nav-group" | "nav_group" => self.convert_nav_group(props, events, children, bindings),
             // Plan 409 §10 续 8: badge = shadcn Badge(水平 inline + variant 配色)。
             "badge" => self.convert_badge(props, children, bindings),
             "input" => self.convert_input(props, events, bindings),
@@ -2089,7 +2137,9 @@ impl<'a> AuraViewBuilder<'a> {
             // 之前落 fallback 丢 style(padding/flex/overflow),导致 sidebar 无 padding、
             // 无滚动条、Home 页溢出被裁。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll(props, children, bindings),
-            "aside" | "main" | "header" | "nav" | "section" | "footer" | "article" => {
+            // Plan 482: nav 容器支持 search:true 集成搜索行，其余语义容器不变。
+            "nav" => self.convert_nav_container(props, events, children, bindings),
+            "aside" | "main" | "header" | "section" | "footer" | "article" => {
                 self.convert_container(props, children, bindings)
             }
             // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
@@ -2110,6 +2160,10 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
             "button" | "btn" => self.convert_button(props, events, children, bindings),
+            // Plan 482: nav 组件族 —— nav_contract 契约类转换（hover/active
+            // 三态 + icon/desc/badge 槽 + to/onclick 双模式）。
+            "nav-item" | "nav_item" => self.convert_nav_item(props, events, children, bindings),
+            "nav-group" | "nav_group" => self.convert_nav_group(props, events, children, bindings),
             // Plan 409 §10 续 8: badge = shadcn Badge(水平 inline + variant 配色)。
             "badge" => self.convert_badge(props, children, bindings),
 
@@ -3031,6 +3085,432 @@ let tabs_inner = View::Row {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Plan 482: nav-item / nav-group / nav(search:) — the VM side of the nav
+    // contract. All layout classes come from `ui::nav_contract` (single source
+    // shared with the NavItem.vue/NavGroup.vue scaffold; a unit test locks the
+    // two together). nav-item reuses View::Button (content subtree + hover
+    // classes), so the iced renderer needs no new arm.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Evaluate a bool prop that may be a literal (`true`) or a bound
+    /// expression (`.cur == "chats"`); literals first, exprs via the standard
+    /// resolve_expr_to_value channel.
+    fn extract_bool_expr(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        key: &str,
+        bindings: &Bindings,
+    ) -> Option<bool> {
+        match props.get(key)? {
+            AuraPropValue::Expr(Expr::Bool(b)) => Some(*b),
+            AuraPropValue::Expr(expr) => {
+                self.resolve_expr_to_value(expr, bindings).map(|v| v.as_bool())
+            }
+            _ => None,
+        }
+    }
+
+    /// Plan 482: is `to` the current route? Exact match, or prefix-segment
+    /// match ("/chats" is active on "/chats/1") unless `exact` tightens it.
+    fn nav_route_active(&self, to: &str, exact: bool) -> bool {
+        if to.is_empty() {
+            return false;
+        }
+        let current = match self.read_state("__current_route") {
+            Ok(auto_val::Value::Str(s)) => s.to_string(),
+            _ => return false,
+        };
+        if current == to {
+            return true;
+        }
+        if exact {
+            return false;
+        }
+        let prefix = format!("{}/", to.trim_end_matches('/'));
+        current == prefix.trim_end_matches('/') || current.starts_with(&prefix)
+    }
+
+    /// Lucide-name heuristic: kebab-case lower alphanumeric (`message-square`).
+    /// Emoji / CJK / arbitrary text falls through to the text path.
+    fn is_lucide_name(name: &str) -> bool {
+        !name.is_empty()
+            && name.len() <= 48
+            && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && name.starts_with(|c: char| c.is_ascii_lowercase())
+    }
+
+    /// Plan 482: `nav-item` → View::Button with contract classes. Router mode
+    /// (`to:`) dispatches `__navigate` (same interception as link/nav-link);
+    /// state mode (`onclick:`) carries the user message. Active styling is
+    /// decided at build time (explicit `active:` expr > route auto-detect) and
+    /// REPLACES the hover classes — mirroring NavItem.vue so hover can never
+    /// override the selected background on either end.
+    fn convert_nav_item(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let to = self.extract_string_with(props, "to", bindings).unwrap_or_default();
+        let label = self
+            .extract_string_with(props, "label", bindings)
+            .or_else(|| self.extract_string_with(props, "text", bindings))
+            .unwrap_or_default();
+        let desc = self.extract_string_with(props, "desc", bindings).unwrap_or_default();
+        let badge = self.extract_string_with(props, "badge", bindings).unwrap_or_default();
+        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
+        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let disabled = self.extract_bool(props, "disabled").unwrap_or(false)
+            || self.extract_bool_expr(props, "disabled", bindings).unwrap_or(false);
+        let exact = self.extract_bool(props, "exact").unwrap_or(false);
+
+        let active = self
+            .extract_bool_expr(props, "active", bindings)
+            .unwrap_or_else(|| self.nav_route_active(&to, exact));
+
+        // Click target: `to` wins (router mode); else the user message; else a
+        // graceful no-op message (renderer intercepts "__noop").
+        let onclick = if !to.is_empty() {
+            crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name: self.widget_name.clone(),
+                event_name: "__navigate".to_string(),
+                args: vec![auto_val::Value::str(&to)],
+            }
+        } else {
+            match aura_events_get_base(events, "onclick")
+                .or_else(|| aura_events_get_base(events, "click"))
+            {
+                Some(event) => self.event_to_message_with(&event, bindings),
+                None => crate::ui::interpreter::DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__noop".to_string(),
+                    args: Vec::new(),
+                },
+            }
+        };
+
+        // Content: explicit children win (vue slot parity); else synthesize
+        // icon | texts(label+desc) | badge from the props.
+        let content: Option<Box<View<DynamicMessage>>> = if !children.is_empty() {
+            let views: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !matches!(v, View::Empty))
+                .collect();
+            if views.is_empty() {
+                None
+            } else if views.len() == 1 {
+                Some(Box::new(views.into_iter().next().unwrap()))
+            } else {
+                Some(Box::new(View::Row {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                }))
+            }
+        } else {
+            let is_lg = size == "lg";
+            let mut parts: Vec<View<DynamicMessage>> = Vec::new();
+            if !icon.is_empty() {
+                if Self::is_lucide_name(&icon) {
+                    let icon_cls = if is_lg { nc::ICON_LG } else { nc::ICON_MD };
+                    parts.push(View::Image {
+                        src: format!("lucide:{}", icon),
+                        style: Style::parse(icon_cls).ok(),
+                    });
+                } else {
+                    // Emoji / literal text icon.
+                    parts.push(View::Text { content: icon, style: None });
+                }
+            }
+            if !label.is_empty() || !desc.is_empty() {
+                let mut texts: Vec<View<DynamicMessage>> = Vec::new();
+                if !label.is_empty() {
+                    texts.push(View::Text { content: label.clone(), style: None });
+                }
+                if !desc.is_empty() {
+                    texts.push(View::Text {
+                        content: desc,
+                        style: Style::parse(nc::TEXT_DESC).ok(),
+                    });
+                }
+                // flex-1 pushes the badge to the row's trailing edge (iced
+                // Fill) — same geometry as NavItem.vue's flex-1 min-w-0.
+                let texts_cls = if badge.is_empty() {
+                    "flex flex-col".to_string()
+                } else {
+                    format!("flex flex-col {}", nc::TEXTS_FILL)
+                };
+                parts.push(View::Column {
+                    children: texts,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse(&texts_cls).ok(),
+                });
+            }
+            if !badge.is_empty() {
+                parts.push(View::Text {
+                    content: badge,
+                    style: Style::parse(nc::BADGE_PILL).ok(),
+                });
+            }
+            if parts.is_empty() {
+                None
+            } else {
+                // Gap/alignment on the content row matches the base class
+                // (gap-2 items-center / lg: gap-3 items-start).
+                let row_cls = if is_lg { "items-start gap-3" } else { "items-center gap-2" };
+                Some(Box::new(View::Row {
+                    children: parts,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse(row_cls).ok(),
+                }))
+            }
+        };
+
+        // Snapshot/accessibility label: explicit label, else children text,
+        // else the route path.
+        let label = if !label.is_empty() {
+            label
+        } else if let Some(derived) = self.extract_children_text(children, bindings) {
+            derived
+        } else {
+            to.clone()
+        };
+
+        // Contract class assembly — base + state (+ user append last).
+        let base = match size.as_str() {
+            "sm" => nc::ITEM_BASE_SM,
+            "lg" => nc::ITEM_BASE_LG,
+            _ => nc::ITEM_BASE_MD,
+        };
+        let mut class = base.to_string();
+        if active {
+            class.push(' ');
+            class.push_str(nc::ITEM_ACTIVE);
+        } else if !disabled {
+            class.push(' ');
+            class.push_str(nc::ITEM_HOVER);
+        }
+        if disabled {
+            class.push(' ');
+            class.push_str(nc::ITEM_DISABLED);
+        }
+        if let Some(user) = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+        {
+            if !user.trim().is_empty() {
+                class.push(' ');
+                class.push_str(user.trim());
+            }
+        }
+
+        View::Button {
+            disabled,
+            label,
+            content,
+            onclick,
+            style: Style::parse(&class).ok(),
+            on_right_click: None,
+        }
+    }
+
+    /// Plan 482: `nav-group` → header (label text or collapsible toggle
+    /// button) + member column. Open state: bound `open:` expr wins; unbound
+    /// collapsible groups use the builder-fed `nav_group_states` map (toggled
+    /// via the `__nav_toggle` internal message; default open).
+    fn convert_nav_group(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let label = self
+            .extract_string_with(props, "label", bindings)
+            .or_else(|| self.extract_string_with(props, "text", bindings))
+            .unwrap_or_default();
+        let collapsible = self.extract_bool(props, "collapsible").unwrap_or(false)
+            || self.extract_bool_expr(props, "collapsible", bindings).unwrap_or(false);
+        let indent = self.extract_bool(props, "indent").unwrap_or(false);
+
+        let key = format!("__nav_group_open:{}", label);
+        let open = self
+            .extract_bool_expr(props, "open", bindings)
+            .unwrap_or_else(|| {
+                self.nav_group_states
+                    .as_ref()
+                    .and_then(|m| m.get(&key).copied())
+                    .unwrap_or(true)
+            });
+
+        // Header.
+        let header = if collapsible {
+            let onclick = match aura_events_get_base(events, "ontoggle")
+                .or_else(|| aura_events_get_base(events, "toggle"))
+            {
+                Some(event) => self.event_to_message_with(&event, bindings),
+                None => crate::ui::interpreter::DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: "__nav_toggle".to_string(),
+                    args: vec![auto_val::Value::str(&key)],
+                },
+            };
+            let chevron = if open { "chevron-down" } else { "chevron-right" };
+            let content = Box::new(View::Row {
+                children: vec![
+                    View::Image {
+                        src: format!("lucide:{}", chevron),
+                        style: Style::parse("h-4 w-4 shrink-0 text-muted-foreground").ok(),
+                    },
+                    View::Text { content: label.clone(), style: None },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Style::parse("items-center gap-2").ok(),
+            });
+            let mut class = format!("{} {}", nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER);
+            if let Some(user) = self
+                .extract_string_with(props, "class", bindings)
+                .or_else(|| self.extract_string_with(props, "style", bindings))
+            {
+                if !user.trim().is_empty() {
+                    class.push(' ');
+                    class.push_str(user.trim());
+                }
+            }
+            View::Button {
+                disabled: false,
+                label,
+                content: Some(content),
+                onclick,
+                style: Style::parse(&class).ok(),
+                on_right_click: None,
+            }
+        } else {
+            View::Text {
+                content: label,
+                style: Style::parse(nc::GROUP_LABEL).ok(),
+            }
+        };
+
+        // Member column — converted only when open (state flip rebuilds).
+        let mut views: Vec<View<DynamicMessage>> = vec![header];
+        if open {
+            let member: Vec<View<DynamicMessage>> = children
+                .iter()
+                .map(|n| self.convert_node_with(n, bindings))
+                .filter(|v| !matches!(v, View::Empty))
+                .collect();
+            if !member.is_empty() {
+                let content_cls = if indent {
+                    format!("{} {}", nc::GROUP_CONTENT, nc::GROUP_CONTENT_INDENT)
+                } else {
+                    nc::GROUP_CONTENT.to_string()
+                };
+                views.push(View::Column {
+                    children: member,
+                    spacing: 0,
+                    padding: 0,
+                    style: Style::parse(&content_cls).ok(),
+                });
+            }
+        }
+
+        View::Column {
+            children: views,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse("flex flex-col").ok(),
+        }
+    }
+
+    /// Plan 482: the integrated search row for `nav (search: true)` — icon +
+    /// bound input, classes from the contract (SEARCH_ROW/SEARCH_INPUT).
+    fn convert_nav_search_row(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let placeholder = self
+            .extract_string_with(props, "search_placeholder", bindings)
+            .unwrap_or_else(|| "Search...".to_string());
+        let value = self
+            .extract_string_with(props, "search_value", bindings)
+            .unwrap_or_default();
+
+        let mut input = View::<DynamicMessage>::input(placeholder).value(value);
+        if let Some(event) = aura_events_get_base(events, "onsearch")
+            .or_else(|| aura_events_get_base(events, "oninput"))
+        {
+            input = input.on_change(self.event_to_message_with(&event, bindings));
+        }
+        if let Ok(s) = Style::parse(nc::SEARCH_INPUT) {
+            input = input.with_style(s);
+        }
+
+        View::Row {
+            children: vec![
+                View::Image {
+                    src: "lucide:search".to_string(),
+                    style: Style::parse(nc::ICON_MD).ok(),
+                },
+                input.build(),
+            ],
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(nc::SEARCH_ROW).ok(),
+        }
+    }
+
+    /// Plan 482: `nav` container — when `search: true`, prepend the integrated
+    /// search row to the children; otherwise plain container (aside-family).
+    fn convert_nav_container(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let search = self.extract_bool(props, "search").unwrap_or(false)
+            || self.extract_bool_expr(props, "search", bindings).unwrap_or(false);
+        if !search {
+            return self.convert_container(props, children, bindings);
+        }
+        let search_row = self.convert_nav_search_row(props, events, bindings);
+        let mut child_views: Vec<View<DynamicMessage>> = vec![search_row];
+        for n in children {
+            let v = self.convert_node_with(n, bindings);
+            if !matches!(v, View::Empty) {
+                child_views.push(v);
+            }
+        }
+        // Keep the container's own style semantics (flex-col etc. come from
+        // the user's style prop, default mirrors aside usage).
+        let style = self
+            .extract_string_with(props, "class", bindings)
+            .or_else(|| self.extract_string_with(props, "style", bindings))
+            .unwrap_or_else(|| "flex flex-col gap-1".to_string());
+        View::Column {
+            children: child_views,
+            spacing: 0,
+            padding: 0,
+            style: Style::parse(&style).ok(),
+        }
+    }
+
     /// Steps shared by the tracked/untracked child-widget render paths:
     /// resolve props from parent state (1), collect child state field names
     /// (2), sync matching parent state → child (3), seed model-var defaults
@@ -3178,6 +3658,7 @@ let tabs_inner = View::Row {
             routes: None,
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
+            nav_group_states: self.nav_group_states,
             slot_fills,
         };
 
@@ -3220,6 +3701,7 @@ let tabs_inner = View::Row {
             routes: None,
             computed: Some(&child_widget.computed),
             preview_states: self.preview_states,
+            nav_group_states: self.nav_group_states,
             slot_fills,
         };
 
@@ -6264,8 +6746,14 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         // Plan 445 M3：动态 props（`d: .lineD` 等）经 bindings/state 解析。
         let doc = self.serialize_svg_element("svg", props, children, bindings);
+        // 类串双键取值:`class:` 与 `style:` 都是 .at 元素的合法写法
+        // (extract 按属性名原样入 props,svg 走 props 通道无规范化)。
+        // 此前只认 "class",`svg (style: "...")` 形态的整条类串丢失——
+        // 尺寸类缺失 → svgdoc container 无界撑满行(auto-os-config 概要页
+        // Uptime 行图标/文字分离、Memory donut 尺寸失控的根因)。
         let style = self
             .extract_string(props, "class")
+            .or_else(|| self.extract_string(props, "style"))
             .and_then(|c| crate::ui::style::Style::parse(&c).ok());
         View::Image {
             src: format!("svgdoc:{doc}"),
@@ -8906,6 +9394,245 @@ mod tests {
             !matches!(builder2.build(&node2), View::Image { .. }),
             "未导入的组件不得映射为图标"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Plan 482: nav-item / nav-group / nav(search:) 转换测试
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn nav_style_classes(v: &View<DynamicMessage>) -> Vec<crate::ui::style::StyleClass> {
+        match v {
+            View::Button { style, .. } => style.as_ref().expect("nav-item style").classes.clone(),
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+    }
+
+    fn classes_contain(classes: &[crate::ui::style::StyleClass], token: &str) -> bool {
+        let parsed = crate::ui::style::Style::parse(token).unwrap().classes;
+        !parsed.is_empty() && parsed.iter().all(|want| classes.iter().any(|c| c == want))
+    }
+
+    /// hover:* 契约串 → 对照 hover_classes（Style::parse 把它们分到并行表）。
+    fn hover_classes_contain(hover: &[crate::ui::style::StyleClass], token: &str) -> bool {
+        let parsed = crate::ui::style::Style::parse(token).unwrap().hover_classes;
+        !parsed.is_empty() && parsed.iter().all(|want| hover.iter().any(|c| c == want))
+    }
+
+    fn nav_hover_classes(v: &View<DynamicMessage>) -> Vec<crate::ui::style::StyleClass> {
+        match v {
+            View::Button { style, .. } => {
+                style.as_ref().expect("nav-item style").hover_classes.clone()
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+    }
+
+    /// 路由模式默认态：契约基类 + hover（未选中），无 active 块；onclick 走
+    /// __navigate；icon 为 lucide 名 → View::Image。
+    #[test]
+    fn test_nav_item_router_mode_default() {
+        use crate::ui_gen::nav_contract as nc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("nav-item")
+            .with_prop("to", Expr::Str("/chats".into()))
+            .with_prop("icon", Expr::Str("message-square".into()))
+            .with_prop("label", Expr::Str("会话".into()));
+        match builder.build(&node) {
+            View::Button { onclick, content, style, .. } => {
+                match onclick {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "__navigate");
+                        assert_eq!(args.first().map(|v| v.as_str()), Some("/chats"));
+                    }
+                    other => panic!("期望 __navigate 消息,得到 {other:?}"),
+                }
+                let content = content.expect("content row");
+                assert!(
+                    matches!(*content, View::Row { .. }),
+                    "icon+texts 合成内容应为 Row"
+                );
+                let st = style.expect("style");
+                assert!(classes_contain(&st.classes, nc::ITEM_BASE_MD), "基类缺失: {:?}", st.classes);
+                assert!(hover_classes_contain(&st.hover_classes, nc::ITEM_HOVER), "未选中应挂 hover");
+                assert!(!classes_contain(&st.classes, nc::ITEM_ACTIVE), "不应有 active 块");
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+    }
+
+    /// 路由命中当前路由 → active 块替换 hover（构建期二选一）。
+    #[test]
+    fn test_nav_item_router_mode_active() {
+        use crate::ui_gen::nav_contract as nc;
+        let widget = make_test_widget("Test", vec![AuraStateDef {
+            name: "__current_route".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("/".into()),
+            decorators: vec![],
+        }]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state("__current_route", auto_val::Value::str("/chats")).unwrap();
+
+        // 精确命中。
+        let node = AuraNode::element("nav-item")
+            .with_prop("to", Expr::Str("/chats".into()))
+            .with_prop("label", Expr::Str("会话".into()));
+        let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
+        let classes = nav_style_classes(&v);
+        assert!(classes_contain(&classes, nc::ITEM_ACTIVE), "命中应有 active 块");
+        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂 hover");
+
+        // 前缀段命中（/chats 对 /chats/1 生效）；exact 收紧。
+        let node = AuraNode::element("nav-item").with_prop("to", Expr::Str("/chats".into()));
+        let classes = nav_style_classes(&AuraViewBuilder::new(&bridge, "Test").build(&node));
+        assert!(classes_contain(&classes, nc::ITEM_ACTIVE));
+        bridge.write_state("__current_route", auto_val::Value::str("/chats/1")).unwrap();
+        let node = AuraNode::element("nav-item")
+            .with_prop("to", Expr::Str("/chats".into()))
+            .with_prop("exact", Expr::Bool(true));
+        let classes = nav_style_classes(&AuraViewBuilder::new(&bridge, "Test").build(&node));
+        assert!(!classes_contain(&classes, nc::ITEM_ACTIVE), "exact 下前缀不命中");
+    }
+
+    /// 状态模式：onclick 用户消息 + active 表达式驱动选中；disabled 灰置。
+    #[test]
+    fn test_nav_item_onclick_mode_states() {
+        use crate::ui_gen::nav_contract as nc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("nav-item")
+            .with_prop("icon", Expr::Str("🔌".into()))
+            .with_prop("label", Expr::Str("网络".into()))
+            .with_prop("desc", Expr::Str("适配器与代理".into()))
+            .with_prop("active", Expr::Bool(true))
+            .with_event("onclick", ".Select(1)");
+        match builder.build(&node) {
+            View::Button { onclick, disabled, style, .. } => {
+                match onclick {
+                    DynamicMessage::Typed { event_name, .. } => {
+                        assert!(event_name.starts_with("Select"), "用户消息名: {event_name}");
+                    }
+                    other => panic!("期望用户消息,得到 {other:?}"),
+                }
+                assert!(!disabled);
+                let st = style.expect("style");
+                assert!(classes_contain(&st.classes, nc::ITEM_ACTIVE));
+                assert!(!hover_classes_contain(&st.hover_classes, nc::ITEM_HOVER));
+                // lg 未指定 → md 基类;desc 走 TEXT_DESC 色。
+                assert!(classes_contain(&st.classes, nc::ITEM_BASE_MD));
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+
+        // disabled：ITEM_DISABLED 替代 hover。
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("nav-item")
+            .with_prop("label", Expr::Str("禁用".into()))
+            .with_prop("disabled", Expr::Bool(true));
+        match builder.build(&node) {
+            View::Button { disabled, style, .. } => {
+                assert!(disabled);
+                let st = style.expect("style");
+                assert!(classes_contain(&st.classes, nc::ITEM_DISABLED));
+                assert!(!hover_classes_contain(&st.hover_classes, nc::ITEM_HOVER));
+            }
+            other => panic!("期望 View::Button,得到 {other:?}"),
+        }
+    }
+
+    /// nav-group：非折叠 → 标签头 + 成员列；折叠默认开（内置态缺省 true），
+    /// 内置态 false 时成员不渲染；绑定 open 表达式优先。
+    #[test]
+    fn test_nav_group_fold_states() {
+        use crate::ui_gen::nav_contract as nc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+
+        // 默认开：头(Button __nav_toggle) + 成员列。
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("nav-group")
+            .with_prop("label", Expr::Str("分组".into()))
+            .with_prop("collapsible", Expr::Bool(true))
+            .with_child(AuraNode::element("nav-item").with_prop("label", Expr::Str("项".into())));
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert_eq!(children.len(), 2, "头 + 成员列");
+                match &children[0] {
+                    View::Button { onclick, .. } => match onclick.clone() {
+                        DynamicMessage::Typed { event_name, args, .. } => {
+                            assert_eq!(event_name, "__nav_toggle");
+                            assert_eq!(args.first().map(|v| v.as_str()), Some("__nav_group_open:分组"));
+                        }
+                        other => panic!("期望 __nav_toggle,得到 {other:?}"),
+                    },
+                    other => panic!("折叠头应为 Button,得到 {other:?}"),
+                }
+                assert!(matches!(&children[1], View::Column { .. }), "成员列");
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+
+        // 内置态 false → 收起（成员列缺席）。
+        let mut states = std::collections::HashMap::new();
+        states.insert("__nav_group_open:分组".to_string(), false);
+        let builder = AuraViewBuilder::new(&bridge, "Test").with_nav_group_states(&states);
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert_eq!(children.len(), 1, "收起时仅头");
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+
+        // 非折叠：标签头是 Text（GROUP_LABEL 类）。
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+        let node = AuraNode::element("nav-group")
+            .with_prop("label", Expr::Str("标签组".into()))
+            .with_child(AuraNode::element("nav-item").with_prop("label", Expr::Str("项".into())));
+        match builder.build(&node) {
+            View::Column { children, .. } => {
+                assert!(matches!(&children[0], View::Text { .. }));
+                assert!(matches!(&children[1], View::Column { .. }));
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
+    }
+
+    /// nav(search:true)：首子为搜索行（SEARCH_ROW 类 Row：lucide:search +
+    /// Input），其余子节点跟列。
+    #[test]
+    fn test_nav_search_row() {
+        use crate::ui_gen::nav_contract as nc;
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Test");
+
+        let node = AuraNode::element("nav")
+            .with_prop("search", Expr::Bool(true))
+            .with_prop("search_placeholder", Expr::Str("搜索设置".into()))
+            .with_event("onsearch", ".SearchChanged")
+            .with_child(AuraNode::element("nav-item").with_prop("label", Expr::Str("项".into())));
+        match builder.build(&node) {
+            View::Column { children, style, .. } => {
+                assert!(style.expect("nav 容器 style").classes.len() > 0);
+                assert_eq!(children.len(), 2, "搜索行 + 子节点");
+                match &children[0] {
+                    View::Row { children: row_children, style, .. } => {
+                        let classes = style.as_ref().expect("搜索行 style").classes.clone();
+                        assert!(classes_contain(&classes, nc::SEARCH_ROW), "搜索行契约类缺失");
+                        assert!(matches!(&row_children[0], View::Image { src, .. } if src.starts_with("lucide:search")));
+                        assert!(matches!(&row_children[1], View::Input { .. }), "第二个应为输入框");
+                    }
+                    other => panic!("搜索行应为 Row,得到 {other:?}"),
+                }
+                assert!(matches!(&children[1], View::Button { .. }), "nav-item 子节点");
+            }
+            other => panic!("期望 View::Column,得到 {other:?}"),
+        }
     }
 }
 

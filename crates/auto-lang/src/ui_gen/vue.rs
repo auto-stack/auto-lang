@@ -1251,6 +1251,511 @@ impl VueGenerator {
     }
 
     /// Generate category-section HTML (component grid with heading)
+    // ─────────────────────────────────────────────────────────────────────
+    // Plan 482: nav 组件族 —— nav-item / nav-group / nav(search:)。
+    // shadcn 模式 → NavItem/NavGroup 脚手架组件（@/components/ui/nav，
+    // 类契约内建于组件）；非 shadcn 模式（如 os-config）→ 内联契约标记
+    // （与 ui_gen::nav_contract 同串，VM aura_view_builder 同构）。
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Plan 482: prop → attr 片段。字符串字面量 → 静态属性；其余表达式 →
+    /// `:key="expr"` 绑定（bound_value_or_warn 通道，保操作符）。
+    fn nav_attr_fragment(&self, key: &str, value: &AuraPropValue) -> Option<String> {
+        use crate::ast::Expr;
+        match value {
+            AuraPropValue::Expr(Expr::Str(s)) | AuraPropValue::Expr(Expr::CStr(s)) => {
+                Some(format!("{}=\"{}\"", key, Self::escape_html_attr(s.as_str())))
+            }
+            AuraPropValue::Expr(Expr::Bool(b)) => Some(format!(":{}=\"{}\"", key, b)),
+            AuraPropValue::Expr(expr) => {
+                let js = self.bound_value_or_warn(
+                    expr,
+                    &format!("nav prop `{key}`"),
+                    "null",
+                );
+                Some(format!(":{}=\"{}\"", key, js))
+            }
+            AuraPropValue::StyleBinding(_) => None,
+        }
+    }
+
+    /// Plan 482: 用户 class/style 追加属性（契约类之后，逃生通道）。
+    fn nav_user_class_attr(&self, props: &HashMap<String, AuraPropValue>) -> Option<String> {
+        let user = props.get("class")
+            .or_else(|| props.get("style"))?;
+        if let Some(s) = self.extract_string_value(user) {
+            if s.trim().is_empty() {
+                return None;
+            }
+            return Some(format!("class=\"{}\"", Self::escape_html_attr(s.trim())));
+        }
+        if let Some(state_ref) = self.extract_state_ref(user) {
+            return Some(format!(":class=\"{}\"", state_ref));
+        }
+        None
+    }
+
+    /// Plan 482: nav-item 事件（onclick/click）→ `@click="..."` 片段，
+    /// 循环变量转发与通用元素路径同规（3651-3673）。
+    fn nav_click_attr(&mut self, events: &HashMap<String, AuraEvent>) -> Option<String> {
+        let event = events.get("onclick").or_else(|| events.get("click"))?;
+        let mut handler_fn =
+            self.handler_to_function_call_with_params(&event.handler, &event.params);
+        let handler_name = self.handler_to_function_call(&event.handler);
+        if let Some(ref loop_var) = self.current_loop_var {
+            if event.params.is_empty() {
+                let handler_takes_payload = self
+                    .msg_payload_arities
+                    .get(&handler_name)
+                    .map(|n| *n > 0)
+                    .unwrap_or(false);
+                if handler_takes_payload {
+                    handler_fn = format!("{}($event)", handler_fn);
+                } else {
+                    handler_fn = format!("{}({})", handler_fn, loop_var);
+                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                }
+            }
+        }
+        self.used_handlers.insert(handler_name);
+        Some(format!("@click=\"{}\"", handler_fn))
+    }
+
+    /// Plan 482: `<nav-item>` → NavItem 组件（shadcn）或内联契约标记。
+    fn generate_nav_item_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let ind = "  ".repeat(indent);
+        let mut attrs: Vec<String> = Vec::new();
+
+        // to / label / desc / badge / size / exact —— 静态或绑定。
+        for key in ["to", "label", "desc", "badge", "size", "exact"] {
+            if let Some(value) = props.get(key) {
+                if let Some(frag) = self.nav_attr_fragment(key, value) {
+                    attrs.push(frag);
+                }
+            }
+        }
+        if attrs.iter().any(|a| a.starts_with("to=") || a.starts_with(":to=")) {
+            self.needs_router = true;
+        }
+        // active / disabled —— 布尔绑定。
+        for key in ["active", "disabled"] {
+            if let Some(value) = props.get(key) {
+                if let Some(frag) = self.nav_attr_fragment(key, value) {
+                    attrs.push(frag);
+                }
+            }
+        }
+        // icon：字面量 lucide 名 → 收集 import 以组件传入；emoji/绑定 → icon prop。
+        if let Some(icon_value) = props.get("icon") {
+            if let Some(name) = self.extract_string_value(icon_value) {
+                let is_lucide = !name.is_empty()
+                    && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    && name.starts_with(|c: char| c.is_ascii_lowercase());
+                if is_lucide {
+                    let lucide = Self::kebab_to_pascal(&name);
+                    self.lucide_icons.insert(lucide.clone());
+                    attrs.push(format!(":icon-comp=\"{}\"", lucide));
+                } else if !name.is_empty() {
+                    attrs.push(format!("icon=\"{}\"", Self::escape_html_attr(&name)));
+                }
+            } else if let Some(frag) = self.nav_attr_fragment("icon", icon_value) {
+                attrs.push(frag);
+            }
+        }
+        if let Some(click) = self.nav_click_attr(events) {
+            attrs.push(click);
+        }
+        if let Some(cls) = self.nav_user_class_attr(props) {
+            attrs.push(cls);
+        }
+
+        let mut html = String::new();
+        if self.is_shadcn() {
+            self.shadcn_components_used.insert("NavItem".to_string());
+            if children.is_empty() {
+                html.push_str(&format!("{}<NavItem {} />\n", ind, attrs.join(" ")));
+            } else {
+                html.push_str(&format!("{}<NavItem {}>\n", ind, attrs.join(" ")));
+                for child in children {
+                    html.push_str(&self.node_to_html(child, indent + 1)?);
+                }
+                html.push_str(&format!("{}</NavItem>\n", ind));
+            }
+            return Ok(html);
+        }
+
+        // 非 shadcn：内联契约标记。静态基类 + :class 三态切换（active 字面
+        // 布尔则烘焙进静态串；表达式则进 :class 三元）。
+        let size = props.get("size").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+        let base = match size {
+            "sm" => nc::ITEM_BASE_SM,
+            "lg" => nc::ITEM_BASE_LG,
+            _ => nc::ITEM_BASE_MD,
+        };
+        let static_active = props.get("active")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                _ => None,
+            })
+            .unwrap_or(false);
+        let static_disabled = props.get("disabled")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                _ => None,
+            })
+            .unwrap_or(false);
+        let mut static_cls = base.to_string();
+        if static_active {
+            static_cls.push(' ');
+            static_cls.push_str(nc::ITEM_ACTIVE);
+        } else if static_disabled {
+            static_cls.push(' ');
+            static_cls.push_str(nc::ITEM_DISABLED);
+        }
+        let mut inline_attrs: Vec<String> = vec![format!("class=\"{}\"", static_cls)];
+        if !static_active && !static_disabled {
+            if let Some(value) = props.get("active") {
+                if let AuraPropValue::Expr(expr) = value {
+                    let cond = self.bound_value_or_warn(expr, "nav-item active", "false");
+                    inline_attrs.push(format!(
+                        ":class=\"{} ? '{}' : '{}'\"",
+                        cond,
+                        nc::ITEM_ACTIVE.replace('"', "'"),
+                        nc::ITEM_HOVER.replace('"', "'")
+                    ));
+                } else {
+                    inline_attrs.push(format!("class=\"{}\"", nc::ITEM_HOVER));
+                }
+            } else {
+                inline_attrs.push(format!("class=\"{}\"", nc::ITEM_HOVER));
+            }
+        }
+        // 嵌套路由模式 → router-link；否则 button。
+        let has_to = attrs.iter().any(|a| a.starts_with("to=") || a.starts_with(":to="));
+        let tag_name = if has_to { "router-link" } else { "button" };
+        if tag_name == "button" {
+            inline_attrs.push("type=\"button\"".to_string());
+            if static_disabled {
+                inline_attrs.push("disabled".to_string());
+            } else if let Some(value) = props.get("disabled") {
+                if let Some(frag) = self.nav_attr_fragment("disabled", value) {
+                    inline_attrs.push(frag);
+                }
+            }
+        } else {
+            if let Some(to) = props.get("to").and_then(|v| self.extract_string_value(v)) {
+                inline_attrs.push(format!("to=\"{}\"", Self::escape_html_attr(&to)));
+            } else if let Some(value) = props.get("to") {
+                if let Some(frag) = self.nav_attr_fragment("to", value) {
+                    inline_attrs.push(frag);
+                }
+            }
+            self.needs_router = true;
+        }
+        if let Some(click) = attrs.iter().find(|a| a.starts_with("@click=")).cloned() {
+            inline_attrs.push(click);
+        }
+
+        // 内容：children 优先；否则 icon + label/desc + badge 合成。
+        let icon_cls = if size == "lg" { nc::ICON_LG } else { nc::ICON_MD };
+        let mut content = String::new();
+        if !children.is_empty() {
+            for child in children {
+                content.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+        } else {
+            let cind = format!("{}  ", ind);
+            if let Some(icon_value) = props.get("icon") {
+                if let Some(name) = self.extract_string_value(icon_value) {
+                    let is_lucide = !name.is_empty()
+                        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                        && name.starts_with(|c: char| c.is_ascii_lowercase());
+                    if is_lucide {
+                        let lucide = Self::kebab_to_pascal(&name);
+                        self.lucide_icons.insert(lucide.clone());
+                        content.push_str(&format!("{}<{} class=\"{}\" />\n", cind, lucide, icon_cls));
+                    } else if !name.is_empty() {
+                        content.push_str(&format!(
+                            "{}<span class=\"inline-flex items-center justify-center {}\">{}</span>\n",
+                            cind, icon_cls, Self::escape_html_text(&name)
+                        ));
+                    }
+                } else if let AuraPropValue::Expr(expr) = icon_value {
+                    let js = self.bound_value_or_warn(expr, "nav-item icon", "''");
+                    content.push_str(&format!(
+                        "{}<span class=\"inline-flex items-center justify-center {}\">{{{{{}}}}}</span>\n",
+                        cind, icon_cls, js
+                    ));
+                }
+            }
+            let has_label = props.contains_key("label");
+            let has_desc = props.contains_key("desc");
+            if has_label || has_desc {
+                let badge = props.get("badge").and_then(|v| self.extract_string_value(v)).unwrap_or_default();
+                let texts_cls = if badge.is_empty() {
+                    "flex flex-col min-w-0".to_string()
+                } else {
+                    format!("flex flex-col min-w-0 {}", nc::TEXTS_FILL)
+                };
+                content.push_str(&format!("{}<span class=\"{}\">\n", cind, texts_cls));
+                if has_label {
+                    if let Some(value) = props.get("label") {
+                        let frag = match value {
+                            AuraPropValue::Expr(expr) => {
+                                format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item label", "''"))
+                            }
+                            _ => self.prop_to_text_content(value)?,
+                        };
+                        content.push_str(&format!("{}  <span class=\"truncate\">{}</span>\n", cind, frag));
+                    }
+                }
+                if has_desc {
+                    if let Some(value) = props.get("desc") {
+                        let frag = match value {
+                            AuraPropValue::Expr(expr) => {
+                                format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item desc", "''"))
+                            }
+                            _ => self.prop_to_text_content(value)?,
+                        };
+                        content.push_str(&format!(
+                            "{}  <span class=\"{} truncate\">{}</span>\n",
+                            cind, nc::TEXT_DESC, frag
+                        ));
+                    }
+                }
+                content.push_str(&format!("{}</span>\n", cind));
+            }
+            if let Some(value) = props.get("badge") {
+                let frag = match value {
+                    AuraPropValue::Expr(expr) => {
+                        format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item badge", "''"))
+                    }
+                    _ => self.prop_to_text_content(value)?,
+                };
+                content.push_str(&format!("{}<span class=\"{}\">{}</span>\n", cind, nc::BADGE_PILL, frag));
+            }
+        }
+
+        if content.is_empty() {
+            html.push_str(&format!("{}<{} {} />\n", ind, tag_name, inline_attrs.join(" ")));
+        } else {
+            html.push_str(&format!("{}<{} {}>\n", ind, tag_name, inline_attrs.join(" ")));
+            html.push_str(&content);
+            html.push_str(&format!("{}</{}>\n", ind, tag_name));
+        }
+        Ok(html)
+    }
+
+    /// Plan 482: `<nav-group>` → NavGroup 组件（shadcn）或内联折叠组。
+    fn generate_nav_group_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let ind = "  ".repeat(indent);
+        let label = props.get("label")
+            .or_else(|| props.get("text"))
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or_default();
+        let collapsible = props.get("collapsible")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                _ => None,
+            })
+            .unwrap_or_else(|| props.contains_key("collapsible"));
+        let indent_children = props.get("indent")
+            .and_then(|v| match v {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                _ => None,
+            })
+            .unwrap_or(false);
+
+        let mut html = String::new();
+        if self.is_shadcn() {
+            self.shadcn_components_used.insert("NavGroup".to_string());
+            let mut attrs: Vec<String> = Vec::new();
+            if !label.is_empty() {
+                attrs.push(format!("label=\"{}\"", Self::escape_html_attr(&label)));
+            }
+            if collapsible {
+                attrs.push(":collapsible=\"true\"".to_string());
+            }
+            if let Some(value) = props.get("open") {
+                if let Some(frag) = self.nav_attr_fragment("open", value) {
+                    attrs.push(frag);
+                }
+            }
+            if let Some(event) = events.get("ontoggle").or_else(|| events.get("toggle")) {
+                let handler_fn =
+                    self.handler_to_function_call_with_params(&event.handler, &event.params);
+                let handler_name = self.handler_to_function_call(&event.handler);
+                self.used_handlers.insert(handler_name);
+                attrs.push(format!("@toggle=\"{}\"", handler_fn));
+            }
+            if indent_children {
+                attrs.push(":indent=\"true\"".to_string());
+            }
+            if let Some(cls) = self.nav_user_class_attr(props) {
+                attrs.push(cls);
+            }
+            html.push_str(&format!("{}<NavGroup {}>\n", ind, attrs.join(" ")));
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 1)?);
+            }
+            html.push_str(&format!("{}</NavGroup>\n", ind));
+            return Ok(html);
+        }
+
+        // 非 shadcn：内联折叠组（open 必须绑定——无局部状态可挂）。
+        let content_cls = if indent_children {
+            format!("{} {}", nc::GROUP_CONTENT, nc::GROUP_CONTENT_INDENT)
+        } else {
+            nc::GROUP_CONTENT.to_string()
+        };
+        if !collapsible {
+            html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
+            if !label.is_empty() {
+                html.push_str(&format!("{}  <div class=\"{}\">{}</div>\n", ind, nc::GROUP_LABEL, Self::escape_html_text(&label)));
+            }
+            html.push_str(&format!("{}  <div class=\"{}\">\n", ind, content_cls));
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 2)?);
+            }
+            html.push_str(&format!("{}  </div>\n", ind));
+            html.push_str(&format!("{}</div>\n", ind));
+            return Ok(html);
+        }
+
+        let Some(open_value) = props.get("open") else {
+            self.warn(
+                "R008",
+                crate::ui_gen::validators::Severity::Warning,
+                "nav-group in non-shadcn mode uses collapsible without a bound `open` — \
+                 there is no local state to hold; rendering always-open. Bind `open` (and \
+                 `ontoggle`) or enable shadcn mode for built-in fold state."
+                    .to_string(),
+            );
+            html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
+            if !label.is_empty() {
+                html.push_str(&format!("{}  <div class=\"{}\">{}</div>\n", ind, nc::GROUP_LABEL, Self::escape_html_text(&label)));
+            }
+            html.push_str(&format!("{}  <div class=\"{}\">\n", ind, content_cls));
+            for child in children {
+                html.push_str(&self.node_to_html(child, indent + 2)?);
+            }
+            html.push_str(&format!("{}  </div>\n", ind));
+            html.push_str(&format!("{}</div>\n", ind));
+            return Ok(html);
+        };
+        let open_js = match open_value {
+            AuraPropValue::Expr(expr) => self.bound_value_or_warn(expr, "nav-group open", "true"),
+            _ => "true".to_string(),
+        };
+        let mut toggle_attr = String::new();
+        if let Some(event) = events.get("ontoggle").or_else(|| events.get("toggle")) {
+            let handler_fn =
+                self.handler_to_function_call_with_params(&event.handler, &event.params);
+            let handler_name = self.handler_to_function_call(&event.handler);
+            self.used_handlers.insert(handler_name);
+            toggle_attr = format!(" @click=\"{}\"", handler_fn);
+        }
+        let chevron_cls = "h-4 w-4 shrink-0 text-muted-foreground";
+        html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
+        html.push_str(&format!(
+            "{}  <button type=\"button\" class=\"{} {}\"{}>\n",
+            ind, nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER, toggle_attr
+        ));
+        html.push_str(&format!("{}    <ChevronDown v-if=\"{}\" class=\"{}\" />\n", ind, open_js, chevron_cls));
+        html.push_str(&format!("{}    <ChevronRight v-else class=\"{}\" />\n", ind, chevron_cls));
+        html.push_str(&format!("{}    <span class=\"truncate\">{}</span>\n", ind, Self::escape_html_text(&label)));
+        html.push_str(&format!("{}  </button>\n", ind));
+        html.push_str(&format!("{}  <div v-show=\"{}\" class=\"{}\">\n", ind, open_js, content_cls));
+        for child in children {
+            html.push_str(&self.node_to_html(child, indent + 2)?);
+        }
+        html.push_str(&format!("{}  </div>\n", ind));
+        html.push_str(&format!("{}</div>\n", ind));
+        Ok(html)
+    }
+
+    /// Plan 482: `<nav (search: true, ...)>` 容器 —— 顶部集成搜索行 + 子节点。
+    /// 仅 search 开启时拦截；普通 nav 走通用容器路径。
+    fn generate_nav_html(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        indent: usize,
+    ) -> GenResult<String> {
+        use crate::ui_gen::nav_contract as nc;
+
+        let ind = "  ".repeat(indent);
+        let placeholder = props.get("search_placeholder")
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or("Search...");
+
+        let mut html = String::new();
+        let mut nav_attrs: Vec<String> = Vec::new();
+        if let Some(cls) = self.nav_user_class_attr(props) {
+            nav_attrs.push(cls);
+        }
+        let attr_str = if nav_attrs.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", nav_attrs.join(" "))
+        };
+        html.push_str(&format!("{}<nav{}>\n", ind, attr_str));
+
+        // 搜索行：icon + input（v-model 绑定 + onsearch 处理器）。
+        html.push_str(&format!("{}  <div class=\"{}\">\n", ind, nc::SEARCH_ROW));
+        self.lucide_icons.insert("Search".to_string());
+        html.push_str(&format!(
+            "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
+            ind, nc::ICON_MD
+        ));
+        let mut input_attrs: Vec<String> = vec![format!("class=\"{}\"", nc::SEARCH_INPUT)];
+        if let Some(value) = props.get("search_value") {
+            if let Some(state_ref) = self.extract_state_ref(value) {
+                input_attrs.push(format!("v-model=\"{}\"", state_ref));
+            } else if let AuraPropValue::Expr(expr) = value {
+                let js = self.bound_value_or_warn(expr, "nav search_value", "''");
+                input_attrs.push(format!(":value=\"{}\"", js));
+            }
+        }
+        input_attrs.push(format!("placeholder=\"{}\"", Self::escape_html_attr(&placeholder)));
+        if let Some(event) = events.get("onsearch") {
+            let handler_name = self.handler_to_function_call(&event.handler);
+            let wants_text = self.input_text_handler_wants_text_arg(event);
+            let handler_fn = if wants_text {
+                format!("{}(($event.target as HTMLInputElement).value)", handler_name)
+            } else {
+                self.handler_to_function_call_with_params(&event.handler, &event.params)
+            };
+            self.used_handlers.insert(handler_name);
+            input_attrs.push(format!("@input=\"{}\"", handler_fn));
+        }
+        html.push_str(&format!("{}    <input {} />\n", ind, input_attrs.join(" ")));
+        html.push_str(&format!("{}  </div>\n", ind));
+
+        for child in children {
+            html.push_str(&self.node_to_html(child, indent + 1)?);
+        }
+        html.push_str(&format!("{}</nav>\n", ind));
+        Ok(html)
+    }
+
     fn generate_category_section_html(
         &mut self,
         props: &HashMap<String, AuraPropValue>,
@@ -4190,6 +4695,26 @@ impl VueGenerator {
                 // Special handling for category-section element
                 if tag == "category-section" || tag == "category_section" {
                     return self.generate_category_section_html(props, children, indent);
+                }
+
+                // Plan 482: nav 组件族 —— nav-item/nav-group 全量生成；
+                // nav 仅在 search 开启时拦截（否则走通用容器路径）。
+                if tag == "nav-item" || tag == "nav_item" {
+                    return self.generate_nav_item_html(props, events, children, indent);
+                }
+                if tag == "nav-group" || tag == "nav_group" {
+                    return self.generate_nav_group_html(props, events, children, indent);
+                }
+                if tag == "nav" {
+                    let search = props.get("search")
+                        .and_then(|v| match v {
+                            AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| props.contains_key("search"));
+                    if search {
+                        return self.generate_nav_html(props, events, children, indent);
+                    }
                 }
 
                 // Check if this is a known sub-widget (custom component, not shadcn)
@@ -17181,6 +17706,104 @@ widget Rows {
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new_shadcn();
         gen.generate(&widget).expect("generate SFC")
+    }
+
+    /// Plan 482: shadcn 模式 nav 组件族 —— NavItem/NavGroup 脚手架组件 +
+    /// nav(search:) 内联搜索行 + 契约 import。
+    #[test]
+    fn test_nav_family_shadcn_sfc() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+widget NavDemo {
+    model {
+        var cur str = "chats"
+        var q str = ""
+    }
+    view {
+        nav (search: true, search_value: .q, onsearch: .SearchChanged, search_placeholder: "Search...", style: "flex flex-col gap-1 p-2") {
+            nav-group (label: "Workspace", collapsible: true) {
+                nav-item (to: "/chats", icon: "message-square", label: "Chats", badge: "3")
+                nav-item (onclick: .ShowPlans, active: .cur == "plans", icon: "list-todo", label: "Plans")
+            }
+        }
+    }
+    on {
+        .SearchChanged(q) -> { }
+        .ShowPlans -> { }
+    }
+}
+"##);
+        assert!(sfc.contains("<NavItem"), "NavItem 组件发射:
+{sfc}");
+        assert!(sfc.contains("<NavGroup"), "NavGroup 组件发射:
+{sfc}");
+        assert!(sfc.contains("from '@/components/ui/nav'"), "契约 import:
+{sfc}");
+        assert!(sfc.contains("NavItem"), "NavItem named import:
+{sfc}");
+        assert!(sfc.contains(":icon-comp=\"MessageSquare\""), "lucide 图标组件:
+{sfc}");
+        assert!(sfc.contains("to=\"/chats\""), "路由 to:
+{sfc}");
+        assert!(sfc.contains(":active="), "active 绑定:
+{sfc}");
+        assert!(sfc.contains("nav-search"), "搜索行:
+{sfc}");
+        assert!(sfc.contains("v-model=\"q\""), "搜索 v-model:
+{sfc}");
+        assert!(sfc.contains("@input="), "onsearch 处理器:
+{sfc}");
+        assert!(sfc.contains(":collapsible=\"true\""), "NavGroup 可折叠:
+{sfc}");
+        assert!(sfc.contains("MessageSquare"), "lucide import 收集:
+{sfc}");
+    }
+
+    /// Plan 482: 非 shadcn 模式（os-config 形态）—— 内联契约标记 + active
+    /// 三元 + emoji icon + desc 双行 + 折叠组绑定 open/ontoggle。
+    #[test]
+    fn test_nav_family_inline_sfc() {
+        let sfc = gen_sfc_from_widget_src(r##"
+widget NavPlain {
+    model {
+        var active_id str = ""
+        var group_open bool = true
+        var q str = ""
+    }
+    view {
+        nav (search: true, search_value: .q, onsearch: .SearchChanged) {
+            nav-group (label: "Network", collapsible: true, open: .group_open, ontoggle: .ToggleGroup) {
+                nav-item (onclick: .Select("net"), active: .active_id == "net", icon: "🔌", label: "Network", desc: "Adapters and proxy")
+            }
+        }
+    }
+    on {
+        .SearchChanged(q) -> { }
+        .ToggleGroup -> { }
+        .Select(id) -> { }
+    }
+}
+"##);
+        assert!(!sfc.contains("<NavItem"), "非 shadcn 不用脚手架组件");
+        assert!(sfc.contains("nav-item flex w-full"), "契约基类内联:
+{sfc}");
+        assert!(sfc.contains(":class="), "active 三元:
+{sfc}");
+        assert!(sfc.contains("bg-primary/10"), "active 块:
+{sfc}");
+        assert!(sfc.contains("hover:bg-accent"), "hover 块:
+{sfc}");
+        assert!(sfc.contains("@click=\"Select('net')\"") || sfc.contains("@click=\"Select(\"net\")\"") || sfc.contains("@click=\"Select("), "click 处理器:
+{sfc}");
+        assert!(sfc.contains("🔌"), "emoji icon:
+{sfc}");
+        assert!(sfc.contains("text-xs text-muted-foreground"), "desc 次行:
+{sfc}");
+        assert!(sfc.contains("v-show="), "折叠组 v-show:
+{sfc}");
+        assert!(sfc.contains("ChevronDown"), "折叠 chevron:
+{sfc}");
+        assert!(sfc.contains("nav-search"), "搜索行:
+{sfc}");
     }
 
     // ====================================================================

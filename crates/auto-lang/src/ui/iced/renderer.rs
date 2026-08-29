@@ -9,7 +9,7 @@ use crate::ui::view::View as AbstractView;
 use crate::ui::component::Component;
 use crate::ui::app::AppResult;
 use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize};
-use crate::ui::style::{Style, StyleClass, Color};
+use crate::ui::style::{Style, StyleClass, Color, SizeValue};
 use std::fmt::Debug;
 use std::collections::HashMap;
 use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
@@ -1064,6 +1064,55 @@ pub fn last_input_text() -> String {
 pub trait IntoIcedElement<M: Clone + Debug + 'static> {
     /// Convert abstract view into Iced Element
     fn into_iced(self) -> iced::Element<'static, M>;
+}
+
+/// Mutable class access for the style-carrying View variants — used by the
+/// Row/Column dispatch points to apply axis-aware fixes BEFORE children
+/// recurse into `into_iced`/`render_dynamic_view` (from_style has no parent
+/// context, so the axis must be resolved at the dispatch site; see the
+/// Row/Column arms). Variants not listed here keep the legacy behaviour.
+fn view_classes_mut<M: Clone + Debug>(v: &mut AbstractView<M>) -> Option<&mut Vec<StyleClass>> {
+    use AbstractView as V;
+    match v {
+        V::Row { style: Some(s), .. }
+        | V::Column { style: Some(s), .. }
+        | V::Text { style: Some(s), .. }
+        | V::Button { style: Some(s), .. }
+        | V::Input { style: Some(s), .. }
+        | V::Textarea { style: Some(s), .. }
+        | V::CodeEditor { style: Some(s), .. }
+        | V::Image { style: Some(s), .. } => Some(&mut s.classes),
+        _ => None,
+    }
+}
+
+/// 横向主轴(Row 直接子)修正:剥 FlexCol,阻断 from_style 的"FlexCol→补
+/// height=Fill"猜测(横向 Shrink row 里该 Fill 无界可填 → 整卡塌 0)。
+pub(crate) fn axis_fix_row_child<M: Clone + Debug>(mut c: AbstractView<M>) -> AbstractView<M> {
+    if let Some(classes) = view_classes_mut(&mut c) {
+        classes.retain(|cl| !matches!(cl, StyleClass::FlexCol));
+    }
+    c
+}
+
+/// 纵向主轴(Column 直接子)修正:flex-1 是 CSS flex-grow 的主轴(纵向)
+/// 语义 → 转写为显式 Height(Full);原先被误设的 width=Fill 一并撤除
+/// (col 子项的 flex-1 本就不该撑宽)。
+pub(crate) fn axis_fix_col_child<M: Clone + Debug>(mut c: AbstractView<M>) -> AbstractView<M> {
+    if let Some(classes) = view_classes_mut(&mut c) {
+        let mut has_grow = false;
+        classes.retain(|cl| match cl {
+            StyleClass::Flex1 | StyleClass::FlexAuto | StyleClass::Grow => {
+                has_grow = true;
+                false
+            }
+            _ => true,
+        });
+        if has_grow && !classes.iter().any(|cl| matches!(cl, StyleClass::Height(_))) {
+            classes.push(StyleClass::Height(SizeValue::Full));
+        }
+    }
+    c
 }
 
 /// Helper to compute effective spacing: style.gap takes priority, then legacy spacing.
@@ -3032,14 +3081,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             AbstractView::Row { children, spacing, padding, style } => {
+                // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
                 let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(|c| c.into_iced()).collect();
+                    children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
                 build_row(els, spacing, padding, style.as_ref(), None)
             }
 
             AbstractView::Column { children, spacing, padding, style } => {
+                // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(|c| c.into_iced()).collect();
+                    children.into_iter().map(axis_fix_col_child).map(|c| c.into_iced()).collect();
                 build_column(els, spacing, padding, style.as_ref(), None)
             }
 
@@ -3714,7 +3765,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(h) = h {
                         svg_widget = svg_widget.height(h);
                     }
-                    return container(svg_widget).into();
+                    // 尺寸必须同时约束外层 container:iced 0.14 Container::new
+                    // 取 size_hint().fluid(),Svg 的 size_hint 默认 Fill → 无
+                    // 约束时 container 撑满行内剩余宽(图标 Contain 居中画在
+                    // 半宽处,同行文字被推到最远端——概要页 Uptime 行错乱形态)。
+                    let mut svg_cont = container(svg_widget);
+                    if let Some(w) = w {
+                        svg_cont = svg_cont.width(w);
+                    }
+                    if let Some(h) = h {
+                        svg_cont = svg_cont.height(h);
+                    }
+                    return svg_cont.into();
                 }
                 let bytes = load_image_bytes(&src);
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
@@ -8078,6 +8140,15 @@ fn compare_pngs(
         // "__navigate\u{1F}s\u{1F}/book/1"). Intercept it, set the route, and
         // skip normal handler dispatch (it's a synthetic internal event).
         if msg.event.starts_with("__navigate") {
+            // Plan 482: "__navigate_back" (router.back() / nav back button)
+            // pops the history stack — must not fall into the path-parsing
+            // branch above (its payload carries no path).
+            if msg.event.starts_with("__navigate_back") {
+                if state.component.navigate_back() {
+                    *state.app.view_dirty.borrow_mut() = true;
+                }
+                return iced::Task::none();
+            }
             let path = msg.event
                 .split(PAYLOAD_SEP)
                 .nth(2)
@@ -8085,6 +8156,23 @@ fn compare_pngs(
                 .to_string();
             state.component.set_route(&path);
             *state.app.view_dirty.borrow_mut() = true;
+            return iced::Task::none();
+        }
+
+        // Plan 482: nav-group built-in fold toggle ("__nav_toggle\u{1F}s\u{1F}<key>")
+        // — flips the per-group open state (DynamicComponent), view rebuilds.
+        if msg.event.starts_with("__nav_toggle") {
+            let (name, args) = crate::ui::dynamic::decode_payload(&msg.event);
+            debug_assert_eq!(name, "__nav_toggle");
+            if let Some(auto_val::Value::Str(key)) = args.first() {
+                state.component.toggle_nav_group(key.as_str());
+                *state.app.view_dirty.borrow_mut() = true;
+            }
+            return iced::Task::none();
+        }
+
+        // Plan 482: inert nav-item click (no to:/onclick) — graceful no-op.
+        if msg.event.starts_with("__noop") {
             return iced::Task::none();
         }
 
@@ -13767,7 +13855,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
                 for (i, child) in children.into_iter().enumerate() {
                     path.push(i);
-                    els.push(render_dynamic_view(child, debug_ctx, path));
+                    els.push(render_dynamic_view(axis_fix_col_child(child), debug_ctx, path));
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
@@ -13787,7 +13875,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(base_items.len());
                 for (i, child) in base_items {
                     path.push(i);
-                    base_els.push(render_dynamic_view(child, debug_ctx, path));
+                    base_els.push(render_dynamic_view(axis_fix_col_child(child), debug_ctx, path));
                     path.pop();
                 }
                 let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
@@ -13810,7 +13898,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         let mut overlay_col = column([]).spacing(eff_spacing).width(iced::Length::Fill);
                         for j in 0..=elev_idx {
                             path.push(j);
-                            let child_el = render_dynamic_view(children[j].clone(), debug_ctx, path);
+                            let child_el = render_dynamic_view(axis_fix_col_child(children[j].clone()), debug_ctx, path);
                             path.pop();
                             overlay_col = overlay_col.push(child_el);
                         }
@@ -13890,7 +13978,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
             for (i, child) in normal.into_iter() {
                 path.push(i);
-                els.push(render_dynamic_view(child, debug_ctx, path));
+                els.push(render_dynamic_view(axis_fix_row_child(child), debug_ctx, path));
                 path.pop();
             }
             let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));

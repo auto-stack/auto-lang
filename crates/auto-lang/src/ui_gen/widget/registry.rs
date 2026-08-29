@@ -1272,6 +1272,21 @@ impl WidgetRegistry {
             .with_alias("nav-link");
         nav_link.has_children = true;
         self.register(nav_link);
+
+        // Plan 482: NavItem — full navigation item (hover/active/disabled states,
+        // icon/desc/badge slots, router to: + onclick: modes). Supersedes nav-link.
+        let mut nav_item = WidgetSpec::new("NavItem", WidgetCategory::Navigation)
+            .with_alias("nav-item")
+            .with_alias("nav_item");
+        nav_item.has_children = true;
+        self.register(nav_item);
+
+        // Plan 482: NavGroup — labeled (optionally collapsible) group of nav items.
+        let mut nav_group = WidgetSpec::new("NavGroup", WidgetCategory::Navigation)
+            .with_alias("nav-group")
+            .with_alias("nav_group");
+        nav_group.has_children = true;
+        self.register(nav_group);
     }
 
     fn register_overlay_widgets(&mut self) {
