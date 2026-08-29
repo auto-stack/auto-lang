@@ -3813,6 +3813,13 @@ fn lucide_svg(name: &str) -> Option<&'static str> {
     // SVG wrapper: 16x16, stroke=currentColor, stroke-width=2.
     // Each entry is the inner elements only.
     let elements: &str = match name {
+        // Plan 472 T4：dock 消费注册表 icon 名（app-window 为注册表缺省
+        // 回退；calculator/bomb/list-checks/notebook 为示例 pack 常用面）。
+        "app-window" => r#"<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M7 6h.01"/><path d="M11 6h.01"/>"#,
+        "calculator" => r#"<rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>"#,
+        "bomb" => r#"<circle cx="11" cy="13" r="8"/><path d="M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95"/><path d="m22 2-1.5 1.5"/>"#,
+        "list-checks" => r#"<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>"#,
+        "notebook" => r#"<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/>"#,
         "bell" => r#"<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>"#,
         "command" => r#"<path d="M15 6a3 3 0 1 0-3 3"/><path d="M6 15a3 3 0 1 0 3-3"/><path d="M9 9h6v6H9z"/>"#,
         // Plan 059(块头图标统一):stop/table 导出/重跑/删除/运行中
@@ -6451,6 +6458,46 @@ pub(crate) fn desktop_dock_edges() -> crate::ui::layout::ReservedEdges {
     edges
 }
 
+/// Plan 472 T5：dock pinned 表（storage `shell.dock.pinned` 逗号分隔；
+/// 缺席回退 DesktopState pack 默认）。boot 期读一次。
+fn load_dock_pinned() -> Option<Vec<String>> {
+    let raw = crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned")?;
+    let list: Vec<String> = raw
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    (!list.is_empty()).then_some(list)
+}
+
+/// Plan 472 T5：把 pinned 表解析为 {id,icon} Obj 数组注入 shell
+/// `__dock_pinned`（icon 自注册表实时查，缺省回退 "app-window"）。boot 期
+/// registry scan 之后调用；pinned 未运行条目也入列（dock 固定区常驻）。
+fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
+    let Some(shell) = state.desktop.shell_app else { return };
+    let pinned: Vec<auto_val::Value> = state
+        .desktop
+        .dock_pinned
+        .iter()
+        .map(|id| {
+            let icon = state
+                .desktop
+                .registry_entries
+                .iter()
+                .find(|e| &e.id == id)
+                .map(|e| e.icon.clone())
+                .unwrap_or_else(|| "app-window".to_string());
+            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                ("id", auto_val::Value::Str(id.clone().into())),
+                ("icon", auto_val::Value::Str(icon.into())),
+            ]))
+        })
+        .collect();
+    let Some(app) = state.apps.get_mut(&shell) else { return };
+    let _ = app.component.write_state_vec("__dock_pinned", pinned);
+    *app.state.view_dirty.borrow_mut() = true;
+}
+
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
 /// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
@@ -6587,6 +6634,15 @@ pub struct DesktopOptions {
 /// （Design 23 R2 拓扑；chrome/拖拽/缩放/关闭/聚焦见 `virtual_window.rs`）。
 pub fn run_dynamic_desktop(components: Vec<DynamicComponent>) -> AppResult<String> {
     run_session(components, RunMode::Desktop, DesktopOptions::default())
+}
+
+/// Plan 472 T5：窗口模式带选项入口（注册表/dock 配置装配；与全屏入口
+/// 同落到 `run_session` 单管线）。
+pub fn run_dynamic_desktop_with_options(
+    components: Vec<DynamicComponent>,
+    opts: DesktopOptions,
+) -> AppResult<String> {
+    run_session(components, RunMode::Desktop, opts)
 }
 
 /// Plan 463 T3/T7：全屏桌面入口 —— borderless + Fullscreen + 可选注册表
@@ -6900,7 +6956,14 @@ fn compare_pngs(
                     {
                         session.desktop.launcher_entry = Some(e.entry.clone());
                     }
+                    // Plan 472 T5：pinned 配置（storage 覆盖 > pack 默认）。
+                    if let Some(pinned) = load_dock_pinned() {
+                        session.desktop.dock_pinned = pinned;
+                    }
                 }
+                // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
+                // ——pinned 常驻，图标回退 "app-window"）。
+                inject_dock_pinned(&mut session);
                 (session, open_task.discard())
             }
             RunMode::Standalone => {
@@ -14546,7 +14609,8 @@ mod tests {
     }
 
     /// 资产 shell.at（widget Desktop）装载冒烟：编译 + fire_init 读 storage
-    /// 缺席回退 pack 默认（enabled=1 / position=bottom / pinned 默认表）。
+    /// 缺席回退 pack 默认（enabled=1 / position=bottom）；pinned 由宿主
+    /// 解析注入（{id,icon} Obj 数组，icon 自注册表）。
     #[test]
     fn desktop_shell_at_builds_with_dock_defaults() {
         crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.pinned");
@@ -14557,6 +14621,16 @@ mod tests {
         ds.open_desktop(iced::window::Id::unique());
         let id = ds.allocate_app(comp);
         ds.desktop.shell_app = Some(id);
+        // 宿主侧 pinned 解析注入（pack 默认表 + 注册表图标）。
+        ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
+            id: "011-calculator".to_string(),
+            title: "calculator".to_string(),
+            icon: "calculator".to_string(),
+            category: "tool".to_string(),
+            entry: std::path::PathBuf::from("011-calculator"),
+            render: "vm".to_string(),
+        }];
+        inject_dock_pinned(&mut ds);
         let app = ds.apps.get(&id).unwrap();
         match app.component.read_state("__dock_enabled") {
             Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "1"),
@@ -14567,10 +14641,12 @@ mod tests {
             other => panic!("__dock_position 读回异常: {other:?}"),
         }
         let pinned = t3_read_array(&ds, "__dock_pinned");
-        assert!(
-            pinned.iter().any(|v| matches!(v, auto_val::Value::Str(s) if s.to_string() == "011-calculator")),
-            "pinned pack 默认表已注入（fire_init）：{pinned:?}"
-        );
+        assert_eq!(pinned.len(), 3, "pack 默认 pinned 三枚");
+        let auto_val::Value::Obj(first) = &pinned[0] else { panic!("pinned 条目应为 Obj") };
+        assert_eq!(t3_obj_str(first, "id"), "011-calculator");
+        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 自注册表解析");
+        let auto_val::Value::Obj(second) = &pinned[1] else { panic!("Obj") };
+        assert_eq!(t3_obj_str(second, "icon"), "app-window", "未登记条目回退 app-window");
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

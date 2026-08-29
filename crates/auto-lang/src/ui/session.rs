@@ -219,6 +219,11 @@ pub struct DesktopState {
     /// 回退 pack 默认 bottom/48）。会话域统一取本字段——核心路径（布局/
     /// 级联）不再直读进程级 storage，单测无污染。
     pub dock_edges: crate::ui::layout::ReservedEdges,
+    /// Plan 472 T4/T5：dock 固定 app id 表（boot 期读 `shell.dock.pinned`，
+    /// 缺席回退 pack 默认三枚）。宿主解析 id → lucide icon（registry 查表）
+    /// 后以 {id,icon} Obj 数组注入 shell `__dock_pinned`（.at 无法自注册表
+    /// 解析图标；平行 Obj 数组为 view 消费已证形态）。
+    pub dock_pinned: Vec<String>,
 }
 
 impl DesktopState {
@@ -236,6 +241,11 @@ impl DesktopState {
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
+            dock_pinned: vec![
+                "011-calculator".to_string(),
+                "013-todo".to_string(),
+                "015-notes".to_string(),
+            ],
         }
     }
 
