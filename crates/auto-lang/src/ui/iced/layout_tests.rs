@@ -21,6 +21,7 @@ fn styled_view(style: &str) -> View<()> {
     View::Text {
         content: style.to_string(),
         style: Style::parse(style).ok(),
+        selectable: false,
     }
 }
 
@@ -57,6 +58,7 @@ fn row_fill_child_keeps_sibling_visible() {
             View::Text {
                 content: "FILL".to_string(),
                 style: Style::parse("flex-1 w-full").ok(),
+                selectable: false,
             },
             styled_view("SURVIVOR"),
         ],
@@ -140,11 +142,13 @@ fn center_column_items_center_centers_narrow_child() {
             View::Text {
                 content: "Counter: 0".to_string(),
                 style: None,
+                selectable: false,
             },
             View::Row {
                 children: vec![View::Text {
                     content: "AAAAAAAAAAAAAAAAAAAA".to_string(),
                     style: None,
+                    selectable: false,
                 }],
                 spacing: 0,
                 padding: 0,

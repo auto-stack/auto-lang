@@ -104,8 +104,12 @@ const DOC_TODO_BASELINE: &[&str] = &[
     // Plan 463 desktop shell 新增(taskbar),文档化跟随该计划的文档批次。
     "taskbar",
     // Plan 473(桌面 dock 线)并入的 virtual_window——该线只跑了 --lib 门禁,
-    // docs_gen 围栏在此暴露缺口;文档化归 473 后续批次(Plan 482 裁定旁置)。
+    // docs_gen 围栏在此暴露缺口;文档化归 473 后续批次(Plan 482 裁定旁置;
+    // 481 独立同因修复,merge 去重保留单条)。
     "virtualwindow",
+    // Plan 481:slot 升 builtin_widget(plan050 视图管线已消费)但属语言级
+    // slot 机制(Plan 476 实现),非画廊组件——文档化另行批次。
+    "slot",
 ];
 
 fn gallery_page_folds() -> BTreeSet<String> {

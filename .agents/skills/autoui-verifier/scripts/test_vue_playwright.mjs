@@ -96,6 +96,25 @@ async function main() {
         console.log(`[+] Pressed key: ${step.key}`);
       } else if (action === 'wait') {
         await page.waitForTimeout(step.ms || 500);
+      } else if (action === 'drag') {
+        // Plan 481: raw mouse drag in page coordinates (text-selection
+        // gestures). {action:'drag', from:[x,y], to:[x,y], steps:N}
+        const [fx, fy] = step.from;
+        const [tx, ty] = step.to;
+        await page.mouse.move(fx, fy);
+        await page.mouse.down();
+        const steps = step.steps || 8;
+        for (let i = 1; i <= steps; i++) {
+          await page.mouse.move(fx + (tx - fx) * i / steps, fy + (ty - fy) * i / steps);
+        }
+        await page.mouse.up();
+        console.log(`[+] Dragged (${fx},${fy}) -> (${tx},${ty})`);
+      } else if (action === 'selectionText') {
+        const sel = await page.evaluate(() => window.getSelection().toString());
+        console.log(`[SELECTION] ${JSON.stringify(sel)}`);
+      } else if (action === 'dblclick') {
+        await page.dblclick(step.selector, { position: step.position });
+        console.log(`[+] Double-clicked: ${step.selector}`);
       }
     }
   } else {

@@ -130,6 +130,7 @@ fn render_block<M: Clone + std::fmt::Debug>(b: &BlockNode) -> View<M> {
             View::Text {
                 content: spansText(b.inlines.clone()),
                 style: Style::parse(heading_style(level)).ok(),
+                selectable: false,
             }
         }
         BlockType::Fence => {

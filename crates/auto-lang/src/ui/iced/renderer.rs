@@ -2563,7 +2563,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
-            AbstractView::Text { content, style } => {
+            AbstractView::Text { content, style, selectable, .. } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
                 let is_code = style.as_ref()
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
@@ -2586,6 +2586,76 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                     }
                     let el: iced::Element<'static, M> = rich.into();
+                    if let Some(ref s) = style {
+                        wrap_with_margin(el, &IcedStyle::from_style(s))
+                    } else {
+                        el
+                    }
+                } else if selectable {
+                    // Plan 481: SelectableText 分流 —— 与下方 text 构造链同参
+                    // 镜像(缺省 false 路径零改动,I3 配置差异形态)。label 无
+                    // 独立 View 变体(aura_view_builder 折叠为 Text),此臂即
+                    // text/label 共用分流点。
+                    use crate::ui::iced::selectable_text::SelectableText;
+                    let mut st = SelectableText::new(content.clone());
+
+                    if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
+
+                        if let Some(fs) = effective_font_size(&iced_style) {
+                            st = st.size(fs);
+                        }
+                        if let Some(color) = iced_style.text_color {
+                            st = st.color(color);
+                        } else if let Some((r, g, b)) =
+                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                        {
+                            st = st.color(iced::Color::from_rgb8(r, g, b));
+                        }
+                        if let Some(ref weight) = iced_style.font_weight {
+                            st = st.font(font_weight_to_iced(weight));
+                        }
+                        if let Some(ref family) = iced_style.font_family {
+                            let fam = match family.as_str() {
+                                "serif" => iced::font::Family::Serif,
+                                "mono" => iced::font::Family::Monospace,
+                                _ => iced::font::Family::SansSerif,
+                            };
+                            let weight = iced_style
+                                .font_weight
+                                .as_ref()
+                                .map(font_weight_to_iced)
+                                .unwrap_or(iced::Font::DEFAULT);
+                            st = st.font(iced::Font {
+                                family: fam,
+                                weight: weight.weight,
+                                stretch: weight.stretch,
+                                style: weight.style,
+                            });
+                        }
+                        if let Some(ref w) = iced_style.width {
+                            st = st.width(iced_length(w));
+                        }
+                        if let Some(ref align) = iced_style.text_align {
+                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            if iced_style.width.is_none() {
+                                st = st.width(iced::Length::Fill);
+                            }
+                            match align {
+                                IcedTextAlign::Center => {
+                                    st = st.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                IcedTextAlign::Right => {
+                                    st = st.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                IcedTextAlign::Left => {}
+                            }
+                        }
+                    }
+
+                    let el: iced::Element<'static, M> = st.into();
                     if let Some(ref s) = style {
                         wrap_with_margin(el, &IcedStyle::from_style(s))
                     } else {
@@ -4468,6 +4538,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
                 AbstractView::Text {
                     content: display,
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,
@@ -4549,7 +4620,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     match view {
         AbstractView::Empty => AbstractView::Empty,
 
-        AbstractView::Text { content, style } => AbstractView::Text { content, style },
+        AbstractView::Text { content, style, selectable } => AbstractView::Text { content, style, selectable },
 
         AbstractView::Button {
             label,
@@ -11515,7 +11586,7 @@ fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
     use crate::ui::vnode::{VNodeKind, VNodeProps};
     let child_count = node.children.len();
     match (&node.kind, &node.props) {
-        (VNodeKind::Text, VNodeProps::Text { content }) => {
+        (VNodeKind::Text, VNodeProps::Text { content, .. }) => {
             let snippet: String = content.chars().take(20).collect();
             if content.chars().count() > 20 {
                 format!("\"{}…\"", snippet)
@@ -12239,7 +12310,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => col = col.push(kv_row("content", content.clone())),
+            VNodeProps::Text { content, .. } => col = col.push(kv_row("content", content.clone())),
             VNodeProps::Button { label, .. } => col = col.push(kv_row("label", label.clone())),
             VNodeProps::Input {
                 placeholder,
@@ -13550,7 +13621,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
         let _ = (key, is_final);
-        AbstractView::<M>::Text { content: value.to_owned(), style: None }.into_iced()
+        AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
     }
 }
 
@@ -14188,7 +14259,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
                 let _ = use_ade;
                 let el: iced::Element<'static, IcedMessage> =
-                    AbstractView::Text { content: value, style: None }.into_iced();
+                    AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
                 el
             }
         }
@@ -15381,7 +15452,7 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
         use crate::ui::vnode::VNodeProps;
         match &node.props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content } => {
+            VNodeProps::Text { content, .. } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("content", content.clone()))
             }
             VNodeProps::Button { label, .. } => {
@@ -16930,10 +17001,11 @@ mod tests {
     fn test_table_header_style_recursive() {
         let mut v: AbstractView<TestMessage> = AbstractView::Row {
             children: vec![
-                AbstractView::Text { content: "Prop".to_string(), style: None },
+                AbstractView::Text { content: "Prop".to_string(), style: None, selectable: false },
                 AbstractView::Text {
                     content: "Type".to_string(),
                     style: Some(Style { classes: vec![], hover_classes: vec![] }),
+                    selectable: false,
                 },
             ],
             spacing: 0,
@@ -17178,6 +17250,7 @@ mod tests {
                 AbstractView::Text {
                     content: "Su".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 AbstractView::Button {
                     disabled: false,

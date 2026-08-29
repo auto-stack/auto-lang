@@ -425,6 +425,7 @@ element label {
     props: [
         { name: "for", type: "string", description: "Associated form control ID" }
         { name: "text", type: "string", description: "Label text" }
+        { name: "selectable", type: "bool", default: "false", description: "Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481)" }
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
     ]
     allows_children: true
@@ -782,7 +783,9 @@ element text {
     aliases: ["Text"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "span" }
-    props: []
+    props: [
+        { name: "selectable", type: "bool", default: "false", description: "Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481)" }
+    ]
     allows_children: false
     description: "Text content (literal or interpolated)"
 }
@@ -1686,8 +1689,9 @@ element range_calendar {
 element slot {
     tag: "slot"
     category: "content"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
+    tier: "builtin_widget"
+    aliases: ["Slot"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
     props: [
         { name: "name", type: "string", description: "Slot name (named slot target or outlet)" }
     ]

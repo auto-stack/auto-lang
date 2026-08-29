@@ -445,6 +445,7 @@ Form label
 |------|------|---------|-------------|
 | `for` | `string` | — | Associated form control ID |
 | `text` | `string` | — | Label text |
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 | `class` | `union: string|class_binding` | — | CSS class(es) |
 
 ---
@@ -741,6 +742,20 @@ Visual divider
 
 ---
 
+### `slot`
+
+`builtin_widget` · `slot` · web: `none` · iced: `unknown` · category: `content`
+
+Slot: outlet in component definition; named-slot fill in component invocation
+
+别名:`Slot`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `name` | `string` | — | Slot name (named slot target or outlet) |
+
+---
+
 ### `small`
 
 `builtin_widget` · `small` · web: `none` · iced: `unknown` · category: `content`
@@ -833,7 +848,9 @@ Text content (literal or interpolated)
 
 别名:`Text`
 
-_props 待声明_
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `selectable` | `bool` | false | Opt-in selection & copy (VM: drag/double-click/Ctrl+C; Plan 481) |
 
 ---
 

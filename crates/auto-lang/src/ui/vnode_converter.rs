@@ -210,10 +210,11 @@ where
         // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
         View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
 
-        View::Text { content, .. } => (
+        View::Text { content, selectable, .. } => (
             VNodeKind::Text,
             VNodeProps::Text {
                 content: content.clone(),
+                selectable: *selectable,
             },
         ),
 
@@ -370,6 +371,7 @@ where
             VNodeKind::Text,
             VNodeProps::Text {
                 content: "[Accordion 暂不支持]".to_string(),
+                selectable: false,
             },
         ),
 
@@ -377,6 +379,7 @@ where
             VNodeKind::Text,
             VNodeProps::Text {
                 content: "[Sidebar 暂不支持]".to_string(),
+                selectable: false,
             },
         ),
 
@@ -384,6 +387,7 @@ where
             VNodeKind::Text,
             VNodeProps::Text {
                 content: "[Tabs 暂不支持]".to_string(),
+                selectable: false,
             },
         ),
 
@@ -391,6 +395,7 @@ where
             VNodeKind::Text,
             VNodeProps::Text {
                 content: "[NavigationRail 暂不支持]".to_string(),
+                selectable: false,
             },
         ),
 
@@ -409,6 +414,7 @@ where
             VNodeKind::Text,
             VNodeProps::Text {
                 content: "[Image]".to_string(),
+                selectable: false,
             },
         ),
     }
@@ -516,6 +522,7 @@ mod tests {
         let view: View<TestMsg> = View::Text {
             content: "Hello".to_string(),
             style: None,
+            selectable: false,
         };
 
         let tree = view_to_vtree(view);
@@ -524,6 +531,24 @@ mod tests {
         let root = tree.root().unwrap();
         assert_eq!(root.kind, VNodeKind::Text);
         assert!(tree.validate().is_ok());
+    }
+
+    #[test]
+    fn test_text_selectable_passthrough() {
+        // Plan 481:View::Text.selectable → VNodeProps::Text.selectable
+        // (快照/MCP 面与渲染面共用声明)。
+        let view: View<TestMsg> = View::Text {
+            content: "copy me".to_string(),
+            style: None,
+            selectable: true,
+        };
+
+        let tree = view_to_vtree(view);
+        let root = tree.root().unwrap();
+        assert!(matches!(
+            &root.props,
+            VNodeProps::Text { content, selectable: true } if content == "copy me"
+        ));
     }
 
     #[test]
@@ -575,8 +600,8 @@ mod tests {
             on_right_click: None,
             content: Some(Box::new(View::Column {
                 children: vec![
-                    View::Text { content: "Title".to_string(), style: None },
-                    View::Text { content: "desc line".to_string(), style: None },
+                    View::Text { content: "Title".to_string(), style: None, selectable: false },
+                    View::Text { content: "desc line".to_string(), style: None, selectable: false },
                 ],
                 spacing: 2,
                 padding: 0,
@@ -595,7 +620,7 @@ mod tests {
         assert_eq!(col.children.len(), 2);
         let t1 = tree.get(col.children[0]).unwrap();
         assert!(
-            matches!(&t1.props, VNodeProps::Text { content } if content == "Title"),
+            matches!(&t1.props, VNodeProps::Text { content, .. } if content == "Title"),
             "inner text nodes reachable"
         );
     }
@@ -607,10 +632,12 @@ mod tests {
                 View::Text {
                     content: "A".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 View::Text {
                     content: "B".to_string(),
                     style: None,
+                    selectable: false,
                 },
             ],
             spacing: 10,
@@ -641,6 +668,7 @@ mod tests {
             .map(|i| View::Text {
                 content: format!("cell{}", i),
                 style: None,
+                selectable: false,
             })
             .collect();
         let view: View<TestMsg> = View::Grid {
@@ -673,10 +701,12 @@ mod tests {
                 View::Text {
                     content: "Left".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 View::Text {
                     content: "Right".to_string(),
                     style: None,
+                    selectable: false,
                 },
             ],
             spacing: 5,
@@ -705,6 +735,7 @@ mod tests {
                 children: vec![View::Text {
                     content: "Nested".to_string(),
                     style: None,
+                    selectable: false,
                 }],
                 spacing: 5,
                 padding: 0,
@@ -740,6 +771,7 @@ mod tests {
             child: Box::new(View::Text {
                 content: "Centered".to_string(),
                 style: None,
+                selectable: false,
             }),
             padding: 20,
             width: None,
@@ -862,6 +894,7 @@ mod tests {
             child: Box::new(View::Text {
                 content: "Scrollable content".to_string(),
                 style: None,
+                selectable: false,
             }),
             width: None,
             height: None,
@@ -883,10 +916,12 @@ mod tests {
                 View::Text {
                     content: "Item 1".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 View::Text {
                     content: "Item 2".to_string(),
                     style: None,
+                    selectable: false,
                 },
             ],
             spacing: 8,
@@ -957,10 +992,12 @@ mod tests {
                         View::Text {
                             content: "A".to_string(),
                             style: None,
+                            selectable: false,
                         },
                         View::Text {
                             content: "B".to_string(),
                             style: None,
+                            selectable: false,
                         },
                     ],
                     spacing: 5,
@@ -1007,7 +1044,7 @@ mod tests {
         let root = tree.root().unwrap();
         assert_eq!(root.kind, VNodeKind::Text);
 
-        if let VNodeProps::Text { content } = &root.props {
+        if let VNodeProps::Text { content, .. } = &root.props {
             assert!(content.contains("暂不支持"));
         } else {
             panic!("Expected placeholder text");
@@ -1021,6 +1058,7 @@ mod tests {
                 View::Text {
                     content: "Title".to_string(),
                     style: None,
+                    selectable: false,
                 },
                 View::Button {
                     disabled: false,
@@ -1059,7 +1097,7 @@ mod tests {
         // root col -> [ text, row -> [ button ] ]
         let view: View<u32> = View::Column {
             children: vec![
-                View::Text { content: "a".into(), style: None },
+                View::Text { content: "a".into(), style: None, selectable: false },
                 View::Row { children: vec![
                     View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None, disabled: false },
                 ], spacing: 0, padding: 0, style: None },
@@ -1089,7 +1127,7 @@ mod tests {
     fn vtree_with_paths_span_callback_invoked_per_path() {
         use super::view_to_vtree_with_paths;
         let view: View<u32> = View::Column {
-            children: vec![View::Text { content: "x".into(), style: None }],
+            children: vec![View::Text { content: "x".into(), style: None, selectable: false }],
             spacing: 0, padding: 0, style: None,
         };
         let tree = view_to_vtree_with_paths(view, |path| {
@@ -1115,7 +1153,7 @@ mod tests {
         use super::view_to_vtree_with_paths;
         fn build() -> View<u32> {
             View::Column {
-                children: vec![View::Text { content: "c".into(), style: None }],
+                children: vec![View::Text { content: "c".into(), style: None, selectable: false }],
                 spacing: 0,
                 padding: 0,
                 style: None,

@@ -290,7 +290,7 @@ fn collect_texts<'a>(
     out: &mut Vec<(&'a str, &'a Option<Style>)>,
 ) {
     match view {
-        View::Text { content, style } => out.push((content.as_str(), style)),
+        View::Text { content, style, .. } => out.push((content.as_str(), style)),
         View::Button { content, .. } => {
             if let Some(c) = content {
                 collect_texts(c, out);
