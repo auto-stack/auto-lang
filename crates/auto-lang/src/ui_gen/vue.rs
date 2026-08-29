@@ -1702,14 +1702,14 @@ impl VueGenerator {
             self.used_handlers.insert(handler_name);
             toggle_attr = format!(" @click=\"{}\"", handler_fn);
         }
-        let chevron_cls = "h-4 w-4 shrink-0 text-muted-foreground";
+        let chevron_cls = "text-[11px] text-muted-foreground w-[14px] shrink-0";
         html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
         html.push_str(&format!(
             "{}  <button type=\"button\" class=\"{} {}\"{}>\n",
             ind, nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER, toggle_attr
         ));
-        html.push_str(&format!("{}    <ChevronDown v-if=\"{}\" class=\"{}\" />\n", ind, open_js, chevron_cls));
-        html.push_str(&format!("{}    <ChevronRight v-else class=\"{}\" />\n", ind, chevron_cls));
+        html.push_str(&format!("{}    <span v-if=\"{}\" class=\"{}\">▾</span>\n", ind, open_js, chevron_cls));
+        html.push_str(&format!("{}    <span v-else class=\"{}\">▸</span>\n", ind, chevron_cls));
         html.push_str(&format!("{}    <span class=\"truncate\">{}</span>\n", ind, Self::escape_html_text(&label)));
         html.push_str(&format!("{}  </button>\n", ind));
         html.push_str(&format!("{}  <div v-show=\"{}\" class=\"{}\">\n", ind, open_js, content_cls));
@@ -17834,7 +17834,7 @@ widget NavPlain {
 {sfc}");
         assert!(sfc.contains("v-show="), "折叠组 v-show:
 {sfc}");
-        assert!(sfc.contains("ChevronDown"), "折叠 chevron:
+        assert!(sfc.contains("▾"), "折叠 chevron 文本字形:
 {sfc}");
         assert!(sfc.contains("nav-search"), "搜索行:
 {sfc}");
