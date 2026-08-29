@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-481
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-text-selection-copy
 author: [zhaopuming]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 10
 total_steps: 10
 ---
 
@@ -177,6 +177,21 @@ Ctrl+C 经桌面级键盘路由在焦点窗口内生效（既有机制），WM/�
 5. `selectable` 缺省（不声明）时渲染输出与改动前逐项一致（false 路径零行为
    变化，截图/快照对拍）。
 
+### T5 手动冒烟留痕（2026-08-29，证据 docs/plans/evidence/481/，worktree）
+
+| 清单项 | Vue（auto run） | VM（auto run -r vm，worktree 二进制） |
+|---|---|---|
+| 001 拖选高亮 | ✅ vue481_001_drag.png；getSelection()="Hello, World!" | ✅ vm481_drag_ratio/full.png + vm481_001_t3b.png（修复后二进制）高亮可见 |
+| 001 双击选词 | ✅ vue481_001_dblclick.png；getSelection()="Hello" | ⚠️ 实机截图被并行会话窗口遮挡未取得干净图；逻辑由 T2 双击词选测试（真实 shaping）背书 |
+| Ctrl+C→系统剪贴板 | 浏览器原生（非本计划实现面） | ⚠️ 实机键入被并行 agent 会话前台抢占（注入键被送往当时前台窗口）；单测 TestClipboard 写入断言 + simulator 全管线 Captured 双证；**复审重跑项** |
+| 004 正文可选可复制 | ✅ dblclick_name→"Jane "、drag_bio→bio 段落（getSelection 断言）+ 三图 | ✅ vm481_004.png（四 text 节点已带 selectable，渲染正常） |
+| notepad 粘贴 | — | ⚠️ 同 Ctrl+C 键路阻断（剪贴板直读等价验证受阻）；复审重跑项 |
+
+环境注记：验证机当时有 4 个并行 agent 会话（480/482/fix-progress 等）持续
+抢占前台并叠加同位窗口（160,160）；外进程窗口操作（SetForegroundWindow/
+SetWindowPos）会致 winit 窗口静默退出（exit 1），纯输入注入安全。T5 的价值
+实证：手动冒烟抓出 CursorMoved 旧坐标真 bug（022f82b9 修复）。
+
 ## 执行步骤
 
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
@@ -185,34 +200,110 @@ Ctrl+C 经桌面级键盘路由在焦点窗口内生效（既有机制），WM/�
    selectable 属性；`ui_gen/widget/registry.rs` Text（L677 起）/Label spec
    props 同步。
    验证：`cargo test -p auto-lang --test schema_drift && cargo test -p auto-lang --test docs_gen`。
+   [✅ 已完成] worktree 466eb5eb8：schema.rs text/label PropDef + aura.at 同步
+   （registry 无 props 面，Plan 435 后 props 唯一声明源为 schema.rs，registry
+   drift 由 schema_drift 围栏背书）；双绿。**顺带修复 master 既有红**：schema_drift
+   于 HEAD c865c22a1 即红（`[view_builder] Slot`，f1f433dc1 手改 aura.at 遗留）
+   + docs_gen 3 红——slot 条目对齐生成器形态（aliases/tier）、render_support
+   补 virtual_window 臂（P6-3）、baseline 裁剪 rs_not_in_vb slot 并落账 5 条
+   现状漂移、core.md/kitchen-sink.at 再生、DOC_TODO_BASELINE += slot/virtualwindow
+   （fold 键）。cargo tf 不含 --test 集成测试（--lib only），故既有红未被发现。
 2. **VNode 透传**：`ui/vnode.rs` VNodeProps::Text 增字段（缺省 false）+
    `ui/node_converter.rs` 透传 + 单测。
    验证：`cargo check -p auto-lang && cargo t node_converter`。
+   [✅ 已完成] worktree 5eb85c181：VNodeProps::Text + **View::Text** 双层加
+   selectable（勘察修正：iced 主渲染路径消费 View::Text 而非 VNode——计划
+   引用的 renderer.rs:10646 实为 devtools，主臂在 AbstractView::Text=View
+   renderer.rs:2507；View 层是 selectable 到达渲染器的必经载体）。aura_view_builder
+   tracked/untracked 双变体读 prop（extract_bool，缺省 false），vnode_converter/
+   vtree_atom/mcp_server/消息转换消费面同步。TDD：aura_view_builder+
+   vnode_converter 两测试先红（编译错）后绿。cargo check 双形态零错误；
+   node_converter 32/aura_view_builder 53/vnode 47/vtree_atom 6/plan409/plan412
+   全绿（注：日常档 cargo t 不带 feature，ui 测试需 --features ui-iced）；
+   renderer 过滤器下 2 失败=master 既有 notif（479 已裁定零交集）。
 3. **选区纯逻辑**：新建 `ui/iced/selection.rs`（归一/词界/扩展/清空）+ 单测，
    在 `ui/iced/mod.rs` 登记。
    验证：`cargo t selection`。
+   [✅ 已完成] worktree 596ac6b57：Selection{anchor,head}（cosmic-text hit()
+   同语义 UTF-8 字节偏移）+ word_range 字符类分段词界；词界语义按待澄清裁定
+   固化——拉丁连词、CJK 连字成词（UAX#29 默认）、标点/空白各自连续段，
+   t06/t07 锁中英混合边界。t01–t10 十测全绿（`--features ui-iced`）。
 4. **widget 骨架 + hit-test spike**：新建 `ui/iced/selectable_text.rs`
    （layout/draw 先与 text 逐像素一致、无交互），验证 Paragraph hit_test →
    偏移 → 区间矩形链路（spike 结论回写本文档）。
    验证：`cargo check -p auto-lang && cargo t selectable_text`。
+   [✅ 已完成] worktree 37f607f5b：6/6 测试绿（含双真实 shaping 链路测试）。
+   **spike 结论**：① `iced::advanced::graphics::text::Paragraph`（iced_graphics）
+   公开 `.buffer() -> &cosmic_text::Buffer`——无需自持 Buffer，绘制与命中共用
+   同一份 shaping；② iced trait 层的 `hit_test()` 包装**丢弃行号**且把 cosmic
+   字节偏移误标为 CharOffset，多行不可用——直接走 `buffer.hit(x,y)` 保
+   `(line, 行内字节偏移)`，经 line_starts 表换算全局偏移；③ line_starts 须按
+   cosmic LineIter 语义切分（`\n`/`\r\n`/`\r`，行文本不含结尾符）；④ 选区矩形
+   = `layout_runs()` 逐 run 钳制起止 + `index_x` glyph 步进累积（簇内插值），
+   code_editor core/render.rs 同型已验证；⑤ 高亮色复用 code_editor 主题
+   accent@α 色板。布局/绘制复用 `iced::advanced::widget::text::{layout,draw}`
+   ——与 `text` widget 同参同路径，逐像素一致由构造保证。
 5. **交互接线**：on_event 手势集（拖选/双击/Ctrl+C/Esc）+ 高亮绘制；iced_test
    交互测试（T2 用例）。
    验证：`cargo t text_selection`。
+   [✅ 已完成] worktree 2c09046fd：update() 手势集接线（iced 0.14 为
+   update+shell.capture_event，非 on_event 返回值）——拖选（按下锚定/拖动
+   扩展/释放固化）、双击词选（500ms+4px 判定）、单击清除（按下即
+   anchor=head 自然清空）、Ctrl+C 写剪贴板（有选区才捕获，不抢编辑器）、
+   Esc 清除（不捕获——不夺弹层/对话框全局 Esc 流）；mouse_interaction=Text。
+   手势为纯处理函数（handle_mouse/handle_keyboard）单测直驱。T2 七测全绿：
+   拖选/逆向拖/双击词选/异位单击清/Esc 非捕获/Ctrl+C 写入+无选区不抢/
+   iced_test simulator 管线冒烟（feature iced-layout-tests 档）。
 6. **renderer 分流**：`ui/iced/renderer.rs:10646` Text 臂 + Label 臂按
    selectable 分流；缺省路径快照对拍（验收 5）。
    验证：`cargo t ui`。
+   [✅ 已完成] worktree ab7251259：勘察修正——计划引用的 renderer.rs:10646
+   实为 devtools；主 Text 臂 = AbstractView::Text（=View::Text，renderer.rs
+   2507 起），且 label 无独立 View 变体（aura_view_builder 已折叠为 Text），
+   故单臂即 text/label 共用分流点。true 路径镜像同参构造链（size/color 含
+   暗色默认/font weight+family/width/align/wrap margin）进 SelectableText；
+   false 与 font-mono Rich 路径零改动（I3 配置差异形态）。验收 5 的缺省路径
+   对拍 = 全量 ui-iced 套件零回归（3963 绿；失败=master 既有 5 稳定失败
+   plan050×2/notif×2/code_editor_natives + dock 成对污染 pristine 3/3 复现
+   系 473 在途债，均零交集）。font-mono 代码文本 v1 不走 SelectableText
+   （保持 Rich 高亮）。
 7. **vue 端显式化**：`packages/widgets/registry/label/` 等生成模板加
    `user-select: text` + selectable prop 透传。
    验证：`cargo t vue`（vue_capabilities/ui_snapshots 不回归）。
+   [✅ 已完成] worktree 77f08274b：勘察修正——text/label 在 vue 端发原生
+   span/label（Plan 012），registry Label.vue 组件不在发射链上；显式化落点
+   = vue.rs label/text 臂：`selectable: true` → 静态 `style="user-select:
+   text"`（静态 style 与 :style 绑定 Vue 合并无冲突；缺省零改动，prop 即
+   金样锚点）。test_text_selectable_emits_user_select 绿（默认档），
+   `cargo t vue` 250/250 全绿。
 8. **a2vue 金样**：`crates/auto-lang/test/a2vue/009_text_selectable/` fixture
    + 期望快照。
    验证：对应 a2vue 套件绿（随 `cargo t vue` 档）。
+   [✅ 已完成] worktree 94b3e4507：009 编号已被 shadcn_col_dynamic_class 占用，
+   金样顺延 **011_text_selectable**。金样锁双锚点：显式
+   `style="user-select: text"` + 通用路径自动透传的 `:selectable="true"` 绑定
+   （prop 往返）；缺省文本零输出。补齐勘察：plain 模式 text/label 走
+   node_to_html 通用 props 循环（非 generate_shadcn_attrs——后者仅 shadcn
+   模式 registry 组件路径），plain 循环补 selectable→style 分支。
+   test_a2vue_text_selectable 绿；`cargo t vue` 251/251 全绿。
 9. **示例点亮**：`examples/ui/001-helloworld`、`examples/ui/004-profile-card`
    正文节点加 `selectable: true`。
    验证：双端手动 `auto run` / `auto run -r vm` 各一轮（截图留痕）。
+   [✅ 已完成] worktree 022f82b9/cc0dfd591：001 的 h1 转为等效样式 text
+   （text-4xl font-bold text-primary，h1 无 selectable 声明面）+selectable；
+   004 四个 text 节点（name/Active/role/bio）点亮。双端截图留痕
+   docs/plans/evidence/481/（worktree，11 图）。**T5 冒烟抓出真 bug**：
+   CursorMoved 分支误用分发时的 cursor.position()（旧值）——修复于
+   022f82b9（simulator 复现→修复→双测绿→重建二进制复验高亮）。
+   注：PATH 上的 auto 是主检出旧构建，验证须用 worktree 二进制
+   （cargo build -p auto + --auto-bin/绝对路径）。
 10. **T5 手动冒烟 + 收尾**：按 §测试设计 T5 清单执行并留痕；健康检查
     （零警告、无调试打印）、`cargo t ui`、状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui`。
+    [✅ 已完成] worktree cc0dfd591：T5 清单见下方 §验收标准 留痕；新文件零
+    警告、插桩已移除；范围门禁 text_selection 6+selection 19+selectable_text
+    12 全绿（--features ui-iced,iced-layout-tests 档）；cargo check -p
+    auto-lang 零错误。
 
 ## 复审记录
 

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-480
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: 桌面协议 Stage 3——多 App 共享 host 压测 / L1·L3 形态迁移 / 内存实测验收
 author: [zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 7
 total_steps: 10
 ---
 
@@ -144,37 +144,47 @@ total_steps: 10
 `plan-480-dev`；全部代码 `#[cfg(feature = "ui-iced")]`，验证一律
 `--features ui-iced`。）
 
-- [ ] **S1 通用 client 运行时**：新建
+- [✅ 已完成] S1 通用 client 运行时：新建
   `crates/auto-lang/src/ui/desktop_protocol/client_runtime.rs` ——
   `AppProjector`（AuraNode view → DrawList：text/button + 线性堆叠，
-  button 命中区推导）+ `ClientApp` 主循环（输入→`on_with_input`→
+  button 命中区推导）+ `ClientPump` 主循环（输入→`on_with_input`→
   shm 产帧→L2 处理；Stage 2 `dual_mode_child_body` 产品化）。
   验证: `cargo nextest run -p auto-lang --lib --features ui-iced
-  desktop_protocol::client_runtime`（投影快照 + 循环单测）
-- [ ] **S2 双模入口接入 `auto`**：`crates/auto/src/main.rs` Run 分支加
+  desktop_protocol::client_runtime`（投影快照 + 循环单测）——5/5 绿
+  （cdb3ce86a；投影 prop text/label+FStr 插值；泵形态 step/run 双轨）
+- [✅ 已完成] S2 双模入口接入 `auto`：`crates/auto/src/main.rs` Run 分支加
   `--autodesk-client=<pipe>` + `--app386=<name>`（装载
   `examples/ui/<name>/src/front/app.at`）→ 走 `client_runtime` 循环；
   ③ 无标记行为零改动。验证: 双进程 smoke（spawn `auto
-  --autodesk-client` + 测试侧 host）或 re-exec 扩展测试
-  `cargo nextest … desktop_protocol::dual_mode`
-- [ ] **S3 桌面模式 broker 接入**：`ui/session.rs` 增
+  --autodesk-client` + 测试侧 host）——`cargo nextest -p auto --test
+  autodesk_client_smoke` 绿（孵化/点击帧递增/L2Detach 出口/宿主回收；
+  顺带修复 ClientPump::run recv_wait 弹出丢 Welcome 缺陷）；`--app386`
+  之外另接 `--autodesk-incubate`② broker 孵化入口（S4 用）
+- [✅ 已完成] S3 桌面模式 broker 接入：`ui/session.rs` 增
   `DesktopSession::enable_broker()`（serve 线程 + 孵化落
   `ProtocolHost` 路径）；`ui/iced/renderer.rs` desktop boot 分支调用。
   验证: 集成单测（`enable_broker` + `request_incubation` 双端连通 +
-  462 会话落地）：`cargo nextest … desktop_protocol` 
-- [ ] **S4 多 App 压测 harness**：新建
+  462 会话落地）：`cargo nextest … desktop_protocol` ——50/50 绿
+  （c18252b8a；serve 线程搬运端点、属主线程 attach 落地；
+  ServiceTick 周期消费孵化排队）
+- [✅ 已完成] S4 多 App 压测 harness：新建
   `crates/auto-lang/src/ui/desktop_protocol/stage3.rs` —— N=3/5 child
   spawn → broker 孵化 → 全 Active → 逐 App 点击帧递增 → 全存活。
   验证: `cargo nextest run … desktop_protocol::stage3`（N=3 先绿，
-  N=5 压测）
-- [ ] **S5 内存采样 instrumentation**：`stage3.rs` 增
+  N=5 压测）——两者均 30.3s 绿（7ee391875；附赠 BrokerClient
+  驻留多 client 宿主——S2 预留的"多 App 并发"兑现；53/53 desktop_protocol
+  全绿）
+- [✅ 已完成] S5 内存采样 instrumentation：`stage3.rs` 增
   `GetProcessMemoryInfo` FFI（WorkingSet/PrivateBytes，零新依赖）+
   harness 集成（N=1/3/5 每阶段采样）。验证: 采样单测（数值 >0 且
-  N=5 > N=1）
-- [ ] **S6 内存实测报告**：新建
+  N=5 > N=1）——`stage3_memory_baseline_n1_3_5` 绿（8f14f1d3e；
+  实测边际增量 WS 23.1MiB/App、Private 4.8MiB/App）
+- [✅ 已完成] S6 内存实测报告：新建
   `docs/plans/reports/480-memory-baseline.md` —— N=1/3/5 边际增量
   WorkingSet 表 + 对 1-5MB/App 目标的明示判定结论（达标/未达标 +
   底噪归因）。验证: 文档在库，数字与 S5 输出一致
+  （复跑差 <1%；Private 口径 4.81MiB/App 临界达标，WS 口径 23.17MiB/App
+  未达标 + 三点归因）
 - [ ] **S7 弹性重连**：child 循环增 host 断连（EOF）→ 等待重连（状态
   保持，不退出）→ 重连后 VM 状态继续。验证: 单测（server drop →
   child 存活 → 重建管道 → count 连续）：`cargo nextest …

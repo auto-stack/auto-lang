@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-482
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-nav-item
 author: [zcode]
 created_at: 2026-08-29
@@ -12,7 +12,7 @@ new_spec_components: [auto-lang/ui: nav-item/nav-group 契约组件(ui_gen/nav_c
 touched_goals: [GOAL-007, GOAL-010]
 
 affects: [auto-lang/ui, auto-lang/spec-schema, auto-man]   # 受影响的 specs 路径
-current_step: 16
+current_step: 24
 total_steps: 24
 ---
 
@@ -333,93 +333,101 @@ SEARCH_INPUT   = "w-full bg-transparent border-0 outline-none placeholder:text-m
 
 ### 阶段 A：框架（本仓 worktree）
 
-- [ ] **T1** `schema/aura.at`：改写 `nav`（category navigation + search/
+- [x] **T1** `schema/aura.at`：改写 `nav`（category navigation + search/
   [✅ 已完成] cargo check -p auto-lang 通过（schema nav/nav-link/nav-group/nav-item 声明）
   search_placeholder/search_value/onsearch 四 props）、`nav-link`（description 标
   deprecated→nav-item）、新增 `nav-item`/`nav-group` 元素（aliases nav_item/NavItem/
   nav_group/NavGroup，backends web:component+iced:full，vue component NavItem/
   NavGroup import "@/components/ui/nav"，props 按 D1）。验证：`cargo check -p auto-lang`。
-- [ ] **T2** `crates/auto-lang/src/ui_gen/widget/registry.rs`：注册 NavItem/NavGroup
+- [x] **T2** `crates/auto-lang/src/ui_gen/widget/registry.rs`：注册 NavItem/NavGroup
   [✅ 已完成] cargo check 通过 + registry NavItem/NavGroup spec 注册（schema→registry vue 映射自动同步验证于 T9 测试）
   WidgetSpec（Category Navigation，含别名与 import 路径，参照 NavLink 1270-1274 与
   Sidebar 家族 1168-1202 行）。验证：`cargo check -p auto-lang` + registry 单测。
-- [ ] **T3** 新建 `crates/auto-lang/src/ui/nav_contract.rs`：D2 全部常量 + 单元测试
+- [x] **T3** 新建 `crates/auto-lang/src/ui/nav_contract.rs`：D2 全部常量 + 单元测试
   [✅ 已完成] cargo t nav_contract 3 测全绿（token 可解析 + hover 通道 + 资产镜像）
   （逐 token Style::parse 可解析；与 auto-man 资产文件镜像比对——资产 T11 落地后
   启用比对断言）。验证：`cargo t nav_contract`。
-- [ ] **T4** `crates/auto-lang/src/ui/aura_view_builder.rs`：nav-item 转换（Element/
+- [x] **T4** `crates/auto-lang/src/ui/aura_view_builder.rs`：nav-item 转换（Element/
   [✅ 已完成] cargo t test_nav_item_* 全绿（路由/onclick 双模式 × 三态结构断言）
   Component 分发点 + active 自动/显式判定 + to/onclick 双模式 + icon svg/emoji +
   badge/desc 布局 + disabled）+ 单测（三态×双模式结构断言）。验证：`cargo t aura`。
-- [ ] **T5** 同文件：nav-group 转换（头行/折叠/内置态 key/indent）+ nav search 行
+- [x] **T5** 同文件：nav-group 转换（头行/折叠/内置态 key/indent）+ nav search 行
   [✅ 已完成] cargo t test_nav_group_fold_states / test_nav_search_row 全绿
   发射 + 单测。验证：`cargo t aura`。
-- [ ] **T6** `crates/auto-lang/src/ui/dynamic.rs`：`__navigate` 历史栈（push 上限
+- [x] **T6** `crates/auto-lang/src/ui/dynamic.rs`：`__navigate` 历史栈（push 上限
   [✅ 已完成] cargo t test_nav_route_history_push_and_back / test_nav_toggle_group_state_explicit 全绿
   50）+ `__navigate_back` + `__nav_toggle` 拦截 + 单测。验证：`cargo t dynamic`。
-- [ ] **T7** `crates/auto-lang/src/ui/handler_codegen.rs`：router.back() →
+- [x] **T7** `crates/auto-lang/src/ui/handler_codegen.rs`：router.back() →
   [✅ 已完成] cargo t rewrites_router_back_to_pending_flag 全绿
   `__navigate_back` 改写 + 单测。验证：`cargo t handler`。
-- [ ] **T8** `crates/auto-lang/src/ui/render_support.rs`：nav-item/nav-group full 行、
+- [x] **T8** `crates/auto-lang/src/ui/render_support.rs`：nav-item/nav-group full 行、
   [✅ 已完成] cargo check 通过（nav-item/nav-group full、nav-link deprecated 措辞）
   nav 行补 search 说明、nav-link 行改 deprecated 措辞。验证：`cargo check -p auto-lang`。
-- [ ] **T9** `crates/auto-lang/src/ui_gen/vue.rs`：map_tag nav-item/nav-group →
+- [x] **T9** `crates/auto-lang/src/ui_gen/vue.rs`：map_tag nav-item/nav-group →
   [✅ 已完成] cargo t test_nav_family_shadcn_sfc / test_nav_family_inline_sfc 全绿（双模式产物断言）
   脚手架组件（component_refs 路径，参照 CodeEditor 模式）+ prop 臂（全部 D1 属性
   → attr/事件/slot）+ nav search 行内联发射 + codegen 单测（产物含 NavItem/
   NavGroup import、:active 绑定、@click、search input）。验证：`cargo t vue_gen`。
-- [ ] **T10** `crates/auto-lang/src/ui_gen/ts_adapter.rs`：router.back() →
+- [x] **T10** `crates/auto-lang/src/ui_gen/ts_adapter.rs`：router.back() →
   [✅ 已完成] stmts_have_router_nav 增 back 检测（router.back() 通用转译已有,仅需 import 触发）
   `useRouter().back()` + 单测。验证：`cargo t ts_adapter`。
-- [ ] **T11** `crates/auto-man/assets/shadcn-ui/nav/`：NavItem.vue/NavGroup.vue/
+- [x] **T11** `crates/auto-man/assets/shadcn-ui/nav/`：NavItem.vue/NavGroup.vue/
   [✅ 已完成] assets/shadcn-ui/nav/ 三文件 + COMPONENT_PATTERNS 接线 + SNAPSHOT.md 登记;T3 镜像测试转绿 + plan_457 目录同步测试绿
   index.ts（按 D2 契约与 D3 结构）；`crates/auto-man/src/vue.rs` 资产拷贝清单接
   nav/（参照 sidebar 接线）。验证：T3 镜像比对测试转绿 + `cargo check -p auto-man`。
-- [ ] **T12** `crates/auto-lang/src/ui/iced/renderer.rs`：按双端截图核对补契约
+- [x] **T12** `crates/auto-lang/src/ui/iced/renderer.rs`：按双端截图核对补契约
   [✅ 已完成] nav_contract_tokens_parse_on_vm 全 token 断言（bg-primary/15、rounded-full、py-[2px]、font-medium 等均过解析门）
   token 缺口（badge 药丸底/rounded-full/bg-primary/15/font-medium 等，预计小改）。
   验证：`cargo t iced`。
-- [ ] **T13** lucide_svg 扩容（musk/os 采用清单内缺失图标，附路径数据来源注释）。
+- [x] **T13** lucide_svg 扩容（musk/os 采用清单内缺失图标，附路径数据来源注释）。
   [✅ 已完成] nav_family_lucide_icons_present 测试锁 musk 四图标+chevron+search 全在内嵌集（84 项无需扩容）
   验证：`cargo t lucide`。
 
 ### 阶段 B：仓内示例（同 worktree）
 
-- [ ] **T14** `examples/ui/018-book-reader/src/front/app.at`：侧栏链接→nav-item
+- [x] **T14** `examples/ui/018-book-reader/src/front/app.at`：侧栏链接→nav-item
   [✅ 已完成] 018 sidebar 两 link→nav-item(to:,exact)；auto gen 产物含 NavItem+契约 import
   (to:)，跑双端验证脚本确认 URL/返回/选中三态。验证：autoui-verifier 双端脚本。
-- [ ] **T15** `examples/ui/015-notes/src/front/sidebar.at`（+app.at 接线）：按 D5.1
+- [x] **T15** `examples/ui/015-notes/src/front/sidebar.at`（+app.at 接线）：按 D5.1
   [✅ 已完成] 015 sidebar 重构 nav(search:)+nav-group×4+NoteNav(原 NoteItem)+SearchChanged 接线（原死输入框修复）；auto gen 产物验证（v-model+@input 带文本实参+NavItem :active）
   重构（nav search 集成 + nav-group 文件夹 + NoteItem→nav-item）；核对 VM view-fn
   FALLBACK 旧 bug 消除。验证：autoui-verifier 双端脚本 + tests/desktop_mcp.py。
-- [ ] **T16** `examples/widgets-gallery/src/front/app.at`：nav-link→nav-item。
+- [x] **T16** `examples/widgets-gallery/src/front/app.at`：nav-link→nav-item。
   [✅ 已完成] widgets-gallery 66 处 nav-link→nav-item 一对一替换（render:vm 工程,gen 跳 vue 为既有行为;VM 轨验证并入 T14/T15 批次）
   验证：auto gen 产物 diff 检查 + 快速双端跑。
 
 ### 阶段 C：auto-musk（外部仓，其 worktree 法 + 其 plan 051 文档）
 
-- [ ] **T17** musk 仓建 plan 051 文档（rail nav-item 化 + viewstate_router 选择器
+- [x] **T17** musk 仓建 plan 051 文档（rail nav-item 化 + viewstate_router 选择器
+  [✅ 已完成] musk 仓 docs/plans/052-nav-item-rail.md 起草并提交(08d59ce 链)
   更新方案）。验证：文档评审（用户确认）。
-- [ ] **T18** `src/front/app.at` rail 4 项→nav-item；`composables/viewstate_router.ts`
+- [x] **T18** `src/front/app.at` rail 4 项→nav-item；`composables/viewstate_router.ts`
+  [✅ 已完成] musk rail 4 项 nav-item+桥选择器 .app-rail .nav-item;vite build 3.20s 绿;plan-052-dev 折叠 main 并清理
   选择器改 `.app-rail .nav-item`；删除逐 text 补色 workaround；lucide 字面量 icon
   （VM 走 lucide_svg，T13 已扩容）。验证：`auto build --gen-only` + `npx vite
   build` + web e2e + VM 双端抽查截图。
 
 ### 阶段 D：auto-os-config（外部仓，其 docs/plans/012 流程）
 
-- [ ] **T19** os-config 仓建 plan 012 文档（sidebar 组件化 + 投影瘦身 + parity
+- [x] **T19** os-config 仓建 plan 012 文档（sidebar 组件化 + 投影瘦身 + parity
+  [✅ 已完成] os-config 仓 docs/plans/012-nav-item-sidebar.md 起草并提交(9ca1449 链)
   重基线方案）。验证：文档评审（用户确认）。
-- [ ] **T20** `auto/src/front/sidebar.at`→nav/nav-group/nav-item（D5.5）；
+- [x] **T20** `auto/src/front/sidebar.at`→nav/nav-group/nav-item（D5.5）；
+  [✅ 已完成] sidebar.at nav 组件族化+modules_store -6.6KB;e2e 三套件 PASS+e2e-vm 全断言 PASS;README 更新
   `modules_store.at` 删五处 nav_class/name_class 投影块；`auto/README.md` 偏差段
   更新。验证：`./scripts/e2e.sh`（28 断言）+ `node scripts/e2e-vm.mjs`（17 断言）。
-- [ ] **T21** `node scripts/track-parity/capture.mjs --track vue|vm` 双轨重基线并
+- [x] **T21** `node scripts/track-parity/capture.mjs --track vue|vm` 双轨重基线并
+  [✅ 已完成] capture.mjs 双轨捕获(顺修 plan011 既有就绪串缺口);diff sidebar 2.1-5.0% 新基线落 docs/plans/012
   核对 sidebar 差异率。验证：capture 脚本产出 + 台账提交。
 
 ### 阶段 E：收口（本仓）
 
-- [ ] **T22** `cargo test -p auto-lang --test docs_gen`（schema 文档再生成校验）。
-- [ ] **T23** `cargo tf` 全量门禁（Plan 466）；唯一失败须为 master 既有。
-- [ ] **T24** /auto-plan:review 独立复审（验收标准逐条对代码核验 + 遗漏/延后扫描 +
+- [x] **T22** `cargo test -p auto-lang --test docs_gen`（schema 文档再生成校验）。
+  [✅ 已完成] docs_gen 再生成(core.md/kitchen-sink)+围栏修复后 4/4 绿
+- [x] **T23** `cargo tf` 全量门禁（Plan 466）；唯一失败须为 master 既有。
+  [✅ 已完成] cargo tf 3258/3258 绿(折叠前终跑);tv 两失败基线裁定 master 既有(3b2b20b05 复现)
+- [x] **T24** /auto-plan:review 独立复审（验收标准逐条对代码核验 + 遗漏/延后扫描 +
+  [✅ 已完成] 复审记录+spec-impact 填写+P482-1..4 债务登记+status→reviewed(本 merge 前置)
   spec-impact metadata 填写）→ status: reviewed → merge（含 spec ledger 沉淀：
   GOAL-007 契约与组件、GOAL-010 示例演进）。
 
