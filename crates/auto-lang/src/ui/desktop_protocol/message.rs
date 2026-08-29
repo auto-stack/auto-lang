@@ -260,6 +260,9 @@ pub enum FrameMsg {
     /// app→host。缓存失效提示（键域由生产者定义；编辑器 = revision×fold
     /// 组合键，413 §7.3）。
     CacheControl { wid: u64, drop_keys: Vec<u64> },
+    /// app→host。帧就绪（**共享内存变体**，S9）：payload 在 `slot` 槽内
+    /// （`[u32 len][DrawList 编码]`），管道上只过元数据——大帧不走管道。
+    FrameReadyShared { wid: u64, frame_id: u64, slot: u8, damage: Option<WRect>, revision: u64, len: u32 },
 }
 
 impl FrameMsg {
@@ -269,6 +272,7 @@ impl FrameMsg {
     const FRAME_READY: u8 = 4;
     const FRAME_ACK: u8 = 5;
     const CACHE_CONTROL: u8 = 6;
+    const FRAME_READY_SHARED: u8 = 7;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
@@ -318,6 +322,21 @@ impl FrameMsg {
                     put_u64(out, *k);
                 }
             }
+            Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len } => {
+                put_u8(out, Self::FRAME_READY_SHARED);
+                put_u64(out, *wid);
+                put_u64(out, *frame_id);
+                put_u8(out, *slot);
+                match damage {
+                    Some(d) => {
+                        put_bool(out, true);
+                        d.encode(out);
+                    }
+                    None => put_bool(out, false),
+                }
+                put_u64(out, *revision);
+                put_u32(out, *len);
+            }
         }
     }
 
@@ -360,6 +379,15 @@ impl FrameMsg {
                     drop_keys.push(r.u64()?);
                 }
                 Self::CacheControl { wid, drop_keys }
+            }
+            Self::FRAME_READY_SHARED => {
+                let wid = r.u64()?;
+                let frame_id = r.u64()?;
+                let slot = r.u8()?;
+                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let revision = r.u64()?;
+                let len = r.u32()?;
+                Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -905,6 +933,14 @@ mod tests {
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::FrameAck { wid: 3, frame_id: 7, slot: 1 }));
         round_trip(ProtocolMsg::Frame(FrameMsg::CacheControl { wid: 3, drop_keys: vec![1, 2, 0xDEAD_BEEF] }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyShared {
+            wid: 3,
+            frame_id: 11,
+            slot: 1,
+            damage: Some(WRect::new(0.0, 0.0, 480.0, 320.0)),
+            revision: 12,
+            len: 4096,
+        }));
     }
 
     #[test]

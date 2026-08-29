@@ -494,6 +494,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::FrameReady { .. } => "Frame::FrameReady",
             super::message::FrameMsg::FrameAck { .. } => "Frame::FrameAck",
             super::message::FrameMsg::CacheControl { .. } => "Frame::CacheControl",
+            super::message::FrameMsg::FrameReadyShared { .. } => "Frame::FrameReadyShared",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {

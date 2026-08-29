@@ -119,7 +119,6 @@ impl Transport for LoopbackEnd {
 #[cfg(windows)]
 mod pipe {
     use std::collections::VecDeque;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
