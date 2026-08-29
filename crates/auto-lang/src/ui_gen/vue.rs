@@ -1420,10 +1420,21 @@ impl VueGenerator {
             static_cls.push(' ');
             static_cls.push_str(nc::ITEM_DISABLED);
         }
+        // Plan 482 补:用户静态 class 并入基类串（重复 class 属性在 Vue 模板
+        // 里后者胜出且告警）；绑定态 class 保留独立 :class。
+        if let Some(user) = props.get("class").or_else(|| props.get("style")) {
+            if let Some(u) = self.extract_string_value(user) {
+                if !u.trim().is_empty() {
+                    static_cls.push(' ');
+                    static_cls.push_str(u.trim());
+                }
+            }
+        }
         let mut inline_attrs: Vec<String> = vec![format!("class=\"{}\"", static_cls)];
-        // Plan 482 补:用户 class 追加（shadcn 路径同款逃生通道）。
-        if let Some(cls) = self.nav_user_class_attr(props) {
-            inline_attrs.push(cls);
+        if let Some(state_ref) = props.get("class").or_else(|| props.get("style"))
+            .and_then(|v| if self.extract_string_value(v).is_some() { None } else { self.extract_state_ref(v) })
+        {
+            inline_attrs.push(format!(":class=\"{}\"", state_ref));
         }
         // Plan 482 补:data-active 语义锚(测试/无障碍;os-config e2e 同款用法)。
         if let Some(value) = props.get("active") {
