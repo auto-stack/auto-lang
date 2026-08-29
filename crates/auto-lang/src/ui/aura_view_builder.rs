@@ -6746,8 +6746,14 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         // Plan 445 M3：动态 props（`d: .lineD` 等）经 bindings/state 解析。
         let doc = self.serialize_svg_element("svg", props, children, bindings);
+        // 类串双键取值:`class:` 与 `style:` 都是 .at 元素的合法写法
+        // (extract 按属性名原样入 props,svg 走 props 通道无规范化)。
+        // 此前只认 "class",`svg (style: "...")` 形态的整条类串丢失——
+        // 尺寸类缺失 → svgdoc container 无界撑满行(auto-os-config 概要页
+        // Uptime 行图标/文字分离、Memory donut 尺寸失控的根因)。
         let style = self
             .extract_string(props, "class")
+            .or_else(|| self.extract_string(props, "style"))
             .and_then(|c| crate::ui::style::Style::parse(&c).ok());
         View::Image {
             src: format!("svgdoc:{doc}"),
