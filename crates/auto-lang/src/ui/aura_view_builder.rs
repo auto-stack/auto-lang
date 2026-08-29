@@ -5044,15 +5044,25 @@ let tabs_inner = View::Row {
         // onkeydown. 前缀与 .prevent/.stop 修饰)→ handler。VM 端经 iced
         // key_binding 以 Binding::Custom 拦截(iced 默认静默丢弃 Tab);
         // Vue 端由 codegen 的 @keydown.* 原生处理(不经此字段)。
+        // PLAN-051 C1: 修饰段改为整段过滤(exact/prevent/stop/capture/
+        // self/once)——musk 的 `onkeydown.enter.exact.prevent` 此前落键
+        // "enter.exact" 永不命中 iced 归一化键名 "enter"(真键盘 Enter 不
+        // 派发)。vue 的 .exact=无其他修饰键,裸键名天然满足该语义。
+        // 实参沿按钮 onclick 同款 event_to_message_with 烘焙(此前恒空,
+        // .send(.text) 形态 Enter 派发丢文本)。
         let mut keydown = std::collections::HashMap::new();
         for (ev_key, ev) in events.iter() {
             if let Some(rest) = ev_key.strip_prefix("onkeydown.") {
                 let norm = rest
-                    .trim_end_matches(".prevent")
-                    .trim_end_matches(".stop")
+                    .split('.')
+                    .filter(|seg| {
+                        !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(".")
                     .to_lowercase();
                 if !norm.is_empty() {
-                    keydown.insert(norm, self.event_to_message(&ev.handler));
+                    keydown.insert(norm, self.event_to_message_with(ev, bindings));
                 }
             }
         }
@@ -6214,7 +6224,11 @@ let tabs_inner = View::Row {
         if path.is_empty() {
             return None;
         }
-        let expr = crate::parser::Parser::parse_expr_fragment(path)?;
+        // PLAN-051 C1: 裸单段名(this.text)实测 parse_expr_fragment 不收
+        // (fragment 解析面向点路径)——按 Ident 兜底走同一 bindings/computed/
+        // state 解析链,.send(.text) 形态的事件实参此前因此落字面量串。
+        let expr = crate::parser::Parser::parse_expr_fragment(path)
+            .unwrap_or_else(|| Expr::Ident(crate::ast::Name::from(path)));
         self.resolve_expr_to_value(&expr, bindings)
     }
 
@@ -8810,6 +8824,127 @@ mod tests {
             !view_contains_text(&view, "${currentName}"),
             "裸 placeholder 不得漏出"
         );
+    }
+
+    /// PLAN-051 T2 (C1): musk 形态 Enter 接线——textarea 声明
+    /// `onkeydown.enter.exact.prevent` 此前收进 keydown 表的键是
+    /// "enter.exact"（只剥 .prevent/.stop），iced key_binding 归一化键名
+    /// "enter" 永不命中 → 真键盘 Enter 落默认行为（插换行）不派发。
+    /// 期望：修饰段（exact/prevent/stop…）过滤后键名为 "enter"。
+    #[test]
+    fn plan051_textarea_keydown_enter_exact_normalized() {
+        let widget = make_test_widget("W", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let mut events = HashMap::new();
+        events.insert(
+            "onkeydown.enter.exact.prevent".to_string(),
+            AuraEvent { handler: ".send".to_string(), params: vec!["this.text".to_string()] },
+        );
+        events.insert(
+            "onkeydown.tab".to_string(),
+            AuraEvent { handler: ".Tab".to_string(), params: vec![] },
+        );
+        let node = AuraNode::Element {
+            tag: "textarea".to_string(),
+            props: {
+                let mut p = HashMap::new();
+                p.insert("value".to_string(), AuraPropValue::Expr(Expr::Str("hi".into())));
+                p
+            },
+            events,
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+        match builder.build(&node) {
+            View::Textarea { keydown, .. } => {
+                assert!(
+                    keydown.contains_key("enter"),
+                    "enter.exact.prevent 必须规整为键名 enter; got {:?}",
+                    keydown.keys().collect::<Vec<_>>()
+                );
+                assert!(keydown.contains_key("tab"), "无修饰 onkeydown.tab 保持键名 tab");
+                assert!(!keydown.contains_key("enter.exact"), "带修饰残键不得存在");
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-051 T2 (C1): keydown 实参烘焙——此前 keydown 收集走
+    /// event_to_message（args 恒空），与按钮 onclick 的
+    /// event_to_message_with（实参求值烘焙）不一致；.send(.text) 形态
+    /// Enter 派发会丢文本。期望：keydown["enter"] 的 Typed args 携带
+    /// 构建期求值的实参值。
+    #[test]
+    fn plan051_textarea_keydown_args_baked() {
+        let widget = make_test_widget("W", vec![AuraStateDef {
+            name: "text".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("  typed draft ".into()),
+            decorators: vec![],
+        }]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let mut events = HashMap::new();
+        events.insert(
+            "onkeydown.enter.exact.prevent".to_string(),
+            AuraEvent { handler: ".send".to_string(), params: vec!["this.text".to_string()] },
+        );
+        let node = AuraNode::Element {
+            tag: "textarea".to_string(),
+            props: {
+                let mut p = HashMap::new();
+                p.insert("value".to_string(), AuraPropValue::Expr(Expr::Str("  typed draft ".into())));
+                p
+            },
+            events,
+            children: vec![],
+            span: None,
+            debug_id: None,
+        };
+        match builder.build(&node) {
+            View::Textarea { keydown, .. } => {
+                let msg = keydown.get("enter").expect("enter 键必须存在");
+                match msg {
+                    DynamicMessage::Typed { args, .. } => {
+                        assert_eq!(args.len(), 1, "this.text 实参必须烘焙: {:?}", args);
+                        assert_eq!(args[0], Value::Str("  typed draft ".into()));
+                    }
+                    _ => panic!("Expected Typed message"),
+                }
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-051 T2 (C1): 017-chat 形态回归护栏——单行 input 的
+    /// `onenter: .DoSend` 必须继续接到 on_submit（Plan 053 机制），
+    /// MCP 键盘 Enter 路由与真键盘 iced on_submit 都消费它。
+    #[test]
+    fn plan051_input_onenter_wires_on_submit() {
+        let widget = make_test_widget("Composer", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Composer");
+
+        let node = AuraNode::element("input")
+            .with_prop("placeholder", Expr::Str("Type a message...".into()))
+            .with_event("onenter", ".DoSend");
+        match builder.build(&node) {
+            View::Input { on_submit, .. } => {
+                let msg = on_submit.expect("onenter 必须接 on_submit");
+                match msg {
+                    DynamicMessage::Typed { widget_name, event_name, .. } => {
+                        assert_eq!(widget_name, "Composer");
+                        assert_eq!(event_name, "DoSend");
+                    }
+                    _ => panic!("Expected Typed message"),
+                }
+            }
+            _ => panic!("Expected View::Input"),
+        }
     }
 
     /// PLAN-050 T9+C1 残余收尾: 按钮内容子树布局方向——按钮样式带 `flex`
