@@ -140,7 +140,12 @@ icons / folders / statusbar / dock / launcher / notice / switcher … }`——�
   │
 shell-track（立项时分配计划号，提案依赖 463/464）
   M1 dock/任务栏（S1）＋ 状态投影协议 v1（S2 接缝 schema 化）
+      ✅ Plan 472 execution_done 2026-08-29（协议合同 schema/projection-protocol-v1.md）
   M2 switcher overlay + workspace pager（S4/S5，消费 463 workspace 模型）
+      ✅ Plan 478 execution_done 2026-08-29（Ctrl+Tab 召唤 MRU 面板 = 第二枚
+      overlay 槽 assets/switcher.at；dock 切换条升格 pager 1 基标签/高亮/
+      增删分区；send_to 跨区发送；协议升版 v1.1 —— __wm_mru/label/三动词，
+      vue 端对拍基线；T6 键流实机项按 472 注入通道先例 headless 指针成文）
   M3 通知中心（S6）
   M4 系统 settings（S7，接 auto-os-config）
   M5 桌面本体（S9：壁纸/图标/虚拟文件夹）
