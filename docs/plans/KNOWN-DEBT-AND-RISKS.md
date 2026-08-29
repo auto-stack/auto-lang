@@ -203,14 +203,14 @@
 - **P482-4 nav-item title/desc tooltip 通道**：os-config regen.sh 仍以部署侧
   :title 补偿截断 desc 悬停提示——组件属性候选（title: prop 双端映射），
   上游组件演进项。
-- **P481-5 482 nav-item/nav-group vue import 围栏红（master 现红）**：
-  schema_drift P6-2 报 `nav-item`/`nav-group` 的 vue import
-  `@/components/ui/nav` 无独立来源（组件包不存在于 gallery 生成树/官方包/
-  安装表）。482 合入 master（b78ad7050）时被既有 `[view_builder] Slot`
-  红遮蔽（围栏快速失败），481 合并修复 Slot 后揭出。根因同 P479/473 系：
-  `cargo tf` 只跑 `--lib`，`--test schema_drift` 不在日常/合入门禁。修复
-  三选一见围栏消息（官方包补导出 / cmd_vue.rs 安装表补条目 / LOCAL_UI_PKGS
-  登记本地组件并写明实现位置）——需 482 意图裁定，归 nav 线后续。
+- **P481-5 482 nav-item/nav-group 围栏红（✅ 已清偿,2026-08-29）**：
+  482 落地漏三件：① LOCAL_UI_PKGS 只登记 nav-link 漏 nav（组件实现实存于
+  crates/auto-man/assets/shadcn-ui/nav/,nav_contract.rs 单测锁契约）——已补
+  白名单；② schema.rs 漏 nav-item/nav-group 元素 insert（aura.at/vb/render
+  三表有）——已按 aura.at 忠实转录；③ baseline 漏 vb/render 两维的下划线
+  臂拼写容忍（codeEditor 先例）——已裁剪 +4 行。schema_drift/docs_gen/
+  component_registry 三件套 master 全绿。流程改进随清偿落地：三件套纳入
+  cargo t/tf 日常与全量档（.cargo/config.toml,cargo t 3271 绿/15s）。
 - **P481-6 实机 Ctrl+C→系统剪贴板末步**：单测+simulator 双证键路，实机
   最后一步被用户在用桌面阻断（详见 archive/481 §T5 留痕）；桌面空闲 30 秒
   可闭环。

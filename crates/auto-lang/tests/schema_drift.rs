@@ -2022,7 +2022,11 @@ fn schema_drift_fence() {
         use auto_lang::aura::default_schema_cached;
         let schema = default_schema_cached().expect("schema 应可加载");
         let local_ui_pkgs: BTreeSet<&str> =
-            ["data-table", "nav-link", "toast"].into_iter().collect();
+            // "nav":NavGroup/NavItem 手写组件(Plan 482),实现位于脚手架资产
+            // crates/auto-man/assets/shadcn-ui/nav/Nav{Item,Group}.vue,
+            // 双端 class 契约由 ui_gen/nav_contract.rs 单测锁定——482 落地时
+            // 只登记了 nav-link,漏了本包(481 merge 修 Slot 红后围栏揭出)。
+            ["data-table", "nav", "nav-link", "toast"].into_iter().collect();
         let installable =
             scan_shadcn_install_table(&read("../../crates/auto/src/cmd_vue.rs"));
         let registry_root = repo_file("../../packages/widgets/registry");

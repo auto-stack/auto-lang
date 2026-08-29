@@ -1473,6 +1473,44 @@ impl AuraSchema {
             description: "Navigation menu indicator",
         });
 
+        // Plan 482 nav 组件族声明源补齐(482 落了 aura.at/vb/render 三表,
+        // schema.rs 漏 insert——481 merge 修 Slot 红后围栏逐层揭出;此处按
+        // aura.at 既有声明块忠实转录,勿重生成以保留 482 手写形态)。
+        elements.insert("nav-item", ElementDef {
+            tag: "nav-item",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "to", type_: PropType::String, required: false, default: None, description: "Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given" },
+                PropDef { name: "onclick", type_: PropType::MsgRef, required: false, default: None, description: "Click message (state mode) for store-driven switching" },
+                PropDef { name: "active", type_: PropType::Expr, required: false, default: None, description: "Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens)" },
+                PropDef { name: "exact", type_: PropType::Bool, required: false, default: Some("false"), description: "Route auto-detection uses exact match only" },
+                PropDef { name: "icon", type_: PropType::String, required: false, default: None, description: "Left icon: lucide name (svg both ends) or literal emoji text" },
+                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Primary text" },
+                PropDef { name: "desc", type_: PropType::String, required: false, default: None, description: "Secondary line (two-line layout)" },
+                PropDef { name: "badge", type_: PropType::String, required: false, default: None, description: "Right-side badge pill" },
+                PropDef { name: "disabled", type_: PropType::Bool, required: false, default: Some("false"), description: "Grayed out, not clickable" },
+                PropDef { name: "size", type_: PropType::OneOf(vec!["sm", "md", "lg"]), required: false, default: Some("md"), description: "md=h-9 single line; lg=py-[10px] two-line; sm=h-7" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "Extra classes appended after the built-in nav-item classes (escape hatch)" },
+            ],
+            allows_children: true,
+            description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link",
+        });
+
+        elements.insert("nav-group", ElementDef {
+            tag: "nav-group",
+            category: ElementCategory::Navigation,
+            props: vec![
+                PropDef { name: "label", type_: PropType::String, required: false, default: None, description: "Group header label" },
+                PropDef { name: "collapsible", type_: PropType::Bool, required: false, default: Some("false"), description: "Header is clickable to fold/unfold (chevron indicator)" },
+                PropDef { name: "open", type_: PropType::Expr, required: false, default: None, description: "Fold state binding; defaults true. Unbound + collapsible uses built-in per-group state" },
+                PropDef { name: "ontoggle", type_: PropType::MsgRef, required: false, default: None, description: "Message on header click (when bound); otherwise built-in state toggles" },
+                PropDef { name: "indent", type_: PropType::Bool, required: false, default: Some("false"), description: "Indent member items (tree feel, pl-3)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "CSS class(es)" },
+            ],
+            allows_children: true,
+            description: "Navigation group: label header + item column, optionally collapsible (Plan 482)",
+        });
+
         // === Sidebar ===
         elements.insert("sidebar", ElementDef {
             tag: "sidebar",

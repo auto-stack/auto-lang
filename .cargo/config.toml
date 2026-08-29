@@ -38,9 +38,12 @@ jobs = 12
 # Windows: C:\Python314\python.exe | Linux: /usr/bin/python3
 
 [alias]
-t = "nextest run -p auto-lang --lib"
+# Plan 481 merge 注:三件套集成测试(schema_drift/docs_gen/component_registry,
+# 合计 <1s)纳入日常与全量档——cargo tf 只跑 --lib 的盲区已连续让 473/482/
+# 481 三次把 schema 红合入 master(围栏快速失败逐层遮蔽,review 手跑才发现)。
+t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test"
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(review/fold 全量门禁专用)
-tf = "nextest run -p auto-lang --lib --config-file .config/nextest-full.toml"
+tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
 tv = "nextest run -p auto-lang --lib --features test-vm-files"
 tt = "nextest run -p auto-lang --lib --features test-trans"
 tb = "nextest run -p auto-lang --lib --features test-book"

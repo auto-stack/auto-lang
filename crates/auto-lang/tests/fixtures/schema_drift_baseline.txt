@@ -171,6 +171,8 @@ render_not_in_rs	media
 render_not_in_rs	modal
 render_not_in_rs	nav
 render_not_in_rs	nav-link
+render_not_in_rs	nav_group
+render_not_in_rs	nav_item
 render_not_in_rs	nav_link
 render_not_in_rs	navigation
 render_not_in_rs	notification
@@ -684,6 +686,8 @@ vb_not_in_rs	img
 vb_not_in_rs	main
 vb_not_in_rs	markdown_editor
 vb_not_in_rs	nav
+vb_not_in_rs	nav_group
+vb_not_in_rs	nav_item
 vb_not_in_rs	progress
 vb_not_in_rs	scrollable
 vb_not_in_rs	section
