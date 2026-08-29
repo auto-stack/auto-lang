@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-478
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m2-switcher-pager
 author: [zcode]
 created_at: 2026-08-29T00:00:00+08:00
