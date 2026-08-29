@@ -1,16 +1,17 @@
-//! Plan 474: VM 轨 `__json_object` 浮点字段 Dot 读误码回归（plan011④）
+//! Plan 474: VM 轨 `__json_object` 浮点字段消费误码回归（plan011④）
 //!
-//! 症状（auto-os-config 现场，worktree plan-011-dev）：JSON 浮点字段 54.16
-//! 单跳 Dot 读出 -1073741824（0xC0000000 = -2.0f32 位型按 i32 重解释），
-//! `.floor()` 得 0；整数（as_i64→Int）与字符串字段正常。
-//! 写入侧三级排除见 docs/plans/KNOWN-DEBT-AND-RISKS.md p1(plan011④)：
-//!   1. stdlib `json_to_vm_value(_inner)` Number 分支产 `Value::Double`；
-//!   2. 对象字段直存 GenericInstanceData（无栈往返）；
-//!   3. GET_FIELD GenericInstanceData Double 臂 `push_f64`。
+//! 根因（已修，worktree commit d55f98b0e）：engine.rs CALL_SPEC 一元/二元数学
+//! 分支的 `read_i32/push_i32/pop_i32` i32 化石把浮点 nv 位型当整数值——
+//! 裸 f64（encode_f64=原始位）被读成低 32 位（54.16 → 0xE147AE14 →
+//! -515396076）、TAG_F32 被读成 payload 位型（54.16f32 → 0x4258A3D7 →
+//! 1113105367）。修复 = 接收者/结果按 NanoValue 透传（shim 的 VMConvertible
+//! f64 pop 自带 TAG_F32→f64 提升与裸 f64 直读）。
 //!
-//! 两层钉死：
-//!   - 脚本级（run_with_capture，真实编译+VM 执行链）——端到端形态；
-//!   - 字节码级（单条 GET_FIELD 直执行）——位级断言，钉死读取链本身。
+//! 分层钉死：
+//!   - 脚本级（run_with_capture）：端到端基线（基础链本就无辜，11 用例）；
+//!   - 位级：单条 GET_FIELD 直执行，位级断言；
+//!   - widget handler 级：`.floor()` 等 CALL_SPEC 数学族在合成 handler 内
+//!     的回归（④ 的现场形态——脚本路径走 CALL_NAT，掩盖此 bug）。
 
 #[cfg(test)]
 mod vm_json_float_read_tests {
@@ -64,7 +65,64 @@ let obj = Json.to_value(js)
         );
     }
 
-    // ── handler 形态变体（活体复现判定：`.floor()` 是唯一损坏点）────────
+    #[test]
+    fn json_missing_key_reads_null() {
+        // Plan 044：__json_object 缺键读 null（Option.unwrap_or 链依赖，
+        // engine.rs GET_FIELD __json_object 分支）。实测基线：print 形态为
+        // `None`（encode_null 的显示形态）。
+        let stdout = run_code(&format!("{PRELUDE}print(obj.no_such_field)"));
+        eprintln!("[P474] missing-key = [{}]", stdout);
+        assert!(
+            stdout.contains("None") || stdout.contains("null") || stdout.contains("nil"),
+            "expected None/null/nil for missing key, got: [{}]",
+            stdout
+        );
+    }
+
+    #[test]
+    fn json_bool_field_compare() {
+        // GET_FIELD bool 臂 push encode_bool（Plan 402 §13.10）——比较语义回归。
+        // 实测基线：bool 值 print 形态为 `1`（待澄清#3 显示旁支），比较结果
+        // 真=true 亦印 1。
+        let stdout = run_code(&format!("{PRELUDE}print(obj.ok == true)"));
+        eprintln!("[P474] bool-compare = [{}]", stdout);
+        assert!(
+            stdout.contains("1") || stdout.contains("true"),
+            "expected 1/true, got: [{}]",
+            stdout
+        );
+    }
+
+    // 控制组：同实例的整数/字符串/bool 字段（既有正确路径不应受影响）
+    #[test]
+    fn json_int_field_dot_read() {
+        let stdout = run_code(&format!("{PRELUDE}print(obj.n_cpu)"));
+        eprintln!("[P474] int-field = [{}]", stdout);
+        assert!(stdout.contains("8"), "expected 8, got: [{}]", stdout);
+    }
+
+    #[test]
+    fn json_str_field_dot_read() {
+        let stdout = run_code(&format!("{PRELUDE}print(obj.host)"));
+        eprintln!("[P474] str-field = [{}]", stdout);
+        assert!(stdout.contains("abc"), "expected abc, got: [{}]", stdout);
+    }
+
+    #[test]
+    fn json_bool_field_dot_read() {
+        // 实测基线（S2 观测，2026-08-29）：json bool 字段 print 印出 `1` 而非
+        // 字面量形态的 `true`（`let b = true; print(b)` 印 true）——显示/类型
+        // 提示路径的旁支不一致，非 ④ 值损坏；已登记 plan 474 待澄清#3。
+        let stdout = run_code(&format!("{PRELUDE}print(obj.ok)"));
+        eprintln!("[P474] bool-field = [{}]", stdout);
+        assert!(
+            stdout.contains("1"),
+            "expected 1 (observed baseline), got: [{}]",
+            stdout
+        );
+    }
+
+    // ── handler 形态变体（活体复现判定：CALL_SPEC 数学族是损坏点）────────
 
     #[test]
     fn json_float_floor_into_object_field() {
@@ -96,35 +154,6 @@ let obj = Json.to_value(js)
         assert!(
             stdout.contains("54"),
             "expected 54, got: [{}]",
-            stdout
-        );
-    }
-
-    // 控制组：同实例的整数/字符串/bool 字段（既有正确路径不应受影响）
-    #[test]
-    fn json_int_field_dot_read() {
-        let stdout = run_code(&format!("{PRELUDE}print(obj.n_cpu)"));
-        eprintln!("[P474] int-field = [{}]", stdout);
-        assert!(stdout.contains("8"), "expected 8, got: [{}]", stdout);
-    }
-
-    #[test]
-    fn json_str_field_dot_read() {
-        let stdout = run_code(&format!("{PRELUDE}print(obj.host)"));
-        eprintln!("[P474] str-field = [{}]", stdout);
-        assert!(stdout.contains("abc"), "expected abc, got: [{}]", stdout);
-    }
-
-    #[test]
-    fn json_bool_field_dot_read() {
-        // 实测基线（S2 观测，2026-08-29）：json bool 字段 print 印出 `1` 而非
-        // 字面量形态的 `true`（`let b = true; print(b)` 印 true）——显示/类型
-        // 提示路径的旁支不一致，非 ④ 值损坏；已登记 plan 474 待澄清#3。
-        let stdout = run_code(&format!("{PRELUDE}print(obj.ok)"));
-        eprintln!("[P474] bool-field = [{}]", stdout);
-        assert!(
-            stdout.contains("1"),
-            "expected 1 (observed baseline), got: [{}]",
             stdout
         );
     }
@@ -190,13 +219,10 @@ let obj = Json.to_value(js)
     }
 }
 
-/// Widget 语境（plan011④ 现场形态）：Init handler 内 json 浮点字段消费。
-///
-/// 活体复现（os-config plan-011-dev，2026-08-29）判定：基础链 Dot 读/算术/
-/// int 槽赋值全部正确，唯一损坏点是 **`.floor()` 方法派发**——
-/// `r.storage_free_gb.floor()` → -536870912（0xE0000000，int），值相关错解码
-/// （用户现场 54.16 → -1073741824/0xC0000000），fb06cd8b2「CALL_NAT 损坏浮点」
-/// 族的方法形态残留。此处在本仓以最小 widget 源级钉死。
+/// Widget 语境（plan011④ 现场形态）：Init handler 内 json 浮点字段的
+/// CALL_SPEC 数学族消费。④ 根因即在此语境——脚本路径的 `.floor()` 编译为
+/// CALL_NAT（marshalling 正确），而合成 handler 内编译为 CALL_SPEC，其内联
+/// 数学分发曾以 read_i32/push_i32/pop_i32 处理浮点 nv（位型当整数）。
 ///
 /// 门控与 plan370_*_tests 一致：widget 测试需要 `ui-iced` feature。
 #[cfg(all(test, feature = "ui-iced"))]
@@ -212,6 +238,10 @@ widget App {
         var probe_a float = 0.0
         var probe_b float = 0.0
         var probe_c float = 0.0
+        var probe_d float = 0.0
+        var probe_e float = 0.0
+        var probe_f float = 0.0
+        var probe_g float = 0.0
     }
     on {
         .Init -> {
@@ -219,6 +249,10 @@ widget App {
             .probe_a = r.storage_free_gb
             .probe_b = r.storage_free_gb.floor()
             .probe_c = 54.16.floor()
+            .probe_d = r.storage_free_gb.ceil()
+            .probe_e = r.storage_free_gb.round()
+            .probe_f = r.storage_free_gb.sqrt()
+            .probe_g = r.storage_free_gb.powf(2.0)
         }
     }
     view {
@@ -253,32 +287,6 @@ widget App {
         )
         .ok()?;
         comp.fire_init();
-        // [P474] 临时探针：dump 合成 handler 字节码（S3 二分证据，随修摘除）
-        {
-            use crate::vm::disasm::Disassembler;
-            let bridge = comp.bridge();
-            let vm = bridge.vm();
-            let dis = Disassembler::new(&vm.flash);
-            let strings: Vec<String> = vm
-                .strings
-                .read()
-                .unwrap()
-                .iter()
-                .map(|b| String::from_utf8_lossy(b).into_owned())
-                .collect();
-            let mut names: Vec<&String> = vm.flash.exports_by_name.keys().collect();
-            names.sort();
-            eprintln!("[P474-disasm] exports = {:?}", names);
-            if let Some(&addr) = vm.flash.exports_by_name.get("handler_App_Init") {
-                for line in dis.disassemble_range(addr as usize, addr as usize + 140) {
-                    eprintln!(
-                        "[P474-disasm] {:04} {} {}",
-                        line.offset, line.mnemonic, line.operands
-                    );
-                }
-            }
-            eprintln!("[P474-disasm] strings = {:?}", strings);
-        }
         Some(comp)
     }
 
@@ -290,8 +298,13 @@ widget App {
         }
     }
 
+    /// CALL_SPEC 数学族回归：一元（floor/ceil/round/sqrt）× 接收者两形态
+    /// （json 读出的裸 f64 nv / 字面量 TAG_F32 nv）+ 二元（powf）。
+    /// 修复前实测：floor(json) = Int(-515396076)（= 0xE147AE14，54.16 裸
+    /// f64 低 32 位按 i32 读）、floor(字面量) = Int(1113105367)（=
+    /// 0x4258A3D7，f32(54.16) 位型按 i32 读）。
     #[test]
-    fn json_float_consumption_in_init_handler() {
+    fn json_float_callspec_math_family_in_init_handler() {
         let comp = match build_probe_widget() {
             Some(c) => c,
             None => {
@@ -300,31 +313,28 @@ widget App {
             }
         };
         let state = comp.read_all_state();
-        for name in ["probe_a", "probe_b", "probe_c"] {
-            eprintln!(
-                "[P474] {} = {:?} ({:?})",
+
+        let check = |name: &str, expect: f64, tol: f64| {
+            let got = state.get(name).and_then(as_f64);
+            eprintln!("[P474] {} = {:?} (expect ~{})", name, state.get(name), expect);
+            let v = got.unwrap_or_else(|| {
+                panic!("{} 应为数值，got {:?}", name, state.get(name))
+            });
+            assert!(
+                (v - expect).abs() < tol,
+                "{} 应为 ~{}, got {:?}",
                 name,
-                state.get(name),
-                state.get(name).map(|v| std::mem::discriminant(v))
+                expect,
+                state.get(name)
             );
-        }
-        let a = state.get("probe_a").and_then(as_f64).unwrap_or(f64::NAN);
-        assert!(
-            (a - 54.16).abs() < 1e-3,
-            "probe_a（Dot 读→state 赋值）应为 ~54.16，got {:?}",
-            state.get("probe_a")
-        );
-        let b = state.get("probe_b").and_then(as_f64).unwrap_or(f64::NAN);
-        assert!(
-            (b - 54.0).abs() < 1e-9,
-            "probe_b（json 浮点 .floor()）应为 54，got {:?}",
-            state.get("probe_b")
-        );
-        let c = state.get("probe_c").and_then(as_f64).unwrap_or(f64::NAN);
-        assert!(
-            (c - 54.0).abs() < 1e-9,
-            "probe_c（字面量 .floor()）应为 54，got {:?}",
-            state.get("probe_c")
-        );
+        };
+
+        check("probe_a", 54.16, 1e-3); // Dot 读 → state 赋值（基线）
+        check("probe_b", 54.0, 1e-9); // floor(json)
+        check("probe_c", 54.0, 1e-9); // floor(字面量)
+        check("probe_d", 55.0, 1e-9); // ceil(json)
+        check("probe_e", 54.0, 1e-9); // round(json)
+        check("probe_f", 7.36, 1e-2); // sqrt(54.16) ≈ 7.3600…
+        check("probe_g", 2933.3, 0.5); // powf(54.16, 2) ≈ 2933.31
     }
 }
