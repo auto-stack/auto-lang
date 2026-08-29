@@ -6940,6 +6940,9 @@ fn projection_win_entry(
 /// Plan 478 T3 升级 **v1.1**：新增 `__wm_mru`（当前分区 MRU 序，switcher
 /// 消费）、`__wm_workspaces.label`（1 基标签）；指纹分区段扩 label、
 /// 尾接 mru 段（§3 式）。
+/// Plan 479 T4 升级 **v1.2**：新增 `__wm_notes`（通知历史全量 {id,kind,msg,
+/// at} Obj 数组）+ `__wm_notes_unread`（未读串，badge 消费）；指纹尾接
+/// `|notes:{len}:{front_id}:{unread};` 段（T1 施工图定案 6）。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -7006,6 +7009,32 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         }
         fp.push_str(&format!("{};", wid.0));
     }
+    // Plan 479 T4 v1.2：__wm_notes 段——通知历史全量 Obj 数组（badge 消费
+    // unread 串；通知中心面板本体走快照注入，switcher __wm_mru 同型）。
+    // 指纹尾段 "|notes:{len}:{front_id}:{unread};"（T1 定案 6——len/front_id
+    // 双段覆盖 cap 环绕与 dismiss 组合，unread 独立第三段）。
+    let mut notes_objs: Vec<auto_val::Value> = Vec::new();
+    let notes_snapshot: Vec<crate::ui::session::NotificationEntry> =
+        state.desktop.notifications.borrow().clone();
+    for n in &notes_snapshot {
+        notes_objs.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("id", auto_val::Value::Str(n.id.to_string().into())),
+            ("kind", auto_val::Value::Str(n.kind.clone().into())),
+            ("msg", auto_val::Value::Str(n.msg.clone().into())),
+            ("at", auto_val::Value::Str(n.at.clone().into())),
+        ])));
+    }
+    let notes_front = notes_snapshot
+        .first()
+        .map(|n| n.id.to_string())
+        .unwrap_or_else(|| "0".to_string());
+    let notes_unread = state.desktop.notes_unread.get();
+    fp.push_str(&format!(
+        "|notes:{}:{}:{};",
+        notes_snapshot.len(),
+        notes_front,
+        notes_unread
+    ));
     let app = match state.apps.get_mut(&shell) {
         Some(a) => a,
         None => return,
@@ -7019,8 +7048,12 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let _ = app.component.write_state_vec("__wm_wins", wins);
     let _ = app.component.write_state_vec("__wm_workspaces", workspaces);
     let _ = app.component.write_state_vec("__wm_mru", mru);
+    let _ = app.component.write_state_vec("__wm_notes", notes_objs);
     let _ = app.component.write_state("__wm_meta", auto_val::Value::str(&meta));
     let _ = app.component.write_state("__wm_running", auto_val::Value::str(&running));
+    let _ = app
+        .component
+        .write_state("__wm_notes_unread", auto_val::Value::Str(notes_unread.to_string().into()));
     let _ = app.component.write_state("__wm_fp", auto_val::Value::str(&fp));
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -14870,6 +14903,8 @@ mod tests {
         var __wm_fp str = ""
         var __wm_workspaces = []
         var __wm_mru = []
+        var __wm_notes = []
+        var __wm_notes_unread str = ""
     }
     view { col { text "shell" } }
 }
@@ -15479,6 +15514,88 @@ mod tests {
             .call_handler("Escape", &[])
             .expect("Escape handler");
         assert!(!ds.notification_visible(), "Esc 后自隐");
+    }
+
+    /// Plan 479 T4：投影 v1.2——`__wm_notes`（历史 Obj 数组 {id,kind,msg,at}）
+    /// + `__wm_notes_unread`（串）+ 指纹 notes 段 `|notes:{len}:{front}:{unread};`
+    /// 门控翻转（T1 定案 6）。
+    #[test]
+    fn notif_projection_notes_and_fingerprint() {
+        let _guard = t2_isolate_storage("proj");
+        let mut ds = t3_session_with_shell();
+        let _a = t3_add_win(&mut ds, "Alpha");
+        sync_shell_windows(&mut ds);
+        assert_eq!(
+            t3_read(&ds, "__wm_notes_unread"),
+            auto_val::Value::str("0"),
+            "零历史初值（宿主已同步——.at model 缺省空串不出 badge）"
+        );
+        assert!(t3_read_array(&ds, "__wm_notes").is_empty());
+        // 入史两条 → 投影全量 + 未读串 + 指纹段。
+        push_notification(&mut ds, "success", "first");
+        push_notification(&mut ds, "error", "second");
+        sync_shell_windows(&mut ds);
+        let notes = t3_read_array(&ds, "__wm_notes");
+        assert_eq!(notes.len(), 2, "__wm_notes 全量投影");
+        let auto_val::Value::Obj(front) = &notes[0] else {
+            panic!("notes 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(front, "msg"), "second", "MRU 序 front=最新");
+        assert_eq!(t3_obj_str(front, "kind"), "error");
+        assert_eq!(t3_obj_str(front, "at").len(), 5, "at = HH:MM");
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("2"));
+        let fp = match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => s.to_string(),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        };
+        let front_id = match &notes[0] {
+            auto_val::Value::Obj(o) => t3_obj_str(o, "id"),
+            other => panic!("Obj expected: {other:?}"),
+        };
+        assert!(
+            fp.contains(&format!("|notes:2:{front_id}:2;")),
+            "指纹 notes 段: {fp}"
+        );
+        // 开面板清零 → 指纹翻 → 未读串归 0（同 len 同 front，仅 unread 段变）。
+        ds.desktop.notes_unread.set(0);
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_notes_unread"), auto_val::Value::str("0"));
+        // 无变化 → 指纹门控跳过（幂等）。
+        let fp_before = t3_read(&ds, "__wm_fp").clone();
+        sync_shell_windows(&mut ds);
+        assert_eq!(t3_read(&ds, "__wm_fp"), fp_before, "指纹未变零写");
+    }
+
+    /// Plan 479 T4：真 assets/shell.at 冒烟——铃铛钮/badge 视图编译（构建
+    /// 即检语法）+ NotificationToggle → `notes_toggle` 动词记录接线。
+    #[test]
+    fn notif_shell_at_smoke_toggle_and_badge() {
+        let mut ds = t3_session_with_shell();
+        // 换装真 shell 资产（t3_session_with_shell 挂的是裁剪探针）。
+        let shell = ds.desktop.shell_app.expect("probe shell");
+        let real =
+            crate::ui::shell::build_shell_component().expect("真 shell.at 编译（铃铛+badge 语法）");
+        ds.apps.remove(&shell);
+        ds.desktop.shell_app = Some(ds.allocate_app(real));
+        // badge 面：宿主写未读串（写状态不触发 handler——与生产投影一致）。
+        let shell = ds.desktop.shell_app.expect("real shell");
+        if let Some(app) = ds.apps.get_mut(&shell) {
+            let _ = app
+                .component
+                .write_state("__wm_notes_unread", auto_val::Value::str("3"));
+        }
+        // 铃铛面：NotificationToggle handler → notes_toggle 记录可达宿主。
+        let app = ds.apps.get_mut(&shell).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NotificationToggle", &[])
+            .expect("NotificationToggle handler");
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::NotesToggle],
+            "铃铛钮 → notes_toggle 动词"
+        );
     }
 
     // ---- Plan 478 T6：宿主臂无头覆盖（注入通道受限项的 headless 指针，
