@@ -4,13 +4,13 @@ status: executing
 feature_name: AutoUI RenderQueue / 分离渲染架构 Stage 1——桌面协议 loopback（五通道同进程走通）
 author: [zcode]
 created_at: 2026-08-28T00:00:00+08:00
-updated_at: 2026-08-29T17:10:00+08:00
+updated_at: 2026-08-29T19:00:00+08:00
 
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 
-current_step: 10
+current_step: 14
 total_steps: 14
 ---
 
@@ -270,19 +270,33 @@ tf 不编译本模块，二者缺一不可）。
   （host→app：Active→Standalone，表面释放、VM 状态不动——路线 B 的
   核心红利）+ `L2AttachRequest`（app→host：重孵化握手续用既有状态）；
   协议文档记录 L2 语义。验证同上
-- [ ] **S12 双模 exe + 两进程集成测试**：`examples/ui_client_demo`
+- [✅ 已完成] **S12 双模 exe + 两进程集成测试**
+  （`dual_mode.rs`：re-exec 子进程（`current_exe` + 移除 NEXTEST_* +
+  filter 子串）走双模 ① 路径全生命周期——adjudicate 裁决→孵化（真实
+  462 AppSession/VWinState）→**共享内存帧随点击递增**（FrameReadyShared
+  + `BufferAlloc.shm` 名约定）→L2Detach→Standalone→子进程 stdout 标记
+  `count=3 rev=4` = app 进程持有状态的跨进程证据；父侧 L2Detached→
+  ReclaimWindow 窗/App/表面全清。BufferAlloc 尾部追加 `shm` 字段。
+  协议 44 测试全绿）：`examples/ui_client_demo`
   （三态裁决真 exe：client = 计数器协议循环；standalone = iced 窗，
   `ui_dual_app` 同款门控）+ 集成测试（re-exec 子进程模式：真管道 +
   共享内存 + 孵化/帧/输入/L2 全生命周期双端断言）。验证同上
-- [ ] **S13 Phase 2 文档 + 收尾**：协议文档版本表追加（共享内存
+- [✅ 已完成] **S13 Phase 2 文档 + 收尾**
+  （协议文档升版 v1.1：增量表/两进程验证记录/平台教训；Stage 2 验收句
+  兑现 = 双模 exe 两进程启动（① spawn-client 直连集成 + ② broker 全链
+  S10 + 裁决三步单测）+ L2 detach/attach 协议消息及状态保持证据。
+  44 测试全绿）：协议文档版本表追加（共享内存
   transport / broker / 新变体 / L2 语义）；scoped 验证全绿
   （desktop_protocol + session）。验证: cargo check + 上述模块测试
   ---
 
-**Phase 2 本次增量折入（2026-08-29）**：S8/S9/S10/S11 四块（传输/
-共享内存/broker/L2 协议，42 测试全绿 ×3 连跑）+ `cargo tf` 门禁通过后
-折入 master；S12（双模 exe 集成）与 S13（文档升版）顺延下一 session，
-折入时协议规范文档未含 S12 增量（下次补）。
+**Phase 2 完成折入（2026-08-29）**：S8–S13 全部完成折入 master
+（S8 传输/S9 shm/S10 broker/S11 L2/S12 双模两进程集成/S13 文档 v1.1）。
+pre-fold 门禁 = `cargo tf` 3254/3254 绿 + 协议 44 测试全绿。**Stage 2
+验收句兑现**：独立 exe 双态启动（① spawn-client 直连两进程集成 +
+② broker 全链 + 裁决三步单测）+ L2 detach/attach 协议消息（Standalone
+态 + revision 连续性状态保持证据）。剩余：真桌面壳（`auto run` 集成
+broker/spawn）归 shell-track 后续计划。
 
 **Pre-fold 门禁（Phase 2 折入 master 前）**：`cargo tf` 全绿 +
 `cargo t desktop_protocol --features ui-iced` 显式绿。
