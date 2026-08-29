@@ -115,12 +115,20 @@ pub fn usable_rect(viewport: iced::Rectangle, reserved: ReservedEdges) -> iced::
 /// 非纯薄应用层（Plan 463 T4）：把 `layout()` 结果写回 WM —— rect 的唯一
 /// 批量写点（R9：排布是 WM 策略；单窗交互路径不经此）。free 模式为恒等
 /// 写回（用户位置即真值）。窗口级 `window_size` 同步（响应式布局消费）。
+///
+/// Plan 473 T5：NativeSlot 作为不透明布局单元参与同一轮排布——以伪 Wid
+/// （[`NATIVE_SLOT_WID_FLAG`] 段）进 `layout()`，输出换算回槽位本地矩形
+/// 并推入 `WmState.pending_native_geometry`（T6 宿主排水：DPI 换算 →
+/// win32 set_bounds → slot_rect 回写）。free 模式槽位恒等（用户位置即真值）。
+/// min-size 估计不足时 best-effort 向可用区内扩张（C3；估计值为物理像素，
+/// 缩放屏下近似）。
 pub fn apply_layout(
     wm: &mut crate::ui::session::WmState,
     viewport: iced::Rectangle,
     reserved: ReservedEdges,
 ) {
-    let snaps: Vec<WindowState> = wm
+    let usable = usable_rect(viewport, reserved);
+    let mut snaps: Vec<WindowState> = wm
         .z_order
         .iter()
         .filter_map(|wid| {
@@ -136,12 +144,67 @@ pub fn apply_layout(
             })
         })
         .collect();
+    // Plan 473 T5：槽位追加在窗口之后（z 序视为最高一层；focused 恒 false
+    // ——槽位不参与 MasterStack master 位竞争）。free 模式槽位恒等（用户
+    // 位置即真值），不参与排布、不产生同步项。
+    let slot_ids: Vec<crate::ui::native_dock::NativeSlotId> =
+        wm.native_slot_local_rects.keys().copied().collect();
+    if wm.layout != LayoutMode::Free {
+        for id in &slot_ids {
+            snaps.push(WindowState {
+                wid: native_slot_pseudo_wid(*id),
+                rect: wm.native_slot_local_rects[id],
+                focused: false,
+            });
+        }
+    }
     for (wid, r) in layout(wm.layout, &snaps, viewport, reserved) {
+        if wid.0 & NATIVE_SLOT_WID_FLAG != 0 {
+            let id = crate::ui::native_dock::NativeSlotId(wid.0 & !NATIVE_SLOT_WID_FLAG);
+            let min = wm
+                .native_slots
+                .get(&id)
+                .and_then(|s| s.min_size_est)
+                .unwrap_or_default();
+            let mut x = r.x as i32;
+            let mut y = r.y as i32;
+            let mut w = r.width as i32;
+            let mut h = r.height as i32;
+            let ux = usable.x as i32;
+            let uy = usable.y as i32;
+            let ur = (usable.x + usable.width) as i32;
+            let ub = (usable.y + usable.height) as i32;
+            if w < min.w {
+                w = min.w.max(0).min((ur - x).max(0));
+            }
+            if h < min.h {
+                h = min.h.max(0).min((ub - y).max(0));
+            }
+            x = x.max(ux);
+            y = y.max(uy);
+            let local = iced::Rectangle::new(
+                iced::Point::new(x as f32, y as f32),
+                iced::Size::new(w as f32, h as f32),
+            );
+            if let Some(lr) = wm.native_slot_local_rects.get_mut(&id) {
+                *lr = local;
+            }
+            wm.pending_native_geometry.push((id, local));
+            continue;
+        }
         if let Some(v) = wm.wins.get_mut(&wid) {
             *v.rect.borrow_mut() = r;
             *v.window_size.borrow_mut() = iced::Size::new(r.width, r.height);
         }
     }
+}
+
+/// Plan 473 T5：native slot 参与排布的伪 Wid 段标志（真 Wid 从 1 单调
+/// 递增，会话生命周期内不可达 u63 段，绝不相撞）。
+const NATIVE_SLOT_WID_FLAG: u64 = 0x8000_0000_0000_0000;
+
+fn native_slot_pseudo_wid(id: crate::ui::native_dock::NativeSlotId) -> crate::ui::session::Wid {
+    crate::ui::session::Wid(NATIVE_SLOT_WID_FLAG | id.0)
 }
 
 /// Grid：cols = ⌈√N⌉，rows = ⌈N/cols⌉，行主序。空表返回空表。

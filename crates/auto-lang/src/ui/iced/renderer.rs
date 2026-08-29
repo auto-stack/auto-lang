@@ -6541,7 +6541,7 @@ fn execute_dock_native(
     let id = {
         let host = state.host.as_mut().expect("desktop checked");
         host.wm
-            .add_native_slot(hwnd.0, pid, title.clone(), pre_bounds, fitted_slot)
+            .add_native_slot(hwnd.0, pid, title.clone(), pre_bounds, fitted_slot, slot_logical)
     };
     let saved_style = match ndw::strip_chrome(hwnd) {
         Ok(s) => s,
@@ -6631,6 +6631,7 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id
     }
     if let Some(host) = state.host.as_mut() {
         host.wm.advance_native_slot(id, SlotEvent::RestoreCompleted);
+        host.wm.native_slot_local_rects.remove(&id);
     }
     push_desktop_toast(state, "success", &format!("已恢复 {title}"));
 }

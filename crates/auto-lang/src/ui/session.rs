@@ -405,6 +405,14 @@ pub struct WmState {
     pub native_slots: BTreeMap<crate::ui::native_dock::NativeSlotId, crate::ui::native_dock::NativeSlot>,
     /// Plan 473：槽位 id 分配器（单调递增，会话生命周期内不复用）。
     pub next_native_slot_id: u64,
+    /// Plan 473 T5：槽位本地（iced 逻辑）矩形缓存——布局引擎的输入域
+    /// （NativeSlot.slot_rect 为屏幕物理坐标，两域在 T6 宿主排水时换算）。
+    pub native_slot_local_rects:
+        BTreeMap<crate::ui::native_dock::NativeSlotId, iced::Rectangle>,
+    /// Plan 473 T5：relayout 产生的待同步槽位几何（本地逻辑矩形）。
+    /// T6 宿主装配排水：换算屏幕物理坐标 → win32 set_bounds → slot_rect 回写。
+    pub pending_native_geometry:
+        Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
 }
 
 impl WmState {
@@ -426,6 +434,8 @@ impl WmState {
             current_workspace: 0,
             native_slots: BTreeMap::new(),
             next_native_slot_id: 0,
+            native_slot_local_rects: BTreeMap::new(),
+            pending_native_geometry: Vec::new(),
         }
     }
 
@@ -494,8 +504,10 @@ impl WmState {
     // --- Plan 473 T4：原生窗口槽位（native dock）注册表与状态机推进 ---
 
     /// 登记原生窗口槽位候选（[`crate::ui::native_dock::SlotState::Candidate`]）。
-    /// 返回分配的槽位 id；宿主层随后推进状态机（DockRequested → 几何写读回
-    /// → DockConfirmed / DockFailed）。
+    /// `local_rect` 为槽位的宿主窗本地逻辑矩形（布局引擎输入域，T5）；
+    /// `slot_rect` 为屏幕物理矩形（Win32 域）。返回分配的槽位 id；宿主层
+    /// 随后推进状态机（DockRequested → 几何写读回 → DockConfirmed /
+    /// DockFailed），并把本地矩形同步项排入 `pending_native_geometry`。
     pub fn add_native_slot(
         &mut self,
         hwnd: isize,
@@ -503,6 +515,7 @@ impl WmState {
         title: String,
         pre_dock_bounds: crate::ui::native_dock::Rect,
         slot_rect: crate::ui::native_dock::Rect,
+        local_rect: iced::Rectangle,
     ) -> crate::ui::native_dock::NativeSlotId {
         use crate::ui::native_dock::{NativeHwnd, NativeSlot, NativeSlotId};
         self.next_native_slot_id += 1;
@@ -518,7 +531,16 @@ impl WmState {
                 slot_rect,
             ),
         );
+        self.native_slot_local_rects.insert(id, local_rect);
+        self.pending_native_geometry.push((id, local_rect));
         id
+    }
+
+    /// Plan 473 T5：排空待同步槽位几何（读+清幂等；宿主层换算后写 Win32）。
+    pub fn drain_native_geometry(
+        &mut self,
+    ) -> Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)> {
+        std::mem::take(&mut self.pending_native_geometry)
     }
 
     /// 推进槽位状态机一步；终态（Rejected/Restored）自动从注册表移除。
@@ -2147,6 +2169,7 @@ mod tests {
                 "fixture".into(),
                 Rect::new(100, 100, 800, 600),
                 Rect::new(1200, 100, 640, 480),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)),
             )
         };
         assert_eq!(id, NativeSlotId(1), "槽位 id 单调分配");
@@ -2192,6 +2215,7 @@ mod tests {
                 "elevated".into(),
                 Rect::new(0, 0, 400, 300),
                 Rect::new(10, 10, 400, 300),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(400.0, 300.0)),
             )
         };
         let host = ds.host.as_mut().unwrap();
@@ -2201,6 +2225,62 @@ mod tests {
             .wm
             .advance_native_slot(id, SlotEvent::DockFailed(RejectReason::Elevated));
         assert!(removed, "Rejected 终态应自动出注册表");
+    }
+
+    #[test]
+    fn native_slot_joins_grid_layout_and_emits_sync() {
+        use crate::ui::native_dock::{NativeSlotId, Rect, Size};
+        let mut ds = desktop_session_with_host();
+        let id = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.add_native_slot(
+                0x1234,
+                4242,
+                "fixture".into(),
+                Rect::new(100, 100, 800, 600),
+                Rect::new(1200, 100, 640, 480),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)),
+            )
+        };
+        // 两个虚拟窗 + 1 槽位 = 3 单元；grid cols=⌈√3⌉=2 rows=2。
+        let app = insert_app(&mut ds, "A");
+        let _a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0));
+        let app2 = insert_app(&mut ds, "B");
+        let _b = ds.wm_add_win(app2, "B".into(), t2_rect(0.0, 0.0));
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let sync = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.drain_native_geometry()
+        };
+        // dock 登记 + grid relayout 各推入一次。
+        assert_eq!(sync.len(), 2, "dock 初位 + relayout 各一项");
+        let (sid, r) = sync[1];
+        assert_eq!(sid, id);
+        // 视口 1280x800 扣 taskbar(bottom 48) → usable 1280x752；
+        // 2 列 2 行：槽位排第 3 位 = (0, 376, 640, 376)。
+        assert_eq!((r.x, r.y, r.width, r.height), (0.0, 376.0, 640.0, 376.0));
+        // 本地缓存同步更新（下轮排布输入）。
+        let host = ds.host.as_ref().unwrap();
+        assert_eq!(host.wm.native_slot_local_rects[&id], r);
+        // C3：min-size 不足时 best-effort 扩张（640 宽 < 700 → 扩到 700）。
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .native_slots
+            .get_mut(&id)
+            .unwrap()
+            .min_size_est = Some(Size::new(700, 100));
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let sync = {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.drain_native_geometry()
+        };
+        assert_eq!(sync.last().unwrap().1.width, 700.0, "min-size 不足应扩张槽位");
+        // free 模式恒等：不产生同步项。
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
     }
 }
 
