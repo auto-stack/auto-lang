@@ -3365,12 +3365,13 @@ let tabs_inner = View::Row {
                     args: vec![auto_val::Value::str(&key)],
                 },
             };
-            let chevron = if open { "chevron-down" } else { "chevron-right" };
+            // Plan 482:文本 chevron(▾/▸)——与非 shadcn vue 内联轨同构。
+            let chevron = if open { "▾" } else { "▸" };
             let content = Box::new(View::Row {
                 children: vec![
-                    View::Image {
-                        src: format!("lucide:{}", chevron),
-                        style: Style::parse("h-4 w-4 shrink-0 text-muted-foreground").ok(),
+                    View::Text {
+                        content: chevron.to_string(),
+                        style: Style::parse("text-[11px] text-muted-foreground w-[14px] shrink-0").ok(),
                     },
                     View::Text { content: label.clone(), style: None },
                 ],
