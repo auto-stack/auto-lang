@@ -421,6 +421,178 @@ mod tests {
         stress_body(5, 30);
     }
 
+    /// S7 弹性重连：host 断连（server drop → child EOF）→ child 存活
+    /// 等待重连（不退出、状态保持）→ 宿主重建管道 → child 连回、握手
+    /// 续跑 → 再点击 count 连续（2）、revision 连续（3）。
+    #[test]
+    fn stage3_reconnect_state_continuous() {
+        use crate::ui::desktop_protocol::client_runtime::ClientPump;
+        use crate::ui::desktop_protocol::host::ProtocolHost;
+        use crate::ui::desktop_protocol::message::DrawOp;
+        use crate::ui::session::DesktopSession;
+
+        const SRC: &str = "widget ReconnectCounter {
+    model { var count int = 0 }
+    view {
+        button \"+\" { onclick: () => {.count += 1} }
+        text `count: ${.count}`
+    }
+}
+";
+
+        let pipe = format!("autodesk-reconnect-s7-{}", std::process::id());
+        let config = ClientConfig {
+            app_name: "reconnect-counter".into(),
+            title: "reconnect".into(),
+            width: 480.0,
+            height: 320.0,
+        };
+
+        // ---- 第一条连接：listen → child 泵（重连策略 10s 预算）。
+        let listener = transport::listen(&pipe).expect("listen A");
+        let app_end = transport::connect(&pipe, 2000).expect("connect A");
+        let mut client = ClientPump::new(
+            app_end,
+            {
+                let component = crate::build_dynamic_component(SRC, None).expect("build");
+                AppProjector::new(component, 480.0, 320.0)
+            },
+            config.clone(),
+            Some(ReconnectPolicy { pipe: pipe.clone(), budget_ms: 10_000, interval_ms: 20 }),
+        );
+        let mut server_end = listener.wait_connect().expect("server A");
+
+        let mut session = DesktopSession::__test_session();
+        session.__test_open_desktop();
+        let src = SRC;
+        let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
+            if name == "reconnect-counter" {
+                crate::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
+            } else {
+                Err(format!("unknown app {name}"))
+            }
+        });
+        fn pump(server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, ph: &mut ProtocolHost<'_>) {
+            while let Some(loaded) = server_end.try_recv() {
+                let msg = loaded.expect("解码");
+                ph.handle(&msg).expect("host 状态机");
+                for reply in std::mem::take(&mut ph.to_app) {
+                    let _ = server_end.send(&reply);
+                }
+            }
+        }
+
+        // 泵到 Active + 首帧，点击一次（count=1）。
+        let mut wid = None;
+        for _ in 0..200 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if !ph.session.apps.is_empty() {
+                wid = ph.active().1;
+                if ph.composed(wid.expect("wid").0).is_some() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid_a = wid.expect("连接 A 孵化");
+        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        server_end.send(&injected).unwrap();
+        let mut count_a = 0;
+        for _ in 0..200 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if ph.composed(wid_a.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 1"))) {
+                count_a = 1;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(count_a, 1, "断连前点击生效");
+
+        // ---- host 断连：server 端 drop → child EOF → 存活等待重连。
+        server_end.send(&ph.endpoint.close().unwrap_or(
+            crate::ui::desktop_protocol::message::ProtocolMsg::Handshake(
+                crate::ui::desktop_protocol::message::HandshakeMsg::Ready))); // no-op 填充，真实断连靠 drop
+        drop(ph);
+        drop(server_end); // EOF 传播给 child
+        for _ in 0..50 {
+            assert!(client.step().is_none(), "child 在断连期存活（不退出）");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        // ---- 宿主重建管道：同名单独 listen；旧 AppSession/窗按 EOF 回收语义清场。
+        session.apps.clear();
+        if let Some(host) = session.host.as_mut() {
+            host.wm.wins.clear();
+        }
+        let listener_b = transport::listen(&pipe).expect("listen B");
+        // 驱动 child 重连：connect 只在 step() 内尝试（try_reconnect），
+        // 故 accept 放侧线程，主循环泵 step 直至 child 连回。
+        let accept = std::thread::spawn(move || listener_b.wait_connect().expect("server B"));
+        for _ in 0..200 {
+            let _ = client.step();
+            if accept.is_finished() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let mut server_end = accept.join().expect("accept thread");
+
+        // 新连接（B）：新 ProtocolHost 端点（新 wid/surface），VM 状态在 child 侧。
+        let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
+            if name == "reconnect-counter" {
+                crate::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
+            } else {
+                Err(format!("unknown app {name}"))
+            }
+        });
+        let mut wid_b = None;
+        for _ in 0..300 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if !ph.session.apps.is_empty() {
+                wid_b = ph.active().1;
+                if ph.composed(wid_b.expect("wid").0).is_some() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid_b = wid_b.expect("重连后再次孵化");
+
+        // ---- 再点击：count 连续（2 = 断连前 1 + 现 successes），revision 连续。
+        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        server_end.send(&injected).unwrap();
+        let mut count_b = 0;
+        for _ in 0..300 {
+            pump(&mut server_end, &mut ph);
+            let _ = client.step();
+            if ph.composed(wid_b.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 2"))) {
+                count_b = 2;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(count_b, 2, "重连后 count 连续（断连前 1 + 断连后 1）");
+
+        // 出口核对：L2Detach 走完，projector 状态/revision 连续（rev=1+2）。
+        let detach = ph.endpoint.l2_detach().unwrap();
+        server_end.send(&detach).unwrap();
+        let (exit, projector) = loop {
+            pump(&mut server_end, &mut ph);
+            if let Some(done) = client.step() {
+                break done;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
+        assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(2), "count 连续");
+        assert_eq!(projector.revision(), 3, "revision 连续（1 + 2 次点击）");
+    }
+
     /// S5 采样单测 + N=1/3/5 边际增量数字生成：阶段化 spawn（1 → 3 →
     /// 5 child），每阶段 settle 后采全体 child WorkingSet/PrivateUsage；
     /// 断言数值 >0 且 N=5 > N=1；边际增量打印供 S6 报告引用。
