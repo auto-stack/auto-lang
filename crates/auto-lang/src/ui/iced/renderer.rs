@@ -14991,6 +14991,69 @@ mod tests {
         );
     }
 
+    // ---- Plan 478 T6：宿主臂无头覆盖（注入通道受限项的 headless 指针，
+    // 472 T5 先例成文）——WorkspaceAdd 增分区即入 / WorkspaceClose toast 门
+    // 与末分区保底 / SendTo 跨区发送。----
+    #[test]
+    fn workspace_v11_host_arms_add_close_send() {
+        use crate::ui::session::DesktopCommand as DC;
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha"); // ws0，焦点窗
+        // `+`：增分区并即入新分区（验收②）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceAdd]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 3);
+            assert_eq!(host.wm.current_workspace, 2, "增分区即入新分区");
+            assert_eq!(host.wm.wins[&a].workspace, 0, "原窗归属不变");
+        }
+        // `send_to`：a 发往当前分区 2（发前先聚焦 a）= 恒等迁移（焦点保持）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.wins[&a].workspace, 2);
+        ds.wm_focus(a);
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(a), "当前分区发送焦点保持");
+        // `×`：分区 2 含窗 → toast 提示不删（T1 定案：toast 门最少意外）。
+        let toasts_before = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 3, "非空分区不删");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_before,
+            "非空 × 出 toast 提示"
+        );
+        // send_to 隐分区：a 发回分区 0 → 焦点让渡（分区 2 空 → None）。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 0)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.wins[&a].workspace, 0);
+            assert_eq!(host.wm.focused, None, "隐分区发送焦点让渡");
+        }
+        // `×`：分区 2 已空 → 删除；current clamp 2→1。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
+        assert!(!exit);
+        {
+            let host = ds.host.as_ref().unwrap();
+            assert_eq!(host.wm.workspaces.len(), 2);
+            assert_eq!(host.wm.current_workspace, 1, "current clamp");
+        }
+        // `×`：删到单分区再删 → 末分区保底 no-op + toast。
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(1)]);
+        assert!(!exit);
+        let toasts_mid = ds.desktop.toasts.borrow().len();
+        let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(0)]);
+        assert!(!exit);
+        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区保底");
+        assert!(
+            ds.desktop.toasts.borrow().len() > toasts_mid,
+            "末分区 × 出 toast 提示"
+        );
+    }
+
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
 
     /// activate：未运行 → launch（带 registry_id 回填）；运行中 → 聚焦不新增窗。
