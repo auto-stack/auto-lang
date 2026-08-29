@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-479
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m3-notification-center
 author: [zcode]
 created_at: 2026-08-29T16:30:00+08:00
-updated_at: 2026-08-29T16:30:00+08:00
+updated_at: 2026-08-29T16:45:00+08:00
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -183,13 +183,13 @@ v1.2（纯增量，双端同版基线照旧）。
 
 | # | 任务 | 内容 | 验证 |
 |---|---|---|---|
-| T1 | 施工图 | D1–D5 细节定案：at 串格式/容量槽数/notes_toggle 路由/面板锚位/kind 图标表核对/指纹 notes 段格式，报告 `docs/plans/reports/479-t1-blueprint.md` | 评审通过（/auto-plan:review 承载正式评审） |
-| T2 | 驱动侧+动词 | session.rs `NotificationEntry`/历史+未读域/`push_notification` 双面一体/storage 定长槽读写；DesktopCommand 三新臂 encode/parse（含既有 push_desktop_toast 8 调用点改道） | TDD：新增单测 RED→GREEN（cargo nextest -p auto-lang --lib --features ui-iced -E 'test(notif or note)'） |
-| T3 | 面板 overlay | `assets/notification_center.at` 新建 + shell.rs 内嵌装载 + 四路拆借/visible/召唤切换执行体/装配层/Esc 仲裁/键盘订阅 | 无头单测（478 switcher 同型：召唤/清零/dismiss/clearAll）+ cargo t ui:: |
-| T4 | dock 铃铛+投影 v1.2 | shell.at 铃铛+badge+msg/on 臂（双分支）；sync_shell_windows 增 `__wm_notes`/`__wm_notes_unread`+指纹扩段；协议文档升版 v1.2（变更记录节） | shell.at 冒烟测扩展绿 + 投影单测绿 + cargo check |
-| T5 | 接线收口 | notes_toggle update 臂接线（dock 钮→面板开合）+ boot 持久化恢复接线 | 无头端到端（notify→badge→开面板→dismiss→落盘→重读）绿 + cargo t ui:: |
+| T1 | 施工图 | D1–D5 细节定案：at 串格式/容量槽数/notes_toggle 路由/面板锚位/kind 图标表核对/指纹 notes 段格式，报告 `docs/plans/reports/479-t1-blueprint.md` | 评审通过（/auto-plan:review 承载正式评审） [✅ 已完成] 六项待澄清全定案（notes_toggle 取总线动词+update 臂/右下锚位/HH:MM chrono Local/内存50落盘10槽/success→check error→x info→info 补表/指纹 `|notes:{len}:{front_id}:{unread};`）+8 测映射，reports/479-t1-blueprint.md |
+| T2 | 驱动侧+动词 | session.rs `NotificationEntry`/历史+未读域/`push_notification` 双面一体/storage 定长槽读写；DesktopCommand 三新臂 encode/parse（含既有 push_desktop_toast 8 调用点改道） | TDD：新增单测 RED→GREEN（cargo nextest -p auto-lang --lib --features ui-iced -E 'test(notif or note)'） [✅ 已完成] 四动词（+NotesToggle）encode/parse 双轨往返/历史 FIFO 50/未读语义/storage 槽 round-trip/双面一体 5 测绿（注：nextest 过滤器生效形为 -E 'test(notif)'，计划字面 `notif or note` 非 nextest 语法定案改写） |
+| T3 | 面板 overlay | `assets/notification_center.at` 新建 + shell.rs 内嵌装载 + 四路拆借/visible/召唤切换执行体/装配层/Esc 仲裁/键盘订阅 | 无头单测（478 switcher 同型：召唤/清零/dismiss/clearAll）+ cargo t ui:: [✅ 已完成] notif_center_summon_headless 绿 + ui:: 619/619 绿（ui-iced 档）；info 图标补表；lucide kind 映射 T1 定案 |
+| T4 | dock 铃铛+投影 v1.2 | shell.at 铃铛+badge+msg/on 臂（双分支）；sync_shell_windows 增 `__wm_notes`/`__wm_notes_unread`+指纹扩段；协议文档升版 v1.2（变更记录节） | shell.at 冒烟测扩展绿 + 投影单测绿 + cargo check [✅ 已完成] 新增真 shell.at 冒烟测（铃铛/badge 语法+notes_toggle 接线）+ notif_projection_notes_and_fingerprint 绿，9/9 + cargo check 净（基线告警持平）；协议文档 §2/§3/§4/§5/§6 v1.2 升版 |
+| T5 | 接线收口 | notes_toggle update 臂接线（dock 钮→面板开合）+ boot 持久化恢复接线 | 无头端到端（notify→badge→开面板→dismiss→落盘→重读）绿 + cargo t ui:: [✅ 已完成] notif_end_to_end_toggle_dismiss_restore 绿（notify→badge=1→toggle 清零→dismiss→空槽落盘→新会话重读）；boot Desktop 分支 dock_edges 邻位接 restore_notifications（notes_toggle 臂 T3 已落）；ui:: 622/622 绿（含 v1.1 金样指纹断言随版升级——mru 段后接 notes 尾段，协议 §3 注记） |
 | T6 | 实机验收 | ui_desktop 全流程：通知入史/铃铛/面板交互/重启恢复 | MCP 截图归档 `reports/assets/479-t6/` + 交互清单报告（注入先例成文） |
-| T7 | 回归收尾 | I2 五套 desktop_mcp + `cargo t` 全量 + ui-iced 全档 + I7/I9 grep + tracker/Design 25 §6 M3 完成注记 | 全绿 |
+| T7 | 回归收尾 | I2 五套 desktop_mcp + `cargo t` 全量 + ui-iced 全档 + I7/I9 grep + tracker/Design 25 §6 M3 完成注记 | 全绿 [✅ 已完成] I2 五套 14/11/11/19/26（472 基线同数，首跑 todo/notes 端口被上一套 stale 进程占用，重跑即绿）；`cargo t` 3253/3253 绿；ui-iced 全档 3912/3913（唯一失败 `vm_code_editor_natives_end_to_end` 为 **master 既有**——本计划零交集，master 检出复现，疑 Plan 474 并行会话迁移遗留，留 /auto-plan:review 裁定）；I7 grep 双 .at 零几何、I9 grep 列表全消费 `__wm_*` 投影；tracker M3 行 + Design 25 §6 M3 完成注记回写；stray print 扫描零新增 |
 
 ## 复审记录
 
@@ -197,9 +197,18 @@ v1.2（纯增量，双端同版基线照旧）。
 
 ## 待澄清事项
 
-- D2 `notes_toggle` 路由取总线动词 + update 臂（倾向，478 同型）vs 面板
-  自持翻转——T1 施工图定案。
-- D3 面板锚位（右下卡片避开 toast 区 vs 居中，478 视觉同级）——T1 定案；
-  无强偏好则右下（通知中心惯例位）。
-- D1 `at` 串格式（HH:MM vs 相对序号）与 kind→图标映射表（success/error/
-  info 三枚 lucide 名核对）——T1 定案。
+- ~~D2 `notes_toggle` 路由~~ → **T1 定案**：总线动词 + update 臂（478 同型，
+  词表 v1.2 实为四动词）。
+- ~~D3 面板锚位~~ → **T1 定案**：右下锚定卡片（w-80，底部 h-16 让位 dock）。
+- ~~D1 `at` 串格式与 kind 图标表~~ → **T1 定案**：HH:MM（chrono Local 宿主
+  格式化）；success→check / error→x / info→info（lucide 表补 info）。
+- 指纹 notes 段精确格式 → **T1 定案**：`|notes:{len}:{front_id}:{unread};`
+  （len/front 双段覆盖容量环绕与 dismiss 组合，见报告 §0 定案 6）。
+
+## 执行期发现（T7 收尾）
+
+- nextest 过滤器：计划字面 `-E 'test(notif or note)'` 非 nextest 语法，
+  生效形为 `-E 'test(notif)'`（全部新测以 notif 前缀命名，覆盖等价）。
+- ui-iced 全档唯一失败 `vm_code_editor_natives_end_to_end` 为 **master 既有**
+  （master 检出同败；本计划 diff 零交集——疑 Plan 474 并行会话期望迁移
+  遗留），留 /auto-plan:review 与 pre-fold 门裁定。
