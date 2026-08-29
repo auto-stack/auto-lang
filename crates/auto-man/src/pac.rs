@@ -1353,15 +1353,92 @@ impl Pac {
         if !from_path.is_dir() {
             return Err(format!("Local dep dir {} does not exist", from).into());
         }
-        // copy files from from to target
+        // copy/link files from from to target
         let target = dep.at.clone();
         let target_path = AutoPath::new(target);
-        if !target_path.exists() {
-            std::fs::create_dir_all(target_path.path())?;
+        if target_path.exists() {
+            return Ok(());
         }
-        // copy recursively
-        crate::fs::copy_dir_all(from_path.path(), target_path.path())?;
+
+        if let Some(parent) = target_path.path().parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Attempt zero-copy live link / worktree materialization
+        if let Err(e) = Self::materialize_local_dep(from_path.path(), target_path.path(), dep) {
+            log::warn!(
+                "Failed to link local dep '{}' ({}), falling back to copy: {}",
+                dep.name,
+                from,
+                e
+            );
+            if !target_path.exists() {
+                std::fs::create_dir_all(target_path.path())?;
+            }
+            // copy recursively fallback
+            crate::fs::copy_dir_all(from_path.path(), target_path.path())?;
+        }
         Ok(())
+    }
+
+    /// Materialize a local dependency via Git Worktree, Windows NTFS Junction, or Unix Symlink.
+    fn materialize_local_dep(
+        from: &std::path::Path,
+        target: &std::path::Path,
+        dep: &Target,
+    ) -> AutoResult<()> {
+        let abs_from = from.canonicalize().unwrap_or_else(|_| from.to_path_buf());
+
+        // Mode A: If a specific git version is specified (not "latest" / not empty) and from is a git repo, use git worktree
+        if !dep.version.is_empty()
+            && dep.version.as_str() != "latest"
+            && from.join(".git").exists()
+        {
+            let status = std::process::Command::new("git")
+                .current_dir(from)
+                .args(["worktree", "add", target.to_str().unwrap(), dep.version.as_str()])
+                .status();
+            if let Ok(st) = status {
+                if st.success() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // Mode B: Local development live link (Junction on Windows, Symlink on Unix)
+        #[cfg(windows)]
+        {
+            if std::os::windows::fs::symlink_dir(&abs_from, target).is_ok() {
+                return Ok(());
+            }
+            let target_str = target.to_string_lossy().replace('/', "\\");
+            let from_str = abs_from.to_string_lossy().replace('/', "\\");
+            let output = std::process::Command::new("cmd")
+                .args([
+                    "/C",
+                    "mklink",
+                    "/J",
+                    &target_str,
+                    &from_str,
+                ])
+                .output()?;
+            if output.status.success() {
+                return Ok(());
+            }
+            return Err(format!(
+                "mklink /J failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+
+        #[cfg(not(windows))]
+        {
+            std::os::unix::fs::symlink(&abs_from, target)?;
+            Ok(())
+        }
     }
 
     pub fn download_dep(&mut self, dep: &Target) -> AutoResult<()> {
@@ -1785,6 +1862,27 @@ mod tests {
                 assert!(false, "{}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_pac_dep_local() {
+        let code = r#"
+        name: "contact-form"
+        version: "1.0.0"
+        scene: "ui"
+        render: "vue"
+
+        dep "common" {
+            path: "../common"
+        }
+        "#;
+        let config = AutoConfig::new(code).expect("config parse");
+        let pac = Pac::new(config);
+        assert_eq!(pac.name, "contact-form");
+        assert_eq!(pac.targets.len(), 1);
+        assert_eq!(pac.targets[0].name, "common");
+        assert_eq!(pac.targets[0].origin, TargetOrigin::Local);
+        assert_eq!(pac.targets[0].from, "../common");
     }
 
     /// Plan 408 P5-2: `.am/pac.atom.at` history files wrap everything in a

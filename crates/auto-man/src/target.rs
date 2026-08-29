@@ -192,10 +192,22 @@ impl Target {
         use crate::node_ext::NodeExt;
 
         // Extract basic information
-        let (name, version) = Self::extract_name_and_version(&node);
+        let (mut name, version) = Self::extract_name_and_version(&node);
         let kind = Self::extract_kind(&node);
         let origin = Self::extract_origin(&node);
-        let from = node.get_str_or("from", "");
+        let from: AutoStr = if node.has_prop("path") {
+            node.get_str_or("path", "").into()
+        } else if node.has_prop("git") {
+            node.get_str_or("git", "").into()
+        } else {
+            node.get_str_or("from", "").into()
+        };
+
+        if name.is_empty() && !from.is_empty() {
+            if let Some(file_name) = std::path::Path::new(from.as_str()).file_name() {
+                name = file_name.to_string_lossy().to_string().into();
+            }
+        }
 
         // Extract flags using NodeExt
         let is_scan = node.get_bool_or("scan", true);
@@ -268,12 +280,25 @@ impl Target {
             }
         }
 
+        if name.is_empty() {
+            let main_val = node.main_arg();
+            if !main_val.is_nil() {
+                name = main_val.to_astr();
+            }
+        }
+
+        if name.is_empty() && node.has_prop("name") {
+            name = node.get_prop("name").to_astr();
+        }
+
         if version.is_empty() {
-            version = if node.has_prop("version") {
-                node.get_prop("version").to_astr()
+            if node.has_prop("_arg1") {
+                version = node.get_prop("_arg1").to_astr();
+            } else if node.has_prop("version") {
+                version = node.get_prop("version").to_astr();
             } else {
-                "latest".into()
-            };
+                version = "latest".into();
+            }
         }
 
         (name, version)
@@ -288,18 +313,34 @@ impl Target {
 
     /// Extract origin (local/git/index) from node
     fn extract_origin(node: &Node) -> TargetOrigin {
-        let mut origin = TargetOrigin::Index;
-
+        use crate::node_ext::NodeExt;
         if let Some(arg) = &node.args.get_arg(&"kind".into()) {
             let mode = arg.get_val().to_astr();
             match mode.as_str() {
-                "local" => origin = TargetOrigin::Local,
-                "git" => origin = TargetOrigin::Git,
+                "local" => return TargetOrigin::Local,
+                "git" => return TargetOrigin::Git,
                 _ => {}
             }
         }
 
-        origin
+        if node.has_prop("path") {
+            return TargetOrigin::Local;
+        }
+
+        if node.has_prop("git") {
+            return TargetOrigin::Git;
+        }
+
+        let from = node.get_str_or("from", "");
+        if !from.is_empty() {
+            if from.starts_with("git@") || from.starts_with("http://") || from.starts_with("https://") {
+                return TargetOrigin::Git;
+            } else {
+                return TargetOrigin::Local;
+            }
+        }
+
+        TargetOrigin::Index
     }
 
     /// Calculate the target location and rename
@@ -1634,4 +1675,26 @@ mod tests {
         assert_eq!(incs.len(), 1);
         assert!(incs.contains(&AutoStr::from("header.h")));
     }
+
+    #[test]
+    fn test_extract_local_path_dep() {
+        use auto_val::AutoStr;
+
+        let code = r#"
+        name: "test"
+        dep("common") {
+            path: "../common"
+        }
+        "#;
+        let config = auto_lang::config::AutoConfig::new(code).unwrap();
+        let node = config.root.nodes("dep").first().unwrap().clone();
+        let target = Target::from(node.clone(), AutoStr::from("test"));
+
+        assert_eq!(target.name, AutoStr::from("common"));
+        assert_eq!(target.kind, TargetKind::Dep);
+        assert_eq!(target.origin, TargetOrigin::Local);
+        assert_eq!(target.from, AutoStr::from("../common"));
+        assert_eq!(target.at, AutoStr::from("deps/common"));
+    }
 }
+
