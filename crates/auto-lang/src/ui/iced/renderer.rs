@@ -7008,7 +7008,14 @@ fn execute_dock_native(
         push_desktop_toast(state, "error", RejectReason::HwndNotFound.message());
         return;
     };
-    // ② C5：已最大化窗口先 restore 再摆；记 pre-dock 基线。
+    // ② C2：独占全屏（覆盖桌面所在屏域）拒绝收编——收编会撕裂显示。
+    if let Some(desktop) = ndw::find_largest_own_window() {
+        if ndw::covers_rect(hwnd, desktop) {
+            push_desktop_toast(state, "error", RejectReason::ExclusiveFullscreen.message());
+            return;
+        }
+    }
+    // ③ C5：已最大化窗口先 restore 再摆；记 pre-dock 基线。
     if ndw::is_maximized(hwnd) {
         let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
     }

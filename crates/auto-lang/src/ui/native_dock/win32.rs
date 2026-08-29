@@ -437,6 +437,16 @@ pub fn is_maximized(target: NativeHwnd) -> bool {
     alive(target) && unsafe { IsZoomed(hwnd_of(target)) }.as_bool()
 }
 
+/// C2：目标窗口矩形是否完整覆盖参照窗口所在屏域（独占全屏判据；
+/// 参照取桌面 OS 窗口）。独占全屏（游戏/视频墙）收编会撕裂显示，
+/// dock 侧据此拒绝（RejectReason::ExclusiveFullscreen）。
+pub fn covers_rect(target: NativeHwnd, reference: NativeHwnd) -> bool {
+    let (Some(tr), Some(rr)) = (get_bounds(target), get_bounds(reference)) else {
+        return false;
+    };
+    tr.x <= rr.x && tr.y <= rr.y && tr.right() >= rr.right() && tr.bottom() >= rr.bottom()
+}
+
 // ---------------------------------------------------------------------------
 // events：WinEventHook 事件层（专用钩子线程 OUTOFCONTEXT → mpsc）
 // ---------------------------------------------------------------------------
@@ -799,6 +809,22 @@ mod native_dock_geometry {
             ok,
             "sink_desktop_below 后 slot 应紧贴桌面正上方（重试 20 次仍被扰动）"
         );
+    }
+
+    #[test]
+    fn covers_rect_detects_fullscreen_coverage_c2() {
+        let desktop = scratch("covers-ref");
+        let target = scratch("covers-target");
+        let d = NativeHwnd(hwnd_value(desktop.0));
+        let t = NativeHwnd(hwnd_value(target.0));
+        // 桌面替身摆到屏内一域；目标先收在该域内部 → 不算覆盖。
+        let drect = Rect::new(400, 300, 500, 400);
+        set_bounds(d, drect).expect("set desktop rect");
+        set_bounds(t, Rect::new(450, 350, 200, 200)).expect("set target inside");
+        assert!(!covers_rect(t, d), "域内窗口不应判独占全屏");
+        // 目标扩张到完整覆盖参照域 → 判独占全屏（C2）。
+        set_bounds(t, Rect::new(395, 295, 520, 420)).expect("set target covering");
+        assert!(covers_rect(t, d), "完整覆盖参照域应判独占全屏");
     }
 
     #[test]
