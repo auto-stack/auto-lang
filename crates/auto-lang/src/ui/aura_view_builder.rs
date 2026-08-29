@@ -1299,6 +1299,12 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_popover(props, children, path, id_map, probe, bindings)
             }
 
+            // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
+            // 同名臂注释）。图标是叶子节点,无 probe 文本需求。
+            tag if self.is_imported_component(tag) => {
+                self.convert_icon_component(tag, props, bindings)
+            }
+
             // Child widget lookup or fallback.
             _ => {
                 // Plan 408: nav-link renders as a navigable button (like link).
@@ -2009,6 +2015,42 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// Convert an AuraNode::Element to a View variant based on the tag name.
+    /// PLAN-050 T7 (C5): tag 是否为本层 import_stmts 里 `use.web component`
+    /// 声明的外部组件名（musk 图标即此形态——ports/icons.at → lucide）。
+    fn is_imported_component(&self, tag: &str) -> bool {
+        let Some(stmts) = self.import_stmts else { return false };
+        stmts.iter().any(|s| match s {
+            crate::ast::Stmt::UseWeb(entries) => entries.iter().any(|e| {
+                matches!(e.kind, crate::ast::ui::ExtImportKind::Component)
+                    && e.symbols.iter().any(|n| n.as_str() == tag)
+            }),
+            _ => false,
+        })
+    }
+
+    /// PLAN-050 T7 (C5): 图标组件 → View::Image{lucide:kebab}。size prop
+    /// （lucide 惯例,px）映射 Width/Height 固定像素;renderer 端 glyph 缺失
+    /// 时空占位（与既有 unknown-icon 行为一致）。
+    fn convert_icon_component(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let size = self.extract_u16(props, "size").unwrap_or(16) as f32;
+        let style = Style {
+            classes: vec![
+                StyleClass::Width(SizeValue::Pixels(size)),
+                StyleClass::Height(SizeValue::Pixels(size)),
+            ],
+            hover_classes: Vec::new(),
+        };
+        View::Image {
+            src: format!("lucide:{}", pascal_to_kebab_icon(tag)),
+            style: Some(style),
+        }
+    }
+
     fn convert_element(
         &self,
         tag: &str,
@@ -2044,6 +2086,15 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
             // (此前落 unknown fallback → View::Empty)。与 tracked 层同名臂镜像。
             "svg" => self.convert_svg_image(props, children, bindings),
+
+            // PLAN-050 T7 (C5): use.web component 声明的图标组件（lucide 集，
+            // `Folder { size: 14 }`）→ View::Image{lucide:kebab}，renderer 以
+            // 既有 lucide glyph 直绘（svg 直绘 + currentColor tint）。此前落
+            // unknown fallback → View::Empty（rail/设置面板图标全空）。未知
+            // glyph 由 renderer 空占位兜底（与缺组件等价的降级）。
+            tag if self.is_imported_component(tag) => {
+                self.convert_icon_component(tag, props, bindings)
+            }
 
             // Core element widgets
             "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
@@ -6425,6 +6476,26 @@ let tabs_inner = View::Row {
 // Free helper functions
 // ============================================================================
 
+/// PLAN-050 T7 (C5): PascalCase 图标名 → lucide kebab-case（MessageSquare →
+/// message-square;Loader2/Trash2 → loader-2/trash-2,数字段前也加连字符）。
+fn pascal_to_kebab_icon(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                out.push('-');
+            }
+            out.push(ch.to_lowercase().next().unwrap_or(ch));
+        } else if ch.is_numeric() && !out.ends_with('-') {
+            out.push('-');
+            out.push(ch);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// PLAN-050 T9 (C7): 模板里的 `$t(KEY)` 标记 → i18n 查表替换（未命中回落
 /// key 本身）。提取侧对 `t("k")`/`i18n.t("k")` 文本产出该标记（见
 /// extract.rs call_name_t_key）。
@@ -8658,6 +8729,52 @@ mod tests {
         assert!(
             !view_contains_text(&view, "${currentName}"),
             "裸 placeholder 不得漏出"
+        );
+    }
+
+    /// PLAN-050 T7 (C5): use.web component 声明的图标组件（`Folder { size: 14 }`）
+    /// → View::Image{ src: "lucide:folder", size 样式 }，renderer 以既有
+    /// lucide glyph 直绘（svg 直绘=resvg currentColor tint）。此前落 unknown
+    /// fallback → View::Empty，rail/设置面板图标全空。
+    #[test]
+    fn plan050_imported_component_icon_maps_to_lucide_image() {
+        let ext = crate::ast::ui::ExtImport {
+            kind: crate::ast::ui::ExtImportKind::Component,
+            symbols: vec![crate::ast::Name::from("Folder")],
+            path: "src/front/ports/icons.at".into(),
+            call_args: vec![],
+            ref_fields: vec![],
+        };
+        let imports = vec![crate::ast::Stmt::UseWeb(vec![ext])];
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let builder = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports);
+
+        let node = AuraNode::element("Folder").with_prop("size", Expr::Int(14));
+        let view = builder.build(&node);
+        match view {
+            View::Image { src, style } => {
+                assert_eq!(src, "lucide:folder");
+                let s = style.expect("size 应产出样式");
+                assert!(
+                    s.classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Pixels(p)) if (*p - 14.0).abs() < f32::EPSILON)),
+                    "width 应为 14px; got {:?}",
+                    s.classes
+                );
+            }
+            other => panic!("期望 View::Image,得到非 Image 视图"),
+        }
+
+        // 未导入的同名 tag 不映射（registry/常规 fallback 优先语义不变）
+        let widget2 = make_test_widget("Test2", vec![]);
+        let bridge2 = VmBridge::new(&widget2).unwrap();
+        let registry2 = crate::ui::widget_registry::WidgetRegistry::new();
+        let builder2 = AuraViewBuilder::with_registry_and_imports(&bridge2, "Test2", &registry2, &[]);
+        let node2 = AuraNode::element("Folder").with_prop("size", Expr::Int(14));
+        assert!(
+            !matches!(builder2.build(&node2), View::Image { .. }),
+            "未导入的组件不得映射为图标"
         );
     }
 }
