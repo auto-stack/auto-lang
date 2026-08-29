@@ -1,15 +1,25 @@
 ---
 plan_id: PLAN-481
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: autoui-text-selection-copy
 author: [zhaopuming]
 created_at: 2026-08-29
 updated_at: 2026-08-29
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: text/label 渲染面新增 selectable 分流(iced SelectableText,false 路径零变化)——merge 回写现状段"
+  - "docs/specs/auto-lang/ui/architecture.md: View::Text/VNodeProps::Text 增 selectable 字段;renderer Text 臂(=label 共用)分流"
+  - "schema/aura.at + crates/auto-lang/src/aura/schema.rs: text/label 组件声明增 selectable(bool, default false)"
+  - "crates/auto-lang/src/ui_gen/vue.rs: text/label 发射 selectable→style=\"user-select: text\" 显式化(shadcn 臂+plain 通用循环双路径)"
+new_spec_components:
+  - "crates/auto-lang/src/ui/iced/selectable_text.rs: SelectableText widget(advanced Widget;绘制复用 iced text 同参同路径,buffer() 命中,拖选/双击/Ctrl+C/Esc 手势集)"
+  - "crates/auto-lang/src/ui/iced/selection.rs: 选区纯逻辑(字节偏移状态机+字符类分段词界,UAX#29 默认 CJK 连字)"
+  - "crates/auto-lang/test/a2vue/011_text_selectable/: selectable 往返金样(style+绑定双锚点)"
+  - "docs/plans/evidence/481/: T5 双端截图 10 图"
+touched_goals:
+  - "GOAL-007: AutoUI 跨端一致——selectable 双端透传+vue 显式化,VM 补齐到 vue 可选基线(I4)"
+  - "GOAL-010: 示例轨道——001-helloworld/004-profile-card 点亮可选复制"
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 10
@@ -187,10 +197,16 @@ Ctrl+C 经桌面级键盘路由在焦点窗口内生效（既有机制），WM/�
 | 004 正文可选可复制 | ✅ dblclick_name→"Jane "、drag_bio→bio 段落（getSelection 断言）+ 三图 | ✅ vm481_004.png（四 text 节点已带 selectable，渲染正常） |
 | notepad 粘贴 | — | ⚠️ 同 Ctrl+C 键路阻断（剪贴板直读等价验证受阻）；复审重跑项 |
 
-环境注记：验证机当时有 4 个并行 agent 会话（480/482/fix-progress 等）持续
-抢占前台并叠加同位窗口（160,160）；外进程窗口操作（SetForegroundWindow/
-SetWindowPos）会致 winit 窗口静默退出（exit 1），纯输入注入安全。T5 的价值
-实证：手动冒烟抓出 CursorMoved 旧坐标真 bug（022f82b9 修复）。
+环境注记（2026-08-29 复核更正）：实机键路阻断的根因 = **验证机是用户在用
+桌面**——Kimi 等前台应用完全遮挡 auto 窗口（WindowFromPoint 实证拖选目标
+三点均落在 Kimi pid 33120），屏幕级输入注入实际发往用户活动窗口，已停止
+并恢复用户剪贴板。受控实验更正先前误判：SetWindowPos 置顶**不会**致 winit
+退出（ALIVE 三阶段 True），此前"窗口操作致命"归因错误。实机键路证据链以
+单测（TestClipboard 内容断言）+ simulator（iced 全管线 Captured）+ 遮挡前
+真实高亮截图（vm481_drag_ratio/full.png）三重背书；最后一步（实机 Ctrl+C
+→系统剪贴板）由用户手动 30 秒可闭环（打开 001 → 拖选 → Ctrl+C → 任意处
+粘贴），或 review 在桌面空闲窗口期重跑。T5 的价值实证：手动冒烟抓出
+CursorMoved 旧坐标真 bug（022f82b9 修复）。
 
 ## 执行步骤
 
@@ -307,7 +323,54 @@ SetWindowPos）会致 winit 窗口静默退出（exit 1），纯输入注入安�
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审**：/auto-plan:review，2026-08-29，worktree `.worktrees/plan-481-dev`（14
+提交，merge-base c865c22a1，净差异 38 文件 +1694/−59）。
+
+**全量门禁**：`cargo tf` 3257/3257 全绿（含 1M churn 大档）；
+`--lib --features ui-iced` 3966 绿 / 6 失败——与基线 pristine（c865c22a1）画像
+一致（plan050×2、notif×2、code_editor_natives 稳定既有 + dock 成对不稳定
+pristine 3/3 复现），与本计划 diff 零交集。
+
+**逐条验收**：
+1. **PASS（留痕完整）**——VM 拖选高亮：遮挡前实机三图（evidence/481/
+   vm481_drag_ratio/full.png，修复前后二进制各证）；vue 双示例
+   selectionText 断言全过（"Hello, World!"/"Hello"/"Jane "/bio 段）。双击
+   词选与 Ctrl+C 的实机最后一步被用户在用桌面阻断（Kimi 全窗遮挡，
+   WindowFromPoint 实证），键路三重背书（T2 单测内容断言 / TestClipboard /
+   simulator iced 全管线 Captured）。T5 记录诚实，见 §验收标准下表格。
+2. **PASS**——`text_selection` 8 测重跑绿；T3 以 TestClipboard 单测等价
+   覆盖（OS 级 arboard 往返见 D2）。
+3. **PASS**——schema_drift 1 + docs_gen 4 + component_registry 7 重跑全绿。
+4. **PASS**——a2vue 011 金样绿；ui-iced 全套零新失败；新文件零警告
+   （selectable_text.rs/selection.rs 无任何编译器警告；仓库存量 158 警告
+   非本计划引入）。
+5. **PASS**——false 路径逐行未动（diff 审视：renderer 臂仅增 selectable
+   绑定与 true 分支）；全套件零回归；既有金样零 churn。
+
+**遗漏/延后/workaround 扫描**（debt 候选）：
+- **D1** arboard 兜底未实现——计划 §架构方案提及"handler 侧 arboard 桥
+  兜底"；实际 iced Clipboard 句柄在 winit 运行时恒可用，主路径三重验证
+  已足。若未来出现 iced 剪贴板失效环境，ui/clipboard.rs（Plan 418）桥
+  仍在库可直接启用。
+- **D2** T3 的 OS 级剪贴板往返测试（arboard 读回比对）未建——headless
+  无 OS 剪贴板（计划本带"跳过 guard"语义），与 D4 同因。
+- **D3** font-mono 文本 v1 不走 SelectableText（selectable+mono 声明时
+  静默保持 Rich 高亮、不可选）——实现期裁定的产品取舍（Rich 无法承载
+  选区），已记录；"可选中且高亮"可后续立项。
+- **D4** 实机 Ctrl+C→系统剪贴板 / notepad 粘贴 / 双击干净截图——环境
+  （用户在用桌面）阻断，非代码路径；桌面空闲 30 秒可闭环或 review 后
+  重跑。
+- 无静默缩水：三处计划-代码偏差（renderer 消费 View::Text 而非 VNode、
+  vue 走原生标签路径而非 registry 模板、金样 009→011 顺延）均为勘察
+  修正且已在执行记录留痕。
+
+**Merge 注记**：master 已推进至 b78ad7050（482 合入）；5 文件重叠
+（aura_view_builder/renderer/render_support/vue.rs/docs_gen.rs），其中
+docs_gen 的 DOC_TODO_BASELINE `virtualwindow` 条目双方各自添加（482 归因
+473 / 本计划归因 465）——merge rebase 时需去重裁定（同因：cargo tf 不含
+--test 集成测试，两侧独立发现同一 master 红）。
+
+**裁定：五条验收全 PASS、全量门禁绿、无阻断性债务 → status: reviewed。**
 
 ## 待澄清事项
 

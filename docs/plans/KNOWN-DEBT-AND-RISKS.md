@@ -203,3 +203,14 @@
 - **P482-4 nav-item title/desc tooltip 通道**：os-config regen.sh 仍以部署侧
   :title 补偿截断 desc 悬停提示——组件属性候选（title: prop 双端映射），
   上游组件演进项。
+- **P481-5 482 nav-item/nav-group vue import 围栏红（master 现红）**：
+  schema_drift P6-2 报 `nav-item`/`nav-group` 的 vue import
+  `@/components/ui/nav` 无独立来源（组件包不存在于 gallery 生成树/官方包/
+  安装表）。482 合入 master（b78ad7050）时被既有 `[view_builder] Slot`
+  红遮蔽（围栏快速失败），481 合并修复 Slot 后揭出。根因同 P479/473 系：
+  `cargo tf` 只跑 `--lib`，`--test schema_drift` 不在日常/合入门禁。修复
+  三选一见围栏消息（官方包补导出 / cmd_vue.rs 安装表补条目 / LOCAL_UI_PKGS
+  登记本地组件并写明实现位置）——需 482 意图裁定，归 nav 线后续。
+- **P481-6 实机 Ctrl+C→系统剪贴板末步**：单测+simulator 双证键路，实机
+  最后一步被用户在用桌面阻断（详见 archive/481 §T5 留痕）；桌面空闲 30 秒
+  可闭环。

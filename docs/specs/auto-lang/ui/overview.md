@@ -75,6 +75,7 @@ J1/J2 渲染器子树，批五转正中）。
 **示例轨道**：examples/ui 024-charts（437/445）、025-dashboard（438）已交付；026-database（439）、
 027-file-manager（440）草案可领取；028-launcher 归 464。
 
+**481 展示型文字选择/复制已落地**：text/label 增 `selectable` 属性（bool,默认 false——opt-in,缺省渲染路径逐行零变化）;VM 端自研 `ui/iced/selectable_text.rs` SelectableText widget(advanced Widget——绘制复用 iced `text` 同参同路径保证逐像素一致,命中走 iced_graphics Paragraph 公开 `buffer()`;手势集 v1=拖选/双击词选(字符类分段词界,UAX#29 默认 CJK 连字)/Ctrl+C 写剪贴板(有选区才捕获)/Esc 清除不夺全局流;选区为 widget 本地状态,零桌面集成改动) + `selection.rs` 选区纯逻辑(全平台单测);vue 端显式化 `style="user-select: text"`(plain/shadcn 双路径);a2vue 金样 011 锁 prop 往返;001-helloworld/004-profile-card 点亮。边界:font-mono 代码文本 v1 保持 Rich 高亮不可选;arboard 兜底未启用(iced 剪贴板恒可用)。
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
