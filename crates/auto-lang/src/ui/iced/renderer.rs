@@ -1267,6 +1267,36 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
         .into()
 }
 
+/// Plan-050 C1: content-subtree 按钮的内容对齐决策——web flex 语义到 iced
+/// 容器对齐的最小映射（仅消费四界面布局用到的组合；未命中返回 None = 维持
+/// iced Button 默认内容居中）。justify-content 优先于 text-align（前者是
+/// 布局声明，后者是文本对齐兜底）。
+fn plan050_content_align(
+    is: Option<&IcedStyle>,
+) -> (
+    Option<iced::alignment::Horizontal>,
+    Option<iced::alignment::Vertical>,
+) {
+    use iced::alignment::{Horizontal, Vertical};
+    let Some(is) = is else { return (None, None) };
+    let h = match is.justify_content {
+        Some(crate::ui::style::iced_adapter::IcedJustify::Start) => Some(Horizontal::Left),
+        Some(crate::ui::style::iced_adapter::IcedJustify::End) => Some(Horizontal::Right),
+        Some(crate::ui::style::iced_adapter::IcedJustify::Center) => Some(Horizontal::Center),
+        _ => is.text_align.map(|a| match a {
+            crate::ui::style::iced_adapter::IcedTextAlign::Left => Horizontal::Left,
+            crate::ui::style::iced_adapter::IcedTextAlign::Center => Horizontal::Center,
+            crate::ui::style::iced_adapter::IcedTextAlign::Right => Horizontal::Right,
+        }),
+    };
+    let v = is.align_items.map(|a| match a {
+        crate::ui::style::iced_adapter::IcedAlign::Start => Vertical::Top,
+        crate::ui::style::iced_adapter::IcedAlign::Center => Vertical::Center,
+        crate::ui::style::iced_adapter::IcedAlign::End => Vertical::Bottom,
+    });
+    (h, v)
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -2761,6 +2791,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else {
                     button_content
                 };
+                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
+                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
+                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
+                // 承载对齐;未命中维持 iced 默认居中。
+                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
+                let button_content: iced::Element<'static, M> =
+                    if p050_ax.is_some() || p050_ay.is_some() {
+                        let mut c = iced::widget::container(button_content)
+                            .width(iced::Length::Fill);
+                        if let Some(ax) = p050_ax { c = c.align_x(ax); }
+                        if let Some(ay) = p050_ay { c = c.align_y(ay); }
+                        c.into()
+                    } else {
+                        button_content
+                    };
                 let mut btn = button(button_content);
                 // Plan 423 P3: disabled 态 —— 不挂 on_press(点击无消息);
                 // inspect 捕获模式同样不挂(原语义)。灰样式在下方 style 段追加。
@@ -14175,6 +14220,48 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
+    fn p050_style(classes: Vec<StyleClass>) -> IcedStyle {
+        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new() })
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_justify_start_is_left() {
+        let is = p050_style(vec![StyleClass::Flex, StyleClass::JustifyStart]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+        assert_eq!(v, None);
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_text_left_fallback() {
+        let is = p050_style(vec![StyleClass::TextLeft]);
+        let (h, _) = plan050_content_align(Some(&is));
+        assert_eq!(h, Some(iced::alignment::Horizontal::Left));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_items_start_is_top() {
+        let is = p050_style(vec![StyleClass::ItemsStart]);
+        let (_, v) = plan050_content_align(Some(&is));
+        assert_eq!(v, Some(iced::alignment::Vertical::Top));
+    }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_content_align_none_keeps_centered_default() {
+        let is = p050_style(vec![]);
+        let (h, v) = plan050_content_align(Some(&is));
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+        let (h, v) = plan050_content_align(None);
+        assert_eq!(h, None);
+        assert_eq!(v, None);
+    }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表
     /// 覆盖 mock / hosted / visible 置位 / ApplyFilter 同步重算）。键流与
