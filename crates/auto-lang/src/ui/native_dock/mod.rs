@@ -399,6 +399,14 @@ impl DragWatch {
         !matches!(self.state, DragState::Idle)
     }
 
+    /// 正在监视的窗口句柄（驱动侧过滤他窗 LOCATIONCHANGE 噪声用）。
+    pub fn watched_hwnd(&self) -> Option<NativeHwnd> {
+        match self.state {
+            DragState::Idle => None,
+            DragState::Watching { hwnd } | DragState::Over { hwnd, .. } => Some(hwnd),
+        }
+    }
+
     /// `MOVESIZESTART`：开始监视 `hwnd` 的拖动（新起点覆盖在途会话）。
     pub fn start(&mut self, hwnd: NativeHwnd) {
         self.state = DragState::Watching { hwnd };

@@ -1140,6 +1140,12 @@ pub struct DesktopSession {
     /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
     /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
     pub host: Option<HostCtx>,
+    /// Plan 486：拖入手势会话（纯逻辑状态机，宿主层喂指针采样；未 docked
+    /// 窗口的 MOVESIZESTART 起、MOVESIZEEND 终）。
+    pub native_drag_watch: crate::ui::native_dock::DragWatch,
+    /// Plan 486：拖入高亮槽位（桌面逻辑坐标，view 侧直接绘制；update 侧
+    /// 由 DragWatch 采样/清除，或经 [`DesktopEvent::NativeDragOver`] 注入）。
+    pub native_drag_over: Option<iced::Rectangle>,
     /// Plan 480 S3/S4：broker 孵化连接排队——`enable_broker` 的 serve 线程
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
@@ -1191,6 +1197,10 @@ pub enum DesktopEvent {
     /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
     /// Destroy → B7 槽位回收）。
     NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
+    /// Plan 486：拖入手势高亮（DragWatch 光标采样产出；`Some`=候选槽位
+    /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
+    /// 消息面供 E2E/headless 直注验证 overlay 渲染。
+    NativeDragOver(Option<crate::ui::native_dock::Rect>),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1295,6 +1305,8 @@ impl DesktopSession {
             focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
             host: None,
+            native_drag_watch: crate::ui::native_dock::DragWatch::new(),
+            native_drag_over: None,
             #[cfg(feature = "ui-iced")]
             broker_pending: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "ui-iced")]
@@ -3290,6 +3302,21 @@ mod tests {
         ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
         let host = ds.host.as_ref().unwrap();
         assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
+    }
+
+    // ---- Plan 486 T1：拖入手势会话字段（NativeDragOver 消息面）----
+
+    #[test]
+    fn native_drag_watch_session_fields_start_cleared() {
+        use crate::ui::native_dock::Rect;
+        let ds = DesktopSession::empty(None);
+        assert!(!ds.native_drag_watch.is_watching());
+        assert!(ds.native_drag_over.is_none());
+        // 消息面类型核对：物理域矩形直入枚举（E2E/headless 注入形态）。
+        let _msg = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(Some(Rect::new(
+            10, 20, 30, 40,
+        ))));
+        let _clear = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(None));
     }
 
     // ---- Plan 479 T2：协议 v1.2 通知动词（notify/notes_toggle/

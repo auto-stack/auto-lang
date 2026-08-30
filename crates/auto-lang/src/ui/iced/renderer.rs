@@ -7214,6 +7214,23 @@ fn execute_desktop_commands(
     (false, tasks)
 }
 
+/// Plan 473 T5 / 486：下一个原生槽位的级联占位（桌面逻辑域）。dock 执行臂
+/// 与 DragWatch 落点高亮同源——高亮矩形即松手落点（"所见即所得"不变量）。
+fn native_candidate_logical(state: &crate::ui::session::DesktopSession) -> iced::Rectangle {
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let slot_count = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.native_slots.len())
+        .unwrap_or(0);
+    crate::ui::layout::cascade_rect(
+        slot_count,
+        iced::Size::new(usable.width * 0.35, usable.height * 0.55),
+        usable,
+    )
+}
+
 /// Plan 473 T4：原生窗口收编执行体（`dock_native` 命令路径）。Win32 发现/几何
 /// 经 `native_dock::win32`；状态机经 `WmState::advance_native_slot` 推进。
 /// 槽位矩形为可用区级联占位——布局参与由 T5 接管；局部→物理 DPI 换算（本步
@@ -7261,18 +7278,7 @@ fn execute_dock_native(
     let title = ndw::get_title(hwnd).unwrap_or_else(|| "native".into());
     let pid = ndw::pid_of(hwnd).unwrap_or(0);
     // ③ 槽位矩形：可用区 1/3 级联占位（T5 起由布局引擎分配）。
-    let viewport = state.host_viewport();
-    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
-    let slot_count = state
-        .host
-        .as_ref()
-        .map(|h| h.wm.native_slots.len())
-        .unwrap_or(0);
-    let slot_logical = crate::ui::layout::cascade_rect(
-        slot_count,
-        iced::Size::new(usable.width * 0.35, usable.height * 0.55),
-        usable,
-    );
+    let slot_logical = native_candidate_logical(state);
     let slot_rect = crate::ui::native_dock::Rect::new(
         slot_logical.x as i32,
         slot_logical.y as i32,
@@ -7482,7 +7488,7 @@ fn sync_native_geometry(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// Plan 473 T6：WinEventHook 事件处理（B7 回收 / C4 拖走 undock；
 /// LocationChange 在自同步与最小化时不误判）。未命中槽位（噪声/他窗）
-/// 静默忽略。
+/// 静默忽略；486 起未 docked 窗口改走 [`drive_drag_watch`] 手势会话。
 #[cfg(windows)]
 fn handle_native_slot_event(
     state: &mut crate::ui::session::DesktopSession,
@@ -7492,6 +7498,15 @@ fn handle_native_slot_event(
     use crate::ui::native_dock::{
         win32 as ndw, NativeSlotEventKind, SlotEvent, USER_DRAG_THRESHOLD_PX,
     };
+    let docked = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.native_slot_id_of_hwnd(hwnd_value).is_some())
+        .unwrap_or(false);
+    if !docked {
+        drive_drag_watch(state, hwnd_value, kind);
+        return;
+    }
     let Some(id) = state
         .host
         .as_ref()
@@ -7554,6 +7569,134 @@ fn handle_native_slot_event(
         // 已 docked 窗口的拖动起点：C4 拖走判定在 MoveSizeEnd 读回几何时做；
         // START 只驱动未 docked 窗口的 DragWatch 手势会话（486，session 侧接线）。
         NativeSlotEventKind::MoveSizeStart => {}
+    }
+}
+
+/// 桌面窗物理↔逻辑坐标映射 + 全帧物理矩形（指针入桌面判定域；无桌面窗/
+/// headless → None）。
+#[cfg(windows)]
+fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+    use crate::ui::native_dock::{win32 as ndw, CoordMapper, Rect};
+    let desktop = ndw::find_largest_own_window()?;
+    let scale = ndw::dpi_scale_of(desktop);
+    let frame = ndw::get_bounds(desktop)?;
+    let mapper = CoordMapper {
+        origin_x: frame.x as f64,
+        origin_y: frame.y as f64,
+        scale,
+    };
+    Some((mapper, Rect::new(frame.x, frame.y, frame.w, frame.h)))
+}
+
+#[cfg(not(windows))]
+fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+    None
+}
+
+/// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
+/// 物理域消息 [`crate::ui::session::DesktopEvent::NativeDragOver`] 与 DragWatch
+/// 采样共用本入口；无桌面窗的 headless 形态按恒等退化（E2E 直注即所得）。
+fn set_native_drag_over(
+    state: &mut crate::ui::session::DesktopSession,
+    phys: Option<crate::ui::native_dock::Rect>,
+) {
+    let logical = phys.map(|r| {
+        let (x, y, w, h) = if let Some((mapper, _)) = drag_mapper() {
+            let l = mapper.screen_to_local(r);
+            (l.x, l.y, l.w, l.h)
+        } else {
+            (r.x as f32, r.y as f32, r.w as f32, r.h as f32)
+        };
+        iced::Rectangle::new(iced::Point::new(x, y), iced::Size::new(w.max(1.0), h.max(1.0)))
+    });
+    state.native_drag_over = logical;
+}
+
+/// 进程起点（DragWatch 节流时基）。
+#[cfg(windows)]
+fn drag_now_ms() -> u64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// Plan 486：未 docked 窗口的拖入手势会话驱动（G1/G2 触发面）。事件语义：
+/// `MOVESIZESTART` 起会话；被拖窗的 `LOCATIONCHANGE` 喂光标采样（指针入
+/// 桌面 → 候选槽位高亮 / 出桌面 → 清除）；`MOVESIZEEND` 指针在桌面内 →
+/// `DockCandidate` 转 `dock_native` 执行臂（复用 473），在外 → 丢弃会话；
+/// `DESTROY` → 作废会话并清高亮。他窗噪声经 `watched_hwnd` 过滤。
+#[cfg(windows)]
+fn drive_drag_watch(
+    state: &mut crate::ui::session::DesktopSession,
+    hwnd_value: isize,
+    kind: crate::ui::native_dock::NativeSlotEventKind,
+) {
+    use crate::ui::native_dock::{
+        win32 as ndw, DragSample, DragWatchOutcome, LogicalRect, NativeHwnd, NativeSlotEventKind,
+    };
+    if !state.is_desktop() {
+        return;
+    }
+    let hwnd = NativeHwnd(hwnd_value);
+    match kind {
+        NativeSlotEventKind::MoveSizeStart => {
+            state.native_drag_watch.start(hwnd);
+        }
+        NativeSlotEventKind::LocationChange | NativeSlotEventKind::MoveSizeEnd => {
+            if state.native_drag_watch.watched_hwnd() != Some(hwnd) {
+                return; // 他窗噪声（会话只跟随被拖窗的事件流）
+            }
+            let Some((mapper, desktop_rect)) = drag_mapper() else {
+                return;
+            };
+            let Some(pointer) = ndw::cursor_pos() else {
+                return;
+            };
+            // 候选槽位（物理域）：与 dock 执行臂同源的级联占位（高亮即落点）。
+            let logical = native_candidate_logical(state);
+            let cell = mapper.local_to_screen(LogicalRect {
+                x: logical.x,
+                y: logical.y,
+                w: logical.width,
+                h: logical.height,
+            });
+            let cells = [cell];
+            match kind {
+                NativeSlotEventKind::LocationChange => {
+                    match state
+                        .native_drag_watch
+                        .sample(pointer, desktop_rect, &cells, drag_now_ms())
+                    {
+                        DragSample::Overlay(rect) => set_native_drag_over(state, rect),
+                        DragSample::NoChange => {}
+                    }
+                }
+                NativeSlotEventKind::MoveSizeEnd => {
+                    match state.native_drag_watch.end(pointer, desktop_rect) {
+                        Some(DragWatchOutcome::DockCandidate(h)) => {
+                            set_native_drag_over(state, None);
+                            execute_dock_native(
+                                state,
+                                crate::ui::session::NativeTarget::ByHwnd(h.0),
+                            );
+                        }
+                        Some(DragWatchOutcome::Abandon) => {
+                            set_native_drag_over(state, None);
+                        }
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        NativeSlotEventKind::Destroy => {
+            if state.native_drag_watch.watched_hwnd() == Some(hwnd) {
+                state.native_drag_watch.reset();
+                set_native_drag_over(state, None);
+            }
+        }
+        NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
     }
 }
 
@@ -10299,6 +10442,11 @@ fn compare_pngs(
                     // Plan 473 T6：原生槽位 WinEventHook 事件（C4 拖走 / B7 回收）。
                     DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
                         handle_native_slot_event(state, hwnd_value, kind);
+                    }
+                    // Plan 486：拖入高亮注入面（正常流由事件驱动直写；本臂供
+                    // E2E/headless 验证 overlay 渲染）。
+                    DesktopEvent::NativeDragOver(rect) => {
+                        set_native_drag_over(state, rect);
                     }
                     // Plan 464 T4：launcher 召唤消费 —— 懒挂载 + 下行注入 +
                     // 打开即聚焦（返回聚焦任务）。
