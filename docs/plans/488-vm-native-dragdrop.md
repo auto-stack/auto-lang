@@ -367,11 +367,17 @@ virtual_window spec events 映射同步。
 - **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户；载具已就绪）**：
   **冒烟 App = `examples/ui/044-dnd-bridge`**（T6 载具，无头验证绿：
   desktop_behavior `plan488_dnd_bridge_app_handlers`——真示例文件编译 +
-  三事件注入断言）。启动（仓库根、worktree 合入后）：
+  三事件注入断言）。**启动 = cargo 示例 `ui_desktop`**（462/463 的 VM
+  虚拟桌面宿主入口——注意不是 `auto run --desktop`（465 的 vue 脚手架
+  路径，且 auto run 需指向带 pac.at 的工程））：
   ```
-  auto run --desktop -r vm        # 桌面模式；Ctrl+Space 召 launcher 开 044-dnd-bridge
+  # worktree 内（合入后在仓库根同命令）：
+  cargo run -p auto-lang --features ui-iced,native-dnd --example ui_desktop
+  # 全屏无框桌面（可选）：尾加 -- --fullscreen
   ```
-  （worktree 未合入期间：在 `.worktrees/plan-488-dev` 目录内同命令。）
+  `--features ui-iced,native-dnd` 必带（native-dnd 缺省不开——拖放面
+  降级空转）。宿主启动后 Ctrl+Space 召 launcher → 开 044-dnd-bridge
+  （注册表默认仓库 examples/ui；044 pac render:"vm" 过滤通过）。
   App 界面三卡：拖出（三按钮）/ 拖入日志 / Ctrl+V 日志。逐条执行并把
   结果行记回本节：
   1. **A1 Explorer→桌面**：Explorer 选 2+ 文件拖到 044 虚拟窗 → 拖入卡
