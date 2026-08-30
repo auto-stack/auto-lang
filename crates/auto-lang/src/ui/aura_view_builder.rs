@@ -1807,6 +1807,20 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // PLAN-051 P2 追加: div `html:` prop——VM 纯文本降级（剥标签）。
+        // musk composer backdrop(v-html mention 高亮层)此前渲染为空容器,
+        // 透明 textarea 之下无可见文字层,输入"成功但不可视"。
+        if let Some(AuraPropValue::Expr(expr)) = props.get("html") {
+            if let Some(v) = self.resolve_expr_to_value(expr, bindings) {
+                let plain = strip_html_fragments(&value_to_display_string(&v));
+                return View::Text {
+                    content: plain,
+                    style: self.extract_style_with(props, bindings),
+                    selectable: false,
+                };
+            }
+        }
+
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
         let height = self.extract_u16(props, "height");
@@ -4196,6 +4210,20 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
+        // PLAN-051 P2 追加: div `html:` prop——VM 纯文本降级（剥标签）。
+        // musk composer backdrop(v-html mention 高亮层)此前渲染为空容器,
+        // 透明 textarea 之下无可见文字层,输入"成功但不可视"。
+        if let Some(AuraPropValue::Expr(expr)) = props.get("html") {
+            if let Some(v) = self.resolve_expr_to_value(expr, bindings) {
+                let plain = strip_html_fragments(&value_to_display_string(&v));
+                return View::Text {
+                    content: plain,
+                    style: self.extract_style_with(props, bindings),
+                    selectable: false,
+                };
+            }
+        }
+
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
         let width = self.extract_u16(props, "width");
         let height = self.extract_u16(props, "height");
@@ -7527,6 +7555,23 @@ fn callback_prop_route(expr: &crate::ast::Expr) -> Option<(String, Vec<String>)>
     }
 }
 
+/// PLAN-051 P2 追加（composer backdrop 可视层）: div `html:` prop 的 VM
+/// 纯文本降级——剥标签+基础实体解码。Vue 轨该层是 mention 高亮 HTML；
+/// VM 无 DOM，剥标签保内容可读（同 Markdown 纯文本降级哲学）。
+fn strip_html_fragments(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut in_tag = false;
+    for c in input.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&amp;", "&")
+}
+
 fn value_to_display_string(value: &Value) -> String {
     match value {
         Value::Int(i) => i.to_string(),
@@ -9772,6 +9817,34 @@ mod tests {
         assert_eq!(got.len(), 2, "两实例各一按钮; got {:?}", got);
         assert!(got.contains(&"aaa".to_string()), "实例 aaa 的实参必须为己 id: {:?}", got);
         assert!(got.contains(&"bbb".to_string()), "实例 bbb 的实参必须为己 id: {:?}", got);
+    }
+
+    /// PLAN-051 P2: div `html:` prop 的 VM 纯文本降级——backdrop(v-html
+    /// mention 高亮层)剥标签渲染,透明 textarea 之下有可见文字层。
+    #[test]
+    fn plan051_container_html_prop_renders_stripped_text() {
+        let widget = make_test_widget("W", vec![AuraStateDef {
+            name: "backdropHtml".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str(
+                r#"<span class="mention">@张三</span> hello &amp; <b>bye</b>"#.into(),
+            ),
+            decorators: vec![],
+        }]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("div").with_prop(
+            "html",
+            Expr::Ident(crate::ast::Name::from(".backdropHtml")),
+        );
+        match builder.build(&node) {
+            View::Text { content, .. } => {
+                assert_eq!(content, "@张三 hello & bye");
+                assert!(!content.contains('<'), "标签必须剥除");
+            }
+            other => panic!("Expected Text, got {:?}", other),
+        }
     }
 
     /// PLAN-050 T9+C1 残余收尾: 按钮内容子树布局方向——按钮样式带 `flex`
