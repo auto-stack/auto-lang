@@ -226,64 +226,84 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 i4 = i4 + 1
             }
             if KL > 0 {
-                .xLab0 = outL[0]
+                var sv0 = outL[0]
+                .xLab0 = sv0
             }
             if KL > 1 {
-                .xLab1 = outL[1]
+                var sv1 = outL[1]
+                .xLab1 = sv1
             }
             if KL > 2 {
-                .xLab2 = outL[2]
+                var sv2 = outL[2]
+                .xLab2 = sv2
             }
             if KL > 3 {
-                .xLab3 = outL[3]
+                var sv3 = outL[3]
+                .xLab3 = sv3
             }
             if KL > 4 {
-                .xLab4 = outL[4]
+                var sv4 = outL[4]
+                .xLab4 = sv4
             }
             if KL > 5 {
-                .xLab5 = outL[5]
+                var sv5 = outL[5]
+                .xLab5 = sv5
             }
             if KL > 6 {
-                .xLab6 = outL[6]
+                var sv6 = outL[6]
+                .xLab6 = sv6
             }
             if KL > 7 {
-                .xLab7 = outL[7]
+                var sv7 = outL[7]
+                .xLab7 = sv7
             }
             if KL > 8 {
-                .xLab8 = outL[8]
+                var sv8 = outL[8]
+                .xLab8 = sv8
             }
             if KL > 9 {
-                .xLab9 = outL[9]
+                var sv9 = outL[9]
+                .xLab9 = sv9
             }
             if KL > 10 {
-                .xLab10 = outL[10]
+                var sv10 = outL[10]
+                .xLab10 = sv10
             }
             if KL > 11 {
-                .xLab11 = outL[11]
+                var sv11 = outL[11]
+                .xLab11 = sv11
             }
             if KL > 12 {
-                .xLab12 = outL[12]
+                var sv12 = outL[12]
+                .xLab12 = sv12
             }
             if KL > 13 {
-                .xLab13 = outL[13]
+                var sv13 = outL[13]
+                .xLab13 = sv13
             }
             if KL > 14 {
-                .xLab14 = outL[14]
+                var sv14 = outL[14]
+                .xLab14 = sv14
             }
             if KL > 15 {
-                .xLab15 = outL[15]
+                var sv15 = outL[15]
+                .xLab15 = sv15
             }
             if KL > 16 {
-                .xLab16 = outL[16]
+                var sv16 = outL[16]
+                .xLab16 = sv16
             }
             if KL > 17 {
-                .xLab17 = outL[17]
+                var sv17 = outL[17]
+                .xLab17 = sv17
             }
             if KL > 18 {
-                .xLab18 = outL[18]
+                var sv18 = outL[18]
+                .xLab18 = sv18
             }
             if KL > 19 {
-                .xLab19 = outL[19]
+                var sv19 = outL[19]
+                .xLab19 = sv19
             }
 
             // ---- 命中竖带 + tooltip 内容(逐索引预计算) ----
@@ -321,8 +341,10 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
 
         .Hover(i) -> {
             .hovered = "true"
-            .tipTitle = .tipTitles[i]
-            .tipBody = .tipBodies[i]
+            var tt = .tipTitles[i]
+            var tb = .tipBodies[i]
+            .tipTitle = tt
+            .tipBody = tb
         }
         .HoverOut -> { .hovered = "false" }
     }

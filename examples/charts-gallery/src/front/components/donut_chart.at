@@ -28,13 +28,9 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         legendText2 str = ""
         legendColor3 str = ""
         legendText3 str = ""
-        tipXs List = []
-        tipYs List = []
         tipTitles List = []
         tipBodies List = []
         hovered str = "false"
-        tipX str = ""
-        tipY str = ""
         tipTitle str = ""
         tipBody str = ""
     }
@@ -54,8 +50,6 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             var rIn float = 62.0
             var a0 float = -1.5707963267948966
             var outSegs List = []
-            var outTipX List = []
-            var outTipY List = []
             var outTipTitle List = []
             var outTipBody List = []
             var cs = .colors
@@ -114,33 +108,22 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     .legendColor3 = color
                     .legendText3 = name
                 }
-                // tooltip 锚点:扇区中角、半径 81;右半左移防溢出
-                var mid float = a0 + span / 2.0
-                var tx float = cx + 81.0 * math.cos(mid)
-                if tx > 380.0 {
-                    tx = tx - 160.0
-                }
-                var ty float = cy + 81.0 * math.sin(mid)
-                outTipX.push(f"${tx}")
-                outTipY.push(f"${ty}")
                 outTipTitle.push(name)
                 outTipBody.push(f"${lv} ${vi} (${pct}%)")
                 a0 = a1
                 k = k + 1
             }
             .segs = outSegs
-            .tipXs = outTipX
-            .tipYs = outTipY
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
         }
 
         .Hover(i) -> {
             .hovered = "true"
-            .tipX = .tipXs[i]
-            .tipY = .tipYs[i]
-            .tipTitle = .tipTitles[i]
-            .tipBody = .tipBodies[i]
+            var tt = .tipTitles[i]
+            var tb = .tipBodies[i]
+            .tipTitle = tt
+            .tipBody = tb
         }
         .HoverOut -> { .hovered = "false" }
     }
@@ -155,7 +138,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     }
                 }
                 if .tooltip && .hovered == "true" {
-                    col (style: f"absolute top-[{.tipY}px] left-[{.tipX}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                    col (style: "absolute top-[20px] right-[20px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
                         text .tipTitle { style: "text-xs font-semibold text-foreground" }
                         text .tipBody { style: "text-xs text-muted-foreground" }
                     }
