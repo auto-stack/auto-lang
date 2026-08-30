@@ -4,15 +4,19 @@
 // 一处引用）。
 //
 // 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
-// Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2——合同
+// Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2，Plan 486 升版 v1.3——合同
 // schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
 //   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
 //       summon/workspace/workspace_next/activate + v1.1 增量
 //       workspace_add/workspace_close/send_to + v1.2 增量
-//       notify/notes_toggle/notes_clear/notes_dismiss）
+//       notify/notes_toggle/notes_clear/notes_dismiss + v1.3 增量
+//       focus_native/close_native——arg 直传条目 wid "N<slot>"，宿主侧
+//       剥 N 前缀取 slot id）
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
-//       数组，跨分区全集，dock 运行窗列表源）
+//       数组，跨分区全集，dock 运行窗列表源；v1.3 native 槽位条目为五字段
+//       {wid:"N<slot>",title,native,icon,focused}——workspace/app 不适用
+//       省略，native=="1" 分支走 title 文本按钮 + native 动词）
 //       `__wm_workspaces`（{id,name,current,label} Obj 数组，分区切换条
 //       源；label = 1 基人读标签，v1.1——当前分区高亮消费 current）
 //       `__wm_mru`（v1.1：当前分区 MRU 序 Obj 数组；switcher 专用合同面，
@@ -38,7 +42,8 @@ widget Desktop {
         WinFocus(str), WinClose(str),
         ActivateApp(str), SetWorkspace(str), WorkspaceNext,
         WorkspaceAdd, WorkspaceClose(str),
-        NotificationToggle
+        NotificationToggle,
+        NativeFocus(str), NativeClose(str)
     }
 
     model {
@@ -89,13 +94,27 @@ widget Desktop {
                         for w in .__wm_wins {
                             row {
                                 style: "items-center gap-0"
-                                button (icon: w.icon) {
-                                    onclick: .WinFocus(w.wid)
-                                    style: "h-9 w-9 px-0 text-sm"
-                                }
-                                button "×" {
-                                    onclick: .WinClose(w.wid)
-                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                // v1.3：native 条目（native=="1"）——title 文本
+                                // 按钮（无注册表图标，title 即身份）+ native 动词；
+                                // App 条目走既有图标按钮路径。
+                                if w.native == "1" {
+                                    button (text: w.title) {
+                                        onclick: .NativeFocus(w.wid)
+                                        style: "h-9 max-w-32 truncate px-2 text-xs"
+                                    }
+                                    button "×" {
+                                        onclick: .NativeClose(w.wid)
+                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                    }
+                                } else {
+                                    button (icon: w.icon) {
+                                        onclick: .WinFocus(w.wid)
+                                        style: "h-9 w-9 px-0 text-sm"
+                                    }
+                                    button "×" {
+                                        onclick: .WinClose(w.wid)
+                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                    }
                                 }
                             }
                         }
@@ -190,13 +209,27 @@ widget Desktop {
                         for w in .__wm_wins {
                             row {
                                 style: "items-center gap-0"
-                                button (icon: w.icon) {
-                                    onclick: .WinFocus(w.wid)
-                                    style: "h-9 w-9 px-0 text-sm"
-                                }
-                                button "×" {
-                                    onclick: .WinClose(w.wid)
-                                    style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                // v1.3：native 条目（native=="1"）——title 文本
+                                // 按钮（无注册表图标，title 即身份）+ native 动词；
+                                // App 条目走既有图标按钮路径。
+                                if w.native == "1" {
+                                    button (text: w.title) {
+                                        onclick: .NativeFocus(w.wid)
+                                        style: "h-9 max-w-32 truncate px-2 text-xs"
+                                    }
+                                    button "×" {
+                                        onclick: .NativeClose(w.wid)
+                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                    }
+                                } else {
+                                    button (icon: w.icon) {
+                                        onclick: .WinFocus(w.wid)
+                                        style: "h-9 w-9 px-0 text-sm"
+                                    }
+                                    button "×" {
+                                        onclick: .WinClose(w.wid)
+                                        style: "h-8 w-6 px-0 text-xs text-muted-foreground"
+                                    }
                                 }
                             }
                         }
@@ -289,5 +322,9 @@ widget Desktop {
         // Plan 479 T4：通知中心开关（协议 v1.2 无参动词；宿主臂落
         // toggle_notification_center 执行体——开面板即未读清零）。
         .NotificationToggle -> { .__desktop_cmd = "notes_toggle" }
+        // Plan 486 v1.3：native 条目聚焦/关闭（arg 直传 wid "N<slot>"，
+        // 宿主 parse 剥 N 前缀取 slot id——shell 零字符串加工）。
+        .NativeFocus(wid) -> { .__desktop_cmd = "focus_native\t" + wid }
+        .NativeClose(wid) -> { .__desktop_cmd = "close_native\t" + wid }
     }
 }

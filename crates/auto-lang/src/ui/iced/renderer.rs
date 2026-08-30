@@ -7174,6 +7174,9 @@ fn execute_desktop_commands(
             // Plan 473 T4：原生窗口收编/解除（native dock Phase 1；执行体见下）。
             DC::DockNative(target) => execute_dock_native(state, target),
             DC::UndockNative(slot) => execute_undock_native(state, slot),
+            // Plan 486 v1.3：任务栏 native 条目聚焦/关闭（执行体见下）。
+            DC::FocusNative(slot) => execute_focus_native(state, slot),
+            DC::CloseNative(slot) => execute_close_native(state, slot),
             // Plan 478 T2：pager `+` —— 新增分区并即入（验收②）。
             DC::WorkspaceAdd => {
                 let id = state.host.as_mut().map(|h| h.wm.add_workspace());
@@ -7235,6 +7238,23 @@ fn execute_desktop_commands(
     (false, tasks)
 }
 
+/// Plan 473 T5 / 486：下一个原生槽位的级联占位（桌面逻辑域）。dock 执行臂
+/// 与 DragWatch 落点高亮同源——高亮矩形即松手落点（"所见即所得"不变量）。
+fn native_candidate_logical(state: &crate::ui::session::DesktopSession) -> iced::Rectangle {
+    let viewport = state.host_viewport();
+    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
+    let slot_count = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.native_slots.len())
+        .unwrap_or(0);
+    crate::ui::layout::cascade_rect(
+        slot_count,
+        iced::Size::new(usable.width * 0.35, usable.height * 0.55),
+        usable,
+    )
+}
+
 /// Plan 473 T4：原生窗口收编执行体（`dock_native` 命令路径）。Win32 发现/几何
 /// 经 `native_dock::win32`；状态机经 `WmState::advance_native_slot` 推进。
 /// 槽位矩形为可用区级联占位——布局参与由 T5 接管；局部→物理 DPI 换算（本步
@@ -7282,18 +7302,7 @@ fn execute_dock_native(
     let title = ndw::get_title(hwnd).unwrap_or_else(|| "native".into());
     let pid = ndw::pid_of(hwnd).unwrap_or(0);
     // ③ 槽位矩形：可用区 1/3 级联占位（T5 起由布局引擎分配）。
-    let viewport = state.host_viewport();
-    let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
-    let slot_count = state
-        .host
-        .as_ref()
-        .map(|h| h.wm.native_slots.len())
-        .unwrap_or(0);
-    let slot_logical = crate::ui::layout::cascade_rect(
-        slot_count,
-        iced::Size::new(usable.width * 0.35, usable.height * 0.55),
-        usable,
-    );
+    let slot_logical = native_candidate_logical(state);
     let slot_rect = crate::ui::native_dock::Rect::new(
         slot_logical.x as i32,
         slot_logical.y as i32,
@@ -7432,6 +7441,55 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_i
     push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
 }
 
+/// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗（最小化先
+/// SW_RESTORE，再 SetForegroundWindow best-effort——前台锁拒绝不 toast，
+/// 窗口仍可能经系统动画置前）。
+#[cfg(windows)]
+fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
+    let Some(slot) = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&NativeSlotId(slot_id)))
+    else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+        return;
+    };
+    let hwnd = slot.hwnd;
+    if ndw::is_minimized(hwnd) {
+        let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
+    }
+    let _ = ndw::focus_window(hwnd);
+}
+
+#[cfg(not(windows))]
+fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
+}
+
+/// Plan 486 v1.3：任务栏 native 条目 ×——请求关闭（WM_CLOSE 正常关闭
+/// 机会；槽位由 DESTROY 事件自然回收，B7 路径无需在此移除）。
+#[cfg(windows)]
+fn execute_close_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
+    let Some(slot) = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&NativeSlotId(slot_id)))
+    else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+        return;
+    };
+    if ndw::request_close(slot.hwnd).is_err() {
+        push_desktop_toast(state, "error", "关闭请求失败（窗口可能已退出）");
+    }
+}
+
+#[cfg(not(windows))]
+fn execute_close_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
+}
+
 /// Plan 473 T6：槽位几何排水——本地逻辑矩形 → 屏幕物理坐标（桌面窗原点
 /// + per-monitor DPI 缩放，§2 DPI 段），写入槽位客户区（标题条以下、边框
 /// 环内缩，chrome 露出），重申 z 序不变量（`sink_desktop_below`，勘误②），
@@ -7503,7 +7561,7 @@ fn sync_native_geometry(_state: &mut crate::ui::session::DesktopSession) {}
 
 /// Plan 473 T6：WinEventHook 事件处理（B7 回收 / C4 拖走 undock；
 /// LocationChange 在自同步与最小化时不误判）。未命中槽位（噪声/他窗）
-/// 静默忽略。
+/// 静默忽略；486 起未 docked 窗口改走 [`drive_drag_watch`] 手势会话。
 #[cfg(windows)]
 fn handle_native_slot_event(
     state: &mut crate::ui::session::DesktopSession,
@@ -7513,6 +7571,15 @@ fn handle_native_slot_event(
     use crate::ui::native_dock::{
         win32 as ndw, NativeSlotEventKind, SlotEvent, USER_DRAG_THRESHOLD_PX,
     };
+    let docked = state
+        .host
+        .as_ref()
+        .map(|h| h.wm.native_slot_id_of_hwnd(hwnd_value).is_some())
+        .unwrap_or(false);
+    if !docked {
+        drive_drag_watch(state, hwnd_value, kind);
+        return;
+    }
     let Some(id) = state
         .host
         .as_ref()
@@ -7569,6 +7636,137 @@ fn handle_native_slot_event(
                 state.wm_set_layout(layout);
                 sync_native_geometry(state);
                 push_desktop_toast(state, "success", "原生窗口已关闭，槽位已回收");
+            }
+        }
+        NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
+        // 已 docked 窗口的拖动起点：C4 拖走判定在 MoveSizeEnd 读回几何时做；
+        // START 只驱动未 docked 窗口的 DragWatch 手势会话（486，session 侧接线）。
+        NativeSlotEventKind::MoveSizeStart => {}
+    }
+}
+
+/// 桌面窗物理↔逻辑坐标映射 + 全帧物理矩形（指针入桌面判定域；无桌面窗/
+/// headless → None）。
+#[cfg(windows)]
+fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+    use crate::ui::native_dock::{win32 as ndw, CoordMapper, Rect};
+    let desktop = ndw::find_largest_own_window()?;
+    let scale = ndw::dpi_scale_of(desktop);
+    let frame = ndw::get_bounds(desktop)?;
+    let mapper = CoordMapper {
+        origin_x: frame.x as f64,
+        origin_y: frame.y as f64,
+        scale,
+    };
+    Some((mapper, Rect::new(frame.x, frame.y, frame.w, frame.h)))
+}
+
+#[cfg(not(windows))]
+fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+    None
+}
+
+/// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
+/// 物理域消息 [`crate::ui::session::DesktopEvent::NativeDragOver`] 与 DragWatch
+/// 采样共用本入口；无桌面窗的 headless 形态按恒等退化（E2E 直注即所得）。
+fn set_native_drag_over(
+    state: &mut crate::ui::session::DesktopSession,
+    phys: Option<crate::ui::native_dock::Rect>,
+) {
+    let logical = phys.map(|r| {
+        let (x, y, w, h) = if let Some((mapper, _)) = drag_mapper() {
+            let l = mapper.screen_to_local(r);
+            (l.x, l.y, l.w, l.h)
+        } else {
+            (r.x as f32, r.y as f32, r.w as f32, r.h as f32)
+        };
+        iced::Rectangle::new(iced::Point::new(x, y), iced::Size::new(w.max(1.0), h.max(1.0)))
+    });
+    state.native_drag_over = logical;
+}
+
+/// 进程起点（DragWatch 节流时基）。
+#[cfg(windows)]
+fn drag_now_ms() -> u64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// Plan 486：未 docked 窗口的拖入手势会话驱动（G1/G2 触发面）。事件语义：
+/// `MOVESIZESTART` 起会话；被拖窗的 `LOCATIONCHANGE` 喂光标采样（指针入
+/// 桌面 → 候选槽位高亮 / 出桌面 → 清除）；`MOVESIZEEND` 指针在桌面内 →
+/// `DockCandidate` 转 `dock_native` 执行臂（复用 473），在外 → 丢弃会话；
+/// `DESTROY` → 作废会话并清高亮。他窗噪声经 `watched_hwnd` 过滤。
+#[cfg(windows)]
+fn drive_drag_watch(
+    state: &mut crate::ui::session::DesktopSession,
+    hwnd_value: isize,
+    kind: crate::ui::native_dock::NativeSlotEventKind,
+) {
+    use crate::ui::native_dock::{
+        win32 as ndw, DragSample, DragWatchOutcome, LogicalRect, NativeHwnd, NativeSlotEventKind,
+    };
+    if !state.is_desktop() {
+        return;
+    }
+    let hwnd = NativeHwnd(hwnd_value);
+    match kind {
+        NativeSlotEventKind::MoveSizeStart => {
+            state.native_drag_watch.start(hwnd);
+        }
+        NativeSlotEventKind::LocationChange | NativeSlotEventKind::MoveSizeEnd => {
+            if state.native_drag_watch.watched_hwnd() != Some(hwnd) {
+                return; // 他窗噪声（会话只跟随被拖窗的事件流）
+            }
+            let Some((mapper, desktop_rect)) = drag_mapper() else {
+                return;
+            };
+            let Some(pointer) = ndw::cursor_pos() else {
+                return;
+            };
+            // 候选槽位（物理域）：与 dock 执行臂同源的级联占位（高亮即落点）。
+            let logical = native_candidate_logical(state);
+            let cell = mapper.local_to_screen(LogicalRect {
+                x: logical.x,
+                y: logical.y,
+                w: logical.width,
+                h: logical.height,
+            });
+            let cells = [cell];
+            match kind {
+                NativeSlotEventKind::LocationChange => {
+                    match state
+                        .native_drag_watch
+                        .sample(pointer, desktop_rect, &cells, drag_now_ms())
+                    {
+                        DragSample::Overlay(rect) => set_native_drag_over(state, rect),
+                        DragSample::NoChange => {}
+                    }
+                }
+                NativeSlotEventKind::MoveSizeEnd => {
+                    match state.native_drag_watch.end(pointer, desktop_rect) {
+                        Some(DragWatchOutcome::DockCandidate(h)) => {
+                            set_native_drag_over(state, None);
+                            execute_dock_native(
+                                state,
+                                crate::ui::session::NativeTarget::ByHwnd(h.0),
+                            );
+                        }
+                        Some(DragWatchOutcome::Abandon) => {
+                            set_native_drag_over(state, None);
+                        }
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        NativeSlotEventKind::Destroy => {
+            if state.native_drag_watch.watched_hwnd() == Some(hwnd) {
+                state.native_drag_watch.reset();
+                set_native_drag_over(state, None);
             }
         }
         NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
@@ -7716,6 +7914,8 @@ fn projection_win_entry(
         ("title", auto_val::Value::Str(v.title.clone().into())),
         ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
         ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        // Plan 486 v1.3：App 条目恒空串（native 分支判据统一）。
+        ("native", auto_val::Value::Str(String::new().into())),
         ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
         ("icon", auto_val::Value::Str(icon.into())),
     ]))
@@ -7734,6 +7934,10 @@ fn projection_win_entry(
 /// Plan 479 T4 升级 **v1.2**：新增 `__wm_notes`（通知历史全量 {id,kind,msg,
 /// at} Obj 数组）+ `__wm_notes_unread`（未读串，badge 消费）；指纹尾接
 /// `|notes:{len}:{front_id}:{unread};` 段（T1 施工图定案 6）。
+/// Plan 486 升级 **v1.3**：`__wm_wins` 纳入 native 槽位条目
+/// {wid:"N<slot>",title,focused,native,icon}（仅 Docked 态；字段集与
+/// App 条目部分相交——workspace/app 不适用省略）；指纹窗段并入
+/// "N{slot}:{focused},"。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -7749,6 +7953,25 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
+    }
+    // Plan 486 v1.3：native 槽位条目——wid="N<slot_id>" 独立编码空间（与
+    // App wid 隔离，协议 §字段表）；仅 Docked 态投影（瞬时态不进任务栏）；
+    // title 取缓存、icon 占位；focused 恒空——native 焦点域在 OS 层，WM
+    // 不代管（473 apply_layout 同裁定）。不进 __wm_running（条目本身即
+    // 运行态）。指纹并入窗段同型 "{wid}:{focused},"。App 条目的 native
+    // 字段恒空串（shell.at 分支判据统一，避免缺失字段访问）。
+    for (id, slot) in &host.wm.native_slots {
+        if slot.state != crate::ui::native_dock::SlotState::Docked {
+            continue;
+        }
+        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("wid", auto_val::Value::Str(format!("N{}", id.0).into())),
+            ("title", auto_val::Value::Str(slot.title_cache.clone().into())),
+            ("focused", auto_val::Value::Str(String::new().into())),
+            ("native", auto_val::Value::Str("1".into())),
+            ("icon", auto_val::Value::Str("app-window".into())),
+        ])));
+        fp.push_str(&format!("N{}:{},", id.0, 0));
     }
     let layout_name = match host.wm.layout {
         crate::ui::layout::LayoutMode::Free => "free",
@@ -10318,6 +10541,11 @@ fn compare_pngs(
                     DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
                         handle_native_slot_event(state, hwnd_value, kind);
                     }
+                    // Plan 486：拖入高亮注入面（正常流由事件驱动直写；本臂供
+                    // E2E/headless 验证 overlay 渲染）。
+                    DesktopEvent::NativeDragOver(rect) => {
+                        set_native_drag_over(state, rect);
+                    }
                     // Plan 464 T4：launcher 召唤消费 —— 懒挂载 + 下行注入 +
                     // 打开即聚焦（返回聚焦任务）。
                     DesktopEvent::SummonLauncher => {
@@ -10685,6 +10913,13 @@ fn compare_pngs(
                         *local,
                     ));
                 }
+            }
+            // Plan 486：拖入手势落点高亮层（DragWatch::Over 时；槽位 chrome
+            // 之上、shell 之下——半透明不遮挡既有 chrome 标题条）。
+            if let Some(drag_rect) = state.native_drag_over {
+                layers.push(crate::ui::iced::virtual_window::native_drag_over_element(
+                    drag_rect,
+                ));
             }
             // Plan 463 T5：shell 层（任务栏；z-stack 之上常驻）。底部锚定
             // 由 shell.at 根 col（h-full + 纵向 spacer）落实——dynamic_view
@@ -15971,6 +16206,25 @@ mod tests {
         ds
     }
 
+    /// Plan 486 T1/T4：拖入高亮落位/清除（set_native_drag_over 经映射或
+    /// headless 恒等——断言映射无关的存在性）+ 高亮元素构建冒烟。
+    #[test]
+    #[cfg(all(windows, feature = "native-dock"))]
+    fn native_drag_over_overlay_sets_and_clears() {
+        let mut ds = t3_session_with_shell();
+        set_native_drag_over(
+            &mut ds,
+            Some(crate::ui::native_dock::Rect::new(10, 20, 300, 200)),
+        );
+        let r = ds.native_drag_over.expect("高亮应落位");
+        // headless 测试进程无自有可见窗口 → 恒等退化；有窗口环境经
+        // CoordMapper 换算——两者宽度语义一致（不缩放，仅平移），故锁宽高。
+        assert_eq!((r.width, r.height), (300.0, 200.0));
+        let _el = crate::ui::iced::virtual_window::native_drag_over_element(r);
+        set_native_drag_over(&mut ds, None);
+        assert!(ds.native_drag_over.is_none(), "清除后不应残留高亮");
+    }
+
     fn t3_add_win(ds: &mut crate::ui::session::DesktopSession, title: &str) -> crate::ui::session::Wid {
         let comp = crate::build_dynamic_component(T3_WIN_AT, None).unwrap();
         let app = ds.allocate_app(comp);
@@ -16092,6 +16346,69 @@ mod tests {
         match t3_read(&ds, "__wm_fp") {
             auto_val::Value::Str(s) => assert!(!s.to_string().is_empty(), "指纹已置"),
             other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+    }
+
+    /// Plan 486 T2 v1.3：native 槽位投影——Docked 态条目进 `__wm_wins`
+    /// 尾部（wid="N<slot>" 隔离编码、五字段集、focused 空）；瞬时态
+    /// （Candidate）不投影；槽位增删触发指纹变化（第二次同步重写哨兵）。
+    #[test]
+    fn projection_v13_native_slot_entries_and_fingerprint() {
+        use crate::ui::native_dock::{NativeSlot, NativeSlotId, Rect, SlotState};
+        let mut ds = t3_session_with_shell();
+        t3_add_win(&mut ds, "Alpha");
+        let mut docked = NativeSlot::new_candidate(
+            NativeSlotId(3),
+            crate::ui::native_dock::NativeHwnd(0x1234),
+            4242,
+            "记事本",
+            Rect::new(10, 10, 800, 600),
+            Rect::new(0, 0, 640, 480),
+        );
+        docked.state = SlotState::Docked;
+        let mut transient = docked.clone();
+        transient.state = SlotState::Candidate;
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.native_slots.insert(NativeSlotId(3), docked);
+            host.wm.native_slots.insert(NativeSlotId(4), transient);
+        }
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert_eq!(wins.len(), 2, "App 窗 + 1 个 Docked 槽位（Candidate 不投影）");
+        let auto_val::Value::Obj(native) = &wins[1] else {
+            panic!("native 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(native, "wid"), "N3");
+        assert_eq!(t3_obj_str(native, "title"), "记事本");
+        assert_eq!(t3_obj_str(native, "native"), "1");
+        assert_eq!(t3_obj_str(native, "icon"), "app-window");
+        assert_eq!(t3_obj_str(native, "focused"), "");
+        assert!(
+            matches!(native.get("workspace"), None | Some(auto_val::Value::Nil)),
+            "native 条目无 workspace 字段（不适用省略）"
+        );
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("N3:0,"),
+                "指纹应含 native 槽位段: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // 指纹门控：槽位移除后再次同步 → 指纹变化 → 哨兵被覆盖。
+        let shell = ds.desktop.shell_app.unwrap();
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__wm_meta", auto_val::Value::str("sentinel"))
+            .unwrap();
+        ds.host.as_mut().unwrap().wm.native_slots.remove(&NativeSlotId(3));
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_meta") {
+            auto_val::Value::Str(s) => assert_ne!(s.to_string(), "sentinel", "槽位变化应触发重写"),
+            other => panic!("__wm_meta 读回异常: {other:?}"),
         }
     }
 
@@ -16961,6 +17278,66 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+    }
+
+    /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
+    /// （App 条目 native 空串 + native 条目五字段集）→ view if 分支过编译
+    /// 语法门 + NativeFocus/NativeClose 消息臂写总线记录（wid 直传
+    /// "N<slot>"，宿主 parse 剥前缀归一——动词派发全链接线）。
+    #[test]
+    fn native_dock_shell_at_entries_and_verbs() {
+        let comp = crate::ui::shell::build_shell_component().expect("shell.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(id);
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let _ = app.component.write_state_vec(
+                "__wm_wins",
+                vec![
+                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                        ("wid", auto_val::Value::Str("1".into())),
+                        ("title", auto_val::Value::Str("Alpha".into())),
+                        ("focused", auto_val::Value::Str("1".into())),
+                        ("workspace", auto_val::Value::Str("0".into())),
+                        ("app", auto_val::Value::Str("".into())),
+                        ("icon", auto_val::Value::Str("app-window".into())),
+                        ("native", auto_val::Value::Str("".into())),
+                    ])),
+                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                        ("wid", auto_val::Value::Str("N3".into())),
+                        ("title", auto_val::Value::Str("记事本".into())),
+                        ("focused", auto_val::Value::Str("".into())),
+                        ("native", auto_val::Value::Str("1".into())),
+                        ("icon", auto_val::Value::Str("app-window".into())),
+                    ])),
+                ],
+            );
+        }
+        let app = ds.apps.get_mut(&id).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NativeFocus", &[auto_val::Value::str("N3")])
+            .expect("NativeFocus handler");
+        // 总线单记录覆盖语义（一 update 周期一事件）——逐事件排空断言。
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::FocusNative(3)],
+            "native 条目点击 → focus_native（N 前缀归一）"
+        );
+        let app = ds.apps.get_mut(&id).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NativeClose", &[auto_val::Value::str("N3")])
+            .expect("NativeClose handler");
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::CloseNative(3)],
+            "native 条目 × → close_native（N 前缀归一）"
+        );
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

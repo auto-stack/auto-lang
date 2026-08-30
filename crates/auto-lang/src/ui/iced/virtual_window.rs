@@ -260,3 +260,29 @@ pub fn native_slot_element<'a>(
         .align_y(Alignment::Start)
         .into()
 }
+
+/// Plan 486：拖入手势落点高亮（DragWatch::Over 时绘制；463 snap 预览同款
+/// 语义——主色半透明填充 + 描边，提示松手即收编的槽位）。纯视觉层：
+/// 无鼠标区、无 chrome（拖动进行中，被拖原生窗在 OS z 序上方）。
+pub fn native_drag_over_element<'a>(rect: iced::Rectangle) -> Element<'a, DesktopMessage> {
+    let accent = token(crate::ui::style::Color::Primary);
+    let hint_box = container(text(""))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_t| Style {
+            background: Some(Color::from_rgba(accent.r, accent.g, accent.b, 0.18).into()),
+            border: Border {
+                color: accent,
+                width: BORDER + 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        });
+    container(hint_box)
+        .width(Length::Fixed(rect.width))
+        .height(Length::Fixed(rect.height))
+        .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
+        .align_x(Alignment::Start)
+        .align_y(Alignment::Start)
+        .into()
+}

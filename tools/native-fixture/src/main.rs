@@ -26,13 +26,15 @@ mod win {
     use std::sync::OnceLock;
 
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
         GetWindowRect, GetWindowThreadProcessId, MessageBoxW, RegisterClassW, SetTimer,
         SetWindowPos, ShowWindow, TranslateMessage, MB_ICONINFORMATION, MB_OK, MINMAXINFO,
         MSG, SWP_NOACTIVATE, SWP_NOZORDER, SET_WINDOW_POS_FLAGS, SW_SHOW,
         WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY, WM_GETMINMAXINFO, WM_TIMER,
+        WM_LBUTTONDOWN, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_SYSCOMMAND,
         WM_WINDOWPOSCHANGED, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
 
@@ -43,6 +45,8 @@ mod win {
         pub stubborn: bool,
         pub spawn_modal: bool,
         pub self_close_secs: Option<u32>,
+        /// Plan 486 T4 诊断：追踪 NC 鼠标/SC 消息（stdout trace 行）。
+        pub trace: bool,
     }
 
     impl Clone for Opts {
@@ -53,6 +57,7 @@ mod win {
                 stubborn: self.stubborn,
                 spawn_modal: self.spawn_modal,
                 self_close_secs: self.self_close_secs,
+                trace: self.trace,
             }
         }
     }
@@ -163,6 +168,20 @@ mod win {
                     emit("{\"evt\":\"close\"}");
                     windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
                     LRESULT(0)
+                }
+                WM_NCLBUTTONDOWN | WM_NCLBUTTONUP | WM_SYSCOMMAND | WM_LBUTTONDOWN
+                    if OPTS.get().map(|o| o.trace).unwrap_or(false) =>
+                {
+                    let ht = if msg == WM_SYSCOMMAND {
+                        DefWindowProcW(hwnd, WM_NCHITTEST, WPARAM(0), lparam).0
+                    } else {
+                        wparam.0 as isize
+                    };
+                    emit(&format!(
+                        "{{\"evt\":\"trace\",\"msg\":{msg},\"wparam\":{:#x},\"ht\":{ht},\"lparam\":{}}}",
+                        wparam.0, lparam.0
+                    ));
+                    DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
                 _ => DefWindowProcW(hwnd, msg, wparam, lparam),
             }
@@ -280,6 +299,7 @@ fn parse_args() -> win::Opts {
         stubborn: false,
         spawn_modal: false,
         self_close_secs: None,
+        trace: false,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -299,6 +319,10 @@ fn parse_args() -> win::Opts {
             }
             "--stubborn" => {
                 opts.stubborn = true;
+                i += 1;
+            }
+            "--trace" => {
+                opts.trace = true;
                 i += 1;
             }
             "--spawn-modal" => {

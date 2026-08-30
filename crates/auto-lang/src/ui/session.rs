@@ -894,6 +894,13 @@ pub enum DesktopCommand {
     /// Plan 473：解除收编——恢复 pre-dock bounds/样式后移除槽位（slot id
     /// 取自投影 `__wm_native_slots`）。
     UndockNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗
+    /// （SetForegroundWindow + 最小化时先 SW_RESTORE；slot id 取自投影
+    /// wid "N<slot>" 的数字段）。
+    FocusNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目 ×——请求关闭（WM_CLOSE；槽位由
+    /// DESTROY 事件自然回收，B7 路径）。
+    CloseNative(u64),
     /// Plan 478 T2：新增分区（pager `+`；宿主臂随即入新分区）。
     WorkspaceAdd,
     /// Plan 478 T2：删除分区（pager `×`；非空/末分区门在宿主臂 toast）。
@@ -987,6 +994,12 @@ impl DesktopCommand {
             DesktopCommand::UndockNative(slot) => {
                 format!("undock_native{}{}", Self::FIELD_SEP, slot)
             }
+            DesktopCommand::FocusNative(slot) => {
+                format!("focus_native{}{}", Self::FIELD_SEP, slot)
+            }
+            DesktopCommand::CloseNative(slot) => {
+                format!("close_native{}{}", Self::FIELD_SEP, slot)
+            }
             DesktopCommand::WorkspaceAdd => "workspace_add".to_string(),
             DesktopCommand::WorkspaceClose(n) => {
                 format!("workspace_close{}{}", Self::FIELD_SEP, n)
@@ -1056,6 +1069,19 @@ impl DesktopCommand {
                     }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
+                    // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型；
+                    // arg 容收 "N<slot>" wid 形态——shell 直传条目 wid，宿主剥
+                    // N 前缀取 slot id，纯数字直写亦合法）。
+                    "focus_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::FocusNative),
+                    "close_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::CloseNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
@@ -1140,6 +1166,12 @@ pub struct DesktopSession {
     /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
     /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
     pub host: Option<HostCtx>,
+    /// Plan 486：拖入手势会话（纯逻辑状态机，宿主层喂指针采样；未 docked
+    /// 窗口的 MOVESIZESTART 起、MOVESIZEEND 终）。
+    pub native_drag_watch: crate::ui::native_dock::DragWatch,
+    /// Plan 486：拖入高亮槽位（桌面逻辑坐标，view 侧直接绘制；update 侧
+    /// 由 DragWatch 采样/清除，或经 [`DesktopEvent::NativeDragOver`] 注入）。
+    pub native_drag_over: Option<iced::Rectangle>,
     /// Plan 480 S3/S4：broker 孵化连接排队——`enable_broker` 的 serve 线程
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
@@ -1191,6 +1223,10 @@ pub enum DesktopEvent {
     /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
     /// Destroy → B7 槽位回收）。
     NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
+    /// Plan 486：拖入手势高亮（DragWatch 光标采样产出；`Some`=候选槽位
+    /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
+    /// 消息面供 E2E/headless 直注验证 overlay 渲染。
+    NativeDragOver(Option<crate::ui::native_dock::Rect>),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1295,6 +1331,8 @@ impl DesktopSession {
             focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
             host: None,
+            native_drag_watch: crate::ui::native_dock::DragWatch::new(),
+            native_drag_over: None,
             #[cfg(feature = "ui-iced")]
             broker_pending: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "ui-iced")]
@@ -3141,11 +3179,14 @@ mod tests {
     #[test]
     fn native_dock_verbs_parse_and_encode() {
         use crate::ui::session::NativeTarget;
-        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制）。
+        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制；486 v1.3
+        // 任务栏动词 focus_native/close_native 同型）。
         let cmds = vec![
             DesktopCommand::DockNative(NativeTarget::ByPid(4242)),
             DesktopCommand::DockNative(NativeTarget::ByHwnd(0x1a2b)),
             DesktopCommand::UndockNative(7),
+            DesktopCommand::FocusNative(5),
+            DesktopCommand::CloseNative(6),
         ];
         let payload = cmds
             .iter()
@@ -3154,6 +3195,8 @@ mod tests {
             .join("\u{1e}");
         assert_eq!(payload.contains("pid=4242"), true);
         assert_eq!(payload.contains("hwnd=0x1a2b"), true);
+        assert_eq!(payload.contains("focus_native\u{1f}5"), true);
+        assert_eq!(payload.contains("close_native\u{1f}6"), true);
         assert_eq!(DesktopCommand::parse_records(&payload), cmds);
         // hwnd 十进制直写。
         assert_eq!(
@@ -3164,6 +3207,17 @@ mod tests {
         assert!(DesktopCommand::parse_records("dock_native\u{1f}foo=1").is_empty());
         assert!(DesktopCommand::parse_records("undock_native\u{1f}abc").is_empty());
         assert!(DesktopCommand::parse_records("dock_native\u{1f}").is_empty());
+        assert!(DesktopCommand::parse_records("focus_native\u{1f}xyz").is_empty());
+        assert!(DesktopCommand::parse_records("close_native\u{1f}").is_empty());
+        // v1.3：shell 直传 wid "N<slot>" 形态——宿主剥前缀归一。
+        assert_eq!(
+            DesktopCommand::parse_records("focus_native\u{1f}N3"),
+            vec![DesktopCommand::FocusNative(3)]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("close_native\u{1f}N12"),
+            vec![DesktopCommand::CloseNative(12)]
+        );
     }
 
     #[test]
@@ -3238,7 +3292,7 @@ mod tests {
 
     #[test]
     fn native_slot_joins_grid_layout_and_emits_sync() {
-        use crate::ui::native_dock::{NativeSlotId, Rect, Size};
+        use crate::ui::native_dock::{Rect, Size};
         let mut ds = desktop_session_with_host();
         let id = {
             let host = ds.host.as_mut().unwrap();
@@ -3290,6 +3344,21 @@ mod tests {
         ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
         let host = ds.host.as_ref().unwrap();
         assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
+    }
+
+    // ---- Plan 486 T1：拖入手势会话字段（NativeDragOver 消息面）----
+
+    #[test]
+    fn native_drag_watch_session_fields_start_cleared() {
+        use crate::ui::native_dock::Rect;
+        let ds = DesktopSession::empty(None);
+        assert!(!ds.native_drag_watch.is_watching());
+        assert!(ds.native_drag_over.is_none());
+        // 消息面类型核对：物理域矩形直入枚举（E2E/headless 注入形态）。
+        let _msg = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(Some(Rect::new(
+            10, 20, 30, 40,
+        ))));
+        let _clear = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(None));
     }
 
     // ---- Plan 479 T2：协议 v1.2 通知动词（notify/notes_toggle/
