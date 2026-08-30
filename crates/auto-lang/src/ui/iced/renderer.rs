@@ -10711,6 +10711,9 @@ fn compare_pngs(
                     // 注入（payload Record：text/files/image whichever）。
                     // headless/无宿主窗时坐标按恒等退化。
                     DesktopEvent::NativeDrop(data) => {
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            eprintln!("[dnd-hop3] update arm NativeDrop enter");
+                        }
                         let local = (data.screen_x as f32, data.screen_y as f32);
                         #[cfg(windows)]
                         let local = if let Some((mapper, _)) = drag_mapper() {
@@ -10726,10 +10729,13 @@ fn compare_pngs(
                         };
                         if let Some(app) = state.drop_hit_app_at_local(local.0, local.1) {
                             if let Some(sess) = state.app_mut(app) {
-                                let _ = sess.component.bridge_mut().call_handler_with_record(
+                                let res = sess.component.bridge_mut().call_handler_with_record(
                                     "on_native_drop",
                                     native_drop_record_fields(&data),
                                 );
+                                if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                    eprintln!("[dnd-hop4] handler result: {res:?}");
+                                }
                             }
                         }
                     }

@@ -274,6 +274,39 @@ fn wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
     false
 }
 
+/// 仿真 iced/winit 空闲等待：无限期 `MsgWait`（仅被队列消息唤醒——
+/// WM_NULL ticker 的作用面），唤醒后派发一轮再查谓词。与
+/// [`pump_wait_until`]（持续泵）相对——本等待下无 ticker 即永远阻塞。
+fn idle_wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
+    use windows::Win32::Foundation::WAIT_OBJECT_0;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, MsgWaitForMultipleObjects, PeekMessageW, PM_REMOVE, QS_ALLINPUT, MSG,
+    };
+    let start = Instant::now();
+    unsafe {
+        let mut msg = MSG::default();
+        loop {
+            if f() {
+                return true;
+            }
+            let remain = timeout.saturating_sub(start.elapsed()).as_millis() as u32;
+            if remain == 0 {
+                return false;
+            }
+            let woke = MsgWaitForMultipleObjects(None, false, remain, QS_ALLINPUT);
+            if woke == WAIT_OBJECT_0 {
+                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                    if f() {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 泵消息版等待：本线程创建的 STA 目标窗（DesktopDropTarget）会收到跨
 /// 进程 DragEnter/Over/Drop COM 调用——它们以窗口消息送达本线程，等待期
 /// 必须 Dispatch（sleep 等待 = 死锁：拖拽源侧 DoDragDrop 阻塞在 Drop 调用
@@ -326,13 +359,47 @@ fn t3_drag_in_fixture_to_desktop_drop_target() {
         drag_sim::raise_top(NativeHwnd(target.hwnd.0 as isize)),
         "raise target"
     );
-    std::thread::sleep(Duration::from_millis(50));    assert!(drag_sim::ole_drag(from, to, 12), "ole_drag 序列");
+    std::thread::sleep(Duration::from_millis(50));
+
+    // 严格仿真真实 App 形态（T6 二轮回归断言）：
+    //   ① 驱动线程：移动+按下+12 步移动（无释放）——期间主线程泵消息
+    //      （真实 App 中 winit 因鼠标输入持续泵）→ DragEnter/Over 送达、
+    //      WM_NULL ticker 上膛；
+    //   ② 主线程停泵 → 释放（松手）；
+    //   ③ 纯 sleep 等待——Drop 送达必须由 ticker 独立保证。
+    let from_c = from;
+    let to_c = to;
+    let driver = std::thread::spawn(move || {
+        assert!(drag_sim::ole_move_to(from_c.0, from_c.1), "move to source");
+        std::thread::sleep(Duration::from_millis(120));
+        assert!(drag_sim::ole_press(), "press");
+        std::thread::sleep(Duration::from_millis(120));
+        for i in 1..=12 {
+            let t = i as f32 / 12.0;
+            let x = from_c.0 as f32 + (to_c.0 as f32 - from_c.0 as f32) * t;
+            let y = from_c.1 as f32 + (to_c.1 as f32 - from_c.1 as f32) * t;
+            assert!(drag_sim::ole_move_to(x as i32, y as i32), "move {i}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    });
+    let mut moves_done = false;
+    let _ = pump_wait_until(Duration::from_secs(6), || {
+        if driver.is_finished() {
+            moves_done = true;
+        }
+        moves_done
+    });
+    driver.join().expect("driver join");
+    // 停泵窗口：确保后续释放不落在泵期。
+    std::thread::sleep(Duration::from_millis(250));
+    assert!(drag_sim::ole_release(), "release (pump stopped)");
+
     let mut got = None;
-    let ok = pump_wait_until(Duration::from_secs(5), || {
+    let ok = idle_wait_until(Duration::from_secs(5), || {
         got = dndw::take_native_drop();
         got.is_some()
     });
-    assert!(ok, "5s 内应收到 NativeDrop");
+    assert!(ok, "5s 内应收到 NativeDrop（空闲等待仅由 ticker 唤醒——WM_NULL 生效）");
     let payload = got.expect("payload");
     assert_eq!(payload.text.as_deref(), Some("e2e-drag-in-payload"));
     assert!(payload.formats.iter().any(|f| f == "CF_UNICODETEXT"));

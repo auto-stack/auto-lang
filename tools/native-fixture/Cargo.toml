@@ -23,6 +23,8 @@ windows = { version = "0.58", features = [
     "Win32_System_Ole",
     "Win32_System_SystemServices",
     "Win32_System_Memory",
+    # Plan 488 T6 诊断：--synthdrag 的 SendInput。
+    "Win32_UI_Input_KeyboardAndMouse",
     "implement",
 ] }
 

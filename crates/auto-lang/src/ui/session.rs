@@ -3515,7 +3515,12 @@ pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
                         })
                         .or_else(|| {
                             crate::ui::native_dnd::win32::take_native_drop()
-                                .map(|data| DesktopMessage::Desktop(DesktopEvent::NativeDrop(data)))
+                                .map(|data| {
+                                    if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                        eprintln!("[dnd-hop2] subscription took native drop (text={:?})", data.text);
+                                    }
+                                    DesktopMessage::Desktop(DesktopEvent::NativeDrop(data))
+                                })
                         });
                     match msg {
                         Some(m) => Some((Some(m), ())),

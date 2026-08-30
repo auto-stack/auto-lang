@@ -43,34 +43,19 @@ impl DndPayload {
     }
 }
 
-/// 把裸反斜杠（不属于合法 JSON 转义序列的 `\`）转义为 `\\`。仅用于
-/// 载荷修复重试——合法输入零改动。
-fn escape_bare_backslashes(s: &str) -> String {
-    const BS: char = '\u{5C}';
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c != BS {
-            out.push(c);
-            continue;
+/// 首解析失败后的修复：无条件转义全部反斜杠。
+///
+/// 二轮教训：条件式保留（`\u`/`\n` 等"合法转义前缀"）在 Windows 路径
+/// 语境全错——`\ui` 被误判 unicode 转义、`\note` 被误判换行。首解析失败
+/// 即证串不是合法 JSON，无条件转义才是正确语义。
+fn escape_all_backslashes(s: &str) -> String {
+    s.chars().fold(String::with_capacity(s.len() * 2), |mut out, c| {
+        out.push(c);
+        if c == '\u{5C}' {
+            out.push('\u{5C}');
         }
-        match chars.peek().copied() {
-            // 合法 JSON 转义：原样保留双字符。
-            Some('"') | Some(BS) | Some('/') | Some('b') | Some('f') | Some('n')
-            | Some('r') | Some('t') | Some('u') => {
-                out.push(c);
-                if let Some(next) = chars.next() {
-                    out.push(next);
-                }
-            }
-            // 裸反斜杠（Windows 路径）：转义。
-            _ => {
-                out.push(BS);
-                out.push(BS);
-            }
-        }
-    }
-    out
+        out
+    })
 }
 
 /// `auto.dnd.start(payload_json)` 的载荷解析（纯函数，全平台可测）。
@@ -95,7 +80,7 @@ pub fn parse_payload_json(s: &str) -> Option<DndPayload> {
     // 非法 JSON（ 等非法定义），首解析失败时做一次"裸反斜杠转义"修复
     // 重试（已转义的 \/\" 等保持不动）。
     let parsed = serde_json::from_str::<Raw>(s)
-        .or_else(|_| serde_json::from_str::<Raw>(&escape_bare_backslashes(s)))
+        .or_else(|_| serde_json::from_str::<Raw>(&escape_all_backslashes(s)))
         .ok()?;
     let raw: Raw = parsed;
     let virtual_files = raw.virtual_files.map(|vfs| {
@@ -576,6 +561,16 @@ pub mod win32 {
     /// 形态；DoDragDrop 自带消息泵，阻塞期事件面照常。
     pub fn start_drag(payload: DndPayload) -> bool {
         use std::sync::atomic::Ordering;
+        let trace = std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1");
+        if trace {
+            eprintln!(
+                "[dnd-src] start_drag enter empty={} text={:?} files={:?} vfiles={}",
+                payload.is_empty(),
+                payload.text.as_deref(),
+                payload.files,
+                payload.virtual_files.len()
+            );
+        }
         if payload.is_empty() {
             return false;
         }
@@ -748,6 +743,12 @@ pub mod win32 {
             _pt: &POINTL,
             pdweffect: *mut DROPEFFECT,
         ) -> windows::core::Result<()> {
+            // 唤醒 ticker 上膛：拖拽悬停期间宿主窗每 40ms 收一枚 WM_NULL，
+            // 保证主线程持续取消息——Drop 的跨线程 COM 投递（SendMessage
+            // 型）否则会滞留到下一次用户输入才送达（T6 二轮实证；输入
+            // 事件恰是主线程泵的消息源，故拖动期 Enter/Over 正常、松手后
+            // Drop 卡住）。
+            wake_ticker_arm(true);
             let usable = pdataobj
                 .map(|d| {
                     let (hit, _) = probe_formats(d);
@@ -766,11 +767,13 @@ pub mod win32 {
             pdweffect: *mut DROPEFFECT,
         ) -> windows::core::Result<()> {
             // Enter 已筛（不可落者 OS 不再问 Over）；v1 恒 COPY。
+            wake_ticker_arm(true);
             unsafe { *pdweffect = DROPEFFECT_COPY };
             Ok(())
         }
 
         fn DragLeave(&self) -> windows::core::Result<()> {
+            wake_ticker_arm(false);
             Ok(())
         }
 
@@ -782,16 +785,61 @@ pub mod win32 {
             pdweffect: *mut DROPEFFECT,
         ) -> windows::core::Result<()> {
             unsafe { *pdweffect = DROPEFFECT_COPY };
+            wake_ticker_arm(false);
             if let Some(data) = pdataobj {
+                if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                    eprintln!("[dnd-hop1] Drop callback enter (sta thread={:?})", std::thread::current().id());
+                }
                 let drop = extract_drop(data, pt);
                 let (tx, _) = DROP.get_or_init(|| {
                     let (tx, rx) = std::sync::mpsc::channel();
                     (tx, std::sync::Mutex::new(rx))
                 });
                 let _ = tx.send(drop);
+                if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                    eprintln!("[dnd-hop1] Drop sent to channel");
+                }
             }
             Ok(())
         }
+    }
+
+    /// 拖拽悬停期间的宿主窗唤醒 ticker（见 DragEnter 注记）：armed 时每
+    /// 40ms 向注册窗 PostMessage WM_NULL——排队消息必唤醒任何等待形态，
+    /// 主线程一进入取消息态，挂起的跨线程 SendMessage（COM 投递）即被
+    /// 优先送达。
+    static TICKER_ARMED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    static TICK_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+    fn wake_ticker_arm(armed: bool) {
+        use std::sync::atomic::Ordering;
+        TICKER_ARMED.store(armed, Ordering::SeqCst);
+        if !armed {
+            return;
+        }
+        static TICKER_SPAWNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        TICKER_SPAWNED.get_or_init(|| {
+            std::thread::Builder::new()
+                .name("auto-lang-dnd-wake".into())
+                .spawn(|| loop {
+                    if TICKER_ARMED.load(Ordering::SeqCst) {
+                        let hv = TICK_HWND.load(Ordering::SeqCst);
+                        if hv != 0 {
+                            unsafe {
+                                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                                    windows::Win32::Foundation::HWND(hv as *mut _),
+                                    0, // WM_NULL
+                                    None,
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                })
+                .ok();
+        });
     }
 
     /// 轮询出口：取最近一次拖入抽取（session 订阅消费 →
@@ -913,7 +961,14 @@ pub mod win32 {
         let Some(proxy) = drop_target_sta_proxy() else {
             return false;
         };
-        unsafe { windows::Win32::System::Ole::RegisterDragDrop(hwnd, &proxy).is_ok() }
+        unsafe {
+            if windows::Win32::System::Ole::RegisterDragDrop(hwnd, &proxy).is_ok() {
+                TICK_HWND.store(hwnd.0 as isize, std::sync::atomic::Ordering::SeqCst);
+                true
+            } else {
+                false
+            }
+        }
     }
 
     /// 步骤 2 共存 spike 的最小放置目标：全方法 no-op（探针只验注册语义，
@@ -1404,7 +1459,7 @@ mod payload_tests {
     #[test]
     fn parse_windows_bare_backslash_paths() {
         // T6 一轮实机：fs.cwd() 裸反斜杠 + .at 字面量 —— 首解析失败后
-        // 经 escape_bare_backslashes 修复重试成功（\x5C = 反斜杠，避开
+        // 经 escape_all_backslashes 修复重试成功（\x5C = 反斜杠，避开
         // 源码转义歧义）。
         let bad = "{\"files\":[\"D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt\"]}";
         let p = parse_payload_json(&bad).expect("repair parse");
@@ -1412,7 +1467,15 @@ mod payload_tests {
             p.files,
             vec![std::path::PathBuf::from("D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt")]
         );
-        // 已转义的合法 JSON 不受影响（JSON 的 \\ 解析为单反斜杠）。
+        // 二轮教训：\ui（曾误判 unicode 前缀）与 \note（曾误判换行）——
+        // 无条件转义后全部按字面反斜杠解析。
+        let bad2 = "{\"files\":[\"D:\x5Cws\x5Cui\x5C044\x5Cassets\x5Cnote.md\"]}";
+        let p2 = parse_payload_json(&bad2).expect("repair parse 2");
+        assert_eq!(
+            p2.files,
+            vec![std::path::PathBuf::from("D:\x5Cws\x5Cui\x5C044\x5Cassets\x5Cnote.md")]
+        );
+        // 首解析即合法的 JSON（\\ → 单反斜杠）不走修复、结果不变。
         let ok = parse_payload_json("{\"text\":\"a\\\\b\"}");
         assert_eq!(ok.unwrap().text.as_deref(), Some("a\\b"));
     }

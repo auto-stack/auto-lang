@@ -51,6 +51,8 @@ mod win {
         pub trace: bool,
         /// Plan 488 拖源载荷（None = 无拖源行为）。
         pub offer: Option<Offer>,
+        /// Plan 488 T6 诊断：合成拖拽驱动（"x1,y1-x2,y2"：按下→移动→释放后退出；驱动外部进程窗口的拖放测量用）。
+        pub synthdrag: Option<((i32, i32), (i32, i32))>,
     }
 
     /// Plan 488 `--offer` 载荷。
@@ -70,6 +72,7 @@ mod win {
                 self_close_secs: self.self_close_secs,
                 trace: self.trace,
                 offer: self.offer.clone(),
+                synthdrag: self.synthdrag,
             }
         }
     }
@@ -756,12 +759,77 @@ mod win {
                 create_modal_button(hwnd, hmodule);
             }
 
+            if let Some((from, to)) = opts.synthdrag {
+                // 驱动模式：窗口只为存在而建（拖拽源点/落点均在外部窗口），驱动完成即退出。
+                emit("{\"evt\":\"synthdrag-begin\"}");
+                synth_drag(from, to);
+                emit("{\"evt\":\"synthdrag-end\"}");
+                let _ = DestroyWindow(hwnd);
+                return 0;
+            }
+
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
             0
+        }
+    }
+
+    /// 合成拖拽（SendInput：按下→12 步移动→释放；步间 20ms）。
+    fn synth_drag(from: (i32, i32), to: (i32, i32)) {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
+            MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEINPUT, MOUSE_EVENT_FLAGS,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+        };
+        fn send(dx: i32, dy: i32, flags: MOUSE_EVENT_FLAGS) {
+            let input = INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx,
+                        dy,
+                        mouseData: 0,
+                        dwFlags: flags,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            };
+            unsafe {
+                SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            }
+        }
+        fn move_to(x: i32, y: i32) {
+            unsafe {
+                let sw = GetSystemMetrics(SM_CXSCREEN).max(1);
+                let sh = GetSystemMetrics(SM_CYSCREEN).max(1);
+                send(
+                    (x.clamp(0, sw - 1) * 65535) / (sw - 1),
+                    (y.clamp(0, sh - 1) * 65535) / (sh - 1),
+                    MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                );
+            }
+        }
+        unsafe {
+            move_to(from.0, from.1);
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            send(0, 0, MOUSEEVENTF_LEFTDOWN);
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            for i in 1..=12 {
+                let t = i as f32 / 12.0;
+                let x = from.0 as f32 + (to.0 as f32 - from.0 as f32) * t;
+                let y = from.1 as f32 + (to.1 as f32 - from.1 as f32) * t;
+                move_to(x as i32, y as i32);
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            send(0, 0, MOUSEEVENTF_LEFTUP);
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
 
@@ -809,6 +877,7 @@ fn parse_args() -> win::Opts {
         self_close_secs: None,
         trace: false,
         offer: None,
+        synthdrag: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -850,6 +919,18 @@ fn parse_args() -> win::Opts {
                 } else if let Some(fs) = spec.strip_prefix("files:") {
                     let files = fs.split(';').map(|s| s.to_string()).collect();
                     opts.offer = Some(win::Offer::Files(files));
+                }
+                i += 2;
+            }
+            // Plan 488 T6 诊断：合成拖拽驱动 x1,y1-x2,y2。
+            "--synthdrag" if i + 1 < args.len() => {
+                let spec = args[i + 1].replace('-', ",");
+                let nums: Vec<i32> = spec
+                    .split(',')
+                    .filter_map(|n| n.trim().parse().ok())
+                    .collect();
+                if nums.len() == 4 {
+                    opts.synthdrag = Some(((nums[0], nums[1]), (nums[2], nums[3])));
                 }
                 i += 2;
             }

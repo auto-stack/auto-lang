@@ -446,3 +446,32 @@ widget App {
     };
     assert_eq!(log, "A[VAL]", "var+if+.str(): {log}");
 }
+
+#[test]
+fn plan488_at_string_escape_probe() {
+    // 判定 .at 词法对 \（双反斜杠）的处理——A1 载荷诊断。
+    let code = r#"
+widget App {
+    msg Msg { Probe(record) }
+    model { var log str = "" }
+    view { col { text .log } }
+    on {
+        .Probe(p) -> {
+            .log = p.prefix + "\examples\a.txt"
+        }
+    }
+}
+"#;
+    let mut dc = load_inline(code);
+    use auto_lang::ui::vm_bridge::RecordValue;
+    let prefix = format!("D:{}x", char::from_u32(0x5C).unwrap());
+    dc.bridge_mut()
+        .call_handler_with_record("Probe", vec![("prefix".into(), RecordValue::Str(prefix))])
+        .expect("probe");
+    let log = match dc.read_state("log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("log: {other:?}"),
+    };
+    eprintln!("[at-escape] log={log:?}");
+    assert!(!log.is_empty());
+}
