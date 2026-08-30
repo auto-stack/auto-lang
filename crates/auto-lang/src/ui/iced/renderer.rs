@@ -694,6 +694,9 @@ pub enum SpanKind {
     Whitespace,
     Arg,
     Ghost,
+    /// PLAN-493: mention 命中段（textarea mentions 能力）——builder 期
+    /// mention_segments 产出 kind "mention"。
+    Mention,
     Plain,
 }
 
@@ -710,6 +713,7 @@ fn parse_span_kind(kind: &str) -> SpanKind {
         "Whitespace" => SpanKind::Whitespace,
         "Arg" => SpanKind::Arg,
         "Ghost" => SpanKind::Ghost,
+        "mention" => SpanKind::Mention,
         _ => SpanKind::Plain,
     }
 }
@@ -809,6 +813,13 @@ fn span_kind_to_format(
         SpanKind::Ghost => iced_widget::core::text::highlighter::Format {
             // 低饱和半透明灰 — 对齐 vue 的 text-muted-foreground/35。
             color: Some(iced::Color::from_rgba(0.45, 0.48, 0.54, 0.45)),
+            font: None,
+        },
+        SpanKind::Mention => iced_widget::core::text::highlighter::Format {
+            // PLAN-493: mention 前景蓝 — 对齐 musk 的
+            // text-[hsl(220_90%_56%)]（≈ blue-600）。iced Format 无 per-span
+            // 背景，web 侧的 bg tint 不复刻（跨端差异登记）。
+            color: Some(c(37, 99, 235)),
             font: None,
         },
         SpanKind::Whitespace | SpanKind::Arg | SpanKind::Plain => {
@@ -16420,8 +16431,27 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-493 T4: mention 段 kind 流通——parse_span_kind 认 "mention"，
+    /// build_span_lines 对 mention 段按无缝覆盖契约切出行内范围。
+    #[test]
+    fn plan493_mention_kind_parses_and_covers() {
+        assert_eq!(parse_span_kind("mention"), SpanKind::Mention);
+        assert_eq!(parse_span_kind("Command"), SpanKind::Command);
+        let value = "@assistant hi";
+        let spans = vec![
+            ("@assistant".to_string(), "mention".to_string()),
+            (" hi".to_string(), "text".to_string()),
+        ];
+        let settings = build_span_lines(&spans, value, "");
+        assert!(!settings.lines.is_empty(), "无缝覆盖段必须切出 SpanLines");
+        let first = &settings.lines[0];
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].1, SpanKind::Mention);
+        assert_eq!(&value[first[0].0.clone()], "@assistant");
+    }
+
     /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
-    /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
+    /// （musk rail 四图标 + 折叠 chevron/搜索）——缺名静默降级空占位，
     /// 此处以测试锁住。
     #[test]
     fn nav_family_lucide_icons_present() {
