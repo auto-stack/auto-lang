@@ -40,6 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opts = DesktopOptions {
         fullscreen,
         apps_dir: Some(apps_dir),
+        // Plan 494：真洞模式（测试宿主透传 env 开关；生产桌面走
+        // `shell.native.hole` storage 键）。
+        hole_mode: std::env::var("AUTO_DESKTOP_HOLE").as_deref() == Ok("1"),
     };
     if fullscreen {
         run_dynamic_desktop_fullscreen(vec![comp_a, comp_b], opts)?;
