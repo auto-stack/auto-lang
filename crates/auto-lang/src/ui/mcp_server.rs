@@ -3183,7 +3183,9 @@ mod tests_plan483_d4 {
     }
 
     fn column(children: Vec<View<DynamicMessage>>) -> View<DynamicMessage> {
-        View::Column { children, spacing: 0, padding: 0, style: None }
+        View::Column { children, spacing: 0, padding: 0, style: None,
+                onclick: None,
+            }
     }
 
     /// 找 vtree 中第 n 个（0 起）Input 节点的 path。
