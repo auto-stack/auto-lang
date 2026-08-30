@@ -9392,12 +9392,14 @@ print(hidden2)
 "#,
             )
             .unwrap();
-            // The VM's `print` renders bools as 1/0 (shim_print prints
-            // strings or integers — there is no `true`/`false` literal).
-            assert!(out2.contains('1'), "first toggle folds: {out2}");
-            assert!(out2.contains('2'), "body of 2 lines hidden: {out2}");
-            assert!(out2.contains('0'), "second toggle unfolds: {out2}");
-            assert!(out2.trim_end().ends_with('0'), "hidden back to 0: {out2}");
+            // Plan 489：断言对齐现 print 语义——bool 渲染为 true/false
+            // 字面量（旧注释「renders bools as 1/0」停留在 shim 时代，
+            // P487-2 既有红根因之一）；逐行精确比对防子串误判。
+            assert_eq!(
+                out2.lines().collect::<Vec<_>>(),
+                vec!["true", "2", "false", "0"],
+                "fold 往返：首 toggle true / 隐 2 行 / 次 toggle false / 归 0"
+            );
 
             // Missing editor key raises a runtime error (not a panic).
             let err = crate::run(r#"let x = code_editor_text("__code_editor_no-such")"#);
