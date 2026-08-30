@@ -271,12 +271,29 @@ fn extract_class_attr(attr_str: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
+/// PLAN-493: text-* token 是否为字号（而非颜色）——backdrop 保底着色判断用。
+/// text-xs/sm/base/lg/xl…nxl 与 text-[15px]/[1.5rem] 视为字号；text-foreground、
+/// text-red-500、text-[hsl(…)]/#/rgb 视为颜色。
+fn is_text_size_token(tok: &str) -> bool {
+    let Some(s) = tok.strip_prefix("text-") else { return false };
+    if matches!(s, "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "8xl" | "9xl") {
+        return true;
+    }
+    s.starts_with('[')
+        && (s.contains("px") || s.contains("rem") || s.contains("em"))
+        && !s.contains("hsl")
+        && !s.contains('#')
+        && !s.contains("rgb")
+}
+
 /// PLAN-493: textarea 类串 → backdrop 类串推导（几何镜像）。token 级规则：
 /// 删输入面专属 token（`text-transparent` 位换 `text-foreground` 保序，
 /// 避免同特异性时 CSS 顺序不确定；`caret-*`/`resize-*`/`outline*`/
 /// `focus:*`/`disabled:*`/`read-only*`/`selection:*`/`placeholder:*`）；
-/// 增背板结构 token（`pointer-events-none overflow-hidden
-/// whitespace-pre-wrap break-words`，幂等去重）。
+/// 若删后无任何 text-**颜色** token（仅字号），保底追加 `text-foreground`
+/// （backdrop 是可视文字层，透明 textarea 的颜色不继承使命）；增背板
+/// 结构 token（`pointer-events-none overflow-hidden whitespace-pre-wrap
+/// break-words`，幂等去重）。
 fn derive_mention_backdrop_class(ta_class: &str) -> String {
     let mut out: Vec<String> = Vec::new();
     for tok in ta_class.split_whitespace() {
@@ -295,6 +312,12 @@ fn derive_mention_backdrop_class(ta_class: &str) -> String {
         } else {
             out.push(tok.to_string());
         }
+    }
+    let has_text_color = out
+        .iter()
+        .any(|t| t.starts_with("text-") && !is_text_size_token(t));
+    if !has_text_color {
+        out.push("text-foreground".to_string());
     }
     for structural in [
         "pointer-events-none",
@@ -3028,6 +3051,11 @@ impl VueGenerator {
             } else {
                 "(text, names, cls)"
             };
+            let is_word_def = if self.use_typescript {
+                "const isWord = (ch: string) => /[A-Za-z0-9_]/.test(ch)"
+            } else {
+                "const isWord = (ch) => /[A-Za-z0-9_]/.test(ch)"
+            };
             script.push_str("function __autoMentionHtml");
             script.push_str(fn_sig);
             script.push_str(
@@ -3035,7 +3063,11 @@ impl VueGenerator {
   if (!text) return '\n'
   const known = new Set((names ?? []).map((n) => String(n).toLowerCase()))
   const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const isWord = (ch) => /[A-Za-z0-9_]/.test(ch)
+  "#,
+            );
+            script.push_str(is_word_def);
+            script.push_str(
+                r#"
   let out = ''
   let i = 0
   while (i < escaped.length) {
@@ -15559,6 +15591,14 @@ widget PlainComposer {
         }
         // 幂等：推导两次结果一致（结构 token 不重复堆积）。
         assert_eq!(got, derive_mention_backdrop_class(&got));
+        // 无 text-transparent（.at 已删）且无其他颜色 token → 保底追加
+        // text-foreground（musk 迁移后形态）。
+        let got2 = derive_mention_backdrop_class("chats-input absolute inset-0 py-2 px-3 text-[15px]");
+        assert!(got2.contains("text-foreground"), "保底着色: {got2}");
+        // 已有显式颜色 token 时不重复追加。
+        let got3 = derive_mention_backdrop_class("p-2 text-red-500 text-sm");
+        assert_eq!(got3.matches("text-foreground").count(), 0, "已有颜色不追加: {got3}");
+        assert!(got3.contains("text-red-500") && got3.contains("text-sm"));
     }
 
     #[test]
