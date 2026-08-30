@@ -1,5 +1,5 @@
-use.rust tracing::info
-use.rust tracing::debug
+use.rs tracing::info
+use.rs tracing::debug
 
 fn main() {
     #info("application started")

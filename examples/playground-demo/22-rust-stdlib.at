@@ -1,8 +1,8 @@
 // Rust stdlib from Auto: the AutoVM calls Rust's std::path and std::time directly
-// (uses use.rust — runs in the VM and transpiles to Rust; C target unsupported)
+// (uses use.rs — runs in the VM and transpiles to Rust; C target unsupported)
 // Tip: click "Transpile → Rust" to see the Rust code this program generates.
-use.rust std::path::PathBuf
-use.rust std::time::Duration
+use.rs std::path::PathBuf
+use.rs std::time::Duration
 
 // PathBuf: build a path value; printing it shows the path
 let p = PathBuf.from("src/main.rs")

@@ -1,9 +1,9 @@
 dep simplelog
 dep log
-use.rust log::info
-use.rust simplelog::WriteLogger
-use.rust simplelog::LevelFilter
-use.rust simplelog::Config
+use.rs log::info
+use.rs simplelog::WriteLogger
+use.rs simplelog::LevelFilter
+use.rs simplelog::Config
 
 fn main() {
     let file = File.create("app.log").unwrap()

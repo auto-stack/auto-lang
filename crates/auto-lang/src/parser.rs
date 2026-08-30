@@ -6484,11 +6484,23 @@ impl<'a> Parser<'a> {
         // check use.c or use.rust (only when no prefix)
         if prefix == PathPrefix::None && self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
+            // Plan 470: capture the lang keyword's span before consuming it,
+            // so the deprecation label points at `use.rust` itself.
+            let kw_span = pos_to_span(self.cur.pos);
             let name = self.expect_ident_str()?;
 
             if name == "c" {
                 return self.use_c_stmt();
-            } else if name == "rust" {
+            } else if name == "rust" || name == "rs" {
+                // Plan 470: `use.rs` is the canonical spelling (aligns with
+                // `use.py`); `use.rust` keeps parsing but warns (W0005).
+                if name == "rust" {
+                    self.warn(Warning::DeprecatedFeature {
+                        name: "use.rust".to_string(),
+                        message: "use 'use.rs' instead".to_string(),
+                        span: kw_span,
+                    });
+                }
                 return self.use_rust_stmt();
             } else if name == "py" {
                 return self.use_py_stmt();
@@ -17709,6 +17721,53 @@ exe hello {
         assert_eq!(ast.to_string(), "(code (use (kind c) (path <stdio.h>)))");
     }
 
+    // Plan 470: `use.rs` is the canonical Rust-import spelling; `use.rust`
+    // keeps parsing but emits W0005 DeprecatedFeature.
+    #[test]
+    fn test_use_rs_alias_parses_like_use_rust() {
+        let rs_code = "use.rs serde::json::{from_str, to_string}";
+        let rust_code = "use.rust serde::json::{from_str, to_string}";
+        assert_eq!(
+            parse_once(rs_code).to_string(),
+            parse_once(rust_code).to_string(),
+            "use.rs and use.rust must produce identical ASTs"
+        );
+        assert_eq!(
+            parse_once(rs_code).to_string(),
+            "(code (use (kind rust) (path serde.json) (items from_str,to_string)))"
+        );
+    }
+
+    #[test]
+    fn test_use_rust_emits_deprecation_warning() {
+        let code = "use.rust serde::json";
+        let mut parser = Parser::from(&code);
+        parser.parse().unwrap();
+        assert!(
+            parser
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::DeprecatedFeature { name, .. } if name == "use.rust")),
+            "use.rust must trigger W0005 DeprecatedFeature, got: {:?}",
+            parser.warnings
+        );
+    }
+
+    #[test]
+    fn test_use_rs_no_deprecation_warning() {
+        let code = "use.rs serde::json";
+        let mut parser = Parser::from(&code);
+        parser.parse().unwrap();
+        assert!(
+            !parser
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::DeprecatedFeature { .. })),
+            "use.rs must not warn, got: {:?}",
+            parser.warnings
+        );
+    }
+
     #[test]
     fn test_import() {
         let code = "use auto.math: square";
@@ -19237,7 +19296,7 @@ fn msg(e E) str {
     /// Value}, Nil) that a2r rendered as invalid `auto_val::Value.Nil`.
     #[test]
     fn test_qualified_unit_variant_pattern_strips_module() {
-        let code = "use.rust auto_val
+        let code = "use.rs auto_val
 
 fn f(v Value) bool {
     is v {

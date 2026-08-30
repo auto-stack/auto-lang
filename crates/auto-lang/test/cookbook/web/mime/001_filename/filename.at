@@ -1,5 +1,5 @@
 dep mime_guess
-use.rust mime_guess
+use.rs mime_guess
 
 fn main() {
     let mime = mime_guess.from_path("document.pdf").first_or_octet_stream()

@@ -4,10 +4,10 @@
 // 复审背景:430 已把手写 std 臂迁到生成段,但 19_rust_std VM goldens 当时全部
 // #[ignore],迁移主战场无活跃守护;本用例补上(另:19_rust_std 的陈旧 ignore
 // 已在本次一并解除,见 vm_file_tests.rs)。
-use.rust std::vec::Vec
-use.rust std::time::Duration
-use.rust std::path::PathBuf
-use.rust std::string::String
+use.rs std::vec::Vec
+use.rs std::time::Duration
+use.rs std::path::PathBuf
+use.rs std::string::String
 
 fn main() {
     // ---- Vec(生成段 14 臂的行为断言,非"ok"级) ----

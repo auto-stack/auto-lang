@@ -1,5 +1,5 @@
 dep serde_json
-use.rust serde_json
+use.rs serde_json
 
 fn main() {
     let json_str = "{\"name\": \"Alice\", \"age\": 30}"

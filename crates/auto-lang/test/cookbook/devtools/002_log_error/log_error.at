@@ -1,4 +1,4 @@
-use.rust log::error
+use.rs log::error
 
 fn main() {
     #error("something went wrong")

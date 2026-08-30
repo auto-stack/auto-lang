@@ -107,7 +107,7 @@ fn ffi_dual_013_dep_method() {
         .replace('\\', "/");
     let src = format!(
         r#"dep autolang_counter(path: "{fixture}")
-use.rust autolang_counter::{{Counter, Config, Point}}
+use.rs autolang_counter::{{Counter, Config, Point}}
 let c = Counter.new("hits")
 c.increment()
 c.increment()
@@ -145,7 +145,7 @@ print(pt.to_string())
     // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)
     let bad = format!(
         r#"dep autolang_counter(path: "{fixture}")
-use.rust autolang_counter::{{Config}}
+use.rs autolang_counter::{{Config}}
 let p = Config.parse("not-a-number")
 "#
     );
@@ -173,12 +173,12 @@ fn ffi_dual_014_std_generated_segment() {
 }
 
 // 跨测试路由污染回归(ffi_dual_014 发现,2026-08-25):BIGVM_NATIVES 惰性注册 +
-// "已有 native 优先"启发式,使 use.rust 的 String.from 路由取决于同进程内是否有
-// 先前程序用过原生 String API。本测试在**同一测试内**先跑原生(无 use.rust)
+// "已有 native 优先"启发式,使 use.rs 的 String.from 路由取决于同进程内是否有
+// 先前程序用过原生 String API。本测试在**同一测试内**先跑原生(无 use.rs)
 // String.from——修复前第二条会 print 出裸堆 ID(4000011 形态)而非 "42"。
 #[test]
 fn ffi_dual_015_rust_type_route_not_hijacked_by_native_registry() {
-    // 1. 原生 String API(无 use.rust)——副作用:auto.str.from 惰性注册进全局表
+    // 1. 原生 String API(无 use.rs)——副作用:auto.str.from 惰性注册进全局表
     let (_, out1) = crate::run_with_capture(r#"
 fn main() {
     let s = String.from("native")
@@ -187,10 +187,10 @@ fn main() {
 "#).expect("native String.from runs");
     assert_eq!(out1.trim(), "6");
 
-    // 2. use.rust 的 String.from——必须仍走 dispatch 3000 生成段,
+    // 2. use.rs 的 String.from——必须仍走 dispatch 3000 生成段,
     //    不得被已注册的 auto.str.from 劫持
     let (_, out2) = crate::run_with_capture(r#"
-use.rust std::string::String
+use.rs std::string::String
 fn main() {
     print(String.from("42"))
 }

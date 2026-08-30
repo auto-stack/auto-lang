@@ -1,4 +1,4 @@
-use.rust std::collections::{HashMap, HashSet, BTreeMap, VecDeque}
+use.rs std::collections::{HashMap, HashSet, BTreeMap, VecDeque}
 
 fn main() {
     var scores HashMap<str, int> = HashMap.new()

@@ -1,7 +1,7 @@
 dep ndarray
 dep serde_json
-use.rust ndarray::arr2
-use.rust serde_json
+use.rs ndarray::arr2
+use.rs serde_json
 
 fn main() {
     let json = "[[1,2,3],[4,5,6]]"

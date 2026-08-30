@@ -1,5 +1,5 @@
 dep crossbeam
-use.rust crossbeam::channel
+use.rs crossbeam::channel
 
 // SPSC channel simulation (Auto lacks tuple destructuring for unbounded())
 // Tests the producer-consumer pattern with a List-based queue

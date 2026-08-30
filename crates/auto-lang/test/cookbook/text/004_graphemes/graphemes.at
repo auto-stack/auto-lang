@@ -1,5 +1,5 @@
 dep unicode_segmentation
-use.rust unicode_segmentation::UnicodeSegmentation
+use.rs unicode_segmentation::UnicodeSegmentation
 
 fn main() {
     let text = "hello world"

@@ -1,10 +1,10 @@
 // Process — Running external commands
 //
-// Auto can spawn external processes via use.rust std::process.
+// Auto can spawn external processes via use.rs std::process.
 
 fn main() {
-    print("Process operations available via use.rust:")
+    print("Process operations available via use.rs:")
     print("  std::process::Command for spawning processes")
     print("  Capture stdout/stderr/exit codes")
-    print("Use dep + use.rust to access process APIs")
+    print("Use dep + use.rs to access process APIs")
 }

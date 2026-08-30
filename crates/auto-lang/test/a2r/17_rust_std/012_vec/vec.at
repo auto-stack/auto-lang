@@ -1,4 +1,4 @@
-use.rust std::vec::Vec
+use.rs std::vec::Vec
 
 fn main() {
     var v Vec<int> = Vec.new()

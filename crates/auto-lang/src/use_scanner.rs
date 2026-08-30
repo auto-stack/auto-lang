@@ -206,6 +206,11 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
     }
 
     // Plan 092: Rust crate 导入: use.rust serde::json::{from_str, to_string}
+    // Plan 470: `use.rs` 为现行拼写（与 use.py 对齐）；use.rust 旧拼写仍识别
+    if line.starts_with(".rs ") || line.starts_with(".rs\t") {
+        let rest = line[3..].trim();  // Skip ".rs "
+        return parse_rust_import(rest);
+    }
     if line.starts_with(".rust ") || line.starts_with(".rust\t") {
         let rest = line[5..].trim();  // Skip ".rust "
         return parse_rust_import(rest);
@@ -526,6 +531,37 @@ use std.io
         assert_eq!(uses.len(), 1);
         assert!(uses[0].is_rust_import);
         assert_eq!(uses[0].module, "tokio::net::TcpStream");
+    }
+
+    // Plan 470: `use.rs` 别名测试
+    #[test]
+    fn test_rs_alias_import_simple() {
+        let source = "use.rs serde::json";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "serde::json");
+    }
+
+    #[test]
+    fn test_rs_alias_import_with_items() {
+        let source = "use.rs serde::json::{from_str, to_string}";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 1);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "serde::json");
+        assert_eq!(uses[0].items, vec!["from_str", "to_string"]);
+    }
+
+    #[test]
+    fn test_rs_alias_and_legacy_rust_mixed() {
+        let source = "use.rs serde::json\nuse.rust tokio::net::TcpStream";
+        let uses = scan_use_statements(source);
+        assert_eq!(uses.len(), 2);
+        assert!(uses[0].is_rust_import);
+        assert_eq!(uses[0].module, "serde::json");
+        assert!(uses[1].is_rust_import);
+        assert_eq!(uses[1].module, "tokio::net::TcpStream");
     }
 
     #[test]

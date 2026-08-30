@@ -35,7 +35,7 @@ Auto 有三条路径调用 Rust 能力：
 | 路径 | 机制 | 状态 |
 |---|---|---|
 | **`use auto.<module>`**（主路径） | Auto stdlib 声明 → VM native shim 实现 / a2r 转 `a2r_std::` | VM 端覆盖广（~200 函数），a2r 端部分覆盖 |
-| **`use.rust <crate>::<path>`**（动态 FFI） | `RustFfiBridge` + libloading 加载 cdylib | **严重受限**：仅 marshal 原语类型，无法传 opaque handle（Connection/Statement 等） |
+| **`use.rs <crate>::<path>`**（动态 FFI） | `RustFfiBridge` + libloading 加载 cdylib | **严重受限**：仅 marshal 原语类型，无法传 opaque handle（Connection/Statement 等） |
 | **a2r 转译内联** | a2r 把 `auto.X` 转 `a2r_std::X`，链接 `a2r-std` crate | 独立 crate（ureq）与内联（reqwest）**底层库不一致** |
 
 ### 1.2 能力域 × 双端底层库一致性（parity 可行性的决定因素）
@@ -56,7 +56,7 @@ Auto 有三条路径调用 Rust 能力：
 ### 1.3 关键阻塞
 
 - **DIV-HTTP-LANG-1**（stdlib `auto/http.at` 解析 bug）：任何 `use auto.http` 在 VM 和 a2r 都失败。修复计划在 Plan 359 Phase E Task E4。**所有 HTTP 消费者场景的前置依赖。**
-- **opaque-handle 库**（sqlite/redis/hyper）：`use.rust` 无法传 Connection/Statement 等 opaque handle（DIV-RUSQLITE-1）。消费者 parity 不可行，除非先实现 `auto.sqlite`/`auto.redis` 的纯 Auto 包装（大工程）。
+- **opaque-handle 库**（sqlite/redis/hyper）：`use.rs` 无法传 Connection/Statement 等 opaque handle（DIV-RUSQLITE-1）。消费者 parity 不可行，除非先实现 `auto.sqlite`/`auto.redis` 的纯 Auto 包装（大工程）。
 - **a2r 独立 crate 用 ureq，VM 用 reqwest**：HTTP 传输层细节（重定向/cookie/TLS/chunked）可能分歧。消费者 parity 需把范围限在"应用语义层"（状态码/body 内容），或统一底层库。
 
 ---

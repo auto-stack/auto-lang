@@ -1,6 +1,6 @@
-use.rust std::io::Write
-use.rust std::process::Command
-use.rust std::process::Stdio
+use.rs std::io::Write
+use.rs std::process::Command
+use.rs std::process::Stdio
 
 fn main() {
     var child = Command.new("cat").stdin(Stdio.piped()).stdout(Stdio.piped()).spawn().unwrap()

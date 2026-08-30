@@ -1,5 +1,5 @@
 dep num
-use.rust num::Complex
+use.rs num::Complex
 
 fn main() {
     let z = Complex.new(3.0, 4.0)

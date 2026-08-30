@@ -1,8 +1,8 @@
-// Plan 032 G3: `use.rust X` (incl. explicit crate:: paths) makes module-
+// Plan 032 G3: `use.rs X` (incl. explicit crate:: paths) makes module-
 // qualified free-fn calls `X.fn(...)` emit natively as `X::fn(...)` — no
 // consumer-side `.`→`::` sed needed. Pins the behavior that auto-ai daemon
 // now relies on (provider_glue / crate::sse / dirs bridging).
-use.rust crate::helper_glue
+use.rs crate::helper_glue
 
 fn main() {
     print(helper_glue.answer())

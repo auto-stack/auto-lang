@@ -32,7 +32,7 @@
 
 ### Rust FFI（plan-092/094/212）
 
-- 内建 shim 编译进 VM；用户 crate 经 `use.rust` 沙箱编译为 cdylib 动态加载，
+- 内建 shim 编译进 VM；用户 crate 经 `use.rs` 沙箱编译为 cdylib 动态加载，
   两路统一进 `NativeInterface` 混合查找。
 - plan-212 完成端到端：dep serde_json → cargo build cdylib → AutoVM 加载 .dll → 调用。
 - **plan-430 方法 shim 包（C 阶段，2026-08-23）**：dep 声明的 crate 自动多做一步

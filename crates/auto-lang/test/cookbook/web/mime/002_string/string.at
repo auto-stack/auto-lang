@@ -1,5 +1,5 @@
 dep mime
-use.rust mime::Mime
+use.rs mime::Mime
 
 fn main() {
     let mime = "text/html".parse().unwrap()

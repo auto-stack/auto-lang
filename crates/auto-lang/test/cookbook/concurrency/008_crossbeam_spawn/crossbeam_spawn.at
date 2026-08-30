@@ -1,5 +1,5 @@
 dep crossbeam
-use.rust crossbeam
+use.rs crossbeam
 
 fn main() {
     crossbeam.scope(s => {

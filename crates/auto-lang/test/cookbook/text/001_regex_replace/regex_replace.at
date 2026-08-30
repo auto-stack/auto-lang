@@ -1,4 +1,4 @@
-use.rust regex::Regex
+use.rs regex::Regex
 
 fn main() {
     let re = Regex.new(c"\d+").unwrap()

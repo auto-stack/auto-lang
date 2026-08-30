@@ -1,4 +1,4 @@
-use.rust std::fs
+use.rs std::fs
 
 fn main() ! {
     let entries = fs.read_dir(".").?

@@ -1,4 +1,4 @@
-use.rust std::time::Instant
+use.rs std::time::Instant
 fn main() {
     let t = Instant.now()
     print("ok")

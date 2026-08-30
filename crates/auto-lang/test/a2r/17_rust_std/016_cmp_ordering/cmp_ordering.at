@@ -1,4 +1,4 @@
-use.rust std::cmp::Ordering
+use.rs std::cmp::Ordering
 
 fn main() {
     let ord = 1.cmp(2)

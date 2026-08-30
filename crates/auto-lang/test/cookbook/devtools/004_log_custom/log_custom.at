@@ -1,9 +1,9 @@
 dep log
-use.rust log::info
-use.rust log::LevelFilter
-use.rust log::Log
-use.rust log::Metadata
-use.rust log::Record
+use.rs log::info
+use.rs log::LevelFilter
+use.rs log::Log
+use.rs log::Metadata
+use.rs log::Record
 
 // Custom logger struct with Log trait implementation
 type SimpleLogger {}

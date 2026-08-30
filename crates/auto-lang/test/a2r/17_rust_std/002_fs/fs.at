@@ -1,5 +1,5 @@
-use.rust std::fs::{File, read_to_string}
-use.rust std::io::{BufRead, BufReader}
+use.rs std::fs::{File, read_to_string}
+use.rs std::io::{BufRead, BufReader}
 
 fn main() {
     let content = read_to_string("test.txt")

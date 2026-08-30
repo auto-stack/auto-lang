@@ -1,6 +1,6 @@
 // Normal distribution sample demo
-use.rust rand
-use.rust rand_distr
+use.rs rand
+use.rs rand_distr
 
 fn main() ! {
     var rng = rand.thread_rng()

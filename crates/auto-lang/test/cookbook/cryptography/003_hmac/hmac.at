@@ -1,6 +1,6 @@
 dep sha2
-use.rust sha2::Sha256
-use.rust sha2::Digest
+use.rs sha2::Sha256
+use.rs sha2::Digest
 
 // HMAC-SHA256 computation and verification
 fn main() {

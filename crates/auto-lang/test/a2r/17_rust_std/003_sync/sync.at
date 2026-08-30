@@ -1,4 +1,4 @@
-use.rust std::sync::{Arc, Mutex}
+use.rs std::sync::{Arc, Mutex}
 
 fn main() {
     let data = Arc.new(Mutex.new(0))

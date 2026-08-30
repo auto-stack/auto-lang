@@ -1,4 +1,4 @@
-use.rust std::error::Error
+use.rs std::error::Error
 
 fn main() ! {
     let msg = "hello"

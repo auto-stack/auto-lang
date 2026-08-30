@@ -1,4 +1,4 @@
-use.rust semver::Version
+use.rs semver::Version
 
 fn main() {
     let v = Version.parse("1.2.3").unwrap()

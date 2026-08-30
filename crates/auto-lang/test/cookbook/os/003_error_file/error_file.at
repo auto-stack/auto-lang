@@ -1,6 +1,6 @@
-use.rust std::fs::File
-use.rust std::process::Command
-use.rust std::process::Stdio
+use.rs std::fs::File
+use.rs std::process::Command
+use.rs std::process::Stdio
 
 fn main() {
     let result = Command.new("echo").arg("test output").output()

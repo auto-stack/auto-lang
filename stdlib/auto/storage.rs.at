@@ -1,9 +1,9 @@
 // Rust implementation of Heap<T> storage
 // Uses Rust standard library allocator for memory management
 
-use.rust std::alloc::{alloc, realloc, dealloc, Layout}
-use.rust std::mem: size_of
-use.rust std::ptr: null_mut
+use.rs std::alloc::{alloc, realloc, dealloc, Layout}
+use.rs std::mem: size_of
+use.rs std::ptr: null_mut
 
 ext Heap {
     /// Create empty heap storage

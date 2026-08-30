@@ -1,5 +1,5 @@
-use.rust std::process::Command
-use.rust std::process::Stdio
+use.rs std::process::Command
+use.rs std::process::Stdio
 
 fn main() {
     let output = Command.new("echo").arg("hello").stdout(Stdio.piped()).output().unwrap()

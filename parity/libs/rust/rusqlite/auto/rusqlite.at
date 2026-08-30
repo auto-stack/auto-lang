@@ -14,7 +14,7 @@
 ///
 /// What is deliberately NOT replicated (and why):
 ///   * `Connection` / `Statement` — opaque, stateful handles that cannot cross
-///     the VM boundary (`use.rust` `RustFfiBridge` marshals only primitives via
+///     the VM boundary (`use.rs` `RustFfiBridge` marshals only primitives via
 ///     `VMConvertible`). See `parity/docs/known-divergences.md` DIV-RUSQLITE-1.
 ///   * SQL execution / query planning — that is SQLite's job, not rusqlite's.
 ///

@@ -1,5 +1,5 @@
 // Custom random distribution for Pet enum
-use.rust rand
+use.rs rand
 
 enum Pet {
     Dog

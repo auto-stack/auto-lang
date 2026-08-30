@@ -1,6 +1,6 @@
 dep same_file
-use.rust same_file
-use.rust std::path::Path
+use.rs same_file
+use.rs std::path::Path
 
 fn main() {
     let path1 = Path.new("a.txt")

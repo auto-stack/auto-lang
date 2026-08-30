@@ -1,5 +1,5 @@
 // Custom random distribution for Color enum
-use.rust rand
+use.rs rand
 
 enum Color {
     Red

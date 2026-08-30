@@ -2290,7 +2290,7 @@ impl RustTrans {
     }
 
     /// Plan 391 §7 follow-up: does `path` (a dotted path like "std.env" or
-    /// "std.env.var") correspond to a known `use.rust` import? Matches if any
+    /// "std.env.var") correspond to a known `use.rs` import? Matches if any
     /// use-path equals `path` (with `.` → `::`) or starts with it as a module
     /// prefix — so `std.env` matches `use.rust std::env` (the import is
     /// "std::env"), and `std.env.var` also matches (the fn lives under that
@@ -2303,7 +2303,7 @@ impl RustTrans {
             let u_str = u.as_str();
             u_str == path_colon                     // use.rust std::env  matches "std.env"
                 || u_str == path                    // defensive: use stored as dotted
-                || u_str.starts_with(&format!("{}::", path_colon)) // use.rust std::env::var matches "std.env" (prefix)
+                || u_str.starts_with(&format!("{}::", path_colon)) // use.rs std::env::var matches "std.env" (prefix)
         })
     }
 

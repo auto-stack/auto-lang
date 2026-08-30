@@ -584,6 +584,8 @@ fn test_14_modules_005_multi_file() {
 #[test] fn test_14_modules_007_shared_var() { test_a2r("14_modules/007_shared_var").unwrap(); }
 #[test] fn test_14_modules_008_derive_attr() { test_a2r("14_modules/008_derive_attr").unwrap(); }
 #[test] fn test_14_modules_009_const_before_ext() { test_a2r("14_modules/009_const_before_ext").unwrap(); }
+// Plan 470: use.rs canonical spelling — output identical to 001_rust_use
+#[test] fn test_14_modules_010_use_rs() { test_a2r("14_modules/010_use_rs").unwrap(); }
 
 // === 15_type_conversion ===
 #[test] fn test_15_type_conversion_001_type_cast() { test_a2r("15_type_conversion/001_type_cast").unwrap(); }

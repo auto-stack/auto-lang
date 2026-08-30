@@ -1,6 +1,6 @@
 dep walkdir
-use.rust walkdir
-use.rust std::fs
+use.rs walkdir
+use.rs std::fs
 
 fn main() {
     for entry in walkdir.WalkDir.new("src").into_iter().filter_map(e => e.ok()) {

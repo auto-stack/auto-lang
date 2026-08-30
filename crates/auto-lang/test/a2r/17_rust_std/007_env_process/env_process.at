@@ -1,4 +1,4 @@
-use.rust std::env
+use.rs std::env
 
 fn main() {
     let args = env.args()

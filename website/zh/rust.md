@@ -51,8 +51,8 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
           <div class="code-dots"><span></span><span></span><span></span></div>
           <span class="code-title">script.at</span>
         </div>
-        <pre class="code-body"><code><span class="keyword">use.rust</span> std::path::PathBuf
-<span class="keyword">use.rust</span> std::time::Duration
+        <pre class="code-body"><code><span class="keyword">use.rs</span> std::path::PathBuf
+<span class="keyword">use.rs</span> std::time::Duration
 <span class="keyword">let</span> p = PathBuf.from(<span class="string">"src/main.rs"</span>)
 <span class="function">print</span>(p)
 <span class="keyword">let</span> d = Duration.from_secs(5)
@@ -95,7 +95,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
   >
     <ul>
       <li><strong>Auto 独立标准库</strong> — io、net、http、fs 等常用功能。当前支持 Rust，未来支持 Python 等平台。</li>
-      <li><strong>Rust 嵌入模式</strong> — 直接使用 Rust 标准库和任意 crates.io 第三方库，无需重新实现。</li>
+      <li><strong>Rust 嵌入模式</strong> — 直接使用 Rust 标准库和任意 crates.io 第三方库，无需重新实现。使用 <code>use.rs</code> 导入（旧写法 <code>use.rust</code> 已废弃）。</li>
     </ul>
     <template #visual>
       <div class="mode-grid">
@@ -107,7 +107,7 @@ import ShowcaseSection from '../.vitepress/theme/components/ShowcaseSection.vue'
         <div class="mode-card rust">
           <h4>Rust 标准库</h4>
           <p>完整 crates.io 访问</p>
-          <code>use.rust std::net::TcpListener</code>
+          <code>use.rs std::net::TcpListener</code>
         </div>
       </div>
     </template>

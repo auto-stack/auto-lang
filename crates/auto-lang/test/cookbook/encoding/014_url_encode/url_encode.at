@@ -1,5 +1,5 @@
 dep urlencoding
-use.rust urlencoding::encode
+use.rs urlencoding::encode
 
 fn main() {
     let input = "hello world! foo=bar&baz=qux"

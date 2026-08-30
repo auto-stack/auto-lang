@@ -2,7 +2,7 @@
 // String → .to_string() on &str payloads; Number → serde_json::Number::from
 // (int) / Number::from_f64(...).unwrap_or(...) (float literal or float-typed
 // binding). Pins the behavior auto-ai daemon relies on (37 sed sites retired).
-use.rust serde_json::Value
+use.rs serde_json::Value
 
 fn mk_num(n int) {
     let a = Value.Number(n)
