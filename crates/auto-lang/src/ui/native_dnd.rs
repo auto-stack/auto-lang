@@ -56,7 +56,7 @@ pub mod win32 {
     };
     use windows::Win32::System::Com::{
         DVASPECT_CONTENT, DATADIR_GET, FORMATETC, IDataObject, IDataObject_Impl,
-        IEnumFORMATETC, IEnumFORMATETC_Impl, IEnumSTATDATA, STGMEDIUM, STGMEDIUM_0, TYMED,
+        IEnumFORMATETC, IEnumFORMATETC_Impl, IEnumSTATDATA, STGMEDIUM, STGMEDIUM_0,
         TYMED_HGLOBAL,
     };
     use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
@@ -691,10 +691,8 @@ pub mod win32 {
                     4
                 );
                 let mut name0_buf = [0u16; 260];
-                unsafe {
-                    let src = std::ptr::addr_of!(fd0.cFileName) as *const u16;
-                    std::ptr::copy_nonoverlapping(src, name0_buf.as_mut_ptr(), 260);
-                }
+                let src = std::ptr::addr_of!(fd0.cFileName) as *const u16;
+                std::ptr::copy_nonoverlapping(src, name0_buf.as_mut_ptr(), 260);
                 assert_eq!(
                     String::from_utf16_lossy(&name0_buf).trim_end_matches('\0'),
                     "note.md"
@@ -706,10 +704,8 @@ pub mod win32 {
                     4
                 );
                 let mut name1_buf = [0u16; 260];
-                unsafe {
-                    let src = std::ptr::addr_of!(fd1.cFileName) as *const u16;
-                    std::ptr::copy_nonoverlapping(src, name1_buf.as_mut_ptr(), 260);
-                }
+                let src = std::ptr::addr_of!(fd1.cFileName) as *const u16;
+                std::ptr::copy_nonoverlapping(src, name1_buf.as_mut_ptr(), 260);
                 assert_eq!(
                     String::from_utf16_lossy(&name1_buf).trim_end_matches('\0'),
                     "data.bin"
