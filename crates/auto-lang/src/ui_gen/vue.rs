@@ -263,6 +263,75 @@ pub enum VueMode {
     Library,
 }
 
+/// PLAN-493: 从发射 attr 串中提取 `class="…"` 的值（无 class 属性 → None）。
+fn extract_class_attr(attr_str: &str) -> Option<String> {
+    let idx = attr_str.find("class=\"")?;
+    let rest = &attr_str[idx + 7..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// PLAN-493: text-* token 是否为字号（而非颜色）——backdrop 保底着色判断用。
+/// text-xs/sm/base/lg/xl…nxl 与 text-[15px]/[1.5rem] 视为字号；text-foreground、
+/// text-red-500、text-[hsl(…)]/#/rgb 视为颜色。
+fn is_text_size_token(tok: &str) -> bool {
+    let Some(s) = tok.strip_prefix("text-") else { return false };
+    if matches!(s, "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "8xl" | "9xl") {
+        return true;
+    }
+    s.starts_with('[')
+        && (s.contains("px") || s.contains("rem") || s.contains("em"))
+        && !s.contains("hsl")
+        && !s.contains('#')
+        && !s.contains("rgb")
+}
+
+/// PLAN-493: textarea 类串 → backdrop 类串推导（几何镜像）。token 级规则：
+/// 删输入面专属 token（`text-transparent` 位换 `text-foreground` 保序，
+/// 避免同特异性时 CSS 顺序不确定；`caret-*`/`resize-*`/`outline*`/
+/// `focus:*`/`disabled:*`/`read-only*`/`selection:*`/`placeholder:*`）；
+/// 若删后无任何 text-**颜色** token（仅字号），保底追加 `text-foreground`
+/// （backdrop 是可视文字层，透明 textarea 的颜色不继承使命）；增背板
+/// 结构 token（`pointer-events-none overflow-hidden whitespace-pre-wrap
+/// break-words`，幂等去重）。
+fn derive_mention_backdrop_class(ta_class: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for tok in ta_class.split_whitespace() {
+        if tok == "text-transparent" {
+            out.push("text-foreground".to_string());
+        } else if tok.starts_with("caret-")
+            || tok.starts_with("resize-")
+            || tok.starts_with("outline")
+            || tok.starts_with("focus:")
+            || tok.starts_with("disabled:")
+            || tok.starts_with("read-only")
+            || tok.starts_with("selection:")
+            || tok.starts_with("placeholder:")
+        {
+            // 输入面专属，背板不携带。
+        } else {
+            out.push(tok.to_string());
+        }
+    }
+    let has_text_color = out
+        .iter()
+        .any(|t| t.starts_with("text-") && !is_text_size_token(t));
+    if !has_text_color {
+        out.push("text-foreground".to_string());
+    }
+    for structural in [
+        "pointer-events-none",
+        "overflow-hidden",
+        "whitespace-pre-wrap",
+        "break-words",
+    ] {
+        if !out.iter().any(|t| t == structural) {
+            out.push(structural.to_string());
+        }
+    }
+    out.join(" ")
+}
+
 /// Vue3 SFC generator
 pub struct VueGenerator {
     /// Current widget name
@@ -471,6 +540,11 @@ pub struct VueGenerator {
     /// Produces stable unique keys like 'AutoDownEditor-1', 'NavTree-2', etc. so that
     /// two components with the same name (e.g. in different v-if branches) don't collide.
     widget_key_counter: usize,
+
+    /// PLAN-493: textarea mentions 能力 —— template 发射期置位（至少一个
+    /// mentions textarea），script 生成期消费（`__autoMentionHtml` helper
+    /// 随组件一次发射）。
+    mention_helper_needed: bool,
 
     /// Handlers that need a loop-id parameter (e.g., "SelectNote" needs `i: any`)
     /// Populated during template generation, consumed during script generation.
@@ -709,6 +783,7 @@ impl VueGenerator {
             current_loop_var: None,
             current_loop_var_is_index: false,
             widget_key_counter: 0,
+            mention_helper_needed: false,
             loop_param_handlers: HashMap::new(),
             msg_payload_arities: HashMap::new(),
             handler_params: HashMap::new(),
@@ -1024,6 +1099,7 @@ impl VueGenerator {
         self.current_loop_var = None;
         self.current_loop_var_is_index = false;
         self.widget_key_counter = 0;
+        self.mention_helper_needed = false;
         self.loop_param_handlers.clear();
         self.handler_params.clear();
         self.needs_child_delete_handler = false;
@@ -2963,6 +3039,53 @@ impl VueGenerator {
                 "watch(() => props.{}, () => {{ nextTick(() => {{ {}.value?.scrollIntoView({{ block: 'end' }}) }}) }}, {{ deep: true }})\n\n",
                 src, ref_name
             ));
+        }
+
+        // PLAN-493: textarea mentions backdrop 的 HTML helper —— template
+        // 发射期置位，随组件一次发射。escape + @\w+ 扫描（词小写 ∈ 名单）
+        // + span 包裹 + 尾随 \n（换行几何对齐）；**无 display 替换**（对齐
+        // VM 段计算契约：着色 @词原文，backdrop 文本与 value 逐字一致）。
+        if self.mention_helper_needed {
+            let fn_sig = if self.use_typescript {
+                "(text: string, names: string[], cls: string): string"
+            } else {
+                "(text, names, cls)"
+            };
+            let is_word_def = if self.use_typescript {
+                "const isWord = (ch: string) => /[A-Za-z0-9_]/.test(ch)"
+            } else {
+                "const isWord = (ch) => /[A-Za-z0-9_]/.test(ch)"
+            };
+            script.push_str("function __autoMentionHtml");
+            script.push_str(fn_sig);
+            script.push_str(
+                r#" {
+  if (!text) return '\n'
+  const known = new Set((names ?? []).map((n) => String(n).toLowerCase()))
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  "#,
+            );
+            script.push_str(is_word_def);
+            script.push_str(
+                r#"
+  let out = ''
+  let i = 0
+  while (i < escaped.length) {
+    if (escaped[i] === '@') {
+      let j = i + 1
+      let word = ''
+      while (j < escaped.length && isWord(escaped[j])) { word += escaped[j]; j += 1 }
+      if (word !== '' && known.has(word.toLowerCase())) {
+        out += `<span class="${cls}">@${word}</span>`
+        i = j
+      } else { out += '@'; i += 1 }
+    } else { out += escaped[i]; i += 1 }
+  }
+  return out + '\n'
+}
+
+"#,
+            );
         }
 
         // Generate event handlers
@@ -5204,7 +5327,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 
                         // Plan 057 续(富文本输入): textarea 的 highlight/ghost 由
                         // 叠加层包裹消费(见 textarea_rich_overlay),不透传为无效属性。
-                        if tag == "textarea" && (key == "highlight" || key == "ghost") {
+                        // PLAN-493: mentions/mention_class 同理由
+                        // textarea_mentions_overlay 消费;height 为 VM-only
+                        // 几何 prop(Plan 053 契约,浏览器轨道 CSS 几何自理),
+                        // 一并不透传。
+                        if tag == "textarea"
+                            && (key == "highlight"
+                                || key == "ghost"
+                                || key == "mentions"
+                                || key == "mention_class"
+                                || key == "height")
+                        {
                             continue;
                         }
 
@@ -5484,6 +5617,14 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 } else {
                     attr_str
                 };
+
+                // PLAN-493: textarea 带 mentions prop 时,整体替换为
+                // backdrop+透明 textarea 兄弟对(mention 高亮技法随 codegen
+                // 下沉,声明层不再出现叠加结构)。mentions 优先于 highlight/
+                // ghost 组合(与 VM 轨 convert_textarea 的优先级一致)。
+                if let Some(overlay) = self.textarea_mentions_overlay(tag, props, &attr_str, indent)? {
+                    return Ok(overlay);
+                }
 
                 // Plan 057 续(富文本输入): textarea 带 highlight/ghost props 时,
                 // 整体替换为叠加层包裹(overlay 手法下沉为 codegen 职责)。
@@ -8508,7 +8649,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             }
             Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_text_raw(target)?;
-                let index_str = self.expr_to_vue_text_raw(index)?;
+                // Plan 492 M3 (族 B): the index is a JS expression position —
+                // a Str key must stay quoted (`li['name']`). Routing it through
+                // expr_to_vue_text_raw stripped the quotes (its Str arm emits
+                // template text), yielding the undefined bare identifier
+                // `li[name]` and an empty text node. Reuse the svg-attribute
+                // path's bound-value renderer for the index instead.
+                let index_str = self.expr_to_vue_bound_value(index)?;
                 Ok(format!("{}[{}]", target_str, index_str))
             }
             Expr::FStr(fstr) => {
@@ -8594,7 +8741,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
-            _ => Ok("value".to_string()),
+            // Plan 492 M3 (族 B): an unsupported expression form in text
+            // content used to silently emit the `value` placeholder — the
+            // rendered text showed literal "value" with zero diagnostics.
+            // Keep the placeholder but raise an R046 warning naming the form.
+            _ => {
+                self.warn(
+                    "R046",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!(
+                        "unsupported expression in text content position: `{:?}`; emitted `value` placeholder",
+                        expr
+                    ),
+                );
+                Ok("value".to_string())
+            }
         }
     }
 
@@ -9039,6 +9200,74 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         html.push_str(&format!("{ind1}</div>\n"));
         html.push_str(&format!("{ind1}<textarea{ta_attrs}></textarea>\n"));
         html.push_str(&format!("{ind}</div>\n"));
+        Ok(Some(html))
+    }
+
+    /// PLAN-493: textarea mentions 能力——backdrop div + 透明 textarea
+    /// **兄弟对**（Vue 端实现技法，随 codegen 下沉）。与 musk 迁移前的
+    /// 手写结构等价（backdrop 在前、同容器直接子节点）；**不包** wrapper
+    /// ——absolute 子件包进无固有高度的 wrapper 会塌陷（rich_overlay 的
+    /// wrapper 形状是 prompt_bar 专属），锚点 relative 容器归 .at 自理。
+    /// backdrop 类自 textarea 类串推导（几何镜像：删输入面专属 token，
+    /// text-transparent 位换 text-foreground，增背板结构 token）。
+    /// `__autoMentionHtml` helper 随 script 一次发射（escape + @\w+ 扫描 +
+    /// span 包裹 + 尾随 \n，无 display 替换——对齐 VM 段计算契约）。
+    /// 无 mentions，或 value/mentions 非裸 state ref → None（走通用发射）。
+    fn textarea_mentions_overlay(
+        &mut self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        attr_str: &str,
+        indent: usize,
+    ) -> GenResult<Option<String>> {
+        if tag != "textarea" || !props.contains_key("mentions") {
+            return Ok(None);
+        }
+        let names = props.get("mentions").and_then(|v| self.extract_state_ref(v));
+        let value = props.get("value").and_then(|v| self.extract_state_ref(v));
+        let (names_ref, value_ref) = match (names.clone(), value.clone()) {
+            (Some(n), Some(v)) => (n, v),
+            _ => {
+                self.warn(
+                    "R013",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!(
+                        "textarea mentions: value 与 mentions 须为裸 state ref \
+                         (value={:?}, mentions={:?}); 回退普通 textarea 发射",
+                        value, names
+                    ),
+                );
+                return Ok(None);
+            }
+        };
+        let mention_class = props
+            .get("mention_class")
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or("text-primary bg-primary/10 rounded-[3px] px-[0.2rem] font-medium")
+            .to_string();
+        self.mention_helper_needed = true;
+
+        let ind = "  ".repeat(indent);
+        let backdrop_class = extract_class_attr(attr_str)
+            .map(|cls| derive_mention_backdrop_class(&cls))
+            .unwrap_or_else(|| {
+                "pointer-events-none overflow-hidden whitespace-pre-wrap break-words text-foreground"
+                    .to_string()
+            });
+        // textarea 本体注入 text-transparent（幂等；caret 色归 .at 自理）。
+        let ta_attrs = match extract_class_attr(attr_str) {
+            Some(cls) if cls.split_whitespace().any(|t| t == "text-transparent") => {
+                attr_str.to_string()
+            }
+            Some(_) => attr_str.replacen("class=\"", "class=\"text-transparent ", 1),
+            None => format!("{} class=\"text-transparent\"", attr_str),
+        };
+        // mention_class 作单引号 JS 字符串实参（类串不含引号）。
+        let html = format!(
+            "{ind}<div class=\"{backdrop_class}\" \
+             v-html=\"__autoMentionHtml({value_ref}, {names_ref}, '{mention_class}')\"></div>\n\
+             {ind}<textarea{ta_attrs}></textarea>\n"
+        );
         Ok(Some(html))
     }
 
@@ -15271,6 +15500,128 @@ widget SelText {
 {sfc}"
         );
         // plain text 不声明 → 不出现额外 user-select(仅 2 次)已由上式锁定。
+    }
+
+    /// PLAN-493 T5: mentions textarea 发射——backdrop+透明 textarea 兄弟对
+    /// （backdrop 在前，v-html 调 __autoMentionHtml(text, mentionNames, cls)；
+    /// backdrop 类串自 textarea 类串推导：换 text-foreground、删 caret/
+    /// resize/outline/focus token、增背板结构 token；textarea 注入
+    /// text-transparent；helper 随 script 恰一次；mentions/mention_class
+    /// 不作 attr 透传）。
+    #[test]
+    fn plan493_vue_mentions_emits_backdrop_pair() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget MentionComposer {
+    model {
+        var text str = ""
+        var mentionNames list = []
+    }
+    view {
+        div class="relative" {
+            textarea {
+                style: "chats-input absolute inset-0 py-2 px-3 text-[15px] leading-[1.5] text-transparent caret-[hsl(var(--foreground))] outline-none resize-none focus:outline-none"
+                value: .text
+                mentions: .mentionNames
+                mention_class: "text-[hsl(220_90%_56%)] bg-[hsl(220_90%_56%/0.12)] rounded-[3px] px-[0.2rem] font-medium"
+            }
+        }
+    }
+}
+"#);
+        assert!(
+            sfc.contains("v-html=\"__autoMentionHtml(text, mentionNames, 'text-[hsl(220_90%_56%)]"),
+            "backdrop 必须以 v-html 调 helper:\n{sfc}"
+        );
+        let backdrop_pos = sfc.find("v-html=\"__autoMentionHtml").expect("backdrop div");
+        let ta_pos = sfc.find("text-transparent ").expect("textarea injected");
+        assert!(backdrop_pos < ta_pos, "backdrop 必须在 textarea 之前(兄弟对)");
+        // backdrop 类串推导：结构 token 在、输入面 token 不在。
+        let backdrop_line = sfc
+            .lines()
+            .find(|l| l.contains("v-html=\"__autoMentionHtml"))
+            .expect("backdrop div line");
+        for present in [
+            "text-foreground",
+            "pointer-events-none",
+            "overflow-hidden",
+            "whitespace-pre-wrap",
+            "break-words",
+            "py-2",
+            "text-[15px]",
+            "leading-[1.5]",
+        ] {
+            assert!(backdrop_line.contains(present), "backdrop 类须含 {present}: {backdrop_line}");
+        }
+        for absent in ["text-transparent", "caret-", "resize-", "focus:", "outline-none"] {
+            assert!(!backdrop_line.contains(absent), "backdrop 类不得含 {absent}: {backdrop_line}");
+        }
+        // helper 随 script 恰一次。
+        assert_eq!(sfc.matches("function __autoMentionHtml").count(), 1);
+        assert!(sfc.contains("known.has(word.toLowerCase())"), "helper 必须词级小写匹配");
+        // mentions/mention_class 不作 attr 透传。
+        assert!(!sfc.contains("mentions="));
+        assert!(!sfc.contains("mention_class="));
+    }
+
+    /// PLAN-493 T5: 无 mentions 的 textarea 零变化——不发射 backdrop、
+    /// 不发射 helper、textarea 保持普通形态。
+    #[test]
+    fn plan493_vue_textarea_without_mentions_unchanged() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget PlainComposer {
+    model { var text str = "" }
+    view {
+        textarea {
+            style: "border rounded-md px-3 py-2"
+            value: .text
+        }
+    }
+}
+"#);
+        assert!(!sfc.contains("__autoMentionHtml"), "无 mentions 不得发射 helper:\n{sfc}");
+        assert!(!sfc.contains("v-html="), "无 mentions 不得发射 backdrop:\n{sfc}");
+        assert!(!sfc.contains("text-transparent"), "无 mentions 不得注入透明:\n{sfc}");
+        assert!(sfc.contains("<textarea"), "普通 textarea 发射保持");
+    }
+
+    /// PLAN-493 T5: backdrop 类串推导单元——musk 形态类串的镜像规则。
+    #[test]
+    fn plan493_vue_mention_backdrop_class_derivation() {
+        let ta_class = "chats-input absolute inset-0 h-full py-2 px-3 block w-full border-none rounded-none bg-transparent text-[15px] leading-[1.5] text-transparent caret-[hsl(var(--foreground))] outline-none resize-none focus:outline-none";
+        let got = derive_mention_backdrop_class(ta_class);
+        for present in [
+            "text-foreground",
+            "pointer-events-none",
+            "overflow-hidden",
+            "whitespace-pre-wrap",
+            "break-words",
+            "py-2",
+            "px-3",
+            "text-[15px]",
+            "leading-[1.5]",
+            "bg-transparent",
+        ] {
+            assert!(got.contains(present), "须保留/新增 {present}: {got}");
+        }
+        for absent in [
+            "text-transparent",
+            "caret-",
+            "resize-",
+            "outline-none",
+            "focus:",
+        ] {
+            assert!(!got.contains(absent), "须删除 {absent}: {got}");
+        }
+        // 幂等：推导两次结果一致（结构 token 不重复堆积）。
+        assert_eq!(got, derive_mention_backdrop_class(&got));
+        // 无 text-transparent（.at 已删）且无其他颜色 token → 保底追加
+        // text-foreground（musk 迁移后形态）。
+        let got2 = derive_mention_backdrop_class("chats-input absolute inset-0 py-2 px-3 text-[15px]");
+        assert!(got2.contains("text-foreground"), "保底着色: {got2}");
+        // 已有显式颜色 token 时不重复追加。
+        let got3 = derive_mention_backdrop_class("p-2 text-red-500 text-sm");
+        assert_eq!(got3.matches("text-foreground").count(), 0, "已有颜色不追加: {got3}");
+        assert!(got3.contains("text-red-500") && got3.contains("text-sm"));
     }
 
     #[test]

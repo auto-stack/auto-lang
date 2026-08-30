@@ -1,0 +1,4 @@
+name: "p493-color-check"
+version: "1.0.0"
+scene: "ui"
+render: "vue"

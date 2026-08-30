@@ -1405,8 +1405,8 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
         if line.starts_with(&format!("{}:", key)) {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
-                let value = value.trim_matches('"').trim_matches('\'');
                 let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
                 return Some(value.to_string());
             }
         }
@@ -1421,8 +1421,8 @@ fn parse_pac_name(content: &str) -> Option<String> {
         if line.starts_with("name:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
-                let value = value.trim_matches('"').trim_matches('\'');
                 let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
                 return Some(value.to_string());
             }
         }
@@ -1443,7 +1443,7 @@ fn parse_shadcn(content: &str) -> bool {
         let line = line.trim();
         if line.starts_with("shadcn:") || line.starts_with("shadcn =") || line.starts_with("shadcn=") {
             let value = line["shadcn".len()..].trim_start().trim_start_matches([':', '=']).trim();
-            let value = value.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+            let value = value.trim_end_matches(',').trim_matches('"').trim_matches('\'');
             let value = value.to_lowercase();
             return !matches!(value.as_str(), "off" | "false" | "no" | "0");
         }
@@ -1473,7 +1473,7 @@ fn parse_default_classes(content: &str) -> bool {
         let line = line.trim();
         if line.starts_with("default_classes:") || line.starts_with("default_classes =") || line.starts_with("default_classes=") {
             let value = line["default_classes".len()..].trim_start().trim_start_matches([':', '=']).trim();
-            let value = value.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+            let value = value.trim_end_matches(',').trim_matches('"').trim_matches('\'');
             let value = value.to_lowercase();
             return !matches!(value.as_str(), "off" | "false" | "no" | "0");
         }
@@ -1551,7 +1551,7 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                                 }
                             } else {
                                 // Shorthand string value: "pkg": "^1.0.0" or "pkg": "link:path"
-                                let ver = value_part.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                                let ver = value_part.trim_end_matches(',').trim_matches('"').trim_matches('\'');
                                 if !pkg.is_empty() && !ver.is_empty() {
                                     deps.push((pkg.to_string(), ver.to_string()));
                                 }
@@ -1572,7 +1572,7 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                 }
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 // Single string: "package"
-                let dep = rest.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                let dep = rest.trim_end_matches(',').trim_matches('"').trim_matches('\'');
                 if !dep.is_empty() {
                     let (pkg, ver) = split_pkg_version(dep);
                     deps.push((pkg, ver));
@@ -1585,7 +1585,7 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                     if next.trim().is_empty() || (!next.starts_with(' ') && !next.starts_with('\t')) {
                         break;
                     }
-                    let dep = next.trim().trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                    let dep = next.trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
                     if !dep.is_empty() {
                         let (pkg, ver) = split_pkg_version(dep);
                         deps.push((pkg, ver));
@@ -1625,7 +1625,7 @@ fn parse_style_files(content: &str) -> Vec<String> {
                 }
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 // Single string: "a.css"
-                let f = rest.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                let f = rest.trim_end_matches(',').trim_matches('"').trim_matches('\'');
                 if !f.is_empty() {
                     files.push(f.to_string());
                 }
@@ -1868,8 +1868,11 @@ fn parse_dep_object_spec(lines: &[&str], j: &mut usize, inline: &str) -> String 
             }
             for kind in &["link", "file"] {
                 if next.starts_with(kind) {
-                    let after = &next[kind.len()..].trim();
-                    let val = after.trim_matches('"').trim_matches('\'').trim_end_matches(',');
+                    // `link: "path"` — the key-length slice keeps the `:`
+                    // separator; strip it (multi-line nested form was unusable
+                    // without this, emitting `link:: <path>` specs).
+                    let after = next[kind.len()..].trim().trim_start_matches(':').trim();
+                    let val = after.trim_end_matches(',').trim_matches('"').trim_matches('\'');
                     if !val.is_empty() {
                         *j = k;
                         return format!("{}:{}", kind, val);
@@ -4903,6 +4906,46 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Trailing commas in pac.at values must be stripped BEFORE quote
+    /// stripping — the old order (quotes, then comma) left a stray `"` on
+    /// `"^3.34.0",`, emitting `"^3.34.0""` into the generated package.json
+    /// (invalid JSON; jade pac.at 2026-08-30 现场). Pins every npm_deps form.
+    #[test]
+    fn parse_npm_deps_tolerates_trailing_commas() {
+        // Object shorthand with trailing comma (the bug site)
+        let pac = "npm_deps: {\n  \"cytoscape\": \"^3.34.0\",\n  \"@autodown/engine\": \"link:D:/p/engine\"\n}\n";
+        assert_eq!(
+            parse_npm_deps(pac),
+            vec![
+                ("cytoscape".to_string(), "^3.34.0".to_string()),
+                ("@autodown/engine".to_string(), "link:D:/p/engine".to_string()),
+            ]
+        );
+
+        // Multi-line Auto-style entries with trailing commas
+        let pac_ml = "npm_deps:\n  \"marked@^12.0.0\",\n  \"katex@^0.16.0\",\n";
+        assert_eq!(
+            parse_npm_deps(pac_ml),
+            vec![
+                ("marked".to_string(), "^12.0.0".to_string()),
+                ("katex".to_string(), "^0.16.0".to_string()),
+            ]
+        );
+
+        // Nested { link: "path" } with a trailing comma inside the object
+        let pac_nested = "npm_deps: {\n  \"@autodown/engine\": {\n    link: \"D:/p/engine\",\n  }\n}\n";
+        assert_eq!(
+            parse_npm_deps(pac_nested),
+            vec![("@autodown/engine".to_string(), "link:D:/p/engine".to_string())]
+        );
+
+        // Array form unchanged
+        assert_eq!(
+            parse_npm_deps("npm_deps: [\"marked@^12.0.0\"]"),
+            vec![("marked".to_string(), "^12.0.0".to_string())]
+        );
+    }
 
     /// Plan 465 T3: build-time desktop registry — the render:"vue" filter
     /// passes only vue-declared apps, and every entry's dynamic import path

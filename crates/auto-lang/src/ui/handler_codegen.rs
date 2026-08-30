@@ -35,6 +35,11 @@ thread_local! {
     // can disambiguate `store.Method()` across multiple stores by matching the
     // method name to the store that declares it.
     static STORE_MSG_MAP: RefCell<HashMap<String, HashSet<String>>> = RefCell::new(HashMap::new());
+    // Plan 492 M5: handler 合成失败诊断收集。此前 compile_stmt 失败仅
+    // eprintln(stderr,UI 运行期不可见)后静默跳过——handler 不存在,调用
+    // 期 "handler not found",组件回落默认值零诊断。失败(组件名+handler+
+    // 原因)同时 log::warn 与此处收集,测试/上层可 take 走断言或上抛。
+    static SYNTH_FAILURES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     // Plan 398 §2/§3 BUG-B + BUG-C: current widget's name + message-variant
     // names, so `.SiblingHandler()` calls inside a handler (both store handlers
     // calling sibling store handlers, AND child-widget handlers calling their
@@ -77,7 +82,8 @@ thread_local! {
 }
 
 fn record_store_disambig_error(msg: String) {
-    eprintln!("[HANDLER-CODEGEN] plan-446 A1: {}", msg);
+    // Plan 492 M5: eprintln → log::warn(stderr 在 UI 运行期不可见)。
+    log::warn!("handler synthesis store disambiguation failed (plan-446 A1): {msg}");
     STORE_DISAMBIG_ERRORS.with(|s| s.borrow_mut().push(msg));
 }
 
@@ -90,6 +96,18 @@ pub fn take_store_disambig_errors() -> Vec<String> {
 pub fn clear_store_context() {
     STORE_FIELDS.with(|s| s.borrow_mut().clear());
     STORE_WIDGET_NAMES.with(|s| s.borrow_mut().clear());
+}
+
+/// Plan 492 M5: 取走本次合成累积的失败诊断(组件名+handler+原因)。
+/// synthesize_from_decl 不因单 handler 失败而中止(语义: 尽量编译其余),
+/// 但失败不再静默——调用方可取走诊断上抛/展示。
+pub fn take_synth_failures() -> Vec<String> {
+    SYNTH_FAILURES.with(|f| std::mem::take(&mut *f.borrow_mut()))
+}
+
+fn record_synth_failure(msg: String) {
+    log::warn!("handler synthesis failed: {msg}");
+    SYNTH_FAILURES.with(|f| f.borrow_mut().push(msg));
 }
 
 /// The synthesized receiver parameter name holding the widget-state heap id.
@@ -978,7 +996,7 @@ pub fn synthesize_widget_module(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                eprintln!("[HANDLER-CODEGEN] import stmt failed to compile: {}", e);
+                record_synth_failure(format!("import stmt: {}", e));
             }
         }
     }
@@ -1048,11 +1066,9 @@ pub fn synthesize_widget_module(
                 event_pattern,
                 body_stmts,
             );
+            // Plan 492 M5: 同 synthesize_from_decl——显式诊断替换静默跳过。
             if let Err(e) = codegen.compile_stmt(&handler_fn) {
-                eprintln!(
-                    "[HANDLER-CODEGEN] {}.{} failed: {}",
-                    w.name, event_pattern, e
-                );
+                record_synth_failure(format!("{}.{}: {}", w.name, event_pattern, e));
             }
         }
     }
@@ -1534,7 +1550,7 @@ pub fn synthesize_from_decl(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                eprintln!("[HANDLER-CODEGEN] import stmt failed to compile: {}", e);
+                record_synth_failure(format!("import stmt: {}", e));
             }
         }
     }
@@ -1673,11 +1689,10 @@ pub fn synthesize_from_decl(
             // handler, create stub functions for any on_* callback that the body references.
             // This prevents linker errors; the actual routing happens at the renderer level
             // (iced event → DynamicMessage → parent handler).
+            // Plan 492 M5: eprintln(stderr) → 显式诊断(log::warn + 可取走集合),
+            // 组件名+handler+原因不再静默。
             if let Err(e) = codegen.compile_stmt(&handler_fn) {
-                eprintln!(
-                    "[HANDLER-CODEGEN] {}.{} failed: {}",
-                    d.name, event_pattern, e
-                );
+                record_synth_failure(format!("{}.{}: {}", d.name, event_pattern, e));
             }
         }
     }

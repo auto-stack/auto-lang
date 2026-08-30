@@ -45,12 +45,13 @@
 | 474-旁支 | aavm bool 显示 parity（值模型级） | 宿主 print(bool) 已改 true/false（Plan 474 待澄清#3），但 aavm（auto/lib/engine.at 自举 VM）的 Val 枚举只有 VInt/VStr/VArr/VInst，bool 以 1/0 整型承载——裸 bool print 两侧形态分歧。根治需给 aavm 加 VBool 载体（值模型级改动，牵动全部 match 分派），非小修。过渡：corpus_m4 的 b13/b14/b19 已改写为「bool 求值+条件分支」形态保语义覆盖（m5 闸门绿）。 | `auto/lib/engine.at`（Val 枚举/PushBool/print）；`crates/auto-lang/test/vm/aavm2/corpus_m4/b1[349]*.at` |
 | auto-shell-057 ✅ | vue codegen 五类缺陷阻塞下游构建（2026-08-24 外部报告）—— **已修复：Plan 444（合并 master de76581ea，feat 9ff6a38b9，2026-08-24）**。修复后下游复现 `auto gen → npx vue-tsc` 0 错 + `pnpm run build` 绿，无需任何手工补丁；修复明细与新约定（回调通道/emits 名册/emit 桥/__vmOnly 桩/any 通道）见 docs/plans/444-vue-codegen-ash-shell-057.md。原文存档： | 下游 auto-shell ash-gui 项目 `auto gen` 重生成后 vue-tsc 余 13 错 / 5 类，**Vue/浏览器渲染目标整体不可构建**（merged VM 目标不受影响）。443(defineModel 降级)/435 P0-P1 合入后复测构成不变。五类：① 子组件回调 props 生成 `on_delete`（snake_case 且必填）而父级绑定发射 `onDelete` —— 名字永不相配（043 R4 修过 PascalCase emit，`Delete` 形态漏网，3 错）；② 可空变体字段模板访问 `cell.Tagged.text` 在 v-if 守卫内仍报 TS18049，需生成 `?.`（2 错）；③ 多参 msg 的 emit 签名生成 0 参 —— `Sort(int,int)`/`Filter(str)` 调用点报 TS2554（043 B-1 只修单 payload，2 错）；④ VM-only stdlib 泄漏进 JS：widget handler 内 `fs.read_dir`/`File.is_dir`/裸 `await complete` 原样输出到 .vue script 产出坏 JS，无 JS shim 时应降级或显式报错（4 错）；⑤ str 模型字段的动态变体读 `__sse_status.Failed`（裸串或 {"Failed":msg} 二态）报 TS2339，需 any 通道或契约化（1 错）。另 gen 模板缺口：`auto gen` 重写 package.json 丢 `@vueuse/core`（shadcn ui 组件引用它）；无引用残留 CodeEditor.vue 不清理。**复现**：`cd auto-shell/ash-gui/ash-gui-auto && auto gen && cd gen/front/vue && pnpm add @vueuse/core && rm src/components/CodeEditor.vue && npx vue-tsc`。详见 auto-shell DEBTS.md「Vue 产物构建引擎侧阻塞」（2026-08-24，含逐类行号）。 | `ui_gen/vue.rs` prop_to_ts_type/sub_widget_event_to_vue（①③）、模板 emit（②）、ts_adapter handler 转译（④⑤）；auto-shell docs/plans/057 §Phase 5 |
 | 446-R1 | codegen applyAccent 撞名（TS2440，2026-08-29 下游回传） | Plan 409§8/458:store 拥有 `accent_color`/`dark_mode` 字段时 vue codegen 注入内嵌 applyAccent 助手（ACCENT_PALETTE+watch 同步行）；若该 store 同时 `use back.api:` 导入同名 fn，生成 TS 即 TS2440（import vs 局部声明冲突，vue-tsc 红灯）。下游 auto-os-config 已将 back.api 的 applyAccent 改名 saveAccent（与 loadAccent 对称）规避。修法：注入前检测 use 清单撞名并避开/告警。 | `ui_gen/vue.rs` store 注入块（~3206 ACCENT_PALETTE_JS）+ widget 路径（~2575）；docs/plans/reports/446-downstream-settlement.md §五.1 |
-| 484 | 包组件 Init 内 prop 字符串比较破坏 codegen（静默） | official 包组件（`use {package}` 路径）Init handler 内出现 `if curve == "monotone"` 类字符串 prop 等值比较时,**整个子组件 Init 静默失效**——全部几何输出回落 model 默认值,零诊断输出。实证:484 M1 bisect（干净 HEAD 通过,仅加 prop 比较即崩,git stash 双向验证）。同形态 `use widget:` 导入路径不受影响（013-todo todo_list.at 的 model 比较/带参 handler 均正常）——**包加载链特有**（lib.rs P4-4/D13 child_decls 单 VM 编译 vs use-widget 编译链的 handler codegen 差异）。绕开（已落地）:Init 内双算双存变体（segs/segsM、segs/segsS）,view 侧按 prop 选边（view 内 prop 比较正常,如 `if .axis == "auto"`）。回归锚:cargo test -p auto-lang --features ui-iced gallery_chart_components + plan484_chart_component_tests | `components/{line,bar,area}_chart.at` 头注;`crates/auto-lang/src/lib.rs` P4-4/D13 块;plan 484 M1 记录 |
-| 484 | 包子组件带参 msg 声明破坏整包编译（静默） | official 包组件 `msg { Init, Hover(int) }`（带参 msg 声明）使整包加载后所有子组件 Init 失效（静默,同上形态,零诊断）。去掉 msg 参数声明、仅保留裸带参 handler `.Hover(i) -> {}` 一切正常——事件经 DynamicMessage::Typed args → encode/decode_payload → call_handler_for 走通（mouse-area hover 已实证）。对照:`use widget:` 路径 013-todo todo_list.at `msg { ..., ToggleTodo(int), ... }` 正常——同上,包路径特有。绕开（已落地）:包组件一律 `msg { Init }`,带参 handler 裸挂。根治:查 load_package → child_decls → 单 VM 编译链对 messages 的处理（疑 codegen 为带参 msg 生成的桩/表在包路径下错配,与上条可能同根）。回归锚同上 | `components/*_chart.at`（msg 均为裸 `msg { Init }` + 裸挂 handler）;`ui/dynamic.rs decode_payload`;plan 484 M1 记录 |
+| 484 ✅ | 包组件 Init 内 prop 字符串比较破坏 codegen（静默）—— **已修复：Plan 492（2026-08-30，M4 定位真机制+M5 显式诊断+M6 绕开摘除）**。M4 定案:非 codegen 分叉（包链与 use-widget 链同 Parser 同合成器）,真机制=裸 prop 名在赋值 RHS 位触发 undefined variable 解析错 → `parse_package_widgets` per-file try-parse **静默整文件丢弃**（点前缀 `.curve` 直接形态 Init 内全链可用）;M5 落地装载/合成/链接三层显式诊断（组件名+原因,静默消除）;M6 摘除全部绕开,Init 内直用 `.type`/`.curve` prop 比较,六道门禁全绿（chart 专项 lib 12/ui-iced 28/golden/cargo t 3292/ui-iced 4116/tf 3293）。原文存档： | official 包组件（`use {package}` 路径）Init handler 内出现 `if curve == "monotone"` 类字符串 prop 等值比较时,**整个子组件 Init 静默失效**——全部几何输出回落 model 默认值,零诊断输出。实证:484 M1 bisect（干净 HEAD 通过,仅加 prop 比较即崩,git stash 双向验证）。同形态 `use widget:` 导入路径不受影响（013-todo todo_list.at 的 model 比较/带参 handler 均正常）——**包加载链特有**（lib.rs P4-4/D13 child_decls 单 VM 编译 vs use-widget 编译链的 handler codegen 差异）。绕开（已落地）:Init 内双算双存变体（segs/segsM、segs/segsS）,view 侧按 prop 选边（view 内 prop 比较正常,如 `if .axis == "auto"`）。回归锚:cargo test -p auto-lang --features ui-iced gallery_chart_components + plan484_chart_component_tests | `components/{line,bar,area}_chart.at` 头注;`crates/auto-lang/src/lib.rs` P4-4/D13 块;plan 484 M1 记录;docs/plans/492-engine-view-text-fixes.md M4-M6 |
+| 484 ✅ | 包子组件带参 msg 声明破坏整包编译（静默）—— **已闭环（不可复现,同上行真机制）：Plan 492 M4（2026-08-30）**。master 上带参 msg 声明 VM+vue 双轨均正常（484 记档不可复现）;484 现场实为同文件裸 prop 名 RHS 解析错致整包静默丢弃（见上行）,归因到了 msg 形态。M6 恢复 `msg { Init, Hover(int) }` 带参声明（三副本）,回归锚钉住（c2_param_msg_declaration_both_tracks_alive）。原文存档： | official 包组件 `msg { Init, Hover(int) }`（带参 msg 声明）使整包加载后所有子组件 Init 失效（静默,同上形态,零诊断）。去掉 msg 参数声明、仅保留裸带参 handler `.Hover(i) -> {}` 一切正常——事件经 DynamicMessage::Typed args → encode/decode_payload → call_handler_for 走通（mouse-area hover 已实证）。对照:`use widget:` 路径 013-todo todo_list.at `msg { ..., ToggleTodo(int), ... }` 正常——同上,包路径特有。绕开（已落地）:包组件一律 `msg { Init }`,带参 handler 裸挂。根治:查 load_package → child_decls → 单 VM 编译链对 messages 的处理（疑 codegen 为带参 msg 生成的桩/表在包路径下错配,与上条可能同根）。回归锚同上 | `components/*_chart.at`;`ui/dynamic.rs decode_payload`;plan 484 M1 记录;docs/plans/492-engine-view-text-fixes.md M4/M6 |
 | 484 | VM 长页面无滚动容器（内容剪裁） | 超出窗口高度的 VM 页面内容被剪裁（无滚动包装):实测给 charts-gallery 页面包 `scroll (style: "h-screen")` 后 VM 渲染为空页（iced Scrollable 与全屏内容组合异常),已回退;vue 轨浏览器原生滚动不受影响。缓解:页面控制内容高度(限宽/紧凑卡);根治:排查 iced Scrollable + min-h-screen 组合的布局塌陷 | `examples/charts-gallery/src/front/app.at`(revert a997e9f65);plan 484 后续目检 |
 | 484 | tooltip 逐 index 锚点定位（降级为固定右上角） | chart tooltip 的锚点坐标需要动态像素定位（`top-[{.tipY}px]` 类插值类名/StyleBinding 动态值),vue 侧 f-string `{}` 形式在 handler 生成中不插值、tailwind 任意值类需 JIT 扫描源码——两轨均不可靠。v1 降级:tooltip 固定于绘图区右上,内容随 hover 索引变化;逐 index 锚定待 StyleBinding 动态值或 v2 canvas。回归:plan484 冒烟 + charts-gallery 目检 | `components/*_chart.at` tooltip col;plan 484 后续复审目检记录 |
-| 484 | f-string 含字面量 `[`/`]` 时 `${}` 插值破坏组件编译（静默） | `f"w-[${slot}px] h-full"`（dollar-brace 插值 + 字面量方括号）使包组件整体失效（静默形态同上）;同语义 `f"w-[{slot}px] h-full"`（brace 插值）正常。437 时代 donut `bg-[{color}]` 一直用 brace 形式故未触雷。疑点:lexer f-string 模式对 `${` 的 fstr_expr 消费与字面量 `[` 的交互（lexer.rs:629/724 两处 FStrNote 分支）。绕开（已落地）:含字面量 `[]` 的 f-string 一律用 `{}` 插值（bar/line/area band 样式 + tooltip 锚点 style 全部改造）。根治:f-string lexer 最小复现单测（`f"w-[${x}px]"` 解析层即可触发,无需 VM）。回归锚同上 | `components/{line,bar,area}_chart.at`（band 样式/tooltip style）;`crates/auto-lang/src/lexer.rs:615-745`;plan 484 M1 记录 |
+| 484 ✅ | f-string 含字面量 `[`/`]` 时 `${}` 插值破坏组件编译（静默）—— **已闭环（误归因,用户裁定 2026-08-30）：Plan 492 M1**。五层验证不可复现:①词法 token 探针 ②parser/单 VM 链 ③生产包链（charts-gallery 真源+load_package,bar Init 存活） ④Vue SFC ⑤金丝雀负对照（未定义变量补丁确实杀死 bar Init,证明夹具有检出力）。真因同"prop 字符串比较"行——同 Init 内裸 prop 名 RHS 解析错致文件静默丢弃,误归因到 f-string 形态;且 484 绕开形态 `f"w-[{slot}px]"` 的 `{slot}` 实为纯字面量不插值（无害垃圾类,布局靠 flex-1 意外生效）。M6 已恢复 dollar 形态 `f"w-[${slot}px]"` 并全回归绿;若后续发现 484 时另一复现路径,凭路径重开本条。原文存档： | `f"w-[${slot}px] h-full"`（dollar-brace 插值 + 字面量方括号）使包组件整体失效（静默形态同上）;同语义 `f"w-[{slot}px] h-full"`（brace 插值）正常。437 时代 donut `bg-[{color}]` 一直用 brace 形式故未触雷。疑点:lexer f-string 模式对 `${` 的 fstr_expr 消费与字面量 `[` 的交互（lexer.rs:629/724 两处 FStrNote 分支）。绕开（已落地）:含字面量 `[]` 的 f-string 一律用 `{}` 插值（bar/line/area band 样式 + tooltip 锚点 style 全部改造）。根治:f-string lexer 最小复现单测（`f"w-[${x}px]"` 解析层即可触发,无需 VM）。回归锚同上 | `components/{line,bar,area}_chart.at`（band 样式/tooltip style）;`crates/auto-lang/src/lexer.rs:615-745`;plan 484 M1 记录;docs/plans/492-engine-view-text-fixes.md M1/M6+待澄清③ |
 | 446-R2 | merged 模式链接面双 api.at 无诊断（2026-08-29 下游回传） | back.api 符号链接以**外部 back 工程**（如 auto-os-config-back/api.at）的导出清单为准，in-project auto/src/back/api.at 只供实现体——改名/增删 fn 须两份同步，只改一侧即 boot 崩 `Undefined symbol: api.X in module App`，报错不指向第二份文件（下游实测定位成本高）。修法：诊断信息补"检查外部 back 的 api.at 导出清单"提示（或文档化双文件契约）。 | VM linker/merged 装载诊断（Undefined symbol 发射点）；docs/plans/reports/446-downstream-settlement.md §五.2 |
+| 492-R1 | text 内容位置引用循环变量记录字段的 **VM 轨**渲染缺口（492 复审入账） | `for li in .items` 内 `text (text: li["name"])` 类"文本内容=Index 表达式"形态:vue 轨 Plan 492 M3 已修（Index 字符串键保留引号+不支持形式 R046 告警）;**VM/iced 轨仍不渲染**（43956041e 实证两轨均不渲染,M3 只补 vue 臂）。后果:chart 组件刻度/图例维持 yTick0..4/legendColor·Text0..3 槽位字段形态（484 后续 R006 绕开,M6 按计划范围明确保留）。根治:iced 侧文本内容表达式求值补 Index 臂（对齐 M3 的 vue 语义）;根治后 chart 组件可再摘槽位字段改直写 for+text。回归锚:plan492_m3_tests.rs（vue 侧）+ 需新增 VM 侧锚 | `crates/auto-lang/src/ui/iced/renderer.rs` 文本内容求值;`components/*_chart.at` 槽位字段;docs/plans/492-engine-view-text-fixes.md M3/M6 |
 
 ---
 
@@ -282,11 +283,36 @@
   ——set→get 窗口内剪贴板内容被外部进程改写。T9 的 GlobalClipboardTestLock
   跨进程命名互斥已消除自仓测试间互清；对外部进程无管辖。缓解可选：受影响
   断言加单次重试。正常负载复审连跑 11+ 次全绿。
-- **P485-2（出计划外观察，非本计划引入）master cargo tv 红**：
-  `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（b13_is_enum.at 字节码
-  对拍失配）在 master @3a4aacf19 即红——嫌疑 051-C7/484 并行合入线（本计划
-  tf 3275 全绿、分支增量不触 codegen 生成路径）。建议尽快专项定位修复，
-  归属线确认后可改挂对应计划段。
+- **P485-2（出计划外观察，非本计划引入）master cargo tv 红——488 T11
+  分诊已归属（2026-08-30）**：`tests::aavm2_m4::test_aavm2_m4_codegen_corpus`
+  （b13_is_enum.at 失配）在 master @3a4aacf19 即红。**分诊定案=双后端
+  `.line` 发射真分叉**（非 corpus 期望过期——该测试是 rust 编译器 vs
+  aavm .at 实现的实时对拍，无静态期望文件）：rust `Codegen::emit_source_line`
+  的同线去重（`current_source_line`，codegen.rs:10041）不发 `.line 10/11`，
+  aavm 侧（AUTO_LIB_FILES_V2 的 .at 编译器）逐语句无对齐去重。修复=对齐
+  aavm lib 的 .line 去重语义（或反向），转独立专项。488 分支 codegen 触碰
+  仅两行 intrinsic 表注册（dnd_start，与 .line 无关，实证红先于 488 存在）。
+
+### P488（2026-08-30，Plan 488 OLE 拖放双向复审登记）
+
+- **P488-D1（VM 缺陷，488 载具调试发现）if 分支内 var 重赋值表达式调用
+  `.str()` 内建 → 字符串累加破坏**：前缀丢失 + 错误码 -2147483647 混入
+  （desktop_behavior.rs `#[ignore]` 探针存档复现，修复后转正）。044 示例
+  用直接状态赋值 + join 绕开。
+- **P488-D2（VM 缺陷，同线发现）heap-record Str 字段与 nil 的 `!=` 比较
+  破坏求值栈**：488 注入面改空串哨兵（缺省恒 ""）绕开——**on_native_drop/
+  paste 事件载荷契约按空串哨兵定稿**（text/image_path 缺省即空串）。
+- **P488-D3（边缘时序，合成拖拽实证）毫秒级快甩拖入首轮可滞留**：
+  DragEnter 未及送达（其自身也经主线程泵）即松手 → WM_NULL ticker 未上膛
+  → Drop 滞留至下次输入。真人速度（≥0.5s）拖拽不受影响（E2E + 实机截图
+  端到端实证）；如需消除，候选=注册期预上膛 ticker 或 DragEnter 之外的
+  上膛时机。
+- **P488-D4（增强候选）on_dnd_finished 交付取完成时焦点 App**：VM 侧无
+  VM→AppId 通道，发起方追踪需会话记账——拖出期桌面持焦点与发起方一致，
+  偏差场景未观察到实际影响。
+- **P488-D5（观察项）Ctrl+V 实机路由未留痕**：T5 单测绿（485 测试锁串行
+  剪贴板往返），用户三轮未显式按 Ctrl+V 验证——语义链等价由单测背书，
+  T6 重跑时可顺带补一行留痕。
 
 ### P487（2026-08-30，Plan 487 shell-track M4 设置面板复审登记）
 

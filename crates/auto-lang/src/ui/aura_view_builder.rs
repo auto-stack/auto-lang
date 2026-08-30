@@ -315,7 +315,7 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None }
+                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
             };
         }
         // Fallback 内容（子作用域求值）
@@ -332,7 +332,7 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None }
+                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
             }
         }
     }
@@ -381,7 +381,7 @@ impl<'a> AuraViewBuilder<'a> {
         } else if views.len() == 1 {
             views.into_iter().next().unwrap()
         } else {
-            View::Column { children: views, spacing: 0, padding: 0, style: None }
+            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
         }
     }
 
@@ -723,10 +723,10 @@ impl<'a> AuraViewBuilder<'a> {
                                             .collect();
                                         if views.is_empty() { None }
                                         else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
-                                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
+                                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
                                     })
                                     .collect();
-                                return View::Column { children, spacing: 0, padding: 0, style: None };
+                                return View::Column { children, spacing: 0, padding: 0, style: None, onclick: None };
                             }
                             Err(_) => return View::Empty,
                         }
@@ -767,7 +767,8 @@ impl<'a> AuraViewBuilder<'a> {
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-                            })
+            onclick: None,
+        })
                         }
                     })
                     .collect();
@@ -777,7 +778,8 @@ impl<'a> AuraViewBuilder<'a> {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                }
+            onclick: None,
+        }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
@@ -801,7 +803,8 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 }
             }
             AuraNode::Component { name, props, events, children, .. } => {
@@ -844,7 +847,7 @@ impl<'a> AuraViewBuilder<'a> {
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
@@ -1035,7 +1038,7 @@ impl<'a> AuraViewBuilder<'a> {
                             let v = views.into_iter().next().unwrap();
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         }
-                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None }) }
+                        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }) }
                     })
                     .collect();
                 View::Column {
@@ -1043,7 +1046,8 @@ impl<'a> AuraViewBuilder<'a> {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                }
+            onclick: None,
+        }
             }
             AuraNode::Conditional { condition, then_body, else_body, .. } => {
                 let is_true = self.eval_condition_with(condition, bindings);
@@ -1081,7 +1085,8 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 }
             }
             AuraNode::Component { name, props, events, children, .. } => {
@@ -1124,7 +1129,7 @@ impl<'a> AuraViewBuilder<'a> {
                             if matches!(v, View::Empty) { None } else { Some(v) }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None };
+                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
@@ -1179,6 +1184,31 @@ impl<'a> AuraViewBuilder<'a> {
     /// path/probe tracking (deep), instead of delegating to the untracked
     /// converters. Layout/prop extraction mirrors the untracked converters
     /// exactly; only the child recursion differs (it carries the side-channels).
+    /// Plan 490 G4：布局件（row/col/taskbar/container|div）onclick 提取——
+    /// 事件在分发点可得而 convert_* 不收 events，故分发臂就地 set 进结果
+    /// （沿 :2076 text onclick→Button 的事件提取先例；onclick/click 双键
+    /// 收取，大小写不敏感由 aura_events_get_base 承担）。非三节点视图
+    /// 静默忽略（行为持平）。
+    fn set_layout_onclick(
+        &self,
+        v: &mut View<DynamicMessage>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) {
+        let Some(event) = crate::aura::aura_events_get_base(events, "onclick")
+            .or_else(|| crate::aura::aura_events_get_base(events, "click"))
+        else {
+            return;
+        };
+        let msg = self.event_to_message_with(event, bindings);
+        match v {
+            View::Row { onclick, .. }
+            | View::Column { onclick, .. }
+            | View::Container { onclick, .. } => *onclick = Some(msg),
+            _ => {}
+        }
+    }
+
     fn convert_element_tracked_ctx(
         &self,
         tag: &str,
@@ -1239,14 +1269,30 @@ impl<'a> AuraViewBuilder<'a> {
             // 展开（expand_children_spliced*），此臂覆盖其余位形。
             "slot" | "Slot" => self.render_slot_outlet_tracked_ctx(props, children, path, id_map, probe, bindings),
             // Core layout widgets — recurse children with path tracking.
-            "col" | "column" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
-            "row" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "col" | "column" => {
+                let mut v = self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
+            "row" => {
+                let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4 登记）；row 语义
             // 水平排布,贴底锚定由宿主 shell 层装配做。镜像 untracked 同名臂。
-            "taskbar" => self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "taskbar" => {
+                let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
             "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
-            "container" | "div" => self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "container" | "div" => {
+                let mut v = self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
             // Plan 442 A4: svg 元素子树 → 序列化 SVG 文档经 View::Image 渲染
             // (此前落 unknown fallback → View::Empty,VM 轨 svg 完全不渲染)。
             // 镜像 convert_element 的同名臂(文件 D-GAP 规则)。
@@ -1655,7 +1701,7 @@ impl<'a> AuraViewBuilder<'a> {
                         } else if views.len() == 1 {
                             views.into_iter().next().unwrap()
                         } else {
-                            View::Column { children: views, spacing: 0, padding: 0, style: None }
+                            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
                         };
                         if matches!(cell, View::Empty) {
                             continue;
@@ -1850,13 +1896,15 @@ impl<'a> AuraViewBuilder<'a> {
                 spacing: 0,
                 padding,
                 style,
-            },
+            onclick: None,
+        },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            },
+            onclick: None,
+        },
             None => {
                 let child_view = if child_views.is_empty() {
                     View::Empty
@@ -1868,7 +1916,8 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 };
                 let mut builder = View::container(child_view).padding(padding);
                 if let Some(w) = width {
@@ -1927,7 +1976,8 @@ impl<'a> AuraViewBuilder<'a> {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            }
+            onclick: None,
+        }
         };
 
         let full_style = match style {
@@ -2163,8 +2213,16 @@ impl<'a> AuraViewBuilder<'a> {
             // 展开（expand_children_spliced），此臂覆盖其余位形。
             "slot" | "Slot" => self.render_slot_outlet(props, children, bindings),
             // Core layout widgets
-            "col" | "column" => self.convert_column(props, children, bindings),
-            "row" => self.convert_row(props, children, bindings),
+            "col" | "column" => {
+                let mut v = self.convert_column(props, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
+            "row" => {
+                let mut v = self.convert_row(props, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4）；row 语义。
             // 镜像 tracked 层同名臂（文件 D-GAP 规则）。
             "taskbar" => self.convert_row(props, children, bindings),
@@ -2284,7 +2342,11 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_textarea(props, events, bindings)
             }
             "checkbox" | "check" => self.convert_checkbox(props, events, bindings),
-            "container" | "div" => self.convert_container(props, children, bindings),
+            "container" | "div" => {
+                let mut v = self.convert_container(props, children, bindings);
+                self.set_layout_onclick(&mut v, events, bindings); // Plan 490 G4
+                v
+            }
 
             // Image / Icon
             "img" | "image" | "icon" => self.convert_image_or_icon(props),
@@ -2346,7 +2408,8 @@ impl<'a> AuraViewBuilder<'a> {
                         center_x: false,
                         center_y: false,
                         style: Style::parse(&format!("h-3 w-3 rounded-full {}", dot_bg)).ok(),
-                    };
+            onclick: None,
+        };
                     let name_view = View::Text {
                         content: name,
                         style: Style::parse("text-base font-semibold uppercase tracking-wider text-muted-foreground").ok(),
@@ -2365,7 +2428,8 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: Style::parse("items-center gap-2 mb-4").ok(),
-                    };
+            onclick: None,
+        };
                     // component-cards → Grid(cols=2, gap-3)
                     // Plan 409 §10 续 10: 设 CATEGORY_COLOR 供 component-card
                     // 继承颜色(save/restore 支持嵌套)。
@@ -2400,21 +2464,24 @@ impl<'a> AuraViewBuilder<'a> {
                                 spacing: 12,
                                 padding: 0,
                                 style: Style::parse("w-full").ok(),
-                            });
+            onclick: None,
+        });
                         }
                         View::Column {
                             children: rows_views,
                             spacing: 12,
                             padding: 0,
                             style: Style::parse("w-full").ok(),
-                        }
+            onclick: None,
+        }
                     };
                     return View::Column {
                         children: vec![title, grid],
                         spacing: 16,
                         padding: 0,
                         style: None,
-                    };
+            onclick: None,
+        };
                 }
                 // Plan 409 §10 组 E: preview-card / codeblock VM 识别。vue codegen
                 // 对它们做特殊处理(generate_previewcard_html / generate_codeblock_html
@@ -2438,14 +2505,15 @@ impl<'a> AuraViewBuilder<'a> {
                     let inner: View<DynamicMessage> = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: child_views, spacing: 8, padding: 0, style: None }
+                        View::Column { children: child_views, spacing: 8, padding: 0, style: None, onclick: None }
                     };
                     let preview_area = View::Container {
                         child: Box::new(inner),
                         padding: 0, width: None, height: None,
                         center_x: true, center_y: true,
                         style: Style::parse("min-h-[100px] w-full p-4").ok(),
-                    };
+            onclick: None,
+        };
                     // Plan 409 §10 续 21: 合并 Code title 行与 Auto/Vue tab 行为一行
                     // toolbar:[Auto][Vue] ... [copy][chevron](展开/收起)。代码区在
                     // 下方(展开时)。Plan 411: 对齐 vue 合并版 —— 右侧 copy icon
@@ -2484,12 +2552,14 @@ impl<'a> AuraViewBuilder<'a> {
                             padding: 0, width: None, height: None,
                             center_x: false, center_y: false,
                             style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
-                        };
+            onclick: None,
+        };
                         View::Column {
                             children: vec![btn, underline],
                             spacing: 0, padding: 0,
                             style: Style::parse("w-[72px]").ok(),
-                        }
+            onclick: None,
+        }
                     };
 let tabs_inner = View::Row {
                         children: vec![
@@ -2497,7 +2567,8 @@ let tabs_inner = View::Row {
                             mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
                         ],
                         spacing: 0, padding: 0, style: None,
-                    };
+            onclick: None,
+        };
                     let icon_btn_style = "px-2 py-1.5 text-xs text-muted-foreground bg-transparent";
                     let copy_btn = View::Button {
                         disabled: false,
@@ -2529,12 +2600,14 @@ let tabs_inner = View::Row {
                         // Plan 411: tabs 贴 toolbar 左缘(vue 无容器内边距),右侧
                         // icon 组留 pr-2 呼吸位 —— 此前容器 px-2 让 Auto 左侧多出空白。
                         style: Style::parse("pr-2").ok(),
-                    };
+            onclick: None,
+        };
                     let toolbar = View::Row {
                         children: vec![tabs_inner, right_icons],
                         spacing: 0, padding: 0,
                         style: Style::parse("items-center justify-between border-t bg-zinc-800 w-full").ok(),
-                    };
+            onclick: None,
+        };
                     let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
                     // 展开时:代码区(按 tab 选 auto/vue)。
                     if ui.show {
@@ -2547,12 +2620,13 @@ let tabs_inner = View::Row {
                             child: Box::new(code_text),
                             padding: 0, width: None, height: None, center_x: false, center_y: false,
                             style: Style::parse("p-4 bg-zinc-950 border-t w-full").ok(),
-                        };
+            onclick: None,
+        };
                         col_kids.push(code_area);
                     }
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: col_kids, spacing: 0, padding: 0, style: None,
+                            children: col_kids, spacing: 0, padding: 0, style: None, onclick: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         // Plan 411: p-[1px] 模拟 CSS border-box 语义 —— iced 的
@@ -2561,7 +2635,8 @@ let tabs_inner = View::Row {
                         // 露出边框,视觉上预览区比下方窄 1px。1px 内边距让子元素
                         // 整体收进边框,两侧对齐(vue 中 border 本就在 content box 外)。
                         style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden p-[1px]").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
                     // Plan 409 §10 续 16/18: 代码块(对齐 vue button.vue:110-123):
@@ -2580,7 +2655,8 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
-                    };
+            onclick: None,
+        };
                     // Plan 442 A6: lang-<token> class carries the language to
                     // the renderer's syntect highlight path (read-only code
                     // highlighting, musk-038 T16 决策 (a)); lang-less blocks
@@ -2599,15 +2675,17 @@ let tabs_inner = View::Row {
                         child: Box::new(code_text),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("p-4").ok(),
-                    };
+            onclick: None,
+        };
                     return View::Container {
                         child: Box::new(View::Column {
                             children: vec![header, code_area],
-                            spacing: 0, padding: 0, style: None,
+                            spacing: 0, padding: 0, style: None, onclick: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 // Plan 409 §10 续 16: table → 表格(Column[Row[cells]]),对齐 vue。
                 // table/thead/tbody → Column(tr 堆叠);tr → Row(th/td 横排);
@@ -2619,20 +2697,21 @@ let tabs_inner = View::Row {
                     return View::Column {
                         children: views, spacing: 0, padding: 0,
                         style: Style::parse("border rounded w-full text-sm").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "thead" || tag == "tbody" || tag == "tfoot"
                     || tag == "table-header" || tag == "table-body" || tag == "table-footer" {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Column { children: views, spacing: 0, padding: 0, style: None };
+                    return View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None };
                 }
                 if tag == "tr" || tag == "table-row" {
                     let views: Vec<View<DynamicMessage>> = children
                         .iter().map(|n| self.convert_node_with(n, bindings))
                         .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Row { children: views, spacing: 0, padding: 0, style: None };
+                    return View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None };
                 }
                 if tag == "th" || tag == "td" || tag == "table-head" || tag == "table-cell" {
                     let is_head = tag == "th" || tag == "table-head";
@@ -2666,7 +2745,7 @@ let tabs_inner = View::Row {
                     let content = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else if child_views.len() > 1 {
-                        View::Row { children: child_views, spacing: 0, padding: 0, style: None }
+                        View::Row { children: child_views, spacing: 0, padding: 0, style: None, onclick: None }
                     } else {
                         let text = self.extract_children_text(children, bindings)
                             .or_else(|| self.extract_string_with(props, "text", bindings))
@@ -2697,7 +2776,8 @@ let tabs_inner = View::Row {
                         child: Box::new(content),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse(&cell_style).ok(),
-                    };
+            onclick: None,
+        };
                 }
                 // Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级渲染。
                 // registry 登记见 widget/registry.rs register_document_panel_widgets;
@@ -2736,13 +2816,14 @@ let tabs_inner = View::Row {
                     } else if views.len() == 1 {
                         views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: views, spacing: 4, padding: 0, style: None }
+                        View::Column { children: views, spacing: 4, padding: 0, style: None, onclick: None }
                     };
                     return View::Container {
                         child: Box::new(inner),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "callout" {
                     let kind = self.extract_string(props, "kind").unwrap_or_default();
@@ -2767,11 +2848,12 @@ let tabs_inner = View::Row {
                         .filter(|v| !matches!(v, View::Empty)));
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: kids, spacing: 8, padding: 0, style: None,
+                            children: kids, spacing: 8, padding: 0, style: None, onclick: None,
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse(&format!("rounded-lg border {tint_cls} p-4 w-full")).ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "details" {
                     // Details → Accordion 单项(对齐表"可对齐 Accordion 族"裁定)。
@@ -2808,7 +2890,8 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-card p-4 w-full").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
                     let query = self.extract_string(props, "query")
@@ -2822,7 +2905,8 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border p-3 w-full").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
                     let target = self.extract_string(props, "target").unwrap_or_default();
@@ -2834,7 +2918,8 @@ let tabs_inner = View::Row {
                         }),
                         padding: 0, width: None, height: None, center_x: false, center_y: false,
                         style: Style::parse("rounded-lg border bg-muted p-3 w-full").ok(),
-                    };
+            onclick: None,
+        };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 // Plan 409 §10 续 15: 完整卡片样式(对齐 vue index.vue:52-60):
@@ -2873,7 +2958,8 @@ let tabs_inner = View::Row {
                             "h-10 w-10 shrink-0 rounded-lg border {} {}",
                             border_cls, box_bg
                         )).ok(),
-                    };
+            onclick: None,
+        };
                     // 文字列:主标题(font-medium text-sm) + 副标题(text-xs muted),换行。
                     let mut text_kids: Vec<View<DynamicMessage>> = vec![View::Text {
                         content: name.clone(),
@@ -2892,14 +2978,16 @@ let tabs_inner = View::Row {
                         spacing: 2,
                         padding: 0,
                         style: None,
-                    };
+            onclick: None,
+        };
                     // content: icon_box + 文字列(顶部对齐)。
                     let content = View::Row {
                         children: vec![icon_box, text_col],
                         spacing: 12,
                         padding: 0,
                         style: Style::parse("items-start gap-3 w-full").ok(),
-                    };
+            onclick: None,
+        };
                     return View::Button {
                         disabled: false,
                         label: name,
@@ -2941,7 +3029,8 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 }
             }
         }
@@ -3016,7 +3105,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                }))
+            onclick: None,
+        }))
             }
         };
 
@@ -3266,7 +3356,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                }))
+            onclick: None,
+        }))
             }
         } else {
             let is_lg = size == "lg";
@@ -3307,7 +3398,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&texts_cls).ok(),
-                });
+            onclick: None,
+        });
             }
             if !badge.is_empty() {
                 parts.push(View::Text {
@@ -3327,7 +3419,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(row_cls).ok(),
-                }))
+            onclick: None,
+        }))
             }
         };
 
@@ -3436,7 +3529,8 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("items-center gap-2").ok(),
-            });
+            onclick: None,
+        });
             let mut class = format!("{} {}", nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER);
             if let Some(user) = self
                 .extract_string_with(props, "class", bindings)
@@ -3482,7 +3576,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&content_cls).ok(),
-                });
+            onclick: None,
+        });
             }
         }
 
@@ -3491,6 +3586,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("flex flex-col").ok(),
+            onclick: None,
         }
     }
 
@@ -3534,6 +3630,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(nc::SEARCH_ROW).ok(),
+            onclick: None,
         }
     }
 
@@ -3570,6 +3667,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&style).ok(),
+            onclick: None,
         }
     }
 
@@ -4110,7 +4208,7 @@ let tabs_inner = View::Row {
                     let v = views.into_iter().next().unwrap();
                     if matches!(v, View::Empty) { None } else { Some(v) }
                 } else {
-                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None })
+                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None })
                 }
             })
             .collect()
@@ -4241,13 +4339,15 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding,
                 style,
-            },
+            onclick: None,
+        },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            },
+            onclick: None,
+        },
             None => {
                 let child_view = if child_views.is_empty() {
                     View::Empty
@@ -4259,7 +4359,8 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 };
                 let mut builder = View::container(child_view).padding(padding);
                 if let Some(w) = width {
@@ -4302,7 +4403,8 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            }
+            onclick: None,
+        }
         };
 
         // center defaults to w-full h-full so it fills its parent and centers content
@@ -4432,7 +4534,7 @@ let tabs_inner = View::Row {
                 .iter()
                 .map(|n| self.convert_node_with(n, bindings))
                 .collect();
-            View::Column { children: views, spacing: 0, padding: 0, style: None }
+            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None }
         };
 
         View::container(child).center_x().center_y().with_style(style).build()
@@ -4494,6 +4596,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
+            onclick: None,
         };
         let Some(cfg) = action_config() else { return empty() };
         if cfg.menus.is_empty() {
@@ -4583,7 +4686,8 @@ let tabs_inner = View::Row {
                                 padding: 0,
                                 style: Style::parse("w-full justify-between items-center gap-2 px-2")
                                     .ok(),
-                            };
+            onclick: None,
+        };
                             items.push(View::Button {
                                 disabled: !enabled,
                                 label: a.title.clone(),
@@ -4607,7 +4711,8 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("w-48 bg-[#16171B] border border-zinc-700 shadow-md py-1").ok(),
-            };
+            onclick: None,
+        };
             children.push(View::Popover {
                 anchor: PopoverAnchor::Widget(Box::new(trigger)),
                 content: Box::new(panel),
@@ -4634,6 +4739,7 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
+            onclick: None,
         }
     }
 
@@ -4739,7 +4845,8 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-                    }),
+            onclick: None,
+        }),
                     placement,
                     open,
                     on_dismiss,
@@ -4778,7 +4885,8 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-                    }
+            onclick: None,
+        }
                 };
 
                 let open = open_prop.unwrap_or_else(self_managed_open);
@@ -4818,7 +4926,8 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-                    }),
+            onclick: None,
+        }),
                     placement,
                     open,
                     on_dismiss,
@@ -4871,6 +4980,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
+            onclick: None,
         };
         let Some(cfg) = action_config() else { return empty() };
 
@@ -4935,6 +5045,7 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
+            onclick: None,
         }
     }
 
@@ -4984,6 +5095,7 @@ let tabs_inner = View::Row {
             center_x: true,
             center_y: true,
             style,
+            onclick: None,
         }
     }
 
@@ -5370,14 +5482,16 @@ let tabs_inner = View::Row {
                             spacing,
                             padding: 0,
                             style: layout_style,
-                        }))
+            onclick: None,
+        }))
                     } else {
                         Some(Box::new(View::Row {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
-                        }))
+            onclick: None,
+        }))
                     }
                 }
             }
@@ -5455,6 +5569,7 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style,
+            onclick: None,
         }
     }
 
@@ -5624,6 +5739,28 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "enter"))
             .map(|event| self.event_to_message(&event.handler));
 
+        // Plan 057 续(富文本输入):highlight/ghost props — 语法着色段与灰色
+        // 建议后缀(VM 原生 Highlighter / Vue 叠加层)。缺省为空 = 存量行为。
+        // PLAN-493: mentions 能力声明优先——受限名单解析(state-rooted,绝不
+        // 落入 eval_computed/call_vm_fn——html 纯文本降级的 call 链 UAF 同构
+        // 雷区,21bba9b34 回滚实证)→ builder 期纯函数段计算;带 mentions 时
+        // highlight prop 段让位。computed/调用链名单 → None = VM 无高亮
+        // 降级(迁移前现状,非回归;Vue 轨经 codegen 原生响应式消费不受限)。
+        let highlight = match self.resolve_mention_names(props, bindings) {
+            Some(names) => {
+                let segs = mention_segments(&value, &names);
+                if std::env::var("AUTO_DEBUG_MENTIONS").is_ok() {
+                    eprintln!(
+                        "[493-MENTIONS] names={} value={:?} segs={:?}",
+                        names.len(),
+                        value,
+                        segs
+                    );
+                }
+                segs
+            }
+            None => self.resolve_highlight_spans(props, bindings),
+        };
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
         if let Some(msg) = on_change {
             builder = builder.on_change(msg);
@@ -5637,9 +5774,7 @@ let tabs_inner = View::Row {
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
-        // Plan 057 续(富文本输入):highlight/ghost props — 语法着色段与灰色
-        // 建议后缀(VM 原生 Highlighter / Vue 叠加层)。缺省为空 = 存量行为。
-        builder = builder.highlight(self.resolve_highlight_spans(props, bindings));
+        builder = builder.highlight(highlight);
         builder = builder.ghost(
             self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
         );
@@ -5780,6 +5915,65 @@ let tabs_inner = View::Row {
             builder = builder.with_style(s);
         }
         builder.build()
+    }
+
+    /// PLAN-493: `mentions:` prop 的受限名单解析——只接受 state-rooted
+    /// 形态：裸 Ident/自引用 Dot → bindings → read_state_as_vec（同步深
+    /// 拷贝，引用即弃）；`.store.X`/`store.X` 按并入根态的裸字段读
+    /// （D-GAP-4 约定）；str 字面量表 → 逐元素。其余形状（含任何
+    /// Call/computed 链）→ None：**不进 call 链**（UAF 红线，见
+    /// convert_textarea 注释）——computed 名单在 VM 轨降级为无高亮。
+    fn resolve_mention_names(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<Vec<String>> {
+        let expr = match props.get("mentions") {
+            Some(AuraPropValue::Expr(e)) => e,
+            _ => return None,
+        };
+        match expr {
+            Expr::Array(elems) => {
+                let mut names = Vec::with_capacity(elems.len());
+                for e in elems {
+                    if let Expr::Str(s) = e {
+                        names.push(s.as_str().to_string());
+                    }
+                }
+                Some(names)
+            }
+            Expr::Ident(name) => {
+                self.state_rooted_string_list(name.as_str().trim_start_matches('.'), bindings)
+            }
+            Expr::Dot(obj, field) => {
+                let is_store_path = matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "store")
+                    || matches!(obj.as_ref(),
+                        Expr::Dot(inner, f) if f.as_str() == "store"
+                            && matches!(inner.as_ref(), Expr::Ident(n)
+                                if n.as_str() == "." || n.as_str() == "self"));
+                let is_self_path = matches!(obj.as_ref(),
+                    Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self");
+                if is_store_path || is_self_path {
+                    self.state_rooted_string_list(field.as_str(), bindings)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// PLAN-493: state-rooted 字段 → Vec<String>（bindings 命中 Array 直接
+    /// 取；否则 read_state_as_vec 同步深拷贝）。Str/String 元素之外跳过。
+    fn state_rooted_string_list(&self, field: &str, bindings: &Bindings) -> Option<Vec<String>> {
+        if field.is_empty() {
+            return None;
+        }
+        if let Some(Value::Array(arr)) = bindings.get(field) {
+            return Some(strings_from_values(&arr.values));
+        }
+        let items = self.read_state_as_vec(field).ok()?;
+        Some(strings_from_values(&items))
     }
 
     /// Plan 057 续(富文本输入):解析 `highlight: <list of {text, kind}>` prop
@@ -7624,11 +7818,79 @@ fn value_to_display_string(value: &Value) -> String {
         Value::Float(f) => format!("{}", f),
         Value::Double(f) => format!("{}", f),
         Value::Bool(b) => b.to_string(),
-        Value::Str(s) => s.to_string(),
+        Value::Str(s) => s.as_str().to_string(),
         Value::String(s) => s.as_str().to_string(),
         Value::Nil => String::new(),
         _ => value.to_string(),
     }
+}
+
+/// PLAN-493: mention 段计算——builder 期纯函数（不经 VM call 链，无堆引用
+/// 生命周期问题）。`@\w+` 扫描（\w=[A-Za-z0-9_]，对齐 musk
+/// mention_is_word_char），词（小写比较）∈ names → 段 `("@词原文",
+/// "mention")`；裸 `@`（词空）与其余字符逐段 `("…", "text")`。无 display
+/// 替换——编辑器内容即 value，VM/Vue 两轨着色原文一致。不变式：段文本
+/// 顺序拼接 == value。names 为空 → 整体单段 text。
+fn mention_segments(value: &str, names: &[String]) -> Vec<(String, String)> {
+    let known: std::collections::HashSet<String> =
+        names.iter().map(|n| n.to_lowercase()).collect();
+    let mut segs: Vec<(String, String)> = Vec::new();
+    let mut text = String::new();
+    let bytes = value.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'@' {
+            let mut end = i + 1;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+            {
+                end += 1;
+            }
+            // @ 是单字节 ASCII，词字符均为 ASCII，切片边界安全。
+            let word = &value[i + 1..end];
+            if !word.is_empty() && known.contains(&word.to_lowercase()) {
+                if !text.is_empty() {
+                    segs.push((std::mem::take(&mut text), "text".to_string()));
+                }
+                segs.push((value[i..end].to_string(), "mention".to_string()));
+            } else {
+                text.push_str(&value[i..end]);
+            }
+            i = end;
+        } else {
+            // 非_word 多字节字符（CJK/emoji 等）逐字入 text 段。
+            let ch_len = utf8_char_len(bytes[i]);
+            text.push_str(&value[i..i + ch_len]);
+            i += ch_len;
+        }
+    }
+    if !text.is_empty() {
+        segs.push((text, "text".to_string()));
+    }
+    segs
+}
+
+/// PLAN-493: 首字节 → UTF-8 字符长度（mention_segments 逐字推进用）。
+fn utf8_char_len(first: u8) -> usize {
+    match first {
+        0x00..=0x7F => 1,
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        _ => 4,
+    }
+}
+
+/// PLAN-493: Vec<Value> → Vec<String>（Str/String 元素，其余跳过）——
+/// mentions 名单同步深拷贝的元素提取。
+fn strings_from_values(items: &[Value]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|v| match v {
+            Value::Str(s) => Some(s.as_str().to_string()),
+            Value::String(s) => Some(s.as_str().to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -9827,6 +10089,165 @@ mod tests {
                 }
             }
             _ => panic!("Expected View::Input"),
+        }
+    }
+
+    /// PLAN-493 T1: mention 段计算——命中段 ("@词原文", "mention")，其余
+    /// ("…", "text")；无 display 替换（编辑器内容即 value，跨端一致）。
+    #[test]
+    fn plan493_mention_segments_hit() {
+        let names = vec!["assistant".to_string(), "Planner".to_string()];
+        let segs = mention_segments("@assistant hello @Planner!", &names);
+        assert_eq!(
+            segs,
+            vec![
+                ("@assistant".to_string(), "mention".to_string()),
+                (" hello ".to_string(), "text".to_string()),
+                ("@Planner".to_string(), "mention".to_string()),
+                ("!".to_string(), "text".to_string()),
+            ]
+        );
+    }
+
+    /// PLAN-493 T1: 裸 @（词空）按字面处理；命中大小写不敏感；部分词/多词
+    /// 名单整词匹配（多词条目对 \w+ 扫描永不命中，与 musk render_mentions
+    /// 的键语义一致）。
+    #[test]
+    fn plan493_mention_segments_bare_at_and_case() {
+        let names = vec!["Assistant Agent".to_string(), "coder".to_string()];
+        let segs = mention_segments("@ @CODER @cod", &names);
+        assert_eq!(
+            segs,
+            vec![
+                ("@ ".to_string(), "text".to_string()),
+                ("@CODER".to_string(), "mention".to_string()),
+                (" @cod".to_string(), "text".to_string()),
+            ]
+        );
+    }
+
+    /// PLAN-493 T1: 空名单 → 无着色，整体单段 text。
+    #[test]
+    fn plan493_mention_segments_empty_names() {
+        let segs = mention_segments("hello @assistant", &[]);
+        assert_eq!(segs, vec![("hello @assistant".to_string(), "text".to_string())]);
+    }
+
+    /// PLAN-493 T1: 覆盖不变式——段文本顺序拼接 == value（含 CJK/换行等
+    /// 非 \w 边界字符，字节无损）。
+    #[test]
+    fn plan493_mention_segments_covers_value() {
+        let names = vec!["assistant".to_string()];
+        let value = "你好@assistant世界\nsecond @assistant line@";
+        let segs = mention_segments(value, &names);
+        let concat: String = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(concat, value);
+        assert_eq!(segs.iter().filter(|(_, k)| k == "mention").count(), 2);
+    }
+
+    /// PLAN-493 T3: mentions 能力接线——state-rooted 名单（var）+ value →
+    /// View::Textarea.highlight 携带 mention 段，段文本拼回 == value。
+    #[test]
+    fn plan493_textarea_mentions_wired() {
+        let widget = make_test_widget("W", vec![
+            AuraStateDef {
+                name: "text".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("@assistant hi".into()),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "mentionNames".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: Expr::Str(String::new().into()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "mentionNames",
+            Value::Array(auto_val::Array::from(vec![
+                Value::Str("assistant".into()),
+                Value::Str("Planner".into()),
+            ])),
+        );
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Ident(".text".into()))
+            .with_prop("mentions", Expr::Ident(".mentionNames".into()));
+        match builder.build(&node) {
+            View::Textarea { value, highlight, .. } => {
+                assert_eq!(value, "@assistant hi");
+                assert_eq!(
+                    highlight,
+                    vec![
+                        ("@assistant".to_string(), "mention".to_string()),
+                        (" hi".to_string(), "text".to_string()),
+                    ],
+                    "state-rooted 名单必须经 mention_segments 接入 highlight"
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-493 T3: 降级契约——computed 名单（解析会进 call 链，UAF 红线）
+    /// 不解析：highlight 空、构建不崩（= 迁移前 VM 现状，非回归）。若此处
+    /// 变红说明有人把 eval_computed/call_vm_fn 回调进了名单解析。
+    #[test]
+    fn plan493_mentions_computed_degrades_to_plain() {
+        let mut widget = make_test_widget("W", vec![AuraStateDef {
+            name: "text".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("@assistant hi".into()),
+            decorators: vec![],
+        }]);
+        widget.computed = vec![crate::aura::AuraComputed {
+            name: "mentionNames".to_string(),
+            expr: Expr::Str("assistant".into()),
+        }];
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Ident(".text".into()))
+            .with_prop("mentions", Expr::Ident(".mentionNames".into()));
+        match builder.build(&node) {
+            View::Textarea { highlight, .. } => {
+                assert!(
+                    highlight.is_empty(),
+                    "computed 名单不得解析（call 链 UAF 红线）: {:?}", highlight
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-493 T3: 字面量表名单——`mentions: ["coder"]` 静态形态同样接入。
+    #[test]
+    fn plan493_mentions_literal_list() {
+        let widget = make_test_widget("W", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Str("@coder!".into()))
+            .with_prop(
+                "mentions",
+                Expr::Array(vec![Expr::Str("coder".into())]),
+            );
+        match builder.build(&node) {
+            View::Textarea { highlight, .. } => {
+                assert_eq!(
+                    highlight,
+                    vec![
+                        ("@coder".to_string(), "mention".to_string()),
+                        ("!".to_string(), "text".to_string()),
+                    ]
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
         }
     }
 

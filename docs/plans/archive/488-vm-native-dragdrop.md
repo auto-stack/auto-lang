@@ -1,18 +1,24 @@
 ---
 plan_id: PLAN-488
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: archived                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-dragdrop
 author: [zhaopuming]
 created_at: 2026-08-30
 updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "autoui/spec.md: 原生互操作面扩展——473 阶段表 Phase 3 落地后补 OLE 拖放双向/虚拟文件/Ctrl+V 路由段"
+  - "auto-lang/spec.md: vm natives 面——auto.dnd.start(2938) 入账 + 事件载荷空串哨兵契约"
+new_spec_components:
+  - "ui/native_dnd.rs 模块：DndDataObject(IDataObject 三格式族)/DesktopDropTarget(STA 线程+WM_NULL ticker)/DndDropSource(seen-button)/start_drag(内联阻塞)/ensure_host_drop_target——原生拖放双向全量面"
+  - "aura.at virtual_window events 三枚(on_native_drop/on_native_paste/on_dnd_finished)——宿主注入事件契约"
+touched_goals:
+  - "GOAL-009: 桌面 Shell 原生互操作 Phase 3（拖放双向+虚拟文件落地，473 路线收段）"
+  - "GOAL-010: examples/ui 增 044-dnd-bridge（拖放演示+T6 冒烟载具）"
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 9
+current_step: 10
 total_steps: 11
 ---
 
@@ -306,15 +312,27 @@ virtual_window spec events 映射同步。
 10. **实机冒烟 + 收尾**：T6 六场景执行留痕；健康检查（零警告/无调试打印）；
     状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui && cargo t vm`。
-    [🔶 部分] worktree 提交 35c62db8c 后：健康检查完成——`cargo check -p
-    auto-lang` 干净、`cargo t ui` 772 绿、`cargo t vm` 638 绿；触面
-    （native_dnd/native_catalog/native.rs/drag_sim）零警告；唯一 eprintln 为
-    AUTO_DND_TRACE=1 环境门控诊断（renderer AUTO_DEBUG_KEYS 同型先例），
-    生产路径零打印。**T6 真机六场景（A1/A2/A5/A6/D2–D4）挂起**——需真
-    人实机拖拽 Explorer/Chrome/notepad，无法代理执行（管线等价已由
-    E2E T3/T4 双绿 + T1 格式单测覆盖；Explorer 对 HGLOBAL FILECONTENTS
-    的接受度为唯一残留技术风险，见待澄清⑦）。状态保持 executing 待用户
-    执行 T6 后翻 execution_done。
+    [✅ 已完成] 健康检查（35c62db8c 时点）：`cargo check -p auto-lang`
+    干净、`cargo t ui`/`t vm` 绿、触面零警告（唯一 eprintln =
+    AUTO_DND_TRACE=1 门控诊断，AUTO_DEBUG_KEYS 同型先例）。**T6 留痕
+    （三轮实机 + 代理端到端实证汇总，2026-08-30 收口）**：
+    - A1 Explorer 文件拖入：✅（三轮用户确认拖入数据到达；files/formats
+      单测+E2E T3 断言链等价）。
+    - A2 桌面→Explorer 虚拟文件落地：✅（用户二轮确认"拖出虚拟文件
+      正常"——**HGLOBAL FILECONTENTS 技术风险解除**）。
+    - A5 notepad 文本双向：✅ 拖出（用户三轮确认）；反向=拖入显示，
+      见下行。
+    - A6 浏览器 URL 双向：✅ 拖出至 Chrome 地址栏（用户确认）；Explorer
+      地址栏不吃裸文本=目标侧能力（注记于待澄清⑦二轮）。
+    - D2–D4 Chrome 拖出/拖入/图片：拖入数据到达（用户二轮确认真机）；
+      image temp PNG 落值未单独留痕（D 系观察值入 P488-D5 同族）。
+    - **拖入即时显示**：三轮修复（WM_NULL ticker）后代理端到端实证
+      即时显示（合成拖入 hopH→截图见 `[CF_UNICODETEXT] text="hopH"`，
+      管线四跳全通 handler Ok，worktree cad70501d 记录）；用户三轮对
+      A1 确认、拖入显示以代理实证+三轮修复链收口。
+    - Ctrl+V：T5 单测绿；实机显式留痕缺（P488-D5）。
+    残留观察项全部登记 KNOWN-DEBT P488-D1..D5（复审步）。状态翻
+    execution_done（用户指示进入 review）。
 11. **骑手：P485-2 分诊（先分类、后处置，带逃生舱；2026-08-30 调度追加）**：
     本计划改动面含 `vm/`（natives），复审门禁跑 `cargo tv`——先在红
     `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（master @3a4aacf19 即红，
@@ -328,10 +346,62 @@ virtual_window spec events 映射同步。
       零 codegen 触碰（改动面=native_dnd/ui + vm natives）"放行，修复转
       独立专项（后续计划号）。
     验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
+    [✅ 已完成] **逃生舱路径**（2026-08-30 review）：分诊定案=双后端 `.line`
+    发射**真分叉**（rust `emit_source_line` 同线去重 vs aavm .at 实现逐语句
+    发射；非 corpus 期望过期——该测试是双后端实时对拍，无静态期望文件）。
+    归属注记已回写 KNOWN-DEBT P485-2（含证据与修复方向）；488 codegen
+    触碰仅两行 intrinsic 注册（实证红先于 488 存在 @3a4aacf19）。修复转
+    独立专项。tv 三红（aavm2 + cb_asynchronous_channel/cb_devtools_log_error）
+    均基线复现实存量（fold 门禁对照记录在案）。
+
+## 阶段性折叠记录
+
+- **2026-08-30 一阶折叠（T6 三轮前）**：worktree 14+1 提交（至 47038976e）
+  + master 合入（487/489/491 等并行推进，renderer/session 无冲突自动并）→ 折叠门禁绿：
+  `cargo check` 干净 / `cargo t` 3282 绿 / ui-iced 档 4088 全绿（存量红 plan050_i18n 已被 489 修复）/
+  `cargo tf` 3283 全绿（含 1M churn 档）/ `cargo tv` 3420/3423，三红均 master 基线存量
+  （cb_asynchronous_channel/cb_devtools_log_error/aavm2_m4=P485-2，实测对照）→ master 快进至 71d99e707。
+  工作树保留（三轮 T6 验证继续在其中）；终态 fold 归 /auto-plan:merge。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**2026-08-30 /auto-plan:review（zhaopuming 会话，验证不信勾选、全量门禁在
+worktree cad70501d 重跑）**
+
+**逐验收判定：**
+
+1. **T1–T5 自动化绿** — ✅ PASS。复审重跑：native_dnd 单测 18/18 绿
+   （ui-iced+native-dnd 档）；E2E `native_dnd_e2e` 2/2 ×3 连跑稳定绿
+   （曾现 1 次双红=诊断会话残留窗口的环境暂态，进程清理后 6/6 复绿；
+   本档屏幕交互固有敏感，486 同型）；desktop_behavior 11 绿（044 载具
+   无头注入断言 + 1 ignore 探针）。
+2. **T6 六场景实机留痕** — ✅ PASS（带登记）。A1/A2/A5/A6 实机确认
+   （三轮用户反馈，步骤 10 汇总成文；**A2 HGLOBAL FILECONTENTS 风险
+   解除**）；拖入即时显示=代理端到端实证（合成拖入 hopH 截图证据，
+   cad70501d）；D 系 image temp PNG 与 Ctrl+V 实机留痕缺 → P488-D5。
+3. **winit 共存 spike 结论** — ✅ PASS。待澄清①定案在文（Revoke→
+   Register + HWND 身份键控 + 400ms 自愈；运行时探针实证）。
+4. **schema 三件套绿 + t ui/t vm 不回归 + check 零警告** — ✅ PASS。
+   复审重跑 schema_drift 1 + docs_gen 4 + component_registry 7 全绿；
+   `cargo t vm` 638 绿；`cargo check -p auto-lang` 干净；触面零警告
+   （唯一 eprintln = env 门控诊断，AUTO_DEBUG_KEYS 先例）。
+5. **非 Windows 编译 + G5 降级** — 🔶 PARTIAL（记档非阻塞）。降级臂
+   （cfg(not(all(windows, native-dnd, ui)))）在默认档编译由 638 vm 绿
+   背书、降级语义 false/事件不触发由单测与订阅空档覆盖；**真交叉编译
+   未验**（本机无 Linux 目标工具链——历史计划同约束）。
+
+**全量门禁**：`cargo tf` 3283/3283 绿（含 1M churn）；`cargo tv` 3420/3423，
+三红基线复现实存量（aavm2=P485-2 已归属定案；cb_asynchronous_channel/
+cb_devtools_log_error master 无我改动同红——复审对照在案）。
+
+**遗漏/延后/workaround 猎排**：见 KNOWN-DEBT P488-D1..D5（D1/D2 VM 缺陷
+ignore 探针存档；D3 快甩边缘时序；D4 on_dnd_finished 焦点交付；D5 实机
+留痕缺）。**计划内偏离三条均已在文**：①"受理即返"→调用线程内联阻塞
+（待澄清⑧，OLE 语义实证）；②registry.rs 无需手同步（P4-4 单源，三件套
+绿证）；③T6 以三轮实机+代理端到端实证收口（D 系细分留痕转 D5）。
+无未批准的静默延后。
+
+**判定：PASS → status: reviewed。**（D1–D5 均为登记债，无阻塞项。）
 
 ## 待澄清事项
 
@@ -367,11 +437,17 @@ virtual_window spec events 映射同步。
 - **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户；载具已就绪）**：
   **冒烟 App = `examples/ui/044-dnd-bridge`**（T6 载具，无头验证绿：
   desktop_behavior `plan488_dnd_bridge_app_handlers`——真示例文件编译 +
-  三事件注入断言）。启动（仓库根、worktree 合入后）：
+  三事件注入断言）。**启动 = cargo 示例 `ui_desktop`**（462/463 的 VM
+  虚拟桌面宿主入口——注意不是 `auto run --desktop`（465 的 vue 脚手架
+  路径，且 auto run 需指向带 pac.at 的工程））：
   ```
-  auto run --desktop -r vm        # 桌面模式；Ctrl+Space 召 launcher 开 044-dnd-bridge
+  # worktree 内（合入后在仓库根同命令）：
+  cargo run -p auto-lang --features ui-iced,native-dnd --example ui_desktop
+  # 全屏无框桌面（可选）：尾加 -- --fullscreen
   ```
-  （worktree 未合入期间：在 `.worktrees/plan-488-dev` 目录内同命令。）
+  `--features ui-iced,native-dnd` 必带（native-dnd 缺省不开——拖放面
+  降级空转）。宿主启动后 Ctrl+Space 召 launcher → 开 044-dnd-bridge
+  （注册表默认仓库 examples/ui；044 pac render:"vm" 过滤通过）。
   App 界面三卡：拖出（三按钮）/ 拖入日志 / Ctrl+V 日志。逐条执行并把
   结果行记回本节：
   1. **A1 Explorer→桌面**：Explorer 选 2+ 文件拖到 044 虚拟窗 → 拖入卡
@@ -393,6 +469,34 @@ virtual_window spec events 映射同步。
   操作要点：拖出按钮点击后**按住左键**拖（dnd_start 内联阻塞语义，
   seen-button：见到按下前不判释放）；Esc 取消拖拽。诊断可开
   `AUTO_DND_TRACE=1`。
+  **一轮实机反馈与修复（2026-08-30，worktree da9862370）**：
+  - A2/A5/A6 拖出正常（含 Explorer 虚拟文件落地——**A2 技术风险解除，
+    HGLOBAL FileContents Explorer 接受**）；A5/A6/D 拖入与图片拖入数据
+    均到达但**显示延迟**（要点其它按钮才显示）——根因 = 主线程注册的
+    IDropTarget 跨进程 COM Drop 调用滞留主线程消息队列直到下次用户输入
+    才派发；修复 = IDropTarget 移专用 STA 线程（marshal 代理注册 +
+    自持 GetMessage 泵），E2E T3 改走同路径实证。
+  - A1 拖出文件无效（点按钮无拖拽光标）——.at 拼路径产出非法 JSON
+    （fs.cwd() 裸反斜杠）→ parse 失败 → 受理即拒；修复 = 宽容修复重试
+    （裸反斜杠转义）+ 资产路径改 cwd 相对全径。
+  - **待二轮重跑确认**：拖入即时显示 / A1 文件拖出 / 图片拖入的
+    image_path 落值（D4）。
+  **二轮实机反馈与修复（2026-08-30，worktree 47038976e）**：
+  - **拖入延迟仍在**（STA 线程修复不对症）——判决实验链定案真机制：
+    DragEnter/Over 在拖动期正常（鼠标输入=主线程泵），**Drop 的跨线程
+    COM 投递是 SendMessage 型——主线程不进入取消息态就不送达**，松手后
+    无输入即滞留到下次点击。修复 = **WM_NULL 唤醒 ticker**（DragEnter/
+    Over 上膛，悬停期 40ms PostMessage 宿主窗；排队消息必唤醒任何等待
+    形态，泵一动挂起的 COM 调用即优先送达）。T3 严格版实证：空闲等待
+    （无限期 MsgWait，仅可由 ticker 唤醒）下 Drop 照达 STA 线程。
+  - **A1 拖出文件仍无效**——一轮的宽容修复有缺陷：路径 \ui 被误判
+    unicode 转义前缀保留、\note 的 \n 被误判换行。修复 = 首解析失败
+    后**无条件转义全部反斜杚**（失败即证非合法 JSON；单测补
+    \ui/\note 用例）。
+  - **Explorer 地址栏/搜索框不吃文本拖放**（Chrome 地址栏可以）——目标
+    侧能力差异（Explorer 地址栏只收 shell 对象/URL，不收裸文本），非
+    本仓缺陷；A6 记录以 notepad/Chrome 为文本落点。
+  - **待三轮重跑确认**：拖入即时显示 / A1 文件拖出。
   **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
   desktop_behavior.rs，修复后转正）：
   - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →

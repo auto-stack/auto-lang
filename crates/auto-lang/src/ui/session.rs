@@ -220,6 +220,9 @@ pub struct DesktopState {
     /// 原 KEYBOARD_BINDINGS OnceLock 全局（renderer.rs:4158）迁入；
     /// keyboard_subscription 已收 &HashMap 参数，只需改供给源。
     pub keyboard_bindings: Arc<Mutex<HashMap<String, String>>>,
+    /// Plan 490：桌面热键表（boot 期由 `shell.keys.*` storage 覆盖构建；
+    /// 桌面级热键订阅唯一消费面）。缺省 = `HotkeyTable::builtin()`。
+    pub hotkeys: HotkeyTable,
     /// MCP 共享句柄——**进程唯一**（幂等启动护栏随 T4/MCP 冻结任务落地）。
     pub mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     pub toasts: RefCell<Vec<ToastReq>>,
@@ -278,6 +281,7 @@ impl DesktopState {
         Self {
             current_modifiers: RefCell::new(iced::keyboard::Modifiers::empty()),
             keyboard_bindings: Arc::new(Mutex::new(HashMap::new())),
+            hotkeys: HotkeyTable::builtin(),
             mcp_shared,
             toasts: RefCell::new(Vec::new()),
             toast_next_id: Cell::new(1),
@@ -1274,6 +1278,19 @@ pub enum DesktopEvent {
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
     SummonSwitcher,
+    /// Plan 488：拖出会话完成（STA 线程 DoDragDrop 返回 → 本事件；effect ∈
+    /// copy/move/link/none）。App 事件注入（on_dnd_finished）在步骤 6 接线。
+    DndFinished {
+        effect: &'static str,
+    },
+    /// Plan 488：拖入落点（宿主 HWND 的 IDropTarget Drop → 抽取数据 + 屏幕
+    /// 坐标）。update 臂做屏幕→宿主逻辑坐标换算 + z 序命中 → AppId（注入
+    /// 在步骤 6 接线）。
+    NativeDrop(crate::ui::native_dnd::NativeDropData),
+    /// Plan 488 T7：桌面级 Ctrl+V（热键臂产；App 焦点无关）。update 臂读
+    /// OS 剪贴板（418 文本 → 485 文件/图片）→ on_native_paste 注入焦点
+    /// App。490（桌面热键清理）后合收编本臂键位（热键域协调条款）。
+    NativePaste,
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -1951,6 +1968,12 @@ impl DesktopSession {
         id
     }
 
+    /// Plan 490：桌面热键表（订阅每次 view 重建取一份克隆——表小，换取
+    /// 订阅闭包持所有权、不与 session 生命周期纠缠）。
+    pub fn hotkeys(&self) -> HotkeyTable {
+        self.desktop.hotkeys.clone()
+    }
+
     /// 主窗口语义 = 注册表最小 AppId（459 §2.3；454 由 WM 接管）。
     /// 桌面级服务（MCP/shell/toast tick）与单 App 语义锚点都路由到它。
     pub fn primary_app(&self) -> Option<AppId> {
@@ -1996,6 +2019,22 @@ impl DesktopSession {
             return host.wm.win_of_app(app).map(|_| host.window);
         }
         self.windows.iter().find(|(_, e)| e.app == app).map(|(k, _)| *k)
+    }
+
+    /// Plan 488 T2：拖入落点命中——宿主窗逻辑坐标 → 顶层虚拟窗口的 AppId
+    /// （z 序 + 当前分区过滤复用 [`WmState::hit_test`]；独立模式 = 宿主窗
+    /// 本身 → 焦点 App 兜底）。屏幕→逻辑换算在 renderer 侧（drag_mapper
+    /// 同源），本方法保持纯逻辑可全平台单测。
+    pub fn drop_hit_app_at_local(&self, x: f32, y: f32) -> Option<AppId> {
+        if let Some(host) = &self.host {
+            let wid = host.wm.hit_test(x, y)?;
+            return host.wm.wins.get(&wid).map(|v| v.app);
+        }
+        // 独立模式：无虚拟窗口层——OS 窗口即 App，落点必在其内。
+        self.focused_window
+            .borrow()
+            .and_then(|w| self.app_of_window(&w))
+            .or_else(|| self.primary_app())
     }
 
     pub fn app_mut(&mut self, id: AppId) -> Option<&mut AppSession> {
@@ -2379,6 +2418,260 @@ pub struct SessionViewRef<'a> {
 }
 
 // ---------------------------------------------------------------------------
+// 桌面热键域（Plan 490：宿主共存键位表 + shell.keys.* 数据级可配置）
+// ---------------------------------------------------------------------------
+
+/// 桌面动作键（可配置面；snake 形态 = storage 键后缀与文档共用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HotkeyAction {
+    ExitDesktop,
+    CycleSwitcher,
+    SummonLauncher,
+    SetLayoutGrid,
+    SetLayoutStack,
+    SetLayoutFree,
+    WorkspaceNext,
+    WorkspacePrev,
+    SendToNext,
+    SendToPrev,
+    /// Plan 488 T7（490 收编）：桌面级 Ctrl+V 粘贴路由（update 臂读 OS
+    /// 剪贴板注入焦点 App）——热键域协调条款挂入键位表。
+    Paste,
+    /// G1 退役：内置表不配（Alt+Tab 为 Win11 系统保留死键位）；storage
+    /// 显式配置 `shell.keys.cycle_window` 可复活——表驱动天然支持，成本零。
+    CycleWindow,
+}
+
+impl HotkeyAction {
+    /// storage 键后缀（`shell.keys.<suffix>`）。
+    pub fn storage_suffix(&self) -> &'static str {
+        match self {
+            HotkeyAction::ExitDesktop => "exit_desktop",
+            HotkeyAction::CycleSwitcher => "cycle_switcher",
+            HotkeyAction::SummonLauncher => "summon_launcher",
+            HotkeyAction::SetLayoutGrid => "set_layout_grid",
+            HotkeyAction::SetLayoutStack => "set_layout_stack",
+            HotkeyAction::SetLayoutFree => "set_layout_free",
+            HotkeyAction::WorkspaceNext => "workspace_next",
+            HotkeyAction::WorkspacePrev => "workspace_prev",
+            HotkeyAction::SendToNext => "send_to_next",
+            HotkeyAction::SendToPrev => "send_to_prev",
+            HotkeyAction::Paste => "paste",
+            HotkeyAction::CycleWindow => "cycle_window",
+        }
+    }
+
+    fn from_storage_suffix(s: &str) -> Option<Self> {
+        [
+            HotkeyAction::ExitDesktop,
+            HotkeyAction::CycleSwitcher,
+            HotkeyAction::SummonLauncher,
+            HotkeyAction::SetLayoutGrid,
+            HotkeyAction::SetLayoutStack,
+            HotkeyAction::SetLayoutFree,
+            HotkeyAction::WorkspaceNext,
+            HotkeyAction::WorkspacePrev,
+            HotkeyAction::SendToNext,
+            HotkeyAction::SendToPrev,
+            HotkeyAction::Paste,
+            HotkeyAction::CycleWindow,
+        ]
+        .into_iter()
+        .find(|a| a.storage_suffix() == s)
+    }
+}
+
+/// 键名（覆盖内置表全部键位；解析形态大小写不敏感，bracket 同时收
+/// 词形与原始字符 `[`/`]`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyName {
+    Escape,
+    Tab,
+    Space,
+    Left,
+    Right,
+    BracketLeft,
+    BracketRight,
+    G,
+    L,
+    F,
+    V,
+}
+
+impl KeyName {
+    fn parse(s: &str) -> Option<KeyName> {
+        match s.to_lowercase().as_str() {
+            "escape" | "esc" => Some(KeyName::Escape),
+            "tab" => Some(KeyName::Tab),
+            "space" => Some(KeyName::Space),
+            "left" | "arrowleft" => Some(KeyName::Left),
+            "right" | "arrowright" => Some(KeyName::Right),
+            "bracketleft" | "[" => Some(KeyName::BracketLeft),
+            "bracketright" | "]" => Some(KeyName::BracketRight),
+            "g" => Some(KeyName::G),
+            "l" => Some(KeyName::L),
+            "f" => Some(KeyName::F),
+            "v" => Some(KeyName::V),
+            _ => None,
+        }
+    }
+
+    fn to_iced(self) -> iced::keyboard::Key {
+        use iced::keyboard::Key;
+        match self {
+            KeyName::Escape => Key::Named(iced::keyboard::key::Named::Escape),
+            KeyName::Tab => Key::Named(iced::keyboard::key::Named::Tab),
+            KeyName::Space => Key::Named(iced::keyboard::key::Named::Space),
+            KeyName::Left => Key::Named(iced::keyboard::key::Named::ArrowLeft),
+            KeyName::Right => Key::Named(iced::keyboard::key::Named::ArrowRight),
+            // iced Named 臂无 Bracket——原始字符键走 Character 形态
+            //（renderer 订阅对 G/L/F 的现状比对同走 Character 小写）。
+            KeyName::BracketLeft => Key::Character("[".into()),
+            KeyName::BracketRight => Key::Character("]".into()),
+            KeyName::G => Key::Character("g".into()),
+            KeyName::L => Key::Character("l".into()),
+            KeyName::F => Key::Character("f".into()),
+            KeyName::V => Key::Character("v".into()),
+        }
+    }
+}
+
+/// 键位规格：修饰键 + 主键（**精确匹配**——alt=false 不是通配；同动作
+/// 第二键位用别名表表达，如 launcher 的 IME 兜底双收）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeySpec {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub key: KeyName,
+}
+
+impl KeySpec {
+    /// 解析 "ctrl+alt+bracketleft" 形态（'+' 分隔、大小写不敏感；未知
+    /// 修饰词/键名 → None = 该条丢弃回退默认——坏配置不炸桌面）。
+    fn parse(spec: &str) -> Option<KeySpec> {
+        let mut ctrl = false;
+        let mut alt = false;
+        let mut shift = false;
+        let mut key = None;
+        for token in spec.split('+') {
+            let t = token.trim().to_lowercase();
+            if t.is_empty() {
+                continue;
+            }
+            match t.as_str() {
+                "ctrl" | "control" => ctrl = true,
+                "alt" => alt = true,
+                "shift" => shift = true,
+                _ => {
+                    if key.is_some() {
+                        return None; // 两个主键 = 坏串
+                    }
+                    key = KeyName::parse(&t);
+                    if key.is_none() {
+                        return None;
+                    }
+                }
+            }
+        }
+        key.map(|k| KeySpec { ctrl, alt, shift, key: k })
+    }
+}
+
+/// 桌面热键表：action → 主键位 + 别名集（别名 = 同动作不可覆盖的第二
+/// 键位——launcher 的 ctrl+alt+space IME 兜底「双收」语义在此显性化，
+/// 464 起的隐式行为升格为表内一等公民）。
+#[derive(Debug, Clone)]
+pub struct HotkeyTable {
+    map: std::collections::HashMap<HotkeyAction, KeySpec>,
+    aliases: Vec<(HotkeyAction, KeySpec)>,
+}
+
+impl Default for HotkeyTable {
+    fn default() -> Self {
+        Self::builtin()
+    }
+}
+
+impl HotkeyTable {
+    /// 清理后的默认表（Plan 490 G1/G2）：Alt+Tab 退役；分区切换迁
+    /// Ctrl+Alt+[ / ]（Intel 核显方向键冲突族）；launcher 主键
+    /// Ctrl+Space + 别名 Ctrl+Alt+Space（IME 兜底）。
+    pub fn builtin() -> Self {
+        let mut map = std::collections::HashMap::new();
+        map.insert(HotkeyAction::ExitDesktop, KeySpec { ctrl: false, alt: false, shift: false, key: KeyName::Escape });
+        map.insert(HotkeyAction::CycleSwitcher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Tab });
+        map.insert(HotkeyAction::SummonLauncher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Space });
+        map.insert(HotkeyAction::SetLayoutGrid, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::G });
+        map.insert(HotkeyAction::SetLayoutStack, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::L });
+        map.insert(HotkeyAction::SetLayoutFree, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::F });
+        // G2：分区切换默认迁 bracket 族（Ctrl+Alt+←/→ 为 Intel 核显
+        // "屏幕旋转"冲突族；方向键可经 shell.keys.workspace_* 覆盖恢复）。
+        map.insert(HotkeyAction::WorkspaceNext, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketRight });
+        map.insert(HotkeyAction::WorkspacePrev, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketLeft });
+        map.insert(HotkeyAction::SendToNext, KeySpec { ctrl: true, alt: true, shift: true, key: KeyName::Right });
+        map.insert(HotkeyAction::SendToPrev, KeySpec { ctrl: true, alt: true, shift: true, key: KeyName::Left });
+        // Plan 488 T7（490 收编）：Ctrl+V 粘贴（仅 ctrl，无 alt/shift——
+        // Ctrl+Shift+V 留给 App 层原生语义）。
+        map.insert(HotkeyAction::Paste, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::V });
+        // HotkeyAction::CycleWindow 不入内置表（G1 退役）。
+        let aliases = vec![(
+            HotkeyAction::SummonLauncher,
+            KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::Space },
+        )];
+        Self { map, aliases }
+    }
+
+    /// 应用一条 storage 覆盖（`key` = `shell.keys.` 后缀，如
+    /// "workspace_next"；`value` = KeySpec 串形态）。返回是否生效；
+    /// 未知动作/坏串静默忽略（保留现值或缺省——坏配置不炸桌面）。
+    pub fn apply_override(&mut self, key: &str, value: &str) -> bool {
+        match (HotkeyAction::from_storage_suffix(key), KeySpec::parse(value)) {
+            (Some(action), Some(spec)) => {
+                self.map.insert(action, spec);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 订阅处逐臂判定：主表或别名任一命中即真。
+    pub fn matches(
+        &self,
+        action: HotkeyAction,
+        modifiers: &iced::keyboard::Modifiers,
+        key: &iced::keyboard::Key,
+    ) -> bool {
+        let hit = |spec: &KeySpec| spec_matches(spec, modifiers, key);
+        self.map.get(&action).map(hit).unwrap_or(false)
+            || self.aliases.iter().any(|(a, s)| *a == action && hit(s))
+    }
+
+    /// 动作的主键位（内置/覆盖后；别名另查 `aliases`——文档与设置面用）。
+    pub fn spec(&self, action: HotkeyAction) -> Option<KeySpec> {
+        self.map.get(&action).copied()
+    }
+}
+
+fn spec_matches(spec: &KeySpec, modifiers: &iced::keyboard::Modifiers, key: &iced::keyboard::Key) -> bool {
+    modifiers.control() == spec.ctrl
+        && modifiers.alt() == spec.alt
+        && modifiers.shift() == spec.shift
+        && key_eq(spec.key, key)
+}
+
+fn key_eq(spec_key: KeyName, event: &iced::keyboard::Key) -> bool {
+    if spec_key.to_iced() == *event {
+        return true;
+    }
+    // 字母/符号键大小写不敏感（winit Character 形态可能带实际大小写）。
+    matches!(
+        (spec_key.to_iced(), event),
+        (iced::keyboard::Key::Character(a), iced::keyboard::Key::Character(b)) if a.eq_ignore_ascii_case(b)
+    )
+}
+
+// ---------------------------------------------------------------------------
 // 测试：路由表/退化桌面对等性/M1 访问器
 // ---------------------------------------------------------------------------
 
@@ -2639,6 +2932,29 @@ mod tests {
             Ok(auto_val::Value::Int(7)),
             "attach 后 App/VM 原地（count 连续）"
         );
+    }
+
+    /// Plan 488 T2：拖入落点命中——drop_hit_app_at_local（z 序 + 分区
+    /// 过滤复用 hit_test；独立模式焦点 App 兜底分支由 headless E2E 覆盖）。
+    #[test]
+    fn plan488_drop_hit_app_at_local() {
+        let mut ds = desktop_session_with_host();
+        let app_a = insert_app(&mut ds, "A");
+        ds.wm_add_win(
+            app_a,
+            "A".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let app_b = insert_app(&mut ds, "B");
+        ds.wm_add_win(
+            app_b,
+            "B".into(),
+            iced::Rectangle::new(iced::Point::new(50.0, 50.0), iced::Size::new(100.0, 100.0)),
+        );
+        // B 后开 → z 顶：重叠区归 B，A 独占区归 A，桌面外无命中。
+        assert_eq!(ds.drop_hit_app_at_local(75.0, 75.0), Some(app_b), "重叠区归顶窗");
+        assert_eq!(ds.drop_hit_app_at_local(10.0, 10.0), Some(app_a), "A 独占区");
+        assert_eq!(ds.drop_hit_app_at_local(5000.0, 5000.0), None, "桌面外");
     }
 
     #[test]
@@ -3550,4 +3866,181 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
         }
         _ => None,
     })
+}
+
+/// Plan 488：DnD 事件泵（16ms 轮询双通道）——拖出完成效果 →
+/// [`DesktopEvent::DndFinished`]；拖入抽取 → [`DesktopEvent::NativeDrop`]。
+/// windows × native-dnd 双门控外为空订阅（G5：未开 feature 事件不触发）。
+pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
+    #[cfg(all(windows, feature = "native-dnd"))]
+    {
+        struct DndFinishedRecipe;
+
+        impl std::hash::Hash for DndFinishedRecipe {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                "auto-lang-dnd-finished".hash(state);
+            }
+        }
+
+        impl iced_futures::subscription::Recipe for DndFinishedRecipe {
+            type Output = DesktopMessage;
+
+            fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+                std::hash::Hash::hash(self, state);
+            }
+
+            fn stream(
+                self: Box<Self>,
+                _input: iced_futures::subscription::EventStream,
+            ) -> iced_futures::BoxStream<Self::Output> {
+                use iced_futures::futures::stream::StreamExt;
+                iced_futures::futures::stream::unfold((), |()| async move {
+                    // 低频事件（一次拖拽两条以内）；空拍 Some(None) 剔除保活。
+                    // T6 诊断：订阅存活心跳（1Hz，trace 门控）。
+                    {
+                        static BEAT: std::sync::atomic::AtomicU64 =
+                            std::sync::atomic::AtomicU64::new(0);
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            let n = BEAT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if n % 60 == 0 {
+                                eprintln!("[dnd-beat] subscription alive n={n}");
+                            }
+                        }
+                    }
+                    let msg = crate::ui::native_dnd::win32::take_finished_effect()
+                        .map(|effect| {
+                            DesktopMessage::Desktop(DesktopEvent::DndFinished {
+                                effect: effect.as_str(),
+                            })
+                        })
+                        .or_else(|| {
+                            crate::ui::native_dnd::win32::take_native_drop()
+                                .map(|data| {
+                                    if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                        eprintln!("[dnd-hop2] subscription took native drop (text={:?})", data.text);
+                                    }
+                                    DesktopMessage::Desktop(DesktopEvent::NativeDrop(data))
+                                })
+                        });
+                    match msg {
+                        Some(m) => Some((Some(m), ())),
+                        None => {
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                            Some((None, ()))
+                        }
+                    }
+                })
+                .filter_map(|msg| async move { msg })
+                .boxed()
+            }
+        }
+
+        iced_futures::subscription::from_recipe(DndFinishedRecipe)
+    }
+    #[cfg(not(all(windows, feature = "native-dnd")))]
+    {
+        iced::Subscription::none()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 测试：Plan 490 HotkeyTable（内置表矩阵/别名双收/storage 覆盖/解析）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod hotkey_tests {
+    use super::*;
+    use iced::keyboard::{Key, Modifiers};
+
+    fn named(name: iced::keyboard::key::Named) -> Key {
+        Key::Named(name)
+    }
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
+        let mut m = Modifiers::default();
+        if ctrl { m |= Modifiers::CTRL; }
+        if alt { m |= Modifiers::ALT; }
+        if shift { m |= Modifiers::SHIFT; }
+        m
+    }
+
+    /// T1 内置表匹配矩阵：每动作正例命中 + 一个修饰错配反例；G1/G2
+    /// 新默认锁定（Alt+Tab 无臂、bracket 有臂、方向键默认无臂）。
+    #[test]
+    fn hotkey_builtin_table_matrix() {
+        let t = HotkeyTable::builtin();
+
+        assert!(t.matches(HotkeyAction::ExitDesktop, &mods(false, false, false), &named(iced::keyboard::key::Named::Escape)));
+        assert!(!t.matches(HotkeyAction::ExitDesktop, &mods(true, false, false), &named(iced::keyboard::key::Named::Escape)), "Ctrl+Esc 不是退出");
+
+        assert!(t.matches(HotkeyAction::CycleSwitcher, &mods(true, false, false), &named(iced::keyboard::key::Named::Tab)));
+        assert!(!t.matches(HotkeyAction::CycleSwitcher, &mods(true, true, false), &named(iced::keyboard::key::Named::Tab)), "Ctrl+Alt+Tab 不是 switcher");
+
+        assert!(t.matches(HotkeyAction::SetLayoutGrid, &mods(true, true, false), &Key::Character("g".into())));
+        assert!(t.matches(HotkeyAction::SetLayoutGrid, &mods(true, true, false), &Key::Character("G".into())), "字母大小写不敏感");
+        assert!(!t.matches(HotkeyAction::SetLayoutFree, &mods(true, true, false), &Key::Character("g".into())), "错键不命中");
+
+        // G2：分区切换默认 = bracket 族；方向键默认不再命中。
+        assert!(t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &Key::Character("]".into())));
+        assert!(t.matches(HotkeyAction::WorkspacePrev, &mods(true, true, false), &Key::Character("[".into())));
+        assert!(!t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "方向键默认退役（可覆盖恢复）");
+
+        assert!(t.matches(HotkeyAction::SendToNext, &mods(true, true, true), &named(iced::keyboard::key::Named::ArrowRight)));
+        assert!(!t.matches(HotkeyAction::SendToNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "SendTo 需 shift");
+
+        // G1：Alt+Tab 内置无臂（CycleWindow 退役）。
+        assert!(!t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)), "Alt+Tab 内置表不配（退役）");
+    }
+
+    /// launcher 双收：主键 Ctrl+Space + 别名 Ctrl+Alt+Space（IME 兜底，
+    /// 464 起隐式行为 → 490 表内一等公民）；Shift+Space 不收。
+    #[test]
+    fn hotkey_launcher_alias_dual_receive() {
+        let t = HotkeyTable::builtin();
+        let space = named(iced::keyboard::key::Named::Space);
+        assert!(t.matches(HotkeyAction::SummonLauncher, &mods(true, false, false), &space), "主键 Ctrl+Space");
+        assert!(t.matches(HotkeyAction::SummonLauncher, &mods(true, true, false), &space), "别名 Ctrl+Alt+Space（IME 兜底）");
+        assert!(!t.matches(HotkeyAction::SummonLauncher, &mods(true, false, true), &space), "Ctrl+Shift+Space 不收");
+        assert!(!t.matches(HotkeyAction::SummonLauncher, &mods(false, false, false), &space), "裸 Space 不收");
+    }
+
+    /// KeySpec 解析：词形/原始字符/大小写/坏串。
+    #[test]
+    fn hotkey_spec_parse() {
+        assert_eq!(
+            KeySpec::parse("ctrl+alt+bracketleft"),
+            Some(KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketLeft })
+        );
+        assert_eq!(
+            KeySpec::parse("Ctrl+Alt+]"),
+            Some(KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketRight })
+        );
+        assert_eq!(
+            KeySpec::parse("SHIFT+ESC"),
+            Some(KeySpec { ctrl: false, alt: false, shift: true, key: KeyName::Escape })
+        );
+        assert_eq!(KeySpec::parse("ctrl+q"), None, "未知主键");
+        assert_eq!(KeySpec::parse("super+x"), None, "Super 系不支持");
+        assert_eq!(KeySpec::parse("ctrl+g+l"), None, "双主键坏串");
+        assert_eq!(KeySpec::parse(""), None, "空串无主键");
+    }
+
+    /// storage 覆盖：合法串改表生效（方向键恢复=Intel 冲突机逃生舱）；
+    /// 坏值/未知动作静默忽略保留现值；CycleWindow 可显式复活（G1 逃生舱）。
+    #[test]
+    fn hotkey_storage_override_roundtrip() {
+        let mut t = HotkeyTable::builtin();
+
+        assert!(t.apply_override("workspace_next", "ctrl+alt+right"), "合法覆盖生效");
+        assert!(t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "覆盖后方向键恢复");
+        assert!(!t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &Key::Character("]".into())), "覆盖后主键被替换（非叠加）");
+
+        assert!(!t.apply_override("workspace_prev", "ctrl+alt+!!!"), "坏值被拒");
+        assert!(t.matches(HotkeyAction::WorkspacePrev, &mods(true, true, false), &Key::Character("[".into())), "坏值保留缺省");
+
+        assert!(!t.apply_override("no_such_action", "ctrl+a"), "未知动作被拒");
+
+        assert!(t.apply_override("cycle_window", "alt+tab"), "G1 逃生舱：显式复活 Alt+Tab");
+        assert!(t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)));
+    }
 }

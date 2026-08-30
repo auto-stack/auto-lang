@@ -14634,13 +14634,19 @@ impl<'a> Parser<'a> {
         // Plan 407: also accept ident followed by LParen so that `text t('nav.chat')`
         // parses the whole fn-call expr as the primary prop value (Expr::Call),
         // letting text nodes render i18n `{{ t('nav.chat') }}` without escape hatches.
+        // Plan 492 M2 (族 A1): also accept ident followed by LBracket so that
+        // `text t["label"]` parses the whole Index chain as the primary prop
+        // value (Expr::Index) — previously the `["label"]` suffix split off
+        // into a stray dump/child node.
         let has_ident_field_primary = (self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::Link)
             || self.is_kind(TokenKind::Task)) && {
-            // Peek ahead: ident 后跟 Dot（字段访问）或 LParen（函数调用）
+            // Peek ahead: ident 后跟 Dot（字段访问）/ LParen（函数调用）/
+            // LBracket（索引访问）
             if let Ok(next_token) = self.lexer.next() {
                 let is_field_or_call = next_token.kind == TokenKind::Dot
-                    || next_token.kind == TokenKind::LParen;
+                    || next_token.kind == TokenKind::LParen
+                    || next_token.kind == TokenKind::LSquare;
                 self.lexer.push_token(next_token);
                 is_field_or_call
             } else {

@@ -1,28 +1,25 @@
-// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2)
+// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2 → Plan 492 M6)
 //
 // 折线图:linear scale + path;curve = "monotone" 走 d3 curveMonotoneX
 // (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通
 // (vue 442 A4 直通臂 / VM svgdoc 通道)。
 //
-// 484 v2:nice-ticks 刻度/网格线/图例/hover tooltip(x 索引竖带命中)/
-// axis/grid/legend/tooltip/labels/curve props。曲线变体在 Init 内双算双存
-// (segs/segsM),view 按 curve prop 选择——包组件 Init 内 prop 字符串比较
-// 会破坏 codegen(484 实证,详见计划 M1 与 chart-components.md 已知坑)。
-// 其他实证纪律:
-// - 条件引用的局部变量紧邻使用点声明(首个 for 之后);
-// - f-string 内含字面量 [] 时插值必须用 {} 形式,不能用 ${};
-// - handler 带参无需 msg 声明(声明带参 msg 反而破坏包子组件编译)。
+// 492 M6(绕开摘除,回归直接写法):Init 内直用 prop 字符串比较
+// (`if .curve == …`,点前缀形态)选曲线变体,单 segs 存储段;view 无分支;
+// 带参 msg 声明恢复(`msg { Init, Hover(int) }`);band 样式 dollar 插值
+// (`f"w-[${slot}px] h-full flex-1"`)。484 时代的三大绕开(Init 内两算
+// 两存/花括号插值/裸挂 handler)随引擎修复(Plan 492 M1-M5)全部退役。
+// 保留纪律:条件引用的局部变量紧邻使用点声明(首个 for 之后)。
 //
 // # Usage
 // use { package: official from "../components" }
 // line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
 widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
-    msg { Init }
+    msg { Init, Hover(int) }
 
     model {
         segs List = []
-        segsM List = []
         xlabels str = ""
         yTick4 str = ""
         yTick3 str = ""
@@ -96,11 +93,10 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 var nf float = n - 1
                 stepf = (right - left) / nf
             }
-            var outLegend List = []
             var cs = .colors
             var ccount int = cs.len()
 
-            // ---- 线性变体 ----
+            // ---- 段记录:curve prop 直接选变体(monotone=FC 标准形) ----
             var outSegs List = []
             var k = 0
             for f in .fields {
@@ -111,16 +107,66 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     ys.push(yv)
                 }
                 var dstr = ""
-                var i = 0
-                for d in .data {
-                    var xf float = left + i * stepf
-                    var yf = ys[i]
-                    if i == 0 {
-                        dstr = f"M ${xf} ${yf}"
-                    } else {
-                        dstr = dstr + f" L ${xf} ${yf}"
+                if .curve == "monotone" {
+                    // 割线表 delta[i] = (y[i+1]-y[i])/h
+                    var deltas List = []
+                    var di = 0
+                    while di < n - 1 {
+                        var yA = ys[di]
+                        var yB = ys[di + 1]
+                        deltas.push((yB - yA) / stepf)
+                        di = di + 1
                     }
-                    i = i + 1
+                    // 切线表 m[i](端点单侧割线,内部均值,异号归零)
+                    var ms List = []
+                    var zi = 0
+                    for d in .data { ms.push(0.0) }
+                    if n > 1 {
+                        var z0 = deltas[0]
+                        ms[0] = z0
+                        var zN = deltas[n - 2]
+                        ms[n - 1] = zN
+                    }
+                    var mi = 1
+                    while mi < n - 1 {
+                        var dA = deltas[mi - 1]
+                        var dB = deltas[mi]
+                        var mm float = (dA + dB) / 2.0
+                        if dA * dB <= 0.0 {
+                            mm = 0.0
+                        }
+                        ms[mi] = mm
+                        mi = mi + 1
+                    }
+                    // 逐段发射:i → i+1,控制点 = 端点 ± h/3·m
+                    dstr = f"M ${left} ${ys[0]}"
+                    var si = 0
+                    while si < n - 1 {
+                        var x0 float = left + si * stepf
+                        var y0 = ys[si]
+                        var x1 float = left + (si + 1) * stepf
+                        var y1 = ys[si + 1]
+                        var m0 = ms[si]
+                        var m1 = ms[si + 1]
+                        var c1x float = x0 + stepf / 3.0
+                        var c1y float = y0 + m0 * stepf / 3.0
+                        var c2x float = x1 - stepf / 3.0
+                        var c2y float = y1 - m1 * stepf / 3.0
+                        dstr = dstr + f" C ${c1x} ${c1y} ${c2x} ${c2y} ${x1} ${y1}"
+                        si = si + 1
+                    }
+                } else {
+                    var i = 0
+                    for d in .data {
+                        var xf float = left + i * stepf
+                        var yf = ys[i]
+                        if i == 0 {
+                            dstr = f"M ${xf} ${yf}"
+                        } else {
+                            dstr = dstr + f" L ${xf} ${yf}"
+                        }
+                        i = i + 1
+                    }
                 }
                 var ci int = k
                 if ci >= ccount {
@@ -153,75 +199,6 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             }
             .segs = outSegs
 
-            // ---- monotone 变体(d3 curveMonotoneX/Fritsch-Carlson 标准形:
-            // 切线表 m[i](端点取单侧割线,内部取相邻割线均值,异号归零),
-            // 逐段 i→i+1 发射,控制点 = 端点 ± h/3·m。484 复审修复:原实现
-            // 按"当前点发射出向段"在末点越界,产生水平尾段) ----
-            var outSegsM List = []
-            var kM = 0
-            for f in .fields {
-                var ysM List = []
-                for d in .data {
-                    var vfM float = d[f]
-                    var yvM float = bottom - vfM / domainf * (bottom - plotTop)
-                    ysM.push(yvM)
-                }
-                // 割线表 delta[i] = (y[i+1]-y[i])/h
-                var deltas List = []
-                var di = 0
-                while di < n - 1 {
-                    var yA = ysM[di]
-                    var yB = ysM[di + 1]
-                    deltas.push((yB - yA) / stepf)
-                    di = di + 1
-                }
-                // 切线表 m[i]
-                var ms List = []
-                var zi = 0
-                for d in .data { ms.push(0.0) }
-                if n > 1 {
-                    var z0 = deltas[0]
-                    ms[0] = z0
-                    var zN = deltas[n - 2]
-                    ms[n - 1] = zN
-                }
-                var mi = 1
-                while mi < n - 1 {
-                    var dA = deltas[mi - 1]
-                    var dB = deltas[mi]
-                    var mm float = (dA + dB) / 2.0
-                    if dA * dB <= 0.0 {
-                        mm = 0.0
-                    }
-                    ms[mi] = mm
-                    mi = mi + 1
-                }
-                // 逐段发射:i → i+1,控制点 = 端点 ± h/3·m
-                var dstrM = f"M ${left} ${ysM[0]}"
-                var si = 0
-                while si < n - 1 {
-                    var x0 float = left + si * stepf
-                    var y0 = ysM[si]
-                    var x1 float = left + (si + 1) * stepf
-                    var y1 = ysM[si + 1]
-                    var m0 = ms[si]
-                    var m1 = ms[si + 1]
-                    var c1x float = x0 + stepf / 3.0
-                    var c1y float = y0 + m0 * stepf / 3.0
-                    var c2x float = x1 - stepf / 3.0
-                    var c2y float = y1 - m1 * stepf / 3.0
-                    dstrM = dstrM + f" C ${c1x} ${c1y} ${c2x} ${c2y} ${x1} ${y1}"
-                    si = si + 1
-                }
-                var ciM int = kM
-                if ciM >= ccount {
-                    ciM = ccount - 1
-                }
-                outSegsM.push({ d: dstrM, c: cs[ciM] })
-                kM = kM + 1
-            }
-            .segsM = outSegsM
-
             // ---- x 轴标签(≤8 抽样) ----
             var iname = .index
             var keep int = 1
@@ -242,17 +219,15 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             }
             .xlabels = outLabels
 
-            // ---- 命中竖带 + tooltip 锚点/内容(逐索引预计算) ----
+            // ---- 命中竖带 + tooltip 内容(逐索引预计算) ----
             var nf3 float = n
             var slot float = (right - left) / nf3
             var outBands List = []
-            var outTipX List = []
-            var outTipY List = []
             var outTipTitle List = []
             var outTipBody List = []
             var i3 = 0
             for d in .data {
-                outBands.push({ i: i3, s: "h-full flex-1" })
+                outBands.push({ i: i3, s: f"w-[${slot}px] h-full flex-1" })
                 outTipTitle.push(d[iname])
                 var body = ""
                 var k2 = 0
@@ -305,14 +280,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                             }
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                            if .curve == "monotone" {
-                                for seg in .segsM {
-                                    path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
-                                }
-                            } else {
-                                for seg in .segs {
-                                    path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
-                                }
+                            for seg in .segs {
+                                path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
                             }
                         }
                         if .tooltip {

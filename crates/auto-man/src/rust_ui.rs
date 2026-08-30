@@ -1649,8 +1649,8 @@ fn parse_pac_name(pac_path: &Path) -> Option<String> {
         if line.starts_with("name:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
-                let value = value.trim_matches('"').trim_matches('\'');
                 let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
                 if !value.is_empty() {
                     return Some(value.to_string());
                 }

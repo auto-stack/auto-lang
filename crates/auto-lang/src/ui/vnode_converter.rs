@@ -20,7 +20,8 @@
 //!     ],
 //!     spacing: 10,
 //!     padding: 0,
-//!     style: None
+//!     style: None,
+//!     onclick: None
 //! };
 //!
 //! let vtree = view_to_vtree(view);
@@ -609,6 +610,7 @@ mod tests {
                 spacing: 2,
                 padding: 0,
                 style: None,
+                onclick: None,
             })),
         };
 
@@ -646,7 +648,8 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
 
@@ -715,7 +718,8 @@ mod tests {
             spacing: 5,
             padding: 10,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
 
@@ -743,11 +747,13 @@ mod tests {
                 spacing: 5,
                 padding: 0,
                 style: None,
+                onclick: None,
             }],
             spacing: 10,
             padding: 0,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
 
@@ -782,7 +788,8 @@ mod tests {
             center_x: true,
             center_y: true,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
 
@@ -1006,6 +1013,7 @@ mod tests {
                     spacing: 5,
                     padding: 0,
                     style: None,
+                    onclick: None,
                 },
                 View::Button {
                     disabled: false,
@@ -1019,7 +1027,8 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
 
@@ -1075,7 +1084,8 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-        };
+                onclick: None,
+            };
 
         let tree = view_to_vtree(view);
         let stats = tree.stats();
@@ -1103,10 +1113,11 @@ mod tests {
                 View::Text { content: "a".into(), style: None, selectable: false },
                 View::Row { children: vec![
                     View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None, disabled: false },
-                ], spacing: 0, padding: 0, style: None },
+                ], spacing: 0, padding: 0, style: None, onclick: None },
             ],
             spacing: 0, padding: 0, style: None,
-        };
+                onclick: None,
+            };
         let tree = view_to_vtree_with_paths(view, |_| None);
 
         // root id 由空 path 派生
@@ -1132,7 +1143,8 @@ mod tests {
         let view: View<u32> = View::Column {
             children: vec![View::Text { content: "x".into(), style: None, selectable: false }],
             spacing: 0, padding: 0, style: None,
-        };
+                onclick: None,
+            };
         let tree = view_to_vtree_with_paths(view, |path| {
             Some(crate::ui::debug::SourceSpan {
                 offset: path.iter().map(|&x| x as usize).sum::<usize>(),
@@ -1160,6 +1172,7 @@ mod tests {
                 spacing: 0,
                 padding: 0,
                 style: None,
+                onclick: None,
             }
         }
         let t1 = view_to_vtree_with_paths(build(), |_| None);
@@ -1415,7 +1428,8 @@ mod tests_with_events {
             spacing: 10,
             padding: 0,
             style: None,
-        };
+                onclick: None,
+            };
 
         let (vtree, router) = view_to_vtree_with_events(view);
 

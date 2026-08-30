@@ -694,6 +694,9 @@ pub enum SpanKind {
     Whitespace,
     Arg,
     Ghost,
+    /// PLAN-493: mention 命中段（textarea mentions 能力）——builder 期
+    /// mention_segments 产出 kind "mention"。
+    Mention,
     Plain,
 }
 
@@ -710,6 +713,7 @@ fn parse_span_kind(kind: &str) -> SpanKind {
         "Whitespace" => SpanKind::Whitespace,
         "Arg" => SpanKind::Arg,
         "Ghost" => SpanKind::Ghost,
+        "mention" => SpanKind::Mention,
         _ => SpanKind::Plain,
     }
 }
@@ -809,6 +813,13 @@ fn span_kind_to_format(
         SpanKind::Ghost => iced_widget::core::text::highlighter::Format {
             // 低饱和半透明灰 — 对齐 vue 的 text-muted-foreground/35。
             color: Some(iced::Color::from_rgba(0.45, 0.48, 0.54, 0.45)),
+            font: None,
+        },
+        SpanKind::Mention => iced_widget::core::text::highlighter::Format {
+            // PLAN-493: mention 前景蓝 — 对齐 musk 的
+            // text-[hsl(220_90%_56%)]（≈ blue-600）。iced Format 无 per-span
+            // 背景，web 侧的 bg tint 不复刻（跨端差异登记）。
+            color: Some(c(37, 99, 235)),
             font: None,
         },
         SpanKind::Whitespace | SpanKind::Arg | SpanKind::Plain => {
@@ -2583,6 +2594,20 @@ fn build_grid<M: Clone + Debug + 'static>(
 /// was caused by exactly the drift this rule forbids: the layout lived in two
 /// `build_*`-less copies that diverged. `View::Grid` + `build_grid` exists so
 /// that cannot recur — grid decomposition is now a single source of truth.
+/// Plan 490 G4：布局件（row/col/div=Container）点击包装——有 onclick 时
+/// 以 mouse_area 包装、on_release 发射声明消息（402 右键 / 484 hover 两
+/// mouse_area 先例同 API 形态）；检视捕获模式不包（inspect mouse_area 需
+/// 独占命中，同按钮右键守卫）；None = 原样直出零开销。
+fn wrap_layout_onclick<'a, M: Clone + 'static>(
+    el: iced::Element<'a, M>,
+    onclick: Option<M>,
+) -> iced::Element<'a, M> {
+    match onclick {
+        Some(msg) if !inspect_capture_active() => mouse_area(el).on_release(msg).into(),
+        _ => el,
+    }
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -3185,14 +3210,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Row { children, spacing, padding, style } => {
+            AbstractView::Row { children, spacing, padding, style, onclick } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
                 let els: Vec<iced::Element<'static, M>> =
                     children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
-                build_row(els, spacing, padding, style.as_ref(), None)
+                // Plan 490 G4：布局件点击（row/col/div onclick parity）。
+                wrap_layout_onclick(build_row(els, spacing, padding, style.as_ref(), None), onclick)
             }
 
-            AbstractView::Column { children, spacing, padding, style } => {
+            AbstractView::Column { children, spacing, padding, style, onclick } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
                 // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
@@ -3206,7 +3232,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     els.push(axis_fix_col_child(c).into_iced());
                 }
-                build_column(els, spacing, padding, style.as_ref(), None)
+                // Plan 490 G4：同 Row。
+                wrap_layout_onclick(build_column(els, spacing, padding, style.as_ref(), None), onclick)
             }
 
             AbstractView::Input {
@@ -3390,16 +3417,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 center_x,
                 center_y,
                 style,
+                onclick,
             } => {
-                build_container(
-                    child.into_iced(),
-                    padding,
-                    width,
-                    height,
-                    center_x,
-                    center_y,
-                    style.as_ref(),
-                    None,
+                // Plan 490 G4：div/Container 点击（musk specs 树形态消费面）。
+                wrap_layout_onclick(
+                    build_container(
+                        child.into_iced(),
+                        padding,
+                        width,
+                        height,
+                        center_x,
+                        center_y,
+                        style.as_ref(),
+                        None,
+                    ),
+                    onclick,
                 )
             }
 
@@ -4592,6 +4624,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
             item.text.clone()
         };
         AbstractView::Row {
+            onclick: None,
             children: vec![
                 AbstractView::Checkbox {
                     is_checked: item.done,
@@ -4644,7 +4677,8 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-                            };
+            onclick: None,
+        };
                         }
                         return;
                     }
@@ -4711,6 +4745,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick,
         } => AbstractView::Row {
             children: children
                 .into_iter()
@@ -4719,6 +4754,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            // Plan 490 G4：布局件 onclick 穿透转换（DynamicMessage → IcedMessage）。
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Column {
@@ -4726,6 +4763,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick,
         } => AbstractView::Column {
             children: children
                 .into_iter()
@@ -4734,6 +4772,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Input {
@@ -4844,6 +4883,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_x,
             center_y,
             style,
+            onclick,
         } => AbstractView::Container {
             child: Box::new(convert_view_messages(*child)),
             padding,
@@ -4852,6 +4892,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_x,
             center_y,
             style,
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Scrollable {
@@ -6382,18 +6423,14 @@ fn keyboard_subscription_ext(
 }
 
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
-/// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
-/// - Esc：调试退出（全屏无框桌面无关闭按钮）；
-/// - Alt+Tab：窗口循环（POSIX WM 惯例，OS 不拦即达；463 定案 v1 不动）；
-/// - Ctrl+Tab：switcher 召唤/推进（478 改道——旧窗口循环直循环退役入
-///   overlay 路径；Windows 实测可达键位）；
-/// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
-/// - Ctrl+Alt+←/→：分区环切；Ctrl+Alt+Shift+←/→：聚焦窗发送相邻分区（478）；
-/// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
+/// R12 桌面层路由的键盘半边）。
+/// Plan 490 T2：逐臂硬编码布尔式退役，改查 `HotkeyTable`（键位数据级
+/// 可配置；内置新默认 = G1 Alt+Tab 退役 + G2 分区切换迁 Ctrl+Alt+[ / ]；
+/// launcher 主键 Ctrl+Space + 别名 Ctrl+Alt+Space IME 兜底双收显性化）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
+    hotkeys: crate::ui::session::HotkeyTable,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -6408,64 +6445,226 @@ fn desktop_hotkey_subscription(
             else {
                 return None;
             };
-            use iced::keyboard::{key::Named, Key};
-            // Esc：无修饰键按下时退出（带修饰键的组合留给 App 层）。
-            if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
-                return Some(DM::Wm(WmCommand::ExitDesktop));
-            }
-            // Plan 478 T3：Tab 键位分层——Ctrl+Tab 改道 switcher 召唤/推进
-            //（overlay 打开时由 update 臂转 .Advance，T1 施工图 §2）；
-            // Alt+Tab 保留窗口循环（463 键位 v1 不动）。
-            if matches!(key, Key::Named(Named::Tab)) && !modifiers.shift() {
-                if modifiers.control() && !modifiers.alt() {
-                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
-                }
-                if modifiers.alt() && !modifiers.control() {
-                    return Some(DM::Wm(WmCommand::CycleWindow));
-                }
-            }
-            // Plan 478 T3：send_to 热键（先行判定——下方 Ctrl+Alt 分支对
-            // shift 不敏感，须在此截走 Shift 组合）。
-            if modifiers.control() && modifiers.alt() && modifiers.shift() {
-                if matches!(key, Key::Named(Named::ArrowRight)) {
-                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
-                }
-                if matches!(key, Key::Named(Named::ArrowLeft)) {
-                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
-                }
-            }
-            // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
-            // 方向键 Shift 组合已被上方 send_to 分支截走，此块无需 shift 守卫
-            // （字母键位保持 463 行为不变）。
-            if modifiers.control() && modifiers.alt() {
-                if let Key::Character(c) = &key {
-                    let mode = match c.to_lowercase().as_str() {
-                        "g" => Some(crate::ui::layout::LayoutMode::Grid),
-                        "l" => Some(crate::ui::layout::LayoutMode::MasterStack),
-                        "f" => Some(crate::ui::layout::LayoutMode::Free),
-                        _ => None,
-                    };
-                    if let Some(mode) = mode {
-                        return Some(DM::Wm(WmCommand::SetLayout(mode)));
-                    }
-                }
-                // Plan 472 T2：分区切换 Ctrl+Alt+→/←（环切；dock 切换条同语义）。
-                if matches!(key, Key::Named(Named::ArrowRight)) {
-                    return Some(DM::Wm(WmCommand::NextWorkspace));
-                }
-                if matches!(key, Key::Named(Named::ArrowLeft)) {
-                    return Some(DM::Wm(WmCommand::PrevWorkspace));
-                }
-            }
-            // launcher 召唤：Ctrl+Space（中文系统 IME 抢键时 Ctrl+Alt+Space
-            // 天然覆盖——同键位族不细分 alt）；464 前事件无消费者（update 臂静默）。
-            if matches!(key, Key::Named(Named::Space)) && modifiers.control() && !modifiers.shift()
-            {
-                return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
-            }
-            None
+            // Plan 490 T2：逐臂硬编码退役，改查 HotkeyTable（含 488 T7
+            // Ctrl+V→NativePaste 臂——热键域协调条款收编入 shell.keys.paste）。
+            desktop_hotkey_message(&hotkeys, &modifiers, &key)
         },
     )
+}
+
+/// Plan 490 T2：桌面热键 → DesktopMessage 的表驱动纯函数（订阅闭包的
+/// 可测化内核）。臂序 = 旧行为优先级保持（Esc → switcher → send_to →
+/// 布局 → 分区 → launcher；CycleWindow 内置无臂，storage 复活即生效）。
+fn desktop_hotkey_message(
+    hotkeys: &crate::ui::session::HotkeyTable,
+    modifiers: &iced::keyboard::Modifiers,
+    key: &iced::keyboard::Key,
+) -> Option<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::HotkeyAction as HA;
+    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
+
+    if hotkeys.matches(HA::ExitDesktop, modifiers, key) {
+        return Some(DM::Wm(WmCommand::ExitDesktop));
+    }
+    if hotkeys.matches(HA::CycleSwitcher, modifiers, key) {
+        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+    }
+    if hotkeys.matches(HA::CycleWindow, modifiers, key) {
+        return Some(DM::Wm(WmCommand::CycleWindow));
+    }
+    if hotkeys.matches(HA::SendToNext, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
+    }
+    if hotkeys.matches(HA::SendToPrev, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
+    }
+    if hotkeys.matches(HA::SetLayoutGrid, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Grid)));
+    }
+    if hotkeys.matches(HA::SetLayoutStack, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::MasterStack)));
+    }
+    if hotkeys.matches(HA::SetLayoutFree, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Free)));
+    }
+    if hotkeys.matches(HA::WorkspaceNext, modifiers, key) {
+        return Some(DM::Wm(WmCommand::NextWorkspace));
+    }
+    if hotkeys.matches(HA::WorkspacePrev, modifiers, key) {
+        return Some(DM::Wm(WmCommand::PrevWorkspace));
+    }
+    if hotkeys.matches(HA::SummonLauncher, modifiers, key) {
+        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
+    }
+    // Plan 488 T7（490 收编）：Ctrl+V 粘贴路由（表驱动化——shell.keys.paste
+    // 可覆盖；update 臂语义未动）。
+    if hotkeys.matches(HA::Paste, modifiers, key) {
+        return Some(DM::Desktop(crate::ui::session::DesktopEvent::NativePaste));
+    }
+    None
+}
+
+#[cfg(test)]
+mod hotkey_subscription_tests {
+    use super::*;
+    use crate::ui::session::{DesktopMessage as DM, HotkeyTable, WmCommand};
+    use iced::keyboard::{key::Named, Key, Modifiers};
+
+    fn named(n: Named) -> Key {
+        Key::Named(n)
+    }
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
+        let mut m = Modifiers::default();
+        if ctrl { m |= Modifiers::CTRL; }
+        if alt { m |= Modifiers::ALT; }
+        if shift { m |= Modifiers::SHIFT; }
+        m
+    }
+
+    /// Plan 490 T2 订阅行为测：新默认表逐臂过纯函数内核
+    /// `desktop_hotkey_message`（Alt+Tab 无臂 / bracket 分区 / 覆盖恢复 /
+    /// 双收 / 既有臂不回归）。
+    #[test]
+    fn hotkey_sub_builtin_arms() {
+        let t = HotkeyTable::builtin();
+
+        // G1：Alt+Tab → None（退役；switcher 承担窗口循环）
+        assert!(desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)).is_none());
+
+        // G2：Ctrl+Alt+] / [ → 分区环切
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("]".into())),
+            Some(DM::Wm(WmCommand::NextWorkspace))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("[".into())),
+            Some(DM::Wm(WmCommand::PrevWorkspace))
+        ));
+        // 旧默认方向键 → None（可覆盖恢复）
+        assert!(desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)).is_none());
+
+        // 既有臂不回归
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)),
+            Some(DM::Wm(WmCommand::ExitDesktop))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, false, false), &named(Named::Tab)),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, true), &named(Named::ArrowRight)),
+            Some(DM::Wm(WmCommand::SendFocusedTo(_)))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("g".into())),
+            Some(DM::Wm(WmCommand::SetLayout(_)))
+        ));
+
+        // Plan 488 T7（490 收编）：Ctrl+V 粘贴臂表驱动（Ctrl+Shift+V 不收）
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, false, false), &Key::Character("v".into())),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::NativePaste))
+        ));
+        assert!(desktop_hotkey_message(&t, &mods(true, false, true), &Key::Character("v".into())).is_none(), "Ctrl+Shift+V 留给 App 层");
+
+        // launcher 双收（主键 + IME 兜底别名）
+        let space = named(Named::Space);
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, false, false), &space),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &space),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+        ));
+    }
+
+    /// Plan 490 T2/T3：storage 覆盖后的表驱动行为——方向键恢复生效、
+    /// CycleWindow 显式复活（G1 逃生舱）。
+    #[test]
+    fn hotkey_sub_storage_override_arms() {
+        let mut t = HotkeyTable::builtin();
+        assert!(t.apply_override("workspace_next", "ctrl+alt+right"));
+        assert!(t.apply_override("workspace_prev", "ctrl+alt+left"));
+        assert!(t.apply_override("cycle_window", "alt+tab"));
+
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)),
+            Some(DM::Wm(WmCommand::NextWorkspace))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)),
+            Some(DM::Wm(WmCommand::CycleWindow))
+        ));
+    }
+
+    /// Plan 490 T3 storage 往返：publish 覆盖键 → load_hotkey_overrides 读
+    /// 回 → apply_override 表生效；坏值/未知键静默跳过不 panic；缺席 =
+    /// 空（默认表）。storage 隔离沿 479/489 铁律（AUTO_VM_STORAGE_FILE
+    /// 独立临时文件——进程级全局 + cwd 哈希落盘双重污染面）。
+    #[test]
+    fn hotkey_storage_boot_roundtrip() {
+        let path = std::env::temp_dir().join(format!(
+            "auto-490-hotkeys-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        // 空库 → 无覆盖
+        assert!(load_hotkey_overrides().is_empty(), "缺席键 = 不覆盖");
+
+        // 合法覆盖 + 坏值 + 未知动作键共存
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.workspace_next",
+            "ctrl+alt+right".to_string(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.workspace_prev",
+            "ctrl+alt+!!!bad".to_string(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.cycle_window",
+            "alt+tab".to_string(),
+        );
+
+        let overrides = load_hotkey_overrides();
+        assert_eq!(overrides.len(), 3, "三键均读回（好坏由 apply 判）");
+
+        let mut t = HotkeyTable::builtin();
+        for (k, v) in &overrides {
+            t.apply_override(k, v); // 坏值静默拒绝——不 panic
+        }
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)),
+                Some(DM::Wm(WmCommand::NextWorkspace))
+            ),
+            "合法覆盖生效（方向键恢复=Intel 冲突机逃生舱）"
+        );
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("[".into())),
+                Some(DM::Wm(WmCommand::PrevWorkspace))
+            ),
+            "坏值保留缺省（bracket 仍生效）"
+        );
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)),
+                Some(DM::Wm(WmCommand::CycleWindow))
+            ),
+            "G1 逃生舱：storage 显式复活 Alt+Tab"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 /// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
@@ -7851,6 +8050,110 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
     None
 }
 
+/// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷字段
+/// {text: str|null, files: [str], image: {path,width,height}|null,
+/// screen_x: int, screen_y: int, formats: [str]}（VM 堆记录编码见
+/// [`crate::ui::vm_bridge::RecordValue`]）。
+fn native_drop_record_fields(
+    data: &crate::ui::native_dnd::NativeDropData,
+) -> Vec<(String, crate::ui::vm_bridge::RecordValue)> {
+    use crate::ui::vm_bridge::RecordValue;
+    vec![
+        // 缺省恒空串（heap-record Str 字段与 nil 的 != 比较在 VM 侧破坏
+        // 求值栈——488 T6 载具调试发现，空串哨兵绕开；债登记见计划）。
+        (
+            "text".into(),
+            RecordValue::Str(data.text.clone().unwrap_or_default()),
+        ),
+        ("files".into(), RecordValue::StrList(data.files.clone())),
+        // image 拍平三字段（嵌套记录的 Str 字段在 VM 侧取值不稳——
+        // 宽高 Int 可达、path Str 产出错误码；扁平 Str 实证可达）。
+        (
+            "image_path".into(),
+            RecordValue::Str(data.image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+        ),
+        (
+            "image_w".into(),
+            match &data.image {
+                Some((_, w, _)) => RecordValue::Int(*w as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        (
+            "image_h".into(),
+            match &data.image {
+                Some((_, _, h)) => RecordValue::Int(*h as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        ("screen_x".into(), RecordValue::Int(data.screen_x)),
+        ("screen_y".into(), RecordValue::Int(data.screen_y)),
+        ("formats".into(), RecordValue::StrList(data.formats.clone())),
+    ]
+}
+
+/// Plan 488：宿主注入面 —— App 级原生事件（on_native_drop /
+/// on_native_paste / on_dnd_finished）经既有 handler 管线直注（472/479
+/// 同型：bridge.call_handler；未声明 handler 的 App 静默忽略）。
+fn inject_native_event(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    event: &str,
+    args: &[auto_val::Value],
+) {
+    if let Some(sess) = state.app_mut(app) {
+        let _ = sess.component.bridge_mut().call_handler(event, args);
+    }
+}
+
+/// Plan 488 T7：OS 剪贴板 → `on_native_paste` 载荷字段。读取优先级
+/// text（418）→ files（485）→ image（485）；whichever 可用并存（形状与
+/// on_native_drop 的 text/files/image 域一致）。
+fn clipboard_paste_record_fields() -> Vec<(String, crate::ui::vm_bridge::RecordValue)> {
+    use crate::ui::vm_bridge::RecordValue;
+    #[cfg(feature = "ui-clipboard")]
+    let text = crate::ui::clipboard::clipboard_get();
+    #[cfg(not(feature = "ui-clipboard"))]
+    let text: Option<String> = None;
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    let files = crate::ui::clipboard_native::clipboard_files_get();
+    #[cfg(not(all(windows, feature = "native-clipboard")))]
+    let files: Vec<String> = Vec::new();
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    let image = crate::ui::clipboard_native::clipboard_image_get()
+        .map(|t| (t.path.to_string_lossy().into_owned(), t.width, t.height));
+    #[cfg(not(all(windows, feature = "native-clipboard")))]
+    let image: Option<(String, u32, u32)> = None;
+
+    vec![
+        (
+            "text".into(),
+            RecordValue::Str(text.unwrap_or_default()),
+        ),
+        ("files".into(), RecordValue::StrList(files)),
+        (
+            "image_path".into(),
+            RecordValue::Str(image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+        ),
+        (
+            "image_w".into(),
+            match &image {
+                Some((_, w, _)) => RecordValue::Int(*w as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        (
+            "image_h".into(),
+            match &image {
+                Some((_, _, h)) => RecordValue::Int(*h as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+    ]
+}
+
 /// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
 /// 物理域消息 [`crate::ui::session::DesktopEvent::NativeDragOver`] 与 DragWatch
 /// 采样共用本入口；无桌面窗的 headless 形态按恒等退化（E2E 直注即所得）。
@@ -8049,6 +8352,37 @@ fn load_dock_pinned() -> Option<Vec<String>> {
         .filter(|s| !s.is_empty())
         .collect();
     (!list.is_empty()).then_some(list)
+}
+
+/// Plan 490 T3：热键覆盖读入（storage `shell.keys.<action>` > 内置默认）。
+/// 宿主侧无键枚举面——逐个读已知动作位（11 个），缺席 = 不覆盖；坏值由
+/// `HotkeyTable::apply_override` 静默拒绝（缺省回退——坏配置不炸桌面，
+/// 472 dock 配置同型）。
+fn load_hotkey_overrides() -> Vec<(String, String)> {
+    use crate::ui::session::HotkeyAction;
+    let mut out = Vec::new();
+    for action in [
+        HotkeyAction::ExitDesktop,
+        HotkeyAction::CycleSwitcher,
+        HotkeyAction::SummonLauncher,
+        HotkeyAction::SetLayoutGrid,
+        HotkeyAction::SetLayoutStack,
+        HotkeyAction::SetLayoutFree,
+        HotkeyAction::WorkspaceNext,
+        HotkeyAction::WorkspacePrev,
+        HotkeyAction::SendToNext,
+        HotkeyAction::SendToPrev,
+        HotkeyAction::Paste,
+        HotkeyAction::CycleWindow,
+    ] {
+        let key = format!("shell.keys.{}", action.storage_suffix());
+        if let Some(v) = crate::vm::ffi::stdlib::storage_host_read(&key) {
+            if !v.trim().is_empty() {
+                out.push((action.storage_suffix().to_string(), v));
+            }
+        }
+    }
+    out
 }
 
 /// Plan 472 T5：把 pinned 表解析为 {id,icon} Obj 数组注入 shell
@@ -8626,6 +8960,12 @@ fn compare_pngs(
                     // Plan 472 T5：pinned 配置（storage 覆盖 > pack 默认）。
                     if let Some(pinned) = load_dock_pinned() {
                         session.desktop.dock_pinned = pinned;
+                    }
+                    // Plan 490 T3：热键表覆盖（storage `shell.keys.*` >
+                    // 内置默认；坏值静默回退——订阅唯一消费面为
+                    // desktop_hotkey_subscription 的会话表快照）。
+                    for (k, v) in load_hotkey_overrides() {
+                        session.desktop.hotkeys.apply_override(&k, &v);
                     }
                 }
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
@@ -10709,6 +11049,12 @@ fn compare_pngs(
                         if let Some(app) = app {
                             state.register_window(id, app, size);
                         }
+                        // Plan 488 步骤 5：宿主窗打开即挂拖入目标（幂等，HWND
+                        // 身份键控；winit 目标位移见 native_dnd spike 结论）。
+                        #[cfg(all(windows, feature = "native-dnd", feature = "native-dock"))]
+                        if state.is_desktop() {
+                            crate::ui::native_dnd::win32::ensure_host_drop_target();
+                        }
                     }
                     DesktopEvent::WindowClosed(id) => {
                         // 459 不变式：一窗一 App，App 生命周期随窗（454 引入
@@ -10736,6 +11082,12 @@ fn compare_pngs(
                     // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
                     // 兜底；shell/launcher 命令至多 400ms 达）。
                     DesktopEvent::ServiceTick => {
+                        // Plan 488 步骤 5：宿主窗重建自愈——HWND 变化时重挂
+                        // 拖入目标（幂等直返，400ms 节拍）。
+                        #[cfg(all(windows, feature = "native-dnd", feature = "native-dock"))]
+                        if state.is_desktop() {
+                            crate::ui::native_dnd::win32::ensure_host_drop_target();
+                        }
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
                         if state.pending_incubations() > 0 {
@@ -10778,6 +11130,74 @@ fn compare_pngs(
                             }
                         }
                         return summon_switcher(state);
+                    }
+                    // Plan 488 步骤 4/6：拖出完成 → 焦点 App 注入
+                    // on_dnd_finished（管线现状 = call_handler 直注；发起方
+                    // 追踪无 VM→AppId 通道，v1 取完成时焦点 App——拖出期桌面
+                    // 持焦点，与发起方一致；偏差场景记 T6 冒烟观察）。
+                    DesktopEvent::DndFinished { effect } => {
+                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
+                        {
+                            inject_native_event(state, app, "on_dnd_finished", &[
+                                auto_val::Value::str(effect),
+                            ]);
+                        }
+                    }
+                    // Plan 488 步骤 5/6：拖入落点——屏幕物理坐标 → 宿主逻辑域
+                    // （drag_mapper 同源）→ z 序命中 → AppId → on_native_drop
+                    // 注入（payload Record：text/files/image whichever）。
+                    // headless/无宿主窗时坐标按恒等退化。
+                    DesktopEvent::NativeDrop(data) => {
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            eprintln!("[dnd-hop3] update arm NativeDrop enter");
+                        }
+                        let local = (data.screen_x as f32, data.screen_y as f32);
+                        #[cfg(windows)]
+                        let local = if let Some((mapper, _)) = drag_mapper() {
+                            let l = mapper.screen_to_local(crate::ui::native_dock::Rect::new(
+                                data.screen_x,
+                                data.screen_y,
+                                0,
+                                0,
+                            ));
+                            (l.x as f32, l.y as f32)
+                        } else {
+                            local
+                        };
+                        let hit = state.drop_hit_app_at_local(local.0, local.1);
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            eprintln!(
+                                "[dnd-hit] local=({:.0},{:.0}) app={:?} widget={:?}",
+                                local.0,
+                                local.1,
+                                hit,
+                                hit.and_then(|a| state.apps.get(&a).map(|s| s.component.widget_name().to_string()))
+                            );
+                        }
+                        if let Some(app) = hit {
+                            if let Some(sess) = state.app_mut(app) {
+                                let res = sess.component.bridge_mut().call_handler_with_record(
+                                    "on_native_drop",
+                                    native_drop_record_fields(&data),
+                                );
+                                if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                    eprintln!("[dnd-hop4] handler result: {res:?}");
+                                }
+                            }
+                        }
+                    }
+                    // Plan 488 T7：桌面级 Ctrl+V → 读 OS 剪贴板（418 文本 →
+                    // 485 文件/图片）→ on_native_paste 注入焦点 App。
+                    DesktopEvent::NativePaste => {
+                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
+                        {
+                            if let Some(sess) = state.app_mut(app) {
+                                let _ = sess.component.bridge_mut().call_handler_with_record(
+                                    "on_native_paste",
+                                    clipboard_paste_record_fields(),
+                                );
+                            }
+                        }
                     }
                 }
                 iced::Task::none()
@@ -11455,9 +11875,10 @@ fn compare_pngs(
             if let Some(primary) = state.primary_app() {
                 // Plan 463 T3：桌面级热键（Esc 调试退出；T6 追加布局/循环/
                 // 召唤）。仅 desktop 模式订一份；独立模式行为不变。
+                // Plan 490 T3：表取自会话（boot 期 shell.keys.* 覆盖已并入）。
                 if state.is_desktop() {
                     if let Some(host) = &state.host {
-                        subs.push(desktop_hotkey_subscription(host.window));
+                        subs.push(desktop_hotkey_subscription(host.window, state.hotkeys()));
                     }
                 }
                 // Plan 462：desktop 模式帧泵（空闲时也要有机会消费 view 侧
@@ -11476,6 +11897,9 @@ fn compare_pngs(
                 // 非 Windows 平台为空订阅）。
                 if state.is_desktop() {
                     subs.push(crate::ui::session::native_dock_event_subscription());
+                    // Plan 488：拖出完成事件泵（windows × native-dnd 双门控，
+                    // 其余档空订阅——DoDragDrop STA 线程 → on_dnd_finished 面）。
+                    subs.push(crate::ui::session::dnd_finished_subscription());
                 }
                 // MCP action channel — polls for injected actions from AI agent (Plan 278)
                 subs.push(mcp_action_subscription(primary));
@@ -14702,7 +15126,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Layout containers: recursively render children through render_dynamic_view
         // so Input/Textarea get proper IcedMessage text capture.
-        AbstractView::Column { children, spacing, padding, style } => {
+        AbstractView::Column { children, spacing, padding, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -14773,7 +15197,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：同 Row（inspect 模式自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
         // Plan 422: 锚定弹层(VM 模式路径)。子路径约定(与 snapshot/vnode/
@@ -14815,7 +15241,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "popover", el, vec![], None) } else { el }
         }
 
-        AbstractView::Row { children, spacing, padding, style } => {
+        AbstractView::Row { children, spacing, padding, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -14860,10 +15286,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：布局件点击（inspect 模式 wrap_layout_onclick 自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
-        AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
+        AbstractView::Container { child, padding, width, height, center_x, center_y, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
@@ -14877,7 +15305,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.pop();
             let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：div/Container 点击（inspect 模式自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
         AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
@@ -15572,6 +16002,7 @@ fn apply_highlight_mut_rec<M: Clone + Debug>(
             center_x: false,
             center_y: false,
             style: Some(rust_highlight_style()),
+            onclick: None,
         };
         *view = wrapped;
         return true;
@@ -16430,8 +16861,27 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-493 T4: mention 段 kind 流通——parse_span_kind 认 "mention"，
+    /// build_span_lines 对 mention 段按无缝覆盖契约切出行内范围。
+    #[test]
+    fn plan493_mention_kind_parses_and_covers() {
+        assert_eq!(parse_span_kind("mention"), SpanKind::Mention);
+        assert_eq!(parse_span_kind("Command"), SpanKind::Command);
+        let value = "@assistant hi";
+        let spans = vec![
+            ("@assistant".to_string(), "mention".to_string()),
+            (" hi".to_string(), "text".to_string()),
+        ];
+        let settings = build_span_lines(&spans, value, "");
+        assert!(!settings.lines.is_empty(), "无缝覆盖段必须切出 SpanLines");
+        let first = &settings.lines[0];
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].1, SpanKind::Mention);
+        assert_eq!(&value[first[0].0.clone()], "@assistant");
+    }
+
     /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
-    /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
+    /// （musk rail 四图标 + 折叠 chevron/搜索）——缺名静默降级空占位，
     /// 此处以测试锁住。
     #[test]
     fn nav_family_lucide_icons_present() {
@@ -17691,6 +18141,58 @@ mod tests {
         let _ = std::fs::remove_file(&_store);
     }
 
+    /// Plan 488 T2：on_native_drop 载荷字段形状——text/files/image
+    /// whichever（缺省 Null），含屏幕坐标与观察格式表。
+    #[test]
+    fn plan488_native_drop_payload_record() {
+        let data = crate::ui::native_dnd::NativeDropData {
+            text: Some("hi".into()),
+            files: vec!["C:/a.txt".into()],
+            image: None,
+            screen_x: 12,
+            screen_y: 34,
+            formats: vec!["CF_HDROP".into(), "CF_UNICODETEXT".into()],
+        };
+        let fields = native_drop_record_fields(&data);
+        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+        assert_eq!(
+            get("text"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str("hi".into()))
+        );
+        assert_eq!(get("screen_x"), Some(&crate::ui::vm_bridge::RecordValue::Int(12)));
+        assert_eq!(get("screen_y"), Some(&crate::ui::vm_bridge::RecordValue::Int(34)));
+        assert_eq!(
+            get("files"),
+            Some(&crate::ui::vm_bridge::RecordValue::StrList(vec!["C:/a.txt".into()]))
+        );
+        // image 缺省空串（空串哨兵——VM 侧 record 字段判 nil 比较不稳）。
+        assert_eq!(
+            get("image_path"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str(String::new()))
+        );
+    }
+
+    /// Plan 488 T7：桌面级 Ctrl+V 注入面——OS 剪贴板 → on_native_paste
+    /// 载荷字段。文本往返 + files/image 域形状（485 测试锁串行化，防
+    /// nextest 并行进程互清剪贴板）。
+    #[test]
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    fn plan488_clipboard_paste_payload_reads_os_clipboard() {
+        let _lock = crate::ui::clipboard_native::GlobalClipboardTestLock::acquire();
+        crate::ui::clipboard::clipboard_set("paste-me");
+        let fields = clipboard_paste_record_fields();
+        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+        assert_eq!(
+            get("text"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str("paste-me".into()))
+        );
+        assert!(
+            matches!(get("files"), Some(crate::ui::vm_bridge::RecordValue::StrList(_))),
+            "files 域恒为列表"
+        );
+        assert!(get("image_path").is_some(), "image_path 域恒存在（空串或有值）");
+    }
+
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
     /// （App 条目 native 空串 + native 条目五字段集）→ view if 分支过编译
     /// 语法门 + NativeFocus/NativeClose 消息臂写总线记录（wid 直传
@@ -18343,6 +18845,7 @@ mod tests {
             spacing: 0,
             padding: 0,
             style: None,
+            onclick: None,
         };
         apply_table_header_style(&mut v);
         match v {
@@ -18937,6 +19440,7 @@ mod line_edit_tests {
             spacing: 8,
             padding: 8,
             style: None,
+            onclick: None,
         }
     }
 
@@ -19860,6 +20364,167 @@ widget LoginChild {
                 "Captured Tab(shift={shift}) must not reach the uncaptured fallback; got {msg:?}"
             );
         }
+    }
+
+    // ---- Plan 490 G4：VM 轨布局件（row/col/div）onclick 点击 parity ----
+    // 用户实测缺陷：028-launcher 候选行（row{onclick:.Launch}）只能键盘选
+    // 不能鼠标点——VM 轨转换层不提取布局件 onclick（Vue 轨泛映射已通，
+    // ui_gen/vue.rs:12249）= 双端 parity 缺口。端到端自 .at 源构建（沿
+    // p483_build_login_shape 生产路径），Simulator 坐标点击 → 断言声明
+    // 消息到达。现状（红）：onclick 被静默丢弃，点击零消息。
+
+    /// G4 测试载体：for-loop 行（launcher 形态）+ 无 onclick 锚行 + col/div
+    /// 三形态。msg 声明/带参 handler/on 块全沿 028 真实形态。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_build_click_shape() -> crate::ui::dynamic::DynamicComponent {
+        use crate::ast::Stmt;
+        let src = r##"
+widget ClickApp {
+    msg { Pick(str), Launch(str) }
+    model {
+        var items = ["alpha", "beta"]
+        var ranked = [
+            { i: 0, name: "notes", title: "Notes" },
+            { i: 1, name: "music", title: "Music" }
+        ]
+        var picked str = ""
+    }
+    view {
+        col {
+            for it in .items {
+                row {
+                    onclick: .Pick(it)
+                    text it
+                }
+            }
+            row {
+                text "gamma"
+            }
+            col {
+                onclick: .Pick("col")
+                text "colbox"
+            }
+            div {
+                onclick: .Pick("div")
+                text "divbox"
+            }
+            for r in .ranked {
+                row {
+                    onclick: .Launch(r.name)
+                    text r.title
+                }
+            }
+        }
+    }
+    on {
+        .Pick(name) -> { .picked = name }
+        .Launch(name) -> { .picked = name }
+    }
+}
+"##;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(decls.len(), 1, "single root widget");
+        let root_decl = &decls[0];
+        let view_widget = crate::aura::extract_widget_from_decl(root_decl)
+            .map_err(|e| e.to_string())
+            .unwrap();
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            root_decl,
+            &[],
+            &view_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component builds")
+    }
+
+    /// G4 构建并点击指定文本（点击落在其父布局件的矩形上）→ 收集消息。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_click_collect(placeholder: &str) -> Vec<IcedMessage> {
+        let comp = p490_build_click_shape();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let view = convert_view_messages(view);
+        let el = render_dynamic_view(view, None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+        ui.click(placeholder).expect("click target found");
+        ui.into_messages().collect()
+    }
+
+    /// T4 红①：row 挂 onclick（for-loop 形态，028 候选行同构）——
+    /// 点击必须发射 .Pick(it) 消息。现状（红）：零消息。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_row_onclick_fires() {
+        let msgs = p490_click_collect("alpha");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("alpha")),
+            "row onclick must fire .Pick(\"alpha\") on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 红②：col 挂 onclick——点击发射 .Pick("col")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_col_onclick_fires() {
+        let msgs = p490_click_collect("colbox");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("col")),
+            "col onclick must fire on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 红③：div（=Container）挂 onclick（musk specs 树形态）——
+    /// 点击必须发射 .Pick("div")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_container_div_onclick_fires() {
+        let msgs = p490_click_collect("divbox");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("div")),
+            "div/container onclick must fire on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 锚（绿）：无 onclick 的布局行点击零消息——不引入误触发。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_layout_without_onclick_inert() {
+        let msgs = p490_click_collect("gamma");
+        assert!(
+            msgs.is_empty(),
+            "plain row without onclick must stay inert; got {msgs:?}"
+        );
+    }
+
+    /// T4 红④：launcher 真实形态（for r in .ranked → row{onclick:
+    /// .Launch(r.name)}，对象列表带参派发）——点击 Notes 行必须发射
+    /// .Launch("notes")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_launcher_row_launches() {
+        let msgs = p490_click_collect("Notes");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("notes")),
+            "launcher-shaped row must fire .Launch(\"notes\") on click; got {msgs:?}"
+        );
+        // 第二行参数独立性：Music → notes 之外的参数
+        let msgs = p490_click_collect("Music");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("music")),
+            "second launcher row must fire .Launch(\"music\"); got {msgs:?}"
+        );
     }
 }
 

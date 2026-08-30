@@ -1,0 +1,29 @@
+// PLAN-493 复验器具②：child-widget 形态的 mentions 着色判别。
+// 根部件 App 引用子部件 Composer；若 @assistant 失色而根形态(器具①)着色,
+// 则 child-widget 渲染路径丢 highlight(上游缺口)。
+widget Composer(disabled: bool) {
+    model {
+        var mtext str = "@assistant hi"
+        var names list = ["assistant"]
+    }
+    view {
+        textarea {
+            style: "text-lg p-2"
+            value: .mtext
+            placeholder: "mention ta"
+            oninput: .Dummy
+            mentions: .names
+            height: 60
+        }
+    }
+    msg Msg { Dummy }
+    on { .Dummy -> {} }
+}
+
+widget App {
+    view {
+        col {
+            Composer { disabled: false }
+        }
+    }
+}
