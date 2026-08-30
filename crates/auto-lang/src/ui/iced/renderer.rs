@@ -20032,6 +20032,167 @@ widget LoginChild {
             );
         }
     }
+
+    // ---- Plan 490 G4：VM 轨布局件（row/col/div）onclick 点击 parity ----
+    // 用户实测缺陷：028-launcher 候选行（row{onclick:.Launch}）只能键盘选
+    // 不能鼠标点——VM 轨转换层不提取布局件 onclick（Vue 轨泛映射已通，
+    // ui_gen/vue.rs:12249）= 双端 parity 缺口。端到端自 .at 源构建（沿
+    // p483_build_login_shape 生产路径），Simulator 坐标点击 → 断言声明
+    // 消息到达。现状（红）：onclick 被静默丢弃，点击零消息。
+
+    /// G4 测试载体：for-loop 行（launcher 形态）+ 无 onclick 锚行 + col/div
+    /// 三形态。msg 声明/带参 handler/on 块全沿 028 真实形态。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_build_click_shape() -> crate::ui::dynamic::DynamicComponent {
+        use crate::ast::Stmt;
+        let src = r##"
+widget ClickApp {
+    msg { Pick(str), Launch(str) }
+    model {
+        var items = ["alpha", "beta"]
+        var ranked = [
+            { i: 0, name: "notes", title: "Notes" },
+            { i: 1, name: "music", title: "Music" }
+        ]
+        var picked str = ""
+    }
+    view {
+        col {
+            for it in .items {
+                row {
+                    onclick: .Pick(it)
+                    text it
+                }
+            }
+            row {
+                text "gamma"
+            }
+            col {
+                onclick: .Pick("col")
+                text "colbox"
+            }
+            div {
+                onclick: .Pick("div")
+                text "divbox"
+            }
+            for r in .ranked {
+                row {
+                    onclick: .Launch(r.name)
+                    text r.title
+                }
+            }
+        }
+    }
+    on {
+        .Pick(name) -> { .picked = name }
+        .Launch(name) -> { .picked = name }
+    }
+}
+"##;
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(decls.len(), 1, "single root widget");
+        let root_decl = &decls[0];
+        let view_widget = crate::aura::extract_widget_from_decl(root_decl)
+            .map_err(|e| e.to_string())
+            .unwrap();
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            root_decl,
+            &[],
+            &view_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component builds")
+    }
+
+    /// G4 构建并点击指定文本（点击落在其父布局件的矩形上）→ 收集消息。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_click_collect(placeholder: &str) -> Vec<IcedMessage> {
+        let comp = p490_build_click_shape();
+        let (view, _ids, _probe) = comp.view_with_debug_gated(false);
+        let view = convert_view_messages(view);
+        let el = render_dynamic_view(view, None, &mut Vec::new());
+        let mut ui = iced_test::simulator(el);
+        ui.click(placeholder).expect("click target found");
+        ui.into_messages().collect()
+    }
+
+    /// T4 红①：row 挂 onclick（for-loop 形态，028 候选行同构）——
+    /// 点击必须发射 .Pick(it) 消息。现状（红）：零消息。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_row_onclick_fires() {
+        let msgs = p490_click_collect("alpha");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("alpha")),
+            "row onclick must fire .Pick(\"alpha\") on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 红②：col 挂 onclick——点击发射 .Pick("col")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_col_onclick_fires() {
+        let msgs = p490_click_collect("colbox");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("col")),
+            "col onclick must fire on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 红③：div（=Container）挂 onclick（musk specs 树形态）——
+    /// 点击必须发射 .Pick("div")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_container_div_onclick_fires() {
+        let msgs = p490_click_collect("divbox");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("div")),
+            "div/container onclick must fire on click; got {msgs:?}"
+        );
+    }
+
+    /// T4 锚（绿）：无 onclick 的布局行点击零消息——不引入误触发。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_layout_without_onclick_inert() {
+        let msgs = p490_click_collect("gamma");
+        assert!(
+            msgs.is_empty(),
+            "plain row without onclick must stay inert; got {msgs:?}"
+        );
+    }
+
+    /// T4 红④：launcher 真实形态（for r in .ranked → row{onclick:
+    /// .Launch(r.name)}，对象列表带参派发）——点击 Notes 行必须发射
+    /// .Launch("notes")。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p490_launcher_row_launches() {
+        let msgs = p490_click_collect("Notes");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("notes")),
+            "launcher-shaped row must fire .Launch(\"notes\") on click; got {msgs:?}"
+        );
+        // 第二行参数独立性：Music → notes 之外的参数
+        let msgs = p490_click_collect("Music");
+        assert!(
+            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("music")),
+            "second launcher row must fire .Launch(\"music\"); got {msgs:?}"
+        );
+    }
 }
 
 
