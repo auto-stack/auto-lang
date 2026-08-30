@@ -5328,12 +5328,15 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         // Plan 057 续(富文本输入): textarea 的 highlight/ghost 由
                         // 叠加层包裹消费(见 textarea_rich_overlay),不透传为无效属性。
                         // PLAN-493: mentions/mention_class 同理由
-                        // textarea_mentions_overlay 消费,不透传。
+                        // textarea_mentions_overlay 消费;height 为 VM-only
+                        // 几何 prop(Plan 053 契约,浏览器轨道 CSS 几何自理),
+                        // 一并不透传。
                         if tag == "textarea"
                             && (key == "highlight"
                                 || key == "ghost"
                                 || key == "mentions"
-                                || key == "mention_class")
+                                || key == "mention_class"
+                                || key == "height")
                         {
                             continue;
                         }

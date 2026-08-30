@@ -5632,7 +5632,18 @@ let tabs_inner = View::Row {
         // highlight prop 段让位。computed/调用链名单 → None = VM 无高亮
         // 降级(迁移前现状,非回归;Vue 轨经 codegen 原生响应式消费不受限)。
         let highlight = match self.resolve_mention_names(props, bindings) {
-            Some(names) => mention_segments(&value, &names),
+            Some(names) => {
+                let segs = mention_segments(&value, &names);
+                if std::env::var("AUTO_DEBUG_MENTIONS").is_ok() {
+                    eprintln!(
+                        "[493-MENTIONS] names={} value={:?} segs={:?}",
+                        names.len(),
+                        value,
+                        segs
+                    );
+                }
+                segs
+            }
             None => self.resolve_highlight_spans(props, bindings),
         };
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
