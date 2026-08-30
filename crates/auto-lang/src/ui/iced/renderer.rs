@@ -1346,6 +1346,22 @@ fn plan050_content_align(
     (h, v)
 }
 
+/// Plan 409/414 高度臂 × Plan-050 显式对齐类的让位规则:按钮带高度类时
+/// 其内容容器默认双向居中(CSS button 语义);样式串携带显式对齐类
+/// (text-left/justify-*、items-*)的轴以显式值为准——否则 050 的外层
+/// 包装包不住已 Fill 的内层容器,nav-item(h-9 w-full text-left)内容
+/// 恒居中而 web 轨左对齐,双端漂移。
+fn plan414_content_alignment(
+    p050_ax: Option<iced::alignment::Horizontal>,
+    p050_ay: Option<iced::alignment::Vertical>,
+) -> (iced::alignment::Horizontal, iced::alignment::Vertical) {
+    use iced::alignment::{Horizontal, Vertical};
+    (
+        p050_ax.unwrap_or(Horizontal::Center),
+        p050_ay.unwrap_or(Vertical::Center),
+    )
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -2999,6 +3015,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // content wrapper also makes height-only buttons (menus, tabs)
                 // claim the whole row and stretch equally - regression fixed by
                 // scoping center_x to width-classed buttons.
+                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
+                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
+                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
+                // 承载对齐;未命中维持 iced 默认居中。
+                // 先于 409/414 分支计算:高度臂的默认居中必须给显式对齐类
+                // 让位(iced 容器默认居中,外层 050 包装包不住内层 center_x
+                // ——nav-item(h-9 w-full text-left)内容恒居中的根因)。
+                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
                 let button_content: iced::Element<'static, M> = if fixed_both {
                     iced::widget::container(button_content)
                         .width(iced::Length::Fill)
@@ -3011,21 +3035,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .map_or(false, |is| is.height.is_some())
                 {
                     let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                    let (ax, ay) = plan414_content_alignment(p050_ax, p050_ay);
                     let mut cont = iced::widget::container(button_content)
                         .height(iced::Length::Fill)
-                        .align_y(iced::alignment::Vertical::Center);
+                        .align_y(ay);
                     if has_width {
-                        cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+                        cont = cont.width(iced::Length::Fill).align_x(ax);
                     }
                     cont.into()
                 } else {
                     button_content
                 };
-                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
-                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
-                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
-                // 承载对齐;未命中维持 iced 默认居中。
-                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
                 let button_content: iced::Element<'static, M> =
                     if p050_ax.is_some() || p050_ay.is_some() {
                         let mut c = iced::widget::container(button_content)
@@ -16574,6 +16594,29 @@ mod tests {
         assert_eq!(h, None);
         assert_eq!(v, None);
     }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan414_height_branch_yields_to_explicit_align() {
+        // nav-item(h-9 w-full text-left items-center):水平轴让位 text-left,
+        // 高度臂不再无条件 center_x——否则内层 Fill 容器恒居中,外层 050
+        // 包装无法抵消,VM 轨 rail 内容居中而 web 左对齐。
+        use iced::alignment::{Horizontal, Vertical};
+        let (ax, ay) = plan414_content_alignment(
+            Some(Horizontal::Left),
+            Some(Vertical::Center),
+        );
+        assert_eq!(ax, Horizontal::Left);
+        assert_eq!(ay, Vertical::Center);
+        // 垂直轴同理:items-start 压过 409 的默认纵向居中。
+        let (_, ay) = plan414_content_alignment(None, Some(Vertical::Top));
+        assert_eq!(ay, Vertical::Top);
+        // 无显式对齐类:维持 Plan 409/414 双向居中(工具栏定宽图标钮)。
+        let (ax, ay) = plan414_content_alignment(None, None);
+        assert_eq!(ax, Horizontal::Center);
+        assert_eq!(ay, Vertical::Center);
+    }
+
     // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
 
     const T3_SHELL_AT: &str = r#"widget ShellProbe {
