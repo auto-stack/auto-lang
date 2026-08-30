@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-487
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m4-settings
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 2
 total_steps: 8
 ---
 
@@ -155,9 +155,21 @@ settings.at（特权 shell app）
 1. **settings.at 骨架**：新建 `crates/auto-lang/assets/settings.at`（三分区
    导航 + 内容卡占位 + Esc 关闭声明）。
    验证：`auto run` 装载冒烟（临时挂载路径或随 T2 装载测）。
+   [✅ 已完成] 45a6c9cee：settings.at 骨架 + shell.rs build_settings_component
+   装载器（478/479 同型）+ 无头装载冒烟测 settings_at_builds_and_nav_smoke
+   PASS（编译 + Init 默认 + Nav 切换 + RebuildPinned 重建 + Esc 自隐；
+   `cargo nextest run -p auto-lang --lib --features ui-iced settings_at_builds_and_nav_smoke` 1/1 绿——renderer 测试需 ui-iced 特性，`cargo t` 默认档不含）
 2. **动词三处**：`crates/auto-lang/src/ui/session.rs` 增 OpenSettings/
    SetDockPosition/SetDockEnabled（枚举/encode/parse）+ T1 往返单测。
    验证：`cargo check -p auto-lang && cargo t session`。
+   [✅ 已完成] 4546a6e83：三动词枚举/encode/parse 落 session.rs +
+   settings_commands_encode_parse_round_trip（TDD 红→绿：E0599 后实现）。
+   Rust 穷尽性连带 renderer.rs 同批：执行臂三臂 + execute_set_dock_position/
+   enabled + apply_dock_edges_now + toggle_settings + settings_app 字段 +
+   settings_visible + 联合排空点（其单测在步骤3/4）。验证：
+   `cargo check -p auto-lang` 绿 + `cargo nextest run -p auto-lang --lib
+   --features ui-iced session` 65/65 绿（session.rs 挂 ui 特性——默认档
+   `cargo t` 不编译 ui 模块，须带 --features ui-iced）
 3. **执行臂**：set_dock_position/enabled 热改 `dock_edges` + relayout +
    storage_host_publish 写回 + T1 执行臂单测。
    验证：`cargo t session`。

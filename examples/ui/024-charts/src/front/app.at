@@ -208,16 +208,31 @@ widget App {
                 // ---- 右:图表区(官方组件消费) ----
                 col (style: "flex-1 rounded-lg border p-4 gap-2") {
                     if .chartType == "line" {
-                        line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
+                        line-chart (index: "m") {
+                        data: .monthly
+                        fields: ["desktop", "mobile", "tablet"]
+                        labels: ["Desktop", "Mobile", "Tablet"]
+                    }
                     }
                     if .chartType == "bar" {
-                        bar-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
+                        bar-chart (index: "m") {
+                        data: .monthly
+                        fields: ["desktop", "mobile", "tablet"]
+                        labels: ["Desktop", "Mobile", "Tablet"]
+                    }
                     }
                     if .chartType == "area" {
-                        area-chart (data: .monthly, index: "m", fields: ["desktop", "mobile", "tablet"], labels: ["Desktop", "Mobile", "Tablet"]) {}
+                        area-chart (index: "m") {
+                        data: .monthly
+                        fields: ["desktop", "mobile", "tablet"]
+                        labels: ["Desktop", "Mobile", "Tablet"]
+                    }
                     }
                     if .chartType == "donut" {
-                        donut-chart (data: .monthly, index: "m", field: "desktop") {}
+                        donut-chart (index: "m") {
+                        data: .monthly
+                        field: "desktop"
+                    }
                     }
                 }
             }

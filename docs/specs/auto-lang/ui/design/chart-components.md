@@ -17,6 +17,14 @@
 - **核心定位（484）**：算法固化在官方组件内——用户只选类型（原语标签）、配参数
   （props）、给数据（record 列表）；算法是 official 包的版本化资产，随包演进，
   用户代码不动。裸 SVG 原语保留为非常规图表的逃生舱。
+- **推荐写法（484 复审后用户裁定）**："可辨明 node 身份的属性入括号，其余入 body"——身份属性（`index`/`type`/`curve`/`id`）留在括号，数据与长属性（`data`/`fields`/`colors`/`labels` 及布尔开关）写进 body。解析器原生支持 body 内联 props（`identifier:` 即 prop、`on*` 归事件、其余为子节点），括号/body 两形态解析后等价。示例：
+
+      bar-chart (index: "quarter", type: "stacked") {
+          data: .quarterlySales
+          fields: ["product", "service"]
+          labels: ["Product", "Service"]
+      }
+
 - **数据形状定案**（437 Phase 0，不变）：匿名 record 字面量列表 + 字符串字段名
   （`data: [{ m: "Jan", v: 30 }, …]`），`index` = x 标签字段，`fields` = 数值系列字段。
 - **几何 = Auto 代码**：linear/band scale + path generator 全部用 Auto 写

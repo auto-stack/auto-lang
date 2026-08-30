@@ -26,7 +26,11 @@ widget AreaChartPage {
 
             h2 "Overlay"
             preview-card (id: "area-chart-overlay") {
-                area-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#16a34a"]) {}
+                area-chart (index: "m") {
+                    data: .monthly
+                    fields: ["desktop", "mobile"]
+                    colors: ["#2563eb", "#16a34a"]
+                }
             }
 
             h2 "Props（AreaChart 组件）"

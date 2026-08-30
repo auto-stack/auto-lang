@@ -24,7 +24,10 @@ widget DonutChartPage {
 
             h2 "Basic"
             preview-card (id: "donut-chart-basic") {
-                donut-chart (data: .traffic, index: "l", field: "v") {}
+                donut-chart (index: "l") {
+                    data: .traffic
+                    field: "v"
+                }
             }
 
             h2 "Props（DonutChart 组件）"

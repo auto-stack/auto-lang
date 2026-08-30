@@ -66,3 +66,44 @@ mod plan484_smoke {
         assert!(dump.contains("8000"), "stacked domain nice-tick label must render");
     }
 }
+
+    #[test]
+    fn body_props_flow_to_component() {
+        fn gen_sfc(src: &str) -> String {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("widget source must parse");
+        let decl = ast.stmts.iter().find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        }).expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = crate::ui_gen::VueGenerator::new_shadcn();
+        use crate::ui_gen::BackendGenerator;
+        gen.generate(&widget).expect("generate SFC")
+    }
+        let sfc = gen_sfc(r##"
+widget W {
+    model { rows = [{a: 1, b: 2}] }
+    view {
+        col {
+            bar-chart (id: "my-chart", type: "grouped", index: "q") {
+                data: .rows
+                fields: ["a"]
+                colors: ["#2563eb"]
+                grid: true
+                legend: true
+                tooltip: true
+                labels: ["A"]
+            }
+        }
+    }
+}
+"##);
+        eprintln!("=== SFC ===\n{sfc}");
+        assert!(sfc.contains(":data=\"rows\"") || sfc.contains("rows"), "data binding");
+        assert!(sfc.contains("grouped"), "parens prop type");
+        assert!(sfc.contains("my-chart"), "parens prop id");
+        assert!(sfc.contains("'a'"), "body prop fields must emit");
+        assert!(sfc.contains("#2563eb"), "body prop colors");
+    }

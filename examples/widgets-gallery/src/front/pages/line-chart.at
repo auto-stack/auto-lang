@@ -33,12 +33,20 @@ widget LineChartPage {
 
             h2 "Basic"
             preview-card (id: "line-chart-basic") {
-                line-chart (data: .single, index: "m", fields: ["v"], colors: ["#2563eb"]) {}
+                line-chart (index: "m") {
+                    data: .single
+                    fields: ["v"]
+                    colors: ["#2563eb"]
+                }
             }
 
             h2 "Multi-series"
             preview-card (id: "line-chart-multi") {
-                line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#2563eb"]) {}
+                line-chart (index: "m") {
+                    data: .monthly
+                    fields: ["desktop", "mobile"]
+                    colors: ["#2563eb", "#2563eb"]
+                }
             }
 
             h2 "Component source"

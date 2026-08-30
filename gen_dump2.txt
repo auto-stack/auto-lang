@@ -1,0 +1,45 @@
+LineChart tag missing: <!-- App component - Auto-generated from Auto language -->
+<script setup lang="ts">
+import { ref } from 'vue'
+import AreaChart from '@/components/AreaChart.vue'
+
+
+const monthlyRevenue = ref<any[]>([{month: 'Jan', desktop: 186, mobile: 80, tablet: 45, wearable: 25}, {month: 'Feb', desktop: 305, mobile: 200, tablet: 60, wearable: 35}, {month: 'Mar', desktop: 237, mobile: 120, tablet: 55, wearable: 30}, {month: 'Apr', desktop: 73, mobile: 190, tablet: 40, wearable: 20}, {month: 'May', desktop: 209, mobile: 130, tablet: 50, wearable: 28}, {month: 'Jun', desktop: 214, mobile: 140, tablet: 65, wearable: 42}])
+const quarterlySales = ref<any[]>([{quarter: 'Q1', product: 4500, service: 3200, license: 2100, support: 1800}, {quarter: 'Q2', product: 5200, service: 4100, license: 2300, support: 1950}, {quarter: 'Q3', product: 4800, service: 3800, license: 2400, support: 2100}, {quarter: 'Q4', product: 6100, service: 4500, license: 2600, support: 2200}])
+const trafficSource = ref<any[]>([{source: 'Desktop', value: 55}, {source: 'Mobile', value: 30}, {source: 'Tablet', value: 15}])
+
+
+</script>
+
+<template>
+    <div class="flex flex-col min-h-screen w-full bg-slate-50 p-6 gap-8">
+      <div class="flex flex-col gap-1">
+        <h1 class="text-3xl font-bold tracking-tight">Charts Gallery</h1>
+        <span class="text-sm text-slate-500">官方 Auto 组件族(line-chart/bar-chart/area-chart/donut-chart 裸名原语)——几何全部 Auto 计算,双端 SVG 直通</span>
+      </div>
+      <div class="flex flex-col w-full rounded-lg border bg-card shadow-sm">
+        <div class="flex flex-col p-6 gap-4">
+          <span class="text-lg font-semibold">Area Chart — Revenue Overview</span>
+          <AreaChart :colors="['#8b5cf6', '#f59e0b']" :data="monthlyRevenue" :fields="['desktop', 'mobile']" :index="'month'" :labels="['Desktop', 'Mobile']" :key="'AreaChart-1-' + (['#8b5cf6', '#f59e0b']?.id ?? 'new')" />
+        </div>
+      </div>
+    </div>
+
+</template>
+
+<style>
+/* Component styles */
+
+</style>
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test ui_gen::vue::tests::test_charts_gallery_compiles ... FAILED
+
+failures:
+
+failures:
+    ui_gen::vue::tests::test_charts_gallery_compiles
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3367 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p auto-lang --lib`

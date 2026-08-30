@@ -31,12 +31,20 @@ widget BarChartPage {
 
             h2 "Basic"
             preview-card (id: "bar-chart-basic") {
-                bar-chart (data: .single, index: "q", fields: ["v"], colors: ["#2563eb"]) {}
+                bar-chart (index: "q") {
+                    data: .single
+                    fields: ["v"]
+                    colors: ["#2563eb"]
+                }
             }
 
             h2 "Grouped"
             preview-card (id: "bar-chart-grouped") {
-                bar-chart (data: .quarterly, index: "q", fields: ["sales", "cost"], colors: ["#2563eb", "#16a34a"]) {}
+                bar-chart (index: "q") {
+                    data: .quarterly
+                    fields: ["sales", "cost"]
+                    colors: ["#2563eb", "#16a34a"]
+                }
             }
 
             h2 "Props（BarChart 组件）"

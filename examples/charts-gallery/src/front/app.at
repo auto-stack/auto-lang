@@ -47,12 +47,11 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Area Chart — Revenue Overview" { style: "text-lg font-semibold" }
-                    area-chart (
-                        data: .monthlyRevenue,
-                        index: "month",
-                        fields: ["desktop", "mobile", "tablet", "wearable"],
+                    area-chart (index: "month") {
+                        data: .monthlyRevenue
+                        fields: ["desktop", "mobile", "tablet", "wearable"]
                         labels: ["Desktop", "Mobile", "Tablet", "Wearable"]
-                    ) {}
+                    }
                 }
             }
 
@@ -60,12 +59,11 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Bar Chart — Quarterly Sales (Grouped)" { style: "text-lg font-semibold" }
-                    bar-chart (
-                        data: .quarterlySales,
-                        index: "quarter",
-                        fields: ["product", "service", "license", "support"],
+                    bar-chart (index: "quarter") {
+                        data: .quarterlySales
+                        fields: ["product", "service", "license", "support"]
                         labels: ["Product", "Service", "License", "Support"]
-                    ) {}
+                    }
                 }
             }
 
@@ -73,13 +71,12 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Bar Chart — Quarterly Sales (Stacked)" { style: "text-lg font-semibold" }
-                    bar-chart (
-                        data: .quarterlySales,
-                        index: "quarter",
-                        fields: ["product", "service"],
-                        labels: ["Product", "Service"],
+                    bar-chart (index: "quarter") {
+                        data: .quarterlySales
+                        fields: ["product", "service"]
+                        labels: ["Product", "Service"]
                         type: "stacked"
-                    ) {}
+                    }
                 }
             }
 
@@ -87,13 +84,12 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Line Chart — Trend Over Time (Monotone)" { style: "text-lg font-semibold" }
-                    line-chart (
-                        data: .monthlyRevenue,
-                        index: "month",
-                        fields: ["desktop", "mobile"],
-                        labels: ["Desktop", "Mobile"],
+                    line-chart (index: "month") {
+                        data: .monthlyRevenue
+                        fields: ["desktop", "mobile"]
+                        labels: ["Desktop", "Mobile"]
                         curve: "monotone"
-                    ) {}
+                    }
                 }
             }
 
@@ -101,11 +97,10 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Donut Chart — Traffic Source" { style: "text-lg font-semibold" }
-                    donut-chart (
-                        data: .trafficSource,
-                        index: "source",
+                    donut-chart (index: "source") {
+                        data: .trafficSource
                         field: "value"
-                    ) {}
+                    }
                 }
             }
 
@@ -113,13 +108,12 @@ widget App {
             col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
                     text "Area Chart — Custom Colors" { style: "text-lg font-semibold" }
-                    area-chart (
-                        data: .monthlyRevenue,
-                        index: "month",
-                        fields: ["desktop", "mobile"],
-                        colors: ["#8b5cf6", "#f59e0b"],
+                    area-chart (index: "month") {
+                        data: .monthlyRevenue
+                        fields: ["desktop", "mobile"]
+                        colors: ["#8b5cf6", "#f59e0b"]
                         labels: ["Desktop", "Mobile"]
-                    ) {}
+                    }
                 }
             }
         }

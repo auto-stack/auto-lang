@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 2
+current_step: 6
 total_steps: 9
 ---
 
@@ -188,15 +188,36 @@ shell.at 管线。零新三方依赖。
 3. **session 接线**：`ui/session.rs` 增 `NativeDragOver` 消息、MOVESIZEEND
    终态处理（DockCandidate→DockNative / Abandon→清 overlay）。
    验证：`cargo check -p auto-lang && cargo t session`。
+   [✅ 已完成] 2026-08-30：`DesktopEvent::NativeDragOver(Option<Rect>)`（物理域，
+   E2E/headless 注入面）+ `DesktopSession.native_drag_watch/native_drag_over`
+   字段；renderer 侧 `drive_drag_watch`（START 起会话/被拖窗 LOCATIONCHANGE
+   采样/END 终态→`execute_dock_native` 或清 overlay/DESTROY 作废）+
+   `native_candidate_logical` 抽取（高亮即落点不变量）+ update 消费臂；
+   check 零新告警，session 66/66 绿。
 4. **高亮 overlay**：`ui/iced/renderer.rs` 复用 snap 预览路径绘制 DragWatch
    槽位高亮。
    验证：`cargo t ui`。
+   [✅ 已完成] 2026-08-30：`virtual_window::native_drag_over_element`（主色
+   18% 半透明填充+2px 描边，snap 预览同语义；纯视觉无鼠标区）+ view 层栈
+   挂载（槽位 chrome 之上、shell 之下）+ 落位/清除测试。ui 全量 759/760 绿
+   ——唯一红 `plan050_i18n_lookup_loads_flat_json...` 为 master 既有环境红
+   （默认档不含该测试故日常门绿，`--features ui*` 才暴露；已核 master 同
+   命令同红，非本期引入，见待澄清事项）。
 5. **投影扩展**：`renderer.rs:7682` 段 wins 派生纳入 native 条目 + 指纹 +
    T2 投影单测。
    验证：`cargo t ui`。
+   [✅ 已完成] 2026-08-30：`sync_shell_windows` wins 循环后追加 native 槽位
+   条目 `{wid:"N<slot>",title,focused,native,icon}`（仅 Docked 态；workspace/
+   app 不适用省略；icon 占位 app-window；focused 恒空——native 焦点域在
+   OS 层，与 473 apply_layout 裁定一致）；指纹窗段并入 "N{slot}:0,"；投影
+   8/8 绿，ui 全量 760/761（唯一红为既有 i18n 环境红，见步骤4注）。
 6. **动词三处**：`ui/session.rs` 枚举/encode/parse 增 `focus_native`/
    `close_native` + 执行臂（SetForegroundWindow / WM_CLOSE）+ T2 往返单测。
    验证：`cargo t session`。
+   [✅ 已完成] 2026-08-30：三处落点（undock_native 同型）+ renderer 执行臂
+   （focus：最小化先 SW_RESTORE→SetForegroundWindow best-effort 前台锁不
+   toast；close：WM_CLOSE 后 DESTROY 事件自然回收）+ win32 `focus_window`
+   （win32/noop 双侧）+ 往返/坏载荷测试；check 零错，session 66/66 绿。
 7. **shell.at + 协议文档**：`crates/auto-lang/assets/shell.at` dock 区 native
    条目；`schema/projection-protocol-v1.md` 升 v1.3；T3 装载测。
    验证：`cargo t desktop_mcp`（或 shell 装载套件）。
@@ -222,3 +243,7 @@ shell.at 管线。零新三方依赖。
 - native wid 编码 `N<slot_id>` 与 App wid 的隔离规则在协议文档定稿时与
   I9 复核（投影唯一事实不受影响即可）。
 - B9 多屏自动化仅框架（单屏 CI），真多屏矩阵维持人工——与 473 债务注记一致。
+- 既有环境红（非本期引入）：`ui::i18n_lookup::tests::plan050_i18n_lookup_loads_
+  flat_json_and_misses_gracefully` 在 `--features ui*` 档红（i18n/zh.json 装载
+  返回 None）；master 同命令同红，默认档不编译该测试故日常门不受影响。执行
+  期不修（超出 486 文件范围），留待独立修复。
