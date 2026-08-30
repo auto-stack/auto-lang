@@ -61,6 +61,6 @@ labels str（月份拼接）、donutLegend str、stats{D,M,T} str
   donut 保持静态构成。Play/Pause/Reset 三键：Play 启动流式、Pause 停、
   **Reset 重建 monthly=seed 并全量重算（回到静态展示，tickN 归零）**。
 - **数值编辑**（系列数值增删改）: 后续引入（整表重建模式，013 先例）。
-- **组件化渲染函数**（AutoLineChart 等）: 待 Plan 435 统一声明体系合入
+- **组件化渲染函数**（LineChart 等）: 待 Plan 435 统一声明体系合入
   后由 437 收口，M1 页面内联形态。
 - **vm 实机/desktop_mcp/golden**: M3 辖区。

@@ -1,7 +1,7 @@
 // pages/line-chart.at — LineChart 页(Plan 437 Charts 分组 ①)
 //
 // Phase 2(2026-08-28):几何已提取为官方 Auto 组件
-// components/line_chart.at(AutoLineChart,d3-scale 风格 linear scale +
+// components/line_chart.at(LineChart,d3-scale 风格 linear scale +
 // M/L path)。本页只持 demo 数据 + 消费组件,v1 内联几何形态退役。
 // 渲染端 v1 = SVG 直通(442 A4):vue 轨直通臂,VM 轨 svgdoc 通道。
 
@@ -29,22 +29,22 @@ widget LineChartPage {
     view {
         col {
             h1 "LineChart"
-            text "官方 Auto 实现的折线图——几何计算(linear scale、path 生成)全部在 AutoLineChart 组件内用 Auto 完成,渲染端走 SVG:vue 轨直通,VM 轨 svgdoc 通道。数据形状与 shadcn chart 一致(record 列表 + index/categories 字段名)。"
+            text "官方 Auto 实现的折线图——几何计算(linear scale、path 生成)全部在 LineChart 组件内用 Auto 完成,渲染端走 SVG:vue 轨直通,VM 轨 svgdoc 通道。数据形状与 shadcn chart 一致(record 列表 + index/categories 字段名)。"
 
             h2 "Basic"
             preview-card (id: "line-chart-basic") {
-                auto-line-chart (data: .single, index: "m", fields: ["v"], colors: ["#2563eb"]) {}
+                line-chart (data: .single, index: "m", fields: ["v"], colors: ["#2563eb"]) {}
             }
 
             h2 "Multi-series"
             preview-card (id: "line-chart-multi") {
-                auto-line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#2563eb"]) {}
+                line-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#2563eb"]) {}
             }
 
             h2 "Component source"
-            codeblock (lang: "auto", code: "widget AutoLineChart {\n    model { data List = []  index str = \"m\"  fields List<str> = [\"v\"] }\n    on { .Init -> { /* linear scale + M/L path 几何 */ } }\n    view { svg (viewBox: \"0 0 560 300\") { /* path (d: p) */ } }\n}\n// 完整源码见 components/line_chart.at") {}
+            codeblock (lang: "auto", code: "widget LineChart {\n    model { data List = []  index str = \"m\"  fields List<str> = [\"v\"] }\n    on { .Init -> { /* linear scale + M/L path 几何 */ } }\n    view { svg (viewBox: \"0 0 560 300\") { /* path (d: p) */ } }\n}\n// 完整源码见 components/line_chart.at") {}
 
-            h2 "Props(AutoLineChart 组件)"
+            h2 "Props(LineChart 组件)"
             table {
                 table-header {
                     table-row {

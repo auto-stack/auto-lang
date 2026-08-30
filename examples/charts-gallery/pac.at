@@ -1,4 +1,12 @@
+// pac.at - Charts Gallery(Plan 484 M3 重建:声明式 chart 原语展示)
+//
+// 图卡形状与 Plan 238 shadcn-vue 版一致(area/bar-grouped/bar-stacked/
+// line-monotone/donut/area-自定色),底座从 shadcn-vue + Unovis 换成
+// official 包 Auto 组件(line-chart/bar-chart/area-chart/donut-chart 裸名)。
+// 双端:vue(组件翻译为 SFC)/ vm(svgdoc 直通)——同一 .at 源。
+
 name: "charts-gallery"
-version: "1.0.0"
+version: "2.0.0"
 scene: "ui"
-backend: ["vue"]
+render: "vue"
+front_port: 4039

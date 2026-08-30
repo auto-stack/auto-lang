@@ -3403,6 +3403,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 iced::widget::stack![base_el, iced::widget::opaque(content_el)].into()
             }
 
+            // Plan 484: hover 命中区 —— iced mouse_area 透明包裹,仅转发
+            // enter/exit 消息(通用事件分发)。style(尺寸/定位类)经
+            // build_container 承载——命中区必须定宽高,空内容才有可命中面积。
+            AbstractView::MouseArea { content, on_enter, on_exit, style } => {
+                let mut ma = mouse_area(content.into_iced());
+                if let Some(msg) = on_enter {
+                    ma = ma.on_enter(msg);
+                }
+                if let Some(msg) = on_exit {
+                    ma = ma.on_exit(msg);
+                }
+                build_container(
+                    ma.into(),
+                    0,
+                    None,
+                    None,
+                    false,
+                    false,
+                    style.as_ref(),
+                    None,
+                )
+            }
+
             // Plan 422: 锚定弹层 —— wrapper widget(Tooltip 同型),open 时
             // 经 iced overlay 机制置顶;chrome 由 content 自带。inspect 捕获
             // 模式下丢 on_dismiss(与其余 handler 同规则)。
@@ -13781,6 +13804,8 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Overlay { .. } => None,
         // Plan 422: Popover 的 chrome 在 content 上(anchor 各自带)。
         AbstractView::Popover { .. } => None,
+        // Plan 484: MouseArea 的 style(尺寸/定位类)参与 absolute/z 判定。
+        AbstractView::MouseArea { style, .. } => style.as_ref(),
         AbstractView::Text { style, .. } => style.as_ref(),
         AbstractView::Button { style, .. } => style.as_ref(),
         AbstractView::Checkbox { style, .. } => style.as_ref(),
@@ -13844,6 +13869,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Empty => "empty",
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::Popover { .. } => "popover",
+        AbstractView::MouseArea { .. } => "mouse_area",
         AbstractView::Text { .. } => "text",
         AbstractView::Button { .. } => "button",
         AbstractView::Checkbox { .. } => "checkbox",

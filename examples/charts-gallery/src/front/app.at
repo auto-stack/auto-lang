@@ -1,6 +1,14 @@
-// Charts Gallery - Demonstrates shadcn-vue chart components in Auto
+// front/app.at - Charts Gallery(Plan 484 M3 重建)
+//
+// 六张图卡与旧 shadcn-vue 版(Plan 238)形状一一对应:
+// ① Area 四系列 ② Bar grouped ③ Bar stacked ④ Line monotone
+// ⑤ Donut ⑥ Area 自定色。全部经 official 包裸名原语声明
+// (line-chart/bar-chart/area-chart/donut-chart),几何全部在
+// Auto 组件内完成,view 层零手写 SVG。
 
 widget App {
+    use { package: official from "components" }
+
     model {
         // Area & Line chart data
         monthlyRevenue = [
@@ -30,126 +38,87 @@ widget App {
 
     view {
         col (style: "min-h-screen w-full bg-slate-50 p-6 gap-8") {
-            // Header
             col (style: "gap-1") {
-                h1 (style: "text-3xl font-bold tracking-tight") {
-                    text (text: "Charts Gallery") {}
-                }
-                text (style: "text-sm text-slate-500") {
-                    text (text: "shadcn-vue chart components powered by Unovis") {}
-                }
+                h1 "Charts Gallery" { style: "text-3xl font-bold tracking-tight" }
+                text "官方 Auto 组件族(line-chart/bar-chart/area-chart/donut-chart 裸名原语)——几何全部 Auto 计算,双端 SVG 直通" { style: "text-sm text-slate-500" }
             }
 
-            // Area Chart
-            card (style: "w-full") {
+            // Area Chart(四系列)
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Area Chart — Revenue Overview") {}
-                    }
+                    text "Area Chart — Revenue Overview" { style: "text-lg font-semibold" }
                     area-chart (
                         data: .monthlyRevenue,
-                        categories: ["desktop", "mobile", "tablet", "wearable"],
                         index: "month",
-                        style: "h-[300px] w-full"
+                        fields: ["desktop", "mobile", "tablet", "wearable"],
+                        labels: ["Desktop", "Mobile", "Tablet", "Wearable"]
                     ) {}
                 }
             }
 
-            // Bar Chart (grouped)
-            card (style: "w-full") {
+            // Bar Chart(grouped)
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Bar Chart — Quarterly Sales (Grouped)") {}
-                    }
+                    text "Bar Chart — Quarterly Sales (Grouped)" { style: "text-lg font-semibold" }
                     bar-chart (
                         data: .quarterlySales,
-                        categories: ["product", "service", "license", "support"],
                         index: "quarter",
-                        type: "grouped",
-                        style: "h-[300px] w-full"
+                        fields: ["product", "service", "license", "support"],
+                        labels: ["Product", "Service", "License", "Support"]
                     ) {}
                 }
             }
 
-            // Bar Chart (stacked)
-            card (style: "w-full") {
+            // Bar Chart(stacked)
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Bar Chart — Quarterly Sales (Stacked)") {}
-                    }
+                    text "Bar Chart — Quarterly Sales (Stacked)" { style: "text-lg font-semibold" }
                     bar-chart (
                         data: .quarterlySales,
-                        categories: ["product", "service"],
                         index: "quarter",
-                        type: "stacked",
-                        style: "h-[300px] w-full"
+                        fields: ["product", "service"],
+                        labels: ["Product", "Service"],
+                        type: "stacked"
                     ) {}
                 }
             }
 
-            // Line Chart
-            card (style: "w-full") {
+            // Line Chart(monotone 平滑曲线)
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Line Chart — Trend Over Time") {}
-                    }
+                    text "Line Chart — Trend Over Time (Monotone)" { style: "text-lg font-semibold" }
                     line-chart (
                         data: .monthlyRevenue,
-                        categories: ["desktop", "mobile"],
                         index: "month",
-                        curve-type: "monotone",
-                        style: "h-[300px] w-full"
+                        fields: ["desktop", "mobile"],
+                        labels: ["Desktop", "Mobile"],
+                        curve: "monotone"
                     ) {}
                 }
             }
 
             // Donut Chart
-            card (style: "w-full") {
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Donut Chart — Traffic Source") {}
-                    }
+                    text "Donut Chart — Traffic Source" { style: "text-lg font-semibold" }
                     donut-chart (
                         data: .trafficSource,
-                        category: "source",
                         index: "source",
-                        style: "h-[300px] w-full"
+                        field: "value"
                     ) {}
                 }
             }
 
-            // Chart with Colors
-            card (style: "w-full") {
+            // Area Chart(自定色)
+            col (style: "w-full rounded-lg border bg-card shadow-sm") {
                 col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Area Chart — Custom Colors") {}
-                    }
+                    text "Area Chart — Custom Colors" { style: "text-lg font-semibold" }
                     area-chart (
                         data: .monthlyRevenue,
-                        categories: ["desktop", "mobile"],
                         index: "month",
-                        colors: ["#3b82f6", "#10b981"],
-                        style: "h-[300px] w-full"
-                    ) {}
-                }
-            }
-
-            // Sparkline (Line chart with hidden axes/tooltip/legend)
-            card (style: "w-full") {
-                col (style: "p-6 gap-4") {
-                    text (style: "text-lg font-semibold") {
-                        text (text: "Sparkline — Minimal Trend") {}
-                    }
-                    line-chart (
-                        data: .monthlyRevenue,
-                        categories: ["desktop"],
-                        index: "month",
-                        show-x-axis: false,
-                        show-y-axis: false,
-                        show-tooltip: false,
-                        show-legend: false,
-                        show-grid-line: false,
-                        style: "h-[120px] w-full"
+                        fields: ["desktop", "mobile"],
+                        colors: ["#8b5cf6", "#f59e0b"],
+                        labels: ["Desktop", "Mobile"]
                     ) {}
                 }
             }

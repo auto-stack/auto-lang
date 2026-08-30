@@ -537,23 +537,25 @@ Menubar container
 
 ---
 
+### `mouse-area`
+
+`builtin_widget` · `mouse-area` · web: `component` · iced: `full` · category: `overlay`
+
+Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive.
+
+_props 待声明_
+
+---
+
 ### `nav`
 
-`builtin_widget` · `nav` · web: `native` · iced: `full` · category: `navigation`
+`builtin_widget` · `nav` · web: `native` · iced: `unknown` · category: `content`
 
-Navigation container; search:true renders an integrated search row (Plan 482)
+P1 extracted from production tables; props TBD
 
 别名:`Nav`
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `search` | `bool` | false | Integrate a search input row at the top of the nav (Plan 482) |
-| `search_placeholder` | `string` | — | Placeholder text for the integrated search row |
-| `search_value` | `expr` | — | Search text state binding (e.g. .store.search); required with search: true |
-| `onsearch` | `msg_ref` | — | Message on search input (carries the input string, like input oninput) |
-| `class` | `union: string|class_binding` | — | CSS class(es) |
-
-子件:`nav-item` `nav-group`
+_props 待声明_
 
 ---
 
@@ -563,7 +565,7 @@ Navigation container; search:true renders an integrated search row (Plan 482)
 
 Navigation group: label header + item column, optionally collapsible (Plan 482)
 
-别名:`nav_group` `navgroup` `NavGroup`
+别名:`NavGroup` `nav_group` `navgroup`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -584,7 +586,7 @@ Navigation group: label header + item column, optionally collapsible (Plan 482)
 
 Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link
 
-别名:`nav_item` `navitem` `NavItem`
+别名:`NavItem` `nav_item` `navitem`
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -604,11 +606,11 @@ Navigation item with built-in hover/active/disabled states, icon/desc/badge slot
 
 ### `nav-link`
 
-`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `navigation`
+`builtin_widget` · `nav-link` · web: `component` · iced: `partial` · category: `content`
 
 [demo →](/examples/widgets-gallery/navlink)
 
-DEPRECATED (Plan 482): use nav-item instead — richer states (active/hover/disabled), icon/desc/badge slots, router + onclick modes
+P1 extracted from production tables; props TBD
 
 别名:`nav_link` `navlink`
 
@@ -724,6 +726,25 @@ _props 待声明_
 
 ---
 
+### `select`
+
+`builtin_widget` · `select` · web: `component` · iced: `fallback` · category: `content`
+
+[demo →](/examples/widgets-gallery/select)
+
+P1 extracted from production tables; props TBD
+
+别名:`Select`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `placeholder` | `string` | — | Placeholder text for select-value |
+| `disabled` | `one_of: true|false` | false | Disables the select |
+
+子件:`selectcontent` `selectgroup` `selectitem` `selectlabel` `selecttrigger` `selectvalue`
+
+---
+
 ### `separator`
 
 `builtin_widget` · `separator` · web: `component` · iced: `unknown` · category: `utility`
@@ -832,7 +853,7 @@ _props 待声明_
 
 `builtin_widget` · `taskbar` · web: `component` · iced: `full` · category: `navigation`
 
-Desktop shell taskbar (bottom bar); web leaf = @/wm/Taskbar (Plan 465 I4, same registration source as iced 463)
+Desktop shell taskbar (bottom bar)
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -905,22 +926,6 @@ Toast notification container (alias)
 P1 extracted from production tables; props TBD
 
 _props 待声明_
-
----
-
-### `virtual_window`
-
-`builtin_widget` · `virtual_window` · web: `component` · iced: `full` · category: `content`
-
-Virtual window leaf: positioned/clipped chrome with (AppId,event) routing attrs; iced impl = ui/iced/virtual_window.rs (462), DOM impl = @/wm/VirtualWindow (465 T4)
-
-别名:`VirtualWindow`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `win` | `string` | — | Window state object {wid,appId,title,rect,z,focused} from the host WmStore (Plan 465 T4) |
-| `title` | `string` | — | Title bar text (fallback when win.title absent) |
-| `class` | `union: string|class_binding` | — | Client-area classes |
 
 ---
 

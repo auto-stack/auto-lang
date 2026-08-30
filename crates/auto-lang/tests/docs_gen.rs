@@ -46,6 +46,11 @@ const DOC_EXCLUDE: &[&str] = &[
     "b", "em", "h4", "h5", "h6", "i", "link", "small", "strong",
     // 基础文本原语,Layout 组 demo 内文档化
     "text",
+    // Plan 484:透明 hover 命中区(无视觉、事件转发原语,不设独立页);
+    // 契约与用法文档化于 specs/auto-lang/ui/design/chart-components.md
+    "mousearea",
+    // Plan 482 nav 家族子件,随 nav 页(nav-item/nav-link)文档化
+    "navgroup",
     // form 家族件(form 页文档化)
     "formcontrol", "formdescription", "formfield", "formlabel", "formmessage",
     // 家族子件随家族页文档化
