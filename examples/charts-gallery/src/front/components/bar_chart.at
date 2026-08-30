@@ -21,10 +21,25 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
         segs List = []
         segsS List = []
         xlabels str = ""
-        ticks List = []
-        ticksS List = []
+        yTick4 str = ""
+        yTick3 str = ""
+        yTick2 str = ""
+        yTick1 str = ""
+        yTick0 str = ""
+        yTickS4 str = ""
+        yTickS3 str = ""
+        yTickS2 str = ""
+        yTickS1 str = ""
+        yTickS0 str = ""
         gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
-        legendItems List = []
+        legendColor0 str = ""
+        legendText0 str = ""
+        legendColor1 str = ""
+        legendText1 str = ""
+        legendColor2 str = ""
+        legendText2 str = ""
+        legendColor3 str = ""
+        legendText3 str = ""
         bands List = []
         tipTitles List = []
         tipBodies List = []
@@ -67,15 +82,11 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 domain = step * 5
             }
             var domainf float = domain
-            var outTicks List = []
-            var tj = 4
-            while tj > 0 {
-                var val int = step * tj
-                outTicks.push({ label: f"${val}" })
-                tj = tj - 1
-            }
-            outTicks.push({ label: "0" })
-            .ticks = outTicks
+            .yTick4 = f"${step * 4}"
+            .yTick3 = f"${step * 3}"
+            .yTick2 = f"${step * 2}"
+            .yTick1 = f"${step}"
+            .yTick0 = "0"
 
             var bottom float = 260.0
             var span float = 240.0
@@ -123,19 +134,14 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 domainS = stepS * 5
             }
             var domainSf float = domainS
-            var outTicksS List = []
-            var tjS = 4
-            while tjS > 0 {
-                var valS int = stepS * tjS
-                outTicksS.push({ label: f"${valS}" })
-                tjS = tjS - 1
-            }
-            outTicksS.push({ label: "0" })
-            .ticksS = outTicksS
+            .yTickS4 = f"${stepS * 4}"
+            .yTickS3 = f"${stepS * 3}"
+            .yTickS2 = f"${stepS * 2}"
+            .yTickS1 = f"${stepS}"
+            .yTickS0 = "0"
 
             // ---- grouped 段记录 ----
             var outSegs List = []
-            var outLegend List = []
             var k = 0
             for f in .fields {
                 var dstr = ""
@@ -159,11 +165,25 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 if lname.len() > k {
                     name = lname[k]
                 }
-                outLegend.push({ c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]", name: name })
+                if k == 0 {
+                    .legendColor0 = color
+                    .legendText0 = name
+                }
+                if k == 1 {
+                    .legendColor1 = color
+                    .legendText1 = name
+                }
+                if k == 2 {
+                    .legendColor2 = color
+                    .legendText2 = name
+                }
+                if k == 3 {
+                    .legendColor3 = color
+                    .legendText3 = name
+                }
                 k = k + 1
             }
             .segs = outSegs
-            .legendItems = outLegend
 
             // ---- stacked 段记录(前缀和底边) ----
             var outSegsS List = []
@@ -281,13 +301,17 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 if .axis == "auto" {
                     col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
                         if .type == "stacked" {
-                            for t in .ticksS {
-                                text (text: t["label"]) { style: "text-[10px] text-muted-foreground" }
-                            }
+                            text .yTickS4 { style: "text-[10px] text-muted-foreground" }
+                            text .yTickS3 { style: "text-[10px] text-muted-foreground" }
+                            text .yTickS2 { style: "text-[10px] text-muted-foreground" }
+                            text .yTickS1 { style: "text-[10px] text-muted-foreground" }
+                            text .yTickS0 { style: "text-[10px] text-muted-foreground" }
                         } else {
-                            for t in .ticks {
-                                text (text: t["label"]) { style: "text-[10px] text-muted-foreground" }
-                            }
+                            text .yTick4 { style: "text-[10px] text-muted-foreground" }
+                            text .yTick3 { style: "text-[10px] text-muted-foreground" }
+                            text .yTick2 { style: "text-[10px] text-muted-foreground" }
+                            text .yTick1 { style: "text-[10px] text-muted-foreground" }
+                            text .yTick0 { style: "text-[10px] text-muted-foreground" }
                         }
                     }
                 }
@@ -333,12 +357,36 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
             }
             if .legend {
                 row (style: "gap-4 pt-1 px-2") {
-                    for li in .legendItems {
-                        row (key: li["c"], style: "items-center gap-1") {
+                    if .legendText0 != "" {
+                        row (style: "items-center gap-1") {
                             svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: li["c"]) {}
+                                rect (width: "8", height: "8", fill: .legendColor0) {}
                             }
-                            text (text: li["name"]) { style: "text-xs text-muted-foreground" }
+                            text .legendText0 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText1 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor1) {}
+                            }
+                            text .legendText1 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText2 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor2) {}
+                            }
+                            text .legendText2 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText3 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor3) {}
+                            }
+                            text .legendText3 { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }

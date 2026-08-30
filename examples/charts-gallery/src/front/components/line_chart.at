@@ -24,9 +24,20 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
         segs List = []
         segsM List = []
         xlabels str = ""
-        ticks List = []
+        yTick4 str = ""
+        yTick3 str = ""
+        yTick2 str = ""
+        yTick1 str = ""
+        yTick0 str = ""
         gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
-        legendItems List = []
+        legendColor0 str = ""
+        legendText0 str = ""
+        legendColor1 str = ""
+        legendText1 str = ""
+        legendColor2 str = ""
+        legendText2 str = ""
+        legendColor3 str = ""
+        legendText3 str = ""
         bands List = []
         tipTitles List = []
         tipBodies List = []
@@ -69,15 +80,11 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 domain = step * 5
             }
             var domainf float = domain
-            var outTicks List = []
-            var tj = 4
-            while tj > 0 {
-                var val int = step * tj
-                outTicks.push({ label: f"${val}" })
-                tj = tj - 1
-            }
-            outTicks.push({ label: "0" })
-            .ticks = outTicks
+            .yTick4 = f"${step * 4}"
+            .yTick3 = f"${step * 3}"
+            .yTick2 = f"${step * 2}"
+            .yTick1 = f"${step}"
+            .yTick0 = "0"
 
             var left float = 40.0
             var plotTop float = 20.0
@@ -126,11 +133,25 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 if lname.len() > k {
                     name = lname[k]
                 }
-                outLegend.push({ c: color, s: f"inline-block w-3 h-3 rounded-sm bg-[{color}]", name: name })
+                if k == 0 {
+                    .legendColor0 = color
+                    .legendText0 = name
+                }
+                if k == 1 {
+                    .legendColor1 = color
+                    .legendText1 = name
+                }
+                if k == 2 {
+                    .legendColor2 = color
+                    .legendText2 = name
+                }
+                if k == 3 {
+                    .legendColor3 = color
+                    .legendText3 = name
+                }
                 k = k + 1
             }
             .segs = outSegs
-            .legendItems = outLegend
 
             // ---- monotone 变体(d3 curveMonotoneX/Fritsch-Carlson 标准形:
             // 切线表 m[i](端点取单侧割线,内部取相邻割线均值,异号归零),
@@ -269,9 +290,11 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             row (style: "items-stretch w-full") {
                 if .axis == "auto" {
                     col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
-                        for t in .ticks {
-                            text (text: t["label"]) { style: "text-[10px] text-muted-foreground" }
-                        }
+                        text .yTick4 { style: "text-[10px] text-muted-foreground" }
+                        text .yTick3 { style: "text-[10px] text-muted-foreground" }
+                        text .yTick2 { style: "text-[10px] text-muted-foreground" }
+                        text .yTick1 { style: "text-[10px] text-muted-foreground" }
+                        text .yTick0 { style: "text-[10px] text-muted-foreground" }
                     }
                 }
                 col (style: "flex-1") {
@@ -317,12 +340,36 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             }
             if .legend {
                 row (style: "gap-4 pt-1 px-2") {
-                    for li in .legendItems {
-                        row (key: li["c"], style: "items-center gap-1") {
+                    if .legendText0 != "" {
+                        row (style: "items-center gap-1") {
                             svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: li["c"]) {}
+                                rect (width: "8", height: "8", fill: .legendColor0) {}
                             }
-                            text (text: li["name"]) { style: "text-xs text-muted-foreground" }
+                            text .legendText0 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText1 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor1) {}
+                            }
+                            text .legendText1 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText2 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor2) {}
+                            }
+                            text .legendText2 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText3 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor3) {}
+                            }
+                            text .legendText3 { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }

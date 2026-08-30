@@ -64,6 +64,9 @@ mod plan484_smoke {
         assert!(dump.contains("M 40"), "line/area path must render");
         assert!(dump.contains("h19"), "grouped bar width must render (slot*0.6/4)");
         assert!(dump.contains("8000"), "stacked domain nice-tick label must render");
+        // 484 后续:y 刻度文本与图例名(经 loop-var 点路径)必须落进渲染树
+        assert!(dump.contains("320"), "y tick label text must render");
+        assert!(dump.contains("Desktop"), "legend series name must render");
     }
 }
 

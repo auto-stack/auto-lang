@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 4
+current_step: 8
 total_steps: 11
 ---
 
@@ -238,15 +238,51 @@ virtual_window spec events 映射同步。
 5. **IDropTarget + 拖入路由**：实现 + `DesktopMessage::NativeDrop` + 命中→
    AppId + T2 路由单测。
    验证：`cargo t session && cargo t native_dnd`。
+   [✅ 已完成] worktree 提交 ba84b9db8：DesktopDropTarget（Enter 探测可落
+   格式族→COPY/全不中→NONE；Drop 抽取 text/files/DIB·DIBV5·PNG→485 转换
+   临时 PNG；外来 FileGroupDescriptor 观察-only 拒收=待澄清②兑现）+
+   NativeDropData + 拖入完成通道 + ensure_host_drop_target（spike 结论
+   落地：Revoke winit→Register 我方，HWND 身份键控，WindowOpened 即挂 +
+   ServiceTick 400ms 自愈；额外依赖 native-dock find_largest_own_window，
+   ui-iced 隐含）+ DesktopEvent::NativeDrop（订阅泵并轨双通道）+
+   drop_hit_app_at_local（复用 WmState::hit_test，z 序+分区过滤；独立模式
+   焦点 App 兜底）+ renderer 换算臂（drag_mapper 同源屏幕→逻辑）。
+   T2×3 绿：Enter 效果+通道往返 / 外来虚拟文件拒收 / 命中注入布局
+   （session 档 50/50 全绿，native_dnd 档 17/17；同 session 档注意：日常
+   `cargo t session` 不编译 session 模块，实际跑 `--features ui-iced` 档）。
 6. **事件面**：`schema/aura.at` virtual_window 增 events 三枚 +
    `ui_gen/widget/registry.rs` 映射 + AppSession 注入管线接线。
    验证：`cargo test -p auto-lang --test schema_drift && cargo test -p auto-lang --test docs_gen && cargo t ui`。
+   [✅ 已完成] worktree 提交 e6aaba851：aura.at events 三枚 + description
+   更新；registry.rs **无需手同步**——WidgetSpec 无 events 面，events 单源
+   在 schema（P4-4；三件套 schema_drift 1 + docs_gen 4 + component_registry 7
+   全绿即证）。注入接线：inject_native_event（472/479 同型 call_handler
+   直注）+ native_drop_payload（Record {text/files/image/screen_x/screen_y/
+   formats}）；DndFinished → 焦点 App 注 on_dnd_finished(effect)（v1 取完成
+   时焦点 App——VM 侧无 VM→AppId 通道，发起方追踪列增强，T6 冒烟观察）。
+   T2 payload 单测绿；ui-iced 档 1507 测 1506 绿 + 唯一存量红
+   plan050_i18n（步骤 2 已证基线同红）。
 7. **Ctrl+V 路由**：renderer.rs:6353 段热键臂 + 剪贴板读取优先级 +
    on_native_paste 注入 + T2 对应单测。
    验证：`cargo t ui`。
+   [✅ 已完成] worktree 提交 c20422ef7：热键订阅尾部 Ctrl+V 臂（Ctrl 且无
+   Alt/Shift，App 焦点无关）→ DesktopEvent::NativePaste → update 臂
+   clipboard_paste_payload（418 clipboard_get → 485 files_get/image_get，
+   whichever 并存，Record 与 drop 形状一致）→ 焦点 App 注 on_native_paste。
+   490 键位表收编按热键域协调条款（488 先合 → 490 收编本臂）留待 490。
+   T2 单测绿（剪贴板文本往返 + 域形状，485 GlobalClipboardTestLock 串行）；
+   ui-iced 档 1508 测 1507 绿 + 唯一存量红 plan050_i18n（基线同红）。
 8. **夹具扩展**：`tools/native-fixture/src/main.rs` `--offer` 拖源 + drop
    日志（清 main.rs:19 TODO）。
    验证：`cargo run --manifest-path tools/native-fixture/Cargo.toml -- --offer text:hi` 手动起拖冒烟。
+   [✅ 已完成] worktree 提交 c8d9c45d5：--offer text:/files: 拖源（触发面取
+   客户区 WM_LBUTTONDOWN 而非按钮 click——真拖拽要求按下时刻键按住，click
+   时已释放；计划文字"按钮触发"的机械修正，README 已注）+ 内置最小 COM
+   三件套（独立 bin 不复用 auto-lang，避免整仓编译依赖）+ 全窗 IDropTarget
+   drop 日志 {evt:drop,formats,text,files}（含 cf:N 未知名观察）+ dragend
+   效果行 + README 协议表更新，473 预留 TODO 清零。冒烟：`--offer text:hi
+   --self-close 3` 启动出 start/bounds/close 行、OLE 挂载不崩（真拖交互留
+   T6/步骤 9 合成拖拽）。
 9. **E2E T3/T4**：`crates/auto-lang/tests/native_dnd_e2e.rs`（feature 门控，
    拖拽模拟手段沿 486 待澄清③裁定）。
    验证：`cargo test -p auto-lang --features native-dnd --test native_dnd_e2e`。
