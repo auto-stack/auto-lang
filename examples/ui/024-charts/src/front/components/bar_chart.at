@@ -195,7 +195,6 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
             .segs = outSegs
 
             // ---- x 轴标签:逐数据点槽位(≤20 全量对齐,超出等距抽样) ----
-            var iname = .index
             var KL int = n
             if KL > 20 {
                 KL = 20
