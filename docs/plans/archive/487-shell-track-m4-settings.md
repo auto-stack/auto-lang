@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-487
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: shell-track-m4-settings
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -8,10 +8,10 @@ updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
-  - "docs/specs/auto-lang/ui/overview.md: 修改——状态投影协议 v1.2 → v1.3：DesktopBus 词表增 open_settings（无参，齿轮召唤二态翻转）/set_dock_position(top|bottom)/set_dock_enabled(1|0) 三动词（§4 表 + §6 变更记录含 486 并行协调注记；零新 __wm_* 投影字段/零指纹变化，向后兼容）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——状态投影协议 v1.2 → v1.4（486 先合占 v1.3，487 按并行协调叠 v1.4——merge 实况）：DesktopBus 词表增 open_settings（无参，齿轮召唤二态翻转）/set_dock_position(top|bottom)/set_dock_enabled(1|0) 三动词（§4 表 + §6 变更记录含 486 并行协调注记；零新 __wm_* 投影字段/零指纹变化，向后兼容）"
   - "docs/specs/auto-lang/ui/overview.md: 修改——dock 配置链升格读写闭环：shell.dock.position/enabled/pinned 三键原 boot 单向读（472）→ 本期驱动写回（执行臂 storage_host_publish）+ UI 写手（pinned 行内增删 storage.set 直写）；boot 读路径不变（desktop_dock_edges 键重推导同一函数，I9）"
   - "docs/specs/auto-lang/ui/overview.md: 修改——通知持久化链（479）增 shell.notes.enabled 单点门控：push_notification 入口 \"false\" 短路（notify 全链路零入史/零 toast/零未读/零落盘），缺席/其余 = 开向后兼容；479 定长槽 shell.notes.0..9 不变"
-  - "schema/projection-protocol-v1.md: 版本 v1.2 → v1.3（三动词入表 + §5 金样补 settings_* 七测 + storage 键增量注记；486 并行协调——487 先合占 v1.3，若 486 先合则本文档叠 v1.4，merge 时按实况核对）"
+  - "schema/projection-protocol-v1.md: 版本 v1.2 → v1.4（486 先合占 v1.3，487 叠 v1.4；三动词入表 + §5 金样补 settings_* 七测 + storage 键增量注记；486 并行协调——487 先合占 v1.3，若 486 先合则本文档叠 v1.4，merge 时按实况核对）"
 new_spec_components:
   - "docs/specs/auto-lang/ui/overview.md: 新增组件——设置面板 overlay（assets/settings.at 进程内嵌特权 App，第四枚 overlay 槽：左列 Dock/通知/关于三分区导航 + 右列内容卡；DesktopState.settings_app + HostCtx.settings_fields + split_mut windowless 第五路/split_ref_settings/settings_visible + toggle_settings 懒挂载/二态翻转/配置快照注入（cfg_dock_position/cfg_dock_enabled/cfg_notes_enabled + pinned_ids 平行列表 B12 规避 + about_host/about_version 常量）+ call_handler RebuildPinned + 仅 visible 推层装配 + Esc 仲裁链第五路/键盘独占/订阅第五块）"
   - "docs/specs/auto-lang/ui/overview.md: 新增组件——dock 几何驱动动词执行臂（execute_set_dock_position/enabled → apply_dock_edges_now 三联动：storage 键写回 → dock_edges 键重推导（boot 同函数）→ apply_layout relayout + 槽位几何排水 + shell __dock_* 投影热同步；enabled=false 零预留位置键保留，重开按原位置恢复）"
