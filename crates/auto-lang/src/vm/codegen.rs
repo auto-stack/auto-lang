@@ -5893,6 +5893,20 @@ impl Codegen {
                         return Ok(());
                     }
 
+                    // plan-022 (auto-down): `.length` on an untyped receiver —
+                    // call-result chains (`bl.links.length`) where static
+                    // inference has no type and the alias lookup above misses.
+                    // Emit ARRAY_LEN directly: its runtime handles heap lists
+                    // and strings; on non-list objects it yields 0 (matching
+                    // the prior fallthrough's behavior — no regression), and
+                    // user-typed receivers never reach this branch.
+                    if field.as_str() == "length" {
+                        self.compile_expr(obj)?;
+                        self.emit(OpCode::ARRAY_LEN);
+                        self.last_expr_type = ObjectType::Int;
+                        return Ok(());
+                    }
+
                     // Regular field access (Plan 073)
                     // Or nested field access on user type (Plan 118 Phase 7)
                     // Compile object expression (should push object_id onto stack)
