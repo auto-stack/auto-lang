@@ -7153,6 +7153,9 @@ fn execute_desktop_commands(
             // Plan 473 T4：原生窗口收编/解除（native dock Phase 1；执行体见下）。
             DC::DockNative(target) => execute_dock_native(state, target),
             DC::UndockNative(slot) => execute_undock_native(state, slot),
+            // Plan 486 v1.3：任务栏 native 条目聚焦/关闭（执行体见下）。
+            DC::FocusNative(slot) => execute_focus_native(state, slot),
+            DC::CloseNative(slot) => execute_close_native(state, slot),
             // Plan 478 T2：pager `+` —— 新增分区并即入（验收②）。
             DC::WorkspaceAdd => {
                 let id = state.host.as_mut().map(|h| h.wm.add_workspace());
@@ -7414,6 +7417,55 @@ fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, slot_id
 
 #[cfg(not(windows))]
 fn execute_undock_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
+}
+
+/// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗（最小化先
+/// SW_RESTORE，再 SetForegroundWindow best-effort——前台锁拒绝不 toast，
+/// 窗口仍可能经系统动画置前）。
+#[cfg(windows)]
+fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
+    let Some(slot) = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&NativeSlotId(slot_id)))
+    else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+        return;
+    };
+    let hwnd = slot.hwnd;
+    if ndw::is_minimized(hwnd) {
+        let _ = ndw::show_window(hwnd, ndw::ShowMode::Restore);
+    }
+    let _ = ndw::focus_window(hwnd);
+}
+
+#[cfg(not(windows))]
+fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
+    push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
+}
+
+/// Plan 486 v1.3：任务栏 native 条目 ×——请求关闭（WM_CLOSE 正常关闭
+/// 机会；槽位由 DESTROY 事件自然回收，B7 路径无需在此移除）。
+#[cfg(windows)]
+fn execute_close_native(state: &mut crate::ui::session::DesktopSession, slot_id: u64) {
+    use crate::ui::native_dock::{win32 as ndw, NativeSlotId};
+    let Some(slot) = state
+        .host
+        .as_ref()
+        .and_then(|h| h.wm.native_slots.get(&NativeSlotId(slot_id)))
+    else {
+        push_desktop_toast(state, "error", "未知原生槽位");
+        return;
+    };
+    if ndw::request_close(slot.hwnd).is_err() {
+        push_desktop_toast(state, "error", "关闭请求失败（窗口可能已退出）");
+    }
+}
+
+#[cfg(not(windows))]
+fn execute_close_native(state: &mut crate::ui::session::DesktopSession, _slot_id: u64) {
     push_desktop_toast(state, "error", "原生窗口 dock 仅支持 Windows");
 }
 

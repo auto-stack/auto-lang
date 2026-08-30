@@ -31,10 +31,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
     EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
-    PostMessageW, PostThreadMessageW, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
+    PostMessageW, PostThreadMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_QUIT,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
 };
 
 /// Win32 dock 操作错误（UIPI 拒绝单独分类，供 shell 层提示）。
@@ -420,6 +420,13 @@ pub fn request_close(target: NativeHwnd) -> Result<(), DockError> {
     }
     unsafe { PostMessageW(hwnd_of(target), WM_CLOSE, WPARAM(0), LPARAM(0)) }
         .map_err(|e| DockError::from_err("PostMessageW(WM_CLOSE)", e))
+}
+
+/// 前台聚焦（Plan 486 任务栏 focus_native）：`SetForegroundWindow`
+/// best-effort——后台进程前台锁等限制下返回 false（调用方按"尽力"语义
+/// 处理，不视为错误路径）。最小化还原由调用方先行 `SW_RESTORE`。
+pub fn focus_window(target: NativeHwnd) -> bool {
+    alive(target) && unsafe { SetForegroundWindow(hwnd_of(target)) }.as_bool()
 }
 
 /// 目标窗口是否仍然存活（IsWindow；WinEvent DESTROY 的兜底核对）。

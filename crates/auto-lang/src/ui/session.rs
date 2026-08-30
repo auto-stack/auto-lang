@@ -894,6 +894,13 @@ pub enum DesktopCommand {
     /// Plan 473：解除收编——恢复 pre-dock bounds/样式后移除槽位（slot id
     /// 取自投影 `__wm_native_slots`）。
     UndockNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗
+    /// （SetForegroundWindow + 最小化时先 SW_RESTORE；slot id 取自投影
+    /// wid "N<slot>" 的数字段）。
+    FocusNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目 ×——请求关闭（WM_CLOSE；槽位由
+    /// DESTROY 事件自然回收，B7 路径）。
+    CloseNative(u64),
     /// Plan 478 T2：新增分区（pager `+`；宿主臂随即入新分区）。
     WorkspaceAdd,
     /// Plan 478 T2：删除分区（pager `×`；非空/末分区门在宿主臂 toast）。
@@ -987,6 +994,12 @@ impl DesktopCommand {
             DesktopCommand::UndockNative(slot) => {
                 format!("undock_native{}{}", Self::FIELD_SEP, slot)
             }
+            DesktopCommand::FocusNative(slot) => {
+                format!("focus_native{}{}", Self::FIELD_SEP, slot)
+            }
+            DesktopCommand::CloseNative(slot) => {
+                format!("close_native{}{}", Self::FIELD_SEP, slot)
+            }
             DesktopCommand::WorkspaceAdd => "workspace_add".to_string(),
             DesktopCommand::WorkspaceClose(n) => {
                 format!("workspace_close{}{}", Self::FIELD_SEP, n)
@@ -1056,6 +1069,9 @@ impl DesktopCommand {
                     }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
+                    // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型）。
+                    "focus_native" => arg.parse::<u64>().ok().map(DesktopCommand::FocusNative),
+                    "close_native" => arg.parse::<u64>().ok().map(DesktopCommand::CloseNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
@@ -3153,11 +3169,14 @@ mod tests {
     #[test]
     fn native_dock_verbs_parse_and_encode() {
         use crate::ui::session::NativeTarget;
-        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制）。
+        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制；486 v1.3
+        // 任务栏动词 focus_native/close_native 同型）。
         let cmds = vec![
             DesktopCommand::DockNative(NativeTarget::ByPid(4242)),
             DesktopCommand::DockNative(NativeTarget::ByHwnd(0x1a2b)),
             DesktopCommand::UndockNative(7),
+            DesktopCommand::FocusNative(5),
+            DesktopCommand::CloseNative(6),
         ];
         let payload = cmds
             .iter()
@@ -3166,6 +3185,8 @@ mod tests {
             .join("\u{1e}");
         assert_eq!(payload.contains("pid=4242"), true);
         assert_eq!(payload.contains("hwnd=0x1a2b"), true);
+        assert_eq!(payload.contains("focus_native\u{1f}5"), true);
+        assert_eq!(payload.contains("close_native\u{1f}6"), true);
         assert_eq!(DesktopCommand::parse_records(&payload), cmds);
         // hwnd 十进制直写。
         assert_eq!(
@@ -3176,6 +3197,8 @@ mod tests {
         assert!(DesktopCommand::parse_records("dock_native\u{1f}foo=1").is_empty());
         assert!(DesktopCommand::parse_records("undock_native\u{1f}abc").is_empty());
         assert!(DesktopCommand::parse_records("dock_native\u{1f}").is_empty());
+        assert!(DesktopCommand::parse_records("focus_native\u{1f}xyz").is_empty());
+        assert!(DesktopCommand::parse_records("close_native\u{1f}").is_empty());
     }
 
     #[test]
