@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-488
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-dragdrop
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 9
+current_step: 10
 total_steps: 11
 ---
 
@@ -306,15 +306,27 @@ virtual_window spec events 映射同步。
 10. **实机冒烟 + 收尾**：T6 六场景执行留痕；健康检查（零警告/无调试打印）；
     状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui && cargo t vm`。
-    [🔶 部分] worktree 提交 35c62db8c 后：健康检查完成——`cargo check -p
-    auto-lang` 干净、`cargo t ui` 772 绿、`cargo t vm` 638 绿；触面
-    （native_dnd/native_catalog/native.rs/drag_sim）零警告；唯一 eprintln 为
-    AUTO_DND_TRACE=1 环境门控诊断（renderer AUTO_DEBUG_KEYS 同型先例），
-    生产路径零打印。**T6 真机六场景（A1/A2/A5/A6/D2–D4）挂起**——需真
-    人实机拖拽 Explorer/Chrome/notepad，无法代理执行（管线等价已由
-    E2E T3/T4 双绿 + T1 格式单测覆盖；Explorer 对 HGLOBAL FILECONTENTS
-    的接受度为唯一残留技术风险，见待澄清⑦）。状态保持 executing 待用户
-    执行 T6 后翻 execution_done。
+    [✅ 已完成] 健康检查（35c62db8c 时点）：`cargo check -p auto-lang`
+    干净、`cargo t ui`/`t vm` 绿、触面零警告（唯一 eprintln =
+    AUTO_DND_TRACE=1 门控诊断，AUTO_DEBUG_KEYS 同型先例）。**T6 留痕
+    （三轮实机 + 代理端到端实证汇总，2026-08-30 收口）**：
+    - A1 Explorer 文件拖入：✅（三轮用户确认拖入数据到达；files/formats
+      单测+E2E T3 断言链等价）。
+    - A2 桌面→Explorer 虚拟文件落地：✅（用户二轮确认"拖出虚拟文件
+      正常"——**HGLOBAL FILECONTENTS 技术风险解除**）。
+    - A5 notepad 文本双向：✅ 拖出（用户三轮确认）；反向=拖入显示，
+      见下行。
+    - A6 浏览器 URL 双向：✅ 拖出至 Chrome 地址栏（用户确认）；Explorer
+      地址栏不吃裸文本=目标侧能力（注记于待澄清⑦二轮）。
+    - D2–D4 Chrome 拖出/拖入/图片：拖入数据到达（用户二轮确认真机）；
+      image temp PNG 落值未单独留痕（D 系观察值入 P488-D5 同族）。
+    - **拖入即时显示**：三轮修复（WM_NULL ticker）后代理端到端实证
+      即时显示（合成拖入 hopH→截图见 `[CF_UNICODETEXT] text="hopH"`，
+      管线四跳全通 handler Ok，worktree cad70501d 记录）；用户三轮对
+      A1 确认、拖入显示以代理实证+三轮修复链收口。
+    - Ctrl+V：T5 单测绿；实机显式留痕缺（P488-D5）。
+    残留观察项全部登记 KNOWN-DEBT P488-D1..D5（复审步）。状态翻
+    execution_done（用户指示进入 review）。
 11. **骑手：P485-2 分诊（先分类、后处置，带逃生舱；2026-08-30 调度追加）**：
     本计划改动面含 `vm/`（natives），复审门禁跑 `cargo tv`——先在红
     `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（master @3a4aacf19 即红，
