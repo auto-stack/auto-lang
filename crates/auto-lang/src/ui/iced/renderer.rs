@@ -3511,13 +3511,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 484: hover 命中区 —— iced mouse_area 透明包裹,仅转发
             // enter/exit 消息(通用事件分发)。style(尺寸/定位类)经
             // build_container 承载——命中区必须定宽高,空内容才有可命中面积。
-            AbstractView::MouseArea { content, on_enter, on_exit, style } => {
+            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, style } => {
                 let mut ma = mouse_area(content.into_iced());
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
                 }
                 if let Some(msg) = on_exit {
                     ma = ma.on_exit(msg);
+                }
+                // Plan 496 M5: ondblclick → iced mouse_area on_double_click
+                //（桌面图标双击启动原语；inspect 捕获态丢臂与其余 handler 同规则）。
+                if !inspect_capture_active() {
+                    if let Some(msg) = on_double_click {
+                        ma = ma.on_double_click(msg);
+                    }
                 }
                 build_container(
                     ma.into(),
@@ -5033,6 +5040,19 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 placement,
                 open,
                 on_dismiss: on_dismiss.map(|m| IcedMessage::from_dynamic(&m)),
+            }
+        }
+
+        // Plan 496 M5: MouseArea 必须显式臂——此前 VM 动态路径走 `_ => Empty`
+        // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
+        // 双击臂依赖本臂;enter/exit/double_click 三消息递归映射。
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, style } => {
+            AbstractView::MouseArea {
+                content: Box::new(convert_view_messages(*content)),
+                on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
+                on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
+                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
             }
         }
 
@@ -19073,6 +19093,191 @@ mod tests {
         match t496_read(&ds, "__desktop_bg") {
             auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "图片路径 → 空片段"),
             other => panic!("__desktop_bg（图片）异常: {other:?}"),
+        }
+    }
+
+    /// T1 族视图走查辅助：递归数 (mouse_area 双击臂数, 指定文本出现数)。
+    fn t496_walk(
+        v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        dbl: &mut usize,
+        texts: &mut Vec<String>,
+    ) {
+        use crate::ui::view::View;
+        match v {
+            View::MouseArea { content, on_double_click, .. } => {
+                if on_double_click.is_some() {
+                    *dbl += 1;
+                }
+                t496_walk(content, dbl, texts);
+            }
+            View::Text { content, .. } => texts.push(content.clone()),
+            // button "打开" 的 label 在 Button.label（非 Text 子节点）。
+            View::Button { label, content, .. } => {
+                texts.push(label.clone());
+                if let Some(c) = content {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            View::Column { children, .. } | View::Row { children, .. } => {
+                for c in children {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                t496_walk(child, dbl, texts)
+            }
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// T1：desktop.at 装载 + 注入 headless——条目渲染数（网格 for 展开）、
+    /// 双击 mouse-area on_double_click 电路（VM 动态路径 convert_view_messages
+    /// 后存活——496 补臂前落 Empty 兜底）、右键菜单出现（IconMenu → 菜单
+    /// 三项文本）、MenuRemove storage 直写、BlankPress 关菜单、ActivateApp
+    /// → activate 动词记录（472 两臂复用）。
+    #[test]
+    fn desktop_surface_at_loads_interactions_and_dispatch() {
+        let _guard = t2_isolate_storage("d496-t1");
+        let mut ds = t3_session_with_shell();
+        let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+        ds.desktop.desktop_app = Some(ds.allocate_app(comp));
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "014-weather,011-calculator".into(),
+        );
+        // 默认 dock_pinned 三枚 + custom 两枚（011 重叠去重）→ 4 条目。
+        inject_desktop_surface(&mut ds);
+        let surface = ds.desktop.desktop_app.unwrap();
+        let (mut dbl, mut texts) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            t496_walk(&view, &mut dbl, &mut texts);
+        }
+        assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
+        assert_eq!(
+            texts.iter().filter(|t| t.as_str() == "014-weather").count(),
+            1,
+            "label 渲染（未登记条目回退 id）"
+        );
+        // 转换后存活（convert_view_messages VM 动态路径——Empty 兜底即双击死）。
+        let (mut dbl2, mut texts2) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            let converted = convert_view_messages(view);
+            t496_walk_iced(&converted, &mut dbl2, &mut texts2);
+        }
+        assert_eq!(dbl2, 4, "convert_view_messages 后 mouse_area 双击臂存活");
+        // 右键菜单：IconMenu 打开 → 三项文本出现；BlankPress 关闭消失。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("014-weather")])
+                .expect("IconMenu handler");
+        }
+        let (mut dbl3, mut texts3) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            t496_walk(&view, &mut dbl3, &mut texts3);
+        }
+        for item in ["打开", "从桌面移除", "更换壁纸…"] {
+            assert!(
+                texts3.iter().any(|t| t == item),
+                "菜单项「{item}」应出现（menu_id 打开态）"
+            );
+        }
+        // MenuRemove：hidden 直写（storage）+ 菜单关闭。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("MenuRemove", &[])
+                .expect("MenuRemove handler");
+        }
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.hidden").as_deref(),
+            Some("014-weather"),
+            "移除 = shell.desktop.hidden 直写"
+        );
+        // BlankPress：关菜单。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("BlankPress", &[])
+                .expect("BlankPress handler");
+            app.component
+                .bridge_mut()
+                .call_handler("ActivateApp", &[auto_val::Value::str("011-calculator")])
+                .expect("ActivateApp handler");
+        }
+        match t496_read(&ds, "__desktop_cmd") {
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "activate\t011-calculator", "双击/打开 → activate 动词（472 两臂复用）")
+            }
+            other => panic!("__desktop_cmd 异常: {other:?}"),
+        }
+        match t496_read(&ds, "menu_id") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "空白点击关菜单"),
+            other => panic!("menu_id 异常: {other:?}"),
+        }
+        // MenuWallpaper → open_settings（v1.4 无参动词）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("013-todo")])
+                .expect("IconMenu handler");
+            app.component
+                .bridge_mut()
+                .call_handler("MenuWallpaper", &[])
+                .expect("MenuWallpaper handler");
+        }
+        match t496_read(&ds, "__desktop_cmd") {
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "open_settings", "更换壁纸入口 → open_settings")
+            }
+            other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
+        }
+    }
+
+    /// T1 走查（iced 侧）：View<IcedMessage> 版（convert_view_messages 后）。
+    fn t496_walk_iced(
+        v: &crate::ui::view::View<IcedMessage>,
+        dbl: &mut usize,
+        texts: &mut Vec<String>,
+    ) {
+        use crate::ui::view::View;
+        match v {
+            View::MouseArea { content, on_double_click, .. } => {
+                if on_double_click.is_some() {
+                    *dbl += 1;
+                }
+                t496_walk_iced(content, dbl, texts);
+            }
+            View::Text { content, .. } => texts.push(content.clone()),
+            View::Column { children, .. } | View::Row { children, .. } => {
+                for c in children {
+                    t496_walk_iced(c, dbl, texts);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                t496_walk_iced(child, dbl, texts)
+            }
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    t496_walk_iced(c, dbl, texts);
+                }
+            }
+            _ => {}
         }
     }
 
