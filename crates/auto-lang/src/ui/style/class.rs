@@ -139,7 +139,6 @@ pub enum StyleClass {
 
     /// Margin Left Auto: ml-auto — push element to the right in a row
     MarginLeftAuto,
-    MarginTopAuto,
 
     /// Margin Right Auto: mr-auto — push element to the left in a row
     MarginRightAuto,
@@ -1085,7 +1084,6 @@ impl StyleClass {
             // Plan 412 降级矩阵先例解析保存为 ItemsStart(顶部对齐近似),
             // 不再整类静默丢弃(musk app.at 品牌行在用)。
             "items-baseline" => return Ok(StyleClass::ItemsCenter),
-            "mt-auto" => return Ok(StyleClass::MarginTopAuto),
             _ => {}
         }
 
@@ -1692,9 +1690,9 @@ mod tests {
     // Plan 049 (auto-musk D3): items-baseline 降级臂——iced 无基线对齐,按
     // Plan 412 降级矩阵先例解析保存为 ItemsStart(顶部对齐近似),不再整类丢弃。
     #[test]
-    fn test_parse_items_baseline_degrades_to_start() {
+    fn test_parse_items_baseline_degrades_to_center() {
         assert_eq!(StyleClass::parse_single("items-baseline"), Ok(StyleClass::ItemsCenter));
-        assert_eq!(StyleClass::parse_single("mt-auto"), Ok(StyleClass::MarginTopAuto));
+        assert_eq!(StyleClass::parse_single("mt-auto"), Ok(StyleClass::MarginTop(SizeValue::Auto)));
     }
 
     #[test]
