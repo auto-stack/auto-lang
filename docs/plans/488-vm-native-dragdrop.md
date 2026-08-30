@@ -329,6 +329,15 @@ virtual_window spec events 映射同步。
       独立专项（后续计划号）。
     验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
 
+## 阶段性折叠记录
+
+- **2026-08-30 一阶折叠（T6 三轮前）**：worktree 14+1 提交（至 47038976e）
+  + master 合入（487/489/491 等并行推进，renderer/session 无冲突自动并）→ 折叠门禁绿：
+  `cargo check` 干净 / `cargo t` 3282 绿 / ui-iced 档 4088 全绿（存量红 plan050_i18n 已被 489 修复）/
+  `cargo tf` 3283 全绿（含 1M churn 档）/ `cargo tv` 3420/3423，三红均 master 基线存量
+  （cb_asynchronous_channel/cb_devtools_log_error/aavm2_m4=P485-2，实测对照）→ master 快进至 71d99e707。
+  工作树保留（三轮 T6 验证继续在其中）；终态 fold 归 /auto-plan:merge。
+
 ## 复审记录
 
 （/auto-plan:review 填写）
