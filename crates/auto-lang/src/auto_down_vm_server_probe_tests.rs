@@ -66,9 +66,9 @@ mod auto_down_vm_probe {
         case(
             "baseline",
             r#"
-use.rust axum::Router
-use.rust axum::routing::get
-use.rust serde_json::Value
+use.rs axum::Router
+use.rs axum::routing::get
+use.rs serde_json::Value
 
 fn graphGet() Value {
     return json.parse("{}")
@@ -90,10 +90,10 @@ pub fn build_router() Router {
         case(
             "query-value",
             r#"
-use.rust axum::Router
-use.rust axum::routing::get
-use.rust axum::extract::Query
-use.rust serde_json::Value
+use.rs axum::Router
+use.rs axum::routing::get
+use.rs axum::extract::Query
+use.rs serde_json::Value
 
 fn filesList(q Query<Value>) Value {
     return json.parse("{}")
@@ -115,10 +115,10 @@ pub fn build_router() Router {
         case(
             "path-str",
             r#"
-use.rust axum::Router
-use.rust axum::routing::get
-use.rust axum::extract::Path
-use.rust serde_json::Value
+use.rs axum::Router
+use.rs axum::routing::get
+use.rs axum::extract::Path
+use.rs serde_json::Value
 
 fn wikiRead(p Path<str>) Value {
     return json.parse("{}")
@@ -140,11 +140,11 @@ pub fn build_router() Router {
         case(
             "path-query",
             r#"
-use.rust axum::Router
-use.rust axum::routing::get
-use.rust axum::extract::Query
-use.rust axum::extract::Path
-use.rust serde_json::Value
+use.rs axum::Router
+use.rs axum::routing::get
+use.rs axum::extract::Query
+use.rs axum::extract::Path
+use.rs serde_json::Value
 
 fn wikiRead(p Path<str>, q Query<Value>) Value {
     return json.parse("{}")
@@ -166,9 +166,9 @@ pub fn build_router() Router {
         case(
             "host-call",
             r#"
-use.rust axum::Router
-use.rust axum::routing::get
-use.rust serde_json::Value
+use.rs axum::Router
+use.rs axum::routing::get
+use.rs serde_json::Value
 
 fn callApi(method str, path str, q Value, body Value) Value {
     let env = "{\"method\":\"" + method + "\",\"path\":\"" + path + "\"}"

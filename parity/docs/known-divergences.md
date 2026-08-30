@@ -143,12 +143,12 @@ passes on all three backends); they shaped the scope and API design.
 
 ### Scope limitation: no FFI path for Connection/Statement
 
-- **DIV-RUSQLITE-1 — `use.rust rusqlite::Connection` is not viable in the
-  current VM.** `use.rust` `RustFfiBridge` marshals only `VMConvertible`
+- **DIV-RUSQLITE-1 — `use.rs rusqlite::Connection` is not viable in the
+  current VM.** `use.rs` `RustFfiBridge` marshals only `VMConvertible`
   primitives (i32, u32, bool, i64, u64, f64, String, Vec<...>, Option, tuples).
   `Connection` and `Statement` are opaque, stateful handles with no
   `VMConvertible` impl and no `RustStdlibObject` shim. Consequently the
-  Plan-347 brief's literal "call rusqlite via `use.rust`" path cannot work for
+  Plan-347 brief's literal "call rusqlite via `use.rs`" path cannot work for
   the connection/query types. The replication instead follows the proven
   parity-library pattern (base64 / url / serde_json / regex / sha2): a pure-Auto
   reimplementation of the deterministic slice, compared three-way against a

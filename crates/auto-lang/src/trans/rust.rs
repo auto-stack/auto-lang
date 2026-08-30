@@ -2301,7 +2301,7 @@ impl RustTrans {
         let path_colon = path.replace('.', "::");
         self.uses.iter().any(|u| {
             let u_str = u.as_str();
-            u_str == path_colon                     // use.rust std::env  matches "std.env"
+            u_str == path_colon                     // use.rs std::env  matches "std.env"
                 || u_str == path                    // defensive: use stored as dotted
                 || u_str.starts_with(&format!("{}::", path_colon)) // use.rs std::env::var matches "std.env" (prefix)
         })

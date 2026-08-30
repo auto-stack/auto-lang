@@ -26,7 +26,7 @@
 | `19-specs.at` | spec / trait 约束 | ✅ | ✅ | ✅ |
 | `20-datetime.at` | 日期时间计算 | ✅ | ✅ | ⚠️ 依赖 Rust std |
 | `21-encoding.at` | Base64 / hex 编解码 | ✅ | ✅ | ⚠️ 依赖 Rust std |
-| `22-rust-stdlib.at` | `use.rust` 调用 Rust stdlib（PathBuf / Duration） | ✅ | ✅ | ⚠️ C 不支持 use.rust |
+| `22-rust-stdlib.at` | `use.rs` 调用 Rust stdlib（PathBuf / Duration） | ✅ | ✅ | ⚠️ C 不支持 use.rs |
 | `23-url.at` | URL 百分号编码与部件解析 | ✅ | ✅ | ✅ |
 | `24-json.at` | JSON 解析 / 访问 / 编码 | ✅ | ✅ | ✅ |
 | `25-regex.at` | 正则匹配与 find_all（配合 Json） | ✅ | ✅ | ✅ |

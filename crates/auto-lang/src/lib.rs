@@ -761,7 +761,7 @@ async fn execute_autovm_with_path(
             }
         }
     }
-    session.collect_rust_imports(code)?; // Plan 212b: collect use.rust imports before resolving deps
+    session.collect_rust_imports(code)?; // Plan 212b: collect use.rs imports before resolving deps
     session.collect_py_imports(code)?; // Plan 214: collect use.py imports
     session.resolve_deps(code)?; // Plan 212b: resolve dep statements (triggers compile_dep)
     session.resolve_uses(code)?;
@@ -6046,7 +6046,7 @@ mod plan442_sched_tests;
 mod plan442_webcompat_tests;
 
 // Plan 442 C2: parser regressions for the Bug A family (method chains on
-// use.rust-imported fn calls in argument position).
+// use.rs-imported fn calls in argument position).
 #[cfg(test)]
 mod plan442_parser_regress_tests;
 

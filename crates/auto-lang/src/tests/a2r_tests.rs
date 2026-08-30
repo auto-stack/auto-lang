@@ -225,7 +225,7 @@ fn fail(name str) Result<bool, str> {
 #[test]
 fn test_a2r_tuple_key_hashmap_insert_get() {
     let src = "\
-use.rust std::collections::HashMap
+use.rs std::collections::HashMap
 type Store {
     cache HashMap<(str, str, str), str>
 }
@@ -268,11 +268,11 @@ ext Store {
 /// but that made multi-segment paths indistinguishable from `obj.field`
 /// access — codegen emitted `std.env.var(...)` (invalid Rust). This test pins
 /// the codegen fix (rust.rs `dot_chain_path` + `path_matches_use_rust`) that
-/// recognizes Dot chains rooted at a use.rust module and emits `::`.
+/// recognizes Dot chains rooted at a use.rs module and emits `::`.
 #[test]
 fn test_a2r_multi_segment_module_path() {
     let src = "\
-use.rust std::env
+use.rs std::env
 fn main() {
     let v = std::env::var(\"HOME\").ok()
     print(v)
@@ -297,8 +297,8 @@ fn main() {
 #[test]
 fn test_a2r_drop_mutex_guard_after_is() {
     let src = "\
-use.rust std::sync::Mutex
-use.rust std::collections::HashMap
+use.rs std::sync::Mutex
+use.rs std::collections::HashMap
 type Store {
     cache Mutex<HashMap<str, str>>
 }
@@ -331,8 +331,8 @@ ext Store {
 #[test]
 fn test_a2r_no_drop_when_guard_reused() {
     let src = "\
-use.rust std::sync::Mutex
-use.rust std::collections::HashMap
+use.rs std::sync::Mutex
+use.rs std::collections::HashMap
 type Store {
     cache Mutex<HashMap<str, str>>
 }

@@ -15,7 +15,7 @@ rusqlite is a *driver* over SQLite, not pure logic. The stateful, opaque parts
 cannot be replicated in the current Auto VM and are out of scope:
 
 - **`Connection` / `Statement`** — opaque handles that cannot cross the VM
-  boundary. `use.rust` `RustFfiBridge` marshals only primitives via
+  boundary. `use.rs` `RustFfiBridge` marshals only primitives via
   `VMConvertible` (i32, u32, bool, i64, u64, f64, String, Vec<...>, Option,
   tuples); `Connection`/`Statement` have no `VMConvertible` impl and no
   `RustStdlibObject` shim exists for them. See `DIV-RUSQLITE-1`.
@@ -74,10 +74,10 @@ Coercions: `from_i64`, `from_i32`, `from_i16`, `from_i8`, `from_u32`, `from_u16`
   outside [-2147483648, 2147483647] cannot be represented. This constrains the
   testable range (see Known divergences / DIV-RUSQLITE-VM-2).
 
-### Why not `use.rust` FFI?
+### Why not `use.rs` FFI?
 
-The Plan-347 task brief explored calling rusqlite directly via `use.rust
-rusqlite::Connection`. This is not viable in the current VM: `use.rust`
+The Plan-347 task brief explored calling rusqlite directly via `use.rs
+rusqlite::Connection`. This is not viable in the current VM: `use.rs`
 `RustFfiBridge` can only marshal `VMConvertible` primitives, and
 `Connection`/`Statement` are opaque handles with no marshal path. The proven
 parity-library pattern (base64, url, serde_json, regex, sha2) is a pure-Auto

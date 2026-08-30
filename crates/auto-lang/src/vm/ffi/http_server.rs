@@ -1154,7 +1154,7 @@ fn events_handler() ~Iter<int> {
         fn e2e_sse_chain() {
             let port = start_server(r#"
 dep axum
-use.rust axum::response::sse::{Event, KeepAlive, Sse}
+use.rs axum::response::sse::{Event, KeepAlive, Sse}
 
 #[api(method = "GET", path = "/api/sse-chain")]
 fn chain_handler() int {
