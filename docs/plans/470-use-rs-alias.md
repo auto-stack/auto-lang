@@ -152,6 +152,7 @@ self.warn(Warning::DeprecatedFeature {
   [✅ 已完成] `.rs `/`.rs\t` 分支置于 `.rust ` 之前；3 测 PASS（simple/with_items/新旧混排）。
 - T4: `compile.rs:479` 错误消息更新；Rust 内嵌测试串迁移。
   [✅ 已完成] 消息改 "Add `dep {}` before `use.rs`."；plan442_parser_regress_tests（2 串）、plan442_musk_backend_probe_tests（1 串 + **辅助扫描器补 `use.rs ` 前缀**——代码级 strip_prefix，别名必需）、ffi_dual_tests（3 串+机制注释）、parser.rs 内嵌 1 串、trans/c.rs 错误消息、trans/rust.rs 2 处现行语法注释。源码级 `"use.rust"` 字面量已清零（grep 证实）。
+  [✅ 补迁（2026-08-30 用户复查触发）] T4 的"单行引号前缀 grep"存在盲区：**多行 raw-string 内嵌 .at 源**漏迁——auto_down_vm_server_probe_tests（19 处）、tests/a2r_tests（6 处）、vm/ffi/http_server e2e（1 处），另补 2 处行尾机制注释（lib.rs:764/6049、trans/rust.rs:2304）与 examples/playground-demo/README、parity 双文档（known-divergences + rusqlite README）。行级全类型终扫后非注释命中仅剩三组刻意 fixture（parser 告警测试 6 / scanner 旧拼写回归 6 / plan442 双前缀 1）。三档复验零新增失败。
 - T5: 新增 a2r 端到端用例。
   [✅ 已完成] **编号调整**：`002_pub_use` 已占用 → 落位 `14_modules/010_use_rs/`（use_rs.at + use_rs.expected.rs，expected 与 001 逐字节一致），a2r_tests.rs 注册 test_14_modules_010_use_rs，PASS。
 
