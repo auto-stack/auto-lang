@@ -74,6 +74,12 @@ native-dock = ["dep:windows"]
 # 列表与 native-dock 共用一条目——Cargo feature 合并语义下扩列即两 feature
 # 共用（Plan 485 待澄清#4 定稿：合并扩列，编译最小扰动）。
 native-clipboard = ["dep:windows", "dep:image"]
+# Plan 488: 原生互操作 Phase 3——OLE 拖放双向（IDataObject/IDropSource/
+# IDropTarget 自实现 + DoDragDrop STA 线程 + 虚拟文件 FILEDESCRIPTOR/
+# FILECONTENTS）。Win32/COM 调用仅出现在 ui/native_dnd.rs，与 native-dock
+# 同型双门控（optional dep + cfg(windows)）；不隐含 ui-iced（G5：未开
+# feature 时 natives 降级返 false）。
+native-dnd = ["dep:windows"]
 # Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
 # test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]
@@ -211,6 +217,10 @@ windows = { version = "0.58", optional = true, features = [
     # Plan 486 T4：合成拖拽 SendInput（test-native-dock 档独占使用；
     # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
     "Win32_UI_Input_KeyboardAndMouse",
+    # Plan 488: OLE 拖放——Com(OLE 基础/DoDragDrop/OleInitialize)+
+    # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)。
+    "Win32_System_Com",
+    "Win32_System_Ole",
 ] }
 
 [dev-dependencies]

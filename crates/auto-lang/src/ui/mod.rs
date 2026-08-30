@@ -61,6 +61,11 @@ pub mod desktop_protocol;
 // 以同名 no-op 模块顶替。
 pub mod native_dock;
 
+// Plan 488：原生互操作 Phase 3——OLE 拖放双向（payload 模型全平台可编译；
+// Win32/COM 调用 #[cfg(all(windows, feature = "native-dnd"))] 门控在模块内
+// 分节，未开 feature 时 natives 走降级 shim）。
+pub mod native_dnd;
+
 // Plan 442 A3: web-ecosystem ext imports on the VM render target
 // (adapter-chain loading + platform stubs).
 pub mod ext_stubs;
