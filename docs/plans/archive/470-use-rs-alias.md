@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-470
-status: reviewed                # 2026-08-30 /auto-plan:review 通过(批次三用户批准顺延,见复审二)
+status: archived               # 终态（2026-08-30 /auto-plan:merge 归档;批次三顺延 DEBT）
 feature_name: use-rs-alias
 author: []
 created_at: 2026-08-28
