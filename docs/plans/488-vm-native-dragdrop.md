@@ -1,15 +1,21 @@
 ---
 plan_id: PLAN-488
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-dragdrop
 author: [zhaopuming]
 created_at: 2026-08-30
 updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "autoui/spec.md: 原生互操作面扩展——473 阶段表 Phase 3 落地后补 OLE 拖放双向/虚拟文件/Ctrl+V 路由段"
+  - "auto-lang/spec.md: vm natives 面——auto.dnd.start(2938) 入账 + 事件载荷空串哨兵契约"
+new_spec_components:
+  - "ui/native_dnd.rs 模块：DndDataObject(IDataObject 三格式族)/DesktopDropTarget(STA 线程+WM_NULL ticker)/DndDropSource(seen-button)/start_drag(内联阻塞)/ensure_host_drop_target——原生拖放双向全量面"
+  - "aura.at virtual_window events 三枚(on_native_drop/on_native_paste/on_dnd_finished)——宿主注入事件契约"
+touched_goals:
+  - "GOAL-009: 桌面 Shell 原生互操作 Phase 3（拖放双向+虚拟文件落地，473 路线收段）"
+  - "GOAL-010: examples/ui 增 044-dnd-bridge（拖放演示+T6 冒烟载具）"
 
 affects: [auto-lang/ui, auto-lang/vm]
 current_step: 10
@@ -340,6 +346,13 @@ virtual_window spec events 映射同步。
       零 codegen 触碰（改动面=native_dnd/ui + vm natives）"放行，修复转
       独立专项（后续计划号）。
     验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
+    [✅ 已完成] **逃生舱路径**（2026-08-30 review）：分诊定案=双后端 `.line`
+    发射**真分叉**（rust `emit_source_line` 同线去重 vs aavm .at 实现逐语句
+    发射；非 corpus 期望过期——该测试是双后端实时对拍，无静态期望文件）。
+    归属注记已回写 KNOWN-DEBT P485-2（含证据与修复方向）；488 codegen
+    触碰仅两行 intrinsic 注册（实证红先于 488 存在 @3a4aacf19）。修复转
+    独立专项。tv 三红（aavm2 + cb_asynchronous_channel/cb_devtools_log_error）
+    均基线复现实存量（fold 门禁对照记录在案）。
 
 ## 阶段性折叠记录
 
@@ -352,7 +365,43 @@ virtual_window spec events 映射同步。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**2026-08-30 /auto-plan:review（zhaopuming 会话，验证不信勾选、全量门禁在
+worktree cad70501d 重跑）**
+
+**逐验收判定：**
+
+1. **T1–T5 自动化绿** — ✅ PASS。复审重跑：native_dnd 单测 18/18 绿
+   （ui-iced+native-dnd 档）；E2E `native_dnd_e2e` 2/2 ×3 连跑稳定绿
+   （曾现 1 次双红=诊断会话残留窗口的环境暂态，进程清理后 6/6 复绿；
+   本档屏幕交互固有敏感，486 同型）；desktop_behavior 11 绿（044 载具
+   无头注入断言 + 1 ignore 探针）。
+2. **T6 六场景实机留痕** — ✅ PASS（带登记）。A1/A2/A5/A6 实机确认
+   （三轮用户反馈，步骤 10 汇总成文；**A2 HGLOBAL FILECONTENTS 风险
+   解除**）；拖入即时显示=代理端到端实证（合成拖入 hopH 截图证据，
+   cad70501d）；D 系 image temp PNG 与 Ctrl+V 实机留痕缺 → P488-D5。
+3. **winit 共存 spike 结论** — ✅ PASS。待澄清①定案在文（Revoke→
+   Register + HWND 身份键控 + 400ms 自愈；运行时探针实证）。
+4. **schema 三件套绿 + t ui/t vm 不回归 + check 零警告** — ✅ PASS。
+   复审重跑 schema_drift 1 + docs_gen 4 + component_registry 7 全绿；
+   `cargo t vm` 638 绿；`cargo check -p auto-lang` 干净；触面零警告
+   （唯一 eprintln = env 门控诊断，AUTO_DEBUG_KEYS 先例）。
+5. **非 Windows 编译 + G5 降级** — 🔶 PARTIAL（记档非阻塞）。降级臂
+   （cfg(not(all(windows, native-dnd, ui)))）在默认档编译由 638 vm 绿
+   背书、降级语义 false/事件不触发由单测与订阅空档覆盖；**真交叉编译
+   未验**（本机无 Linux 目标工具链——历史计划同约束）。
+
+**全量门禁**：`cargo tf` 3283/3283 绿（含 1M churn）；`cargo tv` 3420/3423，
+三红基线复现实存量（aavm2=P485-2 已归属定案；cb_asynchronous_channel/
+cb_devtools_log_error master 无我改动同红——复审对照在案）。
+
+**遗漏/延后/workaround 猎排**：见 KNOWN-DEBT P488-D1..D5（D1/D2 VM 缺陷
+ignore 探针存档；D3 快甩边缘时序；D4 on_dnd_finished 焦点交付；D5 实机
+留痕缺）。**计划内偏离三条均已在文**：①"受理即返"→调用线程内联阻塞
+（待澄清⑧，OLE 语义实证）；②registry.rs 无需手同步（P4-4 单源，三件套
+绿证）；③T6 以三轮实机+代理端到端实证收口（D 系细分留痕转 D5）。
+无未批准的静默延后。
+
+**判定：PASS → status: reviewed。**（D1–D5 均为登记债，无阻塞项。）
 
 ## 待澄清事项
 
