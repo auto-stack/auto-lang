@@ -58,7 +58,12 @@ mod plan442_musk_backend_probe {
                 if let Ok(code) = std::fs::read_to_string(&p) {
                     for line in code.lines() {
                         let t = line.trim();
-                        if let Some(rest) = t.strip_prefix("use.rust ") {
+                        // Plan 470: accept both `use.rs` (current spelling)
+                        // and `use.rust` (deprecated).
+                        let rest = t
+                            .strip_prefix("use.rs ")
+                            .or_else(|| t.strip_prefix("use.rust "));
+                        if let Some(rest) = rest {
                             let root = rest
                                 .split("::")
                                 .next()
@@ -407,7 +412,7 @@ mod plan442_musk_backend_probe {
     /// routing fns — no server, no routes, isolates dispatch shaping.
     #[test]
     fn plan442_axum_get_post_chain_minimal() {
-        let code = "dep axum\nuse.rust axum::Router\nuse.rust axum::routing::{get, post}\n\n\
+        let code = "dep axum\nuse.rs axum::Router\nuse.rs axum::routing::{get, post}\n\n\
              fn h1() int { return 1 }\n\
              fn h2() int { return 2 }\n\n\
              fn main() {\n    var mr = get(h1).post(h2)\n    print(\"chain-ok\")\n}\n";

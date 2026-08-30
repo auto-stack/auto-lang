@@ -1,0 +1,9 @@
+// Plan 470: `use.rs` is the canonical spelling (use.rust deprecated).
+// Output must be byte-identical to 001_rust_use (same UseKind::Rust AST).
+
+use.rs std::collections::HashMap
+use.rs std::fs::read_to_string
+
+fn main() {
+    let x = 42
+}

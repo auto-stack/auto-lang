@@ -476,7 +476,7 @@ impl CompileSession {
 
                     return Err(AutoError::Msg(format!(
 
-                        "Crate '{}' not declared. Add `dep {}` before `use.rust`.",
+                        "Crate '{}' not declared. Add `dep {}` before `use.rs`.",
 
                         crate_name, crate_name
 

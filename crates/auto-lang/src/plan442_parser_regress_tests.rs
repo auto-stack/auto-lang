@@ -14,12 +14,12 @@
 
 #[cfg(test)]
 mod plan442_parser_regress {
-    /// `use.rust` fn import + chained call inside another call's args.
+    /// `use.rs` fn import + chained call inside another call's args.
     /// Failed pre-fix with `UnexpectedToken { expected: "argument separator
     /// (comma, newline, or ))", found: "Dot" }`.
     #[test]
     fn chained_call_on_rust_import_in_args_parses() {
-        let code = "use.rust serde_json::{to_string}\n\
+        let code = "use.rs serde_json::{to_string}\n\
                     \n\
                     fn wrap(s str, v int) int {\n    return v\n}\n\
                     \n\
@@ -52,7 +52,7 @@ mod plan442_parser_regress {
     /// against regressions in the pratt continuation as well.
     #[test]
     fn chained_call_on_rust_import_in_stmt_parses() {
-        let code = "use.rust serde_json::{to_string}\n\
+        let code = "use.rs serde_json::{to_string}\n\
                     \n\
                     fn main() {\n\
                     \x20   let x = to_string(1).len()\n\
