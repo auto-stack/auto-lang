@@ -6223,3 +6223,7 @@ mod plan492_m3_tests;
 #[cfg(test)]
 mod plan492_m4_tests;
 
+// Plan 492 M5: 包组件编译失败显式诊断(装载层+合成层)。
+#[cfg(test)]
+mod plan492_m5_tests;
+

@@ -194,6 +194,12 @@ impl ComponentRegistry {
                 }
             ));
         }
+        // Plan 492 M5: 部分文件解析失败时(此前仅静默存入 parse_warnings,
+        // 两个消费方 lib.rs/api.rs 都不看它)组件无声消失。这里显式告警
+        // 每个失败文件与原因,覆盖 VM 与 vue 两条装载路径。
+        for w in &parse_warnings {
+            log::warn!("package component parse failed (silently skipped): {w}");
+        }
         let families = Self::derive_families(&widgets);
         self.packages.push(LoadedPackage {
             manifest,

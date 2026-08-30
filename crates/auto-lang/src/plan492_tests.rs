@@ -236,6 +236,13 @@ widget ChildGeo (data: List, field: str = "v") {
 pub(crate) mod pkg_harness {
     use std::path::PathBuf;
 
+    pub(crate) fn copy_tree_for_test(
+        src: &std::path::Path,
+        dst: &std::path::Path,
+    ) -> std::io::Result<()> {
+        copy_tree(src, dst)
+    }
+
     fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(dst)?;
         for entry in std::fs::read_dir(src)? {
