@@ -133,7 +133,7 @@ self.warn(Warning::DeprecatedFeature {
 
 - [x] `use.rs` 与 `use.rust` 解析出 AST 相等；VM 与 Rust 转译目标行为一致（010_use_rs 用例通过，expected 与 001 逐字节相同）。【test_use_rs_alias_parses_like_use_rust + test_14_modules_010_use_rs PASS】
 - [x] `use.rust` 触发 W0005 DeprecatedFeature（"use 'use.rs' instead"），`use.rs` 不触发。【test_use_rust_emits_deprecation_warning / test_use_rs_no_deprecation_warning PASS】
-- [x] 本仓正式树 `.at` 资产 `use.rust` 命中归零（豁免：`auto/lib/parser.at` 同步快照、`docs/plans/reports/429-b2-perf/bench.at` 历史报告、`010_use_rs/use_rs.at` 注释中的刻意说明）。
+- [x] 本仓正式树 `.at` 资产 `use.rust` 命中归零（豁免：`docs/plans/reports/429-b2-perf/bench.at` 历史报告、`010_use_rs/use_rs.at` 注释中的刻意说明；`auto/lib/parser.at` 注释已于 2026-08-30 补迁）。
 - [x] website/tour/design/specs 现行文档推荐写法为 `use.rs`（12 文件更新 + website 双语页加废弃注记；specs plans.md×3/retrospective 历史页保留）。
 - [ ] 外部仓批次三逐仓完成迁移并记录（**前置未满足**：需批次一二发版部署工具链；KNOWN-DEBT 已登记周期与触发条件）。
 - [x] 全测试族通过（相对 master 基线零新增失败；见复审记录基线对照）。
@@ -160,7 +160,7 @@ self.warn(Warning::DeprecatedFeature {
 - T6: 测试资产 .at 机械化替换（a2r 24、cookbook 88、vm 11、ffi_dual 2 → `use.rs`）。
   [✅ 已完成] 125 文件 sed 替换（GNU grep 列表驱动；首次尝试因环境 ugrep 包装输出 NUL 分隔路径而失败，改 `command grep` 后成功）。
 - T7: 非测试 .at：stdlib/parity/playground×3/tour×4；`auto/lib/parser.at` 按同步链处理。
-  [✅ 已完成] 9 文件迁移。**parser.at 裁定豁免**：勘察确认其 `use.rust` 仅存在于头注（"use(含 use.rust)" 范围描述），无关键字分发代码；系 Plan 432 钉在 b3bd64f5 的同步快照（M2 闸门被阻），手改无意义——降级为 KNOWN-DEBT 登记"快照漂移，随 Plan 432 重生成携带"。
+  [✅ 已完成] 9 文件迁移。**parser.at 补迁（2026-08-30 用户裁定）**：勘察确认整个 2052 行快照中 "rust" 仅出现 1 次——Missing 清单注释（该快照 use 解析整体未实现，无分发代码可镜像）；将注释拼写改为 `use.rs`，快照重同步义务仍归 Plan 432（KNOWN-DEBT 行已同步改写）。
 - T8: 文档：website×2、strategy×2、specs 现行页。
   [✅ 已完成] 12 文件替换 + website 双语页 Rust 嵌入模式 bullet 加 `use.rs` 推荐/`use.rust` 废弃注记；specs plans.md×3 + retrospective + ui/plans.md 历史页保留原拼写。
 - T9: `docs/plans/KNOWN-DEBT-AND-RISKS.md` 登记。

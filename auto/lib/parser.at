@@ -20,7 +20,7 @@
 //            内联推断(infer_type_expr 核心子集,经 E.ity 构造期计算);
 //            EmptyLine(n) 语义;expect_eos(Semi/Newline/Comma 分隔)
 // Missing:   闭包(x => / (a,b) => / fn(params){})、f-string、is/match、
-//            use(含 use.rust)、泛型参数(fn/type/enum 声明位)、turbofish、
+//            use(含 use.rs)、泛型参数(fn/type/enum 声明位)、turbofish、
 //            node 实例与 UI/task/store 方言(遇之报 v2 unsupported)、
 //            #[...] 注解、#section、三元 ?:、as/to/await/go、.view/.mut/
 //            .move/.take/.?、::路径、下标切片、postfix !(collect!)、

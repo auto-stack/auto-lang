@@ -56,8 +56,8 @@
 
 | 计划 | 类别 | 描述 | 引用 |
 |------|------|------|------|
-| 470 | use.rust deprecation 周期 | `use.rs` 为现行拼写（Plan 470），`use.rust` 仍解析但发 W0005。移除触发条件：外部仓（auto-musk/auto-ai/book 等 ~78 .at）随工具链升级完成迁移 + 一个发布周期零存量后，独立 plan 删 parser/scanner 分支改报错。本仓正式树 .at 已归零（豁免：`auto/lib/parser.at` 同步快照、`docs/plans/reports/` 历史报告、docs/plans 与 specs plans.md/retrospective 历史页）。 | `docs/plans/470-use-rs-alias.md` D5 |
-| 470 | auto/lib/parser.at 快照漂移 | AAVM v2 parser 同步快照（Plan 432，baseline b3bd64f5）钉在旧版 parser.rs，未含 use.rs 分发；parser.rs 本期加 `rs` 分支后快照进一步滞后——按 Plan 432 同步链重新生成时一并携带（M2 闸门本被字符串池 RC 回归阻断）。 | `auto/lib/parser.at` 头注 + Plan 432 |
+| 470 | use.rust deprecation 周期 | `use.rs` 为现行拼写（Plan 470），`use.rust` 仍解析但发 W0005。移除触发条件：外部仓（auto-musk/auto-ai/book 等 ~78 .at）随工具链升级完成迁移 + 一个发布周期零存量后，独立 plan 删 parser/scanner 分支改报错。本仓正式树 .at 已全部归零（2026-08-30 parser.at 注释亦迁；豁免仅剩 `docs/plans/reports/` 历史报告、docs/plans 与 specs plans.md/retrospective 历史页）。 | `docs/plans/470-use-rs-alias.md` D5 |
+| 470 | auto/lib/parser.at 快照漂移 | AAVM v2 parser 同步快照（Plan 432，baseline b3bd64f5）钉在旧版 parser.rs，use 解析整体在 Missing 清单（无 use.rs/use.rust 分发代码，唯一命中为注释，已随 Plan 470 改为 use.rs 表述 2026-08-30）；快照随 parser.rs 演进的重新同步义务不变，归 Plan 432 同步链（M2 闸门本被字符串池 RC 回归阻断）。 | `auto/lib/parser.at` 头注 + Plan 432 |
 | 478 | 实机键流补采 | switcher 键盘流/pager 点击/send_to 的 OS 键注实机截图缺采（前台竞争 frontmost_pid_mismatch，472 同款先例）；逻辑 headless 全链覆盖（19 新测试含宿主臂 toast 门）。补采：前台空闲跑 `examples/ui/028-launcher/tests/test_478_t6.py`。 | `reports/478-t6-live-acceptance.md` + `reports/478-t1-blueprint.md` §8 R1 |
 | 478 | Ctrl+Space 叠召唤不设防 | switcher 开启时 Ctrl+Space 仍会叠召唤 launcher（双 overlay 堆叠合法，Esc 逐层退可达）；v1 接受，M3 通知中心/表面仲裁时统一。 | `reports/478-t1-blueprint.md` §8 R4 |
 | 476 | slot 范围外项（v1） | teleport、动态 slot 名（`slot(name: expr)`）、多层 widget 嵌套 slot 透传未实现（需求 009 §3.7 明示范围外）；`for` 循环体内直接出现的 outlet 走非拼接兜底路径（单子直通/多子 Column 包装，轴向不随容器）。 | `docs/plans/476-vm-slot-substitution.md` 目标 7 + D5 |
