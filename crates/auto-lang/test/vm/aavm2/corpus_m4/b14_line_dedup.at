@@ -1,0 +1,17 @@
+// Plan 495 回归钉：.line 发射语义双端对齐锚。
+// 锁两义：① 同线双语句（分号分隔）→ .line 单发（相邻同线去重）；
+// ② is 单表达式 arm 体 → 按臂体首 token 行发 .line（b13 同款）。
+enum Val {
+    VI(int)
+    VN
+}
+
+fn main() {
+    let a = 1; let b = 2
+    let v = Val.VI(7)
+    is v {
+        Val.VI(x) -> print(x)
+        else -> print(0)
+    }
+    print(a + b)
+}

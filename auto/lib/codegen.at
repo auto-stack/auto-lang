@@ -87,6 +87,9 @@ type CG {
     cont_js List<List<int>>
     cont_tg List<int>
     loop_depth int
+    // Plan 495: 镜像宿主 emit_source_line 的 current_source_line ——
+    // 相邻同线 .line 去重状态(0=未发过)
+    cur_line int
 }
 
 type CGEnum {
@@ -128,7 +131,7 @@ fn cg_new() CG {
     var brk_l List<List<int>> = List.new()
     var cont_l List<List<int>> = List.new()
     var ctg_l List<int> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0)
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0)
 }
 
 // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
@@ -353,6 +356,15 @@ fn i_size_named(op OpCode, s str, n int) int {
 fn emit(mut c CG, op OpCode, s str, n int) int {
     c.ins.push(I(op, s, n))
     return c.ins.len() - 1
+}
+
+// Plan 495: 镜像宿主 emit_source_line —— line>0 且异于当前已发行才发
+// SOURCE_LINE(相邻同线去重,与宿主 current_source_line 同款状态机)
+fn cg_line(mut c CG, ln int) {
+    if ln > 0 && ln != c.cur_line {
+        c.cur_line = ln
+        emit(c, OpCode.Line, ln.str(), 0)
+    }
 }
 
 // ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
@@ -1041,6 +1053,9 @@ fn cg_is_arm_body(mut c CG, mut p P) {
         cg_body_inline(c, p)
         return
     }
+    // Plan 495: 非块体 arm 体镜像宿主 parse_expr_or_body 的 stmt_line——
+    // arm 体首 token 行经 cg_line 发射(块体由 cg_stmts 按体内语句发)
+    cg_line(c, p_line(p))
     if p_kind(p) == TokenKind.Return {
         cg_stmt(c, p)
         return
@@ -1376,11 +1391,10 @@ fn cg_stmt(mut c CG, mut p P) {
     cg_expr(c, p, 0)
 }
 
-// 语句序列步行:.line(语句首 token 行)→ cg_stmt → eos
+// 语句序列步行:.line(语句首 token 行,经 cg_line 同线去重)→ cg_stmt → eos
 fn cg_stmts(mut c CG, mut p P) {
     while c.err == "" && p_kind(p) != TokenKind.EOF && p_kind(p) != TokenKind.RBrace {
-        var ln = p_line(p).str()
-        emit(c, OpCode.Line, ln, 0)
+        cg_line(c, p_line(p))
         cg_stmt(c, p)
         if c.err == "" {
             cg_eos(c, p)
