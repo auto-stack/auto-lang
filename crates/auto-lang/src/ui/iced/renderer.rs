@@ -10566,6 +10566,9 @@ fn compare_pngs(
                         }
                         return summon_switcher(state);
                     }
+                    // Plan 488 步骤 4：拖出完成（App 事件 on_dnd_finished 注入
+                    // 管线在步骤 6 接线——发起 App 追踪经 native 侧会话记账）。
+                    DesktopEvent::DndFinished { effect: _ } => {}
                 }
                 iced::Task::none()
             }
@@ -11223,6 +11226,9 @@ fn compare_pngs(
                 // 非 Windows 平台为空订阅）。
                 if state.is_desktop() {
                     subs.push(crate::ui::session::native_dock_event_subscription());
+                    // Plan 488：拖出完成事件泵（windows × native-dnd 双门控，
+                    // 其余档空订阅——DoDragDrop STA 线程 → on_dnd_finished 面）。
+                    subs.push(crate::ui::session::dnd_finished_subscription());
                 }
                 // MCP action channel — polls for injected actions from AI agent (Plan 278)
                 subs.push(mcp_action_subscription(primary));

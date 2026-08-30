@@ -1231,6 +1231,11 @@ pub enum DesktopEvent {
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
     SummonSwitcher,
+    /// Plan 488：拖出会话完成（STA 线程 DoDragDrop 返回 → 本事件；effect ∈
+    /// copy/move/link/none）。App 事件注入（on_dnd_finished）在步骤 6 接线。
+    DndFinished {
+        effect: &'static str,
+    },
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -3425,4 +3430,58 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
         }
         _ => None,
     })
+}
+
+/// Plan 488：拖出完成事件泵——16ms 轮询 STA 线程的完成通道，收到效果即
+/// 转 [`DesktopEvent::DndFinished`]。windows × native-dnd 双门控外为空
+/// 订阅（G5：未开 feature 事件不触发）。
+pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
+    #[cfg(all(windows, feature = "native-dnd"))]
+    {
+        struct DndFinishedRecipe;
+
+        impl std::hash::Hash for DndFinishedRecipe {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                "auto-lang-dnd-finished".hash(state);
+            }
+        }
+
+        impl iced_futures::subscription::Recipe for DndFinishedRecipe {
+            type Output = DesktopMessage;
+
+            fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
+                std::hash::Hash::hash(self, state);
+            }
+
+            fn stream(
+                self: Box<Self>,
+                _input: iced_futures::subscription::EventStream,
+            ) -> iced_futures::BoxStream<Self::Output> {
+                use iced_futures::futures::stream::StreamExt;
+                iced_futures::futures::stream::unfold((), |()| async move {
+                    // 完成事件一次会话一条（低频）；空拍 Some(None) 剔除保活。
+                    match crate::ui::native_dnd::win32::take_finished_effect() {
+                        Some(effect) => Some((
+                            Some(DesktopMessage::Desktop(DesktopEvent::DndFinished {
+                                effect: effect.as_str(),
+                            })),
+                            (),
+                        )),
+                        None => {
+                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                            Some((None, ()))
+                        }
+                    }
+                })
+                .filter_map(|msg| async move { msg })
+                .boxed()
+            }
+        }
+
+        iced_futures::subscription::from_recipe(DndFinishedRecipe)
+    }
+    #[cfg(not(all(windows, feature = "native-dnd")))]
+    {
+        iced::Subscription::none()
+    }
 }

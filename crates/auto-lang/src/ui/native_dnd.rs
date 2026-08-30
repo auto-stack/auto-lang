@@ -43,11 +43,52 @@ impl DndPayload {
     }
 }
 
+/// `auto.dnd.start(payload_json)` 的载荷解析（纯函数，全平台可测）。
+/// 字段（全可选，组合语义）：`text`（str）、`files`（str 路径表）、
+/// `virtual_files`（`{name, content? | bytes_b64?, mime?}`——content 为
+/// UTF-8 文本通道，bytes_b64 为二进制 base64 通道，两者取先到者）。
+pub fn parse_payload_json(s: &str) -> Option<DndPayload> {
+    #[derive(serde::Deserialize)]
+    struct Vf {
+        name: String,
+        content: Option<String>,
+        bytes_b64: Option<String>,
+        mime: Option<String>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Raw {
+        text: Option<String>,
+        files: Option<Vec<String>>,
+        virtual_files: Option<Vec<Vf>>,
+    }
+    let raw: Raw = serde_json::from_str(s).ok()?;
+    let virtual_files = raw.virtual_files.map(|vfs| {
+        vfs.into_iter()
+            .map(|vf| VirtualFile {
+                bytes: vf
+                    .bytes_b64
+                    .as_deref()
+                    .and_then(|b| {
+                        use base64::Engine;
+                        base64::engine::general_purpose::STANDARD.decode(b).ok()
+                    })
+                    .unwrap_or_else(|| vf.content.unwrap_or_default().into_bytes()),
+                name: vf.name,
+                mime: vf.mime.unwrap_or_else(|| "application/octet-stream".into()),
+            })
+            .collect()
+    });
+    Some(DndPayload {
+        text: raw.text,
+        files: raw.files.map(|fs| fs.into_iter().map(PathBuf::from).collect()).unwrap_or_default(),
+        virtual_files: virtual_files.unwrap_or_default(),
+    })
+}
+
 // Win32/COM 适配：cfg(windows) × native-dnd feature 双门控（步骤 3+：
 // IDataObject/IDropSource 实现；步骤 4/5 续 STA 线程与 IDropTarget）。
 #[cfg(all(windows, feature = "native-dnd"))]
-pub mod win32 {
-    use super::{DndPayload, VirtualFile};
+pub mod win32 {    use super::{DndPayload, VirtualFile};
     use windows::core::{implement, w, Error, HRESULT};
     use windows::Win32::Foundation::{
         BOOL, DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, OLE_E_ADVISENOTSUPPORTED, POINTL,
@@ -64,8 +105,9 @@ pub mod win32 {
         GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
     };
     use windows::Win32::System::Ole::{
-        DROPEFFECT, DROPEFFECT_NONE, IDropSource, IDropSource_Impl, IDropTarget,
-        IDropTarget_Impl,
+        DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
+        DoDragDrop, IDropSource, IDropSource_Impl, IDropTarget, IDropTarget_Impl, OleInitialize,
+        OleUninitialize,
     };
     use windows::Win32::System::SystemServices::{
         MK_LBUTTON, MK_RBUTTON, MODIFIERKEYS_FLAGS,
@@ -401,6 +443,105 @@ pub mod win32 {
         }
     }
 
+    // ── 步骤 4：拖出会话（专用 STA 线程 + 完成通道） ─────────────────────
+
+    /// DoDragDrop 的完成效果（`on_dnd_finished` 事件载荷域）。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum DndEffect {
+        Copy,
+        Move,
+        Link,
+        None,
+    }
+
+    impl DndEffect {
+        /// App 事件侧字符串（Record 字段 `effect`）。
+        pub fn as_str(self) -> &'static str {
+            match self {
+                DndEffect::Copy => "copy",
+                DndEffect::Move => "move",
+                DndEffect::Link => "link",
+                DndEffect::None => "none",
+            }
+        }
+    }
+
+    fn effect_of(dw: DROPEFFECT) -> DndEffect {
+        if dw.0 & DROPEFFECT_COPY.0 != 0 {
+            DndEffect::Copy
+        } else if dw.0 & DROPEFFECT_MOVE.0 != 0 {
+            DndEffect::Move
+        } else if dw.0 & DROPEFFECT_LINK.0 != 0 {
+            DndEffect::Link
+        } else {
+            DndEffect::None
+        }
+    }
+
+    /// 完成效果通道（全局单份；订阅侧 16ms 轮询）。Receiver 装 Mutex——
+    /// iced subscription 流按 &self 持有，需 Sync。
+    static DONE: std::sync::OnceLock<
+        (std::sync::mpsc::Sender<DndEffect>, std::sync::Mutex<std::sync::mpsc::Receiver<DndEffect>>),
+    > = std::sync::OnceLock::new();
+
+    /// 会话在拖旗标（DoDragDrop 模态；重入受理即拒）。
+    static DRAG_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    /// 发起系统拖拽（受理即返）：空载荷 / 已有会话在拖 / 线程拉起失败 →
+    /// false。完成后 [`take_finished_effect`] 可取到效果（每次会话一条）。
+    pub fn start_drag(payload: DndPayload) -> bool {
+        use std::sync::atomic::Ordering;
+        if payload.is_empty() {
+            return false;
+        }
+        if DRAG_ACTIVE.swap(true, Ordering::SeqCst) {
+            return false;
+        }
+        let tx = DONE
+            .get_or_init(|| {
+                let (tx, rx) = std::sync::mpsc::channel();
+                (tx, std::sync::Mutex::new(rx))
+            })
+            .0
+            .clone();
+        let spawned = std::thread::Builder::new()
+            .name("auto-lang-dnd-sta".into())
+            .spawn(move || unsafe {
+                // STA：OleInitialize（S_FALSE = 复用计数，同样平衡 Uninitialize）。
+                let ole_ok = OleInitialize(None).is_ok();
+                let data: IDataObject = DndDataObject::new(payload).into();
+                let source: IDropSource = DndDropSource.into();
+                let mut effect_out = DROPEFFECT_NONE;
+                // DoDragDrop 内部自泵消息直至落下/取消；允许 copy/move/link。
+                let _ = DoDragDrop(
+                    &data,
+                    &source,
+                    DROPEFFECT(DROPEFFECT_COPY.0 | DROPEFFECT_MOVE.0 | DROPEFFECT_LINK.0),
+                    &mut effect_out,
+                );
+                let _ = tx.send(effect_of(effect_out));
+                DRAG_ACTIVE.store(false, Ordering::SeqCst);
+                if ole_ok {
+                    OleUninitialize();
+                }
+            });
+        if spawned.is_err() {
+            DRAG_ACTIVE.store(false, Ordering::SeqCst);
+            return false;
+        }
+        true
+    }
+
+    /// 轮询出口：取最近一次会话的完成效果（session 订阅消费 →
+    /// `DesktopEvent::DndFinished`）。
+    pub fn take_finished_effect() -> Option<DndEffect> {
+        let (_, rx) = DONE.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            (tx, std::sync::Mutex::new(rx))
+        });
+        rx.lock().unwrap().try_recv().ok()
+    }
+
     /// 步骤 2 共存 spike 的最小放置目标：全方法 no-op（探针只验注册语义，
     /// 不消费数据——真实现见步骤 5）。
     #[implement(IDropTarget)]
@@ -452,7 +593,7 @@ pub mod win32 {
         use windows::Win32::System::Com::DATADIR_SET;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::System::Ole::{
-            OleInitialize, OleUninitialize, RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
+            RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, WINDOW_EX_STYLE,
@@ -771,5 +912,65 @@ pub mod win32 {
                 assert_eq!(src.GiveFeedback(DROPEFFECT_NONE), DRAGDROP_S_USEDEFAULTCURSORS);
             }
         }
+
+        // ---------- 步骤 4：受理语义（不真拖——DoDragDrop 阻塞留 E2E 档） ----------
+
+        #[test]
+        fn t4_start_drag_rejects_empty_payload() {
+            assert!(!start_drag(DndPayload::default()), "空载荷拒收");
+            assert!(!start_drag(super::super::parse_payload_json("{}").unwrap()), "空对象拒收");
+        }
+
+        #[test]
+        fn t4_effect_classification() {
+            assert_eq!(effect_of(DROPEFFECT(DROPEFFECT_COPY.0)), DndEffect::Copy);
+            assert_eq!(effect_of(DROPEFFECT(DROPEFFECT_MOVE.0)), DndEffect::Move);
+            assert_eq!(effect_of(DROPEFFECT(DROPEFFECT_LINK.0)), DndEffect::Link);
+            assert_eq!(effect_of(DROPEFFECT_NONE), DndEffect::None);
+            assert_eq!(DndEffect::Copy.as_str(), "copy");
+            assert_eq!(DndEffect::None.as_str(), "none");
+        }
+    }
+}
+
+/// 载荷解析测试（纯函数档——ui feature 即可编译运行）。
+#[cfg(test)]
+mod payload_tests {
+    use super::*;
+
+    #[test]
+    fn parse_full_payload() {
+        let p = parse_payload_json(
+            r##"{"text":"hi","files":["C:/a.txt"],"virtual_files":[{"name":"n.md","content":"# t","mime":"text/markdown"}]}"##,
+        )
+        .expect("parse");
+        assert_eq!(p.text.as_deref(), Some("hi"));
+        assert_eq!(p.files, vec![PathBuf::from("C:/a.txt")]);
+        assert_eq!(p.virtual_files.len(), 1);
+        assert_eq!(p.virtual_files[0].name, "n.md");
+        assert_eq!(p.virtual_files[0].bytes, b"# t".to_vec());
+        assert_eq!(p.virtual_files[0].mime, "text/markdown");
+        assert!(!p.is_empty());
+    }
+
+    #[test]
+    fn parse_base64_binary_channel() {
+        // "binary\0" 的 base64。
+        let p = parse_payload_json(
+            r#"{"virtual_files":[{"name":"b.bin","bytes_b64":"YmluYXJ5AA=="}]}"#,
+        )
+        .expect("parse");
+        assert_eq!(p.virtual_files[0].bytes, b"binary\0".to_vec());
+        assert_eq!(p.virtual_files[0].mime, "application/octet-stream", "缺省 mime");
+    }
+
+    #[test]
+    fn parse_empty_and_invalid() {
+        assert!(parse_payload_json("{}").expect("空对象仍解析").is_empty());
+        assert!(parse_payload_json("not json").is_none());
+        // 非法 base64：回退 content（缺省空字节）不炸。
+        let p = parse_payload_json(r#"{"virtual_files":[{"name":"x","bytes_b64":"!!!"}]}"#)
+            .expect("parse");
+        assert_eq!(p.virtual_files[0].bytes, Vec::<u8>::new());
     }
 }
