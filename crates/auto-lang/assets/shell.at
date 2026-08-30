@@ -10,7 +10,9 @@
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
 //       summon/workspace/workspace_next/activate + v1.1 增量
 //       workspace_add/workspace_close/send_to + v1.2 增量
-//       notify/notes_toggle/notes_clear/notes_dismiss）
+//       notify/notes_toggle/notes_clear/notes_dismiss + v1.3 增量
+//       open_settings（齿轮）/set_dock_position/set_dock_enabled——
+//       后两者由 settings.at 面板发出，本文件只发 open_settings）
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
 //       数组，跨分区全集，dock 运行窗列表源）
 //       `__wm_workspaces`（{id,name,current,label} Obj 数组，分区切换条
@@ -38,7 +40,8 @@ widget Desktop {
         WinFocus(str), WinClose(str),
         ActivateApp(str), SetWorkspace(str), WorkspaceNext,
         WorkspaceAdd, WorkspaceClose(str),
-        NotificationToggle
+        NotificationToggle,
+        OpenSettingsPanel
     }
 
     model {
@@ -156,6 +159,12 @@ widget Desktop {
                                 }
                             }
                         }
+                        // Plan 487 M4：设置齿轮（v1.3 open_settings 无参动词；
+                        // 宿主臂二态翻转——面板可见再点即关）。
+                        button (icon: "settings") {
+                            onclick: .OpenSettingsPanel
+                            style: "h-9 w-9 px-0 text-sm"
+                        }
                     }
                 }
             }
@@ -253,6 +262,12 @@ widget Desktop {
                                 }
                             }
                         }
+                        // Plan 487 M4：设置齿轮（v1.3 open_settings 无参动词；
+                        // 宿主臂二态翻转——面板可见再点即关）。
+                        button (icon: "settings") {
+                            onclick: .OpenSettingsPanel
+                            style: "h-9 w-9 px-0 text-sm"
+                        }
                     }
                 }
             }
@@ -289,5 +304,8 @@ widget Desktop {
         // Plan 479 T4：通知中心开关（协议 v1.2 无参动词；宿主臂落
         // toggle_notification_center 执行体——开面板即未读清零）。
         .NotificationToggle -> { .__desktop_cmd = "notes_toggle" }
+        // Plan 487 M4：设置面板召唤（协议 v1.3 无参动词；宿主臂落
+        // toggle_settings 执行体——二态翻转，面板可见再点即关）。
+        .OpenSettingsPanel -> { .__desktop_cmd = "open_settings" }
     }
 }

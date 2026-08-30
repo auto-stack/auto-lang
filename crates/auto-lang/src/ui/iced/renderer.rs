@@ -17227,6 +17227,39 @@ mod tests {
         }
     }
 
+    /// Plan 487 M4 步骤7：真 assets/shell.at 齿轮冒烟——OpenSettingsPanel
+    /// handler → `open_settings` 记录 → 联合排空 → 面板懒挂载 visible
+    ///（T2 齿轮→面板全链；notif_shell_at_smoke 同型）。
+    #[test]
+    fn settings_shell_at_smoke_gear_to_panel() {
+        let path = t2_isolate_storage("487-gear");
+        let mut ds = t3_session_with_shell();
+        // 换装真 shell 资产（t3_session_with_shell 挂的是裁剪探针）。
+        let probe = ds.desktop.shell_app.expect("probe shell");
+        let real =
+            crate::ui::shell::build_shell_component().expect("真 shell.at 编译（齿轮语法）");
+        ds.apps.remove(&probe);
+        ds.desktop.shell_app = Some(ds.allocate_app(real));
+        let shell = ds.desktop.shell_app.expect("real shell");
+        // 齿轮面：OpenSettingsPanel handler → open_settings 记录可达宿主。
+        let app = ds.apps.get_mut(&shell).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("OpenSettingsPanel", &[])
+            .expect("OpenSettingsPanel handler");
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+            "齿轮钮 → open_settings 动词"
+        );
+        // 排空执行 → 设置面板懒挂载 + visible。
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert!(ds.settings_visible(), "open_settings → 面板挂载可见");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Plan 487 M4 步骤6：通知/关于分区无头——PickNotes("0") →
     /// `shell.notes.enabled` 落键 + 479 消费链门控（notify 全链路短路：
     /// 零入史/零未读/零 toast）；PickNotes("1") 恢复；关于分区 Nav 可达。
