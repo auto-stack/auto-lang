@@ -1,0 +1,18 @@
+// icon_host.at — PLAN-051 P2-① 语料：子模块顶层 use.web component 声明
+// （chats_view.at:26 / nav_item.at:15 同形态）——注册表第三路收集的红测载体。
+use.web component Plus, Trash2 from "src/front/ports/icons.at"
+
+widget IconHost {
+    msg { Ping }
+    view {
+        col {
+            button {
+                onclick: .Ping
+                style: "inline-flex items-center justify-center h-[26px] px-2 border border-border rounded-md"
+                Plus { size: 14 }
+            }
+            Trash2 { size: 12 }
+        }
+    }
+    on { .Ping -> { } }
+}
