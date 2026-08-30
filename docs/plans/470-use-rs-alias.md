@@ -1,15 +1,26 @@
 ---
 plan_id: PLAN-470
-status: execution_done         # 批次一二完成;批次三(外部仓)待发版后执行,归档随之
+status: reviewed                # 2026-08-30 /auto-plan:review 通过(批次三用户批准顺延,见复审二)
 feature_name: use-rs-alias
 author: []
 created_at: 2026-08-28
 updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: ["parser use.rs 别名语法 + use.rust W0005 deprecation（imports/syntax）"]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/auto-lang/frontend/overview.md: use.rust→use.rs 表述（use_scanner 支持形式）"
+  - "docs/specs/auto-lang/frontend/design/module-resolution.md: FFI 导入语法示例改 use.rs"
+  - "docs/specs/auto-lang/runtime/architecture.md: FFI 双轨沙箱表述改 use.rs"
+  - "docs/specs/auto-lang/runtime/design/ffi-bridges.md: cdylib 沙箱导入表述改 use.rs"
+  - "docs/specs/auto-lang/types/design/type-representation.md: Rust 类型来源（Plan 190）表述改 use.rs"
+  - "docs/specs/auto-lang/types/design/typestore.md: rust_types 字段注释表述改 use.rs"
+  - "docs/specs/aavm/design/divergence-rules.md: 直调规则改 use.rs"
+  - "docs/specs/shim-metadata/project.md: 直调原生库表述改 use.rs"
+new_spec_components:
+  - "docs/specs/auto-lang/frontend: use.rs 导入现行拼写（parser `rs` 分发 + use.rust W0005 deprecation，scanner/依赖收集双前缀识别）"
+touched_goals:
+  - "GOAL-003: FFI 导入语法面统一——use.rs 与 use.rust AST/转译/VM 行为一致由 010 用例逐字节锁定"
+  - "GOAL-005: 命名对齐——use.rs 与 use.py 拼写统一"
 
 affects: ["auto-lang/frontend", "auto-lang/runtime"]  # 受影响的 specs 路径
 current_step: 10
@@ -176,7 +187,24 @@ self.warn(Warning::DeprecatedFeature {
 
 ## 复审记录
 
-**批次一、二复审（2026-08-30，执行者自审 + 基线对照）**：
+**复审二（/auto-plan:review 正式门，2026-08-30，master 检出——worktree 已随执行期合并移除）**：
+
+逐项验收裁决（全部复跑，不信勾选）：
+
+1. **AST 相等/行为一致 — PASS**：定向 8 测复跑全过（parser 3 + scanner 3 + a2r 010/001 于 test-trans 下 2）；代码证据 parser.rs:6494（`name == "rust" || name == "rs"` 同走 `use_rust_stmt`）。
+2. **W0005 触发/不触发 — PASS**：parser.rs:6499（`name: "use.rust"` + "use 'use.rs' instead"）；test_use_rust_emits_deprecation_warning / test_use_rs_no_deprecation_warning 复跑 PASS。
+3. **正式树 .at 归零 — PASS**：全仓 grep 仅剩 2 已记录豁免（010_use_rs.at 刻意注释、docs/plans/reports/429-b2-perf/bench.at 历史报告）。
+4. **文档推荐 use.rs — PASS**：12 现行文件已改（website×2/strategy×2/specs×8）+ 补迁 3（examples README、parity×2）；抽样 website 双语页/tour/parity README 均含 use.rs 且含废弃注记。
+5. **批次三外部仓 — 已批准顺延（非阻断）**：用户 2026-08-30 明示"先不做，之后单独做"，已登记 KNOWN-DEBT ⏸ 延期表 P470 行（逐仓清单+前置+执行方式）——符合"用户签核的延期"，非静默收缩。
+6. **全测试族 — PASS**：`cargo tf` 全量门 3282/3282 全绿（含 1M churn 档 str_churn_bounded_large 19.4s）；tv 3 败 / tt 2 败 / tb 2 败，失败集合与执行期捕获的**迁移前 master 基线逐一相同**（tv: cookbook×2 + aavm2_m4——后者 KNOWN-DEBT P485-2 已归属存量；tt: a2r 02_types 强转渲染×2；tb: book×2）——零新增失败。
+
+遗漏/延后/workaround 扫描：470 四个代码/资产补丁新增行无 TODO/FIXME/HACK/workaround 标记；唯一延后（批次三）用户签核在案；执行期自查找出并已修复的 raw-string 盲区（26 处内嵌测试源）见 T4 补迁记录。存量基线红（tt 02_types 强转、tb book×2、cookbook×2）非本计划引入，建议后续按 P485-2 模式归属到对应在飞计划。
+
+前置基线红利说明：本计划执行方式为"基线对照"（迁移前同机跑三档捕获失败集合），因 master 本身携带在飞存量红，该方法是零新增失败的可信证据。
+
+结论：**通过，status → reviewed**，可进入 /auto-plan:merge。
+
+**复审一（批次一二执行自审，2026-08-30）**：
 
 1. **验收逐项核对**：见验收标准勾选——批次一二全项达成；批次三一项未竟（前置=发版，结构性等待非遗漏）。
 2. **基线对照（关键证据）**：迁移前在 master 同跑三档，失败集合完全一致——`cargo tt` 2 败（a2r 02_types_001_struct/004_pointer，`1 as u32` 强转渲染，在飞工作存量）；`cargo tv` 3 败（cookbook cb_devtools_log_error/cb_asynchronous_channel + aavm2_m4_corpus，master 带 use.rust 原文同样失败）；`cargo tb` 2 败（存量）。**worktree 相对基线零新增失败**。
