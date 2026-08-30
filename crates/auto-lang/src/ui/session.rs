@@ -1240,6 +1240,10 @@ pub enum DesktopEvent {
     /// 坐标）。update 臂做屏幕→宿主逻辑坐标换算 + z 序命中 → AppId（注入
     /// 在步骤 6 接线）。
     NativeDrop(crate::ui::native_dnd::NativeDropData),
+    /// Plan 488 T7：桌面级 Ctrl+V（热键臂产；App 焦点无关）。update 臂读
+    /// OS 剪贴板（418 文本 → 485 文件/图片）→ on_native_paste 注入焦点
+    /// App。490（桌面热键清理）后合收编本臂键位（热键域协调条款）。
+    NativePaste,
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层

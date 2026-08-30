@@ -6453,6 +6453,18 @@ fn desktop_hotkey_subscription(
             {
                 return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
             }
+            // Plan 488 T7：桌面级 Ctrl+V 粘贴路由——update 臂读 OS 剪贴板
+            // 注入焦点 App 的 on_native_paste（App 焦点无关；
+            // 490 后合收编本臂键位，热键域协调条款）。
+            if let Key::Character(c) = &key {
+                if c.eq_ignore_ascii_case("v")
+                    && modifiers.control()
+                    && !modifiers.alt()
+                    && !modifiers.shift()
+                {
+                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::NativePaste));
+                }
+            }
             None
         },
     )
@@ -7720,6 +7732,56 @@ fn inject_native_event(
     if let Some(sess) = state.app_mut(app) {
         let _ = sess.component.bridge_mut().call_handler(event, args);
     }
+}
+
+/// Plan 488 T7：OS 剪贴板 → `on_native_paste` 载荷 Record。读取优先级
+/// text（418）→ files（485）→ image（485）；whichever 可用并存（Record
+/// 形状与 on_native_drop 的 text/files/image 域一致）。
+fn clipboard_paste_payload() -> auto_val::Value {
+    #[cfg(feature = "ui-clipboard")]
+    let text = crate::ui::clipboard::clipboard_get();
+    #[cfg(not(feature = "ui-clipboard"))]
+    let text: Option<String> = None;
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    let files = crate::ui::clipboard_native::clipboard_files_get();
+    #[cfg(not(all(windows, feature = "native-clipboard")))]
+    let files: Vec<String> = Vec::new();
+
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    let image = crate::ui::clipboard_native::clipboard_image_get()
+        .map(|t| (t.path.to_string_lossy().into_owned(), t.width, t.height));
+    #[cfg(not(all(windows, feature = "native-clipboard")))]
+    let image: Option<(String, u32, u32)> = None;
+
+    let mut obj = auto_val::Obj::new();
+    obj.set(
+        "text",
+        match text {
+            Some(t) => auto_val::Value::str(&t),
+            None => auto_val::Value::Null,
+        },
+    );
+    obj.set(
+        "files",
+        auto_val::Value::Array(auto_val::Array::from(
+            files.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
+        )),
+    );
+    obj.set(
+        "image",
+        match image {
+            Some((path, w, h)) => {
+                let mut im = auto_val::Obj::new();
+                im.set("path", auto_val::Value::str(&path));
+                im.set("width", auto_val::Value::Int(w as i32));
+                im.set("height", auto_val::Value::Int(h as i32));
+                auto_val::Value::Obj(im)
+            }
+            None => auto_val::Value::Null,
+        },
+    );
+    auto_val::Value::Obj(obj)
 }
 
 /// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
@@ -10668,6 +10730,15 @@ fn compare_pngs(
                             inject_native_event(state, app, "on_native_drop", &[
                                 native_drop_payload(&data),
                             ]);
+                        }
+                    }
+                    // Plan 488 T7：桌面级 Ctrl+V → 读 OS 剪贴板（418 文本 →
+                    // 485 文件/图片）→ on_native_paste 注入焦点 App。
+                    DesktopEvent::NativePaste => {
+                        let payload = clipboard_paste_payload();
+                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
+                        {
+                            inject_native_event(state, app, "on_native_paste", &[payload]);
                         }
                     }
                 }
@@ -17411,6 +17482,25 @@ mod tests {
         assert_eq!(files.values.len(), 1);
         // image 缺省 Null。
         assert_eq!(obj.get("image"), Some(auto_val::Value::Null));
+    }
+
+    /// Plan 488 T7：桌面级 Ctrl+V 注入面——OS 剪贴板 → on_native_paste
+    /// 载荷 Record。文本往返 + files/image 域形状（485 测试锁串行化，防
+    /// nextest 并行进程互清剪贴板）。
+    #[test]
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    fn plan488_clipboard_paste_payload_reads_os_clipboard() {
+        let _lock = crate::ui::clipboard_native::GlobalClipboardTestLock::acquire();
+        crate::ui::clipboard::clipboard_set("paste-me");
+        let auto_val::Value::Obj(obj) = clipboard_paste_payload() else {
+            panic!("paste payload 应为 Record");
+        };
+        assert_eq!(obj.get("text"), Some(auto_val::Value::str("paste-me")));
+        assert!(
+            matches!(obj.get("files"), Some(auto_val::Value::Array(_))),
+            "files 域恒为 Array"
+        );
+        assert!(obj.get("image").is_some(), "image 域恒存在（Null 或 Record）");
     }
 
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
