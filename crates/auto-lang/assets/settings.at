@@ -29,7 +29,8 @@ widget Settings {
     msg {
         Init, RebuildPinned, Escape, Nav(str),
         PickPosition(str), PickEnabled(str),
-        DraftPinned(str), AddPinned, RemovePinned(int)
+        DraftPinned(str), AddPinned, RemovePinned(int),
+        PickNotes(str)
     }
 
     model {
@@ -219,9 +220,53 @@ widget Settings {
                                 }
                             } else {
                                 if .section == "notes" {
-                                    text "通知设置" { style: "text-gray-300 text-sm" }
+                                    // ---- 通知分区：持久化开关（storage 直写，
+                                    // 479 持久化链门控消费——重启保持）----
+                                    col {
+                                        style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                        text "通知" { style: "text-gray-200 text-sm font-medium" }
+                                        text "关闭后 App 通知（notify 动词）不再入史/浮现/计未读，重启保持" { style: "text-gray-500 text-xs" }
+                                        row {
+                                            style: "gap-2"
+                                            if .cfg_notes_enabled == "1" {
+                                                button "开" {
+                                                    style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                }
+                                            } else {
+                                                button "开" {
+                                                    onclick: .PickNotes("1")
+                                                    style: "h-8 px-3 text-xs text-gray-400"
+                                                }
+                                            }
+                                            if .cfg_notes_enabled == "0" {
+                                                button "关" {
+                                                    style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                }
+                                            } else {
+                                                button "关" {
+                                                    onclick: .PickNotes("0")
+                                                    style: "h-8 px-3 text-xs text-gray-400"
+                                                }
+                                            }
+                                        }
+                                        text "立即生效" { style: "text-gray-500 text-xs" }
+                                    }
                                 } else {
-                                    text "关于" { style: "text-gray-300 text-sm" }
+                                    // ---- 关于分区：宿主版本/平台（召唤注入常量）----
+                                    col {
+                                        style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                        text "关于" { style: "text-gray-200 text-sm font-medium" }
+                                        row {
+                                            style: "items-center gap-2"
+                                            text "宿主平台" { style: "w-24 text-gray-500 text-xs" }
+                                            text .about_host { style: "text-gray-300 text-xs" }
+                                        }
+                                        row {
+                                            style: "items-center gap-2"
+                                            text "宿主版本" { style: "w-24 text-gray-500 text-xs" }
+                                            text .about_version { style: "text-gray-300 text-xs" }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -295,6 +340,18 @@ widget Settings {
                 .cfg_dock_enabled = "0"
             }
             .__desktop_cmd = "set_dock_enabled\t" + v
+        }
+
+        // ---- 通知分区：持久化开关 → storage 直写（479 持久化链
+        // push_notification 门控消费；"false" = 关，其余/缺席 = 开）----
+        .PickNotes(v) -> {
+            if v == "1" {
+                .cfg_notes_enabled = "1"
+                storage.set("shell.notes.enabled", "true")
+            } else {
+                .cfg_notes_enabled = "0"
+                storage.set("shell.notes.enabled", "false")
+            }
         }
 
         // ---- pinned 编辑 → storage 键直写（boot 生效；逗号拼接 = 宿主

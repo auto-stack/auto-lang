@@ -6702,6 +6702,14 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
 /// push_desktop_toast 调用点（LaunchApp 成败/分区删除门/overlay 装载降级）
 /// 已改道本入口——行为增量 = 多入史，浮现不变。
 fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
+    // Plan 487 M4：通知持久化开关门控（479 消费链单点）——settings 面板
+    // 写 `shell.notes.enabled`，"false" = 关：notify 动词全链路（入史 +
+    // toast + 未读 + 落盘）短路。缺席/其余值 = 开（向后兼容：键不存在
+    // 的旧 store 行为不变）。
+    if crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref() == Some("false")
+    {
+        return;
+    }
     let id = {
         let next = state.desktop.notes_next_id.get();
         state.desktop.notes_next_id.set(next.wrapping_add(1));
@@ -17217,6 +17225,83 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+    }
+
+    /// Plan 487 M4 步骤6：通知/关于分区无头——PickNotes("0") →
+    /// `shell.notes.enabled` 落键 + 479 消费链门控（notify 全链路短路：
+    /// 零入史/零未读/零 toast）；PickNotes("1") 恢复；关于分区 Nav 可达。
+    #[test]
+    fn settings_notes_gate_and_about_section() {
+        let path = t2_isolate_storage("487-notes");
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+
+        // ① 开关写键：PickNotes("0") → 键 false + 本地 cfg 更新。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickNotes", &[auto_val::Value::str("0")])
+            .expect("PickNotes handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_notes_enabled") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "0", "面板本地 cfg 更新")
+                }
+                other => panic!("cfg_notes_enabled 读回异常: {other:?}"),
+            }
+        }
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref(),
+            Some("false"),
+            "开关键落盘"
+        );
+        // ② 门控：notify 动词全链路短路（零入史/零未读）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::Notify(
+                "success".to_string(),
+                "muted".to_string(),
+            )],
+        );
+        assert!(ds.desktop.notifications.borrow().is_empty(), "关 → notify 短路");
+        assert_eq!(ds.desktop.notes_unread.get(), 0);
+        // ③ 恢复：PickNotes("1") → 键 true → notify 入史 + 未读。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickNotes", &[auto_val::Value::str("1")])
+            .expect("PickNotes handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref(),
+            Some("true")
+        );
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::Notify(
+                "success".to_string(),
+                "audible".to_string(),
+            )],
+        );
+        assert_eq!(ds.desktop.notifications.borrow().len(), 1, "开 → notify 入史");
+        assert_eq!(ds.desktop.notes_unread.get(), 1);
+        // ④ 关于分区：Nav 可达（about_* 常量注入已在 summon 测断言）。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("about")])
+            .expect("Nav handler");
+        let app = ds.apps.get(&panel).unwrap();
+        match app.component.read_state("section") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "about"),
+            other => panic!("section 读回异常: {other:?}"),
+        }
+
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Plan 487 M4 步骤5：Dock 分区接线无头——面板 PickPosition/
