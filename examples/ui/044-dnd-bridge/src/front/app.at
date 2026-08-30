@@ -1,0 +1,178 @@
+// app.at — 044-dnd-bridge 根组件（Plan 488 T6 冒烟载具）。
+//
+// OLE 拖放双向互通演示：
+//   拖出：三个按钮（文本/真实文件/虚拟文件）→ dnd_start ——注意
+//     dnd_start 在按下线程内联阻塞（OLE 语义），点按钮后拖拽光标即出，
+//     按住左键拖到目标（Explorer/notepad/浏览器）松开即落；Esc 取消。
+//   拖入：从 Explorer/notepad/浏览器拖内容到本 App 的虚拟窗 →
+//     on_native_drop(text/files/image whichever)。
+//   Ctrl+V：桌面级粘贴路由 → on_native_paste（418 文本/485 文件/图片）。
+//   完成效果：on_dnd_finished(copy/move/link/none)。
+// 内建统一留在根 handler（041 纪律）；桌面模式启动：
+//   auto run --desktop -r vm（仓库根执行——apps registry 默认 examples/ui）。
+
+widget App {
+    msg Msg {
+        DragText,
+        DragFiles,
+        DragVirtual,
+        on_native_drop(record),
+        on_native_paste(record),
+        on_dnd_finished(str),
+    }
+
+    model {
+        var status str = "ready — 拖出：点按钮后按住左键拖到目标；拖入：从 Explorer/浏览器拖进本窗口"
+        var drop_log str = "(尚未收到拖入)"
+        var drop_fmt str = ""
+        var drop_text str = ""
+        var drop_files str = ""
+        var drop_img str = ""
+        var paste_log str = "(尚未收到 Ctrl+V)"
+        var paste_text str = ""
+        var paste_files str = ""
+        var paste_img str = ""
+        var finish_log str = "(尚未发起拖出)"
+    }
+
+    view {
+        col {
+            style: "min-h-screen bg-background p-6 gap-4"
+            col {
+                style: "gap-1"
+                h1 "OLE 拖放双向" { style: "text-xl font-bold text-foreground" }
+                text "044-dnd-bridge — Plan 488 T6（IDataObject 三格式族 / IDropTarget / Ctrl+V 路由）" {
+                    style: "text-xs text-muted-foreground"
+                }
+                text .status { style: "text-xs text-primary" }
+            }
+
+            // ── 拖出卡（A2/A5/A6 源侧） ────────────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                row {
+                    style: "items-center gap-2"
+                    text "拖出" { style: "text-sm font-semibold text-foreground" }
+                    text "(点按钮 → 按住左键拖到目标 → 松开；Esc 取消)" {
+                        style: "text-xs text-muted-foreground"
+                    }
+                }
+                row {
+                    style: "flex-wrap gap-2"
+                    button {
+                        onclick: .DragText
+                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        text "拖出文本"
+                    }
+                    button {
+                        onclick: .DragFiles
+                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        text "拖出真实文件×2"
+                    }
+                    button {
+                        onclick: .DragVirtual
+                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        text "拖出虚拟文件(A2)"
+                    }
+                }
+                text .finish_log { style: "text-xs text-muted-foreground" }
+            }
+
+            // ── 拖入卡（A1/A5/A6/D2–D4 目标侧） ────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-2"
+                row {
+                    style: "items-center gap-2"
+                    text "拖入" { style: "text-sm font-semibold text-foreground" }
+                    text "(Explorer 文件 / notepad 文本 / 浏览器 URL / Chrome 图片 → 拖到本窗口)" {
+                        style: "text-xs text-muted-foreground"
+                    }
+                }
+                col {
+                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
+                    text "on_native_drop:" { style: "text-xs text-muted-foreground" }
+                    text .drop_log { style: "text-sm text-foreground" }
+                }
+            }
+
+            // ── Ctrl+V 卡（G3/T7） ─────────────────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-2"
+                row {
+                    style: "items-center gap-2"
+                    text "桌面级 Ctrl+V" { style: "text-sm font-semibold text-foreground" }
+                    text "(焦点在本 App 时按 Ctrl+V)" { style: "text-xs text-muted-foreground" }
+                }
+                col {
+                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
+                    text "on_native_paste:" { style: "text-xs text-muted-foreground" }
+                    text .paste_log { style: "text-sm text-foreground" }
+                }
+            }
+        }
+    }
+
+    on {
+        // ── 拖出（dnd_start 内联阻塞：点按钮时按钮已松开，拖拽等待
+        //    用户按住左键拖动——seen-button 语义，QCD 见到按下前不判释放）──
+        .DragText -> {
+            let ok = dnd_start("{\"text\":\"来自 044-dnd-bridge 的拖出文本 — Plan 488 A5\"}")
+            .status = "拖出文本受理: " + ok.str() + "（松开处应出现该文本/URL）"
+        }
+        .DragFiles -> {
+            // cwd = 桌面宿主启动目录（worktree/仓库根）——资产在示例目录下；
+            // 路径裸反斜杠由 parse 侧宽容修复（escape_bare_backslashes）。
+            let root = fs.cwd()
+            let payload = "{\"files\":[\"" + root + "\\examples\\ui\\044-dnd-bridge\\assets\\hello.txt\",\"" + root + "\\examples\\ui\\044-dnd-bridge\\assets\\note.md\"]}"
+            let ok = dnd_start(payload)
+            .status = "拖出文件受理: " + ok.str() + "（Explorer 松开处应落两文件）"
+        }
+        .DragVirtual -> {
+            let ok = dnd_start("{\"virtual_files\":[{\"name\":\"dnd-bridge-note.md\",\"content\":\"# 从桌面拖出的虚拟文件\\n双击可开 — Plan 488 用例 A2\",\"mime\":\"text/markdown\"}]}")
+            .status = "虚拟文件受理: " + ok.str() + "（Explorer 松开处应落地 md 文件）"
+        }
+
+        // ── 拖入（宿主注入扁平字段；回避 VM 已知坑：if 内 var 重赋值 +
+        //    .str() 内建会破坏累加——全用直接状态赋值 + join，无 .str()） ──
+        .on_native_drop(p) -> {
+            .drop_fmt = "[" + p.formats.join(",") + "]"
+            .drop_text = ""
+            if p.text != "" {
+                .drop_text = " text=\"" + p.text + "\""
+            }
+            .drop_files = ""
+            if p.files.len() > 0 {
+                .drop_files = " files=[" + p.files.join(";") + "]"
+            }
+            .drop_img = ""
+            if p.image_path != "" {
+                .drop_img = " image=" + p.image_path
+            }
+            .drop_log = .drop_fmt + .drop_text + .drop_files + .drop_img
+            .status = "on_native_drop ← 已收到拖入"
+        }
+
+        // ── Ctrl+V（宿主注入扁平字段，同 drop 形状） ──
+        .on_native_paste(p) -> {
+            .paste_text = ""
+            if p.text != "" {
+                .paste_text = "text=\"" + p.text + "\""
+            }
+            .paste_files = ""
+            if p.files.len() > 0 {
+                .paste_files = " files=[" + p.files.join(";") + "]"
+            }
+            .paste_img = ""
+            if p.image_path != "" {
+                .paste_img = " image=" + p.image_path
+            }
+            .paste_log = .paste_text + .paste_files + .paste_img
+            .status = "on_native_paste ← 已收到 Ctrl+V"
+        }
+
+        // ── 拖出完成效果 ──
+        .on_dnd_finished(eff) -> {
+            .finish_log = "on_dnd_finished → " + eff
+        }
+    }
+}

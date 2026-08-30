@@ -24,8 +24,8 @@ fn parse_pac_name(content: &str) -> Option<String> {
         if line.starts_with("name:") {
             if let Some(colon_pos) = line.find(':') {
                 let value = line[colon_pos + 1..].trim();
-                let value = value.trim_matches('"').trim_matches('\'');
                 let value = value.trim_end_matches(',');
+                let value = value.trim_matches('"').trim_matches('\'');
                 return Some(value.to_string());
             }
         }
@@ -61,8 +61,8 @@ fn parse_pac_backend(content: &str) -> Option<String> {
                     return backends.first().map(|s| s.to_string());
                 } else {
                     // Single backend
-                    let value = value.trim_matches('"').trim_matches('\'');
                     let value = value.trim_end_matches(',');
+                    let value = value.trim_matches('"').trim_matches('\'');
                     return Some(value.to_string());
                 }
             }
@@ -92,8 +92,8 @@ fn has_jet_backend(content: &str) -> bool {
                         .collect();
                     return backends.iter().any(|&b| b == "jet");
                 } else {
-                    let value = value.trim_matches('"').trim_matches('\'');
                     let value = value.trim_end_matches(',');
+                    let value = value.trim_matches('"').trim_matches('\'');
                     return value == "jet";
                 }
             }

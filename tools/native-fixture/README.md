@@ -20,6 +20,7 @@ cargo run --manifest-path tools/native-fixture/Cargo.toml -- --title t --min-siz
 | `--stubborn` | 开关 | 每秒自我复位到初始 rect（倔强窗口） | C4 |
 | `--spawn-modal` | 开关 | 窗口内 `modal` 按钮触发模态对话框 | B5 |
 | `--self-close N` | 秒数 | N 秒后自毁（`DestroyWindow`） | B7 |
+| `--offer SPEC` | `text:<str>` / `files:<p1;p2>` | Plan 488 OLE 拖源：客户区按下左键即对载荷发起 `DoDragDrop`（按下时刻左键按住——真拖拽语义；触发面取 WM_LBUTTONDOWN 而非按钮 click，click 时键已释放） | A1/A5/A6 |
 
 ## stdout JSON-lines 协议
 
@@ -29,6 +30,8 @@ cargo run --manifest-path tools/native-fixture/Cargo.toml -- --title t --min-siz
 |---|---|---|
 | `start` | `{"evt":"start","hwnd":"0x1a2b","pid":4242,"title":"t"}` | 窗口创建后（驱动解析此行拿 HWND/PID） |
 | `bounds` | `{"evt":"bounds","x":100,"y":90,"w":640,"h":480}` | 位置/尺寸变化后回显**实际** rect（`GetWindowRect`，写后读回断言） |
+| `drop` | `{"evt":"drop","formats":["CF_HDROP"],"text":null,"files":["C:/a.txt"]}` | Plan 488：OLE 拖入落地（全窗 IDropTarget；formats 含未知名 `cf:N`，text/files whichever） |
+| `dragend` | `{"evt":"dragend","effect":"copy"}` | Plan 488 `--offer` 拖出会话完成（copy/move/link/none） |
 | `close` | `{"evt":"close"}` | `WM_DESTROY`（自毁/被关闭——B7/B8 断言） |
 
 ## 驱动示例（E2E 模式）
@@ -37,9 +40,6 @@ cargo run --manifest-path tools/native-fixture/Cargo.toml -- --title t --min-siz
 2. 桌面侧发 `dock_native`（pid= 或 hwnd=）→ 等待 `bounds` 行 ≈ 槽位矩形；
 3. relayout（分隔条/布局切换）→ `bounds` 行跟随；
 4. undock → `bounds` 行回到初始 rect（B2 恢复断言）；
-5. `--self-close 3` 场景：3 秒后收到 `close` → 桌面槽位回收（B7）。
-
-## Phase 3 预留（未实现，仅占位）
-
-- `--offer {text|files}`：OLE 拖源（数据交换 A 类用例）；
-- 放置目标日志（桌面向夹具拖入的虚拟文件落地断言）。
+5. `--self-close 3` 场景：3 秒后收到 `close` → 桌面槽位回收（B7）；
+6. Plan 488 拖放：`--offer text:hi` 起 → 合成拖拽（SendInput）从夹具客户区拖到
+   目标窗口 → 目标侧断言事件；反向拖到夹具 → 断言 `drop` 行（formats/text/files）。

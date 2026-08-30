@@ -755,8 +755,8 @@ pub mod drag_sim {
 
     /// 强制前台（AttachThreadInput 经典技巧）：后台进程的
     /// `SetForegroundWindow` 受前台锁限制，附着到当前前台窗口线程的输入
-    /// 队列后可越过（同为用户完整性级别时）。
-    fn force_foreground(hwnd: NativeHwnd) {
+    /// 队列后可越过（同为用户完整性级别时）。488 OLE 拖拽 E2E 复用（pub）。
+    pub fn force_foreground(hwnd: NativeHwnd) {
         use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
         use windows::Win32::UI::WindowsAndMessaging::{
             GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
@@ -889,6 +889,55 @@ pub mod drag_sim {
             std::thread::sleep(Duration::from_millis(15));
         }
         std::thread::sleep(Duration::from_millis(30));
+        send_button(MOUSEEVENTF_LEFTUP)
+    }
+
+    // ── Plan 488 步骤 9：OLE 拖放合成原语（SendInput 真拖主路径，486
+    //    待澄清③裁定沿用）。 ─────────────────────────────────────────
+
+    /// 绝对移动光标到主屏 `(x, y)`（OLE 拖拽分步驱动用）。
+    pub fn ole_move_to(x: i32, y: i32) -> bool {
+        move_to(x, y)
+    }
+
+    /// 在当前光标处按下左键（OLE 拖出：先按后起 DoDragDrop 的时序用）。
+    pub fn ole_press() -> bool {
+        send_button(MOUSEEVENTF_LEFTDOWN)
+    }
+
+    /// 释放左键（拖拽提交）。
+    pub fn ole_release() -> bool {
+        send_button(MOUSEEVENTF_LEFTUP)
+    }
+
+    /// OLE 合成拖拽：`from`（源客户区点）按下 → 分步移到 `to` → 释放。
+    /// **无激活结算点击**——caption_drag_to 的结算教训不适用于 OLE 拖源：
+    /// 结算点击落在 --offer 客户区会自身触发一次 DoDragDrop，其退出时序
+    /// 与后续真实拖拽互绞（实测卡死）。前置聚焦由调用方 `focus_window`
+    /// 完成（程序化前台后客户区首击仍达 WM_LBUTTONDOWN——激活语义不
+    /// 吞客户区消息）。
+    pub fn ole_drag(from: (i32, i32), to: (i32, i32), steps: usize) -> bool {
+        use std::time::Duration;
+        if !move_to(from.0, from.1) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(120));
+        if !send_button(MOUSEEVENTF_LEFTDOWN) {
+            return false;
+        }
+        // 起拖确认：DoDragDrop 进入模态循环需要首个移动消息（按下点静止
+        // 不触发 DragEnter）。
+        std::thread::sleep(Duration::from_millis(80));
+        for i in 1..=steps.max(1) {
+            let t = i as f32 / steps.max(1) as f32;
+            let x = from.0 as f32 + (to.0 as f32 - from.0 as f32) * t;
+            let y = from.1 as f32 + (to.1 as f32 - from.1 as f32) * t;
+            if !move_to(x as i32, y as i32) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        std::thread::sleep(Duration::from_millis(60));
         send_button(MOUSEEVENTF_LEFTUP)
     }
 }

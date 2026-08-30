@@ -47,6 +47,8 @@ macro_rules! for_each_native {
             (2935, NATIVE_CLIPBOARD_FILES_SET, shim_clipboard_files_set, "auto.clipboard.files_set"),
             (2936, NATIVE_CLIPBOARD_IMAGE_GET, shim_clipboard_image_get, "auto.clipboard.image_get"),
             (2937, NATIVE_CLIPBOARD_IMAGE_SET, shim_clipboard_image_set, "auto.clipboard.image_set"),
+            // === Plan 488: OLE 拖出（DoDragDrop 受理即返；效果经 on_dnd_finished 回注） ===
+            (2938, NATIVE_DND_START, shim_dnd_start, "auto.dnd.start"),
             (2927, NATIVE_DIALOG_OPEN, shim_dialog_open, "auto.dialog.open"),
             (2928, NATIVE_DIALOG_SAVE, shim_dialog_save, "auto.dialog.save"),
             (2929, NATIVE_FILE_BASENAME, shim_file_basename, "auto.file.basename"),
@@ -719,6 +721,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.clipboard.files_set", 2935, Bool),
             ("auto.clipboard.image_get", 2936, Map),
             ("auto.clipboard.image_set", 2937, Bool),
+            // === Plan 488: OLE 拖出（受理即返 Bool；效果经事件回注） ===
+            ("auto.dnd.start", 2938, Bool),
             ("auto.dialog.open", 2927, String),
             ("auto.dialog.save", 2928, String),
             ("auto.file.basename", 2929, String),

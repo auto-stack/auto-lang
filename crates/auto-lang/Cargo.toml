@@ -74,6 +74,15 @@ native-dock = ["dep:windows"]
 # 列表与 native-dock 共用一条目——Cargo feature 合并语义下扩列即两 feature
 # 共用（Plan 485 待澄清#4 定稿：合并扩列，编译最小扰动）。
 native-clipboard = ["dep:windows", "dep:image"]
+# Plan 488: 原生互操作 Phase 3——OLE 拖放双向（IDataObject/IDropSource/
+# IDropTarget 自实现 + DoDragDrop STA 线程 + 虚拟文件 FILEDESCRIPTOR/
+# FILECONTENTS）。Win32/COM 调用仅出现在 ui/native_dnd.rs，与 native-dock
+# 同型双门控（optional dep + cfg(windows)）；不隐含 ui-iced（G5：未开
+# feature 时 natives 降级返 false）。
+# windows-core 直接依赖：#[implement] 宏展开引用 ::windows_core:: 绝对路径，
+# 传递依赖不可见（488 步骤 2 spike 发现）。image：拖入 CF_DIB/PNG → 临时
+# PNG 落盘转换（485 同源用法，零新增版本）。
+native-dnd = ["dep:windows", "dep:windows-core", "dep:image"]
 # Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
 # test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]
@@ -211,7 +220,24 @@ windows = { version = "0.58", optional = true, features = [
     # Plan 486 T4：合成拖拽 SendInput（test-native-dock 档独占使用；
     # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
     "Win32_UI_Input_KeyboardAndMouse",
+    # Plan 488: OLE 拖放——Com(OLE 基础/DoDragDrop/OleInitialize)+
+    # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)+
+    # implement(#[implement] 宏与 *_Impl trait 的 include 门)+
+    # SystemServices(MODIFIERKEYS_FLAGS——DragEnter/Over/Drop 签名)+
+    # Graphics_Gdi+Com_StructuredStorage(IDataObject_Impl/FORMATETC 全签名的
+    # cfg 门)。后三组为 implement 宏的传递性必需（485 T9 增 Security 同型）。
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com_StructuredStorage",
+    # Plan 488 T6 修：拖入目标跨线程 marshal（专用 STA 线程持对象）。
+    "Win32_System_Com_Marshal",
+    "implement",
 ] }
+# Plan 488: #[implement] 宏的展开物引用 ::windows_core:: 绝对路径——需直接
+# 依赖（版本与 windows 0.58 配套）。仅在 Windows 目标编译。
+windows-core = { version = "0.58", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"

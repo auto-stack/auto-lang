@@ -329,6 +329,15 @@ virtual_window spec events 映射同步。
       独立专项（后续计划号）。
     验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
 
+## 阶段性折叠记录
+
+- **2026-08-30 一阶折叠（T6 三轮前）**：worktree 14+1 提交（至 47038976e）
+  + master 合入（487/489/491 等并行推进，renderer/session 无冲突自动并）→ 折叠门禁绿：
+  `cargo check` 干净 / `cargo t` 3282 绿 / ui-iced 档 4088 全绿（存量红 plan050_i18n 已被 489 修复）/
+  `cargo tf` 3283 全绿（含 1M churn 档）/ `cargo tv` 3420/3423，三红均 master 基线存量
+  （cb_asynchronous_channel/cb_devtools_log_error/aavm2_m4=P485-2，实测对照）→ master 快进至 71d99e707。
+  工作树保留（三轮 T6 验证继续在其中）；终态 fold 归 /auto-plan:merge。
+
 ## 复审记录
 
 （/auto-plan:review 填写）
@@ -399,6 +408,34 @@ virtual_window spec events 映射同步。
   操作要点：拖出按钮点击后**按住左键**拖（dnd_start 内联阻塞语义，
   seen-button：见到按下前不判释放）；Esc 取消拖拽。诊断可开
   `AUTO_DND_TRACE=1`。
+  **一轮实机反馈与修复（2026-08-30，worktree da9862370）**：
+  - A2/A5/A6 拖出正常（含 Explorer 虚拟文件落地——**A2 技术风险解除，
+    HGLOBAL FileContents Explorer 接受**）；A5/A6/D 拖入与图片拖入数据
+    均到达但**显示延迟**（要点其它按钮才显示）——根因 = 主线程注册的
+    IDropTarget 跨进程 COM Drop 调用滞留主线程消息队列直到下次用户输入
+    才派发；修复 = IDropTarget 移专用 STA 线程（marshal 代理注册 +
+    自持 GetMessage 泵），E2E T3 改走同路径实证。
+  - A1 拖出文件无效（点按钮无拖拽光标）——.at 拼路径产出非法 JSON
+    （fs.cwd() 裸反斜杠）→ parse 失败 → 受理即拒；修复 = 宽容修复重试
+    （裸反斜杠转义）+ 资产路径改 cwd 相对全径。
+  - **待二轮重跑确认**：拖入即时显示 / A1 文件拖出 / 图片拖入的
+    image_path 落值（D4）。
+  **二轮实机反馈与修复（2026-08-30，worktree 47038976e）**：
+  - **拖入延迟仍在**（STA 线程修复不对症）——判决实验链定案真机制：
+    DragEnter/Over 在拖动期正常（鼠标输入=主线程泵），**Drop 的跨线程
+    COM 投递是 SendMessage 型——主线程不进入取消息态就不送达**，松手后
+    无输入即滞留到下次点击。修复 = **WM_NULL 唤醒 ticker**（DragEnter/
+    Over 上膛，悬停期 40ms PostMessage 宿主窗；排队消息必唤醒任何等待
+    形态，泵一动挂起的 COM 调用即优先送达）。T3 严格版实证：空闲等待
+    （无限期 MsgWait，仅可由 ticker 唤醒）下 Drop 照达 STA 线程。
+  - **A1 拖出文件仍无效**——一轮的宽容修复有缺陷：路径 \ui 被误判
+    unicode 转义前缀保留、\note 的 \n 被误判换行。修复 = 首解析失败
+    后**无条件转义全部反斜杚**（失败即证非合法 JSON；单测补
+    \ui/\note 用例）。
+  - **Explorer 地址栏/搜索框不吃文本拖放**（Chrome 地址栏可以）——目标
+    侧能力差异（Explorer 地址栏只收 shell 对象/URL，不收裸文本），非
+    本仓缺陷；A6 记录以 notepad/Chrome 为文本落点。
+  - **待三轮重跑确认**：拖入即时显示 / A1 文件拖出。
   **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
   desktop_behavior.rs，修复后转正）：
   - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →

@@ -102,6 +102,18 @@ pub type Result<T> = std::result::Result<T, VmBridgeError>;
 /// 2. `bridge.read_state("count")` - Read state field values for rendering
 /// 3. `bridge.call_handler("Inc", &[])` - Execute handler on user interaction
 /// 4. `bridge.read_state(...)` - Read updated state for re-rendering
+/// Plan 488：宿主注入面的事件载荷（递归记录编码入 VM 堆——见
+/// [`VmBridge::call_handler_with_record`]）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordValue {
+    Str(String),
+    Int(i32),
+    Bool(bool),
+    StrList(Vec<String>),
+    Record(Vec<(String, RecordValue)>),
+    Null,
+}
+
 pub struct VmBridge {
     /// AutoVM instance (owned, isolated per widget)
     vm: AutoVM,
@@ -1162,6 +1174,69 @@ impl VmBridge {
     /// loop gates its timer-tick subscription on this).
     pub fn has_pending_timers(&self) -> bool {
         self.vm.has_pending_timers()
+    }
+
+    /// Plan 488：宿主注入 Record 载荷的 handler 调用。VM 侧记录是堆
+    /// ObjectData（栈上以 id 引用，非内联 Value::Obj——后者字段访问产出
+    /// 垃圾值），与 485 clipboard_image_get 返回路径同型；嵌套记录
+    /// （如 drop payload 的 image）递归入堆后以 id 引用。
+    pub fn call_handler_with_record(
+        &mut self,
+        event_name: &str,
+        fields: Vec<(String, RecordValue)>,
+    ) -> Result<()> {
+        let fn_name = format!("handler_{}", extract_handler_name(event_name));
+        let namespaced = crate::ui::handler_codegen::namespaced_handler_fn_name(
+            &self.widget_name,
+            event_name,
+        );
+        let fn_name = if self.vm.flash.exports_by_name.contains_key(&namespaced) {
+            namespaced
+        } else if self.vm.flash.exports_by_name.contains_key(&fn_name) {
+            fn_name
+        } else {
+            return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
+        };
+
+        let rec_id = self.build_heap_record(fields);
+        let mut task = AutoTask::new(0, 4096, 0);
+        self.vm.rc_push_id(&mut task, self.state_obj_id); // Plan 419
+        self.vm.rc_push_id(&mut task, rec_id);
+        let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 2);
+        call_result.map_err(|e| {
+            VmBridgeError::VmError(format!(
+                "{:?} (crash ip=0x{:x} in {})",
+                e, task.ip, fn_name
+            ))
+        })
+    }
+
+    /// [`RecordValue`] 递归入堆：嵌套记录先铸（子先父后），字段存真
+    /// Value（字符串池内化只用于栈编码，字段存储不适用）。
+    fn build_heap_record(&mut self, fields: Vec<(String, RecordValue)>) -> u64 {
+        use auto_val::{AutoStr, ValueKey};
+        let mut rec = crate::vm::types::ObjectData::new();
+        for (k, v) in fields {
+            let value = match v {
+                RecordValue::Str(s) => Value::Str(AutoStr::from(s.as_str())),
+                RecordValue::Int(i) => Value::Int(i),
+                RecordValue::Bool(b) => Value::Bool(b),
+                RecordValue::StrList(items) => {
+                    // .at 列表 = 堆 ListData（inline Value::Array 的 len/join
+                    // 在 VM 侧产出错误码——043 实证 heap 形态）。
+                    let list = crate::vm::types::ListData {
+                        elems: items.clone(),
+                        ..Default::default()
+                    };
+                    let id = self.vm.insert_heap_object(list);
+                    Value::Int(id as i32)
+                }
+                RecordValue::Record(nested) => Value::Int(self.build_heap_record(nested) as i32),
+                RecordValue::Null => Value::Null,
+            };
+            rec.set(ValueKey::Str(AutoStr::from(k.as_str())), value);
+        }
+        self.vm.insert_heap_object(rec)
     }
 
     /// Legacy call_handler — calls handler on the ROOT widget (widget_name

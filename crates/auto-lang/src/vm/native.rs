@@ -929,6 +929,35 @@ pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
+// ── Plan 488: OLE 拖出（auto.dnd.start；拖入路由在 renderer 侧） ────────
+// 降级契约（G5）：非 Windows / 未开 `native-dnd` 时返 false，事件不触发，
+// .at 代码零条件分支。UI 桥在 `ui/native_dnd.rs`（Win32 双门控同
+// native-dock；COM 实现步骤 3，STA 会话步骤 4）。
+
+/// `dnd_start(payload_json) -> Bool`：发起系统拖拽（**调用线程内联阻塞**
+/// 至落下/取消——OLE 拖拽循环必须跑在收到按下的输入线程上，488 步骤 9
+/// E2E 定案；桌面模式 VM handler 在 UI 线程执行即被点击线程，DoDragDrop
+/// 自带消息泵，模态期与原生 App 一致）。完成效果经 `on_dnd_finished`
+/// 事件回 App。载荷 JSON 见 `ui::native_dnd::parse_payload_json`
+/// （text/files/virtual_files 组合）。
+#[cfg(all(windows, feature = "native-dnd", feature = "ui"))]
+pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let payload_json = pop_string_arg(task, vm);
+    let ok = crate::ui::native_dnd::parse_payload_json(&payload_json)
+        .map(crate::ui::native_dnd::win32::start_drag)
+        .unwrap_or(false);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// 降级臂（G5）：false（仍弹出实参保持栈纪律）。
+#[cfg(not(all(windows, feature = "native-dnd", feature = "ui")))]
+pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_string_arg(task, vm);
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
 // ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
 // Both return "" on cancel/unavailable (headless CI included).
 
