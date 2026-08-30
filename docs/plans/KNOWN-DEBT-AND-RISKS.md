@@ -277,3 +277,24 @@
   对拍失配）在 master @3a4aacf19 即红——嫌疑 051-C7/484 并行合入线（本计划
   tf 3275 全绿、分支增量不触 codegen 生成路径）。建议尽快专项定位修复，
   归属线确认后可改挂对应计划段。
+
+### P487（2026-08-30，Plan 487 shell-track M4 设置面板复审登记）
+
+- **P487-1 面板可视交互实机照留待重跑（OS 注入受阻变体）**：齿轮开面板/
+  dock 热切换可视/Esc 实机照被 CUA 像素身份守卫阻断——窗口域坐标点击
+  identity mismatch、全屏域 live-owner stale（激活前台 + AUTOUI_MCP_DISABLE=1
+  停帧泵复测仍复现），与 472/478/479 前台竞争同族但机制不同（像素身份 vs
+  前台校验）。语义链 headless 全覆盖（settings_* 七测）；T4 报告
+  `docs/plans/reports/487-t4-live-smoke.md` §2 指针成文，前台空闲可补采
+  （479 P479-2 同款）。
+- **P487-2（复审新发现，非本计划引入）ui-iced 特性档 4 既有红测试 +
+  标准门禁盲区**：`--features ui-iced --lib` 全量下 master 即红 4 测——
+  plan442_ext_link `plan050_void_stub…` / `ui::i18n_lookup::plan050_i18n_lookup…`
+  （i18n 查表文案不上屏族）/ `ui::desktop_protocol::broker::adjudicate_three_steps`
+  / `vm::native::code_editor_natives…e2e`。全部挂 `cfg(all(test, ui-iced))`
+  门后，而日常/全量门禁（`cargo t`/`tf`）跑默认特性档看不见——与 P485-2
+  同族「门禁盲区放过红」。建议：要么修 4 测，要么把 ui-iced 档纳入周期
+  门禁（专项计划归属）。
+- **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
+  分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
+  按同款双份落码（+11 行 ×2），非本期引入的新债。
