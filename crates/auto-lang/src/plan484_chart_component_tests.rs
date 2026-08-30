@@ -24,6 +24,29 @@ mod plan484_smoke {
     }
 
     #[test]
+    fn plan484_024_charts_streaming_recompute() {
+        // 流式语义:Play 后 .Tick 追数据点,组件 Init 重放几何自动重算——
+        // 30 ticks 后 x 轴出现 t30 标签且折线 path 已随滑窗数据更新。
+        let app = match crate::plan370_test_support::locate_example_app_at("024-charts") {
+            Some(p) => p,
+            None => { eprintln!("plan484: SKIPPED — 024-charts sources not found"); return; }
+        };
+        let code = std::fs::read_to_string(&app).unwrap();
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str().unwrap()))
+            .expect("024-charts must build");
+        dc.fire_init();
+        dc.set_route("/");
+        dc.bridge_mut().call_handler("Play", &[]).expect("Play");
+        for _ in 0..30 {
+            dc.bridge_mut().call_handler("Tick", &[]).expect("Tick");
+        }
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        let dump = format!("{:?}", view);
+        assert!(dump.contains("t29"), "streaming label t29 must reach the chart x-axis");
+        assert!(dump.contains("M 40"), "recomputed path must render after 30 ticks");
+    }
+
+    #[test]
     fn plan484_charts_gallery_bare_names_render() {
         let app = match crate::plan370_test_support::locate_example_app_at("charts-gallery") {
             Some(p) => p,

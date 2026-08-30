@@ -423,8 +423,6 @@ pub struct VueGenerator {
     /// Set when a handler calls toast() so we emit `import { toast } from 'vue-sonner'`.
     needs_toast_import: bool,
 
-    /// Whether CurveType from @unovis/ts is needed (for chart curve-type props)
-    use_curve_type: bool,
 
     /// Plan 444 (ash-shell-057 ④): a handler body referenced a VM-only
     /// native (`fs.*` / `File.*`) — the SFC must declare the shared
@@ -702,7 +700,6 @@ impl VueGenerator {
             has_accent_color: false,
             use_theme_toggle: false,
             needs_toast_import: false,
-            use_curve_type: false,
             needs_vm_only_helper: false,
             known_sub_widgets: HashSet::new(),
             sub_widget_models: std::collections::HashMap::new(),
@@ -2362,10 +2359,6 @@ impl VueGenerator {
         if !shadcn_imports.is_empty() {
             script.push_str(&shadcn_imports);
             script.push('\n');
-        }
-        // Chart CurveType import
-        if self.use_curve_type {
-            script.push_str("import { CurveType } from '@unovis/ts'\n");
         }
 
         // Generate lucide-vue-next imports (if any icons were used)
@@ -8781,114 +8774,6 @@ impl VueGenerator {
             }
         }
     }
-
-    /// Emit a chart prop attribute.
-    /// Literal strings become static attributes; everything else becomes a bound attribute.
-    fn emit_chart_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>, key: &str, vue_attr: &str) {
-        if let Some(value) = props.get(key) {
-            match value {
-                AuraPropValue::Expr(crate::ast::Expr::Str(s)) | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
-                    attrs.push(format!("{}=\"{}\"", vue_attr, s));
-                }
-                AuraPropValue::Expr(expr) => {
-                    match self.expr_to_vue_bound_value(expr) {
-                        Ok(v) => attrs.push(format!(":{}=\"{}\"", vue_attr, v)),
-                        // Plan 012 P0#13 follow-up: was silently skipped;
-                        // warn R013.
-                        Err(e) => self.warn(
-                            "R013",
-                            crate::ui_gen::validators::Severity::Warning,
-                            format!("chart prop `{}`: {}; prop not emitted", key, e),
-                        ),
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Plan 437 Phase 1: chart 族 spec 驱动发射。遍历 registry 里由
-    /// schema/aura.at 声明的 vue props 契约(Plan 437 契约表落库后的唯一
-    /// 事实源),按声明名排序保证生成物稳定;值级转换保留为转换层特例:
-    /// curve-type 字符串值 → CurveType 枚举,custom-tooltip 组件引用恒走
-    /// 绑定。snake_case 拼写变体与 kebab 声明名双接收。
-    fn emit_chart_family_attrs(&mut self, attrs: &mut Vec<String>, tag: &str, props: &HashMap<String, AuraPropValue>) {
-        let Some(mapping) = self.widget_registry.get(tag).and_then(|s| s.backend("vue")) else {
-            return;
-        };
-        let mut declared: Vec<(String, String)> = mapping
-            .props
-            .iter()
-            .map(|(aura, vue)| (aura.clone(), vue.clone()))
-            .collect();
-        declared.sort();
-        for (name, vue_attr) in declared {
-            // class/style 走公共样式通道(push_style_class + 尾部 class
-            // 兜底),此处发射会重复
-            if name == "class" || name == "style" {
-                continue;
-            }
-            // 转换层 ①:curve-type 值映射(CurveType 枚举)
-            if name == "curve-type" {
-                self.emit_curve_type_prop(attrs, props);
-                continue;
-            }
-            // 转换层 ②:custom-tooltip 是组件引用 —— 字符串值也是引用名,
-            // 恒走绑定,不产静态属性
-            if name == "custom-tooltip" {
-                if let Some(value) = props.get("custom-tooltip").or_else(|| props.get("custom_tooltip")) {
-                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(id)) = value {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", id));
-                    } else if let Some(s) = self.extract_string_value(value) {
-                        attrs.push(format!(":custom-tooltip=\"{}\"", s));
-                    }
-                }
-                continue;
-            }
-            if props.contains_key(name.as_str()) {
-                self.emit_chart_prop(attrs, props, &name, &vue_attr);
-            } else {
-                let snake = name.replace('-', "_");
-                if snake != name && props.contains_key(snake.as_str()) {
-                    self.emit_chart_prop(attrs, props, &snake, &vue_attr);
-                }
-            }
-        }
-    }
-
-    /// Emit curve-type prop for charts, mapping string values to CurveType enum.
-    fn emit_curve_type_prop(&mut self, attrs: &mut Vec<String>, props: &HashMap<String, AuraPropValue>) {
-        if let Some(value) = props.get("curve-type").or_else(|| props.get("curve_type")) {
-            self.use_curve_type = true;
-            if let Some(s) = self.extract_string_value(value) {
-                let mapped = match s {
-                    "basis" => "CurveType.Basis",
-                    "basisClosed" => "CurveType.BasisClosed",
-                    "basisOpen" => "CurveType.BasisOpen",
-                    "bundle" => "CurveType.Bundle",
-                    "cardinal" => "CurveType.Cardinal",
-                    "cardinalClosed" => "CurveType.CardinalClosed",
-                    "cardinalOpen" => "CurveType.CardinalOpen",
-                    "catmullRom" => "CurveType.CatmullRom",
-                    "catmullRomClosed" => "CurveType.CatmullRomClosed",
-                    "catmullRomOpen" => "CurveType.CatmullRomOpen",
-                    "linear" => "CurveType.Linear",
-                    "linearClosed" => "CurveType.LinearClosed",
-                    "monotone" | "monotoneX" => "CurveType.MonotoneX",
-                    "monotoneY" => "CurveType.MonotoneY",
-                    "natural" => "CurveType.Natural",
-                    "step" => "CurveType.Step",
-                    "stepAfter" => "CurveType.StepAfter",
-                    "stepBefore" => "CurveType.StepBefore",
-                    _ => "CurveType.MonotoneX",
-                };
-                attrs.push(format!(":curve-type=\"{}\"", mapped));
-            } else if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                attrs.push(format!(":curve-type=\"{}\"", name));
-            }
-        }
-    }
-
     /// Convert template string with ${...} placeholders to Vue {{ ... }} interpolation
     fn convert_template_to_vue(&self, template: &str) -> String {
         let mut result = String::new();
@@ -12051,19 +11936,9 @@ impl VueGenerator {
                 self.push_style_class(&mut attrs, props);
             }
 
-            // === Charts (shadcn-vue + Unovis) — Plan 437 Phase 1 spec 驱动 ===
-            // 契约在 schema/aura.at(经 registry overlay 落库),发射遍历声明;
-            // 值转换(CurveType/custom-tooltip)见 emit_chart_family_attrs。
-            "area_chart" | "area-chart"
-            | "bar_chart" | "bar-chart"
-            | "line_chart" | "line-chart"
-            | "donut_chart" | "donut-chart"
-            | "chart_tooltip" | "chart-tooltip"
-            | "chart_legend" | "chart-legend" => {
-                self.emit_chart_family_attrs(&mut attrs, tag, props);
-                self.push_style_class(&mut attrs, props);
-            }
-
+            // Plan 484: shadcn chart 族发射臂退役——裸名 bar-chart 等由
+            // official 包 Auto 组件承接(known_sub_widgets 折叠),原生 tag
+            // 不再走 shadcn 发射。
             _ => {
                 // Default handling for other components - extract class/style
                 self.push_style_class(&mut attrs, props);
