@@ -108,8 +108,7 @@ pub mod win32 {
     use windows::core::{implement, w, Error, HRESULT};
     use windows::Win32::Foundation::{
         BOOL, DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, OLE_E_ADVISENOTSUPPORTED, POINTL,
-        DRAGDROP_E_ALREADYREGISTERED, DRAGDROP_S_CANCEL, DRAGDROP_S_DROP,
-        DRAGDROP_S_USEDEFAULTCURSORS, GlobalFree,
+        DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DRAGDROP_S_USEDEFAULTCURSORS, GlobalFree,
     };
     use windows::Win32::System::Com::{
         DVASPECT_CONTENT, DATADIR_GET, FORMATETC, IDataObject, IDataObject_Impl,
@@ -123,7 +122,6 @@ pub mod win32 {
     use windows::Win32::System::Ole::{
         DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
         DoDragDrop, IDropSource, IDropSource_Impl, IDropTarget, IDropTarget_Impl, OleInitialize,
-        OleUninitialize,
     };
     use windows::Win32::System::SystemServices::{
         MK_LBUTTON, MK_RBUTTON, MODIFIERKEYS_FLAGS,
@@ -435,9 +433,18 @@ pub mod win32 {
         }
     }
 
-    /// 拖出反馈源：Esc 取消 / 拖拽键全放 = 落下 / 其余继续；光标走系统默认。
+    /// 拖出反馈源：Esc 取消 / 拖拽键按下后全放 = 落下 / 其余继续；光标走
+    /// 系统默认。"按下后"判定：DoDragDrop 可能在收到任何鼠标消息前先调
+    /// QueryContinueDrag（程序化起拖/合成输入时按下晚于进入——此时
+    /// keys=0 是"未及见按下"而非"已释放"，判 S_OK；见过按下后 keys=0
+    /// 才是释放 → 落下）。
     #[implement(IDropSource)]
     pub struct DndDropSource;
+
+    /// 本会话是否已见过拖拽键按下（DRAG_ACTIVE 保证会话串行，静态即可；
+    /// start_drag 重置）。
+    static SEEN_DRAG_BUTTON: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
 
     impl IDropSource_Impl for DndDropSource_Impl {
         fn QueryContinueDrag(
@@ -445,12 +452,32 @@ pub mod win32 {
             fescapepressed: BOOL,
             grfkeystate: MODIFIERKEYS_FLAGS,
         ) -> HRESULT {
+            // 诊断（AUTO_DND_TRACE=1 时前 30 拍/每 20 拍一记）。
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static N: AtomicU64 = AtomicU64::new(0);
+            if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                let n = N.fetch_add(1, Ordering::Relaxed);
+                if n < 30 || n % 20 == 0 {
+                    eprintln!(
+                        "[dnd-qcd] n={n} esc={} keys={:#x} seen={}",
+                        fescapepressed.as_bool() as u8,
+                        grfkeystate.0,
+                        SEEN_DRAG_BUTTON.load(Ordering::SeqCst)
+                    );
+                }
+            }
             if fescapepressed.as_bool() {
                 DRAGDROP_S_CANCEL
-            } else if grfkeystate.0 & (MK_LBUTTON.0 | MK_RBUTTON.0) == 0 {
-                DRAGDROP_S_DROP
             } else {
-                HRESULT(0)
+                let buttons = grfkeystate.0 & (MK_LBUTTON.0 | MK_RBUTTON.0);
+                if buttons != 0 {
+                    SEEN_DRAG_BUTTON.store(true, std::sync::atomic::Ordering::SeqCst);
+                    HRESULT(0)
+                } else if SEEN_DRAG_BUTTON.load(std::sync::atomic::Ordering::SeqCst) {
+                    DRAGDROP_S_DROP
+                } else {
+                    HRESULT(0)
+                }
             }
         }
 
@@ -505,6 +532,12 @@ pub mod win32 {
 
     /// 发起系统拖拽（受理即返）：空载荷 / 已有会话在拖 / 线程拉起失败 →
     /// false。完成后 [`take_finished_effect`] 可取到效果（每次会话一条）。
+    /// 发起系统拖拽（**调用线程内联阻塞**至落下/取消）。OLE 拖拽循环必须
+    /// 跑在收到按下鼠标消息的输入线程上（实测：专用 STA 线程收不到任何
+    /// 输入——QueryContinueDrag 零调用卡死；T3 fixture 证明同线程型工作，
+    /// 488 步骤 9 E2E 定案）。桌面模式下 VM handler 在 UI 线程执行
+    /// （call_handler ← update），即被点击线程——原生 App 的标准模态拖拽
+    /// 形态；DoDragDrop 自带消息泵，阻塞期事件面照常。
     pub fn start_drag(payload: DndPayload) -> bool {
         use std::sync::atomic::Ordering;
         if payload.is_empty() {
@@ -513,38 +546,28 @@ pub mod win32 {
         if DRAG_ACTIVE.swap(true, Ordering::SeqCst) {
             return false;
         }
-        let tx = DONE
-            .get_or_init(|| {
+        SEEN_DRAG_BUTTON.store(false, Ordering::SeqCst);
+        unsafe {
+            // OleInitialize 幂等（S_FALSE = 复用计数，不 Uninitialize）。
+            let _ = OleInitialize(None);
+            let data: IDataObject = DndDataObject::new(payload).into();
+            let source: IDropSource = DndDropSource.into();
+            let mut effect_out = DROPEFFECT_NONE;
+            // DoDragDrop 内部自泵消息直至落下/取消；允许 copy/move/link。
+            let _ = DoDragDrop(
+                &data,
+                &source,
+                DROPEFFECT(DROPEFFECT_COPY.0 | DROPEFFECT_MOVE.0 | DROPEFFECT_LINK.0),
+                &mut effect_out,
+            );
+            let effect = effect_of(effect_out);
+            let (tx, _) = DONE.get_or_init(|| {
                 let (tx, rx) = std::sync::mpsc::channel();
                 (tx, std::sync::Mutex::new(rx))
-            })
-            .0
-            .clone();
-        let spawned = std::thread::Builder::new()
-            .name("auto-lang-dnd-sta".into())
-            .spawn(move || unsafe {
-                // STA：OleInitialize（S_FALSE = 复用计数，同样平衡 Uninitialize）。
-                let ole_ok = OleInitialize(None).is_ok();
-                let data: IDataObject = DndDataObject::new(payload).into();
-                let source: IDropSource = DndDropSource.into();
-                let mut effect_out = DROPEFFECT_NONE;
-                // DoDragDrop 内部自泵消息直至落下/取消；允许 copy/move/link。
-                let _ = DoDragDrop(
-                    &data,
-                    &source,
-                    DROPEFFECT(DROPEFFECT_COPY.0 | DROPEFFECT_MOVE.0 | DROPEFFECT_LINK.0),
-                    &mut effect_out,
-                );
-                let _ = tx.send(effect_of(effect_out));
-                DRAG_ACTIVE.store(false, Ordering::SeqCst);
-                if ole_ok {
-                    OleUninitialize();
-                }
             });
-        if spawned.is_err() {
-            DRAG_ACTIVE.store(false, Ordering::SeqCst);
-            return false;
+            let _ = tx.send(effect);
         }
+        DRAG_ACTIVE.store(false, Ordering::SeqCst);
         true
     }
 
@@ -827,7 +850,8 @@ pub mod win32 {
         use windows::Win32::System::Com::DATADIR_SET;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::System::Ole::{
-            RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
+            DRAGDROP_E_ALREADYREGISTERED, OleUninitialize, RegisterDragDrop,
+            ReleaseStgMedium, RevokeDragDrop,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, WINDOW_EX_STYLE,
@@ -1137,12 +1161,18 @@ pub mod win32 {
             let src: IDropSource = DndDropSource.into();
             unsafe {
                 assert_eq!(src.QueryContinueDrag(true, MK_LBUTTON), DRAGDROP_S_CANCEL);
+                // 未见按下时 keys=0 = "未及见按下"，S_OK（程序化起拖语义）。
+                assert_eq!(
+                    src.QueryContinueDrag(false, MODIFIERKEYS_FLAGS(0)),
+                    HRESULT(0)
+                );
+                assert_eq!(src.QueryContinueDrag(false, MK_LBUTTON), HRESULT(0));
+                assert_eq!(src.QueryContinueDrag(false, MK_RBUTTON), HRESULT(0));
+                // 见过按下后 keys=0 = 释放 → 落下。
                 assert_eq!(
                     src.QueryContinueDrag(false, MODIFIERKEYS_FLAGS(0)),
                     DRAGDROP_S_DROP
                 );
-                assert_eq!(src.QueryContinueDrag(false, MK_LBUTTON), HRESULT(0));
-                assert_eq!(src.QueryContinueDrag(false, MK_RBUTTON), HRESULT(0));
                 assert_eq!(src.GiveFeedback(DROPEFFECT_NONE), DRAGDROP_S_USEDEFAULTCURSORS);
             }
         }

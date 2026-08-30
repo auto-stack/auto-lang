@@ -415,6 +415,17 @@ mod win {
 
         impl IDropSource_Impl for FixtureDropSource_Impl {
             fn QueryContinueDrag(&self, esc: BOOL, keys: MODIFIERKEYS_FLAGS) -> HRESULT {
+                use std::sync::atomic::{AtomicU64, Ordering};
+                static N: AtomicU64 = AtomicU64::new(0);
+                if super::OPTS.get().map(|o| o.trace).unwrap_or(false) {
+                    let n = N.fetch_add(1, Ordering::Relaxed);
+                    if n < 30 || n % 20 == 0 {
+                        emit(&format!(
+                            "{{\"evt\":\"trace\",\"msg\":\"qcd\",\"n\":{n},\"esc\":{},\"keys\":{:#x}}}",
+                            esc.as_bool() as u8, keys.0
+                        ));
+                    }
+                }
                 if esc.as_bool() {
                     DRAGDROP_S_CANCEL
                 } else if keys.0 & (MK_LBUTTON.0 | MK_RBUTTON.0) == 0 {
@@ -595,6 +606,9 @@ mod win {
                 WM_LBUTTONDOWN if OPTS.get().and_then(|o| o.offer.as_ref()).is_some() => {
                     // Plan 488 --offer：客户区按下即拖（按下时刻左键在按住
                     // 态——真拖拽语义；DoDragDrop 内部自泵消息至落下/取消）。
+                    if OPTS.get().map(|o| o.trace).unwrap_or(false) {
+                        emit("{\"evt\":\"trace\",\"msg\":\"offer-press\"}");
+                    }
                     if let Some(offer) = OPTS.get().and_then(|o| o.offer.clone()) {
                         dnd::start_drag(&offer);
                     }

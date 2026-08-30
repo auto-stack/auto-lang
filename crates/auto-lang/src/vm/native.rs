@@ -934,9 +934,12 @@ pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 // .at 代码零条件分支。UI 桥在 `ui/native_dnd.rs`（Win32 双门控同
 // native-dock；COM 实现步骤 3，STA 会话步骤 4）。
 
-/// `dnd_start(payload_json) -> Bool`：发起系统拖拽（受理即返；完成效果经
-/// `on_dnd_finished` 事件异步回 App）。载荷 JSON 见
-/// `ui::native_dnd::parse_payload_json`（text/files/virtual_files 组合）。
+/// `dnd_start(payload_json) -> Bool`：发起系统拖拽（**调用线程内联阻塞**
+/// 至落下/取消——OLE 拖拽循环必须跑在收到按下的输入线程上，488 步骤 9
+/// E2E 定案；桌面模式 VM handler 在 UI 线程执行即被点击线程，DoDragDrop
+/// 自带消息泵，模态期与原生 App 一致）。完成效果经 `on_dnd_finished`
+/// 事件回 App。载荷 JSON 见 `ui::native_dnd::parse_payload_json`
+/// （text/files/virtual_files 组合）。
 #[cfg(all(windows, feature = "native-dnd", feature = "ui"))]
 pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let payload_json = pop_string_arg(task, vm);
