@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-486
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: native-dock-trigger-surface
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 2
 total_steps: 9
 ---
 
@@ -175,9 +175,16 @@ shell.at 管线。零新三方依赖。
    `EVENT_SYSTEM_MOVESIZESTART` + 映射表 `NativeSlotEventKind::MoveSizeStart`
    + GetCursorPos 采样辅助。
    验证：`cargo check -p auto-lang --features native-dock && cargo t native_dock`。
+   [✅ 已完成] 2026-08-30：映射表+钩子六事件+`cursor_pos()`（win32/noop 双侧）；
+   check 零新告警；feature 档 31/31 绿（map_win_event_covers_matrix 扩
+   MOVESIZESTART 断言 + cursor_pos 冒烟）。注：`cargo t native_dock` 默认档
+   0 命中（ui 非 default feature），实际以 `--features test-native-dock` 档跑。
 2. **DragWatch 纯逻辑**：`native_dock/mod.rs` 增 DragWatch 状态机 + 落点计算
    （注入式）+ T1 单测。
    验证：`cargo t native_dock`。
+   [✅ 已完成] 2026-08-30：`DragWatch{Idle→Watching→Over}` + `landing_slot`
+   （包含命中→中心距最近）+ `DragSample` 节流（33ms，rect 变化即时重发）+
+   `Rect::contains_point/center`；feature 档 38/38 绿（T1 新增 7 测全转绿）。
 3. **session 接线**：`ui/session.rs` 增 `NativeDragOver` 消息、MOVESIZEEND
    终态处理（DockCandidate→DockNative / Abandon→清 overlay）。
    验证：`cargo check -p auto-lang && cargo t session`。
