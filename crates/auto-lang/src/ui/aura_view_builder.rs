@@ -5624,6 +5624,17 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "enter"))
             .map(|event| self.event_to_message(&event.handler));
 
+        // Plan 057 续(富文本输入):highlight/ghost props — 语法着色段与灰色
+        // 建议后缀(VM 原生 Highlighter / Vue 叠加层)。缺省为空 = 存量行为。
+        // PLAN-493: mentions 能力声明优先——受限名单解析(state-rooted,绝不
+        // 落入 eval_computed/call_vm_fn——html 纯文本降级的 call 链 UAF 同构
+        // 雷区,21bba9b34 回滚实证)→ builder 期纯函数段计算;带 mentions 时
+        // highlight prop 段让位。computed/调用链名单 → None = VM 无高亮
+        // 降级(迁移前现状,非回归;Vue 轨经 codegen 原生响应式消费不受限)。
+        let highlight = match self.resolve_mention_names(props, bindings) {
+            Some(names) => mention_segments(&value, &names),
+            None => self.resolve_highlight_spans(props, bindings),
+        };
         let mut builder = View::<DynamicMessage>::textarea(placeholder).value(value);
         if let Some(msg) = on_change {
             builder = builder.on_change(msg);
@@ -5637,9 +5648,7 @@ let tabs_inner = View::Row {
         if let Some(s) = style {
             builder = builder.with_style(s);
         }
-        // Plan 057 续(富文本输入):highlight/ghost props — 语法着色段与灰色
-        // 建议后缀(VM 原生 Highlighter / Vue 叠加层)。缺省为空 = 存量行为。
-        builder = builder.highlight(self.resolve_highlight_spans(props, bindings));
+        builder = builder.highlight(highlight);
         builder = builder.ghost(
             self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
         );
@@ -5780,6 +5789,65 @@ let tabs_inner = View::Row {
             builder = builder.with_style(s);
         }
         builder.build()
+    }
+
+    /// PLAN-493: `mentions:` prop 的受限名单解析——只接受 state-rooted
+    /// 形态：裸 Ident/自引用 Dot → bindings → read_state_as_vec（同步深
+    /// 拷贝，引用即弃）；`.store.X`/`store.X` 按并入根态的裸字段读
+    /// （D-GAP-4 约定）；str 字面量表 → 逐元素。其余形状（含任何
+    /// Call/computed 链）→ None：**不进 call 链**（UAF 红线，见
+    /// convert_textarea 注释）——computed 名单在 VM 轨降级为无高亮。
+    fn resolve_mention_names(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> Option<Vec<String>> {
+        let expr = match props.get("mentions") {
+            Some(AuraPropValue::Expr(e)) => e,
+            _ => return None,
+        };
+        match expr {
+            Expr::Array(elems) => {
+                let mut names = Vec::with_capacity(elems.len());
+                for e in elems {
+                    if let Expr::Str(s) = e {
+                        names.push(s.as_str().to_string());
+                    }
+                }
+                Some(names)
+            }
+            Expr::Ident(name) => {
+                self.state_rooted_string_list(name.as_str().trim_start_matches('.'), bindings)
+            }
+            Expr::Dot(obj, field) => {
+                let is_store_path = matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "store")
+                    || matches!(obj.as_ref(),
+                        Expr::Dot(inner, f) if f.as_str() == "store"
+                            && matches!(inner.as_ref(), Expr::Ident(n)
+                                if n.as_str() == "." || n.as_str() == "self"));
+                let is_self_path = matches!(obj.as_ref(),
+                    Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self");
+                if is_store_path || is_self_path {
+                    self.state_rooted_string_list(field.as_str(), bindings)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// PLAN-493: state-rooted 字段 → Vec<String>（bindings 命中 Array 直接
+    /// 取；否则 read_state_as_vec 同步深拷贝）。Str/String 元素之外跳过。
+    fn state_rooted_string_list(&self, field: &str, bindings: &Bindings) -> Option<Vec<String>> {
+        if field.is_empty() {
+            return None;
+        }
+        if let Some(Value::Array(arr)) = bindings.get(field) {
+            return Some(strings_from_values(&arr.values));
+        }
+        let items = self.read_state_as_vec(field).ok()?;
+        Some(strings_from_values(&items))
     }
 
     /// Plan 057 续(富文本输入):解析 `highlight: <list of {text, kind}>` prop
@@ -7684,6 +7752,19 @@ fn utf8_char_len(first: u8) -> usize {
         0xE0..=0xEF => 3,
         _ => 4,
     }
+}
+
+/// PLAN-493: Vec<Value> → Vec<String>（Str/String 元素，其余跳过）——
+/// mentions 名单同步深拷贝的元素提取。
+fn strings_from_values(items: &[Value]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|v| match v {
+            Value::Str(s) => Some(s.as_str().to_string()),
+            Value::String(s) => Some(s.as_str().to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -9936,6 +10017,112 @@ mod tests {
         let concat: String = segs.iter().map(|(t, _)| t.as_str()).collect();
         assert_eq!(concat, value);
         assert_eq!(segs.iter().filter(|(_, k)| k == "mention").count(), 2);
+    }
+
+    /// PLAN-493 T3: mentions 能力接线——state-rooted 名单（var）+ value →
+    /// View::Textarea.highlight 携带 mention 段，段文本拼回 == value。
+    #[test]
+    fn plan493_textarea_mentions_wired() {
+        let widget = make_test_widget("W", vec![
+            AuraStateDef {
+                name: "text".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("@assistant hi".into()),
+                decorators: vec![],
+            },
+            AuraStateDef {
+                name: "mentionNames".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: Expr::Str(String::new().into()),
+                decorators: vec![],
+            },
+        ]);
+        let mut bridge = VmBridge::new(&widget).unwrap();
+        bridge.write_state(
+            "mentionNames",
+            Value::Array(auto_val::Array::from(vec![
+                Value::Str("assistant".into()),
+                Value::Str("Planner".into()),
+            ])),
+        );
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Ident(".text".into()))
+            .with_prop("mentions", Expr::Ident(".mentionNames".into()));
+        match builder.build(&node) {
+            View::Textarea { value, highlight, .. } => {
+                assert_eq!(value, "@assistant hi");
+                assert_eq!(
+                    highlight,
+                    vec![
+                        ("@assistant".to_string(), "mention".to_string()),
+                        (" hi".to_string(), "text".to_string()),
+                    ],
+                    "state-rooted 名单必须经 mention_segments 接入 highlight"
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-493 T3: 降级契约——computed 名单（解析会进 call 链，UAF 红线）
+    /// 不解析：highlight 空、构建不崩（= 迁移前 VM 现状，非回归）。若此处
+    /// 变红说明有人把 eval_computed/call_vm_fn 回调进了名单解析。
+    #[test]
+    fn plan493_mentions_computed_degrades_to_plain() {
+        let mut widget = make_test_widget("W", vec![AuraStateDef {
+            name: "text".to_string(),
+            type_info: Type::StrOwned,
+            initial: Expr::Str("@assistant hi".into()),
+            decorators: vec![],
+        }]);
+        widget.computed = vec![crate::aura::AuraComputed {
+            name: "mentionNames".to_string(),
+            expr: Expr::Str("assistant".into()),
+        }];
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Ident(".text".into()))
+            .with_prop("mentions", Expr::Ident(".mentionNames".into()));
+        match builder.build(&node) {
+            View::Textarea { highlight, .. } => {
+                assert!(
+                    highlight.is_empty(),
+                    "computed 名单不得解析（call 链 UAF 红线）: {:?}", highlight
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
+    }
+
+    /// PLAN-493 T3: 字面量表名单——`mentions: ["coder"]` 静态形态同样接入。
+    #[test]
+    fn plan493_mentions_literal_list() {
+        let widget = make_test_widget("W", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "W");
+
+        let node = AuraNode::element("textarea")
+            .with_prop("value", Expr::Str("@coder!".into()))
+            .with_prop(
+                "mentions",
+                Expr::Array(vec![Expr::Str("coder".into())]),
+            );
+        match builder.build(&node) {
+            View::Textarea { highlight, .. } => {
+                assert_eq!(
+                    highlight,
+                    vec![
+                        ("@coder".to_string(), "mention".to_string()),
+                        ("!".to_string(), "text".to_string()),
+                    ]
+                );
+            }
+            _ => panic!("Expected View::Textarea"),
+        }
     }
 
     /// PLAN-051 T8: for 循环多实例子组件的 props 逐实例隔离——musk 会话列表
