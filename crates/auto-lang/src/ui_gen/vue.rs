@@ -8508,7 +8508,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             }
             Expr::Index(target, index) => {
                 let target_str = self.expr_to_vue_text_raw(target)?;
-                let index_str = self.expr_to_vue_text_raw(index)?;
+                // Plan 492 M3 (族 B): the index is a JS expression position —
+                // a Str key must stay quoted (`li['name']`). Routing it through
+                // expr_to_vue_text_raw stripped the quotes (its Str arm emits
+                // template text), yielding the undefined bare identifier
+                // `li[name]` and an empty text node. Reuse the svg-attribute
+                // path's bound-value renderer for the index instead.
+                let index_str = self.expr_to_vue_bound_value(index)?;
                 Ok(format!("{}[{}]", target_str, index_str))
             }
             Expr::FStr(fstr) => {
@@ -8594,7 +8600,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     Ok(format!("{}({})", name_str, args_str.join(", ")))
                 }
             }
-            _ => Ok("value".to_string()),
+            // Plan 492 M3 (族 B): an unsupported expression form in text
+            // content used to silently emit the `value` placeholder — the
+            // rendered text showed literal "value" with zero diagnostics.
+            // Keep the placeholder but raise an R046 warning naming the form.
+            _ => {
+                self.warn(
+                    "R046",
+                    crate::ui_gen::validators::Severity::Warning,
+                    format!(
+                        "unsupported expression in text content position: `{:?}`; emitted `value` placeholder",
+                        expr
+                    ),
+                );
+                Ok("value".to_string())
+            }
         }
     }
 
