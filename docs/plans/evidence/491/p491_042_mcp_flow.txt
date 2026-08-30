@@ -1,0 +1,35 @@
+Plan 491 T6 — 042-two-inputs-child MCP flow on plan-491-dev binary (auto.exe @ .worktrees/plan-491-dev/target/debug)
+bin: worktree build (Tab traversal code incl.)
+flow: autoui_type username=admin (handler .LoginChild.UserChanged) -> autoui_type password=admin (handler .LoginChild.PassChanged) -> press Login (.LoginChild.Submit)
+
+ActionResult
+  status: ok
+  element: #aura_0
+  action: type_text
+  handler: .LoginChild.UserChanged
+
+ActionResult
+  status: ok
+  element: #aura_0
+  action: type_text
+  handler: .LoginChild.PassChanged
+
+Screenshot saved to: \\?\D:\autostack\auto-lang\.worktrees\plan-491-dev\examples\ui\042-two-inputs-child\src\front\tmp\autoui-screenshot-1788074014891
+
+ActionResult
+  status: ok
+  element: #aura_0
+  action: press
+  handler: .LoginChild.Submit
+  state_changes:
+    authed: false -> true
+
+State:
+  authed: true (bool)
+  pass: "admin" (str)
+  user: "admin" (str)
+
+
+login unmounted: True
+
+Screenshot saved to: \\?\D:\autostack\auto-lang\.worktrees\plan-491-dev\examples\ui\042-two-inputs-child\src\front\tmp\autoui-screenshot-1788074017380
