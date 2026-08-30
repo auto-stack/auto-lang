@@ -177,6 +177,10 @@ pub struct HotkeyTable { map: HashMap<HotkeyAction, KeySpec> }
 
 ## 待澄清事项
 
+- **与 488（OLE 拖放 P3）的热键域协调（2026-08-30 调度补记）**：488 T7 将在
+  桌面级热键段增 Ctrl+V 粘贴臂，与本计划 G3 键位表化同域——后合者适配：
+  490 先合，则 488 的 Ctrl+V 臂挂入 `shell.keys.paste` 键位表；488 先合，则
+  本计划收编该臂进表。领取顺序不设硬约束。
 - Alt+Tab 退役是否保留 storage 逃生舱（`shell.keys.cycle_window` 显式配置
     可复活 alt+tab）——**默认保留解析能力但内置表不配**，成本零（表驱动
     天然支持）。

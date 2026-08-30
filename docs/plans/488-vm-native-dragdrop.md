@@ -238,6 +238,10 @@ virtual_window spec events 映射同步。
 
 ## 待澄清事项
 
+- **与 490（桌面热键清理）的热键域协调（2026-08-30 调度补记）**：T7 的
+  Ctrl+V 臂与 490 G3 的键位表化（`shell.keys.*`）同域——后合者适配：490
+  先合则 T7 挂 `shell.keys.paste` 键位表；488 先合则 490 收编该臂。另：
+  486 已合入，本计划开工前置已满足，可领取。
 - **① winit 共存**（T2 spike 回写）：宿主 HWND 上 `RegisterDragDrop` 与
   winit 既有 `DragAcceptFiles`/DroppedFile 路径的优先级与互斥表现；若冲突，
   取舍原则 = OLE 目标为准（多格式能力），WM_DROPFILES 路径本仓未消费无损失。

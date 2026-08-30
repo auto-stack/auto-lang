@@ -1,5 +1,5 @@
 ---
-plan_id: PLAN-489
+plan_id: PLAN-491
 status: drafting               # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-tab-focus-traversal
 author: [zhaopuming]
@@ -16,7 +16,7 @@ current_step: 0
 total_steps: 8
 ---
 
-# [PLAN-489] VM 轨 Tab/Shift+Tab 输入框焦点环遍历
+# [PLAN-491] VM 轨 Tab/Shift+Tab 输入框焦点环遍历
 
 ## 变更摘要
 
@@ -81,7 +81,7 @@ Plan 483 已交付基建：input 唯一稳定 Id（`derive_input_id`）+ 渲染�
 
 Rust / iced 0.14.2（`shell.request_focus`、Focus operation 按 Id 寻址）、
 iced_test（机制级键盘模拟）。测试沿用 483 门面：
-`--features iced-layout-tests` 的 `p483_*` 相邻新增 `p489_*`。
+`--features iced-layout-tests` 的 `p483_*` 相邻新增 `p491_*`。
 
 ## 需求分析与背景调查
 
@@ -130,14 +130,14 @@ b) 五聚焦点 `request_focus` 改址时同步写"最后聚焦 id"。
 ## 测试设计
 
 `crates/auto-lang/src/ui/iced/renderer.rs` `line_edit_tests`（`p483_*` 相邻，
-`--features iced-layout-tests`）新增 `p489_*`，全部先红后绿：
+`--features iced-layout-tests`）新增 `p491_*`，全部先红后绿：
 
-1. `p489_tab_next`：双 input（042 形态）聚焦首 → 模拟 Tab → 第二聚焦。
-2. `p489_shift_tab_prev`：聚焦第二 → Shift+Tab → 第一聚焦。
-3. `p489_wrap`：尾→首（Tab）与首→尾（Shift+Tab）。
-4. `p489_unfocused_fallback`：无聚焦 Tab → 首个（锁 483 fallback 语义，
+1. `p491_tab_next`：双 input（042 形态）聚焦首 → 模拟 Tab → 第二聚焦。
+2. `p491_shift_tab_prev`：聚焦第二 → Shift+Tab → 第一聚焦。
+3. `p491_wrap`：尾→首（Tab）与首→尾（Shift+Tab）。
+4. `p491_unfocused_fallback`：无聚焦 Tab → 首个（锁 483 fallback 语义，
    此条预期直接绿，防回归锚）。
-5. `p489_single_input`：单 input Tab 不失焦不漂移。
+5. `p491_single_input`：单 input Tab 不失焦不漂移。
 6. 控制组：聚焦中的 prompt 编辑器 Tab（onkeydown.tab 捕获）不到达 fallback。
 
 实机代验（MCP，真键盘顺延 P483-3 真人清单）：
@@ -156,7 +156,7 @@ b) 五聚焦点 `request_focus` 改址时同步写"最后聚焦 id"。
 
 ## 执行步骤
 
-- [ ] T1 红测试矩阵：renderer.rs `line_edit_tests` 新增 p489_1..3（Tab 前进/
+- [ ] T1 红测试矩阵：renderer.rs `line_edit_tests` 新增 p491_1..3（Tab 前进/
       Shift+Tab 后退/回环），跑 `cargo test -p auto-lang --lib --features iced-layout-tests p489` 确认红。
 - [ ] T2 当前聚焦 id 采集：按详细设计 a/b 择一落入 devtools（与 `input_ids`
       同生命周期），附单测（聚焦迁移后 devtools 值跟随）。
@@ -164,9 +164,9 @@ b) 五聚焦点 `request_focus` 改址时同步写"最后聚焦 id"。
 - [ ] T3 键盘路径分派：keyboard_event_message fallback 臂按
       `modifiers.shift()` 分派 `__focus_next_input`/`__focus_prev_input`
       （无聚焦共用回落首个）；同步 6576 注释（057 语义收窄为"无聚焦时"）。
-      验证：p489_4 绿。
+      验证：p491_4 绿。
 - [ ] T4 update 尾遍历臂：五聚焦点同层新增 next/prev 臂（focus_traverse
-      求址 + `shell.request_focus`），单 input/卸载回落两边界用 p489_5 与
+      求址 + `shell.request_focus`），单 input/卸载回落两边界用 p491_5 与
       现有 p483 锚覆盖。验证：p489 全绿。
 - [ ] T5 回归：p483 六测 + D4 四测 + `cargo tf` 全量 + `--features ui-iced`
       lib 基线对照（零新增红）。命令：
