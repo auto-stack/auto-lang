@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-488
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-dragdrop
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
-total_steps: 10
+current_step: 9
+total_steps: 11
 ---
 
 # [PLAN-488] 原生互操作 Phase 3——OLE 拖放双向 + 虚拟文件落地
@@ -205,32 +205,129 @@ virtual_window spec events 映射同步。
    `crates/auto-lang/src/ui/native_dnd.rs`（DndPayload + 模块骨架 +
    `ui/mod.rs` 登记）。
    验证：`cargo check -p auto-lang --features native-dnd && cargo check -p auto-lang`。
+   [✅ 已完成] worktree 提交 1d43a0da9：双档 check 绿，native_dnd/ui-mod 零警告（160 条为既有存量，与本改动无关，grep 实证）。
 2. **共存 spike**：宿主 HWND `RegisterDragDrop` 试验（临时日志/按钮触发
    触发 `DragEnter` 探针），结论回写待澄清①。
    验证：`cargo t ui`（无回归）+ spike 记录。
+   [✅ 已完成] worktree 提交 2bda07b90：运行时探针
+   `spike_register_revoke_roundtrip` 绿（单 HWND 二次注册→
+   DRAGDROP_E_ALREADYREGISTERED；Revoke→重注 S_OK）+ winit/iced 源码级
+   取证；结论已回写待澄清①。验证补充：日常档 772 全绿；ui-iced 档唯一红
+   `plan050_i18n_lookup` 为存量（stash 基线复现，与本改动无关）。
 3. **IDataObject + IDropSource**：实现 + T1 单测。
    验证：`cargo test -p auto-lang --features native-dnd native_dnd`。
+   [✅ 已完成] worktree 提交 04d962cab/700f85bb8：T1 九测全绿（枚举定序
+   文本→HDROP→DESCRIPTOR→CONTENTS / QueryGetData 命中与未挂 / 文本与
+   HDROP 往返 / FILEGROUPDESCRIPTORW 字节断言（cItems+flags+尺寸+名）/
+   FILECONTENTS 按 index / 源侧最小 E_NOTIMPL / Esc-取消-落下）。验证命令
+   修正：module 在 ui 门控下，实际跑
+   `cargo test -p auto-lang --lib --features ui-iced,native-dnd ui::native_dnd`
+   （裸 `--features native-dnd` 不编译 ui 模块——计划命令笔误，见步骤 1 注）。
+   实现注记：FILEDESCRIPTORW 为 packed——cFileName 存取走 addr_of!；
+   FD_WRITESTREAM bindings 缺失本地定义；FD_READURI 无 SDK 对应物 v1 不置。
 4. **STA 线程 + native**：`dnd_sta_thread`（OleInitialize/DoDragDrop/泵）+
    `auto.dnd.start` 三件套（catalog 顺号 + shim 降级）+ `dnd_finished` 回注。
    验证：`cargo t native_dnd && cargo t vm`。
+   [✅ 已完成] worktree 提交 6653b2803：STA 线程（受理即返/DRAG_ACTIVE 重入
+   拒/完成通道 Mutex 装载）+ native_catalog 2938（顺号取当前空位，签名表
+   Bool 同步）+ shim_dnd_start 真臂/降级臂（G5 false）+
+   DesktopEvent::DndFinished + dnd_finished_subscription（16ms 轮询，
+   非双门控档空订阅）+ renderer 注册与占位 update 臂（注入管线步骤 6 接线）。
+   验证：native_dnd 15 测全绿（新增 payload JSON 解析×3 + 受理语义×2）；
+   `cargo t vm` 638 绿；ui-iced 单档/default 档 check 零 native_dnd 警告。
 5. **IDropTarget + 拖入路由**：实现 + `DesktopMessage::NativeDrop` + 命中→
    AppId + T2 路由单测。
    验证：`cargo t session && cargo t native_dnd`。
+   [✅ 已完成] worktree 提交 ba84b9db8：DesktopDropTarget（Enter 探测可落
+   格式族→COPY/全不中→NONE；Drop 抽取 text/files/DIB·DIBV5·PNG→485 转换
+   临时 PNG；外来 FileGroupDescriptor 观察-only 拒收=待澄清②兑现）+
+   NativeDropData + 拖入完成通道 + ensure_host_drop_target（spike 结论
+   落地：Revoke winit→Register 我方，HWND 身份键控，WindowOpened 即挂 +
+   ServiceTick 400ms 自愈；额外依赖 native-dock find_largest_own_window，
+   ui-iced 隐含）+ DesktopEvent::NativeDrop（订阅泵并轨双通道）+
+   drop_hit_app_at_local（复用 WmState::hit_test，z 序+分区过滤；独立模式
+   焦点 App 兜底）+ renderer 换算臂（drag_mapper 同源屏幕→逻辑）。
+   T2×3 绿：Enter 效果+通道往返 / 外来虚拟文件拒收 / 命中注入布局
+   （session 档 50/50 全绿，native_dnd 档 17/17；同 session 档注意：日常
+   `cargo t session` 不编译 session 模块，实际跑 `--features ui-iced` 档）。
 6. **事件面**：`schema/aura.at` virtual_window 增 events 三枚 +
    `ui_gen/widget/registry.rs` 映射 + AppSession 注入管线接线。
    验证：`cargo test -p auto-lang --test schema_drift && cargo test -p auto-lang --test docs_gen && cargo t ui`。
+   [✅ 已完成] worktree 提交 e6aaba851：aura.at events 三枚 + description
+   更新；registry.rs **无需手同步**——WidgetSpec 无 events 面，events 单源
+   在 schema（P4-4；三件套 schema_drift 1 + docs_gen 4 + component_registry 7
+   全绿即证）。注入接线：inject_native_event（472/479 同型 call_handler
+   直注）+ native_drop_payload（Record {text/files/image/screen_x/screen_y/
+   formats}）；DndFinished → 焦点 App 注 on_dnd_finished(effect)（v1 取完成
+   时焦点 App——VM 侧无 VM→AppId 通道，发起方追踪列增强，T6 冒烟观察）。
+   T2 payload 单测绿；ui-iced 档 1507 测 1506 绿 + 唯一存量红
+   plan050_i18n（步骤 2 已证基线同红）。
 7. **Ctrl+V 路由**：renderer.rs:6353 段热键臂 + 剪贴板读取优先级 +
    on_native_paste 注入 + T2 对应单测。
    验证：`cargo t ui`。
+   [✅ 已完成] worktree 提交 c20422ef7：热键订阅尾部 Ctrl+V 臂（Ctrl 且无
+   Alt/Shift，App 焦点无关）→ DesktopEvent::NativePaste → update 臂
+   clipboard_paste_payload（418 clipboard_get → 485 files_get/image_get，
+   whichever 并存，Record 与 drop 形状一致）→ 焦点 App 注 on_native_paste。
+   490 键位表收编按热键域协调条款（488 先合 → 490 收编本臂）留待 490。
+   T2 单测绿（剪贴板文本往返 + 域形状，485 GlobalClipboardTestLock 串行）；
+   ui-iced 档 1508 测 1507 绿 + 唯一存量红 plan050_i18n（基线同红）。
 8. **夹具扩展**：`tools/native-fixture/src/main.rs` `--offer` 拖源 + drop
    日志（清 main.rs:19 TODO）。
    验证：`cargo run --manifest-path tools/native-fixture/Cargo.toml -- --offer text:hi` 手动起拖冒烟。
+   [✅ 已完成] worktree 提交 c8d9c45d5：--offer text:/files: 拖源（触发面取
+   客户区 WM_LBUTTONDOWN 而非按钮 click——真拖拽要求按下时刻键按住，click
+   时已释放；计划文字"按钮触发"的机械修正，README 已注）+ 内置最小 COM
+   三件套（独立 bin 不复用 auto-lang，避免整仓编译依赖）+ 全窗 IDropTarget
+   drop 日志 {evt:drop,formats,text,files}（含 cf:N 未知名观察）+ dragend
+   效果行 + README 协议表更新，473 预留 TODO 清零。冒烟：`--offer text:hi
+   --self-close 3` 启动出 start/bounds/close 行、OLE 挂载不崩（真拖交互留
+   T6/步骤 9 合成拖拽）。
 9. **E2E T3/T4**：`crates/auto-lang/tests/native_dnd_e2e.rs`（feature 门控，
    拖拽模拟手段沿 486 待澄清③裁定）。
    验证：`cargo test -p auto-lang --features native-dnd --test native_dnd_e2e`。
+   [✅ 已完成] worktree 提交 e6b4ed62b/35c62db8：T3 拖入（fixture --offer →
+   合成拖 → 本进程目标窗挂 DesktopDropTarget → take_native_drop 断言
+   text/坐标）+ T4 拖出（自有源窗客户区按下 → **主线程内联 start_drag**
+   → 合成移动/释放落 fixture → 断言 drop 行）。实际验证命令
+   `--features native-dnd,test-native-dock`（drag_sim 基建；2 测全绿 12s）。
+   **E2E 三定案**（调试过程实证，回写计划架构）：① 拖入断言等待必须泵
+   消息（STA 目标窗的跨进程 DragEnter/Over/Drop COM 调用以窗口消息送达
+   创建线程——sleep 等待=死锁）；② **start_drag 从"专用 STA 线程受理
+   即返"改为"调用线程内联阻塞"**——OLE 拖拽循环必须跑在收到按下的输入
+   线程上（独立 STA 线程实测 QueryContinueDrag 零调用永卡；桌面模式 VM
+   handler 在 UI 线程执行=被点击线程，DoDragDrop 自带消息泵，模态期与
+   原生 App 一致——G1"受理即返"语义按此修正，完成事件管线不变）；
+   ③ ole_drag 无激活结算点击（结算点击落在 --offer 客户区会自身起拖互
+   绞）。DndDropSource 增 seen-button 语义（程序化起拖首拍 keys=0 不误判
+   释放）。drag_sim 增 OLE 原语（ole_drag/ole_press/ole_move_to/
+   ole_release；force_foreground 升 pub）。AUTO_DND_TRACE=1 诊断开关
+   （AUTO_DEBUG_KEYS 同型先例）。
 10. **实机冒烟 + 收尾**：T6 六场景执行留痕；健康检查（零警告/无调试打印）；
     状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui && cargo t vm`。
+    [🔶 部分] worktree 提交 35c62db8c 后：健康检查完成——`cargo check -p
+    auto-lang` 干净、`cargo t ui` 772 绿、`cargo t vm` 638 绿；触面
+    （native_dnd/native_catalog/native.rs/drag_sim）零警告；唯一 eprintln 为
+    AUTO_DND_TRACE=1 环境门控诊断（renderer AUTO_DEBUG_KEYS 同型先例），
+    生产路径零打印。**T6 真机六场景（A1/A2/A5/A6/D2–D4）挂起**——需真
+    人实机拖拽 Explorer/Chrome/notepad，无法代理执行（管线等价已由
+    E2E T3/T4 双绿 + T1 格式单测覆盖；Explorer 对 HGLOBAL FILECONTENTS
+    的接受度为唯一残留技术风险，见待澄清⑦）。状态保持 executing 待用户
+    执行 T6 后翻 execution_done。
+11. **骑手：P485-2 分诊（先分类、后处置，带逃生舱；2026-08-30 调度追加）**：
+    本计划改动面含 `vm/`（natives），复审门禁跑 `cargo tv`——先在红
+    `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（master @3a4aacf19 即红，
+    KNOWN-DEBT P485-2）由本会话顺路分诊：
+    - **T11a 分类**：复现锚定 → 判定"corpus 期望过期"（051-C7/484 语义变更
+      未更新对拍）还是"codegen 真回归"（bisect 锚 3a4aacf19 邻域）。
+    - **期望过期** → 更新 corpus 期望 + 成因注释一行，`cargo tv` 全绿，
+      KNOWN-DEBT P485-2 标已清偿；本计划收尾门禁含 tv 绿。
+    - **真回归** → **不在本计划修**（域不同、规模未知）：回写 P485-2 精确
+      归属注记（根因 commit + 证据），复审按"先在红 + 精确归属 + 488 分支
+      零 codegen 触碰（改动面=native_dnd/ui + vm natives）"放行，修复转
+      独立专项（后续计划号）。
+    验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
 
 ## 复审记录
 
@@ -242,9 +339,19 @@ virtual_window spec events 映射同步。
   Ctrl+V 臂与 490 G3 的键位表化（`shell.keys.*`）同域——后合者适配：490
   先合则 T7 挂 `shell.keys.paste` 键位表；488 先合则 490 收编该臂。另：
   486 已合入，本计划开工前置已满足，可领取。
-- **① winit 共存**（T2 spike 回写）：宿主 HWND 上 `RegisterDragDrop` 与
-  winit 既有 `DragAcceptFiles`/DroppedFile 路径的优先级与互斥表现；若冲突，
-  取舍原则 = OLE 目标为准（多格式能力），WM_DROPFILES 路径本仓未消费无损失。
+- **① winit 共存**（T2 spike 回写）——**已定案（2026-08-30，步骤 2）**：
+  winit 0.30.13 Windows 后端**本身就是 OLE 注册方**（窗口创建时
+  `OleInitialize`+`RegisterDragDrop(hwnd, 自实现 IDropTarget)`，
+  winit window.rs:1168/1194；teardown `RevokeDragDrop` 忽略返回值，
+  event_loop.rs:1262）——不是计划假设的 WM_DROPFILES/DragAcceptFiles
+  旧路径。其 Drop 只取 CF_HDROP → iced `FileDropped` 等，本仓零消费
+  （grep=0）。运行时探针实证：单 HWND 二次注册返回
+  DRAGDROP_E_ALREADYREGISTERED，Revoke 后重注 S_OK。**取舍**：步骤 5
+  挂载宿主 HWND 时执行 `RevokeDragDrop(hwnd)`（撤销 winit 单格式目标，
+  损失=0）→ `RegisterDragDrop(hwnd, 我方多格式目标)`；winit teardown 的
+  Revoke 忽略返回值不会 panic。**残留**：iced/winit 重建宿主 HWND 时会
+  重注自己的目标——步骤 5 挂载逻辑按 HWND 身份键控，检测变化时重跑
+  Revoke+Register。
 - **② 外来虚拟文件拖入**：FILECONTENTS 拉流（接收方视角）v1 拒收（格式
   枚举可见、内容不取）——真拉流与"拖出真延迟回调"同列增强；Chrome 图片
   拖入走 CF_DIB/"PNG" 通道（485 转换复用），不受此限。
@@ -256,3 +363,79 @@ virtual_window spec events 映射同步。
 - **⑤ 开工前置 = 486 合入**（拖拽会话宿主/命中计算复用其 DragWatch 产出）；
   执行时行号漂移（renderer.rs:6353 / aura.at:5050/L526）以 grep 重定位。
 - **⑥ natives 编号**：`auto.dnd.start` 顺号以 native_catalog 当前空位为准。
+  [已定案] 取 2938（2930/2931 已被 host.call 占用，485 后下一空位）。
+- **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户；载具已就绪）**：
+  **冒烟 App = `examples/ui/044-dnd-bridge`**（T6 载具，无头验证绿：
+  desktop_behavior `plan488_dnd_bridge_app_handlers`——真示例文件编译 +
+  三事件注入断言）。**启动 = cargo 示例 `ui_desktop`**（462/463 的 VM
+  虚拟桌面宿主入口——注意不是 `auto run --desktop`（465 的 vue 脚手架
+  路径，且 auto run 需指向带 pac.at 的工程））：
+  ```
+  # worktree 内（合入后在仓库根同命令）：
+  cargo run -p auto-lang --features ui-iced,native-dnd --example ui_desktop
+  # 全屏无框桌面（可选）：尾加 -- --fullscreen
+  ```
+  `--features ui-iced,native-dnd` 必带（native-dnd 缺省不开——拖放面
+  降级空转）。宿主启动后 Ctrl+Space 召 launcher → 开 044-dnd-bridge
+  （注册表默认仓库 examples/ui；044 pac render:"vm" 过滤通过）。
+  App 界面三卡：拖出（三按钮）/ 拖入日志 / Ctrl+V 日志。逐条执行并把
+  结果行记回本节：
+  1. **A1 Explorer→桌面**：Explorer 选 2+ 文件拖到 044 虚拟窗 → 拖入卡
+     出现 `files=[…]`（对照 `formats=[CF_HDROP]`）。
+  2. **A2 桌面→Explorer**（虚拟文件落地——**唯一残留技术风险**：
+     FILECONTENTS v1 走 HGLOBAL，Explorer 若只认 IStream 则落地失败，
+     补 IStream 介质即可，DndDataObject 结构已备）：点「拖出虚拟文件
+     (A2)」→ **按住左键**拖到 Explorer 空白处松开 → dnd-bridge-note.md
+     落地双击可开。
+  3. **A5 notepad 文本双向**：点「拖出文本」→ 按住左键拖到 notepad
+     松开（文本落框）；反向 notepad 选中文字拖进 044 窗（drop 日志
+     text=…）。
+  4. **A6 浏览器 URL 双向**：地址栏锁形/图标拖进 044 窗（text=URL）；
+     「拖出文本」拖到浏览器地址栏。
+  5. **D2/D3/D4 Chrome**：拖出/拖入/图片（图片拖入 → image=temp png
+     路径；观察 formats 记录 CF_DIB/其他）。
+  6. **Ctrl+V**：先复制（文本/Explorer 文件/截图）→ 桌面任意处按
+     Ctrl+V → 粘贴卡出对应日志（焦点须在桌面）。
+  操作要点：拖出按钮点击后**按住左键**拖（dnd_start 内联阻塞语义，
+  seen-button：见到按下前不判释放）；Esc 取消拖拽。诊断可开
+  `AUTO_DND_TRACE=1`。
+  **一轮实机反馈与修复（2026-08-30，worktree da9862370）**：
+  - A2/A5/A6 拖出正常（含 Explorer 虚拟文件落地——**A2 技术风险解除，
+    HGLOBAL FileContents Explorer 接受**）；A5/A6/D 拖入与图片拖入数据
+    均到达但**显示延迟**（要点其它按钮才显示）——根因 = 主线程注册的
+    IDropTarget 跨进程 COM Drop 调用滞留主线程消息队列直到下次用户输入
+    才派发；修复 = IDropTarget 移专用 STA 线程（marshal 代理注册 +
+    自持 GetMessage 泵），E2E T3 改走同路径实证。
+  - A1 拖出文件无效（点按钮无拖拽光标）——.at 拼路径产出非法 JSON
+    （fs.cwd() 裸反斜杠）→ parse 失败 → 受理即拒；修复 = 宽容修复重试
+    （裸反斜杠转义）+ 资产路径改 cwd 相对全径。
+  - **待二轮重跑确认**：拖入即时显示 / A1 文件拖出 / 图片拖入的
+    image_path 落值（D4）。
+  **二轮实机反馈与修复（2026-08-30，worktree 47038976e）**：
+  - **拖入延迟仍在**（STA 线程修复不对症）——判决实验链定案真机制：
+    DragEnter/Over 在拖动期正常（鼠标输入=主线程泵），**Drop 的跨线程
+    COM 投递是 SendMessage 型——主线程不进入取消息态就不送达**，松手后
+    无输入即滞留到下次点击。修复 = **WM_NULL 唤醒 ticker**（DragEnter/
+    Over 上膛，悬停期 40ms PostMessage 宿主窗；排队消息必唤醒任何等待
+    形态，泵一动挂起的 COM 调用即优先送达）。T3 严格版实证：空闲等待
+    （无限期 MsgWait，仅可由 ticker 唤醒）下 Drop 照达 STA 线程。
+  - **A1 拖出文件仍无效**——一轮的宽容修复有缺陷：路径 \ui 被误判
+    unicode 转义前缀保留、\note 的 \n 被误判换行。修复 = 首解析失败
+    后**无条件转义全部反斜杚**（失败即证非合法 JSON；单测补
+    \ui/\note 用例）。
+  - **Explorer 地址栏/搜索框不吃文本拖放**（Chrome 地址栏可以）——目标
+    侧能力差异（Explorer 地址栏只收 shell 对象/URL，不收裸文本），非
+    本仓缺陷；A6 记录以 notepad/Chrome 为文本落点。
+  - **待三轮重跑确认**：拖入即时显示 / A1 文件拖出。
+  **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
+  desktop_behavior.rs，修复后转正）：
+  - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →
+    字符串累加破坏（前缀丢失 + 错误码 -2147483647 混入）。044 用
+    直接状态赋值 + join 绕开。
+  - **P488-D2**：heap-record Str 字段与 nil 的 `!=` 比较破坏求值栈。
+    488 注入面改空串哨兵（缺省恒 ""，.at 判 `!= ""`）绕开——**载荷
+    事件契约按空串哨兵定稿**（text/image_path 缺省即空串）。
+- **⑧ 受理即返语义修正（2026-08-30 步骤 9 定案）**：G1"受理即返"改为
+  **调用线程内联阻塞**——OLE 拖拽循环必须跑在收到按下的输入线程上
+  （专用 STA 线程实测 QCD 零调用永卡；见步骤 9 注记）。dnd_finished
+  事件管线不变。

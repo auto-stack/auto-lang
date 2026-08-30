@@ -4,7 +4,8 @@
 // 一处引用）。
 //
 // 双向接缝（463 T1 §2/§3 定案；Plan 472 T3 formalize 为投影协议 v1，
-// Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2，Plan 486 升版 v1.3——合同
+// Plan 478 T3 升版 v1.1，Plan 479 T4 升版 v1.2，Plan 486 升版 v1.3，
+// Plan 487 M4 升版 v1.4——合同
 // schema/projection-protocol-v1.md——字段表/指纹门控/动词词表）：
 //   出：`__desktop_cmd`（候选 B 命令总线 —— 宿主每周期读+清；记录
 //       "verb\targ"，多条以 "\n" 连接。词表：launch/close/focus/layout/
@@ -12,7 +13,9 @@
 //       workspace_add/workspace_close/send_to + v1.2 增量
 //       notify/notes_toggle/notes_clear/notes_dismiss + v1.3 增量
 //       focus_native/close_native——arg 直传条目 wid "N<slot>"，宿主侧
-//       剥 N 前缀取 slot id）
+//       剥 N 前缀取 slot id + v1.4 增量
+//       open_settings（齿轮）/set_dock_position/set_dock_enabled——
+//       后两者由 settings.at 面板发出，本文件只发 open_settings）
 //   入：`__wm_wins`（宿主注入 {wid,title,focused,workspace,app,icon} Obj
 //       数组，跨分区全集，dock 运行窗列表源；v1.3 native 槽位条目为五字段
 //       {wid:"N<slot>",title,native,icon,focused}——workspace/app 不适用
@@ -43,7 +46,8 @@ widget Desktop {
         ActivateApp(str), SetWorkspace(str), WorkspaceNext,
         WorkspaceAdd, WorkspaceClose(str),
         NotificationToggle,
-        NativeFocus(str), NativeClose(str)
+        NativeFocus(str), NativeClose(str),
+        OpenSettingsPanel
     }
 
     model {
@@ -175,6 +179,12 @@ widget Desktop {
                                 }
                             }
                         }
+                        // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
+                        // 宿主臂二态翻转——面板可见再点即关）。
+                        button (icon: "settings") {
+                            onclick: .OpenSettingsPanel
+                            style: "h-9 w-9 px-0 text-sm"
+                        }
                     }
                 }
             }
@@ -286,6 +296,12 @@ widget Desktop {
                                 }
                             }
                         }
+                        // Plan 487 M4：设置齿轮（v1.4 open_settings 无参动词；
+                        // 宿主臂二态翻转——面板可见再点即关）。
+                        button (icon: "settings") {
+                            onclick: .OpenSettingsPanel
+                            style: "h-9 w-9 px-0 text-sm"
+                        }
                     }
                 }
             }
@@ -326,5 +342,8 @@ widget Desktop {
         // 宿主 parse 剥 N 前缀取 slot id——shell 零字符串加工）。
         .NativeFocus(wid) -> { .__desktop_cmd = "focus_native\t" + wid }
         .NativeClose(wid) -> { .__desktop_cmd = "close_native\t" + wid }
+        // Plan 487 M4 v1.4：设置面板召唤（无参动词；宿主臂落
+        // toggle_settings 执行体——二态翻转，面板可见再点即关）。
+        .OpenSettingsPanel -> { .__desktop_cmd = "open_settings" }
     }
 }

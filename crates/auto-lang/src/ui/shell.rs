@@ -39,6 +39,18 @@ pub fn build_notification_center_component(
     crate::build_dynamic_component(NOTIFICATION_CENTER_AT, None)
 }
 
+/// Plan 487 M4：设置面板 overlay 源码（进程内嵌；shell pack 同级特权组件，
+/// 不进注册表/examples——switcher/通知中心同型第四枚 overlay 槽）。
+pub const SETTINGS_AT: &str = include_str!("../../assets/settings.at");
+
+/// 进程内编译装载设置面板组件（open_settings 召唤期懒挂载调用；失败由调用
+/// 方通知降级）。
+#[cfg(feature = "ui-iced")]
+pub fn build_settings_component(
+) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
+    crate::build_dynamic_component(SETTINGS_AT, None)
+}
+
 /// Plan 463 T7：启动失败占位页（Design 24 §6.5）—— LaunchApp 构建失败时
 /// 的可见反馈窗：不白屏、不阻断桌面（toast 并行报错；关闭占位窗即走）。
 pub const LAUNCH_FALLBACK_AT: &str = r#"widget LaunchFallback {

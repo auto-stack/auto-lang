@@ -39,6 +39,18 @@ auto run -r vm            # 或 auto run --render=vm
 - 在 password 输入 admin → 仅 pass 变化;user=="admin" && pass=="admin"
   点 Login → 根条件切换显示 "in"。
 
+## 预期(Plan 491:Tab 焦点环遍历,修复后)
+
+- 聚焦 username 按 **Tab** → password 聚焦(键入只进 pass);
+- 聚焦 password 按 **Shift+Tab** → username 聚焦;
+- 尾项 Tab 回环到首项 / 首项 Shift+Tab 回环到尾项;
+- 无聚焦时按 Tab/Shift+Tab → 聚焦首个 input(483 fallback 语义);
+- 单 input 视图 Tab 自环,不失焦不漂移。
+- 机制级断言:renderer.rs `line_edit_tests::p491_*`(iced_test,
+  `--features iced-layout-tests`,7 测);真键盘复验步骤并入 P483-3 真人
+  清单(本环境 OS 键盘注入/前台通道对 winit 不可达,见
+  docs/plans/evidence/491/)。
+
 ## 对照组
 
 - `003-converter`:根级双输入(无条件、无子 widget)——修复前后均正常。
