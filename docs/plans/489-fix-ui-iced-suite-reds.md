@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-489
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: fix-ui-iced-suite-reds
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
+current_step: 4
 total_steps: 4
 ---
 
@@ -127,13 +127,26 @@ total_steps: 4
 1. **i18n corpus 资产**：新建 zh.json + .gitignore 否定规则。
    验证：`cargo nextest run -p auto-lang --lib --features ui-iced
    plan050_i18n_lookup plan050_void_stub`（2 绿）+ `git ls-files` 可见。
+   [✅ 已完成] zh.json（{"settings":{"title":"设置"}}）入库 +
+   !crates/auto-lang/test/**/i18n/*.json 否定规则（check-ignore 实证
+   命中否定）；双测 2/2 PASS（红→绿）
 2. **broker hermetic**：adjudicate_on 参数化 + 测试改 pid 管道。
    验证：solo 绿 + 固定管道占用模拟下仍绿。
+   [✅ 已完成] adjudicate_on(pipe,…) 参数化缝（adjudicate 委托，生产零
+   变化）+ 测试全程 pid 后缀管道。**A/B 双向实证**：PowerShell 持有
+   autodesk-broker 固定管道监听时——master 旧测 FAIL（步骤③ Standalone
+   被打穿 0.07s）/worktree 新测 PASS（0.62s）；solo + broker 全组 2/2 绿
 3. **code_editor 断言**：四断言逐行精确比对 + 注释对齐。
    验证：solo 绿。
+   [✅ 已完成] native.rs fold 往返断言改 `lines() == ["true","2","false",
+   "0"]` 精确比对（注释同步 print bool 现语义）；solo PASS（红→绿）
 4. **全量收尾**：ui-iced 全量连跑两次零红 + 默认档 cargo t 全绿 + check
    零新增警告；P487-2 债状态更新（KNOWN-DEBT 加修复注记）。
    验证：两档全量输出留痕。
+   [✅ 已完成] ui-iced 档 **4074/4074 两连绿**（含 broker 并发全量两连绿
+   ——hermetic 生效）；默认档 `cargo tf` 3283/3283 全绿；check 警告 161 =
+   master 基线 161（零新增）；P487-2 债条目加「Plan 489 已修」注记
+   （「档纳入周期门禁」流程面仍开放另议）
 
 ## 复审记录
 

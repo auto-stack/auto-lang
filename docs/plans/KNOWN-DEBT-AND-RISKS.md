@@ -295,8 +295,12 @@
   （i18n 查表文案不上屏族）/ `ui::desktop_protocol::broker::adjudicate_three_steps`
   / `vm::native::code_editor_natives…e2e`。全部挂 `cfg(all(test, ui-iced))`
   门后，而日常/全量门禁（`cargo t`/`tf`）跑默认特性档看不见——与 P485-2
-  同族「门禁盲区放过红」。建议：要么修 4 测，要么把 ui-iced 档纳入周期
-  门禁（专项计划归属）。
+  同族「门禁盲区放过红」。
+  **〔2026-08-30 已修——Plan 489 四测清零〕**：①② corpus `i18n/zh.json`
+  被 .gitignore `*.json` 吞（落测未入库）→ 入库 + `!test/**/i18n/*.json`
+  否定；③ adjudicate 测试固定管道环境干扰 → `adjudicate_on` 参数化缝 +
+  pid 管道 hermetic（A/B 实证）；④ print bool 现语义 true/false 断言对齐。
+  ui-iced 档 4074/4074 两连绿。「档纳入周期门禁」流程面仍开放（另议）。
 - **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
   分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
   按同款双份落码（+11 行 ×2），非本期引入的新债。
