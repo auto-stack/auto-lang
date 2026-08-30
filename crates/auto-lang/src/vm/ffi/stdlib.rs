@@ -565,16 +565,25 @@ pub fn shim_storage_remove(key: String) {
 // Plan 442 B-support: raw accessors behind the JS-shaped localStorage
 // bridge (native.rs shims) — getItem returns None for a missing key (musk
 // sources test `saved != None`), unlike storage.get's "" default.
+// KD-048「KV 会话恢复断裂」补齐：raw 家族原先只在进程内存 MAP 打转
+// （get 不 load、set/remove 不 persist），VM 轨 localStorage 写的键
+// （musk jwt/登录凭据）跨重启即失。改为与 Storage.* 同一 load-once +
+// write-through 契约；None 语义保持不变。
 pub(crate) fn storage_raw_get(key: &str) -> Option<String> {
+    storage_load();
     STORAGE_MAP.lock().unwrap().get(key).cloned()
 }
 
 pub(crate) fn storage_raw_set(key: String, value: String) {
+    storage_load();
     STORAGE_MAP.lock().unwrap().insert(key, value);
+    storage_persist();
 }
 
 pub(crate) fn storage_raw_remove(key: &str) {
+    storage_load();
     STORAGE_MAP.lock().unwrap().remove(key);
+    storage_persist();
 }
 
 /// PLAN-046-B (auto-musk T7): host-side publish so non-.at runtime components
@@ -8854,6 +8863,44 @@ Content-Length: 2
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// KD-048「KV 会话恢复断裂」回归：raw localStorage 家族（.at 的
+    /// localStorage.* 后端）必须 load-once + write-through 落盘——
+    /// 此前 set 只进进程内存 MAP，musk 登录凭据/jwt 跨重启即失。
+    /// 隔离沿 t2_isolate_storage 惯例（AUTO_VM_STORAGE_FILE 指向一次性
+    /// 文件；env 为进程级全局，同 P487-2 已案债）。
+    #[test]
+    fn storage_raw_set_persists_to_backing_file() {
+        let path = std::env::temp_dir().join(format!(
+            "auto-raw-storage-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        storage_raw_set("musk_login_username".into(), "admin".into());
+        assert_eq!(
+            storage_raw_get("musk_login_username"),
+            Some("admin".to_string()),
+            "in-process read-back"
+        );
+        // write-through: 盘上文件必须已含该键（不依赖进程存续）。
+        let raw = std::fs::read_to_string(&path).expect("backing file written");
+        assert!(
+            raw.contains("musk_login_username") && raw.contains("admin"),
+            "backing file must contain the key: {raw}"
+        );
+
+        // remove 同样穿透到盘。
+        storage_raw_remove("musk_login_username");
+        assert_eq!(storage_raw_get("musk_login_username"), None);
+        let raw = std::fs::read_to_string(&path).expect("backing file readable");
+        assert!(
+            !raw.contains("musk_login_username"),
+            "removed key must not persist: {raw}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn test_substr_clamps_to_char_boundaries() {        // str-parity: (start, LEN) semantics — ASCII cases updated from the
