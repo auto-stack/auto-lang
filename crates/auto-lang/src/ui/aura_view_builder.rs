@@ -7624,10 +7624,65 @@ fn value_to_display_string(value: &Value) -> String {
         Value::Float(f) => format!("{}", f),
         Value::Double(f) => format!("{}", f),
         Value::Bool(b) => b.to_string(),
-        Value::Str(s) => s.to_string(),
+        Value::Str(s) => s.as_str().to_string(),
         Value::String(s) => s.as_str().to_string(),
         Value::Nil => String::new(),
         _ => value.to_string(),
+    }
+}
+
+/// PLAN-493: mention 段计算——builder 期纯函数（不经 VM call 链，无堆引用
+/// 生命周期问题）。`@\w+` 扫描（\w=[A-Za-z0-9_]，对齐 musk
+/// mention_is_word_char），词（小写比较）∈ names → 段 `("@词原文",
+/// "mention")`；裸 `@`（词空）与其余字符逐段 `("…", "text")`。无 display
+/// 替换——编辑器内容即 value，VM/Vue 两轨着色原文一致。不变式：段文本
+/// 顺序拼接 == value。names 为空 → 整体单段 text。
+fn mention_segments(value: &str, names: &[String]) -> Vec<(String, String)> {
+    let known: std::collections::HashSet<String> =
+        names.iter().map(|n| n.to_lowercase()).collect();
+    let mut segs: Vec<(String, String)> = Vec::new();
+    let mut text = String::new();
+    let bytes = value.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'@' {
+            let mut end = i + 1;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+            {
+                end += 1;
+            }
+            // @ 是单字节 ASCII，词字符均为 ASCII，切片边界安全。
+            let word = &value[i + 1..end];
+            if !word.is_empty() && known.contains(&word.to_lowercase()) {
+                if !text.is_empty() {
+                    segs.push((std::mem::take(&mut text), "text".to_string()));
+                }
+                segs.push((value[i..end].to_string(), "mention".to_string()));
+            } else {
+                text.push_str(&value[i..end]);
+            }
+            i = end;
+        } else {
+            // 非_word 多字节字符（CJK/emoji 等）逐字入 text 段。
+            let ch_len = utf8_char_len(bytes[i]);
+            text.push_str(&value[i..i + ch_len]);
+            i += ch_len;
+        }
+    }
+    if !text.is_empty() {
+        segs.push((text, "text".to_string()));
+    }
+    segs
+}
+
+/// PLAN-493: 首字节 → UTF-8 字符长度（mention_segments 逐字推进用）。
+fn utf8_char_len(first: u8) -> usize {
+    match first {
+        0x00..=0x7F => 1,
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        _ => 4,
     }
 }
 
@@ -9828,6 +9883,59 @@ mod tests {
             }
             _ => panic!("Expected View::Input"),
         }
+    }
+
+    /// PLAN-493 T1: mention 段计算——命中段 ("@词原文", "mention")，其余
+    /// ("…", "text")；无 display 替换（编辑器内容即 value，跨端一致）。
+    #[test]
+    fn plan493_mention_segments_hit() {
+        let names = vec!["assistant".to_string(), "Planner".to_string()];
+        let segs = mention_segments("@assistant hello @Planner!", &names);
+        assert_eq!(
+            segs,
+            vec![
+                ("@assistant".to_string(), "mention".to_string()),
+                (" hello ".to_string(), "text".to_string()),
+                ("@Planner".to_string(), "mention".to_string()),
+                ("!".to_string(), "text".to_string()),
+            ]
+        );
+    }
+
+    /// PLAN-493 T1: 裸 @（词空）按字面处理；命中大小写不敏感；部分词/多词
+    /// 名单整词匹配（多词条目对 \w+ 扫描永不命中，与 musk render_mentions
+    /// 的键语义一致）。
+    #[test]
+    fn plan493_mention_segments_bare_at_and_case() {
+        let names = vec!["Assistant Agent".to_string(), "coder".to_string()];
+        let segs = mention_segments("@ @CODER @cod", &names);
+        assert_eq!(
+            segs,
+            vec![
+                ("@ ".to_string(), "text".to_string()),
+                ("@CODER".to_string(), "mention".to_string()),
+                (" @cod".to_string(), "text".to_string()),
+            ]
+        );
+    }
+
+    /// PLAN-493 T1: 空名单 → 无着色，整体单段 text。
+    #[test]
+    fn plan493_mention_segments_empty_names() {
+        let segs = mention_segments("hello @assistant", &[]);
+        assert_eq!(segs, vec![("hello @assistant".to_string(), "text".to_string())]);
+    }
+
+    /// PLAN-493 T1: 覆盖不变式——段文本顺序拼接 == value（含 CJK/换行等
+    /// 非 \w 边界字符，字节无损）。
+    #[test]
+    fn plan493_mention_segments_covers_value() {
+        let names = vec!["assistant".to_string()];
+        let value = "你好@assistant世界\nsecond @assistant line@";
+        let segs = mention_segments(value, &names);
+        let concat: String = segs.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(concat, value);
+        assert_eq!(segs.iter().filter(|(_, k)| k == "mention").count(), 2);
     }
 
     /// PLAN-051 T8: for 循环多实例子组件的 props 逐实例隔离——musk 会话列表
