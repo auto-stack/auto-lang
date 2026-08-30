@@ -696,6 +696,19 @@ pub mod drag_sim {
         unsafe { GetCursorPos(&mut pt) }.ok().map(|_| (pt.x, pt.y))
     }
 
+    /// 合成单击（move → down → up；实机冒烟驱动用，与拖拽同输入管线）。
+    pub fn click_at(x: i32, y: i32) -> bool {
+        use std::time::Duration;
+        if !move_to(x, y) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        send_button(MOUSEEVENTF_LEFTDOWN) && {
+            std::thread::sleep(Duration::from_millis(50));
+            send_button(MOUSEEVENTF_LEFTUP)
+        }
+    }
+
     /// 命中测试：屏幕点所在顶层窗口 hwnd 值（0 = 桌面）。拖拽前置校验用
     /// （标题栏被它窗遮挡时 SendInput 点击不会落在目标上）。
     pub fn window_from_point(x: i32, y: i32) -> isize {
@@ -790,10 +803,11 @@ pub mod drag_sim {
         let Some(rect) = super::get_bounds_window(hwnd) else {
             return false;
         };
-        // 抓点取 1/3 宽处（非正中）：高 DPI（如 200%）下小窗口的 caption
-        // 按钮占宽过半，正中点击会命中最小化钮（实测 4K@200% 教训）；
-        // y 取 caption 深处（200% 下 caption ≈46 物理px）。
-        let grab = (rect.x + rect.w / 3, rect.y + 16);
+        // 抓点取 70% 宽处：兼顾三类 caption 形态——高 DPI 小窗（按钮占宽
+        // 过半，正中命中按钮——4K@200% 实测教训）、Win11 Explorer 页签条
+        // 占左半（1/3 宽落在页签上会触发撕页签）、常规窗（按钮在最右
+        // ~15%）。y 取 caption 深处（200% 下 caption ≈46 物理px）。
+        let grab = (rect.x + rect.w * 7 / 10, rect.y + 16);
         if !move_to(grab.0, grab.1) {
             return false;
         }
@@ -838,10 +852,11 @@ pub mod drag_sim {
         let Some(rect) = super::get_bounds_window(hwnd) else {
             return false;
         };
-        // 抓点取 1/3 宽处（非正中）：高 DPI（如 200%）下小窗口的 caption
-        // 按钮占宽过半，正中点击会命中最小化钮（实测 4K@200% 教训）；
-        // y 取 caption 深处（200% 下 caption ≈46 物理px）。
-        let grab = (rect.x + rect.w / 3, rect.y + 16);
+        // 抓点取 70% 宽处：兼顾三类 caption 形态——高 DPI 小窗（按钮占宽
+        // 过半，正中命中按钮——4K@200% 实测教训）、Win11 Explorer 页签条
+        // 占左半（1/3 宽落在页签上会触发撕页签）、常规窗（按钮在最右
+        // ~15%）。y 取 caption 深处（200% 下 caption ≈46 物理px）。
+        let grab = (rect.x + rect.w * 7 / 10, rect.y + 16);
         if !move_to(grab.0, grab.1) {
             return false;
         }
