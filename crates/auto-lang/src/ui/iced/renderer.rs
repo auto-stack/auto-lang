@@ -7051,6 +7051,144 @@ fn toggle_notification_center(
     iced::Task::none()
 }
 
+/// Plan 487 M4：设置面板 overlay 召唤执行体（open_settings 总线动词；
+/// toggle_notification_center 同型第四枚）。懒挂载（assets/settings.at
+/// 进程内嵌——装载失败走 push_notification 降级）→ 可见即自隐（二态翻转，
+/// 待澄清④定案），隐时打开：配置快照注入——dock 位置/开关当前驱动事实
+/// （cfg_*，storage 键重推导——驱动写回保证键即事实，I9）+ pinned 平行
+/// 字符串列表（pinned_ids，B12 规避）+ 通知开关快照 + 版本/宿主常量
+/// （about_*，挂召唤注入通道——无新协议字段）→ 显式 RebuildPinned 重建
+/// rows + hosted/visible 置位。无输入控件（v1 三分区皆按钮/开关）——无
+/// `__focus_input`/聚焦任务（Esc 关闭走订阅独占，R12）。
+fn toggle_settings(
+    state: &mut crate::ui::session::DesktopSession,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    // 1. 懒挂载
+    if state.desktop.settings_app.is_none() {
+        match crate::ui::shell::build_settings_component() {
+            Ok(comp) => {
+                let app_id = state.allocate_app(comp);
+                state.desktop.settings_app = Some(app_id);
+            }
+            Err(err) => {
+                push_notification(state, "error", &format!("设置面板装载失败: {err}"));
+                return iced::Task::none();
+            }
+        }
+    }
+    // 2. toggle：可见 → 自隐（再点齿轮/Esc 同效）。
+    if state.settings_visible() {
+        let panel = state.desktop.settings_app.expect("panel checked");
+        if let Some(app) = state.apps.get_mut(&panel) {
+            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+        return iced::Task::none();
+    }
+    // 3. 打开：配置快照注入 + 重建 pinned rows + 刷 view。
+    let panel = state.desktop.settings_app.expect("panel mounted");
+    let pos = if crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref()
+        == Some("top")
+    {
+        "top"
+    } else {
+        "bottom"
+    };
+    let dock_on = crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref()
+        != Some("false");
+    let notes_on = crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref()
+        != Some("false");
+    let pinned: Vec<auto_val::Value> = state
+        .desktop
+        .dock_pinned
+        .iter()
+        .map(|id| auto_val::Value::Str(id.clone().into()))
+        .collect();
+    if let Some(app) = state.apps.get_mut(&panel) {
+        let _ = app
+            .component
+            .write_state("cfg_dock_position", auto_val::Value::str(pos));
+        let _ = app.component.write_state(
+            "cfg_dock_enabled",
+            auto_val::Value::str(if dock_on { "1" } else { "0" }),
+        );
+        let _ = app.component.write_state(
+            "cfg_notes_enabled",
+            auto_val::Value::str(if notes_on { "1" } else { "0" }),
+        );
+        let _ = app.component.write_state_vec("pinned_ids", pinned);
+        let _ = app.component.write_state(
+            "about_host",
+            auto_val::Value::str(std::env::consts::OS),
+        );
+        let _ = app.component.write_state(
+            "about_version",
+            auto_val::Value::str(env!("CARGO_PKG_VERSION")),
+        );
+        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
+        if let Err(err) = app.component.bridge_mut().call_handler("RebuildPinned", &[]) {
+            eprintln!("[session] settings RebuildPinned failed: {err}");
+        }
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    iced::Task::none()
+}
+
+/// Plan 487 M4：`set_dock_position` 执行臂（I7：几何是驱动事实）。写回
+/// storage 键（boot 读路径同键，保证一致）→ 从键重推导 dock_edges（I9
+/// 单一事实：boot `desktop_dock_edges` 同函数）→ apply_layout relayout +
+/// 槽位几何排水 + shell.at 投影热同步。
+fn execute_set_dock_position(state: &mut crate::ui::session::DesktopSession, top: bool) {
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "shell.dock.position",
+        if top { "top" } else { "bottom" }.to_string(),
+    );
+    apply_dock_edges_now(state);
+}
+
+/// Plan 487 M4：`set_dock_enabled` 执行臂（同上；false = 零预留，位置键
+/// 保留——重开时按原位置恢复）。
+fn execute_set_dock_enabled(state: &mut crate::ui::session::DesktopSession, on: bool) {
+    crate::vm::ffi::stdlib::storage_host_publish(
+        "shell.dock.enabled",
+        if on { "true" } else { "false" }.to_string(),
+    );
+    apply_dock_edges_now(state);
+}
+
+/// Plan 487 M4：dock 预留边热应用——键重推导 + relayout（wm_set_layout
+/// 同型 apply_layout 全窗写回）+ 原生槽位几何排水（SetLayout 热键臂同款）
+/// + shell.at 投影热同步（Init 只跑一次，`__dock_*` 状态变量直写 +
+/// view_dirty）。
+fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
+    state.desktop.dock_edges = desktop_dock_edges();
+    let viewport = state.host_viewport();
+    let edges = state.desktop.dock_edges;
+    if let Some(host) = state.host.as_mut() {
+        crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
+    }
+    sync_native_geometry(state);
+    let pos = if edges.top > 0.0 { "top" } else { "bottom" };
+    let en = if edges == crate::ui::layout::ReservedEdges::default() {
+        "0"
+    } else {
+        "1"
+    };
+    if let Some(shell) = state.desktop.shell_app {
+        if let Some(app) = state.apps.get_mut(&shell) {
+            let _ = app
+                .component
+                .write_state("__dock_position", auto_val::Value::str(pos));
+            let _ = app
+                .component
+                .write_state("__dock_enabled", auto_val::Value::str(en));
+            *app.state.view_dirty.borrow_mut() = true;
+        }
+    }
+}
+
 /// Plan 464 T4：shell + launcher 的 DesktopBus 联合排空与执行。
 /// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
 fn drain_and_execute_desktop_commands(
@@ -7069,6 +7207,10 @@ fn drain_and_execute_desktop_commands(
     }
     // Plan 479 T3：通知中心上行（notes_dismiss/notes_clear）联合排空。
     if let Some(panel) = state.desktop.notification_app {
+        cmds.extend(state.drain_app_desktop_commands(panel));
+    }
+    // Plan 487 M4：设置面板上行（set_dock_position/enabled）联合排空。
+    if let Some(panel) = state.desktop.settings_app {
         cmds.extend(state.drain_app_desktop_commands(panel));
     }
     if cmds.is_empty() {
@@ -7209,6 +7351,15 @@ fn execute_desktop_commands(
             DC::NotesToggle => {
                 tasks.push(toggle_notification_center(state));
             }
+            // Plan 487 M4：open_settings（dock 齿轮；summon 二态翻转——
+            // 可见再召唤即关，待澄清④定案翻转）。
+            DC::OpenSettings => {
+                tasks.push(toggle_settings(state));
+            }
+            // Plan 487 M4：dock 几何驱动动词（I7：热改 dock_edges + relayout
+            // + storage 写回；执行体见下）。
+            DC::SetDockPosition(top) => execute_set_dock_position(state, top),
+            DC::SetDockEnabled(on) => execute_set_dock_enabled(state, on),
         }
     }
     (false, tasks)
