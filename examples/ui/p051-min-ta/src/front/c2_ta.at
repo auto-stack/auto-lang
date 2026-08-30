@@ -1,0 +1,29 @@
+// c2_ta.at — P2 二分 C2：同类串 textarea 但无 backdrop 兄弟件。
+// C1 失败 C2 通过 → backdrop 叠加是断点。
+
+widget C2Ta {
+    msg { SetT(str) }
+    model {
+        var t str = ""
+    }
+    view {
+        col {
+            style: "w-full p-1"
+            div {
+                style: "input-compose relative flex-1 min-w-0 min-h-20 bg-muted-foreground/5 border border-primary/15 rounded-[20px]"
+                textarea {
+                    style: "chats-input absolute inset-0 h-full py-2 px-3 block w-full border-none rounded-none bg-transparent text-[15px] leading-[1.5] text-foreground caret-[hsl(var(--foreground))] outline-none resize-none"
+                    value: .t
+                    oninput: .SetT($event)
+                    onkeydown.enter.exact.prevent: .send_t
+                    placeholder: "C2: same classes, no backdrop"
+                    height: 76
+                }
+            }
+        }
+    }
+    on {
+        .SetT(v) -> { .t = v }
+        .send_t -> {}
+    }
+}
