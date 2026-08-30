@@ -6534,6 +6534,72 @@ mod hotkey_subscription_tests {
             Some(DM::Wm(WmCommand::CycleWindow))
         ));
     }
+
+    /// Plan 490 T3 storage 往返：publish 覆盖键 → load_hotkey_overrides 读
+    /// 回 → apply_override 表生效；坏值/未知键静默跳过不 panic；缺席 =
+    /// 空（默认表）。storage 隔离沿 479/489 铁律（AUTO_VM_STORAGE_FILE
+    /// 独立临时文件——进程级全局 + cwd 哈希落盘双重污染面）。
+    #[test]
+    fn hotkey_storage_boot_roundtrip() {
+        let path = std::env::temp_dir().join(format!(
+            "auto-490-hotkeys-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        // 空库 → 无覆盖
+        assert!(load_hotkey_overrides().is_empty(), "缺席键 = 不覆盖");
+
+        // 合法覆盖 + 坏值 + 未知动作键共存
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.workspace_next",
+            "ctrl+alt+right".to_string(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.workspace_prev",
+            "ctrl+alt+!!!bad".to_string(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.keys.cycle_window",
+            "alt+tab".to_string(),
+        );
+
+        let overrides = load_hotkey_overrides();
+        assert_eq!(overrides.len(), 3, "三键均读回（好坏由 apply 判）");
+
+        let mut t = HotkeyTable::builtin();
+        for (k, v) in &overrides {
+            t.apply_override(k, v); // 坏值静默拒绝——不 panic
+        }
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)),
+                Some(DM::Wm(WmCommand::NextWorkspace))
+            ),
+            "合法覆盖生效（方向键恢复=Intel 冲突机逃生舱）"
+        );
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("[".into())),
+                Some(DM::Wm(WmCommand::PrevWorkspace))
+            ),
+            "坏值保留缺省（bracket 仍生效）"
+        );
+        assert!(
+            matches!(
+                desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)),
+                Some(DM::Wm(WmCommand::CycleWindow))
+            ),
+            "G1 逃生舱：storage 显式复活 Alt+Tab"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 /// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
@@ -8119,6 +8185,36 @@ fn load_dock_pinned() -> Option<Vec<String>> {
     (!list.is_empty()).then_some(list)
 }
 
+/// Plan 490 T3：热键覆盖读入（storage `shell.keys.<action>` > 内置默认）。
+/// 宿主侧无键枚举面——逐个读已知动作位（11 个），缺席 = 不覆盖；坏值由
+/// `HotkeyTable::apply_override` 静默拒绝（缺省回退——坏配置不炸桌面，
+/// 472 dock 配置同型）。
+fn load_hotkey_overrides() -> Vec<(String, String)> {
+    use crate::ui::session::HotkeyAction;
+    let mut out = Vec::new();
+    for action in [
+        HotkeyAction::ExitDesktop,
+        HotkeyAction::CycleSwitcher,
+        HotkeyAction::SummonLauncher,
+        HotkeyAction::SetLayoutGrid,
+        HotkeyAction::SetLayoutStack,
+        HotkeyAction::SetLayoutFree,
+        HotkeyAction::WorkspaceNext,
+        HotkeyAction::WorkspacePrev,
+        HotkeyAction::SendToNext,
+        HotkeyAction::SendToPrev,
+        HotkeyAction::CycleWindow,
+    ] {
+        let key = format!("shell.keys.{}", action.storage_suffix());
+        if let Some(v) = crate::vm::ffi::stdlib::storage_host_read(&key) {
+            if !v.trim().is_empty() {
+                out.push((action.storage_suffix().to_string(), v));
+            }
+        }
+    }
+    out
+}
+
 /// Plan 472 T5：把 pinned 表解析为 {id,icon} Obj 数组注入 shell
 /// `__dock_pinned`（icon 自注册表实时查，缺省回退 "app-window"）。boot 期
 /// registry scan 之后调用；pinned 未运行条目也入列（dock 固定区常驻）。
@@ -8694,6 +8790,12 @@ fn compare_pngs(
                     // Plan 472 T5：pinned 配置（storage 覆盖 > pack 默认）。
                     if let Some(pinned) = load_dock_pinned() {
                         session.desktop.dock_pinned = pinned;
+                    }
+                    // Plan 490 T3：热键表覆盖（storage `shell.keys.*` >
+                    // 内置默认；坏值静默回退——订阅唯一消费面为
+                    // desktop_hotkey_subscription 的会话表快照）。
+                    for (k, v) in load_hotkey_overrides() {
+                        session.desktop.hotkeys.apply_override(&k, &v);
                     }
                 }
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
