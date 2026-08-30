@@ -301,6 +301,10 @@
   否定；③ adjudicate 测试固定管道环境干扰 → `adjudicate_on` 参数化缝 +
   pid 管道 hermetic（A/B 实证）；④ print bool 现语义 true/false 断言对齐。
   ui-iced 档 4074/4074 两连绿。「档纳入周期门禁」流程面仍开放（另议）。
+  **〔merge 追记〕** 同族第五例当场现形：`desktop_dock_edges…`/
+  `desktop_shell_at_builds…` 两测无隔离，实机桌面用过 487 设置面板后
+  （store 落 `shell.dock.*` 键）即必红——merge 补隔离热修（L0），
+  ui-iced 档 4081/4081 全绿。
 - **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
   分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
   按同款双份落码（+11 行 ×2），非本期引入的新债。

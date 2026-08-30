@@ -103,6 +103,16 @@ widget Counter {
 
 ## 已知坑
 
+- **测试 storage/管道全局态卫生（Plan 489，P487-2 收敛）**：两条铁律——
+  ①凡断言「键缺席回退默认」或落盘链的测试，一律 `t2_isolate_storage` 隔离
+  （`AUTO_VM_STORAGE_FILE` 指临时文件；`storage_raw_remove` 只清内存，
+  `storage_load` 会把盘上键并回——实机桌面用过设置面板后 store 必含
+  `shell.dock.*`，487 写回链生效即打破无隔离测试的前提）；②broker/管道类
+  测试一律 pid 后缀管道（`adjudicate_on` 参数化缝 / `Broker::on_pipe`），
+  禁止依赖生产固定管道 `autodesk-broker` 的全局命名空间状态（本机任何
+  桌面宿主 listen 即打穿 Standalone 断言——间歇红根源）。i18n corpus 的
+  `front/i18n/{lang}.json` 属必备资产（.gitignore `*.json` 母规则需
+  `!test/**/i18n/*.json` 否定）——落测不入库则 fresh clone 必红。
 - **VM input 焦点寻址（Plan 483）**：VM 轨 text_input 每框派生唯一稳定 Id
   （`derive_input_id`：on_change 的 widget+event 主键、placeholder/width/
   password 三元组兜底），渲染期 `collect_input_ids` 依 DFS 序登记进
