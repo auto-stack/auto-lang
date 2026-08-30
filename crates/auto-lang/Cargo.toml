@@ -231,6 +231,8 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_System_SystemServices",
     "Win32_Graphics_Gdi",
     "Win32_System_Com_StructuredStorage",
+    # Plan 488 T6 修：拖入目标跨线程 marshal（专用 STA 线程持对象）。
+    "Win32_System_Com_Marshal",
     "implement",
 ] }
 # Plan 488: #[implement] 宏的展开物引用 ::windows_core:: 绝对路径——需直接

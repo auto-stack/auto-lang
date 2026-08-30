@@ -43,6 +43,36 @@ impl DndPayload {
     }
 }
 
+/// 把裸反斜杠（不属于合法 JSON 转义序列的 `\`）转义为 `\\`。仅用于
+/// 载荷修复重试——合法输入零改动。
+fn escape_bare_backslashes(s: &str) -> String {
+    const BS: char = '\u{5C}';
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != BS {
+            out.push(c);
+            continue;
+        }
+        match chars.peek().copied() {
+            // 合法 JSON 转义：原样保留双字符。
+            Some('"') | Some(BS) | Some('/') | Some('b') | Some('f') | Some('n')
+            | Some('r') | Some('t') | Some('u') => {
+                out.push(c);
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            }
+            // 裸反斜杠（Windows 路径）：转义。
+            _ => {
+                out.push(BS);
+                out.push(BS);
+            }
+        }
+    }
+    out
+}
+
 /// `auto.dnd.start(payload_json)` 的载荷解析（纯函数，全平台可测）。
 /// 字段（全可选，组合语义）：`text`（str）、`files`（str 路径表）、
 /// `virtual_files`（`{name, content? | bytes_b64?, mime?}`——content 为
@@ -61,7 +91,13 @@ pub fn parse_payload_json(s: &str) -> Option<DndPayload> {
         files: Option<Vec<String>>,
         virtual_files: Option<Vec<Vf>>,
     }
-    let raw: Raw = serde_json::from_str(s).ok()?;
+    // T6 一轮实机修正：.at 侧拼 Windows 路径（fs.cwd() 裸反斜杠）产出
+    // 非法 JSON（ 等非法定义），首解析失败时做一次"裸反斜杠转义"修复
+    // 重试（已转义的 \/\" 等保持不动）。
+    let parsed = serde_json::from_str::<Raw>(s)
+        .or_else(|_| serde_json::from_str::<Raw>(&escape_bare_backslashes(s)))
+        .ok()?;
+    let raw: Raw = parsed;
     let virtual_files = raw.virtual_files.map(|vfs| {
         vfs.into_iter()
             .map(|vf| VirtualFile {
@@ -792,11 +828,92 @@ pub mod win32 {
             let _ = windows::Win32::System::Ole::RevokeDragDrop(hwnd);
             // 防御性 OLE 初始化（winit 通常已做；S_FALSE 幂等计数不 Uninit）。
             let _ = windows::Win32::System::Ole::OleInitialize(None);
-            let target: IDropTarget = DesktopDropTarget.into();
-            if windows::Win32::System::Ole::RegisterDragDrop(hwnd, &target).is_ok() {
+            if register_drop_target(hwnd) {
                 REGISTERED_HWND.store(h.0, Ordering::SeqCst);
             }
         }
+    }
+
+    /// STA 线程持目标对象的代理（进程单例）。
+    ///
+    /// **T6 一轮实机修正**：目标原注册在主线程（= winit 事件环线程），
+    /// 实测跨进程 COM Drop 调用滞留主线程消息队列直到下次用户输入才被
+    /// 派发（拖入数据显示延迟；阻塞式 handler 的自持泵一跑就冲出——
+    /// 用户"点拖出按钮再取消才显示"的实证）。改为专用 STA 线程持有
+    /// `DesktopDropTarget` 并自持 GetMessage 泵：OLE 把 DragEnter/Over/
+    /// Drop 编组到该线程即时送达 → 完成通道 → 订阅（tokio 侧，不依赖主
+    /// 线程泵）→ update → 渲染。主线程只持代理做 RegisterDragDrop。
+    static TARGET_PROXY: std::sync::OnceLock<AnyThread<Option<IDropTarget>>> =
+        std::sync::OnceLock::new();
+
+    /// 跨线程携带 COM 指针的包装：编组流与 STA 代理本就为跨套间传递而设
+    /// （CoMarshalInterThreadInterfaceInStream 的存在意义）；windows 0.58
+    /// 接口不再自动 Send/Sync，此处显式声明。
+    #[derive(Clone, Copy)]
+    struct AnyThread<T>(T);
+    unsafe impl<T> Send for AnyThread<T> {}
+    unsafe impl<T> Sync for AnyThread<T> {}
+
+    fn drop_target_sta_proxy() -> Option<IDropTarget> {
+        TARGET_PROXY
+            .get_or_init(|| {
+                use std::sync::mpsc;
+                let (tx, rx) = mpsc::channel::<AnyThread<Option<windows::Win32::System::Com::IStream>>>();
+                let spawned = std::thread::Builder::new()
+                    .name("auto-lang-dnd-target-sta".into())
+                    .spawn(move || unsafe {
+                        if windows::Win32::System::Ole::OleInitialize(None).is_err() {
+                            let _ = tx.send(AnyThread(None));
+                            return;
+                        }
+                        let target: IDropTarget = DesktopDropTarget.into();
+                        let iid = <IDropTarget as windows::core::Interface>::IID;
+                        let stream = match windows::Win32::System::Com::Marshal::CoMarshalInterThreadInterfaceInStream(
+                            &iid,
+                            &target,
+                        ) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                let _ = tx.send(AnyThread(None));
+                                return;
+                            }
+                        };
+                        if tx.send(AnyThread(Some(stream))).is_err() {
+                            return;
+                        }
+                        // 永久泵：服务跨套间回调（消息只来自 COM，无窗口逻辑）。
+                        let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+                        while windows::Win32::UI::WindowsAndMessaging::GetMessageW(&mut msg, None, 0, 0)
+                            .as_bool()
+                        {
+                            let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                            windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                        }
+                    });
+                if spawned.is_err() {
+                    return AnyThread(None);
+                }
+                match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                    Ok(AnyThread(Some(stream))) => {
+                        let proxy = unsafe {
+                            windows::Win32::System::Com::StructuredStorage::CoGetInterfaceAndReleaseStream(&stream)
+                                .ok()
+                        };
+                        AnyThread(proxy)
+                    }
+                    _ => AnyThread(None),
+                }
+            })
+            .clone()
+            .0
+    }
+
+    /// 宿主窗挂载拖入目标（STA 代理注册；Revoke 前置由调用方负责）。
+    pub fn register_drop_target(hwnd: windows::Win32::Foundation::HWND) -> bool {
+        let Some(proxy) = drop_target_sta_proxy() else {
+            return false;
+        };
+        unsafe { windows::Win32::System::Ole::RegisterDragDrop(hwnd, &proxy).is_ok() }
     }
 
     /// 步骤 2 共存 spike 的最小放置目标：全方法 no-op（探针只验注册语义，
@@ -1282,6 +1399,22 @@ mod payload_tests {
         assert_eq!(p.virtual_files[0].bytes, b"# t".to_vec());
         assert_eq!(p.virtual_files[0].mime, "text/markdown");
         assert!(!p.is_empty());
+    }
+
+    #[test]
+    fn parse_windows_bare_backslash_paths() {
+        // T6 一轮实机：fs.cwd() 裸反斜杠 + .at 字面量 —— 首解析失败后
+        // 经 escape_bare_backslashes 修复重试成功（\x5C = 反斜杠，避开
+        // 源码转义歧义）。
+        let bad = "{\"files\":[\"D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt\"]}";
+        let p = parse_payload_json(&bad).expect("repair parse");
+        assert_eq!(
+            p.files,
+            vec![std::path::PathBuf::from("D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt")]
+        );
+        // 已转义的合法 JSON 不受影响（JSON 的 \\ 解析为单反斜杠）。
+        let ok = parse_payload_json("{\"text\":\"a\\\\b\"}");
+        assert_eq!(ok.unwrap().text.as_deref(), Some("a\\b"));
     }
 
     #[test]

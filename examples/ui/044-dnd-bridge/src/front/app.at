@@ -120,8 +120,10 @@ widget App {
             .status = "拖出文本受理: " + ok.str() + "（松开处应出现该文本/URL）"
         }
         .DragFiles -> {
+            // cwd = 桌面宿主启动目录（worktree/仓库根）——资产在示例目录下；
+            // 路径裸反斜杠由 parse 侧宽容修复（escape_bare_backslashes）。
             let root = fs.cwd()
-            let payload = "{\"files\":[\"" + root + "\\assets\\hello.txt\",\"" + root + "\\assets\\note.md\"]}"
+            let payload = "{\"files\":[\"" + root + "\\examples\\ui\\044-dnd-bridge\\assets\\hello.txt\",\"" + root + "\\examples\\ui\\044-dnd-bridge\\assets\\note.md\"]}"
             let ok = dnd_start(payload)
             .status = "拖出文件受理: " + ok.str() + "（Explorer 松开处应落两文件）"
         }

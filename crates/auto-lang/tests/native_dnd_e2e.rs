@@ -137,7 +137,7 @@ fn create_target_window(x: i32, y: i32, w: i32, h: i32) -> TargetWindow {
     use windows::core::w;
     use windows::Win32::Foundation::{HINSTANCE, HWND, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::System::Ole::{OleInitialize, RegisterDragDrop, IDropTarget};
+    use windows::Win32::System::Ole::OleInitialize;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, RegisterClassW, SW_SHOW, ShowWindow, WINDOW_EX_STYLE,
         WINDOW_STYLE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
@@ -178,8 +178,9 @@ fn create_target_window(x: i32, y: i32, w: i32, h: i32) -> TargetWindow {
         )
         .expect("CreateWindowExW target");
         let _ = ShowWindow(hwnd, SW_SHOW);
-        let target: IDropTarget = dndw::DesktopDropTarget.into();
-        RegisterDragDrop(hwnd, &target).expect("RegisterDragDrop target");
+        // STA 代理注册（与宿主同路径——T6 一轮修正后的真实机制；winit
+        // 目标不在位，无需 Revoke 前置）。
+        assert!(dndw::register_drop_target(hwnd), "RegisterDragDrop target");
         std::thread::sleep(Duration::from_millis(150));
         TargetWindow { hwnd }
     }
