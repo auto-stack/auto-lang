@@ -20,7 +20,7 @@ auto run            # 构建并启动 dev server
 auto run --render vm   # 038/041 等支持：直接跑 AutoVM 解释器（原生窗口）
 ```
 
-- 默认 `render: vue`；`038-minesweeper`、`041-auto-edit` 支持 vm 模式。
+- 默认 `render: vue`；`038-minesweeper`、`041-auto-edit`、`043-clipboard-bridge` 支持 vm 模式。
 - 带后端的示例（015/017/018/022/023）会同时起 `back_port`。
 - 测试设施（按各示例 README 惯例运行）：
   - **MCP 桌面测试** `tests/desktop_mcp.py`（013 惯例）：011、013、015、038、041
@@ -96,6 +96,7 @@ auto run --theme light --accent ocean   # 同时指定主题主色
 | 028 | launcher | 桌面启动器（palette 模糊搜索 + grid 网格 + recent 持久化；桌面 shell overlay 召唤 + LaunchApp 真启动，排序规则见 SPEC） | 4028 | ✅ [Plan 464](../../docs/plans/archive/464-launcher-app.md)（吸收 [441](../../docs/plans/441-028-launcher.md)；vue 5 断言 + vm 24 断言 + ui_desktop 实机全流程） |
 | 038 | minesweeper | 经典扫雷（双后端） | 4038 | 🎯 严肃应用，持续扩展 |
 | 041 | auto-edit | 文本编辑器 | 4041 | 🎯 严肃应用，持续扩展 |
+| 043 | clipboard-bridge | 原生剪贴板三族互通（text 418 对照 / files CF_HDROP / image DIBV5+PNG；Plan 485） | 4043 | ✅ [Plan 485](../../docs/plans/485-vm-native-clipboard.md)（实机 T4 五项 PASS） |
 
 ---
 

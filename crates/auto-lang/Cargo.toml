@@ -42,7 +42,7 @@ ui = []
 ui-interpreter = ["ui", "dep:ureq", "dep:axum"]
 ui-headless = ["ui", "ui-interpreter"]
 ui-gpui = ["ui", "dep:gpui-lib", "dep:gpui-component", "dep:anyhow"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock"]
+ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "ui-interpreter", "dep:image", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
 # backend brings the editor along.
@@ -68,6 +68,12 @@ autodown = ["ui-iced", "dep:autodown-core"]
 # optional + target 门控：仅 Windows × ui-iced（隐含 native-dock）时实际编译，
 # 默认档构建零开销；非 Windows 走同名 no-op 模块。
 native-dock = ["dep:windows"]
+# Plan 485: 原生剪贴板 Phase 2——文件(CF_HDROP)/图片(CF_DIBV5+"PNG")桥，
+# Win32 调用仅出现在 ui/clipboard_native.rs。与 native-dock 同型双门控
+# （optional dep + cfg(windows)；ui-iced 隐含启用）。windows dep 的 features
+# 列表与 native-dock 共用一条目——Cargo feature 合并语义下扩列即两 feature
+# 共用（Plan 485 待澄清#4 定稿：合并扩列，编译最小扰动）。
+native-clipboard = ["dep:windows", "dep:image"]
 # Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
 # test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]
@@ -185,6 +191,10 @@ stacker = "0.1.25"
 # Plan 473: native window dock Win32 adapter（发现/几何/样式/层级/WinEventHook）。
 # optional + cfg(windows) 双门控：仅 Windows × native-dock feature（ui-iced 隐含）
 # 时编译；版本取 0.58（Cargo.lock 已有，零新增外部版本）。
+# Plan 485: features 增 DataExchange(剪贴板)/Shell(DragQueryFileW)/Memory
+# (GlobalAlloc 系)——native-clipboard 与 native-dock 共用本条目。
+# Plan 485 T9: 增 Security——CreateMutexW 签名引用 SECURITY_ATTRIBUTES
+# (跨进程命名互斥,串行化剪贴板集成测试防 nextest 多进程并行互清)。
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", optional = true, features = [
     "Win32_Foundation",
@@ -194,6 +204,10 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_UI_HiDpi",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
+    "Win32_System_DataExchange",
+    "Win32_UI_Shell",
+    "Win32_System_Memory",
+    "Win32_Security",
 ] }
 
 [dev-dependencies]

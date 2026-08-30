@@ -1,0 +1,7 @@
+name: "clipboard-bridge"
+version: "1.0.0"
+description: "clipboard-bridge — 原生剪贴板三族互通演示(text/files/image,Plan 485)"
+scene: "ui"
+render: "vm"
+front_port: 4043
+title: "ClipboardBridge"

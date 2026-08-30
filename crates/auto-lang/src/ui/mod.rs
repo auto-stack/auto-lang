@@ -19,6 +19,10 @@ pub mod code_editor;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;
+// Plan 485: native clipboard bridge (CF_HDROP files / DIBV5+PNG images).
+// Pure codec helpers compile on every tier (`cargo t clipboard_native`);
+// Win32 calls are double-gated inside (windows × `native-clipboard`).
+pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
 pub mod action_config;
 pub mod view;

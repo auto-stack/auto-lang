@@ -1,0 +1,204 @@
+// app.at — 043-clipboard-bridge 根组件（Plan 485）。
+//
+// OS 剪贴板三族互通演示：
+//   文本（Plan 418 arboard）/ 文件（CF_HDROP）/ 图片（CF_DIBV5 + PNG）。
+// 全部经按钮显式触发（本期不做全局 Ctrl+V 路由，Plan 485 非目标）。
+// clipboard_* 内建与 code_editor_* 同族——统一留在根 handler（041 纪律：
+// 内建编译进 store handler 会产出坏字节码）。
+// 起跑形态为示例目录内 `auto run -r vm`——资产路径（assets/…）与 image
+// src 均按进程 CWD（=示例根）解析。
+
+widget App {
+    msg Msg {
+        DraftChanged,
+        TextGet,
+        TextSet,
+        FilesGet,
+        FilesSet,
+        ImageGet,
+        ImageSet,
+    }
+
+    model {
+        var draft str = "你好,剪贴板 — Plan 485"
+        var text_out str = "(未读取)"
+        var files list = []
+        var files_read bool = false
+        var img_path str = ""
+        var img_w int = 0
+        var img_h int = 0
+        var status str = "ready — 先在 Explorer/截图工具复制点什么,再点对应卡片按钮"
+    }
+
+    view {
+        col {
+            style: "min-h-screen bg-background p-6 gap-4"
+            col {
+                style: "gap-1"
+                h1 "剪贴板三族互通" { style: "text-xl font-bold text-foreground" }
+                text "043-clipboard-bridge — text (418) / files (CF_HDROP) / image (DIBV5+PNG)" {
+                    style: "text-xs text-muted-foreground"
+                }
+                text .status { style: "text-xs text-primary" }
+            }
+
+            // ── 文本卡 ────────────────────────────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                row {
+                    style: "items-center gap-2"
+                    text "文本" { style: "text-sm font-semibold text-foreground" }
+                    text "(Plan 418 · arboard)" { style: "text-xs text-muted-foreground" }
+                }
+                row {
+                    style: "gap-2"
+                    input {
+                        value: .draft
+                        oninput: .DraftChanged
+                        placeholder: "要写出到的文本"
+                        style: "flex-1 px-2.5 py-2 border border-border rounded-md bg-background text-foreground text-sm"
+                    }
+                    button {
+                        onclick: .TextSet
+                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        text "写出"
+                    }
+                    button {
+                        onclick: .TextGet
+                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        text "读取"
+                    }
+                }
+                col {
+                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
+                    text "剪贴板文本:" { style: "text-xs text-muted-foreground" }
+                    text .text_out { style: "text-sm text-foreground" }
+                }
+            }
+
+            // ── 文件卡 ────────────────────────────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                row {
+                    style: "items-center gap-2"
+                    text "文件" { style: "text-sm font-semibold text-foreground" }
+                    text "(CF_HDROP · Explorer Ctrl+C / Ctrl+V)" { style: "text-xs text-muted-foreground" }
+                }
+                row {
+                    style: "gap-2"
+                    button {
+                        onclick: .FilesGet
+                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        text "读取剪贴板文件"
+                    }
+                    button {
+                        onclick: .FilesSet
+                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        text "写出示例文件"
+                    }
+                }
+                col {
+                    style: "gap-1 px-3 py-2 rounded-md bg-muted/40"
+                    if .files_read {
+                        if .files.len() == 0 {
+                            text "(剪贴板无 CF_HDROP — 先去 Explorer Ctrl+C 一个文件)" {
+                                style: "text-xs text-muted-foreground"
+                            }
+                        }
+                        for i, p in .files {
+                            text p { style: "text-sm text-foreground" }
+                        }
+                    } else {
+                        text "(未读取)" { style: "text-xs text-muted-foreground" }
+                    }
+                }
+            }
+
+            // ── 图片卡 ────────────────────────────────────────────
+            col {
+                style: "w-full max-w-2xl p-4 bg-card border border-border rounded-xl gap-3"
+                row {
+                    style: "items-center gap-2"
+                    text "图片" { style: "text-sm font-semibold text-foreground" }
+                    text "(CF_DIBV5 / PNG · 截图工具复制后读取)" { style: "text-xs text-muted-foreground" }
+                }
+                row {
+                    style: "gap-2"
+                    button {
+                        onclick: .ImageGet
+                        style: "px-3 py-2 rounded-md border border-border text-sm"
+                        text "读取剪贴板图片"
+                    }
+                    button {
+                        onclick: .ImageSet
+                        style: "px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm"
+                        text "写出示例图"
+                    }
+                }
+                if .img_path != "" {
+                    col {
+                        style: "gap-1"
+                        image (src: .img_path) {
+                            style: "max-w-xs max-h-48 border border-border rounded-md"
+                        }
+                        text (text: f"temp: {.img_path}", style: "text-xs text-muted-foreground") {}
+                        text (text: f"尺寸 {.img_w} × {.img_h}", style: "text-xs text-muted-foreground") {}
+                    }
+                } else {
+                    text "(未读取 — 截图/浏览器复制图片后点「读取剪贴板图片」)" {
+                        style: "text-xs text-muted-foreground"
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .DraftChanged -> { }
+
+        // ── 文本族（对照 418） ──
+        .TextGet -> {
+            .text_out = clipboard_text()
+            .status = "text_get → \"" + .text_out + "\""
+        }
+        .TextSet -> {
+            let ok = clipboard_set_text(.draft)
+            .status = "text_set → " + ok.str()
+        }
+
+        // ── 文件族（CF_HDROP） ──
+        // FilesSet 用 fs.cwd() 拼绝对路径——CF_HDROP 交给 Explorer Ctrl+V
+        // 解析时必须是绝对路径（相对路径 Explorer 无法定位源文件）。
+        .FilesGet -> {
+            let fs = clipboard_files_get()
+            .files = fs
+            .files_read = true
+            .status = "files_get → " + .files.len().str() + " 项(可去 Explorer Ctrl+V 验证)"
+        }
+        .FilesSet -> {
+            let root = fs.cwd()
+            let ok = clipboard_files_set([root + "\assets\demo.png", root + "\assets\hello.txt"])
+            .status = "files_set → " + ok.str() + "(可去 Explorer Ctrl+V 粘贴出两文件)"
+        }
+
+        // ── 图片族（DIBV5 + PNG） ──
+        .ImageGet -> {
+            let img = clipboard_image_get()
+            if img != nil {
+                .img_path = img.path
+                .img_w = img.width
+                .img_h = img.height
+                .status = "image_get → " + img.width.str() + "×" + img.height.str()
+            } else {
+                .img_path = ""
+                .img_w = 0
+                .img_h = 0
+                .status = "image_get → none(剪贴板无图像格式)"
+            }
+        }
+        .ImageSet -> {
+            let ok = clipboard_image_set("assets/demo.png")
+            .status = "image_set → " + ok.str() + "(可去画图/浏览器 Ctrl+V 验证)"
+        }
+    }
+}
