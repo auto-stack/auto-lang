@@ -1,6 +1,7 @@
-# AutoShell 状态投影协议 v1.3（S2 接缝合同）
+# AutoShell 状态投影协议 v1.4（S2 接缝合同）
 
-> **版本**：v1.3（2026-08-30，Plan 486 步骤5/6/7 落码；v1/v1.1/v1.2 见 §6
+> **版本**：v1.4（2026-08-30，Plan 487 M4 落码；486 先合占 v1.3，487 按
+> 并行协调叠 v1.4——v1/v1.1/v1.2/v1.3 见 §6
 > 变更记录）。双端同
 > 版本：vm 端（auto-lang `ui/iced/renderer.rs::sync_shell_windows`，本版实现
 > 方）与 vue 端（465/shell-track 后续，按本文档实现同版本对拍）。
@@ -74,14 +75,21 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 | `notes_dismiss` | 通知 id | 按 id 删除单条通知 + 落盘（面板「逐条 ×」） | 479 |
 | `focus_native` | slot id 或 wid `"N<slot>"` | 任务栏 native 条目点击：聚焦槽位原生窗——最小化先 `SW_RESTORE` 再 `SetForegroundWindow`（best-effort，前台锁拒绝不视为错误）；arg 容收两形态（shell 直传条目 wid，宿主剥 `N` 前缀归一） | 486 |
 | `close_native` | slot id 或 wid `"N<slot>"` | 任务栏 native 条目 ×：`PostMessageW(WM_CLOSE)` 正常关闭机会；槽位由 DESTROY WinEvent 自然回收（B7 路径），动词本身不移除槽位 | 486 |
+| `open_settings` | （无参记录） | 设置面板开合（dock 齿轮钮；宿主臂落 `toggle_settings`：懒挂载 → 配置快照注入（cfg_*/pinned_ids/about_*）+ RebuildPinned；**二态翻转**——可见再拨即自隐，Esc 同效。发件面 = shell.at 齿轮） | 487 |
+| `set_dock_position` | `top`/`bottom` | dock 位置**热切换**（I7：几何是驱动事实，settings 面板只是 UI——发件面 = settings.at 位置单选）。宿主臂 `execute_set_dock_position`：storage 键 `shell.dock.position` 写回 → `dock_edges` 键重推导（boot 同函数）→ `apply_layout` relayout + 槽位排水 → shell `__dock_*` 投影热同步 | 487 |
+| `set_dock_enabled` | `1`/`0` | dock 启用开关**热切换**（发件面 = settings.at 开关；`0` = 零预留，位置键保留——重开按原位置恢复）。宿主臂 `execute_set_dock_enabled` 同上三联动，写回键 `shell.dock.enabled`（`"true"/"false"`） | 487 |
 
 ## 5. 对拍与验收（I8/I9）
 
 - vm 端实现金样：`ui/iced/renderer.rs` tests `projection_*` 七测（v1 往返/
   指纹门控/分区切换反射/registry icon + v1.1 mru 序与 label/mru 过滤与
+- vm 端实现金样：`ui/iced/renderer.rs` tests `projection_*` 七测（v1 往返/
+  指纹门控/分区切换反射/registry icon + v1.1 mru 序与 label/mru 过滤与
   指纹段 + v1.3 native 条目与指纹段）+ `notif_*` 八测（v1.2 动词往返/
   历史 FIFO/未读语义/持久化槽
-  round-trip/双面一体/面板召唤/notes 投影与指纹段）。
+  round-trip/双面一体/面板召唤/notes 投影与指纹段）+ `settings_*` 七测
+  （v1.4 动词往返/装载导航/执行臂热应用/召唤注入/Dock 派发与 pinned
+  落键/通知门控/齿轮链路）。
 - 动词编码往返金样：`ui/session.rs` tests `native_dock_verbs_parse_and_
   encode`（dock_native/undock_native + v1.3 focus_native/close_native
   双形态 arg）。
@@ -90,6 +98,28 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.4（2026-08-30，Plan 487 M4）
+- **新增动词** `open_settings` / `set_dock_position` / `set_dock_enabled`
+  （§4，词表 v1.4）：设置面板召唤（dock 齿轮，二态翻转）+ dock 位置/开关
+  驱动动词（I7：几何是驱动事实——宿主臂热改 `dock_edges` + relayout +
+  storage 键写回三联动，boot 读路径同键保持一致）。
+- **第四枚 overlay 槽**：`assets/settings.at`（Dock/通知/关于三分区）。
+  召唤时快照注入 `cfg_dock_position`/`cfg_dock_enabled`/`pinned_ids`/
+  `cfg_notes_enabled`/`about_host`/`about_version`（B12 规避平行列表 +
+  常量，挂召唤注入通道——**无新 `__wm_*` 投影字段**）。
+- **storage 键增量**：`shell.notes.enabled`（通知持久化开关，`"false"` =
+  关——479 消费链 `push_notification` 单点门控；缺席/其余 = 开，向后
+  兼容）。`shell.dock.pinned` 获 UI 写手（settings 面板行内增删直写，
+  格式不变）。
+- **向后兼容声明**：纯增量动词/storage 键，零新投影字段、零指纹变化——
+  v1/v1.1/v1.2/v1.3 消费者零破坏；旧 store 键缺席时行为全同（通知门控
+  缺席即开）。
+- **版本协调注记（Plan 486 并行）**：486（触发面）与 487 并行加动词——
+  协调规则先合者占 v1.3 后合者叠 v1.4；**合并实况：486 先合占 v1.3
+  （focus_native/close_native + native 条目），487 叠 v1.4**（本条目
+  即该规则执行结果，落码时预写的「487 占 v1.3」按实况改编）。
+
 
 ### v1.3（2026-08-30，Plan 486）
 

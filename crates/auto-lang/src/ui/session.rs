@@ -250,6 +250,9 @@ pub struct DesktopState {
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
+    /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
+    /// 懒挂载（第四枚 overlay 槽）；独立模式恒 None。
+    pub settings_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -287,6 +290,7 @@ impl DesktopState {
             launcher_app: None,
             switcher_app: None,
             notification_app: None,
+            settings_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -919,6 +923,14 @@ pub enum DesktopCommand {
     NotesClear,
     /// Plan 479 T2：按 id 删除单条通知 + 落盘（面板「逐条 ×」）。
     NotesDismiss(u64),
+    /// Plan 487 M4：设置面板召唤（dock 齿轮 `open_settings` 无参动词；
+    /// summon 二态翻转语义——面板可见再召唤即关，switcher/launcher 同型）。
+    OpenSettings,
+    /// Plan 487 M4：dock 位置热切换（I7：几何是驱动事实，settings 只是
+    /// UI）。true = 顶部停靠；执行臂改 dock_edges + relayout + storage 写回。
+    SetDockPosition(bool),
+    /// Plan 487 M4：dock 启用开关热切换（false = 零预留；执行臂同上）。
+    SetDockEnabled(bool),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -1023,6 +1035,19 @@ impl DesktopCommand {
             DesktopCommand::NotesDismiss(id) => {
                 format!("notes_dismiss{}{}", Self::FIELD_SEP, id)
             }
+            // Plan 487 M4：协议 v1.4 设置动词（无参 summon + 两驱动动词；
+            // 位置值 top/bottom、开关值 1/0——.at 控件直书 \t 双轨兼容）。
+            DesktopCommand::OpenSettings => "open_settings".to_string(),
+            DesktopCommand::SetDockPosition(top) => {
+                format!(
+                    "set_dock_position{}{}",
+                    Self::FIELD_SEP,
+                    if *top { "top" } else { "bottom" }
+                )
+            }
+            DesktopCommand::SetDockEnabled(on) => {
+                format!("set_dock_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
+            }
         }
     }
 
@@ -1055,6 +1080,10 @@ impl DesktopCommand {
                 }
                 if rec == "notes_clear" {
                     return Some(DesktopCommand::NotesClear);
+                }
+                // Plan 487 M4：v1.4 无参动词前置（open 前缀不互吞）。
+                if rec == "open_settings" {
+                    return Some(DesktopCommand::OpenSettings);
                 }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
@@ -1105,6 +1134,18 @@ impl DesktopCommand {
                         .parse::<u64>()
                         .ok()
                         .map(|id| DesktopCommand::NotesDismiss(id)),
+                    // Plan 487 M4：协议 v1.4 设置动词（位置/开关值域窄，未知
+                    // 值跳过——set_dock_* 前缀不互吞 open_settings 无参形态）。
+                    "set_dock_position" => match arg {
+                        "top" => Some(DesktopCommand::SetDockPosition(true)),
+                        "bottom" => Some(DesktopCommand::SetDockPosition(false)),
+                        _ => None,
+                    },
+                    "set_dock_enabled" => match arg {
+                        "1" => Some(DesktopCommand::SetDockEnabled(true)),
+                        "0" => Some(DesktopCommand::SetDockEnabled(false)),
+                        _ => None,
+                    },
                     _ => None,
                 }
             })
@@ -1146,6 +1187,8 @@ pub struct HostCtx {
     pub switcher_fields: ShellFields,
     /// Plan 479 T3：通知中心 overlay 同型垫片（第三枚 overlay 槽）。
     pub notification_fields: ShellFields,
+    /// Plan 487 M4：设置面板 overlay 同型垫片（第四枚 overlay 槽）。
+    pub settings_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -1351,6 +1394,7 @@ impl DesktopSession {
             launcher_fields: ShellFields::default(),
             switcher_fields: ShellFields::default(),
             notification_fields: ShellFields::default(),
+            settings_fields: ShellFields::default(),
         });
     }
 
@@ -1973,7 +2017,14 @@ impl DesktopSession {
             let is_switcher = self.desktop.switcher_app == Some(id);
             // Plan 479 T3：通知中心 overlay（windowless 拆借第四路）。
             let is_notification = self.desktop.notification_app == Some(id);
-            if !is_shell && !is_launcher && !is_switcher && !is_notification {
+            // Plan 487 M4：设置面板 overlay（windowless 拆借第五路）。
+            let is_settings = self.desktop.settings_app == Some(id);
+            if !is_shell
+                && !is_launcher
+                && !is_switcher
+                && !is_notification
+                && !is_settings
+            {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -2000,12 +2051,19 @@ impl DesktopSession {
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_notification {
                 (
                     &mut host.notification_fields.window_size,
                     &mut host.notification_fields.pending_window_resize,
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.settings_fields.window_size,
+                    &mut host.settings_fields.pending_window_resize,
+                    &mut host.settings_fields.initial_resize_done,
+                    &mut host.settings_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -2227,6 +2285,39 @@ impl DesktopSession {
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
+    }
+
+    /// Plan 487 M4：设置面板 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::notification_visible`] 同型）。未挂载恒 false。
+    pub fn settings_visible(&self) -> bool {
+        let Some(panel) = self.desktop.settings_app else { return false };
+        matches!(
+            self.apps
+                .get(&panel)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// Plan 487 M4：设置面板 overlay App 的拆借视图（view 装配的设置面板
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_notification`] 相同，
+    /// 字段走 [`HostCtx::settings_fields`]）。
+    pub fn split_ref_settings(&self) -> Option<SessionViewRef<'_>> {
+        let panel = self.desktop.settings_app?;
+        let app = self.apps.get(&panel)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: panel,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.settings_fields.window_size,
+            pending_window_resize: &host.settings_fields.pending_window_resize,
+            initial_resize_done: &host.settings_fields.initial_resize_done,
+            initial_focus_done: &host.settings_fields.initial_focus_done,
+            vwin_rect: None,
+        })
     }
 }
 
@@ -3399,6 +3490,40 @@ mod tests {
             "notify 缺 msg 段跳过"
         );
         assert!(DesktopCommand::parse_records("notes_dismiss\u{1f}abc").is_empty());
+    }
+
+    // ---- Plan 487 M4：协议 v1.4 设置动词（open_settings/set_dock_position/
+    // set_dock_enabled；notif_commands 同型）----
+
+    #[test]
+    fn settings_commands_encode_parse_round_trip() {
+        let cmds = vec![
+            DesktopCommand::OpenSettings,
+            DesktopCommand::SetDockPosition(true),
+            DesktopCommand::SetDockPosition(false),
+            DesktopCommand::SetDockEnabled(false),
+            DesktopCommand::SetDockEnabled(true),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 双轨分符：shell.at 控件字符串只可直书 \t。
+        assert_eq!(
+            DesktopCommand::parse_records(
+                "open_settings\u{1e}set_dock_position\ttop\u{1e}set_dock_position\tbottom\u{1e}set_dock_enabled\t0\u{1e}set_dock_enabled\t1"
+            ),
+            cmds
+        );
+        // 坏载荷跳过不 panic（未知位置/开关值/空段）。
+        assert!(
+            DesktopCommand::parse_records("set_dock_position\u{1f}left").is_empty(),
+            "未知位置值跳过"
+        );
+        assert!(DesktopCommand::parse_records("set_dock_enabled\u{1f}yes").is_empty());
+        assert!(DesktopCommand::parse_records("set_dock_position\u{1f}").is_empty());
     }
 }
 
