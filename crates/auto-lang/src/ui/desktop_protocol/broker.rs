@@ -32,8 +32,21 @@ pub enum EntryPoint {
     Standalone,
 }
 
-/// 入口裁决三步（autoshell §7.1 定案顺序，不可换）。
+/// 入口裁决三步（autoshell §7.1 定案顺序，不可换）。生产入口——固定
+/// [`BROKER_PIPE`] 探测（委托 [`adjudicate_on`]）。
 pub fn adjudicate(args: &[String], broker_probe_timeout_ms: u32) -> EntryPoint {
+    adjudicate_on(BROKER_PIPE, args, broker_probe_timeout_ms)
+}
+
+/// Plan 489：adjudicate 的参数化管道版（可测性缝，`Broker::on_pipe` 同型）
+/// ——测试用 pid 后缀管道探测，摆脱对生产固定管道全局命名空间状态的依赖
+/// （本机任何桌面宿主 listen 固定管道时，原测试步骤③ 的 Standalone
+/// 断言被打穿——P487-2 间歇红根因）。生产行为零变化。
+pub fn adjudicate_on(
+    pipe: &str,
+    args: &[String],
+    broker_probe_timeout_ms: u32,
+) -> EntryPoint {
     // ① 孵化标记。
     for arg in args {
         if let Some(pipe) = arg.strip_prefix("--autodesk-client=") {
@@ -41,7 +54,7 @@ pub fn adjudicate(args: &[String], broker_probe_timeout_ms: u32) -> EntryPoint {
         }
     }
     // ② broker 探测（连上即关 = ping；broker 侧吞空连接）。
-    if transport::connect(BROKER_PIPE, broker_probe_timeout_ms).is_ok() {
+    if transport::connect(pipe, broker_probe_timeout_ms).is_ok() {
         return EntryPoint::Broker;
     }
     // ③ 独立。
@@ -223,16 +236,20 @@ mod tests {
 
     #[test]
     fn adjudicate_three_steps() {
+        // Plan 489：全程 pid 后缀管道（adjudicate_on 缝）——原测试②③ 探测
+        // 生产固定管道，本机任何桌面宿主（或并行测试窗口期）listen 即打穿
+        // ③ 的 Standalone 断言（P487-2 间歇红）。
+        let pipe = format!("autodesk-broker-adjud-{}", std::process::id());
         // ① 孵化标记优先（无论 broker 是否在线）。
         let args = vec!["--autodesk-client=autodesk-app-7".to_string()];
         assert_eq!(
-            adjudicate(&args, 10),
+            adjudicate_on(&pipe, &args, 10),
             EntryPoint::Client { pipe: "autodesk-app-7".into() }
         );
-        // ③ 无标记无 broker → Standalone（固定名无人 listen → 秒失败）。
-        assert_eq!(adjudicate(&[], 30), EntryPoint::Standalone);
+        // ③ 无标记无 broker → Standalone（pid 管道无人 listen → 秒失败）。
+        assert_eq!(adjudicate_on(&pipe, &[], 30), EntryPoint::Standalone);
         // ② broker 在线（serve 循环吞探测 ping）→ Broker。
-        let mut broker = Broker::new();
+        let mut broker = Broker::on_pipe(pipe.clone());
         let stop = broker.stop_flag();
         let stop2 = Arc::clone(&stop);
         let worker = std::thread::spawn(move || {
@@ -240,10 +257,10 @@ mod tests {
                 let _ = broker.serve_once();
             }
         });
-        assert_eq!(adjudicate(&[], 2000), EntryPoint::Broker);
+        assert_eq!(adjudicate_on(&pipe, &[], 2000), EntryPoint::Broker);
         stop.store(true, Ordering::Relaxed);
         // 空连接唤醒阻塞中的 serve 循环令其退出。
-        let _ = transport::connect(BROKER_PIPE, 500);
+        let _ = transport::connect(&pipe, 500);
         let _ = worker.join();
     }
 
