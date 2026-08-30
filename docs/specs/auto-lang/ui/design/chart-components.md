@@ -137,3 +137,27 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   勿用整串。
 - 图例百分比用整数运算（`vi * 100 / total`），浮点除会产生尾差。
 - nice-ticks 的 log10 经由 float；vmax 为 int 时先存储强转 float（float 纪律）。
+
+### 484 时代三大 codegen 坑——492 已定案并摘除（2026-08-30）
+
+Plan 484 执行期记档的三个"包组件 codegen 坑"（Init 内 prop 字符串比较破坏
+codegen / f-string 含字面量 `[]` 时 `${}` 插值破坏编译 / 带参 msg 声明破坏整包
+编译）经 Plan 492 全链复现实验**全部定性为误归因**：三条链（lexer/parser/单 VM
+合成/vue SFC）在 master 上均正常，484 现场的真凶是**裸 prop 名出现在赋值 RHS 位
+触发 undefined variable 解析错，包文件被 per-file try-parse 静默整文件丢弃**
+（诊断面缺陷，492 M5 已修——装载层逐条告警 + 合成层可取走诊断集合）。
+
+直接写法（492 M6 起组件已回归）：
+
+- Init 内 prop 比较直用**点前缀**形态（`if .curve == "monotone"`、
+  `if .type == "stacked"`）——props 在运行期播种进统一 state，`.prop` 即读；
+  **裸名形态**（`if curve ==`）在 IF 条件位可过，但出现在赋值 RHS 位
+  （`.x = curve`）会被语义检查拒——一律用点前缀。
+- f-string 的 `${}` 插值与字面量 `[]` 可任意组合（`f"w-[${slot}px] h-full"`）；
+  `{x}` 花括号形态是**纯字面量**，从不插值（484 的"绕开形态"实为无害垃圾类）。
+- 带参 msg 声明（`msg { Init, Hover(int) }`）与裸挂带参 handler 双轨均正常。
+- 刻度/图例的槽位字段（yTick0..4/legendColor·Text0..3）是 43956041e 的 R006
+  规避（text 内容引用循环变量记录字段的渲染缺口，vue 侧 492 M3 已修引号剥离；
+  双轨完全直写化待后续——现状保留槽位形态）。
+- 组件源内的旧"实证纪律"注释已随直接写法更新；三副本
+  （charts-gallery / 024-charts / widgets-gallery）同步。

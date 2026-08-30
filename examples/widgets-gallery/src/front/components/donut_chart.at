@@ -7,13 +7,14 @@
 // (扇区弧形无法矩形命中,hover 图例 → tooltip 锚定扇区中角,半径 81 =
 // 内外中值);tooltip 锚点/内容 Init 预计算,hovered str 门控显隐。
 // props: legend/tooltip/labels(单系列,无 fields/axis/curve)。
-// codegen 纪律同 line_chart.at 头注。
+// 492 M6:带参 msg 声明恢复(484 时代"裸挂带参 handler"绕开随 Plan 492
+// C2 定案——带参 msg 声明双轨正常——退役)。
 //
 // # Usage
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
-    msg { Init }
+    msg { Init, Hover(int) }
 
     model {
         // 每片 { d: path, c: color }

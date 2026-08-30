@@ -303,19 +303,23 @@ pub(crate) mod pkg_harness {
     }
 }
 
+
 /// M1 族 A2 vue 侧验证: 打补丁后的 bar_chart 经 vue SFC 生成。
 #[cfg(all(test, feature = "ui-iced"))]
 mod m1_vue_fstr {
     #[test]
     fn vue_sfc_dollar_bracket_fstr_in_init() {
+        // 492 M6 后组件原生 dollar 形态——无补丁基线断言。
         let front = crate::plan370_test_support::locate_example_app_at("charts-gallery")
             .expect("gallery")
             .parent()
             .expect("front")
             .to_path_buf();
-        let code = std::fs::read_to_string(front.join("components/bar_chart.at")).unwrap();
-        let patched = code.replace("s: \"h-full flex-1\"", "s: f\"w-[${slot}px] h-full\"");
-        assert_ne!(patched, code, "anchor found");
+        let patched = std::fs::read_to_string(front.join("components/bar_chart.at")).unwrap();
+        assert!(
+            patched.contains("f\"w-[${slot}px] h-full flex-1\""),
+            "component must carry the native dollar-form band style"
+        );
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(patched.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
@@ -346,15 +350,10 @@ mod m1_vue_fstr {
 mod m1_pkg_fstr {
     use super::pkg_harness::{build_patched_gallery, render_dump};
 
-    /// dollar-brace 直写:组件必须存活(M 40 几何在 + mouse-area band 在)。
+    /// dollar-brace 直写(M6 后组件原生形态,无补丁): 几何+band 全存活。
     #[test]
     fn pkg_init_fstr_dollar_bracket_keeps_geometry() {
-        let tag = "m1-dollar";
-        let (mut dc, _) = build_patched_gallery(tag, &[(
-            "bar_chart.at",
-            "s: \"h-full flex-1\"",
-            "s: f\"w-[${slot}px] h-full\"",
-        )]);
+        let (mut dc, _) = build_patched_gallery("m1-dollar", &[]);
         let dump = render_dump(&mut dc);
         assert!(
             dump.contains("M 40") || dump.contains("h19") || dump.contains("h25"),
@@ -369,12 +368,14 @@ mod m1_pkg_fstr {
     /// 金丝雀(负对照): 未定义变量必须杀死 bar Init——证明上方夹具可检出失败。
     #[test]
     fn pkg_canary_undefined_var_kills_bar_init() {
-        let tag = "m1-canary";
-        let (mut dc, _) = build_patched_gallery(tag, &[(
-            "bar_chart.at",
-            "s: \"h-full flex-1\"",
-            "s: f\"w-[${undefined_var_xyz}px] h-full\"",
-        )]);
+        let (mut dc, _) = build_patched_gallery(
+            "m1-canary",
+            &[(
+                "bar_chart.at",
+                "s: f\"w-[${slot}px] h-full flex-1\"",
+                "s: f\"w-[${undefined_var_xyz}px] h-full flex-1\"",
+            )],
+        );
         let dump = render_dump(&mut dc);
         let mouse = dump.matches("MouseArea").count();
         assert!(

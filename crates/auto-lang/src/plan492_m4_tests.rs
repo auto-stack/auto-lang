@@ -1,169 +1,146 @@
-//! Plan 492 M4 (族 C): 包组件单 VM 编译链分叉——Init 内 prop 字符串比较
-//! (C1)与带参 msg 声明(C2)静默破坏整组件/整包编译。
+//! Plan 492 M4 (族 C): 包组件单 VM 编译链分叉定位与修复。
 //!
-//! 对照系: `use widget:` 链(013-todo todo_list.at)同款形态正常;缺口仅
-//! 在包路径(lib.rs P4-4/D13 load_package → child_decls → 单 VM 编译)。
-//! 探针经 charts-gallery 真源 + 字符串补丁在生产链上复现。
+//! 定案(2026-08-30): 不存在 codegen 分叉——包链与 use-widget 链同 Parser
+//! 同合成器。484 记档的"prop 比较/带参 msg 破坏编译"实为:
+//! ①裸 prop 名在赋值 RHS 位触发 undefined variable 解析错;
+//! ②包文件被 `parse_package_widgets` per-file try-parse 静默整文件丢弃
+//! (诊断面缺陷,M5 已修)。
+//! 点前缀 `.curve` 直接形态与带参 msg 声明在两链均正常。
+//! M6 后组件回归直接写法——本模块以无补丁基线钉住三副本直接形态。
 
 #[cfg(all(test, feature = "ui-iced"))]
 mod m4_pkg_compile_chain {
     use crate::plan492_tests::pkg_harness::{build_patched_gallery, render_dump};
 
-    /// C1 锚: Init 内 prop 字符串比较(条件位裸名 + 赋值位点前缀)双形态
-    /// 均正常。master 上 484 记档的"整组件失效"实为裸名 RHS 触发 undefined
-    /// variable 解析错 → 包文件被 per-file try-parse 静默丢弃(诊断面缺陷,
-    /// M5 修);prop 比较本身在两链均正常。
-    #[test]
-    fn c1_prop_compare_in_init_alive() {
-        let patches: &[(&str, &str, &str)] = &[
-            // model 加探针字段
-            (
-                "line_chart.at",
-                "hovered str = \"false\"",
-                "hovered str = \"false\"\n        probeMark str = \"unset\"",
-            ),
-            // Init 顶部插入 prop 比较
-            (
-                "line_chart.at",
-                ".Init -> {\n            // ---- 全系列共享 y 域 ----",
-                ".Init -> {\n            if .curve == \"monotone\" {\n                .probeMark = \"mono\"\n            } else {\n                .probeMark = \"linear\"\n            }\n            // ---- 全系列共享 y 域 ----",
-            ),
-        ];
-        let (mut dc, _) = build_patched_gallery("m4-c1", patches);
-        let dump = render_dump(&mut dc);
-        let alive = dump.contains("M 40");
-        let probe = dc
-            .bridge()
-            .read_state("probeMark")
-            .map(|v| v.to_string())
-            .unwrap_or_else(|e| format!("<err {e}>"));
-        println!("C1 anchor: alive={alive} probeMark={probe}");
-        assert!(alive, "geometry must survive prop compare in Init");
-        assert!(
-            probe.contains("mono") || probe.contains("linear"),
-            "prop compare branch must execute: {probe}"
-        );
+    /// 三副本组件目录(cargo 测试 cwd 在 crate 下,经 CARGO_MANIFEST_DIR 定位)。
+    fn copies() -> Vec<std::path::PathBuf> {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+        [
+            "../../examples/charts-gallery/src/front/components",
+            "../../examples/ui/024-charts/src/front/components",
+            "../../examples/widgets-gallery/src/front/components",
+        ]
+        .iter()
+        .map(|rel| {
+            let p = std::path::Path::new(rel).to_path_buf();
+            if p.exists() {
+                p
+            } else {
+                std::path::Path::new(&manifest).join(rel)
+            }
+        })
+        .collect()
     }
 
-    /// C2 锚: 带参 msg 声明双轨均正常(master 不可复现 484 记档的整包失效)。
-    /// line 专属标记: probeMark 字段并入根态 + monotone C 段渲染。
-    /// "M 40" 不可用作 line 判据(area_chart 产生同款起点)。
+    /// C1 锚(无补丁基线): 三副本 Init 内原生 prop 字符串比较直接形态
+    /// (`if .curve == "monotone"` / `if .type == "stacked"`),双算字段
+    /// (segsM/segsS)清零,渲染产物几何存活且 monotone 分支实际执行。
+    #[test]
+    fn c1_prop_compare_in_init_alive() {
+        for rel in copies() {
+            let line_src = std::fs::read_to_string(rel.join("line_chart.at")).unwrap();
+            let bar_src = std::fs::read_to_string(rel.join("bar_chart.at")).unwrap();
+            assert!(
+                line_src.contains("if .curve == \"monotone\" {"),
+                "{}/line_chart.at must carry direct-form prop compare in Init",
+                rel.display()
+            );
+            assert!(
+                bar_src.contains("if .type == \"stacked\" {"),
+                "{}/bar_chart.at must carry direct-form prop compare in Init",
+                rel.display()
+            );
+            assert!(
+                !line_src.contains("segsM List") && !bar_src.contains("segsS List"),
+                "{}: dual-store fields must be gone",
+                rel.display()
+            );
+        }
+        let (mut dc, _) = build_patched_gallery("m4-c1", &[]);
+        let dump = render_dump(&mut dc);
+        let alive = dump.contains("M 40");
+        let c_segs = dump.matches(" C ").count();
+        println!("C1 anchor: alive={alive} line_C_segs={c_segs}");
+        assert!(alive, "geometry must survive prop compare in Init");
+        assert!(c_segs > 0, "monotone branch must execute (C segments): {c_segs}");
+    }
+
+    /// C2 锚(无补丁基线): 三副本带参 msg 声明原生恢复(`msg { Init,
+    /// Hover(int) }`),VM 渲染存活 + vue SFC 生成含 emit 派发。
     #[test]
     fn c2_param_msg_declaration_both_tracks_alive() {
-        let (mut dc, _) = build_patched_gallery(
-            "m4-c2",
-            &[
-                ("line_chart.at", "msg { Init }", "msg { Init, Hover(int) }"),
-                (
-                    "line_chart.at",
-                    "hovered str = \"false\"",
-                    "hovered str = \"false\"
-        probeMark str = \"unset\"",
-                ),
-            ],
-        );
+        for rel in copies() {
+            for file in ["line_chart.at", "bar_chart.at", "area_chart.at", "donut_chart.at"] {
+                let src = std::fs::read_to_string(rel.join(file)).unwrap();
+                assert!(
+                    src.contains("msg { Init, Hover(int) }"),
+                    "{}/{} must declare the param msg form",
+                    rel.display(),
+                    file
+                );
+            }
+        }
+        // VM 轨: 整包渲染存活(同族几何 + sibling 图不连坐)。
+        let (mut dc, _) = build_patched_gallery("m4-c2", &[]);
         let dump = render_dump(&mut dc);
         let donut_alive = dump.contains("A100 100 0");
         let bar_alive = dump.contains("h19") || dump.contains("h25");
         let line_c_segs = dump.matches(" C ").count();
-        let probe = dc
-            .bridge()
-            .read_state("probeMark")
-            .map(|v| v.to_string())
-            .unwrap_or_else(|e| format!("<err {e}>"));
-        // vue 侧: 带参 msg 声明的 SFC 发射(484 现场疑 vue handler 生成)。
-        let vue_probe = {
-            let patched = std::fs::read_to_string(
-                std::env::temp_dir().join("plan492-pkg-repro-m4-c2/components/line_chart.at"),
-            )
-            .unwrap();
-            let session = crate::session::CompilerSession::ui();
-            let mut parser = crate::Parser::from(patched.as_str()).with_session(session);
-            match parser.parse() {
-                Ok(ast) => {
-                    let decl = ast.stmts.iter().find_map(|s| match s {
-                        crate::ast::Stmt::WidgetDecl(d) => Some(d),
-                        _ => None,
-                    }).expect("decl");
-                    match crate::aura::extract_widget_from_decl(decl) {
-                        Ok(w) => {
-                            let mut gen = crate::ui_gen::VueGenerator::new_shadcn();
-                            use crate::ui_gen::BackendGenerator;
-                            match gen.generate(&w) {
-                                Ok(sfc) => {
-                                    let emits: Vec<&str> = sfc.lines().filter(|l| l.contains("emit")).collect();
-                                    format!("SFC ok; emit lines: {emits:?}")
-                                }
-                                Err(e) => format!("SFC generate FAILED: {e}"),
-                            }
-                        }
-                        Err(e) => format!("extract FAILED: {e}"),
-                    }
-                }
-                Err(e) => format!("PARSE FAILED: {e}"),
-            }
-        };
-        println!("C2 anchor: donut={donut_alive} bar={bar_alive} line_C_segs={line_c_segs} probeMark={probe}
-  vue: {vue_probe}");
-        assert!(donut_alive && bar_alive, "siblings must stay alive with param msg decl");
+        println!(
+            "C2 anchor: donut={donut_alive} bar={bar_alive} line_C_segs={line_c_segs}"
+        );
+        assert!(donut_alive && bar_alive, "siblings must stay alive");
         assert!(line_c_segs > 0, "line geometry must render with param msg decl");
-        assert!(!probe.starts_with("<err"), "line child fields must merge: {probe}");
-        assert!(vue_probe.contains("SFC ok"), "vue SFC must generate with param msg: {vue_probe}");
+
+        // vue 轨: SFC 生成含 emit('Hover', i)。
+        let front = crate::plan370_test_support::locate_example_app_at("charts-gallery")
+            .expect("gallery")
+            .parent()
+            .expect("front")
+            .to_path_buf();
+        let code = std::fs::read_to_string(front.join("components/line_chart.at")).unwrap();
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let w = crate::aura::extract_widget_from_decl(decl).expect("extract");
+        let mut gen = crate::ui_gen::VueGenerator::new_shadcn();
+        use crate::ui_gen::BackendGenerator;
+        let sfc = gen.generate(&w).expect("vue SFC generate");
+        assert!(
+            sfc.contains("emit('Hover', i)"),
+            "vue SFC must emit the param Hover event"
+        );
     }
 
-    /// 直接形态双补丁锚(M6 前置验证): Init 内点前缀 prop 比较门控存储段 +
-    /// 带参 msg 声明同时生效,几何/字段/hover 链全存活。
+    /// M6 摘绕开验收 grep 锚: 全部 chart 组件源内绕开痕迹清零
+    /// (双算字段/双域 yTickS 组/裸挂带参 handler 的 msg 形态)。
     #[test]
-    fn direct_form_c1_c2_together_survive() {
-        let patches: &[(&str, &str, &str)] = &[
-            // C2: 带参 msg 声明
-            (
-                "line_chart.at",
-                "msg { Init }",
-                "msg { Init, Hover(int) }",
-            ),
-            // C1: Init 内 prop 字符串比较门控 .segs 存储段(直接形态,点前缀)
-            (
-                "line_chart.at",
-                ".segsM = outSegsM",
-                ".segsM = outSegsM
-            if .curve == \"monotone\" {
-                .segs = outSegsM
-            } else {
-                .segs = outSegs
+    fn m6_workaround_anchors_gone() {
+        for rel in copies() {
+            for file in ["line_chart.at", "bar_chart.at", "area_chart.at", "donut_chart.at"] {
+                let src = std::fs::read_to_string(rel.join(file)).unwrap();
+                let name = format!("{}/{}", rel.display(), file);
+                assert!(!src.contains("segsM List"), "{name}: segsM gone");
+                assert!(!src.contains("segsS List"), "{name}: segsS gone");
+                assert!(!src.contains("yTickS4"), "{name}: dual tick set gone");
+                assert!(
+                    !src.contains("msg { Init }\n"),
+                    "{name}: bare `msg {{ Init }}` workaround gone"
+                );
+                assert!(
+                    !src.contains("s: \"h-full flex-1\""),
+                    "{name}: static band style workaround gone"
+                );
             }
-            .probeMark = .curve",
-            ),
-            // 探针字段
-            (
-                "line_chart.at",
-                "hovered str = \"false\"",
-                "hovered str = \"false\"
-        probeMark str = \"unset\"",
-            ),
-        ];
-        let (mut dc, _) = build_patched_gallery("m4-direct", patches);
-        let dump = render_dump(&mut dc);
-        let alive = dump.contains("M 40");
-        let probe = dc
-            .bridge()
-            .read_state("probeMark")
-            .map(|v| v.to_string())
-            .unwrap_or_else(|e| format!("<err {e}>"));
-        // hover 派发: 调用带参 handler 后 hovered 置位。
-        let hovered = dc
-            .bridge()
-            .read_state("hovered")
-            .map(|v| v.to_string())
-            .unwrap_or_else(|e| format!("<err {e}>"));
-        println!("direct form: alive={alive} probeMark={probe} hovered(before)={hovered}");
-        assert!(alive, "geometry must survive direct-form prop compare + param msg");
-        assert!(
-            probe.contains("linear") || probe.contains("mono"),
-            "prop read in Init must work: {probe}"
-        );
-        // line 专属几何必须在(monotone C 段,仅 line_chart 产生)。
-        let c_segs = dump.matches(" C ").count();
-        assert!(c_segs > 0, "line monotone geometry must render (C segments): got {c_segs}");
+        }
     }
+
 }
