@@ -6206,3 +6206,24 @@ mod plan446_batch1_tests {
 #[cfg(test)]
 mod plan484_chart_component_tests;
 
+// Plan 492: 引擎正确性专项——f-string 括号插值/primary-shorthand `[` 后缀/
+// vue 文本内容表达式臂/包组件单 VM 编译链三族修复。
+#[cfg(test)]
+mod plan492_tests;
+
+// Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
+#[cfg(test)]
+mod plan492_m2_tests;
+
+// Plan 492 M3 (族 B): vue 文本内容表达式求值臂探针/回归。
+#[cfg(test)]
+mod plan492_m3_tests;
+
+// Plan 492 M4 (族 C): 包组件单 VM 编译链分叉定位与修复。
+#[cfg(test)]
+mod plan492_m4_tests;
+
+// Plan 492 M5: 包组件编译失败显式诊断(装载层+合成层)。
+#[cfg(test)]
+mod plan492_m5_tests;
+
