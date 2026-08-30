@@ -10504,9 +10504,11 @@ fn compare_pngs(
                         // 退出（P3：清词→退网格→关闭）。Plan 478 T4：switcher
                         // 可见时 Esc 归 switcher 自隐（app 内 bind 路径处理），
                         // 不退桌面。Plan 479 T3：通知中心可见时同理自隐。
+                        // Plan 487 M4：设置面板可见时同理自隐。
                         if state.launcher_visible()
                             || state.switcher_visible()
                             || state.notification_visible()
+                            || state.settings_visible()
                         {
                             return iced::Task::none();
                         }
@@ -10888,6 +10890,23 @@ fn compare_pngs(
                 };
                 layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
             }
+            // Plan 487 M4：设置面板 overlay 层（通知中心层邻位顶层；仅
+            // visible 时推层——第四枚 overlay 槽，同款语义）。
+            if state.settings_visible() {
+                let panel_app = state.desktop.settings_app.expect("panel checked");
+                let build = || state.split_ref_settings().map(|v| dynamic_view(v, false));
+                let panel_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 设置面板缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!("[session] settings view panicked (plan-453 T6 boundary): {payload:?}");
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+            }
             return crate::ui::iced::virtual_window::desktop_root(layers);
         }
         let Some(app_id) = state.app_of_window(&window) else {
@@ -11019,11 +11038,13 @@ fn compare_pngs(
                     // Plan 478 T4：switcher overlay 可见时同样独占（Tab/←→/
                     // Enter/Esc 进面板，不漏进底层虚拟窗）。
                     // Plan 479 T3：通知中心可见时同样独占（Esc 进面板）。
+                    // Plan 487 M4：设置面板可见时同样独占（Esc 进面板）。
                     let focused = if state.is_desktop() {
                         state.wm_focused_app() == Some(app_id)
                             && !state.launcher_visible()
                             && !state.switcher_visible()
                             && !state.notification_visible()
+                            && !state.settings_visible()
                     } else {
                         true
                     };
@@ -11080,6 +11101,25 @@ fn compare_pngs(
             if state.is_desktop() && state.notification_visible() {
                 if let (Some(panel), Some(host)) =
                     (state.desktop.notification_app, state.host.as_ref())
+                {
+                    if let Some(app) = state.apps.get(&panel) {
+                        let bindings = app.component.key_bindings().clone();
+                        subs.push(keyboard_subscription_ext(
+                            panel,
+                            host.window,
+                            bindings,
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            // Plan 487 M4：设置面板的键盘订阅（通知中心块同型第五块；Esc
+            // Captured 转发自隐，幂等由 handler visible 门控保证）。
+            if state.is_desktop() && state.settings_visible() {
+                if let (Some(panel), Some(host)) =
+                    (state.desktop.settings_app, state.host.as_ref())
                 {
                     if let Some(app) = state.apps.get(&panel) {
                         let bindings = app.component.key_bindings().clone();
@@ -17012,8 +17052,10 @@ mod tests {
     ///（`__dock_*` 直写——Init 只跑一次）。
     #[test]
     fn settings_dock_arms_hot_apply_and_persist() {
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+        // 存储隔离（t2 同型）：执行臂 storage_host_publish 走落盘链——必须
+        // 指向临时文件，防跨进程污染真实 store（首跑教训：默认 store 残键
+        // 打破 summon 测试的键缺席前提）。
+        let path = t2_isolate_storage("487-dock-arms");
         let mut ds = t3_session_with_shell();
         // 换装真 shell（探针无 __dock_* 声明——投影同步断言需要）。
         let probe = ds.desktop.shell_app.expect("probe shell");
@@ -17087,8 +17129,7 @@ mod tests {
         assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
         assert_eq!(ds.desktop.dock_edges.bottom, 0.0, "按保留位置键恢复 top");
 
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+        let _ = std::fs::remove_file(&path);
     }
 
     /// 资产 shell.at（widget Desktop）装载冒烟：编译 + fire_init 读 storage
@@ -17176,6 +17217,81 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+    }
+
+    /// Plan 487 M4 步骤4：设置面板召唤无头——OpenSettings 懒挂载 + 配置
+    /// 快照注入（cfg_* 键推导 / pinned 平行列表 / about 常量）+ 二态翻转
+    /// （再召唤自隐）+ Esc 自隐。齿轮→open_settings 记录接线在步骤7 测。
+    #[test]
+    fn settings_panel_summon_headless() {
+        let path = t2_isolate_storage("487-summon");
+        let mut ds = t3_session_with_shell();
+        assert!(ds.desktop.settings_app.is_none(), "未召唤不挂载");
+        // ① 召唤：懒挂载 + visible + 快照注入（键缺席 → pack 默认）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        assert!(ds.settings_visible(), "召唤后面板 visible");
+        let panel = ds.desktop.settings_app.expect("懒挂载完成");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            for (field, want) in [
+                ("cfg_dock_position", "bottom"),
+                ("cfg_dock_enabled", "1"),
+                ("cfg_notes_enabled", "1"),
+            ] {
+                match app.component.read_state(field) {
+                    Ok(auto_val::Value::Str(ref s)) => {
+                        assert_eq!(s.to_string(), want, "{field} 快照注入")
+                    }
+                    other => panic!("{field} 读回异常: {other:?}"),
+                }
+            }
+            match app.component.read_state("pinned_n") {
+                Ok(auto_val::Value::Int(n)) => assert_eq!(n, 3, "pinned 平行列表注入（pack 默认三枚）"),
+                other => panic!("pinned_n 读回异常: {other:?}"),
+            }
+            for field in ["about_host", "about_version"] {
+                match app.component.read_state(field) {
+                    Ok(auto_val::Value::Str(ref s)) => {
+                        assert!(!s.is_empty(), "{field} 版本常量注入")
+                    }
+                    other => panic!("{field} 读回异常: {other:?}"),
+                }
+            }
+        }
+        // ② 再召唤：二态翻转自隐。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        assert!(!ds.settings_visible(), "再召唤翻转自隐");
+        // ③ 键预置 top → 重召唤注入 top 快照（键即事实，I9）。
+        crate::vm::ffi::stdlib::storage_raw_set("shell.dock.position".into(), "top".into());
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        assert!(ds.settings_visible());
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "top", "位置键预置 → 快照 top")
+                }
+                other => panic!("cfg_dock_position 读回异常: {other:?}"),
+            }
+        }
+        // ④ Esc 自隐。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        assert!(!ds.settings_visible(), "Esc 后自隐");
+
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Plan 487 M4 步骤1：资产 settings.at（widget Settings）装载冒烟——编译 +

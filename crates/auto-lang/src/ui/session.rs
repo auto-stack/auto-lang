@@ -1161,6 +1161,8 @@ pub struct HostCtx {
     pub switcher_fields: ShellFields,
     /// Plan 479 T3：通知中心 overlay 同型垫片（第三枚 overlay 槽）。
     pub notification_fields: ShellFields,
+    /// Plan 487 M4：设置面板 overlay 同型垫片（第四枚 overlay 槽）。
+    pub settings_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -1354,6 +1356,7 @@ impl DesktopSession {
             launcher_fields: ShellFields::default(),
             switcher_fields: ShellFields::default(),
             notification_fields: ShellFields::default(),
+            settings_fields: ShellFields::default(),
         });
     }
 
@@ -1976,7 +1979,14 @@ impl DesktopSession {
             let is_switcher = self.desktop.switcher_app == Some(id);
             // Plan 479 T3：通知中心 overlay（windowless 拆借第四路）。
             let is_notification = self.desktop.notification_app == Some(id);
-            if !is_shell && !is_launcher && !is_switcher && !is_notification {
+            // Plan 487 M4：设置面板 overlay（windowless 拆借第五路）。
+            let is_settings = self.desktop.settings_app == Some(id);
+            if !is_shell
+                && !is_launcher
+                && !is_switcher
+                && !is_notification
+                && !is_settings
+            {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -2003,12 +2013,19 @@ impl DesktopSession {
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_notification {
                 (
                     &mut host.notification_fields.window_size,
                     &mut host.notification_fields.pending_window_resize,
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.settings_fields.window_size,
+                    &mut host.settings_fields.pending_window_resize,
+                    &mut host.settings_fields.initial_resize_done,
+                    &mut host.settings_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -2242,6 +2259,27 @@ impl DesktopSession {
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
+    }
+
+    /// Plan 487 M4：设置面板 overlay App 的拆借视图（view 装配的设置面板
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_notification`] 相同，
+    /// 字段走 [`HostCtx::settings_fields`]）。
+    pub fn split_ref_settings(&self) -> Option<SessionViewRef<'_>> {
+        let panel = self.desktop.settings_app?;
+        let app = self.apps.get(&panel)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: panel,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.settings_fields.window_size,
+            pending_window_resize: &host.settings_fields.pending_window_resize,
+            initial_resize_done: &host.settings_fields.initial_resize_done,
+            initial_focus_done: &host.settings_fields.initial_focus_done,
+            vwin_rect: None,
+        })
     }
 }
 
