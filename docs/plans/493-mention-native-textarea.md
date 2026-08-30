@@ -1,14 +1,31 @@
 ---
 plan_id: PLAN-493
-status: execution_done
+status: reviewed
 feature_name: mention-native textarea——mentions 能力声明与双端实现
 author: [zhaopuming]
 created_at: 2026-08-30
 updated_at: 2026-08-30
 
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []
+new_spec_components:
+  - ui/aura_view_builder+ui/view+ui/iced/renderer+ui_gen/vue:textarea-mentions-capability（Plan
+    493——textarea `mentions:`/`mention_class:` 能力声明：**受限 state-rooted
+    名单解析**〔bindings→read_state_as_vec 同步深拷贝；computed/调用链名单
+    →None 降级，绝不落入 eval_computed/call_vm_fn——html 降级 UAF 同构雷区
+    红线，护栏测锁定〕+ builder 期 `mention_segments` 纯函数段计算〔@\w+
+    小写匹配、无 display 替换、覆盖拼接==value 不变式〕+ VM `SpanKind::
+    Mention`〔parse "mention" 臂 + blue-600 from_rgb8(37,99,235) 前景；
+    iced Format 无 per-span 背景——跨端差异登记〕+ Vue codegen
+    backdrop/透明 textarea **兄弟对**发射〔类串自 textarea 类串推导：
+    transparent 位换 foreground/删输入面 token/无颜色 token 保底追
+    text-foreground/增背板结构 token，幂等〕+ `__autoMentionHtml` helper
+    随 script 一次发射〔escape+扫描+span+尾 
+，TS/JS 双签名〕+
+    mentions/mention_class/height 纳 textarea attr 透传过滤〔height 为
+    VM-only 几何契约，防 :height 泄漏 vue 产物〕；活体证据=器具根/子部件
+    两形态 blue-600 精确像素 + musk [493-MENTIONS] 段日志）
+touched_goals: [GOAL-007]   # AutoUI 跨端视觉一致：mention 高亮双端 parity（声明层抽象提升）
+affects: [auto-lang/ui]
 
 current_step: 7
 total_steps: 7
@@ -263,7 +280,43 @@ attr 透传过滤追加 `mentions`/`mention_class`（执行期追加 `height`—
 
 ## 复审记录
 
-（待 /auto-plan:review 填写）
+**复审（2026-08-30，/auto-plan:review，verify-don't-trust 全项重跑）**
+
+diff 对照：`git diff d827f1d8c..6d18f12d5` = 3 文件 +673/-6（aura_view_builder
+/renderer/vue.rs），与计划范围逐一对应，无越界文件、无计划内任务无 diff 项。
+
+逐验收标准判定：
+1. **PASS**——mention_input.at 活代码无 backdrop div/text-transparent/
+   backdropHtml（2 处命中均注释），textarea 带 `mentions: .mentionNames`
+   （model var）+ `mention_class:` + `height: 72`。
+2. **PASS（机制四层闭合；musk 现场像素一项 pending，见⑥）**——打字可见
+   （vtree+白像素双证）；聚焦/type 通路实证；Enter/按钮消息均入列（draft
+   清空=先在债⑤，双仓 master A/B 实证非 493 回归）；@着色：单测 11 绿 +
+   musk 活体段日志（names=18，段正确）+ **同二进制器具活体 blue-600 精确
+   像素**（根部件与子部件两形态均着色，avg (36,98,234)≈#2563eb）+ 057
+   存量 highlight 路径同证健康（emerald/purple）；musk composer 现场像素
+   因 VM 实例静默退出/登录链抖动未捕获（~6 次尝试，含一次环境变量遗漏的
+   无效扫描）。
+3. **PASS**——gen 轨 vue-tsc+vite 绿；emit 结构/类集与迁移前等价（含
+   text-foreground 保底）；span 覆盖收敛为 @词原文=待澄清①既定裁定。
+4. **PASS**——cargo tf 3286/3286 全绿（合并 master 后）；tv 2 败
+   （aavm2_m4 语料/cookbook channel）master 同败=存量基线零新增；ui_gen
+   708 绿；plan493_ 11/11；017-chat VM 冒烟 A-E+playwright 9/9；musk 四
+   门禁+probe+first-run 全绿（执行期记录）。
+
+遗漏/延后/workaround 扫描：
+- 遗漏：无（任务-diff 一一对应）。
+- 延后：display 替换移除（①既定裁定）、VM 无 bg tint（③）、静置刷新缺口
+  （④）——均计划内登记在案。
+- Workaround/新发现债候选：①**iced textarea 内容键碰撞**——两 textarea 同
+  无 on_change 且 placeholder 等长时 key 同为 `__textarea_0`，内容缓存互串
+  （复验器具实证：TA2 显示 TA1 内容；musk 不受影响——oninput 键唯一）；
+  建议 key 混入 path/序号，登记上游。②AUTO_DEBUG_MENTIONS 调试打印保留
+  （env 门控，[VM-CALLFN] 先例）。③musk worktree auto-musk-dev-2 未折回
+  musk main（消费方验证已过，按 musk AGENTS 应尽快折回清理）。
+
+结论：**reviewed**（标准 2 的 musk 现场像素一项以四层机制证据+环境性受阻
+登记放行；若需像素级终验再跑待澄清⑥手续，不构成代码性缺口）。
 
 ## 待澄清事项
 
@@ -289,5 +342,8 @@ attr 透传过滤追加 `mentions`/`mention_class`（执行期追加 `height`—
    SpanKind::Mention→blue-600）单测全绿；活体窗口像素终验被 VM 实例
    静默退出（KD-048-a，本 session 观测部分实例 <30s）+登录链抖动阻断。
    复验：`AUTO_DEBUG_MENTIONS=1 auto run --render=vm` 看 `[493-MENTIONS]
-   names=N ... segs=[...]` 段产出+窗口 @词蓝色像素。一次像素扫描未检出
-   蓝色（抗锯齿混合或段未达渲染层待判）。
+   names=N ... segs=[...]` 段产出+窗口 @词蓝色像素。**复审期补证（2026-08-30
+   晚）**：musk 活体段日志已取（names=18/段正确）；同一 worktree 二进制上
+   器具（examples/ui/p493-color-check，根+子部件两形态）@assistant 字形
+   avg=(36,98,234)=blue-600 精确命中，057 存量 highlight 同帧健康——机制
+   定案；musk 现场像素终验仍待一次环境配合（登录链抖动/静默退出）。
