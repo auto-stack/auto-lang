@@ -846,12 +846,11 @@ pub mod win32 {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use windows::Win32::Foundation::{HINSTANCE, HWND, LRESULT, WPARAM};
+        use windows::Win32::Foundation::{DRAGDROP_E_ALREADYREGISTERED, HINSTANCE, HWND, LRESULT, WPARAM};
         use windows::Win32::System::Com::DATADIR_SET;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::System::Ole::{
-            DRAGDROP_E_ALREADYREGISTERED, OleUninitialize, RegisterDragDrop,
-            ReleaseStgMedium, RevokeDragDrop,
+            OleUninitialize, RegisterDragDrop, ReleaseStgMedium, RevokeDragDrop,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, WINDOW_EX_STYLE,
