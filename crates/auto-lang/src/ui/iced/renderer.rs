@@ -17006,6 +17006,91 @@ mod tests {
         crate::vm::ffi::stdlib::storage_raw_remove(key_en);
     }
 
+    /// Plan 487 M4：set_dock_position/enabled 执行臂——storage 键写回 +
+    /// dock_edges 键重推导（boot `desktop_dock_edges` 同函数，I9 单一事实）
+    /// + relayout 全窗写回（Grid 窗几何随预留边翻转）+ shell.at 投影热同步
+    ///（`__dock_*` 直写——Init 只跑一次）。
+    #[test]
+    fn settings_dock_arms_hot_apply_and_persist() {
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+        let mut ds = t3_session_with_shell();
+        // 换装真 shell（探针无 __dock_* 声明——投影同步断言需要）。
+        let probe = ds.desktop.shell_app.expect("probe shell");
+        let real = crate::ui::shell::build_shell_component().expect("真 shell.at 编译");
+        ds.apps.remove(&probe);
+        ds.desktop.shell_app = Some(ds.allocate_app(real));
+        // Grid 布局 + 一窗：relayout 可观测（Grid 单窗满铺可用区，y 随边走）。
+        ds.wm_set_layout(crate::ui::layout::LayoutMode::Grid);
+        let wid = t3_add_win(&mut ds, "Alpha");
+        let shell = ds.desktop.shell_app.expect("real shell");
+
+        // ① set_dock_position(top)：键写回 + 边翻转 + 投影 + relayout。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::SetDockPosition(true)],
+        );
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.dock.position").as_deref(),
+            Some("top"),
+            "位置键驱动侧写回"
+        );
+        assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
+        assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
+        {
+            let app = ds.apps.get(&shell).unwrap();
+            match app.component.read_state("__dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "top", "shell 投影热同步")
+                }
+                other => panic!("__dock_position 读回异常: {other:?}"),
+            }
+        }
+        {
+            let host = ds.host.as_ref().unwrap();
+            let rect = *host.wm.wins.get(&wid).unwrap().rect.borrow();
+            assert_eq!(rect.y, crate::ui::layout::TASKBAR_HEIGHT, "Grid 窗 y=top 预留");
+        }
+
+        // ② set_dock_enabled(false)：零预留 + 键 false + 投影关 + 窗回满铺。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::SetDockEnabled(false)],
+        );
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.dock.enabled").as_deref(),
+            Some("false"),
+            "开关键驱动侧写回"
+        );
+        assert_eq!(ds.desktop.dock_edges.top, 0.0);
+        assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
+        {
+            let app = ds.apps.get(&shell).unwrap();
+            match app.component.read_state("__dock_enabled") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "0", "shell 开关投影关")
+                }
+                other => panic!("__dock_enabled 读回异常: {other:?}"),
+            }
+        }
+        {
+            let host = ds.host.as_ref().unwrap();
+            let rect = *host.wm.wins.get(&wid).unwrap().rect.borrow();
+            assert_eq!(rect.y, 0.0, "dock 关 → 可用区回满铺");
+        }
+
+        // ③ 重开：位置键保留——按 top 恢复（enabled 只决定零/非零）。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::SetDockEnabled(true)],
+        );
+        assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
+        assert_eq!(ds.desktop.dock_edges.bottom, 0.0, "按保留位置键恢复 top");
+
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
+        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+    }
+
     /// 资产 shell.at（widget Desktop）装载冒烟：编译 + fire_init 读 storage
     /// 缺席回退 pack 默认（enabled=1 / position=bottom）；pinned 由宿主
     /// 解析注入（{id,icon} Obj 数组，icon 自注册表）。
