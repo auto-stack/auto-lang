@@ -6372,18 +6372,14 @@ fn keyboard_subscription_ext(
 }
 
 /// Plan 463 T3/T6：桌面级热键订阅（单份，按宿主窗过滤；App 焦点无关，
-/// R12 桌面层路由的键盘半边）。键位定案（T1 报告 §7）：
-/// - Esc：调试退出（全屏无框桌面无关闭按钮）；
-/// - Alt+Tab：窗口循环（POSIX WM 惯例，OS 不拦即达；463 定案 v1 不动）；
-/// - Ctrl+Tab：switcher 召唤/推进（478 改道——旧窗口循环直循环退役入
-///   overlay 路径；Windows 实测可达键位）；
-/// - Ctrl+Alt+G / L / F：grid / master-stack / free 布局切换；
-/// - Ctrl+Alt+←/→：分区环切；Ctrl+Alt+Shift+←/→：聚焦窗发送相邻分区（478）；
-/// - Ctrl+Space（备选 Ctrl+Alt+Space）：SummonLauncher（464 消费，前静默）。
+/// R12 桌面层路由的键盘半边）。
+/// Plan 490 T2：逐臂硬编码布尔式退役，改查 `HotkeyTable`（键位数据级
+/// 可配置；内置新默认 = G1 Alt+Tab 退役 + G2 分区切换迁 Ctrl+Alt+[ / ]；
+/// launcher 主键 Ctrl+Space + 别名 Ctrl+Alt+Space IME 兜底双收显性化）。
 fn desktop_hotkey_subscription(
     my_window: iced::window::Id,
+    hotkeys: crate::ui::session::HotkeyTable,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
     iced_futures::subscription::filter_map(
         ("autoui-desktop-hotkeys", my_window),
         move |event: iced_futures::subscription::Event| {
@@ -6398,64 +6394,146 @@ fn desktop_hotkey_subscription(
             else {
                 return None;
             };
-            use iced::keyboard::{key::Named, Key};
-            // Esc：无修饰键按下时退出（带修饰键的组合留给 App 层）。
-            if matches!(key, Key::Named(Named::Escape)) && modifiers.is_empty() {
-                return Some(DM::Wm(WmCommand::ExitDesktop));
-            }
-            // Plan 478 T3：Tab 键位分层——Ctrl+Tab 改道 switcher 召唤/推进
-            //（overlay 打开时由 update 臂转 .Advance，T1 施工图 §2）；
-            // Alt+Tab 保留窗口循环（463 键位 v1 不动）。
-            if matches!(key, Key::Named(Named::Tab)) && !modifiers.shift() {
-                if modifiers.control() && !modifiers.alt() {
-                    return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
-                }
-                if modifiers.alt() && !modifiers.control() {
-                    return Some(DM::Wm(WmCommand::CycleWindow));
-                }
-            }
-            // Plan 478 T3：send_to 热键（先行判定——下方 Ctrl+Alt 分支对
-            // shift 不敏感，须在此截走 Shift 组合）。
-            if modifiers.control() && modifiers.alt() && modifiers.shift() {
-                if matches!(key, Key::Named(Named::ArrowRight)) {
-                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
-                }
-                if matches!(key, Key::Named(Named::ArrowLeft)) {
-                    return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
-                }
-            }
-            // 布局切换：Ctrl+Alt+{G,L,F}（不依赖 Win 键；T6 实测定案）。
-            // 方向键 Shift 组合已被上方 send_to 分支截走，此块无需 shift 守卫
-            // （字母键位保持 463 行为不变）。
-            if modifiers.control() && modifiers.alt() {
-                if let Key::Character(c) = &key {
-                    let mode = match c.to_lowercase().as_str() {
-                        "g" => Some(crate::ui::layout::LayoutMode::Grid),
-                        "l" => Some(crate::ui::layout::LayoutMode::MasterStack),
-                        "f" => Some(crate::ui::layout::LayoutMode::Free),
-                        _ => None,
-                    };
-                    if let Some(mode) = mode {
-                        return Some(DM::Wm(WmCommand::SetLayout(mode)));
-                    }
-                }
-                // Plan 472 T2：分区切换 Ctrl+Alt+→/←（环切；dock 切换条同语义）。
-                if matches!(key, Key::Named(Named::ArrowRight)) {
-                    return Some(DM::Wm(WmCommand::NextWorkspace));
-                }
-                if matches!(key, Key::Named(Named::ArrowLeft)) {
-                    return Some(DM::Wm(WmCommand::PrevWorkspace));
-                }
-            }
-            // launcher 召唤：Ctrl+Space（中文系统 IME 抢键时 Ctrl+Alt+Space
-            // 天然覆盖——同键位族不细分 alt）；464 前事件无消费者（update 臂静默）。
-            if matches!(key, Key::Named(Named::Space)) && modifiers.control() && !modifiers.shift()
-            {
-                return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
-            }
-            None
+            desktop_hotkey_message(&hotkeys, &modifiers, &key)
         },
     )
+}
+
+/// Plan 490 T2：桌面热键 → DesktopMessage 的表驱动纯函数（订阅闭包的
+/// 可测化内核）。臂序 = 旧行为优先级保持（Esc → switcher → send_to →
+/// 布局 → 分区 → launcher；CycleWindow 内置无臂，storage 复活即生效）。
+fn desktop_hotkey_message(
+    hotkeys: &crate::ui::session::HotkeyTable,
+    modifiers: &iced::keyboard::Modifiers,
+    key: &iced::keyboard::Key,
+) -> Option<crate::ui::session::DesktopMessage> {
+    use crate::ui::session::HotkeyAction as HA;
+    use crate::ui::session::{DesktopMessage as DM, WmCommand, WorkspaceStep};
+
+    if hotkeys.matches(HA::ExitDesktop, modifiers, key) {
+        return Some(DM::Wm(WmCommand::ExitDesktop));
+    }
+    if hotkeys.matches(HA::CycleSwitcher, modifiers, key) {
+        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+    }
+    if hotkeys.matches(HA::CycleWindow, modifiers, key) {
+        return Some(DM::Wm(WmCommand::CycleWindow));
+    }
+    if hotkeys.matches(HA::SendToNext, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Next)));
+    }
+    if hotkeys.matches(HA::SendToPrev, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
+    }
+    if hotkeys.matches(HA::SetLayoutGrid, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Grid)));
+    }
+    if hotkeys.matches(HA::SetLayoutStack, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::MasterStack)));
+    }
+    if hotkeys.matches(HA::SetLayoutFree, modifiers, key) {
+        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Free)));
+    }
+    if hotkeys.matches(HA::WorkspaceNext, modifiers, key) {
+        return Some(DM::Wm(WmCommand::NextWorkspace));
+    }
+    if hotkeys.matches(HA::WorkspacePrev, modifiers, key) {
+        return Some(DM::Wm(WmCommand::PrevWorkspace));
+    }
+    if hotkeys.matches(HA::SummonLauncher, modifiers, key) {
+        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
+    }
+    None
+}
+
+#[cfg(test)]
+mod hotkey_subscription_tests {
+    use super::*;
+    use crate::ui::session::{DesktopMessage as DM, HotkeyTable, WmCommand};
+    use iced::keyboard::{key::Named, Key, Modifiers};
+
+    fn named(n: Named) -> Key {
+        Key::Named(n)
+    }
+
+    fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
+        let mut m = Modifiers::default();
+        if ctrl { m |= Modifiers::CTRL; }
+        if alt { m |= Modifiers::ALT; }
+        if shift { m |= Modifiers::SHIFT; }
+        m
+    }
+
+    /// Plan 490 T2 订阅行为测：新默认表逐臂过纯函数内核
+    /// `desktop_hotkey_message`（Alt+Tab 无臂 / bracket 分区 / 覆盖恢复 /
+    /// 双收 / 既有臂不回归）。
+    #[test]
+    fn hotkey_sub_builtin_arms() {
+        let t = HotkeyTable::builtin();
+
+        // G1：Alt+Tab → None（退役；switcher 承担窗口循环）
+        assert!(desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)).is_none());
+
+        // G2：Ctrl+Alt+] / [ → 分区环切
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("]".into())),
+            Some(DM::Wm(WmCommand::NextWorkspace))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("[".into())),
+            Some(DM::Wm(WmCommand::PrevWorkspace))
+        ));
+        // 旧默认方向键 → None（可覆盖恢复）
+        assert!(desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)).is_none());
+
+        // 既有臂不回归
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)),
+            Some(DM::Wm(WmCommand::ExitDesktop))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, false, false), &named(Named::Tab)),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, true), &named(Named::ArrowRight)),
+            Some(DM::Wm(WmCommand::SendFocusedTo(_)))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &Key::Character("g".into())),
+            Some(DM::Wm(WmCommand::SetLayout(_)))
+        ));
+
+        // launcher 双收（主键 + IME 兜底别名）
+        let space = named(Named::Space);
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, false, false), &space),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &space),
+            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+        ));
+    }
+
+    /// Plan 490 T2/T3：storage 覆盖后的表驱动行为——方向键恢复生效、
+    /// CycleWindow 显式复活（G1 逃生舱）。
+    #[test]
+    fn hotkey_sub_storage_override_arms() {
+        let mut t = HotkeyTable::builtin();
+        assert!(t.apply_override("workspace_next", "ctrl+alt+right"));
+        assert!(t.apply_override("workspace_prev", "ctrl+alt+left"));
+        assert!(t.apply_override("cycle_window", "alt+tab"));
+
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)),
+            Some(DM::Wm(WmCommand::NextWorkspace))
+        ));
+        assert!(matches!(
+            desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)),
+            Some(DM::Wm(WmCommand::CycleWindow))
+        ));
+    }
 }
 
 /// 键盘/窗口事件 → IcedMessage（原 listen_with 闭包体的纯函数化；
@@ -11445,9 +11523,10 @@ fn compare_pngs(
             if let Some(primary) = state.primary_app() {
                 // Plan 463 T3：桌面级热键（Esc 调试退出；T6 追加布局/循环/
                 // 召唤）。仅 desktop 模式订一份；独立模式行为不变。
+                // Plan 490 T3：表取自会话（boot 期 shell.keys.* 覆盖已并入）。
                 if state.is_desktop() {
                     if let Some(host) = &state.host {
-                        subs.push(desktop_hotkey_subscription(host.window));
+                        subs.push(desktop_hotkey_subscription(host.window, state.hotkeys()));
                     }
                 }
                 // Plan 462：desktop 模式帧泵（空闲时也要有机会消费 view 侧

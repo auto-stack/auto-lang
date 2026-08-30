@@ -220,6 +220,9 @@ pub struct DesktopState {
     /// 原 KEYBOARD_BINDINGS OnceLock 全局（renderer.rs:4158）迁入；
     /// keyboard_subscription 已收 &HashMap 参数，只需改供给源。
     pub keyboard_bindings: Arc<Mutex<HashMap<String, String>>>,
+    /// Plan 490：桌面热键表（boot 期由 `shell.keys.*` storage 覆盖构建；
+    /// 桌面级热键订阅唯一消费面）。缺省 = `HotkeyTable::builtin()`。
+    pub hotkeys: HotkeyTable,
     /// MCP 共享句柄——**进程唯一**（幂等启动护栏随 T4/MCP 冻结任务落地）。
     pub mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     pub toasts: RefCell<Vec<ToastReq>>,
@@ -278,6 +281,7 @@ impl DesktopState {
         Self {
             current_modifiers: RefCell::new(iced::keyboard::Modifiers::empty()),
             keyboard_bindings: Arc::new(Mutex::new(HashMap::new())),
+            hotkeys: HotkeyTable::builtin(),
             mcp_shared,
             toasts: RefCell::new(Vec::new()),
             toast_next_id: Cell::new(1),
@@ -1949,6 +1953,12 @@ impl DesktopSession {
         let id = AppId(self.next_app);
         self.apps.insert(id, AppSession::new(id, component));
         id
+    }
+
+    /// Plan 490：桌面热键表（订阅每次 view 重建取一份克隆——表小，换取
+    /// 订阅闭包持所有权、不与 session 生命周期纠缠）。
+    pub fn hotkeys(&self) -> HotkeyTable {
+        self.desktop.hotkeys.clone()
     }
 
     /// 主窗口语义 = 注册表最小 AppId（459 §2.3；454 由 WM 接管）。
