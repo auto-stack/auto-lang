@@ -582,3 +582,71 @@ fn popover_escape_dismisses() {
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
     assert!(msgs.contains(&PopMsg::Dismiss), "Esc must publish dismiss: {msgs:?}");
 }
+
+/// Plan 496 M5 T3：桌面层 z 槽——App 虚拟窗覆盖桌面图标的装配几何断言。
+/// 复刻 view() 的 Stack 装配序（壁纸层[省略，纯底] → 桌面图标面 → 虚拟窗
+/// z_order），断言首枚图标格落在虚拟窗矩形内（Stack 底序绘制 → 窗口
+/// 不透明 chrome 盖住图标，G3「窗口拖过时图标自然被覆盖」）。
+#[test]
+fn desktop_surface_z_slot_window_covers_icons() {
+    // 真 desktop.at 装载 + 三条目注入（投影形状 = renderer
+    // inject_desktop_surface 的 {id,icon,label,src}）。
+    let mut comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+    let entries: Vec<auto_val::Value> = ["011-calculator", "013-todo", "015-notes"]
+        .iter()
+        .map(|id| {
+            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                ("id", auto_val::Value::Str((*id).into())),
+                ("icon", auto_val::Value::Str("app-window".into())),
+                ("label", auto_val::Value::Str((*id).into())),
+                ("src", auto_val::Value::Str("pinned".into())),
+            ]))
+        })
+        .collect();
+    let _ = comp.write_state_vec("__desktop_icons", entries);
+    let (view, _, _) = comp.view_with_debug_gated(false);
+    let surface_el: iced::Element<'static, ()> = view.map_msg(|_| ()).into_iced();
+
+    // 虚拟窗（0,0 起 400×300——与左上角图标区重叠）：真 VWinState 经
+    // 会话 wm_add_win 落（字段全、与实机同源）。
+    let mut ds = crate::ui::session::DesktopSession::__test_session();
+    ds.open_desktop(iced::window::Id::unique());
+    let app = ds.allocate_app(crate::build_dynamic_component(
+        "widget T3Stub {\n    model { var n int = 0 }\n    view { text \"WINCLIENT\" }\n}\n",
+        None,
+    )
+    .unwrap());
+    let wid = ds.wm_add_win(
+        app,
+        "T3W".to_string(),
+        iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(400.0, 300.0)),
+    );
+    let vwin = {
+        let host = ds.host.as_ref().expect("desktop mode");
+        host.wm.wins.get(&wid).expect("vwin 登记完成").clone()
+    };
+    let client: iced::Element<'_, crate::ui::session::DesktopMessage> =
+        iced::widget::text("WINCLIENT").into();
+    let win_el: iced::Element<'static, ()> =
+        crate::ui::iced::virtual_window::virtual_window_element(&vwin, true, client)
+            .map(|_| ());
+
+    // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。
+    let stack: iced::Element<'static, ()> =
+        iced::widget::Stack::new().push(surface_el).push(win_el).into();
+    let mut ui = simulator(stack);
+    let (ix, iy, iw, ih) = bounds_of(&mut ui, "011-calculator");
+    assert!(iw > 0.0 && ih > 0.0, "图标 label 可见: {iw}x{ih}");
+    // 图标格落在虚拟窗矩形 (0,0,400,300) 内 → Stack 底序绘制下被窗覆盖。
+    assert!(
+        ix >= 0.0 && iy >= 0.0 && ix + iw <= 400.5 && iy + ih <= 300.5,
+        "首枚图标格应在虚拟窗矩形内（被覆盖几何）: ({ix},{iy})+{iw}x{ih}"
+    );
+    // 虚拟窗客户区文本同时渲染（同区域共存 = 层叠而非互斥布局）。
+    let (wx, wy, ww, wh) = bounds_of(&mut ui, "WINCLIENT");
+    assert!(ww > 0.0 && wh > 0.0, "虚拟窗客户区渲染: {ww}x{wh}");
+    assert!(wy >= 0.0 && wy < 300.0, "窗客户区在窗矩形内: y={wy}");
+    // 窗标题文本（chrome）也渲染于重叠区（覆盖关系的可见证据）。
+    let (_tx, ty, _tw, th) = bounds_of(&mut ui, "T3W");
+    assert!(th > 0.0 && ty < 40.0, "chrome 标题条在窗顶: y={ty}");
+}
