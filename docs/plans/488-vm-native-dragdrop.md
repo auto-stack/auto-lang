@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-488
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-native-dragdrop
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,8 +12,8 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
-total_steps: 10
+current_step: 4
+total_steps: 11
 ---
 
 # [PLAN-488] 原生互操作 Phase 3——OLE 拖放双向 + 虚拟文件落地
@@ -205,14 +205,36 @@ virtual_window spec events 映射同步。
    `crates/auto-lang/src/ui/native_dnd.rs`（DndPayload + 模块骨架 +
    `ui/mod.rs` 登记）。
    验证：`cargo check -p auto-lang --features native-dnd && cargo check -p auto-lang`。
+   [✅ 已完成] worktree 提交 1d43a0da9：双档 check 绿，native_dnd/ui-mod 零警告（160 条为既有存量，与本改动无关，grep 实证）。
 2. **共存 spike**：宿主 HWND `RegisterDragDrop` 试验（临时日志/按钮触发
    触发 `DragEnter` 探针），结论回写待澄清①。
    验证：`cargo t ui`（无回归）+ spike 记录。
+   [✅ 已完成] worktree 提交 2bda07b90：运行时探针
+   `spike_register_revoke_roundtrip` 绿（单 HWND 二次注册→
+   DRAGDROP_E_ALREADYREGISTERED；Revoke→重注 S_OK）+ winit/iced 源码级
+   取证；结论已回写待澄清①。验证补充：日常档 772 全绿；ui-iced 档唯一红
+   `plan050_i18n_lookup` 为存量（stash 基线复现，与本改动无关）。
 3. **IDataObject + IDropSource**：实现 + T1 单测。
    验证：`cargo test -p auto-lang --features native-dnd native_dnd`。
+   [✅ 已完成] worktree 提交 04d962cab/700f85bb8：T1 九测全绿（枚举定序
+   文本→HDROP→DESCRIPTOR→CONTENTS / QueryGetData 命中与未挂 / 文本与
+   HDROP 往返 / FILEGROUPDESCRIPTORW 字节断言（cItems+flags+尺寸+名）/
+   FILECONTENTS 按 index / 源侧最小 E_NOTIMPL / Esc-取消-落下）。验证命令
+   修正：module 在 ui 门控下，实际跑
+   `cargo test -p auto-lang --lib --features ui-iced,native-dnd ui::native_dnd`
+   （裸 `--features native-dnd` 不编译 ui 模块——计划命令笔误，见步骤 1 注）。
+   实现注记：FILEDESCRIPTORW 为 packed——cFileName 存取走 addr_of!；
+   FD_WRITESTREAM bindings 缺失本地定义；FD_READURI 无 SDK 对应物 v1 不置。
 4. **STA 线程 + native**：`dnd_sta_thread`（OleInitialize/DoDragDrop/泵）+
    `auto.dnd.start` 三件套（catalog 顺号 + shim 降级）+ `dnd_finished` 回注。
    验证：`cargo t native_dnd && cargo t vm`。
+   [✅ 已完成] worktree 提交 6653b2803：STA 线程（受理即返/DRAG_ACTIVE 重入
+   拒/完成通道 Mutex 装载）+ native_catalog 2938（顺号取当前空位，签名表
+   Bool 同步）+ shim_dnd_start 真臂/降级臂（G5 false）+
+   DesktopEvent::DndFinished + dnd_finished_subscription（16ms 轮询，
+   非双门控档空订阅）+ renderer 注册与占位 update 臂（注入管线步骤 6 接线）。
+   验证：native_dnd 15 测全绿（新增 payload JSON 解析×3 + 受理语义×2）；
+   `cargo t vm` 638 绿；ui-iced 单档/default 档 check 零 native_dnd 警告。
 5. **IDropTarget + 拖入路由**：实现 + `DesktopMessage::NativeDrop` + 命中→
    AppId + T2 路由单测。
    验证：`cargo t session && cargo t native_dnd`。
@@ -231,6 +253,19 @@ virtual_window spec events 映射同步。
 10. **实机冒烟 + 收尾**：T6 六场景执行留痕；健康检查（零警告/无调试打印）；
     状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui && cargo t vm`。
+11. **骑手：P485-2 分诊（先分类、后处置，带逃生舱；2026-08-30 调度追加）**：
+    本计划改动面含 `vm/`（natives），复审门禁跑 `cargo tv`——先在红
+    `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（master @3a4aacf19 即红，
+    KNOWN-DEBT P485-2）由本会话顺路分诊：
+    - **T11a 分类**：复现锚定 → 判定"corpus 期望过期"（051-C7/484 语义变更
+      未更新对拍）还是"codegen 真回归"（bisect 锚 3a4aacf19 邻域）。
+    - **期望过期** → 更新 corpus 期望 + 成因注释一行，`cargo tv` 全绿，
+      KNOWN-DEBT P485-2 标已清偿；本计划收尾门禁含 tv 绿。
+    - **真回归** → **不在本计划修**（域不同、规模未知）：回写 P485-2 精确
+      归属注记（根因 commit + 证据），复审按"先在红 + 精确归属 + 488 分支
+      零 codegen 触碰（改动面=native_dnd/ui + vm natives）"放行，修复转
+      独立专项（后续计划号）。
+    验证：`cargo tv` 全绿（或逃生舱路径的 DEBT 注记 + 复审记录成文）。
 
 ## 复审记录
 
@@ -242,9 +277,19 @@ virtual_window spec events 映射同步。
   Ctrl+V 臂与 490 G3 的键位表化（`shell.keys.*`）同域——后合者适配：490
   先合则 T7 挂 `shell.keys.paste` 键位表；488 先合则 490 收编该臂。另：
   486 已合入，本计划开工前置已满足，可领取。
-- **① winit 共存**（T2 spike 回写）：宿主 HWND 上 `RegisterDragDrop` 与
-  winit 既有 `DragAcceptFiles`/DroppedFile 路径的优先级与互斥表现；若冲突，
-  取舍原则 = OLE 目标为准（多格式能力），WM_DROPFILES 路径本仓未消费无损失。
+- **① winit 共存**（T2 spike 回写）——**已定案（2026-08-30，步骤 2）**：
+  winit 0.30.13 Windows 后端**本身就是 OLE 注册方**（窗口创建时
+  `OleInitialize`+`RegisterDragDrop(hwnd, 自实现 IDropTarget)`，
+  winit window.rs:1168/1194；teardown `RevokeDragDrop` 忽略返回值，
+  event_loop.rs:1262）——不是计划假设的 WM_DROPFILES/DragAcceptFiles
+  旧路径。其 Drop 只取 CF_HDROP → iced `FileDropped` 等，本仓零消费
+  （grep=0）。运行时探针实证：单 HWND 二次注册返回
+  DRAGDROP_E_ALREADYREGISTERED，Revoke 后重注 S_OK。**取舍**：步骤 5
+  挂载宿主 HWND 时执行 `RevokeDragDrop(hwnd)`（撤销 winit 单格式目标，
+  损失=0）→ `RegisterDragDrop(hwnd, 我方多格式目标)`；winit teardown 的
+  Revoke 忽略返回值不会 panic。**残留**：iced/winit 重建宿主 HWND 时会
+  重注自己的目标——步骤 5 挂载逻辑按 HWND 身份键控，检测变化时重跑
+  Revoke+Register。
 - **② 外来虚拟文件拖入**：FILECONTENTS 拉流（接收方视角）v1 拒收（格式
   枚举可见、内容不取）——真拉流与"拖出真延迟回调"同列增强；Chrome 图片
   拖入走 CF_DIB/"PNG" 通道（485 转换复用），不受此限。
