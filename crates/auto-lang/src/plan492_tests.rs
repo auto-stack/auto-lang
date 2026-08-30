@@ -233,7 +233,7 @@ widget ChildGeo (data: List, field: str = "v") {
 /// (文件名, 旧串, 新串) 打补丁后经 build_dynamic_component 构建——真实
 /// load_package + child_decls 单 VM 编译链(M1 族 A2 / M4 族 C 消费)。
 #[cfg(all(test, feature = "ui-iced"))]
-mod pkg_harness {
+pub(crate) mod pkg_harness {
     use std::path::PathBuf;
 
     fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
