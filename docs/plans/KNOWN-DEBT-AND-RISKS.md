@@ -283,7 +283,7 @@
   ——set→get 窗口内剪贴板内容被外部进程改写。T9 的 GlobalClipboardTestLock
   跨进程命名互斥已消除自仓测试间互清；对外部进程无管辖。缓解可选：受影响
   断言加单次重试。正常负载复审连跑 11+ 次全绿。
-- **P485-2（出计划外观察，非本计划引入）master cargo tv 红——488 T11
+- **P485-2（✅ 已清偿,2026-08-31,Plan 495）master cargo tv 红——488 T11
   分诊已归属（2026-08-30）**：`tests::aavm2_m4::test_aavm2_m4_codegen_corpus`
   （b13_is_enum.at 失配）在 master @3a4aacf19 即红。**分诊定案=双后端
   `.line` 发射真分叉**（非 corpus 期望过期——该测试是 rust 编译器 vs
@@ -292,6 +292,22 @@
   aavm 侧（AUTO_LIB_FILES_V2 的 .at 编译器）逐语句无对齐去重。修复=对齐
   aavm lib 的 .line 去重语义（或反向），转独立专项。488 分支 codegen 触碰
   仅两行 intrinsic 表注册（dnd_start，与 .line 无关，实证红先于 488 存在）。
+  〔Plan 495 清偿注记：实测**分诊左右标注颠倒**——rust 侧发射 `.line 10/11`
+  （parser `parse_expr_or_body` 给单表达式 is arm 记行号经 `Stmt::Block`
+  发射），aavm 侧缺失（`cg_is_arm_body` 裸 `cg_expr` 不发）；且 rust 的
+  同线去重（`current_source_line`）aavm 确无对应状态机。修复（定案=以
+  rust 为规范）：`auto/lib/codegen.at` 增 `cur_line` 状态+`cg_line` helper
+  （镜像 emit_source_line）+ arm 体行发射；b14_line_dedup.at 回归钉。
+  cargo tv aavm2 全系绿（b13 转绿）；证据表见 plans/495 §执行证据。〕
+
+### P495（2026-08-31，Plan 495 .line 对齐全档复跑观察登记）
+
+- **P495-1（出计划外观察，非本计划引入）cargo tv 档 2 cookbook 既有红**：
+  `cb_asynchronous_channel`（输出空 vs 期望两行 Title）/`cb_devtools_log_error`
+  ——master 默认 checkout 单跑同红（双证）、失败形态一致，与 .line 改动
+  无关（本计划零 Rust 源码改动）。与 P487-2 同族「非默认档门禁盲区」：
+  挂 `--features test-vm-files` 档，`cargo t`/`tf` 看不见。aavm2 全系
+  （m1-m5 corpus）在 tv 档全绿。待独立分诊（疑似近期合入破坏或环境依赖）。
 
 ### P488（2026-08-30，Plan 488 OLE 拖放双向复审登记）
 

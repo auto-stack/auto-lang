@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-495
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-line-emit-divergence
 author: [zhaopuming]
 created_at: 2026-08-31
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/vm, aavm]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -96,22 +96,84 @@ total_steps: 5
 1. **复现+证据表**：跑 `cargo tv -p auto-lang aavm2_m4`，提取双端 `.line`
    序列并排差异表回写本文件。
    验证：差异表成文（差异行=去重缺失处）。
+   [✅ 已完成] 红复现（worktree）+ 证据表回写「执行证据」节；实测方向与分诊相反：rust 发 `.line 10/11`、aavm 缺（left=stdout=aavm 断言方向澄清）；根因两级=arm 体行号发射缺失 + 同线去重状态机缺失。
 2. **规范定案**：按证据表 + corpus 事实基准定案（预期=同线去重），一行
    裁定记入本文件。
    验证：裁定行成文。
+   [✅ 已完成] 裁定回写「T2 规范定案」节：以 rust 为规范=语句边界发射+arm 体行发射+相邻同线去重；待澄清①不触发。
 3. **aavm 侧修复**：AUTO_LIB_FILES_V2 对应 .at 源码的 emit 段补同线去重
    状态（文件定位以 `grep -rn "line" crates/aavm`/语料清单为准）。
    验证：`cargo tv -p auto-lang aavm2_m4`（b13 转绿）。
+   [✅ 已完成] 修复落 `auto/lib/codegen.at` 四处：CG 增 `cur_line` 字段+构造初始化、新增 `cg_line` helper（镜像宿主 emit_source_line：`ln>0 && ln!=cur_line` 才发）、`cg_stmts` 改走 cg_line（同线去重）、`cg_is_arm_body` 非块体路径补 arm 体首 token 行发射（镜像 parse_expr_or_body 的 stmt_line）；`cargo tv -p auto-lang aavm2_m4` 2 测全绿（b13 corpus 转绿）。
 4. **回归钉**：新增最小 fixture（同线双语句 → `.line` 单发断言，挂 aavm2
    对拍套件同族）。
    验证：`cargo tv -p auto-lang aavm2_m4`（新钉绿）。
+   [✅ 已完成] 新增 `crates/auto-lang/test/vm/aavm2/corpus_m4/b14_line_dedup.at`（同线双 let + is 单表达式 arm，对拍逐行相等即断言）；实测形态：`.line 10` 同线双语句单发（去重锁）、`.line 13/14` arm 体行发射锁；corpus 2 测全绿。
 5. **全档+清偿回写**：`cargo tv` 全量绿；KNOWN-DEBT P485-2 标已清偿；
    状态翻 execution_done。
    验证：`cargo tv && cargo check -p auto-lang`。
+   [✅ 已完成] `cargo tv` 全档（no-fail-fast）3443 测 3441 绿——仅余 2 红
+   均为 master 既有 cookbook 红（cb_asynchronous_channel/cb_devtools_log_error，
+   master 单跑双证同红、与 .line 改动无关，已登记 KNOWN-DEBT P495-1）；
+   aavm2 全系（m1-m5）绿；`cargo check -p auto-lang` 过（160 警告=既有
+   基线，本计划零 Rust 改动零新增）；`cargo t` 默认档 3302/3302 绿；
+   KNOWN-DEBT P485-2 标已清偿（含分诊左右颠倒修正注记）。
 
 ## 复审记录
 
 （/auto-plan:review 填写）
+
+## 执行证据
+
+### T1 证据表：双端 `.line` 发射序列并排（b13_is_enum.at，worktree 现场提取 2026-08-31）
+
+> **断言方向澄清**：对拍 `assert_eq!(stdout, expected)`（aavm2_m4.rs:179）
+> 中 **left=stdout=aavm**、**right=expected=rust**——分诊原文的"rust 去重不
+> 重发 / aavm 逐语句发射"左右标注颠倒，实测方向相反：**rust 发射
+> `.line 10/11`，aavm 缺失**。
+
+b13 源（arm 体在行 10/11）：
+
+```
+ 8    let v = Val.VI(42)
+ 9    is v {
+10        Val.VI(x) -> print(x)
+11        else -> print(0)
+12    }
+```
+
+双端字节码并排（is arm 区段）：
+
+| 偏移 | rust 侧（expected，实测有 .line） | aavm 侧（stdout，实测缺） | 差异 |
+|---|---|---|---|
+| 0040 | `store.local 2` | `store.local 2` | 同 |
+| — | **`.line 10`** | （无） | **rust 发 / aavm 缺 ← 分叉①** |
+| 0042/0045 | `load.loc.2 2` … | `load.loc.2 2` … | 同（偏移差 3B=.line 尺寸） |
+| — | **`.line 11`** | （无） | **rust 发 / aavm 缺 ← 分叉②** |
+| … | `const.i32 0; call.nat` | `const.i32 0; call.nat` | 同 |
+
+根因两级（均 aavm 侧滞后于 rust 事实基准）：
+
+1. **is 单表达式 arm 体行号**：rust `parser.rs:7650 parse_expr_or_body`
+   给单表达式 arm 记 `stmt_line`（arm 体首 token 行）入
+   `body.source_lines`，codegen 经 `Stmt::Block`（codegen.rs:3790）→
+   Block 语句循环 `emit_source_line`（codegen.rs:1119-1122）发射；
+   aavm `cg_is_arm_body`（codegen.at:1039）对非块体直接 `cg_expr`，
+   **不发 `.line`**——b13 红的直接原因。
+2. **同线去重状态机**：rust `emit_source_line`（codegen.rs:10055）带
+   `current_source_line` 状态（`line > 0 && line != current` 才发）；
+   aavm `cg_stmts`（codegen.at:1383）逐语句**无条件**发射——当前
+   corpus 无同线双语句语料故未红，属潜在分叉（与分诊"去重"线索对
+   应，但方向是 aavm 需**补**去重，而非 rust 去掉）。
+
+### T2 规范定案（裁定）
+
+**裁定：以 rust 侧为规范。** `.line` 发射语义 = ①语句边界发射（fn 体/
+内联体每语句，首 token 行）；②is 单表达式/单跳转 arm 体按 arm 体首
+token 行发射（块体 arm 归①）；③相邻同线去重状态机
+（`line > 0 && line != current_source_line`）。依据：corpus 其余文件在
+rust 语义下全绿 = 事实基准；分诊预期方向（rust 为准）确认，待澄清①
+（反向定案）不触发。
 
 ## 待澄清事项
 
