@@ -28,13 +28,9 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
         gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
         legendItems List = []
         bands List = []
-        tipXs List = []
-        tipYs List = []
         tipTitles List = []
         tipBodies List = []
         hovered str = "false"
-        tipX str = ""
-        tipY str = ""
         tipTitle str = ""
         tipBody str = ""
     }
@@ -136,8 +132,10 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             .segs = outSegs
             .legendItems = outLegend
 
-            // ---- monotone 变体(d3 curveMonotoneX,切线取相邻割线均值,
-            // 异号归零防过冲,端点取单侧;索引值先守卫提取再算术) ----
+            // ---- monotone 变体(d3 curveMonotoneX/Fritsch-Carlson 标准形:
+            // 切线表 m[i](端点取单侧割线,内部取相邻割线均值,异号归零),
+            // 逐段 i→i+1 发射,控制点 = 端点 ± h/3·m。484 复审修复:原实现
+            // 按"当前点发射出向段"在末点越界,产生水平尾段) ----
             var outSegsM List = []
             var kM = 0
             for f in .fields {
@@ -147,55 +145,52 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     var yvM float = bottom - vfM / domainf * (bottom - plotTop)
                     ysM.push(yvM)
                 }
-                var dstrM = ""
-                var iM = 0
-                for d in .data {
-                    var xfM float = left + iM * stepf
-                    var yfM = ysM[iM]
-                    if iM > 0 {
-                        var hM float = stepf
-                        var ycur = ysM[iM]
-                        var yprev = ysM[iM - 1]
-                        var yprev2 = yprev
-                        if iM > 1 {
-                            yprev2 = ysM[iM - 2]
-                        }
-                        var ynext = yfM
-                        if iM < n - 1 {
-                            ynext = ysM[iM + 1]
-                        }
-                        var dm float = (ycur - yprev) / hM
-                        var pm float = dm
-                        if iM > 1 {
-                            pm = (ycur - yprev2) / (2.0 * hM)
-                        }
-                        var pp float = dm
-                        if iM < n - 1 {
-                            pp = (ynext - ycur) / hM
-                        }
-                        var m0 float = (pm + pp) / 2.0
-                        if dm * pp <= 0.0 {
-                            m0 = 0.0
-                        }
-                        var pm1 float = dm
-                        var pm1v float = (ynext - yprev) / (2.0 * hM)
-                        if iM < n - 1 {
-                            pm1 = pm1v
-                        }
-                        var mn float = (dm + pm1) / 2.0
-                        if dm * pm1 <= 0.0 {
-                            mn = 0.0
-                        }
-                        var c1x float = xfM - hM / 3.0
-                        var c1y float = yfM - m0 * hM / 3.0
-                        var c2x float = xfM + hM / 3.0
-                        var c2y float = yfM + mn * hM / 3.0
-                        var xn float = xfM + hM
-                        dstrM = dstrM + f" C ${c1x} ${c1y} ${c2x} ${c2y} ${xn} ${ynext}"
-                    } else {
-                        dstrM = f"M ${xfM} ${yfM}"
+                // 割线表 delta[i] = (y[i+1]-y[i])/h
+                var deltas List = []
+                var di = 0
+                while di < n - 1 {
+                    var yA = ysM[di]
+                    var yB = ysM[di + 1]
+                    deltas.push((yB - yA) / stepf)
+                    di = di + 1
+                }
+                // 切线表 m[i]
+                var ms List = []
+                var zi = 0
+                for d in .data { ms.push(0.0) }
+                if n > 1 {
+                    var z0 = deltas[0]
+                    ms[0] = z0
+                    var zN = deltas[n - 2]
+                    ms[n - 1] = zN
+                }
+                var mi = 1
+                while mi < n - 1 {
+                    var dA = deltas[mi - 1]
+                    var dB = deltas[mi]
+                    var mm float = (dA + dB) / 2.0
+                    if dA * dB <= 0.0 {
+                        mm = 0.0
                     }
-                    iM = iM + 1
+                    ms[mi] = mm
+                    mi = mi + 1
+                }
+                // 逐段发射:i → i+1,控制点 = 端点 ± h/3·m
+                var dstrM = f"M ${left} ${ysM[0]}"
+                var si = 0
+                while si < n - 1 {
+                    var x0 float = left + si * stepf
+                    var y0 = ysM[si]
+                    var x1 float = left + (si + 1) * stepf
+                    var y1 = ysM[si + 1]
+                    var m0 = ms[si]
+                    var m1 = ms[si + 1]
+                    var c1x float = x0 + stepf / 3.0
+                    var c1y float = y0 + m0 * stepf / 3.0
+                    var c2x float = x1 - stepf / 3.0
+                    var c2y float = y1 - m1 * stepf / 3.0
+                    dstrM = dstrM + f" C ${c1x} ${c1y} ${c2x} ${c2y} ${x1} ${y1}"
+                    si = si + 1
                 }
                 var ciM int = kM
                 if ciM >= ccount {
@@ -236,14 +231,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             var outTipBody List = []
             var i3 = 0
             for d in .data {
-                outBands.push({ i: i3, s: f"w-[{slot}px] h-full" })
-                var cx float = left + i3 * slot + slot / 2.0
-                var tx float = cx
-                if tx > 380.0 {
-                    tx = cx - 160.0
-                }
-                outTipX.push(f"${tx}")
-                outTipY.push("28")
+                outBands.push({ i: i3, s: "h-full flex-1" })
                 outTipTitle.push(d[iname])
                 var body = ""
                 var k2 = 0
@@ -264,16 +252,12 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 i3 = i3 + 1
             }
             .bands = outBands
-            .tipXs = outTipX
-            .tipYs = outTipY
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
         }
 
         .Hover(i) -> {
             .hovered = "true"
-            .tipX = .tipXs[i]
-            .tipY = .tipYs[i]
             .tipTitle = .tipTitles[i]
             .tipBody = .tipBodies[i]
         }
@@ -286,7 +270,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 if .axis == "auto" {
                     col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
                         for t in .ticks {
-                            text t["label"] { style: "text-[10px] text-muted-foreground" }
+                            text (text: t["label"]) { style: "text-[10px] text-muted-foreground" }
                         }
                     }
                 }
@@ -317,7 +301,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 }
                             }
                             if .hovered == "true" {
-                                col (style: f"absolute top-[{.tipY}px] left-[{.tipX}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                                col (style: "absolute top-[28px] right-[60px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
                                     text .tipTitle { style: "text-xs font-semibold text-foreground" }
                                     text .tipBody { style: "text-xs text-muted-foreground whitespace-pre-line" }
                                 }
@@ -335,8 +319,10 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 row (style: "gap-4 pt-1 px-2") {
                     for li in .legendItems {
                         row (key: li["c"], style: "items-center gap-1") {
-                            span (key: li["c"], style: li["s"]) {}
-                            text li["name"] { style: "text-xs text-muted-foreground" }
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: li["c"]) {}
+                            }
+                            text (text: li["name"]) { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }
