@@ -7893,6 +7893,8 @@ fn projection_win_entry(
         ("title", auto_val::Value::Str(v.title.clone().into())),
         ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
         ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        // Plan 486 v1.3：App 条目恒空串（native 分支判据统一）。
+        ("native", auto_val::Value::Str(String::new().into())),
         ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
         ("icon", auto_val::Value::Str(icon.into())),
     ]))
@@ -7935,7 +7937,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     // App wid 隔离，协议 §字段表）；仅 Docked 态投影（瞬时态不进任务栏）；
     // title 取缓存、icon 占位；focused 恒空——native 焦点域在 OS 层，WM
     // 不代管（473 apply_layout 同裁定）。不进 __wm_running（条目本身即
-    // 运行态）。指纹并入窗段同型 "{wid}:{focused},"。
+    // 运行态）。指纹并入窗段同型 "{wid}:{focused},"。App 条目的 native
+    // 字段恒空串（shell.at 分支判据统一，避免缺失字段访问）。
     for (id, slot) in &host.wm.native_slots {
         if slot.state != crate::ui::native_dock::SlotState::Docked {
             continue;
@@ -17254,6 +17257,66 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+    }
+
+    /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
+    /// （App 条目 native 空串 + native 条目五字段集）→ view if 分支过编译
+    /// 语法门 + NativeFocus/NativeClose 消息臂写总线记录（wid 直传
+    /// "N<slot>"，宿主 parse 剥前缀归一——动词派发全链接线）。
+    #[test]
+    fn native_dock_shell_at_entries_and_verbs() {
+        let comp = crate::ui::shell::build_shell_component().expect("shell.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(id);
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let _ = app.component.write_state_vec(
+                "__wm_wins",
+                vec![
+                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                        ("wid", auto_val::Value::Str("1".into())),
+                        ("title", auto_val::Value::Str("Alpha".into())),
+                        ("focused", auto_val::Value::Str("1".into())),
+                        ("workspace", auto_val::Value::Str("0".into())),
+                        ("app", auto_val::Value::Str("".into())),
+                        ("icon", auto_val::Value::Str("app-window".into())),
+                        ("native", auto_val::Value::Str("".into())),
+                    ])),
+                    auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                        ("wid", auto_val::Value::Str("N3".into())),
+                        ("title", auto_val::Value::Str("记事本".into())),
+                        ("focused", auto_val::Value::Str("".into())),
+                        ("native", auto_val::Value::Str("1".into())),
+                        ("icon", auto_val::Value::Str("app-window".into())),
+                    ])),
+                ],
+            );
+        }
+        let app = ds.apps.get_mut(&id).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NativeFocus", &[auto_val::Value::str("N3")])
+            .expect("NativeFocus handler");
+        // 总线单记录覆盖语义（一 update 周期一事件）——逐事件排空断言。
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::FocusNative(3)],
+            "native 条目点击 → focus_native（N 前缀归一）"
+        );
+        let app = ds.apps.get_mut(&id).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("NativeClose", &[auto_val::Value::str("N3")])
+            .expect("NativeClose handler");
+        let cmds = ds.drain_desktop_commands();
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::CloseNative(3)],
+            "native 条目 × → close_native（N 前缀归一）"
+        );
     }
 
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表

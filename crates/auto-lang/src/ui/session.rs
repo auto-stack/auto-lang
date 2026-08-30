@@ -1069,9 +1069,19 @@ impl DesktopCommand {
                     }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
-                    // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型）。
-                    "focus_native" => arg.parse::<u64>().ok().map(DesktopCommand::FocusNative),
-                    "close_native" => arg.parse::<u64>().ok().map(DesktopCommand::CloseNative),
+                    // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型；
+                    // arg 容收 "N<slot>" wid 形态——shell 直传条目 wid，宿主剥
+                    // N 前缀取 slot id，纯数字直写亦合法）。
+                    "focus_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::FocusNative),
+                    "close_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::CloseNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
@@ -3199,6 +3209,15 @@ mod tests {
         assert!(DesktopCommand::parse_records("dock_native\u{1f}").is_empty());
         assert!(DesktopCommand::parse_records("focus_native\u{1f}xyz").is_empty());
         assert!(DesktopCommand::parse_records("close_native\u{1f}").is_empty());
+        // v1.3：shell 直传 wid "N<slot>" 形态——宿主剥前缀归一。
+        assert_eq!(
+            DesktopCommand::parse_records("focus_native\u{1f}N3"),
+            vec![DesktopCommand::FocusNative(3)]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("close_native\u{1f}N12"),
+            vec![DesktopCommand::CloseNative(12)]
+        );
     }
 
     #[test]
