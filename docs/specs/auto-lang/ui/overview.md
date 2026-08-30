@@ -122,6 +122,17 @@ widget Counter {
   operation 对同 Id 的全部 focusable 一次全置焦 ⇒ 多 input 视图双焦点+
   键盘双投递，上游 auto-musk 011）。焦点跨重建由 iced Tree 槽位 diff 保持
   （Plan 047 on_submit 语义不受影响）。
+- **VM input 焦点环遍历（Plan 491，483 登记表之上的扩展）**：未捕获 Tab/
+  Shift+Tab 由 `keyboard_event_message` 按 `modifiers.shift()` 分派
+  `__focus_next_input`/`__focus_prev_input`（Named 臂无修饰前缀——Shift+Tab
+  与 Tab 同命中 "Tab"，必须在此分流）；update 遍历臂走两段链
+  `operate(FindFocusedInput).then(focus_traverse→内建 focus)`——探针经
+  Operation 遍历读**实际**持焦者（含点击直聚；无聚焦恒出 `Some(None)`，
+  异于内建 `find_focused` 的 `Outcome::None` 断链），`focus_traverse` 按登记
+  表 DFS 序回环求址（不在表内/无聚焦→首项，空表 None）。**登记表空（纯
+  textarea 视图，ash-gui/028）回落 057 `__focus_prompt` textarea 优先链**。
+  机制级 p491 七测（iced_test）；真键盘实机复验在 P483-3 真人清单（环境
+  OS 键盘注入对 winit 不可达）。
 - VM 组件三缺口（449 实测）：回调 props 退化（组件一律无 props 读 store 规避）、快照组件子树不可见、
   片段参数化条件不求值——修好前 041 组件化受限。
 - 446 批五（U2–U6）在 worktree 待 merge；463 合入后需实测内存给 386 提供数据。

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-491
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-tab-focus-traversal
 author: [zhaopuming]
 created_at: 2026-08-30
