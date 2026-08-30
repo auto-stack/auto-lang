@@ -44,3 +44,136 @@ impl DndPayload {
 
 // Win32/COM 适配：cfg(windows) × native-dnd feature 双门控（Plan 488 步骤 3+
 // 填充：IDataObject/IDropSource/IDropTarget 实现 + STA 线程）。
+#[cfg(all(windows, feature = "native-dnd"))]
+pub mod win32 {
+    use windows::core::{implement, w};
+    use windows::Win32::Foundation::{POINTL, DRAGDROP_E_ALREADYREGISTERED};
+    use windows::Win32::System::Com::IDataObject;
+    use windows::Win32::System::Ole::{
+        DROPEFFECT, DROPEFFECT_NONE, IDropTarget, IDropTarget_Impl,
+    };
+    use windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS;
+
+    /// 步骤 2 共存 spike 的最小放置目标：全方法 no-op（探针只验注册语义，
+    /// 不消费数据——真实现见步骤 5）。
+    #[implement(IDropTarget)]
+    pub struct SpikeDropTarget;
+
+    // windows 0.58：implement 宏的 vtbl 委托要求 trait 实现挂在生成的
+    // `<T>_Impl` 包装类型上（字段经 Deref 透传；wry 0.55 同型用法）。
+    #[allow(non_snake_case)]
+    impl IDropTarget_Impl for SpikeDropTarget_Impl {
+        fn DragEnter(
+            &self,
+            _pdataobj: Option<&IDataObject>,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            unsafe { *pdweffect = DROPEFFECT_NONE };
+            Ok(())
+        }
+
+        fn DragOver(
+            &self,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            unsafe { *pdweffect = DROPEFFECT_NONE };
+            Ok(())
+        }
+
+        fn DragLeave(&self) -> windows::core::Result<()> {
+            Ok(())
+        }
+
+        fn Drop(
+            &self,
+            _pdataobj: Option<&IDataObject>,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            unsafe { *pdweffect = DROPEFFECT_NONE };
+            Ok(())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows::Win32::Foundation::{HINSTANCE, HWND, LRESULT, WPARAM};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::System::Ole::{
+            OleInitialize, OleUninitialize, RegisterDragDrop, RevokeDragDrop,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyWindow, RegisterClassW, WINDOW_EX_STYLE,
+            WINDOW_STYLE, WNDCLASSW, WS_OVERLAPPED,
+        };
+
+        unsafe extern "system" fn spike_wndproc(
+            hwnd: HWND,
+            msg: u32,
+            wparam: WPARAM,
+            lparam: windows::Win32::Foundation::LPARAM,
+        ) -> LRESULT {
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+
+        /// 步骤 2 spike（待澄清①）：自有隐藏窗口上的注册语义探针——
+        /// ① Register→S_OK；② 同 HWND 二次注册→DRAGDROP_E_ALREADYREGISTERED
+        /// （单 HWND 单目标，OLE 规则）；③ Revoke→再注册→S_OK。
+        /// 推论：winit 0.30 宿主 HWND 已被其自带 IDropTarget 占用时，
+        /// 我方注册前必须先 Revoke（见计划待澄清①结论）。
+        #[test]
+        fn spike_register_revoke_roundtrip() {
+            unsafe {
+                // 测试线程独立 STA（S_FALSE = 已初始化，同样需平衡 Uninitialize）。
+                let _ = OleInitialize(None);
+
+                let hmodule = GetModuleHandleW(None).expect("GetModuleHandleW");
+                let wc = WNDCLASSW {
+                    lpfnWndProc: Some(spike_wndproc),
+                    hInstance: HINSTANCE(hmodule.0),
+                    lpszClassName: w!("auto_lang_dnd_spike"),
+                    ..Default::default()
+                };
+                assert_ne!(RegisterClassW(&wc), 0, "RegisterClassW failed");
+
+                // 隐藏窗口即可——探针只验注册 API，不接收真实拖放。
+                let hwnd = CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    w!("auto_lang_dnd_spike"),
+                    w!("dnd_spike"),
+                    WINDOW_STYLE(WS_OVERLAPPED.0),
+                    0,
+                    0,
+                    100,
+                    50,
+                    None,
+                    None,
+                    Some(&HINSTANCE(hmodule.0)),
+                    None,
+                )
+                .expect("CreateWindowExW failed");
+
+                let target: IDropTarget = SpikeDropTarget.into();
+                RegisterDragDrop(hwnd, &target).expect("first RegisterDragDrop");
+
+                // 单 HWND 单目标：二次注册必须被拒（winit 目标在位时同型）。
+                let second = RegisterDragDrop(hwnd, &target);
+                assert_eq!(second.unwrap_err().code(), DRAGDROP_E_ALREADYREGISTERED);
+
+                // Revoke 后可换目标重注——winit 目标的替换路径。
+                RevokeDragDrop(hwnd).expect("RevokeDragDrop");
+                RegisterDragDrop(hwnd, &target).expect("re-RegisterDragDrop");
+                RevokeDragDrop(hwnd).expect("final RevokeDragDrop");
+
+                let _ = DestroyWindow(hwnd);
+                OleUninitialize();
+            }
+        }
+    }
+}

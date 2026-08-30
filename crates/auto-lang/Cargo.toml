@@ -79,7 +79,9 @@ native-clipboard = ["dep:windows", "dep:image"]
 # FILECONTENTS）。Win32/COM 调用仅出现在 ui/native_dnd.rs，与 native-dock
 # 同型双门控（optional dep + cfg(windows)）；不隐含 ui-iced（G5：未开
 # feature 时 natives 降级返 false）。
-native-dnd = ["dep:windows"]
+# windows-core 直接依赖：#[implement] 宏展开引用 ::windows_core:: 绝对路径，
+# 传递依赖不可见（488 步骤 2 spike 发现）。
+native-dnd = ["dep:windows", "dep:windows-core"]
 # Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
 # test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]
@@ -218,10 +220,21 @@ windows = { version = "0.58", optional = true, features = [
     # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
     "Win32_UI_Input_KeyboardAndMouse",
     # Plan 488: OLE 拖放——Com(OLE 基础/DoDragDrop/OleInitialize)+
-    # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)。
+    # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)+
+    # implement(#[implement] 宏与 *_Impl trait 的 include 门)+
+    # SystemServices(MODIFIERKEYS_FLAGS——DragEnter/Over/Drop 签名)+
+    # Graphics_Gdi+Com_StructuredStorage(IDataObject_Impl/FORMATETC 全签名的
+    # cfg 门)。后三组为 implement 宏的传递性必需（485 T9 增 Security 同型）。
     "Win32_System_Com",
     "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com_StructuredStorage",
+    "implement",
 ] }
+# Plan 488: #[implement] 宏的展开物引用 ::windows_core:: 绝对路径——需直接
+# 依赖（版本与 windows 0.58 配套）。仅在 Windows 目标编译。
+windows-core = { version = "0.58", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
