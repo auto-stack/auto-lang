@@ -8960,6 +8960,17 @@ fn compare_pngs(
                         eprintln!("[session] shell load failed (desktop continues): {err}")
                     }
                 }
+                // Plan 496 M5：桌面本体面（第五面，常驻不召唤——与 overlay
+                // 懒挂载不同，boot 期装载）。装载失败不阻断桌面（无图标
+                // 桌面退化，shell 同型降级）。
+                match crate::ui::shell::build_desktop_surface_component() {
+                    Ok(surface_comp) => {
+                        session.desktop.desktop_app = Some(session.allocate_app(surface_comp));
+                    }
+                    Err(err) => {
+                        eprintln!("[session] desktop surface load failed (desktop continues): {err}")
+                    }
+                }
                 // Plan 463 T7：应用注册表 —— 扫描 apps_dir 装配 LaunchApp
                 // 解析器。boot 不过滤 render：声明 `render:"vue"` 的 App 多数
                 // vm 兼容（011-calculator 即桌面 demo 常客），声明的 render
@@ -11540,6 +11551,27 @@ fn compare_pngs(
                 .into();
             }
             let mut layers: Vec<iced::Element<'_, DM>> = Vec::new();
+            // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
+            // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
+            // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
+            // catch_unwind 视图边界（453 T6）。
+            if state.desktop.desktop_app.is_some() {
+                let surface_app = state.desktop.desktop_app.expect("surface checked");
+                let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
+                let surface_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] desktop surface view panicked (plan-453 T6 boundary): {payload:?}"
+                        );
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(surface_client.map(move |m| DM::App(surface_app, m)));
+            }
             for &wid in &host.wm.z_order {
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。

@@ -256,6 +256,10 @@ pub struct DesktopState {
     /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
     /// 懒挂载（第四枚 overlay 槽）；独立模式恒 None。
     pub settings_app: Option<AppId>,
+    /// Plan 496 M5：桌面本体面（assets/desktop.at 图标网格面）的 AppId。
+    /// boot 期常驻装载（非 overlay 懒挂载——面常驻不召唤），装配层 Stack
+    /// 先于虚拟窗推层（463 桌面层 z 槽消费）；独立模式恒 None。
+    pub desktop_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -295,6 +299,7 @@ impl DesktopState {
             switcher_app: None,
             notification_app: None,
             settings_app: None,
+            desktop_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -1193,6 +1198,9 @@ pub struct HostCtx {
     pub notification_fields: ShellFields,
     /// Plan 487 M4：设置面板 overlay 同型垫片（第四枚 overlay 槽）。
     pub settings_fields: ShellFields,
+    /// Plan 496 M5：桌面本体面同型垫片（常驻面，非 overlay——垫片语义
+    /// 与 overlay 槽相同：windowless 特权 App 的窗口级字段挂靠点）。
+    pub desktop_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -1412,6 +1420,7 @@ impl DesktopSession {
             switcher_fields: ShellFields::default(),
             notification_fields: ShellFields::default(),
             settings_fields: ShellFields::default(),
+            desktop_fields: ShellFields::default(),
         });
     }
 
@@ -2058,11 +2067,15 @@ impl DesktopSession {
             let is_notification = self.desktop.notification_app == Some(id);
             // Plan 487 M4：设置面板 overlay（windowless 拆借第五路）。
             let is_settings = self.desktop.settings_app == Some(id);
+            // Plan 496 M5：桌面本体面（windowless 拆借第六路；常驻面，
+            // shell/overlay 同型垫片承接）。
+            let is_desktop = self.desktop.desktop_app == Some(id);
             if !is_shell
                 && !is_launcher
                 && !is_switcher
                 && !is_notification
                 && !is_settings
+                && !is_desktop
             {
                 return None;
             }
@@ -2097,12 +2110,19 @@ impl DesktopSession {
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_settings {
                 (
                     &mut host.settings_fields.window_size,
                     &mut host.settings_fields.pending_window_resize,
                     &mut host.settings_fields.initial_resize_done,
                     &mut host.settings_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.desktop_fields.window_size,
+                    &mut host.desktop_fields.pending_window_resize,
+                    &mut host.desktop_fields.initial_resize_done,
+                    &mut host.desktop_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -2355,6 +2375,27 @@ impl DesktopSession {
             pending_window_resize: &host.settings_fields.pending_window_resize,
             initial_resize_done: &host.settings_fields.initial_resize_done,
             initial_focus_done: &host.settings_fields.initial_focus_done,
+            vwin_rect: None,
+        })
+    }
+
+    /// Plan 496 M5：桌面本体面 App 的拆借视图（view 装配的桌面层 z 槽
+    /// 专用；无虚拟窗——垫片语义与 [`Self::split_ref_settings`] 相同，
+    /// 字段走 [`HostCtx::desktop_fields`]）。
+    pub fn split_ref_desktop(&self) -> Option<SessionViewRef<'_>> {
+        let surface = self.desktop.desktop_app?;
+        let app = self.apps.get(&surface)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: surface,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.desktop_fields.window_size,
+            pending_window_resize: &host.desktop_fields.pending_window_resize,
+            initial_resize_done: &host.desktop_fields.initial_resize_done,
+            initial_focus_done: &host.desktop_fields.initial_focus_done,
             vwin_rect: None,
         })
     }
