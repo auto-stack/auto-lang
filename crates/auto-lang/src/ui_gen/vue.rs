@@ -9117,9 +9117,13 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // === Button ===
             "button" => {
                 // Handle variant prop (default, secondary, destructive, outline, ghost, link)
+                // `submit` 是行为语义（form submit 布线，extract 层消费），
+                // 非视觉变体——不下发 shadcn Button（其 variant 表无此值）。
                 if let Some(value) = props.get("variant") {
                     if let Some(variant) = self.extract_string_value(value) {
-                        attrs.push(format!("variant=\"{}\"", variant));
+                        if variant != "submit" {
+                            attrs.push(format!("variant=\"{}\"", variant));
+                        }
                     } else if let AuraPropValue::Expr(e) = value {
                         if let Ok(expr_vue) = self.expr_to_vue_bound_value(e) {
                             attrs.push(format!(":variant=\"{}\"", expr_vue));
@@ -15236,6 +15240,44 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)"#,
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    /// Form submit 布线（extract 层 `variant: "submit"` → input onenter）
+    /// 在 vue 轨的落地：未声明 onenter 的 input 全部得到
+    /// `@keyup.enter="Submit"`；且 `submit` 是行为语义不是视觉变体——
+    /// 不得作为 variant 属性下发给 shadcn Button。
+    #[test]
+    fn test_form_submit_wiring_emits_keyup_enter() {
+        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+widget LoginPage {
+    msg { Submit, UsernameChanged, PasswordChanged }
+    model {
+        var username str = ""
+        var password str = ""
+    }
+    view {
+        col {
+            input { value: .username, oninput: .UsernameChanged, placeholder: "Enter username" }
+            input { value: .password, oninput: .PasswordChanged, password: true, placeholder: "Enter password" }
+            button { onclick: .Submit, variant: "submit", text "Login" }
+        }
+    }
+    on {
+        .Submit -> {}
+        .UsernameChanged -> {}
+        .PasswordChanged -> {}
+    }
+}
+"#);
+        assert_eq!(
+            sfc.matches("@keyup.enter=\"Submit\"").count(),
+            2,
+            "both inputs must emit keyup.enter→Submit:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("variant=\"submit\""),
+            "submit is behavioral, not a visual variant — must not reach shadcn Button:\n{sfc}"
+        );
+    }
 
     /// Plan 421: code_editor oncursor/oncontextmenu — the scaffold emits
     /// `cursor` with `{line, column}` (1-based) and `contextmenu` with
