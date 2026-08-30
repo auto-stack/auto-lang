@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-493
-status: reviewed
+status: archived
 feature_name: mention-native textarea——mentions 能力声明与双端实现
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -238,24 +238,24 @@ attr 透传过滤追加 `mentions`/`mention_class`（执行期追加 `height`—
 
 ## 执行步骤
 
-- [ ] **T1** 段计算红测。
+- [x] **T1** 段计算红测。
       [✅ 已完成] 红态实证：4×E0425 cannot find function `mention_segments`。
-- [ ] **T2** 段计算实现。验证：`cargo test -p auto-lang --features ui-iced
+- [x] **T2** 段计算实现。验证：`cargo test -p auto-lang --features ui-iced
       --lib plan493_` 绿。
       [✅ 已完成] 4/4 绿（commit f632d0817）。注：aura_view_builder 在
       `ui-interpreter`（⊆ui-iced）feature 后，命令须带 --features ui-iced。
-- [ ] **T3** mentions 受限解析接线 + 三集成测。
+- [x] **T3** mentions 受限解析接线 + 三集成测。
       [✅ 已完成] 7/7 绿；textarea(9)/highlight(10) 家族回归绿（commit
       a9a90297c）。
-- [ ] **T4** VM `SpanKind::Mention` + parse 臂 + 色值；kind 流通/覆盖契约
+- [x] **T4** VM `SpanKind::Mention` + parse 臂 + 色值；kind 流通/覆盖契约
       单测。
       [✅ 已完成] 测试绿；renderer 家族 stash 前后失败集一致（6-7 预存
       污染，0 新增；commit fea25c618）。
-- [ ] **T5** vue mentions 发射分支（兄弟对+类串推导+helper 一次发射+
+- [x] **T5** vue mentions 发射分支（兄弟对+类串推导+helper 一次发射+
       attr 过滤），快照测两形态+推导单测。
       [✅ 已完成] 11/11 绿；ui_gen:: 全模块 708 绿（commit 995c98058 +
       2dc4975ac 保底着色/TS 注解续修）。
-- [ ] **T6** musk 迁移 + 双轨门禁。
+- [x] **T6** musk 迁移 + 双轨门禁。
       [✅ 已完成] 勘误：musk 活跃前端=gen 轨（web/ 已冻结退役），门禁实跑
       =worktree auto.exe `auto build`（vue-tsc+vite 绿）+ gen `npx vitest
       run` 23 绿 + style-parity 0 新增红（12 条 border-t/b 为 051 登记基线
@@ -263,7 +263,7 @@ attr 透传过滤追加 `mentions`/`mention_class`（执行期追加 `height`—
       alive reds=0（worktree 工具链）。生成物核验：backdrop 兄弟对类集与
       迁移前等价（musk commit 969b922）。环境注记：vendor/@autodown/engine
       dist 为 gitignored 本地产物，新 worktree 需自主复制。
-- [ ] **T7** 实机验收+收尾。
+- [x] **T7** 实机验收+收尾。
       [✅ 已完成·活体部分受阻如实登记] 自动化全绿：--lib 全量 4090 过/7
       败（stash 差分=6 renderer 污染+1 stage3 flake，均先在零新增）；017-
       chat VM 冒烟 A-E 绿+playwright 9/9（worktree release 二进制）。musk
