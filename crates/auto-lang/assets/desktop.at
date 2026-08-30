@@ -1,0 +1,133 @@
+// 桌面本体 pack（特权 .at App —— 宿主进程内编译装载，不进 examples/ui；
+// Plan 496 M5 = shell-track 第五面：桌面图标网格面，常驻不召唤——挂 463
+// 预留的桌面层 z 槽（壁纸之上、App 虚拟窗口之下；宿主装配层 Stack 先于
+// 虚拟窗推层即得底序）。
+//
+// 接缝（投影协议 v1.4 内字段扩展——仅字段不增动词，schema/
+// projection-protocol-v1.md）：
+//   出：`__desktop_cmd`（复用既有动词词表——activate（472 两臂：未运行→
+//       启动 / 运行中→聚焦）+ open_settings（v1.4 齿轮同款——右键菜单
+//       「更换壁纸」跳设置面板）——零新动词）。
+//   入：`__desktop_bg`（宿主注入：壁纸色值类片段——"#hex" 色值时注入
+//       "bg-[#hex]"（本面根 bg 实铺）；图片路径/缺省时注入 ""（图片壁纸
+//       由宿主在更底层推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现））
+//       `__desktop_icons`（宿主注入 {id,icon,label,src} Obj 数组——
+//       pinned ∪ 自定义条目合并去重（排除 hidden），src 标来源
+//       pinned|custom；icon/label 宿主自注册表解析，缺省 app-window/id）
+//       `__desktop_hidden`（宿主注入：排除 id 逗号串——移除臂重写
+//       shell.desktop.hidden 的当前值底稿）。
+// storage 键（487 判定先例：非几何无动词，storage 直写 boot 生效）：
+//   shell.desktop.wallpaper（路径 | #hex；settings 外观分区写手）
+//   shell.desktop.icons（自定义条目 id 逗号串——shell.dock.pinned 同形）
+//   shell.desktop.hidden（排除 id 逗号串——pinned/custom 通用移除位）。
+// 空白点击：根容器 onclick → 关右键菜单（463 桌面层语义——不改 WM 焦点，
+// 无动词本地态）。消费者唯一：宿主 renderer 桌面层装配。
+widget DesktopSurface {
+    msg {
+        ActivateApp(str),
+        IconMenu(str),
+        BlankPress,
+        MenuOpen,
+        MenuRemove,
+        MenuWallpaper
+    }
+
+    model {
+        var __desktop_cmd str = ""
+        var __desktop_bg str = ""
+        var __desktop_icons = []
+        var __desktop_hidden str = ""
+        var menu_id str = ""
+    }
+
+    view {
+        // 根：全屏透明容器（纯色壁纸时 __desktop_bg 带 bg-[#hex] 实铺）。
+        // 布局件 onclick（490 G4）承载空白点击——取消菜单选中。
+        col {
+            style: "w-full h-full p-3 ${.__desktop_bg}"
+            onclick: .BlankPress
+
+            // 右键菜单（本地面板；menu_id 空 = 关）。三项：打开 /
+            // 从桌面移除 / 更换壁纸（跳设置面板）。
+            if .menu_id != "" {
+                col {
+                    style: "w-44 gap-1 p-1 bg-card border rounded-md shadow-md"
+                    button "打开" {
+                        onclick: .MenuOpen
+                        style: "w-full h-8 px-0 text-xs justify-start"
+                    }
+                    button "从桌面移除" {
+                        onclick: .MenuRemove
+                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground"
+                    }
+                    button "更换壁纸…" {
+                        onclick: .MenuWallpaper
+                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground"
+                    }
+                }
+            }
+
+            // 图标网格（固定网格 v1；列数 8 起步，占位 lucide 图标——
+            // pinned 条目自带注册表 icon 优先）。双击 = mouse-area
+            // ondblclick（484 mouse-area + iced on_double_click）；右键 =
+            // button oncontextmenu（402 先例）。
+            grid (cols: 8, gap: 8) {
+                style: "w-full"
+                for e in .__desktop_icons {
+                    mouse-area (ondblclick: .ActivateApp(e.id)) {
+                        col {
+                            style: "w-20 h-20 items-center justify-center gap-1"
+                            button (icon: e.icon) {
+                                oncontextmenu.prevent: .IconMenu(e.id)
+                                style: "h-10 w-10 px-0 text-2xl"
+                            }
+                            text e.label {
+                                style: "text-xs text-foreground truncate w-full text-center"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        // 双击启动/聚焦（472 activate 两臂动词复用——宿主臂已备）。
+        .ActivateApp(app) -> { .__desktop_cmd = "activate\t" + app }
+
+        // 右键图标：开菜单（记录目标条目）。
+        .IconMenu(id) -> { .menu_id = id }
+
+        // 空白点击：关菜单（463 语义——不动 WM 焦点，纯本地态）。
+        .BlankPress -> { .menu_id = "" }
+
+        // 菜单：打开 = activate 两臂（同双击）。
+        .MenuOpen -> {
+            if .menu_id != "" {
+                .__desktop_cmd = "activate\t" + .menu_id
+                .menu_id = ""
+            }
+        }
+
+        // 菜单：从桌面移除 = shell.desktop.hidden 续写（pinned/custom 通用；
+        // boot 合并臂排除 hidden id——下次启动生效，487 pinned 同语义）。
+        .MenuRemove -> {
+            if .menu_id != "" {
+                if .__desktop_hidden == "" {
+                    .__desktop_hidden = .menu_id
+                } else {
+                    .__desktop_hidden = .__desktop_hidden + "," + .menu_id
+                }
+                storage.set("shell.desktop.hidden", .__desktop_hidden)
+                .menu_id = ""
+            }
+        }
+
+        // 菜单：更换壁纸 → open_settings（v1.4 无参动词；面板内外观分区
+        // 手动导航——v1 不做分区直达参数）。
+        .MenuWallpaper -> {
+            .menu_id = ""
+            .__desktop_cmd = "open_settings"
+        }
+    }
+}
