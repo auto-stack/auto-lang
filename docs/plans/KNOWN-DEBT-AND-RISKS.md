@@ -185,6 +185,7 @@
 
 | 计划 | 类别 | 严重度 | 描述 | 根因/理由 | 引用 | 登记日 |
 |------|------|--------|------|-----------|------|--------|
+| 470 | 下游任务 | 🟢 | 批次三：外部 auto 系列仓 use.rust→use.rs 迁移顺延（用户 2026-08-30 裁定"先不做，之后单独做"）。清单：auto-musk 30 .at+10 md（backend/ 为主）、auto-ai 22 .at+8 md（crates/）、book 22 .at+21 md（rust/17+tapl/5，书稿）、auto-down 2 md（4 .at 全在 tmp/ 探针可豁免）、auto-shell 3 md（主树 .at 零命中；158 .at 全在 .worktrees/ 陈旧分支，随活跃分支合并时按告警迁）、auto-code-rs 2 md、auto-forge 1 md | 前置未满足：各仓工具链须先升级到含 use.rs 的 auto-lang（本仓 2026-08-30 合入待发版部署；先行文本替换会因旧工具链不识 use.rs 而破坏构建）。执行方式：升级后以 W0005 告警为迁移信号，机械替换+逐仓跑各自验证；完成后连同"一个发布周期零存量"触发 use.rust 移除 plan（见 🟢 节 P470 deprecation 周期行） | docs/plans/470-use-rs-alias.md 批次三 T11-T16 | 2026-08-30 |
 | 463 | 环境限制 | 🟡 | worktree 内 `cargo tb`/book_listing_tests 全数不可运行（61 项"失败"为环境假象） | book_listing_tests 经 `CARGO_MANIFEST_DIR/../../../book` 读仓库外兄弟目录 `D:\autostack\book`，该相对路径从 worktree 解析必然落空（结构性，非代码问题）。缓解：`.worktrees/book → D:\autostack\book` junction（复审时已建）；长期可考虑 book 路径支持 env 覆盖 | docs/plans/463-desktop-shell-auto-arrange.md §10.2 | 2026-08-28 |
 | 398 | 下游任务 | 🟢 | ash-gui-native M0.5 测试骨架（conftest/desktop_mcp/test_smoke）+ M1 in-process 后端 | 属 auto-shell 仓的下游任务，本仓计划仅负责 VM 侧修复（已完成） | docs/plans/archive/398-*.md §14.3/§14.4 | 2026-08-20 |
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |

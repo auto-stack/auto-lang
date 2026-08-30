@@ -135,7 +135,7 @@ self.warn(Warning::DeprecatedFeature {
 - [x] `use.rust` 触发 W0005 DeprecatedFeature（"use 'use.rs' instead"），`use.rs` 不触发。【test_use_rust_emits_deprecation_warning / test_use_rs_no_deprecation_warning PASS】
 - [x] 本仓正式树 `.at` 资产 `use.rust` 命中归零（豁免：`docs/plans/reports/429-b2-perf/bench.at` 历史报告、`010_use_rs/use_rs.at` 注释中的刻意说明；`auto/lib/parser.at` 注释已于 2026-08-30 补迁）。
 - [x] website/tour/design/specs 现行文档推荐写法为 `use.rs`（12 文件更新 + website 双语页加废弃注记；specs plans.md×3/retrospective 历史页保留）。
-- [ ] 外部仓批次三逐仓完成迁移并记录（**前置未满足**：需批次一二发版部署工具链；KNOWN-DEBT 已登记周期与触发条件）。
+- [ ] 外部仓批次三逐仓完成迁移并记录（**已顺延至 DEBT**：用户 2026-08-30 裁定，前置=工具链发版部署；KNOWN-DEBT ⏸ 延期表 P470 行含逐仓清单与触发条件）。
 - [x] 全测试族通过（相对 master 基线零新增失败；见复审记录基线对照）。
 
 ## 执行步骤
@@ -172,7 +172,7 @@ self.warn(Warning::DeprecatedFeature {
 ### 批次三：外部仓库迁移（各仓直接执行，不占本仓 worktree）
 
 - 前置：批次一、二合入 master 并发版（或部署到各仓使用的工具链）。
-  [⏸ 待发版后执行] **不可提前**：外部仓工具链尚不识别 `use.rs`，先行替换会破坏其构建。各仓升级工具链后以 W0005 告警为迁移信号，按 T11-T16 清单执行并在复审记录逐仓登记。
+  [⏸ 顺延至 DEBT（用户 2026-08-30 裁定）] **不可提前**：外部仓工具链尚不识别 `use.rs`，先行替换会破坏其构建。已登记 `KNOWN-DEBT-AND-RISKS.md` ⏸ 延期表（P470 下游任务行，含逐仓清单与执行方式）；各仓升级工具链后以 W0005 告警为迁移信号，按 T11-T16 清单另行单独执行。
 
 ## 复审记录
 
