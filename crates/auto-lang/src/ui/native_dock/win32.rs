@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use std::sync::RwLock;
 use windows::core::HRESULT;
 use windows::Win32::Foundation::{
-    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, RECT, WPARAM,
+    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -29,12 +29,12 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
-    GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-    IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG, PostMessageW, PostThreadMessageW,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE,
-    SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WS_CAPTION, WS_THICKFRAME,
+    EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
+    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
+    PostMessageW, PostThreadMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_QUIT,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
 };
 
 /// Win32 dock 操作错误（UIPI 拒绝单独分类，供 shell 层提示）。
@@ -422,6 +422,13 @@ pub fn request_close(target: NativeHwnd) -> Result<(), DockError> {
         .map_err(|e| DockError::from_err("PostMessageW(WM_CLOSE)", e))
 }
 
+/// 前台聚焦（Plan 486 任务栏 focus_native）：`SetForegroundWindow`
+/// best-effort——后台进程前台锁等限制下返回 false（调用方按"尽力"语义
+/// 处理，不视为错误路径）。最小化还原由调用方先行 `SW_RESTORE`。
+pub fn focus_window(target: NativeHwnd) -> bool {
+    alive(target) && unsafe { SetForegroundWindow(hwnd_of(target)) }.as_bool()
+}
+
 /// 目标窗口是否仍然存活（IsWindow；WinEvent DESTROY 的兜底核对）。
 pub fn is_alive(target: NativeHwnd) -> bool {
     alive(target)
@@ -454,6 +461,7 @@ pub fn covers_rect(target: NativeHwnd, reference: NativeHwnd) -> bool {
 /// Win32 `EVENT_*` 常量 → 事件种类（纯函数；单测锁定映射表）。
 pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
     match event {
+        EVENT_SYSTEM_MOVESIZESTART => Some(NativeSlotEventKind::MoveSizeStart),
         EVENT_SYSTEM_MOVESIZEEND => Some(NativeSlotEventKind::MoveSizeEnd),
         EVENT_SYSTEM_MINIMIZESTART => Some(NativeSlotEventKind::MinimizeStart),
         EVENT_SYSTEM_MINIMIZEEND => Some(NativeSlotEventKind::MinimizeEnd),
@@ -461,6 +469,13 @@ pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
         EVENT_OBJECT_DESTROY => Some(NativeSlotEventKind::Destroy),
         _ => None,
     }
+}
+
+/// 读回当前指针屏幕物理坐标（DragWatch 光标采样；Plan 486）。
+/// 返回 `(x, y)`；失败（罕见）→ None，调用方沿用上次采样。
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    let mut pt = POINT::default();
+    unsafe { GetCursorPos(&mut pt) }.ok().map(|_| (pt.x, pt.y))
 }
 
 struct HookShared {
@@ -501,11 +516,11 @@ impl Drop for NativeSlotEventHook {
     }
 }
 
-/// 启动 WinEventHook 钩子线程：订阅 MoveSizeEnd / MinimizeStart / MinimizeEnd /
-/// LocationChange / Destroy 五事件（OUTOFCONTEXT；`skip_own_process` 时叠加
-/// SKIPOWNPROCESS——生产为 true，测试对本进程 scratch 窗口收事件为 false）。
-/// 返回 `(句柄, 事件接收端)`。同进程同时仅允许一个实例，重复启动报
-/// `DockError::Api`。
+/// 启动 WinEventHook 钩子线程：订阅 MoveSizeStart / MoveSizeEnd /
+/// MinimizeStart / MinimizeEnd / LocationChange / Destroy 六事件（OUTOFCONTEXT；
+/// `skip_own_process` 时叠加 SKIPOWNPROCESS——生产为 true，测试对本进程 scratch
+/// 窗口收事件为 false）。返回 `(句柄, 事件接收端)`。同进程同时仅允许一个实例，
+/// 重复启动报 `DockError::Api`。
 pub fn spawn_event_hook(
     skip_own_process: bool,
 ) -> Result<(NativeSlotEventHook, mpsc::Receiver<NativeSlotEvent>), DockError> {
@@ -530,6 +545,7 @@ pub fn spawn_event_hook(
                 };
             let mut hooks = Vec::new();
             for e in [
+                EVENT_SYSTEM_MOVESIZESTART,
                 EVENT_SYSTEM_MOVESIZEEND,
                 EVENT_SYSTEM_MINIMIZESTART,
                 EVENT_SYSTEM_MINIMIZEEND,
@@ -616,6 +632,264 @@ unsafe extern "system" fn winevent_proc(
                 kind,
             });
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Plan 486 T4：合成拖拽（SendInput 真手势路径；仅 test-native-dock 构建）
+// ---------------------------------------------------------------------------
+
+/// 合成拖拽测试支持（`--features test-native-dock` 独占；生产二进制不编译）。
+/// 手段定案（待澄清①执行期裁定）：SendInput 真实拖动标题栏——点击/移动/
+/// 释放走真实输入管线，目标窗口进入真 move-size 模态循环，产出真实的
+/// MOVESIZESTART/LOCATIONCHANGE/MOVESIZEEND WinEvent 序列。
+#[cfg(feature = "test-native-dock")]
+pub mod drag_sim {
+    use super::{hwnd_of, NativeHwnd};
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
+        MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSE_EVENT_FLAGS, MOUSEINPUT,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
+    };
+
+    fn send_mouse(dx: i32, dy: i32, flags: MOUSE_EVENT_FLAGS) -> bool {
+        let input = INPUT {
+            r#type: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy,
+                    mouseData: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let sent = unsafe { SendInput(&[input], core::mem::size_of::<INPUT>() as i32) };
+        sent == 1
+    }
+
+    fn send_button(flags: MOUSE_EVENT_FLAGS) -> bool {
+        send_mouse(0, 0, flags)
+    }
+
+    /// 主屏坐标 → 绝对坐标归一（0..65535；单屏语义，与 B9 注记一致）。
+    fn normalize(x: i32, y: i32) -> (i32, i32) {
+        let sw = unsafe { GetSystemMetrics(SM_CXSCREEN) }.max(1);
+        let sh = unsafe { GetSystemMetrics(SM_CYSCREEN) }.max(1);
+        ((x.clamp(0, sw - 1) * 65535) / (sw - 1), (y.clamp(0, sh - 1) * 65535) / (sh - 1))
+    }
+
+    /// 绝对移动光标到主屏 `(x, y)`。
+    fn move_to(x: i32, y: i32) -> bool {
+        let (nx, ny) = normalize(x, y);
+        send_mouse(nx, ny, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE)
+    }
+
+    /// 读回当前光标（GetCursorPos 直通）。
+    pub fn cursor() -> Option<(i32, i32)> {
+        let mut pt = POINT::default();
+        unsafe { GetCursorPos(&mut pt) }.ok().map(|_| (pt.x, pt.y))
+    }
+
+    /// 合成单击（move → down → up；实机冒烟驱动用，与拖拽同输入管线）。
+    pub fn click_at(x: i32, y: i32) -> bool {
+        use std::time::Duration;
+        if !move_to(x, y) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        send_button(MOUSEEVENTF_LEFTDOWN) && {
+            std::thread::sleep(Duration::from_millis(50));
+            send_button(MOUSEEVENTF_LEFTUP)
+        }
+    }
+
+    /// 命中测试：屏幕点所在顶层窗口 hwnd 值（0 = 桌面）。拖拽前置校验用
+    /// （标题栏被它窗遮挡时 SendInput 点击不会落在目标上）。
+    pub fn window_from_point(x: i32, y: i32) -> isize {
+        use windows::Win32::UI::WindowsAndMessaging::WindowFromPoint;
+        let h = unsafe { WindowFromPoint(POINT { x, y }) };
+        super::hwnd_value(h)
+    }
+
+    /// 提到 z 序顶（HWND_TOPMOST——越过 topmost 带的常驻窗如
+    /// TextInputHost；测试支持语境，生产 z 序不变量不适用）。不动几何
+    /// 不抢激活。
+    pub fn raise_top(hwnd: NativeHwnd) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+        unsafe {
+            SetWindowPos(
+                hwnd_of(hwnd),
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        }
+        .is_ok()
+    }
+
+    /// 撤销 [`raise_top`] 的 topmost 位（清理用）。
+    pub fn unraise(hwnd: NativeHwnd) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+        unsafe {
+            SetWindowPos(
+                hwnd_of(hwnd),
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        }
+        .is_ok()
+    }
+
+    /// 强制前台（AttachThreadInput 经典技巧）：后台进程的
+    /// `SetForegroundWindow` 受前台锁限制，附着到当前前台窗口线程的输入
+    /// 队列后可越过（同为用户完整性级别时）。
+    fn force_foreground(hwnd: NativeHwnd) {
+        use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        };
+        let target = hwnd_of(hwnd);
+        let fg = unsafe { GetForegroundWindow() };
+        if fg.0 == target.0 {
+            return;
+        }
+        let mut fg_pid = 0u32;
+        let fg_tid = unsafe { GetWindowThreadProcessId(fg, Some(&mut fg_pid)) };
+        let my_tid = unsafe { GetCurrentThreadId() };
+        let attached = fg_tid != 0 && fg_tid != my_tid && unsafe {
+            AttachThreadInput(my_tid, fg_tid, true)
+        }
+        .as_bool();
+        unsafe {
+            let _ = SetForegroundWindow(target);
+        }
+        if attached {
+            unsafe {
+                let _ = AttachThreadInput(my_tid, fg_tid, false);
+            }
+        }
+    }
+
+    /// 系统命令拖拽（待澄清①"注入退路"的实装形态）：`WM_SYSCOMMAND
+    /// (SC_MOVE|HTCAPTION)` 直达目标窗消息队列——**不依赖标题栏 z 序命中**
+    ///（目标窗可被前台/提权窗覆盖，非提权进程无法置其上，caption 点击必然
+    /// 落到遮挡窗）。前置强制前台（SC_MOVE 模态循环要求目标窗激活态），
+    /// 命令使目标线程进入**真实** move-size 模态循环（真实
+    /// MOVESIZESTART/LOCATIONCHANGE/MOVESIZEEND WinEvent 序列），随后
+    /// SendInput 分步移动光标驱动窗口跟随，末尾左键点击提交落位。
+    pub fn syscommand_drag_to(hwnd: NativeHwnd, to: (i32, i32), steps: usize) -> bool {
+        use std::time::Duration;
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            PostMessageW, SC_MOVE, WM_SYSCOMMAND,
+        };
+        let _ = raise_top(hwnd);
+        force_foreground(hwnd);
+        std::thread::sleep(Duration::from_millis(80));
+        // 光标先落在目标窗标题条中点（拖拽锚点语义对齐 caption 拖）。
+        let Some(rect) = super::get_bounds_window(hwnd) else {
+            return false;
+        };
+        // 抓点取 70% 宽处：兼顾三类 caption 形态——高 DPI 小窗（按钮占宽
+        // 过半，正中命中按钮——4K@200% 实测教训）、Win11 Explorer 页签条
+        // 占左半（1/3 宽落在页签上会触发撕页签）、常规窗（按钮在最右
+        // ~15%）。y 取 caption 深处（200% 下 caption ≈46 物理px）。
+        let grab = (rect.x + rect.w * 7 / 10, rect.y + 16);
+        if !move_to(grab.0, grab.1) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        // SC_MOVE | HTCAPTION（0xF010 | 0x2 = 0xF012：caption 拖拽形态，
+        // 鼠标跟踪——SC_MOVE 裸值走键盘方向键形态）。
+        let posted = unsafe {
+            PostMessageW(
+                hwnd_of(hwnd),
+                WM_SYSCOMMAND,
+                WPARAM((SC_MOVE | 0x2) as usize),
+                LPARAM(0),
+            )
+        };
+        if !posted.is_ok() {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        for i in 1..=steps.max(1) {
+            let t = i as f32 / steps.max(1) as f32;
+            let x = grab.0 as f32 + (to.0 as f32 - grab.0 as f32) * t;
+            let y = grab.1 as f32 + (to.1 as f32 - grab.1 as f32) * t;
+            if !move_to(x as i32, y as i32) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        std::thread::sleep(Duration::from_millis(30));
+        // 提交：左键点击结束循环（消息发起的循环无按键态，点击即落定）。
+        send_button(MOUSEEVENTF_LEFTDOWN) && send_button(MOUSEEVENTF_LEFTUP)
+    }
+
+    /// 合成标题栏拖拽：前置 [`raise_top`]（标题栏可命中）+ [`force_foreground`]
+    ///（非激活窗的首击被激活语义吞掉、不达 caption——必须先行前台化）→
+    /// 光标落标题条中点 → 按下 → 分步移到 `to` → 释放。`steps` 步间 15ms。
+    /// 返回 SendInput 全链成功与否（环境故障时调用方走注入退路）。
+    pub fn caption_drag_to(hwnd: NativeHwnd, to: (i32, i32), steps: usize) -> bool {
+        use std::time::Duration;
+        let _ = raise_top(hwnd);
+        force_foreground(hwnd);
+        std::thread::sleep(Duration::from_millis(80));
+        let Some(rect) = super::get_bounds_window(hwnd) else {
+            return false;
+        };
+        // 抓点取 70% 宽处：兼顾三类 caption 形态——高 DPI 小窗（按钮占宽
+        // 过半，正中命中按钮——4K@200% 实测教训）、Win11 Explorer 页签条
+        // 占左半（1/3 宽落在页签上会触发撕页签）、常规窗（按钮在最右
+        // ~15%）。y 取 caption 深处（200% 下 caption ≈46 物理px）。
+        let grab = (rect.x + rect.w * 7 / 10, rect.y + 16);
+        if !move_to(grab.0, grab.1) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(60));
+        if window_from_point(grab.0, grab.1) != hwnd.0 {
+            return false; // 标题栏被并发遮挡（z 序扰动）——交由调用方退路
+        }
+        // 激活结算：程序化前台（SetForegroundWindow）后的首击会被激活语义
+        // 吞掉（不达 caption）——先点一次完成结算；间隔 > 双击窗（500ms
+        // 默认 + 余量），避免与拖拽按下构成标题栏双击（Win11 标题栏双击
+        // 默认动作会最小化/最大化窗口）。
+        if !send_button(MOUSEEVENTF_LEFTDOWN) || !send_button(MOUSEEVENTF_LEFTUP) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(700));
+        if !move_to(grab.0, grab.1) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(40));
+        if !send_button(MOUSEEVENTF_LEFTDOWN) {
+            return false;
+        }
+        for i in 1..=steps.max(1) {
+            let t = i as f32 / steps.max(1) as f32;
+            let x = grab.0 as f32 + (to.0 as f32 - grab.0 as f32) * t;
+            let y = grab.1 as f32 + (to.1 as f32 - grab.1 as f32) * t;
+            if !move_to(x as i32, y as i32) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(15));
+        }
+        std::thread::sleep(Duration::from_millis(30));
+        send_button(MOUSEEVENTF_LEFTUP)
     }
 }
 
@@ -951,6 +1225,10 @@ mod native_dock_events {
     #[test]
     fn map_win_event_covers_matrix() {
         assert_eq!(
+            map_win_event(EVENT_SYSTEM_MOVESIZESTART),
+            Some(NativeSlotEventKind::MoveSizeStart)
+        );
+        assert_eq!(
             map_win_event(EVENT_SYSTEM_MOVESIZEEND),
             Some(NativeSlotEventKind::MoveSizeEnd)
         );
@@ -971,6 +1249,13 @@ mod native_dock_events {
             Some(NativeSlotEventKind::Destroy)
         );
         assert_eq!(map_win_event(0x1234), None);
+    }
+
+    #[test]
+    fn cursor_pos_samples_physical_screen_point() {
+        // 无 UIPI 门槛的系统级读数；只要返回 Some 即证明坐标系可用
+        let pt = cursor_pos();
+        assert!(pt.is_some(), "GetCursorPos 不应失败");
     }
 
     #[test]
@@ -1022,5 +1307,36 @@ mod native_dock_events {
             "3s 内未收到 DESTROY"
         );
         // s 在此 Drop：对已死窗口 DestroyWindow 是 no-op 错误，安全忽略
+    }
+
+    /// Plan 486 T4：进程内 scratch 窗上的合成 caption 拖拽——真实
+    /// move-size 循环被 SendInput 序列驱动（跨进程 E2E 的进程内复现）。
+    /// 窗口取大尺寸（高 DPI 下小窗 caption 按钮占宽过半，1/3 宽抓点也
+    /// 会命中按钮——4K@200% 实测教训）。
+    #[test]
+    fn drag_sim_captions_drags_scratch_window() {
+        let (_hook, rx) = spawn_with_retry();
+        let s = scratch("evt-drag");
+        let h = NativeHwnd(hwnd_value(s.0));
+        set_bounds(h, Rect::new(80, 80, 1400, 900)).expect("place");
+        let before = get_bounds_window(h).expect("before");
+        // 拖拽序列在后台线程注入；窗口线程（本线程）持续泵消息——
+        // caption 模态 move 循环在本线程的 DispatchMessage 内运行。
+        let hd = h;
+        let drag = std::thread::spawn(move || {
+            drag_sim::caption_drag_to(hd, (1600, 1200), 20)
+        });
+        while !drag.is_finished() {
+            pump_one(s.0);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(drag.join().expect("drag thread"), "SendInput 链成功");
+        let after = get_bounds_window(h).expect("after");
+        let moved = (after.x - before.x).abs() > 60 || (after.y - before.y).abs() > 60;
+        assert!(moved, "scratch 窗应被真实拖动（before {before:?} after {after:?}）");
+        assert!(
+            wait_for(&rx, h, NativeSlotEventKind::MoveSizeStart),
+            "3s 内未收到 MOVESIZESTART（scratch 窗）"
+        );
     }
 }

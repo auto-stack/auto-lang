@@ -66,3 +66,4 @@
 | 426 | setup-preamble-slot | ✅ | archive/ | parser 新增 AST SetupBlock（块级 refs 声明；await MVP 拒绝） |
 | 435 | autoui-component-schema-unification | ✅ | archive/ | schema/aura.at 唯一契约源（aliases/tier/backends 字段扩展） |
 | 448 | autoui-syntax-improvements | 🟡（A/B1/B2 实施待合并） | plans/ | msg 去名+内联 lambda；铸名 mint_inline_event_handlers 进 parser |
+| 470 | use-rs-alias | ✅ | archive/ | `use.rs` 现行拼写（与 use.py 对齐）+use.rust W0005 deprecation；双拼写同 UseKind::Rust，仓内 134 .at+文档全量迁移（外部仓批次三顺延 DEBT） |

@@ -1,7 +1,7 @@
 // pages/bar-chart.at — BarChart 页（Plan 437 Charts 分组 ②）
 //
 // Phase 2（2026-08-28）：几何已提取为官方 Auto 组件
-// components/bar_chart.at（AutoBarChart，band scale + 每柱 M/h/v/h/Z
+// components/bar_chart.at（BarChart，band scale + 每柱 M/h/v/h/Z
 // 子路径合单 path，分组多系列槽内偏移分色）。本页只持 demo 数据 +
 // 消费组件，v1 内联几何形态退役。
 
@@ -27,19 +27,27 @@ widget BarChartPage {
     view {
         col {
             h1 "BarChart"
-            text "官方 Auto 实现的柱形图——band scale + 每柱一个子路径合成单条 path（fill 填充），分组多系列按槽内偏移分色。几何全部在 AutoBarChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+            text "官方 Auto 实现的柱形图——band scale + 每柱一个子路径合成单条 path（fill 填充），分组多系列按槽内偏移分色。几何全部在 BarChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
 
             h2 "Basic"
             preview-card (id: "bar-chart-basic") {
-                auto-bar-chart (data: .single, index: "q", fields: ["v"], colors: ["#2563eb"]) {}
+                bar-chart (index: "q") {
+                    data: .single
+                    fields: ["v"]
+                    colors: ["#2563eb"]
+                }
             }
 
             h2 "Grouped"
             preview-card (id: "bar-chart-grouped") {
-                auto-bar-chart (data: .quarterly, index: "q", fields: ["sales", "cost"], colors: ["#2563eb", "#16a34a"]) {}
+                bar-chart (index: "q") {
+                    data: .quarterly
+                    fields: ["sales", "cost"]
+                    colors: ["#2563eb", "#16a34a"]
+                }
             }
 
-            h2 "Props（AutoBarChart 组件）"
+            h2 "Props（BarChart 组件）"
             table {
                 table-header {
                     table-row {

@@ -61,6 +61,10 @@ let path = resolver.resolve_with_prefix(&module_path, current_file)?;
   use 都会被算入，仅适合依赖预估，不能当解析结果用。
 - `use_scanner` 支持 `use.rs`/`use.py`/`use c <h>` 等 FFI 导入形式，但去重按 module 名，
   同名不同 items 的 use 只保留第一条。
+- **use.rs 现行拼写（Plan 470，2026-08-30）**：Rust 导入解析分派 `rust`/`rs` 双拼写同走
+  `use_rust_stmt`（AST 同为 `UseKind::Rust`，转译/VM 零差异）；旧拼写 `use.rust` 发
+  W0005 DeprecatedFeature，scanner 依赖收集双前缀识别；移除触发条件见
+  KNOWN-DEBT P470 deprecation 周期行。
 
 ## 蒸馏来源（Phase 1）
 

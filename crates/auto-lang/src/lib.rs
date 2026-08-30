@@ -6201,3 +6201,8 @@ mod plan446_batch1_tests {
         }
     }
 }
+
+
+#[cfg(test)]
+mod plan484_chart_component_tests;
+

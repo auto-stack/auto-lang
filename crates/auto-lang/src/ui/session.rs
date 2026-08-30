@@ -250,6 +250,9 @@ pub struct DesktopState {
     /// Plan 479 T3：通知中心 overlay App 的 AppId。首次 notes_toggle 召唤时
     /// 懒挂载（第三枚 overlay 槽）；独立模式恒 None。
     pub notification_app: Option<AppId>,
+    /// Plan 487 M4：设置面板 overlay App 的 AppId。首次 open_settings 召唤时
+    /// 懒挂载（第四枚 overlay 槽）；独立模式恒 None。
+    pub settings_app: Option<AppId>,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -287,6 +290,7 @@ impl DesktopState {
             launcher_app: None,
             switcher_app: None,
             notification_app: None,
+            settings_app: None,
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -894,6 +898,13 @@ pub enum DesktopCommand {
     /// Plan 473：解除收编——恢复 pre-dock bounds/样式后移除槽位（slot id
     /// 取自投影 `__wm_native_slots`）。
     UndockNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目点击——聚焦槽位原生窗
+    /// （SetForegroundWindow + 最小化时先 SW_RESTORE；slot id 取自投影
+    /// wid "N<slot>" 的数字段）。
+    FocusNative(u64),
+    /// Plan 486 v1.3：任务栏 native 条目 ×——请求关闭（WM_CLOSE；槽位由
+    /// DESTROY 事件自然回收，B7 路径）。
+    CloseNative(u64),
     /// Plan 478 T2：新增分区（pager `+`；宿主臂随即入新分区）。
     WorkspaceAdd,
     /// Plan 478 T2：删除分区（pager `×`；非空/末分区门在宿主臂 toast）。
@@ -912,6 +923,14 @@ pub enum DesktopCommand {
     NotesClear,
     /// Plan 479 T2：按 id 删除单条通知 + 落盘（面板「逐条 ×」）。
     NotesDismiss(u64),
+    /// Plan 487 M4：设置面板召唤（dock 齿轮 `open_settings` 无参动词；
+    /// summon 二态翻转语义——面板可见再召唤即关，switcher/launcher 同型）。
+    OpenSettings,
+    /// Plan 487 M4：dock 位置热切换（I7：几何是驱动事实，settings 只是
+    /// UI）。true = 顶部停靠；执行臂改 dock_edges + relayout + storage 写回。
+    SetDockPosition(bool),
+    /// Plan 487 M4：dock 启用开关热切换（false = 零预留；执行臂同上）。
+    SetDockEnabled(bool),
 }
 
 /// Plan 473：原生窗口 dock 的目标定位（shell 记录 `pid=123` / `hwnd=0x1a2b`）。
@@ -987,6 +1006,12 @@ impl DesktopCommand {
             DesktopCommand::UndockNative(slot) => {
                 format!("undock_native{}{}", Self::FIELD_SEP, slot)
             }
+            DesktopCommand::FocusNative(slot) => {
+                format!("focus_native{}{}", Self::FIELD_SEP, slot)
+            }
+            DesktopCommand::CloseNative(slot) => {
+                format!("close_native{}{}", Self::FIELD_SEP, slot)
+            }
             DesktopCommand::WorkspaceAdd => "workspace_add".to_string(),
             DesktopCommand::WorkspaceClose(n) => {
                 format!("workspace_close{}{}", Self::FIELD_SEP, n)
@@ -1009,6 +1034,19 @@ impl DesktopCommand {
             DesktopCommand::NotesClear => "notes_clear".to_string(),
             DesktopCommand::NotesDismiss(id) => {
                 format!("notes_dismiss{}{}", Self::FIELD_SEP, id)
+            }
+            // Plan 487 M4：协议 v1.4 设置动词（无参 summon + 两驱动动词；
+            // 位置值 top/bottom、开关值 1/0——.at 控件直书 \t 双轨兼容）。
+            DesktopCommand::OpenSettings => "open_settings".to_string(),
+            DesktopCommand::SetDockPosition(top) => {
+                format!(
+                    "set_dock_position{}{}",
+                    Self::FIELD_SEP,
+                    if *top { "top" } else { "bottom" }
+                )
+            }
+            DesktopCommand::SetDockEnabled(on) => {
+                format!("set_dock_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
             }
         }
     }
@@ -1043,6 +1081,10 @@ impl DesktopCommand {
                 if rec == "notes_clear" {
                     return Some(DesktopCommand::NotesClear);
                 }
+                // Plan 487 M4：v1.4 无参动词前置（open 前缀不互吞）。
+                if rec == "open_settings" {
+                    return Some(DesktopCommand::OpenSettings);
+                }
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
                     "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
@@ -1056,6 +1098,19 @@ impl DesktopCommand {
                     }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
+                    // Plan 486 v1.3：任务栏 native 条目动词（undock_native 同型；
+                    // arg 容收 "N<slot>" wid 形态——shell 直传条目 wid，宿主剥
+                    // N 前缀取 slot id，纯数字直写亦合法）。
+                    "focus_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::FocusNative),
+                    "close_native" => arg
+                        .trim_start_matches('N')
+                        .parse::<u64>()
+                        .ok()
+                        .map(DesktopCommand::CloseNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
                     "workspace_close" => {
                         arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
@@ -1079,6 +1134,18 @@ impl DesktopCommand {
                         .parse::<u64>()
                         .ok()
                         .map(|id| DesktopCommand::NotesDismiss(id)),
+                    // Plan 487 M4：协议 v1.4 设置动词（位置/开关值域窄，未知
+                    // 值跳过——set_dock_* 前缀不互吞 open_settings 无参形态）。
+                    "set_dock_position" => match arg {
+                        "top" => Some(DesktopCommand::SetDockPosition(true)),
+                        "bottom" => Some(DesktopCommand::SetDockPosition(false)),
+                        _ => None,
+                    },
+                    "set_dock_enabled" => match arg {
+                        "1" => Some(DesktopCommand::SetDockEnabled(true)),
+                        "0" => Some(DesktopCommand::SetDockEnabled(false)),
+                        _ => None,
+                    },
                     _ => None,
                 }
             })
@@ -1120,6 +1187,8 @@ pub struct HostCtx {
     pub switcher_fields: ShellFields,
     /// Plan 479 T3：通知中心 overlay 同型垫片（第三枚 overlay 槽）。
     pub notification_fields: ShellFields,
+    /// Plan 487 M4：设置面板 overlay 同型垫片（第四枚 overlay 槽）。
+    pub settings_fields: ShellFields,
 }
 
 /// 桌面会话——进程唯一。R3：单 App 即"无 chrome 的退化桌面"；
@@ -1140,6 +1209,12 @@ pub struct DesktopSession {
     /// 桌面，459 语义原样）；`Some` = 单 OS 窗口内多虚拟窗口（R2）。
     /// I3：两种形态共享同一会话/update/view 管线，仅此配置位分叉。
     pub host: Option<HostCtx>,
+    /// Plan 486：拖入手势会话（纯逻辑状态机，宿主层喂指针采样；未 docked
+    /// 窗口的 MOVESIZESTART 起、MOVESIZEEND 终）。
+    pub native_drag_watch: crate::ui::native_dock::DragWatch,
+    /// Plan 486：拖入高亮槽位（桌面逻辑坐标，view 侧直接绘制；update 侧
+    /// 由 DragWatch 采样/清除，或经 [`DesktopEvent::NativeDragOver`] 注入）。
+    pub native_drag_over: Option<iced::Rectangle>,
     /// Plan 480 S3/S4：broker 孵化连接排队——`enable_broker` 的 serve 线程
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
@@ -1191,6 +1266,10 @@ pub enum DesktopEvent {
     /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
     /// Destroy → B7 槽位回收）。
     NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
+    /// Plan 486：拖入手势高亮（DragWatch 光标采样产出；`Some`=候选槽位
+    /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
+    /// 消息面供 E2E/headless 直注验证 overlay 渲染。
+    NativeDragOver(Option<crate::ui::native_dock::Rect>),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1295,6 +1374,8 @@ impl DesktopSession {
             focused_window: RefCell::new(None),
             desktop: DesktopState::new(mcp_shared),
             host: None,
+            native_drag_watch: crate::ui::native_dock::DragWatch::new(),
+            native_drag_over: None,
             #[cfg(feature = "ui-iced")]
             broker_pending: Arc::new(Mutex::new(Vec::new())),
             #[cfg(feature = "ui-iced")]
@@ -1313,6 +1394,7 @@ impl DesktopSession {
             launcher_fields: ShellFields::default(),
             switcher_fields: ShellFields::default(),
             notification_fields: ShellFields::default(),
+            settings_fields: ShellFields::default(),
         });
     }
 
@@ -1935,7 +2017,14 @@ impl DesktopSession {
             let is_switcher = self.desktop.switcher_app == Some(id);
             // Plan 479 T3：通知中心 overlay（windowless 拆借第四路）。
             let is_notification = self.desktop.notification_app == Some(id);
-            if !is_shell && !is_launcher && !is_switcher && !is_notification {
+            // Plan 487 M4：设置面板 overlay（windowless 拆借第五路）。
+            let is_settings = self.desktop.settings_app == Some(id);
+            if !is_shell
+                && !is_launcher
+                && !is_switcher
+                && !is_notification
+                && !is_settings
+            {
                 return None;
             }
             let host = self.host.as_mut()?;
@@ -1962,12 +2051,19 @@ impl DesktopSession {
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
                 )
-            } else {
+            } else if is_notification {
                 (
                     &mut host.notification_fields.window_size,
                     &mut host.notification_fields.pending_window_resize,
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
+                )
+            } else {
+                (
+                    &mut host.settings_fields.window_size,
+                    &mut host.settings_fields.pending_window_resize,
+                    &mut host.settings_fields.initial_resize_done,
+                    &mut host.settings_fields.initial_focus_done,
                 )
             };
             let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
@@ -2189,6 +2285,39 @@ impl DesktopSession {
                 .and_then(|a| a.component.read_state("visible").ok()),
             Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
         )
+    }
+
+    /// Plan 487 M4：设置面板 overlay 是否可见（Esc 仲裁 / 键盘独占路由的
+    /// 判定位；[`Self::notification_visible`] 同型）。未挂载恒 false。
+    pub fn settings_visible(&self) -> bool {
+        let Some(panel) = self.desktop.settings_app else { return false };
+        matches!(
+            self.apps
+                .get(&panel)
+                .and_then(|a| a.component.read_state("visible").ok()),
+            Some(auto_val::Value::Str(ref s)) if s.to_string() == "1"
+        )
+    }
+
+    /// Plan 487 M4：设置面板 overlay App 的拆借视图（view 装配的设置面板
+    /// 层专用；无虚拟窗——垫片语义与 [`Self::split_ref_notification`] 相同，
+    /// 字段走 [`HostCtx::settings_fields`]）。
+    pub fn split_ref_settings(&self) -> Option<SessionViewRef<'_>> {
+        let panel = self.desktop.settings_app?;
+        let app = self.apps.get(&panel)?;
+        let host = self.host.as_ref()?;
+        Some(SessionViewRef {
+            app_id: panel,
+            window: host.window,
+            component: &app.component,
+            app: &app.state,
+            desktop: &self.desktop,
+            window_size: &host.settings_fields.window_size,
+            pending_window_resize: &host.settings_fields.pending_window_resize,
+            initial_resize_done: &host.settings_fields.initial_resize_done,
+            initial_focus_done: &host.settings_fields.initial_focus_done,
+            vwin_rect: None,
+        })
     }
 }
 
@@ -3141,11 +3270,14 @@ mod tests {
     #[test]
     fn native_dock_verbs_parse_and_encode() {
         use crate::ui::session::NativeTarget;
-        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制）。
+        // 编码 → 解析往返（pid / hwnd 十六进制 / hwnd 十进制；486 v1.3
+        // 任务栏动词 focus_native/close_native 同型）。
         let cmds = vec![
             DesktopCommand::DockNative(NativeTarget::ByPid(4242)),
             DesktopCommand::DockNative(NativeTarget::ByHwnd(0x1a2b)),
             DesktopCommand::UndockNative(7),
+            DesktopCommand::FocusNative(5),
+            DesktopCommand::CloseNative(6),
         ];
         let payload = cmds
             .iter()
@@ -3154,6 +3286,8 @@ mod tests {
             .join("\u{1e}");
         assert_eq!(payload.contains("pid=4242"), true);
         assert_eq!(payload.contains("hwnd=0x1a2b"), true);
+        assert_eq!(payload.contains("focus_native\u{1f}5"), true);
+        assert_eq!(payload.contains("close_native\u{1f}6"), true);
         assert_eq!(DesktopCommand::parse_records(&payload), cmds);
         // hwnd 十进制直写。
         assert_eq!(
@@ -3164,6 +3298,17 @@ mod tests {
         assert!(DesktopCommand::parse_records("dock_native\u{1f}foo=1").is_empty());
         assert!(DesktopCommand::parse_records("undock_native\u{1f}abc").is_empty());
         assert!(DesktopCommand::parse_records("dock_native\u{1f}").is_empty());
+        assert!(DesktopCommand::parse_records("focus_native\u{1f}xyz").is_empty());
+        assert!(DesktopCommand::parse_records("close_native\u{1f}").is_empty());
+        // v1.3：shell 直传 wid "N<slot>" 形态——宿主剥前缀归一。
+        assert_eq!(
+            DesktopCommand::parse_records("focus_native\u{1f}N3"),
+            vec![DesktopCommand::FocusNative(3)]
+        );
+        assert_eq!(
+            DesktopCommand::parse_records("close_native\u{1f}N12"),
+            vec![DesktopCommand::CloseNative(12)]
+        );
     }
 
     #[test]
@@ -3238,7 +3383,7 @@ mod tests {
 
     #[test]
     fn native_slot_joins_grid_layout_and_emits_sync() {
-        use crate::ui::native_dock::{NativeSlotId, Rect, Size};
+        use crate::ui::native_dock::{Rect, Size};
         let mut ds = desktop_session_with_host();
         let id = {
             let host = ds.host.as_mut().unwrap();
@@ -3292,6 +3437,21 @@ mod tests {
         assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
     }
 
+    // ---- Plan 486 T1：拖入手势会话字段（NativeDragOver 消息面）----
+
+    #[test]
+    fn native_drag_watch_session_fields_start_cleared() {
+        use crate::ui::native_dock::Rect;
+        let ds = DesktopSession::empty(None);
+        assert!(!ds.native_drag_watch.is_watching());
+        assert!(ds.native_drag_over.is_none());
+        // 消息面类型核对：物理域矩形直入枚举（E2E/headless 注入形态）。
+        let _msg = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(Some(Rect::new(
+            10, 20, 30, 40,
+        ))));
+        let _clear = DesktopMessage::Desktop(DesktopEvent::NativeDragOver(None));
+    }
+
     // ---- Plan 479 T2：协议 v1.2 通知动词（notify/notes_toggle/
     // notes_clear/notes_dismiss；workspace_v11 同型）----
 
@@ -3330,6 +3490,40 @@ mod tests {
             "notify 缺 msg 段跳过"
         );
         assert!(DesktopCommand::parse_records("notes_dismiss\u{1f}abc").is_empty());
+    }
+
+    // ---- Plan 487 M4：协议 v1.4 设置动词（open_settings/set_dock_position/
+    // set_dock_enabled；notif_commands 同型）----
+
+    #[test]
+    fn settings_commands_encode_parse_round_trip() {
+        let cmds = vec![
+            DesktopCommand::OpenSettings,
+            DesktopCommand::SetDockPosition(true),
+            DesktopCommand::SetDockPosition(false),
+            DesktopCommand::SetDockEnabled(false),
+            DesktopCommand::SetDockEnabled(true),
+        ];
+        let payload = cmds
+            .iter()
+            .map(|c| c.encode())
+            .collect::<Vec<_>>()
+            .join("\u{1e}");
+        assert_eq!(DesktopCommand::parse_records(&payload), cmds);
+        // 双轨分符：shell.at 控件字符串只可直书 \t。
+        assert_eq!(
+            DesktopCommand::parse_records(
+                "open_settings\u{1e}set_dock_position\ttop\u{1e}set_dock_position\tbottom\u{1e}set_dock_enabled\t0\u{1e}set_dock_enabled\t1"
+            ),
+            cmds
+        );
+        // 坏载荷跳过不 panic（未知位置/开关值/空段）。
+        assert!(
+            DesktopCommand::parse_records("set_dock_position\u{1f}left").is_empty(),
+            "未知位置值跳过"
+        );
+        assert!(DesktopCommand::parse_records("set_dock_enabled\u{1f}yes").is_empty());
+        assert!(DesktopCommand::parse_records("set_dock_position\u{1f}").is_empty());
     }
 }
 

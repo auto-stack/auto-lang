@@ -516,44 +516,35 @@ element menubar {
     description: "Menubar container"
 }
 
-element nav {
-    tag: "nav"
-    category: "navigation"
+element mouse-area {
+    tag: "mouse-area"
+    category: "overlay"
     tier: "builtin_widget"
-    aliases: ["Nav"]
-    backends: { web: "native", iced: "full", gpui: "unknown" }
-    sub_widgets: ["nav-item", "nav-group"]
-    props: [
-        { name: "search", type: "bool", default: "false", description: "Integrate a search input row at the top of the nav (Plan 482)" }
-        { name: "search_placeholder", type: "string", description: "Placeholder text for the integrated search row" }
-        { name: "search_value", type: "expr", description: "Search text state binding (e.g. .store.search); required with search: true" }
-        { name: "onsearch", type: "msg_ref", description: "Message on search input (carries the input string, like input oninput)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
+    aliases: []
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
+    events: ["onmouseenter", "onmouseleave"]
+    props: []
     allows_children: true
-    description: "Navigation container; search:true renders an integrated search row (Plan 482)"
+    description: "Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive."
 }
 
-element nav-link {
-    tag: "nav-link"
-    category: "navigation"
+element nav {
+    tag: "nav"
+    category: "unknown"
     tier: "builtin_widget"
-    aliases: ["nav_link", "navlink"]
-    backends: { web: "component", iced: "partial", gpui: "unknown" }
-    vue: { component: "NavLink", import: "@/components/ui/nav-link" }
-    props: [
-        { name: "text", type: "one_of:href", default: "Link label text", description: "string" }
-        { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
-    ]
+    aliases: ["Nav"]
+    backends: { web: "native", iced: "unknown", gpui: "unknown" }
+    props: []
     allows_children: true
-    description: "DEPRECATED (Plan 482): use nav-item instead — richer states (active/hover/disabled), icon/desc/badge slots, router + onclick modes"
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element nav-group {
     tag: "nav-group"
     category: "navigation"
     tier: "builtin_widget"
-    aliases: ["nav_group", "navgroup", "NavGroup"]
+    aliases: ["NavGroup", "nav_group", "navgroup"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "NavGroup", import: "@/components/ui/nav" }
     props: [
@@ -566,6 +557,45 @@ element nav-group {
     ]
     allows_children: true
     description: "Navigation group: label header + item column, optionally collapsible (Plan 482)"
+}
+
+element nav-item {
+    tag: "nav-item"
+    category: "navigation"
+    tier: "builtin_widget"
+    aliases: ["NavItem", "nav_item", "navitem"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "NavItem", import: "@/components/ui/nav" }
+    props: [
+        { name: "to", type: "string", description: "Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given" }
+        { name: "onclick", type: "msg_ref", description: "Click message (state mode) for store-driven switching" }
+        { name: "active", type: "expr", description: "Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens)" }
+        { name: "exact", type: "bool", default: "false", description: "Route auto-detection uses exact match only" }
+        { name: "icon", type: "string", description: "Left icon: lucide name (svg both ends) or literal emoji text" }
+        { name: "label", type: "string", description: "Primary text" }
+        { name: "desc", type: "string", description: "Secondary line (two-line layout)" }
+        { name: "badge", type: "string", description: "Right-side badge pill" }
+        { name: "disabled", type: "bool", default: "false", description: "Grayed out, not clickable" }
+        { name: "size", type: "one_of:sm,md,lg", default: "md", description: "md=h-9 single line; lg=py-[10px] two-line; sm=h-7" }
+        { name: "class", type: "union:string,class_binding", description: "Extra classes appended after the built-in nav-item classes (escape hatch)" }
+    ]
+    allows_children: true
+    description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link"
+}
+
+element nav-link {
+    tag: "nav-link"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["nav_link", "navlink"]
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
+    vue: { component: "NavLink", import: "@/components/ui/nav-link" }
+    props: [
+        { name: "text", type: "one_of:href", default: "Link label text", description: "string" }
+        { name: "icon", type: "one_of:badge", default: "Lucide icon name", description: "string" }
+    ]
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
 }
 
 element p {
@@ -661,6 +691,22 @@ element section {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element select {
+    tag: "select"
+    category: "unknown"
+    tier: "builtin_widget"
+    aliases: ["Select"]
+    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    vue: { component: "Select", import: "@/components/ui/select" }
+    sub_widgets: ["selectcontent", "selectgroup", "selectitem", "selectlabel", "selecttrigger", "selectvalue"]
+    props: [
+        { name: "placeholder", type: "string", description: "Placeholder text for select-value" }
+        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the select" }
+    ]
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
 element separator {
     tag: "separator"
     category: "utility"
@@ -675,6 +721,19 @@ element separator {
     ]
     allows_children: false
     description: "Visual divider"
+}
+
+element slot {
+    tag: "slot"
+    category: "content"
+    tier: "builtin_widget"
+    aliases: ["Slot"]
+    backends: { web: "none", iced: "unknown", gpui: "unknown" }
+    props: [
+        { name: "name", type: "string", description: "Slot name (named slot target or outlet)" }
+    ]
+    allows_children: true
+    description: "Slot: outlet in component definition; named-slot fill in component invocation"
 }
 
 element small {
@@ -757,23 +816,7 @@ element taskbar {
         { name: "class", type: "union:string,class_binding", description: "Bar chrome classes (h-/w-/bg-/border- land on the bar)" }
     ]
     allows_children: true
-    description: "Desktop shell taskbar (bottom bar); web leaf = @/wm/Taskbar (Plan 465 I4, same registration source as iced 463)"
-}
-
-element virtual_window {
-    tag: "virtual_window"
-    category: "container"
-    tier: "builtin_widget"
-    aliases: ["VirtualWindow"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "VirtualWindow", import: "@/wm/VirtualWindow" }
-    props: [
-        { name: "win", type: "string", description: "Window state object {wid,appId,title,rect,z,focused} from the host WmStore (Plan 465 T4)" }
-        { name: "title", type: "string", description: "Title bar text (fallback when win.title absent)" }
-        { name: "class", type: "union:string,class_binding", description: "Client-area classes" }
-    ]
-    allows_children: true
-    description: "Virtual window leaf: positioned/clipped chrome with (AppId,event) routing attrs; iced impl = ui/iced/virtual_window.rs (462), DOM impl = @/wm/VirtualWindow (465 T4)"
+    description: "Desktop shell taskbar (bottom bar)"
 }
 
 element text {
@@ -1426,26 +1469,6 @@ element Change {
     description: "P1: used in widgets-gallery but unregistered in any production table (implicit fallback/ext path); P2 review"
 }
 
-element NavDestination {
-    tag: "NavDestination"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
-element Swiper {
-    tag: "Swiper"
-    category: "unknown"
-    tier: "unclassified"
-    backends: { web: "none", iced: "none", gpui: "unknown" }
-    props: []
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element callout {
     tag: "callout"
     category: "content"
@@ -1580,30 +1603,6 @@ element menu-item {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element nav-item {
-    tag: "nav-item"
-    category: "navigation"
-    tier: "builtin_widget"
-    aliases: ["nav_item", "navitem", "NavItem"]
-    backends: { web: "component", iced: "full", gpui: "unknown" }
-    vue: { component: "NavItem", import: "@/components/ui/nav" }
-    props: [
-        { name: "to", type: "string", description: "Route address (router mode): vue RouterLink updates the hash URL; VM dispatches __navigate to __current_route. Wins over onclick when both given" }
-        { name: "onclick", type: "msg_ref", description: "Click message (state mode) for store-driven switching" }
-        { name: "active", type: "expr", description: "Selected-state override; with to: auto-detected (exact or prefix-segment match, exact: tightens)" }
-        { name: "exact", type: "bool", default: "false", description: "Route auto-detection uses exact match only" }
-        { name: "icon", type: "string", description: "Left icon: lucide name (svg both ends) or literal emoji text" }
-        { name: "label", type: "string", description: "Primary text" }
-        { name: "desc", type: "string", description: "Secondary line (two-line layout)" }
-        { name: "badge", type: "string", description: "Right-side badge pill" }
-        { name: "disabled", type: "bool", default: "false", description: "Grayed out, not clickable" }
-        { name: "size", type: "one_of:sm,md,lg", default: "md", description: "md=h-9 single line; lg=py-[10px] two-line; sm=h-7" }
-        { name: "class", type: "union:string,class_binding", description: "Extra classes appended after the built-in nav-item classes (escape hatch)" }
-    ]
-    allows_children: true
-    description: "Navigation item with built-in hover/active/disabled states, icon/desc/badge slots (Plan 482); supersedes nav-link"
-}
-
 element nav_menu_indicator {
     tag: "nav_menu_indicator"
     category: "navigation"
@@ -1684,19 +1683,6 @@ element range_calendar {
     ]
     allows_children: false
     description: "Date range picker calendar"
-}
-
-element slot {
-    tag: "slot"
-    category: "content"
-    tier: "builtin_widget"
-    aliases: ["Slot"]
-    backends: { web: "none", iced: "unknown", gpui: "unknown" }
-    props: [
-        { name: "name", type: "string", description: "Slot name (named slot target or outlet)" }
-    ]
-    allows_children: true
-    description: "Slot: outlet in component definition; named-slot fill in component invocation"
 }
 
 element teleport {
@@ -1991,35 +1977,6 @@ element alerttitle {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element areachart {
-    tag: "areachart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "AreaChart", import: "@/components/ui/chart-area", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "curve-type", type: "string", description: "CurveType value (basis cardinal monotone step natural ...)" }
-        { name: "show-gradient", type: "union:bool,state_ref", description: "Gradient fill under curve" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis area chart (shadcn-vue chart-area). No events in v1."
-}
-
 element aspect_ratio {
     tag: "aspect_ratio"
     category: "layout"
@@ -2122,35 +2079,6 @@ element avatarimage {
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"
-}
-
-element barchart {
-    tag: "barchart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "BarChart", import: "@/components/ui/chart-bar", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "type", type: "one_of:grouped,stacked", description: "Bar grouping mode" }
-        { name: "rounded-corners", type: "union:bool,state_ref", description: "Rounded bar corners" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis bar chart (shadcn-vue chart-bar). No events in v1."
 }
 
 element box {
@@ -2435,49 +2363,6 @@ element cardtitle {
     ]
     allows_children: true
     description: "Card title"
-}
-
-element chart {
-    tag: "chart"
-    category: "content"
-    tier: "web_component"
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
-    vue: { component: "ChartContainer", import: "@/components/ui/chart", extras: ["ChartTooltip", "ChartLegend", "ChartStyle"], npm: "@unovis/vue@^1.6.7" }
-    sub_widgets: ["chartlegend", "charttooltip"]
-    props: [
-        { name: "config", type: "union:string,state_ref", description: "Chart config object (per-series color and label keys)" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis chart container (shadcn-vue ChartContainer); wraps a chart family component. No events in v1."
-}
-
-element chartlegend {
-    tag: "chartlegend"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "ChartLegend", import: "@/components/ui/chart" }
-    props: [
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Chart legend (slot content of chart container). No props or events in v1 beyond class."
-}
-
-element charttooltip {
-    tag: "charttooltip"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "ChartTooltip", import: "@/components/ui/chart" }
-    props: [
-        { name: "indicator", type: "one_of:dot,line,square,dashed", description: "Tooltip marker shape" }
-        { name: "hide-label", type: "union:bool,state_ref", description: "Hide the series label row" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Chart tooltip (slot content of chart container). No events in v1."
 }
 
 element chatmessage {
@@ -3055,31 +2940,6 @@ element dialogtrigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element donutchart {
-    tag: "donutchart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "DonutChart", import: "@/components/ui/chart-donut", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per arc" }
-        { name: "category", type: "string", description: "Numeric value field name" }
-        { name: "index", type: "string", description: "Arc label field name" }
-        { name: "colors", type: "state_ref", description: "Per-arc color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed arc opacity" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Arc legend" }
-        { name: "type", type: "one_of:grouped,stacked", description: "Arc grouping mode" }
-        { name: "value-formatter", type: "state_ref", description: "Arc value formatter fn" }
-        { name: "sort-function", type: "state_ref", description: "Arc sort fn" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis donut chart (shadcn-vue chart-donut). No events in v1."
-}
-
 element drawer {
     tag: "drawer"
     category: "overlay"
@@ -3550,34 +3410,6 @@ element kbd {
     description: "Keyboard key display"
 }
 
-element linechart {
-    tag: "linechart"
-    category: "unknown"
-    tier: "web_component"
-    backends: { web: "component", iced: "none", gpui: "unknown" }
-    vue: { component: "LineChart", import: "@/components/ui/chart-line", npm: "@unovis/vue@^1.6.7" }
-    props: [
-        { name: "data", type: "state_ref", description: "Record list; one record per x tick" }
-        { name: "categories", type: "state_ref", description: "Numeric series field names" }
-        { name: "index", type: "string", description: "x-axis label field name" }
-        { name: "colors", type: "state_ref", description: "Per-series color values" }
-        { name: "margin", type: "state_ref", description: "Plot area margin object" }
-        { name: "filter-opacity", type: "union:float,state_ref", description: "Dimmed series opacity" }
-        { name: "show-x-axis", type: "union:bool,state_ref", description: "Render x axis" }
-        { name: "show-y-axis", type: "union:bool,state_ref", description: "Render y axis" }
-        { name: "show-tooltip", type: "union:bool,state_ref", description: "Hover tooltip" }
-        { name: "show-legend", type: "union:bool,state_ref", description: "Series legend" }
-        { name: "show-grid-line", type: "union:bool,state_ref", description: "Grid lines" }
-        { name: "x-formatter", type: "state_ref", description: "x tick formatter fn" }
-        { name: "y-formatter", type: "state_ref", description: "y tick formatter fn" }
-        { name: "curve-type", type: "string", description: "CurveType value (basis cardinal monotone step natural ...)" }
-        { name: "custom-tooltip", type: "state_ref", description: "Custom tooltip component ref" }
-        { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
-    ]
-    allows_children: true
-    description: "Unovis line chart (shadcn-vue chart-line). No events in v1."
-}
-
 element loading {
     tag: "loading"
     category: "unknown"
@@ -3712,6 +3544,17 @@ element native_select {
     ]
     allows_children: true
     description: "Native HTML select"
+}
+
+element nav-destination {
+    tag: "nav-destination"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["NavDestination"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
 }
 
 element nav_menu {
@@ -4297,22 +4140,6 @@ element scrollareaviewport {
     description: "P1 extracted from production tables; props TBD"
 }
 
-element select {
-    tag: "select"
-    category: "unknown"
-    tier: "web_component"
-    aliases: ["Select"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
-    vue: { component: "Select", import: "@/components/ui/select" }
-    sub_widgets: ["selectcontent", "selectgroup", "selectitem", "selectlabel", "selecttrigger", "selectvalue"]
-    props: [
-        { name: "placeholder", type: "string", description: "Placeholder text for select-value" }
-        { name: "disabled", type: "one_of:true,false", default: "false", description: "Disables the select" }
-    ]
-    allows_children: true
-    description: "P1 extracted from production tables; props TBD"
-}
-
 element select-separator {
     tag: "select-separator"
     category: "unknown"
@@ -4810,6 +4637,17 @@ element stepper_trigger {
     description: "Stepper trigger"
 }
 
+element swiper {
+    tag: "swiper"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["Swiper"]
+    backends: { web: "none", iced: "none", gpui: "unknown" }
+    props: []
+    allows_children: true
+    description: "P3: live widget registry spec (ui_gen/widget/registry.rs)                          not registered in any other table"
+}
+
 element switch {
     tag: "switch"
     category: "unknown"
@@ -5204,6 +5042,18 @@ element tooltiptrigger {
     tier: "web_component"
     backends: { web: "component", iced: "none", gpui: "unknown" }
     vue: { component: "TooltipTrigger", import: "@/components/ui/tooltip" }
+    props: []
+    allows_children: true
+    description: "P1 extracted from production tables; props TBD"
+}
+
+element virtual_window {
+    tag: "virtual_window"
+    category: "unknown"
+    tier: "web_component"
+    aliases: ["VirtualWindow", "virtualwindow"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "VirtualWindow", import: "@/wm/VirtualWindow" }
     props: []
     allows_children: true
     description: "P1 extracted from production tables; props TBD"

@@ -482,6 +482,10 @@ master 既有）;workaround 无（diff 零 TODO/临时标记,eprintln/dbg/483-PR
 注入不可达）的真人清单项,代验证据充分,沿 473 先例（E2E 代验+真人顺延）
 立债放行;最终裁定权随 /auto-plan:merge 呈用户。status→reviewed。
 
+> **2026-08-30 追记（Plan 491 T7）**：P483-3 真人清单追加「musk 登录页 Tab
+> 流」条目——Tab/Shift+Tab 焦点环遍历已由 Plan 491 机制级交付（iced_test
+> 七测），其真键盘实机复验（username→password Tab 切框）并入本清单。
+
 ## 待澄清事项
 
 1. **musk 真机实测执行方**：T5 默认由本计划执行者在 auto-musk 仓对照实测

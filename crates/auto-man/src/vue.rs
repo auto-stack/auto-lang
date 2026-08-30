@@ -123,11 +123,8 @@ const COMPONENT_PATTERNS: &[(&str, &str)] = &[
     ("@/components/ui/toggle-group", "toggle-group"),
     ("@/components/ui/aspect-ratio", "aspect-ratio"),
     ("@/components/ui/button-group", "button-group"),
-    ("@/components/ui/chart", "chart"),
-    ("@/components/ui/chart-area", "chart-area"),
-    ("@/components/ui/chart-bar", "chart-bar"),
-    ("@/components/ui/chart-line", "chart-line"),
-    ("@/components/ui/chart-donut", "chart-donut"),
+    // Plan 484: shadcn-vue chart 族脚手架(chart/chart-area/-bar/-line/-donut)
+    // 退役——chart 由 official 包 Auto 组件承担,不再依赖 @unovis。
     ("@/components/ui/collapsible", "collapsible"),
     ("@/components/ui/input-group", "input-group"),
     ("@/components/ui/input-otp", "input-otp"),
@@ -187,11 +184,6 @@ const OPTIONAL_DEPS: &[(&str, &str)] = &[
     ("zod", "^3.25.76"),
     ("embla-carousel-vue", "^8.5.1"),
     ("@vueuse/core", "^10.7.0"),
-    // PLAN-457: bundled chart scaffolds (chart / chart-area / -bar / -line /
-    // -donut) import @unovis — previously the shadcn-vue CLI installed these
-    // as a side effect of `add`; now declared up front.
-    ("@unovis/vue", "^1.6.7"),
-    ("@unovis/ts", "^1.6.7"),
 ];
 
 /// Plan 442 P0-1: which optional dependency groups the generated code
@@ -224,9 +216,6 @@ pub struct VueDependencyUsage {
     /// table (ash-gui's package.json regeneration dropped @vueuse and
     /// vue-tsc failed on the fresh gen tree).
     pub vueuse_scaffold: bool,
-    /// PLAN-457: chart components (chart / chart-area / -bar / -line /
-    /// -donut) whose bundled scaffolds import @unovis/vue + @unovis/ts.
-    pub chart: bool,
     /// UI components whose scaffold imports class-variance-authority (button / avatar / badge / alert / navigation-menu).
     pub cva_scaffold: bool,
     /// UI components whose scaffold imports reka-ui.
@@ -280,12 +269,6 @@ impl VueDependencyUsage {
                 // @vueuse/core (pre-existing fresh-install gap, hit while
                 // verifying 015-notes).
                 || corpus.contains("@/components/ui/separator'"),
-            // PLAN-457: any chart-family component pulls @unovis.
-            chart: corpus.contains("@/components/ui/chart'")
-                || corpus.contains("@/components/ui/chart-area'")
-                || corpus.contains("@/components/ui/chart-bar'")
-                || corpus.contains("@/components/ui/chart-line'")
-                || corpus.contains("@/components/ui/chart-donut'"),
             cva_scaffold: corpus.contains("@/components/ui/button'")
                 || corpus.contains("@/components/ui/avatar'")
                 || corpus.contains("@/components/ui/badge'")
@@ -360,11 +343,6 @@ impl VueDependencyUsage {
         // table scaffolds — detected via `vueuse_scaffold`.
         if self.carousel || self.sidebar || self.vueuse_scaffold {
             pkgs.push("@vueuse/core");
-        }
-        // PLAN-457: bundled chart scaffolds import @unovis/vue (+ /ts types).
-        if self.chart {
-            pkgs.push("@unovis/vue");
-            pkgs.push("@unovis/ts");
         }
         pkgs
     }
@@ -4141,6 +4119,64 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // Phase 1b: Scan components/ package dir (Plan 435 P4 / 437) — official
+    // package component .at files compile into src/components/{WidgetName}.vue.
+    // App.vue imports them by widget name (e.g. @/components/AreaChart.vue);
+    // previously only `auto gen` (VueProject::generate) wrote these — the
+    // `auto run` incremental path silently skipped the dir, leaving the dev
+    // server with unresolved imports (Plan 484 charts-gallery 现场暴露).
+    let components_pkg_dir = front_dir.join("components");
+    if components_pkg_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&components_pkg_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.extension().map(|e| e == "at").unwrap_or(false) {
+                    continue;
+                }
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if file_name == "package.at" {
+                    continue; // 包清单,非组件
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let hash = hash_string(&content);
+                    let source_changed = cache.is_dirty(&path, hash);
+                    match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                        Ok((vue_code, widgets, stores)) => {
+                            store_files.extend(stores);
+                            let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                UIArtifact {
+                                    source_path: path.clone(),
+                                    widget_name: w.clone(),
+                                    output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                    source_hash: hash,
+                                    content_hash: hash_string(&vue_code),
+                                    backend: UIBackend::Vue,
+                                }
+                            }).collect();
+                            let any_missing = artifacts.iter().any(|a| {
+                                !output_dir.join(&a.output_path).exists()
+                            });
+                            if source_changed || any_missing {
+                                if source_changed {
+                                    println!("  {} (changed)", file_name.bright_yellow());
+                                }
+                                for artifact in &artifacts {
+                                    let out = output_dir.join(&artifact.output_path);
+                                    fs::create_dir_all(out.parent().unwrap_or(&output_dir)).ok();
+                                    fs::write(&out, &vue_code).map_err(|e| {
+                                        format!("Failed to write {}: {}", out.display(), e)
+                                    })?;
+                                }
+                            }
+                            cache.update(path.clone(), hash, artifacts);
+                        }
+                        Err(e) => handle_compile_error(&path, &e)?,
+                    }
+                }
+            }
+        }
+    }
+
     // Phase 2: Check app.at for changes (with sub-widget names known)
     let app_at = front_dir.join("app.at");
     let app_output_path = output_dir.join("src").join("App.vue");
@@ -4990,7 +5026,6 @@ render: \"vm\"
             carousel: true,
             sidebar: false,
             vueuse_scaffold: false,
-            chart: true,
             ..Default::default()
         };
         let pkg = generate_package_json("demo", false, false, &[], &all);
@@ -5003,8 +5038,9 @@ render: \"vm\"
         assert!(pkg.contains("\"zod\""), "{pkg}");
         assert!(pkg.contains("\"embla-carousel-vue\""), "{pkg}");
         assert!(pkg.contains("\"@vueuse/core\""), "{pkg}");
-        assert!(pkg.contains("\"@unovis/vue\""), "{pkg}");
-        assert!(pkg.contains("\"@unovis/ts\""), "{pkg}");
+        // Plan 484: @unovis 随 shadcn chart 族脚手架退役,不再出现在任何
+        // 生成物依赖中(负断言)。
+        assert!(!pkg.contains("unovis"), "{pkg}");
         // A single consumed group doesn't drag the others in.
         let only_toast = VueDependencyUsage { toast: true, ..Default::default() };
         let pkg = generate_package_json("demo", false, false, &[], &only_toast);

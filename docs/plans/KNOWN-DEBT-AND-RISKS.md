@@ -47,6 +47,8 @@
 | 446-R1 | codegen applyAccent 撞名（TS2440，2026-08-29 下游回传） | Plan 409§8/458:store 拥有 `accent_color`/`dark_mode` 字段时 vue codegen 注入内嵌 applyAccent 助手（ACCENT_PALETTE+watch 同步行）；若该 store 同时 `use back.api:` 导入同名 fn，生成 TS 即 TS2440（import vs 局部声明冲突，vue-tsc 红灯）。下游 auto-os-config 已将 back.api 的 applyAccent 改名 saveAccent（与 loadAccent 对称）规避。修法：注入前检测 use 清单撞名并避开/告警。 | `ui_gen/vue.rs` store 注入块（~3206 ACCENT_PALETTE_JS）+ widget 路径（~2575）；docs/plans/reports/446-downstream-settlement.md §五.1 |
 | 484 | 包组件 Init 内 prop 字符串比较破坏 codegen（静默） | official 包组件（`use {package}` 路径）Init handler 内出现 `if curve == "monotone"` 类字符串 prop 等值比较时,**整个子组件 Init 静默失效**——全部几何输出回落 model 默认值,零诊断输出。实证:484 M1 bisect（干净 HEAD 通过,仅加 prop 比较即崩,git stash 双向验证）。同形态 `use widget:` 导入路径不受影响（013-todo todo_list.at 的 model 比较/带参 handler 均正常）——**包加载链特有**（lib.rs P4-4/D13 child_decls 单 VM 编译 vs use-widget 编译链的 handler codegen 差异）。绕开（已落地）:Init 内双算双存变体（segs/segsM、segs/segsS）,view 侧按 prop 选边（view 内 prop 比较正常,如 `if .axis == "auto"`）。回归锚:cargo test -p auto-lang --features ui-iced gallery_chart_components + plan484_chart_component_tests | `components/{line,bar,area}_chart.at` 头注;`crates/auto-lang/src/lib.rs` P4-4/D13 块;plan 484 M1 记录 |
 | 484 | 包子组件带参 msg 声明破坏整包编译（静默） | official 包组件 `msg { Init, Hover(int) }`（带参 msg 声明）使整包加载后所有子组件 Init 失效（静默,同上形态,零诊断）。去掉 msg 参数声明、仅保留裸带参 handler `.Hover(i) -> {}` 一切正常——事件经 DynamicMessage::Typed args → encode/decode_payload → call_handler_for 走通（mouse-area hover 已实证）。对照:`use widget:` 路径 013-todo todo_list.at `msg { ..., ToggleTodo(int), ... }` 正常——同上,包路径特有。绕开（已落地）:包组件一律 `msg { Init }`,带参 handler 裸挂。根治:查 load_package → child_decls → 单 VM 编译链对 messages 的处理（疑 codegen 为带参 msg 生成的桩/表在包路径下错配,与上条可能同根）。回归锚同上 | `components/*_chart.at`（msg 均为裸 `msg { Init }` + 裸挂 handler）;`ui/dynamic.rs decode_payload`;plan 484 M1 记录 |
+| 484 | VM 长页面无滚动容器（内容剪裁） | 超出窗口高度的 VM 页面内容被剪裁（无滚动包装):实测给 charts-gallery 页面包 `scroll (style: "h-screen")` 后 VM 渲染为空页（iced Scrollable 与全屏内容组合异常),已回退;vue 轨浏览器原生滚动不受影响。缓解:页面控制内容高度(限宽/紧凑卡);根治:排查 iced Scrollable + min-h-screen 组合的布局塌陷 | `examples/charts-gallery/src/front/app.at`(revert a997e9f65);plan 484 后续目检 |
+| 484 | tooltip 逐 index 锚点定位（降级为固定右上角） | chart tooltip 的锚点坐标需要动态像素定位（`top-[{.tipY}px]` 类插值类名/StyleBinding 动态值),vue 侧 f-string `{}` 形式在 handler 生成中不插值、tailwind 任意值类需 JIT 扫描源码——两轨均不可靠。v1 降级:tooltip 固定于绘图区右上,内容随 hover 索引变化;逐 index 锚定待 StyleBinding 动态值或 v2 canvas。回归:plan484 冒烟 + charts-gallery 目检 | `components/*_chart.at` tooltip col;plan 484 后续复审目检记录 |
 | 484 | f-string 含字面量 `[`/`]` 时 `${}` 插值破坏组件编译（静默） | `f"w-[${slot}px] h-full"`（dollar-brace 插值 + 字面量方括号）使包组件整体失效（静默形态同上）;同语义 `f"w-[{slot}px] h-full"`（brace 插值）正常。437 时代 donut `bg-[{color}]` 一直用 brace 形式故未触雷。疑点:lexer f-string 模式对 `${` 的 fstr_expr 消费与字面量 `[` 的交互（lexer.rs:629/724 两处 FStrNote 分支）。绕开（已落地）:含字面量 `[]` 的 f-string 一律用 `{}` 插值（bar/line/area band 样式 + tooltip 锚点 style 全部改造）。根治:f-string lexer 最小复现单测（`f"w-[${x}px]"` 解析层即可触发,无需 VM）。回归锚同上 | `components/{line,bar,area}_chart.at`（band 样式/tooltip style）;`crates/auto-lang/src/lexer.rs:615-745`;plan 484 M1 记录 |
 | 446-R2 | merged 模式链接面双 api.at 无诊断（2026-08-29 下游回传） | back.api 符号链接以**外部 back 工程**（如 auto-os-config-back/api.at）的导出清单为准，in-project auto/src/back/api.at 只供实现体——改名/增删 fn 须两份同步，只改一侧即 boot 崩 `Undefined symbol: api.X in module App`，报错不指向第二份文件（下游实测定位成本高）。修法：诊断信息补"检查外部 back 的 api.at 导出清单"提示（或文档化双文件契约）。 | VM linker/merged 装载诊断（Undefined symbol 发射点）；docs/plans/reports/446-downstream-settlement.md §五.2 |
 
@@ -185,14 +187,17 @@
 
 | 计划 | 类别 | 严重度 | 描述 | 根因/理由 | 引用 | 登记日 |
 |------|------|--------|------|-----------|------|--------|
+| 470 | 下游任务 | 🟢 | 批次三：外部 auto 系列仓 use.rust→use.rs 迁移顺延（用户 2026-08-30 裁定"先不做，之后单独做"）。清单：auto-musk 30 .at+10 md（backend/ 为主）、auto-ai 22 .at+8 md（crates/）、book 22 .at+21 md（rust/17+tapl/5，书稿）、auto-down 2 md（4 .at 全在 tmp/ 探针可豁免）、auto-shell 3 md（主树 .at 零命中；158 .at 全在 .worktrees/ 陈旧分支，随活跃分支合并时按告警迁）、auto-code-rs 2 md、auto-forge 1 md | 前置未满足：各仓工具链须先升级到含 use.rs 的 auto-lang（本仓 2026-08-30 合入待发版部署；先行文本替换会因旧工具链不识 use.rs 而破坏构建）。执行方式：升级后以 W0005 告警为迁移信号，机械替换+逐仓跑各自验证；完成后连同"一个发布周期零存量"触发 use.rust 移除 plan（见 🟢 节 P470 deprecation 周期行） | docs/plans/470-use-rs-alias.md 批次三 T11-T16 | 2026-08-30 |
 | 463 | 环境限制 | 🟡 | worktree 内 `cargo tb`/book_listing_tests 全数不可运行（61 项"失败"为环境假象） | book_listing_tests 经 `CARGO_MANIFEST_DIR/../../../book` 读仓库外兄弟目录 `D:\autostack\book`，该相对路径从 worktree 解析必然落空（结构性，非代码问题）。缓解：`.worktrees/book → D:\autostack\book` junction（复审时已建）；长期可考虑 book 路径支持 env 覆盖 | docs/plans/463-desktop-shell-auto-arrange.md §10.2 | 2026-08-28 |
 | 398 | 下游任务 | 🟢 | ash-gui-native M0.5 测试骨架（conftest/desktop_mcp/test_smoke）+ M1 in-process 后端 | 属 auto-shell 仓的下游任务，本仓计划仅负责 VM 侧修复（已完成） | docs/plans/archive/398-*.md §14.3/§14.4 | 2026-08-20 |
 | 408 | 功能缺口 | 🟢 | P5-4：纯 module fn 文件不被 codegen（ui_gen/api.rs:456 报错） | 低优先 + 既有 workaround（塞进 widget/store 文件）；根治需先设计 codegen 入口扩展 | docs/plans/archive/408-*.md §11 P5-4 | 2026-08-20 |
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 | 473 | 环境限制 | 🟢 | 非 Windows 目标 `cargo check -p auto-lang --target x86_64-unknown-linux-gnu` 未本机验证（openssl-sys 交叉编译缺 OpenSSL，reqwest native-tls 既有依赖链） | native_dock 非 Windows 路径以同名 no-op 模块（win32_noop.rs）API 面逐一对照保证；环境性限制非代码缺陷，CI Linux runner 即可闭环 | crates/auto-lang/src/ui/native_dock/win32_noop.rs；plan 473 复审记录 验收#2 | 2026-08-29 |
-| 473 | 验收顺延 | 🟡 | native dock 真人冒烟清单顺延（用户 2026-08-29 裁定 E2E 代验）：B1 拖拽手势（Phase 1 无 dock 用户触发面）、B5 实机模态、B6 IME、B9 多显示器缩放矩阵（仅单屏 200% 覆盖）、D1 Chrome 实机、B8 退出恢复整链实机、C1 真提权进程 | Phase 1 假洞的可自动断言部分已由 fixture E2E 六测试覆盖（B1/B2/B3/C3/C4/C5/B7）；触发面（shell UI/手势）建议随 Phase 1.5 立项；多屏可独立自动化补测 | tools/native-fixture/README.md；docs/plans/473-vm-native-window-dock.md 待澄清⑦ | 2026-08-29 |
+| 473 | 验收顺延 | 🟡 | native dock 真人冒烟清单顺延（用户 2026-08-29 裁定 E2E 代验）：B1 拖拽手势（Phase 1 无 dock 用户触发面）、B5 实机模态、B6 IME、B9 多显示器缩放矩阵（仅单屏 200% 覆盖）、D1 Chrome 实机、B8 退出恢复整链实机、C1 真提权进程。**486 清偿（2026-08-30 实机执行留痕）**：B1 ✅ 真拖 Notepad 入全屏桌面→高亮→收编→任务栏条目→× 关闭（t5_smoke 驱动+截图）；B5 ✅ docked fixture 弹 MessageBox 置顶可交互；B8 ✅ Esc 退出→双窗 chrome/bounds 整链恢复；D1 ◐ Chrome docked ~12s 后其自移触发 C4 自动恢复+toast（Chrome 自身行为，处理优雅，"常驻"未完全达成）；G2 附带 ✅（C4 undock 实机实证）。**仍待用户**：B6 IME 中文输入（自动化无法忠实模拟输入法）；C1 真提权（UAC 交互不可自动化；UIPI 拒收路径有单测）；B9 双屏矩阵（本机单屏 4K@200%；自动化框架已就绪=t5_smoke 驱动+native_dock_e2e） | Phase 1 假洞的可自动断言部分已由 fixture E2E 六测试覆盖（B1/B2/B3/C3/C4/C5/B7）；触发面（shell UI/手势）已随 Phase 1.5（Plan 486）落地 | docs/plans/486-native-dock-trigger-surface.md 步骤9；tools/native-fixture/README.md | 2026-08-30 |
+| 486 | 性能观感 | 🟡 | native dock 事件泵吞吐不足：`native_dock_event_subscription` 16ms 短轮询每拍仅 `try_recv` 一条（≈62 事件/s），系统级 LOCATIONCHANGE 噪声（多窗环境）下 MOVESIZESTART/END 排队滞后——T5 实机实测拖拽松手到 dock 落位延迟可达数秒 | 473 设计按"事件低频"假设单发轮询；486 手势引入后拖拽终态对延迟敏感。修复方向：每拍 drain-while-empty（通道排空为止）+ 可选分级（START/END 优先出队） | crates/auto-lang/src/ui/session.rs:1220 段；486 复审记录 | 2026-08-30 |
+| 486 | 环境限制 | 🟢 | `ui::i18n_lookup::tests::plan050_i18n_lookup_loads_flat_json_and_misses_gracefully` 在 `--features ui*` 档红（i18n/zh.json 装载返回 None）——**非 486 引入**（master 同命令同红；默认档不编译该测试，cargo t/tf 日常门不受影响） | 疑似 cwd/feature 相关装载路径问题，独立于 486 文件范围；留待独立小修 | crates/auto-lang/src/ui/i18n_lookup.rs:72；486 计划待澄清 | 2026-08-30 |
 
-*最后更新：2026-08-29（446 下游结算回执收口:数据损坏条目 ✅（下游 parse-first 8a7b85f+soul.md 重写 639B）、渲染回归降级观察（03/04 在 c83435764 未复现）;新登 446-R1 applyAccent 撞名/446-R2 merged 链接面诊断（🟡节）、422 并入 vue popover 半缺口、446-R3 store_import_prefix CLI/446-R4 state 对象数组投影（增强节）;specs ui/vm plans.md 446 行对齐 archived;2026-08-27（复核归档批:413/414/421/422/423/449 六计划归档,遗留登记 7 条(413 人工验收/421 natives 桥接/422 popover 边界/414 Phase B 族/423 RC 安全×2/449 组件三缺口+越界读 bug),418 menubar 估位条目随 422 P2 落地退役;Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
+*最后更新：2026-08-30（486 清偿 P473 真人冒烟行：B1/B5/B8 ✅ 实机留痕、D1 ◐、B6/C1/B9 仍待用户）；2026-08-29（446 下游结算回执收口:数据损坏条目 ✅（下游 parse-first 8a7b85f+soul.md 重写 639B）、渲染回归降级观察（03/04 在 c83435764 未复现）;新登 446-R1 applyAccent 撞名/446-R2 merged 链接面诊断（🟡节）、422 并入 vue popover 半缺口、446-R3 store_import_prefix CLI/446-R4 state 对象数组投影（增强节）;specs ui/vm plans.md 446 行对齐 archived;2026-08-27（复核归档批:413/414/421/422/423/449 六计划归档,遗留登记 7 条(413 人工验收/421 natives 桥接/422 popover 边界/414 Phase B 族/423 RC 安全×2/449 组件三缺口+越界读 bug),418 menubar 估位条目随 422 P2 落地退役;Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
 
 ### P482（2026-08-29，Plan 482 nav 组件族复审登记）
 
@@ -246,6 +251,12 @@
   但本环境 OS 级键盘注入对 winit 0.30 无效（PostMessage WM_CHAR/WM_KEYDOWN
   均不达）、computer-use 前台通道被并行会话抢占——真人键盘 Tab 复验
   （042 README 步骤 + musk admin/admin 全流程）列入真人清单。
+  **2026-08-30 追记（Plan 491 T8）**：Tab/Shift+Tab 焦点环遍历已在 483
+  登记表基建上机制级交付（renderer.rs focus_traverse+FindFocusedInput 探针，
+  p491 七测全绿；点击直聚可见、无聚焦回落首项、单框自环、Captured 不达
+  fallback）；真人清单**追加「musk 登录页 Tab 流」**（username→password
+  真键盘切框；archive/483 与 auto-musk 011 §七 两处注记同日落），本债
+  不闭合——真键盘通道阻塞依旧（491 T6 实录：前台再遭并行会话抢占）。
 - **P483-4 MCP autoui_type 对 closure oninput 的正向派生怪癖（master 既有）**：
   003-converter 经 autoui_type 输 celsius=100 → fahrenheit 落 0 而非 212
   （master 二进制同表现；反向 F→C 正确）——MCP type 路径对闭包 oninput 的
@@ -276,3 +287,32 @@
   对拍失配）在 master @3a4aacf19 即红——嫌疑 051-C7/484 并行合入线（本计划
   tf 3275 全绿、分支增量不触 codegen 生成路径）。建议尽快专项定位修复，
   归属线确认后可改挂对应计划段。
+
+### P487（2026-08-30，Plan 487 shell-track M4 设置面板复审登记）
+
+- **P487-1 面板可视交互实机照留待重跑（OS 注入受阻变体）**：齿轮开面板/
+  dock 热切换可视/Esc 实机照被 CUA 像素身份守卫阻断——窗口域坐标点击
+  identity mismatch、全屏域 live-owner stale（激活前台 + AUTOUI_MCP_DISABLE=1
+  停帧泵复测仍复现），与 472/478/479 前台竞争同族但机制不同（像素身份 vs
+  前台校验）。语义链 headless 全覆盖（settings_* 七测）；T4 报告
+  `docs/plans/reports/487-t4-live-smoke.md` §2 指针成文，前台空闲可补采
+  （479 P479-2 同款）。
+- **P487-2（复审新发现，非本计划引入）ui-iced 特性档 4 既有红测试 +
+  标准门禁盲区**：`--features ui-iced --lib` 全量下 master 即红 4 测——
+  plan442_ext_link `plan050_void_stub…` / `ui::i18n_lookup::plan050_i18n_lookup…`
+  （i18n 查表文案不上屏族）/ `ui::desktop_protocol::broker::adjudicate_three_steps`
+  / `vm::native::code_editor_natives…e2e`。全部挂 `cfg(all(test, ui-iced))`
+  门后，而日常/全量门禁（`cargo t`/`tf`）跑默认特性档看不见——与 P485-2
+  同族「门禁盲区放过红」。
+  **〔2026-08-30 已修——Plan 489 四测清零〕**：①② corpus `i18n/zh.json`
+  被 .gitignore `*.json` 吞（落测未入库）→ 入库 + `!test/**/i18n/*.json`
+  否定；③ adjudicate 测试固定管道环境干扰 → `adjudicate_on` 参数化缝 +
+  pid 管道 hermetic（A/B 实证）；④ print bool 现语义 true/false 断言对齐。
+  ui-iced 档 4074/4074 两连绿。「档纳入周期门禁」流程面仍开放（另议）。
+  **〔merge 追记〕** 同族第五例当场现形：`desktop_dock_edges…`/
+  `desktop_shell_at_builds…` 两测无隔离，实机桌面用过 487 设置面板后
+  （store 落 `shell.dock.*` 键）即必红——merge 补隔离热修（L0），
+  ui-iced 档 4081/4081 全绿。
+- **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
+  分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
+  按同款双份落码（+11 行 ×2），非本期引入的新债。

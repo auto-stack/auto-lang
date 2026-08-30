@@ -85,6 +85,15 @@ impl SnapshotBuilder {
                 actions: vec![],
                 children: vec![],
             },
+            // Plan 484: MouseArea 命中区在 snapshot 里降级为占位(事件转发
+            // 原语,MCP autoui_find 无需看见)。
+            View::MouseArea { .. } => UiNode {
+                id,
+                kind: "MouseArea".to_string(),
+                props: vec![],
+                actions: vec![],
+                children: vec![],
+            },
 
             // Plan 422: 弹层完整展开 —— MCP 需要看见面板项才能点击。
             // 子序与 render_dynamic_view / BuildProbe 对齐:anchor = 0,

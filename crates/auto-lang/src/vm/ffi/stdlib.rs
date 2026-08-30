@@ -194,6 +194,8 @@ pub const NATIVE_HTTP_REQUEST_BUILDER_SEND: u16 = 2239;
 pub const NATIVE_RESPONSE_STATUS_CODE: u16 = 2216;
 pub const NATIVE_RESPONSE_HEADER_GET: u16 = 2217;
 pub const NATIVE_RESPONSE_BODY: u16 = 2218;
+pub const NATIVE_RESPONSE_BODY_BYTES: u16 = 2225;
+pub const NATIVE_RESPONSE_BODY_TO_FILE: u16 = 2226;
 
 // Plan 152: 流式 HTTP (2240-2249)
 pub const NATIVE_HTTP_GET_STREAM: u16 = 2240;
@@ -5236,6 +5238,51 @@ pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// Plan 446 批四 E3: 返回体改推 UTF-8 文本（lossy）。此前推 Vec<i32> 字节，
 /// print/str.* 消费面只见堆 id（现场"巨大数字串"垃圾值——官方示例
 /// 02_http_client 即以 `str.find(res.body(), ...)` 作文本消费）。
+/// `Response.body_bytes(res_handle) -> List<int>` — byte-FAITHFUL body
+/// accessor (plan-022 auto-down D4): binary responses (zip export) must
+/// round-trip without UTF-8 lossy corruption; `Response.body` is the text
+/// convenience twin. Bytes land as Vec<i32> for `File.write_bytes`.
+/// `Response.body_to_file(res_handle, path)` — write the response body to a
+/// local file BYTE-FAITHFULLY without ferrying bytes through VM values (the
+/// returned-list route loses RC lifetime across CALL_SPEC, plan-022 D4).
+/// Returns the byte count.
+pub fn shim_response_body_to_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let body_bytes = HTTP_RESPONSES.with(|r| {
+        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
+    }).unwrap_or_default();
+
+    std::fs::write(&path, &body_bytes)
+        .map_err(|e| VMError::RuntimeError(format!("body_to_file write failed: {}", e)))?;
+    task.ram.push_i32(body_bytes.len() as i32);
+    Ok(())
+}
+
+pub fn shim_response_body_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    eprintln!("[dbg body_bytes] handle={}", res_handle);
+
+    let body_bytes = HTTP_RESPONSES.with(|r| {
+        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
+    }).unwrap_or_default();
+    eprintln!("[dbg body_bytes] table entry body len={}", body_bytes.len());
+
+    let ints: Vec<i32> = body_bytes.iter().map(|&b| b as i32).collect();
+    eprintln!("[dbg body_bytes] ints.len={} list_id_before={}", ints.len(), {
+        let probe = crate::vm::native::create_list_from_i32(vm, ints.clone());
+        probe
+    });
+    let list_id = crate::vm::native::create_list_from_i32(vm, ints.clone());
+    eprintln!("[dbg body_bytes] real list_id={} ints again={}", list_id, ints.len());
+    // Plan 432 D26: 新堆 id 入栈必须 rc_push_id（裸 push_i32 零份额，
+    // 列表在局部槽引用释放时即死——length 恒 0 的根因）。
+    vm.rc_push_id(task, list_id);
+    Ok(())
+}
+
 pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
@@ -7173,6 +7220,8 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.obj.find", crate::vm::native::shim_obj_find);
     natives.register_shim_by_name("Response.header_get", shim_response_header_get);
     natives.register_shim_by_name("Response.body", shim_response_body);
+    natives.register_shim_by_name("Response.body_bytes", shim_response_body_bytes);
+    natives.register_shim_by_name("Response.body_to_file", shim_response_body_to_file);
 
     // HTTP streaming (manual shims — heap objects for stream state)
     natives.register_shim_by_name("auto.http_stream.get_stream", shim_http_get_stream);

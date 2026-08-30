@@ -1,7 +1,7 @@
 // pages/donut-chart.at — DonutChart 页（Plan 437 Charts 分组 ④·四类图收尾）
 //
 // Phase 2（2026-08-28）：几何已提取为官方 Auto 组件
-// components/donut_chart.at（AutoDonutChart，d3-arc 风格外弧 A + 内弧
+// components/donut_chart.at（DonutChart，d3-arc 风格外弧 A + 内弧
 // 回程 Z，角度由数据占比循环累进，math.cos/sin 直调——§0.6.H 三层
 // 缺陷已修，页面防御性直线几何按计划指示顺势退役）。
 
@@ -20,14 +20,17 @@ widget DonutChartPage {
     view {
         col {
             h1 "DonutChart"
-            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），角度由数据占比循环累进计算，math.cos/sin 直调（§0.6.H 根因已修），大弧标志 span>π。几何全部在 AutoDonutChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+            text "官方 Auto 实现的圆环图——d3-arc 风格路径（外弧 A 命令 + 内弧回程 + Z 闭合），角度由数据占比循环累进计算，math.cos/sin 直调（§0.6.H 根因已修），大弧标志 span>π。几何全部在 DonutChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
 
             h2 "Basic"
             preview-card (id: "donut-chart-basic") {
-                auto-donut-chart (data: .traffic, index: "l", field: "v") {}
+                donut-chart (index: "l") {
+                    data: .traffic
+                    field: "v"
+                }
             }
 
-            h2 "Props（AutoDonutChart 组件）"
+            h2 "Props（DonutChart 组件）"
             table {
                 table-header {
                     table-row {

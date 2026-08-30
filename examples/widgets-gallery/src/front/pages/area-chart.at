@@ -1,7 +1,7 @@
 // pages/area-chart.at — AreaChart 页（Plan 437 Charts 分组 ③）
 //
 // Phase 2（2026-08-28）：几何已提取为官方 Auto 组件
-// components/area_chart.at（AutoAreaChart，linear scale + 折线下探底边
+// components/area_chart.at（AreaChart，linear scale + 折线下探底边
 // 闭合 Z 路径，fill 半透明叠加；顶边另发描边 path）。本页只持 demo
 // 数据 + 消费组件，v1 内联几何形态退役。
 
@@ -22,14 +22,18 @@ widget AreaChartPage {
     view {
         col {
             h1 "AreaChart"
-            text "官方 Auto 实现的面积图——折线路径下探底边闭合（fill 半透明叠加），顶边另发描边 path 保持轮廓清晰。几何全部在 AutoAreaChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
+            text "官方 Auto 实现的面积图——折线路径下探底边闭合（fill 半透明叠加），顶边另发描边 path 保持轮廓清晰。几何全部在 AreaChart 组件内用 Auto 完成；渲染端 SVG 直通：vue 轨直通臂，VM 轨 svgdoc 通道。"
 
             h2 "Overlay"
             preview-card (id: "area-chart-overlay") {
-                auto-area-chart (data: .monthly, index: "m", fields: ["desktop", "mobile"], colors: ["#2563eb", "#16a34a"]) {}
+                area-chart (index: "m") {
+                    data: .monthly
+                    fields: ["desktop", "mobile"]
+                    colors: ["#2563eb", "#16a34a"]
+                }
             }
 
-            h2 "Props（AutoAreaChart 组件）"
+            h2 "Props（AreaChart 组件）"
             table {
                 table-header {
                     table-row {
