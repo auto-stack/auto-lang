@@ -2583,6 +2583,20 @@ fn build_grid<M: Clone + Debug + 'static>(
 /// was caused by exactly the drift this rule forbids: the layout lived in two
 /// `build_*`-less copies that diverged. `View::Grid` + `build_grid` exists so
 /// that cannot recur — grid decomposition is now a single source of truth.
+/// Plan 490 G4：布局件（row/col/div=Container）点击包装——有 onclick 时
+/// 以 mouse_area 包装、on_release 发射声明消息（402 右键 / 484 hover 两
+/// mouse_area 先例同 API 形态）；检视捕获模式不包（inspect mouse_area 需
+/// 独占命中，同按钮右键守卫）；None = 原样直出零开销。
+fn wrap_layout_onclick<'a, M: Clone + 'static>(
+    el: iced::Element<'a, M>,
+    onclick: Option<M>,
+) -> iced::Element<'a, M> {
+    match onclick {
+        Some(msg) if !inspect_capture_active() => mouse_area(el).on_release(msg).into(),
+        _ => el,
+    }
+}
+
 impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
     fn into_iced(self) -> iced::Element<'static, M> {
         match self {
@@ -3185,18 +3199,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Row { children, spacing, padding, style } => {
+            AbstractView::Row { children, spacing, padding, style, onclick } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
                 let els: Vec<iced::Element<'static, M>> =
                     children.into_iter().map(axis_fix_row_child).map(|c| c.into_iced()).collect();
-                build_row(els, spacing, padding, style.as_ref(), None)
+                // Plan 490 G4：布局件点击（row/col/div onclick parity）。
+                wrap_layout_onclick(build_row(els, spacing, padding, style.as_ref(), None), onclick)
             }
 
-            AbstractView::Column { children, spacing, padding, style } => {
+            AbstractView::Column { children, spacing, padding, style, onclick } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 let els: Vec<iced::Element<'static, M>> =
                     children.into_iter().map(axis_fix_col_child).map(|c| c.into_iced()).collect();
-                build_column(els, spacing, padding, style.as_ref(), None)
+                // Plan 490 G4：同 Row。
+                wrap_layout_onclick(build_column(els, spacing, padding, style.as_ref(), None), onclick)
             }
 
             AbstractView::Input {
@@ -3380,16 +3396,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 center_x,
                 center_y,
                 style,
+                onclick,
             } => {
-                build_container(
-                    child.into_iced(),
-                    padding,
-                    width,
-                    height,
-                    center_x,
-                    center_y,
-                    style.as_ref(),
-                    None,
+                // Plan 490 G4：div/Container 点击（musk specs 树形态消费面）。
+                wrap_layout_onclick(
+                    build_container(
+                        child.into_iced(),
+                        padding,
+                        width,
+                        height,
+                        center_x,
+                        center_y,
+                        style.as_ref(),
+                        None,
+                    ),
+                    onclick,
                 )
             }
 
@@ -4582,6 +4603,7 @@ fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<Dy
             item.text.clone()
         };
         AbstractView::Row {
+            onclick: None,
             children: vec![
                 AbstractView::Checkbox {
                     is_checked: item.done,
@@ -4634,7 +4656,8 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-                            };
+            onclick: None,
+        };
                         }
                         return;
                     }
@@ -4701,6 +4724,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick,
         } => AbstractView::Row {
             children: children
                 .into_iter()
@@ -4709,6 +4733,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            // Plan 490 G4：布局件 onclick 穿透转换（DynamicMessage → IcedMessage）。
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Column {
@@ -4716,6 +4742,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick,
         } => AbstractView::Column {
             children: children
                 .into_iter()
@@ -4724,6 +4751,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             spacing,
             padding,
             style,
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Input {
@@ -4834,6 +4862,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_x,
             center_y,
             style,
+            onclick,
         } => AbstractView::Container {
             child: Box::new(convert_view_messages(*child)),
             padding,
@@ -4842,6 +4871,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             center_x,
             center_y,
             style,
+            onclick: onclick.map(|d| IcedMessage::from_dynamic(&d)),
         },
 
         AbstractView::Scrollable {
@@ -14873,7 +14903,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Layout containers: recursively render children through render_dynamic_view
         // so Input/Textarea get proper IcedMessage text capture.
-        AbstractView::Column { children, spacing, padding, style } => {
+        AbstractView::Column { children, spacing, padding, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -14944,7 +14974,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：同 Row（inspect 模式自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
         // Plan 422: 锚定弹层(VM 模式路径)。子路径约定(与 snapshot/vnode/
@@ -14986,7 +15018,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "popover", el, vec![], None) } else { el }
         }
 
-        AbstractView::Row { children, spacing, padding, style } => {
+        AbstractView::Row { children, spacing, padding, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -15031,10 +15063,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：布局件点击（inspect 模式 wrap_layout_onclick 自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
-        AbstractView::Container { child, padding, width, height, center_x, center_y, style } => {
+        AbstractView::Container { child, padding, width, height, center_x, center_y, style, onclick } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
@@ -15048,7 +15082,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             path.pop();
             let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
             let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el }
+            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el };
+            // Plan 490 G4：div/Container 点击（inspect 模式自守卫不包）。
+            wrap_layout_onclick(el, onclick)
         }
 
         AbstractView::Scrollable { child, width, height, style, auto_scroll } => {
@@ -15743,6 +15779,7 @@ fn apply_highlight_mut_rec<M: Clone + Debug>(
             center_x: false,
             center_y: false,
             style: Some(rust_highlight_style()),
+            onclick: None,
         };
         *view = wrapped;
         return true;
@@ -18514,6 +18551,7 @@ mod tests {
             spacing: 0,
             padding: 0,
             style: None,
+            onclick: None,
         };
         apply_table_header_style(&mut v);
         match v {
@@ -19108,6 +19146,7 @@ mod line_edit_tests {
             spacing: 8,
             padding: 8,
             style: None,
+            onclick: None,
         }
     }
 

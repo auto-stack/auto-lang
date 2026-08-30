@@ -41,7 +41,8 @@ fn row_smoke_two_texts() {
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (x1, _y1, w1, _h1) = bounds_of(&mut ui, "L");
     let (x2, _y2, w2, _h2) = bounds_of(&mut ui, "R");
@@ -65,7 +66,8 @@ fn row_fill_child_keeps_sibling_visible() {
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (x, _y, w, _h) = bounds_of(&mut ui, "SURVIVOR");
     assert!(w > 0.0, "sibling after a Fill child must keep width, got {w}");
@@ -153,12 +155,14 @@ fn center_column_items_center_centers_narrow_child() {
                 spacing: 0,
                 padding: 0,
                 style: None,
+                onclick: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::default().add(StyleClass::ItemsCenter)),
-    };
+                onclick: None,
+            };
     let view = View::container(inner)
         .center_x()
         .center_y()
@@ -192,12 +196,14 @@ fn row_ml_auto_pushes_right() {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("ml-auto").ok(),
+                onclick: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "LEFT");
     let (rx, _ry, rw, _rh) = bounds_of(&mut ui, "RIGHT");
@@ -229,7 +235,8 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("items-center bg-[#1C1D24]").ok().unwrap()),
-    };
+                onclick: None,
+            };
     let view = View::Row {
         children: vec![
             inner,
@@ -238,7 +245,8 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (ox, _oy, ow, _oh) = bounds_of(&mut ui, "OUTER");
     assert!(ow > 0.0, "outer sibling must keep width");
@@ -324,13 +332,15 @@ fn nested_row_icon_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let view = View::Row {
         children: vec![inner, icon_btn("\u{EE01}save\u{EE02}")],
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let sizes = all_button_bounds(view);
     assert!(sizes.len() >= 5, "expected rows+3 buttons in the tree: {sizes:?}");
     let buttons: Vec<_> = sizes.iter().filter(|(k, w, _)| *k == 1.0 && *w <= 60.0).collect();
@@ -363,6 +373,7 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
                 height: None,
                 center_x: false,
                 center_y: false,
+                onclick: None,
                 style: None,
             }),
             placement,
@@ -372,7 +383,8 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
         spacing: 0,
         padding: 0,
         style: None,
-    }
+                onclick: None,
+            }
 }
 
 /// BottomStart:面板左缘对齐锚左缘、顶缘在锚正下方 —— menubar 下拉的
@@ -408,7 +420,8 @@ fn popover_snaps_within_viewport_right_edge() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (ax, _ay, _aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
     let (px, py, pw, _ph) = bounds_of(&mut ui, "PANELTEXT");
@@ -433,7 +446,8 @@ fn popover_point_anchor_places_panel_at_coordinate() {
             center_x: false,
             center_y: false,
             style: None,
-        }),
+                onclick: None,
+            }),
         placement: PopoverPlacement::BottomStart,
         open: true,
         on_dismiss: None,
@@ -466,7 +480,8 @@ fn popover_closed_hides_panel() {
         spacing: 0,
         padding: 0,
         style: None,
-    };
+                onclick: None,
+            };
     let mut ui = simulator(view.into_iced());
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "CLOSEDBTN");
     assert!(bw > 0.0 && bh > 0.0, "anchor button must render when closed: {bw}x{bh}");
@@ -512,6 +527,7 @@ fn popover_semantics_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
+                onclick: None,
             }),
             placement: PopoverPlacement::BottomStart,
             open: true,
@@ -520,7 +536,8 @@ fn popover_semantics_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-    }
+                onclick: None,
+            }
 }
 
 #[test]

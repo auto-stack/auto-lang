@@ -256,6 +256,10 @@ pub enum View<M: Clone + Debug> {
         spacing: u16,        // Legacy field (kept for backward compatibility)
         padding: u16,        // Legacy field (kept for backward compatibility)
         style: Option<Style>,  // ✅ NEW: Takes priority over spacing/padding
+        /// Plan 490 G4：布局件点击（VM/Vue parity——Vue 轨 onclick→@click
+        /// 泛映射既有；VM 转换层提取 row/col/div 的 onclick，iced 侧以
+        /// mouse_area 包装发射）。None = 纯布局（缺省，行为不变）。
+        onclick: Option<M>,
     },
 
     /// Vertical layout with optional styling
@@ -264,6 +268,8 @@ pub enum View<M: Clone + Debug> {
         spacing: u16,        // Legacy field (kept for backward compatibility)
         padding: u16,        // Legacy field (kept for backward compatibility)
         style: Option<Style>,  // ✅ NEW: Takes priority over spacing/padding
+        /// Plan 490 G4：同 [`View::Row::onclick`]。
+        onclick: Option<M>,
     },
 
     /// Text input field with optional styling
@@ -359,6 +365,8 @@ pub enum View<M: Clone + Debug> {
         center_x: bool,      // Legacy field
         center_y: bool,      // Legacy field
         style: Option<Style>,  // ✅ NEW: Takes priority over individual fields
+        /// Plan 490 G4：同 [`View::Row::onclick`]（div 形态消费面）。
+        onclick: Option<M>,
     },
 
     /// Scrollable container for content overflow with optional styling
@@ -896,13 +904,15 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            },
+            onclick: None,
+        },
             ViewBuilderKind::Column => View::Column {
                 children: self.children,
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            },
+            onclick: None,
+        },
             ViewBuilderKind::Text => View::Text {
                 content: self.text_content,
                 style: self.style,
@@ -1402,17 +1412,19 @@ impl<M: Clone + Debug> View<M> {
                 on_right_click: on_right_click.map(|rc| f(rc)),
                 disabled,
             },
-            View::Row { children, spacing, padding, style } => View::Row {
+            View::Row { children, spacing, padding, style, onclick } => View::Row {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 padding,
                 style,
+                onclick: onclick.map(|m| f(m)),
             },
-            View::Column { children, spacing, padding, style } => View::Column {
+            View::Column { children, spacing, padding, style, onclick } => View::Column {
                 children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 padding,
                 style,
+                onclick: onclick.map(|m| f(m)),
             },
             View::Grid { cols, gap, cells, style } => View::Grid {
                 cols,
@@ -1470,7 +1482,7 @@ impl<M: Clone + Debug> View<M> {
                 on_toggle: on_toggle.map(|m| f(m)),
                 style,
             },
-            View::Container { child, padding, width, height, center_x, center_y, style } => View::Container {
+            View::Container { child, padding, width, height, center_x, center_y, style, onclick } => View::Container {
                 child: Box::new(child.map_msg_with_arc(f)),
                 padding,
                 width,
@@ -1478,6 +1490,7 @@ impl<M: Clone + Debug> View<M> {
                 center_x,
                 center_y,
                 style,
+                onclick: onclick.map(|m| f(m)),
             },
             View::Scrollable { child, width, height, style, auto_scroll } => View::Scrollable {
                 child: Box::new(child.map_msg_with_arc(f)),
@@ -2202,6 +2215,7 @@ impl<M: Clone + Debug> ViewContainerBuilder<M> {
             center_x: self.center_x,
             center_y: self.center_y,
             style: self.style,
+            onclick: None,
         }
     }
 }
