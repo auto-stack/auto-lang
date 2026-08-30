@@ -260,6 +260,12 @@ pub struct DesktopState {
     /// boot 期常驻装载（非 overlay 懒挂载——面常驻不召唤），装配层 Stack
     /// 先于虚拟窗推层（463 桌面层 z 槽消费）；独立模式恒 None。
     pub desktop_app: Option<AppId>,
+    /// Plan 496 M5：boot 解析后的壁纸串（storage `shell.desktop.wallpaper`
+    /// ——#hex 色值 | 图片路径；缺席/坏值回退
+    /// [`DESKTOP_WALLPAPER_DEFAULT`]）。#hex 分支
+    /// 由 desktop.at 根 bg 实铺（`__desktop_bg` 注入）；图片分支由宿主在
+    /// 图标面之下推壁纸图层（DSL 无重叠布局，z 序宿主侧兑现）。
+    pub desktop_wallpaper: String,
     /// Plan 464 T4：launcher 入口 .at 路径。boot 期自注册表捕获（id 为
     /// "launcher" 或以 "-launcher" 结尾的条目，441 预订 028-launcher）；
     /// None = 注册表无 launcher（召唤降级 toast）。
@@ -300,6 +306,7 @@ impl DesktopState {
             notification_app: None,
             settings_app: None,
             desktop_app: None,
+            desktop_wallpaper: DESKTOP_WALLPAPER_DEFAULT.to_string(),
             launcher_entry: None,
             registry_entries: Vec::new(),
             dock_edges: crate::ui::layout::ReservedEdges::taskbar(),
@@ -1182,6 +1189,10 @@ pub struct ShellFields {
     pub initial_resize_done: Cell<bool>,
     pub initial_focus_done: Cell<bool>,
 }
+
+/// Plan 496 M5：桌面本体 pack 默认壁纸色（theme Background dark 的
+/// rgb(9,14,26)——壁纸键缺席/坏值的回退底色；renderer 壁纸解析同源）。
+pub const DESKTOP_WALLPAPER_DEFAULT: &str = "#090e1a";
 
 /// desktop 模式宿主上下文：唯一 OS 窗口 + WM 状态（R2 单 OS 窗口拓扑）。
 pub struct HostCtx {
