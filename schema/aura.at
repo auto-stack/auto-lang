@@ -5054,8 +5054,9 @@ element virtual_window {
     aliases: ["VirtualWindow", "virtualwindow"]
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "VirtualWindow", import: "@/wm/VirtualWindow" }
+    events: ["on_native_drop", "on_native_paste", "on_dnd_finished"]
     props: []
     allows_children: true
-    description: "P1 extracted from production tables; props TBD"
+    description: "Plan 465 shell leaf; Plan 488 native interop event surface - on_native_drop(OLE drop payload record), on_native_paste(Ctrl+V clipboard record), on_dnd_finished(drag-out effect). Host-injected (renderer), no widget-level dispatch."
 }
 

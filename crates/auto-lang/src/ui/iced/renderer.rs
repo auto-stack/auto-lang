@@ -7666,6 +7666,62 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
     None
 }
 
+/// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷 Record
+/// {text: str|null, files: [str], image: {path,width,height}|null,
+/// screen_x: int, screen_y: int, formats: [str]}。
+fn native_drop_payload(data: &crate::ui::native_dnd::NativeDropData) -> auto_val::Value {
+    let mut obj = auto_val::Obj::new();
+    obj.set(
+        "text",
+        match &data.text {
+            Some(t) => auto_val::Value::str(t),
+            None => auto_val::Value::Null,
+        },
+    );
+    obj.set(
+        "files",
+        auto_val::Value::Array(auto_val::Array::from(
+            data.files.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
+        )),
+    );
+    obj.set(
+        "image",
+        match &data.image {
+            Some((path, w, h)) => {
+                let mut im = auto_val::Obj::new();
+                im.set("path", auto_val::Value::str(path));
+                im.set("width", auto_val::Value::Int(*w as i32));
+                im.set("height", auto_val::Value::Int(*h as i32));
+                auto_val::Value::Obj(im)
+            }
+            None => auto_val::Value::Null,
+        },
+    );
+    obj.set("screen_x", auto_val::Value::Int(data.screen_x));
+    obj.set("screen_y", auto_val::Value::Int(data.screen_y));
+    obj.set(
+        "formats",
+        auto_val::Value::Array(auto_val::Array::from(
+            data.formats.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
+        )),
+    );
+    auto_val::Value::Obj(obj)
+}
+
+/// Plan 488：宿主注入面 —— App 级原生事件（on_native_drop /
+/// on_native_paste / on_dnd_finished）经既有 handler 管线直注（472/479
+/// 同型：bridge.call_handler；未声明 handler 的 App 静默忽略）。
+fn inject_native_event(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    event: &str,
+    args: &[auto_val::Value],
+) {
+    if let Some(sess) = state.app_mut(app) {
+        let _ = sess.component.bridge_mut().call_handler(event, args);
+    }
+}
+
 /// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
 /// 物理域消息 [`crate::ui::session::DesktopEvent::NativeDragOver`] 与 DragWatch
 /// 采样共用本入口；无桌面窗的 headless 形态按恒等退化（E2E 直注即所得）。
@@ -10578,12 +10634,22 @@ fn compare_pngs(
                         }
                         return summon_switcher(state);
                     }
-                    // Plan 488 步骤 4：拖出完成（App 事件 on_dnd_finished 注入
-                    // 管线在步骤 6 接线——发起 App 追踪经 native 侧会话记账）。
-                    DesktopEvent::DndFinished { effect: _ } => {}
-                    // Plan 488 步骤 5：拖入落点——屏幕物理坐标 → 宿主逻辑域
-                    // （drag_mapper 同源）→ z 序命中 → AppId（on_native_drop
-                    // 注入在步骤 6 接线）。headless/无宿主窗时坐标按恒等退化。
+                    // Plan 488 步骤 4/6：拖出完成 → 焦点 App 注入
+                    // on_dnd_finished（管线现状 = call_handler 直注；发起方
+                    // 追踪无 VM→AppId 通道，v1 取完成时焦点 App——拖出期桌面
+                    // 持焦点，与发起方一致；偏差场景记 T6 冒烟观察）。
+                    DesktopEvent::DndFinished { effect } => {
+                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
+                        {
+                            inject_native_event(state, app, "on_dnd_finished", &[
+                                auto_val::Value::str(effect),
+                            ]);
+                        }
+                    }
+                    // Plan 488 步骤 5/6：拖入落点——屏幕物理坐标 → 宿主逻辑域
+                    // （drag_mapper 同源）→ z 序命中 → AppId → on_native_drop
+                    // 注入（payload Record：text/files/image whichever）。
+                    // headless/无宿主窗时坐标按恒等退化。
                     DesktopEvent::NativeDrop(data) => {
                         let local = (data.screen_x as f32, data.screen_y as f32);
                         #[cfg(windows)]
@@ -10598,7 +10664,11 @@ fn compare_pngs(
                         } else {
                             local
                         };
-                        let _hit = state.drop_hit_app_at_local(local.0, local.1);
+                        if let Some(app) = state.drop_hit_app_at_local(local.0, local.1) {
+                            inject_native_event(state, app, "on_native_drop", &[
+                                native_drop_payload(&data),
+                            ]);
+                        }
                     }
                 }
                 iced::Task::none()
@@ -17315,6 +17385,32 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+    }
+
+    /// Plan 488 T2：on_native_drop 载荷 Record 构造——text/files/image
+    /// whichever 可用（缺省 Null），含屏幕坐标与观察格式表。
+    #[test]
+    fn plan488_native_drop_payload_record() {
+        let data = crate::ui::native_dnd::NativeDropData {
+            text: Some("hi".into()),
+            files: vec!["C:/a.txt".into()],
+            image: None,
+            screen_x: 12,
+            screen_y: 34,
+            formats: vec!["CF_HDROP".into(), "CF_UNICODETEXT".into()],
+        };
+        let auto_val::Value::Obj(obj) = native_drop_payload(&data) else {
+            panic!("payload 应为 Record");
+        };
+        assert_eq!(obj.get("text"), Some(auto_val::Value::str("hi")));
+        assert_eq!(obj.get("screen_x"), Some(auto_val::Value::Int(12)));
+        assert_eq!(obj.get("screen_y"), Some(auto_val::Value::Int(34)));
+        let auto_val::Value::Array(files) = obj.get("files").unwrap() else {
+            panic!("files 应为 Array");
+        };
+        assert_eq!(files.values.len(), 1);
+        // image 缺省 Null。
+        assert_eq!(obj.get("image"), Some(auto_val::Value::Null));
     }
 
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
