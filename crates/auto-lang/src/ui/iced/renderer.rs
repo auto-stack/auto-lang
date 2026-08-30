@@ -11154,7 +11154,17 @@ fn compare_pngs(
                         } else {
                             local
                         };
-                        if let Some(app) = state.drop_hit_app_at_local(local.0, local.1) {
+                        let hit = state.drop_hit_app_at_local(local.0, local.1);
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            eprintln!(
+                                "[dnd-hit] local=({:.0},{:.0}) app={:?} widget={:?}",
+                                local.0,
+                                local.1,
+                                hit,
+                                hit.and_then(|a| state.apps.get(&a).map(|s| s.component.widget_name().to_string()))
+                            );
+                        }
+                        if let Some(app) = hit {
                             if let Some(sess) = state.app_mut(app) {
                                 let res = sess.component.bridge_mut().call_handler_with_record(
                                     "on_native_drop",

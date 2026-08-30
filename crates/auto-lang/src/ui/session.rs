@@ -3896,6 +3896,17 @@ pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
                 use iced_futures::futures::stream::StreamExt;
                 iced_futures::futures::stream::unfold((), |()| async move {
                     // 低频事件（一次拖拽两条以内）；空拍 Some(None) 剔除保活。
+                    // T6 诊断：订阅存活心跳（1Hz，trace 门控）。
+                    {
+                        static BEAT: std::sync::atomic::AtomicU64 =
+                            std::sync::atomic::AtomicU64::new(0);
+                        if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                            let n = BEAT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            if n % 60 == 0 {
+                                eprintln!("[dnd-beat] subscription alive n={n}");
+                            }
+                        }
+                    }
                     let msg = crate::ui::native_dnd::win32::take_finished_effect()
                         .map(|effect| {
                             DesktopMessage::Desktop(DesktopEvent::DndFinished {

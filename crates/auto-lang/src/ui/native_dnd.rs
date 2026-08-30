@@ -749,6 +749,9 @@ pub mod win32 {
             // 事件恰是主线程泵的消息源，故拖动期 Enter/Over 正常、松手后
             // Drop 卡住）。
             wake_ticker_arm(true);
+            if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                eprintln!("[dnd-hop0] DragEnter enter (thread={:?})", std::thread::current().id());
+            }
             let usable = pdataobj
                 .map(|d| {
                     let (hit, _) = probe_formats(d);
@@ -773,6 +776,9 @@ pub mod win32 {
         }
 
         fn DragLeave(&self) -> windows::core::Result<()> {
+            if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                eprintln!("[dnd-hop0] DragLeave");
+            }
             wake_ticker_arm(false);
             Ok(())
         }
@@ -834,6 +840,14 @@ pub mod win32 {
                                     None,
                                 );
                             }
+                            static POSTS: std::sync::atomic::AtomicU64 =
+                                std::sync::atomic::AtomicU64::new(0);
+                            if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                let n = POSTS.fetch_add(1, Ordering::Relaxed);
+                                if n % 10 == 0 {
+                                    eprintln!("[dnd-tick] WM_NULL posts={}", n + 1);
+                                }
+                            }
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(40));
@@ -872,6 +886,15 @@ pub mod win32 {
         }
         unsafe {
             let hwnd = windows::Win32::Foundation::HWND(h.0 as *mut _);
+            if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                let mut r = windows::Win32::Foundation::RECT::default();
+                if windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut r).is_ok() {
+                    eprintln!(
+                        "[dnd-host] hwnd={:#x} rect=({},{})-({},{})",
+                        h.0, r.left, r.top, r.right, r.bottom
+                    );
+                }
+            }
             // winit 0.30 注册过自己的 CF_HDROP 目标——位移之（返回值两可）。
             let _ = windows::Win32::System::Ole::RevokeDragDrop(hwnd);
             // 防御性 OLE 初始化（winit 通常已做；S_FALSE 幂等计数不 Uninit）。
@@ -930,10 +953,17 @@ pub mod win32 {
                             return;
                         }
                         // 永久泵：服务跨套间回调（消息只来自 COM，无窗口逻辑）。
+                        let trace = std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1");
+                        if trace {
+                            eprintln!("[dnd-sta] pump loop enter");
+                        }
                         let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
                         while windows::Win32::UI::WindowsAndMessaging::GetMessageW(&mut msg, None, 0, 0)
                             .as_bool()
                         {
+                            if trace {
+                                eprintln!("[dnd-sta] dispatch msg={}", msg.message);
+                            }
                             let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
                             windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
                         }
