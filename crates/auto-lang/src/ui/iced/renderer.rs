@@ -7414,6 +7414,10 @@ fn toggle_settings(
         != Some("false");
     let notes_on = crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref()
         != Some("false");
+    // Plan 496 M5：壁纸键快照（外观分区「当前：」展示；写入 = 面板内
+    // storage 直写，本注入只在召唤时点）。
+    let wallpaper = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
+        .unwrap_or_default();
     let pinned: Vec<auto_val::Value> = state
         .desktop
         .dock_pinned
@@ -7432,6 +7436,9 @@ fn toggle_settings(
             "cfg_notes_enabled",
             auto_val::Value::str(if notes_on { "1" } else { "0" }),
         );
+        let _ = app
+            .component
+            .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
         let _ = app.component.write_state_vec("pinned_ids", pinned);
         let _ = app.component.write_state(
             "about_host",
@@ -18787,6 +18794,90 @@ mod tests {
             Some("013-todo,015-notes,020-newapp"),
             "RemovePinned 落键收缩"
         );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Plan 496 M5 步骤5：外观分区——壁纸输入 storage 直写闭环（Nav
+    /// appearance 导航 / DraftWallpaper 草稿 / SaveWallpaper 落键
+    /// shell.desktop.wallpaper / saved 提示 / 空草稿不写键）+ 召唤快照
+    /// cfg_wallpaper 注入。
+    #[test]
+    fn settings_appearance_wallpaper_section_writes_storage() {
+        let path = t2_isolate_storage("496-appearance");
+        // 预置旧壁纸：召唤快照应注入 cfg_wallpaper。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#101820".into());
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_wallpaper") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "#101820", "召唤注入壁纸键快照")
+                }
+                other => panic!("cfg_wallpaper 读回异常: {other:?}"),
+            }
+        }
+        // Nav 外观分区。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("appearance")])
+            .expect("Nav handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("section") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "appearance", "外观分区可达")
+                }
+                other => panic!("section 读回异常: {other:?}"),
+            }
+        }
+        // 空草稿保存：不落键。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("SaveWallpaper", &[])
+            .expect("SaveWallpaper handler（空草稿）");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
+            Some("#101820"),
+            "空草稿不写键"
+        );
+        // 草稿 + 保存：落键 + cfg 快照刷新 + saved 提示 + 草稿清空。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("DraftWallpaper", &[auto_val::Value::str("#243b55")])
+            .expect("DraftWallpaper handler");
+        app.component
+            .bridge_mut()
+            .call_handler("SaveWallpaper", &[])
+            .expect("SaveWallpaper handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
+            Some("#243b55"),
+            "SaveWallpaper 落键（load_desktop_wallpaper 同键）"
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            for (field, want, why) in [
+                ("cfg_wallpaper", "#243b55", "保存后 cfg 快照刷新"),
+                ("wallpaper_draft", "", "保存后草稿清空"),
+                ("wallpaper_saved", "1", "已保存提示置位"),
+            ] {
+                match app.component.read_state(field) {
+                    Ok(auto_val::Value::Str(ref s)) => {
+                        assert_eq!(s.to_string(), want, "{why}")
+                    }
+                    other => panic!("{field} 读回异常: {other:?}"),
+                }
+            }
+        }
 
         let _ = std::fs::remove_file(&path);
     }

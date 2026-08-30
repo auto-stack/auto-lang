@@ -1,12 +1,14 @@
 // settings overlay pack（特权 .at App —— 宿主进程内编译装载，不进
 // examples/ui；Plan 487 M4，464/478/479 overlay 槽同型的第四枚）。
 //
-// 形态：dock 齿轮召唤的系统设置面板——左列分区导航（Dock/通知/关于）+
-// 右列内容卡（463 shell pack 皮肤）。v1 四分区见计划 §详细设计：
+// 形态：dock 齿轮召唤的系统设置面板——左列分区导航（Dock/通知/外观/关于）
+// + 右列内容卡（463 shell pack 皮肤）。分区见计划 §详细设计：
 //   Dock：位置/开关热生效（desktop.set_dock_position/enabled 驱动动词，
 //   I7：几何是驱动事实，settings 只是 UI）+ pinned 编辑（storage 键
 //   shell.dock.pinned 直写，boot 生效）。
 //   通知：持久化开关（shell.notes.enabled storage 直写，479 持久化链门控）。
+//   外观（496 M5）：壁纸输入（shell.desktop.wallpaper storage 直写——路径
+//   | #hex；boot 解析回退链见 renderer load_desktop_wallpaper，重启生效）。
 //   关于：版本/宿主信息（投影注入常量，无新协议字段）。
 //
 // 接缝（协议 v1.4，schema/projection-protocol-v1.md）：
@@ -30,7 +32,8 @@ widget Settings {
         Init, RebuildPinned, Escape, Nav(str),
         PickPosition(str), PickEnabled(str),
         DraftPinned(str), AddPinned, RemovePinned(int),
-        PickNotes(str)
+        PickNotes(str),
+        DraftWallpaper(str), SaveWallpaper
     }
 
     model {
@@ -39,8 +42,8 @@ widget Settings {
         var hosted str = "0"        // 宿主挂载时写 "1"
         var __desktop_cmd str = ""  // 上行命令总线（set_dock_* 记录）
 
-        // ---- 分区导航（v1 三分区）----
-        var section str = "dock"    // dock | notes | about
+        // ---- 分区导航（v2 四分区；496 增外观）----
+        var section str = "dock"    // dock | notes | appearance | about
 
         // ---- Dock 分区快照（宿主注入当前驱动事实）----
         var cfg_dock_position str = "bottom"
@@ -55,6 +58,11 @@ widget Settings {
 
         // ---- 通知分区快照 ----
         var cfg_notes_enabled str = "1"
+
+        // ---- 外观分区（496 M5：壁纸——storage 直写 boot 生效）----
+        var cfg_wallpaper str = ""  // 宿主召唤注入当前键值快照
+        var wallpaper_draft str = "" // 壁纸输入草稿（路径 | #hex）
+        var wallpaper_saved str = "0"
 
         // ---- 关于分区（boot 投影注入常量）----
         var about_host str = ""
@@ -101,6 +109,16 @@ widget Settings {
                             } else {
                                 button "通知" {
                                     onclick: .Nav("notes")
+                                    style: "w-full h-9 px-0 text-sm text-gray-400"
+                                }
+                            }
+                            if .section == "appearance" {
+                                button "外观" {
+                                    style: "w-full h-9 px-0 text-sm bg-gray-700 text-white"
+                                }
+                            } else {
+                                button "外观" {
+                                    onclick: .Nav("appearance")
                                     style: "w-full h-9 px-0 text-sm text-gray-400"
                                 }
                             }
@@ -252,6 +270,38 @@ widget Settings {
                                         text "立即生效" { style: "text-gray-500 text-xs" }
                                     }
                                 } else {
+                                    if .section == "appearance" {
+                                        // ---- 外观分区（496 M5）：壁纸路径/色值
+                                        //     storage 直写——boot 解析（#hex 直传/
+                                        //     路径验在/坏值回退默认色），重启生效 ----
+                                        col {
+                                            style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                            text "壁纸" { style: "text-gray-200 text-sm font-medium" }
+                                            text "图片路径或 #hex 色值（如 #243b55），重启后生效" { style: "text-gray-500 text-xs" }
+                                            row {
+                                                style: "items-center gap-2"
+                                                input {
+                                                    value: .wallpaper_draft
+                                                    oninput: .DraftWallpaper
+                                                    placeholder: "D:\\wallpaper.png 或 #243b55"
+                                                    style: "flex-1 text-sm text-white bg-gray-900"
+                                                }
+                                                button "保存" {
+                                                    onclick: .SaveWallpaper
+                                                    style: "h-8 px-3 text-xs"
+                                                }
+                                            }
+                                            if .wallpaper_saved == "1" {
+                                                text "已保存，重启后生效" { style: "text-success text-xs" }
+                                            } else {
+                                                row {
+                                                    style: "items-center gap-2"
+                                                    text "当前：" { style: "text-gray-500 text-xs" }
+                                                    text .cfg_wallpaper { style: "text-gray-300 text-xs" }
+                                                }
+                                            }
+                                        }
+                                    } else {
                                     // ---- 关于分区：宿主版本/平台（召唤注入常量）----
                                     col {
                                         style: "gap-2 p-3 bg-gray-750 rounded-lg"
@@ -266,6 +316,7 @@ widget Settings {
                                             text "宿主版本" { style: "w-24 text-gray-500 text-xs" }
                                             text .about_version { style: "text-gray-300 text-xs" }
                                         }
+                                    }
                                     }
                                 }
                             }
@@ -307,7 +358,7 @@ widget Settings {
             .pinned_n = .pinned_rows.len()
         }
 
-        // 分区导航（dock/notes/about；未知值忽略）。
+        // 分区导航（dock/notes/appearance/about；未知值忽略）。
         .Nav(s) -> {
             if s == "dock" {
                 .section = "dock"
@@ -315,8 +366,12 @@ widget Settings {
                 if s == "notes" {
                     .section = "notes"
                 } else {
-                    if s == "about" {
-                        .section = "about"
+                    if s == "appearance" {
+                        .section = "appearance"
+                    } else {
+                        if s == "about" {
+                            .section = "about"
+                        }
                     }
                 }
             }
@@ -351,6 +406,21 @@ widget Settings {
             } else {
                 .cfg_notes_enabled = "0"
                 storage.set("shell.notes.enabled", "false")
+            }
+        }
+
+        // ---- 外观分区（496 M5）：壁纸 storage 直写（boot 解析生效——
+        // #hex 直传/路径验在/坏值回退默认色；487 非几何无动词判定同款）----
+        .DraftWallpaper(v) -> {
+            .wallpaper_draft = v
+        }
+
+        .SaveWallpaper -> {
+            if .wallpaper_draft != "" {
+                storage.set("shell.desktop.wallpaper", .wallpaper_draft)
+                .cfg_wallpaper = .wallpaper_draft
+                .wallpaper_draft = ""
+                .wallpaper_saved = "1"
             }
         }
 
