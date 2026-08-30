@@ -7859,6 +7859,10 @@ fn projection_win_entry(
 /// Plan 479 T4 升级 **v1.2**：新增 `__wm_notes`（通知历史全量 {id,kind,msg,
 /// at} Obj 数组）+ `__wm_notes_unread`（未读串，badge 消费）；指纹尾接
 /// `|notes:{len}:{front_id}:{unread};` 段（T1 施工图定案 6）。
+/// Plan 486 升级 **v1.3**：`__wm_wins` 纳入 native 槽位条目
+/// {wid:"N<slot>",title,focused,native,icon}（仅 Docked 态；字段集与
+/// App 条目部分相交——workspace/app 不适用省略）；指纹窗段并入
+/// "N{slot}:{focused},"。
 fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(shell) = state.desktop.shell_app else { return };
     let Some(host) = state.host.as_ref() else { return };
@@ -7874,6 +7878,24 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
+    }
+    // Plan 486 v1.3：native 槽位条目——wid="N<slot_id>" 独立编码空间（与
+    // App wid 隔离，协议 §字段表）；仅 Docked 态投影（瞬时态不进任务栏）；
+    // title 取缓存、icon 占位；focused 恒空——native 焦点域在 OS 层，WM
+    // 不代管（473 apply_layout 同裁定）。不进 __wm_running（条目本身即
+    // 运行态）。指纹并入窗段同型 "{wid}:{focused},"。
+    for (id, slot) in &host.wm.native_slots {
+        if slot.state != crate::ui::native_dock::SlotState::Docked {
+            continue;
+        }
+        wins.push(auto_val::Value::Obj(auto_val::Obj::from_pairs([
+            ("wid", auto_val::Value::Str(format!("N{}", id.0).into())),
+            ("title", auto_val::Value::Str(slot.title_cache.clone().into())),
+            ("focused", auto_val::Value::Str(String::new().into())),
+            ("native", auto_val::Value::Str("1".into())),
+            ("icon", auto_val::Value::Str("app-window".into())),
+        ])));
+        fp.push_str(&format!("N{}:{},", id.0, 0));
     }
     let layout_name = match host.wm.layout {
         crate::ui::layout::LayoutMode::Free => "free",
@@ -16248,6 +16270,69 @@ mod tests {
         match t3_read(&ds, "__wm_fp") {
             auto_val::Value::Str(s) => assert!(!s.to_string().is_empty(), "指纹已置"),
             other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+    }
+
+    /// Plan 486 T2 v1.3：native 槽位投影——Docked 态条目进 `__wm_wins`
+    /// 尾部（wid="N<slot>" 隔离编码、五字段集、focused 空）；瞬时态
+    /// （Candidate）不投影；槽位增删触发指纹变化（第二次同步重写哨兵）。
+    #[test]
+    fn projection_v13_native_slot_entries_and_fingerprint() {
+        use crate::ui::native_dock::{NativeSlot, NativeSlotId, Rect, SlotState};
+        let mut ds = t3_session_with_shell();
+        t3_add_win(&mut ds, "Alpha");
+        let mut docked = NativeSlot::new_candidate(
+            NativeSlotId(3),
+            crate::ui::native_dock::NativeHwnd(0x1234),
+            4242,
+            "记事本",
+            Rect::new(10, 10, 800, 600),
+            Rect::new(0, 0, 640, 480),
+        );
+        docked.state = SlotState::Docked;
+        let mut transient = docked.clone();
+        transient.state = SlotState::Candidate;
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.native_slots.insert(NativeSlotId(3), docked);
+            host.wm.native_slots.insert(NativeSlotId(4), transient);
+        }
+        sync_shell_windows(&mut ds);
+        let wins = t3_read_array(&ds, "__wm_wins");
+        assert_eq!(wins.len(), 2, "App 窗 + 1 个 Docked 槽位（Candidate 不投影）");
+        let auto_val::Value::Obj(native) = &wins[1] else {
+            panic!("native 条目应为 Obj")
+        };
+        assert_eq!(t3_obj_str(native, "wid"), "N3");
+        assert_eq!(t3_obj_str(native, "title"), "记事本");
+        assert_eq!(t3_obj_str(native, "native"), "1");
+        assert_eq!(t3_obj_str(native, "icon"), "app-window");
+        assert_eq!(t3_obj_str(native, "focused"), "");
+        assert!(
+            matches!(native.get("workspace"), None | Some(auto_val::Value::Nil)),
+            "native 条目无 workspace 字段（不适用省略）"
+        );
+        match t3_read(&ds, "__wm_fp") {
+            auto_val::Value::Str(s) => assert!(
+                s.to_string().contains("N3:0,"),
+                "指纹应含 native 槽位段: {}",
+                s.to_string()
+            ),
+            other => panic!("__wm_fp 读回异常: {other:?}"),
+        }
+        // 指纹门控：槽位移除后再次同步 → 指纹变化 → 哨兵被覆盖。
+        let shell = ds.desktop.shell_app.unwrap();
+        ds.apps
+            .get_mut(&shell)
+            .unwrap()
+            .component
+            .write_state("__wm_meta", auto_val::Value::str("sentinel"))
+            .unwrap();
+        ds.host.as_mut().unwrap().wm.native_slots.remove(&NativeSlotId(3));
+        sync_shell_windows(&mut ds);
+        match t3_read(&ds, "__wm_meta") {
+            auto_val::Value::Str(s) => assert_ne!(s.to_string(), "sentinel", "槽位变化应触发重写"),
+            other => panic!("__wm_meta 读回异常: {other:?}"),
         }
     }
 
