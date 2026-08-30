@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-489
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: fix-ui-iced-suite-reds
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -8,8 +8,10 @@ updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增注记——desktop_protocol broker 可测性缝 adjudicate_on(pipe,args,timeout)（adjudicate 生产签名委托固定 BROKER_PIPE 零变化；Broker::on_pipe 同型先例）：broker 管道类测试一律 pid 后缀管道 hermetic 化，禁止依赖生产固定管道的全局命名空间状态（本机桌面宿主 listen 即打穿 Standalone 断言，P487-2 间歇红教训）"
+  - "docs/specs/auto-lang/ui/overview.md: 新增注记——测试 corpus i18n 资产入库约定：front/i18n/{lang}.json 属 corpus 必备资产（.gitignore *.json 母规则需 test/**/i18n/*.json 否定）；fresh-clone 绿是 corpus 落测的验收前提（P487-2 i18n 双测教训——落测时被 ignore 吞未入库）"
+touched_goals: []
 
 affects: [auto-lang/ui, auto-lang/vm]
 current_step: 4
@@ -149,6 +151,33 @@ total_steps: 4
    （「档纳入周期门禁」流程面仍开放另议）
 
 ## 复审记录
+
+**(/auto-plan:review 2026-08-30，zcode；worktree plan-489-dev @ ae066497a，基点 92e2ba9b5；净 diff 4 文件 +41/-14 = 计划 §架构方案 声明集逐一吻合)**
+
+### 逐项验收判定（复跑实证）
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | ui-iced 档全量零红（连续两次） | **PASS** | 复审自跑 `--features ui-iced --lib` **4074/4074 × 2 连绿**（含 broker 并发全量两连绿——hermetic 化消除间歇源） |
+| 2 | i18n zh.json 入库（fresh clone 可绿） | **PASS** | `git ls-files` 可见 + `git cat-file -p HEAD:…zh.json` blob 直读（{"settings":{"title":"设置"}}）+ git archive 解包实际物化双证 |
+| 3 | 默认档 cargo t 全绿；check 零新增警告 | **PASS** | 复审自跑 `cargo tf` 3283/3283；警告 161（分支）= 161（master）零新增 |
+| 4 | 生产零行为变化 | **PASS** | adjudicate = adjudicate_on(BROKER_PIPE,…) 纯委托（体逐行同原，仅常量换参）；唯一生产调用点 dual_mode.rs:241 签名/实参不变；print 语义未动（断言侧对齐） |
+
+**专项复核**：broker 间歇根因 A/B 双向实证（执行期）——PowerShell 持有
+autodesk-broker 固定管道监听时 master 旧测 FAIL（Standalone 被打穿）/
+本分支新测 PASS；hermetic 结论不依赖单次绿。
+
+### 遗漏/延后/workaround 扫描
+
+- 净 diff = 计划全部声明项，零缺漏；零 TODO/FIXME/HACK/dbg/println 新增。
+- ③ 参数化缝为正规可测性设计（Broker::on_pipe 同型先例），非 workaround。
+- 开放项一处（非静默，双留痕）：「ui-iced 档纳入周期门禁」= 计划非目标
+  章节 + P487-2 债注记「另议」——流程决策面，不阻塞本计划。
+
+### 结论
+
+**通过。** 四项验收全 PASS、双档全量绿、零静默延后/零 workaround、
+生产零行为变化。→ `status: reviewed`。
 
 ## 待澄清事项
 
