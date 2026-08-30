@@ -250,6 +250,12 @@
   但本环境 OS 级键盘注入对 winit 0.30 无效（PostMessage WM_CHAR/WM_KEYDOWN
   均不达）、computer-use 前台通道被并行会话抢占——真人键盘 Tab 复验
   （042 README 步骤 + musk admin/admin 全流程）列入真人清单。
+  **2026-08-30 追记（Plan 491 T8）**：Tab/Shift+Tab 焦点环遍历已在 483
+  登记表基建上机制级交付（renderer.rs focus_traverse+FindFocusedInput 探针，
+  p491 七测全绿；点击直聚可见、无聚焦回落首项、单框自环、Captured 不达
+  fallback）；真人清单**追加「musk 登录页 Tab 流」**（username→password
+  真键盘切框；archive/483 与 auto-musk 011 §七 两处注记同日落），本债
+  不闭合——真键盘通道阻塞依旧（491 T6 实录：前台再遭并行会话抢占）。
 - **P483-4 MCP autoui_type 对 closure oninput 的正向派生怪癖（master 既有）**：
   003-converter 经 autoui_type 输 celsius=100 → fahrenheit 落 0 而非 212
   （master 二进制同表现；反向 F→C 正确）——MCP type 路径对闭包 oninput 的

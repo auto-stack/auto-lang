@@ -6574,15 +6574,23 @@ fn keyboard_event_message(
                     input_value: None,
                 })
             } else if key_str == "Tab" {
-                // Plan 057 (ash-gui): terminal-style Tab-to-focus. Events
-                // reaching here were NOT captured by a focused widget —
-                // when the prompt editor holds focus, its Tab (tab-completion
-                // via onkeydown.tab) is Captured and never gets here. So an
-                // un-captured Tab means nothing is focused (or a non-input
-                // has focus): focus the prompt editor so the caret shows.
+                // Plan 491（057 语义收窄为「无 input 聚焦时」）：事件到达
+                // 这里 = 未被任何聚焦件捕获（iced text_input 无 Tab 臂；
+                // prompt 编辑器持焦时其 Tab 补全为 Captured，不会到达此
+                // 臂）。按 shift 分派焦点环遍历：Tab → 前进（下一项，尾
+                // 回环），Shift+Tab → 后退（上一项，首回环）；当前无
+                // input 聚焦/无 input 视图时 update 臂回落登记表首个或
+                // 057 prompt 链（等价旧 __focus_prompt 语义）。
+                // Named 臂不加修饰前缀——Shift+Tab 与 Tab 同命中 "Tab"，
+                // 须在此按 modifiers 分流（旧状：Shift+Tab 被当前进处理）。
+                let event = if modifiers.shift() {
+                    FOCUS_PREV_INPUT_EVENT
+                } else {
+                    FOCUS_NEXT_INPUT_EVENT
+                };
                 Some(IcedMessage {
                     widget: String::new(),
-                    event: FOCUS_PROMPT_EVENT.to_string(),
+                    event: event.to_string(),
                     input_value: None,
                 })
             } else {
@@ -6594,8 +6602,16 @@ fn keyboard_event_message(
 }
 
 const DEBUG_TOGGLE_EVENT: &str = "__toggle_debug";
-/// Plan 057 (ash-gui): global Tab (uncaptured) → focus the prompt editor.
+/// Plan 057 (ash-gui)：无 input 视图的未捕获 Tab → prompt 编辑器聚焦。
+/// Plan 491 后无生产派发点（Tab 分派改 next/prev 两事件）；消费臂保留
+/// 供无 input 视图回落与外部注入兼容。
 const FOCUS_PROMPT_EVENT: &str = "__focus_prompt";
+/// Plan 491: 未捕获 Tab → input 焦点环前进（下一项，尾回环；无聚焦/不在
+/// 登记表 → 首项）。
+const FOCUS_NEXT_INPUT_EVENT: &str = "__focus_next_input";
+/// Plan 491: 未捕获 Shift+Tab → input 焦点环后退（上一项，首回环；无聚焦/
+/// 不在登记表 → 首项，与 next 同臂）。
+const FOCUS_PREV_INPUT_EVENT: &str = "__focus_prev_input";
 const DEBUG_HOVER_MOVE: &str = "__hover_";
 const DEBUG_HOVER_EXIT: &str = "__hover_exit_";
 const DEBUG_SELECT_PREFIX: &str = "__select_";
@@ -9075,7 +9091,16 @@ fn compare_pngs(
         // refocus does (last-edited textarea's stable Id, falling back to
         // prompt_input_id) — must return the Task directly; an early
         // Task::none() would skip the tail and never focus.
-        if msg.event == FOCUS_PROMPT_EVENT {
+        //
+        // Plan 491（语义收窄）:未捕获 Tab/Shift+Tab 的生产派发已改
+        // `__focus_next_input`/`__focus_prev_input`(焦点环遍历,见下臂);
+        // 本臂保留两职——旧事件名外部注入兼容,及**无 input 视图**(纯
+        // textarea 世界,ash-gui/028)的 next/prev 回落:登记表空时遍历
+        // 无对象,保持 057 的「Tab 聚焦 prompt 编辑器」原语义不回归。
+        if msg.event == FOCUS_PROMPT_EVENT
+            || ((msg.event == FOCUS_NEXT_INPUT_EVENT || msg.event == FOCUS_PREV_INPUT_EVENT)
+                && state.app.devtools.input_ids.borrow().is_empty())
+        {
             // Last-edited textarea → any rendered textarea (first launch,
             // before any edit) → single-line input fallback.
             let id = state.app.devtools.last_textarea_key
@@ -9093,6 +9118,25 @@ fn compare_pngs(
                 .or_else(|| state.app.devtools.input_ids.borrow().first().cloned())
                 .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone());
             return iced::widget::operation::focus(id);
+        }
+        // Plan 491: 未捕获 Tab/Shift+Tab → input 焦点环遍历(483 登记表
+        // DFS 序=视觉树序)。两段链:FindFocusedInput 探针读**实际**持焦者
+        // (含点击直聚——iced 置焦都在 widget Tree 状态里,operate 可问),
+        // focus_traverse 按方向求址(回环;不在表内/无聚焦 → 首项),再以
+        // 内建 focus operation 置焦(unfocus 其余)。登记表空已在上臂回落,
+        // 此处必非空 → focus_traverse 恒 Some。
+        if msg.event == FOCUS_NEXT_INPUT_EVENT || msg.event == FOCUS_PREV_INPUT_EVENT {
+            let forward = msg.event == FOCUS_NEXT_INPUT_EVENT;
+            let registry: Vec<iced::widget::Id> =
+                state.app.devtools.input_ids.borrow().clone();
+            return iced::advanced::widget::operate(FindFocusedInput::new()).then(
+                move |current: Option<iced::widget::Id>| {
+                    match focus_traverse(&registry, current.as_ref(), forward) {
+                        Some(id) => iced::widget::operation::focus(id),
+                        None => iced::Task::none(),
+                    }
+                },
+            );
         }
         // Handle click-to-select: set selected element and open DevTools panel
         if let Some(id) = msg.event.strip_prefix(DEBUG_SELECT_PREFIX) {
@@ -14390,6 +14434,74 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
     }
 }
 
+/// Plan 491: 登记表焦点环遍历求址。`ids` 为 483 登记表(DFS 序 = 视觉树
+/// 序);`current` 在表内 → 按方向取下/上一项(回环取模);不在表内(聚焦
+/// button/textarea、条件渲染卸载)或无聚焦 → 首项(与 483「无聚焦聚焦
+/// 首个」fallback 同臂)。空表返回 None(无可遍历对象,调用方不发置焦)。
+fn focus_traverse(
+    ids: &[iced::widget::Id],
+    current: Option<&iced::widget::Id>,
+    forward: bool,
+) -> Option<iced::widget::Id> {
+    if ids.is_empty() {
+        return None;
+    }
+    let step = match current.and_then(|c| ids.iter().position(|i| i == c)) {
+        Some(p) if forward => p + 1,
+        Some(p) => p + ids.len() - 1,
+        None => 0,
+    };
+    Some(ids[step % ids.len()].clone())
+}
+
+/// Plan 491(T2 定案): 当前聚焦 widget Id 探针(operation)。遍历臂经
+/// `operate(FindFocusedInput).then(…)` 第一段取出实际持焦者——任何来源
+/// 的置焦(点击直聚/update 臂 request_focus/launcher 召唤)都落在 iced
+/// widget Tree 状态里,operate 遍历可问。原 a/b 两案的取舍:a「渲染期由
+/// iced 焦点状态回填 devtools」在 view() 构建期拿不到 widget Tree,本就
+/// 不可行;b「五聚焦点改址时同步写」漏记点击直聚(用户点击 username 后
+/// Tab 会错走无聚焦臂)。本探针即 a 的正确形态(遍历期读真实焦点态),
+/// 且零新增 devtools 持久状态。与内建 `find_focused` 的关键差异:无聚焦
+/// 时 finish 恒出 `Some(None)`——内建返回 `Outcome::None` 会断
+/// `Task::then` 链,「无聚焦 → 聚焦首个」分支依赖恒出值。
+struct FindFocusedInput {
+    focused: Option<iced::widget::Id>,
+}
+
+impl FindFocusedInput {
+    fn new() -> Self {
+        Self { focused: None }
+    }
+}
+
+impl iced::advanced::widget::Operation<Option<iced::widget::Id>> for FindFocusedInput {
+    fn focusable(
+        &mut self,
+        id: Option<&iced::widget::Id>,
+        _bounds: iced::Rectangle,
+        state: &mut dyn iced::advanced::widget::operation::Focusable,
+    ) {
+        if state.is_focused() {
+            if let Some(id) = id {
+                self.focused = Some(id.clone());
+            }
+        }
+    }
+
+    fn traverse(
+        &mut self,
+        operate: &mut dyn FnMut(
+            &mut dyn iced::advanced::widget::Operation<Option<iced::widget::Id>>,
+        ),
+    ) {
+        operate(self);
+    }
+
+    fn finish(&self) -> iced::advanced::widget::operation::Outcome<Option<iced::widget::Id>> {
+        iced::advanced::widget::operation::Outcome::Some(self.focused.clone())
+    }
+}
+
 fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
     match view {
         // Input needs IcedMessage-specific text capture — on_input constructs a new
@@ -19174,6 +19286,568 @@ widget LoginChild {
             assert_eq!(
                 m.event, "PassChanged",
                 "keystrokes must only reach the focused input; got {m:?}"
+            );
+        }
+    }
+
+    // ---- Plan 491: VM 轨 Tab/Shift+Tab input 焦点环遍历 ----
+    // 483 登记表基建(input_ids DFS 序 + 每框唯一 Id)上的遍历扩展:有
+    // input 聚焦时未捕获 Tab → 下一个(尾回环),Shift+Tab → 上一个(首
+    // 回环);无聚焦/不在表内 → 登记表首个(= 483 fallback 语义)。机制级
+    // 三段:分派(keyboard_event_message 生产纯函数)/求址(focus_traverse)
+    // /端到端(点击直聚 + 探针读焦 + 内建 focus operation,复刻 update
+    // 臂 operate(FindFocusedInput).then(focus_traverse → focus) 链)。
+
+    /// 未捕获 Tab/Shift+Tab 键盘事件(对齐产线订阅喂给
+    /// keyboard_event_message 的形状;status 由调用方传 Ignored)。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_tab_event(shift: bool) -> iced::Event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
+            modified_key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Tab),
+            physical_key: iced::keyboard::key::Physical::Unidentified(
+                iced::keyboard::key::NativeCode::Unidentified,
+            ),
+            location: iced::keyboard::Location::Standard,
+            modifiers: if shift {
+                iced::keyboard::Modifiers::SHIFT
+            } else {
+                iced::keyboard::Modifiers::default()
+            },
+            repeat: false,
+            text: None,
+        })
+    }
+
+    /// 042 双 input 形态的登记表快照(DFS 序 = 视觉树序:user 在前)。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_registry() -> Vec<iced::widget::Id> {
+        let mut ids = Vec::new();
+        collect_input_ids(&p483_two_input_view(), &mut ids);
+        ids
+    }
+
+    /// 测试侧聚焦探针:读当前实际持焦 widget 的 Id(与产线
+    /// FindFocusedInput 同逻辑;点击直聚的焦点同样可见)。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_probe_focus(
+        ui: &mut iced_test::runtime::user_interface::UserInterface<
+            '_,
+            IcedMessage,
+            iced::Theme,
+            iced::Renderer,
+        >,
+        renderer: &mut iced::Renderer,
+    ) -> Option<iced::widget::Id> {
+        struct Probe(Option<iced::widget::Id>);
+        impl iced::advanced::widget::Operation<()> for Probe {
+            fn focusable(
+                &mut self,
+                id: Option<&iced::widget::Id>,
+                _bounds: iced::Rectangle,
+                state: &mut dyn iced::advanced::widget::operation::Focusable,
+            ) {
+                if state.is_focused() {
+                    if let Some(id) = id {
+                        self.0 = Some(id.clone());
+                    }
+                }
+            }
+            fn traverse(
+                &mut self,
+                operate: &mut dyn FnMut(&mut dyn iced::advanced::widget::Operation<()>),
+            ) {
+                operate(self);
+            }
+        }
+        let mut probe = Probe(None);
+        ui.operate(renderer, &mut probe);
+        probe.0
+    }
+
+    /// 端到端遍历链复刻:探针读当前聚焦(含点击直聚)→ focus_traverse
+    /// 按登记表求址 → 内建 focus operation 置焦;返回目标 Id。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_apply_traversal(
+        ui: &mut iced_test::runtime::user_interface::UserInterface<
+            '_,
+            IcedMessage,
+            iced::Theme,
+            iced::Renderer,
+        >,
+        renderer: &mut iced::Renderer,
+        ids: &[iced::widget::Id],
+        forward: bool,
+    ) -> Option<iced::widget::Id> {
+        let current = p491_probe_focus(ui, renderer);
+        let target = focus_traverse(ids, current.as_ref(), forward)?;
+        let mut focus_op =
+            iced_test::runtime::core::widget::operation::focusable::focus(target.clone());
+        ui.operate(renderer, &mut focus_op);
+        Some(target)
+    }
+
+    /// 建无头 UserInterface 并点击指定 placeholder 的 input(真实点击直聚)。
+    /// `view` 以闭包供给(探针侧与主 UI 各建一份实例);返回 (ui, renderer),
+    /// 键入消息由调用方收集。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_ui_and_click(
+        view: impl Fn() -> AbstractView<IcedMessage>,
+        placeholder: &str,
+        msgs: &mut Vec<IcedMessage>,
+    ) -> (
+        iced_test::runtime::user_interface::UserInterface<'static, IcedMessage, iced::Theme, iced::Renderer>,
+        iced::Renderer,
+    ) {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::renderer::Headless;
+        use iced_test::runtime::core::{Event, Size};
+        use iced_test::runtime::user_interface;
+        use iced_test::selector::Bounded;
+
+        // 借一次性 Simulator 定位目标框中心(同 p483 惯例)。
+        let el_probe = render_dynamic_view(view(), None, &mut Vec::new());
+        let mut probe = iced_test::simulator(el_probe);
+        let b = probe.find(placeholder).expect("input by placeholder").bounds();
+        let center = iced::Point::new(b.x + b.width / 2.0, b.y + b.height / 2.0);
+        drop(probe);
+
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
+        )
+        .expect("headless renderer");
+        let size = Size::new(1024.0, 768.0);
+        let el = render_dynamic_view(view(), None, &mut Vec::new());
+        let mut ui =
+            user_interface::UserInterface::build(el, size, user_interface::Cache::default(), &mut renderer);
+
+        let mut click_events: Vec<Event> =
+            vec![Event::Mouse(iced::mouse::Event::CursorMoved { position: center })];
+        click_events.extend(iced_test::simulator::click());
+        let _ = ui.update(
+            &click_events,
+            iced::mouse::Cursor::Available(center),
+            &mut renderer,
+            &mut clipboard::Null,
+            msgs,
+        );
+        (ui, renderer)
+    }
+
+    /// T1 红①(转绿于 T3/T2):未捕获 Tab(无 shift)分派 → `__focus_next_input`;
+    /// 求址 user → pass;端到端:点击 user(真实直聚)→ 遍历链 → pass 持焦,
+    /// 键入只进 PassChanged。旧状(红):分派为 `__focus_prompt` 且无
+    /// focus_traverse。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_tab_next() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::Event;
+
+        // (a) 分派:未捕获 Tab → __focus_next_input
+        let msg = keyboard_event_message(
+            p491_tab_event(false),
+            iced::event::Status::Ignored,
+            &std::collections::HashMap::new(),
+            true,
+        )
+        .expect("uncaptured Tab must map to a focus message");
+        assert_eq!(
+            msg.event, "__focus_next_input",
+            "Tab dispatch must be focus-NEXT (Plan 491); got {:?}",
+            msg.event
+        );
+
+        // (b) 求址:登记表 DFS 序 [user, pass],user 前进 → pass
+        let ids = p491_registry();
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let pass = derive_input_id(
+            Some(("LoginChild", "PassChanged")),
+            "Enter password",
+            None,
+            true,
+        );
+        assert_eq!(ids.len(), 2, "registry must hold both inputs");
+        assert_eq!(
+            focus_traverse(&ids, Some(&user), true).as_ref(),
+            Some(&pass),
+            "Tab from username must address password"
+        );
+
+        // (c) 端到端:点击 user → 遍历 → pass 持焦,键入只进 pass
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "click must focus username (probe must see click-focus)"
+        );
+        assert_eq!(
+            p491_apply_traversal(&mut ui, &mut renderer, &ids, true),
+            Some(pass.clone()),
+            "traversal from click-focused username must land on password"
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(pass),
+            "focus operation must have moved focus to password"
+        );
+
+        let evs: Vec<Event> = iced_test::simulator::typewrite("x").collect();
+        let _ = ui.update(
+            &evs,
+            iced::mouse::Cursor::Unavailable,
+            &mut renderer,
+            &mut clipboard::Null,
+            &mut msgs,
+        );
+        assert!(!msgs.is_empty(), "typing after traversal must produce messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "PassChanged",
+                "post-Tab keystrokes must only reach password; got {m:?}"
+            );
+        }
+    }
+
+    /// T1 红②(转绿于 T3/T2):未捕获 Shift+Tab 分派 → `__focus_prev_input`
+    /// (旧:Named 臂不加修饰前缀,与 Tab 同臂当前进处理=bug);求址 pass →
+    /// user;端到端:点击 pass → 反向遍历 → user 持焦。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_shift_tab_prev() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::Event;
+
+        let msg = keyboard_event_message(
+            p491_tab_event(true),
+            iced::event::Status::Ignored,
+            &std::collections::HashMap::new(),
+            true,
+        )
+        .expect("uncaptured Shift+Tab must map to a focus message");
+        assert_eq!(
+            msg.event, "__focus_prev_input",
+            "Shift+Tab dispatch must be focus-PREV (Plan 491); got {:?}",
+            msg.event
+        );
+
+        let ids = p491_registry();
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let pass = derive_input_id(
+            Some(("LoginChild", "PassChanged")),
+            "Enter password",
+            None,
+            true,
+        );
+        assert_eq!(
+            focus_traverse(&ids, Some(&pass), false).as_ref(),
+            Some(&user),
+            "Shift+Tab from password must address username"
+        );
+
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
+        assert_eq!(
+            p491_apply_traversal(&mut ui, &mut renderer, &ids, false),
+            Some(user.clone()),
+            "reverse traversal from click-focused password must land on username"
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "focus operation must have moved focus to username"
+        );
+
+        let evs: Vec<Event> = iced_test::simulator::typewrite("x").collect();
+        let _ = ui.update(
+            &evs,
+            iced::mouse::Cursor::Unavailable,
+            &mut renderer,
+            &mut clipboard::Null,
+            &mut msgs,
+        );
+        assert!(!msgs.is_empty(), "typing after traversal must produce messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "UserChanged",
+                "post-Shift+Tab keystrokes must only reach username; got {m:?}"
+            );
+        }
+    }
+
+    /// T1 红③(转绿于 T2):回环求址——Tab 尾→首,Shift+Tab 首→尾;端到端
+    /// 双向实证(点击 pass → 前进回环 user;点击 user → 后退回环 pass)。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_wrap() {
+        let ids = p491_registry();
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let pass = derive_input_id(
+            Some(("LoginChild", "PassChanged")),
+            "Enter password",
+            None,
+            true,
+        );
+        // 尾 → 首(Tab)
+        assert_eq!(
+            focus_traverse(&ids, Some(&pass), true).as_ref(),
+            Some(&user),
+            "Tab from last input must wrap to first"
+        );
+        // 首 → 尾(Shift+Tab)
+        assert_eq!(
+            focus_traverse(&ids, Some(&user), false).as_ref(),
+            Some(&pass),
+            "Shift+Tab from first input must wrap to last"
+        );
+
+        // 端到端:点击 pass(尾)→ 前进 → 回环 user
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
+        assert_eq!(
+            p491_apply_traversal(&mut ui, &mut renderer, &ids, true),
+            Some(user.clone()),
+            "forward traversal from last input must wrap to first"
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "wrap-forward must end focused on username"
+        );
+    }
+
+    /// T2 采集探针单测:产线 FindFocusedInput (a) 恒出值——无聚焦时
+    /// finish() 也是 `Some(None)`(内建 find_focused 无聚焦返回
+    /// `Outcome::None` 会断 Task::then 链,「无聚焦→聚焦首个」分支依赖
+    /// 恒出值);(b) 点击直聚的焦点经 Operation 遍历可读(探针孪生
+    /// 结构实证——UserInterface::operate 收 dyn Operation<()>,typed
+    /// 产线探针不可直穿,以同逻辑孪生代验,产线侧由 T6 实机代验)。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_find_focused_probe() {
+        // (a) 恒出值
+        match iced::advanced::widget::Operation::finish(&FindFocusedInput::new()) {
+            iced::advanced::widget::operation::Outcome::Some(None) => {}
+            other => panic!("fresh probe must yield Some(None), got {other:?}"),
+        }
+
+        // (b) 点击直聚可读(孪生探针)
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "probe must see click-focus (any focus source lives in the widget Tree)"
+        );
+    }
+
+    /// T3 锚（预期直接绿，锁 483 fallback 语义防回归）：无 input 聚焦时
+    /// Tab/Shift+Tab 同臂回落登记表**首个**——分派事件名分 next/prev，
+    /// 但无聚焦求址两者皆首项；端到端无点击直聚 → 遍历 → 首框持焦，
+    /// 键入只进 UserChanged（兼锁 483 单投递）。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_unfocused_fallback() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::renderer::Headless;
+        use iced_test::runtime::core::{Event, Size};
+        use iced_test::runtime::user_interface;
+
+        // 分派:无聚焦不改变事件名——next/prev 各自派发(回落语义在求址)
+        let msg = keyboard_event_message(
+            p491_tab_event(false),
+            iced::event::Status::Ignored,
+            &std::collections::HashMap::new(),
+            true,
+        )
+        .expect("uncaptured Tab must map to a focus message");
+        assert_eq!(msg.event, "__focus_next_input");
+        let msg = keyboard_event_message(
+            p491_tab_event(true),
+            iced::event::Status::Ignored,
+            &std::collections::HashMap::new(),
+            true,
+        )
+        .expect("uncaptured Shift+Tab must map to a focus message");
+        assert_eq!(msg.event, "__focus_prev_input");
+
+        // 求址:无聚焦 → 两方向皆首项
+        let ids = p491_registry();
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        assert_eq!(
+            focus_traverse(&ids, None, true).as_ref(),
+            Some(&user),
+            "no-focus Tab must address the FIRST input (483 fallback semantics)"
+        );
+        assert_eq!(
+            focus_traverse(&ids, None, false).as_ref(),
+            Some(&user),
+            "no-focus Shift+Tab must also address the FIRST input (same arm)"
+        );
+
+        // 端到端:无聚焦 → 遍历 → 首框持焦,键入只进 UserChanged
+        let mut renderer = iced_test::futures::futures::executor::block_on(
+            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
+        )
+        .expect("headless renderer");
+        let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
+        let mut ui = user_interface::UserInterface::build(
+            el,
+            Size::new(1024.0, 768.0),
+            user_interface::Cache::default(),
+            &mut renderer,
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            None,
+            "fresh UI must have no focus"
+        );
+        assert_eq!(
+            p491_apply_traversal(&mut ui, &mut renderer, &ids, true),
+            Some(user.clone()),
+            "no-focus traversal must land on the first input"
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "first input must hold focus after no-focus Tab"
+        );
+
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let evs: Vec<Event> = iced_test::simulator::typewrite("admin").collect();
+        let _ = ui.update(
+            &evs,
+            iced::mouse::Cursor::Unavailable,
+            &mut renderer,
+            &mut clipboard::Null,
+            &mut msgs,
+        );
+        assert!(!msgs.is_empty(), "typing must produce messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "UserChanged",
+                "keystrokes must only reach the first input (483 single-delivery); got {m:?}"
+            );
+        }
+    }
+
+    /// 单 input 视图(遍历环长度 1:自环即旧行为,防漂移)。
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_single_input_view() -> AbstractView<IcedMessage> {
+        AbstractView::Input {
+            placeholder: "Only box".to_string(),
+            value: String::new(),
+            on_change: Some(IcedMessage {
+                widget: "Solo".to_string(),
+                event: "SoloChanged".to_string(),
+                input_value: None,
+            }),
+            on_submit: None,
+            width: None,
+            password: false,
+            style: None,
+        }
+    }
+
+    /// T4 边界锚:单 input 场景 next/prev 取模回环到自身——行为=旧
+    /// fallback(聚焦不变),不失焦、不漂移;键入照常单投递。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_single_input() {
+        use iced_test::runtime::core::clipboard;
+        use iced_test::runtime::core::Event;
+
+        let solo = derive_input_id(Some(("Solo", "SoloChanged")), "Only box", None, false);
+        let mut ids = Vec::new();
+        collect_input_ids(&p491_single_input_view(), &mut ids);
+        assert_eq!(ids.len(), 1, "single-input registry");
+        // 双向自环(取模回环到自身)
+        assert_eq!(
+            focus_traverse(&ids, Some(&solo), true).as_ref(),
+            Some(&solo),
+            "single input: next wraps to itself"
+        );
+        assert_eq!(
+            focus_traverse(&ids, Some(&solo), false).as_ref(),
+            Some(&solo),
+            "single input: prev wraps to itself"
+        );
+
+        // 端到端:点击唯一框 → 前进 → 仍持焦;键入照常送达
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) =
+            p491_ui_and_click(p491_single_input_view, "Only box", &mut msgs);
+        assert_eq!(
+            p491_apply_traversal(&mut ui, &mut renderer, &ids, true),
+            Some(solo.clone()),
+            "single-input traversal must address itself"
+        );
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(solo),
+            "single input must not lose focus on Tab (no drift)"
+        );
+
+        let evs: Vec<Event> = iced_test::simulator::typewrite("x").collect();
+        let _ = ui.update(
+            &evs,
+            iced::mouse::Cursor::Unavailable,
+            &mut renderer,
+            &mut clipboard::Null,
+            &mut msgs,
+        );
+        assert!(!msgs.is_empty(), "typing must still produce messages");
+        for m in &msgs {
+            assert_eq!(
+                m.event, "SoloChanged",
+                "keystrokes must keep reaching the sole input; got {m:?}"
+            );
+        }
+    }
+
+    /// T4 控制组(修复前后都须绿):聚焦中的 prompt 编辑器 Tab 补全
+    /// (onkeydown.tab)是 Captured 事件——根本到不了未捕获 fallback,
+    /// Tab/Shift+Tab 遍历臂与 prompt 编辑器捕获路径零交集。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_prompt_tab_captured_not_fallback() {
+        for shift in [false, true] {
+            let msg = keyboard_event_message(
+                p491_tab_event(shift),
+                iced::event::Status::Captured,
+                &std::collections::HashMap::new(),
+                true,
+            );
+            assert!(
+                msg.is_none(),
+                "Captured Tab(shift={shift}) must not reach the uncaptured fallback; got {msg:?}"
             );
         }
     }
