@@ -3249,9 +3249,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let content = get_textarea_content(&key, &value);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
                 let mut editor = text_editor(content).placeholder(ph);
-                // PLAN-051 P2: 高度解析改 helper——style 高度(h-full/min-h)
-                  // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
-                editor = editor.height(textarea_editor_height(height, style.as_ref()));
+                // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
+                  // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
+                  // 击永不聚焦=无光标无法输入,composer 命中区修复后仍复现
+                  // 的最后缺口)。镜像 ash-gui 臂的 textarea_{key} 派生。
+                editor = editor
+                    .id(iced::widget::Id::from(format!("textarea_{}", key)))
+                    // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
+                    .height(textarea_editor_height(height, style.as_ref()));
 
                 // Plan 053 后续(ash-gui VM): apply class-driven text styling.
                 // Previously the whole style prop was ignored (`style: _`), so the
@@ -13869,6 +13874,24 @@ fn is_elevated_view<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool 
     is_abs || extract_max_z_index(view) > 0
 }
 
+/// PLAN-051 P2: Stack elevated 层是否为空内容——空层不入栈。
+/// absolute 空容器(如 musk composer 的 backdrop v-html 层:VM 无 v-html
+/// 渲染=纯空容器)叠在 textarea 上方会挡死其点击聚焦(C1/C2 单变量实验
+/// 实证:同结构有 backdrop 即不可输,无则可输)。vue 轨该层有 v-html 内容
+/// 不受影响——本判定仅存在于 VM 渲染层。
+fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
+    use AbstractView as AV;
+    match view {
+        AV::Empty => true,
+        AV::Text { content, .. } => content.trim().is_empty(),
+        AV::Container { child, .. } => is_empty_stack_layer(child),
+        AV::Column { children, .. } | AV::Row { children, .. } => {
+            children.iter().all(is_empty_stack_layer)
+        }
+        _ => false,
+    }
+}
+
 /// Short tag for a View variant, used as debug hover ID prefix.
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
@@ -14177,6 +14200,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     });
 
                     if is_abs {
+                        // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
+                        if is_empty_stack_layer(&children[elev_idx]) { continue; }
                         path.push(elev_idx);
                         let abs_el = render_dynamic_view(children[elev_idx].clone(), debug_ctx, path);
                         path.pop();
@@ -14276,6 +14301,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 let mut stk = iced::widget::Stack::new().push(base);
                 for (i, child) in absolute.into_iter() {
+                    // PLAN-051 P2: 空层不渲染不入栈(同 Column 站点)。
+                    if is_empty_stack_layer(&child) { continue; }
                     path.push(i);
                     let abs_el = render_dynamic_view(child, debug_ctx, path);
                     path.pop();
