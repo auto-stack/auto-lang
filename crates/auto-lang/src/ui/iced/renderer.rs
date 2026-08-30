@@ -14191,6 +14191,74 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
     }
 }
 
+/// Plan 491: 登记表焦点环遍历求址。`ids` 为 483 登记表(DFS 序 = 视觉树
+/// 序);`current` 在表内 → 按方向取下/上一项(回环取模);不在表内(聚焦
+/// button/textarea、条件渲染卸载)或无聚焦 → 首项(与 483「无聚焦聚焦
+/// 首个」fallback 同臂)。空表返回 None(无可遍历对象,调用方不发置焦)。
+fn focus_traverse(
+    ids: &[iced::widget::Id],
+    current: Option<&iced::widget::Id>,
+    forward: bool,
+) -> Option<iced::widget::Id> {
+    if ids.is_empty() {
+        return None;
+    }
+    let step = match current.and_then(|c| ids.iter().position(|i| i == c)) {
+        Some(p) if forward => p + 1,
+        Some(p) => p + ids.len() - 1,
+        None => 0,
+    };
+    Some(ids[step % ids.len()].clone())
+}
+
+/// Plan 491(T2 定案): 当前聚焦 widget Id 探针(operation)。遍历臂经
+/// `operate(FindFocusedInput).then(…)` 第一段取出实际持焦者——任何来源
+/// 的置焦(点击直聚/update 臂 request_focus/launcher 召唤)都落在 iced
+/// widget Tree 状态里,operate 遍历可问。原 a/b 两案的取舍:a「渲染期由
+/// iced 焦点状态回填 devtools」在 view() 构建期拿不到 widget Tree,本就
+/// 不可行;b「五聚焦点改址时同步写」漏记点击直聚(用户点击 username 后
+/// Tab 会错走无聚焦臂)。本探针即 a 的正确形态(遍历期读真实焦点态),
+/// 且零新增 devtools 持久状态。与内建 `find_focused` 的关键差异:无聚焦
+/// 时 finish 恒出 `Some(None)`——内建返回 `Outcome::None` 会断
+/// `Task::then` 链,「无聚焦 → 聚焦首个」分支依赖恒出值。
+struct FindFocusedInput {
+    focused: Option<iced::widget::Id>,
+}
+
+impl FindFocusedInput {
+    fn new() -> Self {
+        Self { focused: None }
+    }
+}
+
+impl iced::advanced::widget::Operation<Option<iced::widget::Id>> for FindFocusedInput {
+    fn focusable(
+        &mut self,
+        id: Option<&iced::widget::Id>,
+        _bounds: iced::Rectangle,
+        state: &mut dyn iced::advanced::widget::operation::Focusable,
+    ) {
+        if state.is_focused() {
+            if let Some(id) = id {
+                self.focused = Some(id.clone());
+            }
+        }
+    }
+
+    fn traverse(
+        &mut self,
+        operate: &mut dyn FnMut(
+            &mut dyn iced::advanced::widget::Operation<Option<iced::widget::Id>>,
+        ),
+    ) {
+        operate(self);
+    }
+
+    fn finish(&self) -> iced::advanced::widget::operation::Outcome<Option<iced::widget::Id>> {
+        iced::advanced::widget::operation::Outcome::Some(self.focused.clone())
+    }
+}
+
 fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
     match view {
         // Input needs IcedMessage-specific text capture — on_input constructs a new
@@ -18886,6 +18954,37 @@ widget LoginChild {
             p491_probe_focus(&mut ui, &mut renderer),
             Some(user),
             "wrap-forward must end focused on username"
+        );
+    }
+
+    /// T2 采集探针单测:产线 FindFocusedInput (a) 恒出值——无聚焦时
+    /// finish() 也是 `Some(None)`(内建 find_focused 无聚焦返回
+    /// `Outcome::None` 会断 Task::then 链,「无聚焦→聚焦首个」分支依赖
+    /// 恒出值);(b) 点击直聚的焦点经 Operation 遍历可读(探针孪生
+    /// 结构实证——UserInterface::operate 收 dyn Operation<()>,typed
+    /// 产线探针不可直穿,以同逻辑孪生代验,产线侧由 T6 实机代验)。
+    #[test]
+    #[cfg(feature = "iced-layout-tests")]
+    fn p491_find_focused_probe() {
+        // (a) 恒出值
+        match iced::advanced::widget::Operation::finish(&FindFocusedInput::new()) {
+            iced::advanced::widget::operation::Outcome::Some(None) => {}
+            other => panic!("fresh probe must yield Some(None), got {other:?}"),
+        }
+
+        // (b) 点击直聚可读(孪生探针)
+        let user = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let mut msgs: Vec<IcedMessage> = Vec::new();
+        let (mut ui, mut renderer) = p491_ui_and_click("Enter username", &mut msgs);
+        assert_eq!(
+            p491_probe_focus(&mut ui, &mut renderer),
+            Some(user),
+            "probe must see click-focus (any focus source lives in the widget Tree)"
         );
     }
 }
