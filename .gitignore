@@ -144,6 +144,9 @@ test_temp.txt
 *.json
 # I6 双端共享布局期望值表（465 T4 产出；472 T2 修复入库）
 !crates/auto-lang/src/ui/layout_cases.json
+# Plan 489：测试 corpus 的 i18n 平铺表（*.json 母规则曾吞掉 zh.json——
+# plan050_stub_nil 落测时未入库，fresh clone i18n 双测必红，P487-2 债）
+!crates/auto-lang/test/**/i18n/*.json
 __pycache__/
 *.pyc
 .worktree/
