@@ -263,3 +263,16 @@
   采自 nextest debug 测试二进制（非 release 产品 `auto`）；release + strip
   复核点已在报告 §3 明示（不影响"度量+判定"验收形态，Private 口径
   4.81MiB/App 临界达标结论随口径标注）。
+
+### P485（2026-08-30，Plan 485 原生剪贴板 Phase 2 复审登记）
+
+- **P485-1 clipboard 集成测试外部竞写偶发**：实剪贴板 set→get 断言在重负载
+  （与全量套件并行）+ 外部剪贴板监听器（WPS/微信后台）竞写下 1/16 偶发红
+  ——set→get 窗口内剪贴板内容被外部进程改写。T9 的 GlobalClipboardTestLock
+  跨进程命名互斥已消除自仓测试间互清；对外部进程无管辖。缓解可选：受影响
+  断言加单次重试。正常负载复审连跑 11+ 次全绿。
+- **P485-2（出计划外观察，非本计划引入）master cargo tv 红**：
+  `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（b13_is_enum.at 字节码
+  对拍失配）在 master @3a4aacf19 即红——嫌疑 051-C7/484 并行合入线（本计划
+  tf 3275 全绿、分支增量不触 codegen 生成路径）。建议尽快专项定位修复，
+  归属线确认后可改挂对应计划段。
