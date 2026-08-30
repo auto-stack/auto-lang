@@ -399,6 +399,18 @@ virtual_window spec events 映射同步。
   操作要点：拖出按钮点击后**按住左键**拖（dnd_start 内联阻塞语义，
   seen-button：见到按下前不判释放）；Esc 取消拖拽。诊断可开
   `AUTO_DND_TRACE=1`。
+  **一轮实机反馈与修复（2026-08-30，worktree da9862370）**：
+  - A2/A5/A6 拖出正常（含 Explorer 虚拟文件落地——**A2 技术风险解除，
+    HGLOBAL FileContents Explorer 接受**）；A5/A6/D 拖入与图片拖入数据
+    均到达但**显示延迟**（要点其它按钮才显示）——根因 = 主线程注册的
+    IDropTarget 跨进程 COM Drop 调用滞留主线程消息队列直到下次用户输入
+    才派发；修复 = IDropTarget 移专用 STA 线程（marshal 代理注册 +
+    自持 GetMessage 泵），E2E T3 改走同路径实证。
+  - A1 拖出文件无效（点按钮无拖拽光标）——.at 拼路径产出非法 JSON
+    （fs.cwd() 裸反斜杠）→ parse 失败 → 受理即拒；修复 = 宽容修复重试
+    （裸反斜杠转义）+ 资产路径改 cwd 相对全径。
+  - **待二轮重跑确认**：拖入即时显示 / A1 文件拖出 / 图片拖入的
+    image_path 落值（D4）。
   **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
   desktop_behavior.rs，修复后转正）：
   - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →
