@@ -10496,6 +10496,12 @@ fn compare_pngs(
                         if let Some(app) = app {
                             state.register_window(id, app, size);
                         }
+                        // Plan 488 步骤 5：宿主窗打开即挂拖入目标（幂等，HWND
+                        // 身份键控；winit 目标位移见 native_dnd spike 结论）。
+                        #[cfg(all(windows, feature = "native-dnd", feature = "native-dock"))]
+                        if state.is_desktop() {
+                            crate::ui::native_dnd::win32::ensure_host_drop_target();
+                        }
                     }
                     DesktopEvent::WindowClosed(id) => {
                         // 459 不变式：一窗一 App，App 生命周期随窗（454 引入
@@ -10523,6 +10529,12 @@ fn compare_pngs(
                     // Plan 464 T4：帧泵期排空（463 排空 #1 上移后的空闲期
                     // 兜底；shell/launcher 命令至多 400ms 达）。
                     DesktopEvent::ServiceTick => {
+                        // Plan 488 步骤 5：宿主窗重建自愈——HWND 变化时重挂
+                        // 拖入目标（幂等直返，400ms 节拍）。
+                        #[cfg(all(windows, feature = "native-dnd", feature = "native-dock"))]
+                        if state.is_desktop() {
+                            crate::ui::native_dnd::win32::ensure_host_drop_target();
+                        }
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
                         if state.pending_incubations() > 0 {
@@ -10569,6 +10581,25 @@ fn compare_pngs(
                     // Plan 488 步骤 4：拖出完成（App 事件 on_dnd_finished 注入
                     // 管线在步骤 6 接线——发起 App 追踪经 native 侧会话记账）。
                     DesktopEvent::DndFinished { effect: _ } => {}
+                    // Plan 488 步骤 5：拖入落点——屏幕物理坐标 → 宿主逻辑域
+                    // （drag_mapper 同源）→ z 序命中 → AppId（on_native_drop
+                    // 注入在步骤 6 接线）。headless/无宿主窗时坐标按恒等退化。
+                    DesktopEvent::NativeDrop(data) => {
+                        let local = (data.screen_x as f32, data.screen_y as f32);
+                        #[cfg(windows)]
+                        let local = if let Some((mapper, _)) = drag_mapper() {
+                            let l = mapper.screen_to_local(crate::ui::native_dock::Rect::new(
+                                data.screen_x,
+                                data.screen_y,
+                                0,
+                                0,
+                            ));
+                            (l.x as f32, l.y as f32)
+                        } else {
+                            local
+                        };
+                        let _hit = state.drop_hit_app_at_local(local.0, local.1);
+                    }
                 }
                 iced::Task::none()
             }

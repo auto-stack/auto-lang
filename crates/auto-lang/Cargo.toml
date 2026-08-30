@@ -80,8 +80,9 @@ native-clipboard = ["dep:windows", "dep:image"]
 # 同型双门控（optional dep + cfg(windows)）；不隐含 ui-iced（G5：未开
 # feature 时 natives 降级返 false）。
 # windows-core 直接依赖：#[implement] 宏展开引用 ::windows_core:: 绝对路径，
-# 传递依赖不可见（488 步骤 2 spike 发现）。
-native-dnd = ["dep:windows", "dep:windows-core"]
+# 传递依赖不可见（488 步骤 2 spike 发现）。image：拖入 CF_DIB/PNG → 临时
+# PNG 落盘转换（485 同源用法，零新增版本）。
+native-dnd = ["dep:windows", "dep:windows-core", "dep:image"]
 # Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐
 # test-vm-files 命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
 test-native-dock = ["ui-iced", "native-dock"]

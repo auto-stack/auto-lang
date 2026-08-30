@@ -85,10 +85,26 @@ pub fn parse_payload_json(s: &str) -> Option<DndPayload> {
     })
 }
 
+/// 拖入抽取结果（`on_native_drop` 事件载荷域；字段 whichever 可用——
+/// 多格式可并存）。image 为 485 转换产物（临时 PNG 落盘路径 + 尺寸）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NativeDropData {
+    pub text: Option<String>,
+    pub files: Vec<String>,
+    pub image: Option<(String, u32, u32)>,
+    /// 落点屏幕物理坐标（宿主层经 CoordMapper 转宿主逻辑域做命中）。
+    pub screen_x: i32,
+    pub screen_y: i32,
+    /// 观察到的可用格式名（诊断/T6 冒烟记录用；含 v1 拒收的
+    /// FileGroupDescriptor——枚举可见、内容不取，见计划待澄清②）。
+    pub formats: Vec<String>,
+}
+
 // Win32/COM 适配：cfg(windows) × native-dnd feature 双门控（步骤 3+：
 // IDataObject/IDropSource 实现；步骤 4/5 续 STA 线程与 IDropTarget）。
 #[cfg(all(windows, feature = "native-dnd"))]
-pub mod win32 {    use super::{DndPayload, VirtualFile};
+pub mod win32 {
+    use super::{DndPayload, NativeDropData, VirtualFile};
     use windows::core::{implement, w, Error, HRESULT};
     use windows::Win32::Foundation::{
         BOOL, DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, OLE_E_ADVISENOTSUPPORTED, POINTL,
@@ -542,6 +558,224 @@ pub mod win32 {    use super::{DndPayload, VirtualFile};
         rx.lock().unwrap().try_recv().ok()
     }
 
+    // ── 步骤 5：拖入面（IDropTarget 挂宿主 + 抽取 + 完成通道） ───────────
+
+    /// 64MP 防线（同 485 clipboard：拒绝超大图解码）。
+    const MAX_DROP_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
+
+    /// 抽取顺序的探测格式表：(cf, lindex, 名字)。FileGroupDescriptor 只入
+    /// `formats` 观察、不取内容（外来虚拟文件 v1 拒收，计划待澄清②）。
+    fn probe_formats(data: &IDataObject) -> (Vec<(u16, i32, &'static str)>, Vec<String>) {
+        let mut probes = vec![
+            (CF_HDROP_U16, -1, "CF_HDROP"),
+            (CF_UNICODETEXT_U16, -1, "CF_UNICODETEXT"),
+            (17u16, -1, "CF_DIBV5"),
+            (8u16, -1, "CF_DIB"),
+        ];
+        let png_cf = unsafe { RegisterClipboardFormatW(w!("PNG")) } as u16;
+        if png_cf != 0 {
+            probes.push((png_cf, -1, "PNG"));
+        }
+        probes.push((file_descriptor_cf(), -1, "FileGroupDescriptorW"));
+        let mut hit = Vec::new();
+        for (cf, lindex, name) in &probes {
+            let f = formatetc(*cf, *lindex);
+            if unsafe { data.QueryGetData(&f) } == HRESULT(0) {
+                hit.push((*cf, *lindex, *name));
+            }
+        }
+        let names = hit.iter().map(|(_, _, n)| n.to_string()).collect();
+        (hit, names)
+    }
+
+    fn medium_bytes(data: &IDataObject, cf: u16, lindex: i32) -> Option<Vec<u8>> {
+        let mut medium = unsafe { data.GetData(&formatetc(cf, lindex)) }.ok()?;
+        let bytes = hglobal_to_bytes(unsafe { medium.u.hGlobal });
+        unsafe { windows::Win32::System::Ole::ReleaseStgMedium(&mut medium) };
+        bytes
+    }
+
+    /// DIB/PNG 字节 → 临时 PNG 落盘（485 parse_dib_header/dib_bgra_to_rgba
+    /// 复用；PNG 直落盘，先读尺寸过 64MP 防线）。
+    fn drop_image_to_png(bytes: &[u8], is_dib: bool) -> Option<(String, u32, u32)> {
+        if is_dib {
+            let info = crate::ui::clipboard_native::parse_dib_header(bytes)?;
+            let (w, h, rgba) = crate::ui::clipboard_native::dib_bgra_to_rgba(&info, bytes)?;
+            let path = temp_drop_png_path()?;
+            image::save_buffer(&path, &rgba, w, h, image::ColorType::Rgba8).ok()?;
+            Some((path.to_string_lossy().into_owned(), w, h))
+        } else {
+            let dims = image::ImageReader::new(std::io::Cursor::new(bytes))
+                .with_guessed_format()
+                .ok()?
+                .into_dimensions()
+                .ok()?;
+            if dims.0 as u64 * dims.1 as u64 > MAX_DROP_IMAGE_PIXELS {
+                return None;
+            }
+            let path = temp_drop_png_path()?;
+            std::fs::write(&path, bytes).ok()?;
+            Some((path.to_string_lossy().into_owned(), dims.0, dims.1))
+        }
+    }
+
+    fn temp_drop_png_path() -> Option<std::path::PathBuf> {
+        let dir = std::env::temp_dir();
+        let name = format!("auto-lang-drop-{}.png", std::process::id() as u64 ^ fastrand::u64(..));
+        let p = dir.join(name);
+        p.is_absolute().then_some(p)
+    }
+
+    /// 从 IDataObject 抽取拖入数据（Drop 臂）。text/files/image whichever
+    /// 可用可并存；外来 FileGroupDescriptor 仅计入 formats（拒收内容）。
+    pub fn extract_drop(data: &IDataObject, pt: &POINTL) -> NativeDropData {
+        let (probes, formats) = probe_formats(data);
+        let mut out = NativeDropData {
+            formats,
+            screen_x: pt.x,
+            screen_y: pt.y,
+            ..Default::default()
+        };
+        for (cf, lindex, name) in probes {
+            match name {
+                "CF_HDROP" => {
+                    if let Some(b) = medium_bytes(data, cf, lindex) {
+                        out.files = crate::ui::clipboard_native::parse_dropfiles(&b);
+                    }
+                }
+                "CF_UNICODETEXT" => {
+                    if out.text.is_none() {
+                        if let Some(b) = medium_bytes(data, cf, lindex) {
+                            let units: Vec<u16> = b
+                                .chunks_exact(2)
+                                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                                .collect();
+                            let s = String::from_utf16_lossy(&units);
+                            out.text = Some(s.trim_end_matches('\0').to_string());
+                        }
+                    }
+                }
+                "CF_DIBV5" | "CF_DIB" | "PNG" => {
+                    if out.image.is_none() {
+                        if let Some(b) = medium_bytes(data, cf, lindex) {
+                            out.image = drop_image_to_png(&b, name != "PNG");
+                        }
+                    }
+                }
+                _ => {} // FileGroupDescriptorW：观察-only（待澄清②）
+            }
+        }
+        out
+    }
+
+    /// 拖入完成通道（与拖出完成通道同型：全局单份 + Mutex 装载）。
+    static DROP: std::sync::OnceLock<(
+        std::sync::mpsc::Sender<NativeDropData>,
+        std::sync::Mutex<std::sync::mpsc::Receiver<NativeDropData>>,
+    )> = std::sync::OnceLock::new();
+
+    /// 宿主拖入目标：多格式 COPY 语义。DragEnter 探测可用格式（全不中 →
+    /// DROPEFFECT_NONE 显 no-drop 光标）；Drop 抽取 → 完成通道 → 订阅泵转
+    /// `DesktopEvent::NativeDrop`（命中/注入在 renderer update 臂）。
+    #[implement(IDropTarget)]
+    pub struct DesktopDropTarget;
+
+    #[allow(non_snake_case)]
+    impl IDropTarget_Impl for DesktopDropTarget_Impl {
+        fn DragEnter(
+            &self,
+            pdataobj: Option<&IDataObject>,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            let usable = pdataobj
+                .map(|d| {
+                    let (hit, _) = probe_formats(d);
+                    // 只认可消费族（描述符观察-only 不算可落）。
+                    hit.iter().any(|(_, _, n)| n != &"FileGroupDescriptorW")
+                })
+                .unwrap_or(false);
+            unsafe { *pdweffect = if usable { DROPEFFECT_COPY } else { DROPEFFECT_NONE } };
+            Ok(())
+        }
+
+        fn DragOver(
+            &self,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            _pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            // Enter 已筛（不可落者 OS 不再问 Over）；v1 恒 COPY。
+            unsafe { *pdweffect = DROPEFFECT_COPY };
+            Ok(())
+        }
+
+        fn DragLeave(&self) -> windows::core::Result<()> {
+            Ok(())
+        }
+
+        fn Drop(
+            &self,
+            pdataobj: Option<&IDataObject>,
+            _grfkeystate: MODIFIERKEYS_FLAGS,
+            pt: &POINTL,
+            pdweffect: *mut DROPEFFECT,
+        ) -> windows::core::Result<()> {
+            unsafe { *pdweffect = DROPEFFECT_COPY };
+            if let Some(data) = pdataobj {
+                let drop = extract_drop(data, pt);
+                let (tx, _) = DROP.get_or_init(|| {
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    (tx, std::sync::Mutex::new(rx))
+                });
+                let _ = tx.send(drop);
+            }
+            Ok(())
+        }
+    }
+
+    /// 轮询出口：取最近一次拖入抽取（session 订阅消费 →
+    /// `DesktopEvent::NativeDrop`）。
+    pub fn take_native_drop() -> Option<NativeDropData> {
+        let (_, rx) = DROP.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            (tx, std::sync::Mutex::new(rx))
+        });
+        rx.lock().unwrap().try_recv().ok()
+    }
+
+    /// 已挂载目标 的宿主 HWND（0 = 未挂载）。身份键控：宿主窗重建
+    /// （HWND 变化）时由 [`ensure_host_drop_target`] 重挂。
+    static REGISTERED_HWND: std::sync::atomic::AtomicIsize =
+        std::sync::atomic::AtomicIsize::new(0);
+
+    /// 宿主 HWND 挂载拖入目标（spike 结论：先 Revoke winit 自带目标再注
+    /// 我方多格式目标；幂等——HWND 不变时零开销直返）。宿主发现复用 473
+    /// find_largest_own_window，故额外依赖 native-dock feature（ui-iced
+    /// 隐含；native-dnd 独立档下拖入面缺失、拖出面不受影响）。
+    #[cfg(all(windows, feature = "native-dnd", feature = "native-dock"))]
+    pub fn ensure_host_drop_target() {
+        use std::sync::atomic::Ordering;
+        let Some(h) = crate::ui::native_dock::win32::find_largest_own_window() else {
+            return;
+        };
+        if REGISTERED_HWND.load(Ordering::SeqCst) == h.0 {
+            return;
+        }
+        unsafe {
+            let hwnd = windows::Win32::Foundation::HWND(h.0 as *mut _);
+            // winit 0.30 注册过自己的 CF_HDROP 目标——位移之（返回值两可）。
+            let _ = windows::Win32::System::Ole::RevokeDragDrop(hwnd);
+            // 防御性 OLE 初始化（winit 通常已做；S_FALSE 幂等计数不 Uninit）。
+            let _ = windows::Win32::System::Ole::OleInitialize(None);
+            let target: IDropTarget = DesktopDropTarget.into();
+            if windows::Win32::System::Ole::RegisterDragDrop(hwnd, &target).is_ok() {
+                REGISTERED_HWND.store(h.0, Ordering::SeqCst);
+            }
+        }
+    }
+
     /// 步骤 2 共存 spike 的最小放置目标：全方法 no-op（探针只验注册语义，
     /// 不消费数据——真实现见步骤 5）。
     #[implement(IDropTarget)]
@@ -919,6 +1153,74 @@ pub mod win32 {    use super::{DndPayload, VirtualFile};
         fn t4_start_drag_rejects_empty_payload() {
             assert!(!start_drag(DndPayload::default()), "空载荷拒收");
             assert!(!start_drag(super::super::parse_payload_json("{}").unwrap()), "空对象拒收");
+        }
+
+        // ---------- 步骤 5：拖入面（本进程自产 IDataObject 直喂，无需真拖） ----------
+
+        #[test]
+        fn t5_drop_target_enter_effect_and_channel_roundtrip() {
+            unsafe {
+                let full: IDataObject = DndDataObject::new(full_payload()).into();
+                let target: IDropTarget = DesktopDropTarget.into();
+                let pt = POINTL { x: 100, y: 100 };
+
+                let mut effect = DROPEFFECT_NONE;
+                target
+                    .DragEnter(&full, MODIFIERKEYS_FLAGS(0), pt, &mut effect)
+                    .expect("DragEnter");
+                assert_eq!(effect, DROPEFFECT_COPY, "可落格式族 → COPY");
+
+                // 空载荷（无可消费格式）→ no-drop 光标。
+                let empty: IDataObject = DndDataObject::new(Default::default()).into();
+                let mut eff_none = DROPEFFECT_COPY;
+                target
+                    .DragEnter(&empty, MODIFIERKEYS_FLAGS(0), pt, &mut eff_none)
+                    .expect("DragEnter empty");
+                assert_eq!(eff_none, DROPEFFECT_NONE);
+
+                // Drop → 完成通道往返（抽取 + 屏幕坐标）。
+                let mut eff_drop = DROPEFFECT_NONE;
+                target
+                    .Drop(&full, MODIFIERKEYS_FLAGS(0), pt, &mut eff_drop)
+                    .expect("Drop");
+                assert_eq!(eff_drop, DROPEFFECT_COPY);
+                let drop = take_native_drop().expect("drop in channel");
+                assert_eq!(drop.text.as_deref(), Some("你好 dnd"));
+                assert_eq!(
+                    drop.files,
+                    vec!["C:/tmp/a.txt".to_string(), "C:/tmp/b.png".to_string()]
+                );
+                assert!(drop.formats.iter().any(|f| f == "CF_HDROP"));
+                assert_eq!((drop.screen_x, drop.screen_y), (100, 100));
+            }
+        }
+
+        #[test]
+        fn t5_foreign_virtual_files_observed_but_rejected() {
+            unsafe {
+                // 外来虚拟文件（待澄清②）：FileGroupDescriptorW 枚举可见、
+                // 内容不取——text/files/image 均空，Enter 报 no-drop。
+                let vonly: IDataObject = DndDataObject::new(DndPayload {
+                    virtual_files: vec![VirtualFile {
+                        name: "x.md".into(),
+                        bytes: b"#".to_vec(),
+                        mime: "text/markdown".into(),
+                    }],
+                    ..Default::default()
+                })
+                .into();
+                let pt = POINTL { x: 0, y: 0 };
+                let d = extract_drop(&vonly, &pt);
+                assert!(d.formats.iter().any(|f| f == "FileGroupDescriptorW"));
+                assert!(d.files.is_empty() && d.text.is_none() && d.image.is_none());
+
+                let target: IDropTarget = DesktopDropTarget.into();
+                let mut eff = DROPEFFECT_COPY;
+                target
+                    .DragEnter(&vonly, MODIFIERKEYS_FLAGS(0), pt, &mut eff)
+                    .expect("DragEnter");
+                assert_eq!(eff, DROPEFFECT_NONE, "描述符观察-only 不算可落");
+            }
         }
 
         #[test]

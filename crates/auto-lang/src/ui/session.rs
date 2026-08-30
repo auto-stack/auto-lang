@@ -1236,6 +1236,10 @@ pub enum DesktopEvent {
     DndFinished {
         effect: &'static str,
     },
+    /// Plan 488：拖入落点（宿主 HWND 的 IDropTarget Drop → 抽取数据 + 屏幕
+    /// 坐标）。update 臂做屏幕→宿主逻辑坐标换算 + z 序命中 → AppId（注入
+    /// 在步骤 6 接线）。
+    NativeDrop(crate::ui::native_dnd::NativeDropData),
 }
 
 /// Plan 462：desktop 模式帧泵订阅（400ms；463 shell 层接管后由该层
@@ -1959,6 +1963,22 @@ impl DesktopSession {
         self.windows.iter().find(|(_, e)| e.app == app).map(|(k, _)| *k)
     }
 
+    /// Plan 488 T2：拖入落点命中——宿主窗逻辑坐标 → 顶层虚拟窗口的 AppId
+    /// （z 序 + 当前分区过滤复用 [`WmState::hit_test`]；独立模式 = 宿主窗
+    /// 本身 → 焦点 App 兜底）。屏幕→逻辑换算在 renderer 侧（drag_mapper
+    /// 同源），本方法保持纯逻辑可全平台单测。
+    pub fn drop_hit_app_at_local(&self, x: f32, y: f32) -> Option<AppId> {
+        if let Some(host) = &self.host {
+            let wid = host.wm.hit_test(x, y)?;
+            return host.wm.wins.get(&wid).map(|v| v.app);
+        }
+        // 独立模式：无虚拟窗口层——OS 窗口即 App，落点必在其内。
+        self.focused_window
+            .borrow()
+            .and_then(|w| self.app_of_window(&w))
+            .or_else(|| self.primary_app())
+    }
+
     pub fn app_mut(&mut self, id: AppId) -> Option<&mut AppSession> {
         self.apps.get_mut(&id)
     }
@@ -2553,6 +2573,29 @@ mod tests {
             Ok(auto_val::Value::Int(7)),
             "attach 后 App/VM 原地（count 连续）"
         );
+    }
+
+    /// Plan 488 T2：拖入落点命中——drop_hit_app_at_local（z 序 + 分区
+    /// 过滤复用 hit_test；独立模式焦点 App 兜底分支由 headless E2E 覆盖）。
+    #[test]
+    fn plan488_drop_hit_app_at_local() {
+        let mut ds = desktop_session_with_host();
+        let app_a = insert_app(&mut ds, "A");
+        ds.wm_add_win(
+            app_a,
+            "A".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let app_b = insert_app(&mut ds, "B");
+        ds.wm_add_win(
+            app_b,
+            "B".into(),
+            iced::Rectangle::new(iced::Point::new(50.0, 50.0), iced::Size::new(100.0, 100.0)),
+        );
+        // B 后开 → z 顶：重叠区归 B，A 独占区归 A，桌面外无命中。
+        assert_eq!(ds.drop_hit_app_at_local(75.0, 75.0), Some(app_b), "重叠区归顶窗");
+        assert_eq!(ds.drop_hit_app_at_local(10.0, 10.0), Some(app_a), "A 独占区");
+        assert_eq!(ds.drop_hit_app_at_local(5000.0, 5000.0), None, "桌面外");
     }
 
     #[test]
@@ -3432,9 +3475,9 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
     })
 }
 
-/// Plan 488：拖出完成事件泵——16ms 轮询 STA 线程的完成通道，收到效果即
-/// 转 [`DesktopEvent::DndFinished`]。windows × native-dnd 双门控外为空
-/// 订阅（G5：未开 feature 事件不触发）。
+/// Plan 488：DnD 事件泵（16ms 轮询双通道）——拖出完成效果 →
+/// [`DesktopEvent::DndFinished`]；拖入抽取 → [`DesktopEvent::NativeDrop`]。
+/// windows × native-dnd 双门控外为空订阅（G5：未开 feature 事件不触发）。
 pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
     #[cfg(all(windows, feature = "native-dnd"))]
     {
@@ -3459,14 +3502,19 @@ pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
             ) -> iced_futures::BoxStream<Self::Output> {
                 use iced_futures::futures::stream::StreamExt;
                 iced_futures::futures::stream::unfold((), |()| async move {
-                    // 完成事件一次会话一条（低频）；空拍 Some(None) 剔除保活。
-                    match crate::ui::native_dnd::win32::take_finished_effect() {
-                        Some(effect) => Some((
-                            Some(DesktopMessage::Desktop(DesktopEvent::DndFinished {
+                    // 低频事件（一次拖拽两条以内）；空拍 Some(None) 剔除保活。
+                    let msg = crate::ui::native_dnd::win32::take_finished_effect()
+                        .map(|effect| {
+                            DesktopMessage::Desktop(DesktopEvent::DndFinished {
                                 effect: effect.as_str(),
-                            })),
-                            (),
-                        )),
+                            })
+                        })
+                        .or_else(|| {
+                            crate::ui::native_dnd::win32::take_native_drop()
+                                .map(|data| DesktopMessage::Desktop(DesktopEvent::NativeDrop(data)))
+                        });
+                    match msg {
+                        Some(m) => Some((Some(m), ())),
                         None => {
                             tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                             Some((None, ()))
