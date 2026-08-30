@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-486
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: native-dock-trigger-surface
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 6
+current_step: 9
 total_steps: 9
 ---
 
@@ -221,12 +221,36 @@ shell.at 管线。零新三方依赖。
 7. **shell.at + 协议文档**：`crates/auto-lang/assets/shell.at` dock 区 native
    条目；`schema/projection-protocol-v1.md` 升 v1.3；T3 装载测。
    验证：`cargo t desktop_mcp`（或 shell 装载套件）。
+   [✅ 已完成] 2026-08-30：wins 循环两分支（top/bottom）增 native 分支
+   （title 文本按钮 max-w-32 truncate + ×，App 条目走既有路径）+
+   NativeFocus/NativeClose 消息臂（arg 直传 "N<slot>"，宿主 parse 剥前缀
+   归一）+ App 条目 native 空串统一（避免缺失字段访问）+ 协议文档 v1.3
+   （字段表/指纹/动词/变更记录/金样清单）+ T3 真 shell.at 装载测；scoped
+   113/113 绿 + schema 三件套 12/12 绿。
 8. **fixture E2E**：`crates/auto-lang/tests/native_dock_e2e.rs` 增拖入/拖出
    用例（T4）。
    验证：`cargo test -p auto-lang --features test-native-dock --test native_dock_e2e`。
+   [✅ 已完成] 2026-08-30：8/8 绿。拖入 = SendInput caption 真拖主路径
+   （drag_sim：TOPMOST 置顶越过 topmost 带 + AttachThreadInput 前台化 +
+   激活结算点击 + 1/3 宽抓点——4K@200% 下小窗 caption 按钮占宽过半，
+   正中点击命中最小化钮的实测教训）+ SC_MOVE|HTCAPTION 注入退路（同入
+   真实 move-size 循环）→ 真 WinEvent 序列驱动 DragWatch → DockCandidate
+   + 高亮 + dock 落槽；拖出 = 位移超阈 C4 判定 → undock 恢复 bounds。
+   另：进程内 scratch 合成拖拽单测（后台线程注入+窗口线程泵消息）+
+   fixture `--trace` NC 消息诊断选项 + windows crate 增
+   Win32_UI_Input_KeyboardAndMouse feature。
 9. **实机冒烟 + 清偿回写 + 收尾**：T5 七项执行 → `docs/plans/KNOWN-DEBT-AND-RISKS.md`
    P473 行回写；健康检查；状态翻 execution_done。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] 2026-08-30：实机执行（4K@200% 单屏 + 全屏 ui_desktop 新码 +
+   t5_smoke `#[ignore]` 手动驱动）——B1 ✅ 真拖 Notepad 入桌面→收编（chrome
+   剥离/槽位 chrome）→任务栏 native 条目→× 关闭→DESTROY 回收+toast；B5 ✅
+   docked fixture MessageBox 置顶可交互；B8 ✅ Esc 退出→双窗 chrome/bounds
+   整链恢复；D1 ◐ Chrome docked ~12s 后自移触发 C4 自动恢复+toast（G2 实机
+   附带实证 ✅）；B6/C1/B9 仍待用户（IME/UAC/双屏——理由与框架就绪注记
+   已回写债务行）。P473 行逐项回写完成。收尾门：check 零新告警、
+   ui+native_dock 762/763（唯一红=既有 i18n 环境红，见步骤4注）、
+   E2E 8/8、schema 三件套 12/12、零残留调试输出。
 
 ## 复审记录
 
@@ -234,16 +258,22 @@ shell.at 管线。零新三方依赖。
 
 ## 待澄清事项
 
-- 拖拽模拟手段（T4）：SendInput 真实拖动（可靠但环境敏感）vs SetWindowPos +
-  事件注入（确定性好但非真手势）——执行期以先跑通 SendInput 为准，退路注入。
+- 拖拽模拟手段（T4）——**执行期已定案**：SendInput 真实拖动为主路径
+  （四要素缺一不可：TOPMOST 置顶越过 topmost 常驻窗、AttachThreadInput
+  前台化、激活结算点击（程序化前台后的首击被吞）、大窗+70% 宽抓点
+  （4K@200% 下小窗 caption 按钮占宽过半，1/3 与正中都会命中按钮））；
+  SC_MOVE|HTCAPTION 注入为退路（同入真实 move-size 循环）。均已实现于
+  `win32.rs::drag_sim`。
 - 图标：v1 占位 `"app-window"`（lucide）；HICON → RGBA 提取为增强候选
   （473 待澄清同款延期）。
 - "窗口选择器"面板（无手势替代入口，EnumWindows 列表点选收编）：是否纳入
-  本期——**默认不纳入**（手势 + 任务栏已构成完整触发面），需求出现再立项。
-- native wid 编码 `N<slot_id>` 与 App wid 的隔离规则在协议文档定稿时与
-  I9 复核（投影唯一事实不受影响即可）。
-- B9 多屏自动化仅框架（单屏 CI），真多屏矩阵维持人工——与 473 债务注记一致。
-- 既有环境红（非本期引入）：`ui::i18n_lookup::tests::plan050_i18n_lookup_loads_
-  flat_json_and_misses_gracefully` 在 `--features ui*` 档红（i18n/zh.json 装载
-  返回 None）；master 同命令同红，默认档不编译该测试故日常门不受影响。执行
-  期不修（超出 486 文件范围），留待独立修复。
+  本期——**维持默认不纳入**（手势 + 任务栏已构成完整触发面），需求出现再立项。
+- native wid 编码 `N<slot_id>` 已在协议 v1.3 定稿（字段表 + 双形态动词
+  arg 容收）；App 条目 native 恒空串统一，投影唯一事实（I9）不受影响。
+- B9 多屏自动化仅框架（单屏 CI + t5_smoke 手动驱动），真多屏矩阵维持
+  人工——与 473 债务注记一致（执行机为单屏 4K@200%，双屏项已回写
+  "仍待用户"）。
+- 既有环境红（非本期引入，执行期不修）：`ui::i18n_lookup::tests::
+  plan050_i18n_lookup_loads_flat_json_and_misses_gracefully` 在
+  `--features ui*` 档红（i18n/zh.json 装载返回 None）；master 同命令同红，
+  默认档不编译该测试故日常门不受影响。留待独立修复（复审时应知悉）。
