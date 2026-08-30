@@ -462,6 +462,10 @@ impl IcedStyle {
             StyleClass::MarginRight(size) => {
                 self.margin_right = Some(size.to_pixels() as f32);
             }
+            StyleClass::MarginTopAuto => {
+                // PLAN-050 P2 #3: 渲染层按类名插弹性占位（renderer Column 臂），
+                // adapter 仅登记，不产生 margin 几何。
+            }
             StyleClass::MarginLeftAuto => {
                 self.margin_left_auto = true;
             }

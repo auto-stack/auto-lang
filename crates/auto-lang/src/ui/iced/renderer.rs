@@ -3194,8 +3194,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Column { children, spacing, padding, style } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
-                let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(axis_fix_col_child).map(|c| c.into_iced()).collect();
+                // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
+                // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
+                let mut els: Vec<iced::Element<'static, M>> = Vec::new();
+                for c in children {
+                    let mt_auto = extract_view_style(&c).map_or(false, |s| {
+                        s.classes.iter().any(|x| matches!(x, StyleClass::MarginTopAuto))
+                    });
+                    if mt_auto {
+                        els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
+                    }
+                    els.push(axis_fix_col_child(c).into_iced());
+                }
                 build_column(els, spacing, padding, style.as_ref(), None)
             }
 

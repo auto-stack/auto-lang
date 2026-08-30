@@ -14,11 +14,11 @@
 //! them and that is by design.
 
 /// Base layout for the default single-line item (h-9 = 36px both ends).
-pub const ITEM_BASE_MD: &str = "nav-item flex w-full items-center gap-2 rounded-md px-3 h-9 text-sm text-left text-foreground select-none cursor-pointer transition-colors";
+pub const ITEM_BASE_MD: &str = "nav-item flex w-full items-center justify-start gap-2 rounded-md px-3 h-9 text-sm text-left text-foreground select-none cursor-pointer transition-colors";
 /// Two-line item (label + desc): auto height via bracket padding (10px).
-pub const ITEM_BASE_LG: &str = "nav-item flex w-full items-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors";
+pub const ITEM_BASE_LG: &str = "nav-item flex w-full items-start justify-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors";
 /// Compact single-line item (h-7 = 28px).
-pub const ITEM_BASE_SM: &str = "nav-item flex w-full items-center gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors";
+pub const ITEM_BASE_SM: &str = "nav-item flex w-full items-center justify-start gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors";
 /// Hover feedback — attached ONLY when the item is not active (build-time
 /// either/or, mirroring NavItem.vue, so hover can never override the selected
 /// background regardless of Tailwind stylesheet order).
