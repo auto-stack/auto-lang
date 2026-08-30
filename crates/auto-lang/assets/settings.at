@@ -10,21 +10,27 @@
 //   关于：版本/宿主信息（投影注入常量，无新协议字段）。
 //
 // 接缝（协议 v1.3，schema/projection-protocol-v1.md）：
-//   出：`__desktop_cmd`（`open_settings\tsettings` 召唤 + 复用二态翻转
-//       语义——待澄清④按 switcher/launcher 先例定翻转；本面板不另发
-//       close 动词，Esc/齿轮再点在宿主臂翻转 visible）
-//       `set_dock_position\t<bottom|top>` / `set_dock_enabled\t<0|1>`
-//       （驱动动词——热改 dock_edges + relayout + storage 写回全在宿主臂）
+//   出：`__desktop_cmd`（`set_dock_position\t<bottom|top>` /
+//       `set_dock_enabled\t<0|1>` 驱动动词——热改 dock_edges + relayout +
+//       storage 写回全在宿主臂；召唤动词 `open_settings` 由 shell.at 齿轮
+//       发出，本面板不复用关闭动词——Esc/齿轮再点走宿主二态翻转，
+//       待澄清④定案）
 //   入：召唤时快照注入——`cfg_dock_position`/`cfg_dock_enabled`（当前
 //       驱动事实投影）、`pinned_ids` 平行字符串列表（B12 规避，宿主注入
 //       后显式 RebuildPinned 重建 handler 自有 rows）、`cfg_notes_enabled`
 //       （479 门控键快照）、`about_host`/`about_version`（boot 投影常量）、
 //       `hosted`/`visible`。
+// pinned 持久化：storage.set("shell.dock.pinned", "id1,id2,…") 直写
+// （逗号拼接 = 宿主 load_dock_pinned 解析格式；boot 生效）。
 // 快照语义：召唤时点定序；面板打开期间宿主配置变更不重注（设置面板是
 // 配置的编辑面，不是配置的监视面）。
 // 消费者唯一：宿主 renderer 的 toggle_settings / 设置面板键盘订阅。
 widget Settings {
-    msg { Init, RebuildPinned, Escape, Nav(str) }
+    msg {
+        Init, RebuildPinned, Escape, Nav(str),
+        PickPosition(str), PickEnabled(str),
+        DraftPinned(str), AddPinned, RemovePinned(int)
+    }
 
     model {
         // ---- 接缝状态（desktop 宿主注入）----
@@ -44,6 +50,7 @@ widget Settings {
         var pinned_rows = []        // {i,id}
         var pinned_n int = 0        // 行数（view 条件用，替代模板 .len()）
         var pinned_draft str = ""   // 新增项输入框草稿
+        var pinned_saved str = "0"  // 已保存提示（写键成功后置 1）
 
         // ---- 通知分区快照 ----
         var cfg_notes_enabled str = "1"
@@ -110,9 +117,106 @@ widget Settings {
 
                         // 右列内容卡（分区占位——控件接线在执行步骤 5/6）
                         col {
-                            style: "flex-1 p-4"
+                            style: "flex-1 p-4 gap-3"
+
                             if .section == "dock" {
-                                text "Dock 设置" { style: "text-gray-300 text-sm" }
+                                // ---- Dock 分区：位置/开关热生效 + pinned 编辑 ----
+
+                                // 位置卡（bottom/top 单选——驱动动词热生效）
+                                col {
+                                    style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                    text "位置" { style: "text-gray-200 text-sm font-medium" }
+                                    text "任务栏停靠边（立即生效）" { style: "text-gray-500 text-xs" }
+                                    row {
+                                        style: "gap-2"
+                                        if .cfg_dock_position == "bottom" {
+                                            button "底部" {
+                                                style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                            }
+                                        } else {
+                                            button "底部" {
+                                                onclick: .PickPosition("bottom")
+                                                style: "h-8 px-3 text-xs text-gray-400"
+                                            }
+                                        }
+                                        if .cfg_dock_position == "top" {
+                                            button "顶部" {
+                                                style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                            }
+                                        } else {
+                                            button "顶部" {
+                                                onclick: .PickPosition("top")
+                                                style: "h-8 px-3 text-xs text-gray-400"
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 开关卡（启用/停用——驱动动词热生效）
+                                col {
+                                    style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                    text "启用任务栏" { style: "text-gray-200 text-sm font-medium" }
+                                    row {
+                                        style: "gap-2"
+                                        if .cfg_dock_enabled == "1" {
+                                            button "开" {
+                                                style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                            }
+                                        } else {
+                                            button "开" {
+                                                onclick: .PickEnabled("1")
+                                                style: "h-8 px-3 text-xs text-gray-400"
+                                            }
+                                        }
+                                        if .cfg_dock_enabled == "0" {
+                                            button "关" {
+                                                style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                            }
+                                        } else {
+                                            button "关" {
+                                                onclick: .PickEnabled("0")
+                                                style: "h-8 px-3 text-xs text-gray-400"
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // pinned 编辑卡（storage 键直写——boot 生效）
+                                col {
+                                    style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                    text "固定应用（pinned）" { style: "text-gray-200 text-sm font-medium" }
+                                    if .pinned_saved == "1" {
+                                        text "已保存，重启后生效" { style: "text-success text-xs" }
+                                    } else {
+                                        text "增删后重启生效" { style: "text-gray-500 text-xs" }
+                                    }
+                                    if .pinned_n == 0 {
+                                        text "（空）" { style: "text-gray-500 text-xs" }
+                                    }
+                                    for r in .pinned_rows {
+                                        row {
+                                            style: "items-center gap-2"
+                                            text r.id { style: "flex-1 text-gray-300 text-xs" }
+                                            button "×" {
+                                                onclick: .RemovePinned(r.i)
+                                                style: "h-6 w-6 px-0 text-xs text-muted-foreground"
+                                            }
+                                        }
+                                    }
+                                    row {
+                                        style: "items-center gap-2"
+                                        input {
+                                            value: .pinned_draft
+                                            oninput: .DraftPinned
+                                            placeholder: "app id，如 011-calculator"
+                                            style: "flex-1 text-sm text-white bg-gray-900"
+                                        }
+                                        button "添加" {
+                                            onclick: .AddPinned
+                                            style: "h-8 px-3 text-xs"
+                                        }
+                                    }
+                                }
                             } else {
                                 if .section == "notes" {
                                     text "通知设置" { style: "text-gray-300 text-sm" }
@@ -171,6 +275,71 @@ widget Settings {
                     }
                 }
             }
+        }
+
+        // ---- Dock 分区：位置/开关 → 驱动动词（I7：几何是驱动事实，
+        // 执行臂改 dock_edges + relayout + storage 写回；面板只记记录）----
+        .PickPosition(p) -> {
+            if p == "top" {
+                .cfg_dock_position = "top"
+            } else {
+                .cfg_dock_position = "bottom"
+            }
+            .__desktop_cmd = "set_dock_position\t" + .cfg_dock_position
+        }
+
+        .PickEnabled(v) -> {
+            if v == "1" {
+                .cfg_dock_enabled = "1"
+            } else {
+                .cfg_dock_enabled = "0"
+            }
+            .__desktop_cmd = "set_dock_enabled\t" + v
+        }
+
+        // ---- pinned 编辑 → storage 键直写（boot 生效；逗号拼接 = 宿主
+        // load_dock_pinned 解析格式）----
+        .DraftPinned(v) -> {
+            .pinned_draft = v
+        }
+
+        .AddPinned -> {
+            if .pinned_draft != "" {
+                .pinned_rows.push({ i: .pinned_n, id: .pinned_draft })
+                .pinned_n = .pinned_n + 1
+                .pinned_draft = ""
+                .PersistPinned()
+            }
+        }
+
+        .RemovePinned(i) -> {
+            var rows = []
+            var idx int = 0
+            var n int = 0
+            while idx < .pinned_n {
+                if idx != i {
+                    rows.push({ i: n, id: .pinned_rows[idx].id })
+                    n = n + 1
+                }
+                idx = idx + 1
+            }
+            .pinned_rows = rows
+            .pinned_n = n
+            .PersistPinned()
+        }
+
+        .PersistPinned -> {
+            var s str = ""
+            var idx int = 0
+            while idx < .pinned_n {
+                if idx > 0 {
+                    s = s + ","
+                }
+                s = s + .pinned_rows[idx].id
+                idx = idx + 1
+            }
+            storage.set("shell.dock.pinned", s)
+            .pinned_saved = "1"
         }
 
         // Esc 关闭：自隐（宿主二态翻转语义的另一半——再召唤由宿主臂翻转）。

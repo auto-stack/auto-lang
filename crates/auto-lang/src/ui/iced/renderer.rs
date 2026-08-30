@@ -17219,6 +17219,97 @@ mod tests {
         }
     }
 
+    /// Plan 487 M4 步骤5：Dock 分区接线无头——面板 PickPosition/
+    /// PickEnabled handler → `__desktop_cmd` 记录 → 联合排空执行（热生效）
+    /// + pinned 增删 → storage.set 落键（宿主 load_dock_pinned 同格式）。
+    #[test]
+    fn settings_dock_section_dispatch_and_pinned_storage() {
+        let path = t2_isolate_storage("487-dock-section");
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+
+        // ① PickPosition(top)：handler 写记录 + 本地 cfg 即时更新。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickPosition", &[auto_val::Value::str("top")])
+            .expect("PickPosition handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_dock_position") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "top", "面板本地 cfg 即时更新")
+                }
+                other => panic!("cfg_dock_position 读回异常: {other:?}"),
+            }
+        }
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::SetDockPosition(true)],
+            "位置钮 → set_dock_position 记录"
+        );
+        // ② 执行 → 热生效（edges 翻转 + 键写回）。
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert_eq!(ds.desktop.dock_edges.top, crate::ui::layout::TASKBAR_HEIGHT);
+
+        // ③ PickEnabled(0)：记录 + 执行 → 全零边。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("PickEnabled", &[auto_val::Value::str("0")])
+            .expect("PickEnabled handler");
+        let cmds = ds.drain_app_desktop_commands(panel);
+        assert_eq!(
+            cmds,
+            vec![crate::ui::session::DesktopCommand::SetDockEnabled(false)],
+            "开关钮 → set_dock_enabled 记录"
+        );
+        let _ = execute_desktop_commands(&mut ds, cmds);
+        assert_eq!(ds.desktop.dock_edges.top, 0.0);
+        assert_eq!(ds.desktop.dock_edges.bottom, 0.0);
+
+        // ④ pinned 编辑：AddPinned → storage 键追加（逗号拼接格式）。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("DraftPinned", &[auto_val::Value::str("020-newapp")])
+            .expect("DraftPinned handler");
+        app.component
+            .bridge_mut()
+            .call_handler("AddPinned", &[])
+            .expect("AddPinned handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("pinned_n") {
+                Ok(auto_val::Value::Int(n)) => assert_eq!(n, 4, "pinned 行追加"),
+                other => panic!("pinned_n 读回异常: {other:?}"),
+            }
+        }
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned").as_deref(),
+            Some("011-calculator,013-todo,015-notes,020-newapp"),
+            "AddPinned 落键（load_dock_pinned 同格式）"
+        );
+        // ⑤ RemovePinned(0)：键收缩（首枚 calculator 删除）。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("RemovePinned", &[auto_val::Value::Int(0)])
+            .expect("RemovePinned handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.dock.pinned").as_deref(),
+            Some("013-todo,015-notes,020-newapp"),
+            "RemovePinned 落键收缩"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Plan 487 M4 步骤4：设置面板召唤无头——OpenSettings 懒挂载 + 配置
     /// 快照注入（cfg_* 键推导 / pinned 平行列表 / about 常量）+ 二态翻转
     /// （再召唤自隐）+ Esc 自隐。齿轮→open_settings 记录接线在步骤7 测。
