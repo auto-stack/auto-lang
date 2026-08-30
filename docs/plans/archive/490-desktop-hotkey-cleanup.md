@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-490
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-hotkey-cleanup
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -8,11 +8,25 @@ updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+new_spec_components:
+  - ui/session+ui/iced/renderer:desktop-hotkey-table（Plan 490——桌面热键
+    表数据级可配置：HotkeyAction 11 动作/KeySpec 串解析/builtin 新默认
+    〔G1 Alt+Tab 退役·G2 分区迁 Ctrl+Alt+[ ]·launcher Ctrl+Space+别名
+    Ctrl+Alt+Space 双收〕+ shell.keys.<action> storage 覆盖 boot 读入
+    〔坏值静默回退〕+ 订阅臂链纯函数化 desktop_hotkey_message；**取代
+    463/478/472 沉淀的订阅段硬编码布尔式臂**〔旧臂无独立台账组件,
+    修订并入本组件描述〕）
+  - ui/view+aura_view_builder+iced/renderer:layout-onclick-parity（Plan
+    490 G4——VM 轨布局件点击 parity：View::Row/Column/Container 增
+    onclick 字段〔map_msg/convert 语义穿透〕+ aura tracked/untracked
+    六分发点 set_layout_onclick 提取〔沿 text onclick→Button 先例,
+    onclick/click 双键〕+ wrap_layout_onclick mouse_area 包装〔on_release
+    发射,inspect 自守卫〕；Vue 轨零改动即双端闭合——**严禁转换层丢弃
+    布局件事件声明**）
+touched_goals: [GOAL-007, GOAL-009]   # VM/Vue 布局件点击 parity / 桌面 Shell 热键可配置+launcher 兜底显性化
 
 affects: [auto-lang/ui]       # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 7
 total_steps: 7
 ---
 
@@ -262,22 +276,52 @@ pub struct HotkeyTable { map: HashMap<HotkeyAction, KeySpec> }
 1. **HotkeyTable 纯逻辑**：`ui/session.rs` 增 HotkeyAction/KeySpec/
    HotkeyTable（builtin + from_storage_overrides + matches）+ T1 单测。
    验证：`cargo nextest run -p auto-lang --lib --features ui-iced hotkey`。
+   [✅ 已完成] session.rs 桌面热键域：HotkeyAction(11 动作+storage 后缀)/
+   KeyName(词形+原始字符解析)/KeySpec::parse/builtin(G1 Alt+Tab 退役、G2
+   bracket 族、launcher 主键+IME 兜底**别名双收**)/apply_override(坏值静默拒)。
+   `--features ui-iced hotkey` 4/4 绿（矩阵/双收/解析/覆盖往返）。
 2. **默认表迁移**：builtin 表按 G1/G2 新默认；renderer.rs:6376-6440 订阅
    段逐臂改查表 + T2 订阅行为测（Alt+Tab 无臂/bracket 臂/覆盖恢复）。
    验证：`cargo nextest run -p auto-lang --lib --features ui-iced hotkey`。
+   [✅ 已完成] 订阅签名收 HotkeyTable（DesktopState.hotkeys 字段 +
+   DesktopSession::hotkeys() 访问器，DesktopState::new 缺省 builtin）；
+   臂链抽纯函数 desktop_hotkey_message（表驱动 11 臂，臂序=旧行为优先级）。
+   hotkey_sub_builtin_arms/hotkey_sub_storage_override_arms 双测绿
+   （Alt+Tab None/bracket 分区/双收/Esc-switcher-sendto-layout 不回归）。
 3. **storage 覆盖读入**：boot 侧读 `shell.keys.*` → 构建会话表 + T3 往返
    测试（合法/坏配置）。
    验证：`cargo nextest run -p auto-lang --lib --features ui-iced hotkey storage`。
+   [✅ 已完成] load_hotkey_overrides（宿主无枚举面——11 已知动作位逐读，
+   缺席不覆盖）+ boot 应用（load_dock_pinned 同位，472 先例）；往返测
+   hotkey_storage_boot_roundtrip（AUTO_VM_STORAGE_FILE 隔离沿 479/489 铁律；
+   合法恢复方向键/坏值保缺省不 panic/Alt+Tab 显式复活）。hotkey 7/7 绿。
 4. **G4 红测试**：renderer.rs `line_edit_tests`（p483/p491 相邻）新增
    p490 布局件点击五测（row/col/div 先红、无 onclick 锚、launcher 形态），
    跑 `cargo test -p auto-lang --lib --features iced-layout-tests p490`
    确认红（onclick 提取/字段未落地）。
+   [✅ 已完成] p490_build_click_shape（.at 源端到端：for-loop 行/锚行/col/
+   div/launcher 对象行五形态，沿 p483 构建路径）+ p490_click_collect 助手；
+   四测断言红（`got []`＝onclick 静默丢弃缺陷复现）+ inert 锚绿。
 5. **G4 实现三层**：view.rs（View::Row/Column/Container +onclick 字段 +
    ViewBuilder .on_click）→ aura_view_builder.rs（tracked/untracked 六转换
    点提取）→ renderer.rs（AbstractView 传递 + mouse_area 包装）。受影响面
    grep 盘点清单记入计划。
    验证：p490 五测全绿 + `cargo check -p auto-lang` 零新警告
    + p483/p491 相邻测试不回归。
+   [✅ 已完成] 三层落地（AbstractView=view::View 别名，字段同源）：①view.rs
+   三变体 +onclick（map_msg_with_arc 三臂语义穿透 onclick.map(f)，非弃置）；
+   ②aura set_layout_onclick 助手 + tracked/untracked 分发六臂（col/row/
+   taskbar/container|div；onclick/click 双键、大小写不敏感沿 get_base）；
+   ③renderer convert_view_messages 三臂 from_dynamic 穿透 + wrap_layout_
+   onclick（mouse_area.on_release；inspect 模式自守卫）接 into_iced 与
+   render_dynamic_view 双路径六臂。全仓字面量/模式位补 None（~230 处，
+   含测试档与文档示例勘误）。**p490 五测 5/5（四红转绿）**；p483 6/6 +
+   p491 7/7 + hotkey 7/7 回归绿。受影响面盘点：028-launcher app.at×4
+   （row onclick）；auto-musk specs_category.at div onclick（specs 树，
+   T7 实机核）；widgets-gallery/a2ui-composer onclick 站点多为 button/
+   nav-item 既有可点件（非本缺口族）。执行插曲：T5 中途 cwd 漂移致改动
+   一度落默认检出工作副本——已打包 patch 还原默认检出并三方应用回
+   worktree（git 状态双清，无.master 污染残留）。
 6. **文档 + overview 注记**：热键表说明（新默认/IME 兜底/覆盖键形态）+
    G2 launcher 入口键位标注 + overview 行点击 parity 段。
    验证：`cargo test -p auto-lang --test docs_gen`（若触发生成器）。
@@ -285,8 +329,53 @@ pub struct HotkeyTable { map: HashMap<HotkeyAction, KeySpec> }
    Ctrl+Alt+Space）+ T6（028 候选行真鼠标/MCP 点击 launch）；`cargo tf`
    全量门；状态翻 execution_done。
    验证：`cargo tf`。
+   [✅ 已完成] 证据归 docs/plans/evidence/490/（worktree 提交）。实机所得：
+   028 standalone boot/召唤/搜索 ✓ + **IME 兜底键位标注 UI 可见**（G2 交付
+   面）；桌面模式（ui_desktop --fullscreen --apps-dir）boot ✓。真键盘
+   Ctrl+Alt+Space 两连拒实录（frontmost pid 4560 Chrome 并行会话锁定——
+   键入安全闸正确拒发防误伤；standalone 态无桌面订阅为设计非缺陷）→
+   连同候选行真鼠标点击顺延 P483-3 真人清单（机制语义均测试锁定：
+   hotkey_sub_builtin_arms 的 ctrl+alt+space→SummonLauncher +
+   p490_launcher_row_launches）。**cargo tf 3283/3283 全绿**；ui-iced 档
+   8 败=同族同败于 master 基线对照（P483-2 storage 卫生 7 + P480 基线
+   flake 1，债务在档）——零 490 新增红。执行注记：T7a 桌面演示跑污染
+   storage 镜像（shell.*）致首跑 10 败——清 12 镜像后回落 8，与 master
+   对照定预存。
 
 ## 复审记录
+
+**/auto-plan:review 2026-08-30（zcode 独立复审会话；verify-don't-trust 全项重跑）**
+
+方法：worktree `.worktrees/plan-490-dev` 内 `git diff a997e9f65..HEAD --stat`
+（10 文件 +1153/-197,全部计划域内;**无 ui_gen/ 改动=Vue 零改动验收直接以
+diff 证实**）+ 复审门禁全量与四组 scoped 现场重跑 + 文档/警告基线对照。
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---|---|---|
+| 1 | Alt+Tab 不再窗口循环;Ctrl+Tab switcher 不回归 | pass | hotkey_sub_builtin_arms 重跑（Alt+Tab→None+Ctrl+Tab→SummonSwitcher 断言）；hotkey 7/7 |
+| 2 | Ctrl+Alt+[ ] 默认生效;storage 覆盖恢复方向键 | pass | builtin_arms+sub_storage_override_arms+storage_boot_roundtrip 三测重跑;合法覆盖恢复方向键/覆盖后主键被替换（非叠加）均锁定 |
+| 3 | 坏配置不炸 | pass | roundtrip 坏值保缺省不 panic+未知动作拒;boot 读入静默回退 |
+| 4 | tf 全绿+check 零新警告+ui 档不回归 | pass | 复审门禁 tf **3283/3283**;unused 警告基线 **112=112 零新增**（base/HEAD 双跑对照）;ui-iced 8 败=master 同族同败对照（P483-2 卫生×7+P480 基线×1,债务在档）——零 490 新增红 |
+| 5 | 文档:overview 热键段+IME 兜底+G1 可追 | pass（注偏差） | worktree overview「490 起 Alt+Tab 退役」+490 双里程碑条目 ✓;028 入口「Ctrl+Space · IME 机 Ctrl+Alt+Space」实机可见 ✓;"486/490 交接注记"无独立文件——可追性由 490 计划 G1+overview+renderer 订阅注释三重承载（486 热键面仅 Esc,无 Alt+Tab 交接实需,验收措辞过度指定） |
+| 6 | G4 三形态点击+锚+028 候选行可选+Vue 零改动 | pass（实机面 partial,预设代验） | p490 **5/5** 重跑（四红转绿含 028 for-loop 形态;锚绿）；Vue 零改动=diff 无 ui_gen ✓;实机真鼠标=P483-3 同象两连拒实录（frontmost 被 Chrome 锁,安全闸拒发）→沿计划预设顺延真人清单;机制测以 iced_test 真实鼠标事件驱动全链 |
+| 7 | G4 受影响面盘点入执行记录 | pass | T5 标记含清单（028×4 row/musk specs div×2/widgets-gallery 站点核为 button 族非缺口/tab 余族归并注记） |
+
+**遗漏/延后/workaround 扫描**：遗漏无（mcp_server/vnode_converter/layout_tests
+改动均字段适配+文档示例勘误,diff 内可解释;两执行插曲〔cwd 漂移误落默认
+检出→patch 还原;storage 镜像污染→489 记档清理〕已计划内如实注记,双边
+git 状态复核清洁）。延后两项均为计划内预设（真键盘/真鼠标→P483-3 真人
+清单;Super 系/RegisterHotKey→Phase 2 非目标）。workaround 无（diff 零
+TODO/FIXME/dbg）。**债候选（不阻塞）**：P483-2 卫生族余 7 测未逐测隔离
+（489 只隔离 2 测）——建议后续小计划补 AUTO_VM_STORAGE_FILE 全族隔离。
+
+**plan↔code 偏差（三条,均低影响）**：①ViewBuilder `.on_click(M)` 链式
+入口未做（无消费者;aura 分发直构字段,需要时补）;②`from_storage_overrides`
+批量形态实现为逐条 `apply_override`（等价更简）;③"G1 486/490 交接注记"
+按可追性三重承载解读（见 #5）。
+
+**裁定:PASS（6 pass + 1 pass-实机面预设代验）**。唯一 partial 为 P483-3
+已立债环境阻塞的实机面,机制级证据充分+受阻实录留档 evidence/490/,沿
+473/483/491 先例放行;最终裁定权随 /auto-plan:merge 呈用户。status→reviewed。
 
 ## 待澄清事项
 
