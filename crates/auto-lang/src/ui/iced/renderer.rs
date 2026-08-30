@@ -17362,10 +17362,14 @@ mod tests {
     }
 
     /// dock 数据级配置 → 布局预留边（协议 v1 §6：shell.dock.* 缺席回退
-    /// pack 默认 bottom/48；top 反转；enabled=false 全零）。进程内写读，
-    /// 尾部清理防并行污染。
+    /// pack 默认 bottom/48；top 反转；enabled=false 全零）。
+    /// Plan 489 merge 补隔离：raw_remove 只清内存不清落盘文件——本机实机
+    /// 桌面用过设置面板后 store 含 shell.dock.* 键（487 写回链正常生效），
+    /// storage_host_read→storage_load 会把盘上键并回打破「缺席回退」前提
+    ///（P487-2 同族：测试依赖进程级 storage 全局态）。
     #[test]
     fn desktop_dock_edges_reads_storage_overrides() {
+        let _store = t2_isolate_storage("489-dock-edges");
         let key_pos = "shell.dock.position";
         let key_en = "shell.dock.enabled";
         crate::vm::ffi::stdlib::storage_raw_remove(key_pos);
@@ -17388,8 +17392,7 @@ mod tests {
         assert_eq!(e.bottom, 0.0);
         assert_eq!(e.top, 0.0);
 
-        crate::vm::ffi::stdlib::storage_raw_remove(key_pos);
-        crate::vm::ffi::stdlib::storage_raw_remove(key_en);
+        let _ = std::fs::remove_file(&_store);
     }
 
     /// Plan 487 M4：set_dock_position/enabled 执行臂——storage 键写回 +
@@ -17481,11 +17484,11 @@ mod tests {
     /// 资产 shell.at（widget Desktop）装载冒烟：编译 + fire_init 读 storage
     /// 缺席回退 pack 默认（enabled=1 / position=bottom）；pinned 由宿主
     /// 解析注入（{id,icon} Obj 数组，icon 自注册表）。
+    /// Plan 489 merge 补隔离（同 desktop_dock_edges…——实机 store 键打破
+    /// 缺席前提，P487-2 同族）。
     #[test]
     fn desktop_shell_at_builds_with_dock_defaults() {
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.pinned");
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.position");
-        crate::vm::ffi::stdlib::storage_raw_remove("shell.dock.enabled");
+        let _store = t2_isolate_storage("489-shell-defaults");
         let comp = crate::ui::shell::build_shell_component().expect("shell.at 装载");
         let mut ds = crate::ui::session::DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
@@ -17563,6 +17566,7 @@ mod tests {
             ),
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
+        let _ = std::fs::remove_file(&_store);
     }
 
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
