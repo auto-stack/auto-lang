@@ -199,25 +199,87 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             }
             .segs = outSegs
 
-            // ---- x 轴标签(≤8 抽样) ----
+            // ---- x 轴标签:逐数据点槽位(≤20 全量对齐,超出等距抽样) ----
             var iname = .index
-            var keep int = 1
-            if n > 8 {
-                keep = n / 8 + 1
+            var KL int = n
+            if KL > 20 {
+                KL = 20
             }
-            var outLabels = ""
-            var i2 = 0
+            var den int = 1
+            if KL > 1 {
+                den = KL - 1
+            }
+            var outL List = []
+            var nxt int = 0
+            var i4 = 0
             for d in .data {
-                if i2 % keep == 0 {
-                    if outLabels == "" {
-                        outLabels = d[iname]
-                    } else {
-                        outLabels = outLabels + "   " + d[iname]
-                    }
+                var tgt int = nxt * (n - 1) / den
+                if i4 == tgt && nxt < KL {
+                    outL.push(d[iname])
+                    nxt = nxt + 1
                 }
-                i2 = i2 + 1
+                i4 = i4 + 1
             }
-            .xlabels = outLabels
+            if KL > 0 {
+                .xLab0 = outL[0]
+            }
+            if KL > 1 {
+                .xLab1 = outL[1]
+            }
+            if KL > 2 {
+                .xLab2 = outL[2]
+            }
+            if KL > 3 {
+                .xLab3 = outL[3]
+            }
+            if KL > 4 {
+                .xLab4 = outL[4]
+            }
+            if KL > 5 {
+                .xLab5 = outL[5]
+            }
+            if KL > 6 {
+                .xLab6 = outL[6]
+            }
+            if KL > 7 {
+                .xLab7 = outL[7]
+            }
+            if KL > 8 {
+                .xLab8 = outL[8]
+            }
+            if KL > 9 {
+                .xLab9 = outL[9]
+            }
+            if KL > 10 {
+                .xLab10 = outL[10]
+            }
+            if KL > 11 {
+                .xLab11 = outL[11]
+            }
+            if KL > 12 {
+                .xLab12 = outL[12]
+            }
+            if KL > 13 {
+                .xLab13 = outL[13]
+            }
+            if KL > 14 {
+                .xLab14 = outL[14]
+            }
+            if KL > 15 {
+                .xLab15 = outL[15]
+            }
+            if KL > 16 {
+                .xLab16 = outL[16]
+            }
+            if KL > 17 {
+                .xLab17 = outL[17]
+            }
+            if KL > 18 {
+                .xLab18 = outL[18]
+            }
+            if KL > 19 {
+                .xLab19 = outL[19]
+            }
 
             // ---- 命中竖带 + tooltip 内容(逐索引预计算) ----
             var nf3 float = n
@@ -302,7 +364,66 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     }
                     if .axis == "auto" {
                         row (style: "justify-between px-10 pt-1") {
-                            text .xlabels { style: "text-xs text-muted-foreground" }
+                                if .xLab0 != "" {
+                                    text .xLab0 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab1 != "" {
+                                    text .xLab1 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab2 != "" {
+                                    text .xLab2 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab3 != "" {
+                                    text .xLab3 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab4 != "" {
+                                    text .xLab4 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab5 != "" {
+                                    text .xLab5 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab6 != "" {
+                                    text .xLab6 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab7 != "" {
+                                    text .xLab7 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab8 != "" {
+                                    text .xLab8 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab9 != "" {
+                                    text .xLab9 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab10 != "" {
+                                    text .xLab10 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab11 != "" {
+                                    text .xLab11 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab12 != "" {
+                                    text .xLab12 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab13 != "" {
+                                    text .xLab13 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab14 != "" {
+                                    text .xLab14 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab15 != "" {
+                                    text .xLab15 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab16 != "" {
+                                    text .xLab16 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab17 != "" {
+                                    text .xLab17 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab18 != "" {
+                                    text .xLab18 { style: "text-[10px] text-muted-foreground" }
+                                }
+                                if .xLab19 != "" {
+                                    text .xLab19 { style: "text-[10px] text-muted-foreground" }
+                                }
                         }
                     }
                 }
