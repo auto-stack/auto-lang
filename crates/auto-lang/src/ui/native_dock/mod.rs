@@ -49,6 +49,16 @@ impl Rect {
     pub fn size(&self) -> Size {
         Size { w: self.w, h: self.h }
     }
+
+    /// 指针包含判定（左上闭、右下开）。
+    pub fn contains_point(&self, px: i32, py: i32) -> bool {
+        px >= self.x && px < self.right() && py >= self.y && py < self.bottom()
+    }
+
+    /// 中心点（最近槽位选择的距离基准）。
+    pub fn center(&self) -> (i32, i32) {
+        (self.x + self.w / 2, self.y + self.h / 2)
+    }
 }
 
 /// 物理像素尺寸。
@@ -328,6 +338,164 @@ impl CoordMapper {
     }
 }
 
+// ---------------------------------------------------------------------------
+// DragWatch 拖入手势会话（Plan 486）：MOVESIZESTART 起、MOVESIZEEND 终
+// ---------------------------------------------------------------------------
+
+/// `NativeDragOver` 高亮更新频率上限（~30Hz 节流窗口，毫秒）。
+pub const DRAG_OVER_THROTTLE_MS: u64 = 33;
+
+/// 会话终态（MOVESIZEEND）：指针在桌面内 → 收编候选；在外 → 放弃。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragWatchOutcome {
+    DockCandidate(NativeHwnd),
+    Abandon,
+}
+
+/// 光标采样的高亮产出：`Some(rect)` 高亮候选槽位、`None` 清除高亮、
+/// [`DragSample::NoChange`] 节流窗口内无新信息（宿主不投递）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragSample {
+    Overlay(Option<Rect>),
+    NoChange,
+}
+
+/// 拖动会话内部状态（对外只经 [`DragWatch`] 方法转移）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DragState {
+    Idle,
+    Watching { hwnd: NativeHwnd },
+    Over { hwnd: NativeHwnd, rect: Rect },
+}
+
+/// 拖入手势会话（纯逻辑，全平台单测）：宿主层在 `MOVESIZESTART` 起
+/// [`DragWatch::start`]，随 `LOCATIONCHANGE` 流以 [`DragWatch::sample`]
+/// 喂指针（指针坐标、桌面 rect、free-cell 矩形、时间戳全部注入，本层零
+/// Win32 依赖），`MOVESIZEEND` 以 [`DragWatch::end`] 收割终态。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DragWatch {
+    state: DragState,
+    last_emit_ms: Option<u64>,
+    last_rect: Option<Rect>,
+}
+
+impl Default for DragWatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DragWatch {
+    pub fn new() -> Self {
+        Self {
+            state: DragState::Idle,
+            last_emit_ms: None,
+            last_rect: None,
+        }
+    }
+
+    /// 会话是否进行中（`start` 后未 `end`）。
+    pub fn is_watching(&self) -> bool {
+        !matches!(self.state, DragState::Idle)
+    }
+
+    /// `MOVESIZESTART`：开始监视 `hwnd` 的拖动（新起点覆盖在途会话）。
+    pub fn start(&mut self, hwnd: NativeHwnd) {
+        self.state = DragState::Watching { hwnd };
+        self.last_emit_ms = None;
+        self.last_rect = None;
+    }
+
+    /// 强制作废（目标销毁等）：回 Idle，清高亮记账。宿主需自行清 overlay。
+    pub fn reset(&mut self) {
+        self.state = DragState::Idle;
+        self.last_emit_ms = None;
+        self.last_rect = None;
+    }
+
+    /// 光标采样：指针入桌面 → 候选槽位（[`landing_slot`]）→ `Over`；出桌面
+    /// 或无落点 → 回 `Watching` 并产出清除高亮。同 rect 在节流窗口内不重发，
+    /// rect 变化立即重发（高亮跟随优先于节流）。
+    pub fn sample(
+        &mut self,
+        pointer: (i32, i32),
+        desktop: Rect,
+        free_cells: &[Rect],
+        now_ms: u64,
+    ) -> DragSample {
+        let hwnd = match self.state {
+            DragState::Idle => return DragSample::NoChange,
+            DragState::Watching { hwnd } | DragState::Over { hwnd, .. } => hwnd,
+        };
+        let candidate = if desktop.contains_point(pointer.0, pointer.1) {
+            landing_slot(pointer, free_cells)
+        } else {
+            None
+        };
+        match candidate {
+            Some(rect) => {
+                self.state = DragState::Over { hwnd, rect };
+                let changed = self.last_rect != Some(rect);
+                let throttle_open = self
+                    .last_emit_ms
+                    .map_or(true, |t| now_ms.saturating_sub(t) >= DRAG_OVER_THROTTLE_MS);
+                if changed || throttle_open {
+                    self.last_emit_ms = Some(now_ms);
+                    self.last_rect = Some(rect);
+                    DragSample::Overlay(Some(rect))
+                } else {
+                    DragSample::NoChange
+                }
+            }
+            None => {
+                let was_over = matches!(self.state, DragState::Over { .. });
+                self.state = DragState::Watching { hwnd };
+                if was_over {
+                    self.last_rect = None;
+                    DragSample::Overlay(None)
+                } else {
+                    DragSample::NoChange
+                }
+            }
+        }
+    }
+
+    /// `MOVESIZEEND`：指针在桌面内 → [`DragWatchOutcome::DockCandidate`]，
+    /// 在外 → [`DragWatchOutcome::Abandon`]；会话复位 Idle。非会话期调用
+    /// → None。
+    pub fn end(&mut self, pointer: (i32, i32), desktop: Rect) -> Option<DragWatchOutcome> {
+        let hwnd = match self.state {
+            DragState::Idle => return None,
+            DragState::Watching { hwnd } | DragState::Over { hwnd, .. } => hwnd,
+        };
+        self.reset();
+        if desktop.contains_point(pointer.0, pointer.1) {
+            Some(DragWatchOutcome::DockCandidate(hwnd))
+        } else {
+            Some(DragWatchOutcome::Abandon)
+        }
+    }
+}
+
+/// 落点计算：指针所在 free-cell（含多命中取首序）；无包含时取中心距最近者；
+/// 空表 → None。free-cell 矩形为屏幕物理坐标（宿主经 [`CoordMapper`] 换算）。
+pub fn landing_slot(pointer: (i32, i32), free_cells: &[Rect]) -> Option<Rect> {
+    if let Some(&hit) = free_cells
+        .iter()
+        .find(|r| r.contains_point(pointer.0, pointer.1))
+    {
+        return Some(hit);
+    }
+    free_cells
+        .iter()
+        .min_by_key(|r| {
+            let (cx, cy) = r.center();
+            (cx - pointer.0).saturating_mul(cx - pointer.0)
+                + (cy - pointer.1).saturating_mul(cy - pointer.1)
+        })
+        .copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,5 +689,152 @@ mod tests {
             observe_min_size_estimate(Size::new(40, 30), Size::new(136, 39)),
             Some(Size::new(136, 39))
         );
+    }
+
+    // ---- DragWatch 手势会话（486 T1）----
+
+    fn desktop_fixture() -> (Rect, Vec<Rect>) {
+        let desktop = Rect::new(100, 100, 1000, 600);
+        let cells = vec![Rect::new(100, 100, 500, 300), Rect::new(600, 100, 500, 300)];
+        (desktop, cells)
+    }
+
+    #[test]
+    fn dragwatch_full_transition_table() {
+        let (desktop, cells) = desktop_fixture();
+        let mut w = DragWatch::new();
+        // Idle：sample/end 均无动作
+        assert_eq!(
+            w.sample((300, 200), desktop, &cells, 0),
+            DragSample::NoChange
+        );
+        assert_eq!(w.end((300, 200), desktop), None);
+        assert!(!w.is_watching());
+        // START → Watching → 指针入桌面命中首 cell → Over + 高亮
+        w.start(NativeHwnd(0x11));
+        assert!(w.is_watching());
+        assert_eq!(
+            w.sample((300, 200), desktop, &cells, 0),
+            DragSample::Overlay(Some(Rect::new(100, 100, 500, 300)))
+        );
+        // 指针滑出桌面 → 回 Watching + 清高亮
+        assert_eq!(
+            w.sample((50, 200), desktop, &cells, 100),
+            DragSample::Overlay(None)
+        );
+        // 指针回桌面 → 重新 Over
+        assert_eq!(
+            w.sample((700, 200), desktop, &cells, 200),
+            DragSample::Overlay(Some(Rect::new(600, 100, 500, 300)))
+        );
+        // 桌面内松手 → DockCandidate + 会话复位
+        assert_eq!(
+            w.end((700, 200), desktop),
+            Some(DragWatchOutcome::DockCandidate(NativeHwnd(0x11)))
+        );
+        assert!(!w.is_watching());
+    }
+
+    #[test]
+    fn dragwatch_end_outside_desktop_abandons() {
+        let (desktop, cells) = desktop_fixture();
+        let mut w = DragWatch::new();
+        w.start(NativeHwnd(0x22));
+        w.sample((300, 200), desktop, &cells, 0);
+        assert_eq!(
+            w.end((50, 50), desktop),
+            Some(DragWatchOutcome::Abandon)
+        );
+        assert!(!w.is_watching());
+    }
+
+    #[test]
+    fn dragwatch_end_inside_desktop_without_free_cell_still_docks() {
+        // 指针在桌面内但无 free-cell：会话保持（无高亮），松手仍产出候选
+        // ——槽位分配/拒绝由 DockNative 执行臂裁决，手势层不预判
+        let (desktop, _) = desktop_fixture();
+        let mut w = DragWatch::new();
+        w.start(NativeHwnd(0x33));
+        assert_eq!(w.sample((300, 200), desktop, &[], 0), DragSample::NoChange);
+        assert!(w.is_watching());
+        assert_eq!(
+            w.end((300, 200), desktop),
+            Some(DragWatchOutcome::DockCandidate(NativeHwnd(0x33)))
+        );
+    }
+
+    #[test]
+    fn dragwatch_start_replaces_in_flight_session() {
+        let (desktop, cells) = desktop_fixture();
+        let mut w = DragWatch::new();
+        w.start(NativeHwnd(0x44));
+        w.sample((300, 200), desktop, &cells, 0);
+        // 新 START 覆盖在途会话（旧 hwnd 丢弃，记账清零）
+        w.start(NativeHwnd(0x55));
+        assert_eq!(
+            w.sample((300, 200), desktop, &cells, 1),
+            DragSample::Overlay(Some(Rect::new(100, 100, 500, 300)))
+        );
+        assert_eq!(
+            w.end((300, 200), desktop),
+            Some(DragWatchOutcome::DockCandidate(NativeHwnd(0x55)))
+        );
+    }
+
+    #[test]
+    fn dragwatch_throttles_same_rect_but_tracks_change() {
+        let (desktop, cells) = desktop_fixture();
+        let mut w = DragWatch::new();
+        w.start(NativeHwnd(0x66));
+        // t=0 首发高亮
+        assert_eq!(
+            w.sample((300, 200), desktop, &cells, 0),
+            DragSample::Overlay(Some(Rect::new(100, 100, 500, 300)))
+        );
+        // 同 rect、节流窗口内 → NoChange
+        assert_eq!(
+            w.sample((310, 210), desktop, &cells, 10),
+            DragSample::NoChange
+        );
+        // rect 变化（跨 cell）→ 节流窗口内也立即重发（高亮跟随优先）
+        assert_eq!(
+            w.sample((700, 200), desktop, &cells, 20),
+            DragSample::Overlay(Some(Rect::new(600, 100, 500, 300)))
+        );
+        // 同 rect、窗口耗尽（≥33ms）→ 重发
+        assert_eq!(
+            w.sample((700, 210), desktop, &cells, 60),
+            DragSample::Overlay(Some(Rect::new(600, 100, 500, 300)))
+        );
+    }
+
+    #[test]
+    fn landing_slot_containment_then_nearest() {
+        let cells = [Rect::new(0, 0, 100, 100), Rect::new(200, 0, 100, 100)];
+        // 包含命中：两 cell 间隙外的明确命中
+        assert_eq!(landing_slot((50, 50), &cells), Some(Rect::new(0, 0, 100, 100)));
+        assert_eq!(
+            landing_slot((250, 50), &cells),
+            Some(Rect::new(200, 0, 100, 100))
+        );
+        // 无包含：取中心距最近（间隙中点 150 距两中心等距 → 首序稳定）
+        assert_eq!(landing_slot((150, 50), &cells), Some(Rect::new(0, 0, 100, 100)));
+        // 明显偏向第二 cell
+        assert_eq!(
+            landing_slot((190, 50), &cells),
+            Some(Rect::new(200, 0, 100, 100))
+        );
+        // 空表
+        assert_eq!(landing_slot((50, 50), &[]), None);
+    }
+
+    #[test]
+    fn rect_contains_point_half_open_bounds() {
+        let r = Rect::new(10, 10, 100, 100);
+        assert!(r.contains_point(10, 10));
+        assert!(r.contains_point(109, 109));
+        assert!(!r.contains_point(110, 10), "右边界开区间");
+        assert!(!r.contains_point(10, 110), "下边界开区间");
+        assert!(!r.contains_point(9, 10));
     }
 }
