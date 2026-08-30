@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 8
+current_step: 9
 total_steps: 11
 ---
 
@@ -286,9 +286,35 @@ virtual_window spec events 映射同步。
 9. **E2E T3/T4**：`crates/auto-lang/tests/native_dnd_e2e.rs`（feature 门控，
    拖拽模拟手段沿 486 待澄清③裁定）。
    验证：`cargo test -p auto-lang --features native-dnd --test native_dnd_e2e`。
+   [✅ 已完成] worktree 提交 e6b4ed62b/35c62db8：T3 拖入（fixture --offer →
+   合成拖 → 本进程目标窗挂 DesktopDropTarget → take_native_drop 断言
+   text/坐标）+ T4 拖出（自有源窗客户区按下 → **主线程内联 start_drag**
+   → 合成移动/释放落 fixture → 断言 drop 行）。实际验证命令
+   `--features native-dnd,test-native-dock`（drag_sim 基建；2 测全绿 12s）。
+   **E2E 三定案**（调试过程实证，回写计划架构）：① 拖入断言等待必须泵
+   消息（STA 目标窗的跨进程 DragEnter/Over/Drop COM 调用以窗口消息送达
+   创建线程——sleep 等待=死锁）；② **start_drag 从"专用 STA 线程受理
+   即返"改为"调用线程内联阻塞"**——OLE 拖拽循环必须跑在收到按下的输入
+   线程上（独立 STA 线程实测 QueryContinueDrag 零调用永卡；桌面模式 VM
+   handler 在 UI 线程执行=被点击线程，DoDragDrop 自带消息泵，模态期与
+   原生 App 一致——G1"受理即返"语义按此修正，完成事件管线不变）；
+   ③ ole_drag 无激活结算点击（结算点击落在 --offer 客户区会自身起拖互
+   绞）。DndDropSource 增 seen-button 语义（程序化起拖首拍 keys=0 不误判
+   释放）。drag_sim 增 OLE 原语（ole_drag/ole_press/ole_move_to/
+   ole_release；force_foreground 升 pub）。AUTO_DND_TRACE=1 诊断开关
+   （AUTO_DEBUG_KEYS 同型先例）。
 10. **实机冒烟 + 收尾**：T6 六场景执行留痕；健康检查（零警告/无调试打印）；
     状态翻 execution_done。
     验证：`cargo check -p auto-lang && cargo t ui && cargo t vm`。
+    [🔶 部分] worktree 提交 35c62db8c 后：健康检查完成——`cargo check -p
+    auto-lang` 干净、`cargo t ui` 772 绿、`cargo t vm` 638 绿；触面
+    （native_dnd/native_catalog/native.rs/drag_sim）零警告；唯一 eprintln 为
+    AUTO_DND_TRACE=1 环境门控诊断（renderer AUTO_DEBUG_KEYS 同型先例），
+    生产路径零打印。**T6 真机六场景（A1/A2/A5/A6/D2–D4）挂起**——需真
+    人实机拖拽 Explorer/Chrome/notepad，无法代理执行（管线等价已由
+    E2E T3/T4 双绿 + T1 格式单测覆盖；Explorer 对 HGLOBAL FILECONTENTS
+    的接受度为唯一残留技术风险，见待澄清⑦）。状态保持 executing 待用户
+    执行 T6 后翻 execution_done。
 11. **骑手：P485-2 分诊（先分类、后处置，带逃生舱；2026-08-30 调度追加）**：
     本计划改动面含 `vm/`（natives），复审门禁跑 `cargo tv`——先在红
     `tests::aavm2_m4::test_aavm2_m4_codegen_corpus`（master @3a4aacf19 即红，
@@ -337,3 +363,26 @@ virtual_window spec events 映射同步。
 - **⑤ 开工前置 = 486 合入**（拖拽会话宿主/命中计算复用其 DragWatch 产出）；
   执行时行号漂移（renderer.rs:6353 / aura.at:5050/L526）以 grep 重定位。
 - **⑥ natives 编号**：`auto.dnd.start` 顺号以 native_catalog 当前空位为准。
+  [已定案] 取 2938（2930/2931 已被 host.call 占用，485 后下一空位）。
+- **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户）**：需真人实机拖拽，
+  代理会话无法执行。清单与操作指引（每条结果逐行记回本节）：
+  1. **A1 Explorer→桌面**：`auto run -r vm`（desktop 配置）起桌面 →
+     Explorer 选 2+ 文件拖到桌面某虚拟窗 → App 收 `on_native_drop`
+     （files 列表一致；可先 `auto.clipboard.*` 对照）。
+  2. **A2 桌面→Explorer**（虚拟文件落地——**唯一残留技术风险**：
+     FILECONTENTS v1 走 HGLOBAL，Explorer 若只认 IStream 则落地失败，
+     届时补 IStream 介质即可，DndDataObject 结构已备）：App 调
+     `auto.dnd.start({virtual_files:[{name:"note.md",content:"# t"}]})`
+     （在 onmousedown 类 handler 内——拖出须由按下线程发起）→ 拖到
+     Explorer 空白处 → note.md 落地双击可开。
+  3. **A5 notepad 文本双向**：桌面→notepad（text 载荷粘贴落框）；notepad
+     选中文字拖→桌面虚拟窗（on_native_drop.text）。
+  4. **A6 浏览器 URL 双向**：地址栏图标拖→桌面（text=URL）；桌面 text
+     载荷拖→浏览器地址栏。
+  5. **D2/D3/D4 Chrome**：拖出/拖入/图片（CF_DIB/PNG 通道——观察记录
+     formats 列表，on_native_drop.image 落 temp PNG）。
+  6. 全程可开 `AUTO_DND_TRACE=1`（QCD 轨迹）与 fixture `--trace` 辅助。
+- **⑧ 受理即返语义修正（2026-08-30 步骤 9 定案）**：G1"受理即返"改为
+  **调用线程内联阻塞**——OLE 拖拽循环必须跑在收到按下的输入线程上
+  （专用 STA 线程实测 QCD 零调用永卡；见步骤 9 注记）。dnd_finished
+  事件管线不变。
