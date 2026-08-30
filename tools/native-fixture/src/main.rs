@@ -10,14 +10,17 @@
 //!   --stubborn       周期性自我复位到初始 rect（倔强窗口，C4）
 //!   --spawn-modal    窗口内按钮触发模态对话框（B5）
 //!   --self-close N   N 秒后自毁（测崩溃路径，B7）
+//!   --offer SPEC     Plan 488 拖源：text:<str> 或 files:<p1;p2;…>——
+//!                    客户区按下左键即对该载荷发起 DoDragDrop（OLE 拖出
+//!                    通道；触发面=WM_LBUTTONDOWN 而非按钮 click——真拖
+//!                    拽要求按下时刻按钮处于按住态，click 时已释放）。
 //!
 //! 输出（每行一个 JSON 对象，stdout）：
 //!   {"evt":"start","hwnd":"0x…","pid":N,"title":"…"}
 //!   {"evt":"bounds","x":N,"y":N,"w":N,"h":N}   （位置/尺寸变化后回显实际值）
+//!   {"evt":"drop","formats":[…],"text":…,"files":[…]}  （Plan 488 拖入日志）
+//!   {"evt":"dragend","effect":"copy|move|link|none"}   （Plan 488 拖出完成）
 //!   {"evt":"close"}
-//!
-//! Phase 3 预留（本期只留 TODO 注释，不实现）：`--offer {text|files}` 拖源、
-//! 放置目标日志（OLE 拖放用例 A1/A2/A5/A6）。
 
 #[cfg(windows)]
 mod win {
@@ -25,7 +28,6 @@ mod win {
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::OnceLock;
 
-    use windows::core::PCWSTR;
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -47,6 +49,15 @@ mod win {
         pub self_close_secs: Option<u32>,
         /// Plan 486 T4 诊断：追踪 NC 鼠标/SC 消息（stdout trace 行）。
         pub trace: bool,
+        /// Plan 488 拖源载荷（None = 无拖源行为）。
+        pub offer: Option<Offer>,
+    }
+
+    /// Plan 488 `--offer` 载荷。
+    #[derive(Clone)]
+    pub enum Offer {
+        Text(String),
+        Files(Vec<String>),
     }
 
     impl Clone for Opts {
@@ -58,6 +69,7 @@ mod win {
                 spawn_modal: self.spawn_modal,
                 self_close_secs: self.self_close_secs,
                 trace: self.trace,
+                offer: self.offer.clone(),
             }
         }
     }
@@ -95,6 +107,475 @@ mod win {
         NAME.get_or_init(|| "auto_lang_native_fixture\0".encode_utf16().collect())
     }
 
+    // ── Plan 488：最小 COM 拖放三件套（独立 bin，不复用 auto-lang——
+    //    避免整仓编译开销；接口面与 ui/native_dnd.rs 同型）。 ─────────────
+
+    mod dnd {
+        use super::{emit, json_escape, Offer};
+        use windows::core::{implement, Error, HRESULT};
+        use windows::Win32::Foundation::{
+            BOOL, DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, HWND, OLE_E_ADVISENOTSUPPORTED, POINTL,
+            DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DRAGDROP_S_USEDEFAULTCURSORS, GlobalFree,
+        };
+        use windows::Win32::System::Com::{
+            DVASPECT_CONTENT, DATADIR_GET, FORMATETC, IDataObject, IDataObject_Impl,
+            IEnumFORMATETC, IEnumFORMATETC_Impl, IEnumSTATDATA, STGMEDIUM, STGMEDIUM_0,
+            TYMED_HGLOBAL,
+        };
+        use windows::Win32::System::Memory::{
+            GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+        };
+        use windows::Win32::System::Ole::{
+            DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
+            DoDragDrop, IDropSource, IDropSource_Impl, IDropTarget, IDropTarget_Impl,
+        };
+        use windows::Win32::System::SystemServices::{MK_LBUTTON, MK_RBUTTON, MODIFIERKEYS_FLAGS};
+
+        const CF_UNICODETEXT_U16: u16 = 13;
+        const CF_HDROP_U16: u16 = 15;
+
+        fn formatetc(cf: u16, lindex: i32) -> FORMATETC {
+            FORMATETC {
+                cfFormat: cf,
+                ptd: std::ptr::null_mut(),
+                dwAspect: DVASPECT_CONTENT.0 as u32,
+                lindex,
+                tymed: TYMED_HGLOBAL.0 as u32,
+            }
+        }
+
+        /// DROPFILES 构造（fWide=1；与 auto-lang clipboard_native 同构）。
+        fn build_dropfiles(paths: &[String]) -> Vec<u8> {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&20u32.to_le_bytes());
+            bytes.extend_from_slice(&0i32.to_le_bytes());
+            bytes.extend_from_slice(&0i32.to_le_bytes());
+            bytes.extend_from_slice(&0i32.to_le_bytes());
+            bytes.extend_from_slice(&1i32.to_le_bytes());
+            for p in paths {
+                for u in p.encode_utf16() {
+                    bytes.extend_from_slice(&u.to_le_bytes());
+                }
+                bytes.extend_from_slice(&0u16.to_le_bytes());
+            }
+            bytes.extend_from_slice(&0u16.to_le_bytes());
+            bytes
+        }
+
+        /// DROPFILES 解析（fWide=1；坏形状返回空）。
+        fn parse_dropfiles(bytes: &[u8]) -> Vec<String> {
+            let ok = bytes.len() >= 20
+                && u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]) == 1;
+            if !ok {
+                return Vec::new();
+            }
+            let p = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+            if p < 20 || p + 2 > bytes.len() {
+                return Vec::new();
+            }
+            let units: Vec<u16> = bytes[p..]
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            let mut out = Vec::new();
+            let mut cur: Vec<u16> = Vec::new();
+            for u in units {
+                if u == 0 {
+                    if cur.is_empty() {
+                        break;
+                    }
+                    out.push(String::from_utf16_lossy(&cur));
+                    cur.clear();
+                } else {
+                    cur.push(u);
+                }
+            }
+            out
+        }
+
+        fn hglobal_from_bytes(bytes: &[u8]) -> Result<HGLOBAL, Error> {
+            unsafe {
+                let hg = GlobalAlloc(GMEM_MOVEABLE, bytes.len())?;
+                let ptr = GlobalLock(hg);
+                if ptr.is_null() {
+                    let _ = GlobalFree(hg);
+                    return Err(Error::from(E_NOTIMPL));
+                }
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr as *mut u8, bytes.len());
+                let _ = GlobalUnlock(hg);
+                Ok(hg)
+            }
+        }
+
+        fn hglobal_to_bytes(hg: HGLOBAL) -> Option<Vec<u8>> {
+            unsafe {
+                let size = GlobalSize(hg);
+                if size == 0 {
+                    return None;
+                }
+                let ptr = GlobalLock(hg);
+                if ptr.is_null() {
+                    return None;
+                }
+                let b = std::slice::from_raw_parts(ptr as *const u8, size).to_vec();
+                let _ = GlobalUnlock(hg);
+                Some(b)
+            }
+        }
+
+        fn stg_hglobal(hg: HGLOBAL) -> STGMEDIUM {
+            STGMEDIUM {
+                tymed: TYMED_HGLOBAL.0 as u32,
+                u: STGMEDIUM_0 { hGlobal: hg },
+                pUnkForRelease: std::mem::ManuallyDrop::new(None),
+            }
+        }
+
+        /// 已知格式名（drop 日志 formats 域用；未知名以 "cf:N" 记）。
+        fn format_name(cf: u16) -> String {
+            match cf {
+                CF_UNICODETEXT_U16 => "CF_UNICODETEXT".into(),
+                CF_HDROP_U16 => "CF_HDROP".into(),
+                17 => "CF_DIBV5".into(),
+                8 => "CF_DIB".into(),
+                other => format!("cf:{other}"),
+            }
+        }
+
+        /// 拖源数据对象：text（CF_UNICODETEXT）/ files（CF_HDROP）两种载荷。
+        #[implement(IDataObject)]
+        pub struct FixtureDataObject {
+            pub text: Option<String>,
+            pub files: Vec<String>,
+        }
+
+        impl FixtureDataObject {
+            fn formats(&self) -> Vec<FORMATETC> {
+                let mut v = Vec::new();
+                if self.text.is_some() {
+                    v.push(formatetc(CF_UNICODETEXT_U16, -1));
+                }
+                if !self.files.is_empty() {
+                    v.push(formatetc(CF_HDROP_U16, -1));
+                }
+                v
+            }
+
+            fn matches(&self, f: &FORMATETC) -> bool {
+                if f.tymed & (TYMED_HGLOBAL.0 as u32) == 0 {
+                    return false;
+                }
+                let whole = f.lindex == -1 || f.lindex == 0;
+                if f.cfFormat == CF_UNICODETEXT_U16 {
+                    whole && self.text.is_some()
+                } else {
+                    f.cfFormat == CF_HDROP_U16 && whole && !self.files.is_empty()
+                }
+            }
+        }
+
+        #[allow(non_snake_case)]
+        impl IDataObject_Impl for FixtureDataObject_Impl {
+            fn GetData(&self, pformatetcin: *const FORMATETC) -> windows::core::Result<STGMEDIUM> {
+                let f = unsafe { &*pformatetcin };
+                if !self.matches(f) {
+                    return Err(Error::from(DV_E_FORMATETC));
+                }
+                let bytes = if f.cfFormat == CF_UNICODETEXT_U16 {
+                    let s = self.text.as_deref().unwrap_or("");
+                    let mut b: Vec<u8> = s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+                    b.extend_from_slice(&0u16.to_le_bytes());
+                    b
+                } else {
+                    build_dropfiles(&self.files)
+                };
+                Ok(stg_hglobal(hglobal_from_bytes(&bytes)?))
+            }
+
+            fn GetDataHere(
+                &self,
+                _pformatetc: *const FORMATETC,
+                _pmedium: *mut STGMEDIUM,
+            ) -> windows::core::Result<()> {
+                Err(Error::from(E_NOTIMPL))
+            }
+
+            fn QueryGetData(&self, pformatetc: *const FORMATETC) -> HRESULT {
+                if self.matches(unsafe { &*pformatetc }) {
+                    HRESULT(0)
+                } else {
+                    DV_E_FORMATETC
+                }
+            }
+
+            fn GetCanonicalFormatEtc(
+                &self,
+                _a: *const FORMATETC,
+                _b: *mut FORMATETC,
+            ) -> HRESULT {
+                E_NOTIMPL
+            }
+
+            fn SetData(
+                &self,
+                _a: *const FORMATETC,
+                _b: *const STGMEDIUM,
+                _c: BOOL,
+            ) -> windows::core::Result<()> {
+                Err(Error::from(E_NOTIMPL))
+            }
+
+            fn EnumFormatEtc(&self, dwdirection: u32) -> windows::core::Result<IEnumFORMATETC> {
+                if dwdirection != DATADIR_GET.0 as u32 {
+                    return Err(Error::from(E_NOTIMPL));
+                }
+                Ok(Enum {
+                    items: self.formats(),
+                    pos: std::cell::Cell::new(0),
+                }
+                .into())
+            }
+
+            fn DAdvise(
+                &self,
+                _a: *const FORMATETC,
+                _b: u32,
+                _c: Option<&windows::Win32::System::Com::IAdviseSink>,
+            ) -> windows::core::Result<u32> {
+                Err(Error::from(OLE_E_ADVISENOTSUPPORTED))
+            }
+
+            fn DUnadvise(&self, _a: u32) -> windows::core::Result<()> {
+                Err(Error::from(OLE_E_ADVISENOTSUPPORTED))
+            }
+
+            fn EnumDAdvise(&self) -> windows::core::Result<IEnumSTATDATA> {
+                Err(Error::from(OLE_E_ADVISENOTSUPPORTED))
+            }
+        }
+
+        #[implement(IEnumFORMATETC)]
+        struct Enum {
+            items: Vec<FORMATETC>,
+            pos: std::cell::Cell<usize>,
+        }
+
+        #[allow(non_snake_case)]
+        impl IEnumFORMATETC_Impl for Enum_Impl {
+            fn Next(
+                &self,
+                celt: u32,
+                rgelt: *mut FORMATETC,
+                pceltfetched: *mut u32,
+            ) -> HRESULT {
+                let celt = celt as usize;
+                let take = celt.min(self.items.len().saturating_sub(self.pos.get()));
+                unsafe {
+                    for (i, item) in self.items[self.pos.get()..][..take].iter().enumerate() {
+                        *rgelt.add(i) = *item;
+                    }
+                    if !pceltfetched.is_null() {
+                        *pceltfetched = take as u32;
+                    }
+                }
+                self.pos.set(self.pos.get() + take);
+                if take == celt {
+                    HRESULT(0)
+                } else {
+                    HRESULT(1)
+                }
+            }
+
+            fn Skip(&self, celt: u32) -> windows::core::Result<()> {
+                let np = self.pos.get() + celt as usize;
+                if np > self.items.len() {
+                    self.pos.set(self.items.len());
+                    return Err(Error::from(HRESULT(1)));
+                }
+                self.pos.set(np);
+                Ok(())
+            }
+
+            fn Reset(&self) -> windows::core::Result<()> {
+                self.pos.set(0);
+                Ok(())
+            }
+
+            fn Clone(&self) -> windows::core::Result<IEnumFORMATETC> {
+                Ok(Enum {
+                    items: self.items.clone(),
+                    pos: std::cell::Cell::new(self.pos.get()),
+                }
+                .into())
+            }
+        }
+
+        #[implement(IDropSource)]
+        pub struct FixtureDropSource;
+
+        impl IDropSource_Impl for FixtureDropSource_Impl {
+            fn QueryContinueDrag(&self, esc: BOOL, keys: MODIFIERKEYS_FLAGS) -> HRESULT {
+                if esc.as_bool() {
+                    DRAGDROP_S_CANCEL
+                } else if keys.0 & (MK_LBUTTON.0 | MK_RBUTTON.0) == 0 {
+                    DRAGDROP_S_DROP
+                } else {
+                    HRESULT(0)
+                }
+            }
+
+            fn GiveFeedback(&self, _e: DROPEFFECT) -> HRESULT {
+                DRAGDROP_S_USEDEFAULTCURSORS
+            }
+        }
+
+        /// 放置目标：全窗挂载，Drop 抽取 → stdout JSON lines（E2E 断言面）。
+        #[implement(IDropTarget)]
+        pub struct FixtureDropTarget;
+
+        fn probe(data: &IDataObject) -> Vec<(u16, &'static str)> {
+            let probes: Vec<(u16, &'static str)> = vec![
+                (CF_HDROP_U16, "CF_HDROP"),
+                (CF_UNICODETEXT_U16, "CF_UNICODETEXT"),
+            ];
+            probes
+                .into_iter()
+                .filter(|(cf, _)| unsafe { data.QueryGetData(&formatetc(*cf, -1)) } == HRESULT(0))
+                .collect()
+        }
+
+        #[allow(non_snake_case)]
+        impl IDropTarget_Impl for FixtureDropTarget_Impl {
+            fn DragEnter(
+                &self,
+                pdataobj: Option<&IDataObject>,
+                _k: MODIFIERKEYS_FLAGS,
+                _pt: &POINTL,
+                pdweffect: *mut DROPEFFECT,
+            ) -> windows::core::Result<()> {
+                let usable = pdataobj.map(|d| !probe(d).is_empty()).unwrap_or(false);
+                unsafe { *pdweffect = if usable { DROPEFFECT_COPY } else { DROPEFFECT_NONE } };
+                Ok(())
+            }
+
+            fn DragOver(
+                &self,
+                _k: MODIFIERKEYS_FLAGS,
+                _pt: &POINTL,
+                pdweffect: *mut DROPEFFECT,
+            ) -> windows::core::Result<()> {
+                unsafe { *pdweffect = DROPEFFECT_COPY };
+                Ok(())
+            }
+
+            fn DragLeave(&self) -> windows::core::Result<()> {
+                Ok(())
+            }
+
+            fn Drop(
+                &self,
+                pdataobj: Option<&IDataObject>,
+                _k: MODIFIERKEYS_FLAGS,
+                _pt: &POINTL,
+                pdweffect: *mut DROPEFFECT,
+            ) -> windows::core::Result<()> {
+                unsafe { *pdweffect = DROPEFFECT_COPY };
+                let Some(data) = pdataobj else { return Ok(()) };
+                let mut formats = Vec::new();
+                let mut text: Option<String> = None;
+                let mut files: Vec<String> = Vec::new();
+                for (cf, name) in probe(data) {
+                    formats.push(name.to_string());
+                    if let Ok(mut m) = unsafe { data.GetData(&formatetc(cf, -1)) } {
+                        if let Some(b) = hglobal_to_bytes(unsafe { m.u.hGlobal }) {
+                            if cf == CF_HDROP_U16 {
+                                files = parse_dropfiles(&b);
+                            } else if text.is_none() {
+                                let units: Vec<u16> = b
+                                    .chunks_exact(2)
+                                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                                    .collect();
+                                text = Some(
+                                    String::from_utf16_lossy(&units).trim_end_matches('\0').into(),
+                                );
+                            }
+                        }
+                        unsafe {
+                            windows::Win32::System::Ole::ReleaseStgMedium(&mut m);
+                        }
+                    }
+                }
+                // 枚举全格式名（未知名以 cf:N 记）补全观察面。
+                if let Ok(en) = unsafe { data.EnumFormatEtc(DATADIR_GET.0 as u32) } {
+                    let mut buf = [FORMATETC::default(); 16];
+                    let mut fetched = 0u32;
+                    if unsafe { en.Next(&mut buf, Some(&mut fetched)) } == HRESULT(0) {
+                        for f in &buf[..fetched as usize] {
+                            let n = format_name(f.cfFormat);
+                            if !formats.contains(&n) {
+                                formats.push(n);
+                            }
+                        }
+                    }
+                }
+                let files_json = files
+                    .iter()
+                    .map(|f| format!("\"{}\"", json_escape(f)))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                emit(&format!(
+                    "{{\"evt\":\"drop\",\"formats\":[{}],\"text\":{},\"files\":[{}]}}",
+                    formats
+                        .iter()
+                        .map(|f| format!("\"{}\"", json_escape(f)))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    text.map(|t| format!("\"{}\"", json_escape(&t)))
+                        .unwrap_or_else(|| "null".into()),
+                    files_json,
+                ));
+                Ok(())
+            }
+        }
+
+        /// 发起拖出（--offer 载荷 → DoDragDrop；阻塞至落下/取消）。
+        pub fn start_drag(offer: &Offer) {
+            let (text, files) = match offer {
+                Offer::Text(t) => (Some(t.clone()), Vec::new()),
+                Offer::Files(fs) => (None, fs.clone()),
+            };
+            unsafe {
+                let data: IDataObject = FixtureDataObject { text, files }.into();
+                let source: IDropSource = FixtureDropSource.into();
+                let mut effect = DROPEFFECT_NONE;
+                let _ = DoDragDrop(
+                    &data,
+                    &source,
+                    DROPEFFECT(DROPEFFECT_COPY.0 | DROPEFFECT_MOVE.0 | DROPEFFECT_LINK.0),
+                    &mut effect,
+                );
+                let name = if effect.0 & DROPEFFECT_COPY.0 != 0 {
+                    "copy"
+                } else if effect.0 & DROPEFFECT_MOVE.0 != 0 {
+                    "move"
+                } else if effect.0 & DROPEFFECT_LINK.0 != 0 {
+                    "link"
+                } else {
+                    "none"
+                };
+                emit(&format!("{{\"evt\":\"dragend\",\"effect\":\"{name}\"}}"));
+            }
+        }
+
+        /// 窗口挂载拖入目标（启动时一次；无 winit 目标在位，直接注册）。
+        pub fn register_target(hwnd: HWND) {
+            unsafe {
+                let target: IDropTarget = FixtureDropTarget.into();
+                let _ = windows::Win32::System::Ole::RegisterDragDrop(hwnd, &target);
+            }
+        }
+    }
+
     unsafe extern "system" fn wndproc(
         hwnd: HWND,
         msg: u32,
@@ -110,6 +591,14 @@ mod win {
                         return LRESULT(0);
                     }
                     DefWindowProcW(hwnd, msg, wparam, lparam)
+                }
+                WM_LBUTTONDOWN if OPTS.get().and_then(|o| o.offer.as_ref()).is_some() => {
+                    // Plan 488 --offer：客户区按下即拖（按下时刻左键在按住
+                    // 态——真拖拽语义；DoDragDrop 内部自泵消息至落下/取消）。
+                    if let Some(offer) = OPTS.get().and_then(|o| o.offer.clone()) {
+                        dnd::start_drag(&offer);
+                    }
+                    LRESULT(0)
                 }
                 WM_WINDOWPOSCHANGED => {
                     // 回显实际 rect（写后读回断言的被动响应路径）。
@@ -158,8 +647,8 @@ mod win {
                     let mut caption: Vec<u16> = format!("{title}\0").encode_utf16().collect();
                     let _ = MessageBoxW(
                         hwnd,
-                        PCWSTR(text.as_mut_ptr()),
-                        PCWSTR(caption.as_mut_ptr()),
+                        windows::core::PCWSTR(text.as_mut_ptr()),
+                        windows::core::PCWSTR(caption.as_mut_ptr()),
                         MB_OK | MB_ICONINFORMATION,
                     );
                     LRESULT(0)
@@ -169,7 +658,7 @@ mod win {
                     windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0);
                     LRESULT(0)
                 }
-                WM_NCLBUTTONDOWN | WM_NCLBUTTONUP | WM_SYSCOMMAND | WM_LBUTTONDOWN
+                WM_NCLBUTTONDOWN | WM_NCLBUTTONUP | WM_SYSCOMMAND
                     if OPTS.get().map(|o| o.trace).unwrap_or(false) =>
                 {
                     let ht = if msg == WM_SYSCOMMAND {
@@ -196,13 +685,15 @@ mod win {
             let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
                 windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
             );
+            // Plan 488：OLE STA（拖源 DoDragDrop 与拖入目标注册共用）。
+            let _ = windows::Win32::System::Ole::OleInitialize(None);
             let Ok(hmodule) = GetModuleHandleW(None) else {
                 return 1;
             };
             let wc = WNDCLASSW {
                 lpfnWndProc: Some(wndproc),
                 hInstance: HINSTANCE(hmodule.0),
-                lpszClassName: PCWSTR(class_name().as_ptr()),
+                lpszClassName: windows::core::PCWSTR(class_name().as_ptr()),
                 ..Default::default()
             };
             if RegisterClassW(&wc) == 0 {
@@ -212,8 +703,8 @@ mod win {
             title_w.push(0);
             let Ok(hwnd) = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                PCWSTR(class_name().as_ptr()),
-                PCWSTR(title_w.as_ptr()),
+                windows::core::PCWSTR(class_name().as_ptr()),
+                windows::core::PCWSTR(title_w.as_ptr()),
                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 200,
                 200,
@@ -237,6 +728,9 @@ mod win {
                 pid,
                 json_escape(&opts.title)
             ));
+
+            // Plan 488：全窗挂载拖入目标（drop 日志面）。
+            dnd::register_target(hwnd);
 
             if opts.stubborn {
                 SetTimer(hwnd, TIMER_STUBBORN, 1000, None);
@@ -265,8 +759,8 @@ mod win {
         let label: Vec<u16> = "modal\0".encode_utf16().collect();
         let _ = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
-            PCWSTR(class.as_ptr()),
-            PCWSTR(label.as_ptr()),
+            windows::core::PCWSTR(class.as_ptr()),
+            windows::core::PCWSTR(label.as_ptr()),
             (WS_CHILD | WS_VISIBLE) | WINDOW_STYLE(BS_PUSHBUTTON as u32),
             10,
             10,
@@ -300,6 +794,7 @@ fn parse_args() -> win::Opts {
         spawn_modal: false,
         self_close_secs: None,
         trace: false,
+        offer: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -331,6 +826,17 @@ fn parse_args() -> win::Opts {
             }
             "--self-close" if i + 1 < args.len() => {
                 opts.self_close_secs = args[i + 1].parse().ok();
+                i += 2;
+            }
+            // Plan 488 拖源：text:<str> 或 files:<p1;p2;…>。
+            "--offer" if i + 1 < args.len() => {
+                let spec = args[i + 1].clone();
+                if let Some(t) = spec.strip_prefix("text:") {
+                    opts.offer = Some(win::Offer::Text(t.to_string()));
+                } else if let Some(fs) = spec.strip_prefix("files:") {
+                    let files = fs.split(';').map(|s| s.to_string()).collect();
+                    opts.offer = Some(win::Offer::Files(files));
+                }
                 i += 2;
             }
             _ => i += 1,

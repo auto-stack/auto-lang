@@ -9,12 +9,21 @@ publish = false
 
 [dependencies]
 [target.'cfg(windows)'.dependencies]
+# Plan 488: implement 宏展开引用 ::windows_core:: 绝对路径，需直接依赖。
+windows-core = "0.58"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
     "Win32_System_LibraryLoader",
+    # Plan 488 --offer 拖源 + drop 日志（OLE 拖放最小三件套）。
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_System_Memory",
+    "implement",
 ] }
 
 [profile.release]
