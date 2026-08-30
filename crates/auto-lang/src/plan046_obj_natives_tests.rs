@@ -113,6 +113,28 @@ mod plan046_obj_natives {
         assert!(out.contains("4"), "expected 4, got: {out}");
     }
 
+    /// plan-022 (auto-down jade) follow-up: `.length` on an UNTYPED
+    /// receiver — call-result chains like `bl.links.length` where static
+    /// inference has no type for the local. The registry alias only covers
+    /// typed lookups; this pins the codegen ARRAY_LEN direct-emit for the
+    /// dynamic case (runtime ARRAY_LEN handles heap lists/strings; on
+    /// non-list objects it yields 0, matching prior broken behavior —
+    /// user-typed receivers keep the GET_FIELD struct branch).
+    #[test]
+    fn length_property_on_untyped_receiver() {
+        let out = run(
+            "fn linkCount(l obj) int {\n\
+             \x20   return l.length\n\
+             }\n\
+             fn main() {\n\
+             \x20   let xs = [\"a\", \"b\", \"c\"]\n\
+             \x20   print(linkCount(xs))\n\
+             }\n",
+        )
+        .expect("untyped .length must run");
+        assert!(out.contains("3"), "expected 3, got: {out}");
+    }
+
     /// T2 full-chain (CLOSED by plan-454 Phase E): Object.values typed as
     /// Array at compile time so for-in lowers via temp-handle+index+GET_ELEM
     /// channel instead of the iterator mismatch (E5b).
