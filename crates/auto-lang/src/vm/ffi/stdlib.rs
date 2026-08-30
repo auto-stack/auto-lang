@@ -8860,6 +8860,21 @@ Content-Length: 2
     }
 }
 
+// P487-2 债家族的测试面收敛：存储测试共用进程级 STORAGE_MAP 与
+// AUTO_VM_STORAGE_FILE env，并行线程互踩。凡触碰 storage 的测试
+// （含 renderer 侧 t2_isolate_storage 家族）先取此锁串行化。
+#[cfg(test)]
+static STORAGE_TEST_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 取存储测试串行锁（持有至返回的 guard 亡）。
+#[cfg(test)]
+pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
+    match STORAGE_TEST_SERIALIZER.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -8871,6 +8886,7 @@ mod tests {
     /// 文件；env 为进程级全局，同 P487-2 已案债）。
     #[test]
     fn storage_raw_set_persists_to_backing_file() {
+        let _serial = lock_storage_for_test();
         let path = std::env::temp_dir().join(format!(
             "auto-raw-storage-{}.json",
             std::process::id()

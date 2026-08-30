@@ -17590,7 +17590,27 @@ mod tests {
     // push_notification 系单测须先隔离 storage（STORAGE_MAP 进程级全局 +
     // storage_file() 按 cwd 哈希回退；nextest 每测独立进程 + 各自临时文件，
     // 互不污染、不落开发者共享库）。
-    fn t2_isolate_storage(tag: &str) -> std::path::PathBuf {
+    /// P487-2 债家族串行锁：隔离之外再加互斥——KD-048 raw localStorage
+    /// 落盘修复后 raw 读点会 load 盘键，并行测试线程经共享 STORAGE_MAP
+    /// 互串的窗口被放大（notif/dock/stdlib-storage 实测三红）。锁本体在
+    /// stdlib（crate::vm::ffi::stdlib::lock_storage_for_test），双方同锁。
+    struct StorageTestIsolation(
+        std::sync::MutexGuard<'static, ()>,
+        std::path::PathBuf,
+    );
+    impl std::ops::Deref for StorageTestIsolation {
+        type Target = std::path::PathBuf;
+        fn deref(&self) -> &Self::Target {
+            &self.1
+        }
+    }
+    impl AsRef<std::path::Path> for StorageTestIsolation {
+        fn as_ref(&self) -> &std::path::Path {
+            self.1.as_ref()
+        }
+    }
+    fn t2_isolate_storage(tag: &str) -> StorageTestIsolation {
+        let serial = crate::vm::ffi::stdlib::lock_storage_for_test();
         let path = std::env::temp_dir().join(format!(
             "auto-479-notif-{}-{}.json",
             tag,
@@ -17598,7 +17618,7 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
-        path
+        StorageTestIsolation(serial, path)
     }
 
     /// FIFO 容量与 MRU 序：front=最新、NOTES_CAP=50 环绕（最旧弹出）。
