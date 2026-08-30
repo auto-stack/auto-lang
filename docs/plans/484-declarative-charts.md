@@ -1,18 +1,27 @@
 ---
 plan_id: PLAN-484
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: 声明式 chart 原语（bar-chart 裸名 + 轴/图例自动化）
 author: [zcode]
 created_at: 2026-08-29
 updated_at: 2026-08-29
 
-# /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+# /auto-plan:review 结束时填写（2026-08-30 复审通过）：
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/design/chart-components.md: chart 组件族契约 v1（Auto* 前缀四组件、无轴/图例/tooltip、bar/line 单变体）——484 升级为契约 v2"
+  - "schema/aura.at + aura/schema.rs: areachart/barchart/linechart/donutchart/chart/chartlegend/charttooltip 七元素（shadcn-vue 发射路线）——484 全部退役删除"
+  - "ui_gen/widget/registry.rs: AreaChart/BarChart/LineChart/DonutChart/Chart/ChartTooltip/ChartLegend 七注册——484 退役,裸名让位 official 包"
+  - "auto-man/src/vue.rs: chart/chart-area/-bar/-line/-donut 脚手架 + @unovis 可选依赖组——484 退役,资产目录删除"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/design/chart-components.md: 契约 v2（裸名原语 bar-chart 等/props v2 axis-grid-legend-tooltip-labels-curve-type/nice-ticks 规格与退化域/hover tooltip x 竖带命中与锚点/stacked+monotone/包组件 Init codegen 三坑已知项）"
+  - "mouse-area 基础 widget: registry MouseArea(Overlay) + schema mouse-area 元素(iced full/web component) + iced mouse_area 事件转发与 vue div @mouseenter 映射"
+touched_goals:
+  - "GOAL-007: AutoUI 跨端一致——chart 族同一 .at 源 vue/vm 双端同源渲染（SVG v1 直通）,裸名原语收敛为单一实现"
+  - "GOAL-010: 示例应用轨道——charts-gallery 重建（Auto 底座六图卡）+ 024-charts 组件化迁移（806→226 行）"
+  - "GOAL-008: App 生成——chart 族经 official 组件包（Plan 435 P4 机制）进入生成面,unovis 外部依赖清零"
 
 affects: [docs/specs/auto-lang/ui, examples/widgets-gallery, examples/ui/024-charts, examples/charts-gallery]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -152,7 +161,22 @@ VM 轨已有"props 播种 → Init 重放（纯派生幂等）"；本计划不�
 
 ## 复审记录
 
-（复审时填写）
+**reviewer**: zcode（/auto-plan:review）· **时间**: 2026-08-30 · **结论**: ✅ PASS → `reviewed`
+
+| 验收标准 | 判定 | 证据 |
+|---|---|---|
+| 1. bar-chart 裸名声明即得完整柱状图,双端同源 | PASS | widgets-gallery bar-chart 页 vue golden 编译产物含包组件 SFC 引用（gallery_vue_golden 绿）;VM 侧 plan437 e2e marker（`h19` 柱宽 + `8000` 刻度）落图 |
+| 2. 024-charts 流式组件自动重算,双端一致;app.at 无手写几何 | PASS | app.at 226 行零手写 SVG（`grep svgdoc` 仅组件产物）;plan484_024_charts_component_smoke（几何落图）+ plan484_024_charts_streaming_recompute（.Tick×30 后 t29 标签 + 重算 path,复审新增）双绿 |
+| 3. registry 七注册退役,全仓 auto-*-chart 零残留,cargo t 绿 | PASS | grep auto-*-chart / Auto*Chart 于 examples/crates 均 0;cargo t 3270/3270;cargo tf 3271/3271 |
+| 4. chart-components.md 与实现一致 | PASS | M0 契约 v2 逐节对照实现（props v2/裸名/nice-ticks 5 档/退化域/命中区形态） |
+| 5. charts-gallery 重建,双端可跑,视觉一致,无 shadcn 依赖 | PASS | test_charts_gallery_compiles（Auto SFC 引用 + unovis/CurveType 负断言）;plan484_charts_gallery_bare_names_render（VM 侧 A/M/h 几何落图）;gallery_vue_golden 更新后绿 |
+
+**遗漏/延后/workaround 扫描**:
+- **遗漏（复审补修）**: vue.rs chart 发射死代码（emit_chart_prop/emit_chart_family_attrs/emit_curve_type_prop + CurveType 导入门 + match 臂）M2 时留了早退尸体,与契约"vue.rs 特判臂退役"不符——复审补删（commit 989fc83e9,删后全门禁复绿）。
+- **workaround（已记档 DEBT,用户批准）**: 包组件 Init 内 prop 字符串比较/f-string `${}`+字面量 `[]`/带参 msg 声明 三大 codegen 坑 → KNOWN-DEBT-AND-RISKS.md 🟡 三行（含复现/绕开/根治线索/回归锚）。
+- **延后（用户批准）**: pie/水平条形/散点图类型、跟随光标 crosshair（v2 canvas 阶段）、hover tooltip 实机目检——各自独立后续计划/复审动作。
+
+**基线归属**: ui-iced 全套 3 红（plan050×2/code_editor_natives）均 master 存量（master 同跑 5 红,本计划子集）。
 
 ## 待澄清事项
 
