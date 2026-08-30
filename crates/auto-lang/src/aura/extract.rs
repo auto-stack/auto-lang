@@ -774,6 +774,12 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
 
     // Assign stable debug IDs to AuraNode tree (Plan 274)
     let mut view_tree = view_tree;
+    // Form submit 布线：`variant: "submit"` 按钮的 onclick 消息接到本
+    // widget 视图内未声明 onenter 的单行 input（HTML 表单「任意 input 回车
+    // 即提交」的两轨等价物）。extract 期一次成形——VM 动态模板（dynamic
+    // clone view_tree）与 vue 轨（generate_template）消费同一棵树，天然
+    // 同源。只改 events map、不增删节点，与 assign_node_ids 相互独立。
+    wire_form_submit(&mut view_tree);
     let span_map = assign_node_ids(&mut view_tree);
 
     Ok(AuraWidget {
@@ -1475,6 +1481,82 @@ fn assign_node_ids(root: &mut AuraNode) -> std::collections::HashMap<AuraNodeId,
     span_map
 }
 
+// ---------------------------------------------------------------------------
+// Form submit 布线（button variant="submit" → input Enter）
+//
+// DOM 表单语义：`<form>` 内任意 input 回车触发 submit 按钮。AutoUI 没有
+// form 容器——以「声明 `variant: "submit"` 的 button」为提交钮、widget
+// 视图为表单作用域，extract 期把提交钮的 onclick 事件克隆进视图内所有
+// 未声明 onenter 的单行 input（onenter → VM 轨 text_input on_submit /
+// vue 轨 @keyup.enter，两轨既有通道）。textarea 的 Enter 是换行语义，
+// 永不接线；显式 onenter/enter 优先，不覆盖。
+// ---------------------------------------------------------------------------
+
+/// DFS 找首个 `variant: "submit"` 的 button 的 onclick 事件；无 → None。
+fn find_submit_onclick(node: &AuraNode) -> Option<crate::aura::types::AuraEvent> {
+    if let AuraNode::Element { tag, props, events, .. } = node {
+        if tag.eq_ignore_ascii_case("button") {
+            let is_submit = props.get("variant").is_some_and(|v| {
+                matches!(v, crate::aura::types::AuraPropValue::Expr(crate::ast::Expr::Str(s)) if s.as_str() == "submit")
+            });
+            if is_submit {
+                return events.get("onclick").cloned();
+            }
+        }
+    }
+    let kids: Vec<&AuraNode> = match node {
+        AuraNode::Element { children, .. } => children.iter().collect(),
+        AuraNode::ForLoop { body, .. } => body.iter().collect(),
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            let mut k: Vec<&AuraNode> = then_body.iter().collect();
+            if let Some(eb) = else_body {
+                k.extend(eb.iter());
+            }
+            k
+        }
+        AuraNode::Component { children, .. } => children.iter().collect(),
+        AuraNode::Link { children, .. } => children.iter().collect(),
+        _ => Vec::new(),
+    };
+    kids.iter().find_map(|c| find_submit_onclick(c))
+}
+
+/// DFS 给未声明 onenter/enter 的单行 input 注入提交事件。
+fn wire_form_submit_inputs(node: &mut AuraNode, submit: &crate::aura::types::AuraEvent) {
+    if let AuraNode::Element { tag, events, .. } = node {
+        if tag == "input"
+            && crate::aura::aura_events_get_base(events, "onenter").is_none()
+            && crate::aura::aura_events_get_base(events, "enter").is_none()
+        {
+            events.insert("onenter".to_string(), submit.clone());
+        }
+    }
+    let kids: Vec<&mut AuraNode> = match node {
+        AuraNode::Element { children, .. } => children.iter_mut().collect(),
+        AuraNode::ForLoop { body, .. } => body.iter_mut().collect(),
+        AuraNode::Conditional { then_body, else_body, .. } => {
+            let mut k: Vec<&mut AuraNode> = then_body.iter_mut().collect();
+            if let Some(eb) = else_body {
+                k.extend(eb.iter_mut());
+            }
+            k
+        }
+        AuraNode::Component { children, .. } => children.iter_mut().collect(),
+        AuraNode::Link { children, .. } => children.iter_mut().collect(),
+        _ => Vec::new(),
+    };
+    for child in kids {
+        wire_form_submit_inputs(child, submit);
+    }
+}
+
+/// 幂等入口：无 submit 按钮/按钮无 onclick → 原树不动。
+pub fn wire_form_submit(root: &mut AuraNode) {
+    if let Some(submit) = find_submit_onclick(root) {
+        wire_form_submit_inputs(root, &submit);
+    }
+}
+
 fn assign_node_ids_recursive(
     node: &mut AuraNode,
     next_id: &mut u32,
@@ -1808,5 +1890,177 @@ widget Nav {
                 .handler,
             ".X"
         );
+    }
+
+    // ---- form submit 布线（button variant="submit" → 同 widget 视图内
+    // 未声明 onenter 的 input 自动获得 Enter→onclick 消息；extract 期一次
+    // 成形，VM 动态模板与 vue generate_template 消费同一棵树，两轨同源）。
+
+    /// Collect every input/textarea node's (tag, enter-handler-or-none).
+    fn collect_enter_targets(n: &AuraNode, out: &mut Vec<(String, Option<String>)>) {
+        if let AuraNode::Element { tag, events, .. } = n {
+            if tag == "input" || tag == "textarea" {
+                out.push((
+                    tag.clone(),
+                    crate::aura::aura_events_get_base(events, "onenter")
+                        .or_else(|| crate::aura::aura_events_get_base(events, "enter"))
+                        .map(|e| e.handler.clone()),
+                ));
+            }
+        }
+        let kids: Vec<&AuraNode> = match n {
+            AuraNode::Element { children, .. } => children.iter().collect(),
+            AuraNode::ForLoop { body, .. } => body.iter().collect(),
+            AuraNode::Conditional { then_body, else_body, .. } => {
+                let mut k: Vec<&AuraNode> = then_body.iter().collect();
+                if let Some(eb) = else_body {
+                    k.extend(eb.iter());
+                }
+                k
+            }
+            AuraNode::Component { children, .. } => children.iter().collect(),
+            AuraNode::Link { children, .. } => children.iter().collect(),
+            _ => Vec::new(),
+        };
+        for child in kids {
+            collect_enter_targets(child, out);
+        }
+    }
+
+    /// musk 登录页形态：双 input 无 onenter + variant="submit" 提交按钮 →
+    /// 两个 input 都接线 onenter=".Submit"（HTML 表单任意 input 回车提交
+    /// 的两轨等价物）。
+    #[test]
+    fn test_wire_form_submit_inputs_enter_to_submit_button() {
+        let widget = extract_widget_from_src(r#"
+widget LoginPage {
+    msg { Submit, UsernameChanged, PasswordChanged }
+    model {
+        var username str = ""
+        var password str = ""
+    }
+    on {
+        .Submit -> {}
+        .UsernameChanged -> {}
+        .PasswordChanged -> {}
+    }
+    view {
+        col {
+            input { value: .username, oninput: .UsernameChanged, placeholder: "Enter username" }
+            input { value: .password, oninput: .PasswordChanged, password: true, placeholder: "Enter password" }
+            button { onclick: .Submit, variant: "submit", text "Login" }
+        }
+    }
+}
+"#);
+        let mut targets = Vec::new();
+        collect_enter_targets(&widget.view_tree, &mut targets);
+        assert_eq!(targets.len(), 2, "two inputs expected");
+        for (tag, enter) in &targets {
+            assert_eq!(tag, "input");
+            assert_eq!(
+                enter.as_deref(),
+                Some(".Submit"),
+                "input must be auto-wired to the submit button's onclick"
+            );
+        }
+    }
+
+    /// 显式 onenter 优先：已声明的 input 不被覆盖；未声明的照常接线。
+    #[test]
+    fn test_wire_form_submit_respects_explicit_onenter() {
+        let widget = extract_widget_from_src(r#"
+widget FormView {
+    msg { Submit, Search, Changed }
+    model { var q str = "" }
+    on {
+        .Submit -> {}
+        .Search -> {}
+        .Changed -> {}
+    }
+    view {
+        col {
+            input { value: .q, oninput: .Changed, onenter: .Search, placeholder: "q" }
+            input { value: .q, oninput: .Changed, placeholder: "w" }
+            button { onclick: .Submit, variant: "submit", text "Go" }
+        }
+    }
+}
+"#);
+        let mut targets = Vec::new();
+        collect_enter_targets(&widget.view_tree, &mut targets);
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].1.as_deref(), Some(".Search"), "explicit onenter untouched");
+        assert_eq!(targets[1].1.as_deref(), Some(".Submit"), "bare input wired");
+    }
+
+    /// 无 submit 按钮（或按钮无 onclick）→ 原树返回（不接线、不报错）。
+    #[test]
+    fn test_wire_form_submit_absent_button_noop() {
+        let widget = extract_widget_from_src(r#"
+widget NoForm {
+    msg { Changed }
+    model { var q str = "" }
+    on { .Changed -> {} }
+    view {
+        col {
+            input { value: .q, oninput: .Changed, placeholder: "q" }
+            button { onclick: .Changed, text "Just a button" }
+        }
+    }
+}
+"#);
+        let mut targets = Vec::new();
+        collect_enter_targets(&widget.view_tree, &mut targets);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].1, None, "no submit button → no wiring");
+
+        // variant="submit" 但缺 onclick → 无消息可接线，同样原树返回。
+        let widget = extract_widget_from_src(r#"
+widget NoOnclick {
+    msg { Changed }
+    model { var q str = "" }
+    on { .Changed -> {} }
+    view {
+        col {
+            input { value: .q, oninput: .Changed, placeholder: "q" }
+            button { variant: "submit", text "Dead submit" }
+        }
+    }
+}
+"#);
+        let mut targets = Vec::new();
+        collect_enter_targets(&widget.view_tree, &mut targets);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].1, None, "submit button without onclick → no wiring");
+    }
+
+    /// textarea 的 Enter 是换行语义，绝不接线；仅单行 input 参与。
+    #[test]
+    fn test_wire_form_submit_skips_textarea() {
+        let widget = extract_widget_from_src(r#"
+widget WithArea {
+    msg { Submit, Changed }
+    model {
+        var q str = ""
+        var body str = ""
+    }
+    on { .Submit -> {} .Changed -> {} }
+    view {
+        col {
+            input { value: .q, oninput: .Changed, placeholder: "q" }
+            textarea { value: .body, oninput: .Changed, placeholder: "body" }
+            button { onclick: .Submit, variant: "submit", text "Go" }
+        }
+    }
+}
+"#);
+        let mut targets = Vec::new();
+        collect_enter_targets(&widget.view_tree, &mut targets);
+        assert_eq!(targets.len(), 2, "input + textarea both collected");
+        assert_eq!(targets[0].0, "input");
+        assert_eq!(targets[0].1.as_deref(), Some(".Submit"), "input wired");
+        assert_eq!(targets[1].0, "textarea");
+        assert_eq!(targets[1].1, None, "textarea Enter stays newline semantics");
     }
 }

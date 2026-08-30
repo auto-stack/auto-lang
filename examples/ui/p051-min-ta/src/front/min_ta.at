@@ -1,0 +1,25 @@
+// min_ta.at — PLAN-051 P2 语料 B 变体：子 widget 内 textarea（独立文件，
+// 生产装载惯例）。自含状态与 handler；父值行不接线（焦点判据=B 框内
+// 真键盘打字是否出字）。
+
+widget MinTa {
+    msg { SetB(str) }
+    model {
+        var b str = ""
+    }
+    view {
+        col {
+            style: "w-full p-1"
+            textarea {
+                placeholder: "B: textarea inside child widget"
+                value: .b
+                oninput: .SetB($event)
+                height: 80
+                style: "w-full px-3 py-2 border border-primary/40 rounded-md text-[15px] text-foreground"
+            }
+        }
+    }
+    on {
+        .SetB(v) -> { .b = v }
+    }
+}

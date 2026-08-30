@@ -1,0 +1,5 @@
+name: "p051-min-ta"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+api: "rust"

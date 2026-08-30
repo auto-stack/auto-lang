@@ -1,0 +1,34 @@
+// c1_ta.at — P2 二分 C1：musk composer 子树精确复刻（backdrop div +
+// textarea 全类串全绑定）。文字换可见色（焦点实验可视性）。
+
+widget C1Ta {
+    msg { SetT(str) }
+    model {
+        var t str = ""
+    }
+    view {
+        col {
+            style: "w-full p-1"
+            div {
+                style: "input-compose relative flex-1 min-w-0 min-h-20 bg-muted-foreground/5 border border-primary/15 rounded-[20px]"
+                div {
+                    style: "absolute inset-0 py-2 px-3 bg-transparent border-none rounded-none pointer-events-none overflow-hidden whitespace-pre-wrap break-words text-foreground text-[15px] leading-[1.5]"
+                    html: .t
+                }
+                textarea {
+                    style: "chats-input absolute inset-0 h-full py-2 px-3 block w-full border-none rounded-none bg-transparent text-[15px] leading-[1.5] text-foreground caret-[hsl(var(--foreground))] outline-none resize-none"
+                    value: .t
+                    oninput: .SetT($event)
+                    onkeydown: .SetT($event)
+                    onkeydown.enter.exact.prevent: .send_t
+                    placeholder: "C1: exact composer replica (backdrop+ta)"
+                    height: 76
+                }
+            }
+        }
+    }
+    on {
+        .SetT(v) -> { .t = v }
+        .send_t -> {}
+    }
+}

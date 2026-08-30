@@ -510,7 +510,10 @@ impl AuraSchema {
                 // Plan 435 P2:variant/size/icon 是实现与 gallery 实际消费的 prop
                 // (convert_button 消费 variant;vue 生成器消费 size/variant),
                 // P1 审计"实现比声明多"的实证,自此声明。
-                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "secondary", "destructive", "outline", "ghost", "link"]), required: false, default: Some("default"), description: "Visual style variant" },
+                // "submit" 是行为语义:form submit 布线(extract 层把该按钮的
+                // onclick 接线到视图内未声明 onenter 的 input,HTML 表单回车
+                // 提交语义),视觉取 default 预设,不下发 shadcn 视觉 variant。
+                PropDef { name: "variant", type_: PropType::OneOf(vec!["default", "secondary", "destructive", "outline", "ghost", "link", "submit"]), required: false, default: Some("default"), description: "Visual style variant; \"submit\" marks the form-submit button (Enter in any input of the widget view triggers its onclick)" },
                 PropDef { name: "size", type_: PropType::OneOf(vec!["sm", "default", "lg", "icon"]), required: false, default: Some("default"), description: "Button size" },
                 PropDef { name: "icon", type_: PropType::String, required: false, default: None, description: "Icon name shown alongside the label" },
             ],

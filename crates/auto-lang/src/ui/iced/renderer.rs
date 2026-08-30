@@ -1357,6 +1357,22 @@ fn plan050_content_align(
     (h, v)
 }
 
+/// Plan 409/414 高度臂 × Plan-050 显式对齐类的让位规则:按钮带高度类时
+/// 其内容容器默认双向居中(CSS button 语义);样式串携带显式对齐类
+/// (text-left/justify-*、items-*)的轴以显式值为准——否则 050 的外层
+/// 包装包不住已 Fill 的内层容器,nav-item(h-9 w-full text-left)内容
+/// 恒居中而 web 轨左对齐,双端漂移。
+fn plan414_content_alignment(
+    p050_ax: Option<iced::alignment::Horizontal>,
+    p050_ay: Option<iced::alignment::Vertical>,
+) -> (iced::alignment::Horizontal, iced::alignment::Vertical) {
+    use iced::alignment::{Horizontal, Vertical};
+    (
+        p050_ax.unwrap_or(Horizontal::Center),
+        p050_ay.unwrap_or(Vertical::Center),
+    )
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -3024,6 +3040,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // content wrapper also makes height-only buttons (menus, tabs)
                 // claim the whole row and stretch equally - regression fixed by
                 // scoping center_x to width-classed buttons.
+                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
+                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
+                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
+                // 承载对齐;未命中维持 iced 默认居中。
+                // 先于 409/414 分支计算:高度臂的默认居中必须给显式对齐类
+                // 让位(iced 容器默认居中,外层 050 包装包不住内层 center_x
+                // ——nav-item(h-9 w-full text-left)内容恒居中的根因)。
+                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
                 let button_content: iced::Element<'static, M> = if fixed_both {
                     iced::widget::container(button_content)
                         .width(iced::Length::Fill)
@@ -3036,21 +3060,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .map_or(false, |is| is.height.is_some())
                 {
                     let has_width = iced_style.as_ref().map_or(false, |is| is.width.is_some());
+                    let (ax, ay) = plan414_content_alignment(p050_ax, p050_ay);
                     let mut cont = iced::widget::container(button_content)
                         .height(iced::Length::Fill)
-                        .align_y(iced::alignment::Vertical::Center);
+                        .align_y(ay);
                     if has_width {
-                        cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
+                        cont = cont.width(iced::Length::Fill).align_x(ax);
                     }
                     cont.into()
                 } else {
                     button_content
                 };
-                // Plan-050 C1: content-subtree 按钮消费 .at 的宽度/对齐类——
-                // w-full 已由 is.width→btn.width(Fill) 承接;此处补内容对齐
-                // (justify-start/text-left→水平,items-start→垂直),Fill 容器
-                // 承载对齐;未命中维持 iced 默认居中。
-                let (p050_ax, p050_ay) = plan050_content_align(iced_style.as_ref());
                 let button_content: iced::Element<'static, M> =
                     if p050_ax.is_some() || p050_ay.is_some() {
                         let mut c = iced::widget::container(button_content)
@@ -3276,11 +3296,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let content = get_textarea_content(&key, &value);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
                 let mut editor = text_editor(content).placeholder(ph);
-                editor = editor.height(match height {
-                    Some(h) => iced::Length::Fixed(h as f32),
-                    // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
-                    None => iced::Length::Fixed(30.0),
-                });
+                // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
+                  // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
+                  // 击永不聚焦=无光标无法输入,composer 命中区修复后仍复现
+                  // 的最后缺口)。镜像 ash-gui 臂的 textarea_{key} 派生。
+                editor = editor
+                    .id(iced::widget::Id::from(format!("textarea_{}", key)))
+                    // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
+                    .height(textarea_editor_height(height, style.as_ref()));
 
                 // Plan 053 后续(ash-gui VM): apply class-driven text styling.
                 // Previously the whole style prop was ignored (`style: _`), so the
@@ -3295,7 +3318,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         editor = editor.size(fs);
                     }
                     if is.text_color.is_some() {
-                        let value_color = is.text_color.unwrap();
+                        let mut value_color = is.text_color.unwrap();
+                        // PLAN-051 P2: 全透明 value 色(如 musk composer 的
+                        // text-transparent+backdrop 叠加技法)在 VM 侧回退为可见
+                        // 前景——VM 无 backdrop 渲染层,透明即"输入成功但不可视"。
+                        // Vue 轨自渲染其 textarea,不受此臂影响。
+                        if value_color.a <= 0.001 {
+                            value_color = crate::ui::style::theme::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            .unwrap_or(iced::Color::WHITE);
+                        }
+                        let value_color = value_color;
                         editor = editor.style(move |_theme, _status| {
                             iced::widget::text_editor::Style {
                                 background: iced::Background::Color(iced::Color::TRANSPARENT),
@@ -14786,6 +14821,24 @@ fn is_elevated_view<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool 
     is_abs || extract_max_z_index(view) > 0
 }
 
+/// PLAN-051 P2: Stack elevated 层是否为空内容——空层不入栈。
+/// absolute 空容器(如 musk composer 的 backdrop v-html 层:VM 无 v-html
+/// 渲染=纯空容器)叠在 textarea 上方会挡死其点击聚焦(C1/C2 单变量实验
+/// 实证:同结构有 backdrop 即不可输,无则可输)。vue 轨该层有 v-html 内容
+/// 不受影响——本判定仅存在于 VM 渲染层。
+fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
+    use AbstractView as AV;
+    match view {
+        AV::Empty => true,
+        AV::Text { content, .. } => content.trim().is_empty(),
+        AV::Container { child, .. } => is_empty_stack_layer(child),
+        AV::Column { children, .. } | AV::Row { children, .. } => {
+            children.iter().all(is_empty_stack_layer)
+        }
+        _ => false,
+    }
+}
+
 /// Short tag for a View variant, used as debug hover ID prefix.
 fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str {
     match view {
@@ -15016,10 +15069,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else if rich {
                 let content = get_textarea_content_rich(&key, &value, &ghost);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-                let editor_height = match height {
-                    Some(h) => iced::Length::Fixed(h as f32),
-                    None => iced::Length::Fixed(30.0),
-                };
+                // PLAN-051 P2: 同 composer 命中区修复——style 高度消费。
+                let editor_height = textarea_editor_height(height, style.as_ref());
                 let mut rich_editor = text_editor(content).placeholder(ph);
                 // Plan 057 (ash-gui 输入焦点):稳定 Id(同存量路径)。
                 rich_editor = rich_editor
@@ -15165,6 +15216,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     });
 
                     if is_abs {
+                        // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
+                        if is_empty_stack_layer(&children[elev_idx]) { continue; }
                         path.push(elev_idx);
                         let abs_el = render_dynamic_view(children[elev_idx].clone(), debug_ctx, path);
                         path.pop();
@@ -15266,6 +15319,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 let mut stk = iced::widget::Stack::new().push(base);
                 for (i, child) in absolute.into_iter() {
+                    // PLAN-051 P2: 空层不渲染不入栈(同 Column 站点)。
+                    if is_empty_stack_layer(&child) { continue; }
                     path.push(i);
                     let abs_el = render_dynamic_view(child, debug_ctx, path);
                     path.pop();
@@ -15514,6 +15569,31 @@ fn iced_length(size: &IcedSize) -> iced::Length {
         IcedSize::Fixed(px) => iced::Length::Fixed(*px),
     }
 }
+/// PLAN-051 P2 追加（composer 输入框命中区）: textarea 编辑器高度解析——
+/// height prop 优先;缺省时消费 style 高度(h-full → Fill,min-h → Fixed),
+/// 均无才落历史缺省 30px。此前 style 高度不消费:input-compose 容器经
+/// min-h 消费后有 80px 可见框,而内部 editor 恒 30px 悬在顶部——用户点
+/// 击框中下部全部落在容器上,无光标无输入(musk chats composer 现场)。
+fn textarea_editor_height(height_prop: Option<u16>, style: Option<&Style>) -> iced::Length {
+    if let Some(h) = height_prop {
+        return iced::Length::Fixed(h as f32);
+    }
+    if let Some(s) = style {
+        let is = IcedStyle::from_style(s);
+        if let Some(ref h) = is.height {
+            return iced_length(h);
+        }
+        if let Some(mh) = is.min_height {
+            return if mh >= 9999.0 {
+                iced::Length::Fill
+            } else {
+                iced::Length::Fixed(mh)
+            };
+        }
+    }
+    iced::Length::Fixed(30.0)
+}
+
 
 /// Convert IcedAlign to iced::alignment::Horizontal (for Column's align_x)
 fn iced_alignment_horizontal(align: IcedAlign) -> iced::alignment::Horizontal {
@@ -16870,6 +16950,29 @@ mod tests {
         assert_eq!(&value[first[0].0.clone()], "@assistant");
     }
 
+    /// PLAN-051 P2: textarea 高度解析——prop 优先 / h-full → Fill /
+    /// min-h → Fixed / 均无 → 历史缺省 30。
+    #[test]
+    fn plan051_textarea_height_consumes_style() {
+        use crate::ui::style::Style;
+        assert_eq!(
+            textarea_editor_height(Some(20), None),
+            iced::Length::Fixed(20.0)
+        );
+        assert_eq!(textarea_editor_height(None, None), iced::Length::Fixed(30.0));
+        let hfull = Style::parse("h-full").unwrap();
+        assert_eq!(
+            textarea_editor_height(None, Some(&hfull)),
+            iced::Length::Fill,
+            "h-full 必须消费为 Fill(composer 命中区修复)"
+        );
+        let minh = Style::parse("min-h-20").unwrap();
+        assert_eq!(
+            textarea_editor_height(None, Some(&minh)),
+            iced::Length::Fixed(80.0)
+        );
+    }
+
     /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
     /// （musk rail 四图标 + 折叠 chevron/搜索）——缺名静默降级空占位，
     /// 此处以测试锁住。
@@ -16940,6 +17043,29 @@ mod tests {
         assert_eq!(h, None);
         assert_eq!(v, None);
     }
+
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan414_height_branch_yields_to_explicit_align() {
+        // nav-item(h-9 w-full text-left items-center):水平轴让位 text-left,
+        // 高度臂不再无条件 center_x——否则内层 Fill 容器恒居中,外层 050
+        // 包装无法抵消,VM 轨 rail 内容居中而 web 左对齐。
+        use iced::alignment::{Horizontal, Vertical};
+        let (ax, ay) = plan414_content_alignment(
+            Some(Horizontal::Left),
+            Some(Vertical::Center),
+        );
+        assert_eq!(ax, Horizontal::Left);
+        assert_eq!(ay, Vertical::Center);
+        // 垂直轴同理:items-start 压过 409 的默认纵向居中。
+        let (_, ay) = plan414_content_alignment(None, Some(Vertical::Top));
+        assert_eq!(ay, Vertical::Top);
+        // 无显式对齐类:维持 Plan 409/414 双向居中(工具栏定宽图标钮)。
+        let (ax, ay) = plan414_content_alignment(None, None);
+        assert_eq!(ax, Horizontal::Center);
+        assert_eq!(ay, Vertical::Center);
+    }
+
     // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
 
     const T3_SHELL_AT: &str = r#"widget ShellProbe {
