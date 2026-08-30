@@ -27,12 +27,9 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
         legendItems List = []
         bands List = []
         tipTitles List = []
-        tipYsS List = []
         tipBodies List = []
         hovered str = "false"
-        tipY str = ""
         tipTitle str = ""
-        tipBody str = ""
         tipBody str = ""
     }
 
@@ -224,8 +221,6 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
 
             // ---- 命中竖带 + tooltip 锚点/内容(双域 tipY) ----
             var outBands List = []
-            var outTipY List = []
-            var outTipYS List = []
             var outTipTitle List = []
             var outTipBody List = []
             var i3 = 0
@@ -241,7 +236,6 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 }
                 var imaxf float = imax
                 var ay float = bottom - imaxf / domainf * span
-                outTipY.push(f"${ay}")
                 // stacked 锚点:该 index 累计和顶
                 var cum3 int = 0
                 for f4 in .fields {
@@ -249,8 +243,6 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                     cum3 = cum3 + v4
                 }
                 var cum3f float = cum3
-                var ayS float = bottom - cum3f / domainSf * span
-                outTipYS.push(f"${ayS}")
                 outTipTitle.push(d[iname])
                 var body = ""
                 var k3 = 0
@@ -271,15 +263,12 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 i3 = i3 + 1
             }
             .bands = outBands
-            .tipYs = outTipY
-            .tipYsS = outTipYS
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
         }
 
         .Hover(i) -> {
             .hovered = "true"
-            .tipY = .tipYs[i]
             .tipTitle = .tipTitles[i]
             .tipBody = .tipBodies[i]
         }
