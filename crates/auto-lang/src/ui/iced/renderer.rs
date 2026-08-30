@@ -3249,11 +3249,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let content = get_textarea_content(&key, &value);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
                 let mut editor = text_editor(content).placeholder(ph);
-                editor = editor.height(match height {
-                    Some(h) => iced::Length::Fixed(h as f32),
-                    // Plan 053 后续:默认单行高(此前 100px 把输入栏撑成 3-4 行高)。
-                    None => iced::Length::Fixed(30.0),
-                });
+                // PLAN-051 P2: 高度解析改 helper——style 高度(h-full/min-h)
+                  // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
+                editor = editor.height(textarea_editor_height(height, style.as_ref()));
 
                 // Plan 053 后续(ash-gui VM): apply class-driven text styling.
                 // Previously the whole style prop was ignored (`style: _`), so the
@@ -14020,10 +14018,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else if rich {
                 let content = get_textarea_content_rich(&key, &value, &ghost);
                 let ph: &'static str = Box::leak(placeholder.clone().into_boxed_str());
-                let editor_height = match height {
-                    Some(h) => iced::Length::Fixed(h as f32),
-                    None => iced::Length::Fixed(30.0),
-                };
+                // PLAN-051 P2: 同 composer 命中区修复——style 高度消费。
+                let editor_height = textarea_editor_height(height, style.as_ref());
                 let mut rich_editor = text_editor(content).placeholder(ph);
                 // Plan 057 (ash-gui 输入焦点):稳定 Id(同存量路径)。
                 rich_editor = rich_editor
@@ -14512,6 +14508,31 @@ fn iced_length(size: &IcedSize) -> iced::Length {
         IcedSize::Fixed(px) => iced::Length::Fixed(*px),
     }
 }
+/// PLAN-051 P2 追加（composer 输入框命中区）: textarea 编辑器高度解析——
+/// height prop 优先;缺省时消费 style 高度(h-full → Fill,min-h → Fixed),
+/// 均无才落历史缺省 30px。此前 style 高度不消费:input-compose 容器经
+/// min-h 消费后有 80px 可见框,而内部 editor 恒 30px 悬在顶部——用户点
+/// 击框中下部全部落在容器上,无光标无输入(musk chats composer 现场)。
+fn textarea_editor_height(height_prop: Option<u16>, style: Option<&Style>) -> iced::Length {
+    if let Some(h) = height_prop {
+        return iced::Length::Fixed(h as f32);
+    }
+    if let Some(s) = style {
+        let is = IcedStyle::from_style(s);
+        if let Some(ref h) = is.height {
+            return iced_length(h);
+        }
+        if let Some(mh) = is.min_height {
+            return if mh >= 9999.0 {
+                iced::Length::Fill
+            } else {
+                iced::Length::Fixed(mh)
+            };
+        }
+    }
+    iced::Length::Fixed(30.0)
+}
+
 
 /// Convert IcedAlign to iced::alignment::Horizontal (for Column's align_x)
 fn iced_alignment_horizontal(align: IcedAlign) -> iced::alignment::Horizontal {
@@ -15848,6 +15869,30 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-051 P2: textarea 高度解析——prop 优先 / h-full → Fill /
+    /// min-h → Fixed / 均无 → 历史缺省 30。
+    #[test]
+    fn plan051_textarea_height_consumes_style() {
+        use crate::ui::style::Style;
+        assert_eq!(
+            textarea_editor_height(Some(20), None),
+            iced::Length::Fixed(20.0)
+        );
+        assert_eq!(textarea_editor_height(None, None), iced::Length::Fixed(30.0));
+        let hfull = Style::parse("h-full").unwrap();
+        assert_eq!(
+            textarea_editor_height(None, Some(&hfull)),
+            iced::Length::Fill,
+            "h-full 必须消费为 Fill(composer 命中区修复)"
+        );
+        let minh = Style::parse("min-h-20").unwrap();
+        assert_eq!(
+            textarea_editor_height(None, Some(&minh)),
+            iced::Length::Fixed(80.0)
+        );
+    }
+
     /// Plan 482 T13: nav 组件族采用清单的 lucide 图标在 lucide_svg 内嵌集内
     /// （musk rail 四图标 + 折叠 chevron + 搜索）——缺名静默降级空占位，
     /// 此处以测试锁住。
