@@ -7091,6 +7091,41 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 
     /// Extract Tailwind classes from tag and props
     /// Returns (static_classes, dynamic_class_binding)
+    /// Plan 496 M5：class/style 字符串携带 `${.field}` 插值时（desktop.at
+    /// 根 `style: "w-full h-full p-3 ${.__desktop_bg}"` 形态）——此前插值
+    /// 段原样落入静态 class（浏览器侧废 token）。拆分：静态段并入 class，
+    /// 插值段转 `:class` 拼接表达式（`'w-full ' + __desktop_bg`）。
+    /// 字段名非法（空/非标识符）→ None（维持旧行为）。
+    fn interpolated_class_parts(s: &str) -> Option<(Vec<String>, String)> {
+        if !s.contains("${.") {
+            return None;
+        }
+        let mut statics: Vec<String> = Vec::new();
+        let mut parts: Vec<String> = Vec::new();
+        let mut rest = s;
+        while let Some(pos) = rest.find("${.") {
+            let head = rest[..pos].trim();
+            if !head.is_empty() {
+                statics.push(head.to_string());
+                parts.push(format!("'{}'", head));
+            }
+            let after = &rest[pos..];
+            let end = after.find('}')?;
+            let name = after[3..end].trim_start_matches('.');
+            if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                return None;
+            }
+            parts.push(name.to_string());
+            rest = &after[end + 1..];
+        }
+        let tail = rest.trim();
+        if !tail.is_empty() {
+            statics.push(tail.to_string());
+            parts.push(format!("'{}'", tail));
+        }
+        Some((statics, parts.join(" + ")))
+    }
+
     fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>, Option<String>) {
         let mut classes = Vec::new();
         let mut dynamic_class: Option<String> = None;
@@ -7301,8 +7336,25 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     dynamic_class = Some(format!("{{ {} }}", binding_strs.join(", ")));
                 }
                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                    // Dedup: for layout primitives, split user classes and skip any already present
-                    if is_layout_primitive {
+                    // Plan 496 M5：插值 class 拆分（静态段 + :class 表达式）。
+                    if let Some((statics, expr)) = Self::interpolated_class_parts(s) {
+                        for c in statics {
+                            if is_layout_primitive {
+                                let existing: Vec<&str> =
+                                    classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                                if !existing.contains(&c.as_str()) {
+                                    classes.push(c);
+                                }
+                            } else {
+                                classes.push(c);
+                            }
+                        }
+                        dynamic_class = Some(match dynamic_class {
+                            Some(prev) => format!("{prev} + ' ' + ({expr})"),
+                            None => expr,
+                        });
+                    } else if is_layout_primitive {
+                        // Dedup: for layout primitives, split user classes and skip any already present
                         for c in s.split_whitespace() {
                             let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
                             if !existing.contains(&c) {
@@ -7349,7 +7401,24 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         if let Some(value) = props.get("class") {
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                    if is_layout_primitive {
+                    // Plan 496 M5：插值 class 拆分（style 分支同型）。
+                    if let Some((statics, expr)) = Self::interpolated_class_parts(s) {
+                        for c in statics {
+                            if is_layout_primitive {
+                                let existing: Vec<&str> =
+                                    classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                                if !existing.contains(&c.as_str()) {
+                                    classes.push(c);
+                                }
+                            } else {
+                                classes.push(c);
+                            }
+                        }
+                        dynamic_class = Some(match dynamic_class {
+                            Some(prev) => format!("{prev} + ' ' + ({expr})"),
+                            None => expr,
+                        });
+                    } else if is_layout_primitive {
                         for c in s.split_whitespace() {
                             let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
                             if !existing.contains(&c) {
@@ -9417,9 +9486,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 if let Some(value) = props.get("class") {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
-                        for c in user_class.split_whitespace() {
-                            if !classes.iter().any(|d| d == c) {
-                                classes.push(c.to_string());
+                        // Plan 496 M5：插值 class 拆分（col/grid 臂同型）。
+                        if let Some((statics, expr)) = Self::interpolated_class_parts(user_class) {
+                            for c in statics {
+                                for tok in c.split_whitespace() {
+                                    if !classes.iter().any(|d| d == tok) {
+                                        classes.push(tok.to_string());
+                                    }
+                                }
+                            }
+                            attrs.push(format!(":class=\"{}\"", expr));
+                        } else {
+                            for c in user_class.split_whitespace() {
+                                if !classes.iter().any(|d| d == c) {
+                                    classes.push(c.to_string());
+                                }
                             }
                         }
                     } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
@@ -9464,9 +9545,21 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 if let Some(value) = props.get("class") {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
-                        for c in user_class.split_whitespace() {
-                            if !classes.iter().any(|d| d == c) {
-                                classes.push(c.to_string());
+                        // Plan 496 M5：插值 class 拆分（row 臂同型）。
+                        if let Some((statics, expr)) = Self::interpolated_class_parts(user_class) {
+                            for c in statics {
+                                for tok in c.split_whitespace() {
+                                    if !classes.iter().any(|d| d == tok) {
+                                        classes.push(tok.to_string());
+                                    }
+                                }
+                            }
+                            attrs.push(format!(":class=\"{}\"", expr));
+                        } else {
+                            for c in user_class.split_whitespace() {
+                                if !classes.iter().any(|d| d == c) {
+                                    classes.push(c.to_string());
+                                }
                             }
                         }
                     } else if let Some(class_attr) = self.layout_dynamic_class_attr(value) {
@@ -9476,10 +9569,24 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 if let Some(value) = props.get("style") {
                     let user_class = self.extract_string_value(value).unwrap_or("");
                     if !user_class.is_empty() {
-                        // 静态 style(历史 Tailwind-in-style 用法)合并进 class。
-                        for c in user_class.split_whitespace() {
-                            if !classes.iter().any(|d| d == c) {
-                                classes.push(c.to_string());
+                        // Plan 496 M5：插值 class 拆分（extract_classes 同型）
+                        // ——静态段并入 class，`${.field}` 段转 `:class` 拼接
+                        // 表达式（desktop.at 根 bg 形态）。
+                        if let Some((statics, expr)) = Self::interpolated_class_parts(user_class) {
+                            for c in statics {
+                                for tok in c.split_whitespace() {
+                                    if !classes.iter().any(|d| d == tok) {
+                                        classes.push(tok.to_string());
+                                    }
+                                }
+                            }
+                            attrs.push(format!(":class=\"{}\"", expr));
+                        } else {
+                            // 静态 style(历史 Tailwind-in-style 用法)合并进 class。
+                            for c in user_class.split_whitespace() {
+                                if !classes.iter().any(|d| d == c) {
+                                    classes.push(c.to_string());
+                                }
                             }
                         }
                     } else if let Some(style_attr) = self.layout_dynamic_style_attr(value) {
@@ -12418,7 +12525,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         // Plain string literal → static class (Tailwind classes).
                         if let Some(s) = self.extract_string_value(value) {
                             if !s.is_empty() {
-                                attrs.push(format!("class=\"{}\"", s));
+                                // Plan 496 M5：插值 class 拆分（extract_classes
+                                // 同型）——静态段入 class，`${.field}` 段转
+                                // `:class` 拼接表达式。
+                                if let Some((statics, expr)) = Self::interpolated_class_parts(s) {
+                                    if !statics.is_empty() {
+                                        attrs.push(format!("class=\"{}\"", statics.join(" ")));
+                                    }
+                                    attrs.push(format!(":class=\"{}\"", expr));
+                                } else {
+                                    attrs.push(format!("class=\"{}\"", s));
+                                }
                             }
                         }
                     } else {
@@ -23148,6 +23265,47 @@ widget NullProbe {
     #[test]
     fn test_a2vue_text_selectable() {
         test_a2vue("011_text_selectable").expect("a2vue 011_text_selectable mismatch");
+    }
+
+    /// Plan 496 M5 I8：desktop.at 双端同源对拍基线——真资产
+    /// （`assets/desktop.at`，include_str 同文件零拷贝——`ui::shell::DESKTOP_AT`
+    /// 在 ui 特性后，本测试留默认档）经 a2vue 生成 SFC，金样
+    /// `test/a2vue/desktop_surface_asset/expected.vue` 对拍。重生成：
+    /// `AUTO_LANG_UPDATE_GOLDEN=1 cargo test test_a2vue_desktop_surface_asset`。
+    #[test]
+    fn test_a2vue_desktop_surface_asset() {
+        const DESKTOP_SURFACE_AT: &str = include_str!("../../assets/desktop.at");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(DESKTOP_SURFACE_AT).with_session(session);
+        let ast = parser.parse().expect("desktop.at 解析");
+        let mut widgets = Vec::new();
+        for stmt in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+                widgets.push(
+                    crate::aura::extract_widget_from_decl(decl).expect("desktop.at aura 提取"),
+                );
+            }
+        }
+        assert_eq!(widgets.len(), 1, "desktop.at 单 widget");
+        let mut gen = VueGenerator::new_shadcn();
+        let output = gen.generate_sfc(&widgets[0]).expect("desktop.at → vue SFC");
+        let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let exp_path = d.join("test/a2vue/desktop_surface_asset/expected.vue");
+        if std::env::var("AUTO_LANG_UPDATE_GOLDEN").is_ok() {
+            std::fs::create_dir_all(exp_path.parent().unwrap()).unwrap();
+            std::fs::write(&exp_path, &output).expect("金样重生成写盘");
+            return;
+        }
+        let expected = std::fs::read_to_string(&exp_path)
+            .unwrap_or_else(|e| panic!("金样缺失（先 AUTO_LANG_UPDATE_GOLDEN=1 重生成）: {e}"));
+        assert_eq!(
+            normalize_vue_output(&output),
+            normalize_vue_output(&expected),
+            "desktop.at a2vue 金样对拍（改动 vue 生成器/资产后须同步金样）"
+        );
+        // 关键接缝标记：双击/右键/布局件点击三事件面在 vue 产物可见。
+        assert!(output.contains("@dblclick"), "ondblclick → @dblclick");
+        assert!(output.contains("@contextmenu"), "oncontextmenu → @contextmenu");
     }
 
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style
