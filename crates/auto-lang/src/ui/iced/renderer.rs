@@ -10816,6 +10816,13 @@ fn compare_pngs(
                     ));
                 }
             }
+            // Plan 486：拖入手势落点高亮层（DragWatch::Over 时；槽位 chrome
+            // 之上、shell 之下——半透明不遮挡既有 chrome 标题条）。
+            if let Some(drag_rect) = state.native_drag_over {
+                layers.push(crate::ui::iced::virtual_window::native_drag_over_element(
+                    drag_rect,
+                ));
+            }
             // Plan 463 T5：shell 层（任务栏；z-stack 之上常驻）。底部锚定
             // 由 shell.at 根 col（h-full + 纵向 spacer）落实——dynamic_view
             // 根是 Fill×Fill toast-Stack，装配层 align 无从发力（实测）。
@@ -16099,6 +16106,25 @@ mod tests {
         let comp = crate::build_dynamic_component(T3_SHELL_AT, None).unwrap();
         ds.desktop.shell_app = Some(ds.allocate_app(comp));
         ds
+    }
+
+    /// Plan 486 T1/T4：拖入高亮落位/清除（set_native_drag_over 经映射或
+    /// headless 恒等——断言映射无关的存在性）+ 高亮元素构建冒烟。
+    #[test]
+    #[cfg(all(windows, feature = "native-dock"))]
+    fn native_drag_over_overlay_sets_and_clears() {
+        let mut ds = t3_session_with_shell();
+        set_native_drag_over(
+            &mut ds,
+            Some(crate::ui::native_dock::Rect::new(10, 20, 300, 200)),
+        );
+        let r = ds.native_drag_over.expect("高亮应落位");
+        // headless 测试进程无自有可见窗口 → 恒等退化；有窗口环境经
+        // CoordMapper 换算——两者宽度语义一致（不缩放，仅平移），故锁宽高。
+        assert_eq!((r.width, r.height), (300.0, 200.0));
+        let _el = crate::ui::iced::virtual_window::native_drag_over_element(r);
+        set_native_drag_over(&mut ds, None);
+        assert!(ds.native_drag_over.is_none(), "清除后不应残留高亮");
     }
 
     fn t3_add_win(ds: &mut crate::ui::session::DesktopSession, title: &str) -> crate::ui::session::Wid {
