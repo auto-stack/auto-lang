@@ -7678,46 +7678,46 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
     None
 }
 
-/// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷 Record
+/// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷字段
 /// {text: str|null, files: [str], image: {path,width,height}|null,
-/// screen_x: int, screen_y: int, formats: [str]}。
-fn native_drop_payload(data: &crate::ui::native_dnd::NativeDropData) -> auto_val::Value {
-    let mut obj = auto_val::Obj::new();
-    obj.set(
-        "text",
-        match &data.text {
-            Some(t) => auto_val::Value::str(t),
-            None => auto_val::Value::Null,
-        },
-    );
-    obj.set(
-        "files",
-        auto_val::Value::Array(auto_val::Array::from(
-            data.files.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
-        )),
-    );
-    obj.set(
-        "image",
-        match &data.image {
-            Some((path, w, h)) => {
-                let mut im = auto_val::Obj::new();
-                im.set("path", auto_val::Value::str(path));
-                im.set("width", auto_val::Value::Int(*w as i32));
-                im.set("height", auto_val::Value::Int(*h as i32));
-                auto_val::Value::Obj(im)
-            }
-            None => auto_val::Value::Null,
-        },
-    );
-    obj.set("screen_x", auto_val::Value::Int(data.screen_x));
-    obj.set("screen_y", auto_val::Value::Int(data.screen_y));
-    obj.set(
-        "formats",
-        auto_val::Value::Array(auto_val::Array::from(
-            data.formats.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
-        )),
-    );
-    auto_val::Value::Obj(obj)
+/// screen_x: int, screen_y: int, formats: [str]}（VM 堆记录编码见
+/// [`crate::ui::vm_bridge::RecordValue`]）。
+fn native_drop_record_fields(
+    data: &crate::ui::native_dnd::NativeDropData,
+) -> Vec<(String, crate::ui::vm_bridge::RecordValue)> {
+    use crate::ui::vm_bridge::RecordValue;
+    vec![
+        // 缺省恒空串（heap-record Str 字段与 nil 的 != 比较在 VM 侧破坏
+        // 求值栈——488 T6 载具调试发现，空串哨兵绕开；债登记见计划）。
+        (
+            "text".into(),
+            RecordValue::Str(data.text.clone().unwrap_or_default()),
+        ),
+        ("files".into(), RecordValue::StrList(data.files.clone())),
+        // image 拍平三字段（嵌套记录的 Str 字段在 VM 侧取值不稳——
+        // 宽高 Int 可达、path Str 产出错误码；扁平 Str 实证可达）。
+        (
+            "image_path".into(),
+            RecordValue::Str(data.image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+        ),
+        (
+            "image_w".into(),
+            match &data.image {
+                Some((_, w, _)) => RecordValue::Int(*w as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        (
+            "image_h".into(),
+            match &data.image {
+                Some((_, _, h)) => RecordValue::Int(*h as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        ("screen_x".into(), RecordValue::Int(data.screen_x)),
+        ("screen_y".into(), RecordValue::Int(data.screen_y)),
+        ("formats".into(), RecordValue::StrList(data.formats.clone())),
+    ]
 }
 
 /// Plan 488：宿主注入面 —— App 级原生事件（on_native_drop /
@@ -7734,10 +7734,11 @@ fn inject_native_event(
     }
 }
 
-/// Plan 488 T7：OS 剪贴板 → `on_native_paste` 载荷 Record。读取优先级
-/// text（418）→ files（485）→ image（485）；whichever 可用并存（Record
-/// 形状与 on_native_drop 的 text/files/image 域一致）。
-fn clipboard_paste_payload() -> auto_val::Value {
+/// Plan 488 T7：OS 剪贴板 → `on_native_paste` 载荷字段。读取优先级
+/// text（418）→ files（485）→ image（485）；whichever 可用并存（形状与
+/// on_native_drop 的 text/files/image 域一致）。
+fn clipboard_paste_record_fields() -> Vec<(String, crate::ui::vm_bridge::RecordValue)> {
+    use crate::ui::vm_bridge::RecordValue;
     #[cfg(feature = "ui-clipboard")]
     let text = crate::ui::clipboard::clipboard_get();
     #[cfg(not(feature = "ui-clipboard"))]
@@ -7754,34 +7755,31 @@ fn clipboard_paste_payload() -> auto_val::Value {
     #[cfg(not(all(windows, feature = "native-clipboard")))]
     let image: Option<(String, u32, u32)> = None;
 
-    let mut obj = auto_val::Obj::new();
-    obj.set(
-        "text",
-        match text {
-            Some(t) => auto_val::Value::str(&t),
-            None => auto_val::Value::Null,
-        },
-    );
-    obj.set(
-        "files",
-        auto_val::Value::Array(auto_val::Array::from(
-            files.iter().map(|f| auto_val::Value::str(f)).collect::<Vec<_>>(),
-        )),
-    );
-    obj.set(
-        "image",
-        match image {
-            Some((path, w, h)) => {
-                let mut im = auto_val::Obj::new();
-                im.set("path", auto_val::Value::str(&path));
-                im.set("width", auto_val::Value::Int(w as i32));
-                im.set("height", auto_val::Value::Int(h as i32));
-                auto_val::Value::Obj(im)
-            }
-            None => auto_val::Value::Null,
-        },
-    );
-    auto_val::Value::Obj(obj)
+    vec![
+        (
+            "text".into(),
+            RecordValue::Str(text.unwrap_or_default()),
+        ),
+        ("files".into(), RecordValue::StrList(files)),
+        (
+            "image_path".into(),
+            RecordValue::Str(image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+        ),
+        (
+            "image_w".into(),
+            match &image {
+                Some((_, w, _)) => RecordValue::Int(*w as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+        (
+            "image_h".into(),
+            match &image {
+                Some((_, _, h)) => RecordValue::Int(*h as i32),
+                None => RecordValue::Int(0),
+            },
+        ),
+    ]
 }
 
 /// Plan 486：拖入高亮落位——候选槽位物理矩形 → 会话逻辑字段（view 直绘）。
@@ -10727,18 +10725,25 @@ fn compare_pngs(
                             local
                         };
                         if let Some(app) = state.drop_hit_app_at_local(local.0, local.1) {
-                            inject_native_event(state, app, "on_native_drop", &[
-                                native_drop_payload(&data),
-                            ]);
+                            if let Some(sess) = state.app_mut(app) {
+                                let _ = sess.component.bridge_mut().call_handler_with_record(
+                                    "on_native_drop",
+                                    native_drop_record_fields(&data),
+                                );
+                            }
                         }
                     }
                     // Plan 488 T7：桌面级 Ctrl+V → 读 OS 剪贴板（418 文本 →
                     // 485 文件/图片）→ on_native_paste 注入焦点 App。
                     DesktopEvent::NativePaste => {
-                        let payload = clipboard_paste_payload();
                         if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
                         {
-                            inject_native_event(state, app, "on_native_paste", &[payload]);
+                            if let Some(sess) = state.app_mut(app) {
+                                let _ = sess.component.bridge_mut().call_handler_with_record(
+                                    "on_native_paste",
+                                    clipboard_paste_record_fields(),
+                                );
+                            }
                         }
                     }
                 }
@@ -17458,8 +17463,8 @@ mod tests {
         }
     }
 
-    /// Plan 488 T2：on_native_drop 载荷 Record 构造——text/files/image
-    /// whichever 可用（缺省 Null），含屏幕坐标与观察格式表。
+    /// Plan 488 T2：on_native_drop 载荷字段形状——text/files/image
+    /// whichever（缺省 Null），含屏幕坐标与观察格式表。
     #[test]
     fn plan488_native_drop_payload_record() {
         let data = crate::ui::native_dnd::NativeDropData {
@@ -17470,37 +17475,44 @@ mod tests {
             screen_y: 34,
             formats: vec!["CF_HDROP".into(), "CF_UNICODETEXT".into()],
         };
-        let auto_val::Value::Obj(obj) = native_drop_payload(&data) else {
-            panic!("payload 应为 Record");
-        };
-        assert_eq!(obj.get("text"), Some(auto_val::Value::str("hi")));
-        assert_eq!(obj.get("screen_x"), Some(auto_val::Value::Int(12)));
-        assert_eq!(obj.get("screen_y"), Some(auto_val::Value::Int(34)));
-        let auto_val::Value::Array(files) = obj.get("files").unwrap() else {
-            panic!("files 应为 Array");
-        };
-        assert_eq!(files.values.len(), 1);
-        // image 缺省 Null。
-        assert_eq!(obj.get("image"), Some(auto_val::Value::Null));
+        let fields = native_drop_record_fields(&data);
+        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+        assert_eq!(
+            get("text"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str("hi".into()))
+        );
+        assert_eq!(get("screen_x"), Some(&crate::ui::vm_bridge::RecordValue::Int(12)));
+        assert_eq!(get("screen_y"), Some(&crate::ui::vm_bridge::RecordValue::Int(34)));
+        assert_eq!(
+            get("files"),
+            Some(&crate::ui::vm_bridge::RecordValue::StrList(vec!["C:/a.txt".into()]))
+        );
+        // image 缺省空串（空串哨兵——VM 侧 record 字段判 nil 比较不稳）。
+        assert_eq!(
+            get("image_path"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str(String::new()))
+        );
     }
 
     /// Plan 488 T7：桌面级 Ctrl+V 注入面——OS 剪贴板 → on_native_paste
-    /// 载荷 Record。文本往返 + files/image 域形状（485 测试锁串行化，防
+    /// 载荷字段。文本往返 + files/image 域形状（485 测试锁串行化，防
     /// nextest 并行进程互清剪贴板）。
     #[test]
     #[cfg(all(windows, feature = "native-clipboard"))]
     fn plan488_clipboard_paste_payload_reads_os_clipboard() {
         let _lock = crate::ui::clipboard_native::GlobalClipboardTestLock::acquire();
         crate::ui::clipboard::clipboard_set("paste-me");
-        let auto_val::Value::Obj(obj) = clipboard_paste_payload() else {
-            panic!("paste payload 应为 Record");
-        };
-        assert_eq!(obj.get("text"), Some(auto_val::Value::str("paste-me")));
-        assert!(
-            matches!(obj.get("files"), Some(auto_val::Value::Array(_))),
-            "files 域恒为 Array"
+        let fields = clipboard_paste_record_fields();
+        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+        assert_eq!(
+            get("text"),
+            Some(&crate::ui::vm_bridge::RecordValue::Str("paste-me".into()))
         );
-        assert!(obj.get("image").is_some(), "image 域恒存在（Null 或 Record）");
+        assert!(
+            matches!(get("files"), Some(crate::ui::vm_bridge::RecordValue::StrList(_))),
+            "files 域恒为列表"
+        );
+        assert!(get("image_path").is_some(), "image_path 域恒存在（空串或有值）");
     }
 
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入

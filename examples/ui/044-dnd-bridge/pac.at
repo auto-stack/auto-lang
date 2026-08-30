@@ -1,0 +1,7 @@
+name: "dnd-bridge"
+version: "1.0.0"
+description: "dnd-bridge — OLE 拖放双向互通冒烟（拖出 text/files/虚拟文件 + 拖入/Ctrl+V 事件面,Plan 488 T6 载具）"
+scene: "ui"
+render: "vm"
+front_port: 4044
+title: "DndBridge"

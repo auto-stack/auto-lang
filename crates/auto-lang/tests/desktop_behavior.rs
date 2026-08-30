@@ -308,3 +308,141 @@ widget MultiState {
     assert_eq!(dc.read_state("name").unwrap(), auto_val::Value::str("updated"));
     assert_eq!(dc.read_state("count").unwrap(), auto_val::Value::Int(100));
 }
+
+// ============================================================================
+// Plan 488 T6: 044-dnd-bridge 冒烟载具——真实示例文件编译 + 三个宿主注入
+// handler 无头验证（真拖交互归 T6 实机清单，见计划待澄清⑦）。
+// ============================================================================
+
+#[test]
+fn plan488_dnd_bridge_app_handlers() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/ui/044-dnd-bridge/src/front/app.at"
+    );
+    let code = std::fs::read_to_string(path).expect("读 044 app.at");
+    let mut dc = load_inline(&code);
+    use auto_lang::ui::vm_bridge::RecordValue;
+
+    // on_native_drop：Record 载荷（text + files + image 嵌套 + formats）→
+    // drop_log 状态（经宿主注入面 call_handler_with_record——VM 堆记录）。
+    dc.bridge_mut()
+        .call_handler_with_record(
+            "on_native_drop",
+            vec![
+                ("text".into(), RecordValue::Str("dropped-text".into())),
+                ("files".into(), RecordValue::StrList(vec!["C:/tmp/a.txt".into()])),
+                ("image_path".into(), RecordValue::Str("C:/tmp/img.png".into())),
+                ("image_w".into(), RecordValue::Int(64)),
+                ("image_h".into(), RecordValue::Int(48)),
+                ("screen_x".into(), RecordValue::Int(100)),
+                ("screen_y".into(), RecordValue::Int(200)),
+                ("formats".into(), RecordValue::StrList(vec!["CF_HDROP".into()])),
+            ],
+        )
+        .expect("on_native_drop 注入");
+    let log = match dc.read_state("drop_log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("drop_log 形状异常: {other:?}"),
+    };
+    assert!(log.contains("CF_HDROP"), "formats 入日志: {log}");
+    assert!(log.contains("dropped-text"), "text 入日志: {log}");
+    assert!(log.contains("C:/tmp/a.txt"), "files 入日志: {log}");
+    assert!(log.contains("C:/tmp/img.png"), "嵌套 image.path 入日志: {log}");
+
+    // on_native_paste：纯文本载荷。
+    dc.bridge_mut()
+        .call_handler_with_record(
+            "on_native_paste",
+            vec![
+                ("text".into(), RecordValue::Str("pasted-text".into())),
+                ("files".into(), RecordValue::StrList(Vec::new())),
+                ("image_path".into(), RecordValue::Null),
+            ],
+        )
+        .expect("on_native_paste 注入");
+    let plog = match dc.read_state("paste_log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("paste_log 形状异常: {other:?}"),
+    };
+    assert!(plog.contains("pasted-text"), "text 入粘贴日志: {plog}");
+
+    // on_dnd_finished：效果字符串（call_handler 路径）。
+    dc.bridge_mut()
+        .call_handler("on_dnd_finished", &[auto_val::Value::str("copy")])
+        .expect("on_dnd_finished 注入");
+    let flog = match dc.read_state("finish_log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("finish_log 形状异常: {other:?}"),
+    };
+    assert!(flog.contains("copy"), "效果入完成日志: {flog}");
+}
+
+#[test]
+fn plan488_fieldcount_probe() {
+    // 同一 handler，三档载荷：2 字段 / 4 字段 / 6 字段。
+    let code = r#"
+widget App {
+    msg Msg { Probe(record) }
+    model { var log str = "" }
+    view { col { text .log } }
+    on {
+        .Probe(p) -> {
+            .log = "f=[" + p.formats.join(",") + "] t=" + p.text + " ip=" + p.image_path + " w=" + p.image_w.str()
+        }
+    }
+}
+"#;
+    let mut dc = load_inline(code);
+    use auto_lang::ui::vm_bridge::RecordValue;
+    dc.bridge_mut()
+        .call_handler_with_record(
+            "Probe",
+            vec![
+                ("formats".into(), RecordValue::StrList(vec!["CF".into()])),
+                ("text".into(), RecordValue::Str("T".into())),
+                ("image_path".into(), RecordValue::Str("IP".into())),
+                ("image_w".into(), RecordValue::Int(9)),
+            ],
+        )
+        .expect("probe");
+    let log = match dc.read_state("log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("log: {other:?}"),
+    };
+    assert_eq!(log, "f=[CF] t=T ip=IP w=9", "4 字段直拼: {log}");
+}
+
+// VM 已知缺陷复现（488 T6 载具调试发现，债候选 P488-D1）：if 分支内
+// var 重赋值表达式中调用 .str() 内建 → 累加破坏（"A[" 前缀丢失 +
+// 错误码 -2147483647 混入）。修复前 ignore 存档。
+#[test]
+#[ignore = "VM 缺陷复现：if 内 var 重赋值 + .str() 破坏字符串累加（P488-D1）"]
+fn plan488_str_call_in_if_probe() {
+    let code = r#"
+widget App {
+    msg Msg { Probe(record) }
+    model { var log str = "" }
+    view { col { text .log } }
+    on {
+        .Probe(p) -> {
+            var summary str = "A"
+            if p.s != "" {
+                summary = summary + "[" + p.s.str() + "]"
+            }
+            .log = summary
+        }
+    }
+}
+"#;
+    let mut dc = load_inline(code);
+    use auto_lang::ui::vm_bridge::RecordValue;
+    dc.bridge_mut()
+        .call_handler_with_record("Probe", vec![("s".into(), RecordValue::Str("VAL".into()))])
+        .expect("probe");
+    let log = match dc.read_state("log") {
+        Ok(auto_val::Value::Str(s)) => s.to_string(),
+        other => panic!("log: {other:?}"),
+    };
+    assert_eq!(log, "A[VAL]", "var+if+.str(): {log}");
+}
