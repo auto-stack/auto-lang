@@ -411,6 +411,22 @@ virtual_window spec events 映射同步。
     （裸反斜杠转义）+ 资产路径改 cwd 相对全径。
   - **待二轮重跑确认**：拖入即时显示 / A1 文件拖出 / 图片拖入的
     image_path 落值（D4）。
+  **二轮实机反馈与修复（2026-08-30，worktree 47038976e）**：
+  - **拖入延迟仍在**（STA 线程修复不对症）——判决实验链定案真机制：
+    DragEnter/Over 在拖动期正常（鼠标输入=主线程泵），**Drop 的跨线程
+    COM 投递是 SendMessage 型——主线程不进入取消息态就不送达**，松手后
+    无输入即滞留到下次点击。修复 = **WM_NULL 唤醒 ticker**（DragEnter/
+    Over 上膛，悬停期 40ms PostMessage 宿主窗；排队消息必唤醒任何等待
+    形态，泵一动挂起的 COM 调用即优先送达）。T3 严格版实证：空闲等待
+    （无限期 MsgWait，仅可由 ticker 唤醒）下 Drop 照达 STA 线程。
+  - **A1 拖出文件仍无效**——一轮的宽容修复有缺陷：路径 \ui 被误判
+    unicode 转义前缀保留、\note 的 \n 被误判换行。修复 = 首解析失败
+    后**无条件转义全部反斜杚**（失败即证非合法 JSON；单测补
+    \ui/\note 用例）。
+  - **Explorer 地址栏/搜索框不吃文本拖放**（Chrome 地址栏可以）——目标
+    侧能力差异（Explorer 地址栏只收 shell 对象/URL，不收裸文本），非
+    本仓缺陷；A6 记录以 notepad/Chrome 为文本落点。
+  - **待三轮重跑确认**：拖入即时显示 / A1 文件拖出。
   **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
   desktop_behavior.rs，修复后转正）：
   - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →
