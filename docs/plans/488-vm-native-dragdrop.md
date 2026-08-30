@@ -364,24 +364,43 @@ virtual_window spec events 映射同步。
   执行时行号漂移（renderer.rs:6353 / aura.at:5050/L526）以 grep 重定位。
 - **⑥ natives 编号**：`auto.dnd.start` 顺号以 native_catalog 当前空位为准。
   [已定案] 取 2938（2930/2931 已被 host.call 占用，485 后下一空位）。
-- **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户）**：需真人实机拖拽，
-  代理会话无法执行。清单与操作指引（每条结果逐行记回本节）：
-  1. **A1 Explorer→桌面**：`auto run -r vm`（desktop 配置）起桌面 →
-     Explorer 选 2+ 文件拖到桌面某虚拟窗 → App 收 `on_native_drop`
-     （files 列表一致；可先 `auto.clipboard.*` 对照）。
+- **⑦ T6 真机六场景执行（2026-08-30 挂起，待用户；载具已就绪）**：
+  **冒烟 App = `examples/ui/044-dnd-bridge`**（T6 载具，无头验证绿：
+  desktop_behavior `plan488_dnd_bridge_app_handlers`——真示例文件编译 +
+  三事件注入断言）。启动（仓库根、worktree 合入后）：
+  ```
+  auto run --desktop -r vm        # 桌面模式；Ctrl+Space 召 launcher 开 044-dnd-bridge
+  ```
+  （worktree 未合入期间：在 `.worktrees/plan-488-dev` 目录内同命令。）
+  App 界面三卡：拖出（三按钮）/ 拖入日志 / Ctrl+V 日志。逐条执行并把
+  结果行记回本节：
+  1. **A1 Explorer→桌面**：Explorer 选 2+ 文件拖到 044 虚拟窗 → 拖入卡
+     出现 `files=[…]`（对照 `formats=[CF_HDROP]`）。
   2. **A2 桌面→Explorer**（虚拟文件落地——**唯一残留技术风险**：
      FILECONTENTS v1 走 HGLOBAL，Explorer 若只认 IStream 则落地失败，
-     届时补 IStream 介质即可，DndDataObject 结构已备）：App 调
-     `auto.dnd.start({virtual_files:[{name:"note.md",content:"# t"}]})`
-     （在 onmousedown 类 handler 内——拖出须由按下线程发起）→ 拖到
-     Explorer 空白处 → note.md 落地双击可开。
-  3. **A5 notepad 文本双向**：桌面→notepad（text 载荷粘贴落框）；notepad
-     选中文字拖→桌面虚拟窗（on_native_drop.text）。
-  4. **A6 浏览器 URL 双向**：地址栏图标拖→桌面（text=URL）；桌面 text
-     载荷拖→浏览器地址栏。
-  5. **D2/D3/D4 Chrome**：拖出/拖入/图片（CF_DIB/PNG 通道——观察记录
-     formats 列表，on_native_drop.image 落 temp PNG）。
-  6. 全程可开 `AUTO_DND_TRACE=1`（QCD 轨迹）与 fixture `--trace` 辅助。
+     补 IStream 介质即可，DndDataObject 结构已备）：点「拖出虚拟文件
+     (A2)」→ **按住左键**拖到 Explorer 空白处松开 → dnd-bridge-note.md
+     落地双击可开。
+  3. **A5 notepad 文本双向**：点「拖出文本」→ 按住左键拖到 notepad
+     松开（文本落框）；反向 notepad 选中文字拖进 044 窗（drop 日志
+     text=…）。
+  4. **A6 浏览器 URL 双向**：地址栏锁形/图标拖进 044 窗（text=URL）；
+     「拖出文本」拖到浏览器地址栏。
+  5. **D2/D3/D4 Chrome**：拖出/拖入/图片（图片拖入 → image=temp png
+     路径；观察 formats 记录 CF_DIB/其他）。
+  6. **Ctrl+V**：先复制（文本/Explorer 文件/截图）→ 桌面任意处按
+     Ctrl+V → 粘贴卡出对应日志（焦点须在桌面）。
+  操作要点：拖出按钮点击后**按住左键**拖（dnd_start 内联阻塞语义，
+  seen-button：见到按下前不判释放）；Esc 取消拖拽。诊断可开
+  `AUTO_DND_TRACE=1`。
+  **载具实施中的两个 VM 缺陷存档**（`#[ignore]` 探针在
+  desktop_behavior.rs，修复后转正）：
+  - **P488-D1**：if 分支内 var 重赋值表达式中调用 `.str()` 内建 →
+    字符串累加破坏（前缀丢失 + 错误码 -2147483647 混入）。044 用
+    直接状态赋值 + join 绕开。
+  - **P488-D2**：heap-record Str 字段与 nil 的 `!=` 比较破坏求值栈。
+    488 注入面改空串哨兵（缺省恒 ""，.at 判 `!= ""`）绕开——**载荷
+    事件契约按空串哨兵定稿**（text/image_path 缺省即空串）。
 - **⑧ 受理即返语义修正（2026-08-30 步骤 9 定案）**：G1"受理即返"改为
   **调用线程内联阻塞**——OLE 拖拽循环必须跑在收到按下的输入线程上
   （专用 STA 线程实测 QCD 零调用永卡；见步骤 9 注记）。dnd_finished
