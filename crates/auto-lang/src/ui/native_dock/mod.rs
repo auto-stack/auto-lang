@@ -109,10 +109,11 @@ pub struct NativeSlotEvent {
     pub kind: NativeSlotEventKind,
 }
 
-/// 计划 §2 事件清单：生命周期（Destroy）、几何（LocationChange/MoveSizeEnd）、
-/// 显示态（MinimizeStart/End）。
+/// 计划 §2 事件清单：生命周期（Destroy）、几何（LocationChange/MoveSizeStart/
+/// MoveSizeEnd——486 增 START 驱动 DragWatch 手势会话）、显示态（MinimizeStart/End）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeSlotEventKind {
+    MoveSizeStart,
     MoveSizeEnd,
     MinimizeStart,
     MinimizeEnd,

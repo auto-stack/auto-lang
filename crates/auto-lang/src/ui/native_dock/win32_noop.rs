@@ -88,3 +88,8 @@ pub fn is_minimized(_target: NativeHwnd) -> bool {
 pub fn is_maximized(_target: NativeHwnd) -> bool {
     false
 }
+
+/// 与 `win32.rs` 同名光标采样（no-op 平台无指针读数）。
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    None
+}

@@ -14,7 +14,7 @@ use std::sync::mpsc;
 use std::sync::RwLock;
 use windows::core::HRESULT;
 use windows::Win32::Foundation::{
-    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, RECT, WPARAM,
+    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -29,12 +29,12 @@ use windows::Win32::UI::HiDpi::{
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
     EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND,
-    GetMessageW, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-    IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG, PostMessageW, PostThreadMessageW,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE,
-    SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WS_CAPTION, WS_THICKFRAME,
+    EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
+    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
+    PostMessageW, PostThreadMessageW, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WM_CLOSE, WM_QUIT, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
 };
 
 /// Win32 dock 操作错误（UIPI 拒绝单独分类，供 shell 层提示）。
@@ -454,6 +454,7 @@ pub fn covers_rect(target: NativeHwnd, reference: NativeHwnd) -> bool {
 /// Win32 `EVENT_*` 常量 → 事件种类（纯函数；单测锁定映射表）。
 pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
     match event {
+        EVENT_SYSTEM_MOVESIZESTART => Some(NativeSlotEventKind::MoveSizeStart),
         EVENT_SYSTEM_MOVESIZEEND => Some(NativeSlotEventKind::MoveSizeEnd),
         EVENT_SYSTEM_MINIMIZESTART => Some(NativeSlotEventKind::MinimizeStart),
         EVENT_SYSTEM_MINIMIZEEND => Some(NativeSlotEventKind::MinimizeEnd),
@@ -461,6 +462,13 @@ pub fn map_win_event(event: u32) -> Option<NativeSlotEventKind> {
         EVENT_OBJECT_DESTROY => Some(NativeSlotEventKind::Destroy),
         _ => None,
     }
+}
+
+/// 读回当前指针屏幕物理坐标（DragWatch 光标采样；Plan 486）。
+/// 返回 `(x, y)`；失败（罕见）→ None，调用方沿用上次采样。
+pub fn cursor_pos() -> Option<(i32, i32)> {
+    let mut pt = POINT::default();
+    unsafe { GetCursorPos(&mut pt) }.ok().map(|_| (pt.x, pt.y))
 }
 
 struct HookShared {
@@ -501,11 +509,11 @@ impl Drop for NativeSlotEventHook {
     }
 }
 
-/// 启动 WinEventHook 钩子线程：订阅 MoveSizeEnd / MinimizeStart / MinimizeEnd /
-/// LocationChange / Destroy 五事件（OUTOFCONTEXT；`skip_own_process` 时叠加
-/// SKIPOWNPROCESS——生产为 true，测试对本进程 scratch 窗口收事件为 false）。
-/// 返回 `(句柄, 事件接收端)`。同进程同时仅允许一个实例，重复启动报
-/// `DockError::Api`。
+/// 启动 WinEventHook 钩子线程：订阅 MoveSizeStart / MoveSizeEnd /
+/// MinimizeStart / MinimizeEnd / LocationChange / Destroy 六事件（OUTOFCONTEXT；
+/// `skip_own_process` 时叠加 SKIPOWNPROCESS——生产为 true，测试对本进程 scratch
+/// 窗口收事件为 false）。返回 `(句柄, 事件接收端)`。同进程同时仅允许一个实例，
+/// 重复启动报 `DockError::Api`。
 pub fn spawn_event_hook(
     skip_own_process: bool,
 ) -> Result<(NativeSlotEventHook, mpsc::Receiver<NativeSlotEvent>), DockError> {
@@ -530,6 +538,7 @@ pub fn spawn_event_hook(
                 };
             let mut hooks = Vec::new();
             for e in [
+                EVENT_SYSTEM_MOVESIZESTART,
                 EVENT_SYSTEM_MOVESIZEEND,
                 EVENT_SYSTEM_MINIMIZESTART,
                 EVENT_SYSTEM_MINIMIZEEND,
@@ -951,6 +960,10 @@ mod native_dock_events {
     #[test]
     fn map_win_event_covers_matrix() {
         assert_eq!(
+            map_win_event(EVENT_SYSTEM_MOVESIZESTART),
+            Some(NativeSlotEventKind::MoveSizeStart)
+        );
+        assert_eq!(
             map_win_event(EVENT_SYSTEM_MOVESIZEEND),
             Some(NativeSlotEventKind::MoveSizeEnd)
         );
@@ -971,6 +984,13 @@ mod native_dock_events {
             Some(NativeSlotEventKind::Destroy)
         );
         assert_eq!(map_win_event(0x1234), None);
+    }
+
+    #[test]
+    fn cursor_pos_samples_physical_screen_point() {
+        // 无 UIPI 门槛的系统级读数；只要返回 Some 即证明坐标系可用
+        let pt = cursor_pos();
+        assert!(pt.is_some(), "GetCursorPos 不应失败");
     }
 
     #[test]

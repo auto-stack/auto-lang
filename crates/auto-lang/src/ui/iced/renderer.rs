@@ -7551,6 +7551,9 @@ fn handle_native_slot_event(
             }
         }
         NativeSlotEventKind::MinimizeStart | NativeSlotEventKind::MinimizeEnd => {}
+        // 已 docked 窗口的拖动起点：C4 拖走判定在 MoveSizeEnd 读回几何时做；
+        // START 只驱动未 docked 窗口的 DragWatch 手势会话（486，session 侧接线）。
+        NativeSlotEventKind::MoveSizeStart => {}
     }
 }
 
