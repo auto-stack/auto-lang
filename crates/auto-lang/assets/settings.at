@@ -1,0 +1,183 @@
+// settings overlay pack（特权 .at App —— 宿主进程内编译装载，不进
+// examples/ui；Plan 487 M4，464/478/479 overlay 槽同型的第四枚）。
+//
+// 形态：dock 齿轮召唤的系统设置面板——左列分区导航（Dock/通知/关于）+
+// 右列内容卡（463 shell pack 皮肤）。v1 四分区见计划 §详细设计：
+//   Dock：位置/开关热生效（desktop.set_dock_position/enabled 驱动动词，
+//   I7：几何是驱动事实，settings 只是 UI）+ pinned 编辑（storage 键
+//   shell.dock.pinned 直写，boot 生效）。
+//   通知：持久化开关（shell.notes.enabled storage 直写，479 持久化链门控）。
+//   关于：版本/宿主信息（投影注入常量，无新协议字段）。
+//
+// 接缝（协议 v1.3，schema/projection-protocol-v1.md）：
+//   出：`__desktop_cmd`（`open_settings\tsettings` 召唤 + 复用二态翻转
+//       语义——待澄清④按 switcher/launcher 先例定翻转；本面板不另发
+//       close 动词，Esc/齿轮再点在宿主臂翻转 visible）
+//       `set_dock_position\t<bottom|top>` / `set_dock_enabled\t<0|1>`
+//       （驱动动词——热改 dock_edges + relayout + storage 写回全在宿主臂）
+//   入：召唤时快照注入——`cfg_dock_position`/`cfg_dock_enabled`（当前
+//       驱动事实投影）、`pinned_ids` 平行字符串列表（B12 规避，宿主注入
+//       后显式 RebuildPinned 重建 handler 自有 rows）、`cfg_notes_enabled`
+//       （479 门控键快照）、`about_host`/`about_version`（boot 投影常量）、
+//       `hosted`/`visible`。
+// 快照语义：召唤时点定序；面板打开期间宿主配置变更不重注（设置面板是
+// 配置的编辑面，不是配置的监视面）。
+// 消费者唯一：宿主 renderer 的 toggle_settings / 设置面板键盘订阅。
+widget Settings {
+    msg { Init, RebuildPinned, Escape, Nav(str) }
+
+    model {
+        // ---- 接缝状态（desktop 宿主注入）----
+        var visible str = "0"       // overlay 门控：宿主召唤置 "1"
+        var hosted str = "0"        // 宿主挂载时写 "1"
+        var __desktop_cmd str = ""  // 上行命令总线（set_dock_* 记录）
+
+        // ---- 分区导航（v1 三分区）----
+        var section str = "dock"    // dock | notes | about
+
+        // ---- Dock 分区快照（宿主注入当前驱动事实）----
+        var cfg_dock_position str = "bottom"
+        var cfg_dock_enabled str = "1"
+
+        // ---- pinned 表（宿主注入平行字符串列表 + handler 自建 rows）----
+        var pinned_ids = []
+        var pinned_rows = []        // {i,id}
+        var pinned_n int = 0        // 行数（view 条件用，替代模板 .len()）
+        var pinned_draft str = ""   // 新增项输入框草稿
+
+        // ---- 通知分区快照 ----
+        var cfg_notes_enabled str = "1"
+
+        // ---- 关于分区（boot 投影注入常量）----
+        var about_host str = ""
+        var about_version str = ""
+    }
+
+    view {
+        if .visible == "1" {
+            // ---- 打开态：全屏暗底 + 居中大卡（switcher palette 同级视觉）----
+            col {
+                style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                spacer { style: "h-32 w-full" }
+                col {
+                    style: "w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
+
+                    // 标题行
+                    row {
+                        style: "flex items-center gap-2 px-4 py-3 border-b border-gray-700"
+                        text "设置" { style: "text-gray-300 text-sm font-semibold" }
+                        text "Esc 关闭" { style: "ml-auto text-xs text-gray-500" }
+                    }
+
+                    // 主体：左列分区导航 + 右列内容卡
+                    row {
+                        style: "w-full"
+
+                        // 左列导航（三分区）
+                        col {
+                            style: "w-36 py-2 border-r border-gray-700"
+                            if .section == "dock" {
+                                button "Dock" {
+                                    style: "w-full h-9 px-0 text-sm bg-gray-700 text-white"
+                                }
+                            } else {
+                                button "Dock" {
+                                    onclick: .Nav("dock")
+                                    style: "w-full h-9 px-0 text-sm text-gray-400"
+                                }
+                            }
+                            if .section == "notes" {
+                                button "通知" {
+                                    style: "w-full h-9 px-0 text-sm bg-gray-700 text-white"
+                                }
+                            } else {
+                                button "通知" {
+                                    onclick: .Nav("notes")
+                                    style: "w-full h-9 px-0 text-sm text-gray-400"
+                                }
+                            }
+                            if .section == "about" {
+                                button "关于" {
+                                    style: "w-full h-9 px-0 text-sm bg-gray-700 text-white"
+                                }
+                            } else {
+                                button "关于" {
+                                    onclick: .Nav("about")
+                                    style: "w-full h-9 px-0 text-sm text-gray-400"
+                                }
+                            }
+                        }
+
+                        // 右列内容卡（分区占位——控件接线在执行步骤 5/6）
+                        col {
+                            style: "flex-1 p-4"
+                            if .section == "dock" {
+                                text "Dock 设置" { style: "text-gray-300 text-sm" }
+                            } else {
+                                if .section == "notes" {
+                                    text "通知设置" { style: "text-gray-300 text-sm" }
+                                } else {
+                                    text "关于" { style: "text-gray-300 text-sm" }
+                                }
+                            }
+                        }
+                    }
+                }
+                spacer { style: "h-32 w-full" }
+            }
+        } else {
+            // ---- 隐藏态：透明空层（不挡桌面点击；装配层仅 visible 时推层）----
+            col {
+                style: "w-full h-full"
+            }
+        }
+    }
+
+    bind {
+        "Escape" -> .Escape
+    }
+
+    on {
+        .Init -> {
+            .visible = "0"
+            .section = "dock"
+            .RebuildPinned()
+        }
+
+        // 宿主召唤时显式调用（宿主写状态不触发 handler）：平行列表 →
+        // handler 自有 rows（此后增删下标读安全）。
+        .RebuildPinned -> {
+            .pinned_rows = []
+            .pinned_n = 0
+            var idx int = 0
+            while idx < .pinned_ids.len() {
+                var row = { i: idx, id: .pinned_ids[idx] }
+                .pinned_rows.push(row)
+                idx = idx + 1
+            }
+            .pinned_n = .pinned_rows.len()
+        }
+
+        // 分区导航（dock/notes/about；未知值忽略）。
+        .Nav(s) -> {
+            if s == "dock" {
+                .section = "dock"
+            } else {
+                if s == "notes" {
+                    .section = "notes"
+                } else {
+                    if s == "about" {
+                        .section = "about"
+                    }
+                }
+            }
+        }
+
+        // Esc 关闭：自隐（宿主二态翻转语义的另一半——再召唤由宿主臂翻转）。
+        .Escape -> {
+            if .visible == "1" {
+                .visible = "0"
+            }
+        }
+    }
+}

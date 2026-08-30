@@ -16942,6 +16942,70 @@ mod tests {
         }
     }
 
+    /// Plan 487 M4 步骤1：资产 settings.at（widget Settings）装载冒烟——编译 +
+    /// Init 默认（visible=0/section=dock）+ Nav 分区切换 + pinned 平行列表
+    /// 注入 → RebuildPinned 重建 rows（B12 规避形态）。控件→动词接线在
+    /// 执行步骤 5/6 扩测。
+    #[test]
+    fn settings_at_builds_and_nav_smoke() {
+        let comp = crate::ui::shell::build_settings_component().expect("settings.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        {
+            let app = ds.apps.get(&id).unwrap();
+            match app.component.read_state("visible") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0"),
+                other => panic!("visible 读回异常: {other:?}"),
+            }
+            match app.component.read_state("section") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "dock"),
+                other => panic!("section 读回异常: {other:?}"),
+            }
+        }
+        // 分区导航：dock → notes → about（未知值忽略）。
+        let app = ds.apps.get_mut(&id).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("notes")])
+            .expect("Nav handler");
+        let app = ds.apps.get(&id).unwrap();
+        match app.component.read_state("section") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "notes"),
+            other => panic!("Nav 后 section 异常: {other:?}"),
+        }
+        // pinned 平行列表注入 + RebuildPinned 重建。
+        let app = ds.apps.get_mut(&id).unwrap();
+        let _ = app.component.write_state_vec(
+            "pinned_ids",
+            vec![
+                auto_val::Value::str("011-calculator"),
+                auto_val::Value::str("013-todo"),
+            ],
+        );
+        app.component
+            .bridge_mut()
+            .call_handler("RebuildPinned", &[])
+            .expect("RebuildPinned handler");
+        let app = ds.apps.get(&id).unwrap();
+        match app.component.read_state("pinned_n") {
+            Ok(auto_val::Value::Int(n)) => assert_eq!(n, 2, "pinned rows 重建"),
+            other => panic!("pinned_n 读回异常: {other:?}"),
+        }
+        // Esc 自隐（宿主写 visible 不触发 handler——先置 1 再 Escape）。
+        let app = ds.apps.get_mut(&id).unwrap();
+        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        let app = ds.apps.get(&id).unwrap();
+        match app.component.read_state("visible") {
+            Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "Esc 后自隐"),
+            other => panic!("Esc 后 visible 异常: {other:?}"),
+        }
+    }
+
     /// Plan 464 T4：summon_launcher 无头单测——懒挂载 + 下行注入（真注册表
     /// 覆盖 mock / hosted / visible 置位 / ApplyFilter 同步重算）。键流与
     /// 启动后隐匿半边走 ui_desktop 实机（T4 验收 §5.1）。
