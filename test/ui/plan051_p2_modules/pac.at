@@ -1,0 +1,4 @@
+name: "plan051p2m"
+version: "1.0.0"
+scene: "ui"
+render: "vm"

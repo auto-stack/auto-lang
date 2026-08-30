@@ -51,6 +51,19 @@ fn flatten(prefix: &str, value: &serde_json::Value, out: &mut HashMap<String, St
 }
 
 /// 查一个 key。空表/未命中返回 None（调用方决定回落形态）。
+/// PLAN-051 P2-②b: 模板参数插值——`{k}` 占位按 params 逐名替换；未提供
+/// 的参数原样保留（回落可见性优于静默清除）。
+pub fn substitute_params(template: &str, params: &[(String, String)]) -> String {
+    let mut out = template.to_string();
+    for (k, v) in params {
+        let placeholder = format!("{{{}}}", k);
+        if out.contains(&placeholder) {
+            out = out.replace(&placeholder, v);
+        }
+    }
+    out
+}
+
 pub fn lookup(key: &str) -> Option<String> {
     TABLE
         .read()

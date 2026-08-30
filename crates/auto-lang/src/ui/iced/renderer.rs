@@ -1843,10 +1843,31 @@ fn apply_container_style<M: Clone + Debug + 'static>(
                 cont = cont.width(iced_length(ws));
             } else if let Some(w) = width {
                 if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+            } else if let Some(mw) = is.min_width {
+                // PLAN-051 P2-④: min-w 消费（语义近似=Fixed 下限——内容更宽
+                // 时 iced 不再撑大,自滚/截断场景正确;登记）。沿 Column 臂
+                // 1524 同款：min-h-screen 哨兵(9999.0) → Fill。
+                cont = cont.width(if mw >= 9999.0 {
+                    iced::Length::Fill
+                } else {
+                    iced::Length::Fixed(mw)
+                });
             }
             match is.height {
                 Some(ref h) => { cont = cont.height(iced_length(h)); }
-                None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+                None => {
+                    if let Some(h) = height {
+                        if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); }
+                    } else if let Some(mh) = is.min_height {
+                        // PLAN-051 P2-④: min-h 消费——musk input-compose 的
+                        // min-h-20 此前被丢 → 输入框容器高度塌 0。
+                        cont = cont.height(if mh >= 9999.0 {
+                            iced::Length::Fill
+                        } else {
+                            iced::Length::Fixed(mh)
+                        });
+                    }
+                }
             }
             if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
             if let Some(mh) = is.max_height { cont = cont.max_height(mh); }

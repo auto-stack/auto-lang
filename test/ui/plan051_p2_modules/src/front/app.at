@@ -1,0 +1,11 @@
+use icon_host: IconHost
+
+widget App {
+    msg { None }
+    view {
+        col {
+            IconHost
+        }
+    }
+    on { .None -> { } }
+}

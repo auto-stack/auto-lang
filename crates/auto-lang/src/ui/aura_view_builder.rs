@@ -6073,7 +6073,16 @@ let tabs_inner = View::Row {
             // 取文案（未命中回落 key），此前无 Call 臂 → 恒空串。
             Expr::Call(call) => {
                 if let Some(key) = call_expr_t_key(call) {
-                    return crate::ui::i18n_lookup::lookup(&key).unwrap_or(key);
+                    // PLAN-051 P2-②b: 第二实参记录字面量 → {k} 插值。
+                    let params = {
+                        let resolver = |e: &crate::ast::Expr| {
+                            Some(self.resolve_expr_to_string_with(e, bindings))
+                        };
+                        t_call_params(&resolver, call)
+                    };
+                    let text =
+                        crate::ui::i18n_lookup::lookup(&key).unwrap_or(key);
+                    return crate::ui::i18n_lookup::substitute_params(&text, &params);
                 }
                 match self.resolve_expr_to_value(expr, bindings) {
                     Some(v) => value_to_display_string(&v),
@@ -6304,8 +6313,18 @@ let tabs_inner = View::Row {
             Expr::Call(call) => {
                 // PLAN-050 T9 (C7): t("k")/i18n.t("k") prop 位最小查表。
                 if let Some(key) = call_expr_t_key(call) {
+                    // PLAN-051 P2-②b: 第二实参记录字面量 → {k} 插值。
+                    let params = {
+                        let resolver = |e: &crate::ast::Expr| {
+                            Some(self.resolve_expr_to_string_with(e, bindings))
+                        };
+                        t_call_params(&resolver, call)
+                    };
+                    let text =
+                        crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key);
                     return Some(Value::Str(
-                        crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key).into(),
+                        crate::ui::i18n_lookup::substitute_params(&text, &params)
+                            .into(),
                     ));
                 }
                 // PLAN-051 C3: 裸 fn 名调用——computed 体内的 use.web helper
@@ -7245,6 +7264,26 @@ fn resolve_i18n_template(template: &str) -> String {
         }
     }
     out.push_str(rest);
+    out
+}
+
+/// PLAN-051 P2-②b: t("k", { param: expr }) 的第二实参提取——记录字面量
+/// （Expr::Object）逐字段 bindings 感知求值为字符串对。非记录/无第二参
+/// 返回空（模板 {k} 原样保留）。
+fn t_call_params(
+    build: &dyn Fn(&crate::ast::Expr) -> Option<String>,
+    call: &crate::ast::Call,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if let Some(crate::ast::Arg::Pos(crate::ast::Expr::Object(pairs))) =
+        call.args.args.get(1)
+    {
+        for pair in pairs {
+            if let Some(v) = build(&pair.value) {
+                out.push((pair.key.to_astr().to_string(), v));
+            }
+        }
+    }
     out
 }
 

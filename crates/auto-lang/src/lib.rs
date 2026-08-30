@@ -3761,8 +3761,11 @@ fn build_dynamic_component_inner(
     // PLAN-050 T7 (C5): use.web component 名单注册——builder 图标组件臂的
     // 生产数据源（import_stmts 不含 UseWeb,Plan 442 ext 流单独消费）。每次
     // 装载整体替换。all_child_decls 此处已定型（child 装载循环已收尾）。
-    // 来源两路:根 AST 顶层 use.web（musk app.at 形态）+ widget 内嵌
-    // ext_imports（decl 携带形态）。
+    // 来源三路:①根 AST 顶层 use.web（musk app.at 形态）②widget 内嵌
+    // ext_imports（decl 携带形态）③子模块文件顶层 use.web——PLAN-051 P2-①
+    // 补：chats_view.at/nav_item.at 的模块级声明此前两路均不覆盖 → 图标
+    // 组件 unknown fallback → Empty（icon 按钮空白现场）。沿 ext_stubs 的
+    // visited 重解析模式（文件小、装载一次）。
     {
         let mut names: Vec<String> = Vec::new();
         for stmt in &ast.stmts {
@@ -3778,6 +3781,25 @@ fn build_dynamic_component_inner(
             for ext in &decl.ext_imports {
                 if matches!(ext.kind, crate::ast::ui::ExtImportKind::Component) {
                     names.extend(ext.symbols.iter().map(|n| n.to_string()));
+                }
+            }
+        }
+        // ③ 子模块顶层 use.web（visited 为 collect_module_imports 的已装载集）。
+        for path in visited.iter() {
+            if path.extension().and_then(|e| e.to_str()) != Some("at") {
+                continue;
+            }
+            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+            let Ok(mod_ast) = parser.parse() else { continue };
+            for stmt in &mod_ast.stmts {
+                if let crate::ast::Stmt::UseWeb(entries) = stmt {
+                    for e in entries {
+                        if matches!(e.kind, crate::ast::ui::ExtImportKind::Component) {
+                            names.extend(e.symbols.iter().map(|n| n.to_string()));
+                        }
+                    }
                 }
             }
         }
@@ -6036,6 +6058,8 @@ mod plan442_ext_link_tests;
 mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;
+// Plan 051 Phase 2: 会话壳视觉五缺陷（子模块 use.web 注册表/容器 min-h/i18n 参数）。
+mod plan051_p2_tests;
 
 // Plan 442 A5: one-shot scheduler primitives regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
