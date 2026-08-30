@@ -1373,6 +1373,14 @@ fn plan414_content_alignment(
     )
 }
 
+/// PLAN-050 P2 #3: mt-auto（MarginTop(Auto)）在 iced 无 margin-auto 几何——
+/// Column 发射时在该子项前方插一根 Fill 高度占位条，恢复 web 侧"推到底部"
+/// 语义。判定独立成函数钉住契约：mt-auto 经 master 通用 mt-<size> 路径解析，
+/// 曾有专用变体被通用路径打死的前科，此函数是回归防线。
+fn plan050_mt_auto_spacer(classes: &[StyleClass]) -> bool {
+    classes.iter().any(|x| matches!(x, StyleClass::MarginTop(SizeValue::Auto)))
+}
+
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
@@ -3240,8 +3248,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             AbstractView::Column { children, spacing, padding, style, onclick } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
-                let els: Vec<iced::Element<'static, M>> =
-                    children.into_iter().map(axis_fix_col_child).map(|c| c.into_iced()).collect();
+                // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
+                // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
+                let mut els: Vec<iced::Element<'static, M>> = Vec::new();
+                for c in children {
+                    let mt_auto = extract_view_style(&c)
+                        .map_or(false, |s| plan050_mt_auto_spacer(&s.classes));
+                    if mt_auto {
+                        els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
+                    }
+                    els.push(axis_fix_col_child(c).into_iced());
+                }
                 // Plan 490 G4：同 Row。
                 wrap_layout_onclick(build_column(els, spacing, padding, style.as_ref(), None), onclick)
             }
@@ -17066,6 +17083,18 @@ mod tests {
         assert_eq!(ay, Vertical::Center);
     }
 
+    // ---- PLAN-050 P2 #3: mt-auto → Column 弹性占位判定 ----
+    #[test]
+    #[cfg(feature = "ui-iced")]
+    fn plan050_mt_auto_child_gets_fill_spacer() {
+        // 全链：mt-auto 经 master 通用 mt-<size> 解析为 MarginTop(SizeValue::Auto)，
+        // 命中占位判定；定值 mt-4 与空类不命中。
+        let auto = crate::ui::style::StyleClass::parse_single("mt-auto").unwrap();
+        assert!(plan050_mt_auto_spacer(&[auto]));
+        let fixed = crate::ui::style::StyleClass::parse_single("mt-4").unwrap();
+        assert!(!plan050_mt_auto_spacer(&[fixed]));
+        assert!(!plan050_mt_auto_spacer(&[]));
+    }
     // ---- Plan 472 T3：投影协议 v1（__wm_* formalize + __wm_workspaces + 指纹门控）----
 
     const T3_SHELL_AT: &str = r#"widget ShellProbe {

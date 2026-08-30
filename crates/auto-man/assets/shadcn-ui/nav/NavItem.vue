@@ -10,11 +10,11 @@ import { RouterLink } from "vue-router"
  * unit test asserts the two ends cannot drift).
  */
 const ITEM_BASE_MD =
-  "nav-item flex w-full items-center gap-2 rounded-md px-3 h-9 text-sm text-left text-foreground select-none cursor-pointer transition-colors"
+  "nav-item flex w-full items-center justify-start gap-2 rounded-md px-3 h-9 text-sm text-left text-foreground select-none cursor-pointer transition-colors"
 const ITEM_BASE_LG =
-  "nav-item flex w-full items-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors"
+  "nav-item flex w-full items-start justify-start gap-3 rounded-md px-3 py-[10px] text-sm text-left text-foreground select-none cursor-pointer transition-colors"
 const ITEM_BASE_SM =
-  "nav-item flex w-full items-center gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors"
+  "nav-item flex w-full items-center justify-start gap-2 rounded-md px-2 h-7 text-xs text-left text-foreground select-none cursor-pointer transition-colors"
 const ITEM_HOVER = "hover:bg-accent hover:text-accent-foreground"
 const ITEM_ACTIVE = "bg-primary/10 text-primary font-medium"
 const ITEM_DISABLED = "opacity-60 cursor-default"
