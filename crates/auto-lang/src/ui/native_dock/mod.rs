@@ -504,6 +504,45 @@ pub fn landing_slot(pointer: (i32, i32), free_cells: &[Rect]) -> Option<Rect> {
         .copied()
 }
 
+// ---------------------------------------------------------------------------
+// Plan 494：真洞（SetWindowRgn 排除）纯逻辑层
+// ---------------------------------------------------------------------------
+
+/// 洞矩形 → 宿主窗局部坐标（SetWindowRgn 域，窗口左上原点）。
+/// 屏幕物理 `holes` 裁剪到窗口 `win` 矩形内（越界部分被 GDI RGN_DIFF 自然
+/// 忽略，此处裁剪仅为省 Region 对象与可测性）；空矩形丢弃。
+pub fn window_local_holes(win: Rect, holes: &[Rect]) -> Vec<Rect> {
+    holes
+        .iter()
+        .filter_map(|h| {
+            let x0 = h.x.max(win.x);
+            let y0 = h.y.max(win.y);
+            let x1 = h.right().min(win.right());
+            let y1 = h.bottom().min(win.bottom());
+            (x1 > x0 && y1 > y0).then(|| Rect::new(x0 - win.x, y0 - win.y, x1 - x0, y1 - y0))
+        })
+        .collect()
+}
+
+/// T1 顺序模型：z 序插入语义的离线模型（与 win32 `SetWindowPos` 的
+/// `hWndInsertAfter` 语义一致——被定位窗口落在参照窗口**正下方**）。
+/// 模型 z 列表自上而下；返回操作后的列表。真实 win32 校验见
+/// `native_dock_geometry::z_order_true_hole_desktop_above_native`。
+pub fn z_model_insert_after(mut z: Vec<usize>, moving: usize, after: usize) -> Vec<usize> {
+    z.retain(|&w| w != moving);
+    let pos = z.iter().position(|&w| w == after).map_or(0, |p| p + 1);
+    z.insert(pos, moving);
+    z
+}
+
+/// T1 断言助手：`below` 是否紧贴 `above` 正下方（z 列表自上而下）。
+pub fn z_model_directly_below(z: &[usize], below: usize, above: usize) -> bool {
+    z.iter()
+        .position(|&w| w == above)
+        .and_then(|p| z.get(p + 1))
+        == Some(&below)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -844,5 +883,56 @@ mod tests {
         assert!(!r.contains_point(110, 10), "右边界开区间");
         assert!(!r.contains_point(10, 110), "下边界开区间");
         assert!(!r.contains_point(9, 10));
+    }
+
+    // ---- Plan 494 T1：真洞纯逻辑（Region 局部洞 / z 序模型）----
+
+    #[test]
+    fn window_local_holes_clips_and_translates() {
+        let win = Rect::new(100, 100, 800, 600);
+        let holes = [
+            Rect::new(300, 200, 200, 150),             // 窗内
+            Rect::new(50, 400, 100, 50),               // 左越界（x 裁到窗左）
+            Rect::new(850, 300, 200, 100),             // 右越界（右缘裁到 900）
+            Rect::new(900, 700, 50, 50),               // 完全越界（丢弃）
+            Rect::new(100, 100, 0, 10),                // 零宽（丢弃）
+        ];
+        let out = window_local_holes(win, &holes);
+        assert_eq!(
+            out,
+            vec![
+                Rect::new(200, 100, 200, 150),
+                Rect::new(0, 300, 50, 50),
+                Rect::new(750, 200, 50, 100),
+            ]
+        );
+    }
+
+    #[test]
+    fn z_model_flip_keeps_desktop_above_native() {
+        // 真洞不变量 = native 紧贴 desktop 正下方 ⟺ insert_after(native,
+        // desktop)（SetWindowPos(native, desktop)——与 473 的 sink_desktop_below
+        // 参数对调，单步即达；"双步舞"不必要）。杂窗 W 的层间位置不破坏不变量。
+        let z = vec![2, 1, 3]; // 自上而下：stray, native, desktop（任意初始态）
+        let z = z_model_insert_after(z, 1, 3); // insert_after(native, desktop)
+        assert!(
+            z_model_directly_below(&z, 1, 3),
+            "翻转后 native 应紧贴 desktop 正下方（真洞不变量）{z:?}"
+        );
+        // 二次幂等（relayout 重申不破坏）。
+        let z = z_model_insert_after(z, 1, 3);
+        assert!(z_model_directly_below(&z, 1, 3), "重申幂等 {z:?}");
+    }
+
+    #[test]
+    fn z_model_off_mode_keeps_native_above_desktop() {
+        // off 模式不变量（473）：native 紧贴 desktop 正上方 ⟺ desktop 直接
+        // 在 native 之下 ⟺ insert_after(desktop, native)（sink_desktop_below）。
+        let z = vec![1, 2, 3]; // native=1 顶, desktop=3
+        let z = z_model_insert_after(z, 3, 1); // insert_after(desktop, native)
+        assert!(
+            z_model_directly_below(&z, 3, 1),
+            "off 模式 desktop 应紧贴 native 正下方（native 在上）{z:?}"
+        );
     }
 }

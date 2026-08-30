@@ -507,3 +507,108 @@ fn fixture_drag_out_undock_restores_bounds_t4() {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+// ---- Plan 494 T3：真洞穿透（Region 洞排除 + z 序翻转）跨进程铁证 ----
+
+/// 等待 fixture 下一条 click 日志（deadline 内）；返回 client 坐标。
+fn wait_click_line(lines: &Receiver<String>, deadline: Instant) -> Option<(i32, i32)> {
+    while Instant::now() < deadline {
+        match lines.try_recv() {
+            Ok(line) if line.contains("\"evt\":\"click\"") => {
+                let px = line.find("\"x\":")? + 4;
+                let py = line.find("\"y\":")? + 4;
+                let x: i32 = line[px..].split(',').next()?.trim().parse().ok()?;
+                let y: i32 = line[py..].split('}').next()?.trim().parse().ok()?;
+                return Some((x, y));
+            }
+            Ok(_) => continue,
+            Err(_) => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+    }
+    None
+}
+
+/// T3 铁证：hole 模式装配（桌面替身窗覆盖 fixture + raise_desktop_above +
+/// apply_hole_regions 洞=fixture 客户区中心）后：
+/// ① 洞心 SendInput 点击 → fixture（他进程）收到该坐标 click；
+/// ② 洞外点击（替身覆盖区）→ fixture 无新 click。
+#[test]
+fn fixture_click_passes_through_hole_region_t3() {
+    ensure_dpi_aware();
+    let fixture = spawn_fixture(&["--title", "e2e-hole-through"]);
+    // 摆位候选（终端/IDE 遮挡退避，spike② 同型）。
+    let mut base = Rect::new(400, 300, 640, 440);
+    let mut settled = false;
+    for cand in [(400, 300), (900, 200), (1500, 500), (200, 900), (1400, 1000)] {
+        base = Rect::new(cand.0, cand.1, 640, 440);
+        let _ = ndw::set_bounds(fixture.hwnd, base);
+        let _ = ndw::drag_sim::raise_top(fixture.hwnd);
+        std::thread::sleep(Duration::from_millis(150));
+        if ndw::drag_sim::window_from_point(base.x + base.w / 2, base.y + base.h / 2)
+            == fixture.hwnd.0
+        {
+            settled = true;
+            break;
+        }
+    }
+    assert!(settled, "fixture 未获无遮挡摆位");
+
+    // 桌面替身：本进程 scratch 窗完整覆盖 fixture；真洞装配（z 翻转 +
+    // Region 洞 = fixture 客户区中心 160x160）。
+    use auto_lang::ui::native_dock::win32::test_support;
+    let stand_in = test_support::spawn("e2e-hole-standin", base);
+    test_support::raise_topmost(stand_in.0);
+    ndw::raise_desktop_above(stand_in.0, fixture.hwnd).expect("z flip");
+    std::thread::sleep(Duration::from_millis(150));
+    let hole = Rect::new(
+        base.x + base.w / 2 - 80,
+        base.y + base.h / 2 - 80,
+        160,
+        160,
+    );
+    ndw::apply_hole_regions(stand_in.0, base, &[hole]).expect("carve region");
+    test_support::pump_for(stand_in.0, 200);
+    // 装配自检：洞心命中直达 fixture（他进程——穿透命中铁证的前置）。
+    assert_eq!(
+        ndw::drag_sim::window_from_point(hole.x + 80, hole.y + 80),
+        fixture.hwnd.0,
+        "洞心 WindowFromPoint 应直达 fixture（Region 排除）"
+    );
+
+    // 预排空 fixture 日志（摆位期噪声）。
+    while fixture.lines.try_recv().is_ok() {}
+    // ① 洞心 SendInput 点击 → fixture 收到（坐标按客户区原点换算比对）。
+    let hole_pt = (hole.x + 80, hole.y + 80);
+    assert!(
+        ndw::drag_sim::click_at(hole_pt.0, hole_pt.1),
+        "SendInput 洞心点击链失败"
+    );
+    test_support::pump_for(stand_in.0, 100);
+    let clicked = wait_click_line(&fixture.lines, Instant::now() + Duration::from_secs(2));
+    // 期望 = 洞心的客户区坐标（真实客户区原点换算，容差 ±6 吸收 DPI 取整）。
+    let (ox, oy) = ndw::client_origin(fixture.hwnd).expect("fixture client origin");
+    let expect = (hole_pt.0 - ox, hole_pt.1 - oy);
+    assert!(
+        clicked.map_or(false, |(x, y)| {
+            (x - expect.0).abs() <= 6 && (y - expect.1).abs() <= 6
+        }),
+        "T3: 洞心点击应穿透到 fixture（got {clicked:?} expect≈{expect:?} origin=({ox},{oy})）"
+    );
+    // ② 洞外点击（替身覆盖、洞矩形外、fixture 窗内区域）→ fixture 无新日志。
+    let outside = (base.x + 30, base.y + 30);
+    assert!(
+        ndw::drag_sim::click_at(outside.0, outside.1),
+        "SendInput 洞外点击链失败"
+    );
+    test_support::pump_for(stand_in.0, 100);
+    let leaked = wait_click_line(&fixture.lines, Instant::now() + Duration::from_millis(900));
+    assert!(
+        leaked.is_none(),
+        "T3: 洞外点击不应穿透到 fixture（got {leaked:?}）"
+    );
+    // 清场：Region 复位（stand_in Drop 时 DestroyWindow 前归还全窗形状）。
+    let _ = ndw::apply_hole_regions(stand_in.0, base, &[]);
+    test_support::pump_for(stand_in.0, 100);
+}
