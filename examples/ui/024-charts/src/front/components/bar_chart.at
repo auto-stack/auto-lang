@@ -20,7 +20,7 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
     model {
         segs List = []
         segsS List = []
-        labels str = ""
+        xlabels str = ""
         ticks List = []
         ticksS List = []
         gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
@@ -222,7 +222,7 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 }
                 i2 = i2 + 1
             }
-            .labels = outLabels
+            .xlabels = outLabels
 
             // ---- 命中竖带 + tooltip 锚点/内容(双域 tipY) ----
             var outBands List = []
@@ -348,7 +348,7 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                     }
                     if .axis == "auto" {
                         row (style: "justify-between px-12 pt-1") {
-                            text .labels { style: "text-xs text-muted-foreground" }
+                            text .xlabels { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }

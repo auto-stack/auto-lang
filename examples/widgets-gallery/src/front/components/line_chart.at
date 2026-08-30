@@ -23,7 +23,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
     model {
         segs List = []
         segsM List = []
-        labels str = ""
+        xlabels str = ""
         ticks List = []
         gridPath str = "M40 200 H550 M40 140 H550 M40 80 H550 M40 20 H550"
         legendItems List = []
@@ -224,7 +224,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 }
                 i2 = i2 + 1
             }
-            .labels = outLabels
+            .xlabels = outLabels
 
             // ---- 命中竖带 + tooltip 锚点/内容(逐索引预计算) ----
             var nf3 float = n
@@ -326,7 +326,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     }
                     if .axis == "auto" {
                         row (style: "justify-between px-10 pt-1") {
-                            text .labels { style: "text-xs text-muted-foreground" }
+                            text .xlabels { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }

@@ -4119,6 +4119,64 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         }
     }
 
+    // Phase 1b: Scan components/ package dir (Plan 435 P4 / 437) — official
+    // package component .at files compile into src/components/{WidgetName}.vue.
+    // App.vue imports them by widget name (e.g. @/components/AreaChart.vue);
+    // previously only `auto gen` (VueProject::generate) wrote these — the
+    // `auto run` incremental path silently skipped the dir, leaving the dev
+    // server with unresolved imports (Plan 484 charts-gallery 现场暴露).
+    let components_pkg_dir = front_dir.join("components");
+    if components_pkg_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&components_pkg_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.extension().map(|e| e == "at").unwrap_or(false) {
+                    continue;
+                }
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if file_name == "package.at" {
+                    continue; // 包清单,非组件
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let hash = hash_string(&content);
+                    let source_changed = cache.is_dirty(&path, hash);
+                    match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                        Ok((vue_code, widgets, stores)) => {
+                            store_files.extend(stores);
+                            let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
+                                UIArtifact {
+                                    source_path: path.clone(),
+                                    widget_name: w.clone(),
+                                    output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                    source_hash: hash,
+                                    content_hash: hash_string(&vue_code),
+                                    backend: UIBackend::Vue,
+                                }
+                            }).collect();
+                            let any_missing = artifacts.iter().any(|a| {
+                                !output_dir.join(&a.output_path).exists()
+                            });
+                            if source_changed || any_missing {
+                                if source_changed {
+                                    println!("  {} (changed)", file_name.bright_yellow());
+                                }
+                                for artifact in &artifacts {
+                                    let out = output_dir.join(&artifact.output_path);
+                                    fs::create_dir_all(out.parent().unwrap_or(&output_dir)).ok();
+                                    fs::write(&out, &vue_code).map_err(|e| {
+                                        format!("Failed to write {}: {}", out.display(), e)
+                                    })?;
+                                }
+                            }
+                            cache.update(path.clone(), hash, artifacts);
+                        }
+                        Err(e) => handle_compile_error(&path, &e)?,
+                    }
+                }
+            }
+        }
+    }
+
     // Phase 2: Check app.at for changes (with sub-widget names known)
     let app_at = front_dir.join("app.at");
     let app_output_path = output_dir.join("src").join("App.vue");
