@@ -1,15 +1,18 @@
 ---
 plan_id: PLAN-486
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: native-dock-trigger-surface
 author: [zhaopuming]
 created_at: 2026-08-30
 updated_at: 2026-08-30
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "schema/projection-protocol-v1.md: v1.2→v1.3（__wm_wins 字段表增 native 条目/native 空串统一/指纹窗段扩 N{slot}/动词词表增 focus_native+close_native/变更记录+金样清单）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 486 触发面段待回写（DragWatch 手势会话+高亮 overlay+任务栏 native 条目+P473 债务清偿）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——native dock 触发面（手势+任务栏）落地，Phase 1.5 收口"
 
 affects: [auto-lang/ui]
 current_step: 9
@@ -254,7 +257,39 @@ shell.at 管线。零新三方依赖。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**2026-08-30（/auto-plan:review，zhaopuming 会话内 ZCode 执行）**
+
+**全量门禁**：`cargo tf` 3282/3282 绿（未触 VM/transpiler/book，tv/tt/tb 免）。
+
+**逐项验收**：
+
+1. **PASS（带注）**——实机以 Notepad 执行完整链（真拖→落位→收编〔chrome 剥
+   离+槽位 chrome〕→任务栏 native 条目〔title 按钮+×〕→× 关闭→DESTROY 回收
+   +"槽位已回收" toast，截图留痕于会话）。Explorer 两次尝试因用户桌面遮挡与
+   用户自行关闭改道（用户会话内知情）；"点击聚焦"半步=任务栏 title 按钮实机
+   点击（focus_native 执行臂真实运行无异常；焦点视觉差分未单独截图，动词链
+   T2/T3 双层覆盖）。
+2. **PASS**——T4 `fixture_drag_out_undock_restores_bounds_t4` 绿（8/8 套件内）；
+   T5 实机 Chrome 自移触发 C4 自动恢复+"已恢复…"toast（G2 实机附带实证）。
+3. **PASS**——KNOWN-DEBT P473 行逐项回写（B1/B5/B8 ✅、D1 ◐、B6/C1/B9 仍待
+   用户，理由注记齐全）。
+4. **PASS**——复审重跑：scoped（native_dock/session/projection/native_drag/
+   shell_at）99/99；E2E 8/8；schema 三件套含于 cargo tf 全绿；协议文档 v1.3
+   完整（字段表/指纹/动词/变更记录/金样清单五处齐）。
+5. **PASS（语义注）**——ui feature 档 762/763，唯一红=i18n 环境红（**master
+   同命令同红，非本期引入**，已核）；"零警告"按"本期触碰文件零新增"核验
+   通过（touched-file 警告 grep 空；仓库存量 160+ 为 master 既有）。
+
+**遗漏/延后/workaround 扫描**：diff 内零 TODO/FIXME/hack 标记；延后项均为
+计划内明示（图标占位/窗口选择器默认不纳入/B6·C1·B9 用户侧）非静默；
+workaround 类（drag_sim 四要素、SC_MOVE 注入退路、scratch 后台线程泵消息）
+均为待澄清①的执行期定案并已文档化。
+
+**新登记债务（2 条，已入 KNOWN-DEBT）**：①事件泵吞吐（16ms 单事件/拍，
+系统噪声下 dock 落位秒级延迟，drain-while-empty 修复方向）🟡；②i18n
+feature 档环境红（非本期引入）🟢。
+
+**裁定：全部验收通过，无阻断项 → reviewed。**
 
 ## 待澄清事项
 
