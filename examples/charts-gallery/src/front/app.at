@@ -37,7 +37,6 @@ widget App {
     }
 
     view {
-        scroll (style: "h-screen") {
         col (style: "min-h-screen w-full bg-slate-50 p-6") {
         col (style: "max-w-5xl mx-auto w-full gap-8") {
             col (style: "gap-1") {
@@ -119,7 +118,6 @@ widget App {
                 }
             }
         }
-    }
     }
     }
 }
