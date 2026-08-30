@@ -3292,7 +3292,7 @@ mod tests {
 
     #[test]
     fn native_slot_joins_grid_layout_and_emits_sync() {
-        use crate::ui::native_dock::{NativeSlotId, Rect, Size};
+        use crate::ui::native_dock::{Rect, Size};
         let mut ds = desktop_session_with_host();
         let id = {
             let host = ds.host.as_mut().unwrap();

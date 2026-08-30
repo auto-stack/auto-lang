@@ -208,6 +208,9 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_UI_Shell",
     "Win32_System_Memory",
     "Win32_Security",
+    # Plan 486 T4：合成拖拽 SendInput（test-native-dock 档独占使用；
+    # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [dev-dependencies]
