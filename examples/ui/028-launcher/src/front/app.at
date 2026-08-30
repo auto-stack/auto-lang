@@ -216,7 +216,7 @@ widget App {
                 if .hosted == "0" {
                     row {
                         style: "w-full h-full flex flex-col items-center justify-center bg-gray-100 gap-4"
-                        button "🔍 Open launcher (Ctrl+Space)" {
+                        button "🔍 Open launcher (Ctrl+Space · IME 机 Ctrl+Alt+Space)" {
                             onclick: .Open
                             style: "px-4 py-2 bg-gray-900 text-white rounded-lg shadow"
                         }
