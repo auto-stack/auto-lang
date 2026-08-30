@@ -1210,6 +1210,10 @@ macro_rules! for_each_bigvm_native {
             // Plan 346: Redirect
             ("auto.http.response.redirect", 2219, Void),
             ("http.response.redirect", 2219, Void),
+            // plan-022 (auto-down D4): byte-faithful client body accessor —
+            // binary (zip) responses must round-trip without UTF-8 loss.
+            ("auto.http.response.body_bytes", 2225, Void),
+            ("auto.http.response.body_to_file", 2226, Void),
             // Plan 352: Session management
             ("auto.session.create", 2284, Void),
             ("session.create", 2284, Void),
@@ -2038,6 +2042,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.response_text", 2213),
     ("auto.http.response_html", 2214),
     ("auto.http.response_bytes", 2215),
+    ("auto.http.response.body_bytes", 2225),
+    ("auto.http.response.body_to_file", 2226),
     ("auto.http.response_redirect", 3108),
     ("auto.http.rate_limit", 3109),
     ("http.rate_limit", 3109),

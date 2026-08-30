@@ -2425,7 +2425,7 @@ fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError>
 /// Helper: create a new array from Vec<i32> elements, return array ID.
 /// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same storage
 /// as CREATE_ARRAY) so results work with ARRAY_LEN etc.
-fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
+pub(crate) fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
     let values: Vec<auto_val::Value> = elems.into_iter()
         .map(|e| auto_val::Value::Int(e))
         .collect();

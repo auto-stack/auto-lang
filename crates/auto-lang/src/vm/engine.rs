@@ -5254,7 +5254,32 @@ impl AutoVM {
                                 }
                             }
                         } else {
-                            task.ram.push_i32(0);
+                            // plan-022 (auto-down): `.length` on a heap LIST
+                            // that arrived through an obj-typed parameter —
+                            // lists carry no named fields, so the named-field
+                            // downcasts above all miss. Mirror ARRAY_LEN's
+                            // element-count semantics before the 0 sentinel.
+                            if field_name == "length" {
+                                use crate::vm::types::ListData;
+                                let len = if let Some(l) = heap_obj.as_any().downcast_ref::<ListData<i32>>() {
+                                    l.elems.len() as i32
+                                } else if let Some(l) = heap_obj.as_any().downcast_ref::<ListData<String>>() {
+                                    l.elems.len() as i32
+                                } else if let Some(l) = heap_obj.as_any().downcast_ref::<ListData<bool>>() {
+                                    l.elems.len() as i32
+                                } else if let Some(l) = heap_obj.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                                    l.elems.len() as i32
+                                } else {
+                                    -1
+                                };
+                                if len >= 0 {
+                                    task.ram.push_i32(len);
+                                } else {
+                                    task.ram.push_i32(0);
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
                         }
                     } else {
                         // Object not found - push 0 as error sentinel
@@ -5676,8 +5701,8 @@ impl AutoVM {
                     // 判定收窄到"小正整数句柄且不在堆上、但命中 response 表",
                     // 服务端 Response 构建链(堆对象)与普通 int 方法不受影响。
                     let http_response_handle = match method_name.as_str() {
-                        "status" | "status_code" | "body" | "header" | "header_get"
-                            if arg_count <= 1 && auto_val::is_i32(receiver_nv) =>
+                        "status" | "status_code" | "body" | "body_bytes" | "body_to_file" | "header" | "header_get"
+                            if arg_count <= 2 && auto_val::is_i32(receiver_nv) =>
                         {
                             let h = auto_val::decode_i32(receiver_nv);
                             let is_heap = h > 0 && self.heap_objects.contains_key(&(h as u64));
@@ -5698,6 +5723,13 @@ impl AutoVM {
                                 crate::vm::ffi::stdlib::NATIVE_RESPONSE_STATUS_CODE
                             }
                             ("body", 0) => crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY,
+                            // plan-022 (auto-down D4): byte-faithful accessor
+                            ("body_bytes", 0) => {
+                                crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY_BYTES
+                            }
+                            ("body_to_file", 1) => {
+                                crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY_TO_FILE
+                            }
                             ("header", 1) | ("header_get", 1) => {
                                 crate::vm::ffi::stdlib::NATIVE_RESPONSE_HEADER_GET
                             }
