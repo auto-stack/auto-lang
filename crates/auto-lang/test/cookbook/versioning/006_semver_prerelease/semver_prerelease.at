@@ -1,5 +1,5 @@
 dep semver
-use.rust semver::Version
+use.rs semver::Version
 
 fn main() {
     let v = Version.parse("1.0.0-alpha.1").unwrap()

@@ -1,6 +1,6 @@
 dep tokio
-use.rust tokio::sync::mpsc::channel
-use.rust tokio::sync::oneshot
+use.rs tokio::sync::mpsc::channel
+use.rs tokio::sync::oneshot
 
 type DriverStatus {
     driver_id uint

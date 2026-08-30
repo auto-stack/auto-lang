@@ -1,7 +1,7 @@
 dep syslog
 dep log
-use.rust syslog::BasicLogger
-use.rust syslog::Facility
+use.rs syslog::BasicLogger
+use.rs syslog::Facility
 
 fn main() {
     print("syslog configured")

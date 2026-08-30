@@ -1,4 +1,4 @@
-use.rust std::fs
+use.rs std::fs
 
 fn main() ! {
     var total = 0

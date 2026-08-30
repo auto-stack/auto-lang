@@ -1,7 +1,7 @@
 // Plan 159 Phase 6B-2.6: External crate use statement
 
-use.rust std::collections::HashMap
-use.rust std::fs::read_to_string
+use.rs std::collections::HashMap
+use.rs std::fs::read_to_string
 
 fn main() {
     let x = 42

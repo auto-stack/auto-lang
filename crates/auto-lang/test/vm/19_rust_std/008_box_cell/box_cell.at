@@ -1,5 +1,5 @@
-use.rust std::boxed::Box
-use.rust std::cell::RefCell
+use.rs std::boxed::Box
+use.rs std::cell::RefCell
 fn main() {
     let b = Box.new(42)
     print(b)

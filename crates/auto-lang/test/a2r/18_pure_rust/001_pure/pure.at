@@ -1,4 +1,4 @@
-use.rust std::collections::HashMap
+use.rs std::collections::HashMap
 
 fn main() {
     let x = 42

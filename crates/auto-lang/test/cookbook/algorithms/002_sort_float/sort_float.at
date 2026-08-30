@@ -1,4 +1,4 @@
-use.rust std::vec::Vec
+use.rs std::vec::Vec
 
 fn main() {
     var vec = [1.1, 1.15, 5.5, 1.123, 2.0]

@@ -1,6 +1,6 @@
 // VM 测试:std::process::Command 执行系统命令并拿 stdout。
 // 验证 VM 模式支持 Rust FFI 调用 std::process(为 shell.at 真实执行命令铺路)。
-use.rust std::process::Command
+use.rs std::process::Command
 
 fn main() {
     // 用 hostname(跨平台,输出简单,无副作用)

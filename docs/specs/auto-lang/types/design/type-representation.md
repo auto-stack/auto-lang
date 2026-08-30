@@ -11,7 +11,7 @@
   全部附在基类型之后，与 C 声明顺序一致；多维 `int[3][10]` 左到右、外到内（ADR-01）。
 - `Type` 枚举约 35 个变体（ast/types.rs:24），基础类型之外含 `List`/`Map`/`Slice`、
   `Array`/`RuntimeArray`（Plan 052）、`Fn`（Plan 060）、`Option`/`Result`（Plan 120）、
-  `Tuple`（Plan 200）、`Handle`（Plan 121 task 句柄）、`Rust`（Plan 190 use.rust）、
+  `Tuple`（Plan 200）、`Handle`（Plan 121 task 句柄）、`Rust`（Plan 190 use.rs）、
   `Linear`（move-only）、`Storage`（Plan 055 存储策略）。`May` 已移除（ast/types.rs:51）。
 
 ## 细节

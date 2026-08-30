@@ -5,7 +5,7 @@
 
 rustdoc 元信息工具（Plan 430 管线）：从三方 Rust crate 的 rustdoc JSON / 源码 syn AST
 提取签名，按规律分类器生成 **FFI method pack**（`.autoos` shim 包），供 AutoVM 经
-`use.rust` 直接调用原生 Rust 库。lib 供进程内调用（被 auto-cache 与 auto-lang 依赖），
+`use.rs` 直接调用原生 Rust 库。lib 供进程内调用（被 auto-cache 与 auto-lang 依赖），
 bin 为离线 CLI。（注释中"不入 auto-lang 依赖树"的说法已过期——`auto-lang/Cargo.toml` 已 path 依赖。）
 
 ## 目标与范围

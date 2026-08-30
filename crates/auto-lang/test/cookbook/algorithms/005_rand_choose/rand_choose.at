@@ -1,5 +1,5 @@
 // Random choice demo
-use.rust rand
+use.rs rand
 
 fn main() {
     var rng = rand.thread_rng()

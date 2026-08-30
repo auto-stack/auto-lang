@@ -1,5 +1,5 @@
 dep rayon
-use.rust rayon::prelude
+use.rs rayon::prelude
 
 fn main() {
     let v = [1, 2, 3, 4, 5]

@@ -1,5 +1,5 @@
 dep clap
-use.rust clap::Parser
+use.rs clap::Parser
 
 type Args {
     name str

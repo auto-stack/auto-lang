@@ -31,7 +31,7 @@
 
 ## 4. 纯 Rust 模式编码规范（C3）
 
-1. **只准 `use.rust` 直调 std/三方**,禁用 Auto 自身 stdlib(auto.xxx/Result.*
+1. **只准 `use.rs` 直调 std/三方**,禁用 Auto 自身 stdlib(auto.xxx/Result.*
    /List.*/Map.* 等 v1 便利层);
 2. 函数名、结构体字段名**保留 Rust 原名**(snake_case 原样),便于逐函数对照;
    类型名 PascalCase 原样;

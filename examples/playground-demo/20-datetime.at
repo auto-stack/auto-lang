@@ -1,8 +1,8 @@
 // Date and time via the chrono crate: now, formatting, timestamps, parsing
-// (uses use.rust — runs in the VM and transpiles to Rust; C target unsupported)
+// (uses use.rs — runs in the VM and transpiles to Rust; C target unsupported)
 dep chrono
-use.rust chrono::Local
-use.rust chrono::NaiveDateTime
+use.rs chrono::Local
+use.rs chrono::NaiveDateTime
 
 // Current local date and time, field by field
 let now = Local.now()

@@ -73,7 +73,7 @@ graph TD
 
 ### ADR-03: 混合 FFI——内建 shim + 沙箱动态加载双轨
 - 日期 / 来源：plan 未标注日期 / plan-092、plan-094（`docs/plans/archive/092-rust-ffi-sandbox.md`、`094-hybrid-ffi-bridge.md`）
-- 决策：Rust FFI 走双轨——VM 内建 shim（编译进引擎）+ `use.rust` 沙箱把用户 crate
+- 决策：Rust FFI 走双轨——VM 内建 shim（编译进引擎）+ `use.rs` 沙箱把用户 crate
   编译为 cdylib 动态加载，统一进 `NativeInterface` 混合查找。
 - 备选：纯内建（pros：零加载成本、ABI 稳定；cons：用户 crate 无法接入）；
   纯动态（pros：通用；cons：启动开销、ABI 风险、错误面大）。

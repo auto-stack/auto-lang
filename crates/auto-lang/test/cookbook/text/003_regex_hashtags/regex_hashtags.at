@@ -1,5 +1,5 @@
 dep regex
-use.rust regex::Regex
+use.rs regex::Regex
 
 fn main() {
     let re = Regex.new("#\\w+").unwrap()

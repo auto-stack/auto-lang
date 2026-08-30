@@ -1,7 +1,7 @@
 dep ansi_term
-use.rust ansi_term::Colour::Red
-use.rust ansi_term::Colour::Green
-use.rust ansi_term::Colour::Yellow
+use.rs ansi_term::Colour::Red
+use.rs ansi_term::Colour::Green
+use.rs ansi_term::Colour::Yellow
 
 fn main() {
     let err = Red.paint("Error: something went wrong")

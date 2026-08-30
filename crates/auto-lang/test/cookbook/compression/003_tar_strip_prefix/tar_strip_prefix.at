@@ -1,8 +1,8 @@
 dep flate2
 dep tar
-use.rust flate2::read::GzDecoder
-use.rust std::fs::File
-use.rust tar::Archive
+use.rs flate2::read::GzDecoder
+use.rs std::fs::File
+use.rs tar::Archive
 
 fn main() {
     let file = File.open("archive.tar.gz").unwrap()

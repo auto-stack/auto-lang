@@ -1,6 +1,6 @@
 dep semver
-use.rust semver::Version
-use.rust semver::VersionReq
+use.rs semver::Version
+use.rs semver::VersionReq
 
 fn main() {
     let req = VersionReq.parse(">=1.2.0, <2.0.0").unwrap()

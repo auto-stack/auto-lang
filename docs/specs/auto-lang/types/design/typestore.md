@@ -20,7 +20,7 @@ pub struct TypeStore {
     type_decls: HashMap<AutoStr, Rc<TypeDecl>>,
     fn_decls: HashMap<Name, Fn>,
     spec_decls: HashMap<AutoStr, SpecDecl>,
-    rust_types: HashSet<String>,            // Plan 190: use.rust 导入
+    rust_types: HashSet<String>,            // Plan 190: use.rs 导入
     rust_type_paths: HashMap<String, String>,
     generic_templates: HashMap<String, GenericTemplate>,
     type_aliases: HashMap<AutoStr, AutoStr>, // Plan 090

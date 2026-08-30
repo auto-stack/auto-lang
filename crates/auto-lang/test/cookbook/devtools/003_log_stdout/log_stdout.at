@@ -1,5 +1,5 @@
-use.rust log::info
-use.rust env_logger
+use.rs log::info
+use.rs env_logger
 
 fn main() {
     env_logger.init()

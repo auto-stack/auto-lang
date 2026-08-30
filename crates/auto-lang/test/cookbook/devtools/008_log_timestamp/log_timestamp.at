@@ -1,9 +1,9 @@
 dep env_logger
 dep chrono
 dep log
-use.rust log::info
-use.rust chrono::Local
-use.rust env_logger::Builder
+use.rs log::info
+use.rs chrono::Local
+use.rs env_logger::Builder
 
 fn main() {
     Builder.new()

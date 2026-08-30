@@ -19,7 +19,7 @@
   `use ` / `use.` 前缀，支持：
   - `use std.io`（整模块）、`use std.io: read, write`（指定项）、`use std.io.*`（通配）、
     `use std.io as io`（别名）
-  - `use c <stdio.h>`（C 头）、`use.rust serde::json::{...}`（plan-092）、
+  - `use c <stdio.h>`（C 头）、`use.rs serde::json::{...}`（plan-092）、
     `use.py json5::{...}`（plan-214）、`pub use`（plan-167）
   - 按 module 名去重，同名只保留第一条。
 - AST 侧：`ModulePath { prefix: PathPrefix, segments }`（ast/module_path.rs），

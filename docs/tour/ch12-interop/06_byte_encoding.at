@@ -1,12 +1,12 @@
 // Byte Encoding — Hex, Base64, and byte manipulation
 //
-// Auto supports byte-level operations via use.rust imports.
+// Auto supports byte-level operations via use.rs imports.
 // This example shows the concept.
 
 fn main() {
-    print("Byte operations available via use.rust:")
-    print("  hex encoding: use.rust hex::encode")
-    print("  base64: use.rust base64::encode")
-    print("  SHA256: use.rust sha2::Sha256")
+    print("Byte operations available via use.rs:")
+    print("  hex encoding: use.rs hex::encode")
+    print("  base64: use.rs base64::encode")
+    print("  SHA256: use.rs sha2::Sha256")
     print("Use b\"...\" for byte string literals")
 }

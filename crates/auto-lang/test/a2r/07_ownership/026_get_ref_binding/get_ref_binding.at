@@ -5,7 +5,7 @@
 // (statement-position match, E0308 otherwise).
 // Consumers: auto-ai daemon tier_router/tracker/provider retranspile seds.
 
-use.rust std::collections::HashMap
+use.rs std::collections::HashMap
 
 #[derive(Debug, Clone)]
 pub type TierCandidate {

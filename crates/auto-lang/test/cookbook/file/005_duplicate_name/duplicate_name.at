@@ -1,5 +1,5 @@
-use.rust std::collections::HashMap
-use.rust std::fs
+use.rs std::collections::HashMap
+use.rs std::fs
 
 fn main() ! {
     var seen HashMap<str, bool> = HashMap.new()

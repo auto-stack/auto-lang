@@ -1,9 +1,9 @@
 dep env_logger
-use.rust log::info
-use.rust log::debug
+use.rs log::info
+use.rs log::debug
 
 mod network {
-    use.rust log::debug
+    use.rs log::debug
 
     pub fn connect() {
         debug("connecting to server")

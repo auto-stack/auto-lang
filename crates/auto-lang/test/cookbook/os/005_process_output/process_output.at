@@ -1,4 +1,4 @@
-use.rust std::process::Command
+use.rs std::process::Command
 
 fn main() {
     let output = Command.new("ls").args(["-la"]).output().unwrap()

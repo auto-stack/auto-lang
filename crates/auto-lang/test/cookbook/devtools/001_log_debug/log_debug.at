@@ -1,6 +1,6 @@
 dep env_logger
-use.rust log::debug
-use.rust log::info
+use.rs log::debug
+use.rs log::info
 
 fn main() {
     env_logger.init()

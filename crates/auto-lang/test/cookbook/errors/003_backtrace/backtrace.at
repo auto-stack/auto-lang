@@ -1,4 +1,4 @@
-use.rust std::backtrace::Backtrace
+use.rs std::backtrace::Backtrace
 
 fn main() {
     let bt = Backtrace.capture()

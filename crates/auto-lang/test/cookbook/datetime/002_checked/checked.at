@@ -1,5 +1,5 @@
 dep chrono
-use.rust chrono::{Utc, Duration}
+use.rs chrono::{Utc, Duration}
 
 fn main() {
     let now = Utc.now()

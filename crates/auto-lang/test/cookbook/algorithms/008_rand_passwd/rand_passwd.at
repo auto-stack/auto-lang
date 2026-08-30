@@ -1,5 +1,5 @@
 // Password generation demo
-use.rust rand
+use.rs rand
 
 fn main() {
     var rng = rand.thread_rng()

@@ -7,8 +7,8 @@ dep auto_cosmic_dbus(path: "../../crates/auto-cosmic-dbus")
 dep serde(version: "1", features: ["derive"])
 dep log
 
-use.rust serde
-use.rust log
+use.rs serde
+use.rs log
 
 fn main() {
     log.info("hello")

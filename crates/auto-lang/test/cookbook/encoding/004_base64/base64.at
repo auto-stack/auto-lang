@@ -1,6 +1,6 @@
 dep base64
-use.rust base64::Engine
-use.rust base64::engine::general_purpose::STANDARD
+use.rs base64::Engine
+use.rs base64::engine::general_purpose::STANDARD
 
 // Base64 encode and decode
 fn main() {

@@ -1,5 +1,5 @@
 dep chrono
-use.rust chrono::Local
+use.rs chrono::Local
 
 fn main() {
     let now = Local.now()

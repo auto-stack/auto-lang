@@ -19,7 +19,7 @@ Auto 语言的设计目标是作为 Rust 的脚本语言，支持如下开发流
 
 - **双模式架构已存在**：同一个解析器通过 `CompileDest::{Interp, TransRust}` 同时服务于 AutoVM 和 a2r。`#[vm]`/`#[rs]` 注解允许按目标选择实现。
 - **a2r 覆盖核心子集**：函数、结构体、枚举、tag、union、spec（trait）、泛型、闭包、async/await、模式匹配（`is`→`match`）、所有权（view/mut/take）、错误传播（`.?`→`?`），有 308 个 golden 测试。
-- **FFI 桥已存在**：静态注册（`#[rust_fn]` + `inventory`）+ 动态加载（`use.rust` + `RustFfiBridge` dlopen）。
+- **FFI 桥已存在**：静态注册（`#[rust_fn]` + `inventory`）+ 动态加载（`use.rs` + `RustFfiBridge` dlopen）。
 - **`a2r-std` crate**：为转译代码提供运行时镜像。
 
 ### 1.3 核心挑战：parity gap（一致性缺口）
@@ -45,7 +45,7 @@ Auto 语言的设计目标是作为 Rust 的脚本语言，支持如下开发流
 
 | 决策项 | 选择 | 理由 |
 |--------|------|------|
-| 复刻方式 | **混合方式** | Auto 原生构造重写库逻辑 + `use.rust` 调用 Auto 无法原生表达的原语。同时测试语言表达力和 FFI 一致性，最贴近真实 Auto 项目的开发模式。 |
+| 复刻方式 | **混合方式** | Auto 原生构造重写库逻辑 + `use.rs` 调用 Auto 无法原生表达的原语。同时测试语言表达力和 FFI 一致性，最贴近真实 Auto 项目的开发模式。 |
 | 验证方法 | **测试套件端口** | 将原始 Rust 库的官方测试套件端口到 Auto，三方各自运行同一套测试。覆盖面广、回归保障强。 |
 | 验证框架 | **Auto 双后端 + Rust 原生** | 测试用例用 Auto 写，同一文件既被 AutoVM 执行也被 a2r 转译后执行；原始 Rust 库的测试用 `cargo test` 独立运行。外部工具 `auto-parity` 运行三方、收集输出、做规范化比较。 |
 | 起点复杂度 | **纯算法/编码库起步** | 代码量小、纯计算、无重副作用、有清晰 API 和官方测试套件。验证框架能快速迭代。 |
@@ -137,22 +137,22 @@ not ok 2 - base64_encode_hello # got "aGVsbG8=" expected "aGVsbG8="
 
 ### 3.2 库选择清单（四个阶段，共 8 个库）
 
-| 阶段 | 库 | 代码量 | 测试套件 | 压力测试的 Auto 特性 | 用 use.rust 调用的原语 |
+| 阶段 | 库 | 代码量 | 测试套件 | 压力测试的 Auto 特性 | 用 use.rs 调用的原语 |
 |------|-----|--------|---------|---------------------|----------------------|
 | **P1** | `base64` | ~500 行 | ✓ 丰富 | 字符串操作、字节切片、循环、错误处理 | 无（纯 Auto 可实现）|
 | **P1** | `url` | ~2000 行 | ✓ 丰富 | 结构体、枚举、模式匹配、字符串解析、Option | 无 |
 | **P2** | `serde_json`（子集）| ~1500 行 | ✓ 丰富 | 递归数据结构（tag/enum）、泛型、trait(spec)、模式匹配 | 无 |
 | **P2** | `regex`（简化版）| ~1000 行 | ✓ 丰富 | 状态机、枚举、字符迭代、回溯/递归 | 无 |
 | **P3** | `sha2`（SHA-256）| ~800 行 | ✓ 丰富 | 位运算、固定大小数组、u32/u64 运算、循环展开 | 无 |
-| **P3** | `rusqlite`（查询层）| ~1200 行 | ✓ 丰富 | trait 对象、错误传播(.?)、Result/Option、泛型 | `use.rust rusqlite`（Connection/Statement）|
-| **P4** | `reqwest`（同步子集）| ~1000 行 | ✓ 丰富 | async/await、错误传播、结构体、Builder 模式 | `use.rust reqwest`、`use.rust hyper` |
-| **P4** | `tokio`（任务子集）| ~800 行 | ✓ 适中 | async、spawn/join、channel、task 模型 | `use.rust tokio` |
+| **P3** | `rusqlite`（查询层）| ~1200 行 | ✓ 丰富 | trait 对象、错误传播(.?)、Result/Option、泛型 | `use.rs rusqlite`（Connection/Statement）|
+| **P4** | `reqwest`（同步子集）| ~1000 行 | ✓ 丰富 | async/await、错误传播、结构体、Builder 模式 | `use.rs reqwest`、`use.rs hyper` |
+| **P4** | `tokio`（任务子集）| ~800 行 | ✓ 适中 | async、spawn/join、channel、task 模型 | `use.rs tokio` |
 
 ### 3.3 阶段递进逻辑
 
 - **P1（纯字符串/编码）**：验证基础验证框架可用，测试 Auto 的字符串、字节、循环、错误处理。`base64` 和 `url` 都是纯计算、零依赖、API 清晰。
 - **P2（数据结构与算法）**：引入递归数据结构、泛型、trait——这些是中等工程的骨架。`serde_json` 测试 `tag`/`enum` 的递归表达力；`regex` 测试复杂控制流。
-- **P3（位运算 + FFI 起点）**：`sha2` 测试 u32/u64/位运算的精确性（VM 和 a2r 在整数类型上必须完全一致）；`rusqlite` 首次引入 `use.rust`，测试 FFI marshalling 一致性。
+- **P3（位运算 + FFI 起点）**：`sha2` 测试 u32/u64/位运算的精确性（VM 和 a2r 在整数类型上必须完全一致）；`rusqlite` 首次引入 `use.rs`，测试 FFI marshalling 一致性。
 - **P4（异步与并发）**：最终挑战——async/await 和任务模型。如果三方在 async 语义上一致，说明 Auto 可以支撑中等规模的后端项目。
 
 ### 3.4 复刻层次模型（混合方式的具体规则）
@@ -168,11 +168,11 @@ not ok 2 - base64_encode_hello # got "aGVsbG8=" expected "aGVsbG8="
 └──────────────────┬──────────────────────┘
                    │ 调用
 ┌──────────────────▼──────────────────────┐
-│          原语层 (use.rust / use auto)     │
+│          原语层 (use.rs / use auto)     │
 │                                         │
 │  P1-P2: 纯 use auto (str, list, map)    │  ← 无外部 Rust 依赖
-│  P3+:   use.rust rusqlite::Connection   │  ← 调用原始 Rust crate
-│         use.rust reqwest::blocking::get │
+│  P3+:   use.rs rusqlite::Connection   │  ← 调用原始 Rust crate
+│         use.rs reqwest::blocking::get │
 └─────────────────────────────────────────┘
 ```
 
@@ -181,10 +181,10 @@ not ok 2 - base64_encode_hello # got "aGVsbG8=" expected "aGVsbG8="
 1. **公共 API 层必须用 Auto 原生构造实现**——这是被测试的部分。类型定义（`type`/`enum`/`tag`）、控制流（`if`/`for`/`is`）、错误处理（`Result`/`.?`）、泛型、trait（`spec`/`ext`）都用 Auto 写。
 
 2. **原语层分两种情况**：
-   - **P1-P2**（纯计算库）：只用 `use auto.str`、`use auto.list` 等内置 stdlib。不引入 `use.rust`。完全测试 Auto 语言表达力 + a2r 对 Auto stdlib 的转译一致性。
-   - **P3+**（IO/系统库）：对 Auto 无法原生表达的原语（数据库连接、HTTP 客户端、网络 socket），用 `use.rust` 调用原始 Rust crate。同时测试 FFI marshalling 一致性（VM 通过 `RustFfiBridge` 动态加载 vs a2r 直接 `use` 编译时链接）。
+   - **P1-P2**（纯计算库）：只用 `use auto.str`、`use auto.list` 等内置 stdlib。不引入 `use.rs`。完全测试 Auto 语言表达力 + a2r 对 Auto stdlib 的转译一致性。
+   - **P3+**（IO/系统库）：对 Auto 无法原生表达的原语（数据库连接、HTTP 客户端、网络 socket），用 `use.rs` 调用原始 Rust crate。同时测试 FFI marshalling 一致性（VM 通过 `RustFfiBridge` 动态加载 vs a2r 直接 `use` 编译时链接）。
 
-3. **`use.rust` 的一致性是 P3+ 的核心验证点**——同一个 `use.rust rusqlite::Connection`，在 VM 模式下通过 `RustFfiBridge` dlopen + `NativeInterface` 调度，在 a2r 模式下编译为直接 `rusqlite::Connection` 调用。两者必须行为一致。这是当前最大的 parity gap，P3+ 专门暴露并修复它。
+3. **`use.rs` 的一致性是 P3+ 的核心验证点**——同一个 `use.rs rusqlite::Connection`，在 VM 模式下通过 `RustFfiBridge` dlopen + `NativeInterface` 调度，在 a2r 模式下编译为直接 `rusqlite::Connection` 调用。两者必须行为一致。这是当前最大的 parity gap，P3+ 专门暴露并修复它。
 
 4. **每个库的复刻版和原始 Rust 版共享同一套测试断言**——即"输入 X → 期望输出 Y"的映射在三方完全相同。只是测试代码的语言不同（Auto vs Rust）。
 
@@ -407,20 +407,20 @@ P0: 框架就绪 → P1: 纯字符串/编码 → P2: 数据结构与算法 → P
 
 ### 5.5 P3: 位运算 + FFI 起点（sha2 + rusqlite 查询层）
 
-**目标**：两个关键验证——(1) u32/u64 位运算的精确一致性，(2) 首次引入 `use.rust`，测试 FFI marshalling 一致性（VM 动态加载 vs a2r 编译时链接）。
+**目标**：两个关键验证——(1) u32/u64 位运算的精确一致性，(2) 首次引入 `use.rs`，测试 FFI marshalling 一致性（VM 动态加载 vs a2r 编译时链接）。
 
 **入口条件**：P2 出口条件满足。
 
 **工作内容**：
 - 复刻 `sha2`（SHA-256）：纯 Auto 实现，压力测试 u32 位运算、固定数组、循环展开
-- 复刻 `rusqlite` 查询层：公共 API 用 Auto 写（连接管理、查询构建、结果遍历），底层通过 `use.rust rusqlite::Connection` 调用原始 crate
+- 复刻 `rusqlite` 查询层：公共 API 用 Auto 写（连接管理、查询构建、结果遍历），底层通过 `use.rs rusqlite::Connection` 调用原始 crate
 - 扩展 `a2r-std-ext`：为 rusqlite 添加 Rust 运行时支持（a2r 转译后链接的代码需要 rusqlite 的 Rust 侧封装）
 - 运行 `auto-parity sha2 rusqlite`
 
 **出口条件**：
 - [ ] sha2：三方一致率 100%（位运算必须精确，无容错）
 - [ ] rusqlite 查询层：三方一致率 ≥90%
-- [ ] `use.rust` 在 VM（`RustFfiBridge` dlopen）和 a2r（编译时 `use`）下行为一致——**这是 P3 的核心验证点**
+- [ ] `use.rs` 在 VM（`RustFfiBridge` dlopen）和 a2r（编译时 `use`）下行为一致——**这是 P3 的核心验证点**
 - [ ] `VMConvertible` 对 rusqlite 涉及的类型（`Connection`、`Statement`）的 marshalling 一致性已验证或已修复
 - [ ] `a2r-std-ext` 机制可用：新增 FFI 库的 Rust 运行时支持有清晰路径
 
@@ -428,11 +428,11 @@ P0: 框架就绪 → P1: 纯字符串/编码 → P2: 数据结构与算法 → P
 
 **目标**：最终挑战——async/await 和任务模型的三方一致性。如果通过，说明 Auto 可以支撑中等规模的后端项目。
 
-**入口条件**：P3 出口条件满足，特别是 `use.rust` 一致性已验证。
+**入口条件**：P3 出口条件满足，特别是 `use.rs` 一致性已验证。
 
 **工作内容**：
-- 复刻 `reqwest` 同步子集：`get`/`post`/`Client`，用 Auto 的 async/`.await` 包装 `use.rust reqwest`
-- 复刻 `tokio` 任务子集：`spawn`/`join`/`channel`，用 Auto 的 task 模型包装 `use.rust tokio`
+- 复刻 `reqwest` 同步子集：`get`/`post`/`Client`，用 Auto 的 async/`.await` 包装 `use.rs reqwest`
+- 复刻 `tokio` 任务子集：`spawn`/`join`/`channel`，用 Auto 的 task 模型包装 `use.rs tokio`
 - async 测试需要特殊处理：三方都跑同一组 async 测试，输出规范化需处理异步完成的顺序问题
 - 运行 `auto-parity reqwest tokio`
 
@@ -449,7 +449,7 @@ P0: 框架就绪 → P1: 纯字符串/编码 → P2: 数据结构与算法 → P
 | 风险 | 影响 | 概率 | 缓解策略 |
 |------|------|------|---------|
 | **a2r 的 24-pass regex 后处理在大规模代码上崩溃** | P2+ 转译产出不可编译的 Rust | 高 | 每个库复刻后立即跑 `auto build`，发现 regex fix 失败时回退到手动修复转译输出，同时记录为 a2r 的 issue。长期目标是用类型推断替代 regex post-pass。 |
-| **`use.rust` FFI marshalling 类型不足** | P3 rusqlite 的 `Connection` 等复杂类型无法通过 `VMConvertible` | 高 | P3 开始时先扩展 `VMConvertible`（或用 `RustStdlibObject` opaque handle 模式），将此作为 P3 的首要任务而非事后补救。 |
+| **`use.rs` FFI marshalling 类型不足** | P3 rusqlite 的 `Connection` 等复杂类型无法通过 `VMConvertible` | 高 | P3 开始时先扩展 `VMConvertible`（或用 `RustStdlibObject` opaque handle 模式），将此作为 P3 的首要任务而非事后补救。 |
 | **a2r-std 与 VM stdlib 行为偏差** | P1-P2 中 `use auto.str` 的行为在三方不一致 | 中 | P1 第一个库就暴露此问题。`auto-parity` 的 bug 分类表能区分"复刻 bug"和"stdlib 偏差"。建立 `known-divergences.md` 记录并逐步修复。 |
 | **async 测试输出顺序不确定** | P4 三方比较失败不是因为 bug 而是因为时序 | 高 | 输出规范化层引入"排序模式"：按测试名而非执行顺序排序 TAP 行。async 测试内部用同步断言点（`await` 后立即 assert）而非依赖顺序。 |
 | **上游库 API 变更** | oracle 测试失效 | 低 | `tests/rust/Cargo.toml` 锁定版本号（如 `base64 = "=0.22.0"`）。README 记录每个库的上游版本。 |

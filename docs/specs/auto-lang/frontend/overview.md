@@ -59,7 +59,7 @@ let path = resolver.resolve_with_prefix(&module_path, current_file)?;
   由 `try_parse_token_stmt` 按 session 场景分派。
 - `scan_use_statements` 是字符串匹配：字符串字面量内的 "use xxx" 行、条件编译分支中的
   use 都会被算入，仅适合依赖预估，不能当解析结果用。
-- `use_scanner` 支持 `use.rust`/`use.py`/`use c <h>` 等 FFI 导入形式，但去重按 module 名，
+- `use_scanner` 支持 `use.rs`/`use.py`/`use c <h>` 等 FFI 导入形式，但去重按 module 名，
   同名不同 items 的 use 只保留第一条。
 
 ## 蒸馏来源（Phase 1）

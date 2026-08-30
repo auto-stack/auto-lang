@@ -1,6 +1,6 @@
 dep tokio
-use.rust std::time::Duration
-use.rust std::time::Instant
+use.rs std::time::Duration
+use.rs std::time::Instant
 
 fn main() ~void {
     let start = Instant.now()

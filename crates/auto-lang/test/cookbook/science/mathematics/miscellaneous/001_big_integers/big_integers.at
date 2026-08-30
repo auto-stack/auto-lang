@@ -1,5 +1,5 @@
 dep num
-use.rust num::bigint::BigInt
+use.rs num::bigint::BigInt
 
 fn main() {
     let a = BigInt.from(100)
