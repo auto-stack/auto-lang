@@ -3266,7 +3266,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         editor = editor.size(fs);
                     }
                     if is.text_color.is_some() {
-                        let value_color = is.text_color.unwrap();
+                        let mut value_color = is.text_color.unwrap();
+                        // PLAN-051 P2: 全透明 value 色(如 musk composer 的
+                        // text-transparent+backdrop 叠加技法)在 VM 侧回退为可见
+                        // 前景——VM 无 backdrop 渲染层,透明即"输入成功但不可视"。
+                        // Vue 轨自渲染其 textarea,不受此臂影响。
+                        if value_color.a <= 0.001 {
+                            value_color = crate::ui::style::theme::resolve_semantic_rgb(
+                                &crate::ui::style::Color::OnBackground,
+                            )
+                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                            .unwrap_or(iced::Color::WHITE);
+                        }
+                        let value_color = value_color;
                         editor = editor.style(move |_theme, _status| {
                             iced::widget::text_editor::Style {
                                 background: iced::Background::Color(iced::Color::TRANSPARENT),
