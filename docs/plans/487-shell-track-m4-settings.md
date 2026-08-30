@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-487
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-m4-settings
 author: [zhaopuming]
 created_at: 2026-08-30
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 2
+current_step: 8
 total_steps: 8
 ---
 
@@ -173,19 +173,71 @@ settings.at（特权 shell app）
 3. **执行臂**：set_dock_position/enabled 热改 `dock_edges` + relayout +
    storage_host_publish 写回 + T1 执行臂单测。
    验证：`cargo t session`。
+   [✅ 已完成] 2e434497d：执行臂实现已随步骤2 穷尽性落码
+   （execute_set_dock_position/enabled → apply_dock_edges_now：键写回 →
+   desktop_dock_edges 键重推导 → apply_layout relayout + 槽位排水 +
+   __dock_* 投影热同步）；本步补 T1 执行臂单测
+   settings_dock_arms_hot_apply_and_persist PASS（三态翻转/键写回/Grid 窗
+   几何/投影/重开按位置键恢复）。`cargo nextest run -p auto-lang --lib
+   --features ui-iced session settings` 67/67 绿
 4. **懒挂载**：`crates/auto-lang/src/ui/iced/renderer.rs` settings.at 懒挂载 +
    初值注入（6898/6968 同型）。
    验证：`cargo t ui`。
+   [✅ 已完成] 4bd38320e：toggle_settings（懒挂载+二态翻转+快照注入
+   cfg_*/pinned_ids/about_*）已随步骤2 穷尽性落码；本步补视图层四接入——
+   settings_fields 垫片 + split_mut windowless 第五路 + split_ref_settings +
+   视图装配层（通知中心层邻位）+ Esc 仲裁 + 键盘独占/订阅第五块；新测
+   settings_panel_summon_headless PASS（召唤/注入/翻转/键预置 top 快照/Esc）。
+   首跑红：存储污染——步骤3 测试 storage_host_publish 落盘真实 store 残键
+   破坏键缺席前提；两测改 t2_isolate_storage 隔离 + 人工清理已污染三个
+   temp store 文件的 shell.dock.* 键。`cargo nextest run -p auto-lang --lib
+   --features ui-iced iced` 102/102 绿 + settings_ 4/4 绿
 5. **Dock 分区接线**：settings.at 控件→动词 + pinned 编辑→auto.storage.set。
    验证：`cargo t desktop_mcp`（T2 装载/派发用例）。
+   [✅ 已完成] deb68c2ef：Dock 分区三卡（位置 bottom/top 单选 + 启用开/关 +
+   pinned 行内增删含草稿输入框/已保存提示）——PickPosition/PickEnabled 写
+   set_dock_* 记录 + 本地 cfg 即时更新；AddPinned/RemovePinned →
+   PersistPinned → storage.set("shell.dock.pinned") 逗号拼接（= 宿主
+   load_dock_pinned 格式）。T2 无头测
+   settings_dock_section_dispatch_and_pinned_storage PASS（handler→记录→
+   排空执行热生效→增删落键断言）。settings 全滤 5/5 绿（仓内无
+   desktop_mcp 具名套件——五套 headless 同型即本测族，名义门零匹配）
 6. **通知/关于分区**：开关写键（键名对齐 479 读取点）+ 版本常量注入。
    验证：`cargo t desktop_mcp`。
+   [✅ 已完成] 8e2636334：待澄清定案——479 无开关键，本期新增
+   `shell.notes.enabled`（"false"=关，缺席/其余=开向后兼容）+ 479 消费链
+   单点门控（push_notification 入口短路：notify 全链路零入史/零 toast/
+   零未读/零落盘）。PickNotes → storage.set 直写 + 本地 cfg 更新；关于
+   分区 about_host/about_version（OS/CARGO_PKG_VERSION）两行展示。无头测
+   settings_notes_gate_and_about_section PASS + notif 10 测无回归（16/16）
 7. **齿轮入口 + 协议文档**：`crates/auto-lang/assets/shell.at` dock 增齿轮
    按钮；`schema/projection-protocol-v1.md` 动词表 + 版本（按待澄清①协调）。
    验证：`cargo t desktop_mcp && cargo test -p auto-lang --test docs_gen`。
+   [✅ 已完成] 8fcc9f1e0：shell.at 双任务栏分支（top/bottom 已知重复瑕疵
+   同款）各加 settings 齿轮 → OpenSettingsPanel → `open_settings` 记录；
+   协议文档 v1.2→v1.3（三动词入 §4 表 + §5 金样补 settings_* 七测 + §6
+   变更记录含 storage 键增量 shell.notes.enabled/pinned 写手 + 486 并行
+   协调注记——486 未合，487 占 v1.3，复审按合并实况核对）。齿轮全链
+   冒烟测 settings_shell_at_smoke_gear_to_panel PASS（真 shell.at 编译 +
+   handler→记录→排空→面板挂载 visible）。settings 7/7 绿 + docs_gen
+   4/4 绿（desktop_mcp 名义门零匹配，同步骤5 注）
 8. **实机冒烟 + 收尾**：T4 五步执行留痕；健康检查（零警告/无调试打印）；
    状态翻 execution_done。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] T4 报告 `docs/plans/reports/487-t4-live-smoke.md` + 三帧截图
+   `docs/plans/reports/assets/487-t4/`：①齿轮实机渲染 PASS（10-initial +
+   15-gear-zoom）；②④⑤重启生效 PASS（20-restart-preset-top 单帧三断言：
+   预写键 position=top 任务栏顶置 + pinned 覆盖仅两枚 + notes.enabled=false
+   boot 无碍）；③交互项（点击开面板/热切换/Esc）OS 注入通道受阻——CUA
+   像素身份守卫对活渲染面持续拒绝（窗口域 identity mismatch / 全屏域
+   live-owner stale，激活前台+停 MCP 帧泵复测仍复现）→ 按 472/478/479
+   先例转 headless 全链指针（settings_* 七测，全绿）。健康检查：默认档
+   161 警告全为 master 既有（session.rs:32 ReservedEdges 未用 import
+   master 同在）；新增代码零警告零调试打印（仅 RebuildPinned 失败
+   eprintln 错误日志，notification 同型）。验证：`cargo check -p auto-lang`
+   绿 + `cargo nextest run -p auto-lang --lib --features ui-iced iced
+   settings` 106/106 + notif/projection 16/16 + 默认档 `cargo t` 3281/3281
+   （schema_drift/docs_gen/registry 含协议文档 v1.3 改动全绿）
 
 ## 复审记录
 
