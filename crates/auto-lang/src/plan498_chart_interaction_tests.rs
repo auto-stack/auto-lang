@@ -78,7 +78,7 @@ widget ClickZone {
 }
 
 #[cfg(feature = "ui-iced")]
-mod plan498_m1 {
+mod plan498_charts {
     /// charts-gallery 整 app 构建(四类图同屏,数据由 app 注入;组件 props
     /// 不入 state,独立构建组件会缺 data 字段,故走消费方整包形态;路径
     /// 必传——`use { package: official from "components" }` 按相对路径解析)。
@@ -156,5 +156,26 @@ mod plan498_m1 {
         let dump2 = dump(&mut dc);
         assert!(!dump2.contains(r#"stroke-width=\"1.5\""#), "离焦后描边消失");
         assert!(!dump2.contains(r#"fill-opacity=\"0.3\""#), "离焦后 downplay 消失");
+    }
+
+    /// M3:donut 扇区 emphasis——.Hover(1)(图例行/扇区同源)后该扇区
+    /// 外移路径落图(白描边 2px,donut 独占标记);HoverOut 复原常驻路径。
+    #[test]
+    fn plan498_donut_sector_emphasis() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan498 M3: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let dump0 = dump(&mut dc);
+        assert!(dump0.contains("A100 100 0"), "常驻扇区弧落图");
+        assert!(!dump0.contains(r##"stroke=\"#ffffff\""##), "常驻态无白描边");
+
+        dc.on_with_input_for("DonutChart", "Hover\u{1F}i\u{1F}1", None);
+        let dump1 = dump(&mut dc);
+        assert!(dump1.contains(r##"stroke=\"#ffffff\""##), "悬停扇区白描边落图");
+
+        dc.on_with_input_for("DonutChart", "HoverOut", None);
+        let dump2 = dump(&mut dc);
+        assert!(!dump2.contains(r##"stroke=\"#ffffff\""##), "离焦后白描边消失");
     }
 }
