@@ -531,11 +531,14 @@ pub enum View<M: Clone + Debug> {
     /// vue 端映射 div + @mouseenter/@mouseleave。无视觉,仅事件转发。
     /// Plan 496 M5: 增 on_double_click(ondblclick → iced mouse_area
     /// on_double_click;桌面图标双击启动原语)。
+    /// Plan 498 M0: 增 on_click(onclick → iced mouse_area on_press;chart
+    /// legend 点击切换显隐与 diagram select 的共同前置,§7.6)。
     MouseArea {
         content: Box<View<M>>,
         on_enter: Option<M>,
         on_exit: Option<M>,
         on_double_click: Option<M>,
+        on_click: Option<M>,
         style: Option<Style>,
     },
 }
@@ -1395,11 +1398,13 @@ impl<M: Clone + Debug> View<M> {
             },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
             // Plan 496 M5: 增 on_double_click 映射。
-            View::MouseArea { content, on_enter, on_exit, on_double_click, style } => View::MouseArea {
+            // Plan 498 M0: 增 on_click 映射。
+            View::MouseArea { content, on_enter, on_exit, on_double_click, on_click, style } => View::MouseArea {
                 content: Box::new(content.map_msg_with_arc(f)),
                 on_enter: on_enter.map(|m| f(m)),
                 on_exit: on_exit.map(|m| f(m)),
                 on_double_click: on_double_click.map(|m| f(m)),
+                on_click: on_click.map(|m| f(m)),
                 style,
             },
             // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。

@@ -2306,7 +2306,7 @@ impl AuraSchema {
             category: ElementCategory::Overlay,
             props: vec![],
             allows_children: true,
-            description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick).",
+            description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite).",
         });
 
         // === Collapsible ===

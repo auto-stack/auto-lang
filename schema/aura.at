@@ -523,10 +523,10 @@ element mouse-area {
     aliases: []
     backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "div" }
-    events: ["onmouseenter", "onmouseleave"]
+    events: ["onmouseenter", "onmouseleave", "ondblclick", "onclick"]
     props: []
     allows_children: true
-    description: "Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive."
+    description: "Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick (desktop icon double-click). Plan 498 M0: onclick (iced on_press / vue @click; chart legend click-toggle, diagram select shared prerequisite)."
 }
 
 element nav {
