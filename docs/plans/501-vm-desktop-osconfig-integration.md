@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-501
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-desktop-osconfig-integration
 author: [zhaopuming]
 created_at: 2026-08-31
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -152,26 +152,101 @@ os-config App（既有 .at 前端）──http natives──▶ daemon(:17701) �
 1. **daemon mgr 纯逻辑**：新建 `crates/auto-lang/src/ui/osconfig_daemon.rs`
    （发现序/决策/env 纯函数 + T1 单测）+ `ui/mod.rs` 登记。
    验证：`cargo check -p auto-lang && cargo t osconfig_daemon`。
+   [✅ 已完成] `cargo check -p auto-lang` 绿；T1 6/6 绿（`cargo nextest run -p
+   auto-lang --lib --features ui-iced osconfig_daemon`——ui 模块测试需显式
+   ui-iced feature，裸 `cargo t` 默认特性不编译 ui）。现场核验修正：daemon
+   二进制实际为 `../auto-os-config/auto-os-config-back/target/release/
+   auto-os-config-back-server(.exe)`（Cargo [[bin]] 名），非计划原文的
+   `target/release/auto-os-config-daemon`；发现序结构不变。
 2. **进程管理**：osconfig_daemon.rs 增 spawn + ping 就绪轮询 + 句柄管理。
    验证：`cargo t osconfig_daemon`（检活/spawn 状态机单测）。
+   [✅ 已完成] 14/14 绿（`cargo nextest run -p auto-lang --lib --features
+   ui-iced osconfig_daemon`）。ping 用 std TcpStream 裸 HTTP（reqwest
+   blocking 在 tokio 上下文会 panic——桌面宿主持全局 runtime，故弃）；
+   spawn detached（Win DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP，stdio
+   null，句柄即弃不 kill）；状态机注入式（DaemonIo trait，假 IO 覆盖
+   复用/未找到/spawn 失败/就绪/超时五分支）+ 真 TCP ping 双用例；spawn env
+   带 AUTOOS_BACK_PORT=17701（daemon 缺省 17901）。
 3. **注册表多根**：`crates/auto-lang/src/ui/app_registry.rs` 扫描聚合
    extra_dirs（storage 键 + 相邻仓探测）+ 去重 + T1 聚合单测。
    验证：`cargo t app_registry`（既有 27 apps 单测不回归 + 新增用例）。
+   [✅ 已完成] app_registry 9/9 绿（`cargo nextest run -p auto-lang --lib
+   --features ui-iced app_registry`——既有 27-apps/launch 三连测不回归 +
+   parse_extra_dirs/extra_roots 决策矩阵/aggregate 去重三新测）。新增
+   `scan_app_root`（自含根）/`parse_extra_dirs`（`;` 分隔，`id=path` 或
+   `path`→末段 id）/`extra_roots_from`（纯决策：storage > 探测缺省
+   `os-config`，`shell.apps.scan_siblings=false` 关）/`aggregate_scan`
+   （id 去重主根优先）/`host_extra_roots`（boot 包装）；`AppRegistryEntry`
+   增 `daemon` 字段（pac `daemon:` 声明，step 4 env 注入数据面）；renderer
+   boot 调用方换 `aggregate_scan`。id 裁定：探测缺省与 `id=path` 显式
+   给出 `os-config`（目录名 `auto` 无桌面语义不采）。
 4. **launch env 注入**：`crates/auto-lang/src/ui/session.rs` launch 执行臂
    增 daemon 就绪 + env 注入（pac 可选字段形态，执行期定）。
    验证：`cargo t session`。
+   [✅ 已完成] session 58/58 绿（`cargo nextest run -p auto-lang --lib
+   --features ui-iced session::`；55 既有 + 3 新：就绪注入 env/Offline 不阻断
+   launch 且不注 env/无声明不触探活）。定稿（待澄清①）：**pac.at 可选字段
+   `daemon: autoos`**（通用机制）——`LaunchSpec`/`AppRegistryEntry` 增
+   `daemon` 字段透传；launch_app 在 build（Init 链打 daemon）前
+   ensure_ready → Running 则 `std::env::set_var("AUTOOS_DAEMON", url)`
+   （VM Env.get 即进程 env）；**Offline 不阻断 launch**（App 自带
+   daemon_view 连接 UX，G1 不重复造），原因记 `DesktopState.osconfig_status`
+   （step 5 徽标消费）；`osconfig_daemon_probe` 注入位供单测假实现。
+   broker/stage3/app_registry 连带 9/9+23/23 绿。
 5. **settings 入口**：`crates/auto-lang/assets/settings.at` 增「系统设置」
    按钮 + offline 徽标态 + launch 派发。
    验证：`cargo t desktop_mcp`（T2 用例）。
+   [✅ 已完成] settings 9/9 绿（`cargo nextest run -p auto-lang --lib
+   --features ui-iced settings`；既有 8 测不回归 + 新测
+   settings_osconfig_entry_badge_and_launch_dispatch——三态徽标注入
+   unknown/offline/ready + 原因投影 + OpenSystemSettings 派发
+   launch\tos-config 记录 + 自隐 + 记录→LaunchApp 解析）。settings.at 增
+   「系统」分区（五分区）：入口卡（打开/重试并打开双态按钮——offline 置灰
+   提示，点击即重试，launch 每次重新探活零额外动词）+ ready 已连接文案；
+   召唤注入 `osconfig_state`/`osconfig_hint`（badge_projection 纯函数
+   投影会话域 status）；renderer 74/74 全绿。
 6. **T3 集成**：daemon 起停 + 全链用例（注册表条目 → launch → 模块列表 →
    改写落盘断言；配置根重定向 env）。
    验证：`cargo t osconfig`（集成档，feature/ignore 门控按 daemon 可用性）。
+   [✅ 已完成] `cargo nextest run -p auto-lang --features ui-iced --test
+   osconfig_integration` 1/1 绿（1.09s；材料门控：相邻仓前端 + release
+   daemon 二进制 + cdylib 任一缺席即 eprintln 跳过）。六段面包屑：A daemon
+   起（随机端口 + USERPROFILE/HOME 重定向配置根——daemon config_root 读
+   env，**待澄清③的跨仓 config root env 因此非必需**）→ B 就绪 ping →
+   C launch（真相邻仓条目）→ D App Init 真数据（sys_host 非空）→ E
+   GET /api/modules ≥7 → F PUT ai-daemon.at → 落盘断言（daemon 对缺席
+   配置 404 不自动建桩——测试预置基线 atom）。**执行期发现（现场核验
+   补录）**：os-config vm 轨 `use back.api` 依赖 Plan 061 外部 back 链
+   （pac `back: { project }`）——本地 src/back/api.at 残缺、后端 api.at
+   为桩、#[api] 真身在 cdylib；桌面 launch 臂补齐 `set_external_back_root`
+   + `load_back_cdylib`（auto-man rust_ui 同型复刻，句柄驻
+   DesktopState.back_keepalive）。
 7. **跨仓适配（视需）**：os-config 仓 worktree（`../auto-os-config/
    .worktrees/auto-lang-dev`）落必要适配（quiet/探针/config root env），
    消费验证后折回其 master。
    验证：跨仓 PR/commit 号记入本计划 + T3 复跑绿。
+   [✅ 已完成] 实际必需面收窄为一行：`auto/pac.at` 增 `daemon: "autoos"`
+   （跨仓 commit **0e81196**，`auto-lang-dev` worktree 开发→折回其 main→
+   worktree/branch 已清）。config root env 非必需（T3 经 USERPROFILE/HOME
+   重定向达成，见步骤 6）；quiet 非必需（桌面 spawn stdio null）。本仓
+   消费验证：T3 改用 pac 自然 daemon 字段（断言
+   `entry.daemon == Some("autoos")`）复跑 1/1 绿（779204fbf）。本仓不携带
+   其仓代码 ✓。
 8. **实机冒烟 + 收尾**：T4 清单留痕；健康检查；状态翻 execution_done。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] `cargo check -p auto-lang` 绿 + `cargo t ui` 777/777 绿 +
+   scoped 复验 156/156（session/app_registry/osconfig_daemon/renderer）+
+   T3 1/1。**T4 清单留痕**：①boot 冒烟 A/B——worktree 构建的 ui_desktop
+   实进程，CWD=主仓根（相邻仓在）注册表 **35** 条 vs CWD=.worktrees
+   （无相邻仓）**34** 条（Δ1 = os-config 相邻仓探测 live 生效，无 boot
+   回归）；②ensure_ready 生产路径 live——真实发现序（相邻仓 target）→
+   detached spawn → 就绪 2.52s → 二次调用复用 **774µs**（ping 通即返零
+   打扰）；③offline 徽标与重试——T2 单测级验证（三态注入 + 置灰提示 +
+   点击重试语义）。**残差（用户 30 秒抽查）**：齿轮 → 系统 → 打开系统
+   设置的人手点击链（GUI 像素自动化与 iced 实时渲染栅格竞态不可靠，
+   未强行驱动）；无头等价链（T2 派发 + T3 launch 全链 + boot 冒烟）已全
+   绿。runbook：`cd <本仓> && cargo run -p auto-lang --features ui-iced
+   --example ui_desktop`（相邻仓探测 CWD 相对——自仓根起跑）。
 
 ## 复审记录
 
@@ -179,14 +254,23 @@ os-config App（既有 .at 前端）──http natives──▶ daemon(:17701) �
 
 ## 待澄清事项
 
-- **env 注入形态**：pac.at 可选字段（如 `daemon_env: autoos`）vs 条目名
-  硬编码白名单——倾向前者（外部 app 机制的通用性），T4 执行期定稿。
-- **daemon 退出策略**：桌面退出不杀（共享服务语义）为 v1 裁定；若需
-  "桌面拉起桌面带走"，加 storage 开关，复审时定。
-- **配置根重定向**：T3 需要 os-config daemon 支持 config root env 重定向
-  （避免测试污染真实 `~/.config/autoos/`）——若其仓无此机制，T7 跨仓补
-  （小改）。
-- **vue 端**：远程桌面场景 os-config 走其自有 vite 形态（非目标重申）；
-  未来若 vue 桌面要内嵌，另立计划（走 465 宿主机制）。
-- extra_dirs 缺省是否含相邻仓探测（`../auto-os-config`）：开发机友好 vs
-  安装形态纯净——v1 含探测 + storage 可关（`shell.apps.scan_siblings`）。
+（执行期全部定案，2026-08-31）
+
+- **env 注入形态** ✅ **pac.at 可选字段 `daemon: autoos`**（通用机制）——
+  `AppRegistryEntry.daemon`/`LaunchSpec.daemon` 透传；跨仓 0e81196 落行，
+  T3 断言自然消费。
+- **daemon 退出策略** ✅ v1 = 桌面退出不杀（共享服务语义）；detached
+  spawn（Win DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP + stdio null，
+  句柄即弃）。"桌面带走"开关未做（复审若要另立小改）。
+- **配置根重定向** ✅ 非必需跨仓机制——daemon config_root() 读
+  USERPROFILE/HOME env，T3 经 spawn 期 env 重定向即达成零污染测试。
+- **vue 端** ✅ 维持非目标（远程桌面场景走 os-config 自有 vite 形态）。
+- **extra_dirs 缺省探测** ✅ v1 含相邻仓探测 + `shell.apps.scan_siblings`
+  storage 可关；`shell.apps.extra_dirs` 语法 `id=path` 或 `path`（末段为
+  id），探测缺省产出 id `os-config`（目录名 `auto` 无桌面语义不采）。
+- **执行期新知（补录）**：①daemon 二进制实为 `auto-os-config-back/
+  target/release/auto-os-config-back-server(.exe)`（Cargo [[bin]] 名，
+  计划原文路径有误——已按现场核验兑现）；②生产端口 17701 需 spawn 期
+  `AUTOOS_BACK_PORT` 覆盖（daemon 缺省 17901）；③os-config vm 轨依赖
+  Plan 061 外部 back 链（`back: { project }` → set_external_back_root +
+  cdylib 桩桥装载）——桌面 launch 臂已补齐（auto-man rust_ui 同型复刻）。
