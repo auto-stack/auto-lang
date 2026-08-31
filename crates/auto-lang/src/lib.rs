@@ -6206,6 +6206,11 @@ mod plan446_batch1_tests {
 #[cfg(test)]
 mod plan484_chart_component_tests;
 
+// Plan 498: chart 交互状态机——M0 mouse-area on_click 引擎臂冒烟 +
+// M1-M4 悬停态/legend 点击显隐断言(484 冒烟扩展)。
+#[cfg(test)]
+mod plan498_chart_interaction_tests;
+
 // Plan 492: 引擎正确性专项——f-string 括号插值/primary-shorthand `[` 后缀/
 // vue 文本内容表达式臂/包组件单 VM 编译链三族修复。
 #[cfg(test)]

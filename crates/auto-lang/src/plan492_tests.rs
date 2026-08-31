@@ -366,8 +366,12 @@ mod m1_pkg_fstr {
     }
 
     /// 金丝雀(负对照): 未定义变量必须杀死 bar Init——证明上方夹具可检出失败。
+    /// Plan 498: line/area 图例新增合法 mouse-area 后绝对上界过时,改
+    /// 健康态相对比较(canary < healthy),底线保留(其余图命中区不连坐)。
     #[test]
     fn pkg_canary_undefined_var_kills_bar_init() {
+        let (mut healthy_dc, _) = build_patched_gallery("m1-canary-healthy", &[]);
+        let healthy = render_dump(&mut healthy_dc).matches("MouseArea").count();
         let (mut dc, _) = build_patched_gallery(
             "m1-canary",
             &[(
@@ -379,8 +383,9 @@ mod m1_pkg_fstr {
         let dump = render_dump(&mut dc);
         let mouse = dump.matches("MouseArea").count();
         assert!(
-            mouse < 24 && mouse >= 12,
-            "canary: undefined var in f-string must degrade bar bands (got {mouse})"
+            mouse < healthy,
+            "canary: undefined var in f-string must kill bar bands (canary={mouse} healthy={healthy})"
         );
+        assert!(mouse >= 12, "canary floor: sibling charts' hit areas stay alive (got {mouse})");
     }
 }

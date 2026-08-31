@@ -7313,7 +7313,11 @@ let tabs_inner = View::Row {
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 496 M5: ondblclick → mouse_area on_double_click(桌面图标
         // 双击启动原语;iced on_double_click / vue @dblclick)。
+        // Plan 498 M0: onclick → mouse_area on_click(chart legend 点击
+        // 切换显隐;iced on_press / vue @click)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_click = aura_events_get_base(events, "onclick")
             .map(|event| self.event_to_message_with(event, bindings));
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
@@ -7335,6 +7339,7 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_click,
             style,
         }
     }
@@ -7360,7 +7365,10 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "onhoverout"))
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 496 M5: ondblclick → mouse_area on_double_click(untracked 镜像臂)。
+        // Plan 498 M0: onclick → mouse_area on_click(untracked 镜像臂)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_click = aura_events_get_base(events, "onclick")
             .map(|event| self.event_to_message_with(event, bindings));
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
@@ -7382,6 +7390,7 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_click,
             style,
         }
     }

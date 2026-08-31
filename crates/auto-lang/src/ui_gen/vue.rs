@@ -23351,6 +23351,30 @@ widget NullProbe {
         assert!(output.contains("@contextmenu"), "oncontextmenu → @contextmenu");
     }
 
+    /// Plan 498 M0：mouse-area onclick → vue `@click` 生成断言（与 496
+    /// `@dblclick` 同族；chart legend 点击切换显隐的 vue 通路——事件名经
+    /// 通用 base_event_to_dom 映射，mouse-area 本体仍走 div 直通）。
+    #[test]
+    fn test_a2vue_mouse_area_onclick() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget ClickZone {
+    msg { Ping }
+    model { var n int = 0 }
+    view {
+        col {
+            mouse-area (style: "w-4 h-4", onmouseenter: .Ping, onmouseleave: .Ping, onclick: .Ping) {}
+            text "zone" {}
+        }
+    }
+    on {
+        .Ping -> { .n = .n + 1 }
+    }
+}
+"#);
+        assert!(sfc.contains("@click=\"Ping\""), "onclick → @click:\n{}", sfc);
+        assert!(sfc.contains("@mouseenter=\"Ping\""), "onmouseenter 共存:\n{}", sfc);
+    }
+
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style
     /// scoped>`（之前 extract_widget_from_fragment 硬编码 style_css: None 丢弃）。
     #[test]

@@ -1,14 +1,14 @@
-front/app.at	16594	3938bc9dd9f24fa5
-front/components/area_chart.at	15072	04c37b2a164b8380
-front/components/bar_chart.at	14365	2f7088d7f79647d8
+front/app.at	16496	42aa300c603a52ed
+front/components/area_chart.at	20424	cecdd596ec516a11
+front/components/bar_chart.at	19023	4f7cfd24f8c8bfb7
 front/components/carousel.at	3149	7d8b748fff8cafa9
 front/components/code_block.at	3149	d9e1e285097cfead
 front/components/combobox.at	4152	846e504bf467f7ae
 front/components/command.at	4778	b79d10b155c422b6
 front/components/copy_button.at	2640	cccf52d84f3e1abe
 front/components/datepicker.at	3459	9a790c6c3f89284b
-front/components/donut_chart.at	6144	4031c2ab1df391bf
-front/components/line_chart.at	14894	8a9941b918d89539
+front/components/donut_chart.at	9407	04d30a848db9f9ee
+front/components/line_chart.at	20928	184ba8c49194e0c2
 front/components/toggle.at	1706	c66ffd55db9868db
 front/components/togglegroup.at	2860	4d73cd43839fa840
 front/pages/accordion.at	11964	5ce03534e5d959d6
@@ -79,4 +79,4 @@ front/pages/toast.at	38090	ad1a266786606ee0
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	10782	e9ea18d974dd5af5
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1464697	176a3d31885531a9
+TOTAL	1483906	e6ab773d988da5bc

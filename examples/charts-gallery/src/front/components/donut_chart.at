@@ -1,4 +1,4 @@
-// components/donut_chart.at - DonutChart component (Plan 437 Phase 2 ④ → Plan 484 v2)
+// components/donut_chart.at - DonutChart component (Plan 437 Phase 2 ④ → Plan 484 v2 → Plan 498 M3)
 //
 // 圆环图(d3-arc 风格:外弧 A → 内弧回程 Z,大弧标志 span>π),角度由
 // 数据占比循环累进计算,math.cos/sin 直调。渲染端 v1 = SVG 子树直通。
@@ -14,11 +14,23 @@
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
-    msg { Init, Hover(int) }
+    msg { Init, Hover(int), Toggle(int) }
 
     model {
-        // 每片 { d: path, c: color }
-        segs List = []
+        // 每片段路径槽位(d=常驻/e=emphasis 外移)
+        d0 str = ""
+        e0 str = ""
+        d1 str = ""
+        e1 str = ""
+        d2 str = ""
+        e2 str = ""
+        d3 str = ""
+        e3 str = ""
+        hovDn int = 9
+        visDn0 bool = true
+        visDn1 bool = true
+        visDn2 bool = true
+        visDn3 bool = true
         // 图例槽位(固定 4 行,R006 规避:行内文本不引用循环变量记录字段)
         legendColor0 str = ""
         legendText0 str = ""
@@ -49,7 +61,6 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             var rOut float = 100.0
             var rIn float = 62.0
             var a0 float = -1.5707963267948966
-            var outSegs List = []
             var outTipTitle List = []
             var outTipBody List = []
             var cs = .colors
@@ -78,12 +89,16 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 var u1 float = cx + rIn * c1
                 var v1 float = cy + rIn * s1
                 var dstr = f"M${x0} ${y0} A100 100 0 ${laf} 1 ${x1} ${y1} L${u1} ${v1} A62 62 0 ${laf} 0 ${u0} ${v0} Z"
+                // 498 M3:emphasis 外移路径——中角方向 12px 平移六个锦点(弧径不变)
+                var mid float = (a0 + a1) / 2.0
+                var ox float = math.cos(mid) * 12.0
+                var oy float = math.sin(mid) * 12.0
+                var estr = f"M${x0 + ox} ${y0 + oy} A100 100 0 ${laf} 1 ${x1 + ox} ${y1 + oy} L${u1 + ox} ${v1 + oy} A62 62 0 ${laf} 0 ${u0 + ox} ${v0 + oy} Z"
                 var ci int = k
                 if ci >= ccount {
                     ci = ccount - 1
                 }
                 var color = cs[ci]
-                outSegs.push({ d: dstr, c: color, i: k })
                 // 图例项:labels[k] 优先回落 index 字段值;占比整数运算;槽位赋值(k<4)
                 var lv = d[iname]
                 var vi = d[.field]
@@ -93,18 +108,26 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     name = lname[k]
                 }
                 if k == 0 {
+                    .d0 = dstr
+                    .e0 = estr
                     .legendColor0 = color
                     .legendText0 = name
                 }
                 if k == 1 {
+                    .d1 = dstr
+                    .e1 = estr
                     .legendColor1 = color
                     .legendText1 = name
                 }
                 if k == 2 {
+                    .d2 = dstr
+                    .e2 = estr
                     .legendColor2 = color
                     .legendText2 = name
                 }
                 if k == 3 {
+                    .d3 = dstr
+                    .e3 = estr
                     .legendColor3 = color
                     .legendText3 = name
                 }
@@ -113,19 +136,42 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 a0 = a1
                 k = k + 1
             }
-            .segs = outSegs
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
         }
 
         .Hover(i) -> {
             .hovered = "true"
+            .hovDn = i
             var tt = .tipTitles[i]
             var tb = .tipBodies[i]
             .tipTitle = tt
             .tipBody = tb
         }
-        .HoverOut -> { .hovered = "false" }
+        .HoverOut -> {
+            .hovered = "false"
+            .hovDn = 9
+        }
+        .Toggle(k) -> {
+            if k == 0 {
+                .visDn0 = !.visDn0
+            }
+            if k == 1 {
+                .visDn1 = !.visDn1
+            }
+            if k == 2 {
+                .visDn2 = !.visDn2
+            }
+            if k == 3 {
+                .visDn3 = !.visDn3
+            }
+        }
+    }
+
+    style {
+        /* 498 M3: emphasis 外移淡入——vue 走 CSS transition(d 形状插值不可过渡,
+           仅描边/透明度淡入),VM 直接切换。 */
+        path { transition: stroke-width 0.15s ease, fill-opacity 0.15s ease; }
     }
 
     view {
@@ -133,8 +179,41 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             col (style: "relative") {
                 svg (viewBox: "150 20 260 260", style: "w-full h-auto max-w-md") {
                     circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
-                    for seg in .segs {
-                        path (key: seg["d"], d: seg["d"], fill: seg["c"], onmouseenter: .Hover(seg.i)) {}
+                    if .d0 != "" {
+                      if .visDn0 {
+                        if .hovDn == 0 {
+                            path (key: .e0, d: .e0, fill: .legendColor0, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(0)) {}
+                        } else {
+                            path (key: .d0, d: .d0, fill: .legendColor0, onmouseenter: .Hover(0)) {}
+                        }
+                      }
+                    }
+                    if .d1 != "" {
+                      if .visDn1 {
+                        if .hovDn == 1 {
+                            path (key: .e1, d: .e1, fill: .legendColor1, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(1)) {}
+                        } else {
+                            path (key: .d1, d: .d1, fill: .legendColor1, onmouseenter: .Hover(1)) {}
+                        }
+                      }
+                    }
+                    if .d2 != "" {
+                      if .visDn2 {
+                        if .hovDn == 2 {
+                            path (key: .e2, d: .e2, fill: .legendColor2, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(2)) {}
+                        } else {
+                            path (key: .d2, d: .d2, fill: .legendColor2, onmouseenter: .Hover(2)) {}
+                        }
+                      }
+                    }
+                    if .d3 != "" {
+                      if .visDn3 {
+                        if .hovDn == 3 {
+                            path (key: .e3, d: .e3, fill: .legendColor3, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(3)) {}
+                        } else {
+                            path (key: .d3, d: .d3, fill: .legendColor3, onmouseenter: .Hover(3)) {}
+                        }
+                      }
                     }
                 }
                 if .tooltip && .hovered == "true" {
@@ -147,8 +226,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             if .legend {
                 col (style: "gap-1") {
                     if .legendText0 != "" {
-                        mouse-area (onmouseenter: .Hover(0), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(0), onmouseleave: .HoverOut, onclick: .Toggle(0)) {
+                            row (style: if .visDn0 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
@@ -157,8 +236,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText1 != "" {
-                        mouse-area (onmouseenter: .Hover(1), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(1), onmouseleave: .HoverOut, onclick: .Toggle(1)) {
+                            row (style: if .visDn1 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
@@ -167,8 +246,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText2 != "" {
-                        mouse-area (onmouseenter: .Hover(2), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(2), onmouseleave: .HoverOut, onclick: .Toggle(2)) {
+                            row (style: if .visDn2 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
@@ -177,8 +256,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText3 != "" {
-                        mouse-area (onmouseenter: .Hover(3), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(3), onmouseleave: .HoverOut, onclick: .Toggle(3)) {
+                            row (style: if .visDn3 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }

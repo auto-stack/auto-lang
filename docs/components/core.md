@@ -541,7 +541,7 @@ Menubar container
 
 `builtin_widget` · `mouse-area` · web: `component` · iced: `full` · category: `overlay`
 
-Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive.
+Plan 484: transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick (desktop icon double-click). Plan 498 M0: onclick (iced on_press / vue @click; chart legend click-toggle, diagram select shared prerequisite).
 
 _props 待声明_
 
