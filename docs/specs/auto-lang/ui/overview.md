@@ -161,6 +161,17 @@ widget Counter {
 - a2vue 工程庞大（vue.rs 万行级），缺陷修复走 444 式"五类分簇"模式；013/015/011 构建失败系 master 预存（R006/R007）。
 - router 双语法并存（Plan 105/106，见 docs/router.md）。
 
+**505 桌面 DEBT 批处理一期（四族清偿）**：A 交互时序——原生槽位事件泵单发
+16ms try_recv 改 `drain_slot_events` 每拍排空 + MoveSizeStart/End 稳定分区
+前置（快甩同批即判；`NativeSlotEvents` 批消息形态）；B shell 面五瑕疵——
+shell.at 任务栏双分支收敛 flex-col-reverse 单份 + `__dock_border` 宿主投影
+边线、投影协议 v1.5（`pager` 旗标 + `more` "+N" 派生面）、a2vue 注册件
+props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 实机
+验收通道——`autoui_desktop` MCP 注入（DesktopInject 队列走真实按钮同一
+消费臂，AUTOUI_ACCEPTANCE=1 门控）+ ADR 规程 + acceptance_channel.py 统一
+入口，P487-1/P496-1/P501-2 三债实机照补拍归档；D P488-D4 on_dnd_finished
+发起方锚定 + 壁纸热切换定案（天然支持）。债项 P505-1/2 见 KNOWN-DEBT。
+
 ## 蒸馏来源
 
 - 本模块 spec 于 2026-08-28 由 Plan 471 刷新：蒸馏 437–465 活跃计划 + 4xx 归档计划 + 365–428 早期 UI 计划。
