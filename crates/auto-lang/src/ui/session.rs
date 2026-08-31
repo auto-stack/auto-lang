@@ -292,6 +292,10 @@ pub struct DesktopState {
     /// 分钟变化才写 shell `__wm_clock`（稳态零重建；不进投影指纹门控
     /// ——本地时钟非驱动事实投影，shell 只读消费）。
     pub clock_text: RefCell<String>,
+    /// Plan 497：本轮 screenshot 服务中的快照目标 wid 集（ServiceTick
+    /// 排空 request_capture 队列时记录；SnapshotShot 回调消费清空）。
+    /// 一次整窗截图服务全部请求（裁剪按各窗 rect 分发）。
+    pub snapshot_pending_wids: RefCell<Vec<Wid>>,
 }
 
 impl DesktopState {
@@ -307,6 +311,7 @@ impl DesktopState {
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),
             clock_text: RefCell::new(String::new()),
+            snapshot_pending_wids: RefCell::new(Vec::new()),
             shell_app: None,
             app_resolver: None,
             shell_fields: ShellFields::default(),
@@ -1303,6 +1308,10 @@ pub enum DesktopEvent {
     /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
     /// 消息面供 E2E/headless 直注验证 overlay 渲染。
     NativeDragOver(Option<crate::ui::native_dock::Rect>),
+    /// Plan 497：整窗截图回调（快照抓取编排——ServiceTick 排空
+    /// request_capture 队列后发起 `iced::window::screenshot`，回调臂按
+    /// `snapshot_pending_wids` 各窗 rect 裁剪入快照缓存并置消费者 dirty）。
+    SnapshotShot(iced::window::Screenshot),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。

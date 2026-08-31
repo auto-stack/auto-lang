@@ -108,8 +108,13 @@ pub fn invalidate(wid: Wid) {
 }
 
 /// 事件失效：全场（分区切换/dock 位置热切换等整窗重排场景）。
+/// 同时清抓取队列 + 冷却表（失效后应允许立即重抓，
+/// 否则 500ms 冷却会把重排后的首轮请求挡在队外）。
 pub fn invalidate_all() {
     cache().lock().unwrap().clear();
+    let mut guard = pending().lock().unwrap();
+    guard.0.clear();
+    guard.1.clear();
 }
 
 /// 整窗截图 → 窗口缩略（T1 定案核心）：
