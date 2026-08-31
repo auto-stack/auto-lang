@@ -987,3 +987,246 @@ mod musk_vm_track_p053_b4_title_tooltip {
     }
 }
 
+
+/// P-053-8: 二级导航点击会话实参漂移——UI 事件层携带正确 id
+/// （encode `Pick\u{1f}s\u{1f}<id>`），handler 体内参数却读到会话名
+/// （"你好"）。实机日志（plan053-batch4-vm.log）：
+///   [VM_HANDLER_CALL] args=[Str("8f20138…")]  ← 正确
+///   [VM_EXEC]          args=[Str("8f20138…")]  ← 正确
+///   [ChatsView.SelectSession] ENTER id=你好    ← 跑偏
+/// 且逐项确定：13e16… 两次点击均正确，8f20…（名"你好"）两次均漂移。
+/// 嫌疑：字符串池索引 u16 截断回绕（add_string 2026-08-22 注释登记的
+/// 引擎债）或 NV 负 i32 编码途经 i32 通道后的索引偏移。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_8_click_arg_drift {
+    use crate::parser::Parser;
+
+    fn build_root() -> crate::ui::dynamic::DynamicComponent {
+        let src = concat!(
+            "widget Root53r {\n",
+            "    model {\n",
+            "        var session_list []Value = []\n",
+            "        var got str = \"\"\n",
+            "    }\n",
+            "    msg Msg { Pick(str), Churn }\n",
+            "    on {\n",
+            "        .Pick(id) -> {\n",
+            "            .got = id\n",
+            "        }\n",
+            "        .Churn -> {\n",
+            "            var s = \"\"\n",
+            "            for i in 0..70000 {\n",
+            "                s = \"x\" + i\n",
+            "            }\n",
+            "            .got = s\n",
+            "        }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            for s in .session_list {\n",
+            "                button {\n",
+            "                    key: .s.id\n",
+            "                    onclick: .Pick(.s.id)\n",
+            "                    text .s.name\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    fn seed_sessions(dc: &mut crate::ui::dynamic::DynamicComponent) {
+        dc.write_state_vec(
+            "session_list",
+            vec![
+                auto_val::Value::Obj(
+                    auto_val::Obj::new()
+                        .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
+                        .with("name", auto_val::Value::str("你好")),
+                ),
+                auto_val::Value::Obj(
+                    auto_val::Obj::new()
+                        .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
+                        .with("name", auto_val::Value::str("alpha")),
+                ),
+            ],
+        )
+        .unwrap();
+    }
+
+    fn got_of(dc: &crate::ui::dynamic::DynamicComponent) -> String {
+        match dc.read_state("got").expect("got readable") {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            v => format!("{:?}", v),
+        }
+    }
+
+    /// 最小复现：池低位时点击实参必须原样到达 handler。
+    #[test]
+    fn pick_arg_intact_small_pool() {
+        let mut dc = build_root();
+        seed_sessions(&mut dc);
+        let _ = dc.view_with_debug_gated(false);
+        dc.on_with_input_for("Root53r", "Pick\u{1F}s\u{1F}8f20138cab63f0c24832d3fb", None);
+        assert_eq!(got_of(&dc), "8f20138cab63f0c24832d3fb");
+        dc.on_with_input_for("Root53r", "Pick\u{1F}s\u{1F}13e16478f80c91da604b87e7", None);
+        assert_eq!(got_of(&dc), "13e16478f80c91da604b87e7");
+    }
+
+    /// 池膨胀复现（u16 回绕假说）：池条目超 65535 后实参必须仍原样到达。
+    #[test]
+    fn pick_arg_intact_after_pool_churn() {
+        let mut dc = build_root();
+        seed_sessions(&mut dc);
+        let _ = dc.view_with_debug_gated(false);
+        dc.on_with_input_for("Root53r", "Churn", None);
+        dc.on_with_input_for("Root53r", "Pick\u{1F}s\u{1F}8f20138cab63f0c24832d3fb", None);
+        assert_eq!(
+            got_of(&dc),
+            "8f20138cab63f0c24832d3fb",
+            "池膨胀后点击实参漂移（P-053-8 现场：id 变会话名）"
+        );
+    }
+}
+
+/// P-053-8 语料级复现：test/ui/plan053_p8_click_arg（生产路径构建，
+/// store 兄弟调用 + 扁平化同名状态 + 循环按钮带参 onclick 全保真）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_8_corpus {
+    fn build() -> Option<crate::ui::dynamic::DynamicComponent> {
+        let rel = "test/ui/plan053_p8_click_arg/src/front/app.at";
+        let manifest = [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())?;
+        crate::plan370_test_support::build_component_from_app(&manifest)
+    }
+
+    fn seed(dc: &mut crate::ui::dynamic::DynamicComponent) {
+        dc.write_state_vec(
+            "session_list",
+            vec![
+                auto_val::Value::Obj(
+                    auto_val::Obj::new()
+                        .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
+                        .with("name", auto_val::Value::str("你好")),
+                ),
+                auto_val::Value::Obj(
+                    auto_val::Obj::new()
+                        .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
+                        .with("name", auto_val::Value::str("alpha")),
+                ),
+            ],
+        )
+        .unwrap();
+    }
+
+    fn str_state(dc: &crate::ui::dynamic::DynamicComponent, field: &str) -> String {
+        match dc.read_state(field).expect(field) {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            v => format!("{:?}", v),
+        }
+    }
+
+    /// 点击「你好」（id 8f20…）：handler 实参必须是 id，不是会话名。
+    #[test]
+    fn click_arg_is_id_not_name() {
+        let Some(mut dc) = build() else {
+            eprintln!("P053-8 corpus: SKIPPED — app.at not found");
+            return;
+        };
+        seed(&mut dc);
+        let _ = dc.view_with_debug_gated(false);
+        dc.on_with_input_for("Child53", "Pick\u{1F}s\u{1F}8f20138cab63f0c24832d3fb", None);
+        assert_eq!(
+            str_state(&dc, "debug_click_id"),
+            "8f20138cab63f0c24832d3fb",
+            "P-053-8: 点击实参漂移成会话名"
+        );
+        assert_eq!(
+            str_state(&dc, "session_id"),
+            "8f20138cab63f0c24832d3fb",
+            "P-053-8: store 兄弟调用实参同源漂移"
+        );
+    }
+
+    /// 对照组：点击「alpha」（id 13e1…）。
+    #[test]
+    fn click_arg_control_second_item() {
+        let Some(mut dc) = build() else {
+            eprintln!("P053-8 corpus: SKIPPED — app.at not found");
+            return;
+        };
+        seed(&mut dc);
+        let _ = dc.view_with_debug_gated(false);
+        dc.on_with_input_for("Child53", "Pick\u{1F}s\u{1F}13e16478f80c91da604b87e7", None);
+        assert_eq!(str_state(&dc, "debug_click_id"), "13e16478f80c91da604b87e7");
+    }
+}
+
+/// P-053-8 根因回归:字符串池 dedup 残键指向已复用槽——add_string 命中侧
+/// 内容校验必须把它转为干净重内化。现场(POOLLOG 实测 #222→#223):键
+/// "8f20…"→槽 2348 的条目存活(rc=1)时槽被幻影 freelist 条目复用覆写为
+/// "你好"而旧键未删,后续 add_string("8f20…") 残键命中返回 2348,点击
+/// 会话实参由 id 漂移成会话名。
+#[cfg(test)]
+mod musk_vm_track_p053_8_stale_key_selfheal {
+    use crate::vm::engine::AutoVM;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    #[test]
+    fn stale_dedup_key_reinterns_cleanly() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let hello = vm.add_string("你好".as_bytes().to_vec());
+        // 人为注入残键: "8f20…" → 你好所在槽(幻影 freelist 复用覆写后
+        // 旧键未删的现场形态)。
+        vm.string_dedup
+            .lock()
+            .unwrap()
+            .insert("8f20138cab63f0c24832d3fb".as_bytes().to_vec(), hello);
+        let idx = vm.add_string("8f20138cab63f0c24832d3fb".as_bytes().to_vec());
+        let got = vm.get_string(idx as u32).expect("slot readable");
+        assert_eq!(
+            got,
+            "8f20138cab63f0c24832d3fb".as_bytes(),
+            "残键命中必须重内化为内容一致的新槽,不得返回它串的槽"
+        );
+        assert_ne!(idx, hello, "重内化必须离开被污染槽");
+        // 残键已被重内化 insert 覆盖:同字节再次内化命中新槽且内容一致。
+        let again = vm.add_string("8f20138cab63f0c24832d3fb".as_bytes().to_vec());
+        assert_eq!(again, idx, "自愈后同键内化应稳定命中新槽");
+        assert_eq!(
+            vm.get_string(again as u32).unwrap(),
+            "8f20138cab63f0c24832d3fb".as_bytes()
+        );
+    }
+}

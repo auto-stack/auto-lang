@@ -906,11 +906,31 @@ impl AutoVM {
             // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
             // Plan 432 D26 加固:残键指向墓碑槽时不可复活(canary 按
             // tombstone 判定而非 rc)——视作 miss 走 freelist/append 重建。
-            if !self.pool_is_tombstone(idx) {
+            // PLAN-053 P-053-8 残键防御:另有一族残键指向**已被复用覆写**
+            // 的存活槽(幻影 freelist 条目让槽在 rc≥1 时被 freelist 弹出
+            // 复用,内容覆写而旧键未删——POOLLOG 实测 #222→#223:键
+            // "8f20…" 命中槽 2348,槽内容已轮转为 "你好",musk 点击会话
+            // 实参由 id 漂移成会话名)。命中槽内容必须与请求字节一致,
+            // 不一致视为 miss 走重内化——insert 覆盖残键,一键一槽不变量
+            // 自愈,对任何注入源免疫。
+            let content_matches = {
+                let strings = self.strings.read().unwrap();
+                strings.get(idx).map(|b| b.as_slice()) == Some(bytes.as_slice())
+            };
+            if !self.pool_is_tombstone(idx) && content_matches {
                 if crate::pool_log_all() {
                     eprintln!("[POOLLOG #{:>4}] intern-dedup-hit {} content={:?}", crate::pool_log_seq(), idx, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
                 }
                 return idx;
+            }
+            if crate::pool_log_all() && !content_matches && !self.pool_is_tombstone(idx) {
+                eprintln!(
+                    "[POOLLOG #{:>4}] intern-stale-key {} content={:?} != key {:?} — re-interning",
+                    crate::pool_log_seq(),
+                    idx,
+                    self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default(),
+                    String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>()
+                );
             }
         }
         // Plan 419 Phase 2: freelist 优先复用(池峰值 = 并发不同串数,
@@ -918,6 +938,18 @@ impl AutoVM {
         {
             let mut pool = self.pool_state.write().unwrap();
             if let Some(slot) = pool.freelist.pop() {
+                // PLAN-053 P-053-8: 幻影 freelist 条目签名——弹出的槽还有
+                // 存活持有(rc>0)即复用会覆写活条目内容并烧掉其 rc 记账
+                // (POOLLOG 实测 #222→#223,槽 2348 rc=1 时被复用)。此处
+                // 不改变复用语义(上游注入源属 060 计划 RC 债),只把静默
+                // 腐坏变成可见签名;残键伤害由 add_string 命中侧校验兜底。
+                if slot < pool.rc.len() && pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed) > 0 {
+                    eprintln!(
+                        "[P053-8] phantom freelist entry: slot {} reused while rc={} (live holders exist)",
+                        slot,
+                        pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
+                    );
+                }
                 let mut strings = self.strings.write().unwrap();
                 if slot < strings.len() {
                     strings[slot] = bytes.clone();

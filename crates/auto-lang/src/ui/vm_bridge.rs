@@ -1172,7 +1172,30 @@ impl VmBridge {
             if let Value::Str(s) = a {
                 // Plan 419/池去重一致性:走 add_string(原为裸 push,池漂移源)。
                 let idx = self.vm.add_string(s.as_bytes().to_vec());
+                // PLAN-053 P-053-8 canary①: add_string 返回槽的内容必须与
+                // 实参一致——dedup 残键/槽复用竞态会让它返回它串的槽（现场：
+                // 点击实参 id 变会话名"你好"，UI 层与 VM_HANDLER_CALL 日志均
+                // 正确、handler 体内首读即漂移）。触发即坐实内化层腐坏。
+                let slot = self.vm.get_string(idx as u32);
+                if slot.as_deref() != Some(s.as_bytes()) {
+                    eprintln!(
+                        "[P053-8] intern drift: arg {:?} -> idx {} content {:?}",
+                        s.as_str(),
+                        idx,
+                        slot.map(|b| String::from_utf8_lossy(&b).to_string())
+                    );
+                }
                 self.vm.rc_push_str_idx(&mut task, idx as usize);
+                // PLAN-053 P-053-8 canary②: 入栈后栈顶 NV 解码回的索引及
+                // 槽内容必须仍与实参一致——排除 push/编码环节。
+                let nv = task.ram.peek_nv(0);
+                let pushed_idx = auto_val::decode_string(nv) as u32;
+                if pushed_idx as usize != idx {
+                    eprintln!(
+                        "[P053-8] push drift: arg {:?} idx {} -> pushed idx {}",
+                        s.as_str(), idx, pushed_idx
+                    );
+                }
             } else {
                 push_value(&mut task.ram, a);
             }
