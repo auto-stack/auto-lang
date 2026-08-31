@@ -906,18 +906,61 @@ impl AutoVM {
             // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
             // Plan 432 D26 加固:残键指向墓碑槽时不可复活(canary 按
             // tombstone 判定而非 rc)——视作 miss 走 freelist/append 重建。
-            if !self.pool_is_tombstone(idx) {
+            // PLAN-053 P-053-8 残键防御:另有一族残键指向**已被复用覆写**
+            // 的存活槽(幻影 freelist 条目让槽在 rc≥1 时被 freelist 弹出
+            // 复用,内容覆写而旧键未删——POOLLOG 实测 #222→#223:键
+            // "8f20…" 命中槽 2348,槽内容已轮转为 "你好",musk 点击会话
+            // 实参由 id 漂移成会话名)。命中槽内容必须与请求字节一致,
+            // 不一致视为 miss 走重内化——insert 覆盖残键,一键一槽不变量
+            // 自愈,对任何注入源免疫。
+            let content_matches = {
+                let strings = self.strings.read().unwrap();
+                strings.get(idx).map(|b| b.as_slice()) == Some(bytes.as_slice())
+            };
+            if !self.pool_is_tombstone(idx) && content_matches {
                 if crate::pool_log_all() {
                     eprintln!("[POOLLOG #{:>4}] intern-dedup-hit {} content={:?}", crate::pool_log_seq(), idx, String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>());
                 }
                 return idx;
+            }
+            if crate::pool_log_all() && !content_matches && !self.pool_is_tombstone(idx) {
+                eprintln!(
+                    "[POOLLOG #{:>4}] intern-stale-key {} content={:?} != key {:?} — re-interning",
+                    crate::pool_log_seq(),
+                    idx,
+                    self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default(),
+                    String::from_utf8_lossy(&bytes).chars().take(12).collect::<String>()
+                );
             }
         }
         // Plan 419 Phase 2: freelist 优先复用(池峰值 = 并发不同串数,
         // 而非累计创建数)。复用条目 rc=0,由 push 侧 +1 建立 stake。
         {
             let mut pool = self.pool_state.write().unwrap();
-            if let Some(slot) = pool.freelist.pop() {
+            // PLAN-053 P-053-8: 幻影 freelist 条目清扫——rc>0 的弹出槽是
+            // 存活槽(不变量:freelist 槽 rc==0)。丢弃条目以恢复不变量,
+            // 绝不复用:复用会覆写活内容+清零 rc,触发孤儿 release 下溢
+            // 风暴并自续(实测槽 49299:rc=5 被复用→下溢 4294967295→再
+            // free→再入 freelist;musk store 兄弟调用实参读到后落的 404
+            // JSON 即此伤害)。首见打签名,注入源治理归 060 RC 债。
+            let mut chosen: Option<usize> = None;
+            while let Some(slot) = pool.freelist.pop() {
+                let live = slot < pool.rc.len()
+                    && pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed) > 0;
+                if live {
+                    if pool.phantom_seen.insert(slot) {
+                        eprintln!(
+                            "[P053-8] phantom freelist entry dropped: slot {} (live holders, rc={})",
+                            slot,
+                            pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
+                        );
+                    }
+                    continue;
+                }
+                chosen = Some(slot);
+                break;
+            }
+            if let Some(slot) = chosen {
                 let mut strings = self.strings.write().unwrap();
                 if slot < strings.len() {
                     strings[slot] = bytes.clone();

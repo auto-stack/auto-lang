@@ -1,0 +1,25 @@
+// child53.at — PLAN-053 P-053-8 语料：ChatsView 的最小同构（子 widget 上的
+// Pick handler + 循环按钮带参 onclick + 参数回显 + store 兄弟调用）。
+widget Child53 {
+    model {
+        var debug_click_id str = ""
+    }
+    msg Msg { Pick(str) }
+    view {
+        col {
+            for s in .store.session_list {
+                button {
+                    key: .s.id
+                    onclick: .Pick(.s.id)
+                    text .s.name
+                }
+            }
+        }
+    }
+    on {
+        .Pick(id) -> {
+            .debug_click_id = id
+            store.SwitchSession(id)
+        }
+    }
+}

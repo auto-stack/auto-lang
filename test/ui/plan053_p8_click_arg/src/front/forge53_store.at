@@ -1,0 +1,19 @@
+// forge53_store.at — PLAN-053 P-053-8 语料：musk ForgeStore 的最小同构
+// （SwitchSession 带 str 实参，扁平化后字段与根 widget 合并）。
+store Forge53Store {
+    msg Msg { SwitchSession(str), LoadSessionList }
+    model {
+        var session_id str = ""
+        var messages []Value = []
+        var session_list []Value = []
+    }
+    on {
+        .SwitchSession(id) -> {
+            .session_id = id
+            .messages = []
+        }
+        .LoadSessionList -> {
+            .messages = []
+        }
+    }
+}

@@ -1,0 +1,23 @@
+// app.at — PLAN-053 P-053-8 语料：二级导航点击实参漂移的最小同构。
+// 现场（musk 实机 2026-08-31）：悬停 tooltip 显示正确 id，点击后
+// handler 实参却变成会话名（"你好"）。UI 事件编码层（encode_payload）
+// 与 VM 入核（call_handler_for args）日志均正确——漂移发生在 handler
+// 体内首读参数之前。本语料保真复刻 musk 形态：
+//   - handler 在子 widget 上（ChatsView 同构：独立文件 + use 引入，
+//     分发走子 widget 路径 sync_child_props_to_root）
+//   - for 循环 button onclick: .Pick(.s.id)（key: .s.id）
+//   - handler 三件套：参数状态回显 + store 兄弟调用（P-053-7 转译路径）
+//   - store 与根 widget 扁平化合并（字段撞名域）
+use forge53_store: Forge53Store
+use child53: Child53
+
+widget App53 {
+    model {
+        var boot_flag str = "boot"
+    }
+    view {
+        col {
+            Child53 {}
+        }
+    }
+}
