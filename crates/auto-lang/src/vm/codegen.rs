@@ -7550,6 +7550,17 @@ impl Codegen {
                             }
                         }
                     }
+                } else {
+                    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 显式告警（一次性）
+                    if let Some(name) = func_name.as_ref() {
+                        if matches!(call.name.as_ref(), Expr::Ident(_)) {
+                            if let Some(api) = self.api_funcs.get(name).cloned() {
+                                self.emit_str_const_push(&api.fn_name);
+                                self.emit_call_nat_by_name("auto.vm.warn_api_noop", 1)?;
+                                self.emit(OpCode::POP);
+                            }
+                        }
+                    }
                 }
 
                 // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly

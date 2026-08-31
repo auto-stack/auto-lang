@@ -434,48 +434,56 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
             }
         }
     }
-    // Plan 398 §2/§3 (BUG-B + BUG-C): sibling-handler call rewriting.
-    // `.Sibling(args)` where the receiver is implicit self (`.X` / `self.X`)
-    // and `Sibling` is a msg variant of the CURRENT widget → rewrite to
+    // Plan 398 §2/§3 (BUG-B + BUG-C) + Plan 053 P-053-7: sibling-handler call rewriting.
+    // `.Sibling(args)` (self/dot receiver) or bare `Sibling(args)` where
+    // `Sibling` is a msg variant of the CURRENT widget → rewrite to
     // `handler_<CurrentWidget>_<Sibling>(__state, args)`.
     //
     // Without this, `.Exit()` inside PromptBar's `.OnCtrlD` handler (and
-    // `.RefreshGit()` inside ShellStore's `.Init`) fall through to the
-    // `.field` rewrite below → `__state.Exit` → codegen emits a CALL to the
-    // bogus symbol `<Widget>_State.Exit` → "Undefined symbol: <W>_State.X".
+    // `LoadSessionList()` inside ForgeStore's `.Init`) fall through to the
+    // `.field` rewrite below or an unresolved global call.
     if let Expr::Call(call) = e {
-        if let Expr::Dot(obj, method) = call.name.as_ref() {
-            let is_self_receiver = matches!(
-                obj.as_ref(),
-                Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self"
-            );
-            if is_self_receiver {
-                let is_msg_variant = CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(method.as_str()));
-                if is_msg_variant {
-                    let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
-                    if !widget_name.is_empty() {
-                        let handler_fn = format!("handler_{}_{}", widget_name, method);
-                        let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
-                        for arg in &call.args.args {
-                            let mut cloned = arg.clone();
-                            match &mut cloned {
-                                crate::ast::Arg::Pos(ex) | crate::ast::Arg::Pair(_, ex) => {
-                                    rewrite_expr(ex, state_fields);
-                                }
-                                crate::ast::Arg::Name(_) => {}
+        let method_opt = match call.name.as_ref() {
+            Expr::Dot(obj, method) => {
+                let is_self_receiver = matches!(
+                    obj.as_ref(),
+                    Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self"
+                );
+                if is_self_receiver {
+                    Some(method.clone())
+                } else {
+                    None
+                }
+            }
+            Expr::Ident(method) => Some(method.clone()),
+            _ => None,
+        };
+        if let Some(method) = method_opt {
+            let is_msg_variant = CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(method.as_str()));
+            if is_msg_variant {
+                let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
+                if !widget_name.is_empty() {
+                    let handler_fn = format!("handler_{}_{}", widget_name, method);
+                    let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    for arg in &call.args.args {
+                        let mut cloned = arg.clone();
+                        match &mut cloned {
+                            crate::ast::Arg::Pos(ex) | crate::ast::Arg::Pair(_, ex) => {
+                                rewrite_expr(ex, state_fields);
                             }
-                            new_args.push(cloned);
+                            crate::ast::Arg::Name(_) => {}
                         }
-                        *e = Expr::Call(crate::ast::Call {
-                            name: Box::new(Expr::Ident(Name::from(handler_fn))),
-                            args: crate::ast::Args { args: new_args },
-                            ret: Type::Void,
-                            type_args: Vec::new(),
-                            generic_args: Vec::new(),
-                            pos: None,
-                        });
-                        return;
+                        new_args.push(cloned);
                     }
+                    *e = Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident(Name::from(handler_fn))),
+                        args: crate::ast::Args { args: new_args },
+                        ret: Type::Void,
+                        type_args: Vec::new(),
+                        generic_args: Vec::new(),
+                        pos: None,
+                    });
+                    return;
                 }
             }
         }
@@ -819,16 +827,15 @@ pub fn synthesize_widget_module(
 
     // Plan 340: build api_funcs metadata from imported Fn declarations that
     // carry #[api(method,path)] attrs. Used by Expr::Call to rewrite bare API
-    // calls into HTTP requests when api_over_http is set.
+    // calls into HTTP requests when api_over_http is set, or emit warn_api_noop
+    // in merged mode (Plan 053 P-053-4).
     //
     // Plan 340 audit: only register a BARE-name alias when the name is unique
     // across all imported #[api] fns. If two modules export the same bare name
     // (e.g. db.create_note AND api.create_note), a bare call is ambiguous, so
     // we skip the alias (last-write-wins would silently route to the wrong
     // endpoint). This mirrors the import_scope bare_counts guard below.
-    // Plan 060 M3:host 分派同样需要 api_funcs 元数据(bare 名 → 端点)。
-    let host_mode = crate::vm::host_bridge::has_host_calls();
-    if api_over_http || host_mode {
+    {
         // Count how many imported #[api] fns define each bare name.
         let mut bare_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
@@ -1430,8 +1437,7 @@ pub fn synthesize_from_decl(
     // Plan 340: build api_funcs metadata from imported Fn declarations that
     // carry #[api(method,path)] attrs.
     // Plan 340 audit: skip ambiguous bare names (see first synth site above).
-    // Plan 060 M3:host 分派同样需要(bare 名 → 端点)。
-    if api_over_http || crate::vm::host_bridge::has_host_calls() {
+    {
         let mut bare_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for stmt in &import_stmts {

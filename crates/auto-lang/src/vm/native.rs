@@ -7446,11 +7446,7 @@ pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     };
     drop(guard);
     let bytes = result.into_bytes();
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        strings.push(bytes);
-        strings.len() - 1
-    };
+    let idx = vm.add_string(bytes);
     {
         let nv = auto_val::encode_string(idx as u32);
         task.ram.push_nv(nv);
@@ -7534,11 +7530,7 @@ pub fn shim_url_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
             auto_val::decode_i32(s_nv).to_string()
         };
         let encoded = urlencoding::encode(&s).to_string();
-        let idx = {
-            let mut strings = vm.strings.write().unwrap();
-            strings.push(encoded.into_bytes());
-            strings.len() - 1
-        };
+        let idx = vm.add_string(encoded.into_bytes());
         task.ram.push_nv(auto_val::encode_string(idx as u32));
     }
     Ok(())
@@ -7572,11 +7564,7 @@ pub fn shim_url_encode_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
             .map(|seg| urlencoding::encode(seg).to_string())
             .collect::<Vec<_>>()
             .join("/");
-        let idx = {
-            let mut strings = vm.strings.write().unwrap();
-            strings.push(encoded.into_bytes());
-            strings.len() - 1
-        };
+        let idx = vm.add_string(encoded.into_bytes());
         task.ram.push_nv(auto_val::encode_string(idx as u32));
     }
     Ok(())
@@ -7603,11 +7591,7 @@ pub fn shim_localstorage_get_item(task: &mut AutoTask, vm: &AutoVM) -> Result<()
         };
         match crate::vm::ffi::stdlib::storage_raw_get(&key) {
             Some(v) => {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    strings.push(v.into_bytes());
-                    strings.len() - 1
-                };
+                let idx = vm.add_string(v.into_bytes());
                 task.ram.push_nv(auto_val::encode_string(idx as u32));
             }
             None => {
@@ -7685,11 +7669,7 @@ pub fn shim_env_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         };
         match std::env::var(&key) {
             Ok(v) => {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    strings.push(v.into_bytes());
-                    strings.len() - 1
-                };
+                let idx = vm.add_string(v.into_bytes());
                 task.ram.push_nv(auto_val::encode_string(idx as u32));
             }
             Err(_) => {

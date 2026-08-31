@@ -1270,6 +1270,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.set_default_header", 3139, Void),
             ("auto.http.set_default_query", 3140, Void),
             ("auto.http.clear_default_auth", 3141, Void),
+            // PLAN-053 P-053-4: merged mode #[api] no-op warning
+            ("auto.vm.warn_api_noop", 3142, Void),
             ("auto.http.post", 2231, Void),
             ("auto.http.put", 2232, Void),
             ("auto.http.delete", 2233, Void),
@@ -2098,6 +2100,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.set_default_header", 3139),
     ("auto.http.set_default_query", 3140),
     ("auto.http.clear_default_auth", 3141),
+    ("auto.vm.warn_api_noop", 3142),
     ("auto.http.post", 2231),
     ("auto.http.put", 2232),
     ("auto.http.delete", 2233),
