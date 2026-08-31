@@ -206,11 +206,17 @@ fn osconfig_full_chain_launch_modules_and_persist() {
 
     eprintln!("[501-T3] phase C: launching app");
     // ── ③ launch：探活注入 Running(测试 url) → env 注入 → 真前端装载 ──
-    //（daemon 声明由测试注入——真 pac.at 的 `daemon: autoos` 行随 T7 跨仓落；
-    //  launch 臂逻辑（ensure_ready/env/装载）不因此分叉。）
+    //（daemon 声明取 pac.at 自然字段——T7 跨仓已落 `daemon: "autoos"` 行；
+    //  检活注入位指向测试 daemon url，ensure_ready 生产路径 T4 实机验证。）
     std::env::remove_var(auto_lang::ui::osconfig_daemon::ENV_DAEMON);
+    assert_eq!(
+        entry.daemon.as_deref(),
+        Some("autoos"),
+        "pac daemon 声明（T7 跨仓行）被注册表自然消费"
+    );
     let code = std::fs::read_to_string(&entry.entry).expect("读入口源");
     let source_path = entry.entry.to_string_lossy().to_string();
+    let daemon_decl = entry.daemon.clone();
     let mut ds = auto_lang::ui::session::DesktopSession::__test_session();
     ds.open_desktop(iced::window::Id::unique());
     let win = ds.host.as_ref().expect("desktop").window;
@@ -226,7 +232,7 @@ fn osconfig_full_chain_launch_modules_and_persist() {
             code: code.clone(),
             source_path: Some(source_path.clone()),
             title: Some("系统设置".to_string()),
-            daemon: Some("autoos".to_string()),
+            daemon: daemon_decl.clone(),
             back_root: Some(back_root.clone()),
         })
     }));
