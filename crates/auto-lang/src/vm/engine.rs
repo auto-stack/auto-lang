@@ -4719,6 +4719,21 @@ impl AutoVM {
                                         auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
                                         // Plan 419: 元素引用入栈 +1。
                                         auto_val::Value::VmRef(r) => { self.rc_push(task, auto_val::encode_object(r.id as u32)); }
+                                        // PLAN-053 P-053-1: 对象元素物化——
+                                        // Value::Obj 原落 `_` 臂 push_i32(0)，
+                                        // `messages[i].id` 读 0、守卫恒假 →
+                                        // computed 产出空列表（musk
+                                        // filteredMessages 消息列表恒空）。
+                                        // 物化为 ObjectData 堆对象，GET_FIELD
+                                        // 按名读字段。
+                                        auto_val::Value::Obj(o) => {
+                                            let mut od = crate::vm::types::ObjectData::new();
+                                            for (k, v) in o.iter() {
+                                                od.set(k.clone(), v.clone());
+                                            }
+                                            let id = self.insert_heap_object(od);
+                                            self.rc_push_id(task, id);
+                                        }
                                         auto_val::Value::Nil => { task.ram.push_i32(0); }
                                         _ => { task.ram.push_i32(0); }
                                     }
@@ -5035,6 +5050,14 @@ impl AutoVM {
                             auto_val::decode_i32(nv) as u64
                         } else if auto_val::is_object(nv) {
                             auto_val::decode_object(nv) as u64
+                        } else if auto_val::is_list(nv) {
+                            // PLAN-053 P-053-1: TAG_LIST 接收者——computed
+                            // helper 实参经 bridge call_vm_fn 按 encode_list
+                            // 编码传入，`.length` 落此。decode_list 与
+                            // decode_i32 位型同值(低 32 位即堆 id)，但显式
+                            // 分派消除误报 stderr(musk 实机 571×
+                            // "GET_FIELD non-i32 obj_id field=length" 噪音)。
+                            auto_val::decode_list(nv) as u64
                         } else {
                             let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
                             let field_name = self.strings.read().unwrap()
