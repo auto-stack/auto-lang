@@ -551,6 +551,17 @@ pub mod win32 {
     /// 会话在拖旗标（DoDragDrop 模态；重入受理即拒）。
     static DRAG_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+    /// Plan 505 D（债 P488-D4）：拖出会话代号（每次 start_drag 完成自增）。
+    /// 宿主侧在 App handler dispatch 前后读值比对——代际变化即"本次
+    /// dispatch 内发起并完成了一次拖出"，据此锚定 on_dnd_finished 的
+    /// 交付目标为**发起方 App**（替代完成时焦点，语义更稳）。
+    static DRAG_SESSION_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// 当前拖出会话代号（宿主 dispatch 环前后比对用；纯读）。
+    pub fn drag_session_generation() -> u64 {
+        DRAG_SESSION_GEN.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// 发起系统拖拽（受理即返）：空载荷 / 已有会话在拖 / 线程拉起失败 →
     /// false。完成后 [`take_finished_effect`] 可取到效果（每次会话一条）。
     /// 发起系统拖拽（**调用线程内联阻塞**至落下/取消）。OLE 拖拽循环必须
@@ -592,6 +603,8 @@ pub mod win32 {
                 &mut effect_out,
             );
             let effect = effect_of(effect_out);
+            // Plan 505 D：会话代号自增（宿主 dispatch 环锚定发起方）。
+            DRAG_SESSION_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let (tx, _) = DONE.get_or_init(|| {
                 let (tx, rx) = std::sync::mpsc::channel();
                 (tx, std::sync::Mutex::new(rx))

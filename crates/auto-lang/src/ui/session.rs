@@ -233,6 +233,10 @@ pub struct DesktopState {
     /// Plan 504：fit 测量单轮自重试计数（`__fit_measured` 未找到测量锚点
     /// 时重新发起；达上限放弃本轮，下个触发点清零重新武装）。
     pub fit_measure_retries: Cell<u32>,
+    /// Plan 505 D（债 P488-D4）：on_dnd_finished 交付锚——拖出发起方
+    /// AppId（App handler dispatch 环后按拖出会话代号变化置位；DndFinished
+    /// 消费即取走）。None = 回退完成时焦点（v1 语义）。
+    pub dnd_initiator: Option<crate::ui::session::AppId>,
     /// Plan 479 T2：通知历史（S6 聚合面；MRU 序 front=最新，容量
     /// [`NOTES_CAP`] FIFO）。写入唯一入口 = renderer `push_notification`
     /// （双面一体：入史 + toast + 未读）。
@@ -326,6 +330,7 @@ impl DesktopState {
             toast_next_id: Cell::new(1),
             fit_measure_in_flight: Cell::new(false),
             fit_measure_retries: Cell::new(0),
+            dnd_initiator: None,
             notifications: RefCell::new(Vec::new()),
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),

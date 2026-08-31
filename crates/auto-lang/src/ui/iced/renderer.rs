@@ -8369,6 +8369,43 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
     None
 }
 
+/// Plan 505 D（债 P488-D4）：当前拖出会话代号（win32 实态；非 Windows/
+/// 未开 native-dnd 恒 0——锚定永不触发，交付回退 v1 焦点语义）。
+fn dnd_drag_generation() -> u64 {
+    #[cfg(all(windows, feature = "native-dnd"))]
+    {
+        crate::ui::native_dnd::win32::drag_session_generation()
+    }
+    #[cfg(not(all(windows, feature = "native-dnd")))]
+    {
+        0
+    }
+}
+
+/// Plan 505 D：dispatch 环后锚定判定——代际变化（本次 dispatch 内发起并
+/// 完成了一次 DoDragDrop）即锚定发起方 App 为 on_dnd_finished 交付目标。
+fn maybe_anchor_dnd_initiator(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    gen_before: u64,
+    gen_after: u64,
+) {
+    if gen_after != gen_before {
+        state.desktop.dnd_initiator = Some(app);
+    }
+}
+
+/// Plan 505 D：on_dnd_finished 交付目标——发起时锚定（取走）> 完成时
+/// 焦点 > primary（v1 回退序保持）。
+fn dnd_finished_target(state: &mut crate::ui::session::DesktopSession) -> Option<crate::ui::session::AppId> {
+    state
+        .desktop
+        .dnd_initiator
+        .take()
+        .or_else(|| state.wm_focused_app())
+        .or_else(|| state.primary_app())
+}
+
 /// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷字段
 /// {text: str|null, files: [str], image: {path,width,height}|null,
 /// screen_x: int, screen_y: int, formats: [str]}（VM 堆记录编码见
@@ -11886,13 +11923,13 @@ fn compare_pngs(
                         }
                         return summon_switcher(state);
                     }
-                    // Plan 488 步骤 4/6：拖出完成 → 焦点 App 注入
-                    // on_dnd_finished（管线现状 = call_handler 直注；发起方
-                    // 追踪无 VM→AppId 通道，v1 取完成时焦点 App——拖出期桌面
-                    // 持焦点，与发起方一致；偏差场景记 T6 冒烟观察）。
+                    // Plan 488 步骤 4/6 → 505 D（债 P488-D4 清偿）：拖出完成 →
+                    // on_dnd_finished 交付**发起时锚定 App**（dispatch 环置位；
+                    // DoDragDrop 在发起方 handler 内联阻塞，完成时焦点通常
+                    // 即发起方，锚定消除偏差场景）；无锚回退完成时焦点
+                    // （v1 语义保持）。
                     DesktopEvent::DndFinished { effect } => {
-                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
-                        {
+                        if let Some(app) = dnd_finished_target(state) {
                             inject_native_event(state, app, "on_dnd_finished", &[
                                 auto_val::Value::str(effect),
                             ]);
@@ -11958,7 +11995,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // Plan 505 D（债 P488-D4）：拖出发起方锚定——DoDragDrop 在
+                // App handler dispatch 内联阻塞至完成（488 步骤 9 定案），
+                // 代际变化即本次 dispatch 发起并完成了一次拖出。
+                let dnd_gen_before = dnd_drag_generation();
                 let task = dispatch_app(state, app_id, m);
+                maybe_anchor_dnd_initiator(
+                    state,
+                    app_id,
+                    dnd_gen_before,
+                    dnd_drag_generation(),
+                );
                 // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
                 // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
                 // 按钮路径不受帧泵节拍限制（T1 报告 §2.3）。
@@ -18743,6 +18790,44 @@ mod tests {
             s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
         });
         assert!(!has_reverse, "top 时根 col 不应含 flex-col-reverse");
+    }
+
+    /// Plan 505 D（债 P488-D4）：on_dnd_finished 交付锚定——发起时锚定
+    /// 优先于完成时焦点（偏差场景：拖出后焦点漂移）；无锚回退焦点/primary
+    /// （v1 语义保持）；锚定消费即取走（一次性）。
+    #[test]
+    fn dnd_finished_delivery_anchors_at_initiator() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        ds.wm_focus(b);
+        let app_of = |ds: &crate::ui::session::DesktopSession,
+                      wid: crate::ui::session::Wid| {
+            ds.host
+                .as_ref()
+                .unwrap()
+                .wm
+                .wins
+                .get(&wid)
+                .expect("vwin 在册")
+                .app
+        };
+        let (app_a, app_b) = (app_of(&ds, a), app_of(&ds, b));
+
+        // 代际不变（dispatch 内无拖出）→ 不锚定。
+        let gen = dnd_drag_generation();
+        maybe_anchor_dnd_initiator(&mut ds, app_a, gen, gen);
+        assert!(ds.desktop.dnd_initiator.is_none(), "无拖出不锚定");
+
+        // 代际变化 → 锚定发起方 a；交付目标 = a（焦点在 b 的偏差场景下
+        // 仍交付发起方）。
+        maybe_anchor_dnd_initiator(&mut ds, app_a, gen, gen + 1);
+        assert_eq!(ds.desktop.dnd_initiator, Some(app_a));
+        assert_eq!(dnd_finished_target(&mut ds), Some(app_a), "锚定优先于焦点");
+
+        // 锚定取走后回退完成时焦点（v1 语义）。
+        assert_eq!(dnd_finished_target(&mut ds), Some(app_b), "无锚回退焦点");
     }
 
     #[test]
