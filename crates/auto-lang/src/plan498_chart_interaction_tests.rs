@@ -134,4 +134,27 @@ mod plan498_m1 {
         assert!(dump.contains(r#"stroke-width=\"3\""#), "高亮描边 3 落图");
         assert!(dump.contains(r#"fill-opacity=\"0.08\""#), "downplay 面积 0.08 落图");
     }
+
+    /// M2:bar 分组高亮——命中竖带 .Hover(0) 顺带 hoverGroup:该组柱描边
+    /// 1.5 落图,其余组 fill-opacity 0.3;HoverOut 复原。
+    #[test]
+    fn plan498_bar_group_emphasis() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan498 M2: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let dump0 = dump(&mut dc);
+        assert!(dump0.contains("h19") || dump0.contains("h25"), "常驻柱几何落图");
+        assert!(!dump0.contains(r#"fill-opacity=\"0.3\""#), "常驻态无 downplay");
+
+        dc.on_with_input_for("BarChart", "Hover\u{1F}i\u{1F}0", None);
+        let dump1 = dump(&mut dc);
+        assert!(dump1.contains(r#"stroke-width=\"1.5\""#), "高亮组描边 1.5 落图");
+        assert!(dump1.contains(r#"fill-opacity=\"0.3\""#), "其余组 downplay 0.3 落图");
+
+        dc.on_with_input_for("BarChart", "HoverOut", None);
+        let dump2 = dump(&mut dc);
+        assert!(!dump2.contains(r#"stroke-width=\"1.5\""#), "离焦后描边消失");
+        assert!(!dump2.contains(r#"fill-opacity=\"0.3\""#), "离焦后 downplay 消失");
+    }
 }

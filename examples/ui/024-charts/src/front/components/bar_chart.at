@@ -1,4 +1,4 @@
-// components/bar_chart.at - BarChart component (Plan 437 Phase 2 ② → Plan 484 v2 → Plan 492 M6)
+// components/bar_chart.at - BarChart component (Plan 437 Phase 2 ② → Plan 484 v2 → Plan 492 M6 → Plan 498 M2)
 //
 // 柱形图:band scale(槽宽 = 510/n,grouped 槽内 60% 均分系列;stacked
 // 单列前缀和堆叠)。渲染端 v1 = SVG 子树直通(442 A4)。
@@ -17,7 +17,11 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
     msg { Init, Hover(int) }
 
     model {
-        segs List = []
+        segs0 List = []
+        segs1 List = []
+        segs2 List = []
+        segs3 List = []
+        hoverGroup int = 9
         xlabels str = ""
         xLab0 str = ""
         xLab1 str = ""
@@ -128,14 +132,18 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
             var ccount int = cs.len()
             var iname = .index
 
-            // ---- 段记录:type prop 直接选(grouped 槽内并列/stacked 前缀和堆叠) ----
-            var outSegs List = []
+            // ---- 段记录:type prop 直接选(grouped 槽内并列/stacked 前缀和堆叠);
+            //      498 M2:逐柱记录 {d,c,g}(组号 g 驱动分组 emphasis)入逐系列槽位 ----
+            var out0 List = []
+            var out1 List = []
+            var out2 List = []
+            var out3 List = []
             var k = 0
             for f in .fields {
-                var dstr = ""
                 var i = 0
                 for d in .data {
                     var xf float = 40.0 + i * slot + slot * 0.2
+                    var rstr = ""
                     if .type == "stacked" {
                         // 前缀和底边:前面系列累计抬升
                         var before int = 0
@@ -153,22 +161,38 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                         var ytopS float = bottom - allf / domainf * span
                         var ybase float = bottom - beforef / domainf * span
                         var hfS float = ybase - ytopS
-                        dstr = dstr + f"M${xf} ${ytopS} h${inner} v${hfS} h-${inner} Z "
+                        rstr = f"M${xf} ${ytopS} h${inner} v${hfS} h-${inner} Z"
                     } else {
                         var vfg float = d[f]
                         var ytop float = bottom - vfg / domainf * span
                         var hf float = bottom - ytop
                         var xfg float = xf + k * barw
-                        dstr = dstr + f"M${xfg} ${ytop} h${barw} v${hf} h-${barw} Z "
+                        rstr = f"M${xfg} ${ytop} h${barw} v${hf} h-${barw} Z"
+                    }
+                    var ci int = k
+                    if ci >= ccount {
+                        ci = ccount - 1
+                    }
+                    var rcol = cs[ci]
+                    if k == 0 {
+                        out0.push({ d: rstr, c: rcol, g: i })
+                    }
+                    if k == 1 {
+                        out1.push({ d: rstr, c: rcol, g: i })
+                    }
+                    if k == 2 {
+                        out2.push({ d: rstr, c: rcol, g: i })
+                    }
+                    if k == 3 {
+                        out3.push({ d: rstr, c: rcol, g: i })
                     }
                     i = i + 1
                 }
-                var ci int = k
-                if ci >= ccount {
-                    ci = ccount - 1
+                var cik int = k
+                if cik >= ccount {
+                    cik = ccount - 1
                 }
-                var color = cs[ci]
-                outSegs.push({ d: dstr, c: color })
+                var color = cs[cik]
                 var name = f
                 var lname = .labels
                 if lname.len() > k {
@@ -192,7 +216,10 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                 }
                 k = k + 1
             }
-            .segs = outSegs
+            .segs0 = out0
+            .segs1 = out1
+            .segs2 = out2
+            .segs3 = out3
 
             // ---- x 轴标签:逐数据点槽位(≤20 全量对齐,超出等距抽样) ----
             var KL int = n
@@ -328,12 +355,21 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
 
         .Hover(i) -> {
             .hovered = "true"
+            .hoverGroup = i
             var tt = .tipTitles[i]
             var tb = .tipBodies[i]
             .tipTitle = tt
             .tipBody = tb
         }
-        .HoverOut -> { .hovered = "false" }
+        .HoverOut -> {
+            .hovered = "false"
+            .hoverGroup = 9
+        }
+    }
+
+    style {
+        /* 498 M2: emphasis 淡入——vue 走 CSS transition,VM 直接切换。 */
+        path { transition: stroke-width 0.15s ease, fill-opacity 0.15s ease; }
     }
 
     view {
@@ -392,8 +428,57 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                             }
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                            for seg in .segs {
-                                path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                            if .legendText0 != "" {
+                                for seg in .segs0 {
+                                    if .hoverGroup == seg.g {
+                                        path (key: seg["d"], d: seg["d"], fill: seg["c"], stroke: seg["c"], stroke-width: "1.5") {}
+                                    } else {
+                                        if .hoverGroup == 9 {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                        } else {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"], fill-opacity: "0.3") {}
+                                        }
+                                    }
+                                }
+                            }
+                            if .legendText1 != "" {
+                                for seg in .segs1 {
+                                    if .hoverGroup == seg.g {
+                                        path (key: seg["d"], d: seg["d"], fill: seg["c"], stroke: seg["c"], stroke-width: "1.5") {}
+                                    } else {
+                                        if .hoverGroup == 9 {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                        } else {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"], fill-opacity: "0.3") {}
+                                        }
+                                    }
+                                }
+                            }
+                            if .legendText2 != "" {
+                                for seg in .segs2 {
+                                    if .hoverGroup == seg.g {
+                                        path (key: seg["d"], d: seg["d"], fill: seg["c"], stroke: seg["c"], stroke-width: "1.5") {}
+                                    } else {
+                                        if .hoverGroup == 9 {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                        } else {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"], fill-opacity: "0.3") {}
+                                        }
+                                    }
+                                }
+                            }
+                            if .legendText3 != "" {
+                                for seg in .segs3 {
+                                    if .hoverGroup == seg.g {
+                                        path (key: seg["d"], d: seg["d"], fill: seg["c"], stroke: seg["c"], stroke-width: "1.5") {}
+                                    } else {
+                                        if .hoverGroup == 9 {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                                        } else {
+                                            path (key: seg["d"], d: seg["d"], fill: seg["c"], fill-opacity: "0.3") {}
+                                        }
+                                    }
+                                }
                             }
                         }
                         if .tooltip {
