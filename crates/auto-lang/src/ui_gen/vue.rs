@@ -7133,14 +7133,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// 段原样落入静态 class（浏览器侧废 token）。拆分：静态段并入 class，
     /// 插值段转 `:class` 拼接表达式（`'w-full ' + __desktop_bg`）。
     /// 字段名非法（空/非标识符）→ None（维持旧行为）。
-    fn interpolated_class_parts(s: &str) -> Option<(Vec<String>, String)> {
-        if !s.contains("${.") {
+    /// Plan 503: pub(crate) —— plan503_tests 直测循环成员插值拆分。
+    /// 形态: `${.field}` → 状态 ref;`${member.field}`(Plan 503) → v-for
+    /// 成员点路径表达式(:class 绑定落在 v-for 作用域内求值)。
+    pub(crate) fn interpolated_class_parts(s: &str) -> Option<(Vec<String>, String)> {
+        if !s.contains("${") {
             return None;
         }
         let mut statics: Vec<String> = Vec::new();
         let mut parts: Vec<String> = Vec::new();
         let mut rest = s;
-        while let Some(pos) = rest.find("${.") {
+        while let Some(pos) = rest.find("${") {
             let head = rest[..pos].trim();
             if !head.is_empty() {
                 statics.push(head.to_string());
@@ -7148,11 +7151,22 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             }
             let after = &rest[pos..];
             let end = after.find('}')?;
-            let name = after[3..end].trim_start_matches('.');
-            if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            let inner = &after[2..end];
+            let valid_ident = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_');
+            let expr = if let Some(name) = inner.strip_prefix('.') {
+                if !valid_ident(name) {
+                    return None;
+                }
+                name.to_string()
+            } else if let Some((root, field)) = inner.split_once('.') {
+                if !valid_ident(root) || !valid_ident(field) {
+                    return None;
+                }
+                format!("{root}.{field}")
+            } else {
                 return None;
-            }
-            parts.push(name.to_string());
+            };
+            parts.push(expr);
             rest = &after[end + 1..];
         }
         let tail = rest.trim();
@@ -9483,6 +9497,20 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 if let Some(value) = props.get("disabled") {
                     if self.extract_bool_value(value) {
                         attrs.push("disabled".to_string());
+                    }
+                }
+                // PLAN-053 批4: `title` → 原生 tooltip 属性透传（shadcn Button
+                // 经 vue attr fallthrough 落到底层 button 元素；与 VM 轨
+                // convert_button 的 title→EE03 iced tooltip 对齐——musk 会话
+                // 侧栏 `title: .s.id` 悬停显示会话 id）。此前 button 臂静默
+                // 丢弃（原生 span/div 路径本就透传，仅 shadcn Button 丢）。
+                if let Some(value) = props.get("title") {
+                    if let Some(title) = self.extract_string_value(value) {
+                        attrs.push(format!("title=\"{}\"", title));
+                    } else if let AuraPropValue::Expr(e) = value {
+                        if let Ok(expr_vue) = self.expr_to_vue_bound_value(e) {
+                            attrs.push(format!(":title=\"{}\"", expr_vue));
+                        }
                     }
                 }
                 // Handle style/class prop
@@ -14790,7 +14818,8 @@ export function cn(...inputs: ClassValue[]) {
 // Each entry maps a name → shadcn --primary HSL triplet (space-separated).
 const ACCENT_PALETTES: Record<string, string> = {
   indigo: '239 84% 67%',
-  coral:  '350 75% 64%',
+  // Plan 503: coral 校准至 stella-os 玫瑰粉 light #c4706a(dark +4 由 applyAccent 处理)。
+  coral:  '4 43% 59%',
   ocean:  '217 91% 60%',
   sage:   '160 84% 39%',
   amber:  '38 92% 50%',
@@ -23392,6 +23421,30 @@ widget NullProbe {
         // 关键接缝标记：双击/右键/布局件点击三事件面在 vue 产物可见。
         assert!(output.contains("@dblclick"), "ondblclick → @dblclick");
         assert!(output.contains("@contextmenu"), "oncontextmenu → @contextmenu");
+    }
+
+    /// Plan 498 M0：mouse-area onclick → vue `@click` 生成断言（与 496
+    /// `@dblclick` 同族；chart legend 点击切换显隐的 vue 通路——事件名经
+    /// 通用 base_event_to_dom 映射，mouse-area 本体仍走 div 直通）。
+    #[test]
+    fn test_a2vue_mouse_area_onclick() {
+        let sfc = gen_sfc_from_widget_src(r#"
+widget ClickZone {
+    msg { Ping }
+    model { var n int = 0 }
+    view {
+        col {
+            mouse-area (style: "w-4 h-4", onmouseenter: .Ping, onmouseleave: .Ping, onclick: .Ping) {}
+            text "zone" {}
+        }
+    }
+    on {
+        .Ping -> { .n = .n + 1 }
+    }
+}
+"#);
+        assert!(sfc.contains("@click=\"Ping\""), "onclick → @click:\n{}", sfc);
+        assert!(sfc.contains("@mouseenter=\"Ping\""), "onmouseenter 共存:\n{}", sfc);
     }
 
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style

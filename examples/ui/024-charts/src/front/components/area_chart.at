@@ -1,4 +1,4 @@
-// components/area_chart.at - AreaChart component (Plan 437 Phase 2 ③ → Plan 484 v2 → Plan 492 M6)
+// components/area_chart.at - AreaChart component (Plan 437 Phase 2 ③ → Plan 484 v2 → Plan 492 M6 → Plan 498 M1)
 //
 // 面积图:折线(line_chart 同源几何)+ 面积闭合(末点下探底边 → 回首点
 // x 的底边 → Z)。curve = "monotone" 走 d3 curveMonotoneX(FC 标准形)。
@@ -12,15 +12,33 @@
 // 另行修复面。
 // 保留纪律:条件引用的局部变量紧邻使用点声明。
 //
+// 498 M1(emphasis 二态,line 同族):图例行 mouse-area 触发
+// .HoverSeries(k)/.SeriesOut;view 每系列 a/l 双 path 三分支(高亮
+// fill 0.45+stroke 3 / 常驻 0.25+2 / downplay 0.08+0.25);段记录槽位化
+// (a0..3/l0..3),弃 .segs 列表;无转折点(折线族专属)。无悬停哨兵 = 9
+// (负数字面量 view 比较缺陷规避,见 line_chart.at 注)。
+//
 // # Usage
 // use { package: official from "../components" }
 // area-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
 widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
-    msg { Init, Hover(int) }
+    msg { Init, Hover(int), HoverSeries(int), SeriesOut, Toggle(int) }
 
     model {
-        segs List = []
+        a0 str = ""
+        l0 str = ""
+        a1 str = ""
+        l1 str = ""
+        a2 str = ""
+        l2 str = ""
+        a3 str = ""
+        l3 str = ""
+        hovAr int = 9
+        visAr0 bool = true
+        visAr1 bool = true
+        visAr2 bool = true
+        visAr3 bool = true
         xlabels str = ""
         xLab0 str = ""
         xLab1 str = ""
@@ -117,8 +135,8 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             var cs = .colors
             var ccount int = cs.len()
 
-            // ---- 段记录(a=面积闭合路径/l=描边路径/c=色):curve prop 直接选变体 ----
-            var outSegs List = []
+            // ---- 段记录(a=面积闭合路径/l=描边路径/c=色):curve prop 直接选变体;
+            //      498 M1:逐系列槽位(a0..3/l0..3)----
             var k = 0
             for f in .fields {
                 var ys List = []
@@ -198,31 +216,37 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     ci = ccount - 1
                 }
                 var color = cs[ci]
-                outSegs.push({ a: astr, l: lstr, c: color })
                 var name = f
                 var lname = .labels
                 if lname.len() > k {
                     name = lname[k]
                 }
                 if k == 0 {
+                    .a0 = astr
+                    .l0 = lstr
                     .legendColor0 = color
                     .legendText0 = name
                 }
                 if k == 1 {
+                    .a1 = astr
+                    .l1 = lstr
                     .legendColor1 = color
                     .legendText1 = name
                 }
                 if k == 2 {
+                    .a2 = astr
+                    .l2 = lstr
                     .legendColor2 = color
                     .legendText2 = name
                 }
                 if k == 3 {
+                    .a3 = astr
+                    .l3 = lstr
                     .legendColor3 = color
                     .legendText3 = name
                 }
                 k = k + 1
             }
-            .segs = outSegs
 
             // ---- x 轴标签:逐数据点槽位(≤20 全量对齐,超出等距抽样) ----
             var iname = .index
@@ -367,6 +391,27 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             .tipBody = tb
         }
         .HoverOut -> { .hovered = "false" }
+        .HoverSeries(k) -> { .hovAr = k }
+        .SeriesOut -> { .hovAr = 9 }
+        .Toggle(k) -> {
+            if k == 0 {
+                .visAr0 = !.visAr0
+            }
+            if k == 1 {
+                .visAr1 = !.visAr1
+            }
+            if k == 2 {
+                .visAr2 = !.visAr2
+            }
+            if k == 3 {
+                .visAr3 = !.visAr3
+            }
+        }
+    }
+
+    style {
+        /* 498 M1: emphasis 淡入——vue 走 CSS transition,VM 直接切换。 */
+        path { transition: stroke-width 0.15s ease, stroke-opacity 0.15s ease, fill-opacity 0.15s ease; }
     }
 
     view {
@@ -374,35 +419,43 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             if .legend {
                 row (style: "justify-end gap-4 pb-2") {
                     if .legendText0 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor0) {}
+                        mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut, onclick: .Toggle(0)) {
+                            row (style: if .visAr0 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor0) {}
+                                }
+                                text .legendText0 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText0 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText1 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor1) {}
+                        mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut, onclick: .Toggle(1)) {
+                            row (style: if .visAr1 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor1) {}
+                                }
+                                text .legendText1 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText1 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText2 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor2) {}
+                        mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut, onclick: .Toggle(2)) {
+                            row (style: if .visAr2 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor2) {}
+                                }
+                                text .legendText2 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText2 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText3 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor3) {}
+                        mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut, onclick: .Toggle(3)) {
+                            row (style: if .visAr3 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor3) {}
+                                }
+                                text .legendText3 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText3 { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }
@@ -425,11 +478,69 @@ widget AreaChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                             }
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                            for seg in .segs {
-                                path (key: seg["a"], d: seg["a"], fill: seg["c"], fill-opacity: "0.25") {}
+                            if .a0 != "" {
+                              if .visAr0 {
+                                if .hovAr == 0 {
+                                    path (key: .a0, d: .a0, fill: .legendColor0, fill-opacity: "0.45") {}
+                                    path (key: .l0, d: .l0, fill: "none", stroke: .legendColor0, stroke-width: "3") {}
+                                } else {
+                                    if .hovAr == 9 {
+                                        path (key: .a0, d: .a0, fill: .legendColor0, fill-opacity: "0.25") {}
+                                        path (key: .l0, d: .l0, fill: "none", stroke: .legendColor0, stroke-width: "2") {}
+                                    } else {
+                                        path (key: .a0, d: .a0, fill: .legendColor0, fill-opacity: "0.08") {}
+                                        path (key: .l0, d: .l0, fill: "none", stroke: .legendColor0, stroke-width: "2", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                              }
                             }
-                            for seg in .segs {
-                                path (key: seg["l"], d: seg["l"], fill: "none", stroke: seg["c"], stroke-width: "2") {}
+                            if .a1 != "" {
+                              if .visAr1 {
+                                if .hovAr == 1 {
+                                    path (key: .a1, d: .a1, fill: .legendColor1, fill-opacity: "0.45") {}
+                                    path (key: .l1, d: .l1, fill: "none", stroke: .legendColor1, stroke-width: "3") {}
+                                } else {
+                                    if .hovAr == 9 {
+                                        path (key: .a1, d: .a1, fill: .legendColor1, fill-opacity: "0.25") {}
+                                        path (key: .l1, d: .l1, fill: "none", stroke: .legendColor1, stroke-width: "2") {}
+                                    } else {
+                                        path (key: .a1, d: .a1, fill: .legendColor1, fill-opacity: "0.08") {}
+                                        path (key: .l1, d: .l1, fill: "none", stroke: .legendColor1, stroke-width: "2", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                              }
+                            }
+                            if .a2 != "" {
+                              if .visAr2 {
+                                if .hovAr == 2 {
+                                    path (key: .a2, d: .a2, fill: .legendColor2, fill-opacity: "0.45") {}
+                                    path (key: .l2, d: .l2, fill: "none", stroke: .legendColor2, stroke-width: "3") {}
+                                } else {
+                                    if .hovAr == 9 {
+                                        path (key: .a2, d: .a2, fill: .legendColor2, fill-opacity: "0.25") {}
+                                        path (key: .l2, d: .l2, fill: "none", stroke: .legendColor2, stroke-width: "2") {}
+                                    } else {
+                                        path (key: .a2, d: .a2, fill: .legendColor2, fill-opacity: "0.08") {}
+                                        path (key: .l2, d: .l2, fill: "none", stroke: .legendColor2, stroke-width: "2", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                              }
+                            }
+                            if .a3 != "" {
+                              if .visAr3 {
+                                if .hovAr == 3 {
+                                    path (key: .a3, d: .a3, fill: .legendColor3, fill-opacity: "0.45") {}
+                                    path (key: .l3, d: .l3, fill: "none", stroke: .legendColor3, stroke-width: "3") {}
+                                } else {
+                                    if .hovAr == 9 {
+                                        path (key: .a3, d: .a3, fill: .legendColor3, fill-opacity: "0.25") {}
+                                        path (key: .l3, d: .l3, fill: "none", stroke: .legendColor3, stroke-width: "2") {}
+                                    } else {
+                                        path (key: .a3, d: .a3, fill: .legendColor3, fill-opacity: "0.08") {}
+                                        path (key: .l3, d: .l3, fill: "none", stroke: .legendColor3, stroke-width: "2", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                              }
                             }
                         }
                         if .tooltip {

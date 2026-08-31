@@ -1505,8 +1505,18 @@ fn parse_color_with_alpha(color_name: &str, arbitrary: Option<&str>) -> Result<C
         (color_name, 100u8)
     };
 
-    let color = Color::from_tailwind(base_name)
-        .or_else(|_| Color::from_hex(base_name))
+    // Plan 503:arbitrary hex 带 /N 修饰符(bg-[#hex]/13)——class 不以 ']'
+    // 结尾,预提取未拆出 arbitrary;此处剥方括号后走 from_hex。
+    let unbracketed: String;
+    let base_ref: &str = if base_name.starts_with('[') && base_name.ends_with(']') {
+        unbracketed = base_name[1..base_name.len() - 1].to_string();
+        unbracketed.as_str()
+    } else {
+        base_name
+    };
+
+    let color = Color::from_tailwind(base_ref)
+        .or_else(|_| Color::from_hex(base_ref))
         .or_else(|_| {
             arbitrary
                 .and_then(|v| Color::from_hex(v).ok())
@@ -1953,6 +1963,30 @@ mod tests {
         // 既有 flex 类不回归
         assert_eq!(StyleClass::parse_single("flex-1"), Ok(StyleClass::Flex1));
         assert_eq!(StyleClass::parse_single("shrink-0"), Ok(StyleClass::Shrink0));
+    }
+
+    #[test]
+    fn test_arbitrary_hex_with_alpha_modifier() {
+        // Plan 503 M4:launcher 品牌色图标底块 bg-[#hex]/13 —— arbitrary hex
+        // 带 /N alpha 修饰符。class 不以 ']' 结尾,此前绕过 arbitrary 预提取
+        // 且 from_hex 不剥方括号,整体静默丢弃 —— 本测试钉死该组合必须解析。
+        match StyleClass::parse_single("bg-[#7c9a6d]/13") {
+            Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
+                assert_eq!((r, g, b), (124, 154, 109), "#7c9a6d 原色保留");
+                assert_eq!(a, 33, "13% alpha → 33");
+            }
+            other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
+        }
+        // 同族:text-[#hex] 品牌色字形(无 alpha,既有路径回归)。
+        assert!(matches!(
+            StyleClass::parse_single("text-[#7c9a6d]"),
+            Ok(StyleClass::TextColor(_))
+        ));
+        // 既有任意值无修饰符路径不回归。
+        assert!(matches!(
+            StyleClass::parse_single("bg-[#7c9a6d]"),
+            Ok(StyleClass::BackgroundColor(_))
+        ));
     }
 
     #[test]

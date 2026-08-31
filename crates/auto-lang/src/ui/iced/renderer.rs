@@ -3514,7 +3514,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 499 M2: 带 on_move 时再包 PointerArea——坐标换算(bounds
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
-            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_move, logical_extent, style } => {
+            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
                 let mut ma = mouse_area(content.into_iced());
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
@@ -3527,6 +3527,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if !inspect_capture_active() {
                     if let Some(msg) = on_double_click {
                         ma = ma.on_double_click(msg);
+                    }
+                    // Plan 498 M0: onclick → iced mouse_area on_press(chart
+                    // legend 点击切换显隐;同 inspect 捕获态丢臂规则)。
+                    if let Some(msg) = on_click {
+                        ma = ma.on_press(msg);
                     }
                 }
                 let inner: iced::Element<'static, M> = ma.into();
@@ -5146,14 +5151,16 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // Plan 496 M5: MouseArea 必须显式臂——此前 VM 动态路径走 `_ => Empty`
         // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
         // 双击臂依赖本臂;enter/exit/double_click 三消息递归映射。
+        // Plan 498 M0: 增 on_click 映射(chart legend 点击切换显隐)。
         // Plan 499 M2: on_move handler 递归复合(调用产出 DynamicMessage 经
         // from_dynamic 编码为 IcedMessage;逻辑坐标在闭包现场追加)。
-        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_move, logical_extent, style } => {
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
             AbstractView::MouseArea {
                 content: Box::new(convert_view_messages(*content)),
                 on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
                 on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
                 on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+                on_click: on_click.map(|m| IcedMessage::from_dynamic(&m)),
                 on_move: on_move.map(|h| {
                     crate::ui::view::PointerMoveHandler::new(move |x, y| {
                         IcedMessage::from_dynamic(&h.call(x, y))
@@ -7360,6 +7367,7 @@ fn summon_launcher(
     let mut cats: Vec<auto_val::Value> = Vec::new();
     let mut lns: Vec<auto_val::Value> = Vec::new();
     let mut lts: Vec<auto_val::Value> = Vec::new();
+    let mut colors: Vec<auto_val::Value> = Vec::new();
     for e in &entries {
         names.push(auto_val::Value::Str(e.id.clone().into()));
         titles.push(auto_val::Value::Str(e.title.clone().into()));
@@ -7367,6 +7375,7 @@ fn summon_launcher(
         cats.push(auto_val::Value::Str(e.category.clone().into()));
         lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
         lts.push(auto_val::Value::Str(e.title.to_lowercase().into()));
+        colors.push(auto_val::Value::Str(launcher_brand_color(&e.id).into()));
     }
     if let Some(app) = state.apps.get_mut(&launcher) {
         let _ = app.component.write_state_vec("apps_names", names);
@@ -7375,6 +7384,7 @@ fn summon_launcher(
         let _ = app.component.write_state_vec("apps_cats", cats);
         let _ = app.component.write_state_vec("apps_lns", lns);
         let _ = app.component.write_state_vec("apps_lts", lts);
+        let _ = app.component.write_state_vec("apps_colors", colors);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
@@ -7394,6 +7404,35 @@ fn summon_launcher(
         .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
     iced::widget::operation::focus(summon_target)
         .map(move |m| DM::App(launcher, m))
+}
+
+/// Plan 503 M4：launcher 品牌色（stella 柔粉彩系，6 位 hex）。注册表条目
+/// 无 color 字段——已知 app 静态映射，未知 app 以 id 哈希散列到同系粉彩
+/// 盘（稳定确定性：同名恒同色）。.at 侧消费为 `bg-[<color>21]`（13% alpha
+/// 图标底块）+ `text-[<color>]`（品牌色字形）。
+fn launcher_brand_color(id: &str) -> &'static str {
+    match id {
+        "011-calculator" => "#7c9a6d",
+        "012-stopwatch" => "#b88c61",
+        "013-todo" => "#6a8bad",
+        "014-weather" => "#7d9ec4",
+        "015-notes" => "#c9a77e",
+        "017-chat" => "#8d7ab5",
+        "018-book-reader" => "#a47551",
+        "020-music-player" => "#c4706a",
+        "024-charts" => "#6fa3a7",
+        "025-dashboard" => "#9a8fb8",
+        "038-minesweeper" => "#8a9b6e",
+        "041-auto-edit" => "#5f8d78",
+        _ => {
+            const PASTEL: [&str; 8] = [
+                "#7c9a6d", "#b88c61", "#6a8bad", "#7d9ec4", "#c9a77e", "#8d7ab5", "#a47551",
+                "#c4706a",
+            ];
+            let hash = id.bytes().map(|b| b as usize).sum::<usize>();
+            PASTEL[hash % PASTEL.len()]
+        }
+    }
 }
 
 /// Plan 478 T4：switcher overlay 召唤执行体（Ctrl+Tab 热键；T1 施工图 §5.2，
@@ -8991,6 +9030,29 @@ fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M
             })
             .into(),
     }
+}
+
+/// Plan 503 M3：壁纸罩层 —— 图片壁纸上叠 background 语义色 scrim
+/// （light 10% / dark 35%），提升桌面图标/文本可读性（stella 壁纸罩层
+/// 移植；降格为纯色叠加，无 blur——parity 条款）。纯色壁纸分支不叠：
+/// 底色无对比噪音，且桌面本体面不透明底会盖住本层，叠之无效。
+fn desktop_wallpaper_scrim<M: 'static>() -> iced::Element<'static, M> {
+    let dark = crate::ui::style::theme::dark_mode();
+    let pct: u32 = if dark { 35 } else { 10 };
+    let (r, g, b) =
+        crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Background)
+            .unwrap_or((9, 14, 26));
+    let alpha = (pct * 255 / 100) as f32 / 255.0;
+    iced::widget::container(iced::widget::Space::new())
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .style(move |_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba8(
+                r, g, b, alpha,
+            ))),
+            ..Default::default()
+        })
+        .into()
 }
 
 /// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
@@ -12325,6 +12387,8 @@ fn compare_pngs(
             // 承接，不推本层）。Stack 最底之底：桌面图标面之下、虚拟窗之下。
             if !state.desktop.desktop_wallpaper.starts_with('#') {
                 layers.push(desktop_wallpaper_element(&state.desktop.desktop_wallpaper));
+                // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
+                layers.push(desktop_wallpaper_scrim());
             }
             // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
             // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
@@ -20302,39 +20366,44 @@ mod tests {
         }
     }
 
-    /// T1 族视图走查辅助：递归数 (mouse_area 双击臂数, 指定文本出现数)。
+    /// T1 族视图走查辅助：递归数 (mouse_area 双击臂数, 单击臂数, 指定文本出现数)。
+    /// Plan 498 M0: 增单击臂计数(onclick 电路与双击同构)。
     fn t496_walk(
         v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
         dbl: &mut usize,
+        clk: &mut usize,
         texts: &mut Vec<String>,
     ) {
         use crate::ui::view::View;
         match v {
-            View::MouseArea { content, on_double_click, .. } => {
+            View::MouseArea { content, on_double_click, on_click, .. } => {
                 if on_double_click.is_some() {
                     *dbl += 1;
                 }
-                t496_walk(content, dbl, texts);
+                if on_click.is_some() {
+                    *clk += 1;
+                }
+                t496_walk(content, dbl, clk, texts);
             }
             View::Text { content, .. } => texts.push(content.clone()),
             // button "打开" 的 label 在 Button.label（非 Text 子节点）。
             View::Button { label, content, .. } => {
                 texts.push(label.clone());
                 if let Some(c) = content {
-                    t496_walk(c, dbl, texts);
+                    t496_walk(c, dbl, clk, texts);
                 }
             }
             View::Column { children, .. } | View::Row { children, .. } => {
                 for c in children {
-                    t496_walk(c, dbl, texts);
+                    t496_walk(c, dbl, clk, texts);
                 }
             }
             View::Container { child, .. } | View::Scrollable { child, .. } => {
-                t496_walk(child, dbl, texts)
+                t496_walk(child, dbl, clk, texts)
             }
             View::Grid { cells, .. } => {
                 for c in cells {
-                    t496_walk(c, dbl, texts);
+                    t496_walk(c, dbl, clk, texts);
                 }
             }
             _ => {}
@@ -20359,25 +20428,26 @@ mod tests {
         // 默认 dock_pinned 三枚 + custom 两枚（011 重叠去重）→ 4 条目。
         inject_desktop_surface(&mut ds);
         let surface = ds.desktop.desktop_app.unwrap();
-        let (mut dbl, mut texts) = (0usize, Vec::new());
+        let (mut dbl, mut clk, mut texts) = (0usize, 0usize, Vec::new());
         {
             let app = ds.apps.get(&surface).unwrap();
             let (view, _, _) = app.component.view_with_debug_gated(false);
-            t496_walk(&view, &mut dbl, &mut texts);
+            t496_walk(&view, &mut dbl, &mut clk, &mut texts);
         }
         assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
+        assert_eq!(clk, 0, "desktop.at 无 onclick 臂（498 新臂不误伤）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
             1,
             "label 渲染（未登记条目回退 id）"
         );
         // 转换后存活（convert_view_messages VM 动态路径——Empty 兜底即双击死）。
-        let (mut dbl2, mut texts2) = (0usize, Vec::new());
+        let (mut dbl2, mut clk2, mut texts2) = (0usize, 0usize, Vec::new());
         {
             let app = ds.apps.get(&surface).unwrap();
             let (view, _, _) = app.component.view_with_debug_gated(false);
             let converted = convert_view_messages(view);
-            t496_walk_iced(&converted, &mut dbl2, &mut texts2);
+            t496_walk_iced(&converted, &mut dbl2, &mut clk2, &mut texts2);
         }
         assert_eq!(dbl2, 4, "convert_view_messages 后 mouse_area 双击臂存活");
         // 右键菜单：IconMenu 打开 → 三项文本出现；BlankPress 关闭消失。
@@ -20388,11 +20458,11 @@ mod tests {
                 .call_handler("IconMenu", &[auto_val::Value::str("014-weather")])
                 .expect("IconMenu handler");
         }
-        let (mut dbl3, mut texts3) = (0usize, Vec::new());
+        let (mut dbl3, mut clk3, mut texts3) = (0usize, 0usize, Vec::new());
         {
             let app = ds.apps.get(&surface).unwrap();
             let (view, _, _) = app.component.view_with_debug_gated(false);
-            t496_walk(&view, &mut dbl3, &mut texts3);
+            t496_walk(&view, &mut dbl3, &mut clk3, &mut texts3);
         }
         for item in ["打开", "从桌面移除", "更换壁纸…"] {
             assert!(
@@ -20456,31 +20526,36 @@ mod tests {
     }
 
     /// T1 走查（iced 侧）：View<IcedMessage> 版（convert_view_messages 后）。
+    /// Plan 498 M0: 增单击臂计数。
     fn t496_walk_iced(
         v: &crate::ui::view::View<IcedMessage>,
         dbl: &mut usize,
+        clk: &mut usize,
         texts: &mut Vec<String>,
     ) {
         use crate::ui::view::View;
         match v {
-            View::MouseArea { content, on_double_click, .. } => {
+            View::MouseArea { content, on_double_click, on_click, .. } => {
                 if on_double_click.is_some() {
                     *dbl += 1;
                 }
-                t496_walk_iced(content, dbl, texts);
+                if on_click.is_some() {
+                    *clk += 1;
+                }
+                t496_walk_iced(content, dbl, clk, texts);
             }
             View::Text { content, .. } => texts.push(content.clone()),
             View::Column { children, .. } | View::Row { children, .. } => {
                 for c in children {
-                    t496_walk_iced(c, dbl, texts);
+                    t496_walk_iced(c, dbl, clk, texts);
                 }
             }
             View::Container { child, .. } | View::Scrollable { child, .. } => {
-                t496_walk_iced(child, dbl, texts)
+                t496_walk_iced(child, dbl, clk, texts)
             }
             View::Grid { cells, .. } => {
                 for c in cells {
-                    t496_walk_iced(c, dbl, texts);
+                    t496_walk_iced(c, dbl, clk, texts);
                 }
             }
             _ => {}

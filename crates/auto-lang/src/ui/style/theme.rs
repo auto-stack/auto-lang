@@ -83,7 +83,9 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
 fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
     match name {
         "indigo" => Some((239, 84, 67)),
-        "coral"  => Some((350, 75, 64)),
+        // Plan 503: coral 校准至 stella-os 玫瑰粉 light #c4706a = hsl(4,43%,59%)。
+        // dark 模式走 L+10 → 69%(≈ stella dark #d4847e = hsl(4,50%,66%))。
+        "coral"  => Some((4, 43, 59)),
         "ocean"  => Some((217, 91, 60)),
         "sage"   => Some((160, 84, 39)),
         "amber"  => Some((38, 92, 50)),

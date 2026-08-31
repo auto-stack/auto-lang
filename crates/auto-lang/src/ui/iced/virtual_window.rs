@@ -27,11 +27,14 @@ use iced::{Alignment, Border, Color, Element, Length, Padding, Shadow, Vector};
 use crate::ui::session::{DesktopMessage, ResizeEdge, VWinState, WmCommand};
 
 /// 标题条高度（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
-pub(crate) const TITLEBAR_H: f32 = 28.0;
+/// Plan 503 M5：28→36（stella 36-40px 标题栏带）。
+pub(crate) const TITLEBAR_H: f32 = 36.0;
 const EDGE: f32 = 6.0;
 const CORNER: f32 = 14.0;
 /// 边框宽（Plan 473 T6：native slot chrome 与同步换算共用，pub(crate)）。
 pub(crate) const BORDER: f32 = 1.0;
+/// Plan 503 M5：窗体圆角 8→16（stella rounded-2xl 档）。
+const WIN_RADIUS: f32 = 16.0;
 
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
@@ -65,6 +68,28 @@ pub fn desktop_root(
         .into()
 }
 
+/// Plan 503 M5：macOS 三色圆点（stella 视觉签名，12px）。red = 关闭
+/// （WmCommand::Close）；yellow/green = min/max 视觉位预留——session 暂无
+/// 虚拟窗 min/max 动词（KNOWN-DEBT 挂账），None = 纯视觉不挂命中。
+fn traffic_light(color: Color, msg: Option<DesktopMessage>) -> Element<'static, DesktopMessage> {
+    let dot = container(text(""))
+        .width(Length::Fixed(12.0))
+        .height(Length::Fixed(12.0))
+        .style(move |_t| Style {
+            background: Some(color.into()),
+            border: Border {
+                color,
+                width: 0.0,
+                radius: 999.0.into(),
+            },
+            ..Default::default()
+        });
+    match msg {
+        Some(m) => mouse_area(dot).on_press(m).into(),
+        None => dot.into(),
+    }
+}
+
 /// 组装一个虚拟窗口层：定位包裹 + 窗体（标题栏 chrome + 客户区 + 八向
 /// 缩放把手）。`client` 已由调用方打标 `DM::App(app_id, ·)` 并包好 panic
 /// 边界；本函数只读 `vwin` 几何，不发 VM 消息。
@@ -76,25 +101,36 @@ pub fn virtual_window_element<'a>(
     let rect = *vwin.rect.borrow();
     let wid = vwin.wid;
 
-    // --- 标题栏（整条为拖拽把手；关闭按钮优先捕获）---
-    let close_btn = mouse_area(
-        container(text("×").size(13))
-            .width(Length::Fixed(22.0))
-            .height(Length::Fixed(TITLEBAR_H - 6.0))
-            .center(Length::Fill),
-    )
-    .on_press(DesktopMessage::Wm(WmCommand::Close(wid)));
+    // --- 标题栏（整条为拖拽把手；三色圆点组优先捕获）---
+    let lights = row![
+        traffic_light(
+            Color::from_rgb8(0xff, 0x5f, 0x57),
+            Some(DesktopMessage::Wm(WmCommand::Close(wid))),
+        ),
+        traffic_light(Color::from_rgb8(0xfe, 0xbc, 0x2e), None),
+        traffic_light(Color::from_rgb8(0x28, 0xc8, 0x40), None),
+    ]
+    .spacing(8.0);
 
     let titlebar = mouse_area(
         row![
+            container(lights).padding(Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 12.0,
+            }),
             container(text(vwin.title.clone()).size(12))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_y(Length::Fill)
-                .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
-            close_btn,
+                .padding(Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 12.0,
+                }),
         ]
-        .spacing(4.0)
         .width(Length::Fill)
         .height(Length::Fixed(TITLEBAR_H)),
     )
@@ -117,7 +153,20 @@ pub fn virtual_window_element<'a>(
         .height(Length::Fill);
 
     // --- 窗体容器：裁剪 + 阴影 + 焦点描边 ---
+    // Plan 503 M5：focused 描边 2px accent → 1px accent/60；柔影
+    // (0,8)/32px——light 12% / dark 40%，focused 加深；窗矩形 ≈ 全桌面
+    // （≥98%）视作最大化——去圆角去影（贴边平铺）。
     let accent = token(crate::ui::style::Color::Primary);
+    let desktop_size = *vwin.window_size.borrow();
+    let maximized =
+        rect.width >= desktop_size.width * 0.98 && rect.height >= desktop_size.height * 0.98;
+    let dark = crate::ui::style::theme::dark_mode();
+    let (base_alpha, focus_boost): (f32, f32) = if dark { (0.40, 0.12) } else { (0.12, 0.08) };
+    let shadow_alpha = if focused {
+        (base_alpha + focus_boost).min(0.7)
+    } else {
+        base_alpha
+    };
     let win_box = container(body)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -125,14 +174,22 @@ pub fn virtual_window_element<'a>(
         .style(move |_t| Style {
             background: Some(token(crate::ui::style::Color::Surface).into()),
             border: Border {
-                color: if focused { accent } else { token(crate::ui::style::Color::Surface) },
-                width: if focused { BORDER + 1.0 } else { BORDER },
-                radius: 8.0.into(),
+                color: if focused {
+                    Color::from_rgba(accent.r, accent.g, accent.b, 0.6)
+                } else {
+                    token(crate::ui::style::Color::Surface)
+                },
+                width: BORDER,
+                radius: if maximized { 0.0.into() } else { WIN_RADIUS.into() },
             },
-            shadow: Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.45),
-                offset: Vector::new(0.0, 8.0),
-                blur_radius: 24.0,
+            shadow: if maximized {
+                Shadow::default()
+            } else {
+                Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, shadow_alpha),
+                    offset: Vector::new(0.0, 8.0),
+                    blur_radius: 32.0,
+                }
             },
             ..Default::default()
         });

@@ -569,6 +569,8 @@ pub enum View<M: Clone + Debug> {
     /// vue 端映射 div + @mouseenter/@mouseleave。无视觉,仅事件转发。
     /// Plan 496 M5: 增 on_double_click(ondblclick → iced mouse_area
     /// on_double_click;桌面图标双击启动原语)。
+    /// Plan 498 M0: 增 on_click(onclick → iced mouse_area on_press;chart
+    /// legend 点击切换显隐与 diagram select 的共同前置,§7.6)。
     /// Plan 499 M2: 增 on_move(onmousemove → 坐标换算+限频后的逻辑坐标
     /// 回调,iced 侧由 PointerArea widget 承载)+ logical_extent(coords
     /// prop "WxH" 解析;None = raw px 模式)。
@@ -577,6 +579,7 @@ pub enum View<M: Clone + Debug> {
         on_enter: Option<M>,
         on_exit: Option<M>,
         on_double_click: Option<M>,
+        on_click: Option<M>,
         on_move: Option<PointerMoveHandler<M>>,
         logical_extent: Option<(f32, f32)>,
         style: Option<Style>,
@@ -1438,12 +1441,14 @@ impl<M: Clone + Debug> View<M> {
             },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
             // Plan 496 M5: 增 on_double_click 映射。
+            // Plan 498 M0: 增 on_click 映射。
             // Plan 499 M2: 增 on_move 复合映射(handler 产出 M 经 f 转 N)。
-            View::MouseArea { content, on_enter, on_exit, on_double_click, on_move, logical_extent, style } => View::MouseArea {
+            View::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => View::MouseArea {
                 content: Box::new(content.map_msg_with_arc(f)),
                 on_enter: on_enter.map(|m| f(m)),
                 on_exit: on_exit.map(|m| f(m)),
                 on_double_click: on_double_click.map(|m| f(m)),
+                on_click: on_click.map(|m| f(m)),
                 on_move: on_move.map(|h| {
                     let f = std::sync::Arc::clone(f);
                     PointerMoveHandler::new(move |x, y| f(h.call(x, y)))

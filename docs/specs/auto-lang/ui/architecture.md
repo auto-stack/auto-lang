@@ -171,7 +171,7 @@ graph TD
 
 ### ADR-17: 双端 parity 与主题下沉为引擎规范
 - 日期 / 来源：plan-455/458 + 450/451-image/452-login 系列（2026-08）
-- 决策：parity 不再是逐例修复，而是引擎级标准：Status::Focused 2px ring、text 标签盒模型、全 margin 语义、按钮 14px/font-medium 等；theme/accent 成为一等配置（优先级=运行时切换>CLI/pac.at 播种>内置默认 dark+indigo），经 env（AUTO_UI_THEME/ACCENT）横切三 crate，不进 DesktopSession 字段；视觉差异报告必须经 vtree/snapshot/插桩结构数据交叉验证才立项（411 方法论）。
+- 决策：parity 不再是逐例修复，而是引擎级标准：Status::Focused 2px ring、text 标签盒模型、全 margin 语义、按钮 14px/font-medium 等；theme/accent 成为一等配置（优先级=运行时切换>CLI/pac.at 播种>内置默认 dark+indigo），经 env（AUTO_UI_THEME/ACCENT）横切三 crate，不进 DesktopSession 字段；视觉差异报告必须经 vtree/snapshot/插桩结构数据交叉验证才立项（411 方法论）。Plan 503 校准：coral 预设 = stella 玫瑰粉 #c4706a（HSL 4,43%,59%），桌面视觉体系（dock/弹层 glass/壁纸 scrim/窗口 chrome/launcher 品牌色）确立「无 blur/scale/keyframes」降格 parity 条款，见 [design/desktop-shell.md](design/desktop-shell.md)。
 - 备选：parity 逐例修（cons：标准漂移、回归无锚）；主题进会话状态（cons：三 crate 横切复杂化）。
 - 后果：455 跟踪器矩阵为验收基准（~9 绿/8+ 待审计）；"auto 跟随系统"显式非目标。
 - 状态：active

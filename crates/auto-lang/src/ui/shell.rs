@@ -64,6 +64,27 @@ pub fn build_desktop_surface_component(
     crate::build_dynamic_component(DESKTOP_AT, None)
 }
 
+/// Plan 503：shell pack 特权 .at 全量编译冒烟。include_str 内嵌源不进
+/// cargo check,语法回归此前只能实机 boot 才暴露(降级为无任务栏桌面)。
+/// 本测试走 build_dynamic_component 真管线(编译 + Init),守卫 pack 级
+/// 纯 .at 改动(shell/desktop/overlay 槽)。
+#[cfg(all(test, feature = "ui-iced"))]
+mod pack_tests {
+    #[test]
+    fn shell_packs_compile() {
+        for (name, src) in [
+            ("shell", crate::ui::shell::SHELL_AT),
+            ("switcher", crate::ui::shell::SWITCHER_AT),
+            ("notification_center", crate::ui::shell::NOTIFICATION_CENTER_AT),
+            ("settings", crate::ui::shell::SETTINGS_AT),
+            ("desktop", crate::ui::shell::DESKTOP_AT),
+        ] {
+            crate::build_dynamic_component(src, None)
+                .unwrap_or_else(|e| panic!("{name}.at 编译失败: {e}"));
+        }
+    }
+}
+
 /// Plan 463 T7：启动失败占位页（Design 24 §6.5）—— LaunchApp 构建失败时
 /// 的可见反馈窗：不白屏、不阻断桌面（toast 并行报错；关闭占位窗即走）。
 pub const LAUNCH_FALLBACK_AT: &str = r#"widget LaunchFallback {

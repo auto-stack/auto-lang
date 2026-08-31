@@ -136,11 +136,19 @@ pub struct PoolState {
     /// 显式墓碑标记(与 rc==0 区分:条目"创建未推栈"时 rc 也是 0)。
     pub tombstone: Vec<bool>,
     pub freelist: Vec<usize>,
+    /// PLAN-053 P-053-8: 幻影 freelist 条目首见签名去重(槽位集合)。
+    pub phantom_seen: std::collections::HashSet<usize>,
 }
 
 impl PoolState {
     pub fn new() -> Self {
-        Self { rc: Vec::new(), pinned: Vec::new(), tombstone: Vec::new(), freelist: Vec::new() }
+        Self {
+            rc: Vec::new(),
+            pinned: Vec::new(),
+            tombstone: Vec::new(),
+            freelist: Vec::new(),
+            phantom_seen: std::collections::HashSet::new(),
+        }
     }
 
     pub fn ensure_len(&mut self, n: usize) {
@@ -440,7 +448,26 @@ impl AutoVM {
         };
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
         if zeroed {
-            self.pool_free_idx(idx);
+            // PLAN-053 P-053-8: rc 归零后立即在写锁下复核并置墓碑——此前
+            // 墓碑在 pool_free_idx 末段才置，dedup-hit 可在 rc=0→墓碑=true
+            // 窗口内经未删的键复活该槽（retain 0→1），随后末段
+            // freelist.push 令存活槽进入复用队列（幻影条目注入源；实测
+            // 槽 49299 风暴：rc=5 被复用→rc 清零→孤儿 release 下溢）。
+            // 复核非零（被并发 retain）则放弃释放——条目复活为合法存活。
+            let still_zero = {
+                let mut st = self.pool_state.write().unwrap();
+                if idx < st.tombstone.len()
+                    && st.rc[idx].load(Ordering::Acquire) == 0
+                {
+                    st.tombstone[idx] = true;
+                    true
+                } else {
+                    false
+                }
+            };
+            if still_zero {
+                self.pool_free_idx(idx);
+            }
         }
     }
 

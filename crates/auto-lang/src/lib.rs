@@ -6206,6 +6206,11 @@ mod plan446_batch1_tests {
 #[cfg(test)]
 mod plan484_chart_component_tests;
 
+// Plan 498: chart 交互状态机——M0 mouse-area on_click 引擎臂冒烟 +
+// M1-M4 悬停态/legend 点击显隐断言(484 冒烟扩展)。
+#[cfg(test)]
+mod plan498_chart_interaction_tests;
+
 // Plan 492: 引擎正确性专项——f-string 括号插值/primary-shorthand `[` 后缀/
 // vue 文本内容表达式臂/包组件单 VM 编译链三族修复。
 #[cfg(test)]
@@ -6214,6 +6219,10 @@ mod plan492_tests;
 // Plan 499 M2: 指针移动限频流管道 e2e——pipe-payload 全链送达逻辑坐标。
 #[cfg(test)]
 mod plan499_pointer_stream_tests;
+
+// Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
+#[cfg(test)]
+mod plan503_tests;
 
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]

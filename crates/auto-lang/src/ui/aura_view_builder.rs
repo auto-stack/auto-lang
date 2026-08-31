@@ -5335,6 +5335,18 @@ let tabs_inner = View::Row {
                 .unwrap_or_default()
         };
 
+        // PLAN-053 批4: `title` prop → EE03 PUA tooltip marker。vue 轨把 title
+        // 映射为原生属性(浏览器悬停提示);VM 轨此前只有 toolbar 合成按钮埋
+        // EE03,普通 button 的 title 被静默丢弃。统一接线后 renderer Button 臂
+        // 剥离 EE03 尾段并把按钮包进 iced tooltip(300ms 延迟防误触)。
+        // binding-aware:musk 会话列表 `title: .s.id` 按循环变量逐项求值。
+        let pua_title = self.extract_string_with(props, "title", bindings).unwrap_or_default();
+        let label = if pua_title.is_empty() {
+            label
+        } else {
+            format!("{}\u{EE03}{}", label, pua_title)
+        };
+
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
         // via the renderer's class-driven style); "primary" = theme-colored
@@ -7086,8 +7098,12 @@ let tabs_inner = View::Row {
     /// with the template preserved. This method scans for `${.name}` patterns
     /// and substitutes current state values.
     /// Resolve `${.field}` interpolation patterns with loop bindings support.
+    ///
+    /// Plan 503: also resolves loop-member form `${member.field}` (e.g.
+    /// launcher brand-color chip `style: "h-10 w-10 ${r.chip}"` inside
+    /// `for r in .rows`) via resolve_expr_to_value over the loop bindings.
     fn resolve_literal_interpolation_with(&self, s: &str, bindings: &Bindings) -> String {
-        if !s.contains("${.") {
+        if !s.contains("${") {
             return s.to_string();
         }
 
@@ -7098,8 +7114,8 @@ let tabs_inner = View::Row {
         let mut i = 0;
         let mut replacements: Vec<(String, String)> = Vec::new();
 
-        while i + 4 < len {
-            if &bytes[i..i+3] == b"${." {
+        while i + 2 < len {
+            if i + 3 < len && &bytes[i..i+3] == b"${." {
                 // Found start of interpolation: ${.
                 let start = i;
                 let mut end = i + 3;
@@ -7113,6 +7129,35 @@ let tabs_inner = View::Row {
                         let full_pattern = s[start..end + 1].to_string();
                         let value = self.read_state_as_string_with(field_name, bindings);
                         replacements.push((full_pattern, value));
+                    }
+                }
+                i = end + 1;
+            } else if i + 2 < len && &bytes[i..i+2] == b"${" {
+                // Plan 503: loop-member form ${member.field} — single dot
+                // path into the loop-bound Obj row.
+                let start = i;
+                let mut end = i + 2;
+                while end < len && bytes[end] != b'}' {
+                    end += 1;
+                }
+                if end < len && bytes[end] == b'}' {
+                    let inner = &s[start + 2..end];
+                    if let Some((root, field)) = inner.split_once('.') {
+                        if !root.is_empty()
+                            && !field.is_empty()
+                            && root.chars().all(|c| c.is_alphanumeric() || c == '_')
+                            && field.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        {
+                            let expr = Expr::Dot(
+                                Box::new(Expr::Ident(root.to_string().into())),
+                                field.to_string().into(),
+                            );
+                            if let Some(v) = self.resolve_expr_to_value(&expr, bindings) {
+                                let full_pattern = s[start..end + 1].to_string();
+                                replacements
+                                    .push((full_pattern, value_to_display_string(&v)));
+                            }
+                        }
                     }
                 }
                 i = end + 1;
@@ -7303,7 +7348,11 @@ let tabs_inner = View::Row {
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 496 M5: ondblclick → mouse_area on_double_click(桌面图标
         // 双击启动原语;iced on_double_click / vue @dblclick)。
+        // Plan 498 M0: onclick → mouse_area on_click(chart legend 点击
+        // 切换显隐;iced on_press / vue @click)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_click = aura_events_get_base(events, "onclick")
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 499 M2: onmousemove + coords(镜像臂)。
         let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
@@ -7327,6 +7376,7 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_click,
             on_move,
             logical_extent,
             style,
@@ -7354,7 +7404,10 @@ let tabs_inner = View::Row {
             .or_else(|| aura_events_get_base(events, "onhoverout"))
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 496 M5: ondblclick → mouse_area on_double_click(untracked 镜像臂)。
+        // Plan 498 M0: onclick → mouse_area on_click(untracked 镜像臂)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
+        let on_click = aura_events_get_base(events, "onclick")
             .map(|event| self.event_to_message_with(event, bindings));
         // Plan 499 M2: onmousemove + coords(限频流臂)。
         let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
@@ -7378,6 +7431,7 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_click,
             on_move,
             logical_extent,
             style,

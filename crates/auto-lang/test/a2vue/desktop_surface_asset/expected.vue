@@ -73,10 +73,10 @@ onMounted(() => {
 <template>
     <div :class="'w-full h-full p-3' + __desktop_bg" class="flex flex-col w-full h-full p-3" @click="BlankPress">
       <template v-if="menu_id != ''">
-        <div class="flex flex-col w-44 gap-1 p-1 bg-card border rounded-md shadow-md">
-          <Button class="w-full h-8 px-0 text-xs justify-start" @click="MenuOpen" :key="'Button-1'">打开</Button>
-          <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground" @click="MenuRemove" :key="'Button-2'">从桌面移除</Button>
-          <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground" @click="MenuWallpaper" :key="'Button-3'">更换壁纸…</Button>
+        <div class="flex flex-col w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl">
+          <Button class="w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10" @click="MenuOpen" :key="'Button-1'">打开</Button>
+          <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuRemove" :key="'Button-2'">从桌面移除</Button>
+          <Button class="w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10" @click="MenuWallpaper" :key="'Button-3'">更换壁纸…</Button>
         </div>
       </template>
       <div class="grid grid-cols-8 gap-2 w-full">

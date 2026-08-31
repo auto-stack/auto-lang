@@ -470,3 +470,33 @@
   双模断言（Pixels 臂缺失）失败；`cargo build -p auto` 后即绿，代码零缺陷。
   偿还路径：`auto_exe()` 加 mtime/版本探测（新于当前 lib 构建或带版本
   stamp），否则强制重建（另行小计划）。
+
+### P503（2026-08-31，Plan 503 桌面视觉刷新复审登记）
+
+- **P503-1 虚拟窗 min/max 视觉位无动词**：窗口 chrome 三色圆点组
+  （VM `virtual_window.rs::traffic_light` + vue `VirtualWindow.vue`）中
+  yellow(#febc2e)/green(#28c840) 为纯视觉预留位——session `WmCommand`
+  无虚拟窗 Minimize/Maximize 动词（仅 native 槽位有 NativeSlotMin/Close），
+  red=Close 是唯一有动词的灯。偿还路径：WM 增 min/max 动词 + 布局态
+  （maximized 标志现以「窗矩形 ≥98% 桌面」几何判定近似），另行计划。
+- **P503-2 vue 轨桌面无图片壁纸层**：VM 轨壁纸 scrim（renderer.rs
+  `desktop_wallpaper_scrim`，图片壁纸上叠 bg-background 10%/35%）在
+  vue 轨无锚点——desktop host 桌面区为纯色 bg-background，无壁纸图层。
+  归 P2（token 体系化/壁纸 parity 决策）一并评估 vue 壁纸层。
+
+### P498（2026-09-01，Plan 498 chart 交互状态机复审登记）
+
+- **P498-1 view 条件对负数 int 字面量比较恒假**：`if .v == -1` 在值确为
+  Int(-1)（read_state 实证）时仍走 else——写入侧正常，疑条件串渲染形态
+  导致 rhs 解析偏差（负数字面量被拆成 `- 1` 之类）。plan498 最小复现：
+  model init -1 + `== -1` 分支不命中、`== 9` 命中。组件侧以越界哨兵 9
+  规避（hov 族无悬停=9）。偿还路径：`eval_condition_with`
+  （aura_view_builder.rs:6810 族）对负数字面量 rhs 归一 + 回归用例。
+- **P498-2 VM 单态架构同名字段跨组件串扰（chart 交互态）**：Plan 320
+  单 VM 单根状态下，子组件 handler 写入根状态、渲染期按字段名同步回各
+  子组件——charts-gallery 四图族同名字段（hoverSeries/visible0..3）联动
+  实证（一次 LineChart.Toggle(0) 六个图例项同时落 opacity-40）。组件侧
+  以图族专属字段名（hovLn/hovAr/hovBr/hovDn + visLn/visAr/visBr/visDn）
+  解耦四族；**同族多实例仍共享**（两个 line-chart 实例联动），vue 轨实例
+  隔离无此现象——跨轨行为差异。偿还路径：子组件状态按实例隔离
+  （prepare_child_render_state / on_with_input_for 的 state 路由，架构级）。
