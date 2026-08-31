@@ -9209,8 +9209,12 @@ fn compare_pngs(
                 // 是前端目标不是 vm 兼容性；真不兼容的由 panic 边界 + 占位页
                 // 兜底（T7）。`ScanOptions.render` 过滤开关留给 464 launcher。
                 if let Some(apps_dir) = &opts.apps_dir {
-                    let entries = crate::ui::app_registry::scan_apps(
+                    // Plan 501：多扫描根聚合——examples 主根 + 外部仓自含根
+                    //（storage `shell.apps.extra_dirs` + 相邻仓探测缺省
+                    // `../auto-os-config/auto` → id `os-config`；去重主根优先）。
+                    let entries = crate::ui::app_registry::aggregate_scan(
                         apps_dir,
+                        &crate::ui::app_registry::host_extra_roots(),
                         &crate::ui::app_registry::ScanOptions::default(),
                     );
                     eprintln!(
@@ -17687,6 +17691,7 @@ mod tests {
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
+            daemon: None,
         }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -18556,6 +18561,7 @@ mod tests {
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
+            daemon: None,
         }];
         inject_dock_pinned(&mut ds);
         {
@@ -19261,6 +19267,7 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/a.at"),
                 render: "vm".into(),
+    daemon: None,
             },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -19269,6 +19276,7 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/b.at"),
                 render: "vm".into(),
+    daemon: None,
             },
         ];
         // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
@@ -19559,6 +19567,7 @@ mod tests {
             category: "app".to_string(),
             entry: std::path::PathBuf::from(id),
             render: "vue".to_string(),
+            daemon: None,
         };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
