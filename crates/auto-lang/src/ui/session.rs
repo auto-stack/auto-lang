@@ -1414,10 +1414,11 @@ pub enum DesktopEvent {
     /// 经 `__desktop_cmd` `summon\tlauncher` 转发）。464 前无消费者——
     /// update 臂静默；464 在 overlay 槽挂 launcher 并消费本事件。
     SummonLauncher,
-    /// Plan 473 T6：原生窗口槽位的 WinEventHook 事件（hwnd 反查槽位在
-    /// update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
-    /// Destroy → B7 槽位回收）。
-    NativeSlotHwnd(isize, crate::ui::native_dock::NativeSlotEventKind),
+    /// Plan 473 T6 / 505 A 族：原生窗口槽位的 WinEventHook 事件批（hwnd
+    /// 反查槽位在 update 侧进行；MoveSizeEnd/LocationChange → C4 拖动判定，
+    /// Destroy → B7 槽位回收）。505 起一拍 drain-while-empty 成批上行，
+    /// START/END 批内优先（[`crate::ui::native_dock::drain_slot_events`]）。
+    NativeSlotEvents(Vec<crate::ui::native_dock::NativeSlotEvent>),
     /// Plan 486：拖入手势高亮（DragWatch 光标采样产出；`Some`=候选槽位
     /// 屏幕物理矩形，`None`=清除）。正常流由 update 侧直写会话字段；本
     /// 消息面供 E2E/headless 直注验证 overlay 渲染。
@@ -1453,9 +1454,13 @@ pub fn desktop_service_tick(ms: u64) -> iced::Subscription<DesktopMessage> {
 }
 
 /// Plan 473 T6：原生窗口槽位事件泵——首帧惰性启动 WinEventHook 钩子线程
-/// （OUTOFCONTEXT），mpsc 短轮询（16ms，事件低频）收到事件后转为
-/// [`DesktopEvent::NativeSlotHwnd`]。流因钩子退出而终止时，下一轮订阅
+/// （OUTOFCONTEXT），mpsc 短轮询（16ms 空拍）收到事件后转为
+/// [`DesktopEvent::NativeSlotEvents`]。流因钩子退出而终止时，下一轮订阅
 /// diff 按恒等 recipe 重新拉起（自愈）。
+/// Plan 505 A 族（债 486 性能行）：每拍 drain-while-empty——通道一次排空
+/// 成批上行（START/END 批内优先），系统级 LOCATIONCHANGE 噪声不再把
+/// MOVESIZESTART/END 按条排队吃 16ms 轮询节拍（原单发 ≈62 事件/s，
+/// 松手→dock 落位可滞秒级）。
 #[cfg(windows)]
 pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
     use crate::ui::native_dock::win32::{spawn_event_hook, NativeSlotEventHook};
@@ -1493,22 +1498,32 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
                             }
                         };
                     };
-                    // std 通道 + 短轮询（事件低频；不阻塞执行器工作线程）。
-                    // 空拍以 Some(None) 表示、流级 filter_map 剔除（直接 yield
-                    // None = 流终止，AppTickRecipe 459 同款教训）。
-                    match rx.try_recv() {
-                        Ok(evt) => Some((
-                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotHwnd(
-                                evt.hwnd.0,
-                                evt.kind,
-                            ))),
-                            Some((hook, rx)),
-                        )),
-                        Err(std::sync::mpsc::TryRecvError::Empty) => {
-                            tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-                            Some((None, Some((hook, rx))))
+                    // std 通道 + 短轮询：空拍睡 16ms（不阻塞执行器工作线程），
+                    // 非空拍一次排空成批上行。空拍以 Some(None) 表示、流级
+                    // filter_map 剔除（直接 yield None = 流终止，AppTickRecipe
+                    // 459 同款教训）。钩子退出（Disconnected）：尾批照发，
+                    // 随后流终止 → 重订阅自愈（473 原语义保持）。
+                    let mut disconnected = false;
+                    let batch = crate::ui::native_dock::drain_slot_events(|| match rx.try_recv() {
+                        Ok(evt) => Some(evt),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            disconnected = true;
+                            None
                         }
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+                    });
+                    let next = (!disconnected).then_some((hook, rx));
+                    if batch.is_empty() {
+                        if disconnected {
+                            return None;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                        Some((None, next))
+                    } else {
+                        Some((
+                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotEvents(batch))),
+                            next,
+                        ))
                     }
                 },
             )

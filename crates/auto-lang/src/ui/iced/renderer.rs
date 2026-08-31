@@ -11719,9 +11719,13 @@ fn compare_pngs(
                             return iced::Task::batch(tasks);
                         }
                     }
-                    // Plan 473 T6：原生槽位 WinEventHook 事件（C4 拖走 / B7 回收）。
-                    DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
-                        handle_native_slot_event(state, hwnd_value, kind);
+                    // Plan 473 T6 / 505 A 族：原生槽位 WinEventHook 事件批
+                    // （C4 拖走 / B7 回收；一拍 drain 排空、START/END 批内
+                    // 优先——[`crate::ui::native_dock::drain_slot_events`]）。
+                    DesktopEvent::NativeSlotEvents(events) => {
+                        for evt in events {
+                            handle_native_slot_event(state, evt.hwnd.0, evt.kind);
+                        }
                     }
                     // Plan 497：整窗截图回调——按 pending wid 集各窗 rect
                     // 裁剪入快照缓存（T1 定案裁剪式）；switcher 可见则置
