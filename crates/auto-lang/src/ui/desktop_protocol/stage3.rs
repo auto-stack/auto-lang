@@ -429,6 +429,8 @@ mod tests {
                     code: src.clone(),
                     source_path: None,
                     title: Some(n.clone()),
+                    daemon: None,
+                    back_root: None,
                 })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -682,6 +684,8 @@ mod tests {
                     code: src.clone(),
                     source_path: None,
                     title: Some(n.to_string()),
+                    daemon: None,
+                    back_root: None,
                 })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
