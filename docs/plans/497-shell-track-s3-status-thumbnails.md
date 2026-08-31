@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 1
+current_step: 3
 total_steps: 8
 ---
 
@@ -160,10 +160,34 @@ iced 离屏渲染（headless/testbench 地基）+ image 降采样 + 既有 popov
 2. **快照核心**：新建 `crates/auto-lang/src/ui/iced/snapshot.rs`
    （snapshot_window + TTL 缓存 + 降采样）+ T2 单测；`ui/iced/mod.rs` 登记。
    验证：`cargo check -p auto-lang && cargo t snapshot`。
+   [✅ 已完成] snapshot.rs 落地：`WindowSnapshot` + `thumbnail_from_screenshot`
+   （crop_physical×scale_factor + downsample_box 长边≤256，越界 clamp/零尺寸/
+   短 RGBA 守卫）+ 进程级 TTL 2s 缓存（snapshot_window/cache_put/invalidate/
+   invalidate_all，惰性过期清除）。TDD 红→绿（RED stub 3 failed → 实现
+   4 passed）。验证实况：`cargo check -p auto-lang --features ui-iced` 零
+   error（模块在 ui-iced gate 下，无 feature 时空集）+ `cargo test -p
+   auto-lang --lib --features ui-iced t2_snapshot` 4/4 绿 + `cargo t
+   snapshot` 3/3 绿（既有 snapshot 名测试无回归；注：iced 模块测试需
+   ui-iced feature，日常 `cargo t` 档不编译该模块——同 renderer.rs 既有
+   测试同况）。
 3. **widget 登记**：`schema/aura.at` 增 window_thumbnail +
    `ui_gen/widget/registry.rs` spec；vm 臂（`ui/iced/renderer.rs` 增渲染臂）
    + vue 臂占位。
    验证：`cargo test -p auto-lang --test schema_drift && cargo test -p auto-lang --test docs_gen && cargo t ui`。
+   [✅ 已完成] 七表登记：aura.at element（vue: @/wm/WindowThumbnail 映射
+   即 vue 占位臂——a2vue 转译读 schema 同源，金样对拍在步骤 7）+
+   schema.rs ElementDef + view_builder 两臂（convert_window_thumbnail，
+   三表字面统一 window_thumbnail）+ View::WindowThumbnail 变体（vnode/
+   snapshot_builder 检视臂随编译器穷举驱动补全）+ renderer 渲染臂（快照
+   命中→image::Handle::from_rgba 直绘+Nearest 锐度+border/radius/bg 包裹；
+   miss→request_capture（500ms 冷却队列）+ lucide fallback 经 Image 臂
+   复用；native "N<slot>" parse 失败天然 fallback=待澄清②）+
+   render_support Full + registry WidgetSpec(Display)。围栏实况：
+   schema_drift 1/1 ✓（新孤儿零——三表字面对齐策略）；docs_gen 4/4 ✓
+   （KITCHEN_SINK_UPDATE/DOCS_GEN_UPDATE 再生成 kitchen-sink.at + core.md；
+   docs 覆盖围栏按 mousearea 484 先例入 DOC_EXCLUDE——桌面 shell 专用
+   消费面，单 App gallery 无虚拟窗可缩略恒 fallback，不设独立页）；
+   cargo t ui 777/777 ✓。
 4. **时钟/托盘组**：`crates/auto-lang/assets/shell.at` dock 右端组（挂载点/
    铃铛归组/时钟 tick）。
    验证：`cargo t desktop_mcp`（T3 相关用例）。

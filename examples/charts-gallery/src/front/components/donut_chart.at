@@ -134,7 +134,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 svg (viewBox: "150 20 260 260", style: "w-full h-auto max-w-md") {
                     circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
                     for seg in .segs {
-                        path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                        path (key: seg["d"], d: seg["d"], fill: seg["c"], onmouseenter: .Hover(seg.i)) {}
                     }
                 }
                 if .tooltip && .hovered == "true" {
