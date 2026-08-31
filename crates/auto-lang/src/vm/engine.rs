@@ -1359,6 +1359,22 @@ impl AutoVM {
         }
     }
 
+    /// PLAN-053 P-053-2: nil 家族判定 —— tag-null(encode_null，现行
+    /// `None`/`null`/`nil` 字面量与 JSON null 的统一编码)或旧编码
+    /// i32(-1)(历史 `null` 字面量/CREATE_NONE)或 i32(i32::MIN+1)
+    /// (历史 `nil` 字面量)。EQ/NE/NULL_COALESCE 用它在等值/合并语义上
+    /// 抹平新旧编码(存量持久化字段兼容)。
+    fn nv_is_null_family(nv: auto_val::NanoValue) -> bool {
+        if auto_val::is_null(nv) {
+            return true;
+        }
+        if auto_val::is_i32(nv) {
+            let v = auto_val::decode_i32(nv);
+            return v == -1 || v == -2147483647;
+        }
+        false
+    }
+
     /// Compare two opaque heap objects by value.
     /// Returns Some(true/false) if comparison is supported, None to fall back to integer comparison.
     fn compare_opaque_objects(&self, a_id: u64, b_id: u64) -> Option<bool> {
@@ -3064,12 +3080,15 @@ impl AutoVM {
                 }
                 OpCode::NULL_COALESCE => {
                     {
-                        // Pop right expression (default value)
-                        let default_nv = task.ram.pop_nv();
-                        // Pop left expression (May<T> value)
-                        let may_nv = task.ram.pop_nv();
+                    // Pop right expression (default value)
+                    let default_nv = task.ram.pop_nv();
+                    // Pop left expression (May<T> value)
+                    let may_nv = task.ram.pop_nv();
 
-                        if auto_val::is_null(may_nv) {
+                    // PLAN-053 P-053-2: 判空与 IS_NIL/UNWRAP_SOME 对齐——
+                    // 旧编码 i32(-1)/i32(i32::MIN+1) 的 nil 家族值也落
+                    // default(原只认 is_null，`null ?? x` 落 -1)。
+                    if Self::nv_is_null_family(may_nv) {
                             // Plan 419: None → default 转移回栈,may 死亡。
                             self.rc_release(may_nv);
                             task.ram.push_nv(default_nv);
@@ -4700,6 +4719,21 @@ impl AutoVM {
                                         auto_val::Value::Double(d) => { task.ram.push_f64(*d); }
                                         // Plan 419: 元素引用入栈 +1。
                                         auto_val::Value::VmRef(r) => { self.rc_push(task, auto_val::encode_object(r.id as u32)); }
+                                        // PLAN-053 P-053-1: 对象元素物化——
+                                        // Value::Obj 原落 `_` 臂 push_i32(0)，
+                                        // `messages[i].id` 读 0、守卫恒假 →
+                                        // computed 产出空列表（musk
+                                        // filteredMessages 消息列表恒空）。
+                                        // 物化为 ObjectData 堆对象，GET_FIELD
+                                        // 按名读字段。
+                                        auto_val::Value::Obj(o) => {
+                                            let mut od = crate::vm::types::ObjectData::new();
+                                            for (k, v) in o.iter() {
+                                                od.set(k.clone(), v.clone());
+                                            }
+                                            let id = self.insert_heap_object(od);
+                                            self.rc_push_id(task, id);
+                                        }
                                         auto_val::Value::Nil => { task.ram.push_i32(0); }
                                         _ => { task.ram.push_i32(0); }
                                     }
@@ -5016,6 +5050,14 @@ impl AutoVM {
                             auto_val::decode_i32(nv) as u64
                         } else if auto_val::is_object(nv) {
                             auto_val::decode_object(nv) as u64
+                        } else if auto_val::is_list(nv) {
+                            // PLAN-053 P-053-1: TAG_LIST 接收者——computed
+                            // helper 实参经 bridge call_vm_fn 按 encode_list
+                            // 编码传入，`.length` 落此。decode_list 与
+                            // decode_i32 位型同值(低 32 位即堆 id)，但显式
+                            // 分派消除误报 stderr(musk 实机 571×
+                            // "GET_FIELD non-i32 obj_id field=length" 噪音)。
+                            auto_val::decode_list(nv) as u64
                         } else {
                             let fn_name = task.call_stack.last().map(|f| f.fn_name.clone().unwrap_or_default()).unwrap_or_default();
                             let field_name = self.strings.read().unwrap()
@@ -7958,7 +8000,17 @@ impl AutoVM {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值 —— 一侧 tag-null
+                    // (encode_null)、另一侧旧编码 i32(-1) 或 i32(i32::MIN+1)
+                    // 时视为相等。新代码字面量已全归一 PUSH_NIL，此处兜底
+                    // 存量载荷(musk KV 持久化的旧 Int(-1) 字段、生成器
+                    // CREATE_NONE 返回值)，否则 `x != None` 守卫对旧数据
+                    // 恒真(gate 卡常显)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
                     let result = if a_nv == b_nv {
+                        true
+                    } else if a_is_null_family && b_is_null_family {
                         true
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
                         let a = auto_val::decode_object(a_nv) as i32;
@@ -7998,7 +8050,12 @@ self.rc_release(a_nv);
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值(与 EQ 对称,见其注释)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
                     let result = if a_nv == b_nv {
+                        false
+                    } else if a_is_null_family && b_is_null_family {
                         false
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
                         let a = auto_val::decode_object(a_nv) as i32;

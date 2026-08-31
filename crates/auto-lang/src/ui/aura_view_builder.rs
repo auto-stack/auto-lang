@@ -6853,6 +6853,10 @@ let tabs_inner = View::Row {
         // Normalize spaces inside .len() so "notes.len ( )" matches ".len()" suffix.
         // The parser may produce "len ( )" with spaces inside the parens.
         let lhs_normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
+        // PLAN-053 P-053-2: nil 态追踪 —— Nil 的显示串是 ""，与 null 家族
+        // 字面量("None"/"null"/"nil")字符串比较恒不等(musk gate 卡常显
+        // 根因)。比较阶段按 null 语义处理，见下方 compare 段。
+        let mut lhs_nil = false;
         let lhs_val = if let Some(field_name) = lhs_normalized.strip_suffix(".len()") {
             // Strip leading dot from state ref (e.g., ".todos" → "todos")
             let field_name = field_name.trim_start_matches('.');
@@ -6869,6 +6873,7 @@ let tabs_inner = View::Row {
             }
         } else if let Some(val) = self.resolve_binding_path(lhs, bindings) {
             // Binding path (e.g., "todo.done")
+            lhs_nil = matches!(val, Value::Nil | Value::Null);
             value_to_display_string(&val)
         } else if lhs.starts_with('.') {
             // State ref (e.g., ".filter") or nested prop path (e.g., ".block.output)
@@ -6878,7 +6883,10 @@ let tabs_inner = View::Row {
                 // read_state 只查单字段名取不到。
                 if let Some(expr) = Self::parse_dot_path_to_expr(lhs) {
                     match self.resolve_expr_to_value(&expr, bindings) {
-                        Some(v) => value_to_display_string(&v),
+                        Some(v) => {
+                            lhs_nil = matches!(v, Value::Nil | Value::Null);
+                            value_to_display_string(&v)
+                        }
                         None => return false,
                     }
                 } else {
@@ -6886,7 +6894,10 @@ let tabs_inner = View::Row {
                 }
             } else {
                 match self.read_state(name) {
-                    Ok(v) => value_to_display_string(&v),
+                    Ok(v) => {
+                        lhs_nil = matches!(v, Value::Nil | Value::Null);
+                        value_to_display_string(&v)
+                    }
                     Err(_) => return false,
                 }
             }
@@ -6900,18 +6911,27 @@ let tabs_inner = View::Row {
             let name = lhs.strip_prefix("store.").unwrap_or(lhs);
             let name = name.rsplit('.').next().unwrap_or(name);
             match self.read_state(name) {
-                Ok(v) => value_to_display_string(&v),
+                Ok(v) => {
+                    lhs_nil = matches!(v, Value::Nil | Value::Null);
+                    value_to_display_string(&v)
+                }
                 Err(_) => match self.eval_computed(name, bindings) {
-                    Some(v) => value_to_display_string(&v),
+                    Some(v) => {
+                        lhs_nil = matches!(v, Value::Nil | Value::Null);
+                        value_to_display_string(&v)
+                    }
                     None => return false,
                 },
             }
         };
 
         // Resolve rhs: check loop bindings first, then try as literal
+        let mut rhs_nil = false;
         let rhs_val = if let Some(val) = bindings.get(rhs) {
+            rhs_nil = matches!(val, Value::Nil | Value::Null);
             value_to_display_string(val)
         } else if let Some(val) = self.resolve_binding_path(rhs, bindings) {
+            rhs_nil = matches!(val, Value::Nil | Value::Null);
             value_to_display_string(&val)
         } else if rhs.starts_with('.') {
             // Plan 420: RHS 的 state 引用解析 —— 与 LHS 对称(此前 RHS 从不
@@ -6921,7 +6941,10 @@ let tabs_inner = View::Row {
             if name.contains('.') {
                 if let Some(expr) = Self::parse_dot_path_to_expr(rhs) {
                     match self.resolve_expr_to_value(&expr, bindings) {
-                        Some(v) => value_to_display_string(&v),
+                        Some(v) => {
+                            rhs_nil = matches!(v, Value::Nil | Value::Null);
+                            value_to_display_string(&v)
+                        }
                         None => return false,
                     }
                 } else {
@@ -6929,7 +6952,10 @@ let tabs_inner = View::Row {
                 }
             } else {
                 match self.read_state(name) {
-                    Ok(v) => value_to_display_string(&v),
+                    Ok(v) => {
+                        rhs_nil = matches!(v, Value::Nil | Value::Null);
+                        value_to_display_string(&v)
+                    }
                     Err(_) => return false,
                 }
             }
@@ -6938,9 +6964,31 @@ let tabs_inner = View::Row {
         };
 
         // Compare
+        // PLAN-053 P-053-2: null 家族语义 —— 裸字面量 None/null/nil(无引号,
+        // 引号串会被上面 trim 成带引号前的原文而在此不匹配)与 Nil 态等值:
+        // Nil 显示串 "" vs 字面量 "None" 的纯字符串比较恒不等,musk
+        // `.store.current_gate != None` 守卫因此拦不住 nil 态(gate 卡常显)。
+        // 两侧均为 null 家族(字面量或 Nil 态)时相等;仅一侧为 null 字面量
+        // 时与任何非空值不等;其余维持显示串比较。
+        let lhs_is_null_lit = matches!(lhs.trim(), "None" | "null" | "nil" | "Nil");
+        let rhs_is_null_lit = matches!(rhs.trim(), "None" | "null" | "nil" | "Nil");
+        let lhs_nullish = lhs_is_null_lit || lhs_nil;
+        let rhs_nullish = rhs_is_null_lit || rhs_nil;
         match op {
-            "==" => lhs_val == rhs_val,
-            "!=" => lhs_val != rhs_val,
+            "==" => {
+                if lhs_nullish || rhs_nullish {
+                    lhs_nullish && rhs_nullish
+                } else {
+                    lhs_val == rhs_val
+                }
+            }
+            "!=" => {
+                if lhs_nullish || rhs_nullish {
+                    !(lhs_nullish && rhs_nullish)
+                } else {
+                    lhs_val != rhs_val
+                }
+            }
             ">" | "<" | ">=" | "<=" => {
                 let lhs_num: f64 = match lhs_val.parse() {
                     Ok(n) => n,

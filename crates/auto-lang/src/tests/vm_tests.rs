@@ -505,6 +505,9 @@ v
 #[test]
 // Iterator is not recognized as a type name in codegen, so Iterator.next(it)
 // returns a string instead of int. Needs proper Iterator type support.
+// PLAN-053 P-053-2: 耗尽的 next 返回 None(旧编码 i32(-1))——NULL_COALESCE
+// 判空归一后 `.?(0)` 正确落默认值 0(原 -1 漏过合并，65+66-1=130 是
+// 语义债，现按文档语义 65+66+0=131)。
 fn test_str_bytes_iterator() {
     let code = r#"
 fn main() {
@@ -517,8 +520,8 @@ fn main() {
 }
 "#;
     let result = crate::run(code).unwrap();
-    // 65 + 66 + -1 = 130
-    assert_eq!(result, "130");
+    // 65 + 66 + 0 = 131（耗尽 None 经 .?(0) 落默认值）
+    assert_eq!(result, "131");
 }
 
 #[test]
