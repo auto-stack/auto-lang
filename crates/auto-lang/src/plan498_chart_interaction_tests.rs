@@ -34,7 +34,10 @@ widget ClickZone {
 "#;
         let mut dc = match crate::build_dynamic_component(src, None) {
             Ok(dc) => dc,
-            Err(e) => { eprintln!("plan498 M0: SKIPPED — component build failed: {e}"); return; }
+            Err(e) => {
+                eprintln!("plan498 M0: SKIPPED — component build failed: {e}");
+                return;
+            }
         };
         dc.fire_init();
         let (view, _, _) = dc.view_with_debug_gated(true);
@@ -43,7 +46,9 @@ widget ClickZone {
             if let Some(msg) = on_click {
                 found = true;
                 match msg {
-                    crate::ui::interpreter::DynamicMessage::Typed { event_name, args, .. } => {
+                    crate::ui::interpreter::DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "Ping", "onclick handler name");
                         assert_eq!(args.len(), 1, "literal int arg rides along");
                     }
@@ -60,7 +65,9 @@ widget ClickZone {
     ) {
         use crate::ui::view::View;
         match v {
-            View::MouseArea { content, on_click, .. } => {
+            View::MouseArea {
+                content, on_click, ..
+            } => {
                 f(on_click);
                 walk_mouse_area(content, f);
             }
@@ -111,13 +118,22 @@ mod plan498_charts {
         dc.on_with_input_for("LineChart", "HoverSeries\u{1F}i\u{1F}0", None);
         let dump1 = dump(&mut dc);
         assert!(dump1.contains(r#"stroke-width=\"3\""#), "高亮线宽 3 落图");
-        assert!(dump1.contains(r#"stroke-opacity=\"1\""#), "高亮 opacity 1 落图");
-        assert!(dump1.contains(r#"stroke-opacity=\"0.25\""#), "downplay 0.25 落图");
+        assert!(
+            dump1.contains(r#"stroke-opacity=\"1\""#),
+            "高亮 opacity 1 落图"
+        );
+        assert!(
+            dump1.contains(r#"stroke-opacity=\"0.25\""#),
+            "downplay 0.25 落图"
+        );
         assert!(dump1.contains(r#"r=\"3\""#), "转折点圆圈浮现(r=3)");
 
         dc.on_with_input_for("LineChart", "SeriesOut", None);
         let dump2 = dump(&mut dc);
-        assert!(dump2.contains(r#"stroke-opacity=\"0.85\""#), "离焦复原 0.85");
+        assert!(
+            dump2.contains(r#"stroke-opacity=\"0.85\""#),
+            "离焦复原 0.85"
+        );
         assert!(!dump2.contains(r#"r=\"3\""#), "转折点随离焦消失");
     }
 
@@ -130,9 +146,15 @@ mod plan498_charts {
         };
         dc.on_with_input_for("AreaChart", "HoverSeries\u{1F}i\u{1F}1", None);
         let dump = dump(&mut dc);
-        assert!(dump.contains(r#"fill-opacity=\"0.45\""#), "高亮面积 0.45 落图");
+        assert!(
+            dump.contains(r#"fill-opacity=\"0.45\""#),
+            "高亮面积 0.45 落图"
+        );
         assert!(dump.contains(r#"stroke-width=\"3\""#), "高亮描边 3 落图");
-        assert!(dump.contains(r#"fill-opacity=\"0.08\""#), "downplay 面积 0.08 落图");
+        assert!(
+            dump.contains(r#"fill-opacity=\"0.08\""#),
+            "downplay 面积 0.08 落图"
+        );
     }
 
     /// M2:bar 分组高亮——命中竖带 .Hover(0) 顺带 hoverGroup:该组柱描边
@@ -144,18 +166,33 @@ mod plan498_charts {
             return;
         };
         let dump0 = dump(&mut dc);
-        assert!(dump0.contains("h19") || dump0.contains("h25"), "常驻柱几何落图");
-        assert!(!dump0.contains(r#"fill-opacity=\"0.3\""#), "常驻态无 downplay");
+        assert!(
+            dump0.contains("h19") || dump0.contains("h25"),
+            "常驻柱几何落图"
+        );
+        assert!(
+            !dump0.contains(r#"fill-opacity=\"0.3\""#),
+            "常驻态无 downplay"
+        );
 
         dc.on_with_input_for("BarChart", "Hover\u{1F}i\u{1F}0", None);
         let dump1 = dump(&mut dc);
-        assert!(dump1.contains(r#"stroke-width=\"1.5\""#), "高亮组描边 1.5 落图");
-        assert!(dump1.contains(r#"fill-opacity=\"0.3\""#), "其余组 downplay 0.3 落图");
+        assert!(
+            dump1.contains(r#"stroke-width=\"1.5\""#),
+            "高亮组描边 1.5 落图"
+        );
+        assert!(
+            dump1.contains(r#"fill-opacity=\"0.3\""#),
+            "其余组 downplay 0.3 落图"
+        );
 
         dc.on_with_input_for("BarChart", "HoverOut", None);
         let dump2 = dump(&mut dc);
         assert!(!dump2.contains(r#"stroke-width=\"1.5\""#), "离焦后描边消失");
-        assert!(!dump2.contains(r#"fill-opacity=\"0.3\""#), "离焦后 downplay 消失");
+        assert!(
+            !dump2.contains(r#"fill-opacity=\"0.3\""#),
+            "离焦后 downplay 消失"
+        );
     }
 
     /// M3:donut 扇区 emphasis——.Hover(1)(图例行/扇区同源)后该扇区
@@ -172,11 +209,17 @@ mod plan498_charts {
 
         dc.on_with_input_for("DonutChart", "Hover\u{1F}i\u{1F}1", None);
         let dump1 = dump(&mut dc);
-        assert!(dump1.contains(r##"stroke=\"#ffffff\""##), "悬停扇区白描边落图");
+        assert!(
+            dump1.contains(r##"stroke=\"#ffffff\""##),
+            "悬停扇区白描边落图"
+        );
 
         dc.on_with_input_for("DonutChart", "HoverOut", None);
         let dump2 = dump(&mut dc);
-        assert!(!dump2.contains(r##"stroke=\"#ffffff\""##), "离焦后白描边消失");
+        assert!(
+            !dump2.contains(r##"stroke=\"#ffffff\""##),
+            "离焦后白描边消失"
+        );
     }
 
     /// M4:legend 点击切换显隐——Toggle(0)(M0 on_click 电路)后该系列
@@ -196,7 +239,10 @@ mod plan498_charts {
         let dump1 = dump(&mut dc);
         assert!(dump1.contains("Opacity(40)"), "隐藏系列图例项落 opacity-40");
         let paths1 = dump1.matches("stroke-opacity=").count();
-        assert!(paths1 < paths0, "隐藏系列 path 跳过(前 {paths0} 后 {paths1})");
+        assert!(
+            paths1 < paths0,
+            "隐藏系列 path 跳过(前 {paths0} 后 {paths1})"
+        );
 
         // 隐藏优先于悬停:对已隐藏系列 HoverSeries(0) 不浮几何(无转折点)。
         dc.on_with_input_for("LineChart", "HoverSeries\u{1F}i\u{1F}0", None);
