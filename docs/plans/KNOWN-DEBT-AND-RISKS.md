@@ -389,3 +389,19 @@
   + iced_winit 一行级 diff：backend_options 读 env / PreMultiplied 优先 /
   with_no_redirection_bitmap）。本机 DComp 内容不上屏疑 ToDesk 特有；
   成立则 P494-1 可经「Region+透明」复合偿还。
+
+### P496（2026-08-31，Plan 496 桌面本体 M5 复审登记）
+
+- **P496-1 T4 交互实机照受阻（472/478/479/487 前台竞争家族延续）**：496
+  桌面本体 T4 交互项（双击启动/聚焦、右键菜单三项、空白点击、settings
+  壁纸写手）OS 注入通道同族阻断（CUA 像素身份守卫对活渲染面拒绝）。
+  headless 全链覆盖（desktop_surface_* 三测 + settings_appearance_* +
+  activate 两臂既有测）；实机证据 = 预写键 boot 单帧三断言（渲染帧）+
+  T4 报告 `docs/plans/reports/496-t4-live-smoke.md` §2 对表成文。前台
+  空闲可补采（P479-2/P487-1 同款排队）。
+- **P496-2（复审新发现，非本计划引入）plan492 fstr 金丝雀基点红**：
+  `--features ui-iced` 档 `plan492_tests::m1_pkg_fstr::pkg_canary_undefined_
+  var_kills_bar_init` 在 39abc730f 基点即红（临时 worktree 探针实证），
+  master 新顶（495 合并 08d060cba）已绿——分支合并时随 rebase/merge
+  自愈，无需本计划处置。与 P487-2「门禁盲区」同族提醒：该测试挂 ui-iced
+  门后，`cargo t/tf` 默认档不可见。

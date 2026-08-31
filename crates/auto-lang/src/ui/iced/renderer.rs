@@ -3511,13 +3511,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 484: hover 命中区 —— iced mouse_area 透明包裹,仅转发
             // enter/exit 消息(通用事件分发)。style(尺寸/定位类)经
             // build_container 承载——命中区必须定宽高,空内容才有可命中面积。
-            AbstractView::MouseArea { content, on_enter, on_exit, style } => {
+            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, style } => {
                 let mut ma = mouse_area(content.into_iced());
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
                 }
                 if let Some(msg) = on_exit {
                     ma = ma.on_exit(msg);
+                }
+                // Plan 496 M5: ondblclick → iced mouse_area on_double_click
+                //（桌面图标双击启动原语；inspect 捕获态丢臂与其余 handler 同规则）。
+                if !inspect_capture_active() {
+                    if let Some(msg) = on_double_click {
+                        ma = ma.on_double_click(msg);
+                    }
                 }
                 build_container(
                     ma.into(),
@@ -5033,6 +5040,19 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 placement,
                 open,
                 on_dismiss: on_dismiss.map(|m| IcedMessage::from_dynamic(&m)),
+            }
+        }
+
+        // Plan 496 M5: MouseArea 必须显式臂——此前 VM 动态路径走 `_ => Empty`
+        // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
+        // 双击臂依赖本臂;enter/exit/double_click 三消息递归映射。
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, style } => {
+            AbstractView::MouseArea {
+                content: Box::new(convert_view_messages(*content)),
+                on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
+                on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
+                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+                style,
             }
         }
 
@@ -7394,6 +7414,10 @@ fn toggle_settings(
         != Some("false");
     let notes_on = crate::vm::ffi::stdlib::storage_host_read("shell.notes.enabled").as_deref()
         != Some("false");
+    // Plan 496 M5：壁纸键快照（外观分区「当前：」展示；写入 = 面板内
+    // storage 直写，本注入只在召唤时点）。
+    let wallpaper = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
+        .unwrap_or_default();
     let pinned: Vec<auto_val::Value> = state
         .desktop
         .dock_pinned
@@ -7412,6 +7436,9 @@ fn toggle_settings(
             "cfg_notes_enabled",
             auto_val::Value::str(if notes_on { "1" } else { "0" }),
         );
+        let _ = app
+            .component
+            .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
         let _ = app.component.write_state_vec("pinned_ids", pinned);
         let _ = app.component.write_state(
             "about_host",
@@ -8544,6 +8571,115 @@ fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
     *app.state.view_dirty.borrow_mut() = true;
 }
 
+/// Plan 496 M5：boot 壁纸解析（storage `shell.desktop.wallpaper`——
+/// #hex 色值直传；图片路径验存在；缺席/空/坏值回退
+/// [`crate::ui::session::DESKTOP_WALLPAPER_DEFAULT`]）。
+fn load_desktop_wallpaper() -> String {
+    use crate::ui::session::DESKTOP_WALLPAPER_DEFAULT;
+    let Some(raw) = crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper") else {
+        return DESKTOP_WALLPAPER_DEFAULT.to_string();
+    };
+    let v = raw.trim().to_string();
+    if v.is_empty() || (!v.starts_with('#') && !std::path::Path::new(&v).is_file()) {
+        DESKTOP_WALLPAPER_DEFAULT.to_string()
+    } else {
+        v
+    }
+}
+
+/// Plan 496 M5：boot 桌面条目读入——id 逗号串解析（自定义
+/// `shell.desktop.icons` / 排除 `shell.desktop.hidden`，
+/// `load_dock_pinned` 同形：空段剔除、缺席空表）。
+fn load_desktop_id_list(key: &str) -> Vec<String> {
+    crate::vm::ffi::stdlib::storage_host_read(key)
+        .map(|raw| {
+            raw.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Plan 496 M5：桌面本体投影注入——pinned ∪ 自定义条目合并去重
+/// （pinned 先列，custom 重叠去重接排；hidden 两者通用排除），条目
+/// {id,icon,label,src}（icon/label 注册表解析，缺省回退 app-window/id）；
+/// `__desktop_bg`（#hex → "bg-[#hex]" 根 bg 实铺片段；图片路径 → ""，由
+/// 宿主壁纸图层铺底——DSL 无重叠布局）+ `__desktop_hidden`（移除臂
+/// `shell.desktop.hidden` 续写底稿）。boot 期 inject_dock_pinned 邻位。
+fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
+    let Some(surface) = state.desktop.desktop_app else { return };
+    let hidden = load_desktop_id_list("shell.desktop.hidden");
+    let customs = load_desktop_id_list("shell.desktop.icons");
+    let mut order: Vec<(String, &str)> = state
+        .desktop
+        .dock_pinned
+        .iter()
+        .map(|id| (id.clone(), "pinned"))
+        .collect();
+    for id in customs {
+        if !order.iter().any(|(x, _)| *x == id) {
+            order.push((id, "custom"));
+        }
+    }
+    let entries: Vec<auto_val::Value> = order
+        .into_iter()
+        .filter(|(id, _)| !hidden.contains(id))
+        .map(|(id, src)| {
+            let reg = state.desktop.registry_entries.iter().find(|e| e.id == id);
+            let icon = reg
+                .map(|e| e.icon.clone())
+                .unwrap_or_else(|| "app-window".to_string());
+            let label = reg
+                .map(|e| e.title.clone())
+                .unwrap_or_else(|| id.clone());
+            auto_val::Value::Obj(auto_val::Obj::from_pairs([
+                ("id", auto_val::Value::Str(id.into())),
+                ("icon", auto_val::Value::Str(icon.into())),
+                ("label", auto_val::Value::Str(label.into())),
+                ("src", auto_val::Value::Str(src.into())),
+            ]))
+        })
+        .collect();
+    let bg = if state.desktop.desktop_wallpaper.starts_with('#') {
+        format!("bg-[{}]", state.desktop.desktop_wallpaper)
+    } else {
+        String::new()
+    };
+    let hidden_str = hidden.join(",");
+    let Some(app) = state.apps.get_mut(&surface) else { return };
+    let _ = app.component.write_state_vec("__desktop_icons", entries);
+    let _ = app.component.write_state("__desktop_bg", auto_val::Value::Str(bg.into()));
+    let _ = app.component.write_state(
+        "__desktop_hidden",
+        auto_val::Value::Str(hidden_str.into()),
+    );
+    *app.state.view_dirty.borrow_mut() = true;
+}
+
+/// Plan 496 M5：壁纸底层元素（图片分支——solid 分支由 desktop.at 根 bg
+/// 承接，不推本层）。无事件纯铺底；运行中图片被删的防御臂 = 默认色容器
+/// （boot 解析已验存在）。
+fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M> {
+    match load_image_bytes(path) {
+        Some(data) => {
+            let handle = get_or_create_image_handle(path, data, 0.0, None, None);
+            iced::widget::image(handle)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .into()
+        }
+        None => iced::widget::container(iced::widget::Space::new())
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .style(move |_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(iced::Color::from_rgb8(9, 14, 26))),
+                ..Default::default()
+            })
+            .into(),
+    }
+}
+
 /// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
 /// entry 字段全用串：.at 侧 onclick 参数拼接（"focus\t" + wid）与条件渲染
 /// 都走字符串语义（dashboard/041 对象列表同型）。icon 自注册表实时查
@@ -9056,6 +9192,17 @@ fn compare_pngs(
                         eprintln!("[session] shell load failed (desktop continues): {err}")
                     }
                 }
+                // Plan 496 M5：桌面本体面（第五面，常驻不召唤——与 overlay
+                // 懒挂载不同，boot 期装载）。装载失败不阻断桌面（无图标
+                // 桌面退化，shell 同型降级）。
+                match crate::ui::shell::build_desktop_surface_component() {
+                    Ok(surface_comp) => {
+                        session.desktop.desktop_app = Some(session.allocate_app(surface_comp));
+                    }
+                    Err(err) => {
+                        eprintln!("[session] desktop surface load failed (desktop continues): {err}")
+                    }
+                }
                 // Plan 463 T7：应用注册表 —— 扫描 apps_dir 装配 LaunchApp
                 // 解析器。boot 不过滤 render：声明 `render:"vue"` 的 App 多数
                 // vm 兼容（011-calculator 即桌面 demo 常客），声明的 render
@@ -9109,6 +9256,12 @@ fn compare_pngs(
                 // Plan 472 T5：{id,icon} 解析注入 shell（apps_dir 缺席也注入
                 // ——pinned 常驻，图标回退 "app-window"）。
                 inject_dock_pinned(&mut session);
+                // Plan 496 M5：桌面本体数据链——壁纸解析（键缺席/坏值回退
+                // pack 默认色）+ 图标投影注入（pinned ∪ 自定义合并去重、
+                // hidden 排除）。settings/右键移除写键，boot 重读生效
+                // （487 pinned 同语义）。
+                session.desktop.desktop_wallpaper = load_desktop_wallpaper();
+                inject_desktop_surface(&mut session);
                 // Plan 480 S3：真桌面壳孵化通道——broker 常驻受理 spawn 孵化
                 // （`auto --autodesk-incubate` 经 `request_incubation` 连入，
                 // ServiceTick 帧泵周期 attach 落 462 会话）。
@@ -11636,6 +11789,32 @@ fn compare_pngs(
                 .into();
             }
             let mut layers: Vec<iced::Element<'_, DM>> = Vec::new();
+            // Plan 496 M5：壁纸层（图片分支——solid 分支由 desktop.at 根 bg
+            // 承接，不推本层）。Stack 最底之底：桌面图标面之下、虚拟窗之下。
+            if !state.desktop.desktop_wallpaper.starts_with('#') {
+                layers.push(desktop_wallpaper_element(&state.desktop.desktop_wallpaper));
+            }
+            // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
+            // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口
+            // 之下（G3 层级：窗口拖过时图标自然被覆盖）。shell 层同型
+            // catch_unwind 视图边界（453 T6）。
+            if state.desktop.desktop_app.is_some() {
+                let surface_app = state.desktop.desktop_app.expect("surface checked");
+                let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
+                let surface_client: iced::Element<'_, IcedMessage> = match
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+                {
+                    Ok(Some(el)) => el,
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失").size(14).into(),
+                    Err(payload) => {
+                        eprintln!(
+                            "[session] desktop surface view panicked (plan-453 T6 boundary): {payload:?}"
+                        );
+                        desktop_crash_element()
+                    }
+                };
+                layers.push(surface_client.map(move |m| DM::App(surface_app, m)));
+            }
             for &wid in &host.wm.z_order {
                 let Some(vwin) = host.wm.wins.get(&wid) else { continue };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
@@ -18757,6 +18936,90 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Plan 496 M5 步骤5：外观分区——壁纸输入 storage 直写闭环（Nav
+    /// appearance 导航 / DraftWallpaper 草稿 / SaveWallpaper 落键
+    /// shell.desktop.wallpaper / saved 提示 / 空草稿不写键）+ 召唤快照
+    /// cfg_wallpaper 注入。
+    #[test]
+    fn settings_appearance_wallpaper_section_writes_storage() {
+        let path = t2_isolate_storage("496-appearance");
+        // 预置旧壁纸：召唤快照应注入 cfg_wallpaper。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#101820".into());
+        let mut ds = t3_session_with_shell();
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("面板已挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("cfg_wallpaper") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "#101820", "召唤注入壁纸键快照")
+                }
+                other => panic!("cfg_wallpaper 读回异常: {other:?}"),
+            }
+        }
+        // Nav 外观分区。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Nav", &[auto_val::Value::str("appearance")])
+            .expect("Nav handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("section") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "appearance", "外观分区可达")
+                }
+                other => panic!("section 读回异常: {other:?}"),
+            }
+        }
+        // 空草稿保存：不落键。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("SaveWallpaper", &[])
+            .expect("SaveWallpaper handler（空草稿）");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
+            Some("#101820"),
+            "空草稿不写键"
+        );
+        // 草稿 + 保存：落键 + cfg 快照刷新 + saved 提示 + 草稿清空。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("DraftWallpaper", &[auto_val::Value::str("#243b55")])
+            .expect("DraftWallpaper handler");
+        app.component
+            .bridge_mut()
+            .call_handler("SaveWallpaper", &[])
+            .expect("SaveWallpaper handler");
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper").as_deref(),
+            Some("#243b55"),
+            "SaveWallpaper 落键（load_desktop_wallpaper 同键）"
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            for (field, want, why) in [
+                ("cfg_wallpaper", "#243b55", "保存后 cfg 快照刷新"),
+                ("wallpaper_draft", "", "保存后草稿清空"),
+                ("wallpaper_saved", "1", "已保存提示置位"),
+            ] {
+                match app.component.read_state(field) {
+                    Ok(auto_val::Value::Str(ref s)) => {
+                        assert_eq!(s.to_string(), want, "{why}")
+                    }
+                    other => panic!("{field} 读回异常: {other:?}"),
+                }
+            }
+        }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Plan 487 M4 步骤4：设置面板召唤无头——OpenSettings 懒挂载 + 配置
     /// 快照注入（cfg_* 键推导 / pinned 平行列表 / about 常量）+ 二态翻转
     /// （再召唤自隐）+ Esc 自隐。齿轮→open_settings 记录接线在步骤7 测。
@@ -18893,6 +19156,357 @@ mod tests {
         match app.component.read_state("visible") {
             Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), "0", "Esc 后自隐"),
             other => panic!("Esc 后 visible 异常: {other:?}"),
+        }
+    }
+
+    // ---- Plan 496 M5：桌面本体数据链（T2——storage 往返 + 合并去重）----
+
+    /// T2 族读回辅助：desktop_app 面的标量/数组状态（t3_read* 绑 shell_app，
+    /// 本族面不同——独立小助手）。
+    fn t496_read(ds: &crate::ui::session::DesktopSession, field: &str) -> auto_val::Value {
+        let surface = ds.desktop.desktop_app.unwrap();
+        ds.apps
+            .get(&surface)
+            .unwrap()
+            .component
+            .read_state(field)
+            .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"))
+    }
+
+    fn t496_read_array(
+        ds: &crate::ui::session::DesktopSession,
+        field: &str,
+    ) -> Vec<auto_val::Value> {
+        let surface = ds.desktop.desktop_app.unwrap();
+        let app = ds.apps.get(&surface).unwrap();
+        let val = app
+            .component
+            .read_state(field)
+            .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"));
+        match val {
+            auto_val::Value::Array(a) => a.values,
+            auto_val::Value::VmRef(r) => t3_deref_list(app, r.id as u64, field),
+            auto_val::Value::Int(id) => t3_deref_list(app, id as u64, field),
+            other => panic!("{field} 既非数组也非列表引用: {other:?}"),
+        }
+    }
+
+    fn t496_val_obj(v: &auto_val::Value) -> &auto_val::Obj {
+        match v {
+            auto_val::Value::Obj(o) => o,
+            other => panic!("条目应为 Obj: {other:?}"),
+        }
+    }
+
+    /// T2a：壁纸解析 + 图标/排除键 storage 往返——#hex 直传、坏路径回退
+    /// 默认色、存在路径保留；逗号键解析（shell.dock.pinned 同形）。
+    #[test]
+    fn desktop_surface_storage_roundtrip_and_wallpaper_resolution() {
+        let _guard = t2_isolate_storage("d496-t2a");
+        // 壁纸三分支。
+        assert_eq!(
+            load_desktop_wallpaper(),
+            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
+            "键缺席回退 pack 默认色"
+        );
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#123456".into());
+        assert_eq!(load_desktop_wallpaper(), "#123456", "#hex 直传");
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.wallpaper",
+            "Z:/no/such/file.png".into(),
+        );
+        assert_eq!(
+            load_desktop_wallpaper(),
+            crate::ui::session::DESKTOP_WALLPAPER_DEFAULT,
+            "坏路径回退默认色"
+        );
+        let tmp = std::env::temp_dir().join(format!("autoui-496-wp-{}.png", std::process::id()));
+        std::fs::write(&tmp, b"png").expect("临时壁纸写入");
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.wallpaper",
+            tmp.to_string_lossy().to_string(),
+        );
+        assert_eq!(
+            load_desktop_wallpaper(),
+            tmp.to_string_lossy(),
+            "存在路径保留"
+        );
+        // 图标/排除键逗号解析（空段剔除）。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", " a , b,,c ".into());
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", " b ".into());
+        assert_eq!(
+            load_desktop_id_list("shell.desktop.icons"),
+            vec!["a", "b", "c"]
+        );
+        assert_eq!(load_desktop_id_list("shell.desktop.hidden"), vec!["b"]);
+        assert!(load_desktop_id_list("shell.desktop.nonexistent").is_empty());
+    }
+
+    /// T2b：boot 合并去重——pinned ∪ 自定义（pinned 先列，custom 重叠去重）
+    /// - hidden 排除（pinned/custom 通用）+ `__desktop_*` 投影注入形状
+    /// （icon/label 注册表解析、缺省回退；`__desktop_bg` 壁纸片段）。
+    #[test]
+    fn desktop_surface_merge_dedupe_and_injection() {
+        let _guard = t2_isolate_storage("d496-t2b");
+        let mut ds = t3_session_with_shell();
+        // 真 desktop.at 装载（z 槽面）。
+        let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+        ds.desktop.desktop_app = Some(ds.allocate_app(comp));
+        // 注册表：011/015 带标题与图标；013 缺席（label/icon 回退臂）。
+        ds.desktop.registry_entries = vec![
+            crate::ui::app_registry::AppRegistryEntry {
+                id: "011-calculator".into(),
+                title: "计算器".into(),
+                icon: "calculator".into(),
+                category: "app".into(),
+                entry: std::path::PathBuf::from("x/a.at"),
+                render: "vm".into(),
+            },
+            crate::ui::app_registry::AppRegistryEntry {
+                id: "015-notes".into(),
+                title: "便签".into(),
+                icon: "sticky-note".into(),
+                category: "app".into(),
+                entry: std::path::PathBuf::from("x/b.at"),
+                render: "vm".into(),
+            },
+        ];
+        // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
+        // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "014-weather,011-calculator".into(),
+        );
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", "013-todo".into());
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "#243b55".into());
+        ds.desktop.desktop_wallpaper = load_desktop_wallpaper();
+        inject_desktop_surface(&mut ds);
+        let entries = t496_read_array(&ds, "__desktop_icons");
+        let ids: Vec<String> = entries
+            .iter()
+            .map(|e| t3_obj_str(t496_val_obj(e), "id"))
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["011-calculator", "015-notes", "014-weather"],
+            "pinned 先列（013 hidden 排除）+ custom 去重接排"
+        );
+        let first = t496_val_obj(&entries[0]);
+        assert_eq!(t3_obj_str(first, "icon"), "calculator", "icon 注册表解析");
+        assert_eq!(t3_obj_str(first, "label"), "计算器", "label=注册表标题");
+        assert_eq!(t3_obj_str(first, "src"), "pinned");
+        let third = t496_val_obj(&entries[2]);
+        assert_eq!(t3_obj_str(third, "icon"), "app-window", "未登记回退占位图标");
+        assert_eq!(t3_obj_str(third, "label"), "014-weather", "label 回退 id");
+        assert_eq!(t3_obj_str(third, "src"), "custom");
+        match t496_read(&ds, "__desktop_bg") {
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "bg-[#243b55]", "#hex → 根 bg 实铺片段")
+            }
+            other => panic!("__desktop_bg 异常: {other:?}"),
+        }
+        match t496_read(&ds, "__desktop_hidden") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "013-todo"),
+            other => panic!("__desktop_hidden 异常: {other:?}"),
+        }
+        // 图片壁纸分支：__desktop_bg 空（宿主壁纸图层铺底）。
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.wallpaper", "bad".into());
+        let tmp = std::env::temp_dir().join(format!("autoui-496-img-{}.png", std::process::id()));
+        std::fs::write(&tmp, b"png").expect("临时壁纸写入");
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.wallpaper",
+            tmp.to_string_lossy().to_string(),
+        );
+        ds.desktop.desktop_wallpaper = load_desktop_wallpaper();
+        inject_desktop_surface(&mut ds);
+        match t496_read(&ds, "__desktop_bg") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "图片路径 → 空片段"),
+            other => panic!("__desktop_bg（图片）异常: {other:?}"),
+        }
+    }
+
+    /// T1 族视图走查辅助：递归数 (mouse_area 双击臂数, 指定文本出现数)。
+    fn t496_walk(
+        v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        dbl: &mut usize,
+        texts: &mut Vec<String>,
+    ) {
+        use crate::ui::view::View;
+        match v {
+            View::MouseArea { content, on_double_click, .. } => {
+                if on_double_click.is_some() {
+                    *dbl += 1;
+                }
+                t496_walk(content, dbl, texts);
+            }
+            View::Text { content, .. } => texts.push(content.clone()),
+            // button "打开" 的 label 在 Button.label（非 Text 子节点）。
+            View::Button { label, content, .. } => {
+                texts.push(label.clone());
+                if let Some(c) = content {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            View::Column { children, .. } | View::Row { children, .. } => {
+                for c in children {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                t496_walk(child, dbl, texts)
+            }
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    t496_walk(c, dbl, texts);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// T1：desktop.at 装载 + 注入 headless——条目渲染数（网格 for 展开）、
+    /// 双击 mouse-area on_double_click 电路（VM 动态路径 convert_view_messages
+    /// 后存活——496 补臂前落 Empty 兜底）、右键菜单出现（IconMenu → 菜单
+    /// 三项文本）、MenuRemove storage 直写、BlankPress 关菜单、ActivateApp
+    /// → activate 动词记录（472 两臂复用）。
+    #[test]
+    fn desktop_surface_at_loads_interactions_and_dispatch() {
+        let _guard = t2_isolate_storage("d496-t1");
+        let mut ds = t3_session_with_shell();
+        let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
+        ds.desktop.desktop_app = Some(ds.allocate_app(comp));
+        crate::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "014-weather,011-calculator".into(),
+        );
+        // 默认 dock_pinned 三枚 + custom 两枚（011 重叠去重）→ 4 条目。
+        inject_desktop_surface(&mut ds);
+        let surface = ds.desktop.desktop_app.unwrap();
+        let (mut dbl, mut texts) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            t496_walk(&view, &mut dbl, &mut texts);
+        }
+        assert_eq!(dbl, 4, "每个图标格一枚 mouse-area 双击臂（pinned∪custom 去重后）");
+        assert_eq!(
+            texts.iter().filter(|t| t.as_str() == "014-weather").count(),
+            1,
+            "label 渲染（未登记条目回退 id）"
+        );
+        // 转换后存活（convert_view_messages VM 动态路径——Empty 兜底即双击死）。
+        let (mut dbl2, mut texts2) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            let converted = convert_view_messages(view);
+            t496_walk_iced(&converted, &mut dbl2, &mut texts2);
+        }
+        assert_eq!(dbl2, 4, "convert_view_messages 后 mouse_area 双击臂存活");
+        // 右键菜单：IconMenu 打开 → 三项文本出现；BlankPress 关闭消失。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("014-weather")])
+                .expect("IconMenu handler");
+        }
+        let (mut dbl3, mut texts3) = (0usize, Vec::new());
+        {
+            let app = ds.apps.get(&surface).unwrap();
+            let (view, _, _) = app.component.view_with_debug_gated(false);
+            t496_walk(&view, &mut dbl3, &mut texts3);
+        }
+        for item in ["打开", "从桌面移除", "更换壁纸…"] {
+            assert!(
+                texts3.iter().any(|t| t == item),
+                "菜单项「{item}」应出现（menu_id 打开态）"
+            );
+        }
+        // MenuRemove：hidden 直写（storage）+ 菜单关闭。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("MenuRemove", &[])
+                .expect("MenuRemove handler");
+        }
+        assert_eq!(
+            crate::vm::ffi::stdlib::storage_host_read("shell.desktop.hidden").as_deref(),
+            Some("014-weather"),
+            "移除 = shell.desktop.hidden 直写"
+        );
+        // BlankPress：关菜单。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("BlankPress", &[])
+                .expect("BlankPress handler");
+            app.component
+                .bridge_mut()
+                .call_handler("ActivateApp", &[auto_val::Value::str("011-calculator")])
+                .expect("ActivateApp handler");
+        }
+        match t496_read(&ds, "__desktop_cmd") {
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "activate\t011-calculator", "双击/打开 → activate 动词（472 两臂复用）")
+            }
+            other => panic!("__desktop_cmd 异常: {other:?}"),
+        }
+        match t496_read(&ds, "menu_id") {
+            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "空白点击关菜单"),
+            other => panic!("menu_id 异常: {other:?}"),
+        }
+        // MenuWallpaper → open_settings（v1.4 无参动词）。
+        {
+            let app = ds.apps.get_mut(&surface).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("IconMenu", &[auto_val::Value::str("013-todo")])
+                .expect("IconMenu handler");
+            app.component
+                .bridge_mut()
+                .call_handler("MenuWallpaper", &[])
+                .expect("MenuWallpaper handler");
+        }
+        match t496_read(&ds, "__desktop_cmd") {
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "open_settings", "更换壁纸入口 → open_settings")
+            }
+            other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
+        }
+    }
+
+    /// T1 走查（iced 侧）：View<IcedMessage> 版（convert_view_messages 后）。
+    fn t496_walk_iced(
+        v: &crate::ui::view::View<IcedMessage>,
+        dbl: &mut usize,
+        texts: &mut Vec<String>,
+    ) {
+        use crate::ui::view::View;
+        match v {
+            View::MouseArea { content, on_double_click, .. } => {
+                if on_double_click.is_some() {
+                    *dbl += 1;
+                }
+                t496_walk_iced(content, dbl, texts);
+            }
+            View::Text { content, .. } => texts.push(content.clone()),
+            View::Column { children, .. } | View::Row { children, .. } => {
+                for c in children {
+                    t496_walk_iced(c, dbl, texts);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                t496_walk_iced(child, dbl, texts)
+            }
+            View::Grid { cells, .. } => {
+                for c in cells {
+                    t496_walk_iced(c, dbl, texts);
+                }
+            }
+            _ => {}
         }
     }
 

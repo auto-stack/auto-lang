@@ -51,6 +51,19 @@ pub fn build_settings_component(
     crate::build_dynamic_component(SETTINGS_AT, None)
 }
 
+/// Plan 496 M5：桌面本体面源码（进程内嵌；shell pack 同级特权组件，不进
+/// 注册表/examples——第五面。与 overlay 槽不同：常驻不召唤，boot 期装载，
+/// 挂桌面层 z 槽（壁纸之上、App 虚拟窗口之下））。
+pub const DESKTOP_AT: &str = include_str!("../../assets/desktop.at");
+
+/// 进程内编译装载桌面本体面组件（boot 期常驻装载调用；失败由调用方降级为
+/// 无图标桌面——不阻断既有桌面）。
+#[cfg(feature = "ui-iced")]
+pub fn build_desktop_surface_component(
+) -> Result<crate::ui::dynamic::DynamicComponent, crate::error::AutoError> {
+    crate::build_dynamic_component(DESKTOP_AT, None)
+}
+
 /// Plan 463 T7：启动失败占位页（Design 24 §6.5）—— LaunchApp 构建失败时
 /// 的可见反馈窗：不白屏、不阻断桌面（toast 并行报错；关闭占位窗即走）。
 pub const LAUNCH_FALLBACK_AT: &str = r#"widget LaunchFallback {

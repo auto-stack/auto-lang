@@ -64,6 +64,9 @@ pub fn is_native_event_key(key: &str) -> bool {
             | "onkeyup" | "onkeydown" | "onkeypress"
             | "onfocus" | "onblur"
             | "oncontextmenu" | "onContextMenu" | "on_contextmenu"
+            // Plan 496 M5: ondblclick(桌面图标双击启动;VM 路径 parser 对
+            // on* 泛识别,此处为 codegen 后端的事件/回调分流补位)。
+            | "ondblclick" | "onDoubleClick" | "on_dblclick" | "on_double_click"
     )
 }
 

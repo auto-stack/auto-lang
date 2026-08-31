@@ -7137,6 +7137,10 @@ let tabs_inner = View::Row {
         let on_exit = aura_events_get_base(events, "onmouseleave")
             .or_else(|| aura_events_get_base(events, "onhoverout"))
             .map(|event| self.event_to_message_with(event, bindings));
+        // Plan 496 M5: ondblclick → mouse_area on_double_click(桌面图标
+        // 双击启动原语;iced on_double_click / vue @dblclick)。
+        let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
             .expand_children_spliced(children, bindings)
@@ -7156,6 +7160,7 @@ let tabs_inner = View::Row {
             content: Box::new(content),
             on_enter,
             on_exit,
+            on_double_click,
             style,
         }
     }
@@ -7180,6 +7185,9 @@ let tabs_inner = View::Row {
         let on_exit = aura_events_get_base(events, "onmouseleave")
             .or_else(|| aura_events_get_base(events, "onhoverout"))
             .map(|event| self.event_to_message_with(event, bindings));
+        // Plan 496 M5: ondblclick → mouse_area on_double_click(untracked 镜像臂)。
+        let on_double_click = aura_events_get_base(events, "ondblclick")
+            .map(|event| self.event_to_message_with(event, bindings));
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
             .expand_children_spliced_source(children, path, id_map, probe, bindings)
@@ -7199,6 +7207,7 @@ let tabs_inner = View::Row {
             content: Box::new(content),
             on_enter,
             on_exit,
+            on_double_click,
             style,
         }
     }
