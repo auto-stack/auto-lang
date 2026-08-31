@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-497
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-s3-status-thumbnails
 author: [zhaopuming]
 created_at: 2026-08-31
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 0
+current_step: 3
 total_steps: 8
 ---
 
@@ -149,13 +149,45 @@ iced 离屏渲染（headless/testbench 地基）+ image 降采样 + 既有 popov
 1. **T1 spike**：快照路径对比（headless 复用 vs overlay 离屏 target）——
    临时最小 demo 验证一条可 行路径，结论回写待澄清③。
    验证：demo 产出一张真缩略图留痕。
+   [✅ 已完成] 定案**裁剪式整窗快照**（三候选对比见待澄清③）：headless
+   ❌（no-op 无栅格化）、overlay 离屏 target ❌（iced 0.14 无公开子树
+   离屏 API）、`iced::window::screenshot` 整窗 RGBA × `VWinState.rect×
+   scale_factor` 裁剪 × box 降采样 ✅。demo = 临时 example
+   `examples/t1_thumb_spike.rs`（真 iced 窗口四色块 2×2 → 800ms tick →
+   screenshot 800×600 物理 scale_factor=2 → 裁剪 400×300 → 缩略 256×192
+   → 四象限色相断言 PASS exit 0）；留痕 `tests/screenshots/
+   t1-spike-full.png` + `t1-spike-thumb.png`（10:37，2026-08-31）。
 2. **快照核心**：新建 `crates/auto-lang/src/ui/iced/snapshot.rs`
    （snapshot_window + TTL 缓存 + 降采样）+ T2 单测；`ui/iced/mod.rs` 登记。
    验证：`cargo check -p auto-lang && cargo t snapshot`。
+   [✅ 已完成] snapshot.rs 落地：`WindowSnapshot` + `thumbnail_from_screenshot`
+   （crop_physical×scale_factor + downsample_box 长边≤256，越界 clamp/零尺寸/
+   短 RGBA 守卫）+ 进程级 TTL 2s 缓存（snapshot_window/cache_put/invalidate/
+   invalidate_all，惰性过期清除）。TDD 红→绿（RED stub 3 failed → 实现
+   4 passed）。验证实况：`cargo check -p auto-lang --features ui-iced` 零
+   error（模块在 ui-iced gate 下，无 feature 时空集）+ `cargo test -p
+   auto-lang --lib --features ui-iced t2_snapshot` 4/4 绿 + `cargo t
+   snapshot` 3/3 绿（既有 snapshot 名测试无回归；注：iced 模块测试需
+   ui-iced feature，日常 `cargo t` 档不编译该模块——同 renderer.rs 既有
+   测试同况）。
 3. **widget 登记**：`schema/aura.at` 增 window_thumbnail +
    `ui_gen/widget/registry.rs` spec；vm 臂（`ui/iced/renderer.rs` 增渲染臂）
    + vue 臂占位。
    验证：`cargo test -p auto-lang --test schema_drift && cargo test -p auto-lang --test docs_gen && cargo t ui`。
+   [✅ 已完成] 七表登记：aura.at element（vue: @/wm/WindowThumbnail 映射
+   即 vue 占位臂——a2vue 转译读 schema 同源，金样对拍在步骤 7）+
+   schema.rs ElementDef + view_builder 两臂（convert_window_thumbnail，
+   三表字面统一 window_thumbnail）+ View::WindowThumbnail 变体（vnode/
+   snapshot_builder 检视臂随编译器穷举驱动补全）+ renderer 渲染臂（快照
+   命中→image::Handle::from_rgba 直绘+Nearest 锐度+border/radius/bg 包裹；
+   miss→request_capture（500ms 冷却队列）+ lucide fallback 经 Image 臂
+   复用；native "N<slot>" parse 失败天然 fallback=待澄清②）+
+   render_support Full + registry WidgetSpec(Display)。围栏实况：
+   schema_drift 1/1 ✓（新孤儿零——三表字面对齐策略）；docs_gen 4/4 ✓
+   （KITCHEN_SINK_UPDATE/DOCS_GEN_UPDATE 再生成 kitchen-sink.at + core.md；
+   docs 覆盖围栏按 mousearea 484 先例入 DOC_EXCLUDE——桌面 shell 专用
+   消费面，单 App gallery 无虚拟窗可缩略恒 fallback，不设独立页）；
+   cargo t ui 777/777 ✓。
 4. **时钟/托盘组**：`crates/auto-lang/assets/shell.at` dock 右端组（挂载点/
    铃铛归组/时钟 tick）。
    验证：`cargo t desktop_mcp`（T3 相关用例）。
@@ -183,9 +215,19 @@ iced 离屏渲染（headless/testbench 地基）+ image 降采样 + 既有 popov
   HWND、rect=预览框）技术上适配 dock hover 预览，但与 494 真洞透明模式的
   相互作用未验证——native 条目 hover v1 维持 icon 占位，待 494 合入后的
   实机反馈再定。
-- **③ 快照路径（T1 回写）**：headless 复用 vs overlay 离屏 target——以
-  spike 定案；若两条皆阻（如视图缓存不可栅格化），退路 = MCP 截图管道
-  复用（已有 screenshot 基建），仅性能较差。
+- **③ 快照路径（T1 回写）**：**定案 = 裁剪式整窗快照（候选 C）**。
+  候选 A headless 复用 ❌——`ui/headless/` 为 no-op 渲染器（无窗口/GPU/
+  事件循环，仅 View→VTree 转换），产出像素需自写软光栅器，成本不可接受。
+  候选 B overlay 离屏 target ❌——iced 0.14 无公开"渲染单 Element 子树到
+  buffer"的 API（compositor 不对应用层暴露；`window::screenshot` 是唯一
+  公开栅格化通道且为整窗级），成本 = 侵入 iced runtime。
+  候选 C ✅——`iced::window::screenshot(id)` 返回整窗 RGBA **物理像素 +
+  `scale_factor`**（iced 官方文档注记即支持"widget bounds (logical) →
+  crop screenshots"），按 `VWinState.rect × scale_factor` 裁剪窗口区 →
+  box 降采样（长边 ≤256）。复用 Plan 285 已验证通道 + 411 零尺寸守卫；
+  性能：整窗 RGBA 拷贝+裁剪+降采样为 ~ms 级 CPU 操作，召唤式 + TTL 2s
+  缓存可接受。spike 实测（HiDPI scale_factor=2）裁剪数学/降采样/色相
+  断言全绿。退路（MCP 截图管道）不再需要。
 - **时钟 tick 机制**：.at 本地 interval vs 宿主定时注入，执行期按 shell.at
   既有定时先例（若有）定；无先例则宿主注入（60s 低频无投影压力）。
 - **pager 网格密度**：≤4 截断为 v1 判定，实机可视性复核后可调。

@@ -83,7 +83,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     ci = ccount - 1
                 }
                 var color = cs[ci]
-                outSegs.push({ d: dstr, c: color })
+                outSegs.push({ d: dstr, c: color, i: k })
                 // 图例项:labels[k] 优先回落 index 字段值;占比整数运算;槽位赋值(k<4)
                 var lv = d[iname]
                 var vi = d[.field]
@@ -134,7 +134,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 svg (viewBox: "150 20 260 260", style: "w-full h-auto max-w-md") {
                     circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
                     for seg in .segs {
-                        path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
+                        path (key: seg["d"], d: seg["d"], fill: seg["c"], onmouseenter: .Hover(seg.i)) {}
                     }
                 }
                 if .tooltip && .hovered == "true" {
