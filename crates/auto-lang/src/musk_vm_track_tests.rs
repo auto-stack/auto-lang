@@ -238,4 +238,69 @@ mod musk_vm_track_p053_1_widget_computed {
         let rows = count_text_nodes(&view, "row");
         assert_eq!(rows, 1, "computed 链式 helper(.length+索引+.id)必须解出 1 行(leaf=m3)");
     }
+
+    /// P-053-1 续(悬垂透传):computed 透传链多帧重估——call_vm_fn 编组
+    /// 堆引用实参原裸 push_nv 无 stake,RET 释放逐帧烧 state 份额 → 列表
+    /// 对象回收成悬垂 id,消息气泡整体空(实机 [VM-IDX] no-heap-object)。
+    /// 多次 view 重估(leaf 空 → helper 直通)后列表仍须可迭代。
+    #[test]
+    fn widget_computed_passthrough_survives_reeval() {
+        let src = concat!(
+            "fn chatSearchFilter(messages obj, q str) -> obj {\n",
+            "    if q == None { return messages }\n",
+            "    if q.trim() == \"\" { return messages }\n",
+            "    return messages\n",
+            "}\n",
+            "widget Root53b {\n",
+            "    model { var messages []Value = []\n    var chat_search str = \"\" }\n",
+            "    view { col { List53b {} } }\n",
+            "}\n",
+            "widget List53b {\n",
+            "    model { var n int = 0 }\n",
+            "    computed { filtered => chatSearchFilter(.store.messages, .store.chat_search) }\n",
+            "    view { col { for m in .filtered { text \"row\" } } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        comp.write_state_vec(
+            "messages",
+            vec![auto_val::Value::str("m1"), auto_val::Value::str("m2")],
+        )
+        .unwrap();
+        // 多帧重估(设备每帧重算 computed 的形态):透传链不得烧穿引用计数。
+        let mut rows_last = 0;
+        for _ in 0..8 {
+            let (view, _, _) = comp.view_with_debug_gated(false);
+            rows_last = count_text_nodes(&view, "row");
+        }
+        assert_eq!(rows_last, 2, "computed 透传链 8 帧重估后仍须解出 2 行(悬垂引用回归)");
+    }
 }

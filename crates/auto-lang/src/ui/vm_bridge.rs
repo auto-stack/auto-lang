@@ -1077,14 +1077,20 @@ impl VmBridge {
                 // PLAN-051 C3: 堆引用实参必须按 tag 编码——push_value 对
                 // VmRef/大 Int 落 push_i32(0) 占位(注释自述"not passed as
                 // scalar args"),列表参数(≥4M ListData id)整个变 0。
+                // PLAN-053 P-053-1: 且必须走 rc_push(+1 stake,rc.rs §2.3
+                // 审计清单"不得绕过直接 push_nv")——原裸 push_nv 无 stake,
+                // 被调 fn RET 弹栈释放时烧掉 state 持有的份额 → 列表对象
+                // 回收成悬垂 id,computed 透传链每帧传死引用
+                // (musk filteredMessages: [VM-IDX] id no-heap-object ×N,
+                // 消息气泡整体空)。
                 Value::Int(id) if *id >= 4_000_000 => {
-                    task.ram.push_nv(auto_val::encode_list(*id as u32));
+                    self.vm.rc_push(&mut task, auto_val::encode_list(*id as u32));
                 }
                 Value::VmRef(r) if r.id >= 4_000_000 => {
-                    task.ram.push_nv(auto_val::encode_list(r.id as u32));
+                    self.vm.rc_push(&mut task, auto_val::encode_list(r.id as u32));
                 }
                 Value::VmRef(r) => {
-                    task.ram.push_nv(auto_val::encode_object(r.id as u32));
+                    self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
                 other => push_value(&mut task.ram, other),
             }
