@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-497
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: shell-track-s3-status-thumbnails
 author: [zhaopuming]
 created_at: 2026-08-31

@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-494
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: vm-native-true-hole
 author: [zhaopuming]
 created_at: 2026-08-31
