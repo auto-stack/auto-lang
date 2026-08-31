@@ -23238,6 +23238,15 @@ widget NullProbe {
         test_a2vue_shadcn("virtual_window").expect("a2vue virtual_window golden mismatch");
     }
 
+    /// Plan 497 T7 (I4): window_thumbnail leaf resolves to @/wm/WindowThumbnail
+    /// (schema/aura.at `vue:` mapping) with wid/fallback_icon passthrough.
+    /// Vue side is the v1 placeholder component (icon + border) — real web
+    /// thumbnails are a follow-up enhancement (plan 497 待澄清①).
+    #[test]
+    fn test_a2vue_window_thumbnail() {
+        test_a2vue_shadcn("window_thumbnail").expect("a2vue window_thumbnail golden mismatch");
+    }
+
     #[test]
     fn test_a2vue_counter() {
         test_a2vue("001_counter").expect("a2vue counter golden mismatch");

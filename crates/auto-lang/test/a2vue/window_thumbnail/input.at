@@ -1,0 +1,19 @@
+// a2vue golden case (Plan 497 T7/I4) — window_thumbnail leaf.
+// Verifies: I4 same-registration-source vue mapping (schema/aura.at vue: line
+// -> @/wm/WindowThumbnail import) + wid/fallback_icon prop passthrough +
+// class on the leaf. v1 vue-side placeholder component (icon + border);
+// real web thumbnails are a follow-up enhancement (plan 497 待澄清①).
+widget ThumbDemo {
+    model {
+        var wins = []
+    }
+
+    view {
+        col {
+            style: "w-full h-full"
+            for w in .wins {
+                window_thumbnail (wid: w.wid, fallback_icon: "app-window") { style: "w-24 h-14 border rounded" }
+            }
+        }
+    }
+}
