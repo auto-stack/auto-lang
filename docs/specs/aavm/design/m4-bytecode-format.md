@@ -32,6 +32,11 @@ push.nil|halt`。
   args=N locals=M`(M=max_locals-n_args)+ 可选 `reserve M` + 体 +
   体块弹出释放组 + `ret n_args=N`(显式 return 各自带 ret → 双 ret);
 - `.line` 按语句首 token 行号,由语句步行者发射(循环回跳不含 .line);
+  **相邻同线去重**(镜像宿主 `emit_source_line` 的 `current_source_line`
+  状态机:aavm 侧 `CG.cur_line`,`line>0 且 ≠当前已发行` 才发;Plan 495
+  定案 rust 为规范);**is 单表达式/单跳转 arm 体**按臂体首 token 行经
+  同款去重发射(镜像宿主 `parse_expr_or_body` 的 `stmt_line`;块体 arm
+  归语句步行)。已知未对齐边界见 KNOWN-DEBT P495-2(块体 arm 作用域);
 - let:表达式 + store(无 dup/pop);赋值表达式语句:纯 `=` 只发 rhs,
   复合 `op=` 发 lhs-load+rhs+op,均接 dup/store/pop;
 - if:每分支 cond+jmp.z→下一;体;jmp→end(含 return 后死 jmp);

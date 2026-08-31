@@ -51,6 +51,9 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 
 - M1-M5(corpus_m1..m4,`cargo test -p auto-lang --lib --features
   test-vm-files -- test_aavm2 --include-ignored`):与 Rust 参考逐字符一致。
+  `.line` 发射语义已定案(Plan 495,2026-08-31:P485-2 清偿——rust 为规范:
+  语句边界+同线去重+is 单表达式 arm 体行发射;b14_line_dedup 回归钉;
+  规格 `design/m4-bytecode-format.md` §发射模式考古)。
 - 五方对比矩阵(Plan 433 四方 + 434 ⑤ aa2r;`parity/` 下
   `cargo run -- --root . --auto-binary ../target/debug/auto.exe aavm`):
   ① reference ② aavm_rust(六文件,见 divergences.md D38 主 a2r 缺口注)
