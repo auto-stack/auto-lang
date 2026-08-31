@@ -94,7 +94,9 @@ mod m4_pkg_compile_chain {
         assert!(donut_alive && bar_alive, "siblings must stay alive");
         assert!(line_c_segs > 0, "line geometry must render with param msg decl");
 
-        // vue 轨: SFC 生成含 emit('Hover', i)。
+        // vue 轨: SFC 生成含带参事件消费(Plan 499 M3 基线演进:484 竖带
+        // .Hover(i) 退役,折线命中区改单全图 mouse-area onmousemove——
+        // 锚点随之换为 PointerMove 逻辑坐标箭头,双参 msg 声明仍双轨存活)。
         let front = crate::plan370_test_support::locate_example_app_at("charts-gallery")
             .expect("gallery")
             .parent()
@@ -117,8 +119,10 @@ mod m4_pkg_compile_chain {
         use crate::ui_gen::BackendGenerator;
         let sfc = gen.generate(&w).expect("vue SFC generate");
         assert!(
-            sfc.contains("emit('Hover', i)"),
-            "vue SFC must emit the param Hover event"
+            sfc.contains("PointerMove(e.offsetX / e.currentTarget.clientWidth * 560"),
+            "vue SFC must emit the pointer-move logical-coord arrow:
+{}",
+            &sfc[..sfc.len().min(1200)]
         );
     }
 

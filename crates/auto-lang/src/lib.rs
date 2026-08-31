@@ -6219,6 +6219,8 @@ mod plan492_tests;
 // Plan 499 M2: 指针移动限频流管道 e2e——pipe-payload 全链送达逻辑坐标。
 #[cfg(test)]
 mod plan499_pointer_stream_tests;
+#[cfg(test)]
+mod plan499_engine_float_to_int_tests;
 
 // Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
 #[cfg(test)]

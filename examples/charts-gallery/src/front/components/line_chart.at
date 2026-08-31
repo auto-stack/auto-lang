@@ -1,4 +1,4 @@
-// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2 → Plan 492 M6 → Plan 498 M1)
+// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2 → Plan 492 M6 → Plan 498 M1/M4 → Plan 499 M3)
 //
 // 折线图:linear scale + path;curve = "monotone" 走 d3 curveMonotoneX
 // (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通
@@ -21,13 +21,20 @@
 // visLn0..3;隐藏系列几何跳过+图例项 opacity-40;隐藏优先于悬停。
 // 字段名图族专属(hovLn/visLn):VM 单态架构(P320)下同名子组件
 // 字段经根状态跨组件共享,更名解耦四族(vue 轨实例隔离本无串扰)。
+// 499 M3(axisPointer 十字线):N 条竖带命中区退役,改**单全图
+// mouse-area**(`coords: "560x300"` + `onmousemove: .PointerMove`——
+// 499 M2 原语:限频流+引擎层屏幕→逻辑坐标换算);索引吸附最近数据点
+// (ECharts axisPointer line 语义),十字线 = svg 内动态 path(竖线吸附
+// cx / 水平线跟随光标 y 钳制绘图区),tooltip 跟随(.tipLnStyle 动态
+// left,钳制 [40,400])。i 下限无需钳制:fi = (x-40)/510*(n-1)+0.5
+// 截断取整在 bounds 内(x ≥ 0)恒 ≥ 0;哨兵纪律沿 498(hovered str 门控)。
 //
 // # Usage
 // use { package: official from "../components" }
 // line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
 widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
-    msg { Init, Hover(int), HoverSeries(int), SeriesOut, Toggle(int) }
+    msg { Init, HoverSeries(int), SeriesOut, Toggle(int), PointerMove(float, float), PointerOut }
 
     model {
         path0 str = ""
@@ -78,12 +85,18 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
         legendText2 str = ""
         legendColor3 str = ""
         legendText3 str = ""
-        bands List = []
         tipTitles List = []
         tipBodies List = []
         hovered str = "false"
         tipTitle str = ""
         tipBody str = ""
+        // 499 M3:十字线双 path + 跟随 tooltip 定位(图族专属前缀 ln)
+        ptrLnD str = ""
+        ptrLnH str = ""
+        tipLnStyle str = ""
+        // 数据点数(handler 不可读 prop——P320 单态架构下
+        // handler 跑根态,只有自身 state 字段可见;Init 预落)
+        cntLn int = 0
     }
 
     on {
@@ -358,15 +371,12 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 .xLab19 = sv19
             }
 
-            // ---- 命中竖带 + tooltip 内容(逐索引预计算) ----
-            var nf3 float = n
-            var slot float = (right - left) / nf3
-            var outBands List = []
+            // ---- tooltip 内容(逐索引预计算;499 M3:竖带命中区退役,
+            //      命中改单全图 mouse-area + .PointerMove 索引吸附) ----
             var outTipTitle List = []
             var outTipBody List = []
             var i3 = 0
             for d in .data {
-                outBands.push({ i: i3, s: f"w-[${slot}px] h-full flex-1" })
                 outTipTitle.push(d[iname])
                 var body = ""
                 var k2 = 0
@@ -386,19 +396,55 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                 outTipBody.push(body)
                 i3 = i3 + 1
             }
-            .bands = outBands
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
+            .cntLn = n
         }
 
-        .Hover(i) -> {
-            .hovered = "true"
-            var tt = .tipTitles[i]
-            var tb = .tipBodies[i]
-            .tipTitle = tt
-            .tipBody = tb
+        // 499 M3:axisPointer——逻辑坐标(x, y 为 svg viewBox 系,引擎层
+        // 已完成屏幕→逻辑换算)→ 索引吸附 + 十字线双 path + tooltip 跟随。
+        // 吸附:i = round((x-left)/(right-left) * (n-1));竖线 x = 数据点
+        // 精确位置(ECharts axisPointer line 语义);水平线 y 跟随光标
+        // (钳制绘图区 20..260);tooltip left 钳制 [40,400] 防溢出。
+        .PointerMove(x, y) -> {
+            var n int = .cntLn
+            if n > 0 {
+                var nf float = n
+                var fi float = (x - 40.0) / 510.0 * (nf - 1.0) + 0.5
+                var i int = fi.to_int()
+                if i > n - 1 {
+                    i = n - 1
+                }
+                var cx float = 40.0
+                if n > 1 {
+                    var iv float = i
+                    cx = 40.0 + 510.0 * iv / (nf - 1.0)
+                }
+                var yi float = y
+                if yi < 20.0 {
+                    yi = 20.0
+                }
+                if yi > 260.0 {
+                    yi = 260.0
+                }
+                .ptrLnD = f"M ${cx} 20 V 260"
+                .ptrLnH = f"M 40 ${yi} H 550"
+                var tl float = cx - 80.0
+                if tl < 40.0 {
+                    tl = 40.0
+                }
+                if tl > 400.0 {
+                    tl = 400.0
+                }
+                .tipLnStyle = f"absolute top-[40px] left-[${tl}px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md"
+                .hovered = "true"
+                var tt = .tipTitles[i]
+                var tb = .tipBodies[i]
+                .tipTitle = tt
+                .tipBody = tb
+            }
         }
-        .HoverOut -> { .hovered = "false" }
+        .PointerOut -> { .hovered = "false" }
         .HoverSeries(k) -> { .hovLn = k }
         .SeriesOut -> { .hovLn = 9 }
         .Toggle(k) -> {
@@ -552,17 +598,19 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 }
                               }
                             }
+                            // 499 M3:axisPointer 十字线(竖线吸附数据点/水平线
+                            // 跟随光标;虚线,顶层绘制)
+                            if .hovered == "true" {
+                                path (d: .ptrLnD, stroke: "#94a3b8", stroke-width: "1", stroke-dasharray: "3 3") {}
+                                path (d: .ptrLnH, stroke: "#94a3b8", stroke-width: "1", stroke-dasharray: "3 3") {}
+                            }
                         }
                         if .tooltip {
-                            col (style: "absolute top-[20px] left-[40px] z-50 w-[510px] h-[240px]") {
-                                row (style: "h-full") {
-                                    for b in .bands {
-                                        mouse-area (key: b["i"], style: b["s"], onmouseenter: .Hover(b.i), onmouseleave: .HoverOut) {}
-                                    }
-                                }
-                            }
+                            // 499 M3:单全图命中区(inset-0 随 svg 容器缩放,
+                            // coords 归一换算免疫响应式)替代 N 竖带
+                            mouse-area (coords: "560x300", onmousemove: .PointerMove, onmouseleave: .PointerOut, style: "absolute inset-0") {}
                             if .hovered == "true" {
-                                col (style: "absolute top-[28px] right-[60px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                                col (style: .tipLnStyle) {
                                     text .tipTitle { style: "text-xs font-semibold text-foreground" }
                                     text .tipBody { style: "text-xs text-muted-foreground whitespace-pre-line" }
                                 }
