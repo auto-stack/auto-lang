@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 
 use crate::ui::desktop_protocol::endpoint::HostEndpoint;
 use crate::ui::desktop_protocol::host::SurfaceStore;
-use crate::ui::desktop_protocol::message::{DrawList, FrameMsg, FrameMode};
+use crate::ui::desktop_protocol::message::{DrawList, FrameMsg};
 use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
 use crate::ui::desktop_protocol::transport::Transport;
 use crate::ui::session::{AppId, Wid};
@@ -229,7 +229,7 @@ mod tests {
     use crate::ui::desktop_protocol::client_runtime::{
         run_client, AppProjector, ClientConfig, ReconnectPolicy,
     };
-    use crate::ui::desktop_protocol::message::{DrawOp, MouseButton};
+    use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
     use crate::ui::desktop_protocol::transport;
     use crate::ui::session::{DesktopSession, LaunchSpec};
 
