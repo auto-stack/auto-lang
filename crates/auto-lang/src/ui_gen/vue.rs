@@ -9448,6 +9448,20 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         attrs.push("disabled".to_string());
                     }
                 }
+                // PLAN-053 批4: `title` → 原生 tooltip 属性透传（shadcn Button
+                // 经 vue attr fallthrough 落到底层 button 元素；与 VM 轨
+                // convert_button 的 title→EE03 iced tooltip 对齐——musk 会话
+                // 侧栏 `title: .s.id` 悬停显示会话 id）。此前 button 臂静默
+                // 丢弃（原生 span/div 路径本就透传，仅 shadcn Button 丢）。
+                if let Some(value) = props.get("title") {
+                    if let Some(title) = self.extract_string_value(value) {
+                        attrs.push(format!("title=\"{}\"", title));
+                    } else if let AuraPropValue::Expr(e) = value {
+                        if let Ok(expr_vue) = self.expr_to_vue_bound_value(e) {
+                            attrs.push(format!(":title=\"{}\"", expr_vue));
+                        }
+                    }
+                }
                 // Handle style/class prop
                 self.push_style_class(&mut attrs, props);
                 // Build slot children for icon + text

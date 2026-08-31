@@ -5335,6 +5335,18 @@ let tabs_inner = View::Row {
                 .unwrap_or_default()
         };
 
+        // PLAN-053 批4: `title` prop → EE03 PUA tooltip marker。vue 轨把 title
+        // 映射为原生属性(浏览器悬停提示);VM 轨此前只有 toolbar 合成按钮埋
+        // EE03,普通 button 的 title 被静默丢弃。统一接线后 renderer Button 臂
+        // 剥离 EE03 尾段并把按钮包进 iced tooltip(300ms 延迟防误触)。
+        // binding-aware:musk 会话列表 `title: .s.id` 按循环变量逐项求值。
+        let pua_title = self.extract_string_with(props, "title", bindings).unwrap_or_default();
+        let label = if pua_title.is_empty() {
+            label
+        } else {
+            format!("{}\u{EE03}{}", label, pua_title)
+        };
+
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
         // via the renderer's class-driven style); "primary" = theme-colored

@@ -779,3 +779,211 @@ if guard {
     }
 }
 
+/// PLAN-053 批4: 普通 button 的 `title` prop → EE03 PUA tooltip 通道。
+/// 现场：musk 会话侧栏 `button { title: .s.id ... }`——vue 轨 title 映射原生
+/// 属性，VM 轨此前静默丢弃（EE03 只有 toolbar 合成按钮在埋）。接线后
+/// renderer Button 臂剥 EE03 包 iced tooltip；snapshot 侧剥离为独立 title prop。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_b4_title_tooltip {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn build_root() -> crate::ui::dynamic::DynamicComponent {
+        let src = concat!(
+            "widget Root53t {\n",
+            "    view {\n",
+            "        col {\n",
+            "            button {\n",
+            "                title: \"sess-053-id\"\n",
+            "                text \"你好\"\n",
+            "            }\n",
+            "            button {\n",
+            "                text \"无提示\"\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    fn collect_buttons<'a>(
+        view: &'a View<crate::ui::interpreter::DynamicMessage>,
+        out: &mut Vec<&'a View<crate::ui::interpreter::DynamicMessage>>,
+    ) {
+        match view {
+            View::Button { .. } => out.push(view),
+            View::Column { children, .. } | View::Row { children, .. } => {
+                for c in children {
+                    collect_buttons(c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// 带 title 的按钮：label 必须以 EE03+title 收尾（renderer 剥离后包
+    /// iced tooltip 的载体约定）。
+    #[test]
+    fn title_prop_rides_ee03_marker_in_label() {
+        let comp = build_root();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let mut buttons = Vec::new();
+        collect_buttons(&view, &mut buttons);
+        assert_eq!(buttons.len(), 2, "两个 button 都要转出, got {}", buttons.len());
+        let labeled = buttons
+            .iter()
+            .map(|b| match b {
+                View::Button { label, .. } => label.clone(),
+                _ => unreachable!(),
+            })
+            .collect::<Vec<_>>();
+        eprintln!("[P053-b4] button labels: {:?}", labeled);
+        assert!(
+            labeled.contains(&format!("你好\u{EE03}sess-053-id")),
+            "title prop 必须以 EE03 尾段进 label(iced tooltip 通道), got: {:?}",
+            labeled
+        );
+    }
+
+    /// 无 title 的按钮：label 不得携带 EE03（控制组，防误埋）。
+    #[test]
+    fn button_without_title_has_no_ee03() {
+        let comp = build_root();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let mut buttons = Vec::new();
+        collect_buttons(&view, &mut buttons);
+        let plain = buttons
+            .iter()
+            .find_map(|b| match b {
+                View::Button { label, .. } if label.starts_with("无提示") => Some(label.clone()),
+                _ => None,
+            })
+            .expect("plain button");
+        assert_eq!(plain, "无提示", "无 title 的 label 保持纯净, got: {:?}", plain);
+    }
+
+    /// snapshot：EE03 剥离为独立 title prop（MCP 断言面直接可读）。
+    #[test]
+    fn snapshot_exposes_title_prop_and_clean_label() {
+        let comp = build_root();
+        let (view, id_map, _) = comp.view_with_debug_gated(false);
+        let state = std::collections::HashMap::new();
+        let snap = crate::ui::snapshot_builder::SnapshotBuilder::build(
+            "Root53t", &state, &view, &id_map,
+        );
+        // UiNode 树递归找 Button 节点的 props。
+        fn walk(
+            node: &crate::ui::mcp_types::UiNode,
+            out: &mut Vec<(String, Vec<(String, String)>)>,
+        ) {
+            if node.kind == "Button" {
+                out.push((
+                    node.props
+                        .iter()
+                        .find(|(k, _)| k == "label")
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default(),
+                    node.props.clone(),
+                ));
+            }
+            for c in &node.children {
+                walk(c, out);
+            }
+        }
+        let mut found = Vec::new();
+        walk(&snap.tree, &mut found);
+        eprintln!("[P053-b4] snapshot buttons: {:?}", found);
+        let with_title = found
+            .iter()
+            .find(|(label, _)| label == "你好")
+            .expect("titled button in snapshot");
+        assert!(
+            with_title
+                .1
+                .iter()
+                .any(|(k, v)| k == "title" && v == "sess-053-id"),
+            "snapshot 必须暴露 title prop, got: {:?}",
+            with_title.1
+        );
+        assert!(
+            !found.iter().any(|(label, _)| label.contains('\u{EE03}')),
+            "snapshot label 不得残留 EE03 标记, got: {:?}",
+            found
+        );
+        assert_eq!(found.len(), 2, "两个按钮都进快照");
+    }
+
+    /// vue 轨 codegen 对照：button 的 `title` 必须落到模板属性——表达式
+    /// `title: .s.id` → `:title="s.id"`，字面量 → 绑定常量（与 variant/size
+    /// 臂同型，Vue 语义等价）。此前 shadcn Button 臂静默丢弃 title（原生
+    /// span 路径透传，仅 Button 丢），web 轨所有 button tooltip 失效。
+    #[test]
+    fn vue_codegen_emits_title_attr_on_button() {
+        use crate::ui_gen::{BackendGenerator, VueGenerator};
+        let src = concat!(
+            "widget Root53v {\n",
+            "    model { var session_list []Value = [] }\n",
+            "    view {\n",
+            "        col {\n",
+            "            button {\n",
+            "                title: \"sess-literal\"\n",
+            "                text \"静态\"\n",
+            "            }\n",
+            "            for s in .session_list {\n",
+            "                button {\n",
+            "                    key: .s.id\n",
+            "                    title: .s.id\n",
+            "                    text .s.name\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
+        let sfc = VueGenerator::new().generate(&widget).expect("generate");
+        eprintln!("[P053-b4] vue SFC:\n{}", sfc);
+        assert!(
+            sfc.contains(":title=\"'sess-literal'\""),
+            "静态 title 必须落 title 属性(绑定常量形态), SFC:\n{}", sfc
+        );
+        assert!(
+            sfc.contains(":title=\"s.id\""),
+            "表达式 title 必须落 :title 绑定, SFC:\n{}", sfc
+        );
+    }
+}
+

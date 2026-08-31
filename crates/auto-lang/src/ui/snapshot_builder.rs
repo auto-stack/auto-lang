@@ -138,7 +138,20 @@ impl SnapshotBuilder {
 
             View::Button { label, onclick, disabled, .. } => {
                 // Plan 423 P3: disabled 进快照 —— MCP 断言面(禁用项点击无消息)。
-                let mut props = vec![("label".to_string(), label.clone())];
+                // PLAN-053 批4: EE03 尾段(PLAN-053 起普通 button 的 title→tooltip
+                // 载体,同 toolbar 合成按钮)剥离为独立 title prop——快照 label 保持
+                // 纯净,悬停提示值可直接被 MCP 断言(musk 会话项 title=.s.id)。
+                let (plain_label, pua_title) = match label.find('\u{EE03}') {
+                    Some(i) => (
+                        label[..i].to_string(),
+                        Some(label[i + '\u{EE03}'.len_utf8()..].to_string()),
+                    ),
+                    None => (label.clone(), None),
+                };
+                let mut props = vec![("label".to_string(), plain_label)];
+                if let Some(t) = pua_title {
+                    props.push(("title".to_string(), t));
+                }
                 if *disabled {
                     props.push(("disabled".to_string(), "true".to_string()));
                 }
