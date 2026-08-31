@@ -1,6 +1,6 @@
 <!-- DesktopSurface component - Auto-generated from Auto language -->
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Button } from '@/components/ui/button'
 
 
@@ -11,6 +11,7 @@ const __desktop_hidden = ref<string>('')
 const menu_id = ref<string>('')
 
 const emit = defineEmits<{
+  Init: []
   ActivateApp: [string]
   IconMenu: [string]
   BlankPress: []
@@ -61,6 +62,10 @@ function MenuWallpaper(): void {
 
   emit('MenuWallpaper')
 }
+
+onMounted(() => {
+  menu_id.value = '';
+})
 
 
 </script>

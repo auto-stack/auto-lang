@@ -32,6 +32,18 @@
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
 
+### 2.1 桌面本体面字段（`assets/desktop.at`，v1.4 内字段扩展——不升版本段）
+
+Plan 496 M5 的第五面（常驻不召唤，boot 装载挂桌面层 z 槽）。命名族
+`__desktop_*`（与 `__wm_*` 同为宿主特权命名空间；boot 期一次注入，无指纹
+门控——数据源 storage 键 boot 读一次，会话内不变）：
+
+| 字段 | 类型 | 语义 | 权属 | 引入 |
+|---|---|---|---|---|
+| `__desktop_bg` | str | 壁纸色值类片段：`shell.desktop.wallpaper` 为 `#hex` 时注入 `"bg-[#hex]"`（面根 bg 实铺）；图片路径/缺省时注入 `""`（图片壁纸由宿主在面之下推壁纸图层——DSL 无重叠布局，z 序宿主侧兑现） | 宿主写 | v1.4 内（496） |
+| `__desktop_icons` | Obj 数组 `{id:str, icon:str, label:str, src:str}` | 桌面条目 = pinned ∪ 自定义合并去重（pinned 先列；`shell.desktop.icons` 逗号串）再排除 hidden（`shell.desktop.hidden` 逗号串，pinned/custom 通用移除位）。`icon`/`label` 注册表解析（缺省 `app-window`/id）；`src` = `pinned`\|`custom` | 宿主写 | v1.4 内（496） |
+| `__desktop_hidden` | str | 排除 id 逗号串（移除臂续写 `shell.desktop.hidden` 的当前值底稿） | 宿主写 | v1.4 内（496） |
+
 ## 3. 更新语义与指纹门控（协议条款）
 
 - 宿主每 update 周期在 DesktopBus 排空点邻位重算投影（O(窗数) 串接）。
@@ -89,7 +101,11 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
   历史 FIFO/未读语义/持久化槽
   round-trip/双面一体/面板召唤/notes 投影与指纹段）+ `settings_*` 七测
   （v1.4 动词往返/装载导航/执行臂热应用/召唤注入/Dock 派发与 pinned
-  落键/通知门控/齿轮链路）。
+  落键/通知门控/齿轮链路）+ `desktop_surface_*` 三测（496：T2 storage
+  往返+壁纸解析 / T2 合并去重注入 / T1 装载派发——§2.1 字段族）+
+  iced-layout-tests `desktop_surface_z_slot_window_covers_icons`（T3 层级）。
+- a2vue 双端同源金样：`ui_gen/vue.rs` tests `test_a2vue_desktop_surface_asset`
+  （496 I8：真资产 desktop.at → SFC 对拍，ondblclick/@contextmenu 事件面）。
 - 动词编码往返金样：`ui/session.rs` tests `native_dock_verbs_parse_and_
   encode`（dock_native/undock_native + v1.3 focus_native/close_native
   双形态 arg）。
@@ -98,6 +114,18 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.4 内字段扩展（2026-08-31，Plan 496 M5——不升版本段）
+
+- **第五面**：`assets/desktop.at`（桌面本体——壁纸/图标网格/入口；常驻
+  不召唤，boot 装载挂桌面层 z 槽：壁纸层之上、App 虚拟窗口之下）。
+- **§2.1 字段族** `__desktop_bg`/`__desktop_icons`/`__desktop_hidden`
+  （boot 一次注入，无指纹门控）。**零新动词**——复用 `activate`（双击/
+  菜单打开，472 两臂）与 `open_settings`（v1.4，更换壁纸入口）。
+- **storage 键增量**：`shell.desktop.wallpaper`（路径|#hex，settings 外观
+  分区写手）、`shell.desktop.icons`（自定义条目 id 逗号串）、
+  `shell.desktop.hidden`（排除 id 逗号串）。三者均 boot 读一次生效
+  （487 非几何无动词判定同款）。
 
 ### v1.4（2026-08-30，Plan 487 M4）
 - **新增动词** `open_settings` / `set_dock_position` / `set_dock_enabled`

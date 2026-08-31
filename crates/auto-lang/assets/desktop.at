@@ -24,6 +24,7 @@
 // 无动词本地态）。消费者唯一：宿主 renderer 桌面层装配。
 widget DesktopSurface {
     msg {
+        Init,
         ActivateApp(str),
         IconMenu(str),
         BlankPress,
@@ -92,6 +93,12 @@ widget DesktopSurface {
     }
 
     on {
+        // Init：本地态复位（宿主投影注入不触发 handler；无 storage 读入——
+        // 数据全宿主侧解析注入，此处仅消 boot 期 handler-not-found 噪音）。
+        .Init -> {
+            .menu_id = ""
+        }
+
         // 双击启动/聚焦（472 activate 两臂动词复用——宿主臂已备）。
         .ActivateApp(app) -> { .__desktop_cmd = "activate\t" + app }
 
