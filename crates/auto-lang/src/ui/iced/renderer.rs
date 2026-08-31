@@ -3888,6 +3888,79 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
+            // Plan 497: 每窗口真缩略渲染臂——T1 定案裁剪式整窗快照的
+            // 消费端。命中进程级快照缓存 → image(Handle::from_rgba) 直绘
+            // 降采样像素；miss → 标记异步抓取（宿主 update 排空
+            // take_capture_requests，一次整窗 screenshot 服务全部请求）+
+            // 本帧 fallback lucide 图标（复用 Image 臂路径，含 native wid
+            // "N<slot>" parse 失败天然走 fallback——待澄清②）。
+            AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let eff_w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
+                let eff_h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                let snap = wid
+                    .parse::<u64>()
+                    .ok()
+                    .map(crate::ui::session::Wid)
+                    .and_then(crate::ui::iced::snapshot::snapshot_window);
+                if let Some(snap) = snap {
+                    let handle =
+                        iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
+                    let mut img = iced::widget::image(handle)
+                        .filter_method(iced::widget::image::FilterMethod::Nearest);
+                    if let Some(w) = eff_w {
+                        img = img.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        img = img.height(h);
+                    }
+                    // 缩略 chrome：消费面 style 类（border/rounded/bg）落在
+                    // 包裹 container 上（与 Image 臂 container 约束同型）。
+                    let border_radius =
+                        is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                    let border_width =
+                        is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
+                    let border_color = is
+                        .as_ref()
+                        .and_then(|is| is.border_color)
+                        .unwrap_or(iced::Color::TRANSPARENT);
+                    let bg = is
+                        .as_ref()
+                        .and_then(|is| is.background_color)
+                        .map(iced::Background::Color);
+                    let mut cont = container(img).style(move |_t| container::Style {
+                        border: iced::Border {
+                            color: border_color,
+                            width: border_width,
+                            radius: border_radius.min(9999.0).into(),
+                        },
+                        background: bg,
+                        ..Default::default()
+                    });
+                    if let Some(w) = eff_w {
+                        cont = cont.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        cont = cont.height(h);
+                    }
+                    cont.into()
+                } else {
+                    if let Some(w) = wid.parse::<u64>().ok() {
+                        crate::ui::iced::snapshot::request_capture(crate::ui::session::Wid(w));
+                    }
+                    let icon = if fallback_icon.is_empty() {
+                        "app-window".to_string()
+                    } else {
+                        fallback_icon.clone()
+                    };
+                    AbstractView::Image {
+                        src: format!("lucide:{icon}"),
+                        style: style.clone(),
+                    }
+                    .into_iced()
+                }
+            }
+
             AbstractView::Image { src, style } => {
                 // Plan 408: lucide: icon prefix → render bundled SVG glyph.
                 if src.starts_with("lucide:") {
@@ -15062,6 +15135,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Slider { style, .. } => style.as_ref(),
         AbstractView::ProgressBar { style, .. } => style.as_ref(),
         AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
         AbstractView::Tabs { style, .. } => style.as_ref(),
@@ -15144,6 +15218,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
         AbstractView::Tabs { .. } => "tabs",
@@ -16220,7 +16295,8 @@ fn view_style_ref<M: Clone + Debug>(view: &AbstractView<M>) -> Option<&Style> {
         | AbstractView::Sidebar { style, .. }
         | AbstractView::Tabs { style, .. }
         | AbstractView::NavigationRail { style, .. }
-        | AbstractView::Image { style, .. } => style.as_ref(),
+        | AbstractView::Image { style, .. }
+        | AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         _ => None,
     }
 }

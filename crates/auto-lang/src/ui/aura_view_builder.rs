@@ -1303,6 +1303,11 @@ impl<'a> AuraViewBuilder<'a> {
             "mouse-area" => {
                 self.convert_mouse_area(props, events, children, path, id_map, probe, bindings)
             }
+            // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
+            // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
+            "window_thumbnail" => {
+                self.convert_window_thumbnail(props, bindings)
+            }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, children, path, id_map, probe, bindings),
@@ -2242,6 +2247,11 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 484: hover 命中区 —— 与 tracked 层同名臂镜像(文件 D-GAP 规则)。
             "mouse-area" => {
                 self.convert_mouse_area_untracked(props, events, children, bindings)
+            }
+            // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
+            // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
+            "window_thumbnail" => {
+                self.convert_window_thumbnail(props, bindings)
             }
 
             // PLAN-050 T7 (C5): use.web component 声明的图标组件（lucide 集，
@@ -4422,6 +4432,25 @@ let tabs_inner = View::Row {
     /// Convert an image or icon element.
     /// Plan 408: `icon (name: "bell")` uses a `lucide:{name}` synthetic src
     /// that the iced renderer resolves to a bundled SVG glyph.
+    /// Plan 497: window_thumbnail —— 每窗口真缩略 leaf。wid/fallback_icon
+    /// 平行字符串 prop（wid 为动态绑定，如 `wid: r.wid`）；像素资产不经
+    /// VM 状态，由 iced 渲染臂查进程级快照缓存直绘（T1 定案裁剪式整窗
+    /// 快照；miss → request_capture + lucide fallback）。
+    fn convert_window_thumbnail(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let wid = self
+            .extract_string_with(props, "wid", bindings)
+            .unwrap_or_default();
+        let fallback_icon = self
+            .extract_string_with(props, "fallback_icon", bindings)
+            .unwrap_or_else(|| "app-window".to_string());
+        let style = self.extract_style_with(props, bindings);
+        View::WindowThumbnail { wid, fallback_icon, style }
+    }
+
     fn convert_image_or_icon(
         &self,
         props: &HashMap<String, AuraPropValue>,

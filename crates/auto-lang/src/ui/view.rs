@@ -476,6 +476,16 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// Plan 497: per-window live thumbnail — renders the host-side snapshot
+    /// cache for `wid` (real downsampled pixels); falls back to
+    /// `fallback_icon` (lucide glyph) when no fresh snapshot exists.
+    /// Host-injected asset channel: data never flows through VM state.
+    WindowThumbnail {
+        wid: String,
+        fallback_icon: String,
+        style: Option<Style>,
+    },
+
     /// CSS-Grid-like layout: `cols` equal-width columns. Decomposed into a
     /// column-of-rows at render time by the shared generic `build_grid`
     /// (Plan 319). This is the SINGLE source of truth for grid
@@ -1511,6 +1521,9 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             View::Image { src, style } => View::Image { src, style },
+            View::WindowThumbnail { wid, fallback_icon, style } => {
+                View::WindowThumbnail { wid, fallback_icon, style }
+            }
             View::ProgressBar { progress, style } => View::ProgressBar { progress, style },
             View::List { items, spacing, style } => View::List {
                 items: items.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),

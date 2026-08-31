@@ -50,6 +50,39 @@ fn cache() -> &'static Mutex<HashMap<Wid, (WindowSnapshot, Instant)>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// 抓取请求冷却：同一 wid 两次入队的最小间隔（防"抓取失败→下帧再排队"
+/// 的请求风暴；抓取本身是整窗截图，代价远超一次 HashMap 写）。
+const REQUEST_COOLDOWN: Duration = Duration::from_millis(500);
+
+fn pending() -> &'static Mutex<(Vec<Wid>, HashMap<Wid, Instant>)> {
+    static PENDING: OnceLock<Mutex<(Vec<Wid>, HashMap<Wid, Instant>)>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new((Vec::new(), HashMap::new())))
+}
+
+/// 渲染臂 miss 时标记"想要该窗快照"（非阻塞、冷却去重）。宿主 update
+/// 周期 [`take_capture_requests`] 排空并发起 screenshot Task——回调把
+/// 整窗 RGBA 按各窗 rect 裁剪入缓存。native wid（"N&lt;slot&gt;"）由调用
+/// 侧 parse 失败自然不进来。
+pub fn request_capture(wid: Wid) {
+    let mut guard = pending().lock().unwrap();
+    let (queue, last) = &mut *guard;
+    if let Some(ts) = last.get(&wid) {
+        if ts.elapsed() < REQUEST_COOLDOWN {
+            return;
+        }
+    }
+    if !queue.contains(&wid) {
+        queue.push(wid);
+    }
+    last.insert(wid, Instant::now());
+}
+
+/// 宿主排空抓取请求（每 update 周期一次；返回本轮要抓的 wid 集——
+/// 宿主用一次整窗 screenshot 服务全部请求）。
+pub fn take_capture_requests() -> Vec<Wid> {
+    std::mem::take(&mut pending().lock().unwrap().0)
+}
+
 /// 消费口：读一枚窗口缩略（TTL 内才返回；过期条目惰性清除）。
 /// 等价于"当前是否有可用的真缩略"；miss 者由宿主编排异步抓取。
 pub fn snapshot_window(wid: Wid) -> Option<WindowSnapshot> {

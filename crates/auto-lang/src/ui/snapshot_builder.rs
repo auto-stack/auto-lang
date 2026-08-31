@@ -279,6 +279,19 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
+            // Plan 497: 窗口缩略(宿主快照缓存资产;检视面披露 wid 与
+            // fallback)。
+            View::WindowThumbnail { wid, fallback_icon, .. } => UiNode {
+                id,
+                kind: "WindowThumbnail".to_string(),
+                props: vec![
+                    ("wid".to_string(), wid.clone()),
+                    ("fallback_icon".to_string(), fallback_icon.clone()),
+                ],
+                actions: vec![],
+                children: vec![],
+            },
+
             View::Row { children, spacing, padding, .. } => {
                 let child_nodes = Self::traverse_children(children, id_map, path);
                 UiNode {
