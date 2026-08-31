@@ -8731,7 +8731,18 @@ impl Codegen {
                 // push type name as receiver BEFORE args so stack layout is [receiver, arg0, ...]
                 // Only do this for truly unresolved calls (not for regular functions
                 // that happen to start with uppercase like OP_RESERVE_STACK).
-                if is_unresolved_static {
+                // PLAN-053 P-053-6: 名字经 canonical 解析能命中 native
+                // （Regex.replace → auto.regex.replace 一族）时不得压——此类
+                // 调用走 CALL_NAT，native shim 只弹实参，残留的接收者槽会
+                // 平移帧窗口（musk 现场：函数体内 Regex.replace 后续局部/字段
+                // 读取落 "0"，消息 blocks text 全灭）。
+                let unresolved_static_native_id = if is_unresolved_static {
+                    func_name.as_ref()
+                        .and_then(|name| BIGVM_NATIVES.lock().unwrap().peek_qualified(name))
+                } else {
+                    None
+                };
+                if is_unresolved_static && unresolved_static_native_id.is_none() {
                     if let Some(name) = func_name.as_ref() {
                         let type_part = name.split('.').next().unwrap_or("");
                         let type_bytes = type_part.as_bytes().to_vec();

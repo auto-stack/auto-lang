@@ -1092,6 +1092,32 @@ impl VmBridge {
                 Value::VmRef(r) => {
                     self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
+                // PLAN-053 P-053-6: Obj/Array 实参物化——原落 push_value 的
+                // push_i32(0) 占位，helper 收到的 msg 是 Int(0)，`.content`/
+                // `.role` 等字段全读 0（musk 消息正文链 text 落 "0" 的终因）。
+                // Obj → ObjectData 堆对象；Array → ListData<Value>。
+                Value::Obj(o) => {
+                    let mut od = crate::vm::types::ObjectData::new();
+                    for (k, v) in o.iter() {
+                        if let auto_val::Value::VmRef(r) = v {
+                            self.vm.rc_retain_id(r.id as u64);
+                        }
+                        od.set(k.clone(), v.clone());
+                    }
+                    let id = self.vm.insert_heap_object(od) as u32;
+                    self.vm.rc_push(&mut task, auto_val::encode_object(id));
+                }
+                Value::Array(arr) => {
+                    let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+                    for v in arr.iter() {
+                        if let auto_val::Value::VmRef(r) = v {
+                            self.vm.rc_retain_id(r.id as u64);
+                        }
+                        list.push(v.clone());
+                    }
+                    let id = self.vm.insert_heap_object(list) as u32;
+                    self.vm.rc_push(&mut task, auto_val::encode_object(id));
+                }
                 other => push_value(&mut task.ram, other),
             }
         }
