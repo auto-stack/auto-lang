@@ -7432,7 +7432,7 @@ fn summon_switcher(
             .map(|e| e.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         icons.push(auto_val::Value::Str(icon.into()));
-        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
     }
     if let Some(app) = state.apps.get_mut(&switcher) {
         let _ = app.component.write_state_vec("mru_wids", wids);
@@ -8976,6 +8976,7 @@ fn projection_win_entry(
     registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
     v: &crate::ui::session::VWinState,
     focused: bool,
+    pager: &str,
 ) -> auto_val::Value {
     let icon = v
         .registry_id
@@ -8992,6 +8993,9 @@ fn projection_win_entry(
         ("native", auto_val::Value::Str(String::new().into())),
         ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
         ("icon", auto_val::Value::Str(icon.into())),
+        // Plan 505 B2 v1.5：pager 派生面——本窗是否属其分区缩略前 4
+        //（"1"/""；mru/native 条目恒 ""，判据统一不缺字段）。
+        ("pager", auto_val::Value::Str(pager.into())),
     ]))
 }
 
@@ -9017,6 +9021,26 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(host) = state.host.as_ref() else { return };
     let mut fp = String::new();
     let mut wins: Vec<auto_val::Value> = Vec::new();
+    // Plan 505 B2（债 P497-1）v1.5：分区缩略 pager 派生面——.at 无"过滤后
+    // 截断"原语（for+if 过滤无局部计数器），每分区 z_order 前 4 窗以
+    // `pager:"1"` 旗标标记、溢出以 `ws.more` "+N" 标签投影（I9 宿主单一
+    // 事实源，同 __wm_running 先例）。旗标/标签均为既有指纹 win 段的纯
+    // 函数（逐窗 workspace 已入指纹），指纹不需扩段。
+    let mut pager_shown = std::collections::HashSet::new();
+    let mut ws_more: Vec<String> = vec![String::new(); host.wm.workspaces.len()];
+    {
+        let mut per_ws: std::collections::HashMap<usize, usize> = Default::default();
+        for &wid in &host.wm.z_order {
+            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            let idx = *per_ws.entry(v.workspace).or_insert(0);
+            per_ws.insert(v.workspace, idx + 1);
+            if idx < 4 {
+                pager_shown.insert(wid);
+            } else if let Some(m) = ws_more.get_mut(v.workspace) {
+                *m = format!("+{}", idx - 3);
+            }
+        }
+    }
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
@@ -9024,6 +9048,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             &state.desktop.registry_entries,
             v,
             focused,
+            if pager_shown.contains(&wid) { "1" } else { "" },
         ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
@@ -9044,6 +9069,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ("focused", auto_val::Value::Str(String::new().into())),
             ("native", auto_val::Value::Str("1".into())),
             ("icon", auto_val::Value::Str("app-window".into())),
+            // v1.5：native 无分区归属，pager 恒空串（判据统一不缺字段）。
+            ("pager", auto_val::Value::Str(String::new().into())),
         ])));
         fp.push_str(&format!("N{}:{},", id.0, 0));
     }
@@ -9083,6 +9110,12 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
             ("label", auto_val::Value::Str(label.clone().into())),
+            // Plan 505 B2 v1.5：分区缩略溢出标签（"+N"；无溢出空串——
+            // 空串哨兵同 __wm_notes_unread，badge 条件消费先例）。
+            (
+                "more",
+                auto_val::Value::Str(ws_more.get(ws.id).cloned().unwrap_or_default().into()),
+            ),
         ])));
         fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
     }
@@ -9093,7 +9126,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         if let Some(v) = host.wm.wins.get(&wid) {
             let focused = host.wm.focused == Some(wid);
-            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
         }
         fp.push_str(&format!("{};", wid.0));
     }
@@ -18482,6 +18515,40 @@ mod tests {
         }
         assert_eq!(counts(&ds).0, 0, "HoverWsEnd 收起");
         let _ = a;
+    }
+
+    /// Plan 505 B2（债 P497-1）：pager 派生面（协议 v1.5）——同分区 6 窗
+    /// 时 per-win `pager` 只保前 4、`ws.more` = "+2"；空分区 more 为
+    /// 空串（badge 条件消费不出现）。shell.at 消费面（w.pager 旗标门）
+    /// 见 `desktop_mcp_dock_pager_hover_popovers`。
+    #[test]
+    fn shell_projection_pager_truncation_v15() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        for i in 0..6 {
+            let _ = t3_add_win(&mut ds, &format!("W{i}"));
+        }
+        sync_shell_windows(&mut ds);
+        let shell = ds.desktop.shell_app.unwrap();
+        let comp = &ds.apps.get(&shell).unwrap().component;
+        let wins = comp.read_state_as_vec("__wm_wins").expect("__wm_wins");
+        let flagged = wins
+            .iter()
+            .filter(|w| {
+                matches!(w, auto_val::Value::Obj(o)
+                    if o.get("pager").is_some_and(|v| v.as_str() == "1"))
+            })
+            .count();
+        assert_eq!(flagged, 4, "同分区 6 窗仅前 4 带 pager 旗标");
+        let wss = comp.read_state_as_vec("__wm_workspaces").expect("__wm_workspaces");
+        let more_of = |v: &auto_val::Value| match v {
+            auto_val::Value::Obj(o) => o.get("more").map(|s| s.as_str().to_string()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        assert_eq!(more_of(&wss[0]), "+2", "分区 0 溢出标签 +2");
+        assert_eq!(more_of(&wss[1]), "", "空分区 more 空串");
     }
 
     #[test]
