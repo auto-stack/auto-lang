@@ -64,6 +64,10 @@ widget Desktop {
         var __dock_pinned = []
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
+        // Plan 497 G1：dock 时钟（HH:MM 本地）。宿主 ServiceTick 帧泵注入
+        // （分钟变化才写——稳态零重建）；本地 tick 非驱动事实投影，不进
+        // 指纹门控组（协议字段表外注记，零协议改动）。
+        var __wm_clock str = ""
     }
 
     view {
@@ -185,6 +189,16 @@ widget Desktop {
                             onclick: .OpenSettingsPanel
                             style: "h-9 w-9 px-0 text-sm"
                         }
+                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
+                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
+                        // 非目标；容器先行占位，后续状态图标挂此）；
+                        // 铃铛（479）与齿轮（487）即组内既有成员。
+                        row {
+                            style: "items-center gap-0"
+                        }
+                        text .__wm_clock {
+                            style: "text-xs text-muted-foreground px-2 tabular-nums"
+                        }
                     }
                 }
             }
@@ -301,6 +315,16 @@ widget Desktop {
                         button (icon: "settings") {
                             onclick: .OpenSettingsPanel
                             style: "h-9 w-9 px-0 text-sm"
+                        }
+                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
+                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
+                        // 非目标；容器先行占位，后续状态图标挂此）；
+                        // 铃铛（479）与齿轮（487）即组内既有成员。
+                        row {
+                            style: "items-center gap-0"
+                        }
+                        text .__wm_clock {
+                            style: "text-xs text-muted-foreground px-2 tabular-nums"
                         }
                     }
                 }

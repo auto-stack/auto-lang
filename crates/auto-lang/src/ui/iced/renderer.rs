@@ -7082,6 +7082,28 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
 /// 管线不变）→ 面板开着则重注入（打开期间列表活更新）。既有 8 处
 /// push_desktop_toast 调用点（LaunchApp 成败/分区删除门/overlay 装载降级）
 /// 已改道本入口——行为增量 = 多入史，浮现不变。
+/// Plan 497 G1：dock 时钟注入——本地 HH:MM（chrono Local），分钟变化才
+/// 写 shell `__wm_clock` + 置 view_dirty（同分钟重复调用零写入零 dirty；
+/// toast tick 先例的"只有变化才 dirty"模式）。时钟不进投影指纹门控组
+/// （每分钟翻指纹会引发 dock 全组换装抖动——计划"零投影流量"判定）。
+fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
+    let Some(shell_id) = state.desktop.shell_app else { return };
+    let hhmm = chrono::Local::now().format("%H:%M").to_string();
+    {
+        let cur = state.desktop.clock_text.borrow();
+        if *cur == hhmm {
+            return;
+        }
+    }
+    state.desktop.clock_text.replace(hhmm.clone());
+    if let Some(app) = state.apps.get_mut(&shell_id) {
+        let _ = app
+            .component
+            .write_state("__wm_clock", auto_val::Value::str(hhmm));
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
 fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
     // Plan 487 M4：通知持久化开关门控（479 消费链单点）——settings 面板
     // 写 `shell.notes.enabled`，"false" = 关：notify 动词全链路（入史 +
@@ -11452,6 +11474,9 @@ fn compare_pngs(
                         if state.is_desktop() {
                             crate::ui::native_dnd::win32::ensure_host_drop_target();
                         }
+                        // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
+                        // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
+                        update_shell_clock(state);
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
                         if state.pending_incubations() > 0 {
@@ -17869,6 +17894,49 @@ mod tests {
     /// switcher 召唤推进确认无头流：懒挂载（真 assets/switcher.at）+ MRU
     /// 快照注入（rows 序 = MRU 序）→ Advance 环走 sel → confirm（Focus
     /// handler）写 `focus\t<wid>` 记录 + 自隐 → drain 可达执行体。
+    #[test]
+    // ---- Plan 497 T3：S3 Status 栏（时钟/托盘组/每窗口缩略）----
+    // 命名族 desktop_mcp_*：`cargo t desktop_mcp` 过滤面（计划验证命令）。
+
+    /// 时钟注入 + 分钟内去重：update_shell_clock 首调注入 HH:MM +
+    /// view_dirty；同分钟复调零写入零 dirty（ServiceTick 400ms 帧泵下
+    /// 稳态零重建）。**真资产 assets/shell.at 直载**（478 switcher 先例
+    /// ——非 ShellProbe 裁剪副本；同时覆盖 497 托盘组/时钟节点的 .at
+    /// 装载面）。
+    #[test]
+    fn desktop_mcp_clock_injects_and_dedupes() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        update_shell_clock(&mut ds);
+        let v = t3_read(&ds, "__wm_clock");
+        let auto_val::Value::Str(hhmm) = v else {
+            panic!("__wm_clock 应为字符串: {v:?}")
+        };
+        let hhmm = hhmm.to_string();
+        assert_eq!(hhmm.len(), 5, "HH:MM 形态: {hhmm}");
+        assert_eq!(hhmm.as_bytes()[2], b':', "HH:MM 分隔符: {hhmm}");
+        assert!(
+            hhmm[..2].chars().all(|c| c.is_ascii_digit())
+                && hhmm[3..].chars().all(|c| c.is_ascii_digit()),
+            "HH:MM 数字段: {hhmm}"
+        );
+        // 首调已置 view_dirty——复位后同分钟复调不得再置。
+        let shell = ds.desktop.shell_app.unwrap();
+        *ds.apps.get(&shell).unwrap().state.view_dirty.borrow_mut() = false;
+        update_shell_clock(&mut ds);
+        assert!(
+            !*ds.apps.get(&shell).unwrap().state.view_dirty.borrow(),
+            "同分钟复调零 dirty（分钟变化才注入）"
+        );
+        assert_eq!(
+            t3_read(&ds, "__wm_clock"),
+            auto_val::Value::Str(hhmm.as_str().into()),
+            "同分钟复调零写入"
+        );
+    }
+
     #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();

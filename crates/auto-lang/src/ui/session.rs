@@ -288,6 +288,10 @@ pub struct DesktopState {
     /// off）。on = docked 原生窗口垫到桌面窗口下方 + SetWindowRgn 洞排除
     /// （视觉+输入穿透）；运行时回退（win32 失败）置回 false 并留日志。
     pub hole_mode: bool,
+    /// Plan 497：dock 时钟当前注入串（HH:MM 本地）。ServiceTick 帧泵里
+    /// 分钟变化才写 shell `__wm_clock`（稳态零重建；不进投影指纹门控
+    /// ——本地时钟非驱动事实投影，shell 只读消费）。
+    pub clock_text: RefCell<String>,
 }
 
 impl DesktopState {
@@ -302,6 +306,7 @@ impl DesktopState {
             notifications: RefCell::new(Vec::new()),
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),
+            clock_text: RefCell::new(String::new()),
             shell_app: None,
             app_resolver: None,
             shell_fields: ShellFields::default(),
