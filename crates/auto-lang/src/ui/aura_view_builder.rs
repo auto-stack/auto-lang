@@ -7157,15 +7157,11 @@ let tabs_inner = View::Row {
         let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
         for param in &event.params {
             if let Some(val) = self.resolve_binding_path(param, bindings) {
-                eprintln!("[EVENT_PARAM] handler={} param={} -> binding_path: {:?}", event.handler, param, val);
                 args.push(val);
             } else if let Some(val) = self.parse_event_param_expr(param, bindings) {
-                eprintln!("[EVENT_PARAM] handler={} param={} -> expr: {:?}", event.handler, param, val);
                 args.push(val);
             } else {
-                let lit = parse_event_param_literal(param);
-                eprintln!("[EVENT_PARAM] handler={} param={} -> literal fallback: {:?}", event.handler, param, lit);
-                args.push(lit);
+                args.push(parse_event_param_literal(param));
             }
         }
         DynamicMessage::Typed {

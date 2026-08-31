@@ -1156,7 +1156,9 @@ impl VmBridge {
 
     pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
-        eprintln!("[CALL_HANDLER_FOR] widget={} event={} fn_name={} state_obj_id={} args={:?}", widget_name, event_name, fn_name, state_obj_id, args);
+        if !event_name.starts_with("__") {
+            eprintln!("[VM_EXEC] fn_name={} state_obj_id={} args={:?}", fn_name, state_obj_id, args);
+        }
 
         // Verify the handler is exported before setting up a call frame.
         if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
