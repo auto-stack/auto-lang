@@ -126,6 +126,72 @@ mod musk_vm_track_p053_6_regex_static {
         eprintln!("[P053-6] test-neg => [{}]", out);
         assert!(out.contains("false"), "expected false, got: [{}]", out);
     }
+
+    /// stripQuestionnaire 链最小同构：Regex.replace → trimEnd → obj 字段落值。
+    /// 现场症状：blocks 元素 {kind:"text", text:Nil}（正文丢成 null）。
+    #[test]
+    fn strip_questionnaire_chain_keeps_text() {
+        let out = run_code(concat!(
+            "fn stripQ(text str, streaming bool) -> str {\n",
+            "    if text == \"\" { return text }\n",
+            "    var out = Regex.replace(text, \"```json[\\\\s\\\\S]*\", \"\", \"g\")\n",
+            "    return out.trimEnd()\n",
+            "}\n",
+            "var b = { kind: \"text\", text: stripQ(\"reply with one short sentence\", false) }\n",
+            "print(b.kind + \"|\" + b.text)\n",
+        ));
+        eprintln!("[P053-6] stripQ chain => [{}]", out);
+        assert!(
+            out.contains("text|reply with one short sentence"),
+            "expected text|reply..., got: [{}]",
+            out
+        );
+    }
+
+    /// 切分探针 A：纯 trimEnd。
+    #[test]
+    fn probe_trim_end_alone() {
+        let out = run_code("fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"abc \"))");
+        eprintln!("[P053-6] trimEnd alone => [{}]", out);
+        assert!(out.contains("abc"), "expected abc, got: [{}]", out);
+    }
+
+    /// 切分探针 B：Regex.replace 结果直存局部再读。
+    #[test]
+    fn probe_replace_local_roundtrip() {
+        let out = run_code(
+            "fn f(t str) -> str { var out = Regex.replace(t, \"zzz\", \"\", \"g\"); return out }\nprint(f(\"reply\"))",
+        );
+        eprintln!("[P053-6] replace local => [{}]", out);
+        assert!(out.contains("reply"), "expected reply, got: [{}]", out);
+    }
+
+    /// 消息链字符串方法矩阵（musk forge/mention helpers 实际使用面）。
+    #[test]
+    fn message_chain_str_methods_matrix() {
+        let cases: &[(&str, &str)] = &[
+            ("trimEnd", "fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"a \"))|a"),
+            ("to_lower", "fn f(s str) -> str { return s.to_lower() }\nprint(f(\"AbC\"))|abc"),
+            ("to_upper", "fn f(s str) -> str { return s.to_upper() }\nprint(f(\"aBc\"))|ABC"),
+            ("includes", "fn f(s str) -> bool { return s.includes(\"ell\") }\nprint(f(\"hello\"))|true"),
+            ("lastIndexOf", "fn f(s str) -> int { return s.lastIndexOf(\"l\") }\nprint(f(\"hello\"))|3"),
+            ("indexOf", "fn f(s str) -> int { return s.indexOf(\"e\") }\nprint(f(\"hello\"))|1"),
+            ("substring", "fn f(s str) -> str { return s.substring(1, 3) }\nprint(f(\"hello\"))|el"),
+            ("char_code_at", "fn f(s str) -> int { return s.char_code_at(0) }\nprint(f(\"A\"))|65"),
+            ("slice", "fn f(s str) -> str { return s.slice(0, 2) }\nprint(f(\"hello\"))|he"),
+        ];
+        let mut misses: Vec<&str> = Vec::new();
+        for (name, spec) in cases.iter() {
+            let (code, expect) = spec.split_once('|').unwrap();
+            let out = run_code(code);
+            let ok = out.trim().contains(expect);
+            eprintln!("[P053-6] str-method {} => [{}] expect contains [{}] {}", name, out.trim(), expect, if ok { "OK" } else { "MISS" });
+            if !ok {
+                misses.push(name);
+            }
+        }
+        assert!(misses.is_empty(), "消息链字符串方法缺口: {:?}", misses);
+    }
 }
 
 /// P-053-6 widget 级：子组件 computed 调 Regex helper 渲染消息正文
