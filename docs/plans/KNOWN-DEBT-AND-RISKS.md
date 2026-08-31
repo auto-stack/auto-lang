@@ -406,3 +406,18 @@
   master 新顶（495 合并 08d060cba）已绿——分支合并时随 rebase/merge
   自愈，无需本计划处置。与 P487-2「门禁盲区」同族提醒：该测试挂 ui-iced
   门后，`cargo t/tf` 默认档不可见。
+
+### P497（2026-08-31，Plan 497 shell-track S3 复审登记）
+
+- **P497-1 pager 网格 ≤4 截断未实现（v1 全量显示）**：计划文本定"分区
+  缩略网格条目 ≤4 截断 + '+N'"，实现为该分区全量窗口（每格 w-28 h-16
+  + 标题 truncate）。根因：.at 无"过滤后截断"原语——for+if 过滤无局部
+  计数器、数组无 take/slice；宿主派生平列表面临新投影字段违反本计划
+  "协议零改动"约束。分区窗口语义少量（workspace_close 非空提示先例），
+  视觉风险低。偿还路径：`.at` take(N) 数组原语（语言增强，另行计划），
+  或 v1.5 协议字段（分区窗口派生面）。
+- **P497-2 a2vue window_thumbnail props 不透传 DOM**：金样 SFC 中
+  wid/fallback_icon 被丢弃（class/v-for/:key 透传正常）——与 465
+  virtual_window（win prop 同不透）先例一致的转译器 v1 局限。占位
+  组件（icon+边框，待澄清①）不需要动态 wid；真缩略 web 路径
+  （transform 缩放复制子树）落地时一并补 props 透传。
