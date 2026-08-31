@@ -848,6 +848,7 @@ macro_rules! for_each_bigvm_native {
             // === String operations (170-186, 1500-1520) ===
             ("auto.str.len", 170, Int),
             ("auto.str.is_empty", 1501, Bool),
+            ("auto.str.is_digit", 1525, Bool),
             ("auto.str.char_at", 1502, Int),
             ("auto.str.substr", 1503, String),
             ("auto.str.sub", 1524, Void),
@@ -1550,6 +1551,7 @@ macro_rules! for_each_bigvm_native {
             // string_utils "return method-call drops value" bug, Plan 359 C2).
             ("Str.len", 1500, Int),
             ("Str.is_empty", 1501, Bool),
+            ("Str.is_digit", 1525, Bool),
             ("Str.char_at", 1502, Int),
             ("Str.substr", 1503, String),
             ("Str.contains", 1504, Bool),
@@ -1578,6 +1580,7 @@ macro_rules! for_each_bigvm_native {
             // reverse/char_at/substr/repeat/split_once/match_count entries.
             ("str.len", 170, Int),
             ("str.is_empty", 1501, Bool),
+            ("str.is_digit", 1525, Bool),
             ("str.char_at", 1502, Int),
             ("str.substr", 1503, String),
             ("str.contains", 1504, Bool),
@@ -1803,6 +1806,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.free.array", 192),
     ("auto.str.len", 170),
     ("auto.str.is_empty", 1501),
+    ("auto.str.is_digit", 1525),
     ("auto.str.char_at", 1502),
     ("auto.str.substr", 1503),
     ("auto.str.sub", 1524),
@@ -2315,6 +2319,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("File.remove_dir_all", 1015),
     ("Str.len", 1500),
     ("Str.is_empty", 1501),
+    ("Str.is_digit", 1525),
     ("Str.char_at", 1502),
     ("Str.substr", 1503),
     ("Str.contains", 1504),
@@ -2352,6 +2357,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("str.parse_int", 1516),
     ("str.parse_float", 1517),
     ("str.is_empty", 1501),
+    ("str.is_digit", 1525),
     ("str.substr", 1503),
     ("Task.spawn", 2300),
     ("TaskHandle.send", 2301),

@@ -29,6 +29,9 @@ pub struct AppRegistryEntry {
     pub id: String,
     /// 显示标题（pac `title:` → `name:` → 目录名）。
     pub title: String,
+    /// Plan 504 S7：pac `name:`（os-config 应用配置查找键
+    /// `apps/<name>/config.at`；None = 无 pac name 声明）。
+    pub name: Option<String>,
     /// lucide 图标名（pac `icon:` → 回退 `"app-window"`）。
     pub icon: String,
     /// 分类（pac `category:` → 回退 `"app"`）。
@@ -45,6 +48,9 @@ pub struct AppRegistryEntry {
     /// 解析根，Plan 061；os-config 形态：本地 `src/back/api.at` 为残缺
     /// 副本，契约全量在后端项目 `api.at`）。None = 无外部后端。
     pub back_root: Option<PathBuf>,
+    /// Plan 504：pac `window: "fit"` 自适应窗口声明（虚拟桌面窗随内容
+    /// 首帧测量尺寸收缩）；false = 默认布局尺寸。
+    pub fit: bool,
 }
 
 /// 扫描选项。
@@ -101,6 +107,7 @@ fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegist
     Some(AppRegistryEntry {
         id,
         title,
+        name: fields.get("name").cloned(),
         icon: fields.get("icon").cloned().unwrap_or_else(|| "app-window".to_string()),
         category: fields.get("category").cloned().unwrap_or_else(|| "app".to_string()),
         entry,
@@ -108,6 +115,9 @@ fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegist
         daemon: fields.get("daemon").cloned(),
         back_root: parse_pac_back_project(pac.as_deref().unwrap_or(""))
             .map(|rel| dir.join(rel)),
+        fit: fields
+            .get("window")
+            .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
     })
 }
 
@@ -304,11 +314,16 @@ mod tests {
         assert_eq!(dual.entry.file_name().unwrap(), "app.at");
         assert_eq!(dual.icon, "app-window", "icon 缺省回退");
         assert_eq!(dual.category, "app", "category 缺省回退");
-        // 011-calculator：pac.at 形态，render=vue，title 回退 name 字段。
-        let calc = apps.iter().find(|a| a.id == "011-calculator").expect("calculator 条目");
-        assert_eq!(calc.title, "calculator", "title 缺省回退 name 字段");
+        // 011-calculator：pac.at 形态，render=vue；Plan 504 起 title 字段
+        // 上移 pac（"Calculator"）+ window: "fit" → 条目 fit=true。
+        let calc = apps
+            .iter()
+            .find(|a| a.id == "011-calculator")
+            .expect("calculator 条目");
+        assert_eq!(calc.title, "Calculator", "title 取自 pac title 字段");
         assert_eq!(calc.render, "vue");
         assert_eq!(calc.entry.file_name().unwrap(), "app.at");
+        assert!(calc.fit, "011 pac window: \"fit\" → 条目 fit=true");
     }
 
     #[test]
@@ -327,6 +342,40 @@ mod tests {
     #[test]
     fn scan_missing_dir_returns_empty() {
         assert!(scan_apps(Path::new("Z:/definitely/not/here"), &ScanOptions::default()).is_empty());
+    }
+
+    /// Plan 504：pac `window: "fit"` → 条目 fit=true（大小写不敏感）；
+    /// "WxH" 形态 / 无 window 键 → false。
+    #[test]
+    fn entry_fit_from_pac_window_field() {
+        let root = std::env::temp_dir().join(format!(
+            "auto504-fit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mk = |name: &str, pac: &str| {
+            let d = root.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("app.at"), "col { }").unwrap();
+            std::fs::write(d.join("pac.at"), pac).unwrap();
+        };
+        mk("a-fit", "name: \"a\"\nwindow: \"fit\"\n");
+        mk("b-FIT", "name: \"b\"\nwindow: \"FIT\"\n");
+        mk("c-size", "name: \"c\"\nwindow: \"800x600\"\n");
+        mk("d-none", "name: \"d\"\n");
+        let apps = scan_apps(&root, &ScanOptions::default());
+        let fit = |id: &str| apps.iter().find(|a| a.id == id).map(|a| a.fit);
+        assert_eq!(fit("a-fit"), Some(true));
+        assert_eq!(fit("b-FIT"), Some(true));
+        assert_eq!(fit("c-size"), Some(false));
+        assert_eq!(fit("d-none"), Some(false));
+        // Plan 504 S7：pac `name:` 透传（os-config 配置查找键）。
+        let name = |id: &str| apps.iter().find(|a| a.id == id).and_then(|a| a.name.clone());
+        assert_eq!(name("a-fit").as_deref(), Some("a"));
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -511,8 +560,10 @@ mod tests {
                         code,
                         source_path: Some(e.entry.to_string_lossy().to_string()),
                         title: Some(e.title.clone()),
+                        name: e.name.clone(),
                         daemon: None,
                         back_root: None,
+                        fit: false,
                     })
                 })
             })
@@ -544,7 +595,7 @@ mod tests {
             .iter()
             .map(|w| host.wm.wins[w].title.as_str())
             .collect();
-        assert!(titles.contains(&"calculator"), "titles = {titles:?}");
+        assert!(titles.contains(&"Calculator"), "titles = {titles:?}");
         assert!(titles.contains(&"todo"), "titles = {titles:?}");
         assert!(titles.contains(&"459-dual-app"), "titles = {titles:?}");
         assert_eq!(host.wm.focused, Some(crate::ui::session::Wid(3)), "新窗即焦点");

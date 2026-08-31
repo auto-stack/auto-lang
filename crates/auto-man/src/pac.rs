@@ -96,6 +96,13 @@ pub struct Pac {
     /// iced multiplies by the OS scale factor for the physical surface.
     pub window: Option<(f32, f32)>,
 
+    /// Plan 504: content-fit window mode, declared as `window: "fit"` in
+    /// pac.at. The VM window (standalone and virtual-desktop) starts at the
+    /// content's shrink-measured size instead of a fixed/percentage default.
+    /// Mutually exclusive with `window: "WxH"` (a single key holds one
+    /// value; "fit" sets this flag and leaves `window` = None).
+    pub window_fit: bool,
+
     /// VM native window title, declared as `title: "My App"` in pac.at.
     /// None = renderer default ("Auto - {root widget name}").
     pub title: Option<AutoStr>,
@@ -245,17 +252,24 @@ impl Pac {
 
         // Plan 411: VM startup window size, e.g. `window: "1440x900"`.
         // Accepts "WxH" (or W×H); rejects non-positive/oversized values.
+        // Plan 504: the keyword `window: "fit"` selects content-fit mode
+        // (measured shrink size) instead of a fixed size.
         let window = config.root.get_prop("window").to_astr();
-        let window = window
-            .trim()
-            .replace(['x', 'X', '\u{d7}'], "x")
-            .split_once('x')
-            .and_then(|(w, h)| {
-                let w: f32 = w.trim().parse().ok()?;
-                let h: f32 = h.trim().parse().ok()?;
-                (w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0)
-                    .then_some((w, h))
-            });
+        let window_fit = window.trim().eq_ignore_ascii_case("fit");
+        let window = if window_fit {
+            None
+        } else {
+            window
+                .trim()
+                .replace(['x', 'X', '\u{d7}'], "x")
+                .split_once('x')
+                .and_then(|(w, h)| {
+                    let w: f32 = w.trim().parse().ok()?;
+                    let h: f32 = h.trim().parse().ok()?;
+                    (w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0)
+                        .then_some((w, h))
+                })
+        };
 
         // VM window title, e.g. `title: "AutoEdit"`. Absent/blank → None
         // (renderer falls back to "Auto - {root widget name}").
@@ -421,6 +435,7 @@ impl Pac {
             front_port,
             back_port,
             window,
+            window_fit,
             title,
             icon,
             category,
@@ -1826,6 +1841,27 @@ mod tests {
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
         assert!(pac.default_classes, "absent default_classes field defaults to true");
+    }
+
+    /// Plan 504: pac.at `window: "fit"` content-fit mode parsing — sets
+    /// window_fit and leaves `window` None; "WxH" keeps working; absent
+    /// field defaults to neither.
+    #[test]
+    fn test_window_fit_parsing() {
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nwindow: \"fit\"\n").unwrap());
+        assert!(pac.window_fit, "window: \"fit\" must set window_fit");
+        assert_eq!(pac.window, None, "fit leaves window None");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nwindow: \"FIT\"\n").unwrap());
+        assert!(pac.window_fit, "fit keyword is case-insensitive");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\nwindow: \"1440x900\"\n").unwrap());
+        assert!(!pac.window_fit, "WxH does not set window_fit");
+        assert_eq!(pac.window, Some((1440.0, 900.0)));
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
+        assert!(!pac.window_fit, "absent window field defaults to no fit");
+        assert_eq!(pac.window, None);
     }
 
     #[test]

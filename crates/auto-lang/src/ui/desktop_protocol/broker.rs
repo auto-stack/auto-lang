@@ -353,8 +353,10 @@ mod tests {
                         code: code.clone(),
                         source_path: None,
                         title: Some("Broker386".into()),
+                        name: None,
                         daemon: None,
                         back_root: None,
+                        fit: false,
                     })
                 } else {
                     None

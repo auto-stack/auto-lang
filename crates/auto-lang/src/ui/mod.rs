@@ -55,6 +55,10 @@ pub mod app_registry;
 // 注入——外部仓 settings app 的宿主侧底座；纯逻辑全平台单测）。
 pub mod osconfig_daemon;
 
+// Plan 504 S7：os-config 应用配置读取（~/.config/autoos/apps/<app>/config.at
+// 只读；run 臂优先级链 + desktop launch 播种两个消费点）。
+pub mod osconfig_apps;
+
 // Plan 386 Stage 1：桌面协议（进程外 App 五通道）——loopback 同进程走通，
 // 施工图 Design 25 §7；Stage 2 换真 transport 时只替换其 loopback 层。
 #[cfg(feature = "ui-iced")]

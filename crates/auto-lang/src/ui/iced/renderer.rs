@@ -4578,6 +4578,16 @@ pub fn startup_window_size() -> iced::Size {
     resolved
 }
 
+/// Plan 504: startup window fit-to-content mode. Source:
+/// pac.at `window: "fit"` — injected by `auto run` as AUTO_VM_WINDOW=fit.
+/// When true, the first rendered frame is measured and the OS window is
+/// resized to the content's natural size (see `__fit_measured` routing).
+pub fn startup_window_fit() -> bool {
+    std::env::var("AUTO_VM_WINDOW")
+        .map(|v| v.trim().eq_ignore_ascii_case("fit"))
+        .unwrap_or(false)
+}
+
 /// VM window title. Sources, in priority order:
 /// 1. pac.at `title: "..."` — injected by `auto run` as AUTO_VM_TITLE
 /// 2. fallback — "Auto - {root widget name}"
@@ -8638,6 +8648,124 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
     }
 }
 
+/// Plan 504：fit 测量单轮自重试上限——首帧界面未建好时 `__fit_measured`
+/// 找不到 `aura_fit_root_*` 锚点会重新发起测量，超限放弃本轮（fit_pending
+/// 保留，下个触发点重新武装；常态 1-2 帧内命中）。
+const FIT_MEASURE_MAX_RETRIES: u32 = 10;
+
+/// Plan 504：发起一次 fit 内容测量。LayoutCollector 操作布全窗口树
+/// （daemon 下 Action::Widget 遍历所有界面），回执 `__fit_measured`
+/// 路由到 `win` 所在 DM::Window 臂。
+fn fit_measure_task(win: iced::window::Id) -> iced::Task<crate::ui::session::DesktopMessage> {
+    iced::advanced::widget::operate(crate::ui::iced::LayoutCollector::new()).map(move |bounds| {
+        crate::ui::session::DesktopMessage::Window(
+            win,
+            IcedMessage {
+                widget: String::new(),
+                event: "__fit_measured".to_string(),
+                input_value: Some(serde_json::to_string(&bounds).unwrap_or_default()),
+            },
+        )
+    })
+}
+
+/// Plan 504：`__fit_measured` 回执——按测量锚点 `aura_fit_root_<appid>` 的
+/// 内容自然尺寸收缩目标窗口：独立模式 `window::resize` OS 窗；desktop 模式
+/// 改虚拟窗矩形（chrome 外沿 = 内容 + TITLEBAR_H + 2·BORDER，clamp 进可用
+/// 区，越界回挪）。锚点缺席（界面尚未建好）按上限自重试。
+fn apply_fit_measured(
+    state: &mut crate::ui::session::DesktopSession,
+    win: iced::window::Id,
+    payload: Option<&str>,
+) -> iced::Task<crate::ui::session::DesktopMessage> {
+    state.desktop.fit_measure_in_flight.set(false);
+    let bounds: std::collections::HashMap<String, (f32, f32, f32, f32)> = payload
+        .and_then(|p| serde_json::from_str(p).ok())
+        .unwrap_or_default();
+    let mut task = iced::Task::none();
+    let mut measured_any = false;
+    for (key, (_x, _y, w, h)) in &bounds {
+        let Some(raw) = key.strip_prefix("aura_fit_root_") else {
+            continue;
+        };
+        let Ok(appid) = raw.parse::<u64>() else {
+            continue;
+        };
+        let app_id = crate::ui::session::AppId(appid);
+        let content = iced::Size::new(w.max(200.0), h.max(200.0));
+        let mut done = false;
+        // 独立模式：OS 窗条目（app + fit_pending 双条件定位）。
+        let os_win = state
+            .windows
+            .iter()
+            .find(|(_, e)| e.app == app_id && e.fit_pending.get())
+            .map(|(id, _)| *id);
+        if let Some(os_win) = os_win {
+            let entry = &state.windows[&os_win];
+            entry.fit_pending.set(false);
+            *entry.window_size.borrow_mut() = content;
+            task = iced::window::resize(os_win, content);
+            done = true;
+        } else if let Some(host) = state.host.as_ref() {
+            // desktop：虚拟窗矩形（内容 + 标题条 + 边框 = chrome 外沿）。
+            if let Some((_, v)) = host
+                .wm
+                .wins
+                .iter()
+                .find(|(_, v)| v.app == app_id && v.fit_pending.get())
+            {
+                use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+                let usable = crate::ui::layout::usable_rect(
+                    state.host_viewport(),
+                    state.desktop.dock_edges,
+                );
+                let w = (content.width + 2.0 * BORDER).min(usable.width);
+                let h = (content.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
+                {
+                    let mut r = v.rect.borrow_mut();
+                    r.width = w;
+                    r.height = h;
+                    // 位置优先不变；右/下越界回挪（尺寸已 clamp 进可用区）。
+                    r.x = r.x.max(usable.x).min(usable.x + usable.width - w);
+                    r.y = r.y.max(usable.y).min(usable.y + usable.height - h);
+                }
+                v.fit_pending.set(false);
+                *v.window_size.borrow_mut() = content;
+                done = true;
+            }
+        }
+        if done {
+            measured_any = true;
+            if let Some(app) = state.apps.get(&app_id) {
+                *app.state.view_dirty.borrow_mut() = true;
+            }
+        }
+    }
+    if measured_any {
+        state.desktop.fit_measure_retries.set(0);
+        // desktop：vwin 矩形已变——任务栏投影即时刷新（同 WM 变更惯例）。
+        if state.is_desktop() {
+            sync_shell_windows(state);
+        }
+        return task;
+    }
+    // 锚点缺席：界面尚未建好 → 自重试；超限仅放弃本轮——fit_pending 保留，
+    // 下个 __window_resized / ServiceTick 触发重新武装（计数清零）。
+    if state.has_fit_pending() {
+        let n = state.desktop.fit_measure_retries.get() + 1;
+        state.desktop.fit_measure_retries.set(n);
+        if n <= FIT_MEASURE_MAX_RETRIES {
+            state.desktop.fit_measure_in_flight.set(true);
+            return fit_measure_task(win);
+        }
+        eprintln!(
+            "[session] fit measure: anchor missing after {FIT_MEASURE_MAX_RETRIES} retries; \
+             keeping fit_pending for the next trigger (plan-504)"
+        );
+    }
+    iced::Task::none()
+}
+
 /// Plan 472 T4：dock 数据级配置 → 布局预留边（协议 v1 §6：storage 键
 /// `shell.dock.position` top/bottom、`shell.dock.enabled`；缺席回退 pack
 /// 默认 bottom/48）。boot 期读一次写 `DesktopState.dock_edges`（v1 不做
@@ -9393,8 +9521,10 @@ fn compare_pngs(
                                     code,
                                     source_path: Some(e.entry.to_string_lossy().to_string()),
                                     title: Some(e.title.clone()),
+                                    name: e.name.clone(),
                                     daemon: e.daemon.clone(),
                                     back_root: e.back_root.clone(),
+                                    fit: e.fit,
                                 })
                             })
                         }));
@@ -9455,6 +9585,14 @@ fn compare_pngs(
                         ..Default::default()
                     });
                     session.register_window(win_id, app_id, size);
+                    // Plan 504：pac `window: "fit"` —— 标记待测量；主触发是
+                    // 首个 __window_resized（初始 Resized 到达即界面已建，
+                    // 测量锚点必在树中），见 DM::Window 臂。
+                    if startup_window_fit() {
+                        if let Some(entry) = session.windows.get_mut(&win_id) {
+                            entry.fit_pending.set(true);
+                        }
+                    }
                     open_tasks.push(open_task);
                 }
                 // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
@@ -11550,6 +11688,18 @@ fn compare_pngs(
                         // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
                         // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
                         update_shell_clock(state);
+                        // Plan 504：fit 虚拟窗触发——节拍上若有待测量窗且
+                        // 单程闸空闲，发起内容测量（宿主树恒在；vwin 首帧
+                        // 渲染后锚点即在，回执 __fit_measured 收缩矩形）。
+                        if state.has_fit_pending()
+                            && !state.desktop.fit_measure_in_flight.get()
+                        {
+                            if let Some(hw) = state.host.as_ref().map(|h| h.window) {
+                                state.desktop.fit_measure_in_flight.set(true);
+                                state.desktop.fit_measure_retries.set(0);
+                                return fit_measure_task(hw);
+                            }
+                        }
                         // Plan 497 G3：快照抓取编排——排空渲染臂/召唤面
                         // 攒下的 request_capture 队列，一次整窗 screenshot
                         // 服务全部请求（回调 SnapshotShot 裁剪入缓存）。
@@ -11933,6 +12083,23 @@ fn compare_pngs(
                         _ => {}
                     }
                 }
+                // Plan 504：fit 窗口内容测量回执（measure → shrink 路由；
+                // 独立/desktop 双模式统一在此消费，见 apply_fit_measured）。
+                if m.event == "__fit_measured" {
+                    return apply_fit_measured(state, win, m.input_value.as_deref());
+                }
+                // Plan 504：fit 主触发——__window_resized（含开窗后的初始
+                // Resized 事件）到达即该窗界面已建，测量锚点必在树中。
+                // 不消费事件：测量任务与常管 resize 处理并联下发。
+                let mut fit_task = if m.event == "__window_resized"
+                    && state.has_fit_pending()
+                    && !state.desktop.fit_measure_in_flight.replace(true)
+                {
+                    state.desktop.fit_measure_retries.set(0);
+                    Some(fit_measure_task(win))
+                } else {
+                    None
+                };
                 // Plan 462 desktop：宿主窗 resize → 全体虚拟窗口 window_size
                 // 同步（独立模式走原 per-window 拆借路径，行为不变）。
                 if state.is_desktop() && m.event == "__window_resized" {
@@ -11956,7 +12123,7 @@ fn compare_pngs(
                                 "vm.window_inner_height",
                                 format!("{}", h),
                             );
-                            return iced::Task::none();
+                            return fit_task.take().unwrap_or_else(iced::Task::none);
                         }
                     }
                 }
@@ -11966,12 +12133,18 @@ fn compare_pngs(
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {
-                Some(app_id) => dispatch_app(state, app_id, m),
+                Some(app_id) => {
+                    let t = dispatch_app(state, app_id, m);
+                    match fit_task.take() {
+                        Some(f) => iced::Task::batch([t, f]),
+                        None => t,
+                    }
+                }
                 None => {
                     eprintln!(
                         "[session] window event for unregistered window {win:?} dropped (plan-459)"
                     );
-                    iced::Task::none()
+                    fit_task.take().unwrap_or_else(iced::Task::none)
                 }
                 }
             }
@@ -12843,12 +13016,22 @@ fn dynamic_view(
     // toast 卡片全部挤出可视区(iced 文档:子节点用 Fill 策略时必须显式给
     // Stack 设宽高)。显式 Fill×Fill:主内容恢复整窗排版,toast 层九宫格
     // 锚点以整窗为参照。
-    let rendered: iced::Element<'static, IcedMessage> = iced::widget::Stack::new()
+    // Plan 504：fit 待测量期间整链 Shrink —— Fill 会把测量钉回窗口尺寸。
+    let fit_pending = state.fit_pending.get();
+    let stack = iced::widget::Stack::new()
         .push(rendered)
-        .push(toast_el)
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fill)
-        .into();
+        .push(toast_el);
+    let rendered: iced::Element<'static, IcedMessage> = if fit_pending {
+        stack
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Shrink)
+            .into()
+    } else {
+        stack
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .into()
+    };
 
     // Copy element style metadata and component tree from DebugRenderCtx to DynamicState
     if let Some(ref ctx) = debug_ctx {
@@ -12947,16 +13130,10 @@ fn dynamic_view(
                 .height(iced::Length::Fill)
                 .into()
         } else {
-            container(rendered)
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill)
-                .into()
+            fit_aware_root(rendered, state.app_id, fit_pending)
         }
     } else {
-        container(rendered)
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .into()
+        fit_aware_root(rendered, state.app_id, fit_pending)
     };
 
     // Pick up pending screenshot request from MCP thread (Plan 285).
@@ -12975,6 +13152,30 @@ fn dynamic_view(
     // view_dirty was already cleared above.
     *state.app.cached_rendered.borrow_mut() = Some(result);
     state.app.cached_rendered.borrow_mut().take().unwrap()
+}
+
+/// Plan 504：App 窗口根容器。常态 Fill×Fill；`fit_pending`（pac.at
+/// `window: "fit"`，见 [`startup_window_fit`] / `LaunchSpec.fit`）期间
+/// Shrink×Shrink 并挂 `aura_fit_root_<appid>` Id —— LayoutCollector 首帧
+/// 经此锚点量出内容自然尺寸，`__fit_measured` 路由据此收缩窗口后清除标记
+/// （后续帧回本函数 Fill 臂）。
+fn fit_aware_root(
+    content: iced::Element<'static, IcedMessage>,
+    app_id: crate::ui::session::AppId,
+    fit_pending: bool,
+) -> iced::Element<'static, IcedMessage> {
+    if fit_pending {
+        container(content)
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Shrink)
+            .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0)))
+            .into()
+    } else {
+        container(content)
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .into()
+    }
 }
 
 /// Render the DevTools panel on the right side of the window.
@@ -17442,6 +17643,56 @@ fn format_insets(ei: &crate::ui::debug::EdgeInsets) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Plan 504：pac `window: "fit"` env 解析（大小写不敏感；"WxH" / 缺席 → false）。
+    #[test]
+    fn startup_window_fit_parses_env() {
+        std::env::set_var("AUTO_VM_WINDOW", "fit");
+        assert!(startup_window_fit());
+        std::env::set_var("AUTO_VM_WINDOW", "FIT");
+        assert!(startup_window_fit());
+        std::env::set_var("AUTO_VM_WINDOW", "800x600");
+        assert!(!startup_window_fit());
+        std::env::remove_var("AUTO_VM_WINDOW");
+        assert!(!startup_window_fit());
+    }
+
+    /// Plan 504：`__fit_measured` 回执 desktop 臂——虚拟窗矩形收缩到
+    /// 内容 + chrome（TITLEBAR_H + 2·BORDER），fit_pending 清除、
+    /// window_size 写内容尺寸、在飞标记复位。
+    #[test]
+    fn apply_fit_measured_shrinks_desktop_vwin() {
+        let mut ds = t3_session_with_shell();
+        let wid = t3_add_win(&mut ds, "FitProbe");
+        let host = ds.host.as_ref().unwrap();
+        let app = host.wm.wins[&wid].app;
+        host.wm.wins[&wid].fit_pending.set(true);
+        let hw = host.window;
+        let payload = format!("{{\"aura_fit_root_{}\": [0.0, 0.0, 384.0, 392.0]}}", app.0);
+        let _ = apply_fit_measured(&mut ds, hw, Some(&payload));
+        let host = ds.host.as_ref().unwrap();
+        let v = &host.wm.wins[&wid];
+        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+        assert!(!v.fit_pending.get(), "测量命中后 fit_pending 清除");
+        assert_eq!(v.rect.borrow().width, 384.0 + 2.0 * BORDER);
+        assert_eq!(v.rect.borrow().height, 392.0 + TITLEBAR_H + 2.0 * BORDER);
+        assert_eq!(*v.window_size.borrow(), iced::Size::new(384.0, 392.0));
+        assert!(!ds.desktop.fit_measure_in_flight.get(), "回执到达即在飞复位");
+    }
+
+    /// Plan 504：锚点缺席（界面未建好）——保留 fit_pending、计数 +1、
+    /// 重新置在飞自重试。
+    #[test]
+    fn apply_fit_measured_missing_anchor_retries() {
+        let mut ds = t3_session_with_shell();
+        let wid = t3_add_win(&mut ds, "FitProbe");
+        ds.host.as_ref().unwrap().wm.wins[&wid].fit_pending.set(true);
+        let hw = ds.host.as_ref().unwrap().window;
+        let _ = apply_fit_measured(&mut ds, hw, Some("{}"));
+        assert!(ds.has_fit_pending(), "锚点缺席保留 fit_pending");
+        assert_eq!(ds.desktop.fit_measure_retries.get(), 1);
+        assert!(ds.desktop.fit_measure_in_flight.get(), "自重试重新置在飞");
+    }
+
     /// PLAN-493 T4: mention 段 kind 流通——parse_span_kind 认 "mention"，
     /// build_span_lines 对 mention 段按无缝覆盖契约切出行内范围。
     #[test]
@@ -17902,12 +18153,14 @@ mod tests {
         ds.desktop.registry_entries = vec![AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
             daemon: None,
             back_root: None,
+            fit: false,
         }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -17915,8 +18168,10 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    name: None,
                     daemon: None,
                     back_root: None,
+                    fit: false,
                 })
             }));
         ds.launch_app("011-calculator").expect("launch");
@@ -18745,8 +19000,10 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    name: None,
                     daemon: None,
                     back_root: None,
+                    fit: false,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18787,8 +19044,10 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    name: None,
                     daemon: None,
                     back_root: None,
+                    fit: false,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18990,12 +19249,14 @@ mod tests {
         ds.desktop.registry_entries = vec![crate::ui::app_registry::AppRegistryEntry {
             id: "011-calculator".to_string(),
             title: "calculator".to_string(),
+            name: None,
             icon: "calculator".to_string(),
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
             daemon: None,
             back_root: None,
+            fit: false,
         }];
         inject_dock_pinned(&mut ds);
         {
@@ -19802,22 +20063,26 @@ mod tests {
             crate::ui::app_registry::AppRegistryEntry {
                 id: "011-calculator".into(),
                 title: "计算器".into(),
+                name: None,
                 icon: "calculator".into(),
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/a.at"),
                 render: "vm".into(),
     daemon: None,
     back_root: None,
+    fit: false,
             },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
                 title: "便签".into(),
+                name: None,
                 icon: "sticky-note".into(),
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/b.at"),
                 render: "vm".into(),
     daemon: None,
     back_root: None,
+    fit: false,
             },
         ];
         // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
@@ -20104,12 +20369,14 @@ mod tests {
         let entry = |id: &str, title: &str| AppRegistryEntry {
             id: id.to_string(),
             title: title.to_string(),
+            name: None,
             icon: "app-window".to_string(),
             category: "app".to_string(),
             entry: std::path::PathBuf::from(id),
             render: "vue".to_string(),
             daemon: None,
             back_root: None,
+            fit: false,
         };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();

@@ -3,9 +3,8 @@ version: "1.0.0"
 scene: "ui"
 render: "vue"
 icon: "calculator"
+title: "Calculator"
 theme: "dark"
 accent: "indigo"
-
-dep "common" {
-    path: "../common"
-}
+# Plan 504: 窗口随内容自然尺寸收缩（独立 VM 窗 / 虚拟桌面窗双路径）。
+window: "fit"

@@ -227,6 +227,12 @@ pub struct DesktopState {
     pub mcp_shared: Option<crate::ui::mcp_server::SharedStateHandle>,
     pub toasts: RefCell<Vec<ToastReq>>,
     pub toast_next_id: Cell<u64>,
+    /// Plan 504：fit 测量单程闸（true = 已发出 LayoutCollector operate、
+    /// 尚未收到 __fit_measured 回填；防止重复 trigger 叠加测量任务）。
+    pub fit_measure_in_flight: Cell<bool>,
+    /// Plan 504：fit 测量单轮自重试计数（`__fit_measured` 未找到测量锚点
+    /// 时重新发起；达上限放弃本轮，下个触发点清零重新武装）。
+    pub fit_measure_retries: Cell<u32>,
     /// Plan 479 T2：通知历史（S6 聚合面；MRU 序 front=最新，容量
     /// [`NOTES_CAP`] FIFO）。写入唯一入口 = renderer `push_notification`
     /// （双面一体：入史 + toast + 未读）。
@@ -318,6 +324,8 @@ impl DesktopState {
             mcp_shared,
             toasts: RefCell::new(Vec::new()),
             toast_next_id: Cell::new(1),
+            fit_measure_in_flight: Cell::new(false),
+            fit_measure_retries: Cell::new(0),
             notifications: RefCell::new(Vec::new()),
             notes_next_id: Cell::new(1),
             notes_unread: Cell::new(0),
@@ -368,6 +376,10 @@ pub struct WindowEntry {
     pub pending_window_resize: RefCell<Option<iced::Size>>,
     pub initial_resize_done: Cell<bool>,
     pub initial_focus_done: Cell<bool>,
+    /// Plan 504：内容自适应窗口（pac.at `window: "fit"`）——true 期间
+    /// dynamic_view 以 Shrink 根构建并布 `aura_fit_root_<app>` 测量锚点，
+    /// 首帧后经 LayoutCollector 测量回填 `pending_window_resize` 转正。
+    pub fit_pending: Cell<bool>,
 }
 
 pub struct AppSession {
@@ -487,6 +499,9 @@ pub struct VWinState {
     pub pending_window_resize: RefCell<Option<iced::Size>>,
     pub initial_resize_done: Cell<bool>,
     pub initial_focus_done: Cell<bool>,
+    /// Plan 504：内容自适应虚拟窗（注册表条目 pac `window: "fit"` 经
+    /// LaunchSpec.fit 透传）——语义同 [`WindowEntry::fit_pending`]。
+    pub fit_pending: Cell<bool>,
 }
 
 /// 最小窗口管理器状态（Plan 462 T2）。位置/焦点/z 的唯一事实源；
@@ -573,6 +588,7 @@ impl WmState {
                 pending_window_resize: RefCell::new(None),
                 initial_resize_done: Cell::new(false),
                 initial_focus_done: Cell::new(false),
+                fit_pending: Cell::new(false),
             },
         );
         self.z_order.push(wid);
@@ -1260,6 +1276,13 @@ pub struct LaunchSpec {
     pub source_path: Option<String>,
     /// chrome 标题（None = 根 widget 名，462 行为）。
     pub title: Option<String>,
+    /// Plan 504 S7：pac `name:`（os-config 应用配置查找键——
+    /// `~/.config/autoos/apps/<name>/config.at`，launch 期对已声明
+    /// dark_mode/accent_color/mode state var 播种；None = 无配置层）。
+    pub name: Option<String>,
+    /// Plan 504：内容自适应窗口（注册表条目 pac `window: "fit"` 透传）——
+    /// 虚拟窗初始尺寸 = 首帧 shrink 测量值（替代可用区 60% 缺省）。
+    pub fit: bool,
     /// Plan 501：依赖的守护进程声明（注册表条目 pac `daemon:` 透传，如
     /// `autoos`——launch 前确保 daemon 就绪并注入 env；None = 无依赖）。
     pub daemon: Option<String>,
@@ -1275,6 +1298,8 @@ impl Default for LaunchSpec {
             code: String::new(),
             source_path: None,
             title: None,
+            name: None,
+            fit: false,
             daemon: None,
             back_root: None,
         }
@@ -1290,6 +1315,8 @@ pub struct ShellFields {
     pub pending_window_resize: RefCell<Option<iced::Size>>,
     pub initial_resize_done: Cell<bool>,
     pub initial_focus_done: Cell<bool>,
+    /// Plan 504：fit 垫片（windowless 面恒 false，不参与自适应）。
+    pub fit_pending: Cell<bool>,
 }
 
 /// Plan 496 M5：桌面本体 pack 默认壁纸色（theme Background dark 的
@@ -1705,6 +1732,15 @@ impl DesktopSession {
             .map_err(|e| format!("build `{name}` failed: {e}"))?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
         let app_id = self.allocate_app(comp);
+        // Plan 504 S7：os-config 应用配置播种（pac `name:` →
+        // ~/.config/autoos/apps/<name>/config.at 只读）——对已声明
+        // dark_mode/accent_color/mode state var 写初始值（语义同 Plan 458
+        // env 播种：仅初始化，运行时交互照旧优先；无 pac name 跳过）。
+        if let Some(cfg_name) = spec.name.as_deref() {
+            if let Some(app) = self.apps.get_mut(&app_id) {
+                crate::ui::osconfig_apps::seed_app_config(&mut app.component, cfg_name);
+            }
+        }
         let usable = crate::ui::layout::usable_rect(self.host_viewport(), self.desktop.dock_edges);
         // Plan 472 T2：级联 index 按当前分区窗数计（隐分区窗不占级联位）。
         let index = self
@@ -1717,6 +1753,15 @@ impl DesktopSession {
         let rect = crate::ui::layout::cascade_rect(index, size, usable);
         let layout = self.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
         let wid = self.wm_add_win(app_id, title, rect);
+        // Plan 504：内容自适应窗（pac `window: "fit"` 经 LaunchSpec.fit 透传）
+        // —— 首帧 shrink 测量后经 __fit_measured 回落 rect（含 chrome）。
+        if spec.fit {
+            if let Some(host) = self.host.as_mut() {
+                if let Some(v) = host.wm.wins.get_mut(&wid) {
+                    v.fit_pending.set(true);
+                }
+            }
+        }
         // Plan 472 T3：回填注册表 id（投影 app/icon 字段与 dock pinned 消费）。
         if let Some(host) = self.host.as_mut() {
             if let Some(v) = host.wm.wins.get_mut(&wid) {
@@ -2144,6 +2189,17 @@ impl DesktopSession {
         self.apps.keys().next().copied()
     }
 
+    /// Plan 504：是否有窗口处于内容自适应待生效（standalone OS 窗条目 +
+    /// desktop 虚拟窗两域并查；__window_resized 触发测量的门控）。
+    pub fn has_fit_pending(&self) -> bool {
+        self.windows.values().any(|e| e.fit_pending.get())
+            || self
+                .host
+                .as_ref()
+                .map(|h| h.wm.wins.values().any(|v| v.fit_pending.get()))
+                .unwrap_or(false)
+    }
+
     /// boot 期把待定尺寸记入桌面级暂存表；Opened 登记（`register_window`）
     /// 时随窗口条目转正。459 的 boot 开窗路径同步登记，本暂存主要服务
     /// "先知尺寸、后得 window::Id" 的外部宿主场景与测试。
@@ -2155,6 +2211,13 @@ impl DesktopSession {
     /// 若 app 有待登记的初始尺寸则一并转正。重复登记幂等（boot 已同步
     /// 登记时，Opened 兜底臂为同键覆盖）。
     pub fn register_window(&mut self, win: iced::window::Id, app: AppId, size: iced::Size) {
+        // Plan 504：同键覆盖（Opened 幂等兜底）保留 fit_pending——boot 臂在
+        // Opened 到达前已置位，覆盖重建不能把待测量标记抹掉。
+        let fit_pending = self
+            .windows
+            .get(&win)
+            .map(|e| e.fit_pending.get())
+            .unwrap_or(false);
         self.windows.insert(
             win,
             WindowEntry {
@@ -2163,6 +2226,7 @@ impl DesktopSession {
                 pending_window_resize: RefCell::new(self.pending_initial_size.remove(&app)),
                 initial_resize_done: Cell::new(false),
                 initial_focus_done: Cell::new(false),
+                fit_pending: Cell::new(fit_pending),
             },
         );
     }
@@ -2243,6 +2307,7 @@ impl DesktopSession {
                     &mut host.shell_fields.pending_window_resize,
                     &mut host.shell_fields.initial_resize_done,
                     &mut host.shell_fields.initial_focus_done,
+                    &host.shell_fields.fit_pending,
                 )
             } else if is_launcher {
                 (
@@ -2250,6 +2315,7 @@ impl DesktopSession {
                     &mut host.launcher_fields.pending_window_resize,
                     &mut host.launcher_fields.initial_resize_done,
                     &mut host.launcher_fields.initial_focus_done,
+                    &host.launcher_fields.fit_pending,
                 )
             } else if is_switcher {
                 (
@@ -2257,6 +2323,7 @@ impl DesktopSession {
                     &mut host.switcher_fields.pending_window_resize,
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
+                    &host.switcher_fields.fit_pending,
                 )
             } else if is_notification {
                 (
@@ -2264,6 +2331,7 @@ impl DesktopSession {
                     &mut host.notification_fields.pending_window_resize,
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
+                    &host.notification_fields.fit_pending,
                 )
             } else if is_settings {
                 (
@@ -2271,6 +2339,7 @@ impl DesktopSession {
                     &mut host.settings_fields.pending_window_resize,
                     &mut host.settings_fields.initial_resize_done,
                     &mut host.settings_fields.initial_focus_done,
+                    &host.settings_fields.fit_pending,
                 )
             } else {
                 (
@@ -2278,10 +2347,16 @@ impl DesktopSession {
                     &mut host.desktop_fields.pending_window_resize,
                     &mut host.desktop_fields.initial_resize_done,
                     &mut host.desktop_fields.initial_focus_done,
+                    &host.desktop_fields.fit_pending,
                 )
             };
-            let (window_size, pending_window_resize, initial_resize_done, initial_focus_done) =
-                fields;
+            let (
+                window_size,
+                pending_window_resize,
+                initial_resize_done,
+                initial_focus_done,
+                fit_pending,
+            ) = fields;
             return Some(SessionViewMut {
                 app_id: id,
                 window,
@@ -2292,6 +2367,7 @@ impl DesktopSession {
                 pending_window_resize,
                 initial_resize_done,
                 initial_focus_done,
+                fit_pending,
                 vwin_rect: None,
             });
         }
@@ -2324,6 +2400,7 @@ impl DesktopSession {
                 pending_window_resize: &mut v.pending_window_resize,
                 initial_resize_done: &mut v.initial_resize_done,
                 initial_focus_done: &mut v.initial_focus_done,
+                fit_pending: &v.fit_pending,
                 vwin_rect: Some(&v.rect),
             });
         }
@@ -2338,6 +2415,7 @@ impl DesktopSession {
             pending_window_resize: &mut entry.pending_window_resize,
             initial_resize_done: &mut entry.initial_resize_done,
             initial_focus_done: &mut entry.initial_focus_done,
+            fit_pending: &entry.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2364,6 +2442,7 @@ impl DesktopSession {
                 pending_window_resize: &v.pending_window_resize,
                 initial_resize_done: &v.initial_resize_done,
                 initial_focus_done: &v.initial_focus_done,
+                fit_pending: &v.fit_pending,
                 vwin_rect: Some(&v.rect),
             });
         }
@@ -2378,6 +2457,7 @@ impl DesktopSession {
             pending_window_resize: &entry.pending_window_resize,
             initial_resize_done: &entry.initial_resize_done,
             initial_focus_done: &entry.initial_focus_done,
+            fit_pending: &entry.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2399,6 +2479,7 @@ impl DesktopSession {
             pending_window_resize: &host.shell_fields.pending_window_resize,
             initial_resize_done: &host.shell_fields.initial_resize_done,
             initial_focus_done: &host.shell_fields.initial_focus_done,
+            fit_pending: &host.shell_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2419,6 +2500,7 @@ impl DesktopSession {
             pending_window_resize: &host.launcher_fields.pending_window_resize,
             initial_resize_done: &host.launcher_fields.initial_resize_done,
             initial_focus_done: &host.launcher_fields.initial_focus_done,
+            fit_pending: &host.launcher_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2452,6 +2534,7 @@ impl DesktopSession {
             pending_window_resize: &host.switcher_fields.pending_window_resize,
             initial_resize_done: &host.switcher_fields.initial_resize_done,
             initial_focus_done: &host.switcher_fields.initial_focus_done,
+            fit_pending: &host.switcher_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2485,6 +2568,7 @@ impl DesktopSession {
             pending_window_resize: &host.notification_fields.pending_window_resize,
             initial_resize_done: &host.notification_fields.initial_resize_done,
             initial_focus_done: &host.notification_fields.initial_focus_done,
+            fit_pending: &host.notification_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2530,6 +2614,7 @@ impl DesktopSession {
             pending_window_resize: &host.settings_fields.pending_window_resize,
             initial_resize_done: &host.settings_fields.initial_resize_done,
             initial_focus_done: &host.settings_fields.initial_focus_done,
+            fit_pending: &host.settings_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2551,6 +2636,7 @@ impl DesktopSession {
             pending_window_resize: &host.desktop_fields.pending_window_resize,
             initial_resize_done: &host.desktop_fields.initial_resize_done,
             initial_focus_done: &host.desktop_fields.initial_focus_done,
+            fit_pending: &host.desktop_fields.fit_pending,
             vwin_rect: None,
         })
     }
@@ -2571,6 +2657,8 @@ pub struct SessionViewMut<'a> {
     pub pending_window_resize: &'a mut RefCell<Option<iced::Size>>,
     pub initial_resize_done: &'a mut Cell<bool>,
     pub initial_focus_done: &'a mut Cell<bool>,
+    /// Plan 504：内容自适应窗口待生效标记（见 [`WindowEntry::fit_pending`]）。
+    pub fit_pending: &'a Cell<bool>,
     /// desktop 模式持有本 App 虚拟窗口矩形（模型 window_* 变量落点）；
     /// 独立模式 None（走 iced::window::resize）。
     pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
@@ -2591,6 +2679,7 @@ impl<'a> SessionViewMut<'a> {
             pending_window_resize: self.pending_window_resize,
             initial_resize_done: self.initial_resize_done,
             initial_focus_done: self.initial_focus_done,
+            fit_pending: self.fit_pending,
             vwin_rect: self.vwin_rect,
         }
     }
@@ -2610,6 +2699,8 @@ pub struct SessionViewRef<'a> {
     pub pending_window_resize: &'a RefCell<Option<iced::Size>>,
     pub initial_resize_done: &'a Cell<bool>,
     pub initial_focus_done: &'a Cell<bool>,
+    /// Plan 504：内容自适应窗口待生效标记（见 [`WindowEntry::fit_pending`]）。
+    pub fit_pending: &'a Cell<bool>,
     pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
 }
 
@@ -3366,8 +3457,10 @@ mod tests {
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
+                name: None,
                 daemon: None,
                 back_root: None,
+                fit: false,
             })
         }));
         ds
@@ -3383,6 +3476,99 @@ mod tests {
         assert_eq!(host.wm.wins[&wid].title, "Probe App", "标题来自 LaunchSpec");
     }
 
+    /// Plan 504：LaunchSpec.fit → 新虚拟窗 fit_pending 置位（首帧测量
+    /// 收缩由 renderer 侧 fit_measure_task/__fit_measured 完成）。
+    #[test]
+    fn launch_app_fit_spec_marks_vwin_fit_pending() {
+        let mut ds = t4_session_with_resolver();
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: T4_PROBE_AT.to_string(),
+                source_path: None,
+                title: Some("Probe App".to_string()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: true,
+            })
+        }));
+        let wid = ds.launch_app("probe").expect("launch ok");
+        let host = ds.host.as_ref().unwrap();
+        assert!(
+            host.wm.wins[&wid].fit_pending.get(),
+            "LaunchSpec.fit=true → vwin fit_pending 置位"
+        );
+        assert!(ds.has_fit_pending(), "会话级 has_fit_pending 命中");
+    }
+
+    /// Plan 504 S7：launch_app 按 pac `name:` 读 os-config 应用配置并播种
+    /// 已声明 var（真实 home 文件往返；独立命名空间写后即删，不污染）。
+    #[test]
+    fn launch_app_seeds_osconfig_app_config() {
+        let probe = "__plan504_seed_probe__";
+        let cfg_dir = dirs::home_dir()
+            .expect("home")
+            .join(".config")
+            .join("autoos")
+            .join("apps")
+            .join(probe);
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        let cfg = cfg_dir.join("config.at");
+        std::fs::write(
+            &cfg,
+            "probe {\n    theme : \"light\"\n    accent : \"coral\"\n    mode : \"scientific\"\n}\n",
+        )
+        .unwrap();
+        let widget = "widget SeedProbe {\n    model {\n        var dark_mode bool = true\n        var accent_color str = \"indigo\"\n        var mode str = \"basic\"\n    }\n    view { text \"${.mode}\" }\n}\n";
+        let mut ds = t4_session_with_resolver();
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: widget.to_string(),
+                source_path: None,
+                title: Some("Seed Probe".to_string()),
+                name: Some(probe.to_string()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+            })
+        }));
+        let wid = ds.launch_app("probe").expect("launch ok");
+        let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
+        let comp = &ds.apps[&app].component;
+        assert_eq!(
+            comp.read_state("dark_mode").unwrap(),
+            auto_val::Value::Bool(false),
+            "os-config theme=light → dark_mode=false"
+        );
+        assert_eq!(
+            comp.read_state("accent_color").unwrap(),
+            auto_val::Value::str("coral")
+        );
+        assert_eq!(
+            comp.read_state("mode").unwrap(),
+            auto_val::Value::str("scientific")
+        );
+        std::fs::remove_dir_all(&cfg_dir).ok();
+    }
+
+    /// Plan 504：Opened 幂等覆盖不得抹掉 boot 臂置位的 fit_pending
+    /// （实测回归：覆盖重建 → has_fit_pending 恒假 → 首测永不触发）。
+    #[test]
+    fn register_window_overwrite_preserves_fit_pending() {
+        let mut ds = DesktopSession::__test_session();
+        let app = insert_app(&mut ds, "FitProbe");
+        let win = iced::window::Id::unique();
+        ds.register_window(win, app, iced::Size::new(1280.0, 800.0));
+        ds.windows[&win].fit_pending.set(true);
+        // Opened 兜底臂同键覆盖（尺寸事件值可能不同）。
+        ds.register_window(win, app, iced::Size::new(1280.0, 800.0));
+        assert!(
+            ds.windows[&win].fit_pending.get(),
+            "Opened 幂等覆盖后 fit_pending 保留"
+        );
+        assert!(ds.has_fit_pending());
+    }
+
     // ---- Plan 501：launch 执行臂 daemon 就绪 + env 注入 ----
 
     #[test]
@@ -3394,8 +3580,10 @@ mod tests {
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
+                name: None,
                 daemon: Some("autoos".to_string()),
                 back_root: None,
+                fit: false,
             })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
@@ -3427,8 +3615,10 @@ mod tests {
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
+                name: None,
                 daemon: Some("autoos".to_string()),
                 back_root: None,
+                fit: false,
             })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {

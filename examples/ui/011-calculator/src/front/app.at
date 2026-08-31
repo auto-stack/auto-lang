@@ -1,9 +1,9 @@
-use common.header: ExampleHeader
-
 // app.at — Calculator (Plan 403: expression engine + grid + multi-mode).
-// Features top title bar with Settings dropdown panel (Theme: Light/Dark + Accent: 5 colors).
-// Reuses ExampleHeader from common package.
-// Default theme: Dark mode.
+// Plan 504: 桌面化改造 —— 应用内 title bar / settings 面板移除（title/theme/
+// accent 上移 pac.at + os-config，宿主 chrome 承接）；外壳改"内容即页面"
+// （无 min-h-screen + center 包裹），配合 pac `window: "fit"` 窗口随内容收缩。
+// is_digit/pow 等通用函数不再应用内手写 —— 静态分发到 str.is_digit() /
+// math.pow()（Vue 端 TS 系统函数，VM 端 Rust 库函数）。
 //
 // Engine upgrade (需求 1c): the calculator now builds an expression STRING
 // (e.g. "2*(3+4)") and evaluates it on "=" with full operator precedence,
@@ -48,13 +48,8 @@ widget App {
 
     view {
         col {
-            // Reusable Top Title Bar & Settings from common package
-            ExampleHeader(icon: "🧮", title: "Calculator", badge: "011")
-
-            center {
-                col {
-                    // ── Display ──
-                    col {
+            // ── Display ──
+            col {
                         // Mode tabs
                         row {
                             style: "w-full gap-1 p-1"
@@ -204,15 +199,6 @@ widget App {
                     } else {
                         "w-96 bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl"
                     }
-                }
-                style: "flex-1 w-full p-8 items-center justify-center"
-            }
-
-            style: if .dark_mode {
-                "w-full min-h-screen bg-zinc-950 text-zinc-100"
-            } else {
-                "w-full min-h-screen bg-gray-50 text-gray-900"
-            }
         }
     }
 
@@ -325,12 +311,12 @@ fn eval_expr(input str) str {
             i = i + 1
         }
         // Number (digit or decimal point).
-        if is_digit(ch) || ch == "." {
+        if ch.is_digit() || ch == "." {
             var j int = i
             var num_str str = ""
             while j < n {
                 var c str = input.slice(j, j + 1)
-                if is_digit(c) || c == "." {
+                if c.is_digit() || c == "." {
                     num_str = num_str + c
                     j = j + 1
                 } else {
@@ -373,7 +359,7 @@ fn eval_expr(input str) str {
                     var num_str str = "-"
                     while j < n {
                         var c str = input.slice(j, j + 1)
-                        if is_digit(c) || c == "." {
+                        if c.is_digit() || c == "." {
                             num_str = num_str + c
                             j = j + 1
                         } else {
@@ -460,7 +446,7 @@ fn apply_top(nums List<str>, ops List<str>) bool {
         result = a / b
     }
     if op == "^" {
-        result = pow(a, b)
+        result = math.pow(a, b)
     }
     if op == "%" {
         result = a - b * (a / b)
@@ -501,40 +487,6 @@ fn fmt_num(v float) str {
     return v.to_string()
 }
 
-fn is_digit(ch str) bool {
-    if ch == "0" {
-        return true
-    }
-    if ch == "1" {
-        return true
-    }
-    if ch == "2" {
-        return true
-    }
-    if ch == "3" {
-        return true
-    }
-    if ch == "4" {
-        return true
-    }
-    if ch == "5" {
-        return true
-    }
-    if ch == "6" {
-        return true
-    }
-    if ch == "7" {
-        return true
-    }
-    if ch == "8" {
-        return true
-    }
-    if ch == "9" {
-        return true
-    }
-    return false
-}
-
 fn is_op(ch str) bool {
     if ch == "+" {
         return true
@@ -555,24 +507,4 @@ fn is_op(ch str) bool {
         return true
     }
     return false
-}
-
-fn pow(base float, exp float) float {
-    // Integer-exponent power (good enough for a calculator demo).
-    var e int = exp.to_int()
-    var result float = 1.0
-    if e >= 0 {
-        var k int = 0
-        while k < e {
-            result = result * base
-            k = k + 1
-        }
-    } else {
-        var k int = 0
-        while k < 0 - e {
-            result = result / base
-            k = k + 1
-        }
-    }
-    return result
 }
