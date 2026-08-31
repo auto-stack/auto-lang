@@ -38,6 +38,12 @@ class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGro
 机制为构建期 `SlotFills` 父 builder 捕获 + 五容器×双胎兄弟拼接，
 详见 [design/slot-substitution.md](design/slot-substitution.md)。
 
+**桌面视觉体系（plan-503 落地）**：stella-os 风格移植——accent 玫瑰粉（coral 校准
+#c4706a）、dock 图标格/激活竖条/运行圆点、弹层 glass 三件套（bg-card/80+细边+柔影，
+无 blur 降格 parity 条款）、壁纸 scrim、窗口 chrome（36px 标题栏/16px 圆角/三色圆点）、
+launcher 品牌色图标底块；引擎补齐 style 串循环成员插值 `${member.field}` 双端。
+详见 [design/desktop-shell.md](design/desktop-shell.md)。
+
 **桌面线（452→459→462→463→465 落地，464 未开工，386 暂缓）**：
 452 翻转"Windows 非 compositor"裁定并验证 IME/焦点分区可行 → 459 iced daemon 多 OS 窗口 +
 会话化（453 的 DesktopSession/AppSession 拆分）→ **462 路线 A 地基**：VirtualWindow widget
