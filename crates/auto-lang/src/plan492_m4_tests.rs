@@ -67,13 +67,15 @@ mod m4_pkg_compile_chain {
 
     /// C2 锚(无补丁基线): 三副本带参 msg 声明原生恢复(`msg { Init,
     /// Hover(int) }`),VM 渲染存活 + vue SFC 生成含 emit 派发。
+    /// Plan 498: 声明行随交互扩展增长(HoverSeries/SeriesOut 追加),
+    /// 锚改前缀匹配(意图 = 带参形态存在,非全串冻结)。
     #[test]
     fn c2_param_msg_declaration_both_tracks_alive() {
         for rel in copies() {
             for file in ["line_chart.at", "bar_chart.at", "area_chart.at", "donut_chart.at"] {
                 let src = std::fs::read_to_string(rel.join(file)).unwrap();
                 assert!(
-                    src.contains("msg { Init, Hover(int) }"),
+                    src.contains("msg { Init, Hover(int)"),
                     "{}/{} must declare the param msg form",
                     rel.display(),
                     file

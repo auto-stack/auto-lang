@@ -5,6 +5,11 @@
 //! aura 提取 → convert_mouse_area → View::MouseArea),onclick 臂以
 //! DynamicMessage::Typed 落树;iced lowering 臂的存活由 renderer.rs 的
 //! t496_walk clk 计数与 convert_view_messages 显式臂共同覆盖。
+//!
+//! M1+ 悬停态:四类图组件源(三副本同源,取 charts-gallery 份)直接
+//! build_dynamic_component,fire_init 后 call_handler 驱动交互态,view
+//! dump 断言高亮/转折点/显隐样式落图(svgdoc 内联;Debug dump 引号转义
+//! 为 `\"`,故断言用原始字符串书写字面 `=\"…\"` 形态)。
 
 #[cfg(feature = "ui-iced")]
 mod plan498_m0 {
@@ -69,5 +74,64 @@ widget ClickZone {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(feature = "ui-iced")]
+mod plan498_m1 {
+    /// charts-gallery 整 app 构建(四类图同屏,数据由 app 注入;组件 props
+    /// 不入 state,独立构建组件会缺 data 字段,故走消费方整包形态;路径
+    /// 必传——`use { package: official from "components" }` 按相对路径解析)。
+    fn build_gallery() -> Option<crate::ui::dynamic::DynamicComponent> {
+        let app = crate::plan370_test_support::locate_example_app_at("charts-gallery")?;
+        let code = std::fs::read_to_string(&app).ok()?;
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str()?)).ok()?;
+        dc.fire_init();
+        dc.set_route("/");
+        Some(dc)
+    }
+
+    fn dump(dc: &mut crate::ui::dynamic::DynamicComponent) -> String {
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        format!("{:?}", view)
+    }
+
+    /// M1:line 高亮——HoverSeries(0) 后该系列 path 落 stroke-width 3 +
+    /// opacity 1,其余系列 downplay 0.25,转折点圆圈浮现;SeriesOut 复原。
+    #[test]
+    fn plan498_line_emphasis_and_turning_points() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan498 M1: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let dump0 = dump(&mut dc);
+        assert!(dump0.contains(r#"stroke-width=\"2\""#), "常驻线宽 2 落图");
+        assert!(!dump0.contains(r#"r=\"3\""#), "常驻态无转折点圆圈");
+
+        dc.on_with_input_for("LineChart", "HoverSeries\u{1F}i\u{1F}0", None);
+        let dump1 = dump(&mut dc);
+        assert!(dump1.contains(r#"stroke-width=\"3\""#), "高亮线宽 3 落图");
+        assert!(dump1.contains(r#"stroke-opacity=\"1\""#), "高亮 opacity 1 落图");
+        assert!(dump1.contains(r#"stroke-opacity=\"0.25\""#), "downplay 0.25 落图");
+        assert!(dump1.contains(r#"r=\"3\""#), "转折点圆圈浮现(r=3)");
+
+        dc.on_with_input_for("LineChart", "SeriesOut", None);
+        let dump2 = dump(&mut dc);
+        assert!(dump2.contains(r#"stroke-opacity=\"0.85\""#), "离焦复原 0.85");
+        assert!(!dump2.contains(r#"r=\"3\""#), "转折点随离焦消失");
+    }
+
+    /// M1:area(line 同族)——HoverSeries 后 a/l 双 path 高亮落图。
+    #[test]
+    fn plan498_area_emphasis() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan498 M1: SKIPPED — charts-gallery not found");
+            return;
+        };
+        dc.on_with_input_for("AreaChart", "HoverSeries\u{1F}i\u{1F}1", None);
+        let dump = dump(&mut dc);
+        assert!(dump.contains(r#"fill-opacity=\"0.45\""#), "高亮面积 0.45 落图");
+        assert!(dump.contains(r#"stroke-width=\"3\""#), "高亮描边 3 落图");
+        assert!(dump.contains(r#"fill-opacity=\"0.08\""#), "downplay 面积 0.08 落图");
     }
 }

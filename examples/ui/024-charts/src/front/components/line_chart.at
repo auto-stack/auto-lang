@@ -1,4 +1,4 @@
-// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2 → Plan 492 M6)
+// components/line_chart.at - LineChart component (Plan 437 Phase 2 ① → Plan 484 v2 → Plan 492 M6 → Plan 498 M1)
 //
 // 折线图:linear scale + path;curve = "monotone" 走 d3 curveMonotoneX
 // (Fritsch-Carlson 单调三次插值,不过冲数据点)。渲染端 v1 = SVG 子树直通
@@ -11,15 +11,30 @@
 // 两存/花括号插值/裸挂 handler)随引擎修复(Plan 492 M1-M5)全部退役。
 // 保留纪律:条件引用的局部变量紧邻使用点声明(首个 for 之后)。
 //
+// 498 M1(emphasis 二态):图例行 mouse-area 触发 .HoverSeries(k)/
+// .SeriesOut 写 hoverSeries;view 每系列 path 三分支(高亮 3px+opacity 1 /
+// 常驻 2px+0.85 / downplay 2px+0.25),高亮系列浮现转折点圆圈(坐标 Init
+// 预计算,逐系列槽位 pts0..3;系列渲染随 path0..3 槽位化,弃 .segs 列表)。
+// 无悬停哨兵 = 9(越界正值)——view 条件对负数字面量(-1)比较恒假(引擎
+// 缺陷,plan498 实证),组件侧以哨兵规避。
+//
 // # Usage
 // use { package: official from "../components" }
 // line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
 widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
-    msg { Init, Hover(int) }
+    msg { Init, Hover(int), HoverSeries(int), SeriesOut }
 
     model {
-        segs List = []
+        path0 str = ""
+        path1 str = ""
+        path2 str = ""
+        path3 str = ""
+        pts0 List = []
+        pts1 List = []
+        pts2 List = []
+        pts3 List = []
+        hoverSeries int = 9
         xlabels str = ""
         xLab0 str = ""
         xLab1 str = ""
@@ -116,8 +131,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             var cs = .colors
             var ccount int = cs.len()
 
-            // ---- 段记录:curve prop 直接选变体(monotone=FC 标准形) ----
-            var outSegs List = []
+            // ---- 段记录:curve prop 直接选变体(monotone=FC 标准形);
+            //      498 M1:逐系列槽位(path0..3 + 转折点表 pts0..3)----
             var k = 0
             for f in .fields {
                 var ys List = []
@@ -125,6 +140,14 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     var vf float = d[f]
                     var yv float = bottom - vf / domainf * (bottom - plotTop)
                     ys.push(yv)
+                }
+                // 转折点坐标表(Init 预计算;hover 高亮时仅渲染该系列圆圈)
+                var ptsOut List = []
+                var pi = 0
+                for d in .data {
+                    var pxf float = left + pi * stepf
+                    ptsOut.push({ x: f"${pxf}", y: f"${ys[pi]}" })
+                    pi = pi + 1
                 }
                 var dstr = ""
                 if .curve == "monotone" {
@@ -193,31 +216,37 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                     ci = ccount - 1
                 }
                 var color = cs[ci]
-                outSegs.push({ d: dstr, c: color })
                 var name = f
                 var lname = .labels
                 if lname.len() > k {
                     name = lname[k]
                 }
                 if k == 0 {
+                    .path0 = dstr
+                    .pts0 = ptsOut
                     .legendColor0 = color
                     .legendText0 = name
                 }
                 if k == 1 {
+                    .path1 = dstr
+                    .pts1 = ptsOut
                     .legendColor1 = color
                     .legendText1 = name
                 }
                 if k == 2 {
+                    .path2 = dstr
+                    .pts2 = ptsOut
                     .legendColor2 = color
                     .legendText2 = name
                 }
                 if k == 3 {
+                    .path3 = dstr
+                    .pts3 = ptsOut
                     .legendColor3 = color
                     .legendText3 = name
                 }
                 k = k + 1
             }
-            .segs = outSegs
 
             // ---- x 轴标签:逐数据点槽位(≤20 全量对齐,超出等距抽样) ----
             var iname = .index
@@ -362,6 +391,15 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             .tipBody = tb
         }
         .HoverOut -> { .hovered = "false" }
+        .HoverSeries(k) -> { .hoverSeries = k }
+        .SeriesOut -> { .hoverSeries = 9 }
+    }
+
+    style {
+        /* 498 M1: emphasis 淡入——vue 走 CSS transition,VM 直接切换(双端
+           状态与几何同源,仅增强动画差异)。 */
+        path { transition: stroke-width 0.15s ease, stroke-opacity 0.15s ease, fill-opacity 0.15s ease; }
+        circle { transition: opacity 0.15s ease; }
     }
 
     view {
@@ -369,35 +407,43 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             if .legend {
                 row (style: "justify-end gap-4 pb-2") {
                     if .legendText0 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor0) {}
+                        mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut) {
+                            row (style: "items-center gap-1") {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor0) {}
+                                }
+                                text .legendText0 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText0 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText1 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor1) {}
+                        mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut) {
+                            row (style: "items-center gap-1") {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor1) {}
+                                }
+                                text .legendText1 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText1 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText2 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor2) {}
+                        mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut) {
+                            row (style: "items-center gap-1") {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor2) {}
+                                }
+                                text .legendText2 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText2 { style: "text-xs text-muted-foreground" }
                         }
                     }
                     if .legendText3 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor3) {}
+                        mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut) {
+                            row (style: "items-center gap-1") {
+                                svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                    rect (width: "8", height: "8", fill: .legendColor3) {}
+                                }
+                                text .legendText3 { style: "text-xs text-muted-foreground" }
                             }
-                            text .legendText3 { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }
@@ -420,8 +466,61 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                             }
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
-                            for seg in .segs {
-                                path (key: seg["d"], d: seg["d"], fill: "none", stroke: seg["c"], stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                            if .path0 != "" {
+                                if .hoverSeries == 0 {
+                                    path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
+                                    for p in .pts0 {
+                                        circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor0) {}
+                                    }
+                                } else {
+                                    if .hoverSeries == 9 {
+                                        path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                    } else {
+                                        path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                            }
+                            if .path1 != "" {
+                                if .hoverSeries == 1 {
+                                    path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
+                                    for p in .pts1 {
+                                        circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor1) {}
+                                    }
+                                } else {
+                                    if .hoverSeries == 9 {
+                                        path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                    } else {
+                                        path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                            }
+                            if .path2 != "" {
+                                if .hoverSeries == 2 {
+                                    path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
+                                    for p in .pts2 {
+                                        circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor2) {}
+                                    }
+                                } else {
+                                    if .hoverSeries == 9 {
+                                        path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                    } else {
+                                        path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
+                                    }
+                                }
+                            }
+                            if .path3 != "" {
+                                if .hoverSeries == 3 {
+                                    path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
+                                    for p in .pts3 {
+                                        circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor3) {}
+                                    }
+                                } else {
+                                    if .hoverSeries == 9 {
+                                        path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
+                                    } else {
+                                        path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
+                                    }
+                                }
                             }
                         }
                         if .tooltip {
