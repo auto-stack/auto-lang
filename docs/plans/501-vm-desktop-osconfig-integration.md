@@ -1,15 +1,20 @@
 ---
 plan_id: PLAN-501
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: vm-desktop-osconfig-integration
 author: [zhaopuming]
 created_at: 2026-08-31
 updated_at: 2026-08-31
 
-# /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+# /auto-plan:review 结束时填写（2026-08-31 复审）：
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 修改——shell-track 设置面板四分区 → 五分区（+系统）：settings.at 增「系统设置（全部模块）」入口卡（OpenSystemSettings → `launch\tos-config` 动词记录，offline 置灰「重试并打开」双态按钮——launch 每次重新探活零额外动词）+ 召唤快照注入 osconfig_state/osconfig_hint（badge_projection 三态投影 unknown/ready/offline + 原因）"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——app 注册表扫描单根 examples → 多根聚合（aggregate_scan：主根优先按 id 去重；extra 根 = storage `shell.apps.extra_dirs`（分号分隔，`id=path` 或 `path`）+ 相邻仓探测缺省 `../auto-os-config/auto`（id `os-config`；`shell.apps.scan_siblings=false` 可关））"
+  - "docs/specs/auto-lang/ui/overview.md: 修改——launch 执行臂增依赖面：pac 可选字段 `daemon: autoos`（跨仓 os-config 0e81196）→ ensure_ready（:17701 检活 ping > 发现序 spawn：storage `shell.osconfig.daemon` > 相邻仓 auto-os-config-back/target/release）→ `AUTOOS_DAEMON` env 进程注入；Offline 不阻断 launch（App 自带 daemon_view 连接 UX）+ 原因记 DesktopState.osconfig_status；pac `back: { project }` 外部 back cdylib 桩桥装载（Plan 061 链桌面补齐，set_external_back_root + load_back_cdylib，句柄驻 DesktopState.back_keepalive）"
+new_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 新增组件——os-config daemon 生命周期管理器（ui/osconfig_daemon.rs：DaemonStatus 三态 + DaemonIo 注入式检活〔std TCP 裸 HTTP /api/health——reqwest blocking 弃用避 tokio panic〕+ detached spawn〔Win DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP + stdio null，桌面退出不杀——共享服务语义〕+ 就绪轮询 ≤5s + badge_projection；端口约定 17701，spawn 期 `AUTOOS_BACK_PORT` 覆盖 daemon 缺省 17901）"
+touched_goals:                # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-009: 虚拟桌面与桌面 Shell——Design 25 S7 系统设置全量兑现：设置面板接通统一 settings center（os-config），入口 → daemon 懒起 → 模块列表 → 编辑落盘闭环（T3 集成档全链绿）"
 
 affects: [auto-lang/ui]
 current_step: 8
@@ -250,7 +255,45 @@ os-config App（既有 .at 前端）──http natives──▶ daemon(:17701) �
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**复审**（/auto-plan:review，2026-08-31，基线 plan-501-dev @ 779204fbf，复审修正 @ ff61b46ae）：
+
+### 验收标准逐条复验（verify, don't trust）
+
+| # | 验收标准 | 结论 | 证据 |
+|---|---|---|---|
+| 1 | T1–T3 绿；T4 实机清单 PASS 留痕 | **PASS** | 复跑：T1+T2 scoped 档 `--features ui-iced` osconfig_daemon 14/14 + app_registry 9/9 + session 58/58 + settings 9/9 + desktop_protocol 合计 **146/146 绿**；T3 `--test osconfig_integration` **1/1 绿**（1.07s，材料齐全真跑非跳档——daemon 起/就绪 ping/真相邻仓条目/launch/AUTOOS_DAEMON 注入/sys_host 非空/模块 ≥7/PUT 落盘断言全链）；T4 留痕核对（boot A/B 35vs34 相邻仓探测 live 生效、live spawn 2.52s/复用 774µs 零打扰、offline 徽标 T2 单测级三态注入）——残差人手点击链见债项 P501-2 |
+| 2 | G3 闭环可演示：入口 → 模块列表 → 改配置 → 文件落盘 | **PASS** | T3 六段面包屑即此闭环的 headless 全链（A daemon 起〔USERPROFILE/HOME 重定向零污染〕→ B 就绪 → C launch → D App Init 真数据 → E GET /api/modules ≥7 → F PUT ai-daemon.at 落盘内容断言 `t3-written`）；settings 入口渲染与派发由 T2 `settings_osconfig_entry_badge_and_launch_dispatch` 覆盖 |
+| 3 | examples 扫描零变化；`cargo t ui`/`cargo t session` 不回归；零警告 | **PASS** | 既有 `scan_examples_ui_finds_at_least_27_apps` + `launch_three_real_apps_via_registry_resolver` 复跑绿（聚合只增不改——aggregate_scan 主根优先）；renderer **92/92** 绿（较执行期 74 增量为并行 Plan 500 落码，非回归）；`cargo t` 全量 **3314/3314 绿**（13.2s，Category B 门禁——无编译器/VM/核心协议重构，未触发 cargo tf 条件）；警告核查：changed 行Ranges **0 警告**（json 诊断逐条映射到改动行段），lib 212 条 = master 基线既有；复审修正后 test target 零警告 |
+| 4 | 跨仓改动已落地折回，本仓不携带其仓代码 | **PASS** | os-config 仓 `0e81196` 在其 main（`git show` 核验：仅 auto/pac.at +6 行，`daemon: "autoos"` L17 在位；worktree/branch 已清）；本仓 diff 九文件无一携带 auto-os-config 仓源码（仅路径引用与 pac 字段消费） |
+
+**全量门禁（本计划生命周期唯一全量运行点）**：`cargo t` 3314/3314 全绿；
+ui-iced 特性档（默认档不可见面，P487-2/P496-2 盲区教训）补充 scoped
+146/146 + renderer 92/92 + T3 1/1。
+
+### 遗漏/延后/workaround 排查
+
+- **遗漏**：执行步骤 8/8 各有对应 commit（11d3c82d6..779204fbf 七枚）与
+  验证证据；§详细设计 1–4 各小项均落码。**复审修正二处**（@ ff61b46ae）：
+  ① osconfig_integration 死代码 `ToSocketAddrsOwned`（http_request 已直用
+  std ToSocketAddrs，残码致 ui-iced 档 dead_code 警告——违反零警告验收，
+  删 17 行复跑绿）；② session.rs `load_back_cdylib` 函数体列 0 缩进归位
+  （纯空白，与全文件风格一致）。
+- **延后**：daemon 发现序第 3 级 PATH 生产臂 v1 留扩展位（`lookup_path`
+  注入缝在位、生产恒 None）——理由：安装器/打包分发为计划非目标，PATH
+  发现仅安装态有意义；Offline 文案如实只列两级。登记债项 **P501-1**。
+  「桌面退出不杀」的"桌面带走"开关未做——待澄清② v1 明示裁定，非私自
+  缩减；vue 端维持非目标（待澄清④）。
+- **Workaround**：无新增 hack。三处执行期形态决策均已成因成文：reqwest
+  blocking 弃用改 std 裸 TCP ping（tokio 上下文 panic）；`AUTOOS_BACK_PORT`
+  spawn 期覆盖（daemon 缺省 17901 与生产 17701 分叉）；Plan 061 外部 back
+  cdylib 链桌面补齐（os-config vm 轨硬依赖，auto-man rust_ui 同型复刻）。
+  债项 P501-2：T4 人手点击链 GUI 像素自动化与 iced 活渲染栅格竞态不可靠
+  （479/487/496 前台竞争家族），headless 等价链全绿 + runbook 留痕。
+
+### 结论
+
+**四验收标准全 pass，无阻断债项**（P501-1/2 已登记债务台账）→
+`status: reviewed`，就绪 `/auto-plan:merge`。
 
 ## 待澄清事项
 
