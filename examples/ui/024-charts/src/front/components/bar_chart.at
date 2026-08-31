@@ -390,6 +390,7 @@ widget BarChart (data: List, index: str = "q", fields: List<str> = ["v"], colors
                             if .grid {
                                 path (d: .gridPath, stroke: "#e2e8f0", stroke-width: "1") {}
                             }
+                            line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             for seg in .segs {
                                 path (key: seg["d"], d: seg["d"], fill: seg["c"]) {}
