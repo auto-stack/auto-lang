@@ -12123,6 +12123,21 @@ fn compare_pngs(
                     continue;
                 }
                 let app_id = vwin.app;
+                // Plan 500 步骤 5：broker 表面窗（进程外 App）——客户区内容
+                // 取 child 上报帧的两态合成（queue=DrawList canvas 降级 /
+                // independent=RGBA Image），不再本地重渲染。非 broker 窗走
+                // 既有 dynamic_view 路径零变化。
+                if let Some(broker_client) =
+                    crate::ui::iced::broker_surface::broker_client_content(state, wid)
+                {
+                    let focused = host.wm.focused == Some(wid);
+                    layers.push(crate::ui::iced::virtual_window::virtual_window_element(
+                        vwin,
+                        focused,
+                        broker_client,
+                    ));
+                    continue;
+                }
                 let probe_hit = panic_probe_enabled()
                     && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst)
                         == app_id.0;

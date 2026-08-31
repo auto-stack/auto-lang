@@ -18,10 +18,21 @@ use std::collections::BTreeMap;
 
 use crate::ui::desktop_protocol::endpoint::HostEndpoint;
 use crate::ui::desktop_protocol::host::SurfaceStore;
-use crate::ui::desktop_protocol::message::DrawList;
+use crate::ui::desktop_protocol::message::{DrawList, FrameMsg, FrameMode};
 use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
 use crate::ui::desktop_protocol::transport::Transport;
 use crate::ui::session::{AppId, Wid};
+
+/// 像素臂前缓冲（v1.3）：一条 surface 的最新 RGBA 帧（宿主渲染臂据此
+/// 上传纹理；宿主侧"每 App 一份"表面驻留，与 SurfaceStore 命令帧同型）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PixelsSurface {
+    pub rgba: Vec<u8>,
+    pub w: u32,
+    pub h: u32,
+    pub stride: u32,
+    pub revision: u64,
+}
 
 /// 一条孵化连接的宿主侧状态（多 client 宿主的"每 App 一份"部分）。
 pub struct BrokerClient {
@@ -30,10 +41,12 @@ pub struct BrokerClient {
     pub end: Box<dyn Transport + Send>,
     pub endpoint: HostEndpoint,
     pub(crate) surfaces: SurfaceStore,
-    /// surface → shm 段（FrameReadyShared 载荷源）。
+    /// surface → shm 段（FrameReadyShared/FrameReadyPixels 载荷源）。
     pub(crate) shm: BTreeMap<u64, SharedFrameBuffer>,
     /// wid → surface 句柄。
     pub(crate) wid_surface: BTreeMap<u64, u64>,
+    /// surface → 像素前缓冲（v1.3 independent 臂；Commands 臂不用）。
+    pub(crate) pixels: BTreeMap<u64, PixelsSurface>,
     /// 落地后的会话对象（Active 后有效）。
     pub app_id: Option<AppId>,
     pub wid: Option<Wid>,
@@ -50,6 +63,7 @@ impl BrokerClient {
             surfaces: SurfaceStore::new(),
             shm: BTreeMap::new(),
             wid_surface: BTreeMap::new(),
+            pixels: BTreeMap::new(),
             app_id: None,
             wid: None,
             app_name: None,
@@ -60,6 +74,33 @@ impl BrokerClient {
     pub fn composed(&self) -> Option<&DrawList> {
         let surface = *self.wid_surface.get(&self.wid?.0)?;
         self.surfaces.front(surface)
+    }
+
+    /// 该 client 的像素前缓冲（v1.3 渲染臂/测试断言口）。
+    pub fn composed_pixels(&self) -> Option<&PixelsSurface> {
+        let surface = *self.wid_surface.get(&self.wid?.0)?;
+        self.pixels.get(&surface)
+    }
+
+    /// 像素帧合成（v1.3）：shm 槽读 RGBA → 前缓冲翻面。返回 FrameAck
+    /// （frame_id 原样回带；None = 无段/读失败，调用方不回 ack）。
+    pub fn compose_pixels(
+        &mut self,
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        w: u32,
+        h: u32,
+        stride: u32,
+    ) -> Option<FrameMsg> {
+        let rgba = self.shm.get(&surface)?.read_slot(slot).ok()?;
+        self.pixels.insert(
+            surface,
+            PixelsSurface { rgba, w, h, stride, revision },
+        );
+        Some(FrameMsg::FrameAck { wid, frame_id, slot })
     }
 }
 
@@ -738,6 +779,89 @@ mod tests {
         assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
         assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(43));
         assert_eq!(projector.revision(), 42, "revision 延续（快照 41 + 点击 1）");
+    }
+
+    /// Plan 500 步骤 5：宿主像素臂合成——HostEndpoint 收 FrameReadyPixels
+    /// → ComposeFramePixels 动作 → BrokerClient::compose_pixels 读 shm 槽
+    /// RGBA 入前缓冲 + FrameAck 回带（宽/高/stride/revision 元数据全链）。
+    #[test]
+    fn broker_pixels_compose_front_buffer() {
+        use crate::ui::desktop_protocol::endpoint::{HostAction, HostEndpoint};
+        use crate::ui::desktop_protocol::message::{
+            FrameMsg, HandshakeMsg, PixelFormat, ProtocolMsg, WRect,
+        };
+
+        // 端点：Hello → activate(Pixels) → Active。
+        let mut host = HostEndpoint::listen();
+        let hello = {
+            let mut app = super::super::endpoint::AppEndpoint::new(
+                super::super::pixels::PixelsNoopSource::new(),
+                "px",
+                "px",
+                32.0,
+                16.0,
+            );
+            app.connect().expect("hello")
+        };
+        let actions = host.on_message(hello).expect("host 状态机");
+        assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
+        host.activate(1, 9, 77, WRect::new(0.0, 0.0, 32.0, 16.0), FrameMode::Pixels)
+            .expect("activate");
+
+        // child 侧写 shm 槽（32×16 纯色帧，槽尺寸 = 像素上限）。
+        let shm_name = format!("autodesk-shm-px5-{}", std::process::id());
+        let slot_size = super::super::pixels::pixels_slot_size(32.0, 16.0);
+        let child_shm = SharedFrameBuffer::create(&shm_name, 2, slot_size).expect("child shm");
+        let rgba: Vec<u8> = std::iter::repeat([7u8, 8, 9, 255])
+            .take((32 * 16) as usize)
+            .flatten()
+            .collect();
+        child_shm.write_slot(1, &rgba).expect("write slot");
+
+        // 端点收 FrameReadyPixels → ComposeFramePixels。
+        let actions = host
+            .on_message(ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+                wid: 9,
+                frame_id: 4,
+                slot: 1,
+                damage: None,
+                revision: 12,
+                w: 32,
+                h: 16,
+                stride: 128,
+                format: PixelFormat::Rgba8,
+            }))
+            .expect("Active 收帧");
+        let HostAction::ComposeFramePixels {
+            surface, wid, frame_id, slot, revision, w, h, stride,
+        } = &actions[0]
+        else {
+            panic!("期待 ComposeFramePixels: {actions:?}");
+        };
+        assert_eq!((*wid, *frame_id, *slot, *revision, *w, *h, *stride), (9, 4, 1, 12, 32, 16, 128));
+
+        // BrokerClient 合成：宿主开同名段 → 前缓冲 + ack。
+        let pipe = format!("autodesk-px5-pipe-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let end = transport::connect(&pipe, 500).expect("connect");
+        let mut client = BrokerClient::new(pipe, end);
+        let host_shm = SharedFrameBuffer::open(&shm_name, 2, slot_size).expect("host shm");
+        client.shm.insert(*surface, host_shm);
+        client.wid = Some(Wid(9));
+        client.wid_surface.insert(9, *surface);
+        let ack = client.compose_pixels(
+            *surface, *wid, *frame_id, *slot, *revision, *w, *h, *stride,
+        )
+        .expect("compose");
+        assert_eq!(
+            ack,
+            FrameMsg::FrameAck { wid: 9, frame_id: 4, slot: 1 },
+            "ack 回带 frame_id/槽"
+        );
+        let front = client.composed_pixels().expect("前缓冲在册");
+        assert_eq!((front.w, front.h, front.stride, front.revision), (32, 16, 128, 12));
+        assert_eq!(front.rgba, rgba, "槽字节 = child 写入帧");
+        drop(listener);
     }
 
     /// S5 采样单测 + N=1/3/5 边际增量数字生成：阶段化 spawn（1 → 3 →

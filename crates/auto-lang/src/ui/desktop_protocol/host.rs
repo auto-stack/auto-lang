@@ -200,6 +200,22 @@ impl<'a> ProtocolHost<'a> {
                         }
                     }
                 }
+                HostAction::ComposeFramePixels { surface, wid, frame_id, slot, .. } => {
+                    // v1.3 像素臂（单 client 测试机件的最小处理）：shm 槽读
+                    // RGBA 成功即翻面回 ack（像素前缓冲驻留归 stage3 多 client
+                    // 宿主——BrokerClient::pixels）。
+                    let ready = self
+                        .shm_buffers
+                        .get(&surface)
+                        .and_then(|shm| shm.read_slot(slot).ok());
+                    if ready.is_some() {
+                        self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                            wid,
+                            frame_id,
+                            slot,
+                        }));
+                    }
+                }
                 HostAction::ReclaimWindow { wid } => {
                     // 462 Close 语义：窗随 App 移除，表面释放，通知 app。
                     let app_id = self.session.wm_remove_win(Wid(wid));

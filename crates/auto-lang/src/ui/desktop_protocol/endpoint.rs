@@ -395,6 +395,18 @@ pub enum HostAction {
     ComposeFrame { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, payload: DrawList },
     /// 共享内存变体（S9）：适配层从 shm 槽读载荷解码后合成。
     ComposeFrameShared { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, len: u32 },
+    /// 像素帧变体（v1.3）：适配层从 shm 槽读 RGBA 上传合成
+    /// （independent 臂；载荷解释随 Welcome 模式位）。
+    ComposeFramePixels {
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        w: u32,
+        h: u32,
+        stride: u32,
+    },
     /// app 确认退出/请求退出：回收虚拟窗（462 Close 语义）。
     ReclaimWindow { wid: u64 },
     /// 观测上行转发（MCP 代理的最小落点）。
@@ -488,6 +500,33 @@ impl HostEndpoint {
                     slot,
                     revision,
                     len,
+                }])
+            }
+            // v1.3 independent 臂：像素帧元数据 → 适配层 shm 读 RGBA 上传。
+            (
+                HostState::Active,
+                ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyPixels {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage: _,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                    format: _,
+                }),
+            ) => {
+                let surface = self.surface.expect("Active 即有 surface");
+                Ok(vec![HostAction::ComposeFramePixels {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    w,
+                    h,
+                    stride,
                 }])
             }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。

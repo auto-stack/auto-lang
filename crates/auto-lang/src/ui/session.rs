@@ -1271,6 +1271,10 @@ pub struct DesktopSession {
     /// 的 child 侧协议状态）。None = 非像素臂进程（既有路径零开销）。
     #[cfg(feature = "ui-iced")]
     pub pixels: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
+    /// Plan 500 步骤 5/6：broker 孵化的帧载荷模式（三态裁决链写入；
+    /// 缺省 Commands = 既有行为）。shm 槽尺寸与 Welcome 模式位据此定档。
+    #[cfg(feature = "ui-iced")]
+    pub broker_frame_mode: crate::ui::desktop_protocol::message::FrameMode,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1450,6 +1454,8 @@ impl DesktopSession {
             broker_stop: None,
             #[cfg(feature = "ui-iced")]
             pixels: None,
+            #[cfg(feature = "ui-iced")]
+            broker_frame_mode: Default::default(),
         }
     }
 
@@ -1829,19 +1835,29 @@ impl DesktopSession {
                     let wid = self.wm_add_win(app_id, title, rect);
                     let surface = client.surfaces.alloc(width, height);
                     client.wid_surface.insert(wid.0, surface);
+                    // Plan 500 步骤 5：槽尺寸随帧模式定档（Commands = 既有
+                    // 16KiB；Pixels = 像素上限——child 侧 pixels_slot_size 同式）。
+                    let frame_mode = self.broker_frame_mode;
+                    let slot_size = match frame_mode {
+                        crate::ui::desktop_protocol::message::FrameMode::Commands => 16384,
+                        crate::ui::desktop_protocol::message::FrameMode::Pixels => {
+                            crate::ui::desktop_protocol::pixels::pixels_slot_size(width, height)
+                        }
+                    };
                     // 全局唯一：pid 前缀防跨进程同名段（同 host.rs 注记）。
                     let shm_name =
                         format!("autodesk-shm-{}-{surface}", std::process::id());
-                    let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, 16384) else {
+                    let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, slot_size) else {
                         continue;
                     };
                     client.shm.insert(surface, shm);
+                    client.endpoint.frame_mode = frame_mode;
                     match client.endpoint.activate(
                         app_id.0,
                         wid.0,
                         surface,
                         rect_to_wire(&rect),
-                        client.endpoint.frame_mode, // v1.3 缺省 Commands（三态开关接入时改写）
+                        frame_mode,
                     ) {
                         Ok(welcome) => {
                             to_app.push(welcome);
@@ -1884,6 +1900,24 @@ impl DesktopSession {
                                 slot: freed,
                             }));
                         }
+                    }
+                }
+                // Plan 500 步骤 5：像素帧合成——shm 槽 RGBA → 前缓冲，
+                // FrameAck 归还槽（渲染臂据此上传纹理合成虚拟窗）。
+                HostAction::ComposeFramePixels {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                } => {
+                    if let Some(ack) = client.compose_pixels(
+                        surface, wid, frame_id, slot, revision, w, h, stride,
+                    ) {
+                        to_app.push(ProtocolMsg::Frame(ack));
                     }
                 }
                 HostAction::ReclaimWindow { wid } => {
