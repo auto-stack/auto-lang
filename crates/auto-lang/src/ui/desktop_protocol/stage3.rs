@@ -429,6 +429,8 @@ mod tests {
                     code: src.clone(),
                     source_path: None,
                     title: Some(n.clone()),
+                    name: None,
+                    fit: false,
                     daemon: None,
                     back_root: None,
                 })
@@ -684,6 +686,8 @@ mod tests {
                     code: src.clone(),
                     source_path: None,
                     title: Some(n.to_string()),
+                    name: None,
+                    fit: false,
                     daemon: None,
                     back_root: None,
                 })
