@@ -61,6 +61,20 @@ pub fn sink_desktop_below(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<(),
     Err(DockError::Api { op: "noop", code: 0 })
 }
 
+/// Plan 494：真洞 z 序翻转（no-op 平台同型失败）。
+pub fn raise_desktop_above(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<(), DockError> {
+    Err(DockError::Api { op: "noop", code: 0 })
+}
+
+/// Plan 494：Region 洞排除（no-op 平台同型失败；宿主层据此走回退路径）。
+pub fn apply_hole_regions(
+    _target: NativeHwnd,
+    _win: Rect,
+    _holes: &[Rect],
+) -> Result<(), DockError> {
+    Err(DockError::Api { op: "noop", code: 0 })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShowMode {
     Restore,

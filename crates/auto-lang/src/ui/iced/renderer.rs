@@ -7920,17 +7920,25 @@ fn execute_close_native(state: &mut crate::ui::session::DesktopSession, _slot_id
 /// + per-monitor DPI 缩放，§2 DPI 段），写入槽位客户区（标题条以下、边框
 /// 环内缩，chrome 露出），重申 z 序不变量（`sink_desktop_below`，勘误②），
 /// 回写 `slot_rect`。幂等：pending 为空即零开销。
+/// Plan 494：hole_mode 下 z 序不变量翻转为 `raise_desktop_above`（原生垫
+/// 桌面下方）+ 桌面窗 Region 洞排除（`apply_hole_regions`，视觉+输入穿透）；
+/// Region 失败自动回退 off（假洞 z 序重申 + 一行日志，storage 不回写）。
 #[cfg(windows)]
 fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
     use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
     use crate::ui::native_dock::{win32 as ndw, CoordMapper, LogicalRect};
 
+    let hole_mode = state.desktop.hole_mode;
     if state
         .host
         .as_ref()
         .map(|h| h.wm.pending_native_geometry.is_empty())
         .unwrap_or(true)
     {
+        // 无几何待排也要维持 Region 洞（undock/回收后的洞收缩）。
+        if hole_mode {
+            refresh_hole_regions(state);
+        }
         return;
     }
     let desktop_hwnd = match ndw::find_largest_own_window() {
@@ -7968,7 +7976,13 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
             continue;
         };
         let _ = ndw::set_bounds(hwnd, phys);
-        let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
+        // z 序不变量按模式分支（I3 配置差异：真洞=原生垫桌面下，假洞=原生
+        // 盖桌面上——473 原语义）。
+        if hole_mode {
+            let _ = ndw::raise_desktop_above(desktop_hwnd, hwnd);
+        } else {
+            let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
+        }
         if let Some(slot) = state
             .host
             .as_mut()
@@ -7979,6 +7993,66 @@ fn sync_native_geometry(state: &mut crate::ui::session::DesktopSession) {
         {
             slot.slot_rect = phys;
         }
+    }
+    if hole_mode {
+        refresh_hole_regions(state);
+    }
+}
+
+/// Plan 494：桌面窗 Region 洞排除重建——洞集 = 全部 docked 槽位客户区
+/// （`slot_rect`，屏幕物理域）。失败自动回退：hole_mode 置 off + 473 假洞
+/// z 序全量重申 + 一行日志（下次启动重试，storage 不回写）。
+#[cfg(windows)]
+fn refresh_hole_regions(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::native_dock::win32 as ndw;
+    let Some(desktop_hwnd) = ndw::find_largest_own_window() else {
+        return;
+    };
+    let Some(frame) = ndw::get_bounds(desktop_hwnd) else {
+        return;
+    };
+    refresh_hole_regions_at(state, desktop_hwnd, frame);
+}
+
+/// Plan 494：Region 重建核心（hwnd/矩形注入可测形态——T3 档测试以
+/// stale hwnd 驱动 Err 路径，兑现"回退路径实测一次"）。
+#[cfg(windows)]
+fn refresh_hole_regions_at(
+    state: &mut crate::ui::session::DesktopSession,
+    desktop_hwnd: crate::ui::native_dock::NativeHwnd,
+    frame: crate::ui::native_dock::Rect,
+) {
+    use crate::ui::native_dock::win32 as ndw;
+    let holes: Vec<crate::ui::native_dock::Rect> = state
+        .host
+        .as_ref()
+        .map(|h| {
+            h.wm.native_slots
+                .values()
+                .filter(|s| s.state == crate::ui::native_dock::SlotState::Docked)
+                .map(|s| s.slot_rect)
+                .collect()
+        })
+        .unwrap_or_default();
+    if ndw::apply_hole_regions(desktop_hwnd, frame, &holes).is_err() {
+        eprintln!("[session] hole region apply failed (fallback to fake-hole, Plan 494)");
+        state.desktop.hole_mode = false;
+        // 假洞 z 序全量重申（原生盖桌面，473 语义）。
+        let slots: Vec<crate::ui::native_dock::NativeHwnd> = state
+            .host
+            .as_ref()
+            .map(|h| {
+                h.wm.native_slots
+                    .values()
+                    .filter(|s| s.state == crate::ui::native_dock::SlotState::Docked)
+                    .map(|s| s.hwnd)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for hwnd in slots {
+            let _ = ndw::sink_desktop_below(desktop_hwnd, hwnd);
+        }
+        let _ = ndw::apply_hole_regions(desktop_hwnd, frame, &[]);
     }
 }
 
@@ -8334,6 +8408,15 @@ fn restore_all_native_slots(state: &mut crate::ui::session::DesktopSession) {
         }
         let _ = ndw::restore_corner_preference(hwnd);
     }
+    // Plan 494：桌面退出清 Region 洞（窗口将销毁，复位全窗形状——不留
+    // 带洞僵尸窗口在 OS 层）。
+    if state.desktop.hole_mode {
+        if let Some(desktop_hwnd) = ndw::find_largest_own_window() {
+            if let Some(frame) = ndw::get_bounds(desktop_hwnd) {
+                let _ = ndw::apply_hole_regions(desktop_hwnd, frame, &[]);
+            }
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -8382,6 +8465,12 @@ pub(crate) fn desktop_dock_edges() -> crate::ui::layout::ReservedEdges {
         edges.top = crate::ui::layout::TASKBAR_HEIGHT;
     }
     edges
+}
+
+/// Plan 494：真洞模式 boot 读入（storage `shell.native.hole`，"true" 开；
+/// 缺席/坏值 = off——坏配置不炸桌面，472 dock 配置同型）。
+fn load_native_hole_mode() -> bool {
+    crate::vm::ffi::stdlib::storage_host_read("shell.native.hole").as_deref() == Some("true")
 }
 
 /// Plan 472 T5：dock pinned 表（storage `shell.dock.pinned` 逗号分隔；
@@ -8668,6 +8757,10 @@ pub struct DesktopOptions {
     /// T7：应用注册表目录（扫描 `*/pac.at` → LaunchApp 目标）。None =
     /// 不装载注册表（LaunchApp 回 toast "registry unavailable"）。
     pub apps_dir: Option<std::path::PathBuf>,
+    /// Plan 494：真洞模式（docked 原生窗口垫桌面下方 + SetWindowRgn 洞
+    /// 排除）。boot 期与 `shell.native.hole` storage 键取或（472 dock 配置
+    /// 同型）；运行时失败自动回退 off。
+    pub hole_mode: bool,
 }
 
 /// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
@@ -8947,6 +9040,9 @@ fn compare_pngs(
                 // Plan 472 T4：dock 数据级配置（shell.dock.* storage 键）→
                 // 布局预留边；缺席回退 pack 默认 bottom/48。v1 boot 读一次。
                 session.desktop.dock_edges = desktop_dock_edges();
+                // Plan 494：真洞模式位（`shell.native.hole` storage >
+                // DesktopOptions 程序位取或；缺席 = off）。
+                session.desktop.hole_mode = opts.hole_mode || load_native_hole_mode();
                 // Plan 479 T5：通知历史 boot 恢复（storage 定长槽
                 // shell.notes.0..9 读回会话域——I9 单一事实，桌面模式限定）。
                 restore_notifications(&mut session);
@@ -18130,6 +18226,48 @@ mod tests {
         assert_eq!(e.top, 0.0);
 
         let _ = std::fs::remove_file(&_store);
+    }
+
+    /// Plan 494：真洞模式位 boot 读入——`shell.native.hole`=="true" 开，
+    /// 缺席/坏值 off（隔离同 489-dock-edges 型：storage 全局态防跨测污染）。
+    #[test]
+    fn native_hole_mode_reads_storage_key() {
+        let _store = t2_isolate_storage("494-hole-mode");
+        let key = "shell.native.hole";
+        crate::vm::ffi::stdlib::storage_raw_remove(key);
+        // 缺省 off。
+        assert!(!load_native_hole_mode());
+        // 坏值 off。
+        crate::vm::ffi::stdlib::storage_raw_set(key.into(), "yes".into());
+        assert!(!load_native_hole_mode());
+        // "true" 开。
+        crate::vm::ffi::stdlib::storage_raw_set(key.into(), "true".into());
+        assert!(load_native_hole_mode());
+        crate::vm::ffi::stdlib::storage_raw_remove(key);
+        let _ = std::fs::remove_file(&_store);
+    }
+
+    /// Plan 494 验收 3：Region 失败回退路径实测一次——stale hwnd 驱动
+    /// `apply_hole_regions` Err → hole_mode 翻 off + 假洞 z 重申路径执行
+    ///（无 slot 时重申空转，仅断言模式翻转与日志路径可达）。
+    #[cfg(all(windows, feature = "test-native-dock"))]
+    #[test]
+    fn hole_region_fallback_flips_mode_off() {
+        use crate::ui::native_dock::win32 as ndw;
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        ds.desktop.hole_mode = true;
+        // 真 scratch 窗创建后销毁 → stale hwnd（alive 检查必 Err，回退分支
+        // 全程真实执行）。
+        let scratch = ndw::test_support::spawn(
+            "e2e-fallback-dead",
+            crate::ui::native_dock::Rect::new(60, 60, 200, 120),
+        );
+        let dead = scratch.0;
+        drop(scratch);
+        let frame = crate::ui::native_dock::Rect::new(0, 0, 800, 600);
+        refresh_hole_regions_at(&mut ds, dead, frame);
+        assert!(!ds.desktop.hole_mode, "Region 失败应自动回退 off（假洞语义）");
     }
 
     /// Plan 487 M4：set_dock_position/enabled 执行臂——storage 键写回 +

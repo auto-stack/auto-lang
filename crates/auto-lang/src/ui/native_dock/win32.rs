@@ -386,6 +386,127 @@ pub fn sink_desktop_below(desktop: NativeHwnd, slot: NativeHwnd) -> Result<(), D
 }
 
 // ---------------------------------------------------------------------------
+// Plan 494：真洞（z 序翻转 + SetWindowRgn 洞排除）
+// ---------------------------------------------------------------------------
+
+/// 真洞 z 序不变量：把 `slot` 沉到桌面窗口正下方（⟺ 桌面紧贴 slot 正上方
+/// ——473 假洞"slot 盖桌面"的翻转）。与 [`sink_desktop_below`] 参数对调、
+/// 单步即达（`SetWindowPos(slot, desktop)`）；relayout 重申幂等。
+/// 不动几何、不抢激活。
+pub fn raise_desktop_above(desktop: NativeHwnd, slot: NativeHwnd) -> Result<(), DockError> {
+    if !alive(desktop) {
+        return Err(DockError::StaleHwnd);
+    }
+    if !alive(slot) {
+        return Err(DockError::StaleHwnd);
+    }
+    unsafe {
+        SetWindowPos(
+            hwnd_of(slot),
+            hwnd_of(desktop),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+    }
+    .map_err(|e| DockError::from_err("SetWindowPos(raise desktop)", e))
+}
+
+/// 目标窗口客户区原点的屏幕物理坐标（`GetClientRect` + `ClientToScreen`
+/// ——跨进程客户区坐标换算的断言基准，494 T3 E2E 用）。
+pub fn client_origin(target: NativeHwnd) -> Option<(i32, i32)> {
+    if !alive(target) {
+        return None;
+    }
+    unsafe {
+        let hwnd = hwnd_of(target);
+        let mut rc = RECT::default();
+        windows::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &mut rc).ok()?;
+        let mut pt = POINT { x: rc.left, y: rc.top };
+        windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut pt)
+            .as_bool()
+            .then_some((pt.x, pt.y))
+    }
+}
+
+/// 真洞 Region 排除：把 `holes`（屏幕物理矩形）从目标窗口的形状中扣除
+/// （`SetWindowRgn` 窗口局部域，经 [`crate::ui::native_dock::window_local_holes`]
+/// 裁剪换算）。洞区内窗口不存在——视觉透出 z 序下层 + 点击直达（OS 区域
+/// 语义，无同线程限制）。`holes` 为空 → 复位全窗。
+/// 成功后 Region 归系统所有（不 DeleteObject）；失败自清理。
+/// 注：`SetWindowRgn(hwnd, None, false)` 不触发重绘（relayout 高频重申无闪）。
+pub fn apply_hole_regions(
+    target: NativeHwnd,
+    win: Rect,
+    holes: &[Rect],
+) -> Result<(), DockError> {
+    use windows::Win32::Graphics::Gdi::{
+        CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn as GdiSetWindowRgn, HGDIOBJ,
+        HRGN, RGN_DIFF,
+    };
+    if !alive(target) {
+        return Err(DockError::StaleHwnd);
+    }
+    let hwnd = hwnd_of(target);
+    unsafe {
+        if holes.is_empty() {
+            // None=0 复位为全窗口形状（undock/桌面退出清理路径）。
+            let r = GdiSetWindowRgn(hwnd, HRGN(std::ptr::null_mut()), false);
+            if r == -1 {
+                return Err(DockError::Api {
+                    op: "SetWindowRgn(reset)",
+                    code: 0,
+                });
+            }
+            return Ok(());
+        }
+        let full = CreateRectRgn(0, 0, win.w, win.h);
+        if full.is_invalid() {
+            return Err(DockError::Api {
+                op: "CreateRectRgn(full)",
+                code: 0,
+            });
+        }
+        let mut combined = full;
+        for local in crate::ui::native_dock::window_local_holes(win, holes) {
+            let hole = CreateRectRgn(local.x, local.y, local.right(), local.bottom());
+            if hole.is_invalid() {
+                let _ = DeleteObject(HGDIOBJ(combined.0));
+                return Err(DockError::Api {
+                    op: "CreateRectRgn(hole)",
+                    code: 0,
+                });
+            }
+            let out = CreateRectRgn(0, 0, 0, 0);
+            let code = CombineRgn(out, combined, hole, RGN_DIFF);
+            // out = combined - hole；释放旧 combined 与 hole，保留 out。
+            let _ = DeleteObject(HGDIOBJ(combined.0));
+            let _ = DeleteObject(HGDIOBJ(hole.0));
+            if code == windows::Win32::Graphics::Gdi::GDI_REGION_TYPE(0) {
+                let _ = DeleteObject(HGDIOBJ(out.0));
+                return Err(DockError::Api {
+                    op: "CombineRgn(RGN_DIFF)",
+                    code: 0,
+                });
+            }
+            combined = out;
+        }
+        let r = GdiSetWindowRgn(hwnd, combined, false);
+        if r == -1 {
+            let _ = DeleteObject(HGDIOBJ(combined.0));
+            return Err(DockError::Api {
+                op: "SetWindowRgn(carve)",
+                code: 0,
+            });
+        }
+        // 成功：Region 所有权移交系统。
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 显示态（ShowWindow / WM_CLOSE）
 // ---------------------------------------------------------------------------
 
@@ -943,6 +1064,122 @@ pub mod drag_sim {
 }
 
 // ---------------------------------------------------------------------------
+// Plan 494 T3：E2E 测试支持（feature `test-native-dock` 独占；生产二进制
+// 不编译）——进程内 scratch 顶层窗（DefWindowProc + 消息泵），供
+// tests/native_dock_e2e.rs 充当"桌面替身"窗（Region 洞/z 序断言载体）。
+// ---------------------------------------------------------------------------
+
+#[cfg(all(windows, feature = "test-native-dock"))]
+pub mod test_support {
+    use super::{hwnd_of, hwnd_value, NativeHwnd, Rect};
+    use std::sync::OnceLock;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::HiDpi::{
+        SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, PeekMessageW,
+        RegisterClassW, SetWindowPos, TranslateMessage, HWND_TOPMOST, WINDOW_EX_STYLE, MSG,
+        PM_REMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WNDCLASSW,
+        WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    };
+
+    fn class_name() -> &'static [u16] {
+        static NAME: OnceLock<Vec<u16>> = OnceLock::new();
+        NAME.get_or_init(|| "auto_lang_e2e_scratch ".encode_utf16().collect())
+    }
+
+    unsafe extern "system" fn wndproc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+
+    /// 进程内 scratch 顶层窗（返回 NativeHwnd；Drop 即 DestroyWindow）。
+    /// 与生产宿主对齐声明 per-monitor v2（坐标域一致）。
+    pub struct Scratch(pub NativeHwnd);
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = DestroyWindow(hwnd_of(self.0));
+            }
+        }
+    }
+
+    pub fn spawn(title: &str, rect: Rect) -> Scratch {
+        static DONE: OnceLock<()> = OnceLock::new();
+        DONE.get_or_init(|| unsafe {
+            let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            let hmodule = GetModuleHandleW(None).expect("GetModuleHandleW");
+            let wc = WNDCLASSW {
+                lpfnWndProc: Some(wndproc),
+                hInstance: HINSTANCE(hmodule.0),
+                lpszClassName: PCWSTR(class_name().as_ptr()),
+                ..Default::default()
+            };
+            assert_ne!(RegisterClassW(&wc), 0, "RegisterClassW failed");
+        });
+        let mut title_w: Vec<u16> = title.encode_utf16().collect();
+        title_w.push(0);
+        let hmodule = unsafe { GetModuleHandleW(None) }.expect("GetModuleHandleW");
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE::default(),
+                PCWSTR(class_name().as_ptr()),
+                PCWSTR(title_w.as_ptr()),
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                rect.x,
+                rect.y,
+                rect.w,
+                rect.h,
+                HWND::default(),
+                windows::Win32::UI::WindowsAndMessaging::HMENU::default(),
+                hmodule,
+                None,
+            )
+        }
+        .expect("CreateWindowExW failed");
+        Scratch(NativeHwnd(hwnd_value(hwnd)))
+    }
+
+    /// 提 TOPMOST 带（E2E 后台进程窗不自动置顶——终端遮挡候选摆位）。
+    pub fn raise_topmost(h: NativeHwnd) {
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd_of(h),
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            );
+        }
+    }
+
+    /// 泵该窗消息队列至多 `ms` 毫秒（WM_NCHITTEST 同步送达需泵）。
+    pub fn pump_for(h: NativeHwnd, ms: u64) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        while std::time::Instant::now() < deadline {
+            let mut msg = MSG::default();
+            unsafe {
+                while PeekMessageW(&mut msg, hwnd_of(h), 0, 0, PM_REMOVE).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    let _ = DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // T2：Win32 几何集成测试——全部针对本进程 scratch 窗口，无第三方依赖
 // ---------------------------------------------------------------------------
 
@@ -960,7 +1197,8 @@ mod native_dock_geometry {
     use windows::Win32::UI::WindowsAndMessaging::HMENU;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindow,
-        PeekMessageW, RegisterClassW, TranslateMessage, CW_USEDEFAULT, GW_HWNDPREV, MSG,
+        PeekMessageW, RegisterClassW, TranslateMessage, CW_USEDEFAULT, GW_HWNDNEXT, GW_HWNDPREV,
+        MSG,
         PM_REMOVE, WINDOW_EX_STYLE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
 
@@ -1131,6 +1369,123 @@ mod native_dock_geometry {
         assert!(
             ok,
             "sink_desktop_below 后 slot 应紧贴桌面正上方（重试 20 次仍被扰动）"
+        );
+    }
+
+    /// 自 `hwnd` 向下走 z 链，取第一个**可见**窗口（IME 伴随窗
+    /// （Default IME / MSCTFIME UI）不可见且楔入相邻位——直接 prev 断言
+    /// 在带输入法的环境恒假，实测教训）。
+    fn first_visible_below(hwnd: HWND) -> Option<HWND> {
+        let mut cur = hwnd;
+        for _ in 0..64 {
+            let next = unsafe { GetWindow(cur, GW_HWNDNEXT) }.ok()?;
+            if next.is_invalid() || next.0.is_null() {
+                return None;
+            }
+            if unsafe { IsWindowVisible(next) }.as_bool() {
+                return Some(next);
+            }
+            cur = next;
+        }
+        None
+    }
+
+    /// Plan 494 T5：真洞 z 序不变量——raise_desktop_above(desktop, slot) 后
+    /// slot 紧贴桌面正下方（prev(slot) == desktop）。
+    #[test]
+    fn z_order_true_hole_desktop_above_native() {
+        let desktop = scratch("hole-desktop");
+        let target = scratch("hole-native");
+        let desktop_h = NativeHwnd(hwnd_value(desktop.0));
+        let target_h = NativeHwnd(hwnd_value(target.0));
+        let mut ok = false;
+        for _ in 0..20 {
+            raise_desktop_above(desktop_h, target_h).expect("raise desktop above slot");
+            if first_visible_below(desktop.0) == Some(target.0) {
+                ok = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            ok,
+            "raise_desktop_above 后 desktop 应紧贴 slot 正上方（真洞不变量）"
+        );
+    }
+
+    /// Plan 494 T5：Region 洞排除——apply_hole_regions 后洞区命中测试直达
+    /// z 序下层窗（WindowFromPoint），洞外仍命中本窗；空表复位全窗。
+    /// 摆位：候选点轮询直到 pair 不被终端等前台窗遮挡（spike② 同型教训）。
+    #[test]
+    fn hole_region_carves_input_pass_through() {
+        let bottom = scratch("hole-region-bottom");
+        let top = scratch("hole-region-top");
+        let bottom_h = NativeHwnd(hwnd_value(bottom.0));
+        let top_h = NativeHwnd(hwnd_value(top.0));
+        let hit = |x: i32, y: i32| unsafe {
+            hwnd_value(windows::Win32::UI::WindowsAndMessaging::WindowFromPoint(POINT { x, y }))
+        };
+        // top 完整覆盖 bottom 并压其上（真洞 z 序）；候选摆位到无遮挡点。
+        let mut brect = Rect::new(400, 300, 640, 440);
+        let mut settled = false;
+        for cand in [(400, 300), (900, 200), (1500, 500), (200, 900), (1400, 1000)] {
+            brect = Rect::new(cand.0, cand.1, 640, 440);
+            set_bounds(bottom_h, brect).expect("place bottom");
+            set_bounds(top_h, brect).expect("cover bottom");
+            // 后台进程的新窗不自动置顶——pair 提 TOPMOST 带（终端/IDE 覆盖
+            // 候选点时 WindowFromPoint 全部落空，spike② 同型教训）。
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+                };
+                let _ = SetWindowPos(
+                    hwnd_of(top_h),
+                    HWND_TOPMOST,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+                );
+            }
+            raise_desktop_above(top_h, bottom_h).expect("top above bottom");
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            // 就位自检：非洞点命中 top（若被终端遮挡则换点）。
+            if hit(brect.x + 20, brect.y + 20) == hwnd_value(top.0) {
+                settled = true;
+                break;
+            }
+        }
+        assert!(settled, "未找到无遮挡摆位（终端覆盖全部候选点？）");
+        // 洞 = pair 中心 120x120（屏幕物理坐标；函数内部换算窗口局部域）。
+        let hole_screen = Rect::new(
+            brect.x + brect.w / 2 - 60,
+            brect.y + brect.h / 2 - 60,
+            120,
+            120,
+        );
+        apply_hole_regions(top_h, brect, &[hole_screen]).expect("carve hole");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        // 洞心：命中直达 bottom（区域语义——窗口在洞内不存在）。
+        let hole_pt = (hole_screen.x + 60, hole_screen.y + 60);
+        assert_eq!(
+            hit(hole_pt.0, hole_pt.1),
+            hwnd_value(bottom.0),
+            "洞心命中应直达下层窗（Region 排除）"
+        );
+        // 洞外（top 左上角内、洞矩形外）：仍命中 top。
+        assert_eq!(
+            hit(brect.x + 20, brect.y + 20),
+            hwnd_value(top.0),
+            "洞外命中应仍是 top"
+        );
+        // 复位：空表 → 全窗形状恢复（洞心回到 top）。
+        apply_hole_regions(top_h, brect, &[]).expect("reset region");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(
+            hit(hole_pt.0, hole_pt.1),
+            hwnd_value(top.0),
+            "Region 复位后洞心应回到 top"
         );
     }
 

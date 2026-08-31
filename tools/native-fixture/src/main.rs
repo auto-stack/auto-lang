@@ -18,6 +18,7 @@
 //! 输出（每行一个 JSON 对象，stdout）：
 //!   {"evt":"start","hwnd":"0x…","pid":N,"title":"…"}
 //!   {"evt":"bounds","x":N,"y":N,"w":N,"h":N}   （位置/尺寸变化后回显实际值）
+//!   {"evt":"click","x":N,"y":N}                （Plan 494 T3：客户区点击坐标）
 //!   {"evt":"drop","formats":[…],"text":…,"files":[…]}  （Plan 488 拖入日志）
 //!   {"evt":"dragend","effect":"copy|move|link|none"}   （Plan 488 拖出完成）
 //!   {"evt":"close"}
@@ -606,17 +607,23 @@ mod win {
                     }
                     DefWindowProcW(hwnd, msg, wparam, lparam)
                 }
-                WM_LBUTTONDOWN if OPTS.get().and_then(|o| o.offer.as_ref()).is_some() => {
-                    // Plan 488 --offer：客户区按下即拖（按下时刻左键在按住
-                    // 态——真拖拽语义；DoDragDrop 内部自泵消息至落下/取消）。
-                    if OPTS.get().map(|o| o.trace).unwrap_or(false) {
-                        emit("{\"evt\":\"trace\",\"msg\":\"offer-press\"}");
-                    }
-                    if let Some(offer) = OPTS.get().and_then(|o| o.offer.clone()) {
-                        dnd::start_drag(&offer);
+                WM_LBUTTONDOWN => {
+                    // Plan 494 T3：点击坐标日志（client 域，JSON lines——穿透
+                    // E2E 的断言源）。--offer 模式叠加拖源触发（点击先记后拖）。
+                    let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
+                    let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+                    emit(&format!("{{\"evt\":\"click\",\"x\":{x},\"y\":{y}}}"));
+                    if OPTS.get().and_then(|o| o.offer.as_ref()).is_some() {
+                        if OPTS.get().map(|o| o.trace).unwrap_or(false) {
+                            emit("{\"evt\":\"trace\",\"msg\":\"offer-press\"}");
+                        }
+                        if let Some(offer) = OPTS.get().and_then(|o| o.offer.clone()) {
+                            dnd::start_drag(&offer);
+                        }
                     }
                     LRESULT(0)
                 }
+
                 WM_WINDOWPOSCHANGED => {
                     // 回显实际 rect（写后读回断言的被动响应路径）。
                     let mut r = RECT::default();

@@ -274,6 +274,10 @@ pub struct DesktopState {
     /// 后以 {id,icon} Obj 数组注入 shell `__dock_pinned`（.at 无法自注册表
     /// 解析图标；平行 Obj 数组为 view 消费已证形态）。
     pub dock_pinned: Vec<String>,
+    /// Plan 494：真洞模式位（boot 期读 `shell.native.hole` storage，默认
+    /// off）。on = docked 原生窗口垫到桌面窗口下方 + SetWindowRgn 洞排除
+    /// （视觉+输入穿透）；运行时回退（win32 失败）置回 false 并留日志。
+    pub hole_mode: bool,
 }
 
 impl DesktopState {
@@ -303,6 +307,7 @@ impl DesktopState {
                 "013-todo".to_string(),
                 "015-notes".to_string(),
             ],
+            hole_mode: false,
         }
     }
 
