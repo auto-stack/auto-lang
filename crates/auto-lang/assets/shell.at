@@ -85,29 +85,30 @@ widget Desktop {
             if .__dock_position == "top" {
                 if .__dock_enabled == "1" {
                     taskbar {
-                        style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-b"
+                        style: "h-14 w-full flex items-center gap-2 px-2 bg-card border-b"
 
+                        // Plan 503：launcher 召唤钮随图标格加大并 rounded-xl。
                         button "⊞" {
                             onclick: .SummonLauncher
-                            style: "h-8 w-10 px-0 text-xs"
+                            style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
                         }
+                        // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
+                        // 运行指示改 4px accent 圆点(替换 "●" text hack)。
                         for p in .__dock_pinned {
                             row {
-                                style: "items-center gap-0"
+                                style: "items-center gap-1"
                                 button (icon: p.icon) {
                                     onclick: .ActivateApp(p.id)
-                                    style: "h-9 w-9 px-0 text-sm"
+                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
                                 }
                                 if .__wm_running.contains("," + p.id + ",") {
-                                    text "●" {
-                                        style: "text-success text-xs"
-                                    }
+                                    div { style: "h-1 w-1 rounded-full bg-primary" }
                                 }
                             }
                         }
                         for w in .__wm_wins {
                             row {
-                                style: "items-center gap-0"
+                                style: "items-center gap-1"
                                 // v1.3：native 条目（native=="1"）——title 文本
                                 // 按钮（无注册表图标，title 即身份）+ native 动词；
                                 // App 条目走既有图标按钮路径。
@@ -121,14 +122,26 @@ widget Desktop {
                                         style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                     }
                                 } else {
+                                    // Plan 503：激活窗 2px accent 竖条 + 图标格
+                                    // accent-light 底(stella 激活态范式)。
+                                    if w.focused == "1" {
+                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
+                                    }
                                     // Plan 497 G5：条目 hover 预览（422 popover
                                     // 先例，widget 锚=条目按钮；内容=真缩略，
                                     // miss 由渲染臂 fallback icon 兜底）。
                                     mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
                                         popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
-                                            button (icon: w.icon) {
-                                                onclick: .WinFocus(w.wid)
-                                                style: "h-9 w-9 px-0 text-sm"
+                                            if w.focused == "1" {
+                                                button (icon: w.icon) {
+                                                    onclick: .WinFocus(w.wid)
+                                                    style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
+                                                }
+                                            } else {
+                                                button (icon: w.icon) {
+                                                    onclick: .WinFocus(w.wid)
+                                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
+                                                }
                                             }
                                             window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
                                         }
@@ -244,29 +257,30 @@ widget Desktop {
             if .__dock_position != "top" {
                 if .__dock_enabled == "1" {
                     taskbar {
-                        style: "h-12 w-full flex items-center gap-1 px-2 bg-card border-t"
+                        style: "h-14 w-full flex items-center gap-2 px-2 bg-card border-t"
 
+                        // Plan 503：launcher 召唤钮随图标格加大并 rounded-xl。
                         button "⊞" {
                             onclick: .SummonLauncher
-                            style: "h-8 w-10 px-0 text-xs"
+                            style: "h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
                         }
+                        // Plan 503：dock 图标格 48px rounded-xl(stella 签名),
+                        // 运行指示改 4px accent 圆点(替换 "●" text hack)。
                         for p in .__dock_pinned {
                             row {
-                                style: "items-center gap-0"
+                                style: "items-center gap-1"
                                 button (icon: p.icon) {
                                     onclick: .ActivateApp(p.id)
-                                    style: "h-9 w-9 px-0 text-sm"
+                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
                                 }
                                 if .__wm_running.contains("," + p.id + ",") {
-                                    text "●" {
-                                        style: "text-success text-xs"
-                                    }
+                                    div { style: "h-1 w-1 rounded-full bg-primary" }
                                 }
                             }
                         }
                         for w in .__wm_wins {
                             row {
-                                style: "items-center gap-0"
+                                style: "items-center gap-1"
                                 // v1.3：native 条目（native=="1"）——title 文本
                                 // 按钮（无注册表图标，title 即身份）+ native 动词；
                                 // App 条目走既有图标按钮路径。
@@ -280,14 +294,26 @@ widget Desktop {
                                         style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                     }
                                 } else {
+                                    // Plan 503：激活窗 2px accent 竖条 + 图标格
+                                    // accent-light 底(stella 激活态范式)。
+                                    if w.focused == "1" {
+                                        div { style: "w-0.5 h-5 rounded-full bg-primary" }
+                                    }
                                     // Plan 497 G5：条目 hover 预览（422 popover
                                     // 先例，widget 锚=条目按钮；内容=真缩略，
                                     // miss 由渲染臂 fallback icon 兜底）。
                                     mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
                                         popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
-                                            button (icon: w.icon) {
-                                                onclick: .WinFocus(w.wid)
-                                                style: "h-9 w-9 px-0 text-sm"
+                                            if w.focused == "1" {
+                                                button (icon: w.icon) {
+                                                    onclick: .WinFocus(w.wid)
+                                                    style: "h-12 w-12 px-0 text-base rounded-xl bg-primary/15"
+                                                }
+                                            } else {
+                                                button (icon: w.icon) {
+                                                    onclick: .WinFocus(w.wid)
+                                                    style: "h-12 w-12 px-0 text-base rounded-xl hover:bg-primary/10"
+                                                }
                                             }
                                             window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
                                         }

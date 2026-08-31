@@ -50,15 +50,16 @@ widget NotificationCenter {
                     style: "w-full"
                     spacer { style: "flex-1 h-80" }
                     col {
-                        style: "w-80 bg-gray-800 rounded-xl shadow-2xl overflow-hidden"
+                        // Plan 503：glass 三件套（bg-card/80 + 细边框 + 柔影）
+                        style: "w-80 bg-card/80 border rounded-xl shadow-xl overflow-hidden"
 
                         // 标题行：通知 + 全部清除
                         row {
-                            style: "flex items-center px-4 py-3 border-b border-gray-700"
-                            text "通知" { style: "text-gray-200 text-sm font-semibold" }
+                            style: "flex items-center px-4 py-3 border-b"
+                            text "通知" { style: "text-foreground text-sm font-semibold" }
                             button "全部清除" {
                                 onclick: .ClearAll
-                                style: "ml-auto h-7 px-2 text-xs text-muted-foreground"
+                                style: "ml-auto h-7 px-2 text-xs text-muted-foreground rounded hover:bg-primary/10"
                             }
                         }
 
@@ -68,12 +69,12 @@ widget NotificationCenter {
                             if .nrows == 0 {
                                 col {
                                     style: "flex flex-col items-center py-8"
-                                    text "暂无通知" { style: "text-gray-400 text-sm" }
+                                    text "暂无通知" { style: "text-muted-foreground text-sm" }
                                 }
                             }
                             for r in .rows {
                                 row {
-                                    style: "flex items-center gap-3 px-4 py-2 border-b border-gray-700 cursor-pointer"
+                                    style: "flex items-center gap-3 px-4 py-2 border-b cursor-pointer"
                                     if r.kind == "success" {
                                         icon (name: "check") { style: "h-4 w-4 text-success" }
                                     } else {
@@ -85,12 +86,12 @@ widget NotificationCenter {
                                     }
                                     col {
                                         style: "flex-1 gap-0"
-                                        text r.msg { style: "text-gray-100 text-sm" }
-                                        text r.at { style: "text-gray-500 text-xs" }
+                                        text r.msg { style: "text-foreground text-sm" }
+                                        text r.at { style: "text-muted-foreground text-xs" }
                                     }
                                     button "×" {
                                         onclick: .Dismiss(r.id)
-                                        style: "h-7 w-7 px-0 text-xs text-muted-foreground"
+                                        style: "h-7 w-7 px-0 text-xs text-muted-foreground rounded hover:bg-primary/10"
                                     }
                                 }
                             }

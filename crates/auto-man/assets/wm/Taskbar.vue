@@ -25,25 +25,28 @@ defineExpose({ onAltTab })
 </script>
 
 <template>
-  <footer class="h-12 w-full flex items-center gap-1 px-2 bg-card border-t shrink-0">
+  <!-- Plan 503：stella 风刷新——56px 底栏、rounded-xl 按钮格、激活窗
+       accent-light 底 + 2px 竖条、hover accent-light（无 scale/无描边）。 -->
+  <footer class="h-14 w-full flex items-center gap-2 px-2 bg-card border-t shrink-0">
     <button
-      class="h-8 w-10 px-0 text-xs rounded border border-border hover:bg-accent"
+      class="h-10 w-10 px-0 text-sm rounded-xl hover:bg-primary/10"
       title="Summon launcher (Ctrl+Space)"
       @click="emit('summon')"
     >
       ⊞
     </button>
     <template v-for="w in sorted" :key="w.wid">
+      <span v-if="w.focused" class="w-0.5 h-5 rounded-full bg-primary" />
       <button
-        class="h-8 px-3 text-xs rounded border max-w-48 truncate"
-        :class="w.focused ? 'border-primary text-primary' : 'border-border'"
+        class="h-9 px-3 text-xs rounded-xl max-w-48 truncate"
+        :class="w.focused ? 'bg-primary/15 text-primary' : 'hover:bg-primary/10'"
         :title="w.title"
         @click="focus(w.wid)"
       >
         {{ w.title }}
       </button>
       <button
-        class="h-8 w-7 px-0 text-xs text-muted-foreground rounded border border-border hover:bg-accent"
+        class="h-8 w-7 px-0 text-xs text-muted-foreground rounded-xl hover:bg-primary/10"
         :aria-label="`close ${w.title}`"
         @click="close(w.wid)"
       >
@@ -54,15 +57,15 @@ defineExpose({ onAltTab })
     <button
       v-for="l in layouts"
       :key="l.mode"
-      class="h-8 w-9 px-0 text-xs rounded border"
-      :class="wm.layoutMode === l.mode ? 'border-primary text-primary' : 'border-border'"
+      class="h-8 w-9 px-0 text-xs rounded-xl hover:bg-primary/10"
+      :class="wm.layoutMode === l.mode ? 'text-primary bg-primary/15' : ''"
       :title="`layout: ${l.label}`"
       @click="setLayout(l.mode)"
     >
       {{ l.icon }}
     </button>
     <button
-      class="h-8 w-9 px-0 text-xs rounded border border-border hover:bg-accent"
+      class="h-8 w-9 px-0 text-xs rounded-xl hover:bg-primary/10"
       title="cycle focus (Alt+Tab)"
       @click="onAltTab"
     >

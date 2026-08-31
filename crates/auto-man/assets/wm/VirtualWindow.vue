@@ -79,28 +79,33 @@ function onClose(): void {
 </script>
 
 <template>
+  <!-- Plan 503 M5：stella 窗口 chrome——36px 标题栏(h-9)、rounded-2xl(16px)、
+       macOS 三色圆点组(red=关闭;yellow/green=min/max 视觉位预留,store 暂无
+       动词)、柔影 + focused accent/60 描边。 -->
   <section
-    class="virtual-window absolute flex flex-col overflow-hidden rounded-md border bg-card shadow-lg"
-    :class="win.focused ? 'border-primary' : 'border-border'"
+    class="virtual-window absolute flex flex-col overflow-hidden rounded-2xl border bg-card shadow-xl"
+    :class="win.focused ? 'border-primary/60 shadow-2xl' : 'border-border'"
     :style="style"
     @pointerdown="focus(win.wid)"
   >
     <header
-      class="title-bar h-8 flex items-center gap-2 px-2 bg-card border-b select-none cursor-move shrink-0"
+      class="title-bar h-9 flex items-center gap-2 px-3 bg-card border-b select-none cursor-move shrink-0"
       @pointerdown="onPointerDown($event, 'move', '')"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="onPointerUp"
       @dblclick="onClose"
     >
-      <span class="text-xs text-muted-foreground truncate flex-1">{{ win.title }}</span>
-      <button
-        class="wm-close h-5 w-5 text-xs rounded border border-border hover:bg-accent"
-        aria-label="close"
-        @click.stop="onClose"
-      >
-        ×
-      </button>
+      <span class="flex items-center gap-2">
+        <button
+          class="wm-close h-3 w-3 rounded-full bg-[#ff5f57]"
+          aria-label="close"
+          @click.stop="onClose"
+        />
+        <span class="h-3 w-3 rounded-full bg-[#febc2e]" aria-hidden="true" />
+        <span class="h-3 w-3 rounded-full bg-[#28c840]" aria-hidden="true" />
+      </span>
+      <span class="text-xs text-muted-foreground truncate flex-1 pl-2">{{ win.title }}</span>
     </header>
     <div class="client flex-1 relative overflow-hidden">
       <slot />

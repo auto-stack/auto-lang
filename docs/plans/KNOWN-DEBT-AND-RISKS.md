@@ -439,3 +439,15 @@
   runbook：仓根起 `cargo run -p auto-lang --features ui-iced --example
   ui_desktop` 人手 30 秒抽查；前台空闲可补采（P479-2/P487-1/P496-1 同批
   排队）。
+### P503（2026-08-31，Plan 503 桌面视觉刷新复审登记）
+
+- **P503-1 虚拟窗 min/max 视觉位无动词**：窗口 chrome 三色圆点组
+  （VM `virtual_window.rs::traffic_light` + vue `VirtualWindow.vue`）中
+  yellow(#febc2e)/green(#28c840) 为纯视觉预留位——session `WmCommand`
+  无虚拟窗 Minimize/Maximize 动词（仅 native 槽位有 NativeSlotMin/Close），
+  red=Close 是唯一有动词的灯。偿还路径：WM 增 min/max 动词 + 布局态
+  （maximized 标志现以「窗矩形 ≥98% 桌面」几何判定近似），另行计划。
+- **P503-2 vue 轨桌面无图片壁纸层**：VM 轨壁纸 scrim（renderer.rs
+  `desktop_wallpaper_scrim`，图片壁纸上叠 bg-background 10%/35%）在
+  vue 轨无锚点——desktop host 桌面区为纯色 bg-background，无壁纸图层。
+  归 P2（token 体系化/壁纸 parity 决策）一并评估 vue 壁纸层。

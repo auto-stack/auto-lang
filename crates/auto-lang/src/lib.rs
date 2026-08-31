@@ -6211,6 +6211,10 @@ mod plan484_chart_component_tests;
 #[cfg(test)]
 mod plan492_tests;
 
+// Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
+#[cfg(test)]
+mod plan503_tests;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;

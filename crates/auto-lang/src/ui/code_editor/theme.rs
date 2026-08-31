@@ -90,7 +90,8 @@ pub struct CodeEditorTheme {
 /// iced-gated parts).
 fn accent_hsl(name: &str) -> (u16, u8, u8) {
     match name {
-        "coral" => (350, 75, 64),
+        // Plan 503: coral 校准至 stella-os 玫瑰粉(与 ui/style/theme.rs 同源)。
+        "coral" => (4, 43, 59),
         "ocean" => (217, 91, 60),
         "sage" => (160, 84, 45),
         "amber" => (38, 92, 55),

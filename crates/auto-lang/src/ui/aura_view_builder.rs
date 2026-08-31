@@ -7086,8 +7086,12 @@ let tabs_inner = View::Row {
     /// with the template preserved. This method scans for `${.name}` patterns
     /// and substitutes current state values.
     /// Resolve `${.field}` interpolation patterns with loop bindings support.
+    ///
+    /// Plan 503: also resolves loop-member form `${member.field}` (e.g.
+    /// launcher brand-color chip `style: "h-10 w-10 ${r.chip}"` inside
+    /// `for r in .rows`) via resolve_expr_to_value over the loop bindings.
     fn resolve_literal_interpolation_with(&self, s: &str, bindings: &Bindings) -> String {
-        if !s.contains("${.") {
+        if !s.contains("${") {
             return s.to_string();
         }
 
@@ -7098,8 +7102,8 @@ let tabs_inner = View::Row {
         let mut i = 0;
         let mut replacements: Vec<(String, String)> = Vec::new();
 
-        while i + 4 < len {
-            if &bytes[i..i+3] == b"${." {
+        while i + 2 < len {
+            if i + 3 < len && &bytes[i..i+3] == b"${." {
                 // Found start of interpolation: ${.
                 let start = i;
                 let mut end = i + 3;
@@ -7113,6 +7117,35 @@ let tabs_inner = View::Row {
                         let full_pattern = s[start..end + 1].to_string();
                         let value = self.read_state_as_string_with(field_name, bindings);
                         replacements.push((full_pattern, value));
+                    }
+                }
+                i = end + 1;
+            } else if i + 2 < len && &bytes[i..i+2] == b"${" {
+                // Plan 503: loop-member form ${member.field} — single dot
+                // path into the loop-bound Obj row.
+                let start = i;
+                let mut end = i + 2;
+                while end < len && bytes[end] != b'}' {
+                    end += 1;
+                }
+                if end < len && bytes[end] == b'}' {
+                    let inner = &s[start + 2..end];
+                    if let Some((root, field)) = inner.split_once('.') {
+                        if !root.is_empty()
+                            && !field.is_empty()
+                            && root.chars().all(|c| c.is_alphanumeric() || c == '_')
+                            && field.chars().all(|c| c.is_alphanumeric() || c == '_')
+                        {
+                            let expr = Expr::Dot(
+                                Box::new(Expr::Ident(root.to_string().into())),
+                                field.to_string().into(),
+                            );
+                            if let Some(v) = self.resolve_expr_to_value(&expr, bindings) {
+                                let full_pattern = s[start..end + 1].to_string();
+                                replacements
+                                    .push((full_pattern, value_to_display_string(&v)));
+                            }
+                        }
                     }
                 }
                 i = end + 1;
