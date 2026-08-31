@@ -8,7 +8,8 @@
 //
 // 接缝（协议 v1.1，schema/projection-protocol-v1.md）：
 //   出：`__desktop_cmd`（`focus\t<wid>` 确认记录；宿主读+清）
-//   入：召唤时快照注入——`mru_wids`/`mru_titles`/`mru_icons` 平行字符串列表
+//   入：召唤时快照注入——`mru_wids`/`mru_titles`/`mru_icons`/`mru_thumbs`(497 快照
+//       就绪标记 "1"/""，平行列表)平行字符串列表
 //       （B12：宿主注入 Obj 数组的 handler 字段读失效，launcher apps_* 同型；
 //       `RebuildMru` 由宿主显式调用重建 handler 自有 rows）、`__wm_mru`
 //       （合同面 Obj 数组，本 App 声明不 handler 消费）、`hosted`/`visible`。
@@ -28,6 +29,9 @@ widget Switcher {
         var mru_wids = []
         var mru_titles = []
         var mru_icons = []
+        // Plan 497：快照就绪标记（"1"/""；合同面——行缩略由
+        // window_thumbnail 渲染臂自决 fallback，本列表供测试/后续增强分支）。
+        var mru_thumbs = []
 
         // ---- 面板状态（handler 自建 rows；view 消费 + handler 下标读安全）----
         var sel int = 0             // 选中索引（app 内自建焦点索引）
@@ -60,19 +64,23 @@ widget Switcher {
                                 text "No windows" { style: "text-gray-400 text-sm" }
                             }
                         }
+                        // Plan 497 G5：行缩略升级——window_thumbnail
+                        // （命中=真缩略；miss=渲染臂 fallback
+                        // icon + 异步抓取，下帧升级；fallback_icon
+                        // =既有 icon 兼容）。
                         for r in .rows {
                             if .sel == r.i {
                                 row {
                                     onclick: .Focus(r.wid)
                                     style: "flex items-center gap-3 px-4 py-2 bg-blue-900 cursor-pointer"
-                                    icon (name: r.icon) { style: "h-5 w-5" }
+                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border border-gray-600 rounded" }
                                     text r.title { style: "text-white text-sm font-medium" }
                                 }
                             } else {
                                 row {
                                     onclick: .Focus(r.wid)
                                     style: "flex items-center gap-3 px-4 py-2 hover:bg-gray-700 cursor-pointer"
-                                    icon (name: r.icon) { style: "h-5 w-5" }
+                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border border-gray-700 rounded" }
                                     text r.title { style: "text-gray-100 text-sm" }
                                 }
                             }
@@ -120,7 +128,7 @@ widget Switcher {
             .sel = 0
             var idx int = 0
             while idx < .mru_wids.len() {
-                var row = { i: idx, wid: .mru_wids[idx], title: .mru_titles[idx], icon: .mru_icons[idx] }
+                var row = { i: idx, wid: .mru_wids[idx], title: .mru_titles[idx], icon: .mru_icons[idx], thumb: .mru_thumbs[idx] }
                 .rows.push(row)
                 idx = idx + 1
             }

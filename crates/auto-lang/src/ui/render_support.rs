@@ -105,6 +105,9 @@ fn get_support_details(tag: &str) -> TagSupport {
         // Plan 462: virtual_window —— iced 实现于 ui/iced/virtual_window.rs,Full
         // (P6-3 围栏要求 schema 元素的 iced 级别在静态详情表有臂)。
         "virtual_window" => TagSupport::full(),
+        // Plan 497: window_thumbnail —— iced 实现于 renderer 渲染臂(快照
+        // 缓存直绘 + fallback icon),Full(P6-3 同上)。
+        "window_thumbnail" => TagSupport::full(),
         "center" => TagSupport::full(),
         "container" | "div" => TagSupport::full(),
 

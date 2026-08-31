@@ -47,7 +47,9 @@ widget Desktop {
         WorkspaceAdd, WorkspaceClose(str),
         NotificationToggle,
         NativeFocus(str), NativeClose(str),
-        OpenSettingsPanel
+        OpenSettingsPanel,
+        // Plan 497 G5：dock/pager hover 预览（shell 内部 UI 态，非总线动词）。
+        HoverWin(str), HoverEnd, HoverWs(str), HoverWsEnd
     }
 
     model {
@@ -64,6 +66,14 @@ widget Desktop {
         var __dock_pinned = []
         var __dock_position str = "bottom"
         var __dock_enabled str = "1"
+        // Plan 497 G1：dock 时钟（HH:MM 本地）。宿主 ServiceTick 帧泵注入
+        // （分钟变化才写——稳态零重建）；本地 tick 非驱动事实投影，不进
+        // 指纹门控组（协议字段表外注记，零协议改动）。
+        var __wm_clock str = ""
+        // Plan 497 G5：hover 预览态（shell 自有 UI 态——非 __wm_ 宿主注入
+        // 域）。dock_hover = 预览中窗口 wid；ws_hover = 预览中分区 id。
+        var dock_hover str = ""
+        var ws_hover str = ""
     }
 
     view {
@@ -111,9 +121,17 @@ widget Desktop {
                                         style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                     }
                                 } else {
-                                    button (icon: w.icon) {
-                                        onclick: .WinFocus(w.wid)
-                                        style: "h-9 w-9 px-0 text-sm"
+                                    // Plan 497 G5：条目 hover 预览（422 popover
+                                    // 先例，widget 锚=条目按钮；内容=真缩略，
+                                    // miss 由渲染臂 fallback icon 兜底）。
+                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
+                                        popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
+                                            button (icon: w.icon) {
+                                                onclick: .WinFocus(w.wid)
+                                                style: "h-9 w-9 px-0 text-sm"
+                                            }
+                                            window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
+                                        }
                                     }
                                     button "×" {
                                         onclick: .WinClose(w.wid)
@@ -128,15 +146,35 @@ widget Desktop {
                         for ws in .__wm_workspaces {
                             row {
                                 style: "items-center gap-0"
-                                if ws.current == "1" {
-                                    button (text: ws.label) {
-                                        onclick: .SetWorkspace(ws.id)
-                                        style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
-                                    }
-                                } else {
-                                    button (text: ws.label) {
-                                        onclick: .SetWorkspace(ws.id)
-                                        style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                // Plan 497 G5：分区 hover 预览（该区窗口缩略
+                                // 网格——v1 全量显示，无 ≤4 截断：.at 无过滤后
+                                // 截断原语，宿主派生会引入新投影字段违反协议
+                                // 零改动；密度待实机复核，见 plan 待澄清）。
+                                mouse-area (onmouseenter: .HoverWs(ws.id), onmouseleave: .HoverWsEnd) {
+                                    popover (open: .ws_hover == ws.id, placement: "top", ondismiss: .HoverWsEnd, class: "p-2 border rounded bg-card") {
+                                        if ws.current == "1" {
+                                            button (text: ws.label) {
+                                                onclick: .SetWorkspace(ws.id)
+                                                style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
+                                            }
+                                        } else {
+                                            button (text: ws.label) {
+                                                onclick: .SetWorkspace(ws.id)
+                                                style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                            }
+                                        }
+                                        col {
+                                            style: "gap-1"
+                                            for w in .__wm_wins {
+                                                if w.workspace == ws.id {
+                                                    row {
+                                                        style: "items-center gap-1"
+                                                        window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-28 h-16 rounded border" }
+                                                        text w.title { style: "text-xs text-muted-foreground max-w-24 truncate" }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 button "×" {
@@ -185,6 +223,16 @@ widget Desktop {
                             onclick: .OpenSettingsPanel
                             style: "h-9 w-9 px-0 text-sm"
                         }
+                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
+                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
+                        // 非目标；容器先行占位，后续状态图标挂此）；
+                        // 铃铛（479）与齿轮（487）即组内既有成员。
+                        row {
+                            style: "items-center gap-0"
+                        }
+                        text .__wm_clock {
+                            style: "text-xs text-muted-foreground px-2 tabular-nums"
+                        }
                     }
                 }
             }
@@ -232,9 +280,17 @@ widget Desktop {
                                         style: "h-8 w-6 px-0 text-xs text-muted-foreground"
                                     }
                                 } else {
-                                    button (icon: w.icon) {
-                                        onclick: .WinFocus(w.wid)
-                                        style: "h-9 w-9 px-0 text-sm"
+                                    // Plan 497 G5：条目 hover 预览（422 popover
+                                    // 先例，widget 锚=条目按钮；内容=真缩略，
+                                    // miss 由渲染臂 fallback icon 兜底）。
+                                    mouse-area (onmouseenter: .HoverWin(w.wid), onmouseleave: .HoverEnd) {
+                                        popover (open: .dock_hover == w.wid, placement: "top", ondismiss: .HoverEnd, class: "p-1 border rounded bg-card") {
+                                            button (icon: w.icon) {
+                                                onclick: .WinFocus(w.wid)
+                                                style: "h-9 w-9 px-0 text-sm"
+                                            }
+                                            window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-48 h-28 rounded" }
+                                        }
                                     }
                                     button "×" {
                                         onclick: .WinClose(w.wid)
@@ -249,15 +305,35 @@ widget Desktop {
                         for ws in .__wm_workspaces {
                             row {
                                 style: "items-center gap-0"
-                                if ws.current == "1" {
-                                    button (text: ws.label) {
-                                        onclick: .SetWorkspace(ws.id)
-                                        style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
-                                    }
-                                } else {
-                                    button (text: ws.label) {
-                                        onclick: .SetWorkspace(ws.id)
-                                        style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                // Plan 497 G5：分区 hover 预览（该区窗口缩略
+                                // 网格——v1 全量显示，无 ≤4 截断：.at 无过滤后
+                                // 截断原语，宿主派生会引入新投影字段违反协议
+                                // 零改动；密度待实机复核，见 plan 待澄清）。
+                                mouse-area (onmouseenter: .HoverWs(ws.id), onmouseleave: .HoverWsEnd) {
+                                    popover (open: .ws_hover == ws.id, placement: "top", ondismiss: .HoverWsEnd, class: "p-2 border rounded bg-card") {
+                                        if ws.current == "1" {
+                                            button (text: ws.label) {
+                                                onclick: .SetWorkspace(ws.id)
+                                                style: "h-8 w-8 px-0 text-xs bg-primary text-primary-foreground rounded-md"
+                                            }
+                                        } else {
+                                            button (text: ws.label) {
+                                                onclick: .SetWorkspace(ws.id)
+                                                style: "h-8 w-8 px-0 text-xs text-muted-foreground"
+                                            }
+                                        }
+                                        col {
+                                            style: "gap-1"
+                                            for w in .__wm_wins {
+                                                if w.workspace == ws.id {
+                                                    row {
+                                                        style: "items-center gap-1"
+                                                        window_thumbnail (wid: w.wid, fallback_icon: w.icon) { style: "w-28 h-16 rounded border" }
+                                                        text w.title { style: "text-xs text-muted-foreground max-w-24 truncate" }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 button "×" {
@@ -302,6 +378,16 @@ widget Desktop {
                             onclick: .OpenSettingsPanel
                             style: "h-9 w-9 px-0 text-sm"
                         }
+                        // Plan 497 G2：托盘组右置尾部——[状态图标挂载点容器]
+                        // [时钟]。挂载点 v1 为空 row（app 图标注册 API 为
+                        // 非目标；容器先行占位，后续状态图标挂此）；
+                        // 铃铛（479）与齿轮（487）即组内既有成员。
+                        row {
+                            style: "items-center gap-0"
+                        }
+                        text .__wm_clock {
+                            style: "text-xs text-muted-foreground px-2 tabular-nums"
+                        }
                     }
                 }
             }
@@ -345,5 +431,10 @@ widget Desktop {
         // Plan 487 M4 v1.4：设置面板召唤（无参动词；宿主臂落
         // toggle_settings 执行体——二态翻转，面板可见再点即关）。
         .OpenSettingsPanel -> { .__desktop_cmd = "open_settings" }
+        // Plan 497 G5：hover 预览态翻转（mouse-area enter/exit 驱动）。
+        .HoverWin(wid) -> { .dock_hover = wid }
+        .HoverEnd -> { .dock_hover = "" }
+        .HoverWs(id) -> { .ws_hover = id }
+        .HoverWsEnd -> { .ws_hover = "" }
     }
 }

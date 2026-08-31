@@ -2443,6 +2443,21 @@ impl AuraSchema {
             description: "Desktop shell taskbar (bottom bar)",
         });
 
+        // Plan 497 T3: per-window live thumbnail leaf (S3 真缩略消费面).
+        // Pixels live host-side (renderer snapshot cache); VM/props 只传
+        // wid + fallback 图标名。
+        elements.insert("window_thumbnail", ElementDef {
+            tag: "window_thumbnail",
+            category: ElementCategory::Display,
+            props: vec![
+                PropDef { name: "wid", type_: PropType::String, required: false, default: None, description: "Target window id (host snapshot-cache key; native N<slot> falls back)" },
+                PropDef { name: "fallback_icon", type_: PropType::String, required: false, default: Some("app-window"), description: "Lucide icon while no fresh snapshot (Plan 497)" },
+                PropDef { name: "class", type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]), required: false, default: None, description: "Chrome classes (w-/h-/border/rounded land on the frame)" },
+            ],
+            allows_children: false,
+            description: "Per-window live thumbnail (host snapshot pixels, renderer-side asset channel)",
+        });
+
         elements.insert("menubar_content", ElementDef {
             tag: "menubar_content",
             category: ElementCategory::Navigation,

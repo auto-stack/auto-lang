@@ -49,6 +49,11 @@ const DOC_EXCLUDE: &[&str] = &[
     // Plan 484:透明 hover 命中区(无视觉、事件转发原语,不设独立页);
     // 契约与用法文档化于 specs/auto-lang/ui/design/chart-components.md
     "mousearea",
+    // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
+    // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
+    // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
+    // schema/aura.at element 描述。
+    "windowthumbnail",
     // Plan 482 nav 家族子件,随 nav 页(nav-item/nav-link)文档化
     "navgroup",
     // form 家族件(form 页文档化)

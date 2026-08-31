@@ -5047,6 +5047,22 @@ element tooltiptrigger {
     description: "P1 extracted from production tables; props TBD"
 }
 
+element window_thumbnail {
+    tag: "window_thumbnail"
+    category: "media"
+    tier: "builtin_widget"
+    aliases: ["WindowThumbnail", "windowthumbnail", "window-thumbnail"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "WindowThumbnail", import: "@/wm/WindowThumbnail" }
+    props: [
+        { name: "wid", type: "expr", description: "Target window id (string; host snapshot-cache key — App wid numeric, native N<slot> falls back)" }
+        { name: "fallback_icon", type: "string", default: "app-window", description: "Lucide icon rendered while no fresh snapshot exists (Plan 497)" }
+        { name: "class", type: "union:string,class_binding", description: "Chrome classes (w-/h- size, border, rounded land on the thumbnail frame)" }
+    ]
+    allows_children: false
+    description: "Per-window live thumbnail (Plan 497 S3). Renders host-side downsampled snapshot pixels; data flows renderer-side (never through VM state); miss -> async capture request + fallback icon."
+}
+
 element virtual_window {
     tag: "virtual_window"
     category: "unknown"

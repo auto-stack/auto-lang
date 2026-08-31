@@ -7,6 +7,8 @@ mod layout_collector;
 // Plan 422: 锚定弹层原语(iced overlay wrapper,Tooltip 同型)。
 pub mod popover;
 pub mod renderer;
+// Plan 497 T2: 每窗口真缩略快照核心(裁剪式整窗快照,T1 定案)。
+pub mod snapshot;
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。

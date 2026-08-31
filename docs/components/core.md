@@ -929,6 +929,22 @@ _props 待声明_
 
 ---
 
+### `window_thumbnail`
+
+`builtin_widget` · `window_thumbnail` · web: `component` · iced: `full` · category: `media`
+
+Per-window live thumbnail (Plan 497 S3). Renders host-side downsampled snapshot pixels; data flows renderer-side (never through VM state); miss -> async capture request + fallback icon.
+
+别名:`WindowThumbnail` `windowthumbnail` `window-thumbnail`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `wid` | `expr` | — | Target window id (string; host snapshot-cache key — App wid numeric, native N<slot> falls back) |
+| `fallback_icon` | `string` | app-window | Lucide icon rendered while no fresh snapshot exists (Plan 497) |
+| `class` | `union: string|class_binding` | — | Chrome classes (w-/h- size, border, rounded land on the thumbnail frame) |
+
+---
+
 ## 原生直通(native_html)
 
 ### `+`

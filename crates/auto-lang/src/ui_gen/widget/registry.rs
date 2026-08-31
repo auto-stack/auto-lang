@@ -949,6 +949,16 @@ impl WidgetRegistry {
         taskbar.has_children = true;
         self.register(taskbar);
 
+        // Plan 497 (I4): window_thumbnail — per-window live thumbnail leaf.
+        // Registration source = schema/aura.at (vue: mapping to @/wm/* gets
+        // overlaid from there; iced = renderer render arm — snapshot cache
+        // image / lucide fallback icon).
+        let mut window_thumbnail = WidgetSpec::new("WindowThumbnail", WidgetCategory::Display)
+            .with_alias("window_thumbnail")
+            .with_alias("window-thumbnail");
+        window_thumbnail.has_children = false;
+        self.register(window_thumbnail);
+
         // Swiper
         let mut swiper = WidgetSpec::new("Swiper", WidgetCategory::Navigation)
             .with_alias("swiper");

@@ -30,6 +30,7 @@
 | `__wm_notes` | Obj 数组 `{id:str, kind:str, msg:str, at:str}` | **通知历史全量**（MRU 序 front=最新；容量 50 FIFO）。shell 侧为合同面（dock 不直接消费）；通知中心面板 handler 消费走召唤/活更新时的伴随平行字符串列表（`note_ids`/`note_kinds`/`note_msgs`/`note_ats` + `call_handler("RebuildNotes")` 建 handler 自有 rows，B12 规避——`__wm_mru` 同型）。`kind` ∈ success/error/info（约定值，未知宿主侧已兜底）；`at` = 入史时刻 `HH:MM` 本地时间串（宿主投影） | 宿主写 | v1.2 |
 | `__wm_notes_unread` | str | 未读通知计数十进制串（dock 铃铛 badge 条件消费：`!= "0"` 且非空串渲染）；开面板即清零；不落盘——boot 恢复后恒 `"0"` | 宿主写 | v1.2 |
 | `__wm_fp` | str | 投影指纹（§3）；shell 不消费，仅门控 | 宿主写 | v1 |
+| `__wm_clock` | str `"HH:MM"` | dock 时钟本地时间串（497 S3）。**非门控字段**：不进 `__wm_fp` 指纹、不走 §3 投影组换装——ServiceTick 帧泵独立注入（分钟变化才写，稳态零重建；本地时钟非驱动事实，避免每分钟全组换装抖动） | 宿主写 | v1.4 内（497） |
 | `__desktop_cmd` | str | 出向命令记录串（§4）；宿主**读+清** | shell 写 | v1 |
 
 ### 2.1 桌面本体面字段（`assets/desktop.at`，v1.4 内字段扩展——不升版本段）
@@ -114,6 +115,14 @@ Design 25 §3 原"候选 A 转正"修订为词表规范，builtin 语法化留 v
 - I7（shell 无几何操作）、I9（窗口/分区列表唯一事实来自本投影）随行。
 
 ## 6. 变更记录
+
+### v1.4 内字段扩展（2026-08-31，Plan 497 S3——不升版本段）
+
+- **§2 字段表增 `__wm_clock`**：dock 时钟本地 `HH:MM` 串——唯一**非门控**
+  注入字段（不进指纹、不走投影组换装；ServiceTick 分钟变化才写）。
+- **零新动词/零指纹变化**；快照缩略数据不经投影（`mru_thumbs` 平行
+  字符串列表为召唤快照注入，同 `mru_icons` 通道——像素资产宿主侧
+  `ui/iced/snapshot.rs` 缓存直取，T1 定案裁剪式整窗快照）。
 
 ### v1.4 内字段扩展（2026-08-31，Plan 496 M5——不升版本段）
 

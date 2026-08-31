@@ -3888,6 +3888,79 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .into()
             }
 
+            // Plan 497: 每窗口真缩略渲染臂——T1 定案裁剪式整窗快照的
+            // 消费端。命中进程级快照缓存 → image(Handle::from_rgba) 直绘
+            // 降采样像素；miss → 标记异步抓取（宿主 update 排空
+            // take_capture_requests，一次整窗 screenshot 服务全部请求）+
+            // 本帧 fallback lucide 图标（复用 Image 臂路径，含 native wid
+            // "N<slot>" parse 失败天然走 fallback——待澄清②）。
+            AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let eff_w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
+                let eff_h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                let snap = wid
+                    .parse::<u64>()
+                    .ok()
+                    .map(crate::ui::session::Wid)
+                    .and_then(crate::ui::iced::snapshot::snapshot_window);
+                if let Some(snap) = snap {
+                    let handle =
+                        iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
+                    let mut img = iced::widget::image(handle)
+                        .filter_method(iced::widget::image::FilterMethod::Nearest);
+                    if let Some(w) = eff_w {
+                        img = img.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        img = img.height(h);
+                    }
+                    // 缩略 chrome：消费面 style 类（border/rounded/bg）落在
+                    // 包裹 container 上（与 Image 臂 container 约束同型）。
+                    let border_radius =
+                        is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                    let border_width =
+                        is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
+                    let border_color = is
+                        .as_ref()
+                        .and_then(|is| is.border_color)
+                        .unwrap_or(iced::Color::TRANSPARENT);
+                    let bg = is
+                        .as_ref()
+                        .and_then(|is| is.background_color)
+                        .map(iced::Background::Color);
+                    let mut cont = container(img).style(move |_t| container::Style {
+                        border: iced::Border {
+                            color: border_color,
+                            width: border_width,
+                            radius: border_radius.min(9999.0).into(),
+                        },
+                        background: bg,
+                        ..Default::default()
+                    });
+                    if let Some(w) = eff_w {
+                        cont = cont.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        cont = cont.height(h);
+                    }
+                    cont.into()
+                } else {
+                    if let Some(w) = wid.parse::<u64>().ok() {
+                        crate::ui::iced::snapshot::request_capture(crate::ui::session::Wid(w));
+                    }
+                    let icon = if fallback_icon.is_empty() {
+                        "app-window".to_string()
+                    } else {
+                        fallback_icon.clone()
+                    };
+                    AbstractView::Image {
+                        src: format!("lucide:{icon}"),
+                        style: style.clone(),
+                    }
+                    .into_iced()
+                }
+            }
+
             AbstractView::Image { src, style } => {
                 // Plan 408: lucide: icon prefix → render bundled SVG glyph.
                 if src.starts_with("lucide:") {
@@ -7009,6 +7082,61 @@ fn push_desktop_toast(state: &mut crate::ui::session::DesktopSession, kind: &str
 /// 管线不变）→ 面板开着则重注入（打开期间列表活更新）。既有 8 处
 /// push_desktop_toast 调用点（LaunchApp 成败/分区删除门/overlay 装载降级）
 /// 已改道本入口——行为增量 = 多入史，浮现不变。
+/// Plan 497 G3：快照抓取编排——排空 [`snapshot::take_capture_requests`]
+/// 队列，非空则记录 pending wid 集 + 发起一次整窗 screenshot（回调
+/// [`DesktopEvent::SnapshotShot`]）。411 零尺寸守卫同款（minimized/
+/// pre-layout 窗口跳过本轮，下轮重试由渲染臂冷却队列自然再排）。
+fn service_snapshot_requests(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Option<iced::Task<crate::ui::session::DesktopMessage>> {
+    let wids = crate::ui::iced::snapshot::take_capture_requests();
+    if wids.is_empty() {
+        return None;
+    }
+    // 411 零尺寸守卫同款：宿主窗 minimized/pre-layout 时本轮不抓
+    //（渲染臂冷却队列下轮自然再排）。
+    let host_ok = state
+        .windows
+        .values()
+        .any(|w| w.window_size.borrow().width > 0.0 && w.window_size.borrow().height > 0.0);
+    if !host_ok {
+        return None;
+    }
+    state.desktop.snapshot_pending_wids.replace(wids);
+    Some(
+        iced::window::oldest().then(move |maybe_id| match maybe_id {
+            Some(id) => iced::window::screenshot(id).map(|ss| {
+                crate::ui::session::DesktopMessage::Desktop(
+                    crate::ui::session::DesktopEvent::SnapshotShot(ss),
+                )
+            }),
+            None => iced::Task::none(),
+        }),
+    )
+}
+
+/// Plan 497 G1：dock 时钟注入——本地 HH:MM（chrono Local），分钟变化才
+/// 写 shell `__wm_clock` + 置 view_dirty（同分钟重复调用零写入零 dirty；
+/// toast tick 先例的"只有变化才 dirty"模式）。时钟不进投影指纹门控组
+/// （每分钟翻指纹会引发 dock 全组换装抖动——计划"零投影流量"判定）。
+fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
+    let Some(shell_id) = state.desktop.shell_app else { return };
+    let hhmm = chrono::Local::now().format("%H:%M").to_string();
+    {
+        let cur = state.desktop.clock_text.borrow();
+        if *cur == hhmm {
+            return;
+        }
+    }
+    state.desktop.clock_text.replace(hhmm.clone());
+    if let Some(app) = state.apps.get_mut(&shell_id) {
+        let _ = app
+            .component
+            .write_state("__wm_clock", auto_val::Value::str(hhmm));
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+}
+
 fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
     // Plan 487 M4：通知持久化开关门控（479 消费链单点）——settings 面板
     // 写 `shell.notes.enabled`，"false" = 关：notify 动词全链路（入史 +
@@ -7265,12 +7393,22 @@ fn summon_switcher(
     let mut wids: Vec<auto_val::Value> = Vec::new();
     let mut titles: Vec<auto_val::Value> = Vec::new();
     let mut icons: Vec<auto_val::Value> = Vec::new();
+    // Plan 497 G5：快照就绪标记（"1"/""，平行于 mru_icons 的合同面形态；
+    // 行缩略渲染由 window_thumbnail 渲染臂自决——miss 走 fallback icon +
+    // request_capture，本标记供测试/后续增强分支消费）。召唤同时把
+    // miss 窗显式入队预抓（打开期间快照新鲜；渲染臂冷却队列同源）。
+    let mut thumbs: Vec<auto_val::Value> = Vec::new();
     let mut mru_objs: Vec<auto_val::Value> = Vec::new();
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
         wids.push(auto_val::Value::Str(v.wid.0.to_string().into()));
         titles.push(auto_val::Value::Str(v.title.clone().into()));
+        let ready = crate::ui::iced::snapshot::snapshot_window(wid).is_some();
+        if !ready {
+            crate::ui::iced::snapshot::request_capture(wid);
+        }
+        thumbs.push(auto_val::Value::str(if ready { "1" } else { "" }));
         let icon = v
             .registry_id
             .as_ref()
@@ -7290,6 +7428,7 @@ fn summon_switcher(
         let _ = app.component.write_state_vec("mru_wids", wids);
         let _ = app.component.write_state_vec("mru_titles", titles);
         let _ = app.component.write_state_vec("mru_icons", icons);
+        let _ = app.component.write_state_vec("mru_thumbs", thumbs);
         let _ = app.component.write_state_vec("__wm_mru", mru_objs);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
@@ -7486,6 +7625,9 @@ fn execute_set_dock_enabled(state: &mut crate::ui::session::DesktopSession, on: 
 /// + shell.at 投影热同步（Init 只跑一次，`__dock_*` 状态变量直写 +
 /// view_dirty）。
 fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
+    // Plan 497 G3：dock 位置/开关热切换 = 全场重排（487 I7 三联动之一），
+    // 快照随撤（裁剪区域全部 stale）。
+    crate::ui::iced::snapshot::invalidate_all();
     state.desktop.dock_edges = desktop_dock_edges();
     let viewport = state.host_viewport();
     let edges = state.desktop.dock_edges;
@@ -7569,6 +7711,8 @@ fn execute_desktop_commands(
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
             DC::CloseWindow(wid) => {
+                // Plan 497 G3：关闭失效（窗口回收，缩略随撤）。
+                crate::ui::iced::snapshot::invalidate(wid);
                 if let Some(app) = state.wm_remove_win(wid) {
                     state.apps.remove(&app);
                 }
@@ -7583,7 +7727,12 @@ fn execute_desktop_commands(
                 }
             }
             DC::FocusWindow(wid) => state.wm_focus(wid),
-            DC::SetLayout(mode) => state.wm_set_layout(mode),
+            // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
+            // stale）。
+            DC::SetLayout(mode) => {
+                crate::ui::iced::snapshot::invalidate_all();
+                state.wm_set_layout(mode)
+            }
             // Plan 472 T2：分区切换（dock 切换条/workspace_next；调用臂尾
             // sync_shell_windows 刷新投影）。
             DC::SetWorkspace(n) => state.wm_set_workspace(n),
@@ -11379,6 +11528,15 @@ fn compare_pngs(
                         if state.is_desktop() {
                             crate::ui::native_dnd::win32::ensure_host_drop_target();
                         }
+                        // Plan 497 G1：dock 时钟——分钟变化才注入（400ms
+                        // 帧泵粒度检查，稳态零重建；本地 tick 非投影流量）。
+                        update_shell_clock(state);
+                        // Plan 497 G3：快照抓取编排——排空渲染臂/召唤面
+                        // 攒下的 request_capture 队列，一次整窗 screenshot
+                        // 服务全部请求（回调 SnapshotShot 裁剪入缓存）。
+                        if let Some(task) = service_snapshot_requests(state) {
+                            return task;
+                        }
                         // Plan 480 S3/S4：broker 孵化落地 + 多 client 帧泵
                         // （有在册/排队连接才有成本，零排队两调用皆空转）。
                         if state.pending_incubations() > 0 {
@@ -11396,6 +11554,45 @@ fn compare_pngs(
                     // Plan 473 T6：原生槽位 WinEventHook 事件（C4 拖走 / B7 回收）。
                     DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
                         handle_native_slot_event(state, hwnd_value, kind);
+                    }
+                    // Plan 497：整窗截图回调——按 pending wid 集各窗 rect
+                    // 裁剪入快照缓存（T1 定案裁剪式）；switcher 可见则置
+                    // dirty（行 fallback → 真缩略升级；dock/pager hover 面
+                    // 同随 dirty 重建）。
+                    DesktopEvent::SnapshotShot(ss) => {
+                        let wids = std::mem::take(&mut *state.desktop.snapshot_pending_wids.borrow_mut());
+                        if let Some(host) = state.host.as_ref() {
+                            for wid in wids {
+                                let Some(v) = host.wm.wins.get(&wid) else { continue };
+                                let rect = *v.rect.borrow();
+                                if let Some(snap) = crate::ui::iced::snapshot::thumbnail_from_screenshot(
+                                    ss.rgba.as_ref(),
+                                    ss.size.width,
+                                    ss.size.height,
+                                    rect,
+                                    ss.scale_factor,
+                                ) {
+                                    crate::ui::iced::snapshot::cache_put(wid, snap);
+                                }
+                            }
+                        }
+                        // 消费者 dirty：switcher（行 fallback→真缩略升级）
+                        // + shell（dock/pager hover 预览面——miss 时渲染臂
+                        // 已 request_capture，快照入库后需一次 view 重建
+                        // 才升级；shell 置 dirty 幂等低频，400ms 抓取节拍
+                        // 下可接受）。
+                        if let Some(sw) = state.desktop.switcher_app {
+                            if state.switcher_visible() {
+                                if let Some(app) = state.apps.get_mut(&sw) {
+                                    *app.state.view_dirty.borrow_mut() = true;
+                                }
+                            }
+                        }
+                        if let Some(shell) = state.desktop.shell_app {
+                            if let Some(app) = state.apps.get_mut(&shell) {
+                                *app.state.view_dirty.borrow_mut() = true;
+                            }
+                        }
                     }
                     // Plan 486：拖入高亮注入面（正常流由事件驱动直写；本臂供
                     // E2E/headless 验证 overlay 渲染）。
@@ -15062,6 +15259,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Slider { style, .. } => style.as_ref(),
         AbstractView::ProgressBar { style, .. } => style.as_ref(),
         AbstractView::Image { style, .. } => style.as_ref(),
+        AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
         AbstractView::Tabs { style, .. } => style.as_ref(),
@@ -15144,6 +15342,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Slider { .. } => "slider",
         AbstractView::ProgressBar { .. } => "progress",
         AbstractView::Image { .. } => "image",
+        AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
         AbstractView::Tabs { .. } => "tabs",
@@ -16220,7 +16419,8 @@ fn view_style_ref<M: Clone + Debug>(view: &AbstractView<M>) -> Option<&Style> {
         | AbstractView::Sidebar { style, .. }
         | AbstractView::Tabs { style, .. }
         | AbstractView::NavigationRail { style, .. }
-        | AbstractView::Image { style, .. } => style.as_ref(),
+        | AbstractView::Image { style, .. }
+        | AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         _ => None,
     }
 }
@@ -17793,6 +17993,217 @@ mod tests {
     /// switcher 召唤推进确认无头流：懒挂载（真 assets/switcher.at）+ MRU
     /// 快照注入（rows 序 = MRU 序）→ Advance 环走 sel → confirm（Focus
     /// handler）写 `focus\t<wid>` 记录 + 自隐 → drain 可达执行体。
+    #[test]
+    // ---- Plan 497 T3：S3 Status 栏（时钟/托盘组/每窗口缩略）----
+    // 命名族 desktop_mcp_*：`cargo t desktop_mcp` 过滤面（计划验证命令）。
+
+    /// 时钟注入 + 分钟内去重：update_shell_clock 首调注入 HH:MM +
+    /// view_dirty；同分钟复调零写入零 dirty（ServiceTick 400ms 帧泵下
+    /// 稳态零重建）。**真资产 assets/shell.at 直载**（478 switcher 先例
+    /// ——非 ShellProbe 裁剪副本；同时覆盖 497 托盘组/时钟节点的 .at
+    /// 装载面）。
+    #[test]
+    fn desktop_mcp_clock_injects_and_dedupes() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        update_shell_clock(&mut ds);
+        let v = t3_read(&ds, "__wm_clock");
+        let auto_val::Value::Str(hhmm) = v else {
+            panic!("__wm_clock 应为字符串: {v:?}")
+        };
+        let hhmm = hhmm.to_string();
+        assert_eq!(hhmm.len(), 5, "HH:MM 形态: {hhmm}");
+        assert_eq!(hhmm.as_bytes()[2], b':', "HH:MM 分隔符: {hhmm}");
+        assert!(
+            hhmm[..2].chars().all(|c| c.is_ascii_digit())
+                && hhmm[3..].chars().all(|c| c.is_ascii_digit()),
+            "HH:MM 数字段: {hhmm}"
+        );
+        // 首调已置 view_dirty——复位后同分钟复调不得再置。
+        let shell = ds.desktop.shell_app.unwrap();
+        *ds.apps.get(&shell).unwrap().state.view_dirty.borrow_mut() = false;
+        update_shell_clock(&mut ds);
+        assert!(
+            !*ds.apps.get(&shell).unwrap().state.view_dirty.borrow(),
+            "同分钟复调零 dirty（分钟变化才注入）"
+        );
+        assert_eq!(
+            t3_read(&ds, "__wm_clock"),
+            auto_val::Value::Str(hhmm.as_str().into()),
+            "同分钟复调零写入"
+        );
+    }
+
+    #[test]
+    /// Plan 497 T3：switcher mru_thumbs 注入 + miss 预抓。cache_put 一窗
+    /// 快照后召唤：就绪标记按 MRU 序注入（"1"/""）；miss 窗进抓取队列
+    /// （宿主 ServiceTick 一次整窗截图服务）。
+    #[test]
+    fn desktop_mcp_switcher_thumbs_injected_and_requested() {
+        crate::ui::iced::snapshot::invalidate_all();
+        let mut ds = t3_session_with_shell();
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // b（MRU front）预置快照；a 保持 miss。
+        crate::ui::iced::snapshot::cache_put(
+            b,
+            crate::ui::iced::snapshot::WindowSnapshot {
+                rgba: vec![0x88; 4 * 64 * 48],
+                w: 64,
+                h: 48,
+            },
+        );
+        let _task = summon_switcher(&mut ds);
+        assert!(ds.switcher_visible(), "召唤后 switcher visible");
+        let sw = ds.desktop.switcher_app.expect("懒挂载完成");
+        let app = ds.apps.get(&sw).unwrap();
+        let thumbs = match app.component.read_state("mru_thumbs").unwrap() {
+            auto_val::Value::Array(a) => a.values,
+            auto_val::Value::VmRef(r) => t3_deref_list(app, r.id as u64, "mru_thumbs"),
+            auto_val::Value::Int(id) => t3_deref_list(app, id as u64, "mru_thumbs"),
+            other => panic!("mru_thumbs 应为数组: {other:?}"),
+        };
+        assert_eq!(thumbs.len(), 2, "MRU 全量两窗");
+        assert_eq!(thumbs[0], auto_val::Value::str("1"), "front=b 快照就绪");
+        assert_eq!(thumbs[1], auto_val::Value::str(""), "a miss 标空串");
+        // miss 窗 a 已入抓取队列（b 命中不入队）。
+        let pending = crate::ui::iced::snapshot::take_capture_requests();
+        assert_eq!(pending, vec![a], "miss 窗入队预抓");
+        // 行消费面：rows[0].wid = b（缩略行挂 window_thumbnail 的 wid 源）。
+        drop(app);
+        let app = ds.apps.get_mut(&sw).unwrap();
+        app.component.bridge_mut().call_handler("RebuildMru", &[]).expect("RebuildMru");
+        let rows = match ds.apps.get(&sw).unwrap().component.read_state("rows").unwrap() {
+            auto_val::Value::VmRef(r) => t3_deref_list(ds.apps.get(&sw).unwrap(), r.id as u64, "rows"),
+            auto_val::Value::Int(id) => t3_deref_list(ds.apps.get(&sw).unwrap(), id as u64, "rows"),
+            other => panic!("rows 应为 VmRef: {other:?}"),
+        };
+        let vm = ds.apps.get(&sw).unwrap().component.bridge().vm();
+        let wid_of = |i: usize| -> String {
+            let auto_val::Value::VmRef(r) = &rows[i] else { panic!("rows[{i}] VmRef") };
+            let obj = vm.get_heap_object(r.id as u64).expect("heap");
+            let g = obj.read().unwrap();
+            let od = g.as_any().downcast_ref::<crate::vm::types::ObjectData>().expect("OD");
+            match od.get(&auto_val::ValueKey::from("wid".to_string())) {
+                Some(auto_val::Value::Str(s)) => s.to_string(),
+                other => panic!("wid: {other:?}"),
+            }
+        };
+        assert_eq!(wid_of(0), b.0.to_string(), "rows[0].wid=b（就绪行）");
+        assert_eq!(wid_of(1), a.0.to_string(), "rows[1].wid=a（miss 行 fallback）");
+        crate::ui::iced::snapshot::invalidate_all();
+    }
+
+    #[test]
+    /// Plan 497 T3：dock/pager hover 预览。真 shell.at 直载 + 两窗（跨分区）
+    /// 投影后：HoverWin/HoverWs handler 写态 → View 树中出现 open popover +
+    /// window_thumbnail 缩略叶（fallback 路径——headless 无快照）；
+    /// HoverEnd/HoverWsEnd 后 open popover 消失。
+    #[test]
+    fn desktop_mcp_dock_pager_hover_popovers() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // b 送分区 1（pager 预览分区面）。
+        if let Some(host) = ds.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&b) {
+                v.workspace = 1;
+            }
+        }
+        sync_shell_windows(&mut ds);
+        let shell = ds.desktop.shell_app.unwrap();
+
+        // 树扫描：BFS 收 (popover_open_count, thumb_count)。view_children
+        // 不含 Popover/MouseArea 子——此处补齐（测试专用窄遍历）。
+        fn scan(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            pops: &mut usize,
+            thumbs: &mut usize,
+        ) {
+            use crate::ui::view::View as V;
+            let extra: Vec<&V<_>> = match v {
+                V::Popover { anchor, content, open, .. } => {
+                    if *open { *pops += 1; }
+                    let mut v = vec![content.as_ref()];
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        v.push(w.as_ref());
+                    }
+                    v
+                }
+                V::MouseArea { content, .. } => vec![content.as_ref()],
+                V::WindowThumbnail { .. } => {
+                    *thumbs += 1;
+                    vec![]
+                }
+                _ => vec![],
+            };
+            for c in view_children(v).into_iter().chain(extra) {
+                scan(c, pops, thumbs);
+            }
+        }
+        fn counts(
+            ds: &crate::ui::session::DesktopSession,
+        ) -> (usize, usize) {
+            let shell = ds.desktop.shell_app.unwrap();
+            let (view, _, _) = ds
+                .apps
+                .get(&shell)
+                .unwrap()
+                .component
+                .view_with_debug_gated(false);
+            let (mut pops, mut thumbs) = (0, 0);
+            scan(&view, &mut pops, &mut thumbs);
+            (pops, thumbs)
+        }
+
+        // 基线：无 hover——popover 全收起（open 计数 0）；缩略叶为树构建
+        // 面（popover content 预构建、open 才走 iced overlay 渲染）：dock
+        // 条目 ×2（a/b）+ pager 分区网格 ×2（分区0=a、分区1=b）= 4。
+        let (p0, t0) = counts(&ds);
+        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、四枚预构建缩略叶");
+
+        // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("HoverWin", &[auto_val::Value::str(b.0.to_string())])
+                .expect("HoverWin");
+        }
+        let (p1, t1) = counts(&ds);
+        assert_eq!(p1, 1, "dock hover 打开单个 popover");
+        assert_eq!(t1, 4, "缩略叶集不变（open 不增建）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverEnd", &[]).expect("HoverEnd");
+        }
+        assert_eq!(counts(&ds).0, 0, "HoverEnd 收起");
+
+        // pager hover 分区 1（=b）：分区按钮 popover open ×1。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("HoverWs", &[auto_val::Value::str("1")])
+                .expect("HoverWs");
+        }
+        let (p2, t2) = counts(&ds);
+        assert_eq!(p2, 1, "pager hover 打开单个 popover");
+        assert_eq!(t2, 4, "分区 1 网格含 b 缩略（a 在分区 0 不入该网格——预构建集不变）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverWsEnd", &[]).expect("HoverWsEnd");
+        }
+        assert_eq!(counts(&ds).0, 0, "HoverWsEnd 收起");
+        let _ = a;
+    }
+
+    #[test]
     #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();
