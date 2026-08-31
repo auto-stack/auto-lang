@@ -108,17 +108,6 @@ fn http_request(
     Ok((status, body))
 }
 
-trait ToSocketAddrsOwned {
-    fn to_socket_addrs_owned(&self) -> Option<Vec<std::net::SocketAddr>>;
-}
-
-impl ToSocketAddrsOwned for String {
-    fn to_socket_addrs_owned(&self) -> Option<Vec<std::net::SocketAddr>> {
-        use std::net::ToSocketAddrs;
-        self.to_socket_addrs().ok().map(|it| it.collect())
-    }
-}
-
 /// 起测试 daemon：随机端口 + 配置根重定向（USERPROFILE/HOME → temp home）。
 /// 返回 (daemon url, Child, temp home)。就绪 ping ≤10s。
 fn spawn_test_daemon(exe: &Path) -> Result<(String, std::process::Child, PathBuf), String> {

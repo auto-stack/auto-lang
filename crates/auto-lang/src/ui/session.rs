@@ -1193,55 +1193,54 @@ impl DesktopCommand {
 /// `name`（`-`→`_`，Windows `x.dll` / macOS `libx.dylib` / Linux `libx.so`）；
 /// probe `target/debug` → `target/release`；缺失返回 Err（调用方降级桩）。
 fn load_back_cdylib(
-back_root: &std::path::Path,
+    back_root: &std::path::Path,
 ) -> Result<crate::vm::backend_abi::LoadedBackend, String> {
-let pac = std::fs::read_to_string(back_root.join("pac.at")).unwrap_or_default();
-let fields = crate::ui::app_registry::parse_pac_fields(&pac);
-let lib_stem = fields
-    .get("name")
-    .map(|n| n.replace('-', "_"))
-    .unwrap_or_else(|| "backend".to_string());
-let lib_file = if cfg!(windows) {
-    format!("{lib_stem}.dll")
-} else if cfg!(target_os = "macos") {
-    format!("lib{lib_stem}.dylib")
-} else {
-    format!("lib{lib_stem}.so")
-};
-let found = [
-    back_root.join("target").join("debug").join(&lib_file),
-    back_root.join("target").join("release").join(&lib_file),
-]
-.into_iter()
-.find(|p| p.is_file());
-let Some(lib_path) = found else {
-    return Err(format!(
-        "backend cdylib `{lib_file}` not found under {}/target/{{debug,release}} — build the backend project first",
-        back_root.display()
-    ));
-};
-struct DesktopBackendRegistry;
-impl crate::vm::backend_abi::BackendRegistry for DesktopBackendRegistry {
-    fn host_call(
-        &self,
-        name: &str,
-        f: crate::vm::backend_abi::BackendHostCallFn,
-    ) {
-        crate::vm::host_bridge::register_host_call(name, f);
+    let pac = std::fs::read_to_string(back_root.join("pac.at")).unwrap_or_default();
+    let fields = crate::ui::app_registry::parse_pac_fields(&pac);
+    let lib_stem = fields
+        .get("name")
+        .map(|n| n.replace('-', "_"))
+        .unwrap_or_else(|| "backend".to_string());
+    let lib_file = if cfg!(windows) {
+        format!("{lib_stem}.dll")
+    } else if cfg!(target_os = "macos") {
+        format!("lib{lib_stem}.dylib")
+    } else {
+        format!("lib{lib_stem}.so")
+    };
+    let found = [
+        back_root.join("target").join("debug").join(&lib_file),
+        back_root.join("target").join("release").join(&lib_file),
+    ]
+    .into_iter()
+    .find(|p| p.is_file());
+    let Some(lib_path) = found else {
+        return Err(format!(
+            "backend cdylib `{lib_file}` not found under {}/target/{{debug,release}} — build the backend project first",
+            back_root.display()
+        ));
+    };
+    struct DesktopBackendRegistry;
+    impl crate::vm::backend_abi::BackendRegistry for DesktopBackendRegistry {
+        fn host_call(
+            &self,
+            name: &str,
+            f: crate::vm::backend_abi::BackendHostCallFn,
+        ) {
+            crate::vm::host_bridge::register_host_call(name, f);
+        }
+        fn inject_event(&self, _tag: &str, _json: &str) -> bool {
+            false // 桌面 shell SSE 通道暂无外部后端回流消费方
+        }
+        fn log(&self, msg: &str) {
+            eprintln!("[backend] {msg}");
+        }
     }
-    fn inject_event(&self, _tag: &str, _json: &str) -> bool {
-        false // 桌面 shell SSE 通道暂无外部后端回流消费方
-    }
-    fn log(&self, msg: &str) {
-        eprintln!("[backend] {msg}");
-    }
+    crate::vm::backend_abi::load_backend_cdylib(
+        &lib_path,
+        std::sync::Arc::new(DesktopBackendRegistry),
+    )
 }
-crate::vm::backend_abi::load_backend_cdylib(
-    &lib_path,
-    std::sync::Arc::new(DesktopBackendRegistry),
-)
-}
-
 
 /// LaunchApp 的启动材料（单测内联注入；生产侧由 T7 注册表解析供给）。
 pub struct LaunchSpec {
