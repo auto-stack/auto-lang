@@ -1259,8 +1259,10 @@ impl DynamicComponent {
             stripped_payloads.push((sc.callback.clone(), payload));
         }
         let t0 = std::time::Instant::now();
+        eprintln!("[DYNAMIC_ON] widget={} clean_name={} state_obj_id={} args={:?}", widget_name, clean_name, state_obj_id, args);
         match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
             Ok(()) => {
+                eprintln!("[DYNAMIC_ON_OK] widget={} clean_name={}", widget_name, clean_name);
                 if is_trace {
                     let _post_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
                     let _post_idx = self.bridge.read_state("active_index").ok();

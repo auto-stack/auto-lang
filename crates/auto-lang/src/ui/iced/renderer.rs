@@ -9475,9 +9475,8 @@ fn compare_pngs(
             Some(v) => v,
             None => return iced::Task::none(),
         };
-        // （T3c 登记头已上移至 T4 外壳层 —— 见 `update` 的 DM::App 分支）
-        if std::env::var("AUTO_DEBUG_MSGS").is_ok() && !msg.event.starts_with("__") {
-            eprintln!("[MSG] widget={:?} event={:?}", msg.widget, msg.event);
+        if !msg.event.starts_with("__timer") && !msg.event.starts_with("__toast") && !msg.event.starts_with("__mcp") {
+            eprintln!("[UPDATE_INNER_MSG] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
         }
         // Plan 412 续(toast 修正 3/6):在 update 最前消费 handler 写入的
         // __toast state —— push 进堆叠并立即清空(无去重:同一条消息可反复
