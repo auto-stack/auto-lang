@@ -937,19 +937,30 @@ impl AutoVM {
         // 而非累计创建数)。复用条目 rc=0,由 push 侧 +1 建立 stake。
         {
             let mut pool = self.pool_state.write().unwrap();
-            if let Some(slot) = pool.freelist.pop() {
-                // PLAN-053 P-053-8: 幻影 freelist 条目签名——弹出的槽还有
-                // 存活持有(rc>0)即复用会覆写活条目内容并烧掉其 rc 记账
-                // (POOLLOG 实测 #222→#223,槽 2348 rc=1 时被复用)。此处
-                // 不改变复用语义(上游注入源属 060 计划 RC 债),只把静默
-                // 腐坏变成可见签名;残键伤害由 add_string 命中侧校验兜底。
-                if slot < pool.rc.len() && pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed) > 0 {
-                    eprintln!(
-                        "[P053-8] phantom freelist entry: slot {} reused while rc={} (live holders exist)",
-                        slot,
-                        pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
-                    );
+            // PLAN-053 P-053-8: 幻影 freelist 条目清扫——rc>0 的弹出槽是
+            // 存活槽(不变量:freelist 槽 rc==0)。丢弃条目以恢复不变量,
+            // 绝不复用:复用会覆写活内容+清零 rc,触发孤儿 release 下溢
+            // 风暴并自续(实测槽 49299:rc=5 被复用→下溢 4294967295→再
+            // free→再入 freelist;musk store 兄弟调用实参读到后落的 404
+            // JSON 即此伤害)。首见打签名,注入源治理归 060 RC 债。
+            let mut chosen: Option<usize> = None;
+            while let Some(slot) = pool.freelist.pop() {
+                let live = slot < pool.rc.len()
+                    && pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed) > 0;
+                if live {
+                    if pool.phantom_seen.insert(slot) {
+                        eprintln!(
+                            "[P053-8] phantom freelist entry dropped: slot {} (live holders, rc={})",
+                            slot,
+                            pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
+                        );
+                    }
+                    continue;
                 }
+                chosen = Some(slot);
+                break;
+            }
+            if let Some(slot) = chosen {
                 let mut strings = self.strings.write().unwrap();
                 if slot < strings.len() {
                     strings[slot] = bytes.clone();

@@ -1230,3 +1230,39 @@ mod musk_vm_track_p053_8_stale_key_selfheal {
         );
     }
 }
+
+/// P-053-8 续:幻影 freelist 条目清扫——rc>0 的槽是存活槽,freelist 弹出
+/// 时必须丢弃该条目并跳过,绝不复用(复用=覆写活内容+清零 rc→孤儿
+/// release 下溢风暴自续;实测槽 49299 rc=5 被复用后 rc=4294967295,
+/// musk store 兄弟调用实参读到后落的 404 JSON)。
+#[cfg(test)]
+mod musk_vm_track_p053_8_phantom_freelist {
+    use crate::vm::engine::AutoVM;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    #[test]
+    fn phantom_entry_dropped_live_slot_never_stolen() {
+        let vm = AutoVM::new(VirtualFlash::new_with_code(vec![]), 1024);
+        let live = vm.add_string("你好".as_bytes().to_vec());
+        vm.pool_retain(live);
+        vm.pool_retain(live); // rc=2:两个存活持有
+        // 人为注入幻影条目(现场形态:存活槽进入 freelist)。
+        vm.pool_state.write().unwrap().freelist.push(live);
+        // 后续内化不得偷该槽。
+        let other = vm.add_string("other".as_bytes().to_vec());
+        assert_ne!(other, live, "幻影条目必须被丢弃,存活槽不得复用");
+        assert_eq!(
+            vm.get_string(live as u32).unwrap(),
+            "你好".as_bytes(),
+            "存活槽内容不得被覆写"
+        );
+        // 幻影条目已被清扫:freelist 不再含该槽。
+        assert!(
+            !vm.pool_state.read().unwrap().freelist.contains(&live),
+            "幻影条目应被消费丢弃"
+        );
+        // 同字节内化仍命中存活槽。
+        let again = vm.add_string("你好".as_bytes().to_vec());
+        assert_eq!(again, live);
+    }
+}
