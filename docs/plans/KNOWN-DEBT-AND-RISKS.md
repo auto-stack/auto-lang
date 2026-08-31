@@ -308,6 +308,14 @@
   无关（本计划零 Rust 源码改动）。与 P487-2 同族「非默认档门禁盲区」：
   挂 `--features test-vm-files` 档，`cargo t`/`tf` 看不见。aavm2 全系
   （m1-m5 corpus）在 tv 档全绿。待独立分诊（疑似近期合入破坏或环境依赖）。
+- **P495-2（复审新发现，潜在分叉未暴露）is 块体 arm 作用域语义双端
+  分叉**：rust arm 体统一走 `Stmt::Block`（codegen.rs:3790，push/pop_scope，
+  depth>2 时 arm 块尾发槽释放组）；aavm `cg_is_arm_body` 块体路径走
+  `cg_body_inline`（auto/lib/codegen.at，不推作用域，arm 内 var 归外层
+  域）——arm 块体内声明 var 时释放组位置/时机分叉；corpus 现无块体 arm
+  语料故对拍未暴露。附注：表达式级 `.line` 位（`Expr::Block`/表达式
+  is arm，codegen.rs:9905/9934）aavm cg_expr 尚无实现，属 M4 fn-only
+  能力边界，未来实现时需同款 `cg_line`。
 
 ### P488（2026-08-30，Plan 488 OLE 拖放双向复审登记）
 
@@ -358,3 +366,26 @@
 - **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
   分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
   按同款双份落码（+11 行 ×2），非本期引入的新债。
+
+### P494（2026-08-31，Plan 494 原生真洞 Phase 4 复审登记；用户已批准为债务）
+
+- **P494-1 G4 覆盖层洞边裁剪（Region 机制代价）**：真洞经 `SetWindowRgn`
+  排除实现（双 spike 证伪透明 swapchain 与 HTTRANSPARENT 跨进程后的机制
+  替换，见计划待澄清①②），洞区窗口不存在——ghost 拖拽预览与 toast 在
+  洞边界被硬裁剪（G4 目标降级：画到洞边、不进洞内）。偿还路径：物理机
+  复验 DxgiFromVisual 透明成立后改「Region+透明」复合形态（洞内 alpha=0
+  绘制），或独立置顶子窗承载洞区覆盖层（另立计划）。
+- **P494-2 T5 实机清单环境受限延期（物理机复验）**：真洞实机视觉
+  （Explorer/夹具 dock 洞区透出、四角/边框观感）、ghost/toast 裁剪边界
+  目检、双屏不同缩放、洞内原生菜单/弹窗置顶——本机（ToDesk 远程显示 +
+  Chrome Legacy Window 输入拦截）四条拖拽/点击注入路径（caption 拖/候选
+  位探测/SC_MOVE 前台化注入/客户区点击）实测全部不可达 fixture。机制
+  证据由 T3 E2E 跨进程铁证（洞心 SendInput 精确穿透 ±6、洞外零泄漏）+
+  真实 win32 测试矩阵（z 不变量/Region 穿透/复位）承载。复验宿主：
+  `AUTO_DESKTOP_HOLE=1` env（ui_desktop 示例）或 `shell.native.hole`
+  storage 键。与 P494-1 同一物理机复验批。
+- **P494-3 透明路径物理机复验（spike① 环境分支）**：vendored 三处补丁
+  实证链在 `tmp/spike494-transparent/`（gitignored，含 vendor/iced_wgpu
+  + iced_winit 一行级 diff：backend_options 读 env / PreMultiplied 优先 /
+  with_no_redirection_bitmap）。本机 DComp 内容不上屏疑 ToDesk 特有；
+  成立则 P494-1 可经「Region+透明」复合偿还。

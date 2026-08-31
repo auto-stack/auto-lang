@@ -21,6 +21,26 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
     model {
         segs List = []
         xlabels str = ""
+        xLab0 str = ""
+        xLab1 str = ""
+        xLab2 str = ""
+        xLab3 str = ""
+        xLab4 str = ""
+        xLab5 str = ""
+        xLab6 str = ""
+        xLab7 str = ""
+        xLab8 str = ""
+        xLab9 str = ""
+        xLab10 str = ""
+        xLab11 str = ""
+        xLab12 str = ""
+        xLab13 str = ""
+        xLab14 str = ""
+        xLab15 str = ""
+        xLab16 str = ""
+        xLab17 str = ""
+        xLab18 str = ""
+        xLab19 str = ""
         yTick4 str = ""
         yTick3 str = ""
         yTick2 str = ""
@@ -345,10 +365,46 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
     }
 
     view {
-        col (style: "w-full gap-1") {
+        col (style: "w-full max-w-[560px] mx-auto gap-1") {
+            if .legend {
+                row (style: "justify-end gap-4 pb-2") {
+                    if .legendText0 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor0) {}
+                            }
+                            text .legendText0 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText1 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor1) {}
+                            }
+                            text .legendText1 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText2 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor2) {}
+                            }
+                            text .legendText2 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                    if .legendText3 != "" {
+                        row (style: "items-center gap-1") {
+                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
+                                rect (width: "8", height: "8", fill: .legendColor3) {}
+                            }
+                            text .legendText3 { style: "text-xs text-muted-foreground" }
+                        }
+                    }
+                }
+            }
             row (style: "items-stretch w-full") {
                 if .axis == "auto" {
-                    col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-0 pb-8") {
+                    col (style: "w-10 shrink-0 justify-between items-end pr-1 pt-[20px] pb-[40px]") {
                         text .yTick4 { style: "text-[10px] text-muted-foreground" }
                         text .yTick3 { style: "text-[10px] text-muted-foreground" }
                         text .yTick2 { style: "text-[10px] text-muted-foreground" }
@@ -385,7 +441,7 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                         }
                     }
                     if .axis == "auto" {
-                        row (style: "justify-between px-10 pt-1") {
+                        row (style: "justify-between pl-10 pr-2.5 pt-1") {
                                 if .xLab0 != "" {
                                     text .xLab0 { style: "text-[10px] text-muted-foreground" }
                                 }
@@ -446,42 +502,6 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                                 if .xLab19 != "" {
                                     text .xLab19 { style: "text-[10px] text-muted-foreground" }
                                 }
-                        }
-                    }
-                }
-            }
-            if .legend {
-                row (style: "gap-4 pt-1 px-2") {
-                    if .legendText0 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor0) {}
-                            }
-                            text .legendText0 { style: "text-xs text-muted-foreground" }
-                        }
-                    }
-                    if .legendText1 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor1) {}
-                            }
-                            text .legendText1 { style: "text-xs text-muted-foreground" }
-                        }
-                    }
-                    if .legendText2 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor2) {}
-                            }
-                            text .legendText2 { style: "text-xs text-muted-foreground" }
-                        }
-                    }
-                    if .legendText3 != "" {
-                        row (style: "items-center gap-1") {
-                            svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
-                                rect (width: "8", height: "8", fill: .legendColor3) {}
-                            }
-                            text .legendText3 { style: "text-xs text-muted-foreground" }
                         }
                     }
                 }
