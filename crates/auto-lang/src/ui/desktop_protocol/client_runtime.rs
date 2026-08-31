@@ -1693,6 +1693,56 @@ mod tests {
         );
     }
 
+    /// Plan 500 步骤 9（T4）：queue 臂投影金样（001 三臂对拍基线的
+    /// queue 臂；vue 臂挂 a2vue 同族，iced 像素臂留实机档——497 已证
+    /// headless 栅格化不可行）。`AUTO_WRITE_GOLDEN=1` 重写期望文件。
+    #[test]
+    fn parity_001_queue_golden() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test/parity");
+        let src = std::fs::read_to_string(dir.join("001_helloworld.at"))
+            .expect("parity fixture（= examples/ui/001 真源快照）");
+        let component = crate::build_dynamic_component(&src, None).expect("build");
+        let mut p = AppProjector::new(component, 480.0, 900.0);
+        let frame = p.render_frame();
+        // 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）。
+        let mut out = String::new();
+        match frame.clear {
+            Some(c) => out.push_str(&format!("clear {},{},{},{}
+", c.r, c.g, c.b, c.a)),
+            None => out.push_str("clear -
+"),
+        }
+        for op in &frame.ops {
+            match op {
+                DrawOp::Quad { rect, color } => out.push_str(&format!(
+                    "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}
+",
+                    rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
+                )),
+                DrawOp::Text { x, y, size, line_height, color, text } => out.push_str(&format!(
+                    "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}
+",
+                    x, y, size, line_height, color.r, color.g, color.b, color.a, text
+                )),
+            }
+        }
+        let exp_path = dir.join("001_queue.expected.txt");
+        if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
+            std::fs::write(&exp_path, &out).expect("write golden");
+        }
+        let expected = std::fs::read_to_string(&exp_path).expect("read golden");
+        if out != expected {
+            let _ = std::fs::write(dir.join("001_queue.wrong.txt"), &out);
+            panic!(
+                "queue 臂金样不匹配（见 test/parity/001_queue.wrong.txt）:
+--- expected ---
+{expected}
+--- actual ---
+{out}"
+            );
+        }
+    }
+
     /// 按钮标签 + 命中区 + 文本计数的投影快照。
     #[test]
     fn projector_counter_layout_and_hits() {
