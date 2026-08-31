@@ -1565,6 +1565,14 @@ pub fn shim_str_is_empty(s: String) -> bool {
     s.is_empty()
 }
 
+/// Check if the string is exactly one ASCII digit character (0-9).
+/// Plan 504: static-dispatch predicate for UI tracks (e.g. 011-calculator) —
+/// Vue side maps to `/^[0-9]$/.test(s)` in ts_adapter.
+#[auto_macros::rust_fn("Str.is_digit")]
+pub fn shim_str_is_digit(s: String) -> bool {
+    s.len() == 1 && s.as_bytes()[0].is_ascii_digit()
+}
+
 /// Get character at byte index (returns single-char string)
 ///
 /// Plan 434 (AA2R): boundary-safe — a byte index inside a multi-byte char

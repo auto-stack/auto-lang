@@ -333,6 +333,11 @@ impl Automan {
         self.pac.window
     }
 
+    /// Plan 504: content-fit window mode from pac.at `window: "fit"`.
+    pub fn pac_window_fit(&self) -> bool {
+        self.pac.window_fit
+    }
+
     /// VM native window title from pac.at `title: "..."`.
     pub fn pac_window_title(&self) -> Option<String> {
         self.pac.title.as_ref().map(|t| t.to_string())

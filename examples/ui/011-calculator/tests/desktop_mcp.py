@@ -187,6 +187,23 @@ def run_tests_011(mcp_url):
     out = mcp.press(["C"])
     result.check("display back to 0", field_of(out, "display") in ("0", '"0"'), out[:300])
 
+    # T8: Plan 504 — math.pow static dispatch (was in-app integer loop):
+    # 2 ^ 10 = 1024 via the scientific keypad's "^" operator button.
+    print("\nT8: Scientific mode 2^10=1024 (Plan 504 math.pow static dispatch)")
+    mcp.press(["Scientific"])
+    out = mcp.press(["C", "2", "^", "1", "0", "="])
+    result.check("display is 1024", field_of(out, "display") == "1024", out[:300])
+    mcp.press(["Basic"])  # restore
+
+    # T9: Plan 504 — in-app title bar / Settings removed (title/theme/accent
+    # moved to pac.at + os-config; host chrome owns them now).
+    print("\nT9: No in-app header/settings (Plan 504)")
+    snap = mcp.snapshot()
+    result.check("no Settings in snapshot", "Settings" not in snap,
+                 "in-app Settings button still rendered")
+    result.check("no ExampleHeader in snapshot", "ExampleHeader" not in snap,
+                 "common.header still mounted")
+
     return result
 
 

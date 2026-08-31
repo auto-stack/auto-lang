@@ -18,6 +18,12 @@ ext str {
     #[vm]
     fn is_empty() bool
 
+    /// Check if the string is exactly one ASCII digit character (0-9).
+    /// Multi-char or non-digit strings yield false.
+    /// Example: "7".is_digit()  // returns true; "12".is_digit() // false
+    #[vm]
+    fn is_digit() bool
+
     /// Convert string to uppercase
     /// Example: "hello".upper()  // returns "HELLO"
     #[vm]

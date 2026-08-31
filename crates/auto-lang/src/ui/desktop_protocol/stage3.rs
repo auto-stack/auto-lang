@@ -301,8 +301,10 @@ mod tests {
                         code: src.clone(),
                         source_path: None,
                         title: Some(name.to_string()),
+                        name: None,
                         daemon: None,
                         back_root: None,
+                        fit: false,
                     })
                 } else {
                     None
@@ -762,8 +764,10 @@ mod tests {
                         code: src.clone(),
                         source_path: None,
                         title: Some(name.to_string()),
+                        name: None,
                         daemon: None,
                         back_root: None,
+                        fit: false,
                     })
                 } else {
                     None

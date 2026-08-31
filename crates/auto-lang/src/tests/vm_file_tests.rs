@@ -530,6 +530,10 @@ fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unw
 #[test] #[ignore] fn test_18_ffi_054_process_current_dir() { test_vm("18_ffi/054_process_current_dir").unwrap(); }
 #[test] #[ignore] fn test_18_ffi_055_process_args() { test_vm("18_ffi/055_process_args").unwrap(); }
 
+// === 18_ffi (Plan 504: 静态分发补齐——math.pow / str.is_digit) ===
+#[test] #[ignore] fn test_18_ffi_056_math_pow() { test_vm("18_ffi/056_math_pow").unwrap(); }
+#[test] #[ignore] fn test_18_ffi_057_str_is_digit() { test_vm("18_ffi/057_str_is_digit").unwrap(); }
+
 // === 20_rust_ffi (Plan 212b: E2E Rust FFI) ===
 // NOTE: These tests require network access (cargo download) and are #[ignore]d by default.
 // Run with: cargo test -p auto-lang test_20_rust_ffi -- --ignored

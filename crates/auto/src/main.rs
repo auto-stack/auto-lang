@@ -968,6 +968,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_VM_WINDOW", format!("{}x{}", w as u32, h as u32));
                 println!("  VM window size: {}x{} (from pac.at)", w as u32, h as u32);
             }
+            // Plan 504: `window: "fit"` — content-fit mode. Same env channel;
+            // the renderer measures the first frame and resizes.
+            if am.pac_window_fit() {
+                std::env::set_var("AUTO_VM_WINDOW", "fit");
+                println!("  VM window size: fit (content-measured, from pac.at)");
+            }
             // VM native window title from pac.at `title: "..."`, same env
             // injection path as AUTO_VM_WINDOW above.
             if let Some(t) = am.pac_window_title() {
@@ -977,13 +983,33 @@ fn real_main(cli: Cli) -> Result<()> {
             // Plan 458: UI theme + accent presets. CLI --theme/--accent >
             // pac.at `theme:`/`accent:` > built-in default (dark/indigo,
             // applied by the consumers when these env vars are absent).
-            // Injected via env so the iced renderer (-r vm, same process)
-            // and the vue index.html generator read the same effective value.
-            let theme_eff = theme.as_deref().map(str::to_lowercase).or_else(|| am.pac_theme());
+            // Plan 504 S7: priority chain gains an os-config tier —
+            // CLI > os-config (~/.config/autoos/apps/<name>/config.at) >
+            // pac.at > default. Injected via env so the iced renderer
+            // (-r vm, same process) and the vue index.html generator read
+            // the same effective value.
+            let osc_app = am.pac_name();
+            let (osc_theme, osc_accent) = osc_app
+                .as_deref()
+                .map(auto_lang::ui::osconfig_apps::read_app_theme_accent)
+                .unwrap_or((None, None));
+            let theme_from_osc = osc_theme.is_some();
+            let accent_from_osc = osc_accent.is_some();
+            let theme_eff = theme
+                .as_deref()
+                .map(str::to_lowercase)
+                .or(osc_theme)
+                .or_else(|| am.pac_theme());
             match theme_eff.as_deref() {
                 Some(t) if auto_lang::ui::style::theme::THEME_PREFS.contains(&t) => {
                     std::env::set_var("AUTO_UI_THEME", t);
-                    let via = if theme.is_some() { " (from cli)" } else { " (from pac.at)" };
+                    let via = if theme.is_some() {
+                        " (from cli)"
+                    } else if theme_from_osc {
+                        " (from os-config)"
+                    } else {
+                        " (from pac.at)"
+                    };
                     println!("  UI theme: {}{}", t, via);
                 }
                 Some(t) => {
@@ -1002,11 +1028,21 @@ fn real_main(cli: Cli) -> Result<()> {
                 std::env::set_var("AUTO_DESKTOP_APPS", a);
                 println!("  Desktop apps dir: {}", a);
             }
-            let accent_eff = accent.as_deref().map(str::to_lowercase).or_else(|| am.pac_accent());
+            let accent_eff = accent
+                .as_deref()
+                .map(str::to_lowercase)
+                .or(osc_accent)
+                .or_else(|| am.pac_accent());
             match accent_eff.as_deref() {
                 Some(a) if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a) => {
                     std::env::set_var("AUTO_UI_ACCENT", a);
-                    let via = if accent.is_some() { " (from cli)" } else { " (from pac.at)" };
+                    let via = if accent.is_some() {
+                        " (from cli)"
+                    } else if accent_from_osc {
+                        " (from os-config)"
+                    } else {
+                        " (from pac.at)"
+                    };
                     println!("  UI accent: {}{}", a, via);
                 }
                 Some(a) => {

@@ -48,9 +48,19 @@ async function main() {
   console.log(`[*] Navigating to ${url}...`);
   await page.goto(url, { waitUntil: 'networkidle' });
 
+  let failures = 0;
+  const check = (name, ok) => {
+    if (ok) { console.log(`[+] OK: ${name}`); }
+    else { failures++; console.log(`[-] FAIL: ${name}`); }
+  };
+
   // 1. Initial Dark
   console.log('[*] Capturing 011_vue_dark_initial...');
   await page.screenshot({ path: path.join(outDir, '011_vue_dark_initial.png'), fullPage: true });
+
+  // Plan 504: in-app title bar / Settings removed (moved to pac.at + os-config).
+  const settingsBtn = await page.$('button:has-text("Settings")');
+  check('no in-app Settings header (Plan 504)', settingsBtn === null);
 
   // Helper to click keypad button by exact text
   async function clickKey(label) {
@@ -89,47 +99,29 @@ async function main() {
   console.log('[*] Capturing 011_vue_scientific_mode...');
   await page.screenshot({ path: path.join(outDir, '011_vue_scientific_mode.png'), fullPage: true });
 
+  // 4. Plan 504: math.pow static dispatch — 2 ^ 10 = 1024 (was in-app loop).
+  console.log('[*] Evaluating 2 ^ 10 = 1024 (math.pow static dispatch)...');
+  await clickKey('C');
+  await clickKey('2');
+  await clickKey('^');
+  await clickKey('1');
+  await clickKey('0');
+  await clickKey('=');
+  await page.waitForTimeout(300);
+  const powResult = await page.getByText('1024', { exact: true }).count();
+  check('2 ^ 10 = 1024 (math.pow)', powResult > 0);
+  await page.screenshot({ path: path.join(outDir, '011_vue_pow.png'), fullPage: true });
+
   // Switch back to Basic
   await clickKey('Basic');
   await clickKey('C');
   await page.waitForTimeout(200);
 
-  // 4. Open Settings
-  console.log('[*] Clicking Settings button...');
-  await page.click('button:has-text("Settings")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 011_vue_settings_open...');
-  await page.screenshot({ path: path.join(outDir, '011_vue_settings_open.png'), fullPage: true });
-
-  // 5. Click Coral Accent (2nd accent circle)
-  console.log('[*] Clicking Coral accent button...');
-  const accentButtons = await page.$$('button.bg-rose-500, button[class*="rose"]');
-  if (accentButtons.length > 0) {
-    await accentButtons[0].click();
-  } else {
-    const buttons = await page.$$('button');
-    if (buttons.length >= 5) {
-      await buttons[4].click();
-    }
+  if (failures > 0) {
+    console.error(`[-] ${failures} assertion(s) failed`);
+    await browser.close();
+    process.exit(1);
   }
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 011_vue_coral_accent...');
-  await page.screenshot({ path: path.join(outDir, '011_vue_coral_accent.png'), fullPage: true });
-
-  // 6. Click Light mode
-  console.log('[*] Clicking Light mode button...');
-  await page.click('button:has-text("Light")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 011_vue_light_mode...');
-  await page.screenshot({ path: path.join(outDir, '011_vue_light_mode.png'), fullPage: true });
-
-  // 7. Back to Dark mode
-  console.log('[*] Clicking Dark mode button...');
-  await page.click('button:has-text("Dark")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 011_vue_back_to_dark...');
-  await page.screenshot({ path: path.join(outDir, '011_vue_back_to_dark.png'), fullPage: true });
-
   console.log('[+] All Vue screenshots captured successfully!');
   await browser.close();
 }

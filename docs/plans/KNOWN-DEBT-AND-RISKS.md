@@ -439,3 +439,26 @@
   runbook：仓根起 `cargo run -p auto-lang --features ui-iced --example
   ui_desktop` 人手 30 秒抽查；前台空闲可补采（P479-2/P487-1/P496-1 同批
   排队）。
+
+### P504（2026-09-01，Plan 504 calculator fit-window/os-config/stdlib 复审登记）
+
+- **P504-1 18_ffi ignore 档 float/bool 格式化腐烂（存量，非本计划引入）**：
+  `test/vm/18_ffi` ignore 档中 019 返回 `"1610612736"`（float 位样）、
+  052/053 bool 打印 `"true"` vs 期望 `"1"`——master 基点同败实测确认，
+  系存量腐烂。本计划新增 VM 文件测试 056_math_pow/057_str_is_digit 不涉
+  该档。偿还路径：float/bool 值格式化语义统一立项（另行计划）。
+- **P504-2 fit 为首帧一次性测量（内容动态增高不重测）**：`window: "fit"`
+  语义 = 宿主首帧测量内容尺寸并收缩窗口一次。011 切 Scientific 模式后
+  内容增高，窗口不重测，底部 `=` 键轻微裁剪（实机截图可见）。候选后续：
+  内容尺寸变化信号 → 宿主重测（协议/宿主增强，另行计划）。
+- **P504-3 desktop 真实 launch 实况 e2e 未通（合成输入打不进 winit）**：
+  desktop fit/seeding 覆盖到 session 级单测 + standalone 实机；ui_desktop
+  宿主可起、MCP 截图可见桌面，但 SendInput 键鼠（即便 AttachThreadInput
+  置前后）打不进 winit 窗口，launcher 召唤/桌面图标双击均无响应；MCP
+  键盘工具 key 枚举无 Space/字母且只达 primary app（与 P496-1/P501-2
+  前台竞争家族同族）。偿还路径：desktop 模式 MCP 加 launch/输入通道
+  （可测性增强）。
+- **P504-4 desktop boot 直传 comps 无 pac 语境（架构边界，记录）**：boot
+  直开 app 路径不经过 pac 解析，故无 fit、无 os-config 播种。属既有架构
+  边界而非缺陷；若将来要求 boot 直开也享受 fit/os-config，需在 boot
+  路径引入 pac 语境（另行计划）。

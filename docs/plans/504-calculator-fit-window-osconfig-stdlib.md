@@ -1,21 +1,24 @@
 ---
 plan_id: PLAN-504
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: calculator-fit-window-osconfig-stdlib
 author: [kimi-code]
 created_at: 2026-08-31
-updated_at: 2026-08-31
+updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []
+new_spec_components:
+  - "pac window:\"fit\"——首帧内容 shrink 测量自适应窗口（独立 VM 窗 + 桌面虚拟窗双路径）"
+  - "stdlib Math.pow / Str.is_digit——静态分发（VM Rust shim + Vue ts_adapter 映射）"
+  - "os-config per-app 配置约定——~/.config/autoos/apps/<app>/config.at，launch 时读注 theme/accent"
 touched_goals:
   - "GOAL-009: 虚拟桌面与桌面 Shell——示例应用桌面化三件套：fit 窗口 / 设置上移 os-config / stdlib 静态分发"
   - "GOAL-010: 示例应用轨道——011-calculator 作为桌面移植范式样板"
   - "GOAL-007: AutoUI 跨端视觉一致——静态分发函数双端（Vue TS / VM Rust）同语义"
 
 affects: [auto-lang/ui, auto-lang/vm]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -218,14 +221,54 @@ app.at: ch.is_digit() ──┬─ VM: stdlib/auto/str.at ext str #[vm] → nati
 
 ## 复审记录
 
-（/auto-plan:review 时填写）
+（2026-09-01，/auto-plan:review）
+
+**验收逐条核对**（verify, don't trust）：
+
+1. ✅ pac.at `window: "fit"` + `title: "Calculator"` 已落（011 pac.at）。
+   独立 VM 窗实机：窗口自 1293x836 收缩至 397x428（内容 w-96=384 +
+   chrome：TITLEBAR_H 28 + BORDER×2），MCP 截图确认无居中外壳空白。
+   桌面路径：session 级单测 `apply_fit_measured_shrinks_desktop_vwin`
+   （386x422 = 384+2·BORDER / 392+28+2·BORDER）+ standalone 实机；
+   桌面真实 launch 实况 e2e 受阻于 winit 合成输入（债项 P504-3）。
+2. ✅ 011 app.at 无 ExampleHeader/settings UI（双端 e2e 含"无 Settings
+   按钮"断言）。os-config 模块 `auto-calculator` 经 daemon（端口实测
+   17901）热注册成功，`/api/config/auto-calculator` 返回
+   `{"theme":"dark","accent":"indigo","mode":"basic"}`；launch 读注链
+   实测打印 `UI theme: light (from os-config)` / `UI accent: coral
+   (from os-config)`（临时改值验证后已恢复 dark/indigo）。
+3. ✅ `ch.is_digit()` / `math.pow` 双端同语义：VM 文件测试
+   056_math_pow/057_str_is_digit 过；Vue 端 `2^10=1024` e2e 过；
+   ts_adapter 映射单测 `str_is_digit_maps_to_regex_test` 过。
+4. ✅ `cargo tf` 全量 3326 过（含 1M churn 档）；ui-iced 档
+   fit/launch/osconfig 相关 45 测试全过；无新增编译警告；新增代码
+   rustfmt 偏差已清零（四改动文件 hunk 数与 master 对齐，新文件
+   osconfig_apps.rs 零偏差）。
+
+**遗漏/延后/Workaround 扫描**：见 KNOWN-DEBT-AND-RISKS.md P504-1~4
+（18_ffi 存量格式化腐烂 / fit 一次性测量 Scientific 裁剪 / desktop
+实况 e2e 输入通道 / boot 直开无 pac 语境）。无未批准的暗延后。
+
+**与计划文本的偏差（已裁定）**：
+
+- 配置实际路径为 `~/.config/autoos/apps/calculator/config.at`（目录
+  形态），非计划文的 `apps/calculator.at` 单文件——循 musk 先例，
+  待澄清③裁定以 os-config 仓现状为准。
+- pac.at 取值名保留 `window: "fit"`（用户裁定，不改 `auto`）。
+- 关键缺陷修复：`session.rs register_window` 同键覆盖（Opened 幂等
+  兜底）会抹掉 boot 置位的 fit_pending——改为覆盖前保留旧值；此为
+  standalone fit 最初不生效的根因，已补回归测试
+  `register_window_overwrite_preserves_fit_pending`。
 
 ## 待澄清事项
 
-1. UI track 中 stdlib 模块调用的书写形态（`Math.pow` vs `math.pow`）与
-   vue codegen 对无 body extern 声明的解析——S1 spike 关闭。
+1. ~~UI track 中 stdlib 模块调用的书写形态（`Math.pow` vs `math.pow`）与
+   vue codegen 对无 body extern 声明的解析~~——**已关闭（S1 spike +
+   S2 落地）**：`math.pow` 小写形态双端可用，ts_adapter `"math"` 通配
+   arm 覆盖；str 谓词走方法表 `"is_digit"` arm。
 2. 应用样式对 `.dark_mode` model 的依赖在"设置上移"后的长期形态
    （语义 token 化 vs 保留 model 初值）——本期保留 model 初值方案，
    token 化另立。
-3. os-config 仓侧改动量（注册表条目形态）以该仓现状为准，S7 开始时
-   核验；若需 daemon 契约改动则裁剪为本仓只读文件方案。
+3. ~~os-config 仓侧改动量（注册表条目形态）~~——**已关闭（S7）**：
+   循 musk 先例，模块注册 = `modules.d/auto-calculator.at` +
+   配置 = `apps/calculator/config.at` 目录形态，零 daemon 契约改动。

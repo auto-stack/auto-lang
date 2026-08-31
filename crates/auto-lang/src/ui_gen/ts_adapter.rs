@@ -1478,6 +1478,15 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, ".length === 0").ok();
                             return;
                         }
+                        // Plan 504: str.is_digit() — 单字符 ASCII 数字谓词
+                        // （静态分发；VM 侧 Str.is_digit shim，stdlib str.at）。
+                        // JS 无同名原生，映射为正则测试。
+                        "is_digit" => {
+                            write!(out, "/^[0-9]$/.test(").ok();
+                            transpile_receiver(object, ctx, out);
+                            write!(out, ")").ok();
+                            return;
+                        }
                         // JS 无原生字符串 reverse
                         "reverse" => {
                             write!(out, "[...").ok();
@@ -2414,6 +2423,24 @@ mod tests {
             "chained call regression:\n{}",
             out
         );
+    }
+
+    /// Plan 504: `ch.is_digit()` (str 谓词静态分发) → `/^[0-9]$/.test(ch)`。
+    #[test]
+    fn str_is_digit_maps_to_regex_test() {
+        let call = Expr::Call(Call {
+            name: Box::new(Expr::Dot(
+                Box::new(Expr::Ident("ch".into())),
+                "is_digit".into(),
+            )),
+            args: Args::new(),
+            ret: Type::Unknown,
+            type_args: vec![],
+            generic_args: Vec::new(),
+            pos: None,
+        });
+        let out = transpile_handler_body(&[Stmt::Expr(call)], &test_ctx());
+        assert!(out.contains("/^[0-9]$/.test(ch)"), "output:\n{}", out);
     }
 
     // -----------------------------------------------------------------------
