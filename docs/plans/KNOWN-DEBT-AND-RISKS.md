@@ -462,3 +462,11 @@
   直开 app 路径不经过 pac 解析，故无 fit、无 os-config 播种。属既有架构
   边界而非缺陷；若将来要求 boot 直开也享受 fit/os-config，需在 boot
   路径引入 pac 语境（另行计划）。
+- **P500-1 T3 `auto_exe()` 优先取现存二进制，陈旧产物伪装成回归**：
+  `t3_independent_pixels_and_dual_mode` 经 `auto_exe()` 拉起真
+  `target/debug/auto.exe`，命中现存文件即用、不校验新鲜度——P500 折回
+  master 首跑即中：该二进制系 Plan 504 会话所建（不含 500 代码），旧版
+  cmd_autodesk 不识别 `--autodesk-render=` 且孵化记录缺第三字段模式位，
+  双模断言（Pixels 臂缺失）失败；`cargo build -p auto` 后即绿，代码零缺陷。
+  偿还路径：`auto_exe()` 加 mtime/版本探测（新于当前 lib 构建或带版本
+  stamp），否则强制重建（另行小计划）。
