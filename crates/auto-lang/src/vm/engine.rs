@@ -5182,11 +5182,13 @@ impl AutoVM {
                                     }
                                 }
                             } else {
-                                // Plan 118: Field not found - return error
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
+                                // PLAN-053 P-053-6: 缺键读 null（对齐
+                                // PLAN-044 __json_object 缺键语义与 web 轨
+                                // undefined→?? 兜底惯用）——原硬报错使
+                                // `msg.blocks ?? [textBlock(msg)]` 一类
+                                // Option 链在普通 obj 上直接炸（musk 消息
+                                // 渲染链 messageDisplayBlocks 现场）。
+                                task.ram.push_nv(auto_val::encode_null());
                             }
                         } else if let Some(inst) = heap_obj.as_any().downcast_ref::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
