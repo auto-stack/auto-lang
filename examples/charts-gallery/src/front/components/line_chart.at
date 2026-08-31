@@ -17,13 +17,17 @@
 // 预计算,逐系列槽位 pts0..3;系列渲染随 path0..3 槽位化,弃 .segs 列表)。
 // 无悬停哨兵 = 9(越界正值)——view 条件对负数字面量(-1)比较恒假(引擎
 // 缺陷,plan498 实证),组件侧以哨兵规避。
+// 498 M4(点击显隐):图例 mouse-area onclick → .Toggle(k) 翻
+// visLn0..3;隐藏系列几何跳过+图例项 opacity-40;隐藏优先于悬停。
+// 字段名图族专属(hovLn/visLn):VM 单态架构(P320)下同名子组件
+// 字段经根状态跨组件共享,更名解耦四族(vue 轨实例隔离本无串扰)。
 //
 // # Usage
 // use { package: official from "../components" }
 // line-chart (data: .series, index: "m", fields: ["v", "w"]) {}
 
 widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], axis: str = "auto", grid: bool = true, legend: bool = true, labels: List<str> = [], tooltip: bool = true, curve: str = "linear") {
-    msg { Init, Hover(int), HoverSeries(int), SeriesOut }
+    msg { Init, Hover(int), HoverSeries(int), SeriesOut, Toggle(int) }
 
     model {
         path0 str = ""
@@ -34,7 +38,11 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
         pts1 List = []
         pts2 List = []
         pts3 List = []
-        hoverSeries int = 9
+        hovLn int = 9
+        visLn0 bool = true
+        visLn1 bool = true
+        visLn2 bool = true
+        visLn3 bool = true
         xlabels str = ""
         xLab0 str = ""
         xLab1 str = ""
@@ -391,8 +399,22 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             .tipBody = tb
         }
         .HoverOut -> { .hovered = "false" }
-        .HoverSeries(k) -> { .hoverSeries = k }
-        .SeriesOut -> { .hoverSeries = 9 }
+        .HoverSeries(k) -> { .hovLn = k }
+        .SeriesOut -> { .hovLn = 9 }
+        .Toggle(k) -> {
+            if k == 0 {
+                .visLn0 = !.visLn0
+            }
+            if k == 1 {
+                .visLn1 = !.visLn1
+            }
+            if k == 2 {
+                .visLn2 = !.visLn2
+            }
+            if k == 3 {
+                .visLn3 = !.visLn3
+            }
+        }
     }
 
     style {
@@ -407,8 +429,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
             if .legend {
                 row (style: "justify-end gap-4 pb-2") {
                     if .legendText0 != "" {
-                        mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut) {
-                            row (style: "items-center gap-1") {
+                        mouse-area (onmouseenter: .HoverSeries(0), onmouseleave: .SeriesOut, onclick: .Toggle(0)) {
+                            row (style: if .visLn0 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
@@ -417,8 +439,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                         }
                     }
                     if .legendText1 != "" {
-                        mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut) {
-                            row (style: "items-center gap-1") {
+                        mouse-area (onmouseenter: .HoverSeries(1), onmouseleave: .SeriesOut, onclick: .Toggle(1)) {
+                            row (style: if .visLn1 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
@@ -427,8 +449,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                         }
                     }
                     if .legendText2 != "" {
-                        mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut) {
-                            row (style: "items-center gap-1") {
+                        mouse-area (onmouseenter: .HoverSeries(2), onmouseleave: .SeriesOut, onclick: .Toggle(2)) {
+                            row (style: if .visLn2 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
@@ -437,8 +459,8 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                         }
                     }
                     if .legendText3 != "" {
-                        mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut) {
-                            row (style: "items-center gap-1") {
+                        mouse-area (onmouseenter: .HoverSeries(3), onmouseleave: .SeriesOut, onclick: .Toggle(3)) {
+                            row (style: if .visLn3 { "items-center gap-1" } else { "items-center gap-1 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }
@@ -467,60 +489,68 @@ widget LineChart (data: List, index: str = "m", fields: List<str> = ["v"], color
                             line (x1: "40", y1: "260", x2: "550", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             line (x1: "40", y1: "20", x2: "40", y2: "260", stroke: "#94a3b8", stroke-width: "1") {}
                             if .path0 != "" {
-                                if .hoverSeries == 0 {
+                              if .visLn0 {
+                                if .hovLn == 0 {
                                     path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
                                     for p in .pts0 {
                                         circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor0) {}
                                     }
                                 } else {
-                                    if .hoverSeries == 9 {
+                                    if .hovLn == 9 {
                                         path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
                                     } else {
                                         path (key: .path0, d: .path0, fill: "none", stroke: .legendColor0, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
                                     }
                                 }
+                              }
                             }
                             if .path1 != "" {
-                                if .hoverSeries == 1 {
+                              if .visLn1 {
+                                if .hovLn == 1 {
                                     path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
                                     for p in .pts1 {
                                         circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor1) {}
                                     }
                                 } else {
-                                    if .hoverSeries == 9 {
+                                    if .hovLn == 9 {
                                         path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
                                     } else {
                                         path (key: .path1, d: .path1, fill: "none", stroke: .legendColor1, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
                                     }
                                 }
+                              }
                             }
                             if .path2 != "" {
-                                if .hoverSeries == 2 {
+                              if .visLn2 {
+                                if .hovLn == 2 {
                                     path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
                                     for p in .pts2 {
                                         circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor2) {}
                                     }
                                 } else {
-                                    if .hoverSeries == 9 {
+                                    if .hovLn == 9 {
                                         path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
                                     } else {
                                         path (key: .path2, d: .path2, fill: "none", stroke: .legendColor2, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
                                     }
                                 }
+                              }
                             }
                             if .path3 != "" {
-                                if .hoverSeries == 3 {
+                              if .visLn3 {
+                                if .hovLn == 3 {
                                     path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "3", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "1") {}
                                     for p in .pts3 {
                                         circle (cx: p["x"], cy: p["y"], r: "3", fill: .legendColor3) {}
                                     }
                                 } else {
-                                    if .hoverSeries == 9 {
+                                    if .hovLn == 9 {
                                         path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.85") {}
                                     } else {
                                         path (key: .path3, d: .path3, fill: "none", stroke: .legendColor3, stroke-width: "2", stroke-linejoin: "round", stroke-linecap: "round", stroke-opacity: "0.25") {}
                                     }
                                 }
+                              }
                             }
                         }
                         if .tooltip {

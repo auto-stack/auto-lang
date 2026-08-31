@@ -14,7 +14,7 @@
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
-    msg { Init, Hover(int) }
+    msg { Init, Hover(int), Toggle(int) }
 
     model {
         // 每片段路径槽位(d=常驻/e=emphasis 外移)
@@ -26,7 +26,11 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         e2 str = ""
         d3 str = ""
         e3 str = ""
-        hoverSeries int = 9
+        hovDn int = 9
+        visDn0 bool = true
+        visDn1 bool = true
+        visDn2 bool = true
+        visDn3 bool = true
         // 图例槽位(固定 4 行,R006 规避:行内文本不引用循环变量记录字段)
         legendColor0 str = ""
         legendText0 str = ""
@@ -138,7 +142,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
 
         .Hover(i) -> {
             .hovered = "true"
-            .hoverSeries = i
+            .hovDn = i
             var tt = .tipTitles[i]
             var tb = .tipBodies[i]
             .tipTitle = tt
@@ -146,7 +150,21 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         }
         .HoverOut -> {
             .hovered = "false"
-            .hoverSeries = 9
+            .hovDn = 9
+        }
+        .Toggle(k) -> {
+            if k == 0 {
+                .visDn0 = !.visDn0
+            }
+            if k == 1 {
+                .visDn1 = !.visDn1
+            }
+            if k == 2 {
+                .visDn2 = !.visDn2
+            }
+            if k == 3 {
+                .visDn3 = !.visDn3
+            }
         }
     }
 
@@ -162,32 +180,40 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 svg (viewBox: "150 20 260 260", style: "w-full h-auto max-w-md") {
                     circle (cx: "280", cy: "150", r: "100", fill: "none", stroke: "#f1f5f9", stroke-width: "38") {}
                     if .d0 != "" {
-                        if .hoverSeries == 0 {
+                      if .visDn0 {
+                        if .hovDn == 0 {
                             path (key: .e0, d: .e0, fill: .legendColor0, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(0)) {}
                         } else {
                             path (key: .d0, d: .d0, fill: .legendColor0, onmouseenter: .Hover(0)) {}
                         }
+                      }
                     }
                     if .d1 != "" {
-                        if .hoverSeries == 1 {
+                      if .visDn1 {
+                        if .hovDn == 1 {
                             path (key: .e1, d: .e1, fill: .legendColor1, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(1)) {}
                         } else {
                             path (key: .d1, d: .d1, fill: .legendColor1, onmouseenter: .Hover(1)) {}
                         }
+                      }
                     }
                     if .d2 != "" {
-                        if .hoverSeries == 2 {
+                      if .visDn2 {
+                        if .hovDn == 2 {
                             path (key: .e2, d: .e2, fill: .legendColor2, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(2)) {}
                         } else {
                             path (key: .d2, d: .d2, fill: .legendColor2, onmouseenter: .Hover(2)) {}
                         }
+                      }
                     }
                     if .d3 != "" {
-                        if .hoverSeries == 3 {
+                      if .visDn3 {
+                        if .hovDn == 3 {
                             path (key: .e3, d: .e3, fill: .legendColor3, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(3)) {}
                         } else {
                             path (key: .d3, d: .d3, fill: .legendColor3, onmouseenter: .Hover(3)) {}
                         }
+                      }
                     }
                 }
                 if .tooltip && .hovered == "true" {
@@ -200,8 +226,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             if .legend {
                 col (style: "gap-1") {
                     if .legendText0 != "" {
-                        mouse-area (onmouseenter: .Hover(0), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(0), onmouseleave: .HoverOut, onclick: .Toggle(0)) {
+                            row (style: if .visDn0 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor0) {}
                                 }
@@ -210,8 +236,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText1 != "" {
-                        mouse-area (onmouseenter: .Hover(1), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(1), onmouseleave: .HoverOut, onclick: .Toggle(1)) {
+                            row (style: if .visDn1 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor1) {}
                                 }
@@ -220,8 +246,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText2 != "" {
-                        mouse-area (onmouseenter: .Hover(2), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(2), onmouseleave: .HoverOut, onclick: .Toggle(2)) {
+                            row (style: if .visDn2 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor2) {}
                                 }
@@ -230,8 +256,8 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                         }
                     }
                     if .legendText3 != "" {
-                        mouse-area (onmouseenter: .Hover(3), onmouseleave: .HoverOut) {
-                            row (style: "items-center gap-2") {
+                        mouse-area (onmouseenter: .Hover(3), onmouseleave: .HoverOut, onclick: .Toggle(3)) {
+                            row (style: if .visDn3 { "items-center gap-2" } else { "items-center gap-2 opacity-40" }) {
                                 svg (viewBox: "0 0 8 8", style: "w-3 h-3 shrink-0") {
                                     rect (width: "8", height: "8", fill: .legendColor3) {}
                                 }

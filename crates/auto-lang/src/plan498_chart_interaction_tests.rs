@@ -178,4 +178,35 @@ mod plan498_charts {
         let dump2 = dump(&mut dc);
         assert!(!dump2.contains(r##"stroke=\"#ffffff\""##), "离焦后白描边消失");
     }
+
+    /// M4:legend 点击切换显隐——Toggle(0)(M0 on_click 电路)后该系列
+    /// 几何跳过 + 图例项落 opacity-40;再点复原;与 emphasis 正交(隐藏
+    /// 优先于悬停:visible 门在 hoverSeries 分支外层)。
+    #[test]
+    fn plan498_legend_toggle_visibility() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan498 M4: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let dump0 = dump(&mut dc);
+        assert!(!dump0.contains("Opacity(40)"), "常驻态无暗图例");
+        let paths0 = dump0.matches("stroke-opacity=").count();
+
+        dc.on_with_input_for("LineChart", "Toggle\u{1F}i\u{1F}0", None);
+        let dump1 = dump(&mut dc);
+        assert!(dump1.contains("Opacity(40)"), "隐藏系列图例项落 opacity-40");
+        let paths1 = dump1.matches("stroke-opacity=").count();
+        assert!(paths1 < paths0, "隐藏系列 path 跳过(前 {paths0} 后 {paths1})");
+
+        // 隐藏优先于悬停:对已隐藏系列 HoverSeries(0) 不浮几何(无转折点)。
+        dc.on_with_input_for("LineChart", "HoverSeries\u{1F}i\u{1F}0", None);
+        let dump_h = dump(&mut dc);
+        assert!(!dump_h.contains(r#"r=\"3\""#), "隐藏系列悬停不浮现转折点");
+
+        dc.on_with_input_for("LineChart", "Toggle\u{1F}i\u{1F}0", None);
+        let dump2 = dump(&mut dc);
+        assert!(!dump2.contains("Opacity(40)"), "再点复原图例");
+        let paths2 = dump2.matches("stroke-opacity=").count();
+        assert_eq!(paths2, paths0, "复原后几何回归");
+    }
 }
