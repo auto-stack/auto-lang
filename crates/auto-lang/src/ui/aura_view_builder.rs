@@ -7203,7 +7203,8 @@ let tabs_inner = View::Row {
     }
 
     fn resolve_binding_path(&self, path: &str, bindings: &Bindings) -> Option<Value> {
-        let parts: Vec<&str> = path.split('.').collect();
+        let clean_path = path.strip_prefix("this.").or_else(|| path.strip_prefix('.')).unwrap_or(path);
+        let parts: Vec<&str> = clean_path.split('.').collect();
         if parts.is_empty() {
             return None;
         }
@@ -7214,6 +7215,22 @@ let tabs_inner = View::Row {
             match val {
                 Value::Obj(map) => {
                     val = map.get(*field)?;
+                }
+                Value::Int(id) if id >= 4_000_000 => {
+                    let materialized = self.bridge.materialize_obj_ref(&Value::Int(id));
+                    if let Value::Obj(map) = materialized {
+                        val = map.get(*field)?;
+                    } else {
+                        return None;
+                    }
+                }
+                Value::VmRef(r) => {
+                    let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
+                    if let Value::Obj(map) = materialized {
+                        val = map.get(*field)?;
+                    } else {
+                        return None;
+                    }
                 }
                 _ => return None,
             }
