@@ -7563,6 +7563,10 @@ fn toggle_settings(
         .iter()
         .map(|id| auto_val::Value::Str(id.clone().into()))
         .collect();
+    // Plan 501：os-config daemon 状态快照（unknown/ready/offline + 原因；
+    // 会话域 osconfig_status 的投影，首次 launch 前 = unknown）。
+    let (osc_state, osc_hint) =
+        crate::ui::osconfig_daemon::badge_projection(&state.desktop.osconfig_status);
     if let Some(app) = state.apps.get_mut(&panel) {
         let _ = app
             .component
@@ -7578,6 +7582,13 @@ fn toggle_settings(
         let _ = app
             .component
             .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
+        let _ = app.component.write_state(
+            "osconfig_state",
+            auto_val::Value::str(osc_state),
+        );
+        let _ = app
+            .component
+            .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
         let _ = app.component.write_state_vec("pinned_ids", pinned);
         let _ = app.component.write_state(
             "about_host",
@@ -9358,8 +9369,12 @@ fn compare_pngs(
                 // 是前端目标不是 vm 兼容性；真不兼容的由 panic 边界 + 占位页
                 // 兜底（T7）。`ScanOptions.render` 过滤开关留给 464 launcher。
                 if let Some(apps_dir) = &opts.apps_dir {
-                    let entries = crate::ui::app_registry::scan_apps(
+                    // Plan 501：多扫描根聚合——examples 主根 + 外部仓自含根
+                    //（storage `shell.apps.extra_dirs` + 相邻仓探测缺省
+                    // `../auto-os-config/auto` → id `os-config`；去重主根优先）。
+                    let entries = crate::ui::app_registry::aggregate_scan(
                         apps_dir,
+                        &crate::ui::app_registry::host_extra_roots(),
                         &crate::ui::app_registry::ScanOptions::default(),
                     );
                     eprintln!(
@@ -9372,10 +9387,14 @@ fn compare_pngs(
                         Some(std::sync::Arc::new(move |name: &str| {
                             resolver_entries.iter().find(|e| e.id == name).and_then(|e| {
                                 let code = std::fs::read_to_string(&e.entry).ok()?;
+                                // Plan 501：外部后端根（注册表扫描期已解析为
+                                // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
                                 Some(crate::ui::session::LaunchSpec {
                                     code,
                                     source_path: Some(e.entry.to_string_lossy().to_string()),
                                     title: Some(e.title.clone()),
+                                    daemon: e.daemon.clone(),
+                                    back_root: e.back_root.clone(),
                                 })
                             })
                         }));
@@ -17887,6 +17906,8 @@ mod tests {
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
+            daemon: None,
+            back_root: None,
         }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -17894,6 +17915,8 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
+                    back_root: None,
                 })
             }));
         ds.launch_app("011-calculator").expect("launch");
@@ -18722,6 +18745,8 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
+                    back_root: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18762,6 +18787,8 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
+                    back_root: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18967,6 +18994,8 @@ mod tests {
             category: "tool".to_string(),
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
+            daemon: None,
+            back_root: None,
         }];
         inject_dock_pinned(&mut ds);
         {
@@ -19506,6 +19535,111 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Plan 501 T2：系统设置入口——osconfig 状态快照注入（三态投影）+
+    /// OpenSystemSettings 派发（launch 记录 + 自隐）+ 记录 → LaunchApp
+    /// 解析（execute_desktop_commands 臂消费的入参形状）。
+    #[test]
+    fn settings_osconfig_entry_badge_and_launch_dispatch() {
+        use crate::ui::osconfig_daemon::DaemonStatus;
+        let path = t2_isolate_storage("501-osconfig-entry");
+        let mut ds = t3_session_with_shell();
+        // ① 未检活（boot 缺省）→ unknown 注入，无 hint。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("懒挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "unknown", "未检活 → unknown 徽标")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+            match app.component.read_state("osconfig_hint") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), ""),
+                other => panic!("osconfig_hint 读回异常: {other:?}"),
+            }
+        }
+        // ② offline → 置灰态注入（原因投影）。先自隐再召唤（二态翻转语义：
+        // 可见时再召唤 = 自隐，不重注入）。
+        ds.desktop.osconfig_status = DaemonStatus::Offline("daemon 就绪超时".to_string());
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "offline", "offline 徽标置灰态")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+            match app.component.read_state("osconfig_hint") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "daemon 就绪超时", "原因投影")
+                }
+                other => panic!("osconfig_hint 读回异常: {other:?}"),
+            }
+        }
+        // ③ 派发：OpenSystemSettings → launch\tos-config 记录 + 面板自隐
+        //    （App 在面板之下开窗）。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("OpenSystemSettings", &[])
+            .expect("OpenSystemSettings handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            let cmd = match app.component.read_state("__desktop_cmd") {
+                Ok(auto_val::Value::Str(ref s)) => s.to_string(),
+                other => panic!("__desktop_cmd 读回异常: {other:?}"),
+            };
+            assert_eq!(cmd, "launch\tos-config", "launch 记录上行（desktop.launch；TAB 与 unit-sep 均为合法分隔）");
+            match app.component.read_state("visible") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "0", "派发后自隐（Esc 同型）")
+                }
+                other => panic!("visible 读回异常: {other:?}"),
+            }
+            // 记录 → DesktopCommand 解析（drain → execute 臂的入参形状）。
+            assert_eq!(
+                crate::ui::session::DesktopCommand::parse_records(&cmd),
+                vec![crate::ui::session::DesktopCommand::LaunchApp("os-config".to_string())],
+            );
+        }
+        // ④ ready 徽标注入（Running → ready）。先自隐再召唤（同②）。
+        ds.desktop.osconfig_status =
+            DaemonStatus::Running(crate::ui::osconfig_daemon::default_daemon_url());
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "ready", "Running → ready 徽标")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+        }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Plan 487 M4 步骤1：资产 settings.at（widget Settings）装载冒烟——编译 +
     /// Init 默认（visible=0/section=dock）+ Nav 分区切换 + pinned 平行列表
     /// 注入 → RebuildPinned 重建 rows（B12 规避形态）。控件→动词接线在
@@ -19672,6 +19806,8 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/a.at"),
                 render: "vm".into(),
+    daemon: None,
+    back_root: None,
             },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -19680,6 +19816,8 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/b.at"),
                 render: "vm".into(),
+    daemon: None,
+    back_root: None,
             },
         ];
         // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
@@ -19970,6 +20108,8 @@ mod tests {
             category: "app".to_string(),
             entry: std::path::PathBuf::from(id),
             render: "vue".to_string(),
+            daemon: None,
+            back_root: None,
         };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
