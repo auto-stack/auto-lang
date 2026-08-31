@@ -302,6 +302,7 @@ mod tests {
                         source_path: None,
                         title: Some(name.to_string()),
                         daemon: None,
+                        back_root: None,
                     })
                 } else {
                     None
@@ -762,6 +763,7 @@ mod tests {
                         source_path: None,
                         title: Some(name.to_string()),
                         daemon: None,
+                        back_root: None,
                     })
                 } else {
                     None

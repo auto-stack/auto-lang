@@ -40,6 +40,11 @@ pub struct AppRegistryEntry {
     /// Plan 501：依赖的守护进程声明（pac `daemon:`，如 `autoos`——launch 期
     /// 宿主确保对应 daemon 就绪并注入 env；None = 无依赖）。
     pub daemon: Option<String>,
+    /// Plan 501：外部后端项目根（pac `back: { project: "…" }` 声明，相对
+    /// pac.at 所在的 App 根解析的绝对路径——`back.*` 模块链接式契约的
+    /// 解析根，Plan 061；os-config 形态：本地 `src/back/api.at` 为残缺
+    /// 副本，契约全量在后端项目 `api.at`）。None = 无外部后端。
+    pub back_root: Option<PathBuf>,
 }
 
 /// 扫描选项。
@@ -101,7 +106,44 @@ fn entry_for_dir(dir: &Path, id: String, opts: &ScanOptions) -> Option<AppRegist
         entry,
         render,
         daemon: fields.get("daemon").cloned(),
+        back_root: parse_pac_back_project(pac.as_deref().unwrap_or(""))
+            .map(|rel| dir.join(rel)),
     })
+}
+
+/// Plan 501：pac `back: { project: "…" }` 单行嵌套声明解析（平铺
+/// `parse_pac_fields` 不覆盖嵌套形态——`back` 键值会被截成 `{ project`）。
+/// 形态容错：`back : { project : "../x" }`（空格任意、引号成对剥）。
+pub fn parse_pac_back_project(pac_source: &str) -> Option<String> {
+    for line in pac_source.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        let Some(rest) = strip_chain(
+            line,
+            &["back", ":", "{", "project", ":"],
+        ) else {
+            continue;
+        };
+        let mut value = rest.trim_end().trim_end_matches('}').trim();
+        if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value = &value[1..value.len() - 1];
+        }
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// 逐段剥前缀（段间空白任意）；任一段不匹配 → None。
+fn strip_chain<'a>(mut s: &'a str, parts: &[&str]) -> Option<&'a str> {
+    for part in parts {
+        s = s.strip_prefix(part)?;
+        s = s.trim_start();
+    }
+    Some(s)
 }
 
 /// Plan 501：外部仓自含根扫描（G2）——根目录自身即 App 形态（pac.at +
@@ -210,7 +252,7 @@ fn probe_entry(dir: &Path) -> Option<PathBuf> {
 
 /// 平铺 `key: value` 行读（pac.at 形态；仅取注册表关心的字段）。
 /// 行内 `#` 后视为注释；值剥引号；同名键后写覆盖（与 auto-man 一致）。
-fn parse_pac_fields(source: &str) -> std::collections::HashMap<String, String> {
+pub fn parse_pac_fields(source: &str) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for line in source.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -297,6 +339,24 @@ mod tests {
         assert_eq!(f.len(), 3, "坏行/空值跳过");
     }
 
+    #[test]
+    fn parse_pac_back_project_single_line_nested() {
+        // os-config 真实形态（引号 + 尾注释）。
+        assert_eq!(
+            parse_pac_back_project("back: { project: \"../auto-os-config-back\" } # Plan 011"),
+            Some("../auto-os-config-back".to_string())
+        );
+        // 空格任意 + 单引号。
+        assert_eq!(
+            parse_pac_back_project("back : { project : '../b' }"),
+            Some("../b".to_string())
+        );
+        // 无 back 声明 / 坏形态 → None（不 panic）。
+        assert_eq!(parse_pac_back_project("name: \"x\"\nrender: \"vm\"\n"), None);
+        assert_eq!(parse_pac_back_project("back: { nope: 1 }"), None);
+        assert_eq!(parse_pac_back_project("fallback: back"), None);
+    }
+
     // ---- Plan 501 T1：多扫描根聚合（G2/G4）----
 
     /// 临时主根 + 自含 extra 根（os-config 形态：pac.at + src/front/app.at）。
@@ -314,7 +374,7 @@ mod tests {
         std::fs::create_dir_all(extra.join("src").join("front")).unwrap();
         std::fs::write(
             extra.join("pac.at"),
-            "name: \"auto-os-config-front\"\nrender: \"vue\"\ndaemon: \"autoos\"\n",
+            "name: \"auto-os-config-front\"\nrender: \"vue\"\ndaemon: \"autoos\"\nback: { project: \"../fake-back\" }\n",
         )
         .unwrap();
         std::fs::write(extra.join("src").join("front").join("app.at"), "widget App {}").unwrap();
@@ -378,6 +438,11 @@ mod tests {
         assert_eq!(osc.title, "auto-os-config-front", "pac name 回退 title");
         assert_eq!(osc.render, "vue", "pac render 透传（boot 不过滤）");
         assert_eq!(osc.daemon.as_deref(), Some("autoos"), "pac daemon 声明透传");
+        assert_eq!(
+            osc.back_root.as_deref(),
+            Some(extra.join("../fake-back").as_path()),
+            "pac back 嵌套声明解析（App 根相对 → 绝对路径）"
+        );
         assert_eq!(osc.entry, extra.join("src").join("front").join("app.at"));
         // 主根无 pac → daemon None。
         let demo = apps.iter().find(|a| a.id == "demo-app").unwrap();
@@ -447,6 +512,7 @@ mod tests {
                         source_path: Some(e.entry.to_string_lossy().to_string()),
                         title: Some(e.title.clone()),
                         daemon: None,
+                        back_root: None,
                     })
                 })
             })

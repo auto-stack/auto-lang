@@ -296,6 +296,9 @@ pub struct DesktopState {
     /// [`crate::ui::osconfig_daemon::ensure_ready`]）。launch 执行臂消费。
     pub osconfig_daemon_probe:
         Option<std::sync::Arc<dyn Fn() -> crate::ui::osconfig_daemon::DaemonStatus + Send + Sync>>,
+    /// Plan 501：外部后端 cdylib 句柄（launch 声明 back.project 的 App 时
+    /// 装载；驻会话——丢弃即卸载致 vtable 悬垂，见 backend_abi 文档）。
+    pub back_keepalive: Option<crate::vm::backend_abi::LoadedBackend>,
 }
 
 impl DesktopState {
@@ -330,6 +333,7 @@ impl DesktopState {
             hole_mode: false,
             osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
             osconfig_daemon_probe: None,
+            back_keepalive: None,
         }
     }
 
@@ -1184,6 +1188,61 @@ impl DesktopCommand {
     }
 }
 
+/// Plan 501：装载外部后端 cdylib（auto-man rust_ui `load_external_backend`
+/// 的桌面侧复刻——依赖方向不可用，最小面同型）。库名 = 后端 pac.at
+/// `name`（`-`→`_`，Windows `x.dll` / macOS `libx.dylib` / Linux `libx.so`）；
+/// probe `target/debug` → `target/release`；缺失返回 Err（调用方降级桩）。
+fn load_back_cdylib(
+back_root: &std::path::Path,
+) -> Result<crate::vm::backend_abi::LoadedBackend, String> {
+let pac = std::fs::read_to_string(back_root.join("pac.at")).unwrap_or_default();
+let fields = crate::ui::app_registry::parse_pac_fields(&pac);
+let lib_stem = fields
+    .get("name")
+    .map(|n| n.replace('-', "_"))
+    .unwrap_or_else(|| "backend".to_string());
+let lib_file = if cfg!(windows) {
+    format!("{lib_stem}.dll")
+} else if cfg!(target_os = "macos") {
+    format!("lib{lib_stem}.dylib")
+} else {
+    format!("lib{lib_stem}.so")
+};
+let found = [
+    back_root.join("target").join("debug").join(&lib_file),
+    back_root.join("target").join("release").join(&lib_file),
+]
+.into_iter()
+.find(|p| p.is_file());
+let Some(lib_path) = found else {
+    return Err(format!(
+        "backend cdylib `{lib_file}` not found under {}/target/{{debug,release}} — build the backend project first",
+        back_root.display()
+    ));
+};
+struct DesktopBackendRegistry;
+impl crate::vm::backend_abi::BackendRegistry for DesktopBackendRegistry {
+    fn host_call(
+        &self,
+        name: &str,
+        f: crate::vm::backend_abi::BackendHostCallFn,
+    ) {
+        crate::vm::host_bridge::register_host_call(name, f);
+    }
+    fn inject_event(&self, _tag: &str, _json: &str) -> bool {
+        false // 桌面 shell SSE 通道暂无外部后端回流消费方
+    }
+    fn log(&self, msg: &str) {
+        eprintln!("[backend] {msg}");
+    }
+}
+crate::vm::backend_abi::load_backend_cdylib(
+    &lib_path,
+    std::sync::Arc::new(DesktopBackendRegistry),
+)
+}
+
+
 /// LaunchApp 的启动材料（单测内联注入；生产侧由 T7 注册表解析供给）。
 pub struct LaunchSpec {
     /// .at 源码（`auto run` 同管线编译装载）。
@@ -1195,6 +1254,10 @@ pub struct LaunchSpec {
     /// Plan 501：依赖的守护进程声明（注册表条目 pac `daemon:` 透传，如
     /// `autoos`——launch 前确保 daemon 就绪并注入 env；None = 无依赖）。
     pub daemon: Option<String>,
+    /// Plan 501：外部后端项目根（注册表条目 pac `back: { project }` 解析的
+    /// 绝对路径——`back.*` 模块链接式契约解析根，Plan 061；None = 无）。
+    /// boot 期 resolver 自条目目录解析填入。
+    pub back_root: Option<std::path::PathBuf>,
 }
 
 impl Default for LaunchSpec {
@@ -1204,6 +1267,7 @@ impl Default for LaunchSpec {
             source_path: None,
             title: None,
             daemon: None,
+            back_root: None,
         }
     }
 }
@@ -1575,7 +1639,8 @@ impl DesktopSession {
         DesktopCommand::parse_records(&payload)
     }
 
-    /// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
+
+/// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
     /// `build_dynamic_component` 编译装载 → `allocate_app` → 新虚拟窗
     /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回
     /// Err（调用方转 toast，不阻断桌面）。
@@ -1605,6 +1670,23 @@ impl DesktopSession {
                 }
             }
             self.desktop.osconfig_status = status;
+        }
+        // Plan 501：外部后端根（pac `back: { project }`）——`back.*` 模块
+        // 链接式契约的解析根 + cdylib 桩桥装载（os-config 形态：本地
+        // src/back/api.at 残缺、后端 api.at 为桩——#[api] 真身在 cdylib，
+        // Plan 011 外部 back）。进程级 OnceLock 先设者胜（auto run 单用途
+        // 进程同语义）；cdylib 句柄驻 DesktopState.back_keepalive——丢弃
+        // 即卸载，已注册闭包 vtable 悬垂。装载失败降级桩（stderr 可见）。
+        if let Some(back_root) = &spec.back_root {
+            if back_root.is_dir() {
+                crate::set_external_back_root(back_root.clone());
+                match load_back_cdylib(back_root) {
+                    Ok(lib) => self.desktop.back_keepalive = Some(lib),
+                    Err(err) => eprintln!(
+                        "[session] external backend cdylib load skipped (stubs in effect): {err}"
+                    ),
+                }
+            }
         }
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
             .map_err(|e| format!("build `{name}` failed: {e}"))?;
@@ -3272,6 +3354,7 @@ mod tests {
                 source_path: None,
                 title: Some("Probe App".to_string()),
                 daemon: None,
+                back_root: None,
             })
         }));
         ds
@@ -3299,6 +3382,7 @@ mod tests {
                 source_path: None,
                 title: Some("Probe App".to_string()),
                 daemon: Some("autoos".to_string()),
+                back_root: None,
             })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
@@ -3331,6 +3415,7 @@ mod tests {
                 source_path: None,
                 title: Some("Probe App".to_string()),
                 daemon: Some("autoos".to_string()),
+                back_root: None,
             })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {

@@ -9238,11 +9238,14 @@ fn compare_pngs(
                         Some(std::sync::Arc::new(move |name: &str| {
                             resolver_entries.iter().find(|e| e.id == name).and_then(|e| {
                                 let code = std::fs::read_to_string(&e.entry).ok()?;
+                                // Plan 501：外部后端根（注册表扫描期已解析为
+                                // 绝对路径；坏路径 launch 臂 is_dir 兜底跳过）。
                                 Some(crate::ui::session::LaunchSpec {
                                     code,
                                     source_path: Some(e.entry.to_string_lossy().to_string()),
                                     title: Some(e.title.clone()),
                                     daemon: e.daemon.clone(),
+                                    back_root: e.back_root.clone(),
                                 })
                             })
                         }));
@@ -17704,6 +17707,7 @@ mod tests {
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
             daemon: None,
+            back_root: None,
         }];
         ds.desktop.app_resolver =
             Some(std::sync::Arc::new(|name: &str| {
@@ -17712,6 +17716,7 @@ mod tests {
                     source_path: None,
                     title: Some("calculator".to_string()),
                     daemon: None,
+                    back_root: None,
                 })
             }));
         ds.launch_app("011-calculator").expect("launch");
@@ -18330,6 +18335,7 @@ mod tests {
                     source_path: None,
                     title: Some("calculator".to_string()),
                     daemon: None,
+                    back_root: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18371,6 +18377,7 @@ mod tests {
                     source_path: None,
                     title: Some("calculator".to_string()),
                     daemon: None,
+                    back_root: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18577,6 +18584,7 @@ mod tests {
             entry: std::path::PathBuf::from("011-calculator"),
             render: "vm".to_string(),
             daemon: None,
+            back_root: None,
         }];
         inject_dock_pinned(&mut ds);
         {
@@ -19388,6 +19396,7 @@ mod tests {
                 entry: std::path::PathBuf::from("x/a.at"),
                 render: "vm".into(),
     daemon: None,
+    back_root: None,
             },
             crate::ui::app_registry::AppRegistryEntry {
                 id: "015-notes".into(),
@@ -19397,6 +19406,7 @@ mod tests {
                 entry: std::path::PathBuf::from("x/b.at"),
                 render: "vm".into(),
     daemon: None,
+    back_root: None,
             },
         ];
         // dock_pinned 默认三枚（t3_session_with_shell 不动 pack 默认）。
@@ -19688,6 +19698,7 @@ mod tests {
             entry: std::path::PathBuf::from(id),
             render: "vue".to_string(),
             daemon: None,
+            back_root: None,
         };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
