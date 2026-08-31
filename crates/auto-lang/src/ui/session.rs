@@ -1267,6 +1267,10 @@ pub struct DesktopSession {
     /// 常驻；持有以便将来显式停机）。
     #[cfg(feature = "ui-iced")]
     pub(crate) broker_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Plan 500 步骤 4：independent 臂像素桥（自带 iced 渲染宿主 + 隐藏窗
+    /// 的 child 侧协议状态）。None = 非像素臂进程（既有路径零开销）。
+    #[cfg(feature = "ui-iced")]
+    pub pixels: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1312,6 +1316,13 @@ pub enum DesktopEvent {
     /// request_capture 队列后发起 `iced::window::screenshot`，回调臂按
     /// `snapshot_pending_wids` 各窗 rect 裁剪入快照缓存并置消费者 dirty）。
     SnapshotShot(iced::window::Screenshot),
+    /// Plan 500 步骤 4：像素桥协议入站（订阅层轮询 child 管道 inbox →
+    /// 本事件；update 臂驱动 [`crate::ui::desktop_protocol::pixels::
+    /// PixelsChild`] 的端点状态机与截图编排）。
+    PixelsProtocol(Box<crate::ui::desktop_protocol::message::ProtocolMsg>),
+    /// Plan 500 步骤 4：像素桥截图回调（`window::screenshot` 完成 →
+    /// RGBA 写 shm 槽 + FrameReadyPixels 回发宿主）。
+    PixelsShot(iced::window::Screenshot),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1437,6 +1448,8 @@ impl DesktopSession {
             broker_clients: BTreeMap::new(),
             #[cfg(feature = "ui-iced")]
             broker_stop: None,
+            #[cfg(feature = "ui-iced")]
+            pixels: None,
         }
     }
 

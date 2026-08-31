@@ -224,6 +224,40 @@ impl<S: FrameSource> AppEndpoint<S> {
         }))
     }
 
+    /// 产一帧像素变体（v1.3 independent 臂）：RGBA 写 `shm` 的 `slot` 槽
+    /// （统一 `[u32 len][载荷]` 槆框架，载荷解释随 Welcome 模式位），管道
+    /// 上只过 FrameReadyPixels 元数据。槽纪律/frame_id 与命令帧同源。
+    pub fn produce_frame_pixels(
+        &mut self,
+        shm: &super::shm::SharedFrameBuffer,
+        rgba: &[u8],
+        w: u32,
+        h: u32,
+        stride: u32,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.last_slot,
+        };
+        self.last_slot = slot;
+        self.next_frame_id += 1;
+        shm.write_slot(slot, rgba).map_err(ProtocolError::Shm)?;
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyPixels {
+            wid: self.wid.expect("Active 即有 wid"),
+            frame_id: self.next_frame_id,
+            slot,
+            damage: None, // v1.3：damage 作提示（全帧有效）
+            revision: self.session.revision(),
+            w,
+            h,
+            stride,
+            format: super::message::PixelFormat::Rgba8,
+        }))
+    }
+
     /// app 主动请求退出：Active → Closing，产出 ExitRequest。
     pub fn send_exit(&mut self) -> Result<ProtocolMsg, ProtocolError> {
         if self.state != AppState::Active {
