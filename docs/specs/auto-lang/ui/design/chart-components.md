@@ -99,9 +99,28 @@ colors 不足时复用末色（`ci >= ccount → ccount - 1`）。
   px-2 py-1 text-xs；行 = 色点 + 系列名 + 值），**锚点 Init 算好固定**（竖带顶
   /柱顶/扇区中心），事件仅 enter/leave 低频——**不做跟随光标**（crosshair 随
   v2 canvas 桥接另立计划，需 mousemove 流性能设计对照 Plan 386）。
-- hover 状态：model `hoverIdx int = -1`；`hoverIdx >= 0` 时 tooltip 显示于
-  `hoverIdx` 对应锚点，否则不发射。
+- hover 状态（tooltip）：`hovered str` 门控 + tipTitle/tipBody 槽位（484 形态）。
 - 形态对齐 shadcn ChartSingleTooltip：色点 + 标签 + 数值。
+
+### 交互态（plan-498 落地：emphasis 二态 / 转折点 / legend 显隐）
+
+- **emphasis/downplay 二态**（ECharts emphasis 模型,组件层实现,引擎仅 mouse-area
+  增 on_click 臂）：line/area 图例行 mouse-area 悬停 → `.HoverSeries(k)/.SeriesOut`
+  写悬停态字段——高亮系列线宽 2→3+opacity 1、其余 downplay 0.25（area fill 三态
+  0.45/0.25/0.08）；line 高亮系列浮现**转折点圆圈**（r=3,坐标 Init 预计算槽位
+  pts0..3）。bar 命中竖带 `.Hover(i)` 顺带分组态：该组柱描边 1.5、其余组
+  fill-opacity 0.3。donut 图例行/扇区 `.Hover(i)`：该扇区沿中角**外移 12px**
+  （Init 预计算平移路径 d/e 双形态,弧径不变）+ 白描边 2px。
+- **legend 点击显隐**：图例 mouse-area `onclick: .Toggle(k)` 翻 vis 族布尔——隐藏
+  系列几何与 emphasis 全跳过（隐藏优先于悬停）,图例项落 opacity-40（可再点复原）。
+- **悬停态字段命名纪律**：图族专属 hovLn/hovAr/hovBr/hovDn + visLn/visAr/visBr/
+  visDn0..3；**无悬停哨兵 = 9（越界正值）,勿用 -1**——view 条件对负数字面量比较
+  恒假（引擎缺陷 P498-1）;同名字段在 VM 单态架构下跨组件串扰,图族更名解耦
+  （P498-2,同族多实例仍联动,vue 轨无此现象）。
+- **mouse-area 事件面**（M0 引擎臂,schema 双源已登记）：onmouseenter/onmouseleave/
+  ondblclick（496）/onclick（498 → iced on_press / vue @click）。
+- **双端表现差异**：vue 走 CSS transition 淡入（组件 style 块 path transition
+  0.15s）,VM 直接切换——状态与几何完全同源,仅增强动画差异。
 
 ### 类型扩展（旧 gallery 形状对拍所必需）
 

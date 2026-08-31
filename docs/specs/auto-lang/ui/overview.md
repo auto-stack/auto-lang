@@ -24,6 +24,10 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 widget-parens props + Init 几何 + 段记录打包，载体 widgets-gallery components/）；
 VM 轨子组件 Init 渲染期补发（props 播种→Init→build，vue onMounted 对齐）——
 派生计算型组件双轨可用的地基。契约细节见 [design/chart-components.md](design/chart-components.md)。
+**交互态（plan-498 落地）**：四图族 emphasis 二态（line/area 图例悬停高亮+转折点浮现/
+bar 分组描边/donut 扇区中角外移）+ legend onclick 点击显隐（mouse-area on_click 引擎臂，
+iced on_press/vue @click）；悬停态字段图族专属（hovLn/hovAr/hovBr/hovDn 无悬停哨兵 9——
+负数字面量 view 比较缺陷 P498-1 与 VM 单态串扰 P498-2 均已挂账）。
 
 **导航组件线（plan-482 落地）**：nav-item/nav-group/nav(search:) 组件族——
 class 契约单一来源（`ui_gen/nav_contract.rs` ↔ 脚手架 NavItem/NavGroup 镜像，
