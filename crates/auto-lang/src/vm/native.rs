@@ -4838,8 +4838,7 @@ pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     };
 
     // Store the string in the string pool and return tagged index
-    let str_idx = vm.strings.read().unwrap().len() as i32;
-    vm.strings.write().unwrap().push(result_str.into_bytes());
+    let str_idx = vm.add_string(result_str.into_bytes());
 
     // Return as tagged string index
     vm.rc_push_str_idx(task, str_idx as usize);
