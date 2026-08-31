@@ -166,6 +166,55 @@ mod musk_vm_track_p053_6_regex_static {
         assert!(out.contains("reply"), "expected reply, got: [{}]", out);
     }
 
+    /// 接收者泄漏探针：函数体内静态 native 调用后，后续局部/字段读取
+    /// 不得被残留的接收者槽污染（现场：blocks 元素 text 落成 "0"）。
+    #[test]
+    fn probe_static_native_receiver_leak_in_fn() {
+        // 变体 A：fn 内 replace 后直接返回（无 obj）。
+        let a = run_code(concat!(
+            "fn mk(s str) -> str {\n",
+            "    var out = Regex.replace(s, \"zzz\", \"\", \"g\")\n",
+            "    return out\n",
+            "}\n",
+            "fn main() {\n",
+            "    print(mk(\"reply with one short sentence\"))\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-A fn-replace => [{}]", a);
+        // 变体 B：fn 内 obj 字面量（无 native）。
+        let b = run_code(concat!(
+            "fn mk(s str) -> obj {\n",
+            "    return { kind: \"text\", text: s }\n",
+            "}\n",
+            "fn main() {\n",
+            "    let b = mk(\"reply\")\n",
+            "    print(b.kind + \"|\" + b.text)\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-B fn-obj => [{}]", b);
+        // 变体 C：完整形态。
+        let c = run_code(concat!(
+            "fn mk(s str) -> obj {\n",
+            "    var out = Regex.replace(s, \"zzz\", \"\", \"g\")\n",
+            "    return { kind: \"text\", text: out }\n",
+            "}\n",
+            "fn main() {\n",
+            "    let b = mk(\"reply with one short sentence\")\n",
+            "    print(b.kind + \"|\" + b.text)\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-C full => [{}]", c);
+        assert!(
+            a.contains("reply with one short sentence"),
+            "A: fn 内 replace 返回, got: [{}]", a
+        );
+        assert!(b.contains("text|reply"), "B: fn 内 obj 字面量, got: [{}]", b);
+        assert!(
+            c.contains("text|reply with one short sentence"),
+            "C: 完整形态, got: [{}]", c
+        );
+    }
+
     /// 消息链字符串方法矩阵（musk forge/mention helpers 实际使用面）。
     #[test]
     fn message_chain_str_methods_matrix() {
@@ -287,6 +336,65 @@ mod musk_vm_track_p053_6_widget_content {
         eprintln!("[P053-6w] text nodes: {:?}", texts);
         let rows = count_text_nodes(&view, "hello &amp; &lt;world&gt;");
         assert_eq!(rows, 1, "子组件 computed 经 Regex helper 的正文必须渲染");
+    }
+
+    /// P-053-6 续(Obj 实参物化)：computed 把 obj 值(state 字段)传给
+    /// helper，helper 内读字段——原编组落 push_i32(0) 占位，msg 变 Int(0)，
+    /// `.content` 全读 0（musk 消息正文 "0" 的终因）。
+    #[test]
+    fn widget_obj_arg_field_read_in_helper() {
+        let src = concat!(
+            "fn contentOf(msg obj) -> str {\n",
+            "    return msg.content\n",
+            "}\n",
+            "widget Root53d {\n",
+            "    model { var current obj = {} }\n",
+            "    view { col { Msg53d {} } }\n",
+            "}\n",
+            "widget Msg53d {\n",
+            "    computed { body => contentOf(.store.current) }\n",
+            "    view { col { text .body {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        comp.write_state(
+            "current",
+            auto_val::Value::Obj(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world")),
+            ),
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let rows = count_text_nodes(&view, "hello obj world");
+        assert_eq!(rows, 1, "obj 实参经 helper 的字段读取必须成立");
     }
 }
 
