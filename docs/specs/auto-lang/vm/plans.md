@@ -102,3 +102,4 @@ plan-report 07 文中的 plan 链接指向 `docs/plans/`，实际文件均已移
 | 446 | vm-backend-os-config-field-report | ✅ | archive/ | 实战 VM 渲染薄弱点清偿（A1 多 store 消歧/J1-J2 子树）；账本 P446-1..4；批五收口+下游结算完成（2026-08-29，reports/446-downstream-settlement.md） |
 | 466 | test-speedup | ✅ | plans/ | sccache/cargo t ≤30s/全量门禁收敛 review；账本 P466-1..7 |
 | 474 | vm-json-float-dot-read-fix | ✅ | archive/474-vm-json-float-dot-read-fix.md | CALL_SPEC 数学分发 nanbox 化石根除（一元 i32 位读/二元参数序倒置，plan011④）；三层回归载具 vm_json_float_read_tests；账本 P474-1..7 |
+| 504 | calculator-fit-window-osconfig-stdlib（VM 侧） | ✅ | archive/ | stdlib 静态分发：Math.pow/Str.is_digit Rust shim（native_registry 自动扫描）+ 056/057 文件测试；fit 窗口 renderer/session 双路径（VM 独立窗首帧 shrink 测量 resize） |

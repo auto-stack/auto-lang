@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-504
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: calculator-fit-window-osconfig-stdlib
 author: [kimi-code]
 created_at: 2026-08-31
@@ -272,3 +272,17 @@ app.at: ch.is_digit() ──┬─ VM: stdlib/auto/str.at ext str #[vm] → nati
 3. ~~os-config 仓侧改动量（注册表条目形态）~~——**已关闭（S7）**：
    循 musk 先例，模块注册 = `modules.d/auto-calculator.at` +
    配置 = `apps/calculator/config.at` 目录形态，零 daemon 契约改动。
+
+## spec-sync 回写记录
+
+（2026-09-01，/auto-plan:merge 本仓扩展程序）
+
+- `.autoos/specs.json` upsert：P504-1（reports）/P504-2（goals）/P504-3
+  （architecture）/P504-4（designs）/P504-5（tests）/P504-6（reviews），
+  `file` 指本归档路径，`related: [PLAN-504]`。
+- module 回写：`docs/specs/auto-lang/ui/overview.md` 现状增「504 示例桌面化
+  三件套」段、`ui/plans.md` 增 504 行；`vm/overview.md` 现状增 stdlib 静态
+  分发扩充条目、`vm/plans.md` 增 504 行。
+- 全局件：`docs/specs/goals.md` GOAL-007/009/010 引用补 504。
+- 索引再生：`python scripts/spec-index.py` → `docs/specs/INDEX.md`
+  （26 projects）。

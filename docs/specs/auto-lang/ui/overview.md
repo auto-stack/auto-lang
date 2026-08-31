@@ -76,6 +76,8 @@ J1/J2 渲染器子树，批五转正中）。
 027-file-manager（440）草案可领取；028-launcher 归 464。
 
 **481 展示型文字选择/复制已落地**：text/label 增 `selectable` 属性（bool,默认 false——opt-in,缺省渲染路径逐行零变化）;VM 端自研 `ui/iced/selectable_text.rs` SelectableText widget(advanced Widget——绘制复用 iced `text` 同参同路径保证逐像素一致,命中走 iced_graphics Paragraph 公开 `buffer()`;手势集 v1=拖选/双击词选(字符类分段词界,UAX#29 默认 CJK 连字)/Ctrl+C 写剪贴板(有选区才捕获)/Esc 清除不夺全局流;选区为 widget 本地状态,零桌面集成改动) + `selection.rs` 选区纯逻辑(全平台单测);vue 端显式化 `style="user-select: text"`(plain/shadcn 双路径);a2vue 金样 011 锁 prop 往返;001-helloworld/004-profile-card 点亮。边界:font-mono 代码文本 v1 保持 Rich 高亮不可选;arboard 兜底未启用(iced 剪贴板恒可用)。
+
+**504 示例桌面化三件套（011-calculator 样板）**：pac.at `window: "fit"` 自适应窗口——独立 VM 窗首帧按内容 shrink 测量后 resize（clamp [200, 可用区]）、桌面虚拟窗以测量值替代"可用区 60%"写死初值（`register_window` 覆盖保留 fit_pending 为关键修复）；title/settings 上移 os-config per-app 配置（`~/.config/autoos/apps/<app>/config.at`，launch 直读文件注入 theme/accent——启动期 daemon 可能未起，不经 daemon；`modules.d/<id>.at` 注册后通用编辑器零手写获得设置 UI）；应用内 `ExampleHeader` 退役，标题由 pac.at `title:` + 桌面 chrome 提供。债项 P504-1..4 见 KNOWN-DEBT。
 ## 关键入口
 
 - `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
