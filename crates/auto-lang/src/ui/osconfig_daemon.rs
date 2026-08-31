@@ -465,7 +465,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let hit = root.join("b");
         std::fs::create_dir_all(&hit).unwrap();
-        let bin = if cfg!(windows) { "daemon-stub.exe" } else { "daemon-stub" };
+        let bin = if cfg!(windows) {
+            "daemon-stub.exe"
+        } else {
+            "daemon-stub"
+        };
         std::fs::write(hit.join(bin), b"stub").unwrap();
         let dirs = vec![root.join("a"), hit.clone(), root.join("c")];
         assert_eq!(which_in(bin, dirs.into_iter()), Some(hit.join(bin)));
