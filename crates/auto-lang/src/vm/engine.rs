@@ -6011,6 +6011,18 @@ impl AutoVM {
                         .as_ref()
                         .and_then(|name| self.native_interface.resolve(name));
 
+                    // PLAN-053 P-053-6: web 生态 Regex 静态形态——
+                    // `Regex.replace(text, pat, repl, flags)` / `Regex.test(text, pat)`
+                    // （musk forge_helpers/mention_helpers 的消息渲染链）。原仅
+                    // OPAQUE_DISPATCH_REGEX_METHODS 的实例方法（is_match/
+                    // replace_all…）可解析，静态形态落兜底报错 → 消息正文整体空。
+                    let regex_static_native_id =
+                        if type_name == "Regex" && matches!(method_name.as_str(), "replace" | "test") {
+                            self.native_interface.resolve(&format!("auto.regex.{}", method_name))
+                        } else {
+                            None
+                        };
+
                     // Plan 240: Math method dispatch for CALL_SPEC
                     // Handles chained expressions like (a-b).to_radians() where type inference fails
                     const CALL_SPEC_MATH_METHODS: &[&str] = &[
@@ -6054,6 +6066,25 @@ impl AutoVM {
                             old_fn_n_args: saved_n_args,
                             old_fn_n_locals: saved_n_locals,
                         });
+                    } else if let Some(native_id) = regex_static_native_id {
+                        // PLAN-053 P-053-6: web 生态 Regex 静态形态
+                        // （Regex.replace/test）。CALL_SPEC 布局
+                        // [..., recv, arg0..argN-1] → shim 按 CALL_NAT 约定
+                        // 只吃实参：实参弹出暂存 → 弃接收者 → 实参回栈 →
+                        // 执行（结果由 shim 压回，无额外清理）。
+                        let mut args_rev = Vec::with_capacity(arg_count);
+                        for _ in 0..arg_count {
+                            args_rev.push(task.ram.pop_nv());
+                        }
+                        task.ram.pop_nv(); // receiver（"Regex" 类型名占位）
+                        for nv in args_rev.into_iter().rev() {
+                            task.ram.push_nv(nv);
+                        }
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
                     } else if let Some(native_id) = opaque_native_id {
                         // Plan 212 Phase 2.2: Opaque type method routed to native shim
                         // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]

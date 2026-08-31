@@ -74,6 +74,152 @@ mod musk_vm_track_p053_2_null_equality {
     }
 }
 
+/// P-053-6: web 生态 Regex 静态形态（musk forge_helpers/mention_helpers 的
+/// 消息渲染链全死于此——`CALL_SPEC: no function 'Regex.replace' for type
+/// 'Regex'`，Call 臂 swallowed-Err 静默）。
+#[cfg(test)]
+mod musk_vm_track_p053_6_regex_static {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// `Regex.replace(text, pattern, repl, "g")` 全局替换（stripQuestionnaire
+    /// / render_mentions_default 的 HTML 转义链现场形态）。
+    #[test]
+    fn regex_replace_global() {
+        let out = run_code(
+            "print(Regex.replace(Regex.replace(\"a<b>c\", \"<\", \"&lt;\", \"g\"), \">\", \"&gt;\", \"g\"))",
+        );
+        eprintln!("[P053-6] replace g => [{}]", out);
+        assert!(
+            out.contains("a&lt;b&gt;c"),
+            "expected a&lt;b&gt;c, got: [{}]", out
+        );
+    }
+
+    /// `Regex.replace` 无 g 标志只替换首处（web 生态默认）。
+    #[test]
+    fn regex_replace_first() {
+        let out = run_code("print(Regex.replace(\"a-a-a\", \"a\", \"b\", \"\"))");
+        eprintln!("[P053-6] replace first => [{}]", out);
+        assert!(out.contains("b-a-a"), "expected b-a-a, got: [{}]", out);
+    }
+
+    /// `Regex.test(text, pattern) -> bool`（stripQuestionnaire 的
+    /// 问卷探测现场形态）。
+    #[test]
+    fn regex_test_bool() {
+        let out = run_code("print(Regex.test(\"hello 123\", \"\\\\d+\"))");
+        eprintln!("[P053-6] test => [{}]", out);
+        assert!(out.contains("true"), "expected true, got: [{}]", out);
+    }
+
+    /// 控制组：不匹配返回 false。
+    #[test]
+    fn regex_test_no_match() {
+        let out = run_code("print(Regex.test(\"hello\", \"\\\\d+\"))");
+        eprintln!("[P053-6] test-neg => [{}]", out);
+        assert!(out.contains("false"), "expected false, got: [{}]", out);
+    }
+}
+
+/// P-053-6 widget 级：子组件 computed 调 Regex helper 渲染消息正文
+/// （UserMessage `html => render_mentions_default(.content)` 的最小同构）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_6_widget_content {
+    use crate::parser::Parser;
+
+    fn count_text_nodes(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
+        use crate::ui::view::View;
+        match view {
+            View::Text { content, .. } => usize::from(content == label),
+            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn widget_child_computed_regex_helper_content() {
+        let src = concat!(
+            // render_mentions_default 的最小同构：HTML 转义链(Regex.replace)+
+            // 词汇探测(Regex.test)——现场死因的浓缩。
+            "fn esc(text str) -> str {\n",
+            "    let a = Regex.replace(text, \"&\", \"&amp;\", \"g\")\n",
+            "    let b = Regex.replace(a, \"<\", \"&lt;\", \"g\")\n",
+            "    let c = Regex.replace(b, \">\", \"&gt;\", \"g\")\n",
+            "    if Regex.test(c, \"q\") { return c + \"[Q]\" }\n",
+            "    return c\n",
+            "}\n",
+            "widget Root53c {\n",
+            "    model { var messages []Value = [] }\n",
+            "    view { col { for m in .messages { Msg53c { content: .m.content } } } }\n",
+            "}\n",
+            "widget Msg53c(content: str) {\n",
+            "    computed { html => esc(.content) }\n",
+            "    view { col { text .html {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        comp.write_state_vec(
+            "messages",
+            vec![auto_val::Value::Obj(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>")),
+            )],
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn dump_texts(v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match v {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children { dump_texts(c, out); }
+                }
+                _ => {}
+            }
+        }
+        let mut texts = Vec::new();
+        dump_texts(&view, &mut texts);
+        eprintln!("[P053-6w] text nodes: {:?}", texts);
+        let rows = count_text_nodes(&view, "hello &amp; &lt;world&gt;");
+        assert_eq!(rows, 1, "子组件 computed 经 Regex helper 的正文必须渲染");
+    }
+}
+
 /// P-053-1: computed + use.web.fn helper 链（占位——复现测试落地于步骤 4）。
 #[cfg(test)]
 mod musk_vm_track_p053_1_computed_helper_chain {
