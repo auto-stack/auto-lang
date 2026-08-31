@@ -416,6 +416,8 @@
   "协议零改动"约束。分区窗口语义少量（workspace_close 非空提示先例），
   视觉风险低。偿还路径：`.at` take(N) 数组原语（语言增强，另行计划），
   或 v1.5 协议字段（分区窗口派生面）。
+  **裁定（2026-08-31，用户）**：不单独立项清偿——take(N) 原语增强归入
+  债务批量清理批次（与 P497-2 等一起清），届时再定计划。
 - **P497-2 a2vue window_thumbnail props 不透传 DOM**：金样 SFC 中
   wid/fallback_icon 被丢弃（class/v-for/:key 透传正常）——与 465
   virtual_window（win prop 同不透）先例一致的转译器 v1 局限。占位
