@@ -7667,6 +7667,12 @@ fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
             let _ = app
                 .component
                 .write_state("__dock_position", auto_val::Value::str(pos));
+            // Plan 505 B1：边线类投影（top→border-b）——容器 if 样式在
+            // 实机装配层不稳，边线数据驱动（与 __dock_position 同点热同步）。
+            let border = if pos == "top" { "border-b" } else { "border-t" };
+            let _ = app
+                .component
+                .write_state("__dock_border", auto_val::Value::str(border));
             let _ = app
                 .component
                 .write_state("__dock_enabled", auto_val::Value::str(en));
@@ -18656,6 +18662,87 @@ mod tests {
         // 排空后再无残余（幂等取尽）。
         apply_desktop_injects(&mut ds);
         assert!(ds.drain_desktop_commands().is_empty());
+    }
+
+    /// Plan 505 B1 回归：单份任务栏结构——根 col 承载位置类（bottom 缺省
+    /// → flex-col-reverse；top → 无翻转类），任务栏按钮群在视图树在位。
+    /// （S7 实拍曾现任务栏消失——此测锁定视图树侧结构正确性。）
+    #[test]
+    fn shell_root_col_position_classes_and_taskbar_present() {
+        use crate::ui::style::StyleClass;
+        use crate::ui::view::View as V;
+        fn count_buttons(v: &V<crate::ui::interpreter::DynamicMessage>) -> usize {
+            let mut n = match v {
+                V::Button { .. } => 1,
+                _ => 0,
+            };
+            for c in view_children(v) {
+                n += count_buttons(c);
+            }
+            n
+        }
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(id);
+
+        // bottom（pack 缺省）→ 根 col 含 FlexColReverse（B1 翻转承载）。
+        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
+        let V::Column { style, children, .. } = &view else {
+            panic!("shell 根节点应为 Column，实际 {:?}", std::mem::discriminant(&view));
+        };
+        let has_reverse = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+        });
+        assert!(has_reverse, "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）");
+        let buttons = count_buttons(&view);
+        assert!(buttons >= 6, "任务栏按钮群应在位（⊞/pinned×3/pager/布局三键/铃铛/齿轮），实得 {buttons}");
+        assert!(
+            !children.is_empty(),
+            "根 col 应有子（taskbar 块 + 让位 spacer）"
+        );
+        // 任务栏行（taskbar → View::Row）应带 h-12 等类（条件样式
+        // border-t/b 经 extract_style_with 求值落位——S7 实拍回归锚）。
+        let mut taskbar_row: Option<&V<crate::ui::interpreter::DynamicMessage>> = None;
+        fn find_row_with_h12<'a>(
+            v: &'a V<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Option<&'a V<crate::ui::interpreter::DynamicMessage>>,
+        ) {
+            if out.is_some() {
+                return;
+            }
+            if let V::Row { style, .. } = v {
+                if style.as_ref().map_or(false, |s| {
+                    s.classes.iter().any(|c| {
+                        matches!(c, crate::ui::style::StyleClass::Height(_) if format!("{c:?}").contains("12"))
+                    })
+                }) {
+                    *out = Some(v);
+                    return;
+                }
+            }
+            for c in view_children(v) {
+                find_row_with_h12(c, out);
+            }
+        }
+        find_row_with_h12(&view, &mut taskbar_row);
+        assert!(
+            taskbar_row.is_some(),
+            "taskbar 行应带高度类（条件样式求值落位）"
+        );
+
+        // top → 无翻转类（border-b 分支）。
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let _ = app.component.write_state("__dock_position", auto_val::Value::str("top"));
+        }
+        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
+        let V::Column { style, .. } = &view else { panic!("root Column") };
+        let has_reverse = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+        });
+        assert!(!has_reverse, "top 时根 col 不应含 flex-col-reverse");
     }
 
     #[test]

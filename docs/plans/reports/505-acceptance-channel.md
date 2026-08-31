@@ -103,8 +103,14 @@ acceptance 态 boot → MCP 注入 shell `OpenSettingsPanel` → 设置面板实
 
 ## 5. 三债补拍索引（步骤 7）
 
-| 债 | 场景 | 证据 |
+| 债 | 场景 | 证据（docs/plans/reports/assets/505/） |
 |---|---|---|
-| P487-1 | 齿轮开面板 + dock 位置热切换 + Esc 自隐 | （S7 填） |
-| P496-1 | 壁纸写手 + 桌面图标交互 | （S7 填） |
-| P501-2 | 齿轮 → os-config 全链 | （S7 填） |
+| P487-1 | 齿轮开面板 + dock 位置热切换 + Esc 自隐 | `p487/p487-01-gear-panel-open.png`（设置模态实开：Dock 分区导航 + 位置/启用/固定应用）；`p487/p487-02-dock-hot-switch-top.png`（PickPosition("top") 热切换——任务栏置顶 + border-b + calculator 运行窗在位）；`p487/p487-03-esc-panel-hidden.png`（面板 Escape 自隐，任务栏置顶保持） |
+| P496-1 | 壁纸写手 + 桌面图标交互 | `p496/p496-01-wallpaper-writer-applied.png`（DraftWallpaper #1e3a5f + SaveWallpaper——背景实变海军蓝，面板在场）；`p496/p496-02-icon-activate-calculator.png`（desktop ActivateApp("011-calculator")——图标网格淡出、calculator 窗前置） |
+| P501-2 | 齿轮 → 系统 → 打开系统设置全链 | `p501/p501-01-system-section-osconfig-badge.png`（系统分区 + osconfig 三态徽标）；`p501/p501-02-osconfig-launched.png`（OpenSystemSettings → launch\tos-config → 外部仓 os-config App 实拉起——其自有设置 UI（桌面/输入/网络/声音…）整窗实拍） |
+
+补拍顺带发现并清偿：B1 重写后任务栏在实机装配层不可见——taskbar 注册件上
+的 `style: if …` 条件表达式样式在 live 装配路径丢失（视图树单测两路皆
+绿，仅 iced 实机装配可见差异）；边线类改**宿主投影拼接**（`__dock_border`
++ apply_dock_edges_now 热同步，"grid grid-cols-" + n 先例形态）后实拍
+通过（p487-02 即铁证）。回归锚：`shell_root_col_position_classes_and_taskbar_present`。
