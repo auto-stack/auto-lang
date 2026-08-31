@@ -96,10 +96,17 @@ AUTO_VM_STORAGE_FILE=tmp/<场景>-storage.json \
 
 2026-08-31：`acceptance_channel.py --scenario drill` 一轮绿——真桌面宿主
 acceptance 态 boot → MCP 注入 shell `OpenSettingsPanel` → 设置面板实开
-（截图 `tmp/505-drill/drill-01-settings-panel.png`：设置模态 + Dock 分区
+（截图 `assets/505/drill/drill-01-settings-panel.png`：设置模态 + Dock 分区
 导航 + 位置/启用/固定应用三组控件实拍）→ 截图归档。单测锚
 `desktop_injects_flow_through_real_arms` 绿（注入 → shell 总线 → 同臂
 排空链）。
+
+**通道边界实拍注记（复审补录）**：原生窗拖入 dock（native dock 手势）本质
+要求对被拖**外部窗口**的真实 OS 输入，内进程通道不覆盖——t5_smoke
+（SendInput 管线）在本机当前会话被阻断（`SendInput caption 拖拽链 = false`，
+与 P504-3/P496-1 同族环境限制）；事件泵时延改善由单测数学背书
+（`slot_pump_drains_noise_batch_and_prioritizes_gesture_markers`：100 噪声
++2 边界一拍排空，原 ~1.6s+ 排队 → ≤16ms 泵送 + ≤400ms 执行节拍）。
 
 ## 5. 三债补拍索引（步骤 7）
 

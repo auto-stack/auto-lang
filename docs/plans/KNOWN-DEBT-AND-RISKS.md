@@ -387,6 +387,23 @@
   条件样式在实机装配层不稳，S7 补拍实拍发现后修正）；shell.at 440→308 行，
   desktop_mcp 装载测 3/3。
 
+### P505（2026-08-31，Plan 505 桌面 DEBT 批处理一期复审登记）
+
+- **P505-1 注册件/容器 if 条件样式在 live 装配路径丢失（根因未明，已规避）**：
+  shell.at taskbar（注册件 → row 语义）上的 `style: if … {} else {}` 使
+  任务栏在实机 iced 装配中零高度不可见——视图树单测两路（tracked/
+  untracked）皆断言样式类在位（`shell_root_col_position_classes_and_taskbar_present`），
+  仅真窗装配可见差异；静态串/拼接表达式（Bina Add）均正常。505 B1 以宿主
+  投影拼接（`__dock_border`）规避。根因（视图树与 iced 元素装配间的样式
+  丢失环节）未定位；偿还路径：装配层样式探针对拍定位后修 extract/装配臂，
+  或明文禁用该形态（lint/文档）。影响面：所有在注册件/容器上写 if 条件
+  样式的 .at（当前 shell pack 已清零，examples 检索未见同型）。
+- **P505-2 事件泵实机拖拽体感复跑受阻（环境族，随 C 通道边界注记）**：
+  A 族 drain+优先级的实机拖拽复验（t5_smoke SendInput 管线）在当前会话被
+  阻断（caption 拖拽链 false——P504-3/P496-1 同族）；时延改善由单测数学
+  背书（100 噪声+2 边界一拍排空）。偿还路径：OS 注入通道可用窗口（物理机
+  人手或注入环境恢复）跑一轮 t5 拖入 + C 通道截图留痕。
+
 ### P494（2026-08-31，Plan 494 原生真洞 Phase 4 复审登记；用户已批准为债务）
 
 - **P494-1 G4 覆盖层洞边裁剪（Region 机制代价）**：真洞经 `SetWindowRgn`
