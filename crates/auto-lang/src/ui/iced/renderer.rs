@@ -8999,6 +8999,53 @@ fn projection_win_entry(
     ]))
 }
 
+/// Plan 505 C：实机验收通道注入排空（ServiceTick 节拍，≤400ms 生效）。
+/// Bus 记录并入 shell `__desktop_cmd`（同拍 drain 同臂消费——真实 shell
+/// 按钮的同一执行路径）；Handler 直呼特权 App handler（onclick 同一
+/// 管线）。入队面见 [`crate::ui::session::desktop_inject_push`]（MCP
+/// `autoui_desktop` 工具，AUTOUI_ACCEPTANCE=1 门控）。
+pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::session::DesktopInject;
+    for inj in crate::ui::session::desktop_inject_take() {
+        match inj {
+            DesktopInject::Bus(record) => {
+                let Some(shell) = state.desktop.shell_app else { continue };
+                let Some(app) = state.apps.get_mut(&shell) else { continue };
+                let cur = match app.component.read_state("__desktop_cmd") {
+                    Ok(auto_val::Value::Str(s)) => s.to_string(),
+                    _ => String::new(),
+                };
+                let joined = if cur.is_empty() {
+                    record
+                } else {
+                    format!("{cur}\n{record}")
+                };
+                let _ = app
+                    .component
+                    .write_state("__desktop_cmd", auto_val::Value::str(&joined));
+            }
+            DesktopInject::Handler { app: which, handler, arg } => {
+                let app_id = match which {
+                    "shell" => state.desktop.shell_app,
+                    "settings" => state.desktop.settings_app,
+                    "notification" => state.desktop.notification_app,
+                    "launcher" => state.desktop.launcher_app,
+                    // Plan 505 C：桌面本体面（496 M5——图标交互/壁纸面）。
+                    "desktop" => state.desktop.desktop_app,
+                    _ => None,
+                };
+                let Some(app_id) = app_id else { continue };
+                let Some(sess) = state.apps.get_mut(&app_id) else { continue };
+                let args = arg
+                    .map(|a| vec![auto_val::Value::str(&a)])
+                    .unwrap_or_default();
+                let _ = sess.component.bridge_mut().call_handler(&handler, &args);
+                *sess.state.view_dirty.borrow_mut() = true;
+            }
+        }
+    }
+}
+
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
 /// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
@@ -11747,6 +11794,9 @@ fn compare_pngs(
                             state.attach_pending_incubations(5000);
                         }
                         state.pump_broker_clients();
+                        // Plan 505 C：验收通道注入排空（≤400ms 节拍达；
+                        // Bus 记录随后并入下方 drain 同臂执行）。
+                        apply_desktop_injects(state);
                         let (exit, tasks) = drain_and_execute_desktop_commands(state);
                         if exit {
                             // Plan 505 B5（债 P480-R1）：退出前显式
@@ -18567,6 +18617,47 @@ mod tests {
     }
 
     #[test]
+    /// Plan 505 C：验收通道注入排空——Bus 记录并入 shell `__desktop_cmd`
+    /// （真实按钮同一消费臂）；Handler 直呼 shell onclick 同名 handler
+    /// （写入总线记录同臂排空）。
+    #[test]
+    fn desktop_injects_flow_through_real_arms() {
+        use crate::ui::session::{desktop_inject_push, DesktopCommand, DesktopInject};
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        let shell = ds.desktop.shell_app.unwrap();
+
+        // Bus 注入 → shell __desktop_cmd → drain_desktop_commands 同臂。
+        desktop_inject_push(DesktopInject::Bus("open_settings".to_string()));
+        apply_desktop_injects(&mut ds);
+        let bus = match ds.apps.get(&shell).unwrap().component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(s)) => s.to_string(),
+            _ => String::new(),
+        };
+        assert_eq!(bus, "open_settings", "Bus 注入落入 shell 总线状态");
+        let cmds = ds.drain_desktop_commands();
+        assert!(matches!(cmds.as_slice(), [DesktopCommand::OpenSettings]));
+
+        // Handler 注入 → 真 shell.at OpenSettingsPanel（齿轮 onclick 同名）
+        // → open_settings 记录入总线 → 同臂排空。
+        desktop_inject_push(DesktopInject::Handler {
+            app: "shell",
+            handler: "OpenSettingsPanel".to_string(),
+            arg: None,
+        });
+        apply_desktop_injects(&mut ds);
+        let cmds = ds.drain_desktop_commands();
+        assert!(
+            matches!(cmds.as_slice(), [DesktopCommand::OpenSettings]),
+            "handler 写入的总线记录同臂排空"
+        );
+        // 排空后再无残余（幂等取尽）。
+        apply_desktop_injects(&mut ds);
+        assert!(ds.drain_desktop_commands().is_empty());
+    }
+
     #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();

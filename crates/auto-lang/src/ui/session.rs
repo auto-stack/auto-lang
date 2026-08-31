@@ -1545,6 +1545,37 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
     iced::Subscription::none()
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Plan 505 C：实机验收通道注入（进程级队列——MCP `autoui_desktop` 工具
+// 产、iced 更新环 ServiceTick 节拍消费。绕开 OS 注入/CUA 像素身份守卫
+// （P487-1/P496-1/P501-2 阻断族统一解），走与真实按钮同一消费臂；
+// AUTOUI_ACCEPTANCE=1 门在工具侧，生产缺省零面）。
+// ─────────────────────────────────────────────────────────────────────────
+
+/// 验收注入项。
+#[derive(Debug, Clone)]
+pub enum DesktopInject {
+    /// DesktopBus 动词记录（如 "open_settings" / "layout\tgrid"）——并入
+    /// shell `__desktop_cmd`，经 `drain_and_execute_desktop_commands` 同臂
+    /// 消费（真实 shell 按钮的同一执行路径）。
+    Bus(String),
+    /// 特权 App handler 直呼（shell/settings/notification/launcher 的
+    /// onclick 同名 handler——比动词更贴按钮的一步）。
+    Handler { app: &'static str, handler: String, arg: Option<String> },
+}
+
+static DESKTOP_INJECT_QUEUE: Mutex<Vec<DesktopInject>> = Mutex::new(Vec::new());
+
+/// 工具侧入队（AUTOUI_ACCEPTANCE 门在 [`crate::ui::mcp_server`] 工具侧）。
+pub fn desktop_inject_push(item: DesktopInject) {
+    DESKTOP_INJECT_QUEUE.lock().unwrap().push(item);
+}
+
+/// 更新环排空（一次取尽）。
+pub fn desktop_inject_take() -> Vec<DesktopInject> {
+    std::mem::take(&mut *DESKTOP_INJECT_QUEUE.lock().unwrap())
+}
+
 impl AppSession {
     pub fn new(id: AppId, component: DynamicComponent) -> Self {
         Self { id, component, state: AppState::new() }
