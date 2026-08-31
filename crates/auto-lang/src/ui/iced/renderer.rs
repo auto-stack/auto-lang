@@ -7335,6 +7335,7 @@ fn summon_launcher(
     let mut cats: Vec<auto_val::Value> = Vec::new();
     let mut lns: Vec<auto_val::Value> = Vec::new();
     let mut lts: Vec<auto_val::Value> = Vec::new();
+    let mut colors: Vec<auto_val::Value> = Vec::new();
     for e in &entries {
         names.push(auto_val::Value::Str(e.id.clone().into()));
         titles.push(auto_val::Value::Str(e.title.clone().into()));
@@ -7342,6 +7343,7 @@ fn summon_launcher(
         cats.push(auto_val::Value::Str(e.category.clone().into()));
         lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
         lts.push(auto_val::Value::Str(e.title.to_lowercase().into()));
+        colors.push(auto_val::Value::Str(launcher_brand_color(&e.id).into()));
     }
     if let Some(app) = state.apps.get_mut(&launcher) {
         let _ = app.component.write_state_vec("apps_names", names);
@@ -7350,6 +7352,7 @@ fn summon_launcher(
         let _ = app.component.write_state_vec("apps_cats", cats);
         let _ = app.component.write_state_vec("apps_lns", lns);
         let _ = app.component.write_state_vec("apps_lts", lts);
+        let _ = app.component.write_state_vec("apps_colors", colors);
         let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
         let _ = app.component.write_state("visible", auto_val::Value::str("1"));
         let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
@@ -7369,6 +7372,35 @@ fn summon_launcher(
         .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
     iced::widget::operation::focus(summon_target)
         .map(move |m| DM::App(launcher, m))
+}
+
+/// Plan 503 M4：launcher 品牌色（stella 柔粉彩系，6 位 hex）。注册表条目
+/// 无 color 字段——已知 app 静态映射，未知 app 以 id 哈希散列到同系粉彩
+/// 盘（稳定确定性：同名恒同色）。.at 侧消费为 `bg-[<color>21]`（13% alpha
+/// 图标底块）+ `text-[<color>]`（品牌色字形）。
+fn launcher_brand_color(id: &str) -> &'static str {
+    match id {
+        "011-calculator" => "#7c9a6d",
+        "012-stopwatch" => "#b88c61",
+        "013-todo" => "#6a8bad",
+        "014-weather" => "#7d9ec4",
+        "015-notes" => "#c9a77e",
+        "017-chat" => "#8d7ab5",
+        "018-book-reader" => "#a47551",
+        "020-music-player" => "#c4706a",
+        "024-charts" => "#6fa3a7",
+        "025-dashboard" => "#9a8fb8",
+        "038-minesweeper" => "#8a9b6e",
+        "041-auto-edit" => "#5f8d78",
+        _ => {
+            const PASTEL: [&str; 8] = [
+                "#7c9a6d", "#b88c61", "#6a8bad", "#7d9ec4", "#c9a77e", "#8d7ab5", "#a47551",
+                "#c4706a",
+            ];
+            let hash = id.bytes().map(|b| b as usize).sum::<usize>();
+            PASTEL[hash % PASTEL.len()]
+        }
+    }
 }
 
 /// Plan 478 T4：switcher overlay 召唤执行体（Ctrl+Tab 热键；T1 施工图 §5.2，
@@ -8966,6 +8998,29 @@ fn desktop_wallpaper_element<M: 'static>(path: &str) -> iced::Element<'static, M
             })
             .into(),
     }
+}
+
+/// Plan 503 M3：壁纸罩层 —— 图片壁纸上叠 background 语义色 scrim
+/// （light 10% / dark 35%），提升桌面图标/文本可读性（stella 壁纸罩层
+/// 移植；降格为纯色叠加，无 blur——parity 条款）。纯色壁纸分支不叠：
+/// 底色无对比噪音，且桌面本体面不透明底会盖住本层，叠之无效。
+fn desktop_wallpaper_scrim<M: 'static>() -> iced::Element<'static, M> {
+    let dark = crate::ui::style::theme::dark_mode();
+    let pct: u32 = if dark { 35 } else { 10 };
+    let (r, g, b) =
+        crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Background)
+            .unwrap_or((9, 14, 26));
+    let alpha = (pct * 255 / 100) as f32 / 255.0;
+    iced::widget::container(iced::widget::Space::new())
+        .width(iced::Length::Fill)
+        .height(iced::Length::Fill)
+        .style(move |_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgba8(
+                r, g, b, alpha,
+            ))),
+            ..Default::default()
+        })
+        .into()
 }
 
 /// Plan 478 T3：投影条目构建（wins/mru 两段共用；协议 v1.1 条目同型六字段）。
@@ -12300,6 +12355,8 @@ fn compare_pngs(
             // 承接，不推本层）。Stack 最底之底：桌面图标面之下、虚拟窗之下。
             if !state.desktop.desktop_wallpaper.starts_with('#') {
                 layers.push(desktop_wallpaper_element(&state.desktop.desktop_wallpaper));
+                // Plan 503 M3：壁纸罩层（可读性 scrim，紧贴壁纸之上）。
+                layers.push(desktop_wallpaper_scrim());
             }
             // Plan 496 M5：桌面本体层（463 预留桌面层 z 槽消费）——Stack
             // 最底：先于虚拟窗推层 = 桌面图标在壁纸层之上、App 虚拟窗口

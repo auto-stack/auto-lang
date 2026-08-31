@@ -19,7 +19,7 @@
 widget App {
     msg {
         Init, SetQ(str), ApplyFilter, MoveUp, MoveDown, MoveLeft, MoveRight,
-        Pick, Escape, SwitchMode, Open, Close, Launch(str)
+        Pick, Escape, SwitchMode, Open, Close, Launch(str), PickCat(str)
     }
 
     model {
@@ -32,15 +32,19 @@ widget App {
         // ---- 形态 ----
         var mode str = "palette"    // palette | grid
 
+        // ---- Plan 503 分类胶囊 ----
+        var cat str = "all"         // 当前分类（"all" = 全部）
+        var cats = ["all", "tool", "task", "life", "notes", "social", "reading", "media", "data", "system", "game", "editor"]
+
         // ---- 查询与结果 ----
         var q str = ""
-        var ranked = []             // {i,name,title,icon,category,mg,sub}
+        var ranked = []             // {i,name,title,icon,category,mg,sub,chip,tchip}
         var sel int = 0             // palette 选中索引（app 内自建焦点索引）
         var nres int = 0            // 结果数（view 条件用，替代模板 .len()）
         var count str = ""          // 计数显示串
 
         // ---- 网格形态（P5，对标 Activities/Launchpad）----
-        var gridrows = []           // {gi,name,title,mg,category} 注册表序全量
+        var gridrows = []           // {gi,name,title,mg,category,chip,tchip} 注册表序全量
         var gsel int = 0            // 网格焦点索引（与 sel 同为 app 内自建）
         var gcount str = ""
 
@@ -48,6 +52,8 @@ widget App {
         // 注入/存储形态 = 平行字符串列表（Obj 数组的 VM handler 字段读失效
         // ——B12 同族，464 探针钉死；字符串列表下标读保真）。
         // ln/lt = name/title 的预小写副本（匹配用，见文件头注）。
+        // colors = 品牌色 6 位 hex（Plan 503；宿主注入同型——图标底块
+        // bg-[<color>21]（13% alpha）/字形 text-[<color>] 双端同源）。
         var apps_names = [
             "011-calculator", "012-stopwatch", "013-todo", "014-weather",
             "015-notes", "017-chat", "018-book-reader", "020-music-player",
@@ -68,6 +74,11 @@ widget App {
             "notes", "social", "reading", "media",
             "data", "system", "game", "editor"
         ]
+        var apps_colors = [
+            "#7c9a6d", "#b88c61", "#6a8bad", "#7d9ec4",
+            "#c9a77e", "#8d7ab5", "#a47551", "#c4706a",
+            "#6fa3a7", "#9a8fb8", "#8a9b6e", "#5f8d78"
+        ]
         var apps_lns = [
             "011-calculator", "012-stopwatch", "013-todo", "014-weather",
             "015-notes", "017-chat", "018-book-reader", "020-music-player",
@@ -85,23 +96,42 @@ widget App {
     view {
         if .visible == "1" {
             if .mode == "palette" {
-                // ---- palette 形态：全屏暗底 + 顶部 1/4 处搜索卡 ----
+                // ---- palette 形态：语义 scrim + 顶部 1/4 处搜索卡（Plan 503
+                // stella 化：bg-card/80 三件套 + 品牌色图标底块 + 分类胶囊）----
                 col {
-                    style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                    style: "w-full h-full bg-background/60 flex flex-col items-center"
                     spacer { style: "h-24 w-full" }
                     col {
-                        style: "w-full max-w-xl bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
+                        style: "w-full max-w-xl bg-card/80 border rounded-2xl shadow-2xl overflow-hidden"
 
                         // 搜索行
                         row {
-                            style: "flex items-center gap-2 px-4 py-3 border-b border-gray-700"
+                            style: "flex items-center gap-2 px-4 py-3 border-b"
                             text "🔍" { style: "text-lg" }
                             input {
                                 value: .q
                                 oninput: .SetQ
                                 onenter: .Pick
                                 placeholder: "Search apps…"
-                                style: "flex-1 text-lg text-white bg-gray-900 caret-white"
+                                style: "flex-1 text-lg text-foreground bg-background/50 rounded-lg px-2"
+                            }
+                        }
+
+                        // 分类胶囊（Plan 503）：选中 = bg-primary/15 + text-primary
+                        row {
+                            style: "flex items-center gap-1 px-4 py-2 border-b"
+                            for c in .cats {
+                                if .cat == c {
+                                    button (text: c) {
+                                        onclick: .PickCat(c)
+                                        style: "h-6 px-2.5 text-xs rounded-full bg-primary/15 text-primary"
+                                    }
+                                } else {
+                                    button (text: c) {
+                                        onclick: .PickCat(c)
+                                        style: "h-6 px-2.5 text-xs rounded-full text-muted-foreground hover:bg-primary/10"
+                                    }
+                                }
                             }
                         }
 
@@ -111,39 +141,39 @@ widget App {
                             if .nres == 0 {
                                 col {
                                     style: "flex flex-col items-center py-10"
-                                    text "No matching apps" { style: "text-gray-400 text-sm" }
+                                    text "No matching apps" { style: "text-muted-foreground text-sm" }
                                 }
                             }
                             for r in .ranked {
                                 if .sel == r.i {
                                     row {
                                         onclick: .Launch(r.name)
-                                        style: "flex items-center gap-3 px-4 py-3 bg-blue-900 cursor-pointer"
+                                        style: "flex items-center gap-3 px-4 py-3 bg-primary/15 cursor-pointer"
                                         col {
-                                            style: "h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center"
-                                            text r.mg { style: "text-white text-sm font-bold" }
+                                            style: "h-10 w-10 rounded-xl flex items-center justify-center ${r.chip}"
+                                            text r.mg { style: "text-sm font-bold ${r.tchip}" }
                                         }
                                         col {
                                             style: "flex flex-col"
-                                            text r.title { style: "text-white text-sm font-medium" }
-                                            text r.sub { style: "text-gray-400 text-xs" }
+                                            text r.title { style: "text-primary text-sm font-medium" }
+                                            text r.sub { style: "text-muted-foreground text-xs" }
                                         }
-                                        text r.category { style: "ml-auto text-xs text-gray-500" }
+                                        text r.category { style: "ml-auto text-xs text-muted-foreground" }
                                     }
                                 } else {
                                     row {
                                         onclick: .Launch(r.name)
-                                        style: "flex items-center gap-3 px-4 py-3 hover:bg-gray-700 cursor-pointer"
+                                        style: "flex items-center gap-3 px-4 py-3 hover:bg-primary/10 cursor-pointer"
                                         col {
-                                            style: "h-9 w-9 rounded-lg bg-gray-700 flex items-center justify-center"
-                                            text r.mg { style: "text-gray-200 text-sm font-bold" }
+                                            style: "h-10 w-10 rounded-xl flex items-center justify-center ${r.chip}"
+                                            text r.mg { style: "text-sm font-bold ${r.tchip}" }
                                         }
                                         col {
                                             style: "flex flex-col"
-                                            text r.title { style: "text-gray-100 text-sm" }
-                                            text r.sub { style: "text-gray-400 text-xs" }
+                                            text r.title { style: "text-foreground text-sm" }
+                                            text r.sub { style: "text-muted-foreground text-xs" }
                                         }
-                                        text r.category { style: "ml-auto text-xs text-gray-500" }
+                                        text r.category { style: "ml-auto text-xs text-muted-foreground" }
                                     }
                                 }
                             }
@@ -151,26 +181,27 @@ widget App {
 
                         // 底部提示行
                         row {
-                            style: "flex items-center gap-4 px-4 py-2 border-t border-gray-700"
-                            text "↑↓ select" { style: "text-xs text-gray-500" }
-                            text "Enter launch" { style: "text-xs text-gray-500" }
-                            text "Esc close" { style: "text-xs text-gray-500" }
-                            text .count { style: "ml-auto text-xs text-gray-500" }
+                            style: "flex items-center gap-4 px-4 py-2 border-t"
+                            text "↑↓ select" { style: "text-xs text-muted-foreground" }
+                            text "Enter launch" { style: "text-xs text-muted-foreground" }
+                            text "Esc close" { style: "text-xs text-muted-foreground" }
+                            text .count { style: "ml-auto text-xs text-muted-foreground" }
                         }
                     }
                     spacer { style: "h-24 w-full" }
                 }
             } else {
-                // ---- grid 形态（P5）：图标网格（注册表序全量）+ 方向键焦点 ----
+                // ---- grid 形态（P5）：图标网格（注册表序全量）+ 方向键焦点
+                //（Plan 503：语义 scrim + 卡片三件套 + 品牌色瓦片）----
                 col {
-                    style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                    style: "w-full h-full bg-background/60 flex flex-col items-center"
                     spacer { style: "h-24 w-full" }
                     col {
-                        style: "w-full max-w-2xl bg-gray-800 rounded-2xl shadow-2xl p-6"
+                        style: "w-full max-w-2xl bg-card/80 border rounded-2xl shadow-2xl p-6"
                         row {
                             style: "flex items-center mb-4"
-                            text "All apps" { style: "text-gray-300 text-sm" }
-                            text .gcount { style: "ml-auto text-xs text-gray-500" }
+                            text "All apps" { style: "text-foreground text-sm" }
+                            text .gcount { style: "ml-auto text-xs text-muted-foreground" }
                         }
                         grid {
                             cols: 4
@@ -179,49 +210,50 @@ widget App {
                                 if .gsel == g.gi {
                                     col {
                                         onclick: .Launch(g.name)
-                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl bg-blue-900 cursor-pointer"
+                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl bg-primary/15 cursor-pointer"
                                         col {
-                                            style: "h-12 w-12 rounded-xl bg-blue-600 flex items-center justify-center"
-                                            text g.mg { style: "text-white text-lg font-bold" }
+                                            style: "h-12 w-12 rounded-xl flex items-center justify-center ${g.chip}"
+                                            text g.mg { style: "text-lg font-bold ${g.tchip}" }
                                         }
-                                        text g.title { style: "text-white text-xs text-center" }
+                                        text g.title { style: "text-primary text-xs text-center" }
                                     }
                                 } else {
                                     col {
                                         onclick: .Launch(g.name)
-                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-700 cursor-pointer"
+                                        style: "flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-primary/10 cursor-pointer"
                                         col {
-                                            style: "h-12 w-12 rounded-xl bg-gray-700 flex items-center justify-center"
-                                            text g.mg { style: "text-gray-200 text-lg font-bold" }
+                                            style: "h-12 w-12 rounded-xl flex items-center justify-center ${g.chip}"
+                                            text g.mg { style: "text-lg font-bold ${g.tchip}" }
                                         }
-                                        text g.title { style: "text-gray-200 text-xs text-center" }
+                                        text g.title { style: "text-foreground text-xs text-center" }
                                     }
                                 }
                             }
                         }
                         row {
-                            style: "flex items-center gap-4 mt-4 pt-3 border-t border-gray-700"
-                            text "↑↓←→ move" { style: "text-xs text-gray-500" }
-                            text "Enter launch" { style: "text-xs text-gray-500" }
-                            text "Tab palette" { style: "text-xs text-gray-500" }
+                            style: "flex items-center gap-4 mt-4 pt-3 border-t"
+                            text "↑↓←→ move" { style: "text-xs text-muted-foreground" }
+                            text "Enter launch" { style: "text-xs text-muted-foreground" }
+                            text "Tab palette" { style: "text-xs text-muted-foreground" }
                         }
                     }
                     spacer { style: "h-24 w-full" }
                 }
             }
         } else {
-            // ---- 隐藏态：透明空层（desktop 不挡桌面点击；独立模式给开门按钮）----
+            // ---- 隐藏态：透明空层（desktop 不挡桌面点击；独立模式给开门按钮
+            //（Plan 503：语义 token 化））----
             col {
                 style: "w-full h-full"
                 if .hosted == "0" {
                     row {
-                        style: "w-full h-full flex flex-col items-center justify-center bg-gray-100 gap-4"
+                        style: "w-full h-full flex flex-col items-center justify-center bg-background gap-4"
                         button "🔍 Open launcher (Ctrl+Space · IME 机 Ctrl+Alt+Space)" {
                             onclick: .Open
-                            style: "px-4 py-2 bg-gray-900 text-white rounded-lg shadow"
+                            style: "px-4 py-2 bg-primary text-primary-foreground rounded-xl shadow"
                         }
                         if .last != "" {
-                            text f"Last launched: ${.last}" { style: "text-sm text-gray-600" }
+                            text f"Last launched: ${.last}" { style: "text-sm text-muted-foreground" }
                         }
                     }
                 }
@@ -247,6 +279,7 @@ widget App {
             .gsel = 0
             .mode = "palette"
             .visible = "0"
+            .cat = "all"
             // recent 持久化恢复（018/025 storage 先例）。定长 5 槽键：
             // storage.get → localStorage.getItem 产出 string|null，vue 生成码
             // 不带 ?? ''，对结果调方法会 TS18047 —— 槽值只做 != "" 比较（实测）。
@@ -281,6 +314,13 @@ widget App {
             .ApplyFilter()
         }
 
+        // Plan 503 分类胶囊：切分类 → 焦点复位重排。
+        .PickCat(c) -> {
+            .cat = c
+            .sel = 0
+            .ApplyFilter()
+        }
+
         // 模糊排序（纯状态变换；规则 = SPEC.md「排序」节的唯一实现）：
         // 空查询 → recent 置顶分组 + 注册表序全量；非空 → 打分
         // exact(0) > prefix(1) > 词首(2) > 子序列(3)，同分按注册表序，
@@ -297,14 +337,16 @@ widget App {
             var napps int = .apps_names.len()
 
             if ql == "" {
-                // —— 空查询：recent 分组（存在的才列）+ 其余注册表序 ——
+                // —— 空查询：recent 分组（存在的才列，Plan 503 过分类门）+ 其余注册表序 ——
                 var ri int = 0
                 while ri < .recent.len() {
                     var ai int = 0
                     while ai < napps {
                         if .apps_names[ai] == .recent[ri] {
-                            var row = { i: .ranked.len(), name: .apps_names[ai], title: .apps_titles[ai], icon: .apps_icons[ai], category: .apps_cats[ai], mg: .apps_titles[ai].slice(0, 1), sub: "recent" }
-                            .ranked.push(row)
+                            if .cat == "all" || .apps_cats[ai] == .cat {
+                                var row = { i: .ranked.len(), name: .apps_names[ai], title: .apps_titles[ai], icon: .apps_icons[ai], category: .apps_cats[ai], mg: .apps_titles[ai].slice(0, 1), sub: "recent", chip: "bg-[" + .apps_colors[ai] + "21]", tchip: "text-[" + .apps_colors[ai] + "]" }
+                                .ranked.push(row)
+                            }
                         }
                         ai = ai + 1
                     }
@@ -321,8 +363,10 @@ widget App {
                         rj = rj + 1
                     }
                     if seen == 0 {
-                        var row2 = { i: .ranked.len(), name: .apps_names[ak], title: .apps_titles[ak], icon: .apps_icons[ak], category: .apps_cats[ak], mg: .apps_titles[ak].slice(0, 1), sub: .apps_cats[ak] }
-                        .ranked.push(row2)
+                        if .cat == "all" || .apps_cats[ak] == .cat {
+                            var row2 = { i: .ranked.len(), name: .apps_names[ak], title: .apps_titles[ak], icon: .apps_icons[ak], category: .apps_cats[ak], mg: .apps_titles[ak].slice(0, 1), sub: .apps_cats[ak], chip: "bg-[" + .apps_colors[ak] + "21]", tchip: "text-[" + .apps_colors[ak] + "]" }
+                            .ranked.push(row2)
+                        }
                     }
                     ak = ak + 1
                 }
@@ -401,7 +445,7 @@ widget App {
                             rk = rk + 1
                         }
                     }
-                    var srow = { name: .apps_names[si], title: .apps_titles[si], icon: .apps_icons[si], category: .apps_cats[si], score: score }
+                    var srow = { name: .apps_names[si], title: .apps_titles[si], icon: .apps_icons[si], category: .apps_cats[si], score: score, color: .apps_colors[si] }
                     scored.push(srow)
                     si = si + 1
                 }
@@ -441,8 +485,11 @@ widget App {
                     if best == -1 {
                         placed = n
                     } else {
-                        var row3 = { i: .ranked.len(), name: scored[best].name, title: scored[best].title, icon: scored[best].icon, category: scored[best].category, mg: scored[best].title.slice(0, 1), sub: scored[best].category }
-                        .ranked.push(row3)
+                        // Plan 503：非选中分类不出列（分数序保持稳定）。
+                        if .cat == "all" || scored[best].category == .cat {
+                            var row3 = { i: .ranked.len(), name: scored[best].name, title: scored[best].title, icon: scored[best].icon, category: scored[best].category, mg: scored[best].title.slice(0, 1), sub: scored[best].category, chip: "bg-[" + scored[best].color + "21]", tchip: "text-[" + scored[best].color + "]" }
+                            .ranked.push(row3)
+                        }
                         used[best] = 1
                         placed = placed + 1
                     }
@@ -464,7 +511,7 @@ widget App {
             .gridrows = []
             var gi2 int = 0
             while gi2 < napps {
-                var row4 = { gi: .gridrows.len(), name: .apps_names[gi2], title: .apps_titles[gi2], mg: .apps_titles[gi2].slice(0, 1), category: .apps_cats[gi2] }
+                var row4 = { gi: .gridrows.len(), name: .apps_names[gi2], title: .apps_titles[gi2], mg: .apps_titles[gi2].slice(0, 1), category: .apps_cats[gi2], chip: "bg-[" + .apps_colors[gi2] + "21]", tchip: "text-[" + .apps_colors[gi2] + "]" }
                 .gridrows.push(row4)
                 gi2 = gi2 + 1
             }

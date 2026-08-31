@@ -41,18 +41,19 @@ widget Switcher {
 
     view {
         if .visible == "1" {
-            // ---- 打开态：全屏暗底 + 居中卡片（launcher palette 同级视觉）----
+            // ---- 打开态：全屏暗底 + 居中卡片（launcher palette 同级视觉；
+            // Plan 503：语义 scrim bg-background/60 + 卡片 glass 三件套）----
             col {
-                style: "w-full h-full bg-gray-900 flex flex-col items-center"
+                style: "w-full h-full bg-background/60 flex flex-col items-center"
                 spacer { style: "h-40 w-full" }
                 col {
-                    style: "w-full max-w-lg bg-gray-800 rounded-2xl shadow-2xl overflow-hidden"
+                    style: "w-full max-w-lg bg-card/80 border rounded-2xl shadow-xl overflow-hidden"
 
                     // 标题行
                     row {
-                        style: "flex items-center gap-2 px-4 py-3 border-b border-gray-700"
-                        text "Switch Window" { style: "text-gray-300 text-sm" }
-                        text "MRU" { style: "ml-auto text-xs text-gray-500" }
+                        style: "flex items-center gap-2 px-4 py-3 border-b"
+                        text "Switch Window" { style: "text-foreground text-sm" }
+                        text "MRU" { style: "ml-auto text-xs text-muted-foreground" }
                     }
 
                     // 窗口列表（MRU 序；空态）
@@ -61,7 +62,7 @@ widget Switcher {
                         if .nres == 0 {
                             col {
                                 style: "flex flex-col items-center py-8"
-                                text "No windows" { style: "text-gray-400 text-sm" }
+                                text "No windows" { style: "text-muted-foreground text-sm" }
                             }
                         }
                         // Plan 497 G5：行缩略升级——window_thumbnail
@@ -72,16 +73,16 @@ widget Switcher {
                             if .sel == r.i {
                                 row {
                                     onclick: .Focus(r.wid)
-                                    style: "flex items-center gap-3 px-4 py-2 bg-blue-900 cursor-pointer"
-                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border border-gray-600 rounded" }
-                                    text r.title { style: "text-white text-sm font-medium" }
+                                    style: "flex items-center gap-3 px-4 py-2 bg-primary/15 cursor-pointer"
+                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
+                                    text r.title { style: "text-primary text-sm font-medium" }
                                 }
                             } else {
                                 row {
                                     onclick: .Focus(r.wid)
-                                    style: "flex items-center gap-3 px-4 py-2 hover:bg-gray-700 cursor-pointer"
-                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border border-gray-700 rounded" }
-                                    text r.title { style: "text-gray-100 text-sm" }
+                                    style: "flex items-center gap-3 px-4 py-2 hover:bg-primary/10 cursor-pointer"
+                                    window_thumbnail (wid: r.wid, fallback_icon: r.icon) { style: "w-24 h-14 border rounded" }
+                                    text r.title { style: "text-foreground text-sm" }
                                 }
                             }
                         }
@@ -89,10 +90,10 @@ widget Switcher {
 
                     // 底部提示行
                     row {
-                        style: "flex items-center gap-4 px-4 py-2 border-t border-gray-700"
-                        text "Tab/←→ select" { style: "text-xs text-gray-500" }
-                        text "Enter focus" { style: "text-xs text-gray-500" }
-                        text "Esc cancel" { style: "text-xs text-gray-500" }
+                        style: "flex items-center gap-4 px-4 py-2 border-t"
+                        text "Tab/←→ select" { style: "text-xs text-muted-foreground" }
+                        text "Enter focus" { style: "text-xs text-muted-foreground" }
+                        text "Esc cancel" { style: "text-xs text-muted-foreground" }
                     }
                 }
                 spacer { style: "h-40 w-full" }

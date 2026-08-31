@@ -7096,14 +7096,17 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// 段原样落入静态 class（浏览器侧废 token）。拆分：静态段并入 class，
     /// 插值段转 `:class` 拼接表达式（`'w-full ' + __desktop_bg`）。
     /// 字段名非法（空/非标识符）→ None（维持旧行为）。
-    fn interpolated_class_parts(s: &str) -> Option<(Vec<String>, String)> {
-        if !s.contains("${.") {
+    /// Plan 503: pub(crate) —— plan503_tests 直测循环成员插值拆分。
+    /// 形态: `${.field}` → 状态 ref;`${member.field}`(Plan 503) → v-for
+    /// 成员点路径表达式(:class 绑定落在 v-for 作用域内求值)。
+    pub(crate) fn interpolated_class_parts(s: &str) -> Option<(Vec<String>, String)> {
+        if !s.contains("${") {
             return None;
         }
         let mut statics: Vec<String> = Vec::new();
         let mut parts: Vec<String> = Vec::new();
         let mut rest = s;
-        while let Some(pos) = rest.find("${.") {
+        while let Some(pos) = rest.find("${") {
             let head = rest[..pos].trim();
             if !head.is_empty() {
                 statics.push(head.to_string());
@@ -7111,11 +7114,22 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             }
             let after = &rest[pos..];
             let end = after.find('}')?;
-            let name = after[3..end].trim_start_matches('.');
-            if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            let inner = &after[2..end];
+            let valid_ident = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_');
+            let expr = if let Some(name) = inner.strip_prefix('.') {
+                if !valid_ident(name) {
+                    return None;
+                }
+                name.to_string()
+            } else if let Some((root, field)) = inner.split_once('.') {
+                if !valid_ident(root) || !valid_ident(field) {
+                    return None;
+                }
+                format!("{root}.{field}")
+            } else {
                 return None;
-            }
-            parts.push(name.to_string());
+            };
+            parts.push(expr);
             rest = &after[end + 1..];
         }
         let tail = rest.trim();
@@ -14753,7 +14767,8 @@ export function cn(...inputs: ClassValue[]) {
 // Each entry maps a name → shadcn --primary HSL triplet (space-separated).
 const ACCENT_PALETTES: Record<string, string> = {
   indigo: '239 84% 67%',
-  coral:  '350 75% 64%',
+  // Plan 503: coral 校准至 stella-os 玫瑰粉 light #c4706a(dark +4 由 applyAccent 处理)。
+  coral:  '4 43% 59%',
   ocean:  '217 91% 60%',
   sage:   '160 84% 39%',
   amber:  '38 92% 50%',

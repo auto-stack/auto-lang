@@ -50,20 +50,22 @@ widget DesktopSurface {
 
             // 右键菜单（本地面板；menu_id 空 = 关）。三项：打开 /
             // 从桌面移除 / 更换壁纸（跳设置面板）。
+            // Plan 503：glass 三件套（bg-card/80 + 细边框 + rounded-xl 柔影，
+            // stella 降格 parity——无 blur）+ 菜单项 rounded-lg accent hover。
             if .menu_id != "" {
                 col {
-                    style: "w-44 gap-1 p-1 bg-card border rounded-md shadow-md"
+                    style: "w-44 gap-1 p-1 bg-card/80 border rounded-xl shadow-xl"
                     button "打开" {
                         onclick: .MenuOpen
-                        style: "w-full h-8 px-0 text-xs justify-start"
+                        style: "w-full h-8 px-0 text-xs justify-start rounded-lg hover:bg-primary/10"
                     }
                     button "从桌面移除" {
                         onclick: .MenuRemove
-                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground"
+                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
                     }
                     button "更换壁纸…" {
                         onclick: .MenuWallpaper
-                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground"
+                        style: "w-full h-8 px-0 text-xs justify-start text-muted-foreground rounded-lg hover:bg-primary/10"
                     }
                 }
             }
