@@ -278,3 +278,146 @@ mod plan499_donut_sector {
         );
     }
 }
+
+#[cfg(feature = "ui-iced")]
+mod plan499_anim {
+    fn build_gallery() -> Option<crate::ui::dynamic::DynamicComponent> {
+        let app = crate::plan370_test_support::locate_example_app_at("charts-gallery")?;
+        let code = std::fs::read_to_string(&app).ok()?;
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str()?)).ok()?;
+        dc.fire_init();
+        dc.set_route("/");
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        let _ = format!("{:?}", view); // 子组件 Init 经视图构建重放
+        Some(dc)
+    }
+
+    /// M5:tooltip 淡入数值插值(VM 轨)——入场边沿启动(animLn=true,
+    /// tipOpLn=0),AnimLnTick 每拍 +25,4 拍到顶停摆(animLn=false);
+    /// 移动中(hovered 已 true)不重置防闪;离场复位。
+    #[test]
+    fn plan499_tooltip_fade_interpolation() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan499 M5: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let read = |dc: &mut crate::ui::dynamic::DynamicComponent, f: &str| {
+            dc.bridge_mut().read_state(f).unwrap()
+        };
+        // 入场:边沿启动
+        dc.on_with_input_for(
+            "LineChart",
+            "PointerMove\u{1F}f\u{1F}145\u{1F}f\u{1F}100",
+            None,
+        );
+        assert!(
+            matches!(read(&mut dc, "tipOpLn"), auto_val::Value::Int(0)),
+            "入场边沿 tipOpLn 归零"
+        );
+        assert!(
+            matches!(read(&mut dc, "animLn"), auto_val::Value::Bool(true)),
+            "入场边沿启动插值(animLn=true)"
+        );
+        // 移动中不重置(hovered 已 true)
+        dc.on_with_input_for(
+            "LineChart",
+            "PointerMove\u{1F}f\u{1F}200\u{1F}f\u{1F}100",
+            None,
+        );
+        // 插值步进:4 拍到顶停摆(timer 的 when 门控由 renderer 订阅驱动,
+        // 此处直接派发 tick 验证步进语义与到顶收敛)
+        for expect in [25, 50, 75, 100] {
+            dc.on_with_input_for("LineChart", "AnimLnTick", None);
+            assert!(
+                matches!(read(&mut dc, "tipOpLn"), auto_val::Value::Int(v) if v == expect),
+                "AnimLnTick 步进至 {}",
+                expect
+            );
+        }
+        assert!(
+            matches!(read(&mut dc, "animLn"), auto_val::Value::Bool(false)),
+            "到顶停摆(animLn=false)"
+        );
+        // 到顶后移动不重启(hovered 仍 true);离场复位
+        dc.on_with_input_for(
+            "LineChart",
+            "PointerMove\u{1F}f\u{1F}145\u{1F}f\u{1F}100",
+            None,
+        );
+        assert!(
+            matches!(read(&mut dc, "tipOpLn"), auto_val::Value::Int(100)),
+            "同一次悬停内移动不重置淡入"
+        );
+        // 视图落点:淡入态 tooltip 带 Opacity(100) 类 + transition 类
+        //(transition-opacity/duration 对 VM 解析器为未知类被静默丢弃,vue 端 CSS 生效)
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        let dump = format!("{:?}", view);
+        assert!(
+            dump.contains("Opacity(100)"),
+            "到顶后 tooltip 满透明度落图(vm dump 解析后形态)"
+        );
+        // 离场复位
+        dc.on_with_input_for("LineChart", "PointerOut", None);
+        assert!(
+            matches!(read(&mut dc, "tipOpLn"), auto_val::Value::Int(0))
+                && matches!(read(&mut dc, "animLn"), auto_val::Value::Bool(false)),
+            "离场复位"
+        );
+        let (_, _, _) = dc.view_with_debug_gated(true);
+    }
+
+    /// M5 回归:donut 淡入插值——曾在 M5 编辑中漏写 `.AnimDnTick` handler
+    /// (timer/msg 声明齐备而 on 块缺体,vue/VM 双轨 tooltip 恒 opacity-0)。
+    /// 扇区命中入场边沿启动,AnimDnTick 4 拍到顶停摆;内孔离焦复位。
+    #[test]
+    fn plan499_donut_tooltip_fade() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan499 M5: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let read = |dc: &mut crate::ui::dynamic::DynamicComponent, f: &str| {
+            dc.bridge_mut().read_state(f).unwrap()
+        };
+        // 扇区 0(Desktop)命中:入场边沿启动
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}130\u{1F}f\u{1F}210",
+            None,
+        );
+        assert!(
+            matches!(read(&mut dc, "animDn"), auto_val::Value::Bool(true)),
+            "入场边沿启动插值(animDn=true)"
+        );
+        for expect in [25, 50, 75, 100] {
+            dc.on_with_input_for("DonutChart", "AnimDnTick", None);
+            assert!(
+                matches!(read(&mut dc, "tipOpDn"), auto_val::Value::Int(v) if v == expect),
+                "AnimDnTick 步进至 {}",
+                expect
+            );
+        }
+        assert!(
+            matches!(read(&mut dc, "animDn"), auto_val::Value::Bool(false)),
+            "到顶停摆(animDn=false)"
+        );
+        // 视图落点:满透明度类
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        let dump = format!("{:?}", view);
+        assert!(
+            dump.contains("Opacity(100)"),
+            "到顶后 donut tooltip 满透明度落图"
+        );
+        // 内孔离焦:复位
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}130\u{1F}f\u{1F}160",
+            None,
+        );
+        assert!(
+            matches!(read(&mut dc, "tipOpDn"), auto_val::Value::Int(0))
+                && matches!(read(&mut dc, "animDn"), auto_val::Value::Bool(false)),
+            "离焦复位"
+        );
+        let (_, _, _) = dc.view_with_debug_gated(true);
+    }
+}
