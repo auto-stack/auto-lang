@@ -218,6 +218,11 @@ pub const NATIVE_HTTP_POST_STREAM_WITH_HEADERS: u16 = 2255;
 // Regex functions (Plan 159): 2400-2499
 pub const NATIVE_REGEX_IS_MATCH: u16 = 2400;
 pub const NATIVE_REGEX_FIND_ALL: u16 = 2401;
+// PLAN-053 P-053-6: web 生态静态形态（musk forge_helpers/mention_helpers
+// 消息渲染链——`Regex.replace(text, pat, repl, flags)` /
+// `Regex.test(text, pat)`，CALL_SPEC 路由自动.regex.replace/test）。
+pub const NATIVE_REGEX_REPLACE: u16 = 2402;
+pub const NATIVE_REGEX_TEST: u16 = 2403;
 
 // Task/Msg functions (Plan 121): 2300-2399
 pub const NATIVE_TASK_SPAWN: u16 = 2300;
@@ -5603,6 +5608,57 @@ pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// PLAN-053 P-053-6: `Regex.replace(text, pattern, replacement, flags)` —
+/// web 生态静态形态（对齐 musk forge_helpers.ts 的 Regex 工具：flags 含 "g"
+/// 全局替换，否则只替换首处）。入参按 CALL_NAT 约定（自顶向下）：
+/// [flags, replacement, pattern, text]（CALL_SPEC 路径的接收者已由引擎
+/// 分派层剥离）。
+pub fn shim_regex_replace(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let flags: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let replacement: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.replace failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+
+    let out: String = if flags.contains('g') {
+        re.replace_all(&text, replacement.as_str()).into_owned()
+    } else {
+        re.replace(&text, replacement.as_str()).into_owned()
+    };
+    crate::vm::ffi::convert::VMConvertible::push_to_stack(&out, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// PLAN-053 P-053-6: `Regex.test(text, pattern) -> bool` — web 生态静态形态
+/// （stripQuestionnaire 的探测现场）。入参（自顶向下）：[pattern, text]。
+pub fn shim_regex_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.test failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+
+    task.ram.push_nv(auto_val::encode_bool(re.is_match(&text)));
+    Ok(())
+}
+
 // ============================================================================
 // Plan 152: SSE Parser Functions
 // ============================================================================
@@ -7253,6 +7309,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Regex (manual shim — heap objects for compiled regex)
     natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
     natives.register_shim_by_name("auto.regex.match", shim_regex_match);
+    // PLAN-053 P-053-6: web 生态静态形态（CALL_SPEC Regex.replace/test 路由）。
+    natives.register_shim_by_name("auto.regex.replace", shim_regex_replace);
+    natives.register_shim_by_name("auto.regex.test", shim_regex_test);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);

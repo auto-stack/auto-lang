@@ -1355,6 +1355,10 @@ macro_rules! for_each_bigvm_native {
             // === Regex (2400-2410) ===
             ("auto.regex.is_match", 2400, Void),
             ("auto.regex.find_all", 2401, Void),
+            // PLAN-053 P-053-6: web 生态静态形态（Regex.replace/test，
+            // musk 消息渲染链消费）。
+            ("auto.regex.replace", 2402, Void),
+            ("auto.regex.test", 2403, Void),
             ("auto.regex.match", 2410, Void),
 
             // === System (2420-2430) ===
@@ -2161,6 +2165,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.task_system.stop", 2307),
     ("auto.regex.is_match", 2400),
     ("auto.regex.find_all", 2401),
+    ("auto.regex.replace", 2402),
+    ("auto.regex.test", 2403),
     ("auto.regex.match", 2410),
     ("auto.sys.exec", 2420),
     ("auto.fs.is_binary", 2430),

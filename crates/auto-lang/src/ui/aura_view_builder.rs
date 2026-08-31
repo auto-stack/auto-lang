@@ -6559,8 +6559,21 @@ let tabs_inner = View::Row {
                         }
                     }
                     if complete {
-                        if let Ok(v) = self.bridge.call_vm_fn(fname.as_str(), &arg_vals) {
-                            return Some(v);
+                        match self.bridge.call_vm_fn(fname.as_str(), &arg_vals) {
+                            Ok(v) => return Some(v),
+                            Err(e) => {
+                                // PLAN-053 P-053-6: computed/prop 位置的 helper
+                                // 调用失败此前被静默吞掉（None → 空串/空列表，
+                                // 无任何线索——musk 消息正文空即是此形态藏了
+                                // CALL_SPEC Regex 报错整整一批）。AUTO_DEBUG_EMIT
+                                // 下显形。
+                                if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                                    eprintln!(
+                                        "[VM-CALLFN-VIEW] {} in {} FAILED: {:?} args={:?}",
+                                        fname, self.widget_name, e, arg_vals
+                                    );
+                                }
+                            }
                         }
                     }
                     return None;
