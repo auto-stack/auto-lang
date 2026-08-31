@@ -1823,7 +1823,13 @@ impl DesktopSession {
                         continue;
                     };
                     client.shm.insert(surface, shm);
-                    match client.endpoint.activate(app_id.0, wid.0, surface, rect_to_wire(&rect)) {
+                    match client.endpoint.activate(
+                        app_id.0,
+                        wid.0,
+                        surface,
+                        rect_to_wire(&rect),
+                        client.endpoint.frame_mode, // v1.3 缺省 Commands（三态开关接入时改写）
+                    ) {
                         Ok(welcome) => {
                             to_app.push(welcome);
                             to_app.push(ProtocolMsg::Frame(FrameMsg::BufferAlloc {

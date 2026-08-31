@@ -161,6 +161,7 @@ impl<'a> ProtocolHost<'a> {
                         wid.0,
                         surface,
                         rect_to_wire(&rect),
+                        self.endpoint.frame_mode, // v1.3 缺省 Commands（三态开关在 adjudicate 链接入时改写）
                     )?;
                     self.to_app.push(welcome);
                     self.to_app.push(ProtocolMsg::Frame(FrameMsg::BufferAlloc {

@@ -19,7 +19,7 @@
 use super::codec::CodecError;
 use super::transport::TransportError;
 use super::message::{
-    ControlMsg, DrawList, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
+    ControlMsg, DrawList, FrameMode, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
 };
 
 /// 协议状态机错误（方向错 / 时序错 / 非 Active 操作）。
@@ -106,6 +106,8 @@ pub struct AppEndpoint<S: FrameSource> {
     pub wid: Option<u64>,
     pub surface: Option<u64>,
     pub rect: Option<WRect>,
+    /// 表面帧载荷模式（v1.3：Welcome 协商结果；缺省 Commands）。
+    pub frame_mode: FrameMode,
     /// 观测汇（Attach/Detach 维护）。
     pub observe_sink: Option<String>,
     /// 帧序号（单调）。
@@ -132,6 +134,7 @@ impl<S: FrameSource> AppEndpoint<S> {
             wid: None,
             surface: None,
             rect: None,
+            frame_mode: FrameMode::Commands,
             observe_sink: None,
             next_frame_id: 0,
             last_slot: 0,
@@ -240,11 +243,12 @@ impl<S: FrameSource> AppEndpoint<S> {
         use AppState::*;
         match (&self.state, msg) {
             // --- 握手 ---
-            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect })) => {
+            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode })) => {
                 self.app_id = Some(app_id);
                 self.wid = Some(wid);
                 self.surface = Some(surface);
                 self.rect = Some(rect);
+                self.frame_mode = frame_mode;
                 self.state = Active;
                 self.slot_count = 2;
                 self.free_slots = vec![1]; // 槽 0 视为在写首帧
@@ -370,11 +374,19 @@ pub struct HostEndpoint {
     pub app_id: Option<u64>,
     pub wid: Option<u64>,
     pub surface: Option<u64>,
+    /// 表面帧载荷模式（v1.3：activate 时随裁决结果定档）。
+    pub frame_mode: FrameMode,
 }
 
 impl HostEndpoint {
     pub fn listen() -> Self {
-        Self { state: HostState::Listening, app_id: None, wid: None, surface: None }
+        Self {
+            state: HostState::Listening,
+            app_id: None,
+            wid: None,
+            surface: None,
+            frame_mode: FrameMode::Commands,
+        }
     }
 
     /// 宿主侧状态机：处理一条来自 app 的消息，产出动作序列。
@@ -481,13 +493,15 @@ impl HostEndpoint {
     }
 
     /// 适配层完成 allocate + wm_add_win + surface 分配后回调：登记客户端
-    /// 并产出 Welcome（回发 app）。
+    /// 并产出 Welcome（回发 app）。`frame_mode`：v1.3 表面帧载荷模式
+    /// （宿主按 per-App 裁决结果下发；缺省 Commands = 既有行为）。
     pub fn activate(
         &mut self,
         app_id: u64,
         wid: u64,
         surface: u64,
         rect: WRect,
+        frame_mode: FrameMode,
     ) -> Result<ProtocolMsg, ProtocolError> {
         if self.state != HostState::Listening {
             return Err(ProtocolError::WrongState {
@@ -499,7 +513,8 @@ impl HostEndpoint {
         self.app_id = Some(app_id);
         self.wid = Some(wid);
         self.surface = Some(surface);
-        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect }))
+        self.frame_mode = frame_mode;
+        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode }))
     }
 
     /// L2"独立出去"：产出 L2Detach（发往 app；回收等 L2Detached 回来）。
@@ -552,6 +567,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::FrameAck { .. } => "Frame::FrameAck",
             super::message::FrameMsg::CacheControl { .. } => "Frame::CacheControl",
             super::message::FrameMsg::FrameReadyShared { .. } => "Frame::FrameReadyShared",
+            super::message::FrameMsg::FrameReadyPixels { .. } => "Frame::FrameReadyPixels",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {
@@ -632,7 +648,9 @@ mod tests {
         let hello = app.connect().unwrap();
         let actions = host.on_message(hello).unwrap();
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
-        let welcome = host.activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         let replies = app.on_message(welcome).unwrap();
         assert_eq!(replies, vec![ProtocolMsg::Handshake(HandshakeMsg::Ready)]);
         replies
@@ -661,7 +679,9 @@ mod tests {
         assert_eq!(title, "计数器");
         assert_eq!((*width, *height), (480.0, 320.0));
 
-        let welcome = host.activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         assert_eq!(host.state, HostState::Active);
         assert_eq!((host.app_id, host.wid, host.surface), (Some(1), Some(3), Some(42)));
 
@@ -817,7 +837,9 @@ mod tests {
         let actions = host.on_message(hello).unwrap();
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
         // 新 wid/surface（宿主重新分配）。
-        let welcome = host.activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         app.on_message(welcome).unwrap();
         assert_eq!(app.state, AppState::Active);
         assert_eq!(app.wid, Some(9));
@@ -845,7 +867,8 @@ mod tests {
                 app_id: 1,
                 wid: 1,
                 surface: 1,
-                rect: WRect::default()
+                rect: WRect::default(),
+                frame_mode: FrameMode::Commands
             })),
             Err(ProtocolError::WrongState { state: "Detached", msg: "Handshake::Welcome" })
         );
@@ -874,7 +897,7 @@ mod tests {
         let mut app2 = AppEndpoint::new(StubSource::new(), "counter", "c", 480.0, 320.0);
         let mut host2 = HostEndpoint::listen();
         let _ = activate_pair(&mut app2, &mut host2);
-        assert!(matches!(host2.activate(2, 4, 43, WRect::default()),
+        assert!(matches!(host2.activate(2, 4, 43, WRect::default(), FrameMode::Commands),
             Err(ProtocolError::WrongState { state: "Host::Active", msg: "activate()" })));
         // 版本不符拒收。
         let mut host2 = HostEndpoint::listen();
