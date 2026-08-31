@@ -32,6 +32,8 @@ pub mod broker;
 #[cfg(feature = "ui-iced")]
 pub mod client_runtime;
 #[cfg(feature = "ui-iced")]
+pub mod coverage;
+#[cfg(feature = "ui-iced")]
 pub mod demo;
 #[cfg(feature = "ui-iced")]
 pub mod dual_mode;
@@ -45,6 +47,8 @@ pub mod host;
 pub mod loopback;
 #[cfg(feature = "ui-iced")]
 pub mod message;
+#[cfg(feature = "ui-iced")]
+pub mod pixels;
 #[cfg(feature = "ui-iced")]
 pub mod shm;
 #[cfg(feature = "ui-iced")]

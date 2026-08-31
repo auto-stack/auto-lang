@@ -136,6 +136,12 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
+    /// 剩余未读字节数（v1.3：`Welcome.frame_mode` 等尾部追加字段的
+    /// 向后兼容读取判据——旧端载荷无尾部字段时缺省语义）。
+    pub fn remaining(&self) -> usize {
+        self.data.len() - self.pos
+    }
+
     pub fn u8(&mut self) -> Result<u8, CodecError> {
         Ok(self.take(1)?[0])
     }

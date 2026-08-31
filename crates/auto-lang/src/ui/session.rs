@@ -1371,7 +1371,7 @@ pub struct DesktopSession {
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
     #[cfg(feature = "ui-iced")]
-    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>)>>>,
+    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, crate::ui::desktop_protocol::broker::RequestedRender)>>>,
     /// Plan 480 S4：已落地的孵化连接表（per-app 管道名 → 连接状态）——
     /// 多 App 共享 host 的"每 App 一份"端点/表面驻留；ServiceTick 帧泵
     /// 周期 `pump_broker_clients` 驱动帧合成/回收。
@@ -1381,6 +1381,10 @@ pub struct DesktopSession {
     /// 常驻；持有以便将来显式停机）。
     #[cfg(feature = "ui-iced")]
     pub(crate) broker_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Plan 500 步骤 4：independent 臂像素桥（自带 iced 渲染宿主 + 隐藏窗
+    /// 的 child 侧协议状态）。None = 非像素臂进程（既有路径零开销）。
+    #[cfg(feature = "ui-iced")]
+    pub pixels: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1426,6 +1430,13 @@ pub enum DesktopEvent {
     /// request_capture 队列后发起 `iced::window::screenshot`，回调臂按
     /// `snapshot_pending_wids` 各窗 rect 裁剪入快照缓存并置消费者 dirty）。
     SnapshotShot(iced::window::Screenshot),
+    /// Plan 500 步骤 4：像素桥协议入站（订阅层轮询 child 管道 inbox →
+    /// 本事件；update 臂驱动 [`crate::ui::desktop_protocol::pixels::
+    /// PixelsChild`] 的端点状态机与截图编排）。
+    PixelsProtocol(Box<crate::ui::desktop_protocol::message::ProtocolMsg>),
+    /// Plan 500 步骤 4：像素桥截图回调（`window::screenshot` 完成 →
+    /// RGBA 写 shm 槽 + FrameReadyPixels 回发宿主）。
+    PixelsShot(iced::window::Screenshot),
     /// Plan 478 T3：switcher 召唤/推进（桌面热键 Ctrl+Tab 改道）。update
     /// 臂语义：switcher 可见 → 向 overlay 直投 `.Advance`（选中环走）；
     /// 否则懒挂载召唤（T4 执行体）。
@@ -1551,6 +1562,8 @@ impl DesktopSession {
             broker_clients: BTreeMap::new(),
             #[cfg(feature = "ui-iced")]
             broker_stop: None,
+            #[cfg(feature = "ui-iced")]
+            pixels: None,
         }
     }
 
@@ -1795,7 +1808,9 @@ impl DesktopSession {
             .spawn(move || {
                 while !stop.load(Ordering::Relaxed) {
                     match broker.serve_once() {
-                        Ok(Some((pipe, end))) => pending.lock().unwrap().push((pipe, end)),
+                        Ok(Some(inc)) => {
+                            pending.lock().unwrap().push((inc.pipe_name, inc.end, inc.render))
+                        }
                         Ok(None) => {} // 探测 ping：吞掉重听
                         Err(_) => {
                             // 管道竞态/对端早断：退避后重听（防忙转）。
@@ -1821,11 +1836,23 @@ impl DesktopSession {
         }
         let mut clients = std::mem::take(&mut self.broker_clients);
         let mut wids = Vec::new();
-        for (pipe, end) in pending {
+        for (pipe, end, render) in pending {
             let mut client = BrokerClient::new(pipe, end);
+            // Plan 500 步骤 6：孵化记录携带的帧模式定档（auto 降级标记 →
+            // 宿主观测行留痕——ui_console 面板 + 控制台双落；app 名在
+            // attach 握手后回填，故日志随落地打）。
+            client.endpoint.frame_mode = render.mode;
             match Self::broker_attach_one(self, &mut client, budget_per_app_ms) {
                 Some(wid) => {
                     wids.push(wid);
+                    if render.auto_downgraded {
+                        let app =
+                            client.app_name.clone().unwrap_or_else(|| "<unknown>".into());
+                        let line =
+                            format!("[render] {app}: auto -> independent (coverage downgrade)");
+                        crate::vm::ui_console::ui_console_push(&line);
+                        eprintln!("[autodesk-broker] {line}");
+                    }
                     clients.insert(client.pipe.clone(), client);
                 }
                 None => eprintln!(
@@ -1986,14 +2013,30 @@ impl DesktopSession {
                     let wid = self.wm_add_win(app_id, title, rect);
                     let surface = client.surfaces.alloc(width, height);
                     client.wid_surface.insert(wid.0, surface);
+                    // Plan 500 步骤 5/6：槽尺寸随帧模式定档（Commands = 既有
+                    // 16KiB；Pixels = 像素上限——child 侧 pixels_slot_size 同式；
+                    // 模式位来自孵化记录，attach 前已写入 endpoint.frame_mode）。
+                    let frame_mode = client.endpoint.frame_mode;
+                    let slot_size = match frame_mode {
+                        crate::ui::desktop_protocol::message::FrameMode::Commands => 16384,
+                        crate::ui::desktop_protocol::message::FrameMode::Pixels => {
+                            crate::ui::desktop_protocol::pixels::pixels_slot_size(width, height)
+                        }
+                    };
                     // 全局唯一：pid 前缀防跨进程同名段（同 host.rs 注记）。
                     let shm_name =
                         format!("autodesk-shm-{}-{surface}", std::process::id());
-                    let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, 16384) else {
+                    let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, slot_size) else {
                         continue;
                     };
                     client.shm.insert(surface, shm);
-                    match client.endpoint.activate(app_id.0, wid.0, surface, rect_to_wire(&rect)) {
+                    match client.endpoint.activate(
+                        app_id.0,
+                        wid.0,
+                        surface,
+                        rect_to_wire(&rect),
+                        frame_mode,
+                    ) {
                         Ok(welcome) => {
                             to_app.push(welcome);
                             to_app.push(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
@@ -2035,6 +2078,24 @@ impl DesktopSession {
                                 slot: freed,
                             }));
                         }
+                    }
+                }
+                // Plan 500 步骤 5：像素帧合成——shm 槽 RGBA → 前缓冲，
+                // FrameAck 归还槽（渲染臂据此上传纹理合成虚拟窗）。
+                HostAction::ComposeFramePixels {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                } => {
+                    if let Some(ack) = client.compose_pixels(
+                        surface, wid, frame_id, slot, revision, w, h, stride,
+                    ) {
+                        to_app.push(ProtocolMsg::Frame(ack));
                     }
                 }
                 HostAction::ReclaimWindow { wid } => {

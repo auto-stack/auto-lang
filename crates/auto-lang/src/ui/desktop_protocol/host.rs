@@ -46,9 +46,16 @@ impl SurfaceStore {
     }
 
     /// 分配双缓冲表面（v1 固定 2 槽），返回句柄。
+    ///
+    /// 句柄**进程级唯一**（全局原子计数——Plan 500 T3）：多 client 宿主
+    /// 各持一份 `SurfaceStore`，per-instance 自增会跨 client 重复 → shm
+    /// 段名 `autodesk-shm-<pid>-<surface>` 撞名（Windows 同名 = 打开既有
+    /// 段；480 压测五 child 同源 App 掩蔽了此缺陷，异源 App 直接串段）。
     pub fn alloc(&mut self, width: f32, height: f32) -> u64 {
-        self.next_surface += 1;
-        let id = self.next_surface;
+        static GLOBAL_SURFACE: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let id = GLOBAL_SURFACE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        self.next_surface = id;
         self.surfaces.insert(
             id,
             Surface { slots: [None, None], front: 0, width, height },
@@ -161,6 +168,7 @@ impl<'a> ProtocolHost<'a> {
                         wid.0,
                         surface,
                         rect_to_wire(&rect),
+                        self.endpoint.frame_mode, // v1.3 缺省 Commands（三态开关在 adjudicate 链接入时改写）
                     )?;
                     self.to_app.push(welcome);
                     self.to_app.push(ProtocolMsg::Frame(FrameMsg::BufferAlloc {
@@ -197,6 +205,22 @@ impl<'a> ProtocolHost<'a> {
                                 slot: freed,
                             }));
                         }
+                    }
+                }
+                HostAction::ComposeFramePixels { surface, wid, frame_id, slot, .. } => {
+                    // v1.3 像素臂（单 client 测试机件的最小处理）：shm 槽读
+                    // RGBA 成功即翻面回 ack（像素前缓冲驻留归 stage3 多 client
+                    // 宿主——BrokerClient::pixels）。
+                    let ready = self
+                        .shm_buffers
+                        .get(&surface)
+                        .and_then(|shm| shm.read_slot(slot).ok());
+                    if ready.is_some() {
+                        self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
+                            wid,
+                            frame_id,
+                            slot,
+                        }));
                     }
                 }
                 HostAction::ReclaimWindow { wid } => {

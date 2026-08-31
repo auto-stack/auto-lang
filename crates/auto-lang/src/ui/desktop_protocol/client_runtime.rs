@@ -3,9 +3,8 @@
 //
 // 两件套：
 // - [`AppProjector`]：[`DynamicComponent`] 的 AuraNode view → [`DrawList`]
-//   最小投影器 v1——text/button + 线性堆叠（`row` 类标签横向），
-//   button 命中区推导（点击 → `on_with_input` → VM handler）。保真
-//   边界见计划待澄清②：像素级等价非本计划目标（归 live-iced 换接）。
+//   投影器 v1.3（Plan 500 步骤 7 爬坡：§1.3.1 清单全集 + 块流布局 +
+//   widget 交互区表输入闭环）。
 // - [`ClientPump`] / [`run_client`]：协议主循环——握手 → Active →
 //   （输入 → handler → shm 产帧 → L2 处理）；host 断连（EOF）按
 //   [`ReconnectPolicy`] 等待重连（S7 弹性：VM 状态在 projector 内原地
@@ -24,41 +23,68 @@ use crate::ui::desktop_protocol::transport::{self, Transport};
 use crate::ui::dynamic::DynamicComponent;
 
 // ---------------------------------------------------------------------------
-// AppProjector：AuraNode → DrawList 最小投影器 v1
+// AppProjector：AuraNode → DrawList 投影器 v1.3（Plan 500 步骤 7 爬坡）
 // ---------------------------------------------------------------------------
 
 /// 背景 clears 色（深灰，与 demo/直挂同一暗色基调）。
 const BG: Rgba8 = Rgba8::new(24, 24, 28, 255);
-/// 按钮底色。
+/// 按钮底色（未声明样式时的缺省）。
 const BUTTON_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
-/// 常规文本色。
+/// 常规文本色（未声明样式时的缺省）。
 const TEXT_FG: Rgba8 = Rgba8::new(220, 220, 220, 255);
 /// 按钮/文本共用的白色前景。
 const LABEL_FG: Rgba8 = Rgba8::new(255, 255, 255, 255);
+/// 输入框边框色。
+const INPUT_BORDER: Rgba8 = Rgba8::new(90, 90, 100, 255);
+/// placeholder 前景色。
+const PLACEHOLDER_FG: Rgba8 = Rgba8::new(130, 130, 140, 255);
+/// 输入框底色（未声明样式时）。
+const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
+/// image 占位底色（保真边界：位图内容归 Stage 5）。
+const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
-/// 页边距。
+/// 页边距（根内容盒）。
 const MARGIN: f32 = 10.0;
-/// 同向相邻块间距。
+/// 缺省块间距（未声明 gap- 时）。
 const GAP: f32 = 8.0;
-/// 按钮几何（v1 固定高，宽随标签 + 内边距）。
+/// 按钮几何（固定高，宽随标签 + 内边距）。
 const BUTTON_H: f32 = 36.0;
 const BUTTON_PAD: f32 = 16.0;
 const BUTTON_MIN_W: f32 = 120.0;
+/// 输入框几何。
+const INPUT_H: f32 = 32.0;
+const INPUT_PAD: f32 = 10.0;
 /// 正文字号 / 行高系数。
 const TEXT_SIZE: f32 = 16.0;
 const LINE_H_FACTOR: f32 = 1.35;
 
+/// 命中区种类（D3 定案：widget 交互区表）。
+#[derive(Debug, Clone, PartialEq)]
+enum HitKind {
+    /// button：零参 click handler token。
+    Button(String),
+    /// input：value 绑定字段 + 零参 oninput handler。
+    Input { field: String, oninput: Option<String> },
+}
+
 /// AuraNode view → DrawList 投影器（实现 [`FrameSource`]，直接作
 /// `AppEndpoint` 的会话）。
 ///
-/// 布局：线性堆叠——默认纵向，`row`/`hstack` 标签的子级横向。
-/// 命中区：每次 `render_frame` 刷新 [`AppProjector::buttons`]；点击命中
-/// 即派发对应 handler（零参；带参 handler v1 不投影，见
-/// [`handler_token`]）。
+/// v1.3 爬坡（§1.3.1 清单）：text/button/input/image/a + col/row/center
+/// 布局（`ui/style::BoxLayout` 参数源——D2 定案）+ `if` 条件块。布局 =
+/// 块流（纵向堆叠、row 横排、center 居中）；命中区表 [`AppProjector::
+/// hit_regions`]（点击 → button 派发 / input 聚焦；CharTyped/Backspace
+/// 路由聚焦 input 的 value 绑定 + oninput 派发——输入闭环）。保真边界
+/// （Coverage 表随注，非静默错绘）：圆角直角化、渐变取 from 端色、
+/// image 占位、下划线不载。
 pub struct AppProjector {
     component: DynamicComponent,
-    /// 最近一帧的按钮命中区 `(rect, handler)`（渲染时刷新）。
-    buttons: Vec<(WRect, String)>,
+    /// 最近一帧的命中区 `(rect, kind)`（渲染时刷新）。
+    hits: Vec<(WRect, HitKind)>,
+    /// 聚焦的 input 命中区下标（CharTyped/Backspace 路由目标）。
+    focused_input: Option<usize>,
+    /// v1 兼容口径：命中区表的 button 子集（既有断言口）。
+    button_view: Vec<(WRect, String)>,
     rev: u64,
     width: f32,
     height: f32,
@@ -66,7 +92,15 @@ pub struct AppProjector {
 
 impl AppProjector {
     pub fn new(component: DynamicComponent, width: f32, height: f32) -> Self {
-        Self { component, buttons: Vec::new(), rev: 1, width, height }
+        Self {
+            component,
+            hits: Vec::new(),
+            focused_input: None,
+            button_view: Vec::new(),
+            rev: 1,
+            width,
+            height,
+        }
     }
 
     pub fn component(&self) -> &DynamicComponent {
@@ -85,9 +119,24 @@ impl AppProjector {
         self.height
     }
 
-    /// 按钮命中区快照（测试断言口）。
+    /// 命中区快照（测试断言口）：`(rect, "button:<handler>" |
+    /// "input:<field>")` 文本化。
+    pub fn hit_regions(&self) -> Vec<(WRect, String)> {
+        self.hits
+            .iter()
+            .map(|(r, k)| {
+                let kind = match k {
+                    HitKind::Button(h) => format!("button:{h}"),
+                    HitKind::Input { field, .. } => format!("input:{field}"),
+                };
+                (*r, kind)
+            })
+            .collect()
+    }
+
+    /// 兼容旧断言口：按钮命中区（handler 同 v1）。
     pub fn buttons(&self) -> &[(WRect, String)] {
-        &self.buttons
+        &self.button_view
     }
 
     /// `.at` model 字段读取透传（计数器类状态断言 / S9 快照迁移用）。
@@ -99,6 +148,25 @@ impl AppProjector {
     pub fn revision(&self) -> u64 {
         self.rev
     }
+
+    fn focused_kind(&self) -> Option<HitKind> {
+        self.focused_input.and_then(|i| self.hits.get(i).map(|(_, k)| k.clone()))
+    }
+
+    fn focused_field(&self) -> Option<String> {
+        match self.focused_kind()? {
+            HitKind::Input { field, .. } => Some(field),
+            _ => None,
+        }
+    }
+
+    /// 命中区表重建后按 field 重定位聚焦槽（渲染轮转不丢焦点）。
+    fn refocus(&mut self, field: &str) {
+        self.focused_input = self.hits.iter().position(|(_, k)| match k {
+            HitKind::Input { field: f, .. } => f == field,
+            _ => false,
+        });
+    }
 }
 
 /// 子级堆叠方向。
@@ -108,41 +176,227 @@ enum Dir {
     Horizontal,
 }
 
+/// 节点样式参数（`ui/style::BoxLayout` 同源 + 装饰/对齐/字体扩展）。
+#[derive(Default, Clone)]
+struct NodeStyle {
+    /// 盒模（p/m/gap/w/h/max_w——`ui/style::layout_extract` 同源解析）。
+    box_layout: crate::ui::style::BoxLayout,
+    /// 背景底色（bg-*/渐变 from 端）。
+    bg: Option<Rgba8>,
+    /// 边框（border/border-<color>）。
+    border: Option<Rgba8>,
+    /// 前景文本色（text-<color>）。
+    fg: Option<Rgba8>,
+    /// 字号档（text-xs/sm/.../4xl → px）。
+    font_size: Option<f32>,
+    font_bold: bool,
+    /// 子项居中（items-center/justify-center/mx-auto/text-center）。
+    center_children: bool,
+    /// 文本水平居中（text-center）。
+    text_center: bool,
+}
+
+impl NodeStyle {
+    fn parse(style: &str) -> Self {
+        let mut s = NodeStyle {
+            box_layout: crate::ui::style::BoxLayout::from_class_string(style),
+            ..Default::default()
+        };
+        for token in style.split_whitespace() {
+            // hover: 交互态 v1.3 静态渲染忽略（Coverage 前缀放行同口径）。
+            let token = token.strip_prefix("hover:").unwrap_or(token);
+            if let Some(name) = token.strip_prefix("bg-") {
+                if let Some(rgb) = resolve_color(name) {
+                    s.bg = Some(rgb);
+                }
+            } else if let Some(name) = token.strip_prefix("from-") {
+                // 渐变端点：v1.3 取起点色平铺（保真边界注记）。
+                if let Some(rgb) = resolve_color(name) {
+                    s.bg = Some(rgb);
+                }
+            } else if token.starts_with("border") {
+                if let Some(name) = token.strip_prefix("border-") {
+                    // border-<color>（非数字档）→ 边框色；数字档 = 宽度
+                    //（v1.3 恒 1px）。
+                    if let Some(rgb) = resolve_color(name) {
+                        s.border = Some(rgb);
+                    }
+                } else if s.border.is_none() {
+                    s.border = Some(INPUT_BORDER);
+                }
+            } else if let Some(name) = token.strip_prefix("text-") {
+                if let Some(rgb) = resolve_color(name) {
+                    s.fg = Some(rgb);
+                } else if let Some(sz) = font_size_of(name) {
+                    s.font_size = Some(sz);
+                }
+            } else if matches!(
+                token,
+                "font-bold" | "font-semibold" | "font-extrabold" | "font-medium"
+            ) {
+                s.font_bold = true;
+            } else if matches!(
+                token,
+                "items-center" | "justify-center" | "mx-auto" | "text-center"
+            ) {
+                s.center_children = true;
+                if token == "text-center" {
+                    s.text_center = true;
+                }
+            }
+        }
+        s
+    }
+
+    fn pad_top(&self) -> f32 {
+        self.box_layout.padding_top.unwrap_or(0.0)
+    }
+    fn pad_bottom(&self) -> f32 {
+        self.box_layout.padding_bottom.unwrap_or(0.0)
+    }
+    fn pad_left(&self) -> f32 {
+        self.box_layout.padding_left.unwrap_or(0.0)
+    }
+    fn pad_right(&self) -> f32 {
+        self.box_layout.padding_right.unwrap_or(0.0)
+    }
+    fn gap(&self) -> f32 {
+        self.box_layout.gap.unwrap_or(GAP)
+    }
+    fn fixed_w(&self) -> Option<f32> {
+        size_to_px(self.box_layout.width)
+    }
+    fn fixed_h(&self) -> Option<f32> {
+        size_to_px(self.box_layout.height)
+    }
+    fn margin_y(&self) -> f32 {
+        self.box_layout.margin_top.unwrap_or(0.0)
+    }
+}
+
+/// SizeValue → 定宽像素（Full/Auto/百分比 = None——随可用宽）。
+fn size_to_px(v: Option<crate::ui::style::SizeValue>) -> Option<f32> {
+    match v {
+        Some(crate::ui::style::SizeValue::Fixed(units)) => Some(units as f32 * 4.0),
+        Some(crate::ui::style::SizeValue::Pixels(px)) => Some(px),
+        _ => None,
+    }
+}
+
+/// tailwind 颜色名 → Rgba8（语义 token 走 theme 双盘解析，调色板档走
+/// `Color::from_tailwind`）。
+fn resolve_color(name: &str) -> Option<Rgba8> {
+    use crate::ui::style::Color;
+    let color = Color::from_tailwind(name).ok()?;
+    if let Some((r, g, b)) = crate::ui::style::theme::resolve_semantic_rgb(&color) {
+        return Some(Rgba8::new(r, g, b, 255));
+    }
+    let (r, g, b) = color.to_rgb8();
+    Some(Rgba8::new(r, g, b, 255))
+}
+
+/// text- 字号档 → px（tailwind 档位表）。
+fn font_size_of(name: &str) -> Option<f32> {
+    Some(match name {
+        "xs" => 12.0,
+        "sm" => 14.0,
+        "base" => 16.0,
+        "lg" => 18.0,
+        "xl" => 20.0,
+        "2xl" => 24.0,
+        "3xl" => 30.0,
+        "4xl" => 36.0,
+        "5xl" => 48.0,
+        _ => return None,
+    })
+}
+
+/// 布局产物：一个节点子树投影后的外框尺寸。
+struct LaidBlock {
+    size: (f32, f32),
+}
+
+/// 投影上下文（一次 render_frame 的累积状态）。
+struct ProjectCtx<'a> {
+    comp: &'a DynamicComponent,
+    ops: Vec<DrawOp>,
+    hits: Vec<(WRect, HitKind)>,
+}
+
 impl FrameSource for AppProjector {
     fn revision(&self) -> u64 {
         self.rev
     }
 
     fn render_frame(&mut self) -> DrawList {
-        // 模板克隆脱离 self 借用（v1 模板小，每帧克隆可接受）。
+        // 模板克隆脱离 self 借用（模板小，每帧克隆可接受）。
         let template = self.component.view_template().clone();
-        let mut ops = Vec::new();
-        let mut buttons = Vec::new();
-        let mut cursor = MARGIN;
-        project_nodes(
-            &self.component,
+        let mut ctx = ProjectCtx { comp: &self.component, ops: Vec::new(), hits: Vec::new() };
+        let root_style = NodeStyle::default();
+        let _ = layout_block(
+            &mut ctx,
             std::slice::from_ref(&template),
-            Dir::Vertical,
             MARGIN,
-            &mut cursor,
-            &mut ops,
-            &mut buttons,
+            MARGIN,
+            (self.width - MARGIN * 2.0).max(0.0),
+            Dir::Vertical,
+            &root_style,
         );
-        self.buttons = buttons;
+        self.hits = std::mem::take(&mut ctx.hits);
+        let ops = std::mem::take(&mut ctx.ops);
+        // 命中区下标随重建漂移——聚焦槽按域（field）重定位。
+        if let Some(field) = self.focused_field() {
+            self.refocus(&field);
+        }
+        self.button_view = self
+            .hits
+            .iter()
+            .filter_map(|(r, k)| match k {
+                HitKind::Button(h) => Some((*r, h.clone())),
+                _ => None,
+            })
+            .collect();
         DrawList { clear: Some(BG), ops }
     }
 
     fn on_input(&mut self, input: &InputMsg) {
-        if let InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } = input {
-            let hit = self
-                .buttons
-                .iter()
-                .find(|(r, _)| *x >= r.x && *x < r.x + r.w && *y >= r.y && *y < r.y + r.h)
-                .map(|(_, h)| h.clone());
-            if let Some(handler) = hit {
-                self.component.on_with_input(&handler, None);
-                self.rev += 1;
+        match input {
+            InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } => {
+                let hit = self
+                    .hits
+                    .iter()
+                    .position(|(r, _)| {
+                        *x >= r.x && *x < r.x + r.w && *y >= r.y && *y < r.y + r.h
+                    })
+                    .map(|i| (i, self.hits[i].clone()));
+                if let Some((idx, (_, kind))) = hit {
+                    match kind {
+                        HitKind::Button(handler) => {
+                            self.component.on_with_input(&handler, None);
+                            self.rev += 1;
+                        }
+                        HitKind::Input { .. } => {
+                            self.focused_input = Some(idx);
+                        }
+                    }
+                }
             }
+            // 输入闭环：聚焦 input 的字符写入 + oninput 派发（003/005 口径
+            // ——值先写绑定字段，再发零参 handler）。
+            InputMsg::CharTyped { ch, .. } => {
+                if let Some(HitKind::Input { field, oninput }) = self.focused_kind() {
+                    self.type_into(&field, oninput.as_deref(), |v| v.push(*ch));
+                }
+            }
+            InputMsg::KeyPressed { key, .. } if *key == 8 => {
+                // VK_BACK：退格。
+                if let Some(HitKind::Input { field, oninput }) = self.focused_kind() {
+                    self.type_into(&field, oninput.as_deref(), |v| {
+                        v.pop();
+                    });
+                }
+            }
+            _ => {}
         }
     }
 
@@ -167,6 +421,457 @@ impl FrameSource for AppProjector {
     }
 }
 
+impl AppProjector {
+    /// 聚焦 input 的值编辑：读绑定字段 → 编辑 → 写回 → 零参 oninput 派发
+    /// → revision 前进。
+    fn type_into(
+        &mut self,
+        field: &str,
+        oninput: Option<&str>,
+        edit: impl FnOnce(&mut String),
+    ) {
+        // 值编辑保型：字段原类型决定回写形态（Double 字段敲入 "100" 写回
+        // Double(100.0)——003 的换算 oninput 依赖数值类型不漂移）。
+        let current = self.component.read_state(field).unwrap_or(auto_val::Value::str(""));
+        let mut text = match &current {
+            auto_val::Value::Str(s) => s.as_str().to_string(),
+            auto_val::Value::String(s) => s.as_str().to_string(),
+            other => format_value(other),
+        };
+        edit(&mut text);
+        let new_value = match &current {
+            auto_val::Value::Int(_) => text
+                .parse::<i32>()
+                .map(auto_val::Value::Int)
+                .unwrap_or(auto_val::Value::Int(0)),
+            auto_val::Value::Double(_) => text
+                .parse::<f64>()
+                .map(auto_val::Value::Double)
+                .unwrap_or(auto_val::Value::Double(0.0)),
+            auto_val::Value::Float(_) => text
+                .parse::<f64>()
+                .map(auto_val::Value::Float)
+                .unwrap_or(auto_val::Value::Float(0.0)),
+            _ => auto_val::Value::str(&text),
+        };
+        let _ = self.component.write_state(field, new_value);
+        if let Some(handler) = oninput {
+            self.component.on_with_input(handler, None);
+        }
+        self.rev += 1;
+    }
+}
+
+/// 块流布局：把一列节点排进 `(x, y, w)` 内容盒，返回内容尺寸。
+/// 纵向 = 依序下排；横向（row）= 依序右排；`center_children` = 主轴居中。
+fn layout_block(
+    ctx: &mut ProjectCtx<'_>,
+    nodes: &[AuraNode],
+    x: f32,
+    y: f32,
+    w: f32,
+    dir: Dir,
+    parent: &NodeStyle,
+) -> LaidBlock {
+    let gap = parent.gap();
+    let mut visible: Vec<&AuraNode> = Vec::with_capacity(nodes.len());
+    flatten_visible(ctx.comp, nodes, &mut visible);
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let mut cursor = 0.0f32; // 主轴累计
+    let mut cross_max = 0.0f32; // 交叉轴最大占位
+    let mut first = true;
+    for node in &visible {
+        if !first {
+            cursor += gap;
+        }
+        first = false;
+        let style = node_style_of(node);
+        let my = style.margin_y();
+        match dir {
+            Dir::Vertical => {
+                let inner_w = style.fixed_w().unwrap_or(w);
+                // 子块居中（items-center/mx-auto）：水平取中。
+                let child_x = if style.center_children {
+                    x + (w - inner_w).max(0.0) / 2.0
+                } else {
+                    x
+                };
+                let laid = layout_node(ctx, node, child_x, y + cursor + my, inner_w);
+                cursor += my + laid.size.1 + style.box_layout.margin_bottom.unwrap_or(0.0);
+                cross_max = cross_max.max(laid.size.0);
+            }
+            Dir::Horizontal => {
+                let laid = layout_node(ctx, node, x + cursor, y + my, w);
+                cursor += laid.size.0;
+                cross_max = cross_max.max(my + laid.size.1);
+            }
+        }
+    }
+    if dir == Dir::Horizontal && parent.center_children && !visible.is_empty() {
+        // 主轴居中：撤首轮产物后以居中起点重排（行内节点少，重排可接受；
+        // Stage 5 改先量后排两遍法后本分支退役）。
+        let used = cursor;
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        let slack = (w - used).max(0.0) / 2.0;
+        let mut cursor = slack;
+        let mut cross_max = 0.0f32;
+        let mut first = true;
+        for node in &visible {
+            if !first {
+                cursor += gap;
+            }
+            first = false;
+            let style = node_style_of(node);
+            let my = style.margin_y();
+            let laid = layout_node(ctx, node, x + cursor, y + my, w);
+            cursor += laid.size.0;
+            cross_max = cross_max.max(my + laid.size.1);
+        }
+        return LaidBlock { size: (w.max(cursor - slack), cross_max) };
+    }
+    let main = if dir == Dir::Vertical { cross_max } else { cursor };
+    LaidBlock { size: (main.max(0.0), cross_max) }
+}
+
+/// 单节点布局：容器（bg/padding/子级）或叶子 widget。返回外框尺寸。
+fn layout_node(
+    ctx: &mut ProjectCtx<'_>,
+    node: &AuraNode,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+) -> LaidBlock {
+    match node {
+        AuraNode::Element { tag, props, events, children, .. } => {
+            let tag_lc = tag.to_ascii_lowercase();
+            let style = NodeStyle::parse(style_str_of(props));
+            match tag_lc.as_str() {
+                "button" => layout_button(ctx, props, events, children, x, y, avail_w, &style),
+                "input" => layout_input(ctx, props, events, x, y, avail_w, &style),
+                "image" | "img" => layout_image(ctx, props, x, y, avail_w, &style),
+                _ if is_text_tag(&tag_lc) || tag_lc == "a" => {
+                    layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a")
+                }
+                // 容器标签（col/row/center/hstack/vstack 及未知容器——
+                // coverage 表外标签不会到这：装载期探测已降级）。
+                _ => {
+                    let dir = if tag_lc == "row" || tag_lc == "hstack" {
+                        Dir::Horizontal
+                    } else {
+                        Dir::Vertical
+                    };
+                    let pad = (
+                        style.pad_left(),
+                        style.pad_top(),
+                        style.pad_right(),
+                        style.pad_bottom(),
+                    );
+                    let mut inner_w = avail_w;
+                    if let Some(fw) = style.fixed_w() {
+                        inner_w = (fw - pad.0 - pad.2).max(0.0);
+                    }
+                    if let Some(max_w) = style.box_layout.max_width {
+                        inner_w = inner_w.min((max_w - pad.0 - pad.2).max(0.0));
+                    }
+                    let laid = layout_block(
+                        ctx,
+                        children,
+                        x + pad.0,
+                        y + pad.1,
+                        inner_w.max(0.0),
+                        dir,
+                        &style,
+                    );
+                    let outer_w = match style.fixed_w() {
+                        Some(fw) => fw,
+                        None => (laid.size.0 + pad.0 + pad.2).max(0.0),
+                    };
+                    let outer_h = match style.fixed_h() {
+                        Some(fh) => fh,
+                        None => laid.size.1 + pad.1 + pad.3,
+                    };
+                    if let Some(bg) = style.bg {
+                        push_quad(ctx, WRect::new(x, y, outer_w, outer_h), bg);
+                    }
+                    if let Some(border) = style.border {
+                        push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
+                    }
+                    LaidBlock { size: (outer_w, outer_h) }
+                }
+            }
+        }
+        AuraNode::Text(content) => {
+            let text = resolve_text(ctx.comp, content);
+            let line_h = TEXT_SIZE * LINE_H_FACTOR;
+            if text.is_empty() {
+                LaidBlock { size: (0.0, 0.0) }
+            } else {
+                let w = measure_text(&text, TEXT_SIZE);
+                ctx.ops.push(DrawOp::Text {
+                    x,
+                    y,
+                    size: TEXT_SIZE,
+                    line_height: line_h,
+                    color: TEXT_FG,
+                    text,
+                });
+                LaidBlock { size: (w, line_h) }
+            }
+        }
+        // for/Component/Outlet/Link：装载期探测已判 NotCovered（auto 降级）；
+        // 显式 queue 强跑时跳过（不静默错绘——缺项在覆盖表留痕）。
+        // Conditional 在 layout_block 的可见性过滤处求值，不会到本臂。
+        AuraNode::ForLoop { .. }
+        | AuraNode::Component { .. }
+        | AuraNode::Outlet
+        | AuraNode::Link { .. }
+        | AuraNode::Conditional { .. } => LaidBlock { size: (0.0, 0.0) },
+    }
+}
+
+/// prop 表的 style 串（字符串字面量）。
+fn style_str_of(props: &HashMap<String, AuraPropValue>) -> &str {
+    props
+        .get("style")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(Expr::Str(s)) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("")
+}
+
+fn node_style_of(node: &AuraNode) -> NodeStyle {
+    match node {
+        AuraNode::Element { props, .. } => NodeStyle::parse(style_str_of(props)),
+        _ => NodeStyle::default(),
+    }
+}
+
+/// 可见节点序列：`if` 条件块**展开为选中枝的子节点**（条件求值：
+/// `.field ==/!= <字面量>` 与裸真值子集——005 口径；无法解析 → 取
+/// then 枝（保真边界：复杂条件归 Stage 5）。布局与命中区因此只见
+/// 真实 widget/容器节点）。
+fn flatten_visible<'a>(comp: &DynamicComponent, nodes: &'a [AuraNode], out: &mut Vec<&'a AuraNode>) {
+    for node in nodes {
+        match node {
+            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                if eval_condition(comp, condition) {
+                    flatten_visible(comp, then_body, out);
+                } else if let Some(else_body) = else_body {
+                    flatten_visible(comp, else_body, out);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+}
+
+fn eval_condition(comp: &DynamicComponent, condition: &str) -> bool {
+    let cond = condition.trim();
+    for (op, want_eq) in [("!=", false), ("==", true)] {
+        if let Some((lhs, rhs)) = cond.split_once(op) {
+            let field = lhs.trim().trim_start_matches('.');
+            let lit = rhs.trim().trim_matches('"').trim_matches('\'');
+            if let Ok(value) = comp.read_state(field) {
+                let current = match &value {
+                    auto_val::Value::Str(s) => s.as_str().to_string(),
+                    auto_val::Value::String(s) => s.as_str().to_string(),
+                    other => other.to_string(),
+                };
+                return (current == lit) == want_eq;
+            }
+        }
+    }
+    let field = cond.trim_start_matches('.');
+    if let Ok(auto_val::Value::Bool(b)) = comp.read_state(field) {
+        return b;
+    }
+    true
+}
+
+fn push_quad(ctx: &mut ProjectCtx<'_>, rect: WRect, color: Rgba8) {
+    ctx.ops.push(DrawOp::Quad { rect, color });
+}
+
+fn push_border(ctx: &mut ProjectCtx<'_>, rect: WRect, color: Rgba8) {
+    let t = 1.0;
+    push_quad(ctx, WRect::new(rect.x, rect.y, rect.w, t), color);
+    push_quad(ctx, WRect::new(rect.x, rect.y + rect.h - t, rect.w, t), color);
+    push_quad(ctx, WRect::new(rect.x, rect.y, t, rect.h), color);
+    push_quad(ctx, WRect::new(rect.x + rect.w - t, rect.y, t, rect.h), color);
+}
+
+fn layout_button(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let label = element_text(ctx.comp, props, children);
+    let size = style.font_size.unwrap_or(14.0);
+    let label_w = measure_text(&label, size);
+    let w = style
+        .fixed_w()
+        .unwrap_or((label_w + BUTTON_PAD * 2.0).max(BUTTON_MIN_W))
+        .min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(BUTTON_H);
+    let bg = style.bg.unwrap_or(BUTTON_BG);
+    push_quad(ctx, WRect::new(x, y, w, h), bg);
+    let line_h = size * LINE_H_FACTOR;
+    ctx.ops.push(DrawOp::Text {
+        x: x + (w - label_w) / 2.0,
+        y: y + (h - line_h) / 2.0,
+        size,
+        line_height: line_h,
+        color: style.fg.unwrap_or(LABEL_FG),
+        text: label,
+    });
+    if let Some(handler) = click_handler(events) {
+        ctx.hits.push((WRect::new(x, y, w, h), HitKind::Button(handler)));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+fn layout_input(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(INPUT_H);
+    let bg = style.bg.unwrap_or(INPUT_BG);
+    push_quad(ctx, WRect::new(x, y, w, h), bg);
+    push_border(ctx, WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
+    // 内容 = value 绑定当前值；空 → placeholder。
+    let binding = props
+        .get("value")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(expr) => binding_field(expr),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let placeholder = props
+        .get("placeholder")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(Expr::Str(s)) => Some(s.as_str().to_string()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let value = if binding.is_empty() {
+        String::new()
+    } else {
+        match ctx.comp.read_state(&binding) {
+            Ok(v) => format_value(&v),
+            Err(_) => String::new(),
+        }
+    };
+    let size = style.font_size.unwrap_or(14.0);
+    let line_h = size * LINE_H_FACTOR;
+    let (text, color) = if value.is_empty() {
+        (placeholder, PLACEHOLDER_FG)
+    } else {
+        (value, style.fg.unwrap_or(TEXT_FG))
+    };
+    if !text.is_empty() {
+        ctx.ops.push(DrawOp::Text {
+            x: x + INPUT_PAD,
+            y: y + (h - line_h) / 2.0,
+            size,
+            line_height: line_h,
+            color,
+            text,
+        });
+    }
+    let oninput = events
+        .get("oninput")
+        .or_else(|| events.get("onInput"))
+        .and_then(|e| handler_token(&e.handler));
+    if !binding.is_empty() {
+        ctx.hits.push((
+            WRect::new(x, y, w, h),
+            HitKind::Input { field: binding, oninput },
+        ));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+fn layout_image(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    // v1.3 保真边界：image = 样式尺寸驱动的占位 Quad（结构/占位正确，
+    // 位图内容归 Stage 5——Coverage 表 image 随注，非静默错绘）。
+    let _ = props.get("src");
+    let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    let bg = style.bg.unwrap_or(IMAGE_PLACEHOLDER);
+    push_quad(ctx, WRect::new(x, y, w, h), bg);
+    LaidBlock { size: (w, h) }
+}
+
+fn layout_text(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+    link: bool,
+) -> LaidBlock {
+    let text = element_text(ctx.comp, props, children);
+    let size = style.font_size.unwrap_or(TEXT_SIZE);
+    let line_h = size * LINE_H_FACTOR;
+    if text.is_empty() {
+        return LaidBlock { size: (0.0, 0.0) };
+    }
+    let w = measure_text(&text, size).min(avail_w.max(0.0));
+    let color = style.fg.unwrap_or(if link {
+        // a：accent 前景（可链接观感；下划线 DrawOp 不载——保真边界）。
+        resolve_color("blue-500").unwrap_or(TEXT_FG)
+    } else {
+        TEXT_FG
+    });
+    let tx = if style.text_center {
+        x + (avail_w - w) / 2.0
+    } else {
+        x
+    };
+    ctx.ops.push(DrawOp::Text { x: tx, y, size, line_height: line_h, color, text });
+    LaidBlock { size: (w, line_h) }
+}
+
+/// value 绑定表达式 → 字段名（`.email` / `email` / `.self.x`）。
+fn binding_field(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Ident(name) => {
+            let f = name.as_str().trim_start_matches('.');
+            (!f.is_empty()).then(|| f.to_string())
+        }
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => {
+                Some(field.as_str().to_string())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// 元素显示文本：优先 `text`/`label` prop（位置参数 sugar 的落点，
 /// parser `get_primary_prop`），回退子树文本节点。
 fn element_text(
@@ -184,109 +889,13 @@ fn element_text(
     collect_text(comp, children)
 }
 
-/// 投影一列/行节点：沿 `cursor`（纵向 = y；横向 = x）依序摆放并推进。
-/// 命中区写入 `buttons`，绘制算子追加进 `ops`。
-fn project_nodes(
-    comp: &DynamicComponent,
-    nodes: &[AuraNode],
-    dir: Dir,
-    cross: f32,
-    cursor: &mut f32,
-    ops: &mut Vec<DrawOp>,
-    buttons: &mut Vec<(WRect, String)>,
-) {
-    for node in nodes {
-        match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
-                let tag = tag.as_str();
-                if tag == "button" || tag == "Button" {
-                    let label = element_text(comp, props, children);
-                    let label_w = measure_text(&label, 14.0);
-                    let w = (label_w + BUTTON_PAD * 2.0).max(BUTTON_MIN_W);
-                    let line_h = 14.0 * LINE_H_FACTOR;
-                    let (x, y) = match dir {
-                        Dir::Vertical => (MARGIN, *cursor),
-                        Dir::Horizontal => (*cursor, cross),
-                    };
-                    let rect = WRect::new(x, y, w, BUTTON_H);
-                    ops.push(DrawOp::Quad { rect, color: BUTTON_BG });
-                    ops.push(DrawOp::Text {
-                        x: x + (w - label_w) / 2.0,
-                        y: y + (BUTTON_H - line_h) / 2.0,
-                        size: 14.0,
-                        line_height: line_h,
-                        color: LABEL_FG,
-                        text: label,
-                    });
-                    if let Some(handler) = click_handler(events) {
-                        buttons.push((rect, handler));
-                    }
-                    advance(dir, cursor, BUTTON_H + GAP);
-                } else if tag == "row" || tag == "hstack" {
-                    // 行内横向堆叠：子级沿 x 推进，纵向起点 = 行顶。
-                    let mut hcursor = *cursor;
-                    project_nodes(comp, children, Dir::Horizontal, *cursor, &mut hcursor, ops, buttons);
-                    advance(dir, cursor, TEXT_SIZE * LINE_H_FACTOR + GAP);
-                } else if is_text_tag(tag) {
-                    let text = element_text(comp, props, children);
-                    if !text.is_empty() {
-                        let line_h = TEXT_SIZE * LINE_H_FACTOR;
-                        let (x, y) = match dir {
-                            Dir::Vertical => (MARGIN, *cursor),
-                            Dir::Horizontal => (*cursor, cross),
-                        };
-                        ops.push(DrawOp::Text {
-                            x,
-                            y,
-                            size: TEXT_SIZE,
-                            line_height: line_h,
-                            color: TEXT_FG,
-                            text,
-                        });
-                        advance(dir, cursor, line_h + GAP);
-                    }
-                } else {
-                    // 其余容器标签：子级继续纵向堆叠（v1 不渲染装饰）。
-                    project_nodes(comp, children, Dir::Vertical, 0.0, cursor, ops, buttons);
-                }
-            }
-            AuraNode::Text(content) => {
-                let text = resolve_text(comp, content);
-                if text.is_empty() {
-                    continue;
-                }
-                let line_h = TEXT_SIZE * LINE_H_FACTOR;
-                let (x, y) = match dir {
-                    Dir::Vertical => (MARGIN, *cursor),
-                    Dir::Horizontal => (*cursor, cross),
-                };
-                ops.push(DrawOp::Text { x, y, size: TEXT_SIZE, line_height: line_h, color: TEXT_FG, text });
-                advance(dir, cursor, line_h + GAP);
-            }
-            AuraNode::ForLoop { .. }
-            | AuraNode::Conditional { .. }
-            | AuraNode::Component { .. }
-            | AuraNode::Outlet
-            | AuraNode::Link { .. } => {
-                // v1 保真边界外（待澄清②）：不投影。
-            }
-        }
-    }
-}
-
 /// 文本承载标签（内容走 `text` prop；与 parser `get_primary_prop` 的
-/// text 档同集的常用子集）。
+/// text 档同集的常用子集；入参已小写）。
 fn is_text_tag(tag: &str) -> bool {
     matches!(
         tag,
-        "text" | "Text" | "h1" | "H1" | "h2" | "H2" | "h3" | "H3" | "h4" | "H4" | "h5" | "H5"
-            | "h6" | "H6" | "p" | "P" | "span" | "Span" | "label" | "Label"
+        "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label"
     )
-}
-
-fn advance(dir: Dir, cursor: &mut f32, delta: f32) {
-    let _ = dir;
-    *cursor += delta;
 }
 
 /// 收集子树的可显示文本（Literal/Interpolated 解析后拼接）。
@@ -343,6 +952,13 @@ fn resolve_expr_display(comp: &DynamicComponent, expr: &Expr) -> Option<String> 
             let field = name.as_str().trim_start_matches('.');
             comp.read_state(field).ok().map(|v| format_value(&v))
         }
+        // 位置参数状态引用的解析形态：`text .name` → Dot(self/. , name)。
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => {
+                comp.read_state(field.as_str()).ok().map(|v| format_value(&v))
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -867,6 +1483,264 @@ mod tests {
     fn counter_projector() -> AppProjector {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
         AppProjector::new(component, 480.0, 320.0)
+    }
+
+    /// Plan 500 步骤 7 爬坡：001–005 真源投影（逐示例断言算子结构与
+    /// 几何合理性——§1.3.1 清单逐项钉）。
+    fn projector_of_example(dir: &str) -> AppProjector {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/PLACEHOLDER/src/front/app.at"
+        )
+        .replace("PLACEHOLDER", dir);
+        let src = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let component =
+            crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("{dir}: {e}"));
+        AppProjector::new(component, 480.0, 320.0)
+    }
+
+    fn texts_of(frame: &DrawList) -> Vec<&str> {
+        frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// 001：文本 + 样式（text-4xl → 36px 字号档）。
+    #[test]
+    fn climb_001_helloworld_text_style() {
+        let mut p = projector_of_example("001-helloworld");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["Hello, World!"]);
+        assert!(
+            frame.ops.iter().any(|op| matches!(op,
+                DrawOp::Text { size, .. } if (*size - 36.0).abs() < 0.01)),
+            "text-4xl → 36px 档"
+        );
+    }
+
+    /// 002：按钮 + FStr 插值（v1 既有能力在新引擎下保持）。
+    #[test]
+    fn climb_002_counter_buttons_and_interp() {
+        let mut p = projector_of_example("002-counter");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"-") && texts.contains(&"+") && texts.contains(&"Reset"));
+        assert!(texts.iter().any(|t| t.starts_with("Counter:")), "{texts:?}");
+        // 命中区：3 按钮（row 横排）。
+        let hits = p.hit_regions();
+        assert_eq!(hits.len(), 3, "三按钮命中区: {hits:?}");
+        // row 横排：x 单调递增。
+        let xs: Vec<f32> = hits.iter().map(|(r, _)| r.x).collect();
+        assert!(xs.windows(2).all(|w| w[0] <= w[1]), "row 横排: {xs:?}");
+    }
+
+    /// 003：卡片容器（bg-card 底 + padding + gap）+ 双 input + 标签 +
+    /// 输入闭环（点击聚焦 → CharTyped → 绑定字段写入 + 内联 oninput
+    /// handler 联动换算）。
+    #[test]
+    fn climb_003_converter_card_inputs_typing() {
+        let mut p = projector_of_example("003-converter");
+        let frame = p.render_frame();
+        // 卡片底 Quad（bg-card）+ 输入框底×2。
+        assert!(
+            frame.ops.iter().filter(|op| matches!(op, DrawOp::Quad { .. })).count() >= 3,
+            "卡片底 + 双输入框底: {:?}",
+            frame.ops
+        );
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Temperature Converter"), "{texts:?}");
+        assert!(texts.contains(&"Celsius (°C)"), "{texts:?}");
+        // 输入命中区 ×2。
+        let inputs: Vec<_> = p
+            .hit_regions()
+            .into_iter()
+            .filter(|(_, k)| k.starts_with("input:"))
+            .collect();
+        assert_eq!(inputs.len(), 2, "双 input 命中区: {inputs:?}");
+        // 聚焦 celsius 输入 → 输入 "100" → celsius=100 → 内联 oninput
+        // 换算 fahrenheit = 100*9/5+32 = 212。
+        let (c_rect, _) = inputs
+            .iter()
+            .find(|(_, k)| k.contains("celsius"))
+            .or(inputs.first())
+            .cloned()
+            .expect("celsius input");
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: c_rect.x + 5.0,
+            y: c_rect.y + 5.0,
+            modifiers: 0,
+        });
+        for ch in ['1', '0', '0'] {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        let celsius = match p.read_state("celsius").unwrap() {
+            auto_val::Value::Double(d) => d,
+            other => panic!("celsius: {other:?}"),
+        };
+        let fahrenheit = match p.read_state("fahrenheit").unwrap() {
+            auto_val::Value::Double(d) => d,
+            other => panic!("fahrenheit: {other:?}"),
+        };
+        assert!((celsius - 100.0).abs() < 1e-6, "celsius = {celsius}");
+        assert!((fahrenheit - 212.0).abs() < 0.01, "内联 oninput 换算联动: {fahrenheit}");
+        // 重渲染：输入框文本 = 绑定值（format_value 整数值无尾 .0——与
+        // vue/JS Number 显示同口径）。
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"100"), "input 显示绑定值: {texts:?}");
+        assert!(texts.contains(&"212"), "联动字段显示: {texts:?}");
+    }
+
+    /// 004：渐变头（from-blue-500 端色 Quad）+ image 占位（w-20=80px）+
+    /// 文本/按钮族。
+    #[test]
+    fn climb_004_profile_card_gradient_image_placeholder() {
+        let mut p = projector_of_example("004-profile-card");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Jane Cooper"), "{texts:?}");
+        assert!(texts.contains(&"Follow"), "{texts:?}");
+        // image 占位：80×80（w-20 h-20 = 20×4px）。
+        let img = frame.ops.iter().find_map(|op| match op {
+            DrawOp::Quad { rect, .. }
+                if (rect.w - 80.0).abs() < 0.5 && (rect.h - 80.0).abs() < 0.5 =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        });
+        assert!(img.is_some(), "image 占位 80×80: {:?}", frame.ops);
+        // Follow/Message 无 onclick → 无命中区（非交互按钮不进交互区表）。
+        let buttons: Vec<_> = p
+            .hit_regions()
+            .into_iter()
+            .filter(|(_, k)| k.starts_with("button:"))
+            .collect();
+        assert!(buttons.is_empty(), "无 onclick 按钮不进命中区: {buttons:?}");
+    }
+
+    /// 005：h2 归一 text + `if` 条件块（空错误隐藏 → 提交后显示）+
+    /// email 输入闭环 + msg 路径 handler。
+    #[test]
+    fn climb_005_login_if_conditional_and_msg_handlers() {
+        let mut p = projector_of_example("005-login");
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(texts.iter().any(|t| t.contains("Sign In")), "{texts:?}");
+        // email_error 为空 → `if` 条件块隐藏（"required" 不现）。
+        assert!(
+            !texts.iter().any(|t| t.contains("required")),
+            "空错误不渲染: {texts:?}"
+        );
+        let inputs: Vec<_> = p
+            .hit_regions()
+            .into_iter()
+            .filter(|(_, k)| k.starts_with("input:"))
+            .collect();
+        assert_eq!(inputs.len(), 2, "email/password 双输入: {inputs:?}");
+        let (email_rect, _) = inputs
+            .iter()
+            .find(|(_, k)| k.contains("email"))
+            .cloned()
+            .expect("email input");
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: email_rect.x + 5.0,
+            y: email_rect.y + 5.0,
+            modifiers: 0,
+        });
+        for ch in "a@b.c".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        assert_eq!(
+            p.read_state("email").unwrap(),
+            auto_val::Value::str("a@b.c"),
+            "email 绑定写入"
+        );
+        // 提交（msg 路径 Submit handler：password 空 → password_error 出现；
+        // email 已填 → email_error 不出现）。
+        let _ = p.render_frame();
+        let submit = p
+            .hit_regions()
+            .into_iter()
+            .find(|(_, k)| k.starts_with("button:"))
+            .expect("Sign In 按钮命中区");
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: submit.0.x + 5.0,
+            y: submit.0.y + 5.0,
+            modifiers: 0,
+        });
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        assert!(
+            texts.iter().any(|t| t.contains("Password is required")),
+            "提交后 password 错误经 if 块显示: {texts:?}"
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("Email is required")),
+            "email 已填无错误: {texts:?}"
+        );
+    }
+
+    /// Plan 500 步骤 9（T4）：queue 臂投影金样（001 三臂对拍基线的
+    /// queue 臂；vue 臂挂 a2vue 同族，iced 像素臂留实机档——497 已证
+    /// headless 栅格化不可行）。`AUTO_WRITE_GOLDEN=1` 重写期望文件。
+    #[test]
+    fn parity_001_queue_golden() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test/parity");
+        let src = std::fs::read_to_string(dir.join("001_helloworld.at"))
+            .expect("parity fixture（= examples/ui/001 真源快照）");
+        let component = crate::build_dynamic_component(&src, None).expect("build");
+        let mut p = AppProjector::new(component, 480.0, 900.0);
+        let frame = p.render_frame();
+        // 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）。
+        let mut out = String::new();
+        match frame.clear {
+            Some(c) => out.push_str(&format!("clear {},{},{},{}
+", c.r, c.g, c.b, c.a)),
+            None => out.push_str("clear -
+"),
+        }
+        for op in &frame.ops {
+            match op {
+                DrawOp::Quad { rect, color } => out.push_str(&format!(
+                    "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}
+",
+                    rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
+                )),
+                DrawOp::Text { x, y, size, line_height, color, text } => out.push_str(&format!(
+                    "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}
+",
+                    x, y, size, line_height, color.r, color.g, color.b, color.a, text
+                )),
+            }
+        }
+        let exp_path = dir.join("001_queue.expected.txt");
+        if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
+            std::fs::write(&exp_path, &out).expect("write golden");
+        }
+        let expected = std::fs::read_to_string(&exp_path).expect("read golden");
+        if out != expected {
+            let _ = std::fs::write(dir.join("001_queue.wrong.txt"), &out);
+            panic!(
+                "queue 臂金样不匹配（见 test/parity/001_queue.wrong.txt）:
+--- expected ---
+{expected}
+--- actual ---
+{out}"
+            );
+        }
     }
 
     /// 按钮标签 + 命中区 + 文本计数的投影快照。

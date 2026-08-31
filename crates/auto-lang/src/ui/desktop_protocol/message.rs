@@ -149,6 +149,57 @@ pub struct FontBlob {
     pub data: Vec<u8>,
 }
 
+/// 帧载荷模式（v1.3 二态；`Welcome` 尾部协商位）。线格式 u8：1 Commands /
+/// 2 Pixels。旧端载荷无此字段 → 解码缺省 Commands（追加式兼容）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameMode {
+    /// 命令帧：shm 槽载 `[u32 len][DrawList 编码]`（v1.0 既有语义）。
+    #[default]
+    Commands,
+    /// 像素帧：shm 槽载 `h × stride` RGBA 行序列（independent 臂自渲染）。
+    Pixels,
+}
+
+impl FrameMode {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Commands => 1,
+            Self::Pixels => 2,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Result<Self, CodecError> {
+        match v {
+            1 => Ok(Self::Commands),
+            2 => Ok(Self::Pixels),
+            other => Err(CodecError::UnknownTag(other)),
+        }
+    }
+}
+
+/// 像素帧格式（v1.3 定案：v1 仅 RGBA8 straight 非预乘，stride = w×4）。
+/// 线格式 u8：1 Rgba8（扩展位）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PixelFormat {
+    #[default]
+    Rgba8,
+}
+
+impl PixelFormat {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Rgba8 => 1,
+        }
+    }
+
+    pub fn from_u8(v: u8) -> Result<Self, CodecError> {
+        match v {
+            1 => Ok(Self::Rgba8),
+            other => Err(CodecError::UnknownTag(other)),
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 通道 1：孵化/握手
 // ---------------------------------------------------------------------------
@@ -166,7 +217,9 @@ pub enum HandshakeMsg {
         fonts: Vec<FontBlob>,
     },
     /// host→app。分配结果：AppId + 虚拟窗 Wid + surface 句柄 + 初始矩形。
-    Welcome { app_id: u64, wid: u64, surface: u64, rect: WRect },
+    /// `frame_mode`（v1.3 尾部追加）：该表面的帧载荷解释位——旧端载荷
+    /// 缺此字段时解码缺省 Commands。
+    Welcome { app_id: u64, wid: u64, surface: u64, rect: WRect, frame_mode: FrameMode },
     /// app→host。握手完成确认（状态机 Active 的入场合）。
     Ready,
 }
@@ -198,12 +251,13 @@ impl HandshakeMsg {
                     put_bytes(out, &f.data);
                 }
             }
-            Self::Welcome { app_id, wid, surface, rect } => {
+            Self::Welcome { app_id, wid, surface, rect, frame_mode } => {
                 put_u8(out, Self::WELCOME);
                 put_u64(out, *app_id);
                 put_u64(out, *wid);
                 put_u64(out, *surface);
                 rect.encode(out);
+                put_u8(out, frame_mode.as_u8());
             }
             Self::Ready => put_u8(out, Self::READY),
         }
@@ -232,7 +286,13 @@ impl HandshakeMsg {
                 let wid = r.u64()?;
                 let surface = r.u64()?;
                 let rect = WRect::decode(r)?;
-                Self::Welcome { app_id, wid, surface, rect }
+                // v1.3 尾部追加字段：旧端（v1.2 线）无此字节 → 缺省 Commands。
+                let frame_mode = if r.remaining() > 0 {
+                    FrameMode::from_u8(r.u8()?)?
+                } else {
+                    FrameMode::Commands
+                };
+                Self::Welcome { app_id, wid, surface, rect, frame_mode }
             }
             Self::READY => Self::Ready,
             tag => return Err(CodecError::UnknownTag(tag)),
@@ -265,6 +325,24 @@ pub enum FrameMsg {
     /// app→host。帧就绪（**共享内存变体**，S9）：payload 在 `slot` 槽内
     /// （`[u32 len][DrawList 编码]`），管道上只过元数据——大帧不走管道。
     FrameReadyShared { wid: u64, frame_id: u64, slot: u8, damage: Option<WRect>, revision: u64, len: u32 },
+    /// app→host。帧就绪（**像素帧变体**，v1.3 independent 臂）：RGBA 像素
+    /// 在 `slot` 槽内（`h × stride` 行序列，格式 = `format`，straight 非
+    /// 预乘），管道上只过元数据。槽载荷解释由 `Welcome.frame_mode` 协商。
+    FrameReadyPixels {
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        damage: Option<WRect>,
+        revision: u64,
+        /// 像素宽（像素数）。
+        w: u32,
+        /// 像素高（行数）。
+        h: u32,
+        /// 行字节距（Rgba8 = w×4；对齐留扩展）。
+        stride: u32,
+        /// 像素格式（v1 仅 Rgba8）。
+        format: PixelFormat,
+    },
 }
 
 impl FrameMsg {
@@ -275,6 +353,7 @@ impl FrameMsg {
     const FRAME_ACK: u8 = 5;
     const CACHE_CONTROL: u8 = 6;
     const FRAME_READY_SHARED: u8 = 7;
+    const FRAME_READY_PIXELS: u8 = 8;
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
@@ -346,6 +425,24 @@ impl FrameMsg {
                 put_u64(out, *revision);
                 put_u32(out, *len);
             }
+            Self::FrameReadyPixels { wid, frame_id, slot, damage, revision, w, h, stride, format } => {
+                put_u8(out, Self::FRAME_READY_PIXELS);
+                put_u64(out, *wid);
+                put_u64(out, *frame_id);
+                put_u8(out, *slot);
+                match damage {
+                    Some(d) => {
+                        put_bool(out, true);
+                        d.encode(out);
+                    }
+                    None => put_bool(out, false),
+                }
+                put_u64(out, *revision);
+                put_u32(out, *w);
+                put_u32(out, *h);
+                put_u32(out, *stride);
+                put_u8(out, format.as_u8());
+            }
         }
     }
 
@@ -398,6 +495,18 @@ impl FrameMsg {
                 let revision = r.u64()?;
                 let len = r.u32()?;
                 Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len }
+            }
+            Self::FRAME_READY_PIXELS => {
+                let wid = r.u64()?;
+                let frame_id = r.u64()?;
+                let slot = r.u8()?;
+                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let revision = r.u64()?;
+                let w = r.u32()?;
+                let h = r.u32()?;
+                let stride = r.u32()?;
+                let format = PixelFormat::from_u8(r.u8()?)?;
+                Self::FrameReadyPixels { wid, frame_id, slot, damage, revision, w, h, stride, format }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -920,6 +1029,14 @@ mod tests {
             wid: 3,
             surface: 42,
             rect: WRect::new(16.0, 16.0, 480.0, 320.0),
+            frame_mode: FrameMode::Commands,
+        }));
+        round_trip(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+            app_id: 2,
+            wid: 4,
+            surface: 43,
+            rect: WRect::new(0.0, 0.0, 100.0, 80.0),
+            frame_mode: FrameMode::Pixels,
         }));
         round_trip(ProtocolMsg::Handshake(HandshakeMsg::Ready));
     }
@@ -974,6 +1091,144 @@ mod tests {
             revision: 12,
             len: 4096,
         }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+            wid: 3,
+            frame_id: 12,
+            slot: 0,
+            damage: Some(WRect::new(0.0, 0.0, 480.0, 320.0)),
+            revision: 13,
+            w: 480,
+            h: 320,
+            stride: 1920,
+            format: PixelFormat::Rgba8,
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+            wid: 9,
+            frame_id: 1,
+            slot: 1,
+            damage: None,
+            revision: 1,
+            w: 1,
+            h: 1,
+            stride: 4,
+            format: PixelFormat::Rgba8,
+        }));
+    }
+
+    /// v1.3 追加式兼容：旧端 Welcome 载荷（无 frame_mode 尾字节）解码
+    /// 缺省 Commands；新端恒写尾字节。未知 FrameMode/PixelFormat tag 拒收。
+    #[test]
+    fn frame_mode_tail_field_backward_compat() {
+        // 旧线 Welcome：手工构造无尾字节的载荷（v1.2 线格式）。
+        let legacy_payload = {
+            let mut p = Vec::new();
+            put_u8(&mut p, 2); // WELCOME
+            put_u64(&mut p, 1);
+            put_u64(&mut p, 3);
+            put_u64(&mut p, 42);
+            WRect::new(16.0, 16.0, 480.0, 320.0).encode(&mut p);
+            p
+        };
+        let bytes = super::super::codec::encode_envelope(
+            super::super::PROTOCOL_VERSION,
+            super::super::codec::Channel::Handshake,
+            &legacy_payload,
+        );
+        let decoded = ProtocolMsg::decode(&bytes).expect("旧线 Welcome 可解");
+        assert_eq!(
+            decoded,
+            ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                app_id: 1,
+                wid: 3,
+                surface: 42,
+                rect: WRect::new(16.0, 16.0, 480.0, 320.0),
+                frame_mode: FrameMode::Commands,
+            }),
+            "旧端缺省 = Commands"
+        );
+
+        // 新线 Welcome：载荷尾追加 frame_mode 字节 + 信封长度 +1。
+        let mut new_bytes = bytes.clone();
+        let tail = 12 + legacy_payload.len();
+        new_bytes.splice(tail..tail, [2u8]);
+        new_bytes[8..12].copy_from_slice(&((legacy_payload.len() as u32 + 1).to_le_bytes()));
+        assert_eq!(
+            ProtocolMsg::decode(&new_bytes).expect("新线 Welcome 可解"),
+            ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                app_id: 1,
+                wid: 3,
+                surface: 42,
+                rect: WRect::new(16.0, 16.0, 480.0, 320.0),
+                frame_mode: FrameMode::Pixels,
+            })
+        );
+
+        // 未知 FrameMode tag（尾字节 = 9）拒收。
+        let mut bad = new_bytes.clone();
+        let payload_len = {
+            let l = u32::from_le_bytes(bad[8..12].try_into().unwrap()) as usize;
+            l
+        };
+        bad[12 + payload_len - 1] = 9;
+        assert!(matches!(
+            ProtocolMsg::decode(&bad),
+            Err(CodecError::UnknownTag(9))
+        ));
+
+        // 未知 PixelFormat tag：FrameReadyPixels 载荷末字节 = 0x7F。
+        let mut bytes = ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+            wid: 1,
+            frame_id: 1,
+            slot: 0,
+            damage: None,
+            revision: 1,
+            w: 2,
+            h: 2,
+            stride: 8,
+            format: PixelFormat::Rgba8,
+        })
+        .encode();
+        let payload_len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        bytes[12 + payload_len - 1] = 0x7F;
+        assert!(matches!(
+            ProtocolMsg::decode(&bytes),
+            Err(CodecError::UnknownTag(0x7F))
+        ));
+    }
+
+    /// FrameReadyPixels golden bytes：线格式冻结锚点（tag 8 + 元数据序）。
+    #[test]
+    fn frame_ready_pixels_golden_bytes() {
+        let bytes = ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+            wid: 1,
+            frame_id: 2,
+            slot: 1,
+            damage: None,
+            revision: 3,
+            w: 4,
+            h: 5,
+            stride: 16,
+            format: PixelFormat::Rgba8,
+        })
+        .encode();
+        // 载荷 = tag8(1) + wid(8) + frame_id(8) + slot(1) + damage(1) +
+        // revision(8) + w(4) + h(4) + stride(4) + format(1) = 40 字节。
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 40);
+        let expect: Vec<u8> = [
+            b'A', b'P', b'D', b'L', 1, 0, 2, 0, 40, 0, 0, 0, // 信封
+            8, // tag: FrameReadyPixels
+            1, 0, 0, 0, 0, 0, 0, 0, // wid
+            2, 0, 0, 0, 0, 0, 0, 0, // frame_id
+            1, // slot
+            0, // damage: None
+            3, 0, 0, 0, 0, 0, 0, 0, // revision
+            4, 0, 0, 0, // w
+            5, 0, 0, 0, // h
+            16, 0, 0, 0, // stride
+            1, // format: Rgba8
+        ]
+        .to_vec();
+        assert_eq!(bytes, expect);
     }
 
     #[test]

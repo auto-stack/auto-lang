@@ -18,10 +18,21 @@ use std::collections::BTreeMap;
 
 use crate::ui::desktop_protocol::endpoint::HostEndpoint;
 use crate::ui::desktop_protocol::host::SurfaceStore;
-use crate::ui::desktop_protocol::message::DrawList;
+use crate::ui::desktop_protocol::message::{DrawList, FrameMsg};
 use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
 use crate::ui::desktop_protocol::transport::Transport;
 use crate::ui::session::{AppId, Wid};
+
+/// 像素臂前缓冲（v1.3）：一条 surface 的最新 RGBA 帧（宿主渲染臂据此
+/// 上传纹理；宿主侧"每 App 一份"表面驻留，与 SurfaceStore 命令帧同型）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PixelsSurface {
+    pub rgba: Vec<u8>,
+    pub w: u32,
+    pub h: u32,
+    pub stride: u32,
+    pub revision: u64,
+}
 
 /// 一条孵化连接的宿主侧状态（多 client 宿主的"每 App 一份"部分）。
 pub struct BrokerClient {
@@ -30,10 +41,12 @@ pub struct BrokerClient {
     pub end: Box<dyn Transport + Send>,
     pub endpoint: HostEndpoint,
     pub(crate) surfaces: SurfaceStore,
-    /// surface → shm 段（FrameReadyShared 载荷源）。
+    /// surface → shm 段（FrameReadyShared/FrameReadyPixels 载荷源）。
     pub(crate) shm: BTreeMap<u64, SharedFrameBuffer>,
     /// wid → surface 句柄。
     pub(crate) wid_surface: BTreeMap<u64, u64>,
+    /// surface → 像素前缓冲（v1.3 independent 臂；Commands 臂不用）。
+    pub(crate) pixels: BTreeMap<u64, PixelsSurface>,
     /// 落地后的会话对象（Active 后有效）。
     pub app_id: Option<AppId>,
     pub wid: Option<Wid>,
@@ -50,6 +63,7 @@ impl BrokerClient {
             surfaces: SurfaceStore::new(),
             shm: BTreeMap::new(),
             wid_surface: BTreeMap::new(),
+            pixels: BTreeMap::new(),
             app_id: None,
             wid: None,
             app_name: None,
@@ -60,6 +74,33 @@ impl BrokerClient {
     pub fn composed(&self) -> Option<&DrawList> {
         let surface = *self.wid_surface.get(&self.wid?.0)?;
         self.surfaces.front(surface)
+    }
+
+    /// 该 client 的像素前缓冲（v1.3 渲染臂/测试断言口）。
+    pub fn composed_pixels(&self) -> Option<&PixelsSurface> {
+        let surface = *self.wid_surface.get(&self.wid?.0)?;
+        self.pixels.get(&surface)
+    }
+
+    /// 像素帧合成（v1.3）：shm 槽读 RGBA → 前缓冲翻面。返回 FrameAck
+    /// （frame_id 原样回带；None = 无段/读失败，调用方不回 ack）。
+    pub fn compose_pixels(
+        &mut self,
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        w: u32,
+        h: u32,
+        stride: u32,
+    ) -> Option<FrameMsg> {
+        let rgba = self.shm.get(&surface)?.read_slot(slot).ok()?;
+        self.pixels.insert(
+            surface,
+            PixelsSurface { rgba, w, h, stride, revision },
+        );
+        Some(FrameMsg::FrameAck { wid, frame_id, slot })
     }
 }
 
@@ -188,7 +229,7 @@ mod tests {
     use crate::ui::desktop_protocol::client_runtime::{
         run_client, AppProjector, ClientConfig, ReconnectPolicy,
     };
-    use crate::ui::desktop_protocol::message::{DrawOp, MouseButton};
+    use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
     use crate::ui::desktop_protocol::transport;
     use crate::ui::session::{DesktopSession, LaunchSpec};
 
@@ -235,6 +276,514 @@ mod tests {
                 *v.rect.borrow_mut() = rect;
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 500 步骤 8 —— T3 re-exec 集成：001–005 queue 端到端 +
+    // independent 像素帧 + 双模并存。
+    // -----------------------------------------------------------------------
+
+    /// 子进程识别 env（模式档：queue | independent）。
+    const T3_BROKER_ENV: &str = "AUTO_500_BROKER";
+    const T3_APP_ENV: &str = "AUTO_500_APP";
+    const T3_MODE_ENV: &str = "AUTO_500_MODE";
+
+    /// T3 表面尺寸（005-login 内容高 ~812px，320 高度会溢出表面）。
+    const T3_W: f32 = 480.0;
+    const T3_H: f32 = 900.0;
+
+    /// 001–005 示例名（与 examples/ui 目录一致）。
+    const T3_EXAMPLES: [&str; 5] = [
+        "001-helloworld",
+        "002-counter",
+        "003-converter",
+        "004-profile-card",
+        "005-login",
+    ];
+
+    fn example_source(dir: &str) -> String {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/ui/P/src/front/app.at"
+        )
+        .replace('P', dir);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+    }
+
+    /// T3 子进程体：三态裁决的 child 侧（queue = 真协议泵；independent =
+    /// 真 iced 隐藏窗 + 截图泵）。直接跑套件（无 env）时跳过。
+    #[test]
+    fn t3_child_body() {
+        let Ok(broker_pipe) = std::env::var(T3_BROKER_ENV) else {
+            return;
+        };
+        let app = std::env::var(T3_APP_ENV).expect("app env");
+        let mode = std::env::var(T3_MODE_ENV).unwrap_or_else(|_| "queue".into());
+        let src = example_source(&app);
+        let component = crate::build_dynamic_component(&src, None).expect("child build");
+        match mode.as_str() {
+            "independent" => {
+                let render = broker::RequestedRender {
+                    mode: crate::ui::desktop_protocol::message::FrameMode::Pixels,
+                    auto_downgraded: false,
+                };
+                let (_pipe, end) =
+                    broker::request_incubation_render(&broker_pipe, &app, render, 10_000)
+                        .expect("incubate");
+                crate::ui::desktop_protocol::pixels::run_independent_child(
+                    end, component, &app, &app, T3_W, T3_H,
+                )
+                .expect("independent child");
+            }
+            _ => {
+                let (_pipe, end) = broker::request_incubation_render(
+                    &broker_pipe,
+                    &app,
+                    broker::RequestedRender::default(),
+                    10_000,
+                )
+                .expect("incubate");
+                let config =
+                    ClientConfig { app_name: app.clone(), title: app, width: T3_W, height: T3_H };
+                let reconnect =
+                    ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
+                let projector = AppProjector::new(component, T3_W, T3_H);
+                let (exit, proj) = run_client(end, projector, config, Some(reconnect));
+                println!("AUTO500-CHILD exit={exit:?} rev={}", proj.revision());
+            }
+        }
+    }
+
+    /// re-exec 一个 T3 子进程（env 注入 broker 管道/app 名/模式档）。
+    fn spawn_t3_child(broker_pipe: &str, app: &str, mode: &str) -> std::process::Child {
+        let exe = std::env::current_exe().expect("current_exe");
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(["t3_child_body", "--test-threads", "1", "--nocapture"])
+            .env(T3_BROKER_ENV, broker_pipe)
+            .env(T3_APP_ENV, app)
+            .env(T3_MODE_ENV, mode)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit());
+        for (k, _) in std::env::vars() {
+            if k.starts_with("NEXTEST_") {
+                cmd.env_remove(&k);
+            }
+        }
+        cmd.spawn().expect("spawn t3 child")
+    }
+
+    /// 按示例名取该 client 的合成帧（queue 臂 DrawList）。
+    fn composed_texts(session: &DesktopSession, app: &str) -> Vec<String> {
+        session
+            .broker_clients
+            .values()
+            .find(|c| c.app_name.as_deref() == Some(app))
+            .and_then(|c| c.composed())
+            .map(|list| {
+                list.ops
+                    .iter()
+                    .filter_map(|op| match op {
+                        crate::ui::desktop_protocol::message::DrawOp::Text { text, .. } => {
+                            Some(text.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// 等待条件成立（泵帧 + 谓词轮询）。
+    fn wait_frames(
+        session: &mut DesktopSession,
+        mut pred: impl FnMut(&DesktopSession) -> bool,
+    ) -> bool {
+        for _ in 0..600 {
+            session.pump_broker_clients();
+            if pred(session) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        false
+    }
+
+    /// T3 主体一：001–005 五示例 queue 模式端到端（re-exec 真子进程 +
+    /// 真协议泵）——孵化全 Active → 逐示例交互闭环（本地孪生投影器出
+    /// 命中坐标，与 child 同引擎同源确定性布局）→ 帧内容断言 → 收尾。
+    #[test]
+    fn t3_examples_queue_end_to_end() {
+        let broker_pipe = format!("autodesk-broker-t3-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let names: Vec<String> = T3_EXAMPLES.iter().map(|s| s.to_string()).collect();
+        let sources: Vec<(String, String)> = names
+            .iter()
+            .map(|n| (n.clone(), example_source(n)))
+            .collect();
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            sources
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(n, src)| LaunchSpec {
+                    code: src.clone(),
+                    source_path: None,
+                    title: Some(n.clone()),
+                    daemon: None,
+                    back_root: None,
+                })
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        // 孪生投影器（同源布局 → 命中坐标）。
+        let twins: Vec<(String, crate::ui::desktop_protocol::client_runtime::AppProjector)> =
+            names
+                .iter()
+                .map(|n| {
+                    let src = example_source(n);
+                    let comp = crate::build_dynamic_component(&src, None).expect("twin build");
+                    let mut p = crate::ui::desktop_protocol::client_runtime::AppProjector::new(
+                        comp, T3_W, T3_H,
+                    );
+                    {
+                        use crate::ui::desktop_protocol::endpoint::FrameSource;
+                        p.render_frame();
+                    }
+                    (n.clone(), p)
+                })
+                .collect();
+        let twin_hit = |app: &str, needle: &str| -> Option<(f32, f32)> {
+            twins
+                .iter()
+                .find(|(n, _)| n == app)
+                .and_then(|(_, p)| {
+                    p.hit_regions()
+                        .into_iter()
+                        .find(|(_, k)| k.contains(needle))
+                        .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
+                })
+        };
+        /// 命中区序选（row 内第 idx 个匹配；002 的 "+" 是第三个按钮）。
+        let twin_hit_nth = |app: &str, needle: &str, idx: usize| -> Option<(f32, f32)> {
+            twins
+                .iter()
+                .find(|(n, _)| n == app)
+                .and_then(|(_, p)| {
+                    p.hit_regions()
+                        .into_iter()
+                        .filter(|(_, k)| k.contains(needle))
+                        .nth(idx)
+                        .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
+                })
+        };
+
+        let mut children: Vec<std::process::Child> =
+            names.iter().map(|n| spawn_t3_child(&broker_pipe, n, "queue")).collect();
+
+        attach_until(&mut session, names.len());
+        let landed = session.broker_clients.values().filter_map(|c| c.wid).count();
+        assert_eq!(landed, names.len(), "五示例全孵化落地");
+        let wids: Vec<Wid> =
+            session.broker_clients.values().filter_map(|c| c.wid).collect();
+        for (i, wid) in wids.into_iter().enumerate() {
+            place_window(&mut session, wid, i);
+        }
+
+        // ---- 逐示例交互闭环（坐标 = 孪生命中区中心 + 窗原点）。 ----
+        let origin_of = |session: &DesktopSession, app: &str| -> Option<(f32, f32)> {
+            session.broker_clients.values().find(|c| c.app_name.as_deref() == Some(app))
+                .and_then(|c| c.wid)
+                .and_then(|wid| {
+                    session.host.as_ref().and_then(|h| h.wm.wins.get(&wid))
+                        .map(|v| { let r = *v.rect.borrow(); (r.x, r.y) })
+                })
+        };
+
+        // 001/004：帧到位即断言（无交互 widget）。
+        assert!(
+            wait_frames(&mut session, |s| composed_texts(s, "001-helloworld")
+                .iter()
+                .any(|t| t == "Hello, World!")),
+            "001 帧文本到位"
+        );
+        assert!(
+            wait_frames(&mut session, |s| composed_texts(s, "004-profile-card")
+                .iter()
+                .any(|t| t == "Jane Cooper")),
+            "004 帧文本到位"
+        );
+
+        // 002：点击 "+" → Counter: 1。
+        {
+            // 002 行序：- Reset + → "+" 是第 3 个按钮命中区。
+            let (hx, hy) = twin_hit_nth("002-counter", "button:", 2)
+                .expect("002 孪生按钮坐标（+ 为第三个）");
+            let (ox, oy) = origin_of(&session, "002-counter").expect("002 窗原点");
+            assert!(
+                session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left),
+                "002 点击路由"
+            );
+            assert!(
+                wait_frames(&mut session, |s| composed_texts(s, "002-counter")
+                    .iter()
+                    .any(|t| t == "Counter: 1")),
+                "002 点击后帧递增"
+            );
+        }
+
+        // 003：聚焦 celsius 输入 → 输入 100 → 联动 212。
+        {
+            let (hx, hy) = twin_hit("003-converter", "input:celsius").expect("003 celsius 坐标");
+            let (ox, oy) = origin_of(&session, "003-converter").expect("003 窗原点");
+            assert!(session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left));
+            let (wid, mut end_pipe) = {
+                let client = session
+                    .broker_clients
+                    .values_mut()
+                    .find(|c| c.app_name.as_deref() == Some("003-converter"))
+                    .expect("003 client");
+                (client.wid.expect("wid"), client.pipe.clone())
+            };
+            let _ = &mut end_pipe;
+            for ch in ['1', '0', '0'] {
+                let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Input(
+                    crate::ui::desktop_protocol::message::InputMsg::CharTyped {
+                        wid: wid.0,
+                        ch,
+                    },
+                );
+                if let Some(client) = session
+                    .broker_clients
+                    .values_mut()
+                    .find(|c| c.app_name.as_deref() == Some("003-converter"))
+                {
+                    let _ = client.end.send(&msg);
+                }
+            }
+            assert!(
+                wait_frames(&mut session, |s| {
+                    let t = composed_texts(s, "003-converter");
+                    t.iter().any(|x| x == "212") && t.iter().any(|x| x == "100")
+                }),
+                "003 输入换算联动: {:?}",
+                composed_texts(&session, "003-converter")
+            );
+        }
+
+        // 005：聚焦 email 输入 → 输入 a@b.c → 点 Sign In → password 错误显示。
+        {
+            let (hx, hy) = twin_hit("005-login", "input:email").expect("005 email 坐标");
+            let (ox, oy) = origin_of(&session, "005-login").expect("005 窗原点");
+            assert!(session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left));
+            let wid = session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some("005-login"))
+                .and_then(|c| c.wid)
+                .expect("005 wid");
+            for ch in "a@b.c".chars() {
+                let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Input(
+                    crate::ui::desktop_protocol::message::InputMsg::CharTyped {
+                        wid: wid.0,
+                        ch,
+                    },
+                );
+                if let Some(client) = session
+                    .broker_clients
+                    .values_mut()
+                    .find(|c| c.app_name.as_deref() == Some("005-login"))
+                {
+                    let _ = client.end.send(&msg);
+                }
+            }
+            let (bx, by) = twin_hit("005-login", "button:Submit").expect("005 Sign In 坐标");
+            assert!(session.broker_pointer_down(ox + bx, oy + by, MouseButton::Left));
+            assert!(
+                wait_frames(&mut session, |s| composed_texts(s, "005-login")
+                    .iter()
+                    .any(|t| t.contains("Password is required"))),
+                "005 提交后错误经 if 块显示"
+            );
+        }
+
+        // ---- 收尾：Close 全部 → child 退出码 0。 ----
+        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
+            session
+                .broker_clients
+                .values_mut()
+                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+                .collect();
+        for (pipe, close) in closes {
+            if let Some(close) = close {
+                if let Some(c) = session.broker_clients.get_mut(&pipe) {
+                    let _ = c.end.send(&close);
+                }
+            }
+        }
+        for _ in 0..300 {
+            session.pump_broker_clients();
+            if session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        for child in children.iter_mut() {
+            let start = std::time::Instant::now();
+            let status = loop {
+                if let Some(s) = child.try_wait().expect("try_wait") {
+                    break s;
+                }
+                assert!(start.elapsed() < std::time::Duration::from_secs(30), "child 收尾超时");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            };
+            assert!(status.success(), "child 退出码 {status}");
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
+    }
+
+    /// 真 `auto` 二进制定位（缺则增量构建一次——首跑数秒，之后缓存命中）。
+    /// independent 臂 = iced 主线程约束（winit Windows 事件循环须主线程，
+    /// 测试 harness 线程必炸）→ 用生产二进制做 child（兼得三态 spawn 参数
+    /// 全真链路）。
+    fn auto_exe() -> std::path::PathBuf {
+        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+        for profile in ["debug", "release"] {
+            let p = target.join(profile).join("auto.exe");
+            if p.exists() {
+                return p;
+            }
+        }
+        let status = std::process::Command::new("cargo")
+            .args(["build", "-p", "auto", "--bin", "auto"])
+            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .status()
+            .expect("spawn cargo build -p auto");
+        assert!(status.success(), "cargo build -p auto 失败");
+        target.join("debug").join("auto.exe")
+    }
+
+    /// T3 主体二：independent 像素帧合成 + **双模并存**（同宿主一 queue
+    /// 一 independent）：queue 臂 re-exec 测试二进制（真协议泵）；
+    /// independent 臂 = 真 `auto run` 生产二进制（`--autodesk-render=
+    /// independent` 三态参数 + iced 隐藏窗主线程约束）。断言两臂帧同达
+    /// 宿主（DrawList / 像素前缓冲）。
+    #[test]
+    fn t3_independent_pixels_and_dual_mode() {
+        let broker_pipe = format!("autodesk-broker-t3d-{}", std::process::id());
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let src = example_source("001-helloworld");
+        let known: Vec<&str> = vec!["001-helloworld"];
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            known
+                .iter()
+                .find(|n| **n == name)
+                .map(|n| LaunchSpec {
+                    code: src.clone(),
+                    source_path: None,
+                    title: Some(n.to_string()),
+                    daemon: None,
+                    back_root: None,
+                })
+        }));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+
+        let mut queue_child = spawn_t3_child(&broker_pipe, "001-helloworld", "queue");
+        // independent 臂 = 生产二进制（cwd = 仓根，examples/ui 相对解析）。
+        let exe = auto_exe();
+        let mut pixels_child = std::process::Command::new(&exe)
+            .args([
+                "run",
+                "--autodesk-incubate",
+                "--app386=001-helloworld",
+                "--autodesk-render=independent",
+                &format!("--autodesk-broker={broker_pipe}"),
+            ])
+            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .expect("spawn auto independent child");
+
+        attach_until(&mut session, 2);
+        assert_eq!(
+            session.broker_clients.values().filter_map(|c| c.wid).count(),
+            2,
+            "双 child 孵化落地"
+        );
+        // 双模并存：一 Commands 一 Pixels。
+        let modes: Vec<_> =
+            session.broker_clients.values().map(|c| c.endpoint.frame_mode).collect();
+        assert!(modes.contains(&crate::ui::desktop_protocol::message::FrameMode::Commands));
+        assert!(modes.contains(&crate::ui::desktop_protocol::message::FrameMode::Pixels));
+
+        // queue 臂：DrawList 帧（"Hello, World!"）。
+        assert!(
+            wait_frames(&mut session, |s| {
+                s.broker_clients.values().any(|c| {
+                    c.endpoint.frame_mode
+                        == crate::ui::desktop_protocol::message::FrameMode::Commands
+                        && c.composed().is_some_and(|l| {
+                            l.ops.iter().any(|op| matches!(op,
+                                crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
+                                    if text == "Hello, World!"))
+                        })
+                })
+            }),
+            "queue 臂 DrawList 帧到位"
+        );
+        // independent 臂：像素前缓冲（隐藏窗截图经降采样达宿主）。
+        assert!(
+            wait_frames(&mut session, |s| {
+                s.broker_clients.values().any(|c| {
+                    c.endpoint.frame_mode
+                        == crate::ui::desktop_protocol::message::FrameMode::Pixels
+                        && c.composed_pixels().is_some_and(|p| p.w > 0 && p.h > 0)
+                })
+            }),
+            "independent 臂像素帧达宿主"
+        );
+
+        // 收尾。
+        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
+            session
+                .broker_clients
+                .values_mut()
+                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+                .collect();
+        for (pipe, close) in closes {
+            if let Some(close) = close {
+                if let Some(c) = session.broker_clients.get_mut(&pipe) {
+                    let _ = c.end.send(&close);
+                }
+            }
+        }
+        for _ in 0..300 {
+            session.pump_broker_clients();
+            if session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        for child in [&mut queue_child, &mut pixels_child] {
+            let start = std::time::Instant::now();
+            let status = loop {
+                if let Some(s) = child.try_wait().expect("try_wait") {
+                    break s;
+                }
+                assert!(
+                    start.elapsed() < std::time::Duration::from_secs(45),
+                    "像素臂 child 收尾超时"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            };
+            assert!(status.success(), "child 退出码 {status}");
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = transport::connect(&broker_pipe, 500);
     }
 
     /// re-exec 子进程（剥离 NEXTEST_* 守护）。
@@ -742,6 +1291,89 @@ mod tests {
         assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
         assert_eq!(projector.read_state("count").unwrap(), auto_val::Value::Int(43));
         assert_eq!(projector.revision(), 42, "revision 延续（快照 41 + 点击 1）");
+    }
+
+    /// Plan 500 步骤 5：宿主像素臂合成——HostEndpoint 收 FrameReadyPixels
+    /// → ComposeFramePixels 动作 → BrokerClient::compose_pixels 读 shm 槽
+    /// RGBA 入前缓冲 + FrameAck 回带（宽/高/stride/revision 元数据全链）。
+    #[test]
+    fn broker_pixels_compose_front_buffer() {
+        use crate::ui::desktop_protocol::endpoint::{HostAction, HostEndpoint};
+        use crate::ui::desktop_protocol::message::{
+            FrameMsg, HandshakeMsg, PixelFormat, ProtocolMsg, WRect,
+        };
+
+        // 端点：Hello → activate(Pixels) → Active。
+        let mut host = HostEndpoint::listen();
+        let hello = {
+            let mut app = super::super::endpoint::AppEndpoint::new(
+                super::super::pixels::PixelsNoopSource::new(),
+                "px",
+                "px",
+                32.0,
+                16.0,
+            );
+            app.connect().expect("hello")
+        };
+        let actions = host.on_message(hello).expect("host 状态机");
+        assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
+        host.activate(1, 9, 77, WRect::new(0.0, 0.0, 32.0, 16.0), FrameMode::Pixels)
+            .expect("activate");
+
+        // child 侧写 shm 槽（32×16 纯色帧，槽尺寸 = 像素上限）。
+        let shm_name = format!("autodesk-shm-px5-{}", std::process::id());
+        let slot_size = super::super::pixels::pixels_slot_size(32.0, 16.0);
+        let child_shm = SharedFrameBuffer::create(&shm_name, 2, slot_size).expect("child shm");
+        let rgba: Vec<u8> = std::iter::repeat([7u8, 8, 9, 255])
+            .take((32 * 16) as usize)
+            .flatten()
+            .collect();
+        child_shm.write_slot(1, &rgba).expect("write slot");
+
+        // 端点收 FrameReadyPixels → ComposeFramePixels。
+        let actions = host
+            .on_message(ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
+                wid: 9,
+                frame_id: 4,
+                slot: 1,
+                damage: None,
+                revision: 12,
+                w: 32,
+                h: 16,
+                stride: 128,
+                format: PixelFormat::Rgba8,
+            }))
+            .expect("Active 收帧");
+        let HostAction::ComposeFramePixels {
+            surface, wid, frame_id, slot, revision, w, h, stride,
+        } = &actions[0]
+        else {
+            panic!("期待 ComposeFramePixels: {actions:?}");
+        };
+        assert_eq!((*wid, *frame_id, *slot, *revision, *w, *h, *stride), (9, 4, 1, 12, 32, 16, 128));
+
+        // BrokerClient 合成：宿主开同名段 → 前缓冲 + ack。
+        let pipe = format!("autodesk-px5-pipe-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let end = transport::connect(&pipe, 500).expect("connect");
+        let mut client = BrokerClient::new(pipe, end);
+        let host_shm = SharedFrameBuffer::open(&shm_name, 2, slot_size).expect("host shm");
+        client.shm.insert(*surface, host_shm);
+        client.wid = Some(Wid(9));
+        client.wid_surface.insert(9, *surface);
+        let ack = client.compose_pixels(
+            *surface, *wid, *frame_id, *slot, *revision, *w, *h, *stride,
+        )
+        .expect("compose");
+        assert_eq!(
+            ack,
+            FrameMsg::FrameAck { wid: 9, frame_id: 4, slot: 1 },
+            "ack 回带 frame_id/槽"
+        );
+        let front = client.composed_pixels().expect("前缓冲在册");
+        assert_eq!((front.w, front.h, front.stride, front.revision), (32, 16, 128, 12));
+        assert_eq!(front.rgba, rgba, "槽字节 = child 写入帧");
+        drop(listener);
     }
 
     /// S5 采样单测 + N=1/3/5 边际增量数字生成：阶段化 spawn（1 → 3 →

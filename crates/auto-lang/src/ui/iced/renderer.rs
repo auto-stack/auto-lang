@@ -9185,6 +9185,10 @@ pub struct DesktopOptions {
     /// 排除）。boot 期与 `shell.native.hole` storage 键取或（472 dock 配置
     /// 同型）；运行时失败自动回退 off。
     pub hole_mode: bool,
+    /// Plan 500 步骤 4：independent 臂像素桥——Standalone 单窗**隐藏化**
+    /// （`Settings{visible:false}`）+ boot 取像素桥入 `session.pixels` +
+    /// 协议轮询/截图回调订阅。false（缺省）= 既有 Standalone 行为零变化。
+    pub pixels: bool,
 }
 
 /// Plan 462 T5：desktop 模式入口 —— 单宿主 OS 窗口承载 N 个虚拟窗口
@@ -9209,6 +9213,19 @@ pub fn run_dynamic_desktop_fullscreen(
     opts: DesktopOptions,
 ) -> AppResult<String> {
     run_session(components, RunMode::Desktop, opts)
+}
+
+/// Plan 500 步骤 4：independent 臂 child 渲染宿主入口——Standalone 单窗
+/// **隐藏**（`Settings{visible:false}`）+ 像素桥（协议轮询订阅 + 截图
+/// 回调 → shm/FrameReadyPixels）。零新管线：复用 `run_session` 唯一
+/// update/view/订阅管线（I3），仅 boot 开窗可见位与像素桥配置位分叉；
+/// 既有 Standalone/desktop 行为不变（`opts.pixels=false` 缺省）。
+pub fn run_dynamic_iced_pixels(component: DynamicComponent) -> AppResult<String> {
+    run_session(
+        vec![component],
+        RunMode::Standalone,
+        DesktopOptions { pixels: true, ..Default::default() },
+    )
 }
 
 /// 会话运行形态（Plan 462，I3：唯一 update/view/订阅管线，仅此配置位与
@@ -9571,9 +9588,18 @@ fn compare_pngs(
             }
             RunMode::Standalone => {
                 let mut open_tasks = Vec::new();
+                // Plan 500 步骤 8：像素臂先取桥——窗尺寸 = 表面逻辑尺寸
+                //（截图降采样目标与 shm 槽口径同源；非像素臂 startup 尺寸不变）。
+                let pixels_child = opts
+                    .pixels
+                    .then(crate::ui::desktop_protocol::pixels::take_launch)
+                    .flatten();
+                let pixels_size = pixels_child
+                    .as_ref()
+                    .map(|c| iced::Size::new(c.size().0, c.size().1));
                 for (i, comp) in comps.into_iter().enumerate() {
                     let app_id = session.allocate_app(comp);
-                    let size = startup_window_size();
+                    let size = pixels_size.unwrap_or_else(startup_window_size);
                     // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
                     let position = iced::window::Position::Specific(iced::Point::new(
                         80.0 + 48.0 * i as f32,
@@ -9582,6 +9608,9 @@ fn compare_pngs(
                     let (win_id, open_task) = iced::window::open(iced::window::Settings {
                         size,
                         position,
+                        // Plan 500 步骤 4：像素臂 child 窗口隐藏——渲染/
+                        // 截图照常，仅不进 OS 桌面 z 序（合成归宿主虚拟窗）。
+                        visible: !opts.pixels,
                         ..Default::default()
                     });
                     session.register_window(win_id, app_id, size);
@@ -9594,6 +9623,13 @@ fn compare_pngs(
                         }
                     }
                     open_tasks.push(open_task);
+                }
+                // Plan 500 步骤 4/8：像素桥装配（boot 顶部已取走——窗尺寸
+                // 对齐用），发起 Hello（握手续走协议轮询订阅）。
+                if let Some(mut child) = pixels_child {
+                    if child.start() {
+                        session.pixels = Some(child);
+                    }
                 }
                 // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
                 // Opened 事件臂作幂等兜底。
@@ -11723,6 +11759,89 @@ fn compare_pngs(
                     DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
                         handle_native_slot_event(state, hwnd_value, kind);
                     }
+                    // Plan 500 步骤 4：像素桥协议入站——child 端点状态机
+                    // （握手段落 / BufferAlloc 开段 / Close 生命周期）；
+                    // 需要截图时对隐藏窗发起 window::screenshot（回调走
+                    // PixelsShot 臂）。
+                    DesktopEvent::PixelsProtocol(msg) => {
+                        let Some(mut bridge) = state.pixels.take() else {
+                            return iced::Task::none();
+                        };
+                        let component = state
+                            .primary_app()
+                            .and_then(|id| state.app_mut(id))
+                            .map(|a| &mut a.component);
+                        let (replies, want_capture) = bridge.on_protocol(*msg, component);
+                        for reply in replies {
+                            if !bridge.send(&reply) {
+                                return iced::exit();
+                            }
+                        }
+                        // 状态写回（快照注入）后重渲染再截图。
+                        if want_capture {
+                            if let Some(app) = state.primary_app() {
+                                if let Some(a) = state.apps.get_mut(&app) {
+                                    *a.state.view_dirty.borrow_mut() = true;
+                                }
+                            }
+                        }
+                        let mut tasks: Vec<iced::Task<crate::ui::session::DesktopMessage>> =
+                            Vec::new();
+                        if want_capture && bridge.request_capture() {
+                            if let Some(win) = state
+                                .primary_app()
+                                .and_then(|app| state.window_of_app(app))
+                            {
+                                tasks.push(iced::window::screenshot(win).map(|ss| {
+                                    crate::ui::session::DesktopMessage::Desktop(
+                                        crate::ui::session::DesktopEvent::PixelsShot(ss),
+                                    )
+                                }));
+                            }
+                        }
+                        let detached = bridge.is_detached();
+                        state.pixels = Some(bridge);
+                        if detached {
+                            return iced::exit();
+                        }
+                        return iced::Task::batch(tasks);
+                    }
+                    // Plan 500 步骤 4：像素桥截图回调——RGBA 写 shm 槽 +
+                    // FrameReadyPixels 回发宿主（宿主合成接步骤 5）。
+                    DesktopEvent::PixelsShot(ss) => {
+                        let Some(bridge) = state.pixels.as_mut() else {
+                            return iced::Task::none();
+                        };
+                        // 物理像素 → 表面逻辑尺寸（盒降采样）：shm 槽按
+                        // 逻辑尺寸定档，HiDPI scale 经此对齐（497 快照同型）。
+                        let (lw, lh) = bridge.size();
+                        let lw = lw.max(1.0).ceil() as u32;
+                        let lh = lh.max(1.0).ceil() as u32;
+                        let rgba =
+                            crate::ui::desktop_protocol::pixels::downsample_to_logical(
+                                ss.rgba.as_ref(),
+                                ss.size.width,
+                                ss.size.height,
+                                lw,
+                                lh,
+                            );
+                        let frame =
+                            crate::ui::desktop_protocol::pixels::PixelsFrame {
+                                rgba,
+                                w: lw,
+                                h: lh,
+                                stride: lw * 4,
+                            };
+                        if let Some(msg) = bridge.capture(frame) {
+                            if !bridge.send(&crate::ui::desktop_protocol::message::ProtocolMsg::Frame(msg))
+                            {
+                                return iced::exit();
+                            }
+                        }
+                        if bridge.is_detached() {
+                            return iced::exit();
+                        }
+                    }
                     // Plan 497：整窗截图回调——按 pending wid 集各窗 rect
                     // 裁剪入快照缓存（T1 定案裁剪式）；switcher 可见则置
                     // dirty（行 fallback → 真缩略升级；dock/pager hover 面
@@ -12210,6 +12329,21 @@ fn compare_pngs(
                     continue;
                 }
                 let app_id = vwin.app;
+                // Plan 500 步骤 5：broker 表面窗（进程外 App）——客户区内容
+                // 取 child 上报帧的两态合成（queue=DrawList canvas 降级 /
+                // independent=RGBA Image），不再本地重渲染。非 broker 窗走
+                // 既有 dynamic_view 路径零变化。
+                if let Some(broker_client) =
+                    crate::ui::iced::broker_surface::broker_client_content(state, wid)
+                {
+                    let focused = host.wm.focused == Some(wid);
+                    layers.push(crate::ui::iced::virtual_window::virtual_window_element(
+                        vwin,
+                        focused,
+                        broker_client,
+                    ));
+                    continue;
+                }
                 let probe_hit = panic_probe_enabled()
                     && PANIC_PROBE_CRASHED_APP.load(std::sync::atomic::Ordering::SeqCst)
                         == app_id.0;
@@ -12611,6 +12745,11 @@ fn compare_pngs(
                 // Shell SSE → store bridge (ash-gui M1). Polls SHELL_EVENT_RX and
                 // dispatches command_output/command_result to ShellStore handlers.
                 subs.push(shell_event_subscription(primary));
+                // Plan 500 步骤 4：像素桥协议轮询（independent 臂 child 进程
+                // 才在册——宿主消息 → PixelsProtocol 事件面）。
+                if state.pixels.is_some() {
+                    subs.push(crate::ui::desktop_protocol::pixels::pixels_protocol_subscription());
+                }
                 // Plan 314: keep a styled VTree snapshot fresh on an otherwise-idle
                 // app while an agent is connected. Only ticks when MCP is active.
                 // 2026-08-22(活联门控):心跳改为"最近 30s 内有 MCP 请求"才开 ——

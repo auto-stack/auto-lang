@@ -23250,6 +23250,11 @@ widget NullProbe {
     #[test]
     fn test_a2vue_counter() {
         test_a2vue("001_counter").expect("a2vue counter golden mismatch");
+        // Plan 500 T4：001-helloworld 真源 → vue 臂金样（三臂对拍基线的
+        // vue 臂；queue 臂 = desktop_protocol parity_001_queue_golden，
+        // iced 像素臂留实机档——497 headless 栅格化不可行结论）。
+        test_a2vue_shadcn("p500_001_helloworld")
+            .expect("a2vue p500 001 helloworld golden mismatch");
     }
 
     /// PLAN-026 缺陷③: `!= ""` / `== ""` in computed (script ctx) must emit

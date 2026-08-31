@@ -19,7 +19,7 @@
 use super::codec::CodecError;
 use super::transport::TransportError;
 use super::message::{
-    ControlMsg, DrawList, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
+    ControlMsg, DrawList, FrameMode, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
 };
 
 /// 协议状态机错误（方向错 / 时序错 / 非 Active 操作）。
@@ -106,6 +106,8 @@ pub struct AppEndpoint<S: FrameSource> {
     pub wid: Option<u64>,
     pub surface: Option<u64>,
     pub rect: Option<WRect>,
+    /// 表面帧载荷模式（v1.3：Welcome 协商结果；缺省 Commands）。
+    pub frame_mode: FrameMode,
     /// 观测汇（Attach/Detach 维护）。
     pub observe_sink: Option<String>,
     /// 帧序号（单调）。
@@ -132,6 +134,7 @@ impl<S: FrameSource> AppEndpoint<S> {
             wid: None,
             surface: None,
             rect: None,
+            frame_mode: FrameMode::Commands,
             observe_sink: None,
             next_frame_id: 0,
             last_slot: 0,
@@ -221,6 +224,40 @@ impl<S: FrameSource> AppEndpoint<S> {
         }))
     }
 
+    /// 产一帧像素变体（v1.3 independent 臂）：RGBA 写 `shm` 的 `slot` 槽
+    /// （统一 `[u32 len][载荷]` 槆框架，载荷解释随 Welcome 模式位），管道
+    /// 上只过 FrameReadyPixels 元数据。槽纪律/frame_id 与命令帧同源。
+    pub fn produce_frame_pixels(
+        &mut self,
+        shm: &super::shm::SharedFrameBuffer,
+        rgba: &[u8],
+        w: u32,
+        h: u32,
+        stride: u32,
+    ) -> Result<ProtocolMsg, ProtocolError> {
+        if self.state != AppState::Active {
+            return Err(ProtocolError::NotActive);
+        }
+        let slot = match self.free_slots.pop() {
+            Some(s) => s,
+            None => 1 - self.last_slot,
+        };
+        self.last_slot = slot;
+        self.next_frame_id += 1;
+        shm.write_slot(slot, rgba).map_err(ProtocolError::Shm)?;
+        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyPixels {
+            wid: self.wid.expect("Active 即有 wid"),
+            frame_id: self.next_frame_id,
+            slot,
+            damage: None, // v1.3：damage 作提示（全帧有效）
+            revision: self.session.revision(),
+            w,
+            h,
+            stride,
+            format: super::message::PixelFormat::Rgba8,
+        }))
+    }
+
     /// app 主动请求退出：Active → Closing，产出 ExitRequest。
     pub fn send_exit(&mut self) -> Result<ProtocolMsg, ProtocolError> {
         if self.state != AppState::Active {
@@ -240,11 +277,12 @@ impl<S: FrameSource> AppEndpoint<S> {
         use AppState::*;
         match (&self.state, msg) {
             // --- 握手 ---
-            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect })) => {
+            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode })) => {
                 self.app_id = Some(app_id);
                 self.wid = Some(wid);
                 self.surface = Some(surface);
                 self.rect = Some(rect);
+                self.frame_mode = frame_mode;
                 self.state = Active;
                 self.slot_count = 2;
                 self.free_slots = vec![1]; // 槽 0 视为在写首帧
@@ -357,6 +395,18 @@ pub enum HostAction {
     ComposeFrame { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, payload: DrawList },
     /// 共享内存变体（S9）：适配层从 shm 槽读载荷解码后合成。
     ComposeFrameShared { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, len: u32 },
+    /// 像素帧变体（v1.3）：适配层从 shm 槽读 RGBA 上传合成
+    /// （independent 臂；载荷解释随 Welcome 模式位）。
+    ComposeFramePixels {
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        w: u32,
+        h: u32,
+        stride: u32,
+    },
     /// app 确认退出/请求退出：回收虚拟窗（462 Close 语义）。
     ReclaimWindow { wid: u64 },
     /// 观测上行转发（MCP 代理的最小落点）。
@@ -370,11 +420,19 @@ pub struct HostEndpoint {
     pub app_id: Option<u64>,
     pub wid: Option<u64>,
     pub surface: Option<u64>,
+    /// 表面帧载荷模式（v1.3：activate 时随裁决结果定档）。
+    pub frame_mode: FrameMode,
 }
 
 impl HostEndpoint {
     pub fn listen() -> Self {
-        Self { state: HostState::Listening, app_id: None, wid: None, surface: None }
+        Self {
+            state: HostState::Listening,
+            app_id: None,
+            wid: None,
+            surface: None,
+            frame_mode: FrameMode::Commands,
+        }
     }
 
     /// 宿主侧状态机：处理一条来自 app 的消息，产出动作序列。
@@ -444,6 +502,33 @@ impl HostEndpoint {
                     len,
                 }])
             }
+            // v1.3 independent 臂：像素帧元数据 → 适配层 shm 读 RGBA 上传。
+            (
+                HostState::Active,
+                ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyPixels {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage: _,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                    format: _,
+                }),
+            ) => {
+                let surface = self.surface.expect("Active 即有 surface");
+                Ok(vec![HostAction::ComposeFramePixels {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                }])
+            }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。
             (HostState::Active, ProtocolMsg::Handshake(HandshakeMsg::Ready)) => Ok(vec![]),
             (HostState::Active, ProtocolMsg::Control(ControlMsg::ExitRequest { wid })) => {
@@ -481,13 +566,15 @@ impl HostEndpoint {
     }
 
     /// 适配层完成 allocate + wm_add_win + surface 分配后回调：登记客户端
-    /// 并产出 Welcome（回发 app）。
+    /// 并产出 Welcome（回发 app）。`frame_mode`：v1.3 表面帧载荷模式
+    /// （宿主按 per-App 裁决结果下发；缺省 Commands = 既有行为）。
     pub fn activate(
         &mut self,
         app_id: u64,
         wid: u64,
         surface: u64,
         rect: WRect,
+        frame_mode: FrameMode,
     ) -> Result<ProtocolMsg, ProtocolError> {
         if self.state != HostState::Listening {
             return Err(ProtocolError::WrongState {
@@ -499,7 +586,8 @@ impl HostEndpoint {
         self.app_id = Some(app_id);
         self.wid = Some(wid);
         self.surface = Some(surface);
-        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect }))
+        self.frame_mode = frame_mode;
+        Ok(ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode }))
     }
 
     /// L2"独立出去"：产出 L2Detach（发往 app；回收等 L2Detached 回来）。
@@ -552,6 +640,7 @@ fn msg_name(msg: &ProtocolMsg) -> &'static str {
             super::message::FrameMsg::FrameAck { .. } => "Frame::FrameAck",
             super::message::FrameMsg::CacheControl { .. } => "Frame::CacheControl",
             super::message::FrameMsg::FrameReadyShared { .. } => "Frame::FrameReadyShared",
+            super::message::FrameMsg::FrameReadyPixels { .. } => "Frame::FrameReadyPixels",
         },
         ProtocolMsg::Input(_) => "Input",
         ProtocolMsg::Control(m) => match m {
@@ -632,7 +721,9 @@ mod tests {
         let hello = app.connect().unwrap();
         let actions = host.on_message(hello).unwrap();
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
-        let welcome = host.activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         let replies = app.on_message(welcome).unwrap();
         assert_eq!(replies, vec![ProtocolMsg::Handshake(HandshakeMsg::Ready)]);
         replies
@@ -661,7 +752,9 @@ mod tests {
         assert_eq!(title, "计数器");
         assert_eq!((*width, *height), (480.0, 320.0));
 
-        let welcome = host.activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         assert_eq!(host.state, HostState::Active);
         assert_eq!((host.app_id, host.wid, host.surface), (Some(1), Some(3), Some(42)));
 
@@ -817,7 +910,9 @@ mod tests {
         let actions = host.on_message(hello).unwrap();
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
         // 新 wid/surface（宿主重新分配）。
-        let welcome = host.activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0)).unwrap();
+        let welcome = host
+            .activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .unwrap();
         app.on_message(welcome).unwrap();
         assert_eq!(app.state, AppState::Active);
         assert_eq!(app.wid, Some(9));
@@ -845,7 +940,8 @@ mod tests {
                 app_id: 1,
                 wid: 1,
                 surface: 1,
-                rect: WRect::default()
+                rect: WRect::default(),
+                frame_mode: FrameMode::Commands
             })),
             Err(ProtocolError::WrongState { state: "Detached", msg: "Handshake::Welcome" })
         );
@@ -874,7 +970,7 @@ mod tests {
         let mut app2 = AppEndpoint::new(StubSource::new(), "counter", "c", 480.0, 320.0);
         let mut host2 = HostEndpoint::listen();
         let _ = activate_pair(&mut app2, &mut host2);
-        assert!(matches!(host2.activate(2, 4, 43, WRect::default()),
+        assert!(matches!(host2.activate(2, 4, 43, WRect::default(), FrameMode::Commands),
             Err(ProtocolError::WrongState { state: "Host::Active", msg: "activate()" })));
         // 版本不符拒收。
         let mut host2 = HostEndpoint::listen();

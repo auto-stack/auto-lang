@@ -16,7 +16,7 @@
 | v1.0 | 2026-08-29 | 初版：五通道消息 + 二进制编解码 + 双端状态机 + loopback 传输 + 462 会话绑定 | Plan 386 S1–S7 |
 | v1.1 | 2026-08-29 | 真两进程增量：命名管道传输 / 共享内存帧缓冲 / broker + 入口裁决 / L2 detach-attach（`PROTOCOL_VERSION` 仍为 1——全部为追加式演进，见 §1 纪律） | Plan 386 S8–S12 |
 | v1.2 | 2026-08-29 | 真桌面壳增量：通用 client 运行时 / broker 桌面接入 + 多 App 驻留宿主 / 多 App 压测与内存实测 / 弹性重连 / L1 换窗 / L3 v2a 快照迁移（`StateSnapshot` tag 11 追加；`PROTOCOL_VERSION` 仍为 1） | Plan 480 S1–S10 |
-| v1.3 | 2026-08-31 | **草案**：RenderQueue 并行渲染模式——帧载荷二态化（Commands \| Pixels）+ 三态渲染开关（auto/queue/independent）+ `AppProjector` 覆盖爬坡 + 宿主栅格化产能化 + 三臂 parity 纪律（见 §1.3） | 待立项（Stage 4） |
+| v1.3 | 2026-08-31 | RenderQueue 并行渲染模式——帧载荷二态化（Commands \| Pixels）+ 三态渲染开关（auto/queue/independent）+ `AppProjector` 覆盖爬坡 + 宿主两态合成 + 三臂 parity 纪律（见 §1.3；T1 定案 D1–D4 + 497 快照结论复核） | Plan 500（Stage 4） |
 
 - 版本常量：`desktop_protocol::PROTOCOL_VERSION = 1`，随每条消息信封头过线。
 - **协商规则**：Hello 携带版本；宿主校验不符 → `ProtocolError::VersionMismatch`
@@ -47,35 +47,51 @@
 | L3 v2a 快照 | `ControlMsg::StateSnapshot{wid,payload}`（tag 11 追加，host→app）：载荷 = revision + 原始状态字段（Int/Double/Bool/Str；复合类型 Nil 占位）；child `on_control` 逐字段写回 + revision 续接，应用后产帧同步宿主 | `message.rs` / `client_runtime.rs` / `stage3.rs` |
 | 缺陷修复 | shm 段名 `autodesk-shm-<surface>` 全局撞名（Windows `CreateFileMappingW` 同名 = 打开既有段）→ 加 pid 前缀——压测暴露的真多宿主缺陷 | `host.rs` / `session.rs` |
 
-## 1.3 v1.3 增量（**草案**——Stage 4 RenderQueue 并行渲染模式，待立项）
+## 1.3 v1.3 增量（Stage 4 RenderQueue 并行渲染模式，Plan 500；T1 定案 2026-08-31）
 
 > **动机**：让"app 自带 iced/wgpu 独立渲染"与"app 免 GPU 上下文、宿主侧
 > 栅格化（RenderQueue）"两条路径**在同一桌面内并存**，per-App 启动时选择。
 > 现状：帧通道 v1.0 起即为 commands 载荷（`DrawList`），但 `AppProjector`
 > 覆盖仅 text/button + 线性堆叠（demo 级）；attach 态 app **没有**自渲染的
-> 像素帧路径。两条既有渲染路径（进程内 iced 直挂 / Standalone 独立窗）不动
-> ——I1 零删除不变式延续。
+> 像素帧路径；宿主对 broker 表面的消费停留在 `SurfaceStore` 存取（消息级
+> 断言），**未落像素合成**。两条既有渲染路径（进程内 iced 直挂 /
+> Standalone 独立窗）不动——I1 零删除不变式延续。
 
-| 增量 | 内容 | 落点（预期） |
+| 增量 | 内容 | 落点 |
 |---|---|---|
-| 帧载荷二态 | `FramePayload ::= Commands(DrawList, 既有) \| Pixels{shm_slot, w, h, stride, format}`（`DrawList` kind tag 追加位 / `FrameReadyShared` 变体扩展，遵守 §1 演进纪律） | `message.rs` / `shm.rs` |
-| 三态渲染开关 | per-App：`render: auto \| queue \| independent`——pac.at manifest 字段 + spawn 参数覆盖 + `adjudicate()` 裁决链（spawn 参数 > manifest > auto）。`auto` = 按 §1.3 覆盖度探测降级；`independent` = app 侧离屏 iced/wgpu 自栅格化 → Pixels 帧（attach 态新路径） | `cmd_autodesk.rs` / `client_runtime.rs` |
-| 覆盖度探测 | `AppProjector` 能力表（widget kind × prop 集） vs App 视图清单（装载期静态扫描）→ 可行/不可行判定；不可行且 `auto` → 降级 `independent`（宿主记观测 Log 一行） | `client_runtime.rs` |
-| 投影器爬坡 | `AppProjector` 从 text/button 爬到受控 widget 子集（examples/ui 001–005 所用清单起步：input/checkbox/image/card/scrollable…），布局从线性堆叠扩到既有 `ui/layout` 引擎复用 | `client_runtime.rs` / `ui/layout.rs` |
-| 宿主侧产能化 | DrawList 栅格化器从 demo 级到生产（Quad/Text 抗锯齿、damage 局部重绘、双槽翻面既有语义）；Pixels 合成路径（shm→纹理上传） | `stage3.rs` / host 合成段 |
+| 帧载荷二态 | `FrameMsg::FrameReadyPixels{wid,frame_id,slot,damage,revision,w,h,stride,format}`（tag 8 追加）——像素帧元数据过管道、RGBA 在 shm 槽；`HandshakeMsg::Welcome` 尾部追加 `frame_mode: Commands\|Pixels`（旧端缺省 = Commands，向后兼容）。shm 槽载荷解释随 Welcome 协商的模式位而定（Commands = `[u32 len][DrawList 编码]` 既有格式；Pixels = 定长 `h×stride` RGBA 行序列） | `message.rs` / `shm.rs` |
+| 三态渲染开关 | per-App：`desktop_render: auto \| queue \| independent`——pac.at manifest 字段（Plan 276 既有前端后端 `render:` 字段撞名，语义正交不可复用，执行定案改名）+ spawn 参数 `--autodesk-render=<mode>` 覆盖（CLI `run` 具名 `--render` 撞名）+ 裁决链（spawn 参数 > manifest > auto；进程形态 `adjudicate()` 链正交）。`auto` = 装载期覆盖度探测，可行走 queue、不可行降级 independent（宿主记观测 `Log` 一行） | `cmd_autodesk.rs` / `coverage.rs` / `auto-man pac.rs` |
+| 覆盖度探测 | `AppProjector` 能力表 `Coverage{kinds, props, layouts}` vs App 视图清单（装载期静态扫描）→ 可行/不可行判定；未覆盖项显式 not-yet，**禁止静默错绘** | `client_runtime.rs` |
+| Pixels 路径（independent 臂） | child 自带 iced 运行时 + **隐藏窗**（app 尺寸）→ 状态变更/输入后重渲染 → `iced::window::screenshot` 整窗抓取（497 T1 已验证的唯一公开栅格化通道；物理像素 ×scale_factor）→ RGBA 写 shm 槽 → `FrameReadyPixels`。协议泵从 iced update 周期驱动（消息经 reader 线程转交主线程，`DynamicComponent` 持 Rc 不跨线程） | `client_runtime.rs`（`dual_mode` 同型扩展） |
+| 投影器爬坡 | `AppProjector` 从 text/button 爬到 §1.3.1 清单（001–005 实测集合）；布局 = projector 自带轻量块/行流，**参数源复用 `ui/style::BoxLayout`**（tailwind 类 → padding/margin/gap/尺寸提取，vue 臂同词汇） | `client_runtime.rs` / `ui/style/` |
+| 宿主两态合成 | queue 臂：DrawList → canvas Program 降级（Quad=fill 抗锯齿、Text=fill_text 宿主侧 shaping）挂虚拟窗内容；independent 臂：shm RGBA → `image::Handle::from_rgba` 上传（497 快照同通道）→ Image 挂虚拟窗。`damage` v1.3 作重绘提示（全帧重画，正确性不受损） | `stage3.rs` / 宿主渲染段 |
 | 三臂 parity | iced 直挂 / vue / queue 三臂同源金样（I4 扩展为 I4'：`window_thumbnail` 同族纪律）——queue 臂缺失 lowering 的 widget 在覆盖表中标 not-yet，**禁止静默错绘** | 金样体系 |
 
-**深水决策点**（Stage 4 计划 T1 定案）：
+### 1.3.1 爬坡目标集（001–005 实测清单，T1 扫描定案）
 
-| # | 决策 | 备选与倾向 |
-|---|---|---|
-| D1 | `Text` op 形态 | A：字符串+样式（宿主跑 cosmic-text，布局宿主侧）vs B：已定位 glyph run（app 侧布局完再下发）。倾向 B（app 侧布局一次，宿主纯栅格化，输入命中坐标与绘制同源） |
-| D2 | 布局引擎归属 | projector 复用 `ui/layout`（同源）vs iced 离屏布局。倾向前者（协议泵不可依赖 iced runtime） |
-| D3 | 输入命中细化 | 480 已有"WM 命中窗归属 + button 命中区推导"；扩为 widget 命中区上报（AppProjector 布局期顺产交互区表） |
-| D4 | IME/弹层 | `ImePreedit.cursor` 矩形/popover 锚点在 queue 臂的坐标下发——随 D1 定案同批 |
+| 示例 | widget kind | 关键 prop/事件 | 布局形态 |
+|---|---|---|---|
+| 001-helloworld | text | style(text-4xl/font-bold/text-primary)、selectable | center |
+| 002-counter | text（FStr 插值）、button | onclick 内联 lambda | center、row |
+| 003-converter | text（style）、input | value 绑定、oninput 内联、placeholder | center、col(gap/flex-1/p/bg/border/rounded/shadow/max-w/mx)、row(gap) |
+| 004-profile-card | text（selectable）、image、button | image src 绑定 + style、button style | center、col(渐变 bg/-mt/items-center/gap)、row(gap/items-center) |
+| 005-login | h2、text、input、button、a | input type:password、onclick/oninput msg 路径、`if` 条件块 | center、col、row(justify-center/items-center) |
+
+爬坡目标集（`Coverage` 基线）：kinds = text（含 h1–h6/p/span/label 变体）、button、input、image、a；props = text{text/style/selectable/插值}、button{label/style/onclick 零参}、input{value/oninput 零参/placeholder/type}、image{src/style}、a{text/style}；layouts = center、col、row + BoxLayout 参数子集（padding/gap/margin/固定尺寸/圆角矩形底/对齐）+ `if` 条件块。样式**语义子集化**：style 串按 `ui/style` 解析取布局/底色/前景子集，无法解析的类不静默丢弃——整 widget 记 not-yet。
+
+### 1.3.2 深水决策定案（T1，2026-08-31）
+
+| # | 决策 | **定案** | 依据 |
+|---|---|---|---|
+| D1 | `Text` op 形态 | **A：字符串+样式，宿主侧 shaping**（草案倾向 B 被推翻） | ①`DrawOp::Text` 线格式 v1.0 冻结即"shaping 留宿主"（413 §7 约束同款）——B 需新增 glyph run op + 字体图集协议，违背追加式演进的经济性；②宿主（ui-iced）已带 iced 文本栈（canvas `fill_text`），零新依赖；③B 要把 shaping 引擎塞进 queue 臂 child，与"app 免 GPU/轻 child"初衷相悖；④命中坐标同源性：命中判定用投影器 widget 级矩形（非 glyph 级），与宿主绘制的偏差不构成命中错误 |
+| D2 | 布局引擎归属 | **projector 自带轻量块/行流布局，参数源复用 `ui/style::BoxLayout`**（草案"复用 `ui/layout`"前提有误） | ①`ui/layout` 实为桌面**窗位**引擎（Free/Grid/MasterStack，R9），非 widget 布局——不可复用；②iced 离屏布局要求 queue 臂 child 引 iced runtime，违背独立性；③`ui/style/layout_extract.rs` 的 `BoxLayout`（tailwind 类 → padding/margin/gap/width/height/max_w 像素提取）正是两渲染臂的共同词汇，零成本复用 |
+| D3 | 输入命中细化 | **widget 交互区表上报**：投影器布局期顺产 `Vec<(WRect, kind, action)>`（button→onclick token；input→聚焦目标 + 文本插入路由；a→link） | 480 的 button 命中区推导泛化；input 臂 = 命中聚焦 + KeyPressed/CharTyped 按聚焦目标写回 value 绑定（001–005 的 `if` 错误提示随 revision 重渲染） |
+| D4 | IME/弹层坐标下发 | **形态定案、v1.3 不落线**：`ControlMsg::ImeCursor{wid,rect}`（tag 12 追加）为 queue 臂 IME 闭环的既定形态；001–005 验收口径 = CharTyped 闭环（非 IME），IME 光标下发 + popover 锚点登记 not-yet（Stage 5 随 input 臂 IME 交付） | 无消费面不占协议号位——v1.3 落线的只有 T1–T4 用到的变体（`FrameReadyPixels`/`Welcome.frame_mode`） |
+
+**pixels 格式定案**：v1 仅 RGBA8 **straight（非预乘）**、`stride = w×4`、`format` 字段仅 1=RGBA8（扩展位）。宿主经 `image::Handle::from_rgba` 上传（497 快照同通道口径："预乘与否同截图原样——`from_rgba` 直接受纳"）；预乘换算在 iced 渲染器内部与 494 预乘 alpha swapchain 衔接，协议层不感知。
 
 **分期**：Stage 4（本增量：二态载荷+开关+001–005 子集端到端+parity 首条）
-→ Stage 5（覆盖爬坡全 widget 族，parity 门禁进日常档）→ Stage 6（默认
+→ Stage 5（覆盖爬坡全 widget 族 + IME 光标下发，parity 门禁进日常档）→ Stage 6（默认
 策略 + web/远程端消费同一 command 流）。
 
 ## 2. Wire Format（信封）

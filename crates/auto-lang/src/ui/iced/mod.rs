@@ -11,6 +11,7 @@ pub mod renderer;
 pub mod snapshot;
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
+pub mod broker_surface;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。
 pub mod selection;
 // Plan 481: 可选文本 widget（text 的选择/复制变体，advanced Widget）。
@@ -22,5 +23,5 @@ pub mod selectable_text;
 mod layout_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};
+pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text};
 pub(crate) use renderer::encode_payload;
