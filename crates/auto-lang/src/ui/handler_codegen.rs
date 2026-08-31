@@ -130,12 +130,30 @@ pub type SynthResult<T> = Result<T, String>;
 /// This transparently covers assignment LHS too, because `a = b` parses as
 /// `Expr::Bina(lhs, Op::Asn, rhs)` with `lhs` an `Expr`.
 pub fn rewrite_state_refs_stmts(stmts: &mut [Stmt], state_fields: &HashSet<String>) {
+    let mut locals = HashSet::new();
+    rewrite_state_refs_stmts_with_locals(stmts, state_fields, &mut locals);
+}
+
+pub fn rewrite_state_refs_stmts_with_locals(
+    stmts: &mut [Stmt],
+    state_fields: &HashSet<String>,
+    locals: &mut HashSet<String>,
+) {
     for stmt in stmts.iter_mut() {
-        rewrite_stmt(stmt, state_fields);
+        rewrite_stmt_with_locals(stmt, state_fields, locals);
     }
 }
 
 fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
+    let mut locals = HashSet::new();
+    rewrite_stmt_with_locals(stmt, state_fields, &mut locals);
+}
+
+fn rewrite_stmt_with_locals(
+    stmt: &mut Stmt,
+    state_fields: &HashSet<String>,
+    locals: &mut HashSet<String>,
+) {
     // Plan 401/VM-routing: `router.push(path)` → `__state.__current_route = path`.
     // `router.push(...)` parses as Expr::Call with name Dot(Ident("router"),
     // "push"); we rewrite the whole statement into a state assignment so the
@@ -178,7 +196,7 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
         _ => None,
     };
     if let Some(mut path_expr) = nav_path {
-        rewrite_expr(&mut path_expr, state_fields);
+        rewrite_expr_with_locals(&mut path_expr, state_fields, locals);
         *stmt = Stmt::Expr(Expr::Bina(
             Box::new(Expr::Dot(
                 Box::new(Expr::Ident(Name::from(STATE_PARAM))),
@@ -190,37 +208,56 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
         return;
     }
     match stmt {
-        Stmt::Expr(e) => rewrite_expr(e, state_fields),
-        Stmt::Store(s) => rewrite_expr(&mut s.expr, state_fields),
-        Stmt::Return(e) | Stmt::Reply(e) => rewrite_expr(e, state_fields),
+        Stmt::Expr(e) => rewrite_expr_with_locals(e, state_fields, locals),
+        Stmt::Store(s) => {
+            rewrite_expr_with_locals(&mut s.expr, state_fields, locals);
+            locals.insert(s.name.to_string());
+        }
+        Stmt::Return(e) | Stmt::Reply(e) => rewrite_expr_with_locals(e, state_fields, locals),
         Stmt::If(If { branches, else_ }) => {
             for Branch { cond, body } in branches.iter_mut() {
-                rewrite_expr(cond, state_fields);
-                rewrite_state_refs_stmts(&mut body.stmts, state_fields);
+                rewrite_expr_with_locals(cond, state_fields, locals);
+                let mut branch_locals = locals.clone();
+                rewrite_state_refs_stmts_with_locals(&mut body.stmts, state_fields, &mut branch_locals);
             }
             if let Some(else_body) = else_ {
-                rewrite_state_refs_stmts(&mut else_body.stmts, state_fields);
+                let mut else_locals = locals.clone();
+                rewrite_state_refs_stmts_with_locals(&mut else_body.stmts, state_fields, &mut else_locals);
             }
         }
         Stmt::For(f) => {
-            rewrite_expr(&mut f.range, state_fields);
+            rewrite_expr_with_locals(&mut f.range, state_fields, locals);
+            let mut loop_locals = locals.clone();
+            loop_locals.insert(f.iter.to_string());
             if let Some(init) = f.init.as_mut() {
-                rewrite_stmt(init, state_fields);
+                rewrite_stmt_with_locals(init, state_fields, &mut loop_locals);
             }
-            rewrite_state_refs_stmts(&mut f.body.stmts, state_fields);
+            rewrite_state_refs_stmts_with_locals(&mut f.body.stmts, state_fields, &mut loop_locals);
         }
-        Stmt::Block(b) => rewrite_state_refs_stmts(&mut b.stmts, state_fields),
+        Stmt::Block(b) => {
+            let mut block_locals = locals.clone();
+            rewrite_state_refs_stmts_with_locals(&mut b.stmts, state_fields, &mut block_locals);
+        }
         // Fn bodies inside handlers are unusual; handle defensively.
-        Stmt::Fn(fn_decl) => rewrite_state_refs_stmts(&mut fn_decl.body.stmts, state_fields),
+        Stmt::Fn(fn_decl) => {
+            let mut fn_locals = locals.clone();
+            for p in &fn_decl.params {
+                fn_locals.insert(p.name.to_string());
+            }
+            rewrite_state_refs_stmts_with_locals(&mut fn_decl.body.stmts, state_fields, &mut fn_locals);
+        }
         // Plan 446 批一(auto-musk 045 现场):try/catch/finally 体同样走查。
         // 此前缺臂,体内 `.state` 读写漏成裸 self → VM 合成 handler 报
         // "Undefined variable: self"(musk 七个 try/catch 形态 HTTP handler
         // 全体毒化)。镜像 Block 的处理。
         Stmt::Try(t) => {
-            rewrite_state_refs_stmts(&mut t.body.stmts, state_fields);
-            rewrite_state_refs_stmts(&mut t.catch_body.stmts, state_fields);
+            let mut try_locals = locals.clone();
+            rewrite_state_refs_stmts_with_locals(&mut t.body.stmts, state_fields, &mut try_locals);
+            let mut catch_locals = locals.clone();
+            rewrite_state_refs_stmts_with_locals(&mut t.catch_body.stmts, state_fields, &mut catch_locals);
             if let Some(fb) = t.finally_body.as_mut() {
-                rewrite_state_refs_stmts(&mut fb.stmts, state_fields);
+                let mut finally_locals = locals.clone();
+                rewrite_state_refs_stmts_with_locals(&mut fb.stmts, state_fields, &mut finally_locals);
             }
         }
         _ => {}
@@ -228,6 +265,15 @@ fn rewrite_stmt(stmt: &mut Stmt, state_fields: &HashSet<String>) {
 }
 
 fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
+    let mut locals = HashSet::new();
+    rewrite_expr_with_locals(e, state_fields, &mut locals);
+}
+
+fn rewrite_expr_with_locals(
+    e: &mut Expr,
+    state_fields: &HashSet<String>,
+    locals: &mut HashSet<String>,
+) {
     // Plan 448 B2: compound assignment whose LHS is (or will become) a field
     // access desugars to `lhs = lhs op rhs` BEFORE the state rewrite. VM
     // codegen's compound-assignment path only accepts Ident LHS, while plain
@@ -415,7 +461,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                         let mut cloned = arg.clone();
                         match &mut cloned {
                             crate::ast::Arg::Pos(ex) | crate::ast::Arg::Pair(_, ex) => {
-                                rewrite_expr(ex, state_fields);
+                                rewrite_expr_with_locals(ex, state_fields, locals);
                             }
                             crate::ast::Arg::Name(_) => {}
                         }
@@ -469,7 +515,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
                         let mut cloned = arg.clone();
                         match &mut cloned {
                             crate::ast::Arg::Pos(ex) | crate::ast::Arg::Pair(_, ex) => {
-                                rewrite_expr(ex, state_fields);
+                                rewrite_expr_with_locals(ex, state_fields, locals);
                             }
                             crate::ast::Arg::Name(_) => {}
                         }
@@ -529,7 +575,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
     // Compute the replacement without holding a mutable borrow into `e`, so the
     // reassignment below type-checks.
     let replacement: Option<Expr> = match e {
-        Expr::Ident(name) if state_fields.contains(name.as_str()) => Some(Expr::Dot(
+        Expr::Ident(name) if state_fields.contains(name.as_str()) && !locals.contains(name.as_str()) => Some(Expr::Dot(
             Box::new(Expr::Ident(Name::from(STATE_PARAM))),
             name.clone(),
         )),
@@ -550,7 +596,7 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
         Expr::Dot(obj, field)
             if matches!(
                 obj.as_ref(),
-                Expr::Ident(n) if state_fields.contains(n.as_str())
+                Expr::Ident(n) if state_fields.contains(n.as_str()) && !locals.contains(n.as_str())
             ) =>
         {
             // Safe to unwrap: the match guard guarantees obj is an Ident.
@@ -578,47 +624,47 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
     // Phase 2: recurse into sub-expressions.
     match e {
         Expr::Bina(l, _, r) | Expr::NullCoalesce(l, r) => {
-            rewrite_expr(l, state_fields);
-            rewrite_expr(r, state_fields);
+            rewrite_expr_with_locals(l, state_fields, locals);
+            rewrite_expr_with_locals(r, state_fields, locals);
         }
-        Expr::Unary(_, o) => rewrite_expr(o, state_fields),
+        Expr::Unary(_, o) => rewrite_expr_with_locals(o, state_fields, locals),
         Expr::View(o) | Expr::Mut(o) | Expr::Move(o) | Expr::Take(o)
         | Expr::ErrorPropagate(o) | Expr::Some(o) | Expr::Ok(o) | Expr::Err(o)
         | Expr::BoxExpr(o) | Expr::ArcExpr(o) | Expr::Yield(o) => {
-            rewrite_expr(o, state_fields)
+            rewrite_expr_with_locals(o, state_fields, locals)
         }
-        Expr::Cast { expr, .. } | Expr::To { expr, .. } => rewrite_expr(expr, state_fields),
-        Expr::Await { expr } | Expr::Go { expr } => rewrite_expr(expr, state_fields),
-        Expr::TupleDestruct { expr, .. } => rewrite_expr(expr, state_fields),
+        Expr::Cast { expr, .. } | Expr::To { expr, .. } => rewrite_expr_with_locals(expr, state_fields, locals),
+        Expr::Await { expr } | Expr::Go { expr } => rewrite_expr_with_locals(expr, state_fields, locals),
+        Expr::TupleDestruct { expr, .. } => rewrite_expr_with_locals(expr, state_fields, locals),
         Expr::Index(a, i) => {
-            rewrite_expr(a, state_fields);
-            rewrite_expr(i, state_fields);
+            rewrite_expr_with_locals(a, state_fields, locals);
+            rewrite_expr_with_locals(i, state_fields, locals);
         }
         Expr::Array(elems) => {
             for el in elems {
-                rewrite_expr(el, state_fields);
+                rewrite_expr_with_locals(el, state_fields, locals);
             }
         }
         Expr::Tuple(elems) => {
             for el in elems {
-                rewrite_expr(el, state_fields);
+                rewrite_expr_with_locals(el, state_fields, locals);
             }
         }
         Expr::Object(pairs) => {
             for p in pairs {
-                rewrite_expr(&mut p.value, state_fields);
+                rewrite_expr_with_locals(&mut p.value, state_fields, locals);
             }
         }
         Expr::FStr(f) => {
             for part in &mut f.parts {
-                rewrite_expr(part, state_fields);
+                rewrite_expr_with_locals(part, state_fields, locals);
             }
         }
         Expr::Call(c) => {
-            rewrite_expr(&mut c.name, state_fields);
+            rewrite_expr_with_locals(&mut c.name, state_fields, locals);
             for arg in &mut c.args.args {
                 match arg {
-                    Arg::Pos(ex) | Arg::Pair(_, ex) => rewrite_expr(ex, state_fields),
+                    Arg::Pos(ex) | Arg::Pair(_, ex) => rewrite_expr_with_locals(ex, state_fields, locals),
                     Arg::Name(_) => {}
                 }
             }
@@ -629,20 +675,29 @@ fn rewrite_expr(e: &mut Expr, state_fields: &HashSet<String>) {
         // Dot, not an Ident), so without recursing, the inner `self` survives and
         // codegen reports "Undefined variable: self".
         Expr::Dot(obj, _) => {
-            rewrite_expr(obj, state_fields);
+            rewrite_expr_with_locals(obj, state_fields, locals);
         }
-        Expr::Block(b) => rewrite_state_refs_stmts(&mut b.stmts, state_fields),
+        Expr::Block(b) => {
+            let mut block_locals = locals.clone();
+            rewrite_state_refs_stmts_with_locals(&mut b.stmts, state_fields, &mut block_locals);
+        }
         Expr::If(If { branches, else_ }) => {
             for Branch { cond, body } in branches {
-                rewrite_expr(cond, state_fields);
-                rewrite_state_refs_stmts(&mut body.stmts, state_fields);
+                rewrite_expr_with_locals(cond, state_fields, locals);
+                let mut branch_locals = locals.clone();
+                rewrite_state_refs_stmts_with_locals(&mut body.stmts, state_fields, &mut branch_locals);
             }
             if let Some(eb) = else_ {
-                rewrite_state_refs_stmts(&mut eb.stmts, state_fields);
+                let mut else_locals = locals.clone();
+                rewrite_state_refs_stmts_with_locals(&mut eb.stmts, state_fields, &mut else_locals);
             }
         }
         Expr::Lambda(fn_decl) => {
-            rewrite_state_refs_stmts(&mut fn_decl.body.stmts, state_fields);
+            let mut lambda_locals = locals.clone();
+            for p in &fn_decl.params {
+                lambda_locals.insert(p.name.to_string());
+            }
+            rewrite_state_refs_stmts_with_locals(&mut fn_decl.body.stmts, state_fields, &mut lambda_locals);
         }
         _ => {}
     }
@@ -765,9 +820,11 @@ fn synthesize_handler_fn(
         Type::User(state_type.clone()),
         None,
     )];
+    let mut local_vars = HashSet::new();
     // Remaining params come from the widget's handler_params map.
     if let Some(pnames) = widget.handler_params.get(event_pattern) {
         for pn in pnames {
+            local_vars.insert(pn.clone());
             params.push(Param::new(
                 Name::from(pn.as_str()),
                 handler_param_type(widget, &bare),
@@ -778,7 +835,7 @@ fn synthesize_handler_fn(
 
     // Clone + rewrite the body.
     let mut stmts: Vec<Stmt> = body_stmts.to_vec();
-    rewrite_state_refs_stmts(&mut stmts, state_fields);
+    rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut local_vars);
 
     let body = Body {
         stmts,
@@ -1362,6 +1419,7 @@ fn synthesize_handler_fn_from_decl_with_store(
         Type::User(state_type.clone()),
         None,
     )];
+    let mut local_vars = HashSet::new();
     // Remaining params come from the matching on handler's params list.
     if let Some(pnames) = decl
         .on
@@ -1370,6 +1428,7 @@ fn synthesize_handler_fn_from_decl_with_store(
         .map(|h| h.params.clone())
     {
         for pn in pnames {
+            local_vars.insert(pn.to_string());
             params.push(Param::new(
                 Name::from(pn.as_str()),
                 handler_param_type_from_decl(decl, &bare),
@@ -1380,7 +1439,7 @@ fn synthesize_handler_fn_from_decl_with_store(
 
     // Clone + rewrite the body (Plan 370 D-GAP-4: store context is in thread_local).
     let mut stmts: Vec<Stmt> = body_stmts.to_vec();
-    rewrite_state_refs_stmts(&mut stmts, state_fields);
+    rewrite_state_refs_stmts_with_locals(&mut stmts, state_fields, &mut local_vars);
 
     // Plan 370 D-GAP-4: for child widgets, strip callback prop calls (on_delete,
     // on_tags_changed, etc.) — they're routed by the renderer (DynamicMessage),
