@@ -1285,24 +1285,14 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
         if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(content.into_bytes());
-                i
-            };
-            vm.rc_push_str_idx(task, idx as usize);
+            let idx = vm.add_string(content.into_bytes());
+            vm.rc_push_str_idx(task, idx);
             return Ok(());
         }
         if let Some(Err(e)) = result {
             task.waiting_http_request_id = None;
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(e.into_bytes());
-                i
-            };
-            vm.rc_push_str_idx(task, idx as usize);
+            let idx = vm.add_string(e.into_bytes());
+            vm.rc_push_str_idx(task, idx);
             return Ok(());
         }
         // Still pending — yield again.
@@ -2591,13 +2581,8 @@ pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let json_val = vm_value_to_json(vm, &value, 0)?;
     let s = serde_json::to_string(&json_val).unwrap_or_default();
     let bytes = s.into_bytes();
-    let str_idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let idx = strings.len();
-        strings.push(bytes);
-        idx as u32
-    };
-    vm.rc_push_str_idx(task, str_idx as usize);
+    let str_idx = vm.add_string(bytes);
+    vm.rc_push_str_idx(task, str_idx);
     Ok(())
 }
 
@@ -4025,13 +4010,8 @@ pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         sessions.insert(session_id.clone(), data);
     }
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(session_id.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(session_id.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4046,13 +4026,8 @@ pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .and_then(|sessions| sessions.get(&id).cloned())
         .unwrap_or_else(|| "null".to_string());
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(data.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(data.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4158,13 +4133,8 @@ pub fn shim_openapi_generate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     });
 
     let json_str = serde_json::to_string_pretty(&spec).unwrap_or_default();
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(json_str.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(json_str.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4228,13 +4198,8 @@ pub fn shim_template_render(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let data: serde_json::Value = serde_json::from_str(&data_json).unwrap_or(serde_json::Value::Null);
     let rendered = render_template(&template_str, &data);
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(rendered.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(rendered.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -6010,6 +5975,37 @@ pub fn shim_http_clear_default_auth(task: &mut AutoTask, _vm: &AutoVM) -> Result
     Ok(())
 }
 
+static WARNED_API_NOOP: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// PLAN-053 P-053-4: merged 模式下 #[api] 调用桩体的显式一次性告警
+pub fn shim_warn_api_noop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let name_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, name_nv);
+    let api_name = if auto_val::is_string(name_nv) {
+        let idx = auto_val::decode_string(name_nv) as usize;
+        vm.strings
+            .read()
+            .unwrap()
+            .get(idx)
+            .cloned()
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default()
+    } else {
+        auto_val::decode_i32(name_nv).to_string()
+    };
+    if let Ok(mut set) = WARNED_API_NOOP.lock() {
+        if set.insert(api_name.clone()) {
+            eprintln!(
+                "[VM-API] merged-mode #[api] \"{}\" no-op (set AUTO_VM_MERGE=0 or AUTO_BACKEND=<url> to enable HTTP bridge)",
+                api_name
+            );
+        }
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
 fn spawn_async_http_handle(
     method: String,
     url: String,
@@ -6226,13 +6222,8 @@ pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Helper: push a response-body string onto the stack as a tagged string.
 fn push_string_result(task: &mut AutoTask, vm: &AutoVM, s: String) -> Result<(), VMError> {
     let bytes = s.into_bytes();
-    let str_idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let idx = strings.len();
-        strings.push(bytes);
-        idx as u32
-    };
-    vm.rc_push_str_idx(task, str_idx as usize);
+    let str_idx = vm.add_string(bytes);
+    vm.rc_push_str_idx(task, str_idx);
     Ok(())
 }
 
@@ -7319,6 +7310,9 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 192: Rust stdlib dynamic dispatch (manual — uses heap objects)
     natives.register_shim_by_name("auto.rust_stdlib.dispatch", shim_rust_stdlib_dispatch);
 
+    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 告警
+    natives.register_shim_by_name("auto.vm.warn_api_noop", shim_warn_api_noop);
+
     // Plan 263 Phase 2-3: Test runners (manual shims — calls discover/run from test_runner)
     natives.register_shim_by_name("auto.test.run_a2r_dir", shim_test_run_a2r_dir);
     natives.register_shim_by_name("auto.test.run_vm_dir", shim_test_run_vm_dir);
@@ -7629,11 +7623,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 });
             match stem {
                 Some(s) => {
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        strings.push(s.into_bytes());
-                        strings.len() - 1
-                    };
+                    let idx = vm.add_string(s.into_bytes());
                     task.ram.push_nv(auto_val::encode_string(idx as u32));
                 }
                 None => task.ram.push_nv(auto_val::encode_null()),

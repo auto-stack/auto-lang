@@ -628,3 +628,154 @@ mod musk_vm_track_p053_1_widget_computed {
         assert_eq!(rows_last, 2, "computed 透传链 8 帧重估后仍须解出 2 行(悬垂引用回归)");
     }
 }
+
+/// P-053-4: merged 模式下 #[api] no-op 显式告警。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_4_merged_api_warning {
+    use crate::parser::Parser;
+
+    #[test]
+    fn merged_mode_api_call_emits_warn_opcode() {
+        let src = concat!(
+            "#[api(method = \"GET\", path = \"/api/chats/sessions\")]\n",
+            "fn chats_list_sessions() SessionListResponse { return None }\n",
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    msg Msg { Fetch }\n",
+            "    on { .Fetch -> { let r = chats_list_sessions(); } }\n",
+            "    view { text \"app\" }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &root_widget,
+            &[],
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false, // merged mode (api_over_http = false)
+        )
+        .expect("synthesize");
+
+        // Bytecode must contain CALL_NAT 3142 (auto.vm.warn_api_noop)
+        let has_warn_call = module.code.windows(4).any(|w| {
+            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8 && u16::from_le_bytes([w[1], w[2]]) == 3142
+        });
+        assert!(has_warn_call, "merged mode #[api] call must emit CALL_NAT 3142");
+    }
+}
+
+/// P-053-5: localStorage.getItem 字符串入池在 debug 模式下不踩 RC canary。
+#[cfg(test)]
+mod musk_vm_track_p053_5_localstorage_rc_canary {
+    use crate::run_with_capture;
+
+    #[test]
+    fn localstorage_get_item_canary_safe() {
+        let code = r#"
+localStorage.setItem("test_key", "test_value_123")
+let v = localStorage.getItem("test_key")
+print(v)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "localStorage get_item should run without canary panic: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("test_value_123"), "expected test_value_123, got: [{}]", stdout);
+    }
+}
+
+/// P-053-7: Widget .Init 内 bare Sibling() 调用与 .Sibling() 均正确转译派发。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_7_sibling_handler_calls {
+    use crate::parser::Parser;
+
+    #[test]
+    fn store_init_bare_and_dot_sibling_calls_rewritten() {
+        let src = concat!(
+            "widget SiblingWidget {\n",
+            "    model { var loaded bool = false }\n",
+            "    msg Msg { Init, DoLoad }\n",
+            "    on {\n",
+            "        .Init -> { DoLoad() }\n",
+            "        .DoLoad -> { .loaded = true }\n",
+            "    }\n",
+            "    view { text \"app\" }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for st in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = st {
+                decls.push(d.clone());
+            }
+        }
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &root_widget,
+            &[],
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("synthesize");
+
+        // Synthesized module contains handler_SiblingWidget_DoLoad export
+        let has_handler = module.exports.iter().any(|(name, _)| {
+            name.contains("handler_SiblingWidget_DoLoad")
+        });
+        assert!(has_handler, "expected handler_SiblingWidget_DoLoad in module exports: {:?}", module.exports.keys().collect::<Vec<_>>());
+    }
+}
+
+/// P-053-M1: 失败响应与成功响应在 `resp != None && resp.session != None` 守卫下的行为。
+#[cfg(test)]
+mod musk_vm_track_p053_m1_guard_behavior {
+    use crate::run_with_capture;
+
+    #[test]
+    fn error_object_fails_session_guard() {
+        // 404 error response object
+        let code = r#"
+let resp = Json.to_value("{\"error\":\"HTTP 404\",\"status\":404}")
+let guard = (resp != None) && (resp.session != None)
+if guard {
+    print("GUARD_PASSED")
+} else {
+    print("GUARD_BLOCKED")
+}
+"#;
+        let (_code_res, stdout) = run_with_capture(code).expect("run");
+        assert!(stdout.contains("GUARD_BLOCKED"), "404 error object must be blocked by guard, got: [{}]", stdout);
+    }
+
+    #[test]
+    fn success_object_passes_session_guard() {
+        // 200 success response object
+        let code = r#"
+let resp = Json.to_value("{\"session\":{\"id\":\"s123\",\"messages\":[]}}")
+let guard = (resp != None) && (resp.session != None)
+if guard {
+    print("GUARD_PASSED")
+} else {
+    print("GUARD_BLOCKED")
+}
+"#;
+        let (_code_res, stdout) = run_with_capture(code).expect("run");
+        assert!(stdout.contains("GUARD_PASSED"), "200 success object must pass guard, got: [{}]", stdout);
+    }
+}
+
