@@ -446,6 +446,7 @@ mod tests {
                         code,
                         source_path: Some(e.entry.to_string_lossy().to_string()),
                         title: Some(e.title.clone()),
+                        daemon: None,
                     })
                 })
             })

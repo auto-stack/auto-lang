@@ -288,6 +288,14 @@ pub struct DesktopState {
     /// off）。on = docked 原生窗口垫到桌面窗口下方 + SetWindowRgn 洞排除
     /// （视觉+输入穿透）；运行时回退（win32 失败）置回 false 并留日志。
     pub hole_mode: bool,
+    /// Plan 501：最近一次 os-config daemon 检活结果（launch 声明
+    /// `daemon: autoos` 的 App 时更新；boot 不预检）。settings 入口徽标
+    ///（offline 置灰/提示，T5）消费。
+    pub osconfig_status: crate::ui::osconfig_daemon::DaemonStatus,
+    /// Plan 501：daemon 检活注入位（单测假实现；None = 生产
+    /// [`crate::ui::osconfig_daemon::ensure_ready`]）。launch 执行臂消费。
+    pub osconfig_daemon_probe:
+        Option<std::sync::Arc<dyn Fn() -> crate::ui::osconfig_daemon::DaemonStatus + Send + Sync>>,
 }
 
 impl DesktopState {
@@ -320,6 +328,8 @@ impl DesktopState {
                 "015-notes".to_string(),
             ],
             hole_mode: false,
+            osconfig_status: crate::ui::osconfig_daemon::DaemonStatus::default(),
+            osconfig_daemon_probe: None,
         }
     }
 
@@ -1182,6 +1192,20 @@ pub struct LaunchSpec {
     pub source_path: Option<String>,
     /// chrome 标题（None = 根 widget 名，462 行为）。
     pub title: Option<String>,
+    /// Plan 501：依赖的守护进程声明（注册表条目 pac `daemon:` 透传，如
+    /// `autoos`——launch 前确保 daemon 就绪并注入 env；None = 无依赖）。
+    pub daemon: Option<String>,
+}
+
+impl Default for LaunchSpec {
+    fn default() -> Self {
+        Self {
+            code: String::new(),
+            source_path: None,
+            title: None,
+            daemon: None,
+        }
+    }
 }
 
 /// Plan 463 T5：shell 特权 App 的窗口级字段垫片。shell 无虚拟窗/无独立
@@ -1562,6 +1586,26 @@ impl DesktopSession {
             .clone()
             .ok_or_else(|| "app registry unavailable".to_string())?;
         let spec = resolver(name).ok_or_else(|| format!("app not found: {name}"))?;
+        // Plan 501：daemon 依赖 App（pac `daemon: autoos`）——编译装载（Init
+        // 链打 daemon）前确保 os-config daemon 就绪（检活/spawn/就绪轮询）
+        // 并注入 AUTOOS_DAEMON env（进程级——VM Env.get 即进程 env，os-config
+        // api.at 既有约定）。Offline 不阻断 launch：App 自带 daemon_view
+        // 连接测试 UX（G1 不重复造）；原因记 osconfig_status 供徽标。
+        if spec.daemon.as_deref() == Some("autoos") {
+            let status = match &self.desktop.osconfig_daemon_probe {
+                Some(probe) => probe(),
+                None => crate::ui::osconfig_daemon::ensure_ready(
+                    &crate::ui::osconfig_daemon::default_daemon_url(),
+                ),
+            };
+            if let crate::ui::osconfig_daemon::DaemonStatus::Running(url) = &status {
+                for (key, value) in crate::ui::osconfig_daemon::env_for(url) {
+                    // 单键短值写，UI 线程唯一写点（stdlib Env.set 同约定）。
+                    std::env::set_var(&key, &value);
+                }
+            }
+            self.desktop.osconfig_status = status;
+        }
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
             .map_err(|e| format!("build `{name}` failed: {e}"))?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
@@ -3227,6 +3271,7 @@ mod tests {
                 code: T4_PROBE_AT.to_string(),
                 source_path: None,
                 title: Some("Probe App".to_string()),
+                daemon: None,
             })
         }));
         ds
@@ -3240,6 +3285,93 @@ mod tests {
         assert!(host.wm.wins.contains_key(&wid), "LaunchApp 后 WmState 增窗");
         assert_eq!(host.wm.focused, Some(wid), "新窗即焦点");
         assert_eq!(host.wm.wins[&wid].title, "Probe App", "标题来自 LaunchSpec");
+    }
+
+    // ---- Plan 501：launch 执行臂 daemon 就绪 + env 注入 ----
+
+    #[test]
+    fn launch_app_daemon_ready_injects_env() {
+        let mut ds = t4_session_with_resolver();
+        // resolver 换 daemon 声明条目；探活注入 Running（测试端口 url）。
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: T4_PROBE_AT.to_string(),
+                source_path: None,
+                title: Some("Probe App".to_string()),
+                daemon: Some("autoos".to_string()),
+            })
+        }));
+        ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
+            crate::ui::osconfig_daemon::DaemonStatus::Running(
+                "http://127.0.0.1:17799".to_string(),
+            )
+        }));
+        ds.launch_app("probe").expect("daemon 就绪 launch ok");
+        assert_eq!(
+            std::env::var(crate::ui::osconfig_daemon::ENV_DAEMON).as_deref(),
+            Ok("http://127.0.0.1:17799"),
+            "AUTOOS_DAEMON 注入探活返回的 url"
+        );
+        assert_eq!(
+            ds.desktop.osconfig_status,
+            crate::ui::osconfig_daemon::DaemonStatus::Running(
+                "http://127.0.0.1:17799".to_string()
+            ),
+            "检活结果记入会话域（徽标消费）"
+        );
+        std::env::remove_var(crate::ui::osconfig_daemon::ENV_DAEMON);
+    }
+
+    #[test]
+    fn launch_app_daemon_offline_still_launches_without_env() {
+        let mut ds = t4_session_with_resolver();
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe").then(|| LaunchSpec {
+                code: T4_PROBE_AT.to_string(),
+                source_path: None,
+                title: Some("Probe App".to_string()),
+                daemon: Some("autoos".to_string()),
+            })
+        }));
+        ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
+            crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())
+        }));
+        std::env::remove_var(crate::ui::osconfig_daemon::ENV_DAEMON);
+        let wid = ds.launch_app("probe").expect("Offline 不阻断 launch");
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.wins.contains_key(&wid), "App 照常开窗（daemon_view 自带 UX）");
+        assert!(
+            std::env::var(crate::ui::osconfig_daemon::ENV_DAEMON).is_err(),
+            "Offline 不注入 env"
+        );
+        assert_eq!(
+            ds.desktop.osconfig_status,
+            crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())
+        );
+    }
+
+    #[test]
+    fn launch_app_without_daemon_declaration_skips_probe() {
+        let mut ds = t4_session_with_resolver();
+        // probe 条目 daemon: None——探活不应被调用（计数闭包断言）。
+        let probed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&probed);
+        ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(move || {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            crate::ui::osconfig_daemon::DaemonStatus::Running(
+                crate::ui::osconfig_daemon::default_daemon_url(),
+            )
+        }));
+        ds.launch_app("probe").expect("launch ok");
+        assert!(
+            !probed.load(std::sync::atomic::Ordering::Relaxed),
+            "无 daemon 声明的 App 不触探活"
+        );
+        assert_eq!(
+            ds.desktop.osconfig_status,
+            crate::ui::osconfig_daemon::DaemonStatus::default(),
+            "状态不被无关 launch 更新"
+        );
     }
 
     #[test]

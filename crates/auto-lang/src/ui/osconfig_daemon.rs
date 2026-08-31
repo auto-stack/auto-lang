@@ -40,6 +40,13 @@ pub enum DaemonStatus {
     Offline(String),
 }
 
+impl Default for DaemonStatus {
+    /// 未检活（DesktopState 初始值——boot 不预检，首次 launch 时才探）。
+    fn default() -> Self {
+        DaemonStatus::Offline("未检活".to_string())
+    }
+}
+
 /// 缺省 daemon base url（`http://127.0.0.1:<DAEMON_PORT>`）。
 pub fn default_daemon_url() -> String {
     format!("http://127.0.0.1:{DAEMON_PORT}")

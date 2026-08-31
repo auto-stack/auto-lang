@@ -9231,6 +9231,7 @@ fn compare_pngs(
                                     code,
                                     source_path: Some(e.entry.to_string_lossy().to_string()),
                                     title: Some(e.title.clone()),
+                                    daemon: e.daemon.clone(),
                                 })
                             })
                         }));
@@ -17699,6 +17700,7 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
                 })
             }));
         ds.launch_app("011-calculator").expect("launch");
@@ -18316,6 +18318,7 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
@@ -18356,6 +18359,7 @@ mod tests {
                     code: T3_WIN_AT.to_string(),
                     source_path: None,
                     title: Some("calculator".to_string()),
+                    daemon: None,
                 })
             }));
         let (_, _tasks) = execute_desktop_commands(
