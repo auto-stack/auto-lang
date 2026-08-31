@@ -6312,6 +6312,94 @@ impl AutoVM {
                                 let idx = self.add_string(s.into_bytes());
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
                             }
+                            // PLAN-053 P-053-6: web 生态字符串方法族（musk 消息
+                            // 渲染链使用面）——此前落 _ => push null，正文链
+                            // 静默退化（stripQuestionnaire 的 trimEnd、
+                            // chatSearchFilter 的 includes/to_lower、
+                            // estimateTokens 的 char_code_at 等）。
+                            "trimEnd" | "trim_end" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim_end().to_string())
+                                    .unwrap_or_default();
+                                let idx = self.add_string(s.into_bytes());
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                            }
+                            "includes" => {
+                                let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
+                                let pat = if auto_val::is_string(pat_nv) {
+                                    let i = auto_val::decode_string(pat_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_bool(s.contains(&pat))); }
+                            }
+                            "indexOf" | "indexOf_str" | "lastIndexOf" | "last_index_of" => {
+                                let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
+                                let pat = if auto_val::is_string(pat_nv) {
+                                    let i = auto_val::decode_string(pat_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let found = if method_name == "indexOf" || method_name == "indexOf_str" {
+                                    s.find(&pat).map(|b| b as i32).unwrap_or(-1)
+                                } else {
+                                    s.rfind(&pat).map(|b| b as i32).unwrap_or(-1)
+                                };
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(found)); }
+                            }
+                            "substring" | "substring_str" => {
+                                // JS 语义近似：(start[, end])，越界钳制，按字节
+                                // 切片（musk 现场的 start/end 来自 find() 字节位）。
+                                let (a, b) = if arg_count >= 2 {
+                                    let e = task.ram.pop_nv();
+                                    let s0 = task.ram.pop_nv();
+                                    (auto_val::decode_i32(s0), auto_val::decode_i32(e))
+                                } else if arg_count == 1 {
+                                    (auto_val::decode_i32(task.ram.pop_nv()), i32::MAX)
+                                } else {
+                                    (0, i32::MAX)
+                                };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let bytes = s.as_bytes();
+                                let start = (a.max(0) as usize).min(bytes.len());
+                                let end = (b.max(0) as usize).min(bytes.len()).max(start);
+                                // 字符边界钳制（非 UTF-8 边界时退到字符边界）。
+                                let mut se = start;
+                                while se < end && !s.is_char_boundary(se) { se += 1; }
+                                let mut ee = end;
+                                while ee > se && !s.is_char_boundary(ee) { ee -= 1; }
+                                let out = String::from_utf8_lossy(&bytes[se..ee]).to_string();
+                                let idx = self.add_string(out.into_bytes());
+                                { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
+                            }
+                            "char_code_at" | "charCodeAt" => {
+                                let i = if arg_count >= 1 {
+                                    auto_val::decode_i32(task.ram.pop_nv())
+                                } else {
+                                    0
+                                };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let code = s.chars().nth(i.max(0) as usize).map(|c| c as i32).unwrap_or(-1);
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(code)); }
+                            }
                             "replace" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;
                                 let s = self.strings.read().unwrap()
