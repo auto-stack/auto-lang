@@ -2248,6 +2248,18 @@ impl<'a> AuraViewBuilder<'a> {
             "mouse-area" => {
                 self.convert_mouse_area_untracked(props, events, children, bindings)
             }
+            // Plan 497: popover —— 与 tracked 层同名臂镜像(D-GAP 规则)。
+            // tracked 兜底(taskbar 等无专门臂的容器)会整体 delegate 到本
+            // untracked 实现,此前缺臂导致 popover 落 fallback 容器直通
+            // children(锚/内容/overlay 语义全失——shell.at dock hover 预览
+            // 实测暴露)。debug 上下文用空实例(open 属性驱动形态不依赖
+            // 自管 slot_id;probe/id_map 仅调试注记)。
+            "popover" => {
+                let mut path = Vec::new();
+                let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
+                let mut probe = crate::ui::debug::BuildProbe::default();
+                self.convert_popover(props, children, &mut path, &mut id_map, &mut probe, bindings)
+            }
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
             "window_thumbnail" => {

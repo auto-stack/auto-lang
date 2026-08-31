@@ -18077,6 +18077,114 @@ mod tests {
     }
 
     #[test]
+    /// Plan 497 T3：dock/pager hover 预览。真 shell.at 直载 + 两窗（跨分区）
+    /// 投影后：HoverWin/HoverWs handler 写态 → View 树中出现 open popover +
+    /// window_thumbnail 缩略叶（fallback 路径——headless 无快照）；
+    /// HoverEnd/HoverWsEnd 后 open popover 消失。
+    #[test]
+    fn desktop_mcp_dock_pager_hover_popovers() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        // b 送分区 1（pager 预览分区面）。
+        if let Some(host) = ds.host.as_mut() {
+            if let Some(v) = host.wm.wins.get_mut(&b) {
+                v.workspace = 1;
+            }
+        }
+        sync_shell_windows(&mut ds);
+        let shell = ds.desktop.shell_app.unwrap();
+
+        // 树扫描：BFS 收 (popover_open_count, thumb_count)。view_children
+        // 不含 Popover/MouseArea 子——此处补齐（测试专用窄遍历）。
+        fn scan(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            pops: &mut usize,
+            thumbs: &mut usize,
+        ) {
+            use crate::ui::view::View as V;
+            let extra: Vec<&V<_>> = match v {
+                V::Popover { anchor, content, open, .. } => {
+                    if *open { *pops += 1; }
+                    let mut v = vec![content.as_ref()];
+                    if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
+                        v.push(w.as_ref());
+                    }
+                    v
+                }
+                V::MouseArea { content, .. } => vec![content.as_ref()],
+                V::WindowThumbnail { .. } => {
+                    *thumbs += 1;
+                    vec![]
+                }
+                _ => vec![],
+            };
+            for c in view_children(v).into_iter().chain(extra) {
+                scan(c, pops, thumbs);
+            }
+        }
+        fn counts(
+            ds: &crate::ui::session::DesktopSession,
+        ) -> (usize, usize) {
+            let shell = ds.desktop.shell_app.unwrap();
+            let (view, _, _) = ds
+                .apps
+                .get(&shell)
+                .unwrap()
+                .component
+                .view_with_debug_gated(false);
+            let (mut pops, mut thumbs) = (0, 0);
+            scan(&view, &mut pops, &mut thumbs);
+            (pops, thumbs)
+        }
+
+        // 基线：无 hover——popover 全收起（open 计数 0）；缩略叶为树构建
+        // 面（popover content 预构建、open 才走 iced overlay 渲染）：dock
+        // 条目 ×2（a/b）+ pager 分区网格 ×2（分区0=a、分区1=b）= 4。
+        let (p0, t0) = counts(&ds);
+        assert_eq!((p0, t0), (0, 4), "无 hover 基线零 open、四枚预构建缩略叶");
+
+        // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("HoverWin", &[auto_val::Value::str(b.0.to_string())])
+                .expect("HoverWin");
+        }
+        let (p1, t1) = counts(&ds);
+        assert_eq!(p1, 1, "dock hover 打开单个 popover");
+        assert_eq!(t1, 4, "缩略叶集不变（open 不增建）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverEnd", &[]).expect("HoverEnd");
+        }
+        assert_eq!(counts(&ds).0, 0, "HoverEnd 收起");
+
+        // pager hover 分区 1（=b）：分区按钮 popover open ×1。
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component
+                .bridge_mut()
+                .call_handler("HoverWs", &[auto_val::Value::str("1")])
+                .expect("HoverWs");
+        }
+        let (p2, t2) = counts(&ds);
+        assert_eq!(p2, 1, "pager hover 打开单个 popover");
+        assert_eq!(t2, 4, "分区 1 网格含 b 缩略（a 在分区 0 不入该网格——预构建集不变）");
+        {
+            let app = ds.apps.get_mut(&shell).unwrap();
+            app.component.bridge_mut().call_handler("HoverWsEnd", &[]).expect("HoverWsEnd");
+        }
+        assert_eq!(counts(&ds).0, 0, "HoverWsEnd 收起");
+        let _ = a;
+    }
+
+    #[test]
+    #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();
         let _a = t3_add_win(&mut ds, "Alpha");
