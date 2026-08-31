@@ -7625,6 +7625,9 @@ fn execute_set_dock_enabled(state: &mut crate::ui::session::DesktopSession, on: 
 /// + shell.at 投影热同步（Init 只跑一次，`__dock_*` 状态变量直写 +
 /// view_dirty）。
 fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
+    // Plan 497 G3：dock 位置/开关热切换 = 全场重排（487 I7 三联动之一），
+    // 快照随撤（裁剪区域全部 stale）。
+    crate::ui::iced::snapshot::invalidate_all();
     state.desktop.dock_edges = desktop_dock_edges();
     let viewport = state.host_viewport();
     let edges = state.desktop.dock_edges;
@@ -7708,6 +7711,8 @@ fn execute_desktop_commands(
             }
             DC::LaunchApp(name) => execute_launch_app(state, &name),
             DC::CloseWindow(wid) => {
+                // Plan 497 G3：关闭失效（窗口回收，缩略随撤）。
+                crate::ui::iced::snapshot::invalidate(wid);
                 if let Some(app) = state.wm_remove_win(wid) {
                     state.apps.remove(&app);
                 }
@@ -7722,7 +7727,12 @@ fn execute_desktop_commands(
                 }
             }
             DC::FocusWindow(wid) => state.wm_focus(wid),
-            DC::SetLayout(mode) => state.wm_set_layout(mode),
+            // Plan 497 G3：重排失效（几何全变——裁剪区域随 VWinState.rect
+            // stale）。
+            DC::SetLayout(mode) => {
+                crate::ui::iced::snapshot::invalidate_all();
+                state.wm_set_layout(mode)
+            }
             // Plan 472 T2：分区切换（dock 切换条/workspace_next；调用臂尾
             // sync_shell_windows 刷新投影）。
             DC::SetWorkspace(n) => state.wm_set_workspace(n),
@@ -11566,11 +11576,21 @@ fn compare_pngs(
                                 }
                             }
                         }
+                        // 消费者 dirty：switcher（行 fallback→真缩略升级）
+                        // + shell（dock/pager hover 预览面——miss 时渲染臂
+                        // 已 request_capture，快照入库后需一次 view 重建
+                        // 才升级；shell 置 dirty 幂等低频，400ms 抓取节拍
+                        // 下可接受）。
                         if let Some(sw) = state.desktop.switcher_app {
                             if state.switcher_visible() {
                                 if let Some(app) = state.apps.get_mut(&sw) {
                                     *app.state.view_dirty.borrow_mut() = true;
                                 }
+                            }
+                        }
+                        if let Some(shell) = state.desktop.shell_app {
+                            if let Some(app) = state.apps.get_mut(&shell) {
+                                *app.state.view_dirty.borrow_mut() = true;
                             }
                         }
                     }

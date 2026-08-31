@@ -129,7 +129,11 @@ pub fn thumbnail_from_screenshot(
 ) -> Option<WindowSnapshot> {
     let (cropped, cw, ch) = crop_physical(rgba, img_w, img_h, rect, scale)?;
     let (thumb, tw, th) = downsample_box(&cropped, cw, ch, THUMB_MAX);
-    Some(WindowSnapshot { rgba: thumb, w: tw, h: th })
+    Some(WindowSnapshot {
+        rgba: thumb,
+        w: tw,
+        h: th,
+    })
 }
 
 /// 逻辑矩形 → 物理像素裁剪（行拷贝；负起点/超界 clamp，零有效区 None）。
@@ -217,7 +221,11 @@ mod tests {
         for y in 0..h {
             for x in 0..w {
                 let (r, g, b) = if y < h / 2 {
-                    if x < w / 2 { (0xE0, 0x20, 0x20) } else { (0x20, 0xC0, 0x20) }
+                    if x < w / 2 {
+                        (0xE0, 0x20, 0x20)
+                    } else {
+                        (0x20, 0xC0, 0x20)
+                    }
                 } else if x < w / 2 {
                     (0x20, 0x40, 0xE0)
                 } else {
@@ -234,7 +242,12 @@ mod tests {
     }
 
     fn center_rect() -> iced::Rectangle {
-        iced::Rectangle { x: 100.0, y: 75.0, width: 200.0, height: 150.0 }
+        iced::Rectangle {
+            x: 100.0,
+            y: 75.0,
+            width: 200.0,
+            height: 150.0,
+        }
     }
 
     /// T2-1：四色整窗 → 中央逻辑 rect 裁剪 ×scale → 尺寸 + 四象限中心色。
@@ -242,17 +255,24 @@ mod tests {
     fn t2_snapshot_thumbnail_size_and_quadrant_colors() {
         let (w, h) = (800u32, 600u32);
         let rgba = quad_rgba(w, h);
-        let snap = thumbnail_from_screenshot(&rgba, w, h, center_rect(), 2.0)
-            .expect("中央区应裁剪成功");
+        let snap =
+            thumbnail_from_screenshot(&rgba, w, h, center_rect(), 2.0).expect("中央区应裁剪成功");
         // 200×150 逻辑 = 400×300 物理 → 长边 400 > 256 → 等比降采样 256×192。
         assert_eq!((snap.w, snap.h), (256, 192), "长边 400 → 256 等比");
         let dom = |x: u32, y: u32| snap.pixel(x, y).expect("in-bounds");
         let (qx, qy) = (snap.w / 4, snap.h / 4);
         // 四象限内缩点各自色相（box 混色容差 32——T1 实测同款）。
-        assert!(dom(qx, qy).0.abs_diff(0xE0) <= 32, "左上=红: {:?}", dom(qx, qy));
+        assert!(
+            dom(qx, qy).0.abs_diff(0xE0) <= 32,
+            "左上=红: {:?}",
+            dom(qx, qy)
+        );
         assert!(dom(snap.w - 1 - qx, qy).1.abs_diff(0xC0) <= 32, "右上=绿");
         assert!(dom(qx, snap.h - 1 - qy).2.abs_diff(0xE0) <= 32, "左下=蓝");
-        assert!(dom(snap.w - 1 - qx, snap.h - 1 - qy).0.abs_diff(0xE0) <= 32, "右下=黄");
+        assert!(
+            dom(snap.w - 1 - qx, snap.h - 1 - qy).0.abs_diff(0xE0) <= 32,
+            "右下=黄"
+        );
     }
 
     /// T2-2：小窗（长边 ≤256）不放大不缩放——原样返回。
@@ -260,7 +280,12 @@ mod tests {
     fn t2_snapshot_small_window_passthrough() {
         let (w, h) = (200u32, 150u32);
         let rgba = quad_rgba(w, h);
-        let rect = iced::Rectangle { x: 0.0, y: 0.0, width: 100.0, height: 75.0 };
+        let rect = iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 75.0,
+        };
         let snap = thumbnail_from_screenshot(&rgba, w, h, rect, 2.0).unwrap();
         assert_eq!((snap.w, snap.h), (200, 150), "长边 200 ≤ 256 原样");
     }
@@ -271,17 +296,37 @@ mod tests {
         let (w, h) = (400u32, 300u32);
         let rgba = quad_rgba(w, h);
         // 负起点：clamp 到 (0,0)，宽高取到图像右下。
-        let neg = iced::Rectangle { x: -50.0, y: -40.0, width: 100.0, height: 80.0 };
+        let neg = iced::Rectangle {
+            x: -50.0,
+            y: -40.0,
+            width: 100.0,
+            height: 80.0,
+        };
         let snap = thumbnail_from_screenshot(&rgba, w, h, neg, 1.0).unwrap();
         assert_eq!((snap.w, snap.h), (100, 80), "负起点 clamp 后全尺寸保留");
         // 超右下：有效区只剩 50×60。
-        let over = iced::Rectangle { x: 350.0, y: 240.0, width: 100.0, height: 100.0 };
+        let over = iced::Rectangle {
+            x: 350.0,
+            y: 240.0,
+            width: 100.0,
+            height: 100.0,
+        };
         let snap = thumbnail_from_screenshot(&rgba, w, h, over, 1.0).unwrap();
         assert_eq!((snap.w, snap.h), (50, 60), "越界 clamp 到图像右下缘");
         // 零尺寸 / 完全越界：None。
-        let zero = iced::Rectangle { x: 10.0, y: 10.0, width: 0.0, height: 10.0 };
+        let zero = iced::Rectangle {
+            x: 10.0,
+            y: 10.0,
+            width: 0.0,
+            height: 10.0,
+        };
         assert!(thumbnail_from_screenshot(&rgba, w, h, zero, 1.0).is_none());
-        let outside = iced::Rectangle { x: 500.0, y: 0.0, width: 50.0, height: 50.0 };
+        let outside = iced::Rectangle {
+            x: 500.0,
+            y: 0.0,
+            width: 50.0,
+            height: 50.0,
+        };
         assert!(thumbnail_from_screenshot(&rgba, w, h, outside, 1.0).is_none());
         // 底层 RGBA 短缺（尺寸谎报）：None 而非 panic。
         let short = &rgba[..rgba.len() / 2];
@@ -295,14 +340,17 @@ mod tests {
         invalidate(wid);
         assert!(snapshot_window(wid).is_none(), "空缓存 miss");
 
-        let snap = WindowSnapshot { rgba: vec![1, 2, 3, 255], w: 1, h: 1 };
+        let snap = WindowSnapshot {
+            rgba: vec![1, 2, 3, 255],
+            w: 1,
+            h: 1,
+        };
         cache_put(wid, snap.clone());
         assert!(snapshot_window(wid).is_some(), "TTL 内命中");
         assert_eq!(snapshot_window(wid).unwrap().rgba, snap.rgba);
 
         // 伪造过期：直接改条目时间戳到 3s 前（> SNAPSHOT_TTL 2s）。
-        cache().lock().unwrap().get_mut(&wid).unwrap().1 =
-            Instant::now() - Duration::from_secs(3);
+        cache().lock().unwrap().get_mut(&wid).unwrap().1 = Instant::now() - Duration::from_secs(3);
         assert!(snapshot_window(wid).is_none(), "TTL 过期 miss");
         assert!(
             !cache().lock().unwrap().contains_key(&wid),
