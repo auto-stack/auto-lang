@@ -38,6 +38,44 @@ impl<M> SelectCallback<M> {
     }
 }
 
+/// Plan 499: 指针移动回调(mouse-area onmousemove 臂)。
+///
+/// 收 `(x, y)` **组件局部逻辑坐标**(coords 声明的 viewBox 系;缺省时为
+/// bounds 局部物理 px——raw 模式),返回消息。坐标换算在引擎层完成
+/// (iced PointerArea widget / vue 生成端内联表达式),组件代码不感知屏幕。
+pub struct PointerMoveHandler<M> {
+    callback: Arc<dyn Fn(f32, f32) -> M + Send + Sync>,
+}
+
+impl<M> Clone for PointerMoveHandler<M> {
+    fn clone(&self) -> Self {
+        Self {
+            callback: Arc::clone(&self.callback),
+        }
+    }
+}
+
+impl<M> std::fmt::Debug for PointerMoveHandler<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PointerMoveHandler").finish()
+    }
+}
+
+impl<M> PointerMoveHandler<M> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(f32, f32) -> M + Send + Sync + 'static,
+    {
+        Self {
+            callback: Arc::new(f),
+        }
+    }
+
+    pub fn call(&self, x: f32, y: f32) -> M {
+        (self.callback)(x, y)
+    }
+}
+
 // ============================================================================
 // Plan 010: Unified Navigation Components - Helper Types
 // ============================================================================
@@ -531,11 +569,16 @@ pub enum View<M: Clone + Debug> {
     /// vue 端映射 div + @mouseenter/@mouseleave。无视觉,仅事件转发。
     /// Plan 496 M5: 增 on_double_click(ondblclick → iced mouse_area
     /// on_double_click;桌面图标双击启动原语)。
+    /// Plan 499 M2: 增 on_move(onmousemove → 坐标换算+限频后的逻辑坐标
+    /// 回调,iced 侧由 PointerArea widget 承载)+ logical_extent(coords
+    /// prop "WxH" 解析;None = raw px 模式)。
     MouseArea {
         content: Box<View<M>>,
         on_enter: Option<M>,
         on_exit: Option<M>,
         on_double_click: Option<M>,
+        on_move: Option<PointerMoveHandler<M>>,
+        logical_extent: Option<(f32, f32)>,
         style: Option<Style>,
     },
 }
@@ -1395,11 +1438,17 @@ impl<M: Clone + Debug> View<M> {
             },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。
             // Plan 496 M5: 增 on_double_click 映射。
-            View::MouseArea { content, on_enter, on_exit, on_double_click, style } => View::MouseArea {
+            // Plan 499 M2: 增 on_move 复合映射(handler 产出 M 经 f 转 N)。
+            View::MouseArea { content, on_enter, on_exit, on_double_click, on_move, logical_extent, style } => View::MouseArea {
                 content: Box::new(content.map_msg_with_arc(f)),
                 on_enter: on_enter.map(|m| f(m)),
                 on_exit: on_exit.map(|m| f(m)),
                 on_double_click: on_double_click.map(|m| f(m)),
+                on_move: on_move.map(|h| {
+                    let f = std::sync::Arc::clone(f);
+                    PointerMoveHandler::new(move |x, y| f(h.call(x, y)))
+                }),
+                logical_extent,
                 style,
             },
             // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。

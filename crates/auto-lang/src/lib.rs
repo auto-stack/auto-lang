@@ -6211,6 +6211,10 @@ mod plan484_chart_component_tests;
 #[cfg(test)]
 mod plan492_tests;
 
+// Plan 499 M2: 指针移动限频流管道 e2e——pipe-payload 全链送达逻辑坐标。
+#[cfg(test)]
+mod plan499_pointer_stream_tests;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;

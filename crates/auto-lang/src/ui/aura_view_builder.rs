@@ -7251,6 +7251,41 @@ let tabs_inner = View::Row {
     /// svg::Handle 缓存路径渲染(单色 currentColor 文档走画时着色,多彩文档
     /// 原样)。此前 svg/path 落 unknown-tag fallback → View::Empty,VM 轨
     /// 完全不渲染(musk-038 T9 canary 对侧的 native canary)。
+    /// Plan 499 M2: mouse-area onmousemove 臂 + coords 逻辑幅面解析。
+    /// 事件闭包在调用现场把逻辑坐标 (x, y) 追加为 Float 实参(经
+    /// encode_payload/decode_payload 管道直达 VM handler 形参);coords
+    /// 形如 "560x300"(组件 viewBox 逻辑幅面),缺省 = None(raw px 模式)。
+    fn mouse_area_move_arm(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        bindings: &Bindings,
+    ) -> (
+        Option<crate::ui::view::PointerMoveHandler<DynamicMessage>>,
+        Option<(f32, f32)>,
+    ) {
+        let on_move = aura_events_get_base(events, "onmousemove").map(|event| {
+            let base = self.event_to_message_with(event, bindings);
+            crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| match &base {
+                DynamicMessage::Typed { widget_name, event_name, args } => {
+                    let mut new_args = args.clone();
+                    new_args.push(Value::Float(x as f64));
+                    new_args.push(Value::Float(y as f64));
+                    DynamicMessage::Typed {
+                        widget_name: widget_name.clone(),
+                        event_name: event_name.clone(),
+                        args: new_args,
+                    }
+                }
+                other => other.clone(),
+            })
+        });
+        let extent = self
+            .extract_string_with(props, "coords", bindings)
+            .and_then(|s| parse_coords_extent(&s));
+        (on_move, extent)
+    }
+
     /// Plan 484: hover 命中区 untracked 臂(convert_mouse_area 的镜像)。
     /// 无 text probing 需求,children 走 untracked 拼接展开。
     fn convert_mouse_area_untracked(
@@ -7270,6 +7305,8 @@ let tabs_inner = View::Row {
         // 双击启动原语;iced on_double_click / vue @dblclick)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
             .map(|event| self.event_to_message_with(event, bindings));
+        // Plan 499 M2: onmousemove + coords(镜像臂)。
+        let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
             .expand_children_spliced(children, bindings)
@@ -7290,6 +7327,8 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_move,
+            logical_extent,
             style,
         }
     }
@@ -7317,6 +7356,8 @@ let tabs_inner = View::Row {
         // Plan 496 M5: ondblclick → mouse_area on_double_click(untracked 镜像臂)。
         let on_double_click = aura_events_get_base(events, "ondblclick")
             .map(|event| self.event_to_message_with(event, bindings));
+        // Plan 499 M2: onmousemove + coords(限频流臂)。
+        let (on_move, logical_extent) = self.mouse_area_move_arm(props, events, bindings);
         let style = self.extract_style_with(props, bindings);
         let child_views: Vec<View<DynamicMessage>> = self
             .expand_children_spliced_source(children, path, id_map, probe, bindings)
@@ -7337,6 +7378,8 @@ let tabs_inner = View::Row {
             on_enter,
             on_exit,
             on_double_click,
+            on_move,
+            logical_extent,
             style,
         }
     }
@@ -7868,6 +7911,20 @@ fn is_visually_empty(v: &View<DynamicMessage>) -> bool {
         View::Empty => true,
         View::Text { content, .. } => content.is_empty(),
         _ => false,
+    }
+}
+
+/// Plan 499 M2: coords 逻辑幅面解析("WxH",如 "560x300")。
+/// 解析失败返回 None(= raw px 模式),不致命中错误坐标语义。
+fn parse_coords_extent(s: &str) -> Option<(f32, f32)> {
+    let s = s.trim();
+    let (w, h) = s.split_once(['x', 'X'])?;
+    let w: f32 = w.trim().parse().ok()?;
+    let h: f32 = h.trim().parse().ok()?;
+    if w > 0.0 && h > 0.0 {
+        Some((w, h))
+    } else {
+        None
     }
 }
 
@@ -8500,6 +8557,71 @@ mod tests {
                 }
                 assert!(on_exit.is_some(), "onmouseleave must resolve to a message");
                 assert!(style.is_some(), "size classes must parse into style");
+            }
+            other => panic!("Expected View::MouseArea, got: {:?}", other),
+        }
+    }
+
+    /// Plan 499 M2: mouse-area onmousemove + coords → on_move handler + 逻辑幅面。
+    /// handler 调用时把 (x, y) 追加为 Float 实参(经 encode/decode_payload 管道
+    /// 直达 VM handler 形参);coords 解析 "WxH"。
+    #[test]
+    fn test_mouse_area_onmousemove_coords_and_args() {
+        let widget = make_test_widget("Chart", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Chart");
+
+        let mut node = AuraNode::element("mouse-area")
+            .with_prop("coords", Expr::Str("560x300".into()));
+        if let AuraNode::Element { events, .. } = &mut node {
+            events.insert("onmousemove".to_string(), AuraEvent {
+                handler: ".PointerMove".to_string(),
+                params: vec![],
+            });
+            events.insert("onmouseenter".to_string(), AuraEvent {
+                handler: ".Hover".to_string(),
+                params: vec![],
+            });
+        }
+        match builder.build(&node) {
+            View::MouseArea { on_move, logical_extent, on_enter, .. } => {
+                assert_eq!(logical_extent, Some((560.0, 300.0)), "coords WxH 解析");
+                let h = on_move.expect("onmousemove must resolve to a move handler");
+                match h.call(280.0, 150.0) {
+                    DynamicMessage::Typed { event_name, args, .. } => {
+                        assert_eq!(event_name, "PointerMove");
+                        assert_eq!(args.len(), 2, "坐标必须追加为两个实参");
+                        assert!(matches!(args[0], Value::Float(f) if (f - 280.0).abs() < f64::EPSILON));
+                        assert!(matches!(args[1], Value::Float(f) if (f - 150.0).abs() < f64::EPSILON));
+                    }
+                    other => panic!("Expected Typed message, got: {:?}", other),
+                }
+                assert!(on_enter.is_some(), "enter 臂不受影响");
+            }
+            other => panic!("Expected View::MouseArea, got: {:?}", other),
+        }
+    }
+
+    /// Plan 499 M2: 无 coords → raw px 模式(extent=None);无 onmousemove →
+    /// on_move=None(存量 mouse-area 零变化)。
+    #[test]
+    fn test_mouse_area_onmousemove_without_coords_is_raw() {
+        let widget = make_test_widget("Chart", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "Chart");
+
+        let mut node = AuraNode::element("mouse-area")
+            .with_prop("style", Expr::Str("w-[64px] h-[64px]".into()));
+        if let AuraNode::Element { events, .. } = &mut node {
+            events.insert("onmousemove".to_string(), AuraEvent {
+                handler: ".RawMove".to_string(),
+                params: vec![],
+            });
+        }
+        match builder.build(&node) {
+            View::MouseArea { on_move, logical_extent, .. } => {
+                assert_eq!(logical_extent, None, "无 coords = raw px 模式");
+                assert!(on_move.is_some(), "onmousemove 臂仍接线");
             }
             other => panic!("Expected View::MouseArea, got: {:?}", other),
         }
