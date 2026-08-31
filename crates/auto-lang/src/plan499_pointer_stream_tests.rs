@@ -195,3 +195,86 @@ mod plan499_axispointer {
         );
     }
 }
+
+#[cfg(feature = "ui-iced")]
+mod plan499_donut_sector {
+    fn build_gallery() -> Option<crate::ui::dynamic::DynamicComponent> {
+        let app = crate::plan370_test_support::locate_example_app_at("charts-gallery")?;
+        let code = std::fs::read_to_string(&app).ok()?;
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str()?)).ok()?;
+        dc.fire_init();
+        dc.set_route("/");
+        Some(dc)
+    }
+
+    fn dump(dc: &mut crate::ui::dynamic::DynamicComponent) -> String {
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        format!("{:?}", view)
+    }
+
+    /// M4:donut 逐扇区直接命中(代码极坐标测试,svgdoc 静态限制解除)。
+    /// 数据 55/30/15(Desktop/Mobile/Tablet),扇区 0 自 12 点钟顺时针;
+    /// 覆盖层 coords 260x260,圆心 overlay 系 (130,130),环带 r∈[62,100]。
+    /// · 6 点钟方向 (130,210) → r=80,角 180°(移位系)∈扇区0 → Desktop
+    /// · 7-8 点钟 (55,157) → 角 250° ∈ 扇区1 → Mobile + emphasis 外移
+    /// · 内孔 (130,160) → r=30 < 62 → 离焦
+    /// · 环外 (130,250) → r=120 > 100 → 离焦
+    #[test]
+    fn plan499_donut_sector_code_hit() {
+        let Some(mut dc) = build_gallery() else {
+            eprintln!("plan499 M4: SKIPPED — charts-gallery not found");
+            return;
+        };
+        let dump0 = dump(&mut dc);
+        assert!(
+            dump0.contains("PointerMoveHandler") && dump0.contains("(260.0, 260.0)"),
+            "donut 卡必须落全图 pointer 命中区(coords 260x260)"
+        );
+
+        // 扇区 0:Desktop
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}130\u{1F}f\u{1F}210",
+            None,
+        );
+        let d1 = dump(&mut dc);
+        assert!(d1.contains("Desktop"), "命中扇区 0 tooltip 标题 Desktop");
+        assert!(
+            d1.contains("ffffff"),
+            "命中扇区 emphasis 外移路径(白描边 ffffff)落图"
+        );
+
+        // 扇区 1:Mobile(换扇区不残留)
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}55\u{1F}f\u{1F}157",
+            None,
+        );
+        let d2 = dump(&mut dc);
+        assert!(d2.contains("Mobile"), "命中扇区 1 tooltip 标题 Mobile");
+
+        // 内孔:离焦
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}130\u{1F}f\u{1F}160",
+            None,
+        );
+        let d3 = dump(&mut dc);
+        assert!(
+            !d3.contains("ffffff"),
+            "内孔命中 → 无 emphasis"
+        );
+
+        // 环外:离焦
+        dc.on_with_input_for(
+            "DonutChart",
+            "PointerMove\u{1F}f\u{1F}130\u{1F}f\u{1F}250",
+            None,
+        );
+        let d4 = dump(&mut dc);
+        assert!(
+            !d4.contains("ffffff"),
+            "环外命中 → 无 emphasis"
+        );
+    }
+}
