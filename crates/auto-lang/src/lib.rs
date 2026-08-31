@@ -6227,3 +6227,8 @@ mod plan492_m4_tests;
 #[cfg(test)]
 mod plan492_m5_tests;
 
+// PLAN-053: auto-musk VM 轨上游缺陷跟踪伞回归锚(null 家族等值 /
+// computed+helper 链)。
+#[cfg(test)]
+mod musk_vm_track_tests;
+

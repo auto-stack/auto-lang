@@ -1359,6 +1359,22 @@ impl AutoVM {
         }
     }
 
+    /// PLAN-053 P-053-2: nil 家族判定 —— tag-null(encode_null，现行
+    /// `None`/`null`/`nil` 字面量与 JSON null 的统一编码)或旧编码
+    /// i32(-1)(历史 `null` 字面量/CREATE_NONE)或 i32(i32::MIN+1)
+    /// (历史 `nil` 字面量)。EQ/NE/NULL_COALESCE 用它在等值/合并语义上
+    /// 抹平新旧编码(存量持久化字段兼容)。
+    fn nv_is_null_family(nv: auto_val::NanoValue) -> bool {
+        if auto_val::is_null(nv) {
+            return true;
+        }
+        if auto_val::is_i32(nv) {
+            let v = auto_val::decode_i32(nv);
+            return v == -1 || v == -2147483647;
+        }
+        false
+    }
+
     /// Compare two opaque heap objects by value.
     /// Returns Some(true/false) if comparison is supported, None to fall back to integer comparison.
     fn compare_opaque_objects(&self, a_id: u64, b_id: u64) -> Option<bool> {
@@ -3064,12 +3080,15 @@ impl AutoVM {
                 }
                 OpCode::NULL_COALESCE => {
                     {
-                        // Pop right expression (default value)
-                        let default_nv = task.ram.pop_nv();
-                        // Pop left expression (May<T> value)
-                        let may_nv = task.ram.pop_nv();
+                    // Pop right expression (default value)
+                    let default_nv = task.ram.pop_nv();
+                    // Pop left expression (May<T> value)
+                    let may_nv = task.ram.pop_nv();
 
-                        if auto_val::is_null(may_nv) {
+                    // PLAN-053 P-053-2: 判空与 IS_NIL/UNWRAP_SOME 对齐——
+                    // 旧编码 i32(-1)/i32(i32::MIN+1) 的 nil 家族值也落
+                    // default(原只认 is_null，`null ?? x` 落 -1)。
+                    if Self::nv_is_null_family(may_nv) {
                             // Plan 419: None → default 转移回栈,may 死亡。
                             self.rc_release(may_nv);
                             task.ram.push_nv(default_nv);
@@ -7958,7 +7977,17 @@ impl AutoVM {
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值 —— 一侧 tag-null
+                    // (encode_null)、另一侧旧编码 i32(-1) 或 i32(i32::MIN+1)
+                    // 时视为相等。新代码字面量已全归一 PUSH_NIL，此处兜底
+                    // 存量载荷(musk KV 持久化的旧 Int(-1) 字段、生成器
+                    // CREATE_NONE 返回值)，否则 `x != None` 守卫对旧数据
+                    // 恒真(gate 卡常显)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
                     let result = if a_nv == b_nv {
+                        true
+                    } else if a_is_null_family && b_is_null_family {
                         true
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
                         let a = auto_val::decode_object(a_nv) as i32;
@@ -7998,7 +8027,12 @@ self.rc_release(a_nv);
                     let b_nv = task.ram.pop_nv();
                     let a_nv = task.ram.pop_nv();
                     // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值(与 EQ 对称,见其注释)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
                     let result = if a_nv == b_nv {
+                        false
+                    } else if a_is_null_family && b_is_null_family {
                         false
                     } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
                         let a = auto_val::decode_object(a_nv) as i32;

@@ -9604,15 +9604,22 @@ impl Codegen {
                 }
             }
             // Nil expression: push nil marker
+            // PLAN-053 P-053-2 —— 原编码 CONST_I32 i32::MIN+1 与 `None`
+            // (encode_null)、`null` 三种 nil 家族字面量表示分裂，比较/合并
+            // 语义随表示漂移。归一到 PUSH_NIL(tag-null)后三者全链等值。
             Expr::Nil => {
-                // Use special nil marker value (i32::MIN + 1 = -2147483647)
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(-2147483647);
+                self.emit(OpCode::PUSH_NIL);
             }
-            // Null literal: push -1 (VM representation of null, distinct from nil)
+            // Null literal: PLAN-053 P-053-2 —— 原编码 CONST_I32 -1 与 `None`
+            // 字面量(PUSH_NIL → encode_null)表示分裂：EQ/NE 快速路径
+            // `a_nv == b_nv` 不命中、tag 混合落兜底，`null != None` 恒真
+            // (musk `.store.current_gate != None` 守卫拦不住 null 态，
+            // GateCard 常显)；NULL_COALESCE 也只认 is_null，`null ?? x` 落
+            // -1。归一到 PUSH_NIL 后存储/读回/比较与 JSON null、`None`
+            // 全链等值(engine 侧 IS_NIL/IS_SOME/UNWRAP_SOME 的
+            // `is_null || i32==-1` 特判对新旧编码都成立)。
             Expr::Null => {
-                self.emit(OpCode::CONST_I32);
-                self.emit_i32(-1);
+                self.emit(OpCode::PUSH_NIL);
             }
             // Cover expression (enum variant pattern like Color.Red or ContentBlock.Text(expr))
             Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
