@@ -14,6 +14,7 @@
 | [desktop-shell-and-launcher](desktop-shell-and-launcher.md) | 24 | 桌面 Shell 与 Launcher（M2–M4） | 463/464/465 |
 | [a2ui-composer-analysis](a2ui-composer-analysis.md) | 25* | Google A2UI 技术分析与实现映射（研究输入） | — |
 | [desktop-protocol-v1](desktop-protocol-v1.md) | — | 桌面协议 v1：进程外 App 五通道（孵化/帧/输入/控制/观测）规范 | 386（Stage 2 落地） |
+| [diagram-components](diagram-components.md) | — | Diagram 组件家族与 DSL 设计（Mermaid/D2 对标；统一 498/499 交互与 canvas 模型） | 设计先行（建议拆 plan，§8） |
 | [025-gap-enumeration](025-gap-enumeration.md) | 16a | 025 示例差距枚举（历史记录） | 345 |
 
 > \* 原 `25-a2ui-composer-analysis.md`。另注意：`docs/design/25-autoshell-dsl-unified-shell.md`
