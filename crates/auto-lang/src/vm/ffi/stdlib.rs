@@ -2464,6 +2464,10 @@ fn json_to_vm_value_inner(
 pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    if json_str.trim().is_empty() {
+        task.ram.push_nv(auto_val::encode_null());
+        return Ok(());
+    }
     let parsed: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
         VMError::RuntimeError(format!("json.to_value: parse error: {}", e))
     })?;
