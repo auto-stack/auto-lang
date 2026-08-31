@@ -147,6 +147,10 @@ mod musk_vm_track_p053_6_widget_content {
     #[test]
     fn widget_child_computed_regex_helper_content() {
         let src = concat!(
+            // P-053-6 续: use.web component 形态 + registry 已注册同名适配器
+            // widget（renderer.vm.at Markdown 纯文本降级的现场形态）——图标
+            // 臂不得遮蔽注册组件。
+            "use.web component Msg53c from \"src/front/ports/renderer.at\"\n",
             // render_mentions_default 的最小同构：HTML 转义链(Regex.replace)+
             // 词汇探测(Regex.test)——现场死因的浓缩。
             "fn esc(text str) -> str {\n",
@@ -173,7 +177,7 @@ mod musk_vm_track_p053_6_widget_content {
         for st in &ast.stmts {
             match st {
                 crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
-                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::UseWeb(_) => import_stmts.push(st.clone()),
                 _ => {}
             }
         }

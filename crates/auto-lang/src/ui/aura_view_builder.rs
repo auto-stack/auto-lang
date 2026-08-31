@@ -1431,7 +1431,16 @@ impl<'a> AuraViewBuilder<'a> {
 
             // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
             // 同名臂注释）。图标是叶子节点,无 probe 文本需求。
-            tag if self.is_imported_component(tag) => {
+            // PLAN-053 P-053-6: registry 已注册同名适配器 widget（renderer.vm.at
+            // Markdown 纯文本降级等 use.web component 的 VM 形态）优先于图标
+            // 回落——原臂无条件吞掉,注册组件被画成 lucide glyph(View::Image),
+            // 消息正文整体成图标占位。
+            tag if self.is_imported_component(tag)
+                && self
+                    .widget_registry
+                    .and_then(|r| r.get(tag))
+                    .is_none() =>
+            {
                 self.convert_icon_component(tag, props, bindings)
             }
 
@@ -2271,7 +2280,14 @@ impl<'a> AuraViewBuilder<'a> {
             // 既有 lucide glyph 直绘（svg 直绘 + currentColor tint）。此前落
             // unknown fallback → View::Empty（rail/设置面板图标全空）。未知
             // glyph 由 renderer 空占位兜底（与缺组件等价的降级）。
-            tag if self.is_imported_component(tag) => {
+            // PLAN-053 P-053-6: registry 已注册同名适配器 widget 优先于图标
+            // 回落（tracked 双胎同款守卫,详见 tracked 臂注释）。
+            tag if self.is_imported_component(tag)
+                && self
+                    .widget_registry
+                    .and_then(|r| r.get(tag))
+                    .is_none() =>
+            {
                 self.convert_icon_component(tag, props, bindings)
             }
 
