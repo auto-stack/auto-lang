@@ -218,6 +218,11 @@ pub const NATIVE_HTTP_POST_STREAM_WITH_HEADERS: u16 = 2255;
 // Regex functions (Plan 159): 2400-2499
 pub const NATIVE_REGEX_IS_MATCH: u16 = 2400;
 pub const NATIVE_REGEX_FIND_ALL: u16 = 2401;
+// PLAN-053 P-053-6: web 生态静态形态（musk forge_helpers/mention_helpers
+// 消息渲染链——`Regex.replace(text, pat, repl, flags)` /
+// `Regex.test(text, pat)`，CALL_SPEC 路由自动.regex.replace/test）。
+pub const NATIVE_REGEX_REPLACE: u16 = 2402;
+pub const NATIVE_REGEX_TEST: u16 = 2403;
 
 // Task/Msg functions (Plan 121): 2300-2399
 pub const NATIVE_TASK_SPAWN: u16 = 2300;
@@ -1280,24 +1285,14 @@ pub fn shim_io_read_text_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             .and_then(|mut map| map.get_mut(&req_id).and_then(|opt| opt.take()));
         if let Some(Ok(AsyncResult::Body(content))) = result {
             task.waiting_http_request_id = None;
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(content.into_bytes());
-                i
-            };
-            vm.rc_push_str_idx(task, idx as usize);
+            let idx = vm.add_string(content.into_bytes());
+            vm.rc_push_str_idx(task, idx);
             return Ok(());
         }
         if let Some(Err(e)) = result {
             task.waiting_http_request_id = None;
-            let idx = {
-                let mut strings = vm.strings.write().unwrap();
-                let i = strings.len();
-                strings.push(e.into_bytes());
-                i
-            };
-            vm.rc_push_str_idx(task, idx as usize);
+            let idx = vm.add_string(e.into_bytes());
+            vm.rc_push_str_idx(task, idx);
             return Ok(());
         }
         // Still pending — yield again.
@@ -2469,9 +2464,19 @@ fn json_to_vm_value_inner(
 pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let json_str: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let parsed: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
-        VMError::RuntimeError(format!("json.to_value: parse error: {}", e))
-    })?;
+    let trimmed = json_str.trim();
+    if trimmed.is_empty() || trimmed == "undefined" || trimmed == "None" || trimmed == "nil" {
+        task.ram.push_nv(auto_val::encode_null());
+        return Ok(());
+    }
+    let parsed: serde_json::Value = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[WARN] json.to_value: invalid JSON {:?} on payload: {:?}", e, json_str);
+            task.ram.push_nv(auto_val::encode_null());
+            return Ok(());
+        }
+    };
     json_to_vm_value(task, vm, &parsed, 0)
 }
 
@@ -2586,13 +2591,8 @@ pub fn shim_json_from_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let json_val = vm_value_to_json(vm, &value, 0)?;
     let s = serde_json::to_string(&json_val).unwrap_or_default();
     let bytes = s.into_bytes();
-    let str_idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let idx = strings.len();
-        strings.push(bytes);
-        idx as u32
-    };
-    vm.rc_push_str_idx(task, str_idx as usize);
+    let str_idx = vm.add_string(bytes);
+    vm.rc_push_str_idx(task, str_idx);
     Ok(())
 }
 
@@ -4020,13 +4020,8 @@ pub fn shim_session_create(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         sessions.insert(session_id.clone(), data);
     }
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(session_id.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(session_id.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4041,13 +4036,8 @@ pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .and_then(|sessions| sessions.get(&id).cloned())
         .unwrap_or_else(|| "null".to_string());
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(data.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(data.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4153,13 +4143,8 @@ pub fn shim_openapi_generate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     });
 
     let json_str = serde_json::to_string_pretty(&spec).unwrap_or_default();
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(json_str.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(json_str.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -4223,13 +4208,8 @@ pub fn shim_template_render(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let data: serde_json::Value = serde_json::from_str(&data_json).unwrap_or(serde_json::Value::Null);
     let rendered = render_template(&template_str, &data);
 
-    let idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let i = strings.len();
-        strings.push(rendered.into_bytes());
-        i
-    };
-    vm.rc_push_str_idx(task, idx as usize);
+    let idx = vm.add_string(rendered.into_bytes());
+    vm.rc_push_str_idx(task, idx);
     Ok(())
 }
 
@@ -5603,6 +5583,57 @@ pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     Ok(())
 }
 
+/// PLAN-053 P-053-6: `Regex.replace(text, pattern, replacement, flags)` —
+/// web 生态静态形态（对齐 musk forge_helpers.ts 的 Regex 工具：flags 含 "g"
+/// 全局替换，否则只替换首处）。入参按 CALL_NAT 约定（自顶向下）：
+/// [flags, replacement, pattern, text]（CALL_SPEC 路径的接收者已由引擎
+/// 分派层剥离）。
+pub fn shim_regex_replace(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let flags: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let replacement: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.replace failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+
+    let out: String = if flags.contains('g') {
+        re.replace_all(&text, replacement.as_str()).into_owned()
+    } else {
+        re.replace(&text, replacement.as_str()).into_owned()
+    };
+    crate::vm::ffi::convert::VMConvertible::push_to_stack(&out, task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    Ok(())
+}
+
+/// PLAN-053 P-053-6: `Regex.test(text, pattern) -> bool` — web 生态静态形态
+/// （stripQuestionnaire 的探测现场）。入参（自顶向下）：[pattern, text]。
+pub fn shim_regex_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let pattern: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let text: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.test failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
+
+    task.ram.push_nv(auto_val::encode_bool(re.is_match(&text)));
+    Ok(())
+}
+
 // ============================================================================
 // Plan 152: SSE Parser Functions
 // ============================================================================
@@ -5954,6 +5985,37 @@ pub fn shim_http_clear_default_auth(task: &mut AutoTask, _vm: &AutoVM) -> Result
     Ok(())
 }
 
+static WARNED_API_NOOP: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// PLAN-053 P-053-4: merged 模式下 #[api] 调用桩体的显式一次性告警
+pub fn shim_warn_api_noop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let name_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, name_nv);
+    let api_name = if auto_val::is_string(name_nv) {
+        let idx = auto_val::decode_string(name_nv) as usize;
+        vm.strings
+            .read()
+            .unwrap()
+            .get(idx)
+            .cloned()
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_default()
+    } else {
+        auto_val::decode_i32(name_nv).to_string()
+    };
+    if let Ok(mut set) = WARNED_API_NOOP.lock() {
+        if set.insert(api_name.clone()) {
+            eprintln!(
+                "[VM-API] merged-mode #[api] \"{}\" no-op (set AUTO_VM_MERGE=0 or AUTO_BACKEND=<url> to enable HTTP bridge)",
+                api_name
+            );
+        }
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
 fn spawn_async_http_handle(
     method: String,
     url: String,
@@ -6170,13 +6232,8 @@ pub fn shim_http_patch_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// Helper: push a response-body string onto the stack as a tagged string.
 fn push_string_result(task: &mut AutoTask, vm: &AutoVM, s: String) -> Result<(), VMError> {
     let bytes = s.into_bytes();
-    let str_idx = {
-        let mut strings = vm.strings.write().unwrap();
-        let idx = strings.len();
-        strings.push(bytes);
-        idx as u32
-    };
-    vm.rc_push_str_idx(task, str_idx as usize);
+    let str_idx = vm.add_string(bytes);
+    vm.rc_push_str_idx(task, str_idx);
     Ok(())
 }
 
@@ -6208,6 +6265,7 @@ fn spawn_async_http_auth(
     api_key: Option<String>,
     request_id: u64,
 ) {
+    eprintln!("[HTTP_REQ] {} url={} body_len={:?}", method, url, body.as_ref().map(|b| b.len()));
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
         let mut builder = match method.as_str() {
@@ -6231,9 +6289,13 @@ fn spawn_async_http_auth(
             Ok(response) => {
                 let status = response.status().as_u16() as i32;
                 let body_text = response.text().unwrap_or_default();
+                eprintln!("[HTTP_RESP] {} url={} -> status={} body_len={}", method, url, status, body_text.len());
                 Ok((status, body_text))
             }
-            Err(e) => Err(format!("HTTP error: {}", e)),
+            Err(e) => {
+                eprintln!("[HTTP_RESP_ERR] {} url={} -> err={}", method, url, e);
+                Err(format!("HTTP error: {}", e))
+            }
         };
         let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
         if let Ok(mut map) = ASYNC_RESULTS.lock() {
@@ -7253,12 +7315,18 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Regex (manual shim — heap objects for compiled regex)
     natives.register_shim_by_name("auto.regex.find_all", shim_regex_find_all);
     natives.register_shim_by_name("auto.regex.match", shim_regex_match);
+    // PLAN-053 P-053-6: web 生态静态形态（CALL_SPEC Regex.replace/test 路由）。
+    natives.register_shim_by_name("auto.regex.replace", shim_regex_replace);
+    natives.register_shim_by_name("auto.regex.test", shim_regex_test);
 
     // Task system (manual shim — VM access for event loop)
     natives.register_shim_by_name("auto.task_system.run", shim_task_system_run);
 
     // Plan 192: Rust stdlib dynamic dispatch (manual — uses heap objects)
     natives.register_shim_by_name("auto.rust_stdlib.dispatch", shim_rust_stdlib_dispatch);
+
+    // PLAN-053 P-053-4: merged 模式下 #[api] no-op 告警
+    natives.register_shim_by_name("auto.vm.warn_api_noop", shim_warn_api_noop);
 
     // Plan 263 Phase 2-3: Test runners (manual shims — calls discover/run from test_runner)
     natives.register_shim_by_name("auto.test.run_a2r_dir", shim_test_run_a2r_dir);
@@ -7570,11 +7638,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
                 });
             match stem {
                 Some(s) => {
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        strings.push(s.into_bytes());
-                        strings.len() - 1
-                    };
+                    let idx = vm.add_string(s.into_bytes());
                     task.ram.push_nv(auto_val::encode_string(idx as u32));
                 }
                 None => task.ram.push_nv(auto_val::encode_null()),

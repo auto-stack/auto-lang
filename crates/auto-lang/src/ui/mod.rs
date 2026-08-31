@@ -51,6 +51,10 @@ pub mod shell;
 // Plan 463 T7：应用注册表（apps 目录扫描 → LaunchApp 目标清单）。
 pub mod app_registry;
 
+// Plan 501：os-config daemon 生命周期（检活/发现序 spawn/AUTOOS_DAEMON env
+// 注入——外部仓 settings app 的宿主侧底座；纯逻辑全平台单测）。
+pub mod osconfig_daemon;
+
 // Plan 386 Stage 1：桌面协议（进程外 App 五通道）——loopback 同进程走通，
 // 施工图 Design 25 §7；Stage 2 换真 transport 时只替换其 loopback 层。
 #[cfg(feature = "ui-iced")]

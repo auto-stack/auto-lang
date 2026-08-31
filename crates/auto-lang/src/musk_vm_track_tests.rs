@@ -74,6 +74,330 @@ mod musk_vm_track_p053_2_null_equality {
     }
 }
 
+/// P-053-6: web 生态 Regex 静态形态（musk forge_helpers/mention_helpers 的
+/// 消息渲染链全死于此——`CALL_SPEC: no function 'Regex.replace' for type
+/// 'Regex'`，Call 臂 swallowed-Err 静默）。
+#[cfg(test)]
+mod musk_vm_track_p053_6_regex_static {
+    use crate::run_with_capture;
+
+    fn run_code(code: &str) -> String {
+        match run_with_capture(code) {
+            Ok((_, stdout)) => stdout,
+            Err(e) => panic!("run failed: {:?}", e),
+        }
+    }
+
+    /// `Regex.replace(text, pattern, repl, "g")` 全局替换（stripQuestionnaire
+    /// / render_mentions_default 的 HTML 转义链现场形态）。
+    #[test]
+    fn regex_replace_global() {
+        let out = run_code(
+            "print(Regex.replace(Regex.replace(\"a<b>c\", \"<\", \"&lt;\", \"g\"), \">\", \"&gt;\", \"g\"))",
+        );
+        eprintln!("[P053-6] replace g => [{}]", out);
+        assert!(
+            out.contains("a&lt;b&gt;c"),
+            "expected a&lt;b&gt;c, got: [{}]", out
+        );
+    }
+
+    /// `Regex.replace` 无 g 标志只替换首处（web 生态默认）。
+    #[test]
+    fn regex_replace_first() {
+        let out = run_code("print(Regex.replace(\"a-a-a\", \"a\", \"b\", \"\"))");
+        eprintln!("[P053-6] replace first => [{}]", out);
+        assert!(out.contains("b-a-a"), "expected b-a-a, got: [{}]", out);
+    }
+
+    /// `Regex.test(text, pattern) -> bool`（stripQuestionnaire 的
+    /// 问卷探测现场形态）。
+    #[test]
+    fn regex_test_bool() {
+        let out = run_code("print(Regex.test(\"hello 123\", \"\\\\d+\"))");
+        eprintln!("[P053-6] test => [{}]", out);
+        assert!(out.contains("true"), "expected true, got: [{}]", out);
+    }
+
+    /// 控制组：不匹配返回 false。
+    #[test]
+    fn regex_test_no_match() {
+        let out = run_code("print(Regex.test(\"hello\", \"\\\\d+\"))");
+        eprintln!("[P053-6] test-neg => [{}]", out);
+        assert!(out.contains("false"), "expected false, got: [{}]", out);
+    }
+
+    /// stripQuestionnaire 链最小同构：Regex.replace → trimEnd → obj 字段落值。
+    /// 现场症状：blocks 元素 {kind:"text", text:Nil}（正文丢成 null）。
+    #[test]
+    fn strip_questionnaire_chain_keeps_text() {
+        let out = run_code(concat!(
+            "fn stripQ(text str, streaming bool) -> str {\n",
+            "    if text == \"\" { return text }\n",
+            "    var out = Regex.replace(text, \"```json[\\\\s\\\\S]*\", \"\", \"g\")\n",
+            "    return out.trimEnd()\n",
+            "}\n",
+            "var b = { kind: \"text\", text: stripQ(\"reply with one short sentence\", false) }\n",
+            "print(b.kind + \"|\" + b.text)\n",
+        ));
+        eprintln!("[P053-6] stripQ chain => [{}]", out);
+        assert!(
+            out.contains("text|reply with one short sentence"),
+            "expected text|reply..., got: [{}]",
+            out
+        );
+    }
+
+    /// 切分探针 A：纯 trimEnd。
+    #[test]
+    fn probe_trim_end_alone() {
+        let out = run_code("fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"abc \"))");
+        eprintln!("[P053-6] trimEnd alone => [{}]", out);
+        assert!(out.contains("abc"), "expected abc, got: [{}]", out);
+    }
+
+    /// 切分探针 B：Regex.replace 结果直存局部再读。
+    #[test]
+    fn probe_replace_local_roundtrip() {
+        let out = run_code(
+            "fn f(t str) -> str { var out = Regex.replace(t, \"zzz\", \"\", \"g\"); return out }\nprint(f(\"reply\"))",
+        );
+        eprintln!("[P053-6] replace local => [{}]", out);
+        assert!(out.contains("reply"), "expected reply, got: [{}]", out);
+    }
+
+    /// 接收者泄漏探针：函数体内静态 native 调用后，后续局部/字段读取
+    /// 不得被残留的接收者槽污染（现场：blocks 元素 text 落成 "0"）。
+    #[test]
+    fn probe_static_native_receiver_leak_in_fn() {
+        // 变体 A：fn 内 replace 后直接返回（无 obj）。
+        let a = run_code(concat!(
+            "fn mk(s str) -> str {\n",
+            "    var out = Regex.replace(s, \"zzz\", \"\", \"g\")\n",
+            "    return out\n",
+            "}\n",
+            "fn main() {\n",
+            "    print(mk(\"reply with one short sentence\"))\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-A fn-replace => [{}]", a);
+        // 变体 B：fn 内 obj 字面量（无 native）。
+        let b = run_code(concat!(
+            "fn mk(s str) -> obj {\n",
+            "    return { kind: \"text\", text: s }\n",
+            "}\n",
+            "fn main() {\n",
+            "    let b = mk(\"reply\")\n",
+            "    print(b.kind + \"|\" + b.text)\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-B fn-obj => [{}]", b);
+        // 变体 C：完整形态。
+        let c = run_code(concat!(
+            "fn mk(s str) -> obj {\n",
+            "    var out = Regex.replace(s, \"zzz\", \"\", \"g\")\n",
+            "    return { kind: \"text\", text: out }\n",
+            "}\n",
+            "fn main() {\n",
+            "    let b = mk(\"reply with one short sentence\")\n",
+            "    print(b.kind + \"|\" + b.text)\n",
+            "}\n",
+        ));
+        eprintln!("[P053-6] leak-C full => [{}]", c);
+        assert!(
+            a.contains("reply with one short sentence"),
+            "A: fn 内 replace 返回, got: [{}]", a
+        );
+        assert!(b.contains("text|reply"), "B: fn 内 obj 字面量, got: [{}]", b);
+        assert!(
+            c.contains("text|reply with one short sentence"),
+            "C: 完整形态, got: [{}]", c
+        );
+    }
+
+    /// 消息链字符串方法矩阵（musk forge/mention helpers 实际使用面）。
+    #[test]
+    fn message_chain_str_methods_matrix() {
+        let cases: &[(&str, &str)] = &[
+            ("trimEnd", "fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"a \"))|a"),
+            ("to_lower", "fn f(s str) -> str { return s.to_lower() }\nprint(f(\"AbC\"))|abc"),
+            ("to_upper", "fn f(s str) -> str { return s.to_upper() }\nprint(f(\"aBc\"))|ABC"),
+            ("includes", "fn f(s str) -> bool { return s.includes(\"ell\") }\nprint(f(\"hello\"))|true"),
+            ("lastIndexOf", "fn f(s str) -> int { return s.lastIndexOf(\"l\") }\nprint(f(\"hello\"))|3"),
+            ("indexOf", "fn f(s str) -> int { return s.indexOf(\"e\") }\nprint(f(\"hello\"))|1"),
+            ("substring", "fn f(s str) -> str { return s.substring(1, 3) }\nprint(f(\"hello\"))|el"),
+            ("char_code_at", "fn f(s str) -> int { return s.char_code_at(0) }\nprint(f(\"A\"))|65"),
+            ("slice", "fn f(s str) -> str { return s.slice(0, 2) }\nprint(f(\"hello\"))|he"),
+        ];
+        let mut misses: Vec<&str> = Vec::new();
+        for (name, spec) in cases.iter() {
+            let (code, expect) = spec.split_once('|').unwrap();
+            let out = run_code(code);
+            let ok = out.trim().contains(expect);
+            eprintln!("[P053-6] str-method {} => [{}] expect contains [{}] {}", name, out.trim(), expect, if ok { "OK" } else { "MISS" });
+            if !ok {
+                misses.push(name);
+            }
+        }
+        assert!(misses.is_empty(), "消息链字符串方法缺口: {:?}", misses);
+    }
+}
+
+/// P-053-6 widget 级：子组件 computed 调 Regex helper 渲染消息正文
+/// （UserMessage `html => render_mentions_default(.content)` 的最小同构）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_6_widget_content {
+    use crate::parser::Parser;
+
+    fn count_text_nodes(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
+        use crate::ui::view::View;
+        match view {
+            View::Text { content, .. } => usize::from(content == label),
+            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn widget_child_computed_regex_helper_content() {
+        let src = concat!(
+            // P-053-6 续: use.web component 形态 + registry 已注册同名适配器
+            // widget（renderer.vm.at Markdown 纯文本降级的现场形态）——图标
+            // 臂不得遮蔽注册组件。
+            "use.web component Msg53c from \"src/front/ports/renderer.at\"\n",
+            // render_mentions_default 的最小同构：HTML 转义链(Regex.replace)+
+            // 词汇探测(Regex.test)——现场死因的浓缩。
+            "fn esc(text str) -> str {\n",
+            "    let a = Regex.replace(text, \"&\", \"&amp;\", \"g\")\n",
+            "    let b = Regex.replace(a, \"<\", \"&lt;\", \"g\")\n",
+            "    let c = Regex.replace(b, \">\", \"&gt;\", \"g\")\n",
+            "    if Regex.test(c, \"q\") { return c + \"[Q]\" }\n",
+            "    return c\n",
+            "}\n",
+            "widget Root53c {\n",
+            "    model { var messages []Value = [] }\n",
+            "    view { col { for m in .messages { Msg53c { content: .m.content } } } }\n",
+            "}\n",
+            "widget Msg53c(content: str) {\n",
+            "    computed { html => esc(.content) }\n",
+            "    view { col { text .html {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::UseWeb(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        comp.write_state_vec(
+            "messages",
+            vec![auto_val::Value::Obj(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>")),
+            )],
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn dump_texts(v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match v {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children { dump_texts(c, out); }
+                }
+                _ => {}
+            }
+        }
+        let mut texts = Vec::new();
+        dump_texts(&view, &mut texts);
+        eprintln!("[P053-6w] text nodes: {:?}", texts);
+        let rows = count_text_nodes(&view, "hello &amp; &lt;world&gt;");
+        assert_eq!(rows, 1, "子组件 computed 经 Regex helper 的正文必须渲染");
+    }
+
+    /// P-053-6 续(Obj 实参物化)：computed 把 obj 值(state 字段)传给
+    /// helper，helper 内读字段——原编组落 push_i32(0) 占位，msg 变 Int(0)，
+    /// `.content` 全读 0（musk 消息正文 "0" 的终因）。
+    #[test]
+    fn widget_obj_arg_field_read_in_helper() {
+        let src = concat!(
+            "fn contentOf(msg obj) -> str {\n",
+            "    return msg.content\n",
+            "}\n",
+            "widget Root53d {\n",
+            "    model { var current obj = {} }\n",
+            "    view { col { Msg53d {} } }\n",
+            "}\n",
+            "widget Msg53d {\n",
+            "    computed { body => contentOf(.store.current) }\n",
+            "    view { col { text .body {} } }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget =
+            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let child_widget =
+            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        registry.register(child_widget);
+
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            registry,
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        comp.write_state(
+            "current",
+            auto_val::Value::Obj(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world")),
+            ),
+        )
+        .unwrap();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        let rows = count_text_nodes(&view, "hello obj world");
+        assert_eq!(rows, 1, "obj 实参经 helper 的字段读取必须成立");
+    }
+}
+
 /// P-053-1: computed + use.web.fn helper 链（占位——复现测试落地于步骤 4）。
 #[cfg(test)]
 mod musk_vm_track_p053_1_computed_helper_chain {
@@ -304,3 +628,154 @@ mod musk_vm_track_p053_1_widget_computed {
         assert_eq!(rows_last, 2, "computed 透传链 8 帧重估后仍须解出 2 行(悬垂引用回归)");
     }
 }
+
+/// P-053-4: merged 模式下 #[api] no-op 显式告警。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_4_merged_api_warning {
+    use crate::parser::Parser;
+
+    #[test]
+    fn merged_mode_api_call_emits_warn_opcode() {
+        let src = concat!(
+            "#[api(method = \"GET\", path = \"/api/chats/sessions\")]\n",
+            "fn chats_list_sessions() SessionListResponse { return None }\n",
+            "widget App {\n",
+            "    model { var count int = 0 }\n",
+            "    msg Msg { Fetch }\n",
+            "    on { .Fetch -> { let r = chats_list_sessions(); } }\n",
+            "    view { text \"app\" }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        let mut import_stmts: Vec<crate::ast::Stmt> = vec![];
+        for st in &ast.stmts {
+            match st {
+                crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
+                crate::ast::Stmt::Fn(_) => import_stmts.push(st.clone()),
+                _ => {}
+            }
+        }
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &root_widget,
+            &[],
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false, // merged mode (api_over_http = false)
+        )
+        .expect("synthesize");
+
+        // Bytecode must contain CALL_NAT 3142 (auto.vm.warn_api_noop)
+        let has_warn_call = module.code.windows(4).any(|w| {
+            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8 && u16::from_le_bytes([w[1], w[2]]) == 3142
+        });
+        assert!(has_warn_call, "merged mode #[api] call must emit CALL_NAT 3142");
+    }
+}
+
+/// P-053-5: localStorage.getItem 字符串入池在 debug 模式下不踩 RC canary。
+#[cfg(test)]
+mod musk_vm_track_p053_5_localstorage_rc_canary {
+    use crate::run_with_capture;
+
+    #[test]
+    fn localstorage_get_item_canary_safe() {
+        let code = r#"
+localStorage.setItem("test_key", "test_value_123")
+let v = localStorage.getItem("test_key")
+print(v)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "localStorage get_item should run without canary panic: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        assert!(stdout.contains("test_value_123"), "expected test_value_123, got: [{}]", stdout);
+    }
+}
+
+/// P-053-7: Widget .Init 内 bare Sibling() 调用与 .Sibling() 均正确转译派发。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p053_7_sibling_handler_calls {
+    use crate::parser::Parser;
+
+    #[test]
+    fn store_init_bare_and_dot_sibling_calls_rewritten() {
+        let src = concat!(
+            "widget SiblingWidget {\n",
+            "    model { var loaded bool = false }\n",
+            "    msg Msg { Init, DoLoad }\n",
+            "    on {\n",
+            "        .Init -> { DoLoad() }\n",
+            "        .DoLoad -> { .loaded = true }\n",
+            "    }\n",
+            "    view { text \"app\" }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut decls: Vec<crate::ast::WidgetDecl> = vec![];
+        for st in &ast.stmts {
+            if let crate::ast::Stmt::WidgetDecl(d) = st {
+                decls.push(d.clone());
+            }
+        }
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &root_widget,
+            &[],
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("synthesize");
+
+        // Synthesized module contains handler_SiblingWidget_DoLoad export
+        let has_handler = module.exports.iter().any(|(name, _)| {
+            name.contains("handler_SiblingWidget_DoLoad")
+        });
+        assert!(has_handler, "expected handler_SiblingWidget_DoLoad in module exports: {:?}", module.exports.keys().collect::<Vec<_>>());
+    }
+}
+
+/// P-053-M1: 失败响应与成功响应在 `resp != None && resp.session != None` 守卫下的行为。
+#[cfg(test)]
+mod musk_vm_track_p053_m1_guard_behavior {
+    use crate::run_with_capture;
+
+    #[test]
+    fn error_object_fails_session_guard() {
+        // 404 error response object
+        let code = r#"
+let resp = Json.to_value("{\"error\":\"HTTP 404\",\"status\":404}")
+let guard = (resp != None) && (resp.session != None)
+if guard {
+    print("GUARD_PASSED")
+} else {
+    print("GUARD_BLOCKED")
+}
+"#;
+        let (_code_res, stdout) = run_with_capture(code).expect("run");
+        assert!(stdout.contains("GUARD_BLOCKED"), "404 error object must be blocked by guard, got: [{}]", stdout);
+    }
+
+    #[test]
+    fn success_object_passes_session_guard() {
+        // 200 success response object
+        let code = r#"
+let resp = Json.to_value("{\"session\":{\"id\":\"s123\",\"messages\":[]}}")
+let guard = (resp != None) && (resp.session != None)
+if guard {
+    print("GUARD_PASSED")
+} else {
+    print("GUARD_BLOCKED")
+}
+"#;
+        let (_code_res, stdout) = run_with_capture(code).expect("run");
+        assert!(stdout.contains("GUARD_PASSED"), "200 success object must pass guard, got: [{}]", stdout);
+    }
+}
+

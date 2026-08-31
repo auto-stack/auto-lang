@@ -1270,6 +1270,8 @@ macro_rules! for_each_bigvm_native {
             ("auto.http.set_default_header", 3139, Void),
             ("auto.http.set_default_query", 3140, Void),
             ("auto.http.clear_default_auth", 3141, Void),
+            // PLAN-053 P-053-4: merged mode #[api] no-op warning
+            ("auto.vm.warn_api_noop", 3142, Void),
             ("auto.http.post", 2231, Void),
             ("auto.http.put", 2232, Void),
             ("auto.http.delete", 2233, Void),
@@ -1355,6 +1357,10 @@ macro_rules! for_each_bigvm_native {
             // === Regex (2400-2410) ===
             ("auto.regex.is_match", 2400, Void),
             ("auto.regex.find_all", 2401, Void),
+            // PLAN-053 P-053-6: web 生态静态形态（Regex.replace/test，
+            // musk 消息渲染链消费）。
+            ("auto.regex.replace", 2402, Void),
+            ("auto.regex.test", 2403, Void),
             ("auto.regex.match", 2410, Void),
 
             // === System (2420-2430) ===
@@ -2094,6 +2100,7 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.http.set_default_header", 3139),
     ("auto.http.set_default_query", 3140),
     ("auto.http.clear_default_auth", 3141),
+    ("auto.vm.warn_api_noop", 3142),
     ("auto.http.post", 2231),
     ("auto.http.put", 2232),
     ("auto.http.delete", 2233),
@@ -2161,6 +2168,8 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.task_system.stop", 2307),
     ("auto.regex.is_match", 2400),
     ("auto.regex.find_all", 2401),
+    ("auto.regex.replace", 2402),
+    ("auto.regex.test", 2403),
     ("auto.regex.match", 2410),
     ("auto.sys.exec", 2420),
     ("auto.fs.is_binary", 2430),

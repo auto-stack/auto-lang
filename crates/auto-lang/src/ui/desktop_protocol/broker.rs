@@ -426,6 +426,8 @@ mod tests {
                         code: code.clone(),
                         source_path: None,
                         title: Some("Broker386".into()),
+                        daemon: None,
+                        back_root: None,
                     })
                 } else {
                     None

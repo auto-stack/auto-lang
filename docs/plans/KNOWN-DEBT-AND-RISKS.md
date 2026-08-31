@@ -423,3 +423,19 @@
   virtual_window（win prop 同不透）先例一致的转译器 v1 局限。占位
   组件（icon+边框，待澄清①）不需要动态 wid；真缩略 web 路径
   （transform 缩放复制子树）落地时一并补 props 透传。
+### P501（2026-08-31，Plan 501 os-config 集成复审登记）
+
+- **P501-1 daemon 发现序第 3 级（PATH）v1 留扩展位**：`ensure_ready_io`
+  生产路径 `lookup_path` 恒 `None`（osconfig_daemon.rs 成文注释「v1 不做
+  PATH 扫描」）——发现序实际生效两级（storage `shell.osconfig.daemon` >
+  相邻仓 target），Offline 原因文案如实只列两级。理由：本计划非目标明确
+  排除「daemon 安装器/打包分发」，PATH 发现仅在安装态有意义；开发机形态
+  被相邻仓探测全覆盖。`resolve_daemon_path` 的注入缝已就位，安装态立项时
+  接宿主 `which` 语义即可。
+- **P501-2 T4 人手点击链残差（479/487/496 前台竞争家族延续）**：齿轮 →
+  系统 → 打开系统设置的 GUI 像素自动化与 iced 活渲染栅格竞态不可靠未强
+  驱（P496-1 同族）；headless 等价链全绿（T2 三态徽标注入 + 派发解析 +
+  T3 launch 全链 + boot 35vs34 冒烟 + live spawn 2.52s/复用 774µs）。
+  runbook：仓根起 `cargo run -p auto-lang --features ui-iced --example
+  ui_desktop` 人手 30 秒抽查；前台空闲可补采（P479-2/P487-1/P496-1 同批
+  排队）。

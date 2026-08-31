@@ -5182,11 +5182,13 @@ impl AutoVM {
                                     }
                                 }
                             } else {
-                                // Plan 118: Field not found - return error
-                                return Err(VMError::RuntimeError(format!(
-                                    "Field '{}' not found on object",
-                                    field_name
-                                )));
+                                // PLAN-053 P-053-6: 缺键读 null（对齐
+                                // PLAN-044 __json_object 缺键语义与 web 轨
+                                // undefined→?? 兜底惯用）——原硬报错使
+                                // `msg.blocks ?? [textBlock(msg)]` 一类
+                                // Option 链在普通 obj 上直接炸（musk 消息
+                                // 渲染链 messageDisplayBlocks 现场）。
+                                task.ram.push_nv(auto_val::encode_null());
                             }
                         } else if let Some(inst) = heap_obj.as_any().downcast_ref::<GenericInstanceData>() {
                             let field_idx = inst.field_names.iter().position(|n| n == &field_name);
@@ -6011,6 +6013,18 @@ impl AutoVM {
                         .as_ref()
                         .and_then(|name| self.native_interface.resolve(name));
 
+                    // PLAN-053 P-053-6: web 生态 Regex 静态形态——
+                    // `Regex.replace(text, pat, repl, flags)` / `Regex.test(text, pat)`
+                    // （musk forge_helpers/mention_helpers 的消息渲染链）。原仅
+                    // OPAQUE_DISPATCH_REGEX_METHODS 的实例方法（is_match/
+                    // replace_all…）可解析，静态形态落兜底报错 → 消息正文整体空。
+                    let regex_static_native_id =
+                        if type_name == "Regex" && matches!(method_name.as_str(), "replace" | "test") {
+                            self.native_interface.resolve(&format!("auto.regex.{}", method_name))
+                        } else {
+                            None
+                        };
+
                     // Plan 240: Math method dispatch for CALL_SPEC
                     // Handles chained expressions like (a-b).to_radians() where type inference fails
                     const CALL_SPEC_MATH_METHODS: &[&str] = &[
@@ -6054,6 +6068,25 @@ impl AutoVM {
                             old_fn_n_args: saved_n_args,
                             old_fn_n_locals: saved_n_locals,
                         });
+                    } else if let Some(native_id) = regex_static_native_id {
+                        // PLAN-053 P-053-6: web 生态 Regex 静态形态
+                        // （Regex.replace/test）。CALL_SPEC 布局
+                        // [..., recv, arg0..argN-1] → shim 按 CALL_NAT 约定
+                        // 只吃实参：实参弹出暂存 → 弃接收者 → 实参回栈 →
+                        // 执行（结果由 shim 压回，无额外清理）。
+                        let mut args_rev = Vec::with_capacity(arg_count);
+                        for _ in 0..arg_count {
+                            args_rev.push(task.ram.pop_nv());
+                        }
+                        task.ram.pop_nv(); // receiver（"Regex" 类型名占位）
+                        for nv in args_rev.into_iter().rev() {
+                            task.ram.push_nv(nv);
+                        }
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
                     } else if let Some(native_id) = opaque_native_id {
                         // Plan 212 Phase 2.2: Opaque type method routed to native shim
                         // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]
@@ -6280,6 +6313,94 @@ impl AutoVM {
                                     .unwrap_or_default();
                                 let idx = self.add_string(s.into_bytes());
                                 { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                            }
+                            // PLAN-053 P-053-6: web 生态字符串方法族（musk 消息
+                            // 渲染链使用面）——此前落 _ => push null，正文链
+                            // 静默退化（stripQuestionnaire 的 trimEnd、
+                            // chatSearchFilter 的 includes/to_lower、
+                            // estimateTokens 的 char_code_at 等）。
+                            "trimEnd" | "trim_end" => {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim_end().to_string())
+                                    .unwrap_or_default();
+                                let idx = self.add_string(s.into_bytes());
+                                { for _ in 0..=arg_count { task.ram.pop_nv(); } self.rc_push_str_idx(task, idx as usize); }
+                            }
+                            "includes" => {
+                                let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
+                                let pat = if auto_val::is_string(pat_nv) {
+                                    let i = auto_val::decode_string(pat_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_bool(s.contains(&pat))); }
+                            }
+                            "indexOf" | "indexOf_str" | "lastIndexOf" | "last_index_of" => {
+                                let pat_nv = if arg_count >= 1 { task.ram.pop_nv() } else { receiver_nv };
+                                let pat = if auto_val::is_string(pat_nv) {
+                                    let i = auto_val::decode_string(pat_nv) as usize;
+                                    self.strings.read().unwrap().get(i).map(|b| String::from_utf8_lossy(b).to_string()).unwrap_or_default()
+                                } else { String::new() };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let found = if method_name == "indexOf" || method_name == "indexOf_str" {
+                                    s.find(&pat).map(|b| b as i32).unwrap_or(-1)
+                                } else {
+                                    s.rfind(&pat).map(|b| b as i32).unwrap_or(-1)
+                                };
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(found)); }
+                            }
+                            "substring" | "substring_str" => {
+                                // JS 语义近似：(start[, end])，越界钳制，按字节
+                                // 切片（musk 现场的 start/end 来自 find() 字节位）。
+                                let (a, b) = if arg_count >= 2 {
+                                    let e = task.ram.pop_nv();
+                                    let s0 = task.ram.pop_nv();
+                                    (auto_val::decode_i32(s0), auto_val::decode_i32(e))
+                                } else if arg_count == 1 {
+                                    (auto_val::decode_i32(task.ram.pop_nv()), i32::MAX)
+                                } else {
+                                    (0, i32::MAX)
+                                };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let bytes = s.as_bytes();
+                                let start = (a.max(0) as usize).min(bytes.len());
+                                let end = (b.max(0) as usize).min(bytes.len()).max(start);
+                                // 字符边界钳制（非 UTF-8 边界时退到字符边界）。
+                                let mut se = start;
+                                while se < end && !s.is_char_boundary(se) { se += 1; }
+                                let mut ee = end;
+                                while ee > se && !s.is_char_boundary(ee) { ee -= 1; }
+                                let out = String::from_utf8_lossy(&bytes[se..ee]).to_string();
+                                let idx = self.add_string(out.into_bytes());
+                                { task.ram.pop_nv(); self.rc_push_str_idx(task, idx as usize); }
+                            }
+                            "char_code_at" | "charCodeAt" => {
+                                let i = if arg_count >= 1 {
+                                    auto_val::decode_i32(task.ram.pop_nv())
+                                } else {
+                                    0
+                                };
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self.strings.read().unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let code = s.chars().nth(i.max(0) as usize).map(|c| c as i32).unwrap_or(-1);
+                                { task.ram.pop_nv(); task.ram.push_nv(auto_val::encode_i32(code)); }
                             }
                             "replace" => {
                                 let str_idx = auto_val::decode_string(receiver_nv) as usize;

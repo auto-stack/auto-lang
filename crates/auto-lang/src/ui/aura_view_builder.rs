@@ -1431,7 +1431,16 @@ impl<'a> AuraViewBuilder<'a> {
 
             // PLAN-050 T7 (C5): 图标组件臂（tracked 层镜像,见 convert_element
             // 同名臂注释）。图标是叶子节点,无 probe 文本需求。
-            tag if self.is_imported_component(tag) => {
+            // PLAN-053 P-053-6: registry 已注册同名适配器 widget（renderer.vm.at
+            // Markdown 纯文本降级等 use.web component 的 VM 形态）优先于图标
+            // 回落——原臂无条件吞掉,注册组件被画成 lucide glyph(View::Image),
+            // 消息正文整体成图标占位。
+            tag if self.is_imported_component(tag)
+                && self
+                    .widget_registry
+                    .and_then(|r| r.get(tag))
+                    .is_none() =>
+            {
                 self.convert_icon_component(tag, props, bindings)
             }
 
@@ -2271,7 +2280,14 @@ impl<'a> AuraViewBuilder<'a> {
             // 既有 lucide glyph 直绘（svg 直绘 + currentColor tint）。此前落
             // unknown fallback → View::Empty（rail/设置面板图标全空）。未知
             // glyph 由 renderer 空占位兜底（与缺组件等价的降级）。
-            tag if self.is_imported_component(tag) => {
+            // PLAN-053 P-053-6: registry 已注册同名适配器 widget 优先于图标
+            // 回落（tracked 双胎同款守卫,详见 tracked 臂注释）。
+            tag if self.is_imported_component(tag)
+                && self
+                    .widget_registry
+                    .and_then(|r| r.get(tag))
+                    .is_none() =>
+            {
                 self.convert_icon_component(tag, props, bindings)
             }
 
@@ -6600,8 +6616,21 @@ let tabs_inner = View::Row {
                         }
                     }
                     if complete {
-                        if let Ok(v) = self.bridge.call_vm_fn(fname.as_str(), &arg_vals) {
-                            return Some(v);
+                        match self.bridge.call_vm_fn(fname.as_str(), &arg_vals) {
+                            Ok(v) => return Some(v),
+                            Err(e) => {
+                                // PLAN-053 P-053-6: computed/prop 位置的 helper
+                                // 调用失败此前被静默吞掉（None → 空串/空列表，
+                                // 无任何线索——musk 消息正文空即是此形态藏了
+                                // CALL_SPEC Regex 报错整整一批）。AUTO_DEBUG_EMIT
+                                // 下显形。
+                                if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
+                                    eprintln!(
+                                        "[VM-CALLFN-VIEW] {} in {} FAILED: {:?} args={:?}",
+                                        fname, self.widget_name, e, arg_vals
+                                    );
+                                }
+                            }
                         }
                     }
                     return None;
@@ -7130,14 +7159,8 @@ let tabs_inner = View::Row {
             if let Some(val) = self.resolve_binding_path(param, bindings) {
                 args.push(val);
             } else if let Some(val) = self.parse_event_param_expr(param, bindings) {
-                // Plan 059 续(DEBTS §B8 修复):前导点路径(.block.id 等 widget
-                // 参数引用)在 binding 表(仅循环变量)中不存在 —— 解析为
-                // 表达式后经视图表达式解析器求值(可解析 .block.output.Table
-                // .columns 这类深 prop 路径)。此前落入字面量分支变垃圾串,
-                // 渲染层 as_int(Str) 静默 0 → 排序/折叠恒命中第一个 block。
                 args.push(val);
             } else {
-                // Not a binding — treat as a literal value.
                 args.push(parse_event_param_literal(param));
             }
         }
@@ -7174,7 +7197,8 @@ let tabs_inner = View::Row {
     }
 
     fn resolve_binding_path(&self, path: &str, bindings: &Bindings) -> Option<Value> {
-        let parts: Vec<&str> = path.split('.').collect();
+        let clean_path = path.strip_prefix("this.").or_else(|| path.strip_prefix('.')).unwrap_or(path);
+        let parts: Vec<&str> = clean_path.split('.').collect();
         if parts.is_empty() {
             return None;
         }
@@ -7185,6 +7209,22 @@ let tabs_inner = View::Row {
             match val {
                 Value::Obj(map) => {
                     val = map.get(*field)?;
+                }
+                Value::Int(id) if id >= 4_000_000 => {
+                    let materialized = self.bridge.materialize_obj_ref(&Value::Int(id));
+                    if let Value::Obj(map) = materialized {
+                        val = map.get(*field)?;
+                    } else {
+                        return None;
+                    }
+                }
+                Value::VmRef(r) => {
+                    let materialized = self.bridge.materialize_obj_ref(&Value::VmRef(r));
+                    if let Value::Obj(map) = materialized {
+                        val = map.get(*field)?;
+                    } else {
+                        return None;
+                    }
                 }
                 _ => return None,
             }

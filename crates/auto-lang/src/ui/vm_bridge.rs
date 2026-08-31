@@ -1092,6 +1092,32 @@ impl VmBridge {
                 Value::VmRef(r) => {
                     self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
+                // PLAN-053 P-053-6: Obj/Array 实参物化——原落 push_value 的
+                // push_i32(0) 占位，helper 收到的 msg 是 Int(0)，`.content`/
+                // `.role` 等字段全读 0（musk 消息正文链 text 落 "0" 的终因）。
+                // Obj → ObjectData 堆对象；Array → ListData<Value>。
+                Value::Obj(o) => {
+                    let mut od = crate::vm::types::ObjectData::new();
+                    for (k, v) in o.iter() {
+                        if let auto_val::Value::VmRef(r) = v {
+                            self.vm.rc_retain_id(r.id as u64);
+                        }
+                        od.set(k.clone(), v.clone());
+                    }
+                    let id = self.vm.insert_heap_object(od) as u32;
+                    self.vm.rc_push(&mut task, auto_val::encode_object(id));
+                }
+                Value::Array(arr) => {
+                    let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+                    for v in arr.iter() {
+                        if let auto_val::Value::VmRef(r) = v {
+                            self.vm.rc_retain_id(r.id as u64);
+                        }
+                        list.push(v.clone());
+                    }
+                    let id = self.vm.insert_heap_object(list) as u32;
+                    self.vm.rc_push(&mut task, auto_val::encode_object(id));
+                }
                 other => push_value(&mut task.ram, other),
             }
         }
@@ -1099,7 +1125,20 @@ impl VmBridge {
             .call_fn_by_name(&mut task, &fn_name, args.len())
             .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
         let nv = task.ram.pop_nv();
-        let out = nv_to_pub_value(nv);
+        // PLAN-053 P-053-6: 字符串结果必须解码为 Value::Str——
+        // nv_to_pub_value 的 is_string 臂把字符串降格为池索引
+        // Value::Int(idx)（低层裸约定），computed/prop 位置的字符串返回值
+        // （musk msgTimeLabel/render_mentions_default/html 转义链）落到
+        // builder 后被当作整数显示/判空，正文整体丢失。
+        let out = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as u32;
+            match self.vm.get_string(idx) {
+                Some(bytes) => Value::Str(String::from_utf8_lossy(&bytes).into()),
+                None => Value::Str(String::new().into()),
+            }
+        } else {
+            nv_to_pub_value(nv)
+        };
         // PLAN-051 C3: 返回值为堆引用(ListData/VmRef)时 retain——RET 弹栈
         // 即释放引用,Rust 侧持有的裸 id 会被 RC 回收成悬挂(实机:chatSearchFilter
         // 返回的列表在 for 回退解引用前对象已消失→rows=0)。v1 暂不配对释放
@@ -1117,9 +1156,13 @@ impl VmBridge {
 
     pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
         let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
+        if !event_name.starts_with("__") {
+            eprintln!("[VM_EXEC] fn_name={} state_obj_id={} args={:?}", fn_name, state_obj_id, args);
+        }
 
         // Verify the handler is exported before setting up a call frame.
         if !self.vm.flash.exports_by_name.contains_key(&fn_name) {
+            eprintln!("[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports", fn_name);
             return Err(VmBridgeError::HandlerNotFound(format!("{}.{}", widget_name, event_name)));
         }
 
@@ -1261,6 +1304,8 @@ impl VmBridge {
             return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
         };
 
+        eprintln!("[CALL_HANDLER] widget={} event_name={} fn_name={} args={:?}", self.widget_name, event_name, fn_name, args);
+
         let mut task = AutoTask::new(0, 4096, 0);
 
         // Push arguments left-to-right: __state (the state heap id) first, then
@@ -1284,6 +1329,7 @@ impl VmBridge {
         // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
         let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
         call_result.map_err(|e| {
+            eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
             VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
         })
     }
