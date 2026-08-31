@@ -12342,8 +12342,32 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // official 包 Auto 组件承接(known_sub_widgets 折叠),原生 tag
             // 不再走 shadcn 发射。
             _ => {
-                // Default handling for other components - extract class/style
+                // Default handling for other components - extract class/style.
                 self.push_style_class(&mut attrs, props);
+                // Plan 505 B3（债 P497-2）：无专用臂的注册组件（wm 族
+                // window_thumbnail/virtual_window 等）props 透传——原 v1
+                // 只透 class，wid/win/fallback_icon 静默丢弃；Vue 侧
+                // defineProps 契约（如 VirtualWindow.vue 的 win）由此
+                // 喂到。与子组件通用臂同款：排序迭代 + 绑定表达式；
+                // class/style 已由上面消费，跳过不双发。
+                {
+                    let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                    sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
+                    for (key, value) in sorted_bind {
+                        if matches!(key.as_str(), "class" | "style" | "style_obj") {
+                            continue;
+                        }
+                        let value_str = match value {
+                            AuraPropValue::Expr(expr) => self.bound_value_or_warn(
+                                expr,
+                                &format!("component prop `{}`", key),
+                                "null",
+                            ),
+                            AuraPropValue::StyleBinding(_) => continue,
+                        };
+                        attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                }
             }
         }
 

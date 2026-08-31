@@ -11693,6 +11693,9 @@ fn compare_pngs(
                         }
                         // daemon 语义：全窗口关闭才退出进程（施工图 §1-2）。
                         if state.windows.is_empty() {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                     }
@@ -11746,6 +11749,9 @@ fn compare_pngs(
                         state.pump_broker_clients();
                         let (exit, tasks) = drain_and_execute_desktop_commands(state);
                         if exit {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                         if !tasks.is_empty() {
@@ -11904,6 +11910,9 @@ fn compare_pngs(
                 // 本消息任务 batch 回 iced。
                 let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
                 if exit {
+                    // Plan 505 B5（债 P480-R1）：退出前显式
+                    // 停机 broker serve 线程。
+                    state.shutdown_broker();
                     return iced::exit();
                 }
                 if state.desktop.shell_app.is_some() {
@@ -11939,6 +11948,9 @@ fn compare_pngs(
                         // Plan 473 T6 / B8：退出不吞窗口——全部 docked 槽位
                         // 恢复 pre-dock bounds/样式后再退出。
                         restore_all_native_slots(state);
+                        // Plan 505 B5（债 P480-R1）：退出前显式
+                        // 停机 broker serve 线程。
+                        state.shutdown_broker();
                         return iced::exit();
                     }
                     // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
@@ -12069,6 +12081,9 @@ fn compare_pngs(
                                 .map(|h| h.wm.wins.is_empty())
                                 .unwrap_or(false)
                         {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                     }

@@ -11,7 +11,7 @@ const wins = ref<any[]>([])
 
 <template>
     <div class="flex flex-col w-full h-full">
-      <WindowThumbnail class="w-24 h-14 border rounded" :key="'WindowThumbnail-1-' + (((w as any)?.id ?? w))"  v-for="w in wins"/>
+      <WindowThumbnail class="w-24 h-14 border rounded" :fallback_icon="'app-window'" :wid="w.wid" :key="'WindowThumbnail-1-' + (((w as any)?.id ?? w))"  v-for="w in wins"/>
     </div>
 
 </template>

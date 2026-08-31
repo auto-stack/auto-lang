@@ -1381,6 +1381,11 @@ pub struct DesktopSession {
     /// 常驻；持有以便将来显式停机）。
     #[cfg(feature = "ui-iced")]
     pub(crate) broker_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Plan 505 B5（债 P480-R1）：broker 监听管道名（停机唤醒探测连接的
+    /// 目标——serve_once 阻塞在管道 accept，一记"连上即关"使其返回见
+    /// 旗标退出）。
+    #[cfg(feature = "ui-iced")]
+    pub(crate) broker_pipe: Option<String>,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1566,6 +1571,7 @@ impl DesktopSession {
             broker_clients: BTreeMap::new(),
             #[cfg(feature = "ui-iced")]
             broker_stop: None,
+            broker_pipe: None,
         }
     }
 
@@ -1805,6 +1811,7 @@ impl DesktopSession {
         let mut broker = Broker::on_pipe(pipe_name.to_string());
         let pending = Arc::clone(&self.broker_pending);
         self.broker_stop = Some(Arc::clone(&stop));
+        self.broker_pipe = Some(pipe_name.to_string());
         std::thread::Builder::new()
             .name("autodesk-broker-serve".into())
             .spawn(move || {
@@ -1820,6 +1827,26 @@ impl DesktopSession {
                 }
             })
             .expect("spawn broker serve thread");
+    }
+
+    /// Plan 505 B5（债 P480-R1 清偿）：broker serve 线程显式停机——置位
+    /// 停止旗标 + 一记探测连接（连上即关）唤醒阻塞在管道 accept 的
+    /// serve_once（broker.rs 测试同款停机序）。桌面退出路径（Esc /
+    /// exit 命令 / 全窗关闭 daemon 语义）统一调用；幂等（二次调用无旗标
+    /// 即无操作）。serve 线程 v1"进程级常驻"语义就此收敛为随桌面停机。
+    #[cfg(feature = "ui-iced")]
+    pub fn shutdown_broker(&mut self) {
+        use std::sync::atomic::Ordering;
+        let Some(stop) = self.broker_stop.take() else {
+            return;
+        };
+        let pipe = self.broker_pipe.take();
+        stop.store(true, Ordering::Relaxed);
+        if let Some(pipe) = pipe.as_deref() {
+            // 唤醒：连上即关的探测连接（500ms 超时兜底——serve 线程可能
+            // 恰在两次 serve_once 间隙，连接失败无碍旗标退出）。
+            let _ = crate::ui::desktop_protocol::transport::connect(pipe, 500);
+        }
     }
 
     /// Plan 480 S3/S4：孵化落地（属主线程；desktop 模式由 ServiceTick 帧泵
@@ -3019,6 +3046,30 @@ mod tests {
     fn insert_app(ds: &mut DesktopSession, name: &str) -> AppId {
         let comp = DynamicComponent::new(&make_test_widget(name)).unwrap();
         ds.allocate_app(comp)
+    }
+
+    /// Plan 505 B5（债 P480-R1）：shutdown_broker 显式停机——停止旗标
+    /// 置位 + 探测连接唤醒 serve 线程（唤醒序语义由 broker.rs
+    /// `enable_broker_incubates_into_real_session` 停机段背书）+ 留存
+    /// 清空 + 幂等（二次调用无旗标即无操作）。
+    #[test]
+    fn shutdown_broker_sets_flag_and_is_idempotent() {
+        use std::sync::atomic::Ordering;
+        let mut ds = DesktopSession::__test_session();
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        ds.enable_broker("autoui-505-shutdown-test-pipe", Arc::clone(&stop));
+        assert!(ds.broker_stop.is_some(), "旗标留存");
+        assert_eq!(ds.broker_pipe.as_deref(), Some("autoui-505-shutdown-test-pipe"));
+        ds.shutdown_broker();
+        assert!(stop.load(Ordering::Relaxed), "停止旗标置位");
+        assert!(ds.broker_stop.is_none() && ds.broker_pipe.is_none(), "留存清空");
+        // 幂等：无旗标即无操作，不 panic。
+        ds.shutdown_broker();
+        // serve 线程随旗标退出（探测连接唤醒；≤1s 判定，防环境抖动挂死）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while stop.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     }
 
     #[test]
