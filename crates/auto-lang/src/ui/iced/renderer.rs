@@ -8011,6 +8011,18 @@ fn refresh_hole_regions(state: &mut crate::ui::session::DesktopSession) {
     let Some(frame) = ndw::get_bounds(desktop_hwnd) else {
         return;
     };
+    refresh_hole_regions_at(state, desktop_hwnd, frame);
+}
+
+/// Plan 494：Region 重建核心（hwnd/矩形注入可测形态——T3 档测试以
+/// stale hwnd 驱动 Err 路径，兑现"回退路径实测一次"）。
+#[cfg(windows)]
+fn refresh_hole_regions_at(
+    state: &mut crate::ui::session::DesktopSession,
+    desktop_hwnd: crate::ui::native_dock::NativeHwnd,
+    frame: crate::ui::native_dock::Rect,
+) {
+    use crate::ui::native_dock::win32 as ndw;
     let holes: Vec<crate::ui::native_dock::Rect> = state
         .host
         .as_ref()
@@ -18233,6 +18245,29 @@ mod tests {
         assert!(load_native_hole_mode());
         crate::vm::ffi::stdlib::storage_raw_remove(key);
         let _ = std::fs::remove_file(&_store);
+    }
+
+    /// Plan 494 验收 3：Region 失败回退路径实测一次——stale hwnd 驱动
+    /// `apply_hole_regions` Err → hole_mode 翻 off + 假洞 z 重申路径执行
+    ///（无 slot 时重申空转，仅断言模式翻转与日志路径可达）。
+    #[cfg(all(windows, feature = "test-native-dock"))]
+    #[test]
+    fn hole_region_fallback_flips_mode_off() {
+        use crate::ui::native_dock::win32 as ndw;
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        ds.desktop.hole_mode = true;
+        // 真 scratch 窗创建后销毁 → stale hwnd（alive 检查必 Err，回退分支
+        // 全程真实执行）。
+        let scratch = ndw::test_support::spawn(
+            "e2e-fallback-dead",
+            crate::ui::native_dock::Rect::new(60, 60, 200, 120),
+        );
+        let dead = scratch.0;
+        drop(scratch);
+        let frame = crate::ui::native_dock::Rect::new(0, 0, 800, 600);
+        refresh_hole_regions_at(&mut ds, dead, frame);
+        assert!(!ds.desktop.hole_mode, "Region 失败应自动回退 off（假洞语义）");
     }
 
     /// Plan 487 M4：set_dock_position/enabled 执行臂——storage 键写回 +
