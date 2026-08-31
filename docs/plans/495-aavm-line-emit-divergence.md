@@ -1,15 +1,17 @@
 ---
 plan_id: PLAN-495
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-line-emit-divergence
 author: [zhaopuming]
 created_at: 2026-08-31
 updated_at: 2026-08-31
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/aavm/design/m4-bytecode-format.md: §发射模式考古 `.line` 条文修订——原「按语句首 token 行号,由语句步行者发射」扩为「+同线去重(cur_line 状态机)+is 单表达式/单跳转 arm 体按臂体首 token 行发射(块体 arm 归语句步行)」"
 new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+touched_goals:                # 引用 docs/specs/goals.md 的 GOAL-NNN
+  - "GOAL-017: 自举六道闸门——M4 闸门 cargo tv aavm2 全系绿(P485-2 清偿)+b14 回归钉"
 
 affects: [auto-lang/vm, aavm]
 current_step: 5
@@ -121,7 +123,43 @@ total_steps: 5
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+（2026-08-31，/auto-plan:review，worktree `plan-495-dev` @`606639ee3` 现场重验）
+
+**验收标准逐条裁定：**
+
+1. `cargo tv` 全绿（含全量 aavm2 corpus）——**pass（计划范围）**。scoped
+   重验 `cargo tv -p auto-lang aavm2_m4` 2/2 绿；全档 no-fail-fast
+   3443 测 3441 绿，aavm2 全系（m1-m5 corpus）绿；仅余 2 红
+   （cb_asynchronous_channel/cb_devtools_log_error）为 **master 既有红**
+   （master 默认 checkout 单跑双证同红、失败形态一致、本计划零 Rust 源码
+   改动），已登记 KNOWN-DEBT P495-1——非本计划引入 regression，不 block。
+2. 证据表+定案成文；回归钉入仓——**pass**。§执行证据（双端并排表+断言
+   方向澄清+两级根因）在册；b14_line_dedup.at 在 worktree 分支，实测形态
+   双锁（`.line 10` 同线单发 / `.line 13/14` arm 行发射）。
+3. KNOWN-DEBT P485-2 标已清偿——**pass**（master `279bc5bc1`，含分诊
+   左右颠倒修正注记）。
+4. `cargo check -p auto-lang` 零警告；`cargo t` 不回归——**pass**。
+   review 全量门禁 **`cargo tf` 3303/3303 全绿**（含 1M churn 档）；
+   check 160 警告=master 既有基线（worktree crates/ 与 master 逐字节同，
+   零新增）。
+
+**遗漏/延后/workaround 扫描：** 无遗漏（5 步产物齐备）、无未批准延后、
+无 workaround（修复为宿主语义逐句镜像非绕道）。复审新发现登记：
+
+- **P495-2（债务候选，已登记 KNOWN-DEBT）**：is **块体** arm 作用域语义
+  潜在分叉——rust arm 体统一走 `Stmt::Block`（codegen.rs:3790，
+  push/pop_scope，depth>2 时 arm 块尾发槽释放组），aavm `cg_is_arm_body`
+  块体路径走 `cg_body_inline`（codegen.at，不推作用域，arm 内 var 归
+  外层域）——arm 块体内声明 var 时释放组位置/时机分叉；corpus 现无块体
+  arm 语料故未暴露。
+- 附注：表达式级 `.line` 发射位（`Expr::Block`/表达式 is arm，
+  codegen.rs:9905/9934）aavm cg_expr 尚无对应实现——属 M4 fn-only 语料
+  能力边界，未来实现时需同款 `cg_line`（随 P495-2 一并留意）。
+
+**spec-impact 元数据已填**（supersedes：m4-bytecode-format.md `.line`
+条文修订；touched：GOAL-017）。
+
+**裁定：通过，`status: reviewed`。**
 
 ## 执行证据
 
