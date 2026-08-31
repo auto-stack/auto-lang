@@ -10,8 +10,10 @@
 // [`client_runtime::run_client`] 阻塞主循环（重连策略在册：host 断连
 // 后原地等待重连 30s，VM 状态/revision 保持——S7 弹性语义）。
 //
-// Plan 500 步骤 6 —— 三态渲染开关（裁决链：spawn `--render=` >
-// pac.at `desktop_render:` > auto）：
+// Plan 500 步骤 6 —— 三态渲染开关（裁决链：spawn `--autodesk-render=` >
+// pac.at `desktop_render:` > auto）。spawn 参数名带 autodesk 前缀：CLI
+// `run` 已有具名 `--render`（前端后端，clap 具名先吞）——撞名第二处，
+// 与 --autodesk-client/-broker 同族避让：
 // - `queue` → 既有 ClientPump（DrawList 命令帧，AppProjector 投影）；
 // - `independent` → [`pixels::run_independent_child`]（自带 iced 隐藏窗
 //   自渲染 + screenshot 像素帧）；
@@ -53,7 +55,7 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
             app_name = Some(v.to_string());
         } else if let Some(v) = arg.strip_prefix("--autodesk-broker=") {
             broker_pipe = v.to_string();
-        } else if let Some(v) = arg.strip_prefix("--render=") {
+        } else if let Some(v) = arg.strip_prefix("--autodesk-render=") {
             render_arg = Some(v.to_string());
         }
     }
@@ -80,7 +82,9 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     );
     if let Some(arg) = render_arg.as_deref() {
         if RenderMode::parse(arg).is_none() {
-            eprintln!("[autodesk-client] 未知 --render={arg}（auto|queue|independent），回退裁决链");
+            eprintln!(
+                "[autodesk-client] 未知 --autodesk-render={arg}（auto|queue|independent），回退裁决链"
+            );
         }
     }
     let (frame_mode, downgrade) = coverage::effective_frame_mode(mode, &component);

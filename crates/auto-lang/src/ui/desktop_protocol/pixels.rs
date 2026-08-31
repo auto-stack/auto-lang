@@ -88,6 +88,9 @@ pub struct PixelsChild {
     pub shm: Option<SharedFrameBuffer>,
     /// 截图泵状态：true = 有未发起的抓取（去重防抖）。
     capture_pending: bool,
+    /// 表面逻辑尺寸（Hello 上报/shm 槽/截图降采样的目标——三者同源）。
+    width: f32,
+    height: f32,
 }
 
 /// 像素帧 shm 槽尺寸：`w×h×4` + 4 字节 len 前缀（双槽同尺寸）。
@@ -110,7 +113,14 @@ impl PixelsChild {
             endpoint: AppEndpoint::new(PixelsNoopSource::new(), app_name, title, width, height),
             shm: None,
             capture_pending: false,
+            width,
+            height,
         }
+    }
+
+    /// 表面逻辑尺寸（渲染宿主开窗 + 截图降采样的目标）。
+    pub fn size(&self) -> (f32, f32) {
+        (self.width, self.height)
     }
 
     /// 发起握手（Hello 过管道）。返回 false = 管道已断。
@@ -322,6 +332,48 @@ fn poll_transport() -> Option<Result<ProtocolMsg, super::codec::CodecError>> {
         .and_then(|mut guard| guard.try_recv())
 }
 
+
+/// 物理像素帧 → 逻辑尺寸帧（盒降采样，497 快照同型）：screenshot 带
+/// scale_factor（HiDPI 物理尺寸），shm 槽按逻辑尺寸定档——两端口径经
+/// 此对齐（目标与源同尺寸时原样返回）。
+pub fn downsample_to_logical(
+    rgba: &[u8],
+    src_w: u32,
+    src_h: u32,
+    dst_w: u32,
+    dst_h: u32,
+) -> Vec<u8> {
+    if src_w == dst_w && src_h == dst_h {
+        return rgba.to_vec();
+    }
+    let mut out = vec![0u8; (dst_w * dst_h * 4) as usize];
+    for dy in 0..dst_h {
+        let y0 = dy * src_h / dst_h;
+        let y1 = ((dy + 1) * src_h / dst_h).clamp(y0 + 1, src_h);
+        for dx in 0..dst_w {
+            let x0 = dx * src_w / dst_w;
+            let x1 = ((dx + 1) * src_w / dst_w).clamp(x0 + 1, src_w);
+            let mut acc = [0u32; 4];
+            let mut n = 0u32;
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let i = ((y * src_w + x) * 4) as usize;
+                    acc[0] += rgba[i] as u32;
+                    acc[1] += rgba[i + 1] as u32;
+                    acc[2] += rgba[i + 2] as u32;
+                    acc[3] += rgba[i + 3] as u32;
+                    n += 1;
+                }
+            }
+            let o = ((dy * dst_w + dx) * 4) as usize;
+            out[o] = (acc[0] / n) as u8;
+            out[o + 1] = (acc[1] / n) as u8;
+            out[o + 2] = (acc[2] / n) as u8;
+            out[o + 3] = (acc[3] / n) as u8;
+        }
+    }
+    out
+}
 
 // ---------------------------------------------------------------------------
 // 测试：合成帧驱动的泵全循环（单 client 帧递增——步骤 4 验收）

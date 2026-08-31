@@ -9439,9 +9439,18 @@ fn compare_pngs(
             }
             RunMode::Standalone => {
                 let mut open_tasks = Vec::new();
+                // Plan 500 步骤 8：像素臂先取桥——窗尺寸 = 表面逻辑尺寸
+                //（截图降采样目标与 shm 槽口径同源；非像素臂 startup 尺寸不变）。
+                let pixels_child = opts
+                    .pixels
+                    .then(crate::ui::desktop_protocol::pixels::take_launch)
+                    .flatten();
+                let pixels_size = pixels_child
+                    .as_ref()
+                    .map(|c| iced::Size::new(c.size().0, c.size().1));
                 for (i, comp) in comps.into_iter().enumerate() {
                     let app_id = session.allocate_app(comp);
-                    let size = startup_window_size();
+                    let size = pixels_size.unwrap_or_else(startup_window_size);
                     // 级联偏移：第 n 窗 +48n px，避免多窗完全重叠遮挡。
                     let position = iced::window::Position::Specific(iced::Point::new(
                         80.0 + 48.0 * i as f32,
@@ -9458,16 +9467,11 @@ fn compare_pngs(
                     session.register_window(win_id, app_id, size);
                     open_tasks.push(open_task);
                 }
-                // Plan 500 步骤 4：像素桥 boot 装配——取 `run_independent_
-                // child` 装填的桥入 session，发起 Hello（握手续走协议轮询
-                // 订阅）。取不到/发送失败 = 非像素臂或宿主已断，桥不装。
-                if opts.pixels {
-                    if let Some(mut child) =
-                        crate::ui::desktop_protocol::pixels::take_launch()
-                    {
-                        if child.start() {
-                            session.pixels = Some(child);
-                        }
+                // Plan 500 步骤 4/8：像素桥装配（boot 顶部已取走——窗尺寸
+                // 对齐用），发起 Hello（握手续走协议轮询订阅）。
+                if let Some(mut child) = pixels_child {
+                    if child.start() {
+                        session.pixels = Some(child);
                     }
                 }
                 // 开窗 Task 的完成通知（window::Id）无需回消息——登记已同步完成，
@@ -11640,14 +11644,25 @@ fn compare_pngs(
                         let Some(bridge) = state.pixels.as_mut() else {
                             return iced::Task::none();
                         };
-                        let w = ss.size.width;
-                        let h = ss.size.height;
+                        // 物理像素 → 表面逻辑尺寸（盒降采样）：shm 槽按
+                        // 逻辑尺寸定档，HiDPI scale 经此对齐（497 快照同型）。
+                        let (lw, lh) = bridge.size();
+                        let lw = lw.max(1.0).ceil() as u32;
+                        let lh = lh.max(1.0).ceil() as u32;
+                        let rgba =
+                            crate::ui::desktop_protocol::pixels::downsample_to_logical(
+                                ss.rgba.as_ref(),
+                                ss.size.width,
+                                ss.size.height,
+                                lw,
+                                lh,
+                            );
                         let frame =
                             crate::ui::desktop_protocol::pixels::PixelsFrame {
-                                rgba: ss.rgba.as_ref().to_vec(),
-                                w,
-                                h,
-                                stride: w * 4,
+                                rgba,
+                                w: lw,
+                                h: lh,
+                                stride: lw * 4,
                             };
                         if let Some(msg) = bridge.capture(frame) {
                             if !bridge.send(&crate::ui::desktop_protocol::message::ProtocolMsg::Frame(msg))

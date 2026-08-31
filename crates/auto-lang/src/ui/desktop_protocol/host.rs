@@ -46,9 +46,16 @@ impl SurfaceStore {
     }
 
     /// 分配双缓冲表面（v1 固定 2 槽），返回句柄。
+    ///
+    /// 句柄**进程级唯一**（全局原子计数——Plan 500 T3）：多 client 宿主
+    /// 各持一份 `SurfaceStore`，per-instance 自增会跨 client 重复 → shm
+    /// 段名 `autodesk-shm-<pid>-<surface>` 撞名（Windows 同名 = 打开既有
+    /// 段；480 压测五 child 同源 App 掩蔽了此缺陷，异源 App 直接串段）。
     pub fn alloc(&mut self, width: f32, height: f32) -> u64 {
-        self.next_surface += 1;
-        let id = self.next_surface;
+        static GLOBAL_SURFACE: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let id = GLOBAL_SURFACE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        self.next_surface = id;
         self.surfaces.insert(
             id,
             Surface { slots: [None, None], front: 0, width, height },
