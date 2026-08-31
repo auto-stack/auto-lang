@@ -84,8 +84,11 @@ impl Broker {
     }
 
     /// 接一连接：空连接（探测 ping）返回 Ok(None)；真实孵化请求返回
-    /// (per-app 管道名, 桌面侧协议端点)。阻塞——调用方放独立线程。
-    pub fn serve_once(&mut self) -> Result<Option<(String, Box<dyn Transport + Send>)>, TransportError> {
+    /// [`Incubation`]。阻塞——调用方放独立线程。Plan 500：请求记录第三
+    /// 字段携带帧模式（`incubate␟<name>␟<mode>`，mode = `queue` |
+    /// `pixels` | `pixels:auto`——后者 = auto 探测降级，宿主据此记观测行；
+    /// 缺席 = queue，旧 child 向后兼容）。
+    pub fn serve_once(&mut self) -> Result<Option<Incubation>, TransportError> {
         let listener = transport::listen(&self.pipe_name)?;
         let mut client = listener.wait_connect()?;
         // 读孵化请求；100ms 无请求 = 探测 ping（连上即关）→ 吞掉重听。
@@ -95,11 +98,23 @@ impl Broker {
         };
         let app_name = match &request {
             ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) => record
-                .split_once('\u{1f}')
-                .filter(|(verb, _)| *verb == "incubate")
-                .map(|(_, name)| name.to_string())
+                .split('\u{1f}')
+                .collect::<Vec<&str>>()
+                .split_first()
+                .and_then(|(verb, rest)| {
+                    (*verb == "incubate")
+                        .then(|| rest.first().copied().unwrap_or("").to_string())
+                })
                 .ok_or_else(|| TransportError::Io("bad incubate record".into()))?,
             _ => return Ok(None),
+        };
+        let render = match &request {
+            ProtocolMsg::Control(ControlMsg::DesktopBus { record, .. }) => record
+                .split('\u{1f}')
+                .nth(2)
+                .map(RequestedRender::parse)
+                .unwrap_or_default(),
+            _ => RequestedRender::default(),
         };
         let _ = &app_name; // 名字进日志/注册表归 Stage 2 桌面壳；v1 仅分配
         let n = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
@@ -111,7 +126,52 @@ impl Broker {
         });
         client.send(&reply)?;
         let end = app_listener.wait_connect()?;
-        Ok(Some((pipe_name, end)))
+        Ok(Some(Incubation { pipe_name, end, render }))
+    }
+}
+
+/// 一次孵化落成的宿主侧材料（Plan 500：含帧模式位 + auto 降级标记）。
+pub struct Incubation {
+    pub pipe_name: String,
+    pub end: Box<dyn Transport + Send>,
+    pub render: RequestedRender,
+}
+
+/// 孵化请求的渲染模式字段（`queue` | `pixels` | `pixels:auto`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RequestedRender {
+    pub mode: super::message::FrameMode,
+    /// true = auto 探测降级（宿主记观测行）。
+    pub auto_downgraded: bool,
+}
+
+impl RequestedRender {
+    fn parse(field: &str) -> Self {
+        let field = field.trim();
+        if let Some(base) = field.strip_suffix(":auto") {
+            return Self { mode: parse_mode_name(base), auto_downgraded: true };
+        }
+        Self { mode: parse_mode_name(field), auto_downgraded: false }
+    }
+
+    /// 编码为请求记录第三字段值。
+    pub fn to_field(self) -> String {
+        let base = match self.mode {
+            super::message::FrameMode::Commands => "queue",
+            super::message::FrameMode::Pixels => "pixels",
+        };
+        if self.auto_downgraded {
+            format!("{base}:auto")
+        } else {
+            base.to_string()
+        }
+    }
+}
+
+fn parse_mode_name(name: &str) -> super::message::FrameMode {
+    match name.trim().to_lowercase().as_str() {
+        "pixels" => super::message::FrameMode::Pixels,
+        _ => super::message::FrameMode::Commands,
     }
 }
 
@@ -122,10 +182,22 @@ pub fn request_incubation(
     app_name: &str,
     timeout_ms: u32,
 ) -> Result<(String, Box<dyn Transport + Send>), TransportError> {
+    request_incubation_render(broker_pipe, app_name, RequestedRender::default(), timeout_ms)
+}
+
+/// Plan 500：带帧模式位的孵化请求（`--render` 裁决链的落点——child 把
+/// 解析后的二态模式 + auto 降级标记随记录上报，宿主据此定档 shm 槽尺寸
+/// 与 Welcome 模式位）。
+pub fn request_incubation_render(
+    broker_pipe: &str,
+    app_name: &str,
+    render: RequestedRender,
+    timeout_ms: u32,
+) -> Result<(String, Box<dyn Transport + Send>), TransportError> {
     let mut broker_end = transport::connect(broker_pipe, timeout_ms)?;
     let ask = ProtocolMsg::Control(ControlMsg::DesktopBus {
         wid: 0,
-        record: format!("incubate\u{1f}{app_name}"),
+        record: format!("incubate\u{1f}{app_name}\u{1f}{}", render.to_field()),
     });
     broker_end.send(&ask)?;
     let reply = broker_end
@@ -277,7 +349,8 @@ mod tests {
         let (pipe_name, mut app_end) = request_incubation(&broker_pipe, "counter", 2000).unwrap();
         assert!(pipe_name.contains("-app-"));
 
-        let (server_pipe, mut server_end) = host_side.join().unwrap();
+        let incubation = host_side.join().unwrap();
+        let (server_pipe, mut server_end) = (incubation.pipe_name, incubation.end);
         assert_eq!(server_pipe, pipe_name);
 
         // 桌面侧：真实 462 会话 + ProtocolHost。

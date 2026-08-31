@@ -1257,7 +1257,7 @@ pub struct DesktopSession {
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
     #[cfg(feature = "ui-iced")]
-    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>)>>>,
+    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, crate::ui::desktop_protocol::broker::RequestedRender)>>>,
     /// Plan 480 S4：已落地的孵化连接表（per-app 管道名 → 连接状态）——
     /// 多 App 共享 host 的"每 App 一份"端点/表面驻留；ServiceTick 帧泵
     /// 周期 `pump_broker_clients` 驱动帧合成/回收。
@@ -1271,10 +1271,6 @@ pub struct DesktopSession {
     /// 的 child 侧协议状态）。None = 非像素臂进程（既有路径零开销）。
     #[cfg(feature = "ui-iced")]
     pub pixels: Option<crate::ui::desktop_protocol::pixels::PixelsChild>,
-    /// Plan 500 步骤 5/6：broker 孵化的帧载荷模式（三态裁决链写入；
-    /// 缺省 Commands = 既有行为）。shm 槽尺寸与 Welcome 模式位据此定档。
-    #[cfg(feature = "ui-iced")]
-    pub broker_frame_mode: crate::ui::desktop_protocol::message::FrameMode,
 }
 
 /// 统一消息扇出形状。454 的 VirtualWindow 复用同一封装。
@@ -1454,8 +1450,6 @@ impl DesktopSession {
             broker_stop: None,
             #[cfg(feature = "ui-iced")]
             pixels: None,
-            #[cfg(feature = "ui-iced")]
-            broker_frame_mode: Default::default(),
         }
     }
 
@@ -1644,7 +1638,9 @@ impl DesktopSession {
             .spawn(move || {
                 while !stop.load(Ordering::Relaxed) {
                     match broker.serve_once() {
-                        Ok(Some((pipe, end))) => pending.lock().unwrap().push((pipe, end)),
+                        Ok(Some(inc)) => {
+                            pending.lock().unwrap().push((inc.pipe_name, inc.end, inc.render))
+                        }
                         Ok(None) => {} // 探测 ping：吞掉重听
                         Err(_) => {
                             // 管道竞态/对端早断：退避后重听（防忙转）。
@@ -1670,11 +1666,23 @@ impl DesktopSession {
         }
         let mut clients = std::mem::take(&mut self.broker_clients);
         let mut wids = Vec::new();
-        for (pipe, end) in pending {
+        for (pipe, end, render) in pending {
             let mut client = BrokerClient::new(pipe, end);
+            // Plan 500 步骤 6：孵化记录携带的帧模式定档（auto 降级标记 →
+            // 宿主观测行留痕——ui_console 面板 + 控制台双落；app 名在
+            // attach 握手后回填，故日志随落地打）。
+            client.endpoint.frame_mode = render.mode;
             match Self::broker_attach_one(self, &mut client, budget_per_app_ms) {
                 Some(wid) => {
                     wids.push(wid);
+                    if render.auto_downgraded {
+                        let app =
+                            client.app_name.clone().unwrap_or_else(|| "<unknown>".into());
+                        let line =
+                            format!("[render] {app}: auto -> independent (coverage downgrade)");
+                        crate::vm::ui_console::ui_console_push(&line);
+                        eprintln!("[autodesk-broker] {line}");
+                    }
                     clients.insert(client.pipe.clone(), client);
                 }
                 None => eprintln!(
@@ -1835,9 +1843,10 @@ impl DesktopSession {
                     let wid = self.wm_add_win(app_id, title, rect);
                     let surface = client.surfaces.alloc(width, height);
                     client.wid_surface.insert(wid.0, surface);
-                    // Plan 500 步骤 5：槽尺寸随帧模式定档（Commands = 既有
-                    // 16KiB；Pixels = 像素上限——child 侧 pixels_slot_size 同式）。
-                    let frame_mode = self.broker_frame_mode;
+                    // Plan 500 步骤 5/6：槽尺寸随帧模式定档（Commands = 既有
+                    // 16KiB；Pixels = 像素上限——child 侧 pixels_slot_size 同式；
+                    // 模式位来自孵化记录，attach 前已写入 endpoint.frame_mode）。
+                    let frame_mode = client.endpoint.frame_mode;
                     let slot_size = match frame_mode {
                         crate::ui::desktop_protocol::message::FrameMode::Commands => 16384,
                         crate::ui::desktop_protocol::message::FrameMode::Pixels => {
@@ -1851,7 +1860,6 @@ impl DesktopSession {
                         continue;
                     };
                     client.shm.insert(surface, shm);
-                    client.endpoint.frame_mode = frame_mode;
                     match client.endpoint.activate(
                         app_id.0,
                         wid.0,

@@ -260,6 +260,76 @@ pub fn judge(scan: &ViewScan, coverage: &Coverage) -> Verdict {
 }
 
 // ---------------------------------------------------------------------------
+// 三态渲染开关（Plan 500 步骤 6：裁决链 spawn 参数 > pac.at > auto 探测）
+// ---------------------------------------------------------------------------
+
+/// per-App 三态渲染声明（pac.at `desktop_render:` / spawn `--render=`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RenderMode {
+    /// 装载期覆盖度探测：Covered → queue；NotCovered → 降级 independent
+    /// （宿主观测 Log 一行留痕）。
+    #[default]
+    Auto,
+    /// 命令帧（DrawList → 宿主栅格化）。
+    Queue,
+    /// 像素帧（child 自带 iced 自渲染 → shm RGBA）。
+    Independent,
+}
+
+impl RenderMode {
+    /// 声明串解析（pac.at 字段 / spawn 参数共用）；未知值 = None（调用方
+    /// 按来源报错或回退 Auto）。
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "queue" => Some(Self::Queue),
+            "independent" => Some(Self::Independent),
+            _ => None,
+        }
+    }
+
+    /// 裁决链第一二环：spawn 参数 > manifest 声明 > Auto 缺省。
+    /// （`adjudicate()` 的入口三步裁决是**进程形态**维度——Client/Broker/
+    /// Standalone；本链是同形态内的**帧载荷**维度，挂 cmd_autodesk 消费。）
+    pub fn resolve(spawn_arg: Option<&str>, manifest: Option<&str>) -> Self {
+        if let Some(arg) = spawn_arg.and_then(Self::parse) {
+            return arg;
+        }
+        if let Some(m) = manifest.and_then(Self::parse) {
+            return m;
+        }
+        Self::Auto
+    }
+}
+
+/// 三态 → 二态帧模式 + 降级观测行（auto 探测：装载期扫描 vs 能力表）。
+/// 返回 (frame_mode, Option<降级日志行>)——`Some` = auto 降级 independent
+/// 的宿主观测留痕（child 经孵化记录把降级标记带给宿主打印/ui_console）。
+pub fn effective_frame_mode(
+    mode: RenderMode,
+    component: &crate::ui::dynamic::DynamicComponent,
+) -> (super::message::FrameMode, Option<String>) {
+    match mode {
+        RenderMode::Queue => (super::message::FrameMode::Commands, None),
+        RenderMode::Independent => (super::message::FrameMode::Pixels, None),
+        RenderMode::Auto => {
+            let scan = scan_view(component.view_template());
+            match judge(&scan, &Coverage::target_set()) {
+                Verdict::Covered => (super::message::FrameMode::Commands, None),
+                Verdict::NotCovered(missing) => (
+                    super::message::FrameMode::Pixels,
+                    Some(format!(
+                        "[render] auto -> independent downgrade ({} not covered: {})",
+                        component.widget_name(),
+                        missing.join(", ")
+                    )),
+                ),
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // T2 单测：能力表 vs 视图清单判定（覆盖/不覆盖/降级载荷）
 // ---------------------------------------------------------------------------
 
@@ -390,5 +460,47 @@ mod tests {
     fn empty_scan_covered() {
         let scan = ViewScan::default();
         assert_eq!(judge(&scan, &Coverage::target_set()), Verdict::Covered);
+    }
+
+    /// 三态裁决链：spawn 参数 > manifest > Auto 缺省；未知值不炸（回退
+    /// 下一环）。
+    #[test]
+    fn render_mode_resolution_chain() {
+        use super::RenderMode as RM;
+        assert_eq!(RM::resolve(None, None), RM::Auto, "缺省 Auto");
+        assert_eq!(RM::resolve(Some("queue"), None), RM::Queue);
+        assert_eq!(RM::resolve(Some("independent"), Some("queue")), RM::Independent, "spawn 覆盖 manifest");
+        assert_eq!(RM::resolve(None, Some("queue")), RM::Queue, "manifest 档");
+        assert_eq!(RM::resolve(Some("bogus"), Some("independent")), RM::Independent, "未知 spawn 值回退 manifest");
+        assert_eq!(RM::resolve(Some("bogus"), Some("bogus")), RM::Auto, "双未知回退 Auto");
+        assert_eq!(RM::resolve(Some(" Queue "), None), RM::Queue, "空白宽容");
+    }
+
+    /// auto 探测：覆盖视图 → Commands 无降级行；未覆盖视图 → Pixels +
+    /// 降级观测行（缺项清单随行）；显式档不走探测。
+    #[test]
+    fn effective_mode_probe_and_downgrade() {
+        use crate::ui::desktop_protocol::message::FrameMode;
+        use super::RenderMode as RM;
+
+        // 覆盖视图（002 计数器形态）。
+        let covered = crate::build_dynamic_component(
+            "widget C { model { var count int = 0 } view { center { text `n: ${.count}` button \"+\" { onclick: () => {.count += 1} } } } }",
+            None,
+        ).expect("build");
+        assert_eq!(effective_frame_mode(RM::Auto, &covered), (FrameMode::Commands, None));
+        assert_eq!(effective_frame_mode(RM::Queue, &covered), (FrameMode::Commands, None));
+        assert_eq!(effective_frame_mode(RM::Independent, &covered), (FrameMode::Pixels, None), "显式 independent 不探测");
+
+        // 未覆盖视图（checkbox + 带参 handler）→ Pixels + 降级行。
+        let uncovered = crate::build_dynamic_component(
+            "widget U { view { checkbox (checked: .ok) { onchange: .Toggle } } }",
+            None,
+        ).expect("build");
+        let (mode, downgrade) = effective_frame_mode(RM::Auto, &uncovered);
+        assert_eq!(mode, FrameMode::Pixels, "auto 未覆盖降级 independent");
+        let line = downgrade.expect("降级观测行");
+        assert!(line.contains("auto -> independent"), "{line}");
+        assert!(line.contains("checkbox"), "缺项清单随行: {line}");
     }
 }

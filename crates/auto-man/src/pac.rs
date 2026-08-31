@@ -120,6 +120,13 @@ pub struct Pac {
     /// None = built-in default (indigo). `auto run --accent` wins.
     pub accent: Option<AutoStr>,
 
+    /// Plan 500: desktop protocol render mode, declared as
+    /// `desktop_render: "auto" | "queue" | "independent"` in pac.at.
+    /// None/absent = auto（装载期覆盖度探测降级）。**不与 Plan 276 的
+    /// `render:`（前端后端 vue/rust/arkts）同字段**——语义正交（执行期
+    /// 发现草案措辞与既有字段撞名后的定案）。`--render` spawn 参数 wins。
+    pub desktop_render: Option<AutoStr>,
+
     /// Plan 418: UI action/binding config file, declared as
     /// `ui_config: "auto-edit.at"` in pac.at. Resolved relative to the
     /// project dir by `auto run`; the renderer loads actions/menubar/
@@ -283,6 +290,13 @@ impl Pac {
         let accent_trimmed = accent.trim().to_lowercase();
         let accent = (!accent_trimmed.is_empty()).then(|| AutoStr::from(accent_trimmed));
 
+        // Plan 500: desktop protocol render mode, `desktop_render: "queue"`.
+        // Lowercased; absent/blank → None (auto 探测降级)。
+        let desktop_render = config.root.get_prop("desktop_render").to_astr();
+        let desktop_render_trimmed = desktop_render.trim().to_lowercase();
+        let desktop_render =
+            (!desktop_render_trimmed.is_empty()).then(|| AutoStr::from(desktop_render_trimmed));
+
         // Plan 418: UI action config file, e.g. `ui_config: "auto-edit.at"`.
         let ui_config = config.root.get_prop("ui_config").to_astr();
         let ui_config_trimmed = ui_config.trim().to_string();
@@ -428,6 +442,7 @@ impl Pac {
             accent,
             ui_config,
             external_backend,
+            desktop_render,
             shadcn,
             default_classes,
             is_update: false,
@@ -1787,6 +1802,29 @@ impl fmt::Display for Pac {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Plan 500：pac.at `desktop_render:` 三态声明解析（缺省 None = auto；
+    /// 与 Plan 276 `render:` 前端后端字段正交不互踩）。
+    #[test]
+    fn test_desktop_render_parsing() {
+        let pac = Pac::new(AutoConfig::new(
+            "name: \"x\"\ndesktop_render: \"queue\"\nrender: \"vue\"\n",
+        ).unwrap());
+        assert_eq!(pac.desktop_render.as_deref(), Some("queue"));
+        assert!(
+            pac.backend_config.is_some(),
+            "render: \"vue\" 仍按前端后端解析（两字段正交）"
+        );
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndesktop_render: \"Independent\"\n").unwrap());
+        assert_eq!(pac.desktop_render.as_deref(), Some("independent"), "大小写宽容");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndesktop_render: \"\"\n").unwrap());
+        assert!(pac.desktop_render.is_none(), "空串 = 缺省 auto");
+
+        let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
+        assert!(pac.desktop_render.is_none(), "缺席 = 缺省 auto");
+    }
 
     /// Plan 013: pac.at `shadcn: off` toggle parsing (bareword off/on are
     /// built-in config globals; default stays on).
