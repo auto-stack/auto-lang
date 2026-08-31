@@ -94,6 +94,174 @@ pub fn env_for(url: &str) -> Vec<(String, String)> {
     vec![(ENV_DAEMON.to_string(), url.to_string())]
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// T2：进程管理 —— ping（std 裸 HTTP，零三方依赖；reqwest::blocking 在
+// tokio 上下文线程会 panic，桌面宿主持全局 runtime，故不用）+ spawn +
+// 就绪轮询状态机。执行环境经 [`DaemonIo`] 注入——单测假实现覆盖状态机
+// 全分支，真实路径由 T3/T4 集成消费。
+// ─────────────────────────────────────────────────────────────────────────
+
+/// 检活/spawn 执行环境（生产 [`RealDaemonIo`]；单测假实现）。
+pub trait DaemonIo {
+    /// 一次检活（GET `<url>/api/health`，通 = true）。
+    fn ping(&mut self, url: &str) -> bool;
+    /// 拉起 daemon（detached；env 为 AUTOOS_BACK_PORT 端口覆盖）。
+    fn spawn(&mut self, path: &Path, env: &[(String, String)]) -> Result<(), String>;
+}
+
+/// url（`http://127.0.0.1:17701`）→ `127.0.0.1:17701` SocketAddr；
+/// 非 loopback http 形态返回 None。
+pub fn socket_addr_of(url: &str) -> Option<std::net::SocketAddr> {
+    let host_port = url
+        .strip_prefix("http://")?
+        .split('/')
+        .next()?;
+    use std::net::ToSocketAddrs;
+    host_port.to_socket_addrs().ok()?.next()
+}
+
+/// 裸 TCP 检活：connect → `GET /api/health` → 响应行 2xx 即通。
+/// std 单依赖、无 tokio TLS 上下文风险；loopback 足够（daemon 恒本地）。
+pub fn tcp_ping(url: &str, timeout: std::time::Duration) -> bool {
+    use std::io::{Read, Write};
+    let Some(addr) = socket_addr_of(url) else { return false };
+    let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, timeout) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    let req = format!("GET /api/health HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n");
+    if stream.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 128];
+    let Ok(n) = stream.read(&mut buf) else { return false };
+    let head = String::from_utf8_lossy(&buf[..n]);
+    head.starts_with("HTTP/1.1 2") || head.starts_with("HTTP/1.0 2")
+}
+
+/// 桌面本会话是否拉起过 daemon（复用判定/UX 文案；detached 语义下不持
+/// Child——桌面退出不杀 daemon，句柄即刻放掉，只留"曾拉起"记录）。
+static DID_SPAWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 本会话是否曾 spawn daemon（T4 复用断言用）。
+pub fn did_spawn() -> bool {
+    DID_SPAWN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 真实执行环境：std TCP ping + detached spawn。
+pub struct RealDaemonIo;
+
+impl DaemonIo for RealDaemonIo {
+    fn ping(&mut self, url: &str) -> bool {
+        tcp_ping(url, std::time::Duration::from_secs(2))
+    }
+
+    fn spawn(&mut self, path: &Path, env: &[(String, String)]) -> Result<(), String> {
+        let mut cmd = std::process::Command::new(path);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        // detached：与桌面生命周期解耦（共享服务语义，待澄清② v1 裁定）。
+        // stdio 全 null——无控制台形态下防句柄悬挂/闪窗。
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::null());
+        cmd.stdin(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const DETACHED_PROCESS: u32 = 0x0000_0008;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+            // DETACHED_PROCESS：脱离桌面控制台；CREATE_NEW_PROCESS_GROUP：
+            // 独立进程组，桌面组的 Ctrl+C 不传播。
+            cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+        }
+        cmd.spawn()
+            .map(|child| {
+                DID_SPAWN.store(true, std::sync::atomic::Ordering::Relaxed);
+                // detached 语义：立即放句柄（不 kill、不 wait——桌面退出
+                // daemon 存活；退出码回收交 OS）。
+                std::mem::drop(child);
+            })
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl RealDaemonIo {
+    /// no-op 占位（struct 无字段；保留具名构造便于读点）。
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for RealDaemonIo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 相邻仓探测缺省根（`../auto-os-config`，CWD 相对——vm 桌面开发机形态
+/// 即从本仓根起 `auto run`；storage `shell.apps.scan_siblings` 可关整段
+/// 探测，见 app_registry 聚合）。
+pub fn default_sibling_root() -> PathBuf {
+    PathBuf::from("..").join("auto-os-config")
+}
+
+/// storage 键 `shell.osconfig.daemon`（G4 发现序第 1 级；缺席/空 = None）。
+pub fn daemon_path_override() -> Option<String> {
+    crate::vm::ffi::stdlib::storage_host_read("shell.osconfig.daemon")
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// G1 主流程：检活 → 未运行则按发现序 spawn → 就绪轮询 ≤`ready_timeout`
+/// （200ms 间隔）→ `Running(url)` / `Offline(reason)`。已运行 daemon 零打扰
+/// 复用（不 spawn）；spawn 只带 `AUTOOS_BACK_PORT=<port>`（兑现生产端口
+/// 17701——daemon 缺省 17901）。PATH 查找固定 None（v1 不做 PATH 扫描，
+/// 相邻仓/显式配置已覆盖开发机形态；发现序第 3 级留扩展位）。
+pub fn ensure_ready_io(
+    url: &str,
+    override_path: Option<&str>,
+    sibling_root: &Path,
+    io: &mut dyn DaemonIo,
+    ready_timeout: std::time::Duration,
+) -> DaemonStatus {
+    if io.ping(url) {
+        return DaemonStatus::Running(url.to_string());
+    }
+    let Some(path) = resolve_daemon_path(override_path, sibling_root, |_| None) else {
+        return DaemonStatus::Offline(
+            "daemon 可执行未找到（发现序：shell.osconfig.daemon > ../auto-os-config 相邻仓 target）".to_string(),
+        );
+    };
+    let env = vec![(ENV_BACK_PORT.to_string(), port_of(url).to_string())];
+    if let Err(err) = io.spawn(&path, &env) {
+        return DaemonStatus::Offline(format!("spawn {} 失败: {err}", path.display()));
+    }
+    let deadline = std::time::Instant::now() + ready_timeout;
+    while std::time::Instant::now() < deadline {
+        if io.ping(url) {
+            return DaemonStatus::Running(url.to_string());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    DaemonStatus::Offline(format!(
+        "daemon 就绪超时（{}ms 内 ping 不通 {url}；{}）",
+        ready_timeout.as_millis(),
+        path.display()
+    ))
+}
+
+/// 生产入口（缺省参数组：17701 + storage 覆盖 + 相邻仓根 + 5s 就绪）。
+pub fn ensure_ready(url: &str) -> DaemonStatus {
+    ensure_ready_io(
+        url,
+        daemon_path_override().as_deref(),
+        &default_sibling_root(),
+        &mut RealDaemonIo::new(),
+        std::time::Duration::from_secs(5),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,5 +348,201 @@ mod tests {
         assert_eq!(port_of("http://127.0.0.1:17701"), 17701);
         assert_eq!(port_of("http://127.0.0.1:17708"), 17708);
         assert_eq!(port_of("bad"), DAEMON_PORT, "非法 url 回退缺省端口");
+    }
+
+    // ---- T2：检活/spawn 状态机（注入式假 IO）+ 真实 TCP ping ----
+
+    /// 假执行环境：ping 按脚本表走（每调一次弹一个）；spawn 记录参数。
+    struct FakeIo {
+        ping_script: Vec<bool>,
+        ping_calls: usize,
+        spawn_result: Result<(), String>,
+        spawn_path: Option<PathBuf>,
+        spawn_env: Vec<(String, String)>,
+    }
+
+    impl FakeIo {
+        fn new(ping_script: Vec<bool>) -> Self {
+            Self {
+                ping_script,
+                ping_calls: 0,
+                spawn_result: Ok(()),
+                spawn_path: None,
+                spawn_env: Vec::new(),
+            }
+        }
+    }
+
+    impl DaemonIo for FakeIo {
+        fn ping(&mut self, _url: &str) -> bool {
+            let i = self.ping_calls.min(self.ping_script.len() - 1);
+            self.ping_calls += 1;
+            self.ping_script[i]
+        }
+        fn spawn(&mut self, path: &Path, env: &[(String, String)]) -> Result<(), String> {
+            self.spawn_path = Some(path.to_path_buf());
+            self.spawn_env = env.to_vec();
+            self.spawn_result.clone()
+        }
+    }
+
+    #[test]
+    fn ensure_ready_reuses_running_daemon() {
+        let mut io = FakeIo::new(vec![true]);
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            Path::new("Z:/nowhere"),
+            &mut io,
+            std::time::Duration::from_secs(1),
+        );
+        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
+        assert_eq!(io.ping_calls, 1, "ping 通即复用");
+        assert!(io.spawn_path.is_none(), "已运行 daemon 零打扰——不 spawn");
+    }
+
+    #[test]
+    fn ensure_ready_offline_when_binary_not_found() {
+        let mut io = FakeIo::new(vec![false; 10]);
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            Path::new("Z:/nowhere"),
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => {
+                assert!(reason.contains("未找到"), "原因应说明路径未找到: {reason}")
+            }
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+        assert!(io.spawn_path.is_none(), "无路径不 spawn");
+    }
+
+    #[test]
+    fn ensure_ready_offline_when_spawn_fails() {
+        let root = sibling_fixture();
+        let exe = touch_server_exe(&root);
+        let mut io = FakeIo::new(vec![false; 10]);
+        io.spawn_result = Err("拒绝访问".to_string());
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            &root,
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => {
+                assert!(reason.contains("spawn") && reason.contains("拒绝访问"), "{reason}")
+            }
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+        assert_eq!(io.spawn_path, Some(exe), "发现序落相邻仓 target");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ensure_ready_spawns_then_ready_with_port_env() {
+        let root = sibling_fixture();
+        touch_server_exe(&root);
+        // ping 脚本：首次 false（触发 spawn）→ 之后 true（就绪）。
+        let mut io = FakeIo::new(vec![false, true, true]);
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            &root,
+            &mut io,
+            std::time::Duration::from_secs(5),
+        );
+        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
+        // spawn env 只带端口覆盖（生产 17701——daemon 缺省 17901 需显式改）。
+        assert_eq!(
+            io.spawn_env,
+            vec![(ENV_BACK_PORT.to_string(), "17701".to_string())]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ensure_ready_offline_on_ready_timeout() {
+        let root = sibling_fixture();
+        touch_server_exe(&root);
+        // spawn 成功但 ping 恒不通 → 就绪超时（ready_timeout 压到 1ms 免慢测）。
+        let mut io = FakeIo::new(vec![false; 10]);
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            &root,
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => assert!(reason.contains("就绪超时"), "{reason}"),
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ensure_ready_override_path_used_for_spawn() {
+        let root = sibling_fixture();
+        touch_server_exe(&root);
+        let mut io = FakeIo::new(vec![false, true, true]);
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17708",
+            Some("D:/tools/custom-daemon.exe"),
+            &root,
+            &mut io,
+            std::time::Duration::from_secs(5),
+        );
+        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17708".to_string()));
+        assert_eq!(io.spawn_path, Some(PathBuf::from("D:/tools/custom-daemon.exe")));
+        assert_eq!(
+            io.spawn_env,
+            vec![(ENV_BACK_PORT.to_string(), "17708".to_string())],
+            "端口取自目标 url"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 迷你 HTTP 服务（单线程 accept 循环，响应 200）——真实 tcp_ping 正路径。
+    fn mini_health_server() -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut s = stream;
+                let mut buf = [0u8; 512];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+            }
+        });
+        url
+    }
+
+    #[test]
+    fn tcp_ping_real_server_and_dead_port() {
+        let url = mini_health_server();
+        assert!(tcp_ping(&url, std::time::Duration::from_secs(2)), "真服务 200 应通");
+        // 死端口：bind 后立即 drop → connect 拒绝。
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_url = format!("http://127.0.0.1:{}", dead.local_addr().unwrap().port());
+        drop(dead);
+        assert!(!tcp_ping(&dead_url, std::time::Duration::from_secs(2)), "死端口应不通");
+        // 非 http 形态 → false（不 panic）。
+        assert!(!tcp_ping("not-a-url", std::time::Duration::from_secs(1)));
+        assert!(socket_addr_of("http://127.0.0.1:17701").is_some());
+        assert!(socket_addr_of("ftp://x").is_none());
+    }
+
+    #[test]
+    fn real_io_ping_wires_tcp_ping() {
+        // RealDaemonIo::ping 即 tcp_ping（2s 档）——经 trait 走一遍真路径。
+        let url = mini_health_server();
+        let mut io = RealDaemonIo::new();
+        assert!(io.ping(&url));
     }
 }
