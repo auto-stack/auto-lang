@@ -127,6 +127,24 @@ pub fn socket_addr_of(url: &str) -> Option<std::net::SocketAddr> {
     host_port.to_socket_addrs().ok()?.next()
 }
 
+/// 徽标投影（settings 面板召唤快照注入用）：`(state, hint)`。
+/// Running → `("ready", "")`；Offline("未检活") → `("unknown", "")`——
+/// boot 不预检，首次 launch 前的真实未知态；Offline(其他) →
+/// `("offline", reason)`；Spawning → unknown（瞬态，面板不展示）。
+pub fn badge_projection(status: &DaemonStatus) -> (&'static str, String) {
+    match status {
+        DaemonStatus::Running(_) => ("ready", String::new()),
+        DaemonStatus::Spawning => ("unknown", String::new()),
+        DaemonStatus::Offline(reason) => {
+            if reason == "未检活" {
+                ("unknown", String::new())
+            } else {
+                ("offline", reason.clone())
+            }
+        }
+    }
+}
+
 /// 裸 TCP 检活：connect → `GET /api/health` → 响应行 2xx 即通。
 /// std 单依赖、无 tokio TLS 上下文风险；loopback 足够（daemon 恒本地）。
 pub fn tcp_ping(url: &str, timeout: std::time::Duration) -> bool {

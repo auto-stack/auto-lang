@@ -7424,6 +7424,10 @@ fn toggle_settings(
         .iter()
         .map(|id| auto_val::Value::Str(id.clone().into()))
         .collect();
+    // Plan 501：os-config daemon 状态快照（unknown/ready/offline + 原因；
+    // 会话域 osconfig_status 的投影，首次 launch 前 = unknown）。
+    let (osc_state, osc_hint) =
+        crate::ui::osconfig_daemon::badge_projection(&state.desktop.osconfig_status);
     if let Some(app) = state.apps.get_mut(&panel) {
         let _ = app
             .component
@@ -7439,6 +7443,13 @@ fn toggle_settings(
         let _ = app
             .component
             .write_state("cfg_wallpaper", auto_val::Value::str(wallpaper));
+        let _ = app.component.write_state(
+            "osconfig_state",
+            auto_val::Value::str(osc_state),
+        );
+        let _ = app
+            .component
+            .write_state("osconfig_hint", auto_val::Value::str(osc_hint));
         let _ = app.component.write_state_vec("pinned_ids", pinned);
         let _ = app.component.write_state(
             "about_host",
@@ -19101,6 +19112,111 @@ mod tests {
             .call_handler("Escape", &[])
             .expect("Escape handler");
         assert!(!ds.settings_visible(), "Esc 后自隐");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Plan 501 T2：系统设置入口——osconfig 状态快照注入（三态投影）+
+    /// OpenSystemSettings 派发（launch 记录 + 自隐）+ 记录 → LaunchApp
+    /// 解析（execute_desktop_commands 臂消费的入参形状）。
+    #[test]
+    fn settings_osconfig_entry_badge_and_launch_dispatch() {
+        use crate::ui::osconfig_daemon::DaemonStatus;
+        let path = t2_isolate_storage("501-osconfig-entry");
+        let mut ds = t3_session_with_shell();
+        // ① 未检活（boot 缺省）→ unknown 注入，无 hint。
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        let panel = ds.desktop.settings_app.expect("懒挂载");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "unknown", "未检活 → unknown 徽标")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+            match app.component.read_state("osconfig_hint") {
+                Ok(auto_val::Value::Str(ref s)) => assert_eq!(s.to_string(), ""),
+                other => panic!("osconfig_hint 读回异常: {other:?}"),
+            }
+        }
+        // ② offline → 置灰态注入（原因投影）。先自隐再召唤（二态翻转语义：
+        // 可见时再召唤 = 自隐，不重注入）。
+        ds.desktop.osconfig_status = DaemonStatus::Offline("daemon 就绪超时".to_string());
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "offline", "offline 徽标置灰态")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+            match app.component.read_state("osconfig_hint") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "daemon 就绪超时", "原因投影")
+                }
+                other => panic!("osconfig_hint 读回异常: {other:?}"),
+            }
+        }
+        // ③ 派发：OpenSystemSettings → launch\tos-config 记录 + 面板自隐
+        //    （App 在面板之下开窗）。
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("OpenSystemSettings", &[])
+            .expect("OpenSystemSettings handler");
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            let cmd = match app.component.read_state("__desktop_cmd") {
+                Ok(auto_val::Value::Str(ref s)) => s.to_string(),
+                other => panic!("__desktop_cmd 读回异常: {other:?}"),
+            };
+            assert_eq!(cmd, "launch\tos-config", "launch 记录上行（desktop.launch；TAB 与 unit-sep 均为合法分隔）");
+            match app.component.read_state("visible") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "0", "派发后自隐（Esc 同型）")
+                }
+                other => panic!("visible 读回异常: {other:?}"),
+            }
+            // 记录 → DesktopCommand 解析（drain → execute 臂的入参形状）。
+            assert_eq!(
+                crate::ui::session::DesktopCommand::parse_records(&cmd),
+                vec![crate::ui::session::DesktopCommand::LaunchApp("os-config".to_string())],
+            );
+        }
+        // ④ ready 徽标注入（Running → ready）。先自隐再召唤（同②）。
+        ds.desktop.osconfig_status =
+            DaemonStatus::Running(crate::ui::osconfig_daemon::default_daemon_url());
+        let app = ds.apps.get_mut(&panel).unwrap();
+        app.component
+            .bridge_mut()
+            .call_handler("Escape", &[])
+            .expect("Escape handler");
+        let _ = execute_desktop_commands(
+            &mut ds,
+            vec![crate::ui::session::DesktopCommand::OpenSettings],
+        );
+        {
+            let app = ds.apps.get(&panel).unwrap();
+            match app.component.read_state("osconfig_state") {
+                Ok(auto_val::Value::Str(ref s)) => {
+                    assert_eq!(s.to_string(), "ready", "Running → ready 徽标")
+                }
+                other => panic!("osconfig_state 读回异常: {other:?}"),
+            }
+        }
 
         let _ = std::fs::remove_file(&path);
     }

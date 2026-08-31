@@ -1,27 +1,32 @@
 // settings overlay pack（特权 .at App —— 宿主进程内编译装载，不进
 // examples/ui；Plan 487 M4，464/478/479 overlay 槽同型的第四枚）。
 //
-// 形态：dock 齿轮召唤的系统设置面板——左列分区导航（Dock/通知/外观/关于）
-// + 右列内容卡（463 shell pack 皮肤）。分区见计划 §详细设计：
+// 形态：dock 齿轮召唤的系统设置面板——左列分区导航（Dock/通知/外观/系统/
+// 关于）+ 右列内容卡（463 shell pack 皮肤）。分区见计划 §详细设计：
 //   Dock：位置/开关热生效（desktop.set_dock_position/enabled 驱动动词，
 //   I7：几何是驱动事实，settings 只是 UI）+ pinned 编辑（storage 键
 //   shell.dock.pinned 直写，boot 生效）。
 //   通知：持久化开关（shell.notes.enabled storage 直写，479 持久化链门控）。
 //   外观（496 M5）：壁纸输入（shell.desktop.wallpaper storage 直写——路径
 //   | #hex；boot 解析回退链见 renderer load_desktop_wallpaper，重启生效）。
+//   系统（501）：「系统设置（全部模块）」入口——desktop.launch("os-config")
+//   拉起外部仓 os-config App（daemon 检活/spawn/env 注入在宿主 launch 臂）；
+//   offline 徽标态（daemon 起不来入口置灰 + 提示，点击重试——launch 每次
+//   重新探活，重试语义零额外动词）。
 //   关于：版本/宿主信息（投影注入常量，无新协议字段）。
 //
 // 接缝（协议 v1.4，schema/projection-protocol-v1.md）：
 //   出：`__desktop_cmd`（`set_dock_position\t<bottom|top>` /
-//       `set_dock_enabled\t<0|1>` 驱动动词——热改 dock_edges + relayout +
-//       storage 写回全在宿主臂；召唤动词 `open_settings` 由 shell.at 齿轮
-//       发出，本面板不复用关闭动词——Esc/齿轮再点走宿主二态翻转，
-//       待澄清④定案）
+//       `set_dock_enabled\t<0|1>` / `launch\tos-config` 驱动动词——热改
+//       dock_edges + relayout + storage 写回全在宿主臂；召唤动词
+//       `open_settings` 由 shell.at 齿轮发出，本面板不复用关闭动词——
+//       Esc/齿轮再点走宿主二态翻转，待澄清④定案）
 //   入：召唤时快照注入——`cfg_dock_position`/`cfg_dock_enabled`（当前
 //       驱动事实投影）、`pinned_ids` 平行字符串列表（B12 规避，宿主注入
 //       后显式 RebuildPinned 重建 handler 自有 rows）、`cfg_notes_enabled`
-//       （479 门控键快照）、`about_host`/`about_version`（boot 投影常量）、
-//       `hosted`/`visible`。
+//       （479 门控键快照）、`osconfig_state`（501：unknown/ready/offline
+//       ——宿主 osconfig_status 三态投影）、`osconfig_hint`（offline 原因）、
+//       `about_host`/`about_version`（boot 投影常量）、`hosted`/`visible`。
 // pinned 持久化：storage.set("shell.dock.pinned", "id1,id2,…") 直写
 // （逗号拼接 = 宿主 load_dock_pinned 解析格式；boot 生效）。
 // 快照语义：召唤时点定序；面板打开期间宿主配置变更不重注（设置面板是
@@ -33,7 +38,8 @@ widget Settings {
         PickPosition(str), PickEnabled(str),
         DraftPinned(str), AddPinned, RemovePinned(int),
         PickNotes(str),
-        DraftWallpaper(str), SaveWallpaper
+        DraftWallpaper(str), SaveWallpaper,
+        OpenSystemSettings
     }
 
     model {
@@ -42,8 +48,8 @@ widget Settings {
         var hosted str = "0"        // 宿主挂载时写 "1"
         var __desktop_cmd str = ""  // 上行命令总线（set_dock_* 记录）
 
-        // ---- 分区导航（v2 四分区；496 增外观）----
-        var section str = "dock"    // dock | notes | appearance | about
+        // ---- 分区导航（v3 五分区；501 增系统）----
+        var section str = "dock"    // dock | notes | appearance | system | about
 
         // ---- Dock 分区快照（宿主注入当前驱动事实）----
         var cfg_dock_position str = "bottom"
@@ -63,6 +69,11 @@ widget Settings {
         var cfg_wallpaper str = ""  // 宿主召唤注入当前键值快照
         var wallpaper_draft str = "" // 壁纸输入草稿（路径 | #hex）
         var wallpaper_saved str = "0"
+
+        // ---- 系统分区（501）：os-config daemon 状态快照（宿主召唤注入；
+        //      unknown = 未检活——面板不预探，首次 launch 才有真值）----
+        var osconfig_state str = "unknown" // unknown | ready | offline
+        var osconfig_hint str = ""  // offline 原因（宿主投影）
 
         // ---- 关于分区（boot 投影注入常量）----
         var about_host str = ""
@@ -119,6 +130,16 @@ widget Settings {
                             } else {
                                 button "外观" {
                                     onclick: .Nav("appearance")
+                                    style: "w-full h-9 px-0 text-sm text-gray-400"
+                                }
+                            }
+                            if .section == "system" {
+                                button "系统" {
+                                    style: "w-full h-9 px-0 text-sm bg-gray-700 text-white"
+                                }
+                            } else {
+                                button "系统" {
+                                    onclick: .Nav("system")
                                     style: "w-full h-9 px-0 text-sm text-gray-400"
                                 }
                             }
@@ -302,6 +323,38 @@ widget Settings {
                                             }
                                         }
                                     } else {
+                                        if .section == "system" {
+                                            // ---- 系统分区（501）：外部仓 os-config
+                                            //     App 入口——launch 全链在宿主臂
+                                            //    （daemon 检活/spawn/env 注入；
+                                            //     offline 徽标 = 置灰 + 提示，
+                                            //     点击即重试——launch 每次重新探活）----
+                                            col {
+                                                style: "gap-2 p-3 bg-gray-750 rounded-lg"
+                                                text "系统设置（全部模块）" { style: "text-gray-200 text-sm font-medium" }
+                                                if .osconfig_state == "ready" {
+                                                    text "auto-os-config daemon 已就绪" { style: "text-success text-xs" }
+                                                } else {
+                                                    if .osconfig_state == "offline" {
+                                                        text "daemon 不可用，点击重试" { style: "text-warning text-xs" }
+                                                        text .osconfig_hint { style: "text-gray-500 text-xs" }
+                                                    } else {
+                                                        text "打开 auto-os-config 配置中心" { style: "text-gray-500 text-xs" }
+                                                    }
+                                                }
+                                                if .osconfig_state == "offline" {
+                                                    button "重试并打开系统设置" {
+                                                        onclick: .OpenSystemSettings
+                                                        style: "h-8 px-3 text-xs text-gray-500"
+                                                    }
+                                                } else {
+                                                    button "打开系统设置" {
+                                                        onclick: .OpenSystemSettings
+                                                        style: "h-8 px-3 text-xs bg-blue-900 text-white rounded-md"
+                                                    }
+                                                }
+                                            }
+                                        } else {
                                     // ---- 关于分区：宿主版本/平台（召唤注入常量）----
                                     col {
                                         style: "gap-2 p-3 bg-gray-750 rounded-lg"
@@ -316,6 +369,7 @@ widget Settings {
                                             text "宿主版本" { style: "w-24 text-gray-500 text-xs" }
                                             text .about_version { style: "text-gray-300 text-xs" }
                                         }
+                                    }
                                     }
                                     }
                                 }
@@ -358,7 +412,7 @@ widget Settings {
             .pinned_n = .pinned_rows.len()
         }
 
-        // 分区导航（dock/notes/appearance/about；未知值忽略）。
+        // 分区导航（dock/notes/appearance/system/about；未知值忽略）。
         .Nav(s) -> {
             if s == "dock" {
                 .section = "dock"
@@ -369,8 +423,12 @@ widget Settings {
                     if s == "appearance" {
                         .section = "appearance"
                     } else {
-                        if s == "about" {
-                            .section = "about"
+                        if s == "system" {
+                            .section = "system"
+                        } else {
+                            if s == "about" {
+                                .section = "about"
+                            }
                         }
                     }
                 }
@@ -467,6 +525,15 @@ widget Settings {
             }
             storage.set("shell.dock.pinned", s)
             .pinned_saved = "1"
+        }
+
+        // ---- 系统分区（501）：launch 记录上行（宿主 launch 臂全链——daemon
+        // 检活/spawn/AUTOOS_DAEMON env 注入 + build 装载 + 开虚拟窗）；发完
+        // 自隐（App 在面板之下开窗，Esc 同型自隐语义）。offline 态同一动词
+        //（点击 = 重试——launch 每次重新探活，重试语义零额外动词）----
+        .OpenSystemSettings -> {
+            .__desktop_cmd = "launch\tos-config"
+            .visible = "0"
         }
 
         // Esc 关闭：自隐（宿主二态翻转语义的另一半——再召唤由宿主臂翻转）。
