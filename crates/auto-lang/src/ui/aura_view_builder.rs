@@ -7157,17 +7157,15 @@ let tabs_inner = View::Row {
         let mut args: Vec<Value> = Vec::with_capacity(event.params.len());
         for param in &event.params {
             if let Some(val) = self.resolve_binding_path(param, bindings) {
+                eprintln!("[EVENT_PARAM] handler={} param={} -> binding_path: {:?}", event.handler, param, val);
                 args.push(val);
             } else if let Some(val) = self.parse_event_param_expr(param, bindings) {
-                // Plan 059 续(DEBTS §B8 修复):前导点路径(.block.id 等 widget
-                // 参数引用)在 binding 表(仅循环变量)中不存在 —— 解析为
-                // 表达式后经视图表达式解析器求值(可解析 .block.output.Table
-                // .columns 这类深 prop 路径)。此前落入字面量分支变垃圾串,
-                // 渲染层 as_int(Str) 静默 0 → 排序/折叠恒命中第一个 block。
+                eprintln!("[EVENT_PARAM] handler={} param={} -> expr: {:?}", event.handler, param, val);
                 args.push(val);
             } else {
-                // Not a binding — treat as a literal value.
-                args.push(parse_event_param_literal(param));
+                let lit = parse_event_param_literal(param);
+                eprintln!("[EVENT_PARAM] handler={} param={} -> literal fallback: {:?}", event.handler, param, lit);
+                args.push(lit);
             }
         }
         DynamicMessage::Typed {

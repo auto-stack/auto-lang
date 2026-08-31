@@ -6265,6 +6265,7 @@ fn spawn_async_http_auth(
     api_key: Option<String>,
     request_id: u64,
 ) {
+    eprintln!("[HTTP_REQ] {} url={} body_len={:?}", method, url, body.as_ref().map(|b| b.len()));
     std::thread::spawn(move || {
         let client = reqwest::blocking::Client::new();
         let mut builder = match method.as_str() {
@@ -6288,9 +6289,13 @@ fn spawn_async_http_auth(
             Ok(response) => {
                 let status = response.status().as_u16() as i32;
                 let body_text = response.text().unwrap_or_default();
+                eprintln!("[HTTP_RESP] {} url={} -> status={} body_len={}", method, url, status, body_text.len());
                 Ok((status, body_text))
             }
-            Err(e) => Err(format!("HTTP error: {}", e)),
+            Err(e) => {
+                eprintln!("[HTTP_RESP_ERR] {} url={} -> err={}", method, url, e);
+                Err(format!("HTTP error: {}", e))
+            }
         };
         let wrapped = result.map(|(status, body)| AsyncResult::Auth { status, body });
         if let Ok(mut map) = ASYNC_RESULTS.lock() {

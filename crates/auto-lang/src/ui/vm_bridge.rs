@@ -1300,6 +1300,8 @@ impl VmBridge {
             return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
         };
 
+        eprintln!("[CALL_HANDLER] widget={} event_name={} fn_name={} args={:?}", self.widget_name, event_name, fn_name, args);
+
         let mut task = AutoTask::new(0, 4096, 0);
 
         // Push arguments left-to-right: __state (the state heap id) first, then
@@ -1323,6 +1325,7 @@ impl VmBridge {
         // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
         let call_result = self.vm.call_fn_by_name(&mut task, &fn_name, 1 + args.len());
         call_result.map_err(|e| {
+            eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
             VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
         })
     }
