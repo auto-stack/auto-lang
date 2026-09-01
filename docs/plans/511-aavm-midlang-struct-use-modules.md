@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 8
+current_step: 11
 total_steps: 22
 ---
 
@@ -367,13 +367,22 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
    文本差异（b42/b43 见 aavm 把顶层 var 当 wrapper 局部 store.loc——store.global
    缺失；b39 差异待实现时定源）。宿主侧全可编译；b43 宿主语义实证：fn 内
    `let g = 5` 写全局（输出 5/5）。
-9. [ ] `auto/lib/codegen.at`+`engine.at`：for-in 数组/表达式迭代（发射序按
-   规格；顺收 447 收账缺口①——List 型 fn 参数 `.len()` 接收者跟踪，便宜则
-   一并修）。验证：b38 + tv-aavm2 绿。
-10. [ ] `auto/lib/codegen.at`：字符串下标 + 一元负 + 下标复合赋值。
-    验证：b39–b41 + tv-aavm2 绿。
-11. [ ] `auto/lib/codegen.at`+`engine.at`：全局变量（global_vars 集 +
-    load.global/store.global + 引擎全局区）。验证：b42/b43 + tv-aavm2 绿。
+9. [✅ 已完成] `auto/lib/codegen.at`+`engine.at`：for-in 数组/表达式双通道
+   （数组通道三隐藏槽+const.0+槽位复用/hi_idx 高水位；Call 通道迭代器协议
+   nat#112 且**镜像宿主零迭代**——裸句柄非迭代器，b38 宿主零输出实证；
+   Call 通道不推作用域变量落 fn 层）。顺收缺口①：List 型 fn 参数记 arr
+   （`.len()` 接收者跟踪）。验证：b38 M4/M5 绿。
+10. [✅ 已完成] `auto/lib/codegen.at`+`engine.at`：字符串下标（get.elem 码点
+   既有+str.cat 穿透——宿主字符串性穿透下标、STR_CAT 恒拼接 s[i]+s[j]→
+   "6667"）+ 一元负（既有 neg+新增 LParen 原子补 -(x+y) 形态）+ 下标复合
+   赋值 D1 同文本拒绝（auto test 探针断言逐字符一致）。验证：b39/b40 绿
+   （b41 按 D1 入 L3）。
+11. [✅ 已完成] `auto/lib/codegen.at`+`engine.at`：全局变量——global_vars
+   （仅顶层 var/const 注册+无 scope 守卫：fn 内同名 let 写全局 b43 怪序镜像）
+   + load.global/store.global（u32 名字池索引，赋值带 DUP+POP、声明无）+
+   读局部>全局/写全局>局部不对称 + fn main 体首 init token 区间重放 +
+   引擎名字键全局区（未命中缺省 0）。验证：b42/b43 绿——五闸 M1–M5 齐绿
+   （36s 单跑全过）。
 12. [ ] 折叠点②：divergence 登记 + CI 绿 + master 合入（W2 同款提交格式）。
 
 ### W3 use 模块化（worktree 续；测试架构先于实现）
