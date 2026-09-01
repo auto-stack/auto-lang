@@ -406,17 +406,26 @@ impl FrameSource for AppProjector {
                         HitKind::Input { .. } => {
                             self.focused_input = Some(idx);
                         }
-                        // Plan 507 T4：form 族翻转——Bool 取反（radio 恒置
-                        // true）→ 零参 handler 派发 → revision 前进。
+                        // Plan 507 T4：form 族翻转。**handler 在场 = handler
+                        // 拥有状态变更**（真源语义：024 `.ToggleDesktop` 自行
+                        // 翻转 `.dVisible`——投影器自动翻转会与之对冲成
+                        // 双翻）；无 handler 才走自动翻转（checkbox/switch
+                        // 取反；radio 恒置 true）。
                         HitKind::Toggle { field, handler, radio, .. } => {
-                            let current =
-                                matches!(self.component.read_state(&field), Ok(auto_val::Value::Bool(true)));
-                            let next = if radio { true } else { !current };
-                            let _ = self
-                                .component
-                                .write_state(&field, auto_val::Value::Bool(next));
-                            if let Some(h) = handler {
-                                self.component.on_with_input(&h, None);
+                            match handler {
+                                Some(h) => {
+                                    self.component.on_with_input(&h, None);
+                                }
+                                None => {
+                                    let current = matches!(
+                                        self.component.read_state(&field),
+                                        Ok(auto_val::Value::Bool(true))
+                                    );
+                                    let next = if radio { true } else { !current };
+                                    let _ = self
+                                        .component
+                                        .write_state(&field, auto_val::Value::Bool(next));
+                                }
                             }
                             self.rev += 1;
                         }
@@ -2938,7 +2947,7 @@ mod tests {
     #[test]
     fn t4_checkbox_toggle_round_trip() {
         let (mut p, frame) = project(
-            "widget CB {\n    model { var ok bool = false }\n    view {\n        checkbox (checked: .ok) { onclick: .Toggle }\n    }\n}\n",
+            "widget CB {\n    model { var ok bool = false }\n    view {\n        checkbox (checked: .ok) {}\n    }\n}\n",
         );
         // 未选中：方框 + 边框，无内芯（2 quads）。
         assert_eq!(quads_of(&frame).len(), 5, "底+四边框,未选中无内芯: {:?}", quads_of(&frame));
@@ -2961,7 +2970,7 @@ mod tests {
     #[test]
     fn t4_checkbox_dispatches_named_handler() {
         let (mut p, _) = project(
-            "widget CB {\n    model {\n        var ok bool = false\n        var n int = 0\n    }\n    msg T { Inc }\n    on { .T -> { .n += 1 } }\n    view {\n        checkbox (checked: .ok) { onchange: .T }\n    }\n}\n",
+            "widget CB {\n    model {\n        var ok bool = false\n        var n int = 0\n    }\n    msg T { Inc }\n    on { .T -> {\n            .n += 1\n            if .ok {\n                .ok = false\n            } else {\n                .ok = true\n            }\n        } }\n    view {\n        checkbox (checked: .ok) { onchange: .T }\n    }\n}\n",
         );
         let hits = p.hit_regions();
         click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
@@ -2973,10 +2982,9 @@ mod tests {
     #[test]
     fn t4_switch_thumb_follows_state() {
         let (mut p, frame) = project(
-            "widget SW {\n    model { var on bool = false }\n    view { switch (checked: .on) { onclick: .Nope } }\n}\n",
+            "widget SW {\n    model { var on bool = false }\n    view { switch (checked: .on) {} }\n}\n",
         );
-        // 轨道 + 滑块（无 handler 名 .Nope 缺 msg？零参 token 仍登记——
-        // 派发由 on_with_input 容错）。滑块 x 左侧。
+        // 轨道 + 滑块（无 handler → 自动翻转路径）。滑块 x 左侧。
         let q = quads_of(&frame);
         assert_eq!(q.len(), 2, "轨道+滑块: {q:?}");
         let off_thumb_x = q[1].0.x;
@@ -2993,7 +3001,7 @@ mod tests {
     #[test]
     fn t4_radio_sets_true_sticky() {
         let (mut p, _) = project(
-            "widget RD {\n    model { var pick bool = false }\n    view { radio (checked: .pick) { onclick: .Nop } }\n}\n",
+            "widget RD {\n    model { var pick bool = false }\n    view { radio (checked: .pick) {} }\n}\n",
         );
         let hits = p.hit_regions();
         assert!(hits[0].1.starts_with("radio:pick"), "{hits:?}");

@@ -1,0 +1,90 @@
+// p507-tier-coverage — PLAN-507 T3/T10 构造覆盖示例：Tier1（display/
+// form/layout/card-grid）+ Tier2（typography/语义容器）全集抽样。
+// 队列臂（RenderQueue）e2e 与 parity 矩阵的实机语料——全部标签落在
+// Coverage::target_set() 内（auto 探测可上 queue）；交互闭环：
+// checkbox 翻转 .ok → if 块切 ON/OFF 文本；input 写 .name。
+
+widget App {
+    model {
+        var ok bool = true
+        var name str = "ada"
+        var pct double = 0.6
+    }
+
+    msg T {
+        ToggleOk
+        Rename
+    }
+
+    on {
+        .ToggleOk -> {
+            if .ok {
+                .ok = false
+            } else {
+                .ok = true
+            }
+        }
+        .Rename -> { }
+    }
+
+    view {
+        main {
+            header {
+                heading "Tier Coverage"
+                badge "507"
+            }
+
+            card {
+                cardheader {
+                    cardtitle { b "form controls" }
+                    carddescription { small "interactive family" }
+                }
+                cardcontent {
+                    col {
+                        row {
+                            checkbox (checked: .ok) { onclick: .ToggleOk }
+                            switch (checked: .ok) { onchange: .ToggleOk }
+                            radio (checked: .ok) { onclick: .ToggleOk }
+                        }
+                        if .ok {
+                            text "feat: ON"
+                        } else {
+                            text "feat: OFF"
+                        }
+                        input (value: .name, placeholder: "name") { oninput: .Rename }
+                        textarea (value: .name, rows: 2.0) {}
+                        button "Apply" { onclick: .ToggleOk }
+                    }
+                }
+                cardfooter {
+                    progress (value: .pct) { style: "w-full" }
+                }
+            }
+
+            article {
+                section {
+                    grid (cols: 3.0, gap: 4.0) {
+                        grid-item { icon (name: "star", size: 16.0) }
+                        grid-item { avatar (fallback: "Grace H") }
+                        grid-item { badge "grid" }
+                    }
+                    divider { style: "w-full" }
+                    ul {
+                        li { code "x = 1" }
+                        li { em "emphasis" }
+                        li { blockquote "quoted" }
+                    }
+                }
+                aside {
+                    pre "l1
+l2"
+                    figcaption "code above"
+                }
+            }
+
+            footer {
+                span "queue-arm showcase"
+            }
+        }
+    }
+}
