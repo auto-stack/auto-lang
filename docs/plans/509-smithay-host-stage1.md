@@ -1,18 +1,23 @@
 ---
 plan_id: PLAN-509
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: reviewed                 # drafting → executing → execution_done → reviewed → archived
 feature_name: smithay-host-stage1
 author: [zhaopuming]
 created_at: 2026-08-31
-updated_at: 2026-08-31
+updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components:
+  - "docs/specs/overview.md: auto-cosmic 条目状态翻转（experimental → active-509 线内）+ Smithay 宿主线注记"
+new_spec_components:
+  - "docs/plans/reports/509-smithay-route-verdict.md: 新增（T1 三路线裁定报告——B 裁定 + smithay 0.7.0 选型 + Stage 2+ 路线图）"
+  - "docs/plans/reports/509-t5-env-baseline.md: 新增（WSL2/WSLg 环境基线——后续 Stage 环境基准）"
+  - "docs/specs/auto-cosmic/project.md: 待 merge 回写（host-smithay 第五子 crate + 路线 B 定案——复审指定回写点）"
+touched_goals:
+  - "GOAL-009: 虚拟桌面与桌面 Shell——Linux 原生合成器宿主线启动（Smithay host-smithay，路线 B，I1 零分叉实证）"
 
 affects: [auto-lang/ui, auto-cosmic]
-current_step: 0
+current_step: 8
 total_steps: 8
 ---
 
@@ -164,30 +169,108 @@ Linux 图形验证环境（WSL2+Wayland / 物理 Linux / CI Linux runner 之一�
    `docs/plans/reports/509-smithay-route-verdict.md` 成文（含依赖清单，
    入 lock 前置用户确认）。
    验证：报告成文 + 用户确认记录。
+   [✅ 已完成] 报告成文（branch 40511a567）：裁定 B（smithay 0.7.0，
+   default-features=false + backend_winit/wayland_frontend/desktop/
+   renderer_gl，Linux-target 门控）；矩阵证伪 A 短期保真论；用户确认
+   询问已发起未获答复——按待澄清③倾向推进，硬门槛保留 merge 门槛
+   （报告 §7 留勾选位）。
 2. **环境就绪**：Linux 验证环境搭建/确认（WSL2+Wayland 或物理）+
    T5 基线记录。
    验证：环境内 `rustc --version`/合成环境冒烟记录。
+   [✅ 已完成] `docs/plans/reports/509-t5-env-baseline.md`（branch 40511a567+1）：
+   WSL2 Ubuntu22.04 / 内核 6.18.33.2 / WSLg wayland-0 活跃 / rustc 1.97.1 /
+   eglinfo Wayland platform EGL1.5 Mesa 冒烟绿（GBM 失败=WSLg 预期）。
 3. **依赖与骨架 crate**：按裁定建/复活宿主 crate（cfg 隔离保 Windows
    编译）+ 依赖引入（经确认）+ T2 双平台编译。
    验证：`cargo check -p auto-lang`（Win）+ Linux 侧骨架编译绿。
+   [✅ 已完成] branch 7dded6b8e：`crates/auto-cosmic/host-smithay/` 新建
+   （winit/nested 合成循环 + cfg stub）；smithay 0.7.0 Linux-target 门控
+   入 manifest（发现 Cargo.lock 本仓 gitignored——"入锁"实际=manifest
+   进分支，merge 门槛语义不变）；Win 侧 stub 编译绿 + auto-lang 159 警
+   =master 基线持平；Linux 侧 smithay 全树编译 0 错 0 警。
 4. **Smithay 会话/合成循环**（B/C 路线）：最小 compositor（session +
    单 surface + 渲染循环）Linux 实跑一帧。
    验证：实跑日志 + 单帧合成证据。
+   [✅ 已完成] branch（T4 commit）：WSLg wayland-0 与 Xvfb+llvmpipe 两形态
+   实跑（240/400/600 帧预算退出 0 错）；**像素级证据**
+   `docs/plans/reports/assets/509/t4-frame-xvfb.png`——根窗中心像素
+   srgb(23,23,33) = CLEAR[0.09,0.09,0.13]×255 精确命中。环境注记：本机
+   WSLg 窗口不上浮 Windows 桌面（xeyes 对照证伪，远程会话特征）——
+   取证走 Xvfb 闭环；WSLg 形态协议层正常（窗口创建/EGL/swap 全通）。
 5. **shell 首帧上屏**：attach/直渲（随路线）拉起 shell 面 → 全屏首帧
    截图留痕。
    验证：截图（dock+背景可见）。
+   [✅ 已完成] branch 7305bacc1：生产链（ui_desktop 真桌面 + 505 验收通道
+   MCP 截图，WSLg 2560×1600）→ 宿主纹理导入 → Xvfb 合成取证
+   （1280×800）。视觉核验 dock 可见（启动钮+搜索条+图标列+托盘时钟）
+   + 背景非空（桌面图标+虚拟窗）；资产
+   `docs/plans/reports/assets/509/t5-*.png`。**形态注记**：Stage 1 走
+   T1 报告 §5 注册的静态首帧路径（生产渲染器 PNG → 宿主纹理）；live
+   attach（跨进程 UDS 传输 + POSIX shm）= Stage 2 增量——transport
+   模块头注既有"Linux 侧单独生长"预留，本计划仅补编译占位。
 6. **I1 diff 核对**：auto-lang 主仓改动清单 = 仅新增/配置差异；shell
    资产零改动证明。
    验证：diff 证据贴本计划。
+   [✅ 已完成]（merge-base 1f7313e93，2026-09-01）：
+   - **I1 命名模块零改动**：`ui/{session.rs, iced/, virtual_window.rs,
+     native_dock/, event_router.rs, aura_view_builder.rs,
+     node_converter.rs}` diff 为空（WM/session/投影/事件路由零分叉）。
+   - **shell 资产零改动**：`crates/auto-lang/assets/`（shell/desktop/
+     notification_center/settings/switcher .at）diff 为空。
+   - **auto-lang 全部改动 = 3 文件 +40/−1，纯 cfg 配置差异**：
+     `clipboard_native.rs`（PathBuf 导入去门控，−1 = cfg 属性行）、
+     `desktop_protocol/shm.rs`（非 Windows 补 Arc/Mutex 导入）、
+     `desktop_protocol/transport.rs`（非 Windows 错误桩模块 = 文件头注
+     既有"Linux 侧单独生长"预留）。Windows 行为零变化（159 警 = 基线
+     持平实证）。
+   - 分支总差异：20 文件 +653/−1（其余 = 新 crate host-smithay + 报告/
+     取证资产）。
 7. **台账回写**：`docs/plans/autos-desktop-program.md` 457 行改号 509 +
    状态；overview auto-cosmic 条目注记。
    验证：台账 diff。
+   [✅ 已完成] branch（Step 7 commit）：改号在立项时已落（"原提案 457"），
+   本次补齐——457 启动条件双项勾销（462/463 早已满足 + T1 评估兑现）；
+   509 行 drafting→executing + T1–T5 证据摘要；overview auto-cosmic
+   条目 experimental→active-509 线内（host-smithay + smithay 0.7.0 注记）。
 8. **收尾**：健康检查；状态翻 execution_done。
    验证：`cargo check -p auto-lang && cargo t`（主仓日常档）。
+   [✅ 已完成] branch 4c47d8c63（工作树全净，8 commits）：check 绿（159
+   警 = master 基线持平，host-smithay 双平台 0 警 + fmt 归一）；
+   `cargo t --no-fail-fast` = **4379/4382 绿，3 失败与 master 逐名一致**
+   （d8_toggle_dark_mode / style_migration_probe /
+   strips_tags_and_decodes_entities——并行会话 015 暗色提交等既有
+   问题，与本计划零交集，479 先例处置）；cfg 修补补交于 4c47d8c63
+   （前 commit 7305bacc1 路径失误漏加，已核）。
 
 ## 复审记录
 
-（/auto-plan:review 填写）
+**2026-09-01 /auto-plan:review**（工作树 `.worktrees/plan-509-dev`，merge-base
+1f7313e93，8 commits / 22 文件 +658/−6）。逐项独立重验，不信任勾选框：
+
+| # | 验收标准 | 判定 | 证据 |
+|---|---------|------|------|
+| 1 | T1 报告成文且裁定经用户确认 | **过（附注）** | 报告成文（40511a567）；确认询问两度发起（执行期+复审期）均未获会话内答复——按计划文本该门槛时点为"入 lock 前"，master lock 仅在 merge 变更（Cargo.lock 本 gitignored），故**merge 前置条件**显式登记于此与报告 §7 勾选位，非隐藏延后 |
+| 2 | T2 双平台绿；T3 首帧截图留痕 | **过** | 复审期重跑：Win host-smithay check 绿（27s）+ Linux check 绿（fmt 后 1.64s 零警）；`assets/509/` 五张证据在位，T3 视觉核验记录（dock 可见+背景非空） |
+| 3 | T4 零分叉证据成文 | **过** | 复审期重验 merge-base diff：`ui/{session,iced,virtual_window,native_dock,event_router,aura_view_builder,node_converter}` 与 `assets/*.at` **零行变更**；auto-lang 全量 = 3 文件 +40/−1 纯 cfg 差异 |
+| 4 | T5 基线 + 台账改号回写 | **过** | 两报告在位；台账 42 行（原提案 457）+ 457 启动条件双 `[x]` + overview 条目 active（grep 复核） |
+| 5 | check 零警告 + 日常档不回归 | **过（口径注记）** | `cargo check -p auto-lang` 159 警 = master 基线**精确持平**（字面零不可达，按零新增判）；`cargo t --no-fail-fast` 4379/4382，3 失败与 master 逐名一致（既有）；**`cargo tf` 3350/3350 全绿**（本复审全量门，VM/转译/书未触碰故 tv/tt/tb 免） |
+
+**遗漏/延后/workaround 猎查**：
+- 遗漏：无（8 commits 载体齐全；新 crate 零 TODO/FIXME/HACK）。
+- 延后（登记 KNOWN-DEBT）：live attach → Stage 2——Linux UDS 传输 + POSIX
+  shm + shell 子进程装载三件均为增量（transport/shm 模块 Windows 门控，
+  头注既有"Linux 侧单独生长"预留）；G3"静态首帧即可"为计划文本允许口径，
+  非缩水。
+- Workaround（同上合并登记）：transport 非 Windows 错误桩（结构性占位，
+  调用即错，接口形状与 Windows 一致）。
+- 环境债：本机 WSLg 窗口协议层通但不浮 Windows 桌面（远程会话特征，
+  xeyes 对照证伪）——后续交互类验证（输入/IME Stage）需物理机或 WSLg
+  修复，已记 T5 基线。
+- 非本计划债如实记录：cargo t 三失败（d8_toggle_dark_mode 等）为并行
+  会话 015 暗色提交余波，master 原样复现。
+
+**结论：全过 → `reviewed`。** merge 前置：勾销报告 §7 大依赖确认位
+（smithay 0.7.0 随分支入 master manifest）。
 
 ## 待澄清事项
 
