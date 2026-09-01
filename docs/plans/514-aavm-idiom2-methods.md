@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 2
+current_step: 4
 total_steps: 22
 ---
 
@@ -290,10 +290,24 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W1 宿主两侧加固（worktree）
 
-3. [ ] 矩阵②腿修复（主 a2r `File::read_text` 族独立转译导入/shim）→
-   parity 全绿复跑留档。验证：矩阵命令全绿（P511-5 清偿）。
-4. [ ] 宿主修复批：E0201→语法错；嵌套 fn 静默失效；探针暴露的主 a2r
-   方法发射洞顺修。验证：99_idiom2 全绿 + rustc 零错 + `cargo t` 零回归。
+3. [✅ 已完成] 矩阵②腿修复：主 a2r maybe_module_method 加 "File" 臂（std 直映：
+   read_text→`std::fs::read_to_string(&x).unwrap_or_default()` 等，定案依据=
+   三方语义一致+merge 零依赖，spec 见 method-emission-spec §3 洞 A）。连带⑤腿
+   伴生缺口同批清偿：a2r.at `mod` 保留字标识符（ar_rust_ident r#mod 镜像主 a2r）、
+   AA2R File.* 直映、两处 E0382（owned-str push 借用克隆；按值非 Copy 实参无条件
+   克隆对齐主 a2r struct_flags——ar_lu_after 看不见循环携带复用）。实跑：②腿
+   aavm2_bin 构建通过并运行，矩阵全表可跑（此前②编译红挡全表）；余 DIFF=
+   b13/b14/b19（根因① CJK）+b27+（根因② arr_flag）＝P511-1 登记债，W2-10
+   清偿后折叠点②复跑全绿。2026-09-01。
+4. [✅ 已完成] 宿主修复批：债② struct 误用改报 E0007 语法错（parse_stmt_inner
+   顶部拦截+check_symbol Ident 臂，裸/带名形态覆盖，d02 守卫绿）；债① 嵌套 fn
+   捕获外层局部改报 E0201（infer context fn_scope_idxs 边界栈+no-capture 查找+
+   check_symbol Bina 臂，d01b 转绿解除 ignore；已知限：嵌套 fn 引用全局运行期
+   静默 0=预存 VM 行为，master 同态非回归）。探针暴露洞顺修：洞 B `set`→`insert`
+   三处接收者守卫+静态构造类型预扫（Type.new→User，Dot/Bina 双形态）+`List(T)`
+   圆括号形态对齐 Type::List→Vec&lt;T&gt;+is_owned_list_arg 扩 Array。验证：
+   99_idiom2 12/12 绿（m01–m09 主 a2r 产物 rustc 零错）；aavm2 标准门禁 16 绿；
+   99_unit 13 绿；g01–g08 逐字符对拍保持绿。2026-09-01。
 5. [ ] 折叠点①：CI 绿 + master 合入（`fix(aavm-host): Plan 514 W1 矩阵②腿
    +方法路径加固 (Plan 514)`）。
 
