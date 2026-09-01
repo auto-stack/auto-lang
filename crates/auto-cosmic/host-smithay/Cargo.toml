@@ -1,0 +1,26 @@
+[package]
+name = "auto-cosmic-host-smithay"
+version = "0.1.0"
+edition = "2021"
+description = "Plan 509 route B: Smithay compositor host (winit/nested dev form) — consumes desktop-protocol frames; Linux-only backend with cross-platform stub"
+
+[dependencies]
+# Host stays renderer-free of iced (T1 verdict §3 R1/R2): the compositor
+# composites RGBA textures only. PNG decode for the Stage-1 static frame;
+# live attach (queue/pixels arm) lands as Stage 2 additive transport.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# smithay is Linux-gated (T1 verdict §4.1): trimmed feature set — no
+# DRM/GBM/libseat/udev (WSLg nested form does not need them; re-enable per
+# Stage 2+ physical-session roadmap).
+[target.'cfg(target_os = "linux")'.dependencies]
+smithay = { version = "0.7.0", default-features = false, features = [
+    "backend_winit",
+    "wayland_frontend",
+    "desktop",
+    "renderer_gl",
+] }
+
+[[bin]]
+name = "auto-smithay-host"
+path = "src/main.rs"

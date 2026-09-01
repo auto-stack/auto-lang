@@ -32,4 +32,10 @@
 - 源码留 Windows 侧（`/mnt/d/autostack/auto-lang/.worktrees/plan-509-dev`），
   WSL 内构建/运行经 `wsl.exe` 驱动；
 - `CARGO_TARGET_DIR` 重定向 WSL ext4（防 `/mnt/d` DrvFs 慢 IO），
-  惯例路径 `~/target-509`。
+  实际路径 `/home/visus/target-509`（默认用户 = **visus**，非
+  zhaopuming——环境快照勘误）；
+- **WSL 构建网络注记**：WSL git 全局 `http.proxy=http://localhost:10809/`
+  指向 Windows 侧代理，WSL2 NAT 下不可达且 cargo 取数回退读它——所有
+  WSL cargo 调用须前置 `CARGO_HTTP_PROXY=`（空值覆盖）。
+- WSL 发行版为 Ubuntu-22.04，默认用户 visus；rust 工具链
+  `/home/visus/.cargo/bin`。
