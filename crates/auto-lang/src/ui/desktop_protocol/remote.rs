@@ -565,20 +565,8 @@ mod host_body {
 
     /// 真 `auto` 二进制定位（stage3 同款：debug > release，缺则增量构建）。
     fn auto_exe() -> std::path::PathBuf {
-        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        for profile in ["debug", "release"] {
-            let p = target.join(profile).join("auto.exe");
-            if p.exists() {
-                return p;
-            }
-        }
-        let status = std::process::Command::new("cargo")
-            .args(["build", "-p", "auto", "--bin", "auto"])
-            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .status()
-            .expect("spawn cargo build -p auto");
-        assert!(status.success(), "cargo build -p auto 失败");
-        target.join("debug").join("auto.exe")
+        // Plan 515 G4 C2：陈旧防护（stage3 同款共用体）。
+        crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard()
     }
 
     /// Plan 508 T4/T6 宿主 harness：outproc 孵化示例批（真 auto.exe

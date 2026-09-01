@@ -740,20 +740,9 @@ mod tests {
     /// 测试 harness 线程必炸）→ 用生产二进制做 child（兼得三态 spawn 参数
     /// 全真链路）。
     fn auto_exe() -> std::path::PathBuf {
-        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        for profile in ["debug", "release"] {
-            let p = target.join(profile).join("auto.exe");
-            if p.exists() {
-                return p;
-            }
-        }
-        let status = std::process::Command::new("cargo")
-            .args(["build", "-p", "auto", "--bin", "auto"])
-            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .status()
-            .expect("spawn cargo build -p auto");
-        assert!(status.success(), "cargo build -p auto 失败");
-        target.join("debug").join("auto.exe")
+        // Plan 515 G4 C2：陈旧防护（P500-1——mtime 对账 + AUTO_FRESH_EXE=1
+        // 强制重建）。
+        crate::ui::desktop_protocol::e2e_exe::locate_with_stale_guard()
     }
 
     /// T3 主体二：independent 像素帧合成 + **双模并存**（同宿主一 queue

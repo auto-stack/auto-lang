@@ -438,6 +438,28 @@ pub fn element_counts() -> (usize, usize, usize, usize) {
     c
 }
 
+/// 覆盖率 JSON（Plan 515 G4 C 族：nextest 吞通过测试 stdout——数字走
+/// `target/queue-coverage.json` 侧信道 + `queue-coverage` bin 日常可读）。
+/// 手工拼装（tag 均为标识符，无转义面；避免引新依赖）。
+pub fn element_counts_json() -> String {
+    let (covered, not_yet, not_consumed, total) = element_counts();
+    let tags_of = |want_covered: bool| {
+        element_table()
+            .iter()
+            .filter(|(_, s)| matches!(s, QueueStatus::Covered) == want_covered)
+            .map(|(t, _)| format!("\"{t}\""))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    format!(
+        "{{\"covered\":{covered},\"not_yet\":{not_yet},\"not_consumed\":{not_consumed},\
+         \"total\":{total},\"pct\":{:.1},\"covered_tags\":[{}],\"open_tags\":[{}]}}",
+        covered as f64 / total as f64 * 100.0,
+        tags_of(true),
+        tags_of(false),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

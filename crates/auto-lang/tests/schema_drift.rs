@@ -2225,4 +2225,12 @@ fn queue_coverage_drift_fence() {
          {not_consumed} / total {total}（{covered}/{total} = {:.1}%）",
         covered as f64 / total as f64 * 100.0
     );
+    // Plan 515 G4 C 族：数字落 `target/queue-coverage.json` 侧信道
+    //（nextest 默认吞通过测试 stdout——文件日常可见，`cargo run --bin
+    // queue-coverage` 随时重读打印）。
+    let target_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+    let _ = std::fs::write(
+        target_dir.join("queue-coverage.json"),
+        auto_lang::aura::element_coverage::element_counts_json(),
+    );
 }
