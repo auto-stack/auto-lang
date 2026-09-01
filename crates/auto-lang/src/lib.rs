@@ -719,6 +719,228 @@ async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String
     execute_autovm_with_path(code, capture, None).await
 }
 
+/// Plan 346: Remap string pool indices in bytecode after merging string pools.
+/// Walks the bytecode one instruction at a time (using a per-opcode operand
+/// length table so operand bytes are never misread as opcodes) and remaps the
+/// u16 string-pool index operand of every string-indexed opcode.
+///
+/// Plan 355: this replaces an earlier naive byte-scan that (a) only read 1 byte
+/// per index and (b) could mistake operand bytes of other instructions for
+/// LOAD_STR/LOAD_GLOBAL/STORE_GLOBAL, silently corrupting dep-module bytecode.
+/// The corruption manifested in the sha2 library (large dep module with ~150
+/// globals): random instructions got their bytes rewritten, producing wrong
+/// hashes. The walker below decodes instruction lengths precisely.
+/// 池索引空间:字符串池 vs object_keys 池(两份重映射各自的关注点)。
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum IdxSpace {
+    Str,
+    Obj,
+}
+
+/// 链接器重映射共用的操作数跨度模型(2026-08-22 池 u32 化重写)。
+/// 返回 (操作数字节长度, [(池索引偏移, 索引空间)])。
+/// 两份重映射 walker(字符串池 / object_keys 池)共用本表,消灭此前
+/// 双拷贝各自漂移的病灶(历史上 CALL_SPEC/CREATE_OBJ 宽度就漂过)。
+/// 变长操作数(CLOSURE/CREATE_FUTURE/BUILD_FSTR/IS_VARIANT/NEW_INSTANCE)
+/// 在此统一解析。
+pub(crate) fn operand_span_with_pool_indices(
+    op: crate::vm::opcode::OpCode,
+    code: &[u8],
+    pos: usize,
+    last_const_i32: i32,
+) -> (usize, Vec<(usize, IdxSpace)>) {
+    use crate::vm::opcode::OpCode;
+    let none: Vec<(usize, IdxSpace)> = Vec::new();
+    match op {
+        // 单枚 u32 字符串池索引
+        OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
+        | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
+        | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::ACCUM_PAIR => {
+            (4, vec![(0, IdxSpace::Str)])
+        }
+        // 两枚 u32 字符串池索引(name, id;id 可为 0xFFFF 哨兵)
+        OpCode::PUSH_ACCUM => (8, vec![(0, IdxSpace::Str), (4, IdxSpace::Str)]),
+        // u32 method_name + u8 argc
+        OpCode::CALL_SPEC => (5, vec![(0, IdxSpace::Str)]),
+        // u32 name_idx + u8 argc + u32 id_idx(两枚池索引)
+        OpCode::CREATE_NODE => (9, vec![(0, IdxSpace::Str), (5, IdxSpace::Str)]),
+        // u32 key_index(object_keys 池)+ u8 field_count
+        OpCode::CREATE_OBJ => (5, vec![(0, IdxSpace::Obj)]),
+        // CALL_NAT: u16 native id —— 池合并后 native id 不变,只跳过
+        OpCode::CALL_NAT => (2, none),
+        // 1 字节定长
+        OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
+        | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
+        | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
+        | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
+        | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
+        | OpCode::GET_TUPLE_FIELD => (1, none),
+        OpCode::FN_PROLOG => (2, none),
+        // 4 字节定长
+        OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
+        | OpCode::CALL | OpCode::LOAD_REF | OpCode::STORE_REF
+        | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => (4, none),
+        OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, none),
+        OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, none),
+        OpCode::SLEEP | OpCode::JOIN | OpCode::SEND => (4, none),
+        OpCode::SOURCE_LINE => (2, none),
+        OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, none),
+        // CLOSURE: u32 body_addr + u8 capture_count + u8 n_args
+        //          + capture_count × (u32 名索引 + u16 slot)
+        OpCode::CLOSURE => {
+            let mut idxs = Vec::new();
+            if pos + 5 < code.len() {
+                let count = code[pos + 4] as usize;
+                for k in 0..count {
+                    idxs.push((6 + k * 6, IdxSpace::Str));
+                }
+                (6 + count * 6, idxs)
+            } else {
+                (6, idxs)
+            }
+        }
+        // CREATE_FUTURE: u32 body_offset + u8 capture_count + count × u32 名索引
+        OpCode::CREATE_FUTURE => {
+            let mut idxs = Vec::new();
+            if pos + 4 < code.len() {
+                let count = code[pos + 4] as usize;
+                for k in 0..count {
+                    idxs.push((5 + k * 4, IdxSpace::Str));
+                }
+                (5 + count * 4, idxs)
+            } else {
+                (5, idxs)
+            }
+        }
+        // 变长:count 字节 + count 个 tag
+        OpCode::BUILD_FSTR => {
+            let parts = if pos < code.len() { code[pos] as usize } else { 0 };
+            (1 + parts, none)
+        }
+        // u16 len + len 字节
+        OpCode::IS_VARIANT => {
+            let len = if pos + 2 <= code.len() {
+                u16::from_le_bytes([code[pos], code[pos + 1]]) as usize
+            } else {
+                0
+            };
+            (2 + len, none)
+        }
+        // name_len 来自前一条 CONST_I32
+        OpCode::NEW_INSTANCE => (last_const_i32.max(0) as usize, none),
+        // 无操作数
+        _ => (0, none),
+    }
+}
+
+/// Plan 355: dep 模块字符串池并入主池后,重写字节码中的池索引。
+/// remap 为 u32(池 u32 化);跨度模型与 remap_obj_indices 共享。
+pub(crate) fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
+    use crate::vm::opcode::OpCode;
+    let mut last_const_i32: i32 = 0;
+    let mut i = 0;
+    while i < code.len() {
+        let op_byte = code[i];
+        if !OpCode::is_valid(op_byte) {
+            i += 1;
+            continue;
+        }
+        let op = OpCode::from(op_byte);
+        let operand_pos = i + 1;
+        if let OpCode::CONST_I32 = op {
+            if operand_pos + 4 <= code.len() {
+                last_const_i32 = i32::from_le_bytes([
+                    code[operand_pos], code[operand_pos + 1],
+                    code[operand_pos + 2], code[operand_pos + 3],
+                ]);
+            }
+        }
+        let (operand_len, idxs) =
+            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
+        for (off, space) in idxs {
+            if space == IdxSpace::Str {
+                let pos = operand_pos + off;
+                if pos + 4 <= code.len() {
+                    let raw = u32::from_le_bytes([
+                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                    ]);
+                    // 0xFFFF "无 id" 哨兵不重映射(PUSH_ACCUM/CREATE_NODE
+                    // 的可选 id 位;吸收自 417-followup 的 apply_u32_opt)。
+                    if raw == 0xFFFF {
+                        continue;
+                    }
+                    let old = raw as usize;
+                    if old < remap.len() {
+                        let bytes = remap[old].to_le_bytes();
+                        code[pos] = bytes[0];
+                        code[pos + 1] = bytes[1];
+                        code[pos + 2] = bytes[2];
+                        code[pos + 3] = bytes[3];
+                    }
+                }
+            }
+        }
+        i += 1 + operand_len;
+    }
+}
+
+/// Plan 359 B1: Remap CREATE_OBJ `key_index` (u16) operands in bytecode after
+/// the object_keys/object_types pools are merged across modules.
+///
+/// When dep modules' object pools are appended to the main module's pool, every
+/// CREATE_OBJ instruction in a dep module still holds its original 0-based
+/// `key_index`, which now points into the MAIN module's portion of the merged
+/// pool (wrong keys/types → corrupt objects, or field_count/types length
+/// mismatches that overflow at runtime). This walker decodes instruction
+/// lengths precisely (mirroring `remap_string_indices`) and rewrites the u16
+/// operand of each CREATE_OBJ using `obj_remap` (old_index → new_index).
+pub(crate) fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
+    use crate::vm::opcode::OpCode;
+    if obj_remap.is_empty() {
+        return;
+    }
+    let mut last_const_i32: i32 = 0;
+    let mut i = 0;
+    while i < code.len() {
+        let op_byte = code[i];
+        if !OpCode::is_valid(op_byte) {
+            i += 1;
+            continue;
+        }
+        let op = OpCode::from(op_byte);
+        let operand_pos = i + 1;
+        if let OpCode::CONST_I32 = op {
+            if operand_pos + 4 <= code.len() {
+                last_const_i32 = i32::from_le_bytes([
+                    code[operand_pos], code[operand_pos + 1],
+                    code[operand_pos + 2], code[operand_pos + 3],
+                ]);
+            }
+        }
+        let (operand_len, idxs) =
+            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
+        for (off, space) in idxs {
+            if space == IdxSpace::Obj {
+                let pos = operand_pos + off;
+                if pos + 4 <= code.len() {
+                    let old = u32::from_le_bytes([
+                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                    ]) as usize;
+                    if old < obj_remap.len() {
+                        let bytes = obj_remap[old].to_le_bytes();
+                        code[pos] = bytes[0];
+                        code[pos + 1] = bytes[1];
+                        code[pos + 2] = bytes[2];
+                        code[pos + 3] = bytes[3];
+                    }
+                }
+            }
+        }
+        i += 1 + operand_len;
+    }
+}
+
 /// Plan 327: execute_autovm with an optional source file path.
 /// When provided, the source directory is added to CompileSession.source_dirs
 /// so that `use db` can resolve db.at relative to the source file (true
@@ -882,227 +1104,6 @@ async fn execute_autovm_with_path(
         .map(|m| m.name.clone())
         .collect();
 
-/// Plan 346: Remap string pool indices in bytecode after merging string pools.
-/// Walks the bytecode one instruction at a time (using a per-opcode operand
-/// length table so operand bytes are never misread as opcodes) and remaps the
-/// u16 string-pool index operand of every string-indexed opcode.
-///
-/// Plan 355: this replaces an earlier naive byte-scan that (a) only read 1 byte
-/// per index and (b) could mistake operand bytes of other instructions for
-/// LOAD_STR/LOAD_GLOBAL/STORE_GLOBAL, silently corrupting dep-module bytecode.
-/// The corruption manifested in the sha2 library (large dep module with ~150
-/// globals): random instructions got their bytes rewritten, producing wrong
-/// hashes. The walker below decodes instruction lengths precisely.
-/// 池索引空间:字符串池 vs object_keys 池(两份重映射各自的关注点)。
-#[derive(Clone, Copy, PartialEq)]
-enum IdxSpace {
-    Str,
-    Obj,
-}
-
-/// 链接器重映射共用的操作数跨度模型(2026-08-22 池 u32 化重写)。
-/// 返回 (操作数字节长度, [(池索引偏移, 索引空间)])。
-/// 两份重映射 walker(字符串池 / object_keys 池)共用本表,消灭此前
-/// 双拷贝各自漂移的病灶(历史上 CALL_SPEC/CREATE_OBJ 宽度就漂过)。
-/// 变长操作数(CLOSURE/CREATE_FUTURE/BUILD_FSTR/IS_VARIANT/NEW_INSTANCE)
-/// 在此统一解析。
-fn operand_span_with_pool_indices(
-    op: crate::vm::opcode::OpCode,
-    code: &[u8],
-    pos: usize,
-    last_const_i32: i32,
-) -> (usize, Vec<(usize, IdxSpace)>) {
-    use crate::vm::opcode::OpCode;
-    let none: Vec<(usize, IdxSpace)> = Vec::new();
-    match op {
-        // 单枚 u32 字符串池索引
-        OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-        | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-        | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::ACCUM_PAIR => {
-            (4, vec![(0, IdxSpace::Str)])
-        }
-        // 两枚 u32 字符串池索引(name, id;id 可为 0xFFFF 哨兵)
-        OpCode::PUSH_ACCUM => (8, vec![(0, IdxSpace::Str), (4, IdxSpace::Str)]),
-        // u32 method_name + u8 argc
-        OpCode::CALL_SPEC => (5, vec![(0, IdxSpace::Str)]),
-        // u32 name_idx + u8 argc + u32 id_idx(两枚池索引)
-        OpCode::CREATE_NODE => (9, vec![(0, IdxSpace::Str), (5, IdxSpace::Str)]),
-        // u32 key_index(object_keys 池)+ u8 field_count
-        OpCode::CREATE_OBJ => (5, vec![(0, IdxSpace::Obj)]),
-        // CALL_NAT: u16 native id —— 池合并后 native id 不变,只跳过
-        OpCode::CALL_NAT => (2, none),
-        // 1 字节定长
-        OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
-        | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
-        | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
-        | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
-        | OpCode::GET_TUPLE_FIELD => (1, none),
-        OpCode::FN_PROLOG => (2, none),
-        // 4 字节定长
-        OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
-        | OpCode::CALL | OpCode::LOAD_REF | OpCode::STORE_REF
-        | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => (4, none),
-        OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, none),
-        OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, none),
-        OpCode::SLEEP | OpCode::JOIN | OpCode::SEND => (4, none),
-        OpCode::SOURCE_LINE => (2, none),
-        OpCode::JMP | OpCode::JMP_IF_Z | OpCode::JMP_IF_NZ | OpCode::PUSH_HANDLER => (2, none),
-        // CLOSURE: u32 body_addr + u8 capture_count + u8 n_args
-        //          + capture_count × (u32 名索引 + u16 slot)
-        OpCode::CLOSURE => {
-            let mut idxs = Vec::new();
-            if pos + 5 < code.len() {
-                let count = code[pos + 4] as usize;
-                for k in 0..count {
-                    idxs.push((6 + k * 6, IdxSpace::Str));
-                }
-                (6 + count * 6, idxs)
-            } else {
-                (6, idxs)
-            }
-        }
-        // CREATE_FUTURE: u32 body_offset + u8 capture_count + count × u32 名索引
-        OpCode::CREATE_FUTURE => {
-            let mut idxs = Vec::new();
-            if pos + 4 < code.len() {
-                let count = code[pos + 4] as usize;
-                for k in 0..count {
-                    idxs.push((5 + k * 4, IdxSpace::Str));
-                }
-                (5 + count * 4, idxs)
-            } else {
-                (5, idxs)
-            }
-        }
-        // 变长:count 字节 + count 个 tag
-        OpCode::BUILD_FSTR => {
-            let parts = if pos < code.len() { code[pos] as usize } else { 0 };
-            (1 + parts, none)
-        }
-        // u16 len + len 字节
-        OpCode::IS_VARIANT => {
-            let len = if pos + 2 <= code.len() {
-                u16::from_le_bytes([code[pos], code[pos + 1]]) as usize
-            } else {
-                0
-            };
-            (2 + len, none)
-        }
-        // name_len 来自前一条 CONST_I32
-        OpCode::NEW_INSTANCE => (last_const_i32.max(0) as usize, none),
-        // 无操作数
-        _ => (0, none),
-    }
-}
-
-/// Plan 355: dep 模块字符串池并入主池后,重写字节码中的池索引。
-/// remap 为 u32(池 u32 化);跨度模型与 remap_obj_indices 共享。
-fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
-    use crate::vm::opcode::OpCode;
-    let mut last_const_i32: i32 = 0;
-    let mut i = 0;
-    while i < code.len() {
-        let op_byte = code[i];
-        if !OpCode::is_valid(op_byte) {
-            i += 1;
-            continue;
-        }
-        let op = OpCode::from(op_byte);
-        let operand_pos = i + 1;
-        if let OpCode::CONST_I32 = op {
-            if operand_pos + 4 <= code.len() {
-                last_const_i32 = i32::from_le_bytes([
-                    code[operand_pos], code[operand_pos + 1],
-                    code[operand_pos + 2], code[operand_pos + 3],
-                ]);
-            }
-        }
-        let (operand_len, idxs) =
-            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
-        for (off, space) in idxs {
-            if space == IdxSpace::Str {
-                let pos = operand_pos + off;
-                if pos + 4 <= code.len() {
-                    let raw = u32::from_le_bytes([
-                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
-                    ]);
-                    // 0xFFFF "无 id" 哨兵不重映射(PUSH_ACCUM/CREATE_NODE
-                    // 的可选 id 位;吸收自 417-followup 的 apply_u32_opt)。
-                    if raw == 0xFFFF {
-                        continue;
-                    }
-                    let old = raw as usize;
-                    if old < remap.len() {
-                        let bytes = remap[old].to_le_bytes();
-                        code[pos] = bytes[0];
-                        code[pos + 1] = bytes[1];
-                        code[pos + 2] = bytes[2];
-                        code[pos + 3] = bytes[3];
-                    }
-                }
-            }
-        }
-        i += 1 + operand_len;
-    }
-}
-
-/// Plan 359 B1: Remap CREATE_OBJ `key_index` (u16) operands in bytecode after
-/// the object_keys/object_types pools are merged across modules.
-///
-/// When dep modules' object pools are appended to the main module's pool, every
-/// CREATE_OBJ instruction in a dep module still holds its original 0-based
-/// `key_index`, which now points into the MAIN module's portion of the merged
-/// pool (wrong keys/types → corrupt objects, or field_count/types length
-/// mismatches that overflow at runtime). This walker decodes instruction
-/// lengths precisely (mirroring `remap_string_indices`) and rewrites the u16
-/// operand of each CREATE_OBJ using `obj_remap` (old_index → new_index).
-fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
-    use crate::vm::opcode::OpCode;
-    if obj_remap.is_empty() {
-        return;
-    }
-    let mut last_const_i32: i32 = 0;
-    let mut i = 0;
-    while i < code.len() {
-        let op_byte = code[i];
-        if !OpCode::is_valid(op_byte) {
-            i += 1;
-            continue;
-        }
-        let op = OpCode::from(op_byte);
-        let operand_pos = i + 1;
-        if let OpCode::CONST_I32 = op {
-            if operand_pos + 4 <= code.len() {
-                last_const_i32 = i32::from_le_bytes([
-                    code[operand_pos], code[operand_pos + 1],
-                    code[operand_pos + 2], code[operand_pos + 3],
-                ]);
-            }
-        }
-        let (operand_len, idxs) =
-            operand_span_with_pool_indices(op, code, operand_pos, last_const_i32);
-        for (off, space) in idxs {
-            if space == IdxSpace::Obj {
-                let pos = operand_pos + off;
-                if pos + 4 <= code.len() {
-                    let old = u32::from_le_bytes([
-                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
-                    ]) as usize;
-                    if old < obj_remap.len() {
-                        let bytes = obj_remap[old].to_le_bytes();
-                        code[pos] = bytes[0];
-                        code[pos + 1] = bytes[1];
-                        code[pos + 2] = bytes[2];
-                        code[pos + 3] = bytes[3];
-                    }
-                }
-            }
-        }
-        i += 1 + operand_len;
-    }
-}
 
     // and remap string indices in their bytecode. Without this, LOAD_STR /
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong

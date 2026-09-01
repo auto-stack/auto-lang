@@ -1,0 +1,8 @@
+use a: even
+
+pub fn odd(n int) int {
+    if n == 0 {
+        return 0
+    }
+    return even(n - 1)
+}

@@ -1,0 +1,3 @@
+fn helper(n int) int {
+    n * 2
+}

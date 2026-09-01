@@ -1,0 +1,5 @@
+use math: helper
+
+fn main() {
+    print(helper(21))
+}
