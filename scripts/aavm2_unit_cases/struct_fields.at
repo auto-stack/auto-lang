@@ -1,0 +1,10 @@
+// L3(Plan 511):struct 字段读写引擎语义
+#[test]
+fn t_struct_field_rw() {
+    assert_eq(ev_run("type P {\n    x int\n    y int\n}\n\nfn main() {\n    let p = P { x: 3, y: 4 }\n    p.x = 10\n    print(p.x + p.y)\n}"), "14")
+}
+
+#[test]
+fn t_struct_nested_read() {
+    assert_eq(ev_run("type I {\n    v int\n}\n\ntype O {\n    first I\n}\n\nfn main() {\n    let o = O { first: I { v: 7 } }\n    print(o.first.v)\n}"), "7")
+}

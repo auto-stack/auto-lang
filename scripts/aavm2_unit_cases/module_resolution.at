@@ -1,0 +1,26 @@
+// L3(Plan 511):模块解析微行为——D2 合法环/D1 错误文本(路径相对仓库根,
+// 规范调用:auto test test/vm/aavm2/99_unit 于仓库根执行)
+#[test]
+fn t_use_cycle_legal() {
+    assert_eq(ev_run_files("crates/auto-lang/test/vm/aavm2/corpus_use/004_cycle_mutual/main.at"), "1\n1")
+}
+
+#[test]
+fn t_use_transitive_init_order() {
+    assert_eq(ev_run_files("crates/auto-lang/test/vm/aavm2/corpus_use/005_transitive_init/main.at"), "20")
+}
+
+#[test]
+fn t_use_module_not_found_text() {
+    assert_eq(ev_run_files("crates/auto-lang/test/vm/aavm2/corpus_use/errors/e1_module_not_found/main.at"), "Module not found: nosuchmod (module_path=nosuchmod, parent_dirs=[])")
+}
+
+#[test]
+fn t_use_rs_reject_text() {
+    assert_eq(ev_run_files("crates/auto-lang/test/vm/aavm2/corpus_use/errors/e2_use_rs/main.at"), "Crate 'foo' not declared. Add `dep foo` before `use.rs`.")
+}
+
+#[test]
+fn t_use_py_reject_text() {
+    assert_eq(ev_run_files("crates/auto-lang/test/vm/aavm2/corpus_use/errors/e3_use_py/main.at"), "Python FFI not enabled. Rebuild with `--features python` to use `use.py`.")
+}
