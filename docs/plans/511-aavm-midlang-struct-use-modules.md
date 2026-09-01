@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 1
+current_step: 6
 total_steps: 22
 ---
 
@@ -332,14 +332,25 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
    `CODEGEN-ERROR:unsupported expr atom: Type`；宿主侧 8 件全部可编译
    （disasm 诊断无 COMPILE ERROR）。AA2R 腿（#[ignore] 件 test_aavm2_compile_corpus）
    在 --include-ignored 下因 b34 红——按待澄清①缺省暂缓，折叠点①以 skip 清单落地。
-3. [ ] `auto/lib/parser.at`：type-decl members 完整解析 + 构造字面量/
-   字段访问表达式。验证：tv-aavm2 M1/M2 绿。
-4. [ ] `auto/lib/typeinfo.at`：type 注册表 + 构造/字段推断。
-   验证：tv-aavm2 M3 绿。
-5. [ ] `auto/lib/codegen.at`：TypeDecl 分支 + 构造发射（create.obj+set.field
-   序，按步骤 1 规格）+ 字段读写。验证：tv-aavm2 M4 绿。
-6. [ ] `auto/lib/engine.at`：create.obj/set.field/get.field 分派（VInst 复用
-   或新载体）+ print 形态对齐。验证：tv-aavm2 M5 绿。
+3. [✅ 已完成] `auto/lib/parser.at`：expr_atom Ident/soft-ident 分支增构造字面量
+   拦截（已注册类型名紧随 `{` → ctor_node，`(node (name X) (body (pair (name a)
+   e1) ...))` 对齐宿主 Pair-落-body 段形态）+ soft-ident 表达式位兜底
+   （is_soft_ident_kind 镜像宿主 Plan 356——`o.tag` 点右值曾是 M2 红点）。
+   验证：tv-aavm2 M1 绿 + M2 绿（p25/p26/c05 全过）。
+4. [✅ 已完成] `auto/lib/typeinfo.at`：type 声明走查（复用 parse_type_decl 注册入
+   p.decls）+ 构造字面量推断（绑定类型名，镜像宿主 var_types 可观察行为）+
+   Dot 字段型推断（t_field_ty 从注册 dump 括号配平提取；方法调用消费→unknown）。
+   验证：tv-aavm2 M3 绿（t08 过，M2 不回归）。
+5. [✅ 已完成] `auto/lib/codegen.at`：cg_type_decl（零发射注册 c.tys）+
+   cg_ctor_emit（NEW_INSTANCE 族，考古定案非 create.obj）+ 字段读（首跳
+   get.field 名字池非去重追加；链式跳 get.generic.field field=0+幽灵 nop——
+   实测修正考古报告）+ 字段赋值两段快照（构造源变量 set.generic.field+3nop；
+   嵌套/注解源 load.str+set.field；Dot 复合赋值 D1 同文本拒绝）。验证：
+   tv-aavm2 M4 绿（b01–b37 全量）。
+6. [✅ 已完成] `auto/lib/engine.at`：set.generic.field/get.field/set.field
+   三条分派（VInst 复用既有 arena 载体；ev_field_idx 按名定位；print 形态
+   对齐经语料红线规避 print(struct)）。验证：tv-aavm2 M5 绿——W1 五闸
+   M1–M5 齐绿（32s 单跑全过）。
 7. [ ] 折叠点①：AA2R 矩阵腿决策执行（待澄清①）+ divergence 登记 +
    vm-files-ci 绿 + master 合入（`feat(aavm): Plan 511 W1 struct 类型四层收编 (Plan 511)`）。
 
