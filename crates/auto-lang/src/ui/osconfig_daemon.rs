@@ -238,24 +238,53 @@ pub fn daemon_path_override() -> Option<String> {
         .filter(|s| !s.trim().is_empty())
 }
 
+/// Plan 505 B4（债 P501-1）：发现序第 3 级 PATH 查找（which 语义，纯逻辑
+/// 可注入单测）——逐目录 is_file 探测；Unix 附加可执行位判断（Windows 无
+/// 执行位概念，存在即候选，不可执行由 spawn 失败兜底）。
+pub fn which_in(bin: &str, dirs: impl Iterator<Item = PathBuf>) -> Option<PathBuf> {
+    for dir in dirs {
+        let cand = dir.join(bin);
+        if !cand.is_file() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let Ok(md) = cand.metadata() else { continue };
+            if md.permissions().mode() & 0o111 == 0 {
+                continue;
+            }
+        }
+        return Some(cand);
+    }
+    None
+}
+
+/// PATH 环境变量的 which 包装（生产发现序第 3 级注入缝兑现）。
+pub fn which_daemon(bin: &str) -> Option<PathBuf> {
+    let path_var = std::env::var("PATH").ok()?;
+    which_in(bin, std::env::split_paths(&path_var))
+}
+
 /// G1 主流程：检活 → 未运行则按发现序 spawn → 就绪轮询 ≤`ready_timeout`
 /// （200ms 间隔）→ `Running(url)` / `Offline(reason)`。已运行 daemon 零打扰
 /// 复用（不 spawn）；spawn 只带 `AUTOOS_BACK_PORT=<port>`（兑现生产端口
-/// 17701——daemon 缺省 17901）。PATH 查找固定 None（v1 不做 PATH 扫描，
-/// 相邻仓/显式配置已覆盖开发机形态；发现序第 3 级留扩展位）。
+/// 17701——daemon 缺省 17901）。发现序三级：storage 覆盖 > 相邻仓 target >
+/// PATH（`lookup_path` 注入——生产 [`which_daemon`]，Plan 505 B4 兑现）。
 pub fn ensure_ready_io(
     url: &str,
     override_path: Option<&str>,
     sibling_root: &Path,
+    lookup_path: impl Fn(&str) -> Option<PathBuf>,
     io: &mut dyn DaemonIo,
     ready_timeout: std::time::Duration,
 ) -> DaemonStatus {
     if io.ping(url) {
         return DaemonStatus::Running(url.to_string());
     }
-    let Some(path) = resolve_daemon_path(override_path, sibling_root, |_| None) else {
+    let Some(path) = resolve_daemon_path(override_path, sibling_root, lookup_path) else {
         return DaemonStatus::Offline(
-            "daemon 可执行未找到（发现序：shell.osconfig.daemon > ../auto-os-config 相邻仓 target）".to_string(),
+            "daemon 可执行未找到（发现序：shell.osconfig.daemon > ../auto-os-config 相邻仓 target > PATH）".to_string(),
         );
     };
     let env = vec![(ENV_BACK_PORT.to_string(), port_of(url).to_string())];
@@ -276,12 +305,14 @@ pub fn ensure_ready_io(
     ))
 }
 
-/// 生产入口（缺省参数组：17701 + storage 覆盖 + 相邻仓根 + 5s 就绪）。
+/// 生产入口（缺省参数组：17701 + storage 覆盖 + 相邻仓根 + PATH which +
+/// 5s 就绪）。
 pub fn ensure_ready(url: &str) -> DaemonStatus {
     ensure_ready_io(
         url,
         daemon_path_override().as_deref(),
         &default_sibling_root(),
+        which_daemon,
         &mut RealDaemonIo::new(),
         std::time::Duration::from_secs(5),
     )
@@ -418,12 +449,62 @@ mod tests {
             "http://127.0.0.1:17701",
             None,
             Path::new("Z:/nowhere"),
+            |_| None,
             &mut io,
             std::time::Duration::from_secs(1),
         );
         assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
         assert_eq!(io.ping_calls, 1, "ping 通即复用");
         assert!(io.spawn_path.is_none(), "已运行 daemon 零打扰——不 spawn");
+    }
+
+    /// Plan 505 B4（债 P501-1）：which_in 纯逻辑——目录序首命中、全空 None。
+    #[test]
+    fn which_in_scans_dirs_in_order() {
+        let root = std::env::temp_dir().join("autoui-505-which-fixture");
+        let _ = std::fs::remove_dir_all(&root);
+        let hit = root.join("b");
+        std::fs::create_dir_all(&hit).unwrap();
+        let bin = if cfg!(windows) {
+            "daemon-stub.exe"
+        } else {
+            "daemon-stub"
+        };
+        std::fs::write(hit.join(bin), b"stub").unwrap();
+        let dirs = vec![root.join("a"), hit.clone(), root.join("c")];
+        assert_eq!(which_in(bin, dirs.into_iter()), Some(hit.join(bin)));
+        assert_eq!(
+            which_in("no-such-bin.out", [root.join("a")].into_iter()),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Plan 505 B4：ensure_ready 发现序第 3 级——相邻仓无产物时 PATH 兜底
+    /// （spawn 路径 = lookup 命中值）。
+    #[test]
+    fn ensure_ready_falls_back_to_path_tier() {
+        let mut io = FakeIo::new(vec![false; 10]);
+        io.spawn_result = Err("boom".to_string());
+        let path_hit = PathBuf::from(if cfg!(windows) {
+            "C:\\somewhere\\daemon.exe"
+        } else {
+            "/somewhere/daemon"
+        });
+        let expect = path_hit.clone();
+        let st = ensure_ready_io(
+            "http://127.0.0.1:17701",
+            None,
+            Path::new("Z:/nowhere"),
+            move |_| Some(expect.clone()),
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
+        match st {
+            DaemonStatus::Offline(reason) => assert!(reason.contains("spawn"), "{reason}"),
+            other => panic!("应 Offline，实际 {other:?}"),
+        }
+        assert_eq!(io.spawn_path, Some(path_hit), "发现序落 PATH 第三级");
     }
 
     #[test]
@@ -433,6 +514,7 @@ mod tests {
             "http://127.0.0.1:17701",
             None,
             Path::new("Z:/nowhere"),
+            |_| None,
             &mut io,
             std::time::Duration::from_millis(1),
         );
@@ -455,6 +537,7 @@ mod tests {
             "http://127.0.0.1:17701",
             None,
             &root,
+            |_| None,
             &mut io,
             std::time::Duration::from_millis(1),
         );
@@ -478,6 +561,7 @@ mod tests {
             "http://127.0.0.1:17701",
             None,
             &root,
+            |_| None,
             &mut io,
             std::time::Duration::from_secs(5),
         );
@@ -500,6 +584,7 @@ mod tests {
             "http://127.0.0.1:17701",
             None,
             &root,
+            |_| None,
             &mut io,
             std::time::Duration::from_millis(1),
         );
@@ -519,6 +604,7 @@ mod tests {
             "http://127.0.0.1:17708",
             Some("D:/tools/custom-daemon.exe"),
             &root,
+            |_| None,
             &mut io,
             std::time::Duration::from_secs(5),
         );

@@ -7471,7 +7471,7 @@ fn summon_switcher(
             .map(|e| e.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         icons.push(auto_val::Value::Str(icon.into()));
-        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+        mru_objs.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
     }
     if let Some(app) = state.apps.get_mut(&switcher) {
         let _ = app.component.write_state_vec("mru_wids", wids);
@@ -7706,6 +7706,12 @@ fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
             let _ = app
                 .component
                 .write_state("__dock_position", auto_val::Value::str(pos));
+            // Plan 505 B1：边线类投影（top→border-b）——容器 if 样式在
+            // 实机装配层不稳，边线数据驱动（与 __dock_position 同点热同步）。
+            let border = if pos == "top" { "border-b" } else { "border-t" };
+            let _ = app
+                .component
+                .write_state("__dock_border", auto_val::Value::str(border));
             let _ = app
                 .component
                 .write_state("__dock_enabled", auto_val::Value::str(en));
@@ -8402,6 +8408,43 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
     None
 }
 
+/// Plan 505 D（债 P488-D4）：当前拖出会话代号（win32 实态；非 Windows/
+/// 未开 native-dnd 恒 0——锚定永不触发，交付回退 v1 焦点语义）。
+fn dnd_drag_generation() -> u64 {
+    #[cfg(all(windows, feature = "native-dnd"))]
+    {
+        crate::ui::native_dnd::win32::drag_session_generation()
+    }
+    #[cfg(not(all(windows, feature = "native-dnd")))]
+    {
+        0
+    }
+}
+
+/// Plan 505 D：dispatch 环后锚定判定——代际变化（本次 dispatch 内发起并
+/// 完成了一次 DoDragDrop）即锚定发起方 App 为 on_dnd_finished 交付目标。
+fn maybe_anchor_dnd_initiator(
+    state: &mut crate::ui::session::DesktopSession,
+    app: crate::ui::session::AppId,
+    gen_before: u64,
+    gen_after: u64,
+) {
+    if gen_after != gen_before {
+        state.desktop.dnd_initiator = Some(app);
+    }
+}
+
+/// Plan 505 D：on_dnd_finished 交付目标——发起时锚定（取走）> 完成时
+/// 焦点 > primary（v1 回退序保持）。
+fn dnd_finished_target(state: &mut crate::ui::session::DesktopSession) -> Option<crate::ui::session::AppId> {
+    state
+        .desktop
+        .dnd_initiator
+        .take()
+        .or_else(|| state.wm_focused_app())
+        .or_else(|| state.primary_app())
+}
+
 /// Plan 488 T2：NativeDrop 抽取 → `on_native_drop` 载荷字段
 /// {text: str|null, files: [str], image: {path,width,height}|null,
 /// screen_x: int, screen_y: int, formats: [str]}（VM 堆记录编码见
@@ -9038,6 +9081,7 @@ fn projection_win_entry(
     registry_entries: &[crate::ui::app_registry::AppRegistryEntry],
     v: &crate::ui::session::VWinState,
     focused: bool,
+    pager: &str,
 ) -> auto_val::Value {
     let icon = v
         .registry_id
@@ -9054,7 +9098,57 @@ fn projection_win_entry(
         ("native", auto_val::Value::Str(String::new().into())),
         ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
         ("icon", auto_val::Value::Str(icon.into())),
+        // Plan 505 B2 v1.5：pager 派生面——本窗是否属其分区缩略前 4
+        //（"1"/""；mru/native 条目恒 ""，判据统一不缺字段）。
+        ("pager", auto_val::Value::Str(pager.into())),
     ]))
+}
+
+/// Plan 505 C：实机验收通道注入排空（ServiceTick 节拍，≤400ms 生效）。
+/// Bus 记录并入 shell `__desktop_cmd`（同拍 drain 同臂消费——真实 shell
+/// 按钮的同一执行路径）；Handler 直呼特权 App handler（onclick 同一
+/// 管线）。入队面见 [`crate::ui::session::desktop_inject_push`]（MCP
+/// `autoui_desktop` 工具，AUTOUI_ACCEPTANCE=1 门控）。
+pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSession) {
+    use crate::ui::session::DesktopInject;
+    for inj in crate::ui::session::desktop_inject_take() {
+        match inj {
+            DesktopInject::Bus(record) => {
+                let Some(shell) = state.desktop.shell_app else { continue };
+                let Some(app) = state.apps.get_mut(&shell) else { continue };
+                let cur = match app.component.read_state("__desktop_cmd") {
+                    Ok(auto_val::Value::Str(s)) => s.to_string(),
+                    _ => String::new(),
+                };
+                let joined = if cur.is_empty() {
+                    record
+                } else {
+                    format!("{cur}\n{record}")
+                };
+                let _ = app
+                    .component
+                    .write_state("__desktop_cmd", auto_val::Value::str(&joined));
+            }
+            DesktopInject::Handler { app: which, handler, arg } => {
+                let app_id = match which {
+                    "shell" => state.desktop.shell_app,
+                    "settings" => state.desktop.settings_app,
+                    "notification" => state.desktop.notification_app,
+                    "launcher" => state.desktop.launcher_app,
+                    // Plan 505 C：桌面本体面（496 M5——图标交互/壁纸面）。
+                    "desktop" => state.desktop.desktop_app,
+                    _ => None,
+                };
+                let Some(app_id) = app_id else { continue };
+                let Some(sess) = state.apps.get_mut(&app_id) else { continue };
+                let args = arg
+                    .map(|a| vec![auto_val::Value::str(&a)])
+                    .unwrap_or_default();
+                let _ = sess.component.bridge_mut().call_handler(&handler, &args);
+                *sess.state.view_dirty.borrow_mut() = true;
+            }
+        }
+    }
 }
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
@@ -9079,6 +9173,26 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     let Some(host) = state.host.as_ref() else { return };
     let mut fp = String::new();
     let mut wins: Vec<auto_val::Value> = Vec::new();
+    // Plan 505 B2（债 P497-1）v1.5：分区缩略 pager 派生面——.at 无"过滤后
+    // 截断"原语（for+if 过滤无局部计数器），每分区 z_order 前 4 窗以
+    // `pager:"1"` 旗标标记、溢出以 `ws.more` "+N" 标签投影（I9 宿主单一
+    // 事实源，同 __wm_running 先例）。旗标/标签均为既有指纹 win 段的纯
+    // 函数（逐窗 workspace 已入指纹），指纹不需扩段。
+    let mut pager_shown = std::collections::HashSet::new();
+    let mut ws_more: Vec<String> = vec![String::new(); host.wm.workspaces.len()];
+    {
+        let mut per_ws: std::collections::HashMap<usize, usize> = Default::default();
+        for &wid in &host.wm.z_order {
+            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            let idx = *per_ws.entry(v.workspace).or_insert(0);
+            per_ws.insert(v.workspace, idx + 1);
+            if idx < 4 {
+                pager_shown.insert(wid);
+            } else if let Some(m) = ws_more.get_mut(v.workspace) {
+                *m = format!("+{}", idx - 3);
+            }
+        }
+    }
     for &wid in &host.wm.z_order {
         let Some(v) = host.wm.wins.get(&wid) else { continue };
         let focused = host.wm.focused == Some(wid);
@@ -9086,6 +9200,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             &state.desktop.registry_entries,
             v,
             focused,
+            if pager_shown.contains(&wid) { "1" } else { "" },
         ));
         // 指纹窗段：{wid}:{focused},{workspace};（协议 v1 §2.3）
         fp.push_str(&format!("{}:{},{},", wid.0, focused as u8, v.workspace));
@@ -9106,6 +9221,8 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ("focused", auto_val::Value::Str(String::new().into())),
             ("native", auto_val::Value::Str("1".into())),
             ("icon", auto_val::Value::Str("app-window".into())),
+            // v1.5：native 无分区归属，pager 恒空串（判据统一不缺字段）。
+            ("pager", auto_val::Value::Str(String::new().into())),
         ])));
         fp.push_str(&format!("N{}:{},", id.0, 0));
     }
@@ -9145,6 +9262,12 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
             ("name", auto_val::Value::Str(ws.name.clone().into())),
             ("current", auto_val::Value::Str(if current { "1" } else { "".into() }.into())),
             ("label", auto_val::Value::Str(label.clone().into())),
+            // Plan 505 B2 v1.5：分区缩略溢出标签（"+N"；无溢出空串——
+            // 空串哨兵同 __wm_notes_unread，badge 条件消费先例）。
+            (
+                "more",
+                auto_val::Value::Str(ws_more.get(ws.id).cloned().unwrap_or_default().into()),
+            ),
         ])));
         fp.push_str(&format!("{}:{},{};", ws.id, current as u8, label));
     }
@@ -9155,7 +9278,7 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         if let Some(v) = host.wm.wins.get(&wid) {
             let focused = host.wm.focused == Some(wid);
-            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused));
+            mru.push(projection_win_entry(&state.desktop.registry_entries, v, focused, ""));
         }
         fp.push_str(&format!("{};", wid.0));
     }
@@ -11758,6 +11881,9 @@ fn compare_pngs(
                         }
                         // daemon 语义：全窗口关闭才退出进程（施工图 §1-2）。
                         if state.windows.is_empty() {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                     }
@@ -11809,17 +11935,27 @@ fn compare_pngs(
                             state.attach_pending_incubations(5000);
                         }
                         state.pump_broker_clients();
+                        // Plan 505 C：验收通道注入排空（≤400ms 节拍达；
+                        // Bus 记录随后并入下方 drain 同臂执行）。
+                        apply_desktop_injects(state);
                         let (exit, tasks) = drain_and_execute_desktop_commands(state);
                         if exit {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                         if !tasks.is_empty() {
                             return iced::Task::batch(tasks);
                         }
                     }
-                    // Plan 473 T6：原生槽位 WinEventHook 事件（C4 拖走 / B7 回收）。
-                    DesktopEvent::NativeSlotHwnd(hwnd_value, kind) => {
-                        handle_native_slot_event(state, hwnd_value, kind);
+                    // Plan 473 T6 / 505 A 族：原生槽位 WinEventHook 事件批
+                    // （C4 拖走 / B7 回收；一拍 drain 排空、START/END 批内
+                    // 优先——[`crate::ui::native_dock::drain_slot_events`]）。
+                    DesktopEvent::NativeSlotEvents(events) => {
+                        for evt in events {
+                            handle_native_slot_event(state, evt.hwnd.0, evt.kind);
+                        }
                     }
                     // Plan 500 步骤 4：像素桥协议入站——child 端点状态机
                     // （握手段落 / BufferAlloc 开段 / Close 生命周期）；
@@ -11968,13 +12104,13 @@ fn compare_pngs(
                         }
                         return summon_switcher(state);
                     }
-                    // Plan 488 步骤 4/6：拖出完成 → 焦点 App 注入
-                    // on_dnd_finished（管线现状 = call_handler 直注；发起方
-                    // 追踪无 VM→AppId 通道，v1 取完成时焦点 App——拖出期桌面
-                    // 持焦点，与发起方一致；偏差场景记 T6 冒烟观察）。
+                    // Plan 488 步骤 4/6 → 505 D（债 P488-D4 清偿）：拖出完成 →
+                    // on_dnd_finished 交付**发起时锚定 App**（dispatch 环置位；
+                    // DoDragDrop 在发起方 handler 内联阻塞，完成时焦点通常
+                    // 即发起方，锚定消除偏差场景）；无锚回退完成时焦点
+                    // （v1 语义保持）。
                     DesktopEvent::DndFinished { effect } => {
-                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
-                        {
+                        if let Some(app) = dnd_finished_target(state) {
                             inject_native_event(state, app, "on_dnd_finished", &[
                                 auto_val::Value::str(effect),
                             ]);
@@ -12040,7 +12176,17 @@ fn compare_pngs(
                 iced::Task::none()
             }
             DM::App(app_id, m) => {
+                // Plan 505 D（债 P488-D4）：拖出发起方锚定——DoDragDrop 在
+                // App handler dispatch 内联阻塞至完成（488 步骤 9 定案），
+                // 代际变化即本次 dispatch 发起并完成了一次拖出。
+                let dnd_gen_before = dnd_drag_generation();
                 let task = dispatch_app(state, app_id, m);
+                maybe_anchor_dnd_initiator(
+                    state,
+                    app_id,
+                    dnd_gen_before,
+                    dnd_drag_generation(),
+                );
                 // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
                 // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
                 // 按钮路径不受帧泵节拍限制（T1 报告 §2.3）。
@@ -12048,6 +12194,9 @@ fn compare_pngs(
                 // 本消息任务 batch 回 iced。
                 let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
                 if exit {
+                    // Plan 505 B5（债 P480-R1）：退出前显式
+                    // 停机 broker serve 线程。
+                    state.shutdown_broker();
                     return iced::exit();
                 }
                 if state.desktop.shell_app.is_some() {
@@ -12083,6 +12232,9 @@ fn compare_pngs(
                         // Plan 473 T6 / B8：退出不吞窗口——全部 docked 槽位
                         // 恢复 pre-dock bounds/样式后再退出。
                         restore_all_native_slots(state);
+                        // Plan 505 B5（债 P480-R1）：退出前显式
+                        // 停机 broker serve 线程。
+                        state.shutdown_broker();
                         return iced::exit();
                     }
                     // 全局左键按下：按最近光标位置做 z 序命中测试 → 聚焦置顶
@@ -12213,6 +12365,9 @@ fn compare_pngs(
                                 .map(|h| h.wm.wins.is_empty())
                                 .unwrap_or(false)
                         {
+                            // Plan 505 B5（债 P480-R1）：退出前显式
+                            // 停机 broker serve 线程。
+                            state.shutdown_broker();
                             return iced::exit();
                         }
                     }
@@ -18683,7 +18838,201 @@ mod tests {
         let _ = a;
     }
 
+    /// Plan 505 B2（债 P497-1）：pager 派生面（协议 v1.5）——同分区 6 窗
+    /// 时 per-win `pager` 只保前 4、`ws.more` = "+2"；空分区 more 为
+    /// 空串（badge 条件消费不出现）。shell.at 消费面（w.pager 旗标门）
+    /// 见 `desktop_mcp_dock_pager_hover_popovers`。
     #[test]
+    fn shell_projection_pager_truncation_v15() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        for i in 0..6 {
+            let _ = t3_add_win(&mut ds, &format!("W{i}"));
+        }
+        sync_shell_windows(&mut ds);
+        let shell = ds.desktop.shell_app.unwrap();
+        let comp = &ds.apps.get(&shell).unwrap().component;
+        let wins = comp.read_state_as_vec("__wm_wins").expect("__wm_wins");
+        let flagged = wins
+            .iter()
+            .filter(|w| {
+                matches!(w, auto_val::Value::Obj(o)
+                    if o.get("pager").is_some_and(|v| v.as_str() == "1"))
+            })
+            .count();
+        assert_eq!(flagged, 4, "同分区 6 窗仅前 4 带 pager 旗标");
+        let wss = comp.read_state_as_vec("__wm_workspaces").expect("__wm_workspaces");
+        let more_of = |v: &auto_val::Value| match v {
+            auto_val::Value::Obj(o) => o.get("more").map(|s| s.as_str().to_string()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        assert_eq!(more_of(&wss[0]), "+2", "分区 0 溢出标签 +2");
+        assert_eq!(more_of(&wss[1]), "", "空分区 more 空串");
+    }
+
+    #[test]
+    /// Plan 505 C：验收通道注入排空——Bus 记录并入 shell `__desktop_cmd`
+    /// （真实按钮同一消费臂）；Handler 直呼 shell onclick 同名 handler
+    /// （写入总线记录同臂排空）。
+    #[test]
+    fn desktop_injects_flow_through_real_arms() {
+        use crate::ui::session::{desktop_inject_push, DesktopCommand, DesktopInject};
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        ds.desktop.shell_app = Some(ds.allocate_app(comp));
+        let shell = ds.desktop.shell_app.unwrap();
+
+        // Bus 注入 → shell __desktop_cmd → drain_desktop_commands 同臂。
+        desktop_inject_push(DesktopInject::Bus("open_settings".to_string()));
+        apply_desktop_injects(&mut ds);
+        let bus = match ds.apps.get(&shell).unwrap().component.read_state("__desktop_cmd") {
+            Ok(auto_val::Value::Str(s)) => s.to_string(),
+            _ => String::new(),
+        };
+        assert_eq!(bus, "open_settings", "Bus 注入落入 shell 总线状态");
+        let cmds = ds.drain_desktop_commands();
+        assert!(matches!(cmds.as_slice(), [DesktopCommand::OpenSettings]));
+
+        // Handler 注入 → 真 shell.at OpenSettingsPanel（齿轮 onclick 同名）
+        // → open_settings 记录入总线 → 同臂排空。
+        desktop_inject_push(DesktopInject::Handler {
+            app: "shell",
+            handler: "OpenSettingsPanel".to_string(),
+            arg: None,
+        });
+        apply_desktop_injects(&mut ds);
+        let cmds = ds.drain_desktop_commands();
+        assert!(
+            matches!(cmds.as_slice(), [DesktopCommand::OpenSettings]),
+            "handler 写入的总线记录同臂排空"
+        );
+        // 排空后再无残余（幂等取尽）。
+        apply_desktop_injects(&mut ds);
+        assert!(ds.drain_desktop_commands().is_empty());
+    }
+
+    /// Plan 505 B1 回归：单份任务栏结构——根 col 承载位置类（bottom 缺省
+    /// → flex-col-reverse；top → 无翻转类），任务栏按钮群在视图树在位。
+    /// （S7 实拍曾现任务栏消失——此测锁定视图树侧结构正确性。）
+    #[test]
+    fn shell_root_col_position_classes_and_taskbar_present() {
+        use crate::ui::style::StyleClass;
+        use crate::ui::view::View as V;
+        fn count_buttons(v: &V<crate::ui::interpreter::DynamicMessage>) -> usize {
+            let mut n = match v {
+                V::Button { .. } => 1,
+                _ => 0,
+            };
+            for c in view_children(v) {
+                n += count_buttons(c);
+            }
+            n
+        }
+        let comp = crate::ui::shell::build_shell_component().expect("真 shell.at 装载");
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let id = ds.allocate_app(comp);
+        ds.desktop.shell_app = Some(id);
+
+        // bottom（pack 缺省）→ 根 col 含 FlexColReverse（B1 翻转承载）。
+        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
+        let V::Column { style, children, .. } = &view else {
+            panic!("shell 根节点应为 Column，实际 {:?}", std::mem::discriminant(&view));
+        };
+        let has_reverse = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+        });
+        assert!(has_reverse, "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）");
+        let buttons = count_buttons(&view);
+        assert!(buttons >= 6, "任务栏按钮群应在位（⊞/pinned×3/pager/布局三键/铃铛/齿轮），实得 {buttons}");
+        assert!(
+            !children.is_empty(),
+            "根 col 应有子（taskbar 块 + 让位 spacer）"
+        );
+        // 任务栏行（taskbar → View::Row）应带 h-14 等类（503 视觉规格；条件样式
+        // border-t/b 经 extract_style_with 求值落位——S7 实拍回归锚）。
+        let mut taskbar_row: Option<&V<crate::ui::interpreter::DynamicMessage>> = None;
+        fn find_row_with_h12<'a>(
+            v: &'a V<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Option<&'a V<crate::ui::interpreter::DynamicMessage>>,
+        ) {
+            if out.is_some() {
+                return;
+            }
+            if let V::Row { style, .. } = v {
+                if style.as_ref().map_or(false, |s| {
+                    s.classes.iter().any(|c| {
+                        matches!(c, crate::ui::style::StyleClass::Height(_) if format!("{c:?}").contains("14"))
+                    })
+                }) {
+                    *out = Some(v);
+                    return;
+                }
+            }
+            for c in view_children(v) {
+                find_row_with_h12(c, out);
+            }
+        }
+        find_row_with_h12(&view, &mut taskbar_row);
+        assert!(
+            taskbar_row.is_some(),
+            "taskbar 行应带高度类（条件样式求值落位）"
+        );
+
+        // top → 无翻转类（border-b 分支）。
+        {
+            let app = ds.apps.get_mut(&id).unwrap();
+            let _ = app.component.write_state("__dock_position", auto_val::Value::str("top"));
+        }
+        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
+        let V::Column { style, .. } = &view else { panic!("root Column") };
+        let has_reverse = style.as_ref().map_or(false, |s| {
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+        });
+        assert!(!has_reverse, "top 时根 col 不应含 flex-col-reverse");
+    }
+
+    /// Plan 505 D（债 P488-D4）：on_dnd_finished 交付锚定——发起时锚定
+    /// 优先于完成时焦点（偏差场景：拖出后焦点漂移）；无锚回退焦点/primary
+    /// （v1 语义保持）；锚定消费即取走（一次性）。
+    #[test]
+    fn dnd_finished_delivery_anchors_at_initiator() {
+        let mut ds = crate::ui::session::DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let a = t3_add_win(&mut ds, "Alpha");
+        let b = t3_add_win(&mut ds, "Beta");
+        ds.wm_focus(b);
+        let app_of = |ds: &crate::ui::session::DesktopSession,
+                      wid: crate::ui::session::Wid| {
+            ds.host
+                .as_ref()
+                .unwrap()
+                .wm
+                .wins
+                .get(&wid)
+                .expect("vwin 在册")
+                .app
+        };
+        let (app_a, app_b) = (app_of(&ds, a), app_of(&ds, b));
+
+        // 代际不变（dispatch 内无拖出）→ 不锚定。
+        let gen = dnd_drag_generation();
+        maybe_anchor_dnd_initiator(&mut ds, app_a, gen, gen);
+        assert!(ds.desktop.dnd_initiator.is_none(), "无拖出不锚定");
+
+        // 代际变化 → 锚定发起方 a；交付目标 = a（焦点在 b 的偏差场景下
+        // 仍交付发起方）。
+        maybe_anchor_dnd_initiator(&mut ds, app_a, gen, gen + 1);
+        assert_eq!(ds.desktop.dnd_initiator, Some(app_a));
+        assert_eq!(dnd_finished_target(&mut ds), Some(app_a), "锚定优先于焦点");
+
+        // 锚定取走后回退完成时焦点（v1 语义）。
+        assert_eq!(dnd_finished_target(&mut ds), Some(app_b), "无锚回退焦点");
+    }
+
     #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();

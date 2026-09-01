@@ -925,6 +925,46 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // Plan 505 C: acceptance-channel desktop-surface injection.
+        json!({
+            "name": "autoui_desktop",
+            "title": "Desktop Acceptance Injection",
+            "description": "Inject desktop-surface interactions through the REAL consumption arms (no OS input synthesis — the CUA pixel-identity guard family bypass). Requires AUTOUI_ACCEPTANCE=1 on the desktop host process (production default: refused).\n\n## When to use\n- Acceptance-channel live verification of shell/settings/desktop interactions (gear → settings panel, dock position hot-switch, wallpaper writer, Esc self-hide)\n- Where OS-level SendInput/CUA clicks are blocked by the live-render pixel-identity guard\n\n## Actions\n- {action:\"bus\", verb:\"open_settings\"} — queue a DesktopBus verb record (same drain/execute arm as real shell buttons; e.g. \"layout\\tgrid\", \"summon\\tlauncher\")\n- {action:\"handler\", app:\"settings\", handler:\"Escape\"} — call a privileged app handler directly (app: shell|settings|notification|launcher; same handler pipeline as onclick)\n\nEffects land on the ServiceTick cadence (≤400ms); capture evidence with autoui_screenshot. Procedure: docs/plans/reports/505-acceptance-channel.md",
+            "inputSchema": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["bus", "handler"],
+                        "description": "bus = DesktopBus verb record; handler = privileged app handler call"
+                    },
+                    "verb": {
+                        "type": "string",
+                        "description": "DesktopBus record for action=bus (e.g. \"open_settings\", \"layout\\tgrid\")"
+                    },
+                    "app": {
+                        "type": "string",
+                        "enum": ["shell", "settings", "notification", "launcher", "desktop"],
+                        "description": "Privileged app for action=handler (default shell)"
+                    },
+                    "handler": {
+                        "type": "string",
+                        "description": "Handler name for action=handler (e.g. \"OpenSettingsPanel\", \"Escape\")"
+                    },
+                    "arg": {
+                        "type": "string",
+                        "description": "Optional single string argument for the handler"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -948,6 +988,7 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
         "autoui_find" => tool_find(shared, args),
         "autoui_exists" => tool_exists(shared, args),
         "autoui_press_sequence" => tool_press_sequence(shared, args),
+        "autoui_desktop" => tool_desktop(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -1565,6 +1606,78 @@ fn tool_action_config_reload() -> serde_json::Value {
         None => text_result(
             "ActionConfigReload: no config wired (AUTO_VM_ACTION_CONFIG unset) — DSL bindings only".to_string(),
         ),
+    }
+}
+
+// ── Tool: autoui_desktop (Plan 505 C：实机验收通道) ─────────────────────
+//
+// 桌面面注入（AUTOUI_ACCEPTANCE=1 门控，生产缺省拒绝）：绕开 OS 注入/
+// CUA 像素身份守卫（P487-1/P496-1/P501-2 阻断族统一解），走与真实按钮
+// 同一消费臂——
+//   action=bus     verb 记录入队（如 "open_settings"、"layout\tgrid"）→
+//                  shell `__desktop_cmd` → drain_and_execute_desktop_commands；
+//   action=handler 特权 App handler 直呼（app ∈ shell/settings/notification/
+//                  launcher，如 shell OpenSettingsPanel / settings Escape）。
+// ServiceTick 节拍排空（≤400ms 生效）；配 autoui_screenshot 取实机可视
+// 证据。规程见 docs/plans/reports/505-acceptance-channel.md。
+
+fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    if std::env::var("AUTOUI_ACCEPTANCE").ok().as_deref() != Some("1") {
+        return error_result(
+            "autoui_desktop requires AUTOUI_ACCEPTANCE=1 (acceptance-channel gate; production default off)",
+        );
+    }
+    let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    match action {
+        "bus" => {
+            let Some(verb) = args.get("verb").and_then(|v| v.as_str()) else {
+                return error_result("Missing required parameter: verb (DesktopBus record, e.g. \"open_settings\")");
+            };
+            #[cfg(feature = "ui-iced")]
+            {
+                crate::ui::session::desktop_inject_push(
+                    crate::ui::session::DesktopInject::Bus(verb.to_string()),
+                );
+                text_result(format!("queued bus record: {verb}"))
+            }
+            #[cfg(not(feature = "ui-iced"))]
+            {
+                let _ = verb;
+                error_result("autoui_desktop requires the ui-iced desktop host")
+            }
+        }
+        "handler" => {
+            let app = args.get("app").and_then(|v| v.as_str()).unwrap_or("shell");
+            let Some(handler) = args.get("handler").and_then(|v| v.as_str()) else {
+                return error_result("Missing required parameter: handler (e.g. \"OpenSettingsPanel\")");
+            };
+            let arg = args.get("arg").and_then(|v| v.as_str()).map(str::to_string);
+            let app_static: &'static str = match app {
+                "shell" => "shell",
+                "settings" => "settings",
+                "notification" => "notification",
+                "launcher" => "launcher",
+                "desktop" => "desktop",
+                _ => return error_result(format!("Unknown privileged app: '{app}' (shell|settings|notification|launcher|desktop)")),
+            };
+            #[cfg(feature = "ui-iced")]
+            {
+                crate::ui::session::desktop_inject_push(
+                    crate::ui::session::DesktopInject::Handler {
+                        app: app_static,
+                        handler: handler.to_string(),
+                        arg,
+                    },
+                );
+                text_result(format!("queued {app_static} handler: {handler}"))
+            }
+            #[cfg(not(feature = "ui-iced"))]
+            {
+                let _ = (app_static, handler, arg);
+                error_result("autoui_desktop requires the ui-iced desktop host")
+            }
+        }
+        _ => error_result(format!("Unknown action: '{action}' (bus|handler)")),
     }
 }
 

@@ -26,7 +26,7 @@ function __evt_onclick_2(): void {
 
 <template>
     <div class="flex flex-col w-full h-full">
-      <VirtualWindow :key="'VirtualWindow-1-' + (((w as any)?.id ?? w))" v-for="w in wins">
+      <VirtualWindow :win="w" :key="'VirtualWindow-1-' + (((w as any)?.id ?? w))" v-for="w in wins">
         <Button @click="__evt_onclick_1(w)" :key="'Button-2-' + (((w as any)?.id ?? w))">client</Button>
       </VirtualWindow>
       <Taskbar :key="'Taskbar-3'">

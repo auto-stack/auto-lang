@@ -196,7 +196,7 @@
 | 406 | 审计矩阵 | 🟢 | 全量 nanbox 生产者-消费者类型配对审计矩阵（docs/audit/vm-type-audit.md）未产出 | 立项驱动的 4 个目标 bug 已全部由审计批次 A4/B4 根治，矩阵价值让位 | docs/plans/archive/406-*.md Phase 1 | 2026-08-20 |
 | 473 | 环境限制 | 🟢 | 非 Windows 目标 `cargo check -p auto-lang --target x86_64-unknown-linux-gnu` 未本机验证（openssl-sys 交叉编译缺 OpenSSL，reqwest native-tls 既有依赖链） | native_dock 非 Windows 路径以同名 no-op 模块（win32_noop.rs）API 面逐一对照保证；环境性限制非代码缺陷，CI Linux runner 即可闭环 | crates/auto-lang/src/ui/native_dock/win32_noop.rs；plan 473 复审记录 验收#2 | 2026-08-29 |
 | 473 | 验收顺延 | 🟡 | native dock 真人冒烟清单顺延（用户 2026-08-29 裁定 E2E 代验）：B1 拖拽手势（Phase 1 无 dock 用户触发面）、B5 实机模态、B6 IME、B9 多显示器缩放矩阵（仅单屏 200% 覆盖）、D1 Chrome 实机、B8 退出恢复整链实机、C1 真提权进程。**486 清偿（2026-08-30 实机执行留痕）**：B1 ✅ 真拖 Notepad 入全屏桌面→高亮→收编→任务栏条目→× 关闭（t5_smoke 驱动+截图）；B5 ✅ docked fixture 弹 MessageBox 置顶可交互；B8 ✅ Esc 退出→双窗 chrome/bounds 整链恢复；D1 ◐ Chrome docked ~12s 后其自移触发 C4 自动恢复+toast（Chrome 自身行为，处理优雅，"常驻"未完全达成）；G2 附带 ✅（C4 undock 实机实证）。**仍待用户**：B6 IME 中文输入（自动化无法忠实模拟输入法）；C1 真提权（UAC 交互不可自动化；UIPI 拒收路径有单测）；B9 双屏矩阵（本机单屏 4K@200%；自动化框架已就绪=t5_smoke 驱动+native_dock_e2e） | Phase 1 假洞的可自动断言部分已由 fixture E2E 六测试覆盖（B1/B2/B3/C3/C4/C5/B7）；触发面（shell UI/手势）已随 Phase 1.5（Plan 486）落地 | docs/plans/486-native-dock-trigger-surface.md 步骤9；tools/native-fixture/README.md | 2026-08-30 |
-| 486 | 性能观感 | 🟡 | native dock 事件泵吞吐不足：`native_dock_event_subscription` 16ms 短轮询每拍仅 `try_recv` 一条（≈62 事件/s），系统级 LOCATIONCHANGE 噪声（多窗环境）下 MOVESIZESTART/END 排队滞后——T5 实机实测拖拽松手到 dock 落位延迟可达数秒 | 473 设计按"事件低频"假设单发轮询；486 手势引入后拖拽终态对延迟敏感。修复方向：每拍 drain-while-empty（通道排空为止）+ 可选分级（START/END 优先出队） | crates/auto-lang/src/ui/session.rs:1220 段；486 复审记录 | 2026-08-30 |
+| 486 | 性能观感 | 🟡 | native dock 事件泵吞吐不足：`native_dock_event_subscription` 16ms 短轮询每拍仅 `try_recv` 一条（≈62 事件/s），系统级 LOCATIONCHANGE 噪声（多窗环境）下 MOVESIZESTART/END 排队滞后——T5 实机实测拖拽松手到 dock 落位延迟可达数秒 | 473 设计按"事件低频"假设单发轮询；486 手势引入后拖拽终态对延迟敏感。修复方向：每拍 drain-while-empty（通道排空为止）+ 可选分级（START/END 优先出队） | crates/auto-lang/src/ui/session.rs:1220 段；486 复审记录 | 2026-08-30 | **【已清偿 2026-08-31，Plan 505 S1】**：每拍 drain-while-empty 成批上行 + 批内 MoveSizeStart/End 稳定分区前置（`drain_slot_events` 纯函数；T1 单测 100 噪声+2 边界一拍排空/优先序/快甩即判）。
 | 486 | 环境限制 | 🟢 | `ui::i18n_lookup::tests::plan050_i18n_lookup_loads_flat_json_and_misses_gracefully` 在 `--features ui*` 档红（i18n/zh.json 装载返回 None）——**非 486 引入**（master 同命令同红；默认档不编译该测试，cargo t/tf 日常门不受影响） | 疑似 cwd/feature 相关装载路径问题，独立于 486 文件范围；留待独立小修 | crates/auto-lang/src/ui/i18n_lookup.rs:72；486 计划待澄清 | 2026-08-30 |
 
 *最后更新：2026-08-30（486 清偿 P473 真人冒烟行：B1/B5/B8 ✅ 实机留痕、D1 ◐、B6/C1/B9 仍待用户）；2026-08-29（446 下游结算回执收口:数据损坏条目 ✅（下游 parse-first 8a7b85f+soul.md 重写 639B）、渲染回归降级观察（03/04 在 c83435764 未复现）;新登 446-R1 applyAccent 撞名/446-R2 merged 链接面诊断（🟡节）、422 并入 vue popover 半缺口、446-R3 store_import_prefix CLI/446-R4 state 对象数组投影（增强节）;specs ui/vm plans.md 446 行对齐 archived;2026-08-27（复核归档批:413/414/421/422/423/449 六计划归档,遗留登记 7 条(413 人工验收/421 natives 桥接/422 popover 边界/414 Phase B 族/423 RC 安全×2/449 组件三缺口+越界读 bug),418 menubar 估位条目随 422 P2 落地退役;Plan 330 归档裁定：核心诉求被 199+MCP 工具族取代,剩余缺口登记 2 条——VM 内省三件套/trace 无 CLI 暴露;设计沉淀 design/14;Plan 332 同日改写聚焦 Serialize 方向;2026-08-25：plan-447 部分① 收尾登记 5 条：is 值语义 let 位返回 0/嵌套 fn 静默失效/struct 误用报 E0201/plan-444 3 红 golden/并行偶发测试；同日早前：vm-files-ci.yml 落地:六道闸门+goldens+conformance 接入 CI;ffi_dual_014 补 std 臂 VM 回归网+19_rust_std 10 ignore 解除;plan-430-fixes 清偿复审高危 4 条:compile_dep_methods 吞错/指纹声明版本/剔环上限+前缀误伤/泛型自由函数假签名——全部 ✅ 并补单测;aavm 系列 429-434 复审+归档:新增复审条目 9 条;Plan 434 AA2R 合并入库;Plan 444 修复 auto-shell-057;Plan 433 登记 4 条;2026-08-22 Plan 417-E3;2026-08-20 归档复审）*
@@ -272,6 +272,10 @@
   的 stop 旗标 boot 期置 false 后无显式停机接线（serve 线程进程级常驻为
   v1 设计，代码注释注明；probe 连接可唤醒退出）——显式停机归桌面退出
   流程后续接线。
+  **已清偿（2026-08-31，Plan 505 S5-B5）**：`shutdown_broker`（旗标置位 +
+  探测连接唤醒，幂等）接五个桌面退出点（Esc / exit 命令×2 / 全窗关闭×2），
+  serve 线程由"进程级常驻"收敛为随桌面停机；单测
+  `shutdown_broker_sets_flag_and_is_idempotent`。
 - **P480-R2 内存基线为 debug 测试宿主口径**：480-memory-baseline.md 数字
   采自 nextest debug 测试二进制（非 release 产品 `auto`）；release + strip
   复核点已在报告 §3 明示（不影响"度量+判定"验收形态，Private 口径
@@ -331,10 +335,17 @@
   DragEnter 未及送达（其自身也经主线程泵）即松手 → WM_NULL ticker 未上膛
   → Drop 滞留至下次输入。真人速度（≥0.5s）拖拽不受影响（E2E + 实机截图
   端到端实证）；如需消除，候选=注册期预上膛 ticker 或 DragEnter 之外的
-  上膛时机。
+  上膛时机。 **同族治理（2026-08-31，Plan 505 S1/S2）**：native dock 拖拽臂
+  的快甩滞留已清——泵 drain 成批 + 批内 START/END 前置使同批终态即判
+  （`dragwatch_fast_flick_same_batch_end_judged_immediately`）；OLE 拖入臂
+  （DragEnter/WM_NULL 上膛时机）机制未改动，OLE 快甩若仍滞留余留观察。
 - **P488-D4（增强候选）on_dnd_finished 交付取完成时焦点 App**：VM 侧无
   VM→AppId 通道，发起方追踪需会话记账——拖出期桌面持焦点与发起方一致，
-  偏差场景未观察到实际影响。
+  偏差场景未观察到实际影响。 **已清偿（2026-08-31，Plan 505 S8）**：
+  DoDragDrop 在发起方 handler dispatch 内联阻塞至完成（488 步骤 9 定案）
+  ——dispatch 环按拖出会话代号变化锚定发起方 AppId，交付序 = 发起锚定
+  （取走）> 完成时焦点 > primary（v1 回退保持）；单测
+  `dnd_finished_delivery_anchors_at_initiator`。
 - **P488-D5（观察项）Ctrl+V 实机路由未留痕**：T5 单测绿（485 测试锁串行
   剪贴板往返），用户三轮未显式按 Ctrl+V 验证——语义链等价由单测背书，
   T6 重跑时可顺带补一行留痕。
@@ -347,7 +358,11 @@
   停帧泵复测仍复现），与 472/478/479 前台竞争同族但机制不同（像素身份 vs
   前台校验）。语义链 headless 全覆盖（settings_* 七测）；T4 报告
   `docs/plans/reports/487-t4-live-smoke.md` §2 指针成文，前台空闲可补采
-  （479 P479-2 同款）。
+  （479 P479-2 同款）。 **已清偿（2026-08-31，Plan 505 S7）**：505 验收
+  通道（内进程 MCP 注入 `autoui_desktop`，AUTOUI_ACCEPTANCE=1 门控——
+  CUA 像素身份守卫阻断族统一解）实拍三帧归档
+  `docs/plans/reports/assets/505/p487/`：开面板 / 位置热切换（任务栏置顶
+  border-b）/ Esc 自隐。
 - **P487-2（复审新发现，非本计划引入）ui-iced 特性档 4 既有红测试 +
   标准门禁盲区**：`--features ui-iced --lib` 全量下 master 即红 4 测——
   plan442_ext_link `plan050_void_stub…` / `ui::i18n_lookup::plan050_i18n_lookup…`
@@ -366,7 +381,28 @@
   ui-iced 档 4081/4081 全绿。
 - **P487-3 shell.at 双任务栏分支重复（既有 v1 瑕疵延续）**：top/bottom 两
   分支各一份任务栏标记（shell.at:63 注释自认，M2 pack 化收敛）——本期齿轮
-  按同款双份落码（+11 行 ×2），非本期引入的新债。
+  按同款双份落码（+11 行 ×2），非本期引入的新债。 **已清偿（2026-08-31，Plan 505 S3）**：双分支
+  ~150 行收敛为参数化单份——flex-col-reverse 数据级翻转（iced col_reverse
+  412 已有臂）+ 边线类宿主投影 `__dock_border` 拼接（taskbar 注册件的 if
+  条件样式在实机装配层不稳，S7 补拍实拍发现后修正）；shell.at 440→308 行，
+  desktop_mcp 装载测 3/3。
+
+### P505（2026-08-31，Plan 505 桌面 DEBT 批处理一期复审登记）
+
+- **P505-1 注册件/容器 if 条件样式在 live 装配路径丢失（根因未明，已规避）**：
+  shell.at taskbar（注册件 → row 语义）上的 `style: if … {} else {}` 使
+  任务栏在实机 iced 装配中零高度不可见——视图树单测两路（tracked/
+  untracked）皆断言样式类在位（`shell_root_col_position_classes_and_taskbar_present`），
+  仅真窗装配可见差异；静态串/拼接表达式（Bina Add）均正常。505 B1 以宿主
+  投影拼接（`__dock_border`）规避。根因（视图树与 iced 元素装配间的样式
+  丢失环节）未定位；偿还路径：装配层样式探针对拍定位后修 extract/装配臂，
+  或明文禁用该形态（lint/文档）。影响面：所有在注册件/容器上写 if 条件
+  样式的 .at（当前 shell pack 已清零，examples 检索未见同型）。
+- **P505-2 事件泵实机拖拽体感复跑受阻（环境族，随 C 通道边界注记）**：
+  A 族 drain+优先级的实机拖拽复验（t5_smoke SendInput 管线）在当前会话被
+  阻断（caption 拖拽链 false——P504-3/P496-1 同族）；时延改善由单测数学
+  背书（100 噪声+2 边界一拍排空）。偿还路径：OS 注入通道可用窗口（物理机
+  人手或注入环境恢复）跑一轮 t5 拖入 + C 通道截图留痕。
 
 ### P494（2026-08-31，Plan 494 原生真洞 Phase 4 复审登记；用户已批准为债务）
 
@@ -399,13 +435,20 @@
   headless 全链覆盖（desktop_surface_* 三测 + settings_appearance_* +
   activate 两臂既有测）；实机证据 = 预写键 boot 单帧三断言（渲染帧）+
   T4 报告 `docs/plans/reports/496-t4-live-smoke.md` §2 对表成文。前台
-  空闲可补采（P479-2/P487-1 同款排队）。
+  空闲可补采（P479-2/P487-1 同款排队）。 **已清偿（2026-08-31，
+  Plan 505 S7）**：验收通道实拍两帧归档 `assets/505/p496/`——壁纸写手
+  实变（#1e3a5f 同会话热生效）+ 图标 ActivateApp 激活 calculator；右键
+  菜单/空白点击可经同通道复跑（IconMenu/BlankPress 在注入面）。
 - **P496-2（复审新发现，非本计划引入）plan492 fstr 金丝雀基点红**：
   `--features ui-iced` 档 `plan492_tests::m1_pkg_fstr::pkg_canary_undefined_
   var_kills_bar_init` 在 39abc730f 基点即红（临时 worktree 探针实证），
   master 新顶（495 合并 08d060cba）已绿——分支合并时随 rebase/merge
   自愈，无需本计划处置。与 P487-2「门禁盲区」同族提醒：该测试挂 ui-iced
   门后，`cargo t/tf` 默认档不可见。
+- **P496 待澄清（壁纸热切换）定案（2026-08-31，Plan 505 S8/D-2）**：探针
+  结论 = **天然支持**——SaveWallpaper → storage 写 → `__desktop_bg` 投影
+  重注入（指纹门控）→ 桌面本体面同会话热刷新，无需额外管道；实机证
+  `assets/505/p496/p496-01-wallpaper-writer-applied.png`（#1e3a5f 实变）。
 
 ### P497（2026-08-31，Plan 497 shell-track S3 复审登记）
 
@@ -417,12 +460,20 @@
   视觉风险低。偿还路径：`.at` take(N) 数组原语（语言增强，另行计划），
   或 v1.5 协议字段（分区窗口派生面）。
   **裁定（2026-08-31，用户）**：不单独立项清偿——take(N) 原语增强归入
-  债务批量清理批次（与 P497-2 等一起清），届时再定计划。
+  债务批量清理批次（与 P497-2 等一起清），届时再定计划。 **已清偿（2026-08-31，
+  Plan 505 S4）**：取两路径中的"协议字段"——投影协议 v1.5：`__wm_wins`
+  条目增 `pager` 旗标（每分区 z_order 前 4）+ `__wm_workspaces` 条目增
+  `more` "+N" 标签（宿主派生，指纹零扩展）；take(N) 语言原语按 505
+  "无新架构"约束不做，有通用诉求时另立语言增强计划。
 - **P497-2 a2vue window_thumbnail props 不透传 DOM**：金样 SFC 中
   wid/fallback_icon 被丢弃（class/v-for/:key 透传正常）——与 465
   virtual_window（win prop 同不透）先例一致的转译器 v1 局限。占位
   组件（icon+边框，待澄清①）不需要动态 wid；真缩略 web 路径
-  （transform 缩放复制子树）落地时一并补 props 透传。
+  （transform 缩放复制子树）落地时一并补 props 透传。 **已清偿
+  （2026-08-31，Plan 505 S5-B3）**：a2vue `generate_shadcn_attrs` catch-all
+  补 props 排序遍历透传（原只透 class）；window_thumbnail
+  （wid/fallback_icon）与 virtual_window（win，465 先例同修）双金样更新，
+  a2vue 14/14 绿零连带。
 ### P501（2026-08-31，Plan 501 os-config 集成复审登记）
 
 - **P501-1 daemon 发现序第 3 级（PATH）v1 留扩展位**：`ensure_ready_io`
@@ -431,14 +482,20 @@
   相邻仓 target），Offline 原因文案如实只列两级。理由：本计划非目标明确
   排除「daemon 安装器/打包分发」，PATH 发现仅在安装态有意义；开发机形态
   被相邻仓探测全覆盖。`resolve_daemon_path` 的注入缝已就位，安装态立项时
-  接宿主 `which` 语义即可。
+  接宿主 `which` 语义即可。 **已清偿（2026-08-31，Plan 505 S5-B4）**：`which_in`
+  纯逻辑（unix 可执行位判断）+ `which_daemon` 生产包装接 `ensure_ready`
+  注入缝，发现序三级全生效、Offline 文案列全；单测
+  `which_in_scans_dirs_in_order` / `ensure_ready_falls_back_to_path_tier`。
 - **P501-2 T4 人手点击链残差（479/487/496 前台竞争家族延续）**：齿轮 →
   系统 → 打开系统设置的 GUI 像素自动化与 iced 活渲染栅格竞态不可靠未强
   驱（P496-1 同族）；headless 等价链全绿（T2 三态徽标注入 + 派发解析 +
   T3 launch 全链 + boot 35vs34 冒烟 + live spawn 2.52s/复用 774µs）。
   runbook：仓根起 `cargo run -p auto-lang --features ui-iced --example
   ui_desktop` 人手 30 秒抽查；前台空闲可补采（P479-2/P487-1/P496-1 同批
-  排队）。
+  排队）。 **已清偿（2026-08-31，Plan 505 S7）**：验收通道实拍两帧归档
+  `assets/505/p501/`——系统分区 + osconfig 三态徽标、OpenSystemSettings →
+  launch	os-config → 外部仓 os-config App 实拉起整窗（齿轮→os-config
+  GUI 全链实机照）。
 
 ### P504（2026-09-01，Plan 504 calculator fit-window/os-config/stdlib 复审登记）
 
