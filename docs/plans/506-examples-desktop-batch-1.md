@@ -1,14 +1,15 @@
 ---
 plan_id: PLAN-506
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: examples-desktop-batch-1
 author: [kimi-code]
 created_at: 2026-09-01
 updated_at: 2026-09-01
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components:
+  - "docs/specs/auto-lang/ui/overview.md: 「504 示例桌面化三件套」段落——由 011 单例样板扩为 008/009/010/002/003/012/038 七例批量兑现；common/header.at(ExampleHeader 196 行组件包)整体退役，theme/accent 设置面移交 os-config per-app 配置"
+new_spec_components: []   # 机制零新造（fit 双路径/os-config 读注链/stdlib 静态分发全部复用 504）；新增的是三件套的批量应用与测试改法范式，随 overview 段落更新沉淀
 touched_goals:
   - "GOAL-010: 示例应用轨道——011 样板向首批 7 个示例批量展开"
   - "GOAL-009: 虚拟桌面与桌面 Shell——示例桌面化三件套（fit/os-config/stdlib）批量兑现"
@@ -242,7 +243,65 @@ fit/title 线（002/003/012/038，每 app 同构三步）：
 
 ## 复审记录
 
-（/auto-plan:review 时填写）
+**复审人**：ZCode 会话（/auto-plan:review，2026-09-01）
+**复审基线**：worktree `.worktrees/plan-506-dev` @ `115d368e7`（3 commits：
+ef2d3634f S2 / 8a548b563 S3 / 115d368e7 S4）；diff 24 files、+288/−582，
+全部位于 `examples/ui/`，`git diff --stat -- crates/` 为空。
+
+**门禁裁定**：本批零 `crates/` Rust 源码改动（验收 5 实测成立）→ 按
+AGENTS.md Change-Scoped Verification Gate **Category A**，复审不运行
+`cargo tf`/`cargo t`（仓库规则明令严禁，覆盖 review 技能通用 full-suite
+条款）；full-suite 门禁本就不适用于纯示例/测试脚本批次。
+
+**逐条验收重验**（复核现跑，非引执行期输出）：
+
+1. **PASS** — 7 pac.at `title:` 逐一 grep 命中；008/009/010 app.at 无
+   ExampleHeader/settings_open/accent_color 死声明（accent_color 为带
+   注释的播种挂钩保留，见待澄清④）；`examples/ui/common/` 整目录已删；
+   `ExampleHeader`/`dep "common"`/`common/header` 三道 grep 全仓 .at
+   零命中（exit=1）。
+2. **PASS** — 4 pac.at `window: "fit"` 命中；4 app.at 无 `center {` 外壳
+   （012 仅注释文字残留 min-h-screen 字样，样式串为零）；fit 截图四份
+   复测 PNG 尺寸 400x400 / 400x720 / 550x774 / 647x878（默认窗
+   1293x836，全部 <900 收缩阈值）。
+3. **PASS** — os-config 六文件落盘在位；临时 daemon `:17901` 复验
+   `/api/config/auto-{pricing-table,article-feed,contact-form}` 三条均
+   返回 `{theme,accent}` + meta 正确；008 vue 复跑启动打印
+   `VM window title: Pricing Table (from pac.at)` + `UI theme/accent
+   (from os-config)`；009 全链实测（light/coral→重启→打印+视觉截图）
+   执行期完成并留痕 `009_vue_osconfig_light_coral.png`。
+4. **PASS（带披露豁免）** — 003/008/009/010 VM 套件复跑全绿（003 含
+   fit 断言 400x720）；008 vue 复跑绿；038 desktop_mcp.py 复跑 12
+   passed / 1 failed / 2 skipped——唯一 FAIL 为 **master 预存 VM RC
+   use-after-free**（rc.rs:530 canary；执行期已在主 checkout 复现同
+   崩 + RUST_BACKTRACE 定位，非本批 diff 引入），本批并将其从
+   "IndexError 崩溃不可跑"修复为可报告（label 定位法 + 防御），
+   038 自身交付（fit/title/拆外壳）完整且有独立 fit 证据。豁免依
+   KNOWN-DEBT 既有实践（P499-6/7、P507-2 预存移入债表与计划完成
+   并存）。002/012 双端截图留痕在位。
+5. **PASS** — `git diff --stat -- crates/` 空；Category A 维持，无需
+   补 cargo check/scoped 测试。
+
+**遗漏/延后/workaround 扫描**：
+
+- 遗漏：无——S2 四步/S3 删除+门禁/S4 三步在 diff 中逐项对应；
+  common/pac.at 空壳随包移除；gen//deps/ 为 gitignored 本地生成物，
+  无陈旧入库风险。
+- 延后：①P504-2 fit 动态重测为计划**非目标**明示排除（非静默）；
+  ②批二（剩余 20 例 title 债务）在 S6 给出建议清单，属计划外后续
+  轨道；③待澄清①"002/012 截图级验证"按计划建议路线执行（测试套
+  建设归批二/专项），**需用户在 merge 前知悉确认**。
+- Workaround：①accent_color 保留=计划文本相对 504 样板的修正执行
+  （机制依据：seed_app_config/renderer env 播种均要求已声明变量，
+  删除即验收 3 静默失效；已记待澄清④）；②038 UAF 防御（记 FAIL
+  不死锁）+ label 定位法=上游 VM bug 所迫，已登记 P506-1/P506-2。
+
+**债项**：P506-1（038 Reveal RC UAF，疑 511 回归，修后 038 套件应回
+全绿）、P506-2（MCP rendered-vtree 快照无事件注记）——均已在
+KNOWN-DEBT-AND-RISKS.md 登记。
+
+**结论**：5/5 验收通过（验收 4 带披露豁免），无阻塞债 →
+`status: reviewed`，就绪 `/auto-plan:merge`。
 
 ## 待澄清事项
 
