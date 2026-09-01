@@ -125,6 +125,11 @@ mod windows_map {
 #[cfg(windows)]
 use windows_map::Mapping;
 
+// Plan 509：Linux 编译缺口修补——非 Windows Mapping（inproc_map 占位）
+// 用 Arc/Mutex，导入不随门控（Windows 行为零变化）。
+#[cfg(not(windows))]
+use std::sync::{Arc, Mutex};
+
 #[cfg(not(windows))]
 mod inproc_map {
     /// 非 Windows v1 占位：进程内命名映射表（接口不变；Linux memfd 随

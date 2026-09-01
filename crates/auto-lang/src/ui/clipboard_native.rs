@@ -16,7 +16,8 @@
 // 剪贴板是进程全局资源：Win32 集成测试须 set→get 即时往返，且用进程内
 // 互斥锁防同进程并行测试互相污染（nextest 每测试独立进程，锁为空转）。
 
-#[cfg(all(windows, feature = "native-clipboard"))]
+// TempImage（G2 Record 元数据）跨平台编译——PathBuf 导入不随 Win32 桥
+// 门控（Plan 509：Linux 编译缺口修补，Windows 行为零变化）。
 use std::path::PathBuf;
 
 // ── Win32 clipboard format IDs（稳定 ABI 常量，免引 Win32_System_Ole）──

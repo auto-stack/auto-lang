@@ -353,6 +353,39 @@ mod pipe {
 #[cfg(windows)]
 pub use pipe::{connect, listen, PendingServer, PipeEnd};
 
+/// 非 Windows 占位（Plan 509 Linux 编译缺口修补）：接口形状与 pipe 模
+/// 块一致，调用即返回错误——真 Linux 传输（UDS）随 Smithay 宿主线生长
+/// （本文件头注既有预留；Stage 2 立项）。同进程测试走 loopback。
+#[cfg(not(windows))]
+mod pipe_stub {
+    use super::TransportError;
+
+    const UNAVAILABLE: &str =
+        "named-pipe transport is Windows-only (Linux UDS transport: smithay host line, Stage 2+)";
+
+    pub struct PendingServer;
+
+    pub fn listen(_name: &str) -> Result<PendingServer, TransportError> {
+        Err(TransportError::Io(UNAVAILABLE.to_string()))
+    }
+
+    impl PendingServer {
+        pub fn wait_connect(self) -> Result<Box<dyn super::Transport + Send>, TransportError> {
+            Err(TransportError::Io(UNAVAILABLE.to_string()))
+        }
+    }
+
+    pub fn connect(
+        _name: &str,
+        _timeout_ms: u32,
+    ) -> Result<Box<dyn super::Transport + Send>, TransportError> {
+        Err(TransportError::Io(UNAVAILABLE.to_string()))
+    }
+}
+
+#[cfg(not(windows))]
+pub use pipe_stub::{connect, listen, PendingServer};
+
 // ---------------------------------------------------------------------------
 // WebSocket（Plan 508 G3/G4 远程线）：tokio-tungstenite + 线程桥接同步
 // trait——pipe 同族阻塞语义。
