@@ -171,6 +171,19 @@ async function main() {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
+    // ---- 阶段 0（T5）：无远程配置的裸桌面——零远程窗 + launcher 可用。
+    await page.goto(`http://localhost:${DESKTOP_PORT}/`);
+    await page.waitForSelector('footer', { timeout: 10_000 });
+    const bareRemote = await page.locator('canvas.remote-canvas').count();
+    if (bareRemote !== 0) throw new Error(`无配置不应有远程窗（count=${bareRemote}）`);
+    await page.click('footer button[title="Summon launcher (Ctrl+Space)"]');
+    await page.waitForSelector('input[placeholder^="search apps"]', { timeout: 5000 });
+    const appRows = await page.locator('.absolute button:has-text("Counter")').count();
+    if (appRows === 0) throw new Error('launcher 未列出本地 App');
+    console.log('[e2e] 无配置零变化 ✓（零远程窗，launcher 正常）');
+    await page.screenshot({ path: path.join(ASSETS, '00-bare-desktop-no-config.png') });
+
+    // ---- 全链注入远程会话。
     const wsUrl = `ws://127.0.0.1:${port}/?token=${encodeURIComponent(TOKEN)}`;
     const url =
       `http://localhost:${DESKTOP_PORT}/` +
