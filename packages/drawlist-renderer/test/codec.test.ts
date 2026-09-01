@@ -6,7 +6,7 @@ import {
   encodeHello,
   encodePointerPressed,
 } from '../src/messages.ts';
-import { FRAME_HEX, HELLO_HEX, PRESS_HEX } from './fixtures.golden.ts';
+import { FRAME_HEX, HELLO_HEX, PRESS_HEX, SCISSOR_FRAME_HEX } from './fixtures.golden.ts';
 
 const hex = (bytes: Uint8Array): number[] => Array.from(bytes);
 
@@ -44,6 +44,21 @@ describe('对拍锚点（Rust codec 同源字节）', () => {
         color: { r: 255, g: 255, b: 255, a: 255 },
         text: 'Counter: 0',
       },
+    ]);
+  });
+
+  it('scissor 栈帧解码与 Rust golden 恒等（Plan 515 G1）', () => {
+    const msg = decodeServerMsg(new Uint8Array(SCISSOR_FRAME_HEX));
+    expect(msg.kind).toBe('frame');
+    if (msg.kind !== 'frame') return;
+    expect(msg.frame.payload.ops).toEqual([
+      { kind: 'scissor', rect: { x: 8, y: 8, w: 120, h: 60 } },
+      {
+        kind: 'quad',
+        rect: { x: 0, y: 0, w: 400, h: 400 },
+        color: { r: 59, g: 130, b: 246, a: 255 },
+      },
+      { kind: 'scissorPop' },
     ]);
   });
 });

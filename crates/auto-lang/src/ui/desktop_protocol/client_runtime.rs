@@ -582,8 +582,15 @@ fn layout_block(
         }
         return LaidBlock { size: (w.max(cursor - slack), cross_max) };
     }
-    let main = if dir == Dir::Vertical { cross_max } else { cursor };
-    LaidBlock { size: (main.max(0.0), cross_max) }
+    // Plan 515 G1 修正：垂直块高度 = cursor（主轴累计高）——500 期误取
+    // cross_max（最大子宽），多层嵌套容器的高度消费（card 底盒/bg 盒/
+    // scroll 溢出判定）一直拿到宽度值（横向 (cursor, cross_max) 原本
+    // 正确，不动）。
+    let size = match dir {
+        Dir::Vertical => (cross_max.max(0.0), cursor.max(0.0)),
+        Dir::Horizontal => (cursor.max(0.0), cross_max.max(0.0)),
+    };
+    LaidBlock { size }
 }
 
 /// 单节点布局：容器（bg/padding/子级）或叶子 widget。返回外框尺寸。
@@ -625,6 +632,11 @@ fn layout_node(
                 // action = 普通块流容器，shadcn 字号/间距档不载——保真边界
                 // 随注）。
                 "grid" => layout_grid(ctx, props, children, x, y, avail_w, &style),
+                // Plan 515 G1 —— scrollable 裁剪栈（固定高视口溢出产
+                // Scissor push/pop 对；详见 layout_scroll）。
+                "scroll" | "scrollable" => {
+                    layout_scroll(ctx, children, x, y, avail_w, &style)
+                }
                 "card" => layout_container(
                     ctx,
                     children,
@@ -920,6 +932,83 @@ fn layout_container(
         }
     }
     LaidBlock { size: (outer_w, outer_h) }
+}
+
+/// card 表面缺省档：无 bg/border/padding 声明时补 shadcn card 近似
+/// （底色 + 边线 + 16 内边距；显式 style 全覆盖）。
+/// Plan 515 G1 —— scrollable 裁剪栈：固定高视口（`h-*`）内容溢出时产
+/// `Scissor` push/pop 对包裹子级 ops（bg/border 在栈外——表面不被裁），
+/// 溢出内容交宿主栅格化裁剪（507-1"scroll 无裁剪"收口）。无固定高 =
+/// 自然高度容器语义（零裁剪对，既有帧兼容）。溢出命中区按视口过滤
+/// （裁掉内容不可点）。滚动偏移交互（Scroll 输入 → 视口平移）v1 不载
+/// ——保真边界随注（Stage 5+ 输入臂）。
+fn layout_scroll(
+    ctx: &mut ProjectCtx<'_>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    // 视口宽：块级满宽语义（fixed_w/max_w 钳制，avail_w 回退——input/
+    // progress 同档；041 真源 `h-40 w-full` 口径）。
+    let mut outer_w = style.fixed_w().unwrap_or(avail_w.max(0.0));
+    if let Some(max_w) = style.box_layout.max_width {
+        outer_w = outer_w.min(max_w);
+    }
+    let inner_w = (outer_w - pad.0 - pad.2).max(0.0);
+    // 首轮量尺寸（幂等重排先例：容器底色/grid）。
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let laid = layout_block(ctx, children, x + pad.0, y + pad.1, inner_w, Dir::Vertical, style);
+    let content_h = laid.size.1 + pad.1 + pad.3;
+    let viewport_h = style.fixed_h();
+    let overflow = viewport_h.is_some_and(|vh| content_h > vh + 0.01);
+    if !overflow {
+        // 自然高度（或内容未溢出）：既有容器语义原样（bg 补底同容器臂）。
+        if style.bg.is_some() || style.border.is_some() {
+            ctx.ops.truncate(ops_mark);
+            ctx.hits.truncate(hits_mark);
+            if let Some(bg) = style.bg {
+                push_quad(ctx, WRect::new(x, y, outer_w, content_h), bg);
+            }
+            layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), Dir::Vertical, style);
+            if let Some(border) = style.border {
+                push_border(ctx, WRect::new(x, y, outer_w, content_h), border);
+            }
+        }
+        return LaidBlock { size: (outer_w, viewport_h.unwrap_or(content_h).max(content_h)) };
+    }
+    let vh = viewport_h.unwrap_or_default();
+    // 溢出：撤首轮 → bg（栈外）→ Scissor push → 子级 → pop → border。
+    ctx.ops.truncate(ops_mark);
+    ctx.hits.truncate(hits_mark);
+    if let Some(bg) = style.bg {
+        push_quad(ctx, WRect::new(x, y, outer_w, vh), bg);
+    }
+    ctx.ops.push(DrawOp::Scissor { rect: WRect::new(x, y, outer_w, vh) });
+    layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), Dir::Vertical, style);
+    ctx.ops.push(DrawOp::ScissorPop);
+    // 命中区过滤：视口外的交互区不登记（几何判交——嵌套 scroll 内层
+    // 先过滤自身视口，外层再过滤外视口，组合正确）。
+    let clip = WRect::new(x, y, outer_w, vh);
+    let hits: Vec<(WRect, HitKind)> = ctx.hits.drain(hits_mark..).collect();
+    for (r, k) in hits {
+        let intersects = r.x < clip.x + clip.w
+            && r.x + r.w > clip.x
+            && r.y < clip.y + clip.h
+            && r.y + r.h > clip.y;
+        if intersects {
+            ctx.hits.push((r, k));
+        }
+    }
+    if let Some(border) = style.border {
+        push_border(ctx, WRect::new(x, y, outer_w, vh), border);
+    }
+    // 视口占位 = viewport_h（外层布局按视口排，非内容高——溢出不影响
+    // 兄弟节点位置）。
+    LaidBlock { size: (outer_w, vh) }
 }
 
 /// card 表面缺省档：无 bg/border/padding 声明时补 shadcn card 近似
@@ -2907,6 +2996,106 @@ mod tests {
         let ys: Vec<f32> = quads.iter().map(|(r, _)| r.y).collect();
         assert!(ys[1] >= ys[0] + 16.0 + 1.0, "spacer h-4=16px 占位: {ys:?}");
         let _ = p;
+    }
+
+    /// Plan 515 G1 —— scrollable 裁剪栈：固定高视口（fixed_h）内容溢出
+    /// 时产 `Scissor` push/pop 对包裹子级 ops（视口 rect 手写断言）；
+    /// 无固定高（自然高度）不产裁剪对（既有帧零扰动）；溢出命中最
+    /// 终被视口过滤（裁掉内容不可点）。
+    #[test]
+    fn t3_scroll_overflow_emits_scissor_stack() {
+        // h-24 = 96px 视口；5 行 16px×1.35 + 4×gap8 = 140px 溢出。
+        let (p, frame) = project(
+            "widget S {\n    view {\n        scroll (style: \"h-24\") {\n            text \"l1\"\n            text \"l2\"\n            text \"l3\"\n            text \"l4\"\n            text \"l5\"\n        }\n    }\n}\n",
+        );
+        let mut ops = frame.ops.iter();
+        let first = ops.next().expect("非空");
+        assert!(
+            matches!(
+                first,
+                DrawOp::Scissor { rect } if *rect == WRect::new(10.0, 10.0, 460.0, 96.0),
+            ),
+            "首 op = 视口 Scissor push: {first:?}"
+        );
+        let last = frame.ops.last().expect("非空");
+        assert!(matches!(last, DrawOp::ScissorPop), "末 op = ScissorPop: {last:?}");
+        // push/pop 之间 = 5 个文本 op（内容原样在栈内）。
+        let middle = &frame.ops[1..frame.ops.len() - 1];
+        assert_eq!(middle.len(), 5, "栈内恰 5 文本: {middle:?}");
+        assert!(
+            middle.iter().all(|op| matches!(op, DrawOp::Text { .. })),
+            "栈内全文本: {middle:?}"
+        );
+        // 栈配对平衡（深度扫描归零）。
+        let mut depth = 0i32;
+        for op in &frame.ops {
+            match op {
+                DrawOp::Scissor { .. } => depth += 1,
+                DrawOp::ScissorPop => depth -= 1,
+                _ => {}
+            }
+        }
+        assert_eq!(depth, 0, "push/pop 配对");
+        // 视口高 96：第 5 行（y = 10 + 4×21.6 + 4×8 = 130.4）文本仍在 ops
+        // 序列内（裁剪是宿主栅格职责，投影器不删内容 op）。
+        let l5_y = frame
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { y, text, .. } if text == "l5" => Some(*y),
+                _ => None,
+            })
+            .expect("l5");
+        assert!(l5_y > 10.0 + 96.0, "l5 溢出视口: {l5_y}");
+        let _ = p;
+    }
+
+    /// 无固定高 scroll：自然高度容器语义（零 Scissor op——既有帧兼容）。
+    #[test]
+    fn t3_scroll_natural_height_no_scissor() {
+        let (_, frame) = project(
+            "widget S {\n    view {\n        scroll { text \"a\" text \"b\" }\n    }\n}\n",
+        );
+        assert!(
+            frame
+                .ops
+                .iter()
+                .all(|op| !matches!(op, DrawOp::Scissor { .. } | DrawOp::ScissorPop)),
+            "自然高度不产裁剪对: {:?}",
+            frame.ops
+        );
+    }
+
+    /// 溢出 scroll 的命中区过滤：视口外的 button 不登记（裁掉内容不可点）。
+    #[test]
+    fn t3_scroll_overflow_hits_filtered_to_viewport() {
+        // h-10 = 40px 视口（y 10..50）；button1 y 10..46 视口内；button2
+        // y 54..90 视口外 → hits 只余 button1。
+        let (mut p, frame) = project(
+            "widget S {\n    model { var n int = 0 }\n    view {\n        scroll (style: \"h-10\") {\n            button \"b1\" { onclick: () => {.n += 1} }\n            button \"b2\" { onclick: () => {.n += 1} }\n        }\n    }\n}\n",
+        );
+        assert_eq!(p.buttons().len(), 1, "视口外 button 命中区过滤: {:?}", p.buttons());
+        // 视口内 button1 仍可点（点 (20, 20) 派发 handler → revision 前进）。
+        let rev0 = p.revision();
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 20.0,
+            y: 20.0,
+            modifiers: 0,
+        });
+        assert!(p.revision() > rev0, "视口内可交互");
+        // 视口外点击（button2 原 y=54 区域）不派发。
+        let rev1 = p.revision();
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 20.0,
+            y: 60.0,
+            modifiers: 0,
+        });
+        assert_eq!(p.revision(), rev1, "视口外不可交互");
+        let _ = frame;
     }
 
     /// container/scroll：块流容器渲染（bg + padding 内子级）——catch-all
