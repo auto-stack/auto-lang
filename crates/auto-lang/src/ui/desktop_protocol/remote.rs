@@ -51,6 +51,7 @@ impl DesktopSession {
                     self.desktop.remote_listener.as_ref().map(|l| l.port()).unwrap_or(port)
                 );
                 crate::vm::ui_console::ui_console_push(&line);
+                eprintln!("{line}");
             }
             Err(e) => {
                 let line = format!("[remote] ws listen failed (remote disabled): {e:?}");
