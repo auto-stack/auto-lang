@@ -246,6 +246,20 @@ TDD 流程（W1/W2 零新架构——M2-M5 闸门均为目录扫描泛型，新 
 新能力宿主已支持 → corpus 落盘即刻获得 Rust 侧期望值，aavm 侧遇新语法报
 unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。语料先于 lib 改动提交。
 
+#### 既有验收用例回归面（429-434/447/495 存量资产清单——叠加不替换）
+
+| 存量验收用例 | 载体 | 新方案中的位置 |
+|---|---|---|
+| corpus_m1~m4（c/p/t/b 系列 50+ 件，M1-M5 判据语料） | 目录扫描闸门 | L1 tv-aavm2 原样续跑（目录泛型，自动含新件） |
+| corpus_a2r（g01–g08，AA2R 判据语料） | aavm2_a2r 闸门 | 同上 |
+| M3 里程碑 fib（test_aavm2_m3_milestone_fib） | 显式测试 | 同上（--include-ignored 含） |
+| 99_idiom_probe 16 件（447 宿主加固 H1-H6 验收） | vm_file_tests 显式 fn | `cargo tv` + CI 金样层续跑（**非** tv-aavm2 前缀——两条门禁命令都不可省） |
+| 99_idiom_probe AA2R 探针冒烟（p01/p02b/p04/p05/p12 经 AA2R rustc 零错） | a2r_probe_smoke（ignored） | tv-aavm2 --include-ignored 续跑 |
+| 001_smoke / 002_hello_compile 金样（唯二 .expected.out） | 文件金样 | `cargo tv` + CI 金样层续跑 |
+| aavm2_repro_242（RC 回归钉） | 显式测试 | tv-aavm2 前缀匹配续跑 |
+| 五方矩阵稳定集（corpus_m4 × ①②③④⑤） | parity/ 手动跑 | **不在 CI**——每折叠点手动必跑 + 验收 5 不回绿破腿判据 |
+| vm-files-ci.yml 三层（六闸门/金样+ffi_dual/conformance） | GitHub Actions | 每折叠点要求绿（验收 1） |
+
 ### L2 W3 多文件 harness（新测试架构，先于 W3 实现）
 
 - `corpus_use/{NNN_case}/` 目录协议：main.at + 被依赖模块 .at（结构镜像
@@ -310,10 +324,14 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
 
 ### W1 struct 四层（worktree）
 
-2. [ ] **W1 语料先行（红）**：corpus_m1/m2（p 系列 type-decl/构造/字段
-   访问）、corpus_m3（t 系列）、corpus_m4（b34–b37）全部落盘；跑
-   tv-aavm2 确认 M2-M5 对应件**转红**（unsupported 报错即红证），红清单
-   记入本步骤证据。验证：tv-aavm2 红（预期内）+ 红件清单。
+2. [✅ 已完成] **W1 语料先行（红）**：corpus_m1 c05_struct（M1 绿——无新 token）、
+   corpus_m2 p25_struct_ctor/p26_struct_field_forms、corpus_m3 t08_struct_fields、
+   corpus_m4 b34–b37 共 8 件落盘（worktree 提交）。红清单：M2 p25
+   `PARSE-ERROR:6:expected end of statement, got <LBrace>`；M3 t08
+   `PARSE-ERROR:1:typeinfo: expected expression, got <Type>`；M4/M5 b34
+   `CODEGEN-ERROR:unsupported expr atom: Type`；宿主侧 8 件全部可编译
+   （disasm 诊断无 COMPILE ERROR）。AA2R 腿（#[ignore] 件 test_aavm2_compile_corpus）
+   在 --include-ignored 下因 b34 红——按待澄清①缺省暂缓，折叠点①以 skip 清单落地。
 3. [ ] `auto/lib/parser.at`：type-decl members 完整解析 + 构造字面量/
    字段访问表达式。验证：tv-aavm2 M1/M2 绿。
 4. [ ] `auto/lib/typeinfo.at`：type 注册表 + 构造/字段推断。
