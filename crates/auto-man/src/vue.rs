@@ -3512,7 +3512,12 @@ export default router
 
         fs::write(src_dir.join("apps-registry.ts"), generate_apps_registry(&registry_rows))
             .map_err(|e| format!("Failed to write apps-registry.ts: {}", e))?;
-        fs::write(src_dir.join("App.vue"), generate_host_app_vue())
+        // Plan 515 G3：壁纸配置注入——VM 轨同键 `shell.desktop.wallpaper`
+        //（iced/renderer.rs load_desktop_wallpaper 同源 storage）；vue 侧
+        // 无 storage 桥，生成期注入（运行期改动经下次生成生效）。
+        let wallpaper = auto_lang::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
+            .unwrap_or_default();
+        fs::write(src_dir.join("App.vue"), generate_host_app_vue(&wallpaper))
             .map_err(|e| format!("Failed to write host App.vue: {}", e))?;
         println!(
             "  {} Desktop host: src/App.vue + src/apps-registry.ts ({} apps)",
@@ -4793,7 +4798,11 @@ export function findApp(id: string): AppEntry | undefined {{
 /// Host shell (Plan 465 T5): WmStore z-stack + taskbar + launcher overlay
 /// slot. Taskbar/overlay structure mirrors 463 shell.at (T1 blueprint §5);
 /// the overlay is the 464-launcher slot (placeholder panel until 464 lands).
-fn generate_host_app_vue() -> String {
+///
+/// Plan 515 G3：`wallpaper` = storage `shell.desktop.wallpaper` 当前值
+/// （配置注入——vue 侧无 storage 桥，503-2 降级判定；图片/纯色/空三档
+/// 见 Wallpaper.vue），注入为生成期常量。
+fn generate_host_app_vue(wallpaper: &str) -> String {
     r#"<script setup lang="ts">
 // Plan 465: desktop host shell (auto-generated; rewritten on every
 // `--desktop` run). WmStore z-stack + taskbar + launcher overlay slot.
@@ -4809,7 +4818,11 @@ import {
 import { installDesktopKeyboard } from './wm/keyboard'
 import Taskbar from './wm/Taskbar.vue'
 import VirtualWindow from './wm/VirtualWindow.vue'
+import Wallpaper from './wm/Wallpaper.vue'
 
+// Plan 515 G3：壁纸配置注入（VM 轨同键 shell.desktop.wallpaper；运行期
+// 改动经下次生成生效——vue 无 storage 桥的差异注记）。
+const WALLPAPER = __WALLPAPER_INJECT__
 const overlayOpen = ref(false)
 const desktopEl = ref<HTMLElement | null>(null)
 // Plan 465 T6: 464-launcher 占位槽的搜索流（真 launcher 落地后换源，I5 复验）。
@@ -4862,6 +4875,8 @@ onMounted(() => {
 <template>
   <div class="w-full h-full flex flex-col bg-background">
     <div ref="desktopEl" class="desktop-area flex-1 relative overflow-hidden">
+      <!-- Plan 515 G3：壁纸层（desktop-area 首子层，窗体之下）。 -->
+      <Wallpaper :value="WALLPAPER" />
       <VirtualWindow v-for="w in wm.wins" :key="w.wid" :win="w">
         <template v-if="!w.crashed">
           <div :ref="(el) => setClient(w, el)" class="w-full h-full" />
@@ -4900,7 +4915,8 @@ onMounted(() => {
   </div>
 </template>
 "#
-    .to_string()
+        // 壁纸值注入为 JS 字符串字面量（Rust `{:?}` 转义 = 合法 JS 串）。
+        .replace("__WALLPAPER_INJECT__", &format!("{wallpaper:?}"))
 }
 
 #[cfg(test)]
@@ -5942,3 +5958,66 @@ widget ExampleHeader(title: str) {
     );
 }
 
+
+// ---------------------------------------------------------------------------
+// Plan 515 G3 —— vue 桌面宿主壁纸层（配置注入三档 + scrim 对齐钉）。
+// ---------------------------------------------------------------------------
+
+/// 壁纸层三档：图片（铺图 + 双段 scrim）/ 纯色（直接铺）/ 空（无层）；
+/// 注入字面量合法 JS；scrim 百分比与 VM 轨（iced/renderer.rs
+/// desktop_wallpaper_scrim：light 10 / dark 35）对齐。
+#[test]
+fn p515_host_wallpaper_layer_branches() {
+    // 图片路径档：WALLPAPER 字面量 + Wallpaper 挂载（desktop-area 首子层）。
+    let img = generate_host_app_vue("D:/pics/stella.png");
+    assert!(
+        img.contains(r#"const WALLPAPER = "D:/pics/stella.png""#),
+        "图片路径注入字面量:\n{img}"
+    );
+    assert!(
+        img.contains("<Wallpaper :value=\"WALLPAPER\" />"),
+        "Wallpaper 挂载:\n{img}"
+    );
+    // 层序：Wallpaper 在 desktop-area 开标签后、VirtualWindow 之前。
+    let area = img.find("desktop-area").expect("desktop-area");
+    let wp = img.find("<Wallpaper").expect("Wallpaper 位置");
+    let vw = img.find("<VirtualWindow").expect("VirtualWindow 位置");
+    assert!(area < wp && wp < vw, "壁纸层 = desktop-area 首子层");
+
+    // 纯色档：#hex 注入（三档判定在 Wallpaper.vue 组件内）。
+    let solid = generate_host_app_vue("#101820");
+    assert!(
+        solid.contains(r##"const WALLPAPER = "#101820""##),
+        "纯色注入:\n{solid}"
+    );
+
+    // 空档：空串注入（组件不渲染 → desktop-area 底色透出）。
+    let none = generate_host_app_vue("");
+    assert!(none.contains("const WALLPAPER = \"\""), "空档注入:\n{none}");
+
+    // 转义安全：含引号/反斜杠的值不破生成串（Rust `{:?}` 转义 = 合法 JS）。
+    let tricky = generate_host_app_vue("a\"b\\c");
+    assert!(
+        tricky.contains(r##"const WALLPAPER = "a\"b\\c""##),
+        "转义:\n{tricky}"
+    );
+
+    // Wallpaper.vue 资产：scrim 双段（10/35）与 bg-cover 铺图 —— 与 VM 轨
+    // desktop_wallpaper_scrim 的 pct 常量（light 10 / dark 35）对齐。
+    let wallpaper_vue =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/wm/Wallpaper.vue"))
+            .expect("Wallpaper.vue 资产");
+    assert!(
+        wallpaper_vue.contains("bg-background/10 dark:bg-background/35"),
+        "scrim 双段对齐 VM 轨:\n{wallpaper_vue}"
+    );
+    assert!(
+        wallpaper_vue.contains("bg-cover bg-center"),
+        "图片铺法:\n{wallpaper_vue}"
+    );
+    // wm 资产清单纳入（materialize 嵌入自动收录）。
+    assert!(
+        crate::wm_assets::bundled_files().iter().any(|f| f == "Wallpaper.vue"),
+        "Wallpaper.vue 进 wm 资产清单"
+    );
+}
