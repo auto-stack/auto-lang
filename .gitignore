@@ -149,6 +149,11 @@ test_temp.txt
 # Plan 489：测试 corpus 的 i18n 平铺表（*.json 母规则曾吞掉 zh.json——
 # plan050_stub_nil 落测时未入库，fresh clone i18n 双测必红，P487-2 债）
 !crates/auto-lang/test/**/i18n/*.json
+# Plan 516：wm 测试位与渲染器包的 package.json（*.json 母规则曾吞掉
+# 508 的 packages/drawlist-renderer/package.json——fresh clone 测试位缺件）
+!crates/auto-man/wm-test/package.json
+!packages/drawlist-renderer/package.json
+!examples/remote/viewer/package.json
 __pycache__/
 *.pyc
 .worktree/

@@ -7,6 +7,8 @@ import { layout, cascadeRect, usableRect, TASKBAR_HEIGHT, type LayoutModeName, t
 
 export interface WinEntry {
   wid: number
+  /** 窗型（Plan 516）：本地 App 虚拟窗 vs 远程会话窗——rect/z/focus 同构。 */
+  kind: 'app' | 'remote'
   appId: string
   title: string
   rect: Rect
@@ -14,9 +16,9 @@ export interface WinEntry {
   focused: boolean
   /** 客户区容器（宿主 ref 回调就位后回填；App 挂载点）。 */
   container: HTMLElement | null
-  /** createApp 实例句柄（close = unmount）。 */
+  /** createApp 实例句柄（close = unmount；远程窗恒 null）。 */
   app: App | null
-  /** 待挂载根组件（launch 动态 import 的产物，T5）。 */
+  /** 待挂载根组件（launch 动态 import 的产物，T5；远程窗恒 null）。 */
   comp: Component | null
   /** 崩溃隔离（459 崩溃页语义：本窗占位，他窗不受影响）。 */
   crashed: boolean
@@ -26,6 +28,16 @@ let nextWid = 1
 let nextZ = 1
 
 const viewport: Rect = { x: 0, y: 0, width: 0, height: 0 }
+
+/**
+ * Plan 516: 远程窗会话清理钩子（remote.ts 模块加载时注册）。store 保持
+ * 渲染器无关——close 对 kind:"remote" 仅回调，不 import 会话实现。
+ */
+let remoteCleanup: ((wid: number) => void) | null = null
+
+export function setRemoteCleanup(fn: ((wid: number) => void) | null): void {
+  remoteCleanup = fn
+}
 
 export const wm = reactive({
   wins: [] as WinEntry[],
@@ -76,10 +88,25 @@ export function applyLayout(): void {
  * 客户区 ref 回调（attachClient）——容器须先进 DOM。
  */
 export function launchWindow(appId: string, title: string, comp: Component): WinEntry {
+  return openWindow(appId, title, 'app', comp)
+}
+
+/**
+ * Plan 516: 窗口条目落表（本地/远程共用——级联初位 + 焦点 + 布局参与，
+ * kind 仅区分客户区形态）。远程窗（comp=null）由 remote.ts
+ * openRemoteWindow 消费。
+ */
+export function openWindow(
+  appId: string,
+  title: string,
+  kind: 'app' | 'remote' = 'app',
+  comp: Component | null = null,
+): WinEntry {
   const usableArea = usable()
   const rect = cascadeRect(wm.wins.length, { width: 640, height: 480 }, usableArea)
   const win: WinEntry = {
     wid: nextWid++,
+    kind,
     appId,
     title,
     rect,
@@ -121,6 +148,8 @@ export function close(wid: number): void {
   const idx = wm.wins.findIndex((w) => w.wid === wid)
   if (idx === -1) return
   const [w] = wm.wins.splice(idx, 1)
+  // Plan 516：远程窗先经会话钩子断连（WS close + 切片回收）再走销毁链。
+  if (w.kind === 'remote') remoteCleanup?.(wid)
   try {
     w.app?.unmount()
   } catch {
