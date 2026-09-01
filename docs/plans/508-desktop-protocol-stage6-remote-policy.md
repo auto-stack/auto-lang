@@ -218,6 +218,8 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
   4510f3de2）。**处置**：G1/G2 已收口；远程部分等 507 合入后本计划
   续领（worktree `.worktrees/plan-508-dev` 与分支保留），或用户裁定
   改拆先行折叠/另立计划。
+  **[已解除 2026-09-01]** 507 合入归档（32b7b48e6 + 沉淀 ced770bc4：
+  Tier1+2 全量 69/388 + 漂移闸门 + 门禁 ui-iced 化）——远程部分续领。
 - **⑥（执行期 2026-09-01）存量破坏通报**：`crates/auto-lang/tests/
   osconfig_integration.rs:220` 在 `--features ui-iced` 编译下缺
   LaunchSpec `fit`/`name` 字段（Plan 504 引入时遗留，非本计划改动；
