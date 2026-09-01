@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-511
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: aavm-midlang-struct-use-modules
 author: [zhaopuming]
 created_at: 2026-09-01
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 0
+current_step: 1
 total_steps: 22
 ---
 
@@ -298,16 +298,15 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
 
 ### W0 考古先行（master 直接做，纯文档）
 
-1. [ ] 宿主发射序考古并落盘规格：struct 声明/构造/字段读写（create.obj 族
-   vs new.instance 族定案）、全局变量、多模块链接（重定位表示/初始化序/
-   可见性）、for-in 数组、字符串下标、一元负、下标复合赋值——产出
-   `docs/specs/aavm/design/` 规格（新章或扩 m4-bytecode-format.md），
-   含最小宿主样本反汇编与待镜像怪序注记。
-   验证：文档评审（宿主反汇编片段贴证）；scratch 考古脚本不入库。
-   同批考古（L3 前置）：宿主 use 对 auto/lib 子目录点路径解析行为
-   （`use auto.lib.token` 可行性）；`auto test` + `auto.assert_eq` 在
-   VM 模式对 ev_run 调用型的可用性（探针一件）；use 错误形态文本
-   （use.rs 拒绝/循环依赖/未声明模块，错误用例通道的期望基准）。
+1. [✅ 已完成] 规格落盘 `docs/specs/aavm/design/midlang-w0-archaeology.md`：struct
+   （构造=NEW_INSTANCE 族定案/字段读写 set.generic.field+get.field/get.field 实测
+   反汇编贴证/disasm 幽灵 nop 注记/print 形态分裂）、全局变量（var/const 顶层判定/
+   读写优先级不对称/fn main 体首重放实测）、for-in 数组（三隐藏槽+const.0+迭代器
+   协议 CALL_NAT 112）、字符串下标（码点 i32）、一元负、下标复合赋值（宿主编译
+   错误→D1 同文本拒绝）、use 四形态+Display/四级搜索/环=静默跳过（D2）/pub 不过滤
+   （D3）/链接器 mod#fn/初始化序/错误文本表；L3 探针实证（auto test+裸 assert_eq
+   可用、use auto.lib.* 不可行、聚合方案 D5 定案）。四路源码考古+两份真机反汇编
+   （b99 探针，scratch 已删，闸门复绿验证：m4/m5 corpus 2 passed）。
 
 ### W1 struct 四层（worktree）
 
@@ -370,6 +369,21 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
 ## 复审记录
 
 ## 待澄清事项
+
+0. **W0 考古三项定案（已按「宿主为规范」原则裁定，详见
+   midlang-w0-archaeology.md §6，如需改判请指出）**：
+   - **D1 下标复合赋值**：宿主对 `a[i] += e` 直接编译错误（"Compound
+     assignment requires a variable on left side"），无发射序可镜像——aavm
+     同文本拒绝；b41 语料改入 L3 99_unit（断言错误文本），不进 corpus_m4。
+     计划 W2 项 4「复合化」作废。
+   - **D2 循环依赖**：宿主 loading_stack 命中即静默跳过（Plan 317 合法环），
+     不报错——corpus_use「环」用例改为合法环可用（A↔B 互调），错误通道
+     不含环。
+   - **D3 pub 可见性**：宿主 VM 链路导出不过滤 pub（仅 a2r 转译器有 pub
+     语义）——aavm 镜像为全 fn 导出；计划 W3 项 3「非 pub 不导出」作废。
+   - **D5 L3 lib 引用**：聚合生成方案（lib 前置拼接 + #[test] 单文件），
+     `use auto.lib.*` 不可行（lib 六文件互相依赖无 use 语句 + test 会话
+     不播种源目录 + 入口非 pub，探针实证）。
 
 1. **AA2R 矩阵腿策略**（阻塞步骤 6，不阻塞 W1 实现）：新语料（struct/use）
    是否同步扩 `a2r.at` 发射面？缺省=暂缓 + divergences 登记（AA2R 的服务
