@@ -1003,7 +1003,15 @@ impl<'a> Parser<'a> {
         }
 
         // 从 InferenceContext 查找变量绑定
-        if self.infer_ctx.lookup_type(&Name::from(name)).is_some() {
+        // Plan 514 W1（447-① 债①）：嵌套具名 fn 体内不跨外层 fn 边界解析
+        // （Rust 嵌套 fn 语义；此前跨界解析 → 运行期静默 0）。闭包不走
+        // fn 声明路径，不受影响。
+        let found = if self.infer_ctx.fn_scope_idxs.len() >= 2 {
+            self.infer_ctx.lookup_type_no_capture(&Name::from(name))
+        } else {
+            self.infer_ctx.lookup_type(&Name::from(name))
+        };
+        if found.is_some() {
             return true;
         }
 
@@ -1039,6 +1047,11 @@ impl<'a> Parser<'a> {
     fn exit_scope(&mut self) {
         // Plan 091: Use InferenceContext for scope management
         self.infer_ctx.pop_scope();
+    }
+
+    /// Plan 514 W1（447-① 债①）：fn 声明体的对称出口（同步弹 fn 边界栈）。
+    fn exit_fn_scope(&mut self) {
+        self.infer_ctx.pop_fn_scope();
     }
 
     fn enter_scope(&mut self) {
@@ -4609,6 +4622,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_stmt_inner(&mut self) -> AutoResult<Stmt> {
+        // Plan 514 W1（447-① 债②）：`struct` 不是 Auto 关键字——C 风格
+        // `struct Name {...}` / `struct {...}` 误用此前被当节点/表达式静默
+        // 吞掉（或后随语句报误导性 E0201 名字解析错）。语句位以裸
+        // `struct` 开头（后随 Ident/LBrace）直接报语法错并指出 `type`。
+        if self.is_kind(TokenKind::Ident)
+            && self.cur.text.as_str() == "struct"
+            && !self.exists("struct")
+        {
+            let after = self.lexer.next()?;
+            let misused = matches!(after.kind, TokenKind::Ident | TokenKind::LBrace);
+            self.lexer.push_token(after);
+            if misused {
+                return Err(SyntaxError::Generic {
+                    message: "unexpected `struct`: Auto 的具名结构体声明是 `type Name { ... }`"
+                        .to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
         let stmt = match self.kind() {
             TokenKind::Break => self.break_stmt()?,
             TokenKind::Continue => self.continue_stmt()?,
@@ -8141,7 +8174,7 @@ impl<'a> Parser<'a> {
         let name_pos = self.prev.pos;
 
         // Plan 091: Use InferenceContext for scope management
-        self.infer_ctx.push_scope();
+        self.infer_ctx.push_fn_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -8162,7 +8195,7 @@ impl<'a> Parser<'a> {
         // TODO: determine return type with last stmt if it's not specified
 
         // exit function scope
-        self.exit_scope();
+        self.exit_fn_scope();
 
         // no body for c fn decl
         let body = Body::new();
@@ -8651,7 +8684,7 @@ impl<'a> Parser<'a> {
         }
 
         // Plan 091: Use InferenceContext for scope management
-        self.infer_ctx.push_scope();
+        self.infer_ctx.push_fn_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -8761,7 +8794,7 @@ impl<'a> Parser<'a> {
         };
 
         // exit function scope
-        self.exit_scope();
+        self.exit_fn_scope();
 
         // parent name for method?
         let parent = if parent_name.is_empty() {
@@ -8906,7 +8939,7 @@ impl<'a> Parser<'a> {
         }
 
         // Plan 091: Use InferenceContext for scope management
-        self.infer_ctx.push_scope();
+        self.infer_ctx.push_fn_scope();
 
         // parse function parameters
         self.expect(TokenKind::LParen)?;
@@ -9010,7 +9043,7 @@ impl<'a> Parser<'a> {
         };
 
         // exit function scope
-        self.exit_scope();
+        self.exit_fn_scope();
 
         // parent name for method?
         let parent = if parent_name.is_empty() {
@@ -10641,6 +10674,15 @@ impl<'a> Parser<'a> {
                         args.push(self.parse_type()?);
                     }
                     self.expect(TokenKind::RParen)?;
+                    // Plan 514 W1 (P511-5 探针暴露): 圆括号形态的 `List(T)` 是
+                    // VM 内建列表（auto.list，29_list_shims 语义），须与尖括号
+                    // `List<T>`（:10921 → Type::List → a2r Vec<T>）同型；此前落
+                    // GenericInstance 会让 a2r 发射未解析的 `List<T>`。用户自定义
+                    // 双参泛型 `type List<T, S>`（a2r/10_collections/002）不受影响
+                    // —— 其 args.len() == 2，保持 GenericInstance。
+                    if name == "List" && args.len() == 1 {
+                        return Ok(Type::List(Box::new(args.pop().unwrap())));
+                    }
                     return Ok(Type::GenericInstance(GenericInstance {
                         base_name: name,
                         args,
@@ -11258,7 +11300,28 @@ impl<'a> Parser<'a> {
                     }
                     Ok(expr)
                 }
-                _ => Ok(expr),
+                _ => {
+                    // Plan 514 W1（447-① 债①）：非 Dot 二元的裸 Ident 操作数
+                    // 此前漏检——嵌套具名 fn 体内 `base + n` 的捕获经默认臂
+                    // 静默放行（运行期得 0）。在嵌套 fn 内对两侧 Ident 做
+                    // no-capture 检查（外层 fn 局部不可捕获）。
+                    if self.infer_ctx.fn_scope_idxs.len() >= 2 {
+                        if let Expr::Ident(name) = l.as_ref() {
+                            if !self.exists(name.as_str())
+                                && self.infer_ctx.lookup_type(&Name::from(name.as_str())).is_some()
+                            {
+                                let candidates = self.get_defined_names();
+                                return Err(NameError::undefined_variable(
+                                    name.to_string(),
+                                    err_span,
+                                    &candidates,
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                    Ok(expr)
+                }
             },
             Expr::Ident(name) => {
                 // Plan 408 P12 §10.3:豁免宿主全局标识符（browser API）——
@@ -11267,6 +11330,18 @@ impl<'a> Parser<'a> {
                 // 未定义变量。codegen（ts_adapter）原样直出，无需特殊处理。
                 if Self::HOST_GLOBALS.contains(&name.as_str()) {
                     return Ok(expr);
+                }
+                // Plan 514 W1（447-① 债②）：`struct` 不是 Auto 关键字——C 风格
+                // `struct Name {...}` 误用此前经本臂报 E0201 "Variable ... is
+                // not defined"（名字解析错，误导排查方向）。在表达式位撞见裸
+                // `struct`（且未作变量定义）直接报语法错并指出正确写法 `type`。
+                if name.as_str() == "struct" && !self.exists(&name) {
+                    return Err(SyntaxError::Generic {
+                        message: "unexpected `struct`: Auto 的具名结构体声明是 `type Name { ... }`"
+                            .to_string(),
+                        span: err_span,
+                    }
+                    .into());
                 }
                 if !self.exists(&name) {
                     let candidates = self.get_defined_names();

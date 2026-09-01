@@ -50,6 +50,12 @@ pub struct InferenceContext {
     /// 最内层作用域在最后
     pub scopes: Vec<HashMap<Name, Type>>,
 
+    /// Plan 514 W1（447-① 债①）：具名 fn 体作用域的索引栈（scopes 下标）。
+    /// 嵌套具名 fn 不捕获外层 fn 局部（Rust 嵌套 fn 语义）；此前 lookup_type
+    /// 跨界解析导致"静默 0"（值错不报错）。闭包（fn(x){...} lambda）不走
+    /// fn 声明路径，不受影响。
+    pub fn_scope_idxs: Vec<usize>,
+
     /// 当前函数返回类型（用于检查返回语句）
     pub current_ret: Option<Type>,
 
@@ -82,6 +88,7 @@ impl InferenceContext {
             type_env: HashMap::new(),
             constraints: Vec::new(),
             scopes: Vec::new(),
+            fn_scope_idxs: Vec::new(),
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
             errors: Vec::new(),
@@ -99,6 +106,7 @@ impl InferenceContext {
             type_env: HashMap::new(),
             constraints: Vec::new(),
             scopes: Vec::new(),
+            fn_scope_idxs: Vec::new(),
             current_ret: None,
             database,
             errors: Vec::new(),
@@ -116,6 +124,7 @@ impl InferenceContext {
             type_env: HashMap::new(),
             constraints: Vec::new(),
             scopes: Vec::new(),
+            fn_scope_idxs: Vec::new(),
             current_ret: None,
             database: std::sync::Arc::new(std::sync::RwLock::new(Database::new())),
             errors: Vec::new(),
@@ -188,6 +197,45 @@ impl InferenceContext {
     /// 用于处理变量遮蔽和块级作用域
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+    }
+
+    /// Plan 514 W1（447-① 债①）：推入具名 fn 体作用域（记录边界索引）。
+    /// 仅 fn 声明体使用；块/闭包仍用 push_scope。
+    pub fn push_fn_scope(&mut self) {
+        self.fn_scope_idxs.push(self.scopes.len());
+        self.push_scope();
+    }
+
+    /// Plan 514 W1：弹出具名 fn 体作用域（与 push_fn_scope 对称）。
+    pub fn pop_fn_scope(&mut self) {
+        self.fn_scope_idxs.pop();
+        self.pop_scope();
+    }
+
+    /// Plan 514 W1（447-① 债①）：不跨外层 fn 边界的变量查找。
+    ///
+    /// 语义（Rust 嵌套 fn 对齐）：嵌套具名 fn 体内可见 = 自身作用域链 +
+    /// 全局；外层 fn 体的局部不可见（不捕获）。调用前提：当前处于嵌套
+    /// 具名 fn 内（fn_scope_idxs.len() >= 2）。
+    pub fn lookup_type_no_capture(&self, name: &Name) -> Option<Type> {
+        let cur_fn = self.fn_scope_idxs.last().copied();
+        for (idx, scope) in self.scopes.iter().enumerate().rev() {
+            if let Some(cf) = cur_fn {
+                // 当前 fn 边界（cf = 自身 fn 体作用域下标）以外的一切作用域
+                // ——外层 fn 体与其块作用域——都不可见（具名 fn 不捕获）；
+                // 更外层的顶层/全局作用域经 type_env 兜底可见。
+                if idx < cf {
+                    continue;
+                }
+            }
+            if let Some(ty) = scope.get(name) {
+                return Some(ty.clone());
+            }
+        }
+        if let Some(ty) = self.type_env.get(name) {
+            return Some(ty.clone());
+        }
+        None
     }
 
     /// Plan 084: 注册类型声明到 TypeStore
