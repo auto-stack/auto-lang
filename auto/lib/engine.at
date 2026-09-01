@@ -280,6 +280,11 @@ fn ev_run_t(source str, trace int) str {
     var cur_args = 0
     var args_stack List<int> = List.new()
     var args_depth = 0
+    // W2(Plan 511):全局区(名字-值并行线性表,镜像宿主 vm.globals
+    // 名字键语义,LOAD 未命中缺省 0)+ 迭代器游标表(arena 槽位并行,
+    // call.nat 112 = auto.iterator.next 用)
+    var gnames List<str> = List.new()
+    var gvals List<Val> = List.new()
     var running = true
     while running {
         var ins = c.ins.get(ip)
@@ -517,6 +522,42 @@ fn ev_run_t(source str, trace int) str {
         OpCode.ConstI32 -> {
             sp = ev_push(stack, sp, ev_vi(ev_enc(ins.n)))
         }
+        OpCode.Const0 -> {
+            // W2:for-in 计数器初值(宿主 CONST_0 0x12)
+            sp = ev_push(stack, sp, ev_vi(0))
+        }
+        OpCode.LoadGlobal -> {
+            // W2:名字键全局读;未命中缺省 0(镜像宿主 unwrap_or(0))
+            var gname = c.pool.get(ins.n)
+            var gv = ev_vi(0)
+            var qi = 0
+            while qi < gnames.len() {
+                if gnames.get(qi) == gname {
+                    gv = gvals.get(qi)
+                }
+                qi = qi + 1
+            }
+            sp = ev_push(stack, sp, gv)
+        }
+        OpCode.StoreGlobal -> {
+            // W2:弹值覆盖/插入(名字键)
+            var gname2 = c.pool.get(ins.n)
+            var gval2 = stack.get(sp - 1)
+            sp = sp - 1
+            var gfound = false
+            var qi2 = 0
+            while qi2 < gnames.len() {
+                if gnames.get(qi2) == gname2 {
+                    gvals.set(qi2, gval2)
+                    gfound = true
+                }
+                qi2 = qi2 + 1
+            }
+            if !gfound {
+                gnames.push(gname2)
+                gvals.push(gval2)
+            }
+        }
         OpCode.PushBool -> {
             // 布尔以 1/0 承载:与宿主 print(bool)→"1"/"0" 的可观察行为一致
             if ins.s == "true" {
@@ -611,6 +652,16 @@ fn ev_run_t(source str, trace int) str {
             }
         }
         OpCode.CallNat -> {
+            if ins.n == 112 {
+                // W2:nat#112 = auto.iterator.next——镜像宿主可观察行为:
+                // 裸 List 句柄非迭代器对象,shim 对其零迭代(立即 -1;
+                // b38 实证:for w in mk() 宿主零输出;宿主 values()/keys()
+                // 特例即为此而生——超 W2 范围不镜像)
+                var itv = stack.get(sp - 1)
+                sp = sp - 1
+                var next_v = ev_vi(-1)
+                sp = ev_push(stack, sp, next_v)
+            } else {
             // nat#10 = print:弹 1 参入输出
             if out != "" {
                 out = out + "\n"
@@ -619,6 +670,7 @@ fn ev_run_t(source str, trace int) str {
             sp = sp - 1
             sp = ev_push(stack, sp, ev_vi(0))
         }
+            }
         OpCode.Add | OpCode.Sub | OpCode.Mul | OpCode.Div | OpCode.Mod -> {
             var b = ev_dec(ev_int(stack.get(sp - 1)))
             var a = ev_dec(ev_int(stack.get(sp - 2)))
@@ -641,7 +693,9 @@ fn ev_run_t(source str, trace int) str {
             var b2 = stack.get(sp - 1)
             var a2 = stack.get(sp - 2)
             sp = sp - 1
-            stack.set(sp - 1, ev_add(a2, b2))
+            // W2:STR_CAT 恒字符串拼接(镜像宿主——操作数按显示形态字符串化:
+            // s[i]+s[j] 两码点 int 拼成 "6667",非数值加;b39 实证)
+            stack.set(sp - 1, ev_vs(ev_str(a2) + ev_str(b2)))
         }
         OpCode.Eq | OpCode.Ne | OpCode.Lt | OpCode.Gt | OpCode.Le | OpCode.Ge -> {
             var bv = stack.get(sp - 1)

@@ -428,3 +428,22 @@ ev_run 返回上述错误文本;divergences 登记一条(aavm 亦不支持,与�
 
 W1 语料红线:print(struct) 禁用(堆 id);字段字面量声明序;fn main 后置
 (全局语料);避免裸 bool print(P474 旁支不扩面)。
+
+## §7 W2 实测补充(2026-09-01,b38–b43 五闸转绿过程定案)
+
+- **迭代器协议零迭代(Q6)**:`for w in mk()`(返回数组的调用)宿主对裸
+  List 句柄**零迭代**(立即 -1)——句柄非迭代器对象(考古注记「句柄零
+  迭代」实证);aavm nat#112 镜像为恒 -1。宿主 values()/keys() 特例
+  (CALL_NAT 103)为此而生,超 W2 范围。
+- **数组通道作用域(Q7)**:三隐藏槽+循环变量在循环作用域,尾释放组常规
+  发射;**Call 迭代器通道不推作用域**(_iterator/循环变量落 fn 层作用域,
+  fn 尾统一释放——b38 尾部释放组文本合并形态实证)。
+- **const.0 宽度(Q8)**:宿主 CONST_0 无操作数字节,disasm 宽 1B。
+- **槽位复用(Q9)**:宿主 pop_scope 释放槽位,姊妹作用域复用槽号;fn
+  locals 取**分配高水位**非期末值(b38:三循环 main locals=6)。aavm 以
+  max_idx(可恢复游标)+hi_idx(高水位)双值镜像。
+- **StrCat 恒拼接(Q10)**:宿主 STR_CAT 对 i32 操作数按显示形态字符串化
+  拼接(s[i]+s[j] → "6667" 非数值 133);字符串性(str_flag)穿透下标
+  读——下标子表达式求值不清位。
+- **D1 拒绝文本实证**:`a[i] += e` aavm 侧 `Compound assignment requires
+  a variable on left side` 与宿主逐字符一致(auto test 探针断言绿)。

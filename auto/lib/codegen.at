@@ -95,6 +95,34 @@ type CG {
     // 绑定的类型名(str_flag/arr_flag 同款单值回传,let 绑定用)
     tys List<CGType>
     inst_ty str
+    // W2(Plan 511):全局变量(镜像宿主 global_vars/global_inits——仅顶层
+    // var/const;inits 记 init 表达式的 token 区间,fn main 体首重放用)
+    global_vars List<str>
+    global_inits List<CGInit>
+    // W2:hi_idx=本 fn 槽位高 watermark(prolog locals 用;宿主 pop_scope
+    // 释放槽位供姊妹作用域复用,但 fn locals 取分配高水位——两值分离);
+    // scope_saves=各层入口 max_idx(弹出恢复)
+    hi_idx int
+    scope_saves List<int>
+}
+
+// W2:全局初始化重放条目(name + init 表达式 token 闭区间)
+type CGInit {
+    name str
+    from int
+    to int
+}
+
+// W2:名字是否已入全局集
+fn cg_is_global(c CG, name str) bool {
+    var i = 0
+    while i < c.global_vars.len() {
+        if c.global_vars.get(i) == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
 
 type CGEnum {
@@ -171,7 +199,10 @@ fn cg_new() CG {
     var cont_l List<List<int>> = List.new()
     var ctg_l List<int> = List.new()
     var tys_l List<CGType> = List.new()
-    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "")
+    var gv_l List<str> = List.new()
+    var gi_l List<CGInit> = List.new()
+    var saves_l List<int> = List.new()
+    return CG(ins_l, pool, fns, scs, 1, 0, -1, "", 0, 0, consts_l, ctors_l, brk_l, cont_l, ctg_l, 0, 0, tys_l, "", gv_l, gi_l, -1, saves_l)
 }
 
 // P2:进循环层——帧占位列表 + continue 落点(读改写回填,VM 引用语义
@@ -297,6 +328,9 @@ enum OpCode {
     GetField
     SetField
     SetGenericField
+    Const0
+    LoadGlobal
+    StoreGlobal
 }
 
 // 助记符文本(M4 dump 序列化的唯一口径;447-③C1:载体 str → OpCode)
@@ -354,6 +388,9 @@ fn op_name(op OpCode) str {
         OpCode.GetField -> "get.field"
         OpCode.SetField -> "set.field"
         OpCode.SetGenericField -> "set.generic.field"
+        OpCode.Const0 -> "const.0"
+        OpCode.LoadGlobal -> "load.global"
+        OpCode.StoreGlobal -> "store.global"
         else -> ""
     }
 }
@@ -378,6 +415,9 @@ fn i_size(op OpCode) int {
         OpCode.GetField -> 5
         OpCode.SetField -> 1
         OpCode.SetGenericField -> 2
+        OpCode.Const0 -> 1
+        OpCode.LoadGlobal -> 5
+        OpCode.StoreGlobal -> 5
         else -> 1
     }
 }
@@ -421,6 +461,13 @@ fn cg_line(mut c CG, ln int) {
 // ── 作用域(depth 计数;深度≥3 弹出时发槽释放组) ───────────────
 
 fn cg_push_scope(mut c CG) {
+    // W2:记录本层入口 max_idx(弹出恢复——宿主 pop_scope 释放槽位,
+    // 姊妹作用域复用槽号;b38 三循环实证)
+    if c.scope_saves.len() < c.depth + 1 {
+        c.scope_saves.push(c.max_idx)
+    } else {
+        c.scope_saves.set(c.depth, c.max_idx)
+    }
     // Plan 447 部分②修复:多 fn 复用槽位时必须换新空表——旧实现无条件
     // push,第二個 fn 按深度取到前一 fn 的残留作用域(其体内变量泄漏进
     // 后续 fn 的释放组/查找域;is 的 _is_target 首次暴露)。表长仍只增
@@ -449,6 +496,21 @@ fn cg_pop_scope(mut c CG) {
             }
         }
         c.depth = c.depth - 1
+        // W2:恢复槽位分配游标(本层槽号可复用;hi_idx 高水位不受影响)
+        if c.scope_saves.len() >= c.depth + 1 {
+            c.max_idx = c.scope_saves.get(c.depth)
+        }
+    }
+}
+
+// W2:静默弹出(无释放组)——Call 迭代器协议通道专用:宿主 2747-2829
+// 的 _iterator/循环变量不入释放组(实测 b38:循环尾无 push.nil+store)
+fn cg_pop_scope_silent(mut c CG) {
+    if c.depth > 1 {
+        c.depth = c.depth - 1
+        if c.scope_saves.len() >= c.depth + 1 {
+            c.max_idx = c.scope_saves.get(c.depth)
+        }
     }
 }
 
@@ -479,6 +541,9 @@ fn cg_sort_ints_of_vars(sc List<CGVar>) List<int> {
 fn cg_add_var(mut c CG, name str, arr int, ty str) int {
     var next = c.max_idx + 1
     c.max_idx = next
+    if next > c.hi_idx {
+        c.hi_idx = next
+    }
     // 提升+写回(VM 引用语义同写回;a2r 值语义写回修改副本)
     var sc = c.scopes.get(c.depth - 1)
     // Plan 447 部分②:同名重登记按名覆盖(镜像宿主 add_var 的 HashMap
@@ -871,7 +936,7 @@ fn cg_expr(mut c CG, mut p P, min int) {
         }
         if name == "print" && p_kind(p) == TokenKind.LParen {
             cg_call_args(c, p)
-            emit(c, OpCode.CallNat, "nat#10", 0)
+            emit(c, OpCode.CallNat, "nat#10", 10)
         } else if p_kind(p) == TokenKind.LParen {
             var fe = -1
             var fi = 0
@@ -890,13 +955,31 @@ fn cg_expr(mut c CG, mut p P, min int) {
         } else {
             var idx = cg_lookup(c, name)
             if idx < 0 {
-                cg_err(c, "unknown ident: " + name)
-                return
+                // W2:全局读(镜像宿主读链 局部>全局 优先序)
+                if cg_is_global(c, name) {
+                    var gidx = cg_pool_add(c, name)
+                    emit(c, OpCode.LoadGlobal, gidx.str(), gidx)
+                    c.arr_flag = 0
+                } else {
+                    cg_err(c, "unknown ident: " + name)
+                    return
+                }
+            } else {
+                cg_emit_load(c, idx)
+                c.arr_flag = cg_var_arr(c, idx)
+                // W2:str 型变量加载置 str_flag(镜像宿主 var_types 的
+                // String 性——s[i]+s[j] 发 str.cat;b39 实证)
+                if cg_var_ty(c, name) == "str" {
+                    c.str_flag = 1
+                }
             }
-            cg_emit_load(c, idx)
-            c.arr_flag = cg_var_arr(c, idx)
         }
         }
+    } else if k == TokenKind.LParen {
+        // W2:括号 group 透明(镜像宿主 group();-(x+y) 形态经此)
+        p_next(p)
+        cg_expr(c, p, 0)
+        p_expect(p, TokenKind.RParen)
     } else if k == TokenKind.LSquare {
         // 数组字面量:elems 依次入栈,create.arr count=N(Rust 4865)
         p_next(p)
@@ -920,14 +1003,18 @@ fn cg_expr(mut c CG, mut p P, min int) {
         return
     }
     // 后缀链:下标读(get.elem);.len()(仅数组接收者,镜像 Rust 7177 闸)
+    // W2:str_flag 保留——宿主字符串性穿透下标(b39:s[i]+s[j] 发 str.cat)
     while c.err == "" && p_kind(p) == TokenKind.LSquare {
         p_next(p)
         skip_empty_lines(p)
+        // W2:str_flag 穿透下标——下标子表达式的 cg_expr 头部会清位,
+        // 此处保存/恢复(宿主字符串性穿透;b39:s[i]+s[j] 发 str.cat)
+        var save_str = c.str_flag
         cg_expr(c, p, 0)
+        c.str_flag = save_str
         skip_empty_lines(p)
         p_expect(p, TokenKind.RSquare)
         emit(c, OpCode.GetElem, "", 0)
-        c.str_flag = 0
         c.arr_flag = 0
     }
     if c.err == "" && p_kind(p) == TokenKind.Dot && p_peek_text(p, 1) == "len" && p_peek(p, 2) == TokenKind.LParen && p_peek(p, 3) == TokenKind.RParen {
@@ -1485,8 +1572,35 @@ fn cg_stmt(mut c CG, mut p P) {
             }
         }
         var is_arr = 0
+        // W2(Plan 511):全局路径(镜像宿主 Plan 317/322——顶层 var/const
+        // 注册进 global_vars 且无 scope 守卫:fn 体内同名声明也走全局)
+        if (k == TokenKind.Var || k == TokenKind.Const) && c.depth == 1 {
+            if !cg_is_global(c, name) {
+                c.global_vars.push(name)
+            }
+        }
         if p_kind(p) == TokenKind.Asn {
             p_next(p)
+            if cg_is_global(c, name) {
+                // init token 区间登记(fn main 体首重放用;首次声明记)
+                var from2 = p.pos
+                cg_expr(c, p, 0)
+                var to2 = p.pos
+                var seen2 = false
+                var si2 = 0
+                while si2 < c.global_inits.len() {
+                    if c.global_inits.get(si2).name == name {
+                        seen2 = true
+                    }
+                    si2 = si2 + 1
+                }
+                if !seen2 {
+                    c.global_inits.push(CGInit(name, from2, to2))
+                }
+                var gidx2 = cg_pool_add(c, name)
+                emit(c, OpCode.StoreGlobal, gidx2.str(), gidx2)
+                return
+            }
             cg_expr(c, p, 0)
             is_arr = c.arr_flag
             if c.str_flag == 1 {
@@ -1561,6 +1675,11 @@ fn cg_stmt(mut c CG, mut p P) {
                 }
                 scan = scan + 1
             }
+        }
+        if ok && scan < p.toks.len() && p.toks.get(scan).kind != TokenKind.Asn && cg_is_assign_op(p_op(p.toks.get(scan).kind)) {
+            // W2/D1(Plan 511):宿主对非 Ident LHS 复合赋值的拒绝文本同款
+            cg_err(c, "Compound assignment requires a variable on left side")
+            return
         }
         if ok && scan < p.toks.len() && p.toks.get(scan).kind == TokenKind.Asn {
             p.pos = scan + 1
@@ -1661,6 +1780,26 @@ fn cg_stmt(mut c CG, mut p P) {
         var name = p_text(p)
         var nk = p_peek(p, 1)
         if cg_is_assign_op(p_op(nk)) {
+            // W2:全局写优先于局部查找(镜像宿主 6189-6192 的 check-BEFORE)
+            if cg_is_global(c, name) {
+                p_next(p)
+                var gopk = p_kind(p)
+                p_next(p)
+                if gopk != TokenKind.Asn {
+                    var gg = cg_pool_add(c, name)
+                    emit(c, OpCode.LoadGlobal, gg.str(), gg)
+                }
+                cg_expr(c, p, 0)
+                var gmn = cg_binop_mnem(p_op(gopk))
+                if gmn != OpCode.Blank {
+                    emit(c, gmn, "", 0)
+                }
+                emit(c, OpCode.Dup, "", 0)
+                var gidx3 = cg_pool_add(c, name)
+                emit(c, OpCode.StoreGlobal, gidx3.str(), gidx3)
+                emit(c, OpCode.Pop, "", 0)
+                return
+            }
             var idx = cg_lookup(c, name)
             if idx < 0 {
                 cg_err(c, "unknown ident: " + name)
@@ -1790,13 +1929,72 @@ fn cg_for(mut c CG, mut p P) {
         return
     }
     p_next(p)
+    // Call 迭代器通道不推作用域(宿主 2747-2829 无 push_scope——_iterator/
+    // 循环变量落 fn 层作用域,fn 尾统一释放;b38 实证)
+    if p_kind(p) == TokenKind.Ident && p_peek(p, 1) == TokenKind.LParen {
+        // —— Call 迭代器协议 ——
+        cg_expr(c, p, 0)
+        var it_idx = cg_add_var(c, "_iterator", 0, "")
+        cg_emit_store(c, it_idx)
+        var it_v = cg_add_var(c, name, 0, "")
+        var it_top = c.ins.len()
+        cg_emit_load(c, it_idx)
+        emit(c, OpCode.CallNat, "nat#112", 112)
+        emit(c, OpCode.Dup, "", 0)
+        emit(c, OpCode.ConstI32, "-1", -1)
+        emit(c, OpCode.Eq, "", 0)
+        var it_jnz = emit(c, OpCode.JmpNz, "", -1)
+        cg_emit_store(c, it_v)
+        cg_loop_enter(c, 0)
+        cg_body_inline(c, p)
+        // continue 也回循环顶(重新 next),无增量段(宿主同款)
+        c.cont_tg.set(c.loop_depth - 1, it_top)
+        emit(c, OpCode.Jmp, "", it_top)
+        var it_end = c.ins.len()
+        c.ins.get(it_jnz).n = it_end
+        cg_loop_exit(c, it_end)
+        return
+    }
     cg_push_scope(c)
     // start 以 min=18 界定(不吞 .. 的中缀绑定);显式吃 Range/RangeEq 再取 end
     cg_expr(c, p, 18)
     if p_kind(p) == TokenKind.Range || p_kind(p) == TokenKind.RangeEq {
         p_next(p)
     } else {
-        cg_err(c, "for: expected range op")
+        // —— 数组/表达式通道(Plan 511 W2)——
+        // <对象> 求值一次;dup/arr.len 缓存;const.0 计数器;三隐藏槽
+        // (_counter/_array_len/_array_ref)+ 循环变量;continue 落点=增量段
+        emit(c, OpCode.Dup, "", 0)
+        emit(c, OpCode.ArrLen, "", 0)
+        emit(c, OpCode.Const0, "", 0)
+        var cnt = cg_add_var(c, "_counter", 0, "")
+        cg_emit_store(c, cnt)
+        var aln = cg_add_var(c, "_array_len", 0, "")
+        cg_emit_store(c, aln)
+        var aref = cg_add_var(c, "_array_ref", 0, "")
+        cg_emit_store(c, aref)
+        var av = cg_add_var(c, name, 0, "")
+        var atop = c.ins.len()
+        cg_emit_load(c, cnt)
+        cg_emit_load(c, aln)
+        emit(c, OpCode.Lt, "", 0)
+        var ajz = emit(c, OpCode.JmpZ, "", -1)
+        cg_emit_load(c, aref)
+        cg_emit_load(c, cnt)
+        emit(c, OpCode.GetElem, "", 0)
+        cg_emit_store(c, av)
+        cg_loop_enter(c, 0)
+        cg_body_inline(c, p)
+        c.cont_tg.set(c.loop_depth - 1, c.ins.len())
+        cg_emit_load(c, cnt)
+        emit(c, OpCode.ConstI32, "1", 1)
+        emit(c, OpCode.Add, "", 0)
+        cg_emit_store(c, cnt)
+        emit(c, OpCode.Jmp, "", atop)
+        var aend = c.ins.len()
+        c.ins.get(ajz).n = aend
+        cg_loop_exit(c, aend)
+        cg_pop_scope(c)
         return
     }
     var idx = cg_add_var(c, name, 0, "")
@@ -1837,6 +2035,8 @@ fn cg_fn(mut c CG, mut p P) {
     var saved_args = c.n_args
     var saved_max = c.max_idx
     c.max_idx = -1
+    var saved_hi = c.hi_idx
+    c.hi_idx = -1
     cg_push_scope(c)
     var prolog = emit(c, OpCode.FnProlog, "", 0)
     var reserve = emit(c, OpCode.Reserve, "", 0)
@@ -1857,14 +2057,19 @@ fn cg_fn(mut c CG, mut p P) {
             if p_kind(p) == TokenKind.Colon {
                 p_next(p)
             }
+            // W2:List 型参数记 arr(447 收账缺口①——.len() 接收者跟踪)
+            var parr = 0
             if is_type_name(p) {
+                if p_text(p) == "List" && p_peek(p, 1) == TokenKind.Lt {
+                    parr = 1
+                }
                 parse_type(p)
             }
             if p_kind(p) == TokenKind.Asn {
                 p_next(p)
                 expr_pratt(p, 0)
             }
-            cg_add_var(c, pname, 0, "")
+            cg_add_var(c, pname, parr, "")
             n_args = n_args + 1
             if p_kind(p) == TokenKind.Comma {
                 p_next(p)
@@ -1883,6 +2088,22 @@ fn cg_fn(mut c CG, mut p P) {
         parse_type(p)
         skip_empty_lines(p)
     }
+    // W2:fn main 体首重放全局初始化(镜像宿主 codegen 1339-1348——入口
+    // 直接 spawn main 跳过 wrapper 顶层,故在 main 体首按声明序重放
+    // init token 区间;语料约定 fn main 声明于顶层 var 之后)
+    if name == "main" && c.global_inits.len() > 0 {
+        var gi = 0
+        while gi < c.global_inits.len() && c.err == "" {
+            var ent = c.global_inits.get(gi)
+            var saved_pos = p.pos
+            p.pos = ent.from
+            cg_expr(c, p, 0)
+            p.pos = saved_pos
+            var rgidx = cg_pool_add(c, ent.name)
+            emit(c, OpCode.StoreGlobal, rgidx.str(), rgidx)
+            gi = gi + 1
+        }
+    }
     // 体块(Stmt::Block:推作用域;语句 .line 由 cg_stmts 发)
     cg_push_scope(c)
     p_expect(p, TokenKind.LBrace)
@@ -1895,8 +2116,8 @@ fn cg_fn(mut c CG, mut p P) {
     emit(c, OpCode.Ret, rs, n_args)
     // 回填 prolog/reserve(Rust:n_locals = max_locals - n_args)
     var n_locals = 0
-    if c.max_idx >= n_args {
-        n_locals = c.max_idx + 1 - n_args
+    if c.hi_idx >= n_args {
+        n_locals = c.hi_idx + 1 - n_args
     }
     c.ins.get(prolog).s = "args=" + n_args.str() + ", locals=" + n_locals.str()
     c.ins.get(prolog).n = n_args
@@ -1910,6 +2131,7 @@ fn cg_fn(mut c CG, mut p P) {
     cg_pop_scope(c)
     c.n_args = saved_args
     c.max_idx = saved_max
+    c.hi_idx = saved_hi
 }
 
 // ── 序列化 ──────────────────────────────────────────────────
