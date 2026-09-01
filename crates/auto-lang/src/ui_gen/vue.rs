@@ -531,6 +531,11 @@ pub struct VueGenerator {
     /// When inside a `for note in .notes { ... }`, this is set to Some("note")
     current_loop_var: Option<String>,
 
+    /// Plan 502 M1: 当前节点是否位于 svg 元素子树内(svg/path/circle/…
+    /// 任一祖先)。node_to_html 进入 svg 族元素时置位、发射尾出口复原;
+    /// 子树内 `text` 据此直通为 SVG `<text>`(子树外仍 DSL text→span)。
+    in_svg_subtree: bool,
+
     /// True when `current_loop_var` is the loop INDEX variable
     /// (`for i, note in .notes` → current_loop_var = "i", an int).
     /// Index vars are primitive ints, so the auto-:key must not emit `i?.id`.
@@ -782,6 +787,7 @@ impl VueGenerator {
             emitted_model_bindings: Vec::new(),
             current_loop_var: None,
             current_loop_var_is_index: false,
+            in_svg_subtree: false,
             widget_key_counter: 0,
             mention_helper_needed: false,
             loop_param_handlers: HashMap::new(),
@@ -1098,6 +1104,7 @@ impl VueGenerator {
         self.wrapper_classes.clear();
         self.current_loop_var = None;
         self.current_loop_var_is_index = false;
+        self.in_svg_subtree = false;
         self.widget_key_counter = 0;
         self.mention_helper_needed = false;
         self.loop_param_handlers.clear();
@@ -4952,8 +4959,15 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 let force_native_elements = ["checkbox", "input", "textarea"];
                 let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
+                // Plan 502 M1: svg 子树内 text → SVG <text> 直通(diagram 标签
+                // 机制)。html_tag 定为 "text"(map_tag 从不返回该值,无歧义),
+                // 并在下文强制 plain 路径——shadcn span 臂与 svg 命名空间语义
+                // 不兼容。子树外 text→span 行为不变。
+                let is_svg_text = (tag == "text" || tag == "Text") && self.in_svg_subtree;
                 // Determine HTML tag: when force_native, use plain HTML; otherwise map_tag handles shadcn
-                let html_tag = if force_native {
+                let html_tag = if is_svg_text {
+                    "text".to_string()
+                } else if force_native {
                     match tag_lower.as_str() {
                         "checkbox" => "input".to_string(),
                         _ => tag_lower.clone(),
@@ -4961,8 +4975,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 } else {
                     self.map_tag(tag, children.is_empty())
                 };
+                // Plan 502 M1: svg 上下文传播——进入 svg 族元素(含 svg text)
+                // 时置位,子节点递归期可判;4 个发射尾出口统一复原(见各
+                // return 点)。svg 族元素不命中中途早退出口(component 路径
+                // /textarea overlay 均按 tag 排除),复原面完备。
+                let svg_ctx_saved = self.in_svg_subtree;
+                if Self::is_svg_element(html_tag.as_str()) || is_svg_text {
+                    self.in_svg_subtree = true;
+                }
                 let is_spacer = tag_lower == "spacer";
-                let is_shadcn_component = !is_spacer && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
+                let is_shadcn_component = !is_svg_text && !is_spacer && !is_known_sub_widget && !is_external_component && !force_native && self.is_shadcn() &&
                     (self.widget_registry.is_backend_supported("vue", tag) ||
                      self.widget_registry.is_backend_supported("vue", &tag_lower));
 
@@ -5365,7 +5387,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         // 绑定形式在 svg 子树上会被 Vue 求值,静态化才保住
                         // SVG 语义;musk-038 T9 canary 的退化根因)。动态表达
                         // 式仍走下方 v-bind。
-                        if Self::is_svg_element(html_tag.as_str()) {
+                        // Plan 502 M1: svg 子树内 text 同待遇(html_tag=="text"
+                        // 只可能来自 is_svg_text 分流,x/y/fill 静态化)。
+                        if Self::is_svg_element(html_tag.as_str()) || html_tag == "text" {
                             if let AuraPropValue::Expr(expr) = value {
                                 if let Some(lit) = Self::svg_static_attr_value(expr) {
                                     attrs.push(format!("{}=\"{}\"", key, lit));
@@ -5685,6 +5709,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         .any(|(i, _)| Some(i) != consumed_text_child_idx);
                     if !has_other_children {
                         // <button @click="handler">text</button>
+                        self.in_svg_subtree = svg_ctx_saved;
                         Ok(format!("{}<{}{}>{}</{}>\n", ind, html_tag, attr_str, text, html_tag))
                     } else {
                         // Has both text and children - unusual but handle it
@@ -5702,10 +5727,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                             }
                         }
                         html.push_str(&format!("{}</{}>\n", ind, html_tag));
+                        self.in_svg_subtree = svg_ctx_saved;
                         Ok(html)
                     }
                 } else if children.is_empty() && generated_children.is_none() {
                     // No children and no generated children - self-closing tag
+                    self.in_svg_subtree = svg_ctx_saved;
                     Ok(format!("{}<{}{} />\n", ind, html_tag, attr_str))
                 } else {
                     // Has children (from source or generated)
@@ -5733,6 +5760,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         html.push_str(&format!("{}<div ref=\"{}\"></div>\n", "  ".repeat(indent + 1), ref_name));
                     }
                     html.push_str(&format!("{}</{}>\n", ind, html_tag));
+                    self.in_svg_subtree = svg_ctx_saved;
                     Ok(html)
                 }
             }

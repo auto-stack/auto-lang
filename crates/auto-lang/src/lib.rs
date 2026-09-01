@@ -6226,6 +6226,11 @@ mod plan499_engine_float_to_int_tests;
 #[cfg(test)]
 mod plan503_tests;
 
+// Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
+// svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
+#[cfg(test)]
+mod plan502_diagram_tests;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;
