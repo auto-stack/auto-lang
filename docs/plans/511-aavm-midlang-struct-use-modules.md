@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 19
+current_step: 21
 total_steps: 22
 ---
 
@@ -428,11 +428,16 @@ unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。�
     3338/3338 绿、cargo tv 仅 2 件 master 预存（同折叠①结论）+ master 合入
     + worktree 重同步。AA2R ignored 腿修复至可构建（W2 遗留的转译阻断
     清偿：File shim/借用拆分/括号优先级塌缩规避）。
-20. [ ] L3 资产固化：`test/vm/aavm2/99_unit/` Auto 侧单测套件（#[test]+
-    assert_eq，`auto test` 可跑）成建制落盘；W0 定案的 lib 引用方案回写
-    文档。验证：`auto test test/vm/aavm2/99_unit` 绿。
-21. [ ] 文档回写：project.md（模块清单/判据/能力矩阵）、auto/lib/README.md、
-    divergences.md、KNOWN-DEBT 视情；overview.md aavm 行能力注记。
+20. [✅ 已完成] L3 资产固化：`test/vm/aavm2/99_unit/all_unit.at` 聚合套件
+    （scripts/aavm2_unit_cases 四组 13 件：引擎微行为×4/struct 字段×2/
+    D1 错误文本×2/模块解析×5 含 D2 合法环+错误通道三文本）+ 生成器
+    scripts/gen-aavm2-unit.py（--check 同步校验）。D5 聚合方案（W0 定案）
+    回写 midlang-w0-archaeology.md §5。验证：`auto test
+    crates/auto-lang/test/vm/aavm2/99_unit` 13/13 绿。
+21. [✅ 已完成] 文档回写：project.md（模块清单 511 增量/新闸门四件/能力
+    矩阵+延后清单）、auto/lib/README.md（Plan 511 段）、divergences.md
+    （W1/W3 两节）、KNOWN-DEBT P511 四条（AA2R 预存转译债/闸门口径偏差/
+    b41 处置/占位泄漏镜像）、overview.md aavm 行注记。
 22. [ ] 复审（/auto-plan:review 范式：验收标准逐条对代码、遗漏/延后扫描、
     健康检查、spec-impact 元数据）→ `cargo tf` 全量 → status: reviewed。
 
