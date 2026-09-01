@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 5
+current_step: 7
 total_steps: 9
 ---
 
@@ -214,9 +214,18 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
    + 重连预算假时钟；`tsc --noEmit` 零错。
 6. **demo 页**：`examples/remote/viewer/`（vite 单页）连宿主渲染。
    验证：手动起宿主+demo 页冒烟截图。
+   [✅ 已完成] vite 单页（URL 参数 token/app/port；Canvas2D 渲染 + 命中区
+   点击回发 + 键盘字符回发 + e2e 探针）+ p508_remote_host_body 宿主
+   harness（env 触发：真 auto.exe outproc 批 + WS + 常驻泵；ready 文件
+   端口同步）；冒烟截图 = e2e before-click 留痕。
 7. **Playwright 端到端**：002-counter 远程闭环脚本（autoui-verifier 入口）
    + T4。
    验证：脚本绿 + 留痕。
+   [✅ 已完成] e2e/p508-remote-e2e.mjs（宿主 harness → vite → Chromium；
+   Playwright 解析复用 autoui-verifier 标准位点扫描）：**PASS EXIT=0**
+   ——真 auto.exe outproc 002-counter → 浏览器首帧 ["Counter: 0","-",
+   "Reset","+"] → 点击 "+" → ["Counter: 1",…] 闭环；前后截图留痕
+   `docs/plans/reports/assets/508/p508-e2e-{before,after}-click.png`。
 8. **实机演示 + 文档收尾**：T6 清单；设计文档 §1.3 分期表 Stage 6 注记 +
    RenderQueue 终态小结。
    验证：文档 diff + 实机留痕。
