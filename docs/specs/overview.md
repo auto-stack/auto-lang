@@ -21,7 +21,7 @@
 | [auto-macros](auto-macros/project.md) | 过程宏 `value!`（AutoLang 语法→Value） | active |
 | [a2r-std](a2r-std/project.md) | a2r 转译产物的 Rust 运行时库（http/json/task/str…） | active |
 | [stdlib](stdlib/project.md) | `.at` 写的语言标准库（auto/aura/c/collections/may/result） | active |
-| [aavm](aavm/project.md) | 自举实验：`auto/` 目录用 .at 实现编译器（plans 429–434 系列） | experimental |
+| [aavm](aavm/project.md) | 自举实验：`auto/` 目录用 .at 实现编译器（plans 429–434/447/495/511 系列；511 增 struct/全局/补缺/use 模块化） | experimental |
 
 ### 工具链（crates/）
 
