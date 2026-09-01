@@ -37,13 +37,18 @@ TypeDecl Display(`ast/types.rs:701`):
 构造字面量 = **Expr::Node**(不是 Object):`Point { x: 10, y: 20 }` →
 
 ```
-(node (name Point) (args (pair (name x) 10) (pair (name y) 20)))
+(node (name Point) (body (pair (name x) 10) (pair (name y) 20)))
 ```
 
 - 走 rhs/atom 路径(parser.rs:3637,Ident 后跟 `{` 且该名在 scope 中是类型);
-  Pair 参数经 `parse_braced_struct_args` → `Arg::Pair`;
-- Arg Display(`ast/call.rs:202`):`(pair (name x) 10)`;args 容器:
-  `(args <arg> <arg> ...)`;node 无 id/体时省略对应段(`ast/node.rs:66`)。
+  **Pair 落 node 的 body 段**(W1 实测修正:非 args 段——非 UI 方言经
+  parse_node_body → Stmt::Expr(Expr::Pair),Body Display `(body <pair> ...)`);
+- Pair Display:`(pair (name x) 10)`(key 形态同 ast/call.rs Arg::Pair);
+  body 空时省略段(`ast/node.rs:66`);
+- **soft-ident 注记(W1 补镜像)**:宿主 atom 有 Plan 356 soft-ident 兜底
+  (Tag/Type/Union/Spec/Super/Has/Copy/Move/Take/Hold/Alias/Ext/Impl/Mod/
+  Enum 共 15 kind 表达式位作标识符,parser.rs:663-683)——`o.tag` 类字段名
+  因之合法;aavm expr_atom 同表兜底(is_soft_ident_kind)。
 
 字段访问 = Expr::Dot(Pratt 后缀,链式 `p.a.b` → `Dot(Dot(Ident p, a), b)`):
 
