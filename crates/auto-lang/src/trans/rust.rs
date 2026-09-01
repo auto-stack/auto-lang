@@ -2307,6 +2307,24 @@ impl RustTrans {
         })
     }
 
+    /// Plan 514 W2 (P511-1 根因②): Auto 二元算子优先级（镜像 a2r.at
+    /// parser.at infix_l 表；越大越紧）。供 Bina 发射的优先级括号判定。
+    fn auto_op_prec(op: &Op) -> u8 {
+        match op {
+            Op::Asn => 1,
+            Op::AddEq | Op::SubEq => 3,
+            Op::MulEq | Op::DivEq | Op::ModEq => 5,
+            Op::Or | Op::QuestionQuestion => 9,
+            Op::And => 11,
+            Op::Eq | Op::Neq => 13,
+            Op::Lt | Op::Gt | Op::Le | Op::Ge => 15,
+            Op::Range | Op::RangeEq => 17,
+            Op::Add | Op::Sub => 19,
+            Op::Mul | Op::Div | Op::Mod => 21,
+            _ => 100,
+        }
+    }
+
     fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
         // Note: self, super, crate are NOT included — they are path segments
         // that must not be escaped. "Self" (uppercase) is also not escaped
@@ -2961,6 +2979,16 @@ impl RustTrans {
                     }
                     _ => {
                         // Binary operators: lhs OP rhs
+                        // Plan 514 W2 (P511-1 根因②): 优先级括号——嵌套二元
+                        // 在低优先级算子下方时必须括号化，否则 `(a || b) && c`
+                        // 发射为 `a || b && c`（Rust && 更紧）语义反转
+                        // （auto/lib/codegen.at 全局注册条件实证，b27/b29/b30）。
+                        // 规则镜像 a2r.at ar_paren_if：lhs.prec < op.prec 加括号，
+                        // rhs.prec <= op.prec 加括号。
+                        let lhs_paren = matches!(lhs.as_ref(),
+                            Expr::Bina(_, lop, _) if Self::auto_op_prec(lop) < Self::auto_op_prec(op));
+                        let rhs_paren = matches!(rhs.as_ref(),
+                            Expr::Bina(_, rop, _) if Self::auto_op_prec(rop) <= Self::auto_op_prec(op));
                         // Plan 396/B11(a): for comparisons, cast .len() to the
                         // partner's type instead of the default i64 (E0308
                         // when the partner is a u32 var/field).
@@ -2982,7 +3010,9 @@ impl RustTrans {
                         // Plan 433 A1: int vs char-literal mix → cast char side to i64
                         let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
                         if char_l { write!(out, "(")?; }
+                        if lhs_paren { write!(out, "(")?; }
                         self.expr(lhs, out)?;
+                        if lhs_paren { write!(out, ")")?; }
                         if char_l { write!(out, ") as i64")?; }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
@@ -2997,7 +3027,9 @@ impl RustTrans {
                         };
                         write!(out, " {} ", op_str)?;
                         if char_r { write!(out, "(")?; }
+                        if rhs_paren { write!(out, "(")?; }
                         self.expr(rhs, out)?;
+                        if rhs_paren { write!(out, ")")?; }
                         if char_r { write!(out, ") as i64")?; }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;

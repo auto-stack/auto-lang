@@ -312,6 +312,14 @@ fn tokenize(source str) List<Token> {
     var toks List<Token> = List.new()
     for p < len {
         var c = cur_char(source, p)
+        // Plan 514 W2(P511-1 根因①):VM 侧 len 为码点数、char_at 亦码点索引,
+        // 两侧自洽;a2r 转译侧 len()=字节数 > 码点数——无哨兵时主循环越过
+        // 真实末尾继续扫描(nth→None→0),CJK 多字节注释/文本后的幻影尾段
+        // 产 Unknown token(b13/b14/b19)。cur_char 哨兵 0=末尾,VM/转译
+        // 两侧同判(cur_char 越界恒 0),主循环即在此收敛。
+        if c == 0 {
+            break
+        }
         // next_step 直译:主链 is-on-char(D11b 收账,447-③);
         // digit/alpha 为卫语臂(谓词不能作模式),序同基线 else-if 链
         is c {

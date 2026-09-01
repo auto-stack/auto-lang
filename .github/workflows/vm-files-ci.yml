@@ -44,9 +44,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: aavm2 six gates (M1-M5 + milestone + compile corpus)
+        # Plan 514 W2 (P511-2 口径收窄清偿): compile corpus 腿已去 ignore,
+        # 常规口径即覆盖;--include-ignored 移除(按需 rustc 探针保持 ignored)
         run: >
           cargo test -p auto-lang --lib --features test-vm-files --
-          test_aavm2 --include-ignored --test-threads=1
+          test_aavm2 --test-threads=1
 
       - name: VM goldens + ffi_dual (incl. 014 std generated segment)
         run: >

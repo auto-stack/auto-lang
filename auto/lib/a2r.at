@@ -1246,10 +1246,9 @@ fn ar_expr(mut a Ar, mut p P, min int) str {
         var wname = p_text(p)
         p_next(p)
         if p_kind(p) == TokenKind.LParen {
-            cur = ar_method_call(a, p, "self", ar_vty(a, "self"), wname)
-            cur_prec = 100
-            cur_len = a.lenflag
-            cur_infer = a.infer
+            var self_ty2 = ar_vty(a, "self")
+            cur = ar_method_call(a, p, "self", self_ty2, wname)
+            a.prec = 100
             a.can_call = 0
         } else {
             cur = "self." + wname
