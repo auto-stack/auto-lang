@@ -725,3 +725,24 @@
 
 1. **P502-1(master 既有,非本计划引入)`plan055_strip_html_tests::strips_tags_and_decodes_entities` ui-iced 档红**:`strip_html_tags("<span>@x</span> 你好")` 产出双空格(`" @x  你好"`),期望单空格(aura_view_builder.rs:11263 断言)。本机 master(eda3a5a5e)同红复证——musk PLAN-055 批(c964ffa81)引入面;`cargo tf` 无 ui-iced 不触发,唯日常档 `cargo t` 可见。偿还:strip_html_tags 标签/实体后空白规范化(或按语义修正期望),归 musk 批主理方裁定。
 2. **P502 执行期发现#9 处置核验**:kitchen-sink `@autodown/engine` scaffold 依赖缺失担忧经复审核验**已上游愈合**(P499-6 d0c23388d kitchen-sink 再生成,import 不复存在)——不入债。
+
+### P513(2026-09-01,Plan 513 整合清理批——归档计划残留转账登记)
+
+> 来源:407/412/420 三家归档时残留显式转账(G2 零静默);处置详情见
+> `archive/407-minesweeper-rust-backend.md`/`archive/412-layout-gallery.md`/
+> `archive/420-auto-edit-tabs-workspace.md` 头部终态注记。
+
+1. **P513-1(转自 Plan 407)扫雷 rust 后端两项残留**:R7 动态窗口
+   resize(difficulty 切换→窗口尺寸——ui_gen/rust.rs 零 resize 逻辑,生成
+   main.rs 固定 `window_width: 370, window_height: 506`)+ Phase 4 三后端
+   对比验证与 015/011 回归(无执行记录)。两项均可执行、无阻塞。
+   P1–P3 大部已交付(merge `f863be5e`)。| `ui_gen/rust.rs` + `examples/ui/038-minesweeper` + archive/407 状态行
+2. **P513-2(转自 Plan 412)layout gallery §10.4 视觉通道未闭环**:结构通道
+   已绿(`4bfd6d27`/`6ee1a5e1`/`f51c8882`/`ccf9ac0e9`——12 layout 页全落地
+   +rederive_layout 全路径+grid_row_placements 分配器);视觉+交互验证未
+   执行——全页双端并排截图与像素测量(≤1px)、scroll/Overlay 交互抽验,
+   §9.2/§9.3 验收标准未闭环(归桌面会话/autoui-verifier 轨道)。| archive/412 §10.4
+3. **P513-3(转自 Plan 420)auto-edit 三项残留**:P4 tab 拖拽排序(纯 app 层
+   可执行);挂账 #3 ActNew 偶发 InvalidOpCode(待复现);挂账 #4
+   `.tabs[i].dirty` bool 读回乱码。P1–P3 已合并 master(`78aae68bb`)。
+   | `examples/ui/041-auto-edit` + archive/420 §6

@@ -1,4 +1,5 @@
 # Plan 455: AutoUI Cross-Backend Parity Tracker (All examples/ui Examples)
+> 📦 **终态（2026-09-01，Plan 513 B 组处置）**：矩阵跟踪职能已被 Plan 506/512 批量桌面化与 autoui-verifier 技能接管（**superseded**）；头部 Status: In Progress 为过时残留——归档。
 
 **Status**: In Progress  
 **Scope**: `crates/auto-lang/src/ui/`, `crates/auto-man/`, `examples/ui/*`  

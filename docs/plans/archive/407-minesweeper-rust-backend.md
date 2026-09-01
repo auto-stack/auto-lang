@@ -1,4 +1,5 @@
 # Plan 407: 扫雷 render=rust 版完整支持
+> 📦 **终态（2026-09-01，Plan 513 B 组处置）**：Phase 1–3 大部已交付合并（merge `f863be5e`）；残留 R7 动态 resize + Phase 4 对比回归已转账 KNOWN-DEBT **P513-1**——归档。
 
 > **状态（2026-08-26 finish-plan 复审）**: 🟡 Phase 1–2 完成 + Phase 3 大部（R6/R8/R9），均已合并 master（merge `f863be5e`）：Phase 1 render=rust 启动成功（acb6c759 + 2268a67b R1/R2/R4/store-on + 83dbb259 语句支持 + f7318259 LCG 溢出修复）、Phase 2 计时器（a130512a tick_msg + 871b4226 tick_interval_ms，R8 一并解决）、Phase 3 的 R6 右键 oncontextmenu（2fc6c562）与 R9 grid 居中（fb4870c2）。**未做（2026-08-26 复核仍确认）**：R7 动态窗口 resize（difficulty 切换→窗口尺寸——ui_gen/rust.rs 零 resize 逻辑，生成 main.rs 固定 `window_width: 370, window_height: 506`）、Phase 4（三后端对比验证 + 015/011 回归，无执行记录）。两项均可执行，无阻塞。
 > **优先级**: 中 — vue 版和 VM 版已可用，rust 版是第三后端
