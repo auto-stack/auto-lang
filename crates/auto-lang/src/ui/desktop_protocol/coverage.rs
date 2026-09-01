@@ -581,6 +581,35 @@ mod tests {
         }
     }
 
+    /// Plan 507 T7 —— Tier3 not-yet 族 auto 降级链路复核：代表族逐一
+    /// 构造 → Pixels + 观测行（缺项清单即载荷——禁止静默错绘的机制证）。
+    #[test]
+    fn t7_not_yet_families_auto_downgrade() {
+        use super::RenderMode as RM;
+        use crate::ui::desktop_protocol::message::FrameMode;
+        // (族, 源, 缺项证词)
+        let cases: &[(&str, &str, &str)] = &[
+            ("overlay 弹层", "widget O { view { select (value: .m) { onchange: .P } } }", "tag:select"),
+            ("chart/diagram", "widget C { view { svg { path {} } } }", "tag:svg"),
+            ("复合编辑器", "widget E { view { markdown (content: .doc) } }", "tag:markdown"),
+            ("nav 系", "widget N { view { nav-item (label: \"x\") { onclick: .Go } } }", "tag:navitem"),
+            ("表格族", "widget T { view { table { text \"r\" } } }", "tag:table"),
+            ("瞬态浮层", "widget F { view { toaster {} } }", "tag:toaster"),
+        ];
+        for (family, src, evidence) in cases {
+            let component = crate::build_dynamic_component(src, None)
+                .unwrap_or_else(|e| panic!("{family} build: {e}"));
+            let (mode, downgrade) = effective_frame_mode(RM::Auto, &component);
+            assert_eq!(mode, FrameMode::Pixels, "{family} 应降级 independent");
+            let line = downgrade.unwrap_or_else(|| panic!("{family} 应有降级观测行"));
+            assert!(line.contains("auto -> independent"), "{family}: {line}");
+            assert!(
+                line.contains(&evidence.trim_start_matches("tag:")),
+                "{family} 缺项清单随行: {line}"
+            );
+        }
+    }
+
     /// Plan 507 T3：display 族 auto 探测放行（折叠键 + prop 声明面）。
     #[test]
     fn tier1_display_family_auto_eligible() {
