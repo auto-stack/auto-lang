@@ -15,9 +15,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::aura::{AuraEvent, AuraNode};
 
-/// 文本承载标签 → 归一 kind "text"（投影器 `is_text_tag` 同集）。
+/// 归一化：折叠键（剥 `-`/`_` + 小写——aura.at 别名匹配策略同口径）；
+/// 文本承载标签族（h1–h6/p/span/label）归一 kind "text"（与投影器
+/// `is_text_tag` 同集）。
 pub fn normalize_kind(tag: &str) -> String {
-    let t = tag.to_ascii_lowercase();
+    let t: String = tag
+        .chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_ascii_lowercase();
     match t.as_str() {
         "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label" => {
             "text".to_string()
@@ -43,16 +49,33 @@ pub struct Coverage {
 }
 
 impl Coverage {
-    /// §1.3.1 爬坡目标集（001–005 实测清单）——当前投影器能力基线。
+    /// §1.3.1 爬坡目标集（001–005 实测清单）+ Plan 507 T3 display 族扩展
+    /// ——当前投影器能力基线。
     pub fn target_set() -> Self {
-        let kinds: BTreeSet<String> =
-            ["text", "button", "input", "image", "a"].into_iter().map(String::from).collect();
+        let kinds: BTreeSet<String> = [
+            // 500 基线。
+            "text", "button", "input", "image", "a",
+            // Plan 507 T3 —— Tier1 display 族（归一折叠键）。
+            "img", "icon", "badge", "avatar", "progress", "divider", "separator", "spacer",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         let props: BTreeMap<String, BTreeSet<String>> = [
             ("text", vec!["text", "label", "style", "selectable"]),
             ("button", vec!["text", "label", "style"]),
             ("input", vec!["value", "placeholder", "type", "style"]),
-            ("image", vec!["src", "style"]),
+            ("image", vec!["src", "style", "alt"]),
             ("a", vec!["text", "label", "style"]),
+            // Plan 507 T3 —— display 族（props = schema 声明面 + style/class）。
+            ("img", vec!["src", "style", "alt"]),
+            ("icon", vec!["name", "size", "style", "class"]),
+            ("badge", vec!["text", "variant", "style", "class"]),
+            ("avatar", vec!["src", "alt", "fallback", "style", "class"]),
+            ("progress", vec!["value", "max", "style", "class"]),
+            ("divider", vec!["direction", "style", "class"]),
+            ("separator", vec!["orientation", "label", "style", "class"]),
+            ("spacer", vec!["size", "style", "class"]),
         ]
         .into_iter()
         .map(|(k, ps)| (k.to_string(), ps.into_iter().map(String::from).collect()))
@@ -64,8 +87,16 @@ impl Coverage {
         .into_iter()
         .map(|(k, es)| (k.to_string(), es.into_iter().map(String::from).collect()))
         .collect();
-        let layouts: BTreeSet<String> =
-            ["center", "col", "row", "if"].into_iter().map(String::from).collect();
+        let layouts: BTreeSet<String> = [
+            // 500 基线。
+            "center", "col", "row", "if",
+            // Plan 507 T3 —— Tier1 布局容器（catch-all 容器臂本就渲染，
+            // 此处登记 = auto 探测放行）。
+            "container", "scroll",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         // 样式前缀规则：盒模（p/m 含负值与轴缩写）/间距 gap/尺寸 w/h/max-w/
         // min-/flex-1/对齐 items-/justify-/文本对齐 text-center 等（text- 前
         // 缀同时覆盖尺寸/颜色/对齐三族）/排版 font- leading- underline/装饰
@@ -502,5 +533,56 @@ mod tests {
         let line = downgrade.expect("降级观测行");
         assert!(line.contains("auto -> independent"), "{line}");
         assert!(line.contains("checkbox"), "缺项清单随行: {line}");
+    }
+
+    /// Plan 507 T2/T3 一致性钉：元素登记表的 covered 条目必须落在
+    /// `Coverage::target_set()` 可投影集内（归一折叠后 kinds ∪ layouts）
+    /// ——登记与能力表双向不脱钩（漂移围栏的运行时侧互补）。
+    #[test]
+    fn covered_elements_within_target_set() {
+        let coverage = Coverage::target_set();
+        let projectable = |tag: &str| {
+            let kind = normalize_kind(tag);
+            coverage.kinds.contains(&kind) || coverage.layouts.contains(&kind)
+        };
+        for (tag, status) in crate::aura::element_coverage::element_table() {
+            if matches!(status, crate::aura::element_coverage::QueueStatus::Covered) {
+                assert!(
+                    projectable(tag),
+                    "登记 covered 但 target_set 不可投影: {tag}（能力表/投影器臂缺失）"
+                );
+            }
+        }
+    }
+
+    /// Plan 507 T3：display 族 auto 探测放行（折叠键 + prop 声明面）。
+    #[test]
+    fn tier1_display_family_auto_eligible() {
+        let coverage = Coverage::target_set();
+        let src = r#"widget D {
+    model { var pct double = 0.6 }
+    view {
+        col {
+            icon (name: "star") { style: "w-6 h-6" }
+            badge "New" { style: "text-xs" }
+            avatar (fallback: "Jane Cooper") { style: "w-10 h-10" }
+            progress (value: .pct, max: 1.0) { style: "w-full" }
+            divider { style: "w-full" }
+            separator { style: "w-full" }
+            spacer { style: "h-4" }
+            container { style: "p-2 bg-slate-800" }
+            scroll { text "inner" }
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = scan_view(component.view_template());
+        let verdict = judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "display 族应 Covered: {verdict:?}");
+        assert_eq!(
+            effective_frame_mode(RenderMode::Auto, &component),
+            (crate::ui::desktop_protocol::message::FrameMode::Commands, None)
+        );
     }
 }

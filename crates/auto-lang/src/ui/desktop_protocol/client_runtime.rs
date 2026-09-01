@@ -43,6 +43,18 @@ const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
 /// image 占位底色（保真边界：位图内容归 Stage 5）。
 const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
+// Plan 507 T3 —— Tier1 display 族常量（未声明样式时的缺省观感）。
+/// badge 药丸底（accent 基调，与按钮同族）。
+const BADGE_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
+/// avatar 占位底（圆角直角化——保真边界同 image）。
+const AVATAR_BG: Rgba8 = Rgba8::new(70, 70, 82, 255);
+/// progress 轨道底。
+const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
+/// divider/分隔线。
+const DIVIDER_BG: Rgba8 = Rgba8::new(80, 80, 90, 255);
+/// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。
+const DISABLED_ALPHA: u8 = 110;
+
 /// 页边距（根内容盒）。
 const MARGIN: f32 = 10.0;
 /// 缺省块间距（未声明 gap- 时）。
@@ -545,12 +557,22 @@ fn layout_node(
 ) -> LaidBlock {
     match node {
         AuraNode::Element { tag, props, events, children, .. } => {
-            let tag_lc = tag.to_ascii_lowercase();
+            // 折叠键匹配（剥 -/_ + 小写——aura.at 别名策略同口径；coverage
+            // normalize_kind 同源）。coverage 表外标签不会到这（auto 探测
+            // 已降级）；显式 queue 强跑时未知标签走容器兜底臂。
+            let tag_lc = fold_tag(tag);
             let style = NodeStyle::parse(style_str_of(props));
             match tag_lc.as_str() {
                 "button" => layout_button(ctx, props, events, children, x, y, avail_w, &style),
                 "input" => layout_input(ctx, props, events, x, y, avail_w, &style),
                 "image" | "img" => layout_image(ctx, props, x, y, avail_w, &style),
+                // Plan 507 T3 —— Tier1 display 族。
+                "icon" => layout_icon(ctx, props, x, y, avail_w, &style),
+                "badge" => layout_badge(ctx, props, children, x, y, avail_w, &style),
+                "avatar" => layout_avatar(ctx, props, x, y, avail_w, &style),
+                "progress" => layout_progress(ctx, props, x, y, avail_w, &style),
+                "divider" | "separator" => layout_divider(ctx, props, x, y, avail_w, &style),
+                "spacer" => layout_spacer(&style),
                 _ if is_text_tag(&tag_lc) || tag_lc == "a" => {
                     layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a")
                 }
@@ -823,6 +845,218 @@ fn layout_image(
     LaidBlock { size: (w, h) }
 }
 
+// ---------------------------------------------------------------------------
+// Plan 507 T3 —— Tier1 display 族臂（icon/badge/avatar/progress/divider/
+// separator/spacer）。保真边界随注（Coverage 表同口径）：icon 字形、
+// avatar/image 位图内容、圆角直角化均归宿主栅格化/Stage 5+。
+// ---------------------------------------------------------------------------
+
+/// icon：字形占位方块（尺寸 = style 宽或 `size` prop，缺省 24）。
+fn layout_icon(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let _ = prop_str(props, "name");
+    let size = style
+        .fixed_w()
+        .or_else(|| prop_f64(ctx.comp, props, "size").map(|v| v as f32))
+        .unwrap_or(24.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, size, size), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+    LaidBlock { size: (size, size) }
+}
+
+/// badge：药丸底 + 居中短标签（variant 配色 v1 取 accent 单档）。
+fn layout_badge(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let label = element_text(ctx.comp, props, children);
+    let size = style.font_size.unwrap_or(12.0);
+    let line_h = size * LINE_H_FACTOR;
+    let h = style.fixed_h().unwrap_or(line_h.max(20.0));
+    let w = style
+        .fixed_w()
+        .unwrap_or(measure_text(&label, size) + 16.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, w, h), style.bg.unwrap_or(BADGE_BG));
+    if !label.is_empty() {
+        ctx.ops.push(DrawOp::Text {
+            x: x + (w - measure_text(&label, size)) / 2.0,
+            y: y + (h - line_h) / 2.0,
+            size,
+            line_height: line_h,
+            color: style.fg.unwrap_or(LABEL_FG),
+            text: label,
+        });
+    }
+    LaidBlock { size: (w, h) }
+}
+
+/// avatar：方块占位 + fallback 首字母（src 位图内容归 Stage 5+）。
+fn layout_avatar(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let size = style
+        .fixed_w()
+        .or_else(|| style.fixed_h())
+        .unwrap_or(40.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, size, size), style.bg.unwrap_or(AVATAR_BG));
+    let initials: String = prop_str(props, "fallback")
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|w| w.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase();
+    if !initials.is_empty() {
+        let size_px = size * 0.4;
+        let line_h = size_px * LINE_H_FACTOR;
+        ctx.ops.push(DrawOp::Text {
+            x: x + (size - measure_text(&initials, size_px)) / 2.0,
+            y: y + (size - line_h) / 2.0,
+            size: size_px,
+            line_height: line_h,
+            color: style.fg.unwrap_or(LABEL_FG),
+            text: initials,
+        });
+    }
+    LaidBlock { size: (size, size) }
+}
+
+/// progress：轨道 + 填充条（value/max 绑定求值；缺省 0..1）。
+fn layout_progress(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let value = prop_f64(ctx.comp, props, "value").unwrap_or(0.0);
+    let max = prop_f64(ctx.comp, props, "max").unwrap_or(1.0).max(1e-9);
+    let frac = (value / max).clamp(0.0, 1.0) as f32;
+    let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(8.0);
+    push_quad(ctx, WRect::new(x, y, w, h), PROGRESS_TRACK);
+    if frac > 0.0 {
+        push_quad(ctx, WRect::new(x, y, w * frac, h), style.bg.unwrap_or(BUTTON_BG));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+/// divider/separator：1px 分隔线（direction/orientation 竖向取固定高——
+/// 块流 v1 叶子无交叉轴可用高度，无 h- 声明时取 24 近似，保真边界随注）。
+fn layout_divider(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let vertical = prop_str(props, "direction")
+        .or_else(|| prop_str(props, "orientation"))
+        .is_some_and(|d| d.eq_ignore_ascii_case("vertical"));
+    let t = 1.0f32.max(style.fixed_h().unwrap_or(0.0).min(4.0));
+    if vertical {
+        let h = style.fixed_h().unwrap_or(24.0);
+        push_quad(ctx, WRect::new(x, y, t, h), style.bg.unwrap_or(DIVIDER_BG));
+        LaidBlock { size: (t, h) }
+    } else {
+        let w = style.fixed_w().unwrap_or(avail_w);
+        push_quad(ctx, WRect::new(x, y, w, t), style.bg.unwrap_or(DIVIDER_BG));
+        LaidBlock { size: (w, t) }
+    }
+}
+
+/// spacer：空白占位（style 尺寸驱动；缺省高 8——flex 语义静态帧取最小位）。
+fn layout_spacer(style: &NodeStyle) -> LaidBlock {
+    LaidBlock {
+        size: (
+            style.fixed_w().unwrap_or(0.0),
+            style.fixed_h().unwrap_or(GAP),
+        ),
+    }
+}
+
+/// prop → 字符串字面量（仅字符串字面量 prop；状态引用走 resolve_expr_display）。
+fn prop_str<'a>(props: &'a HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
+    match props.get(key)? {
+        AuraPropValue::Expr(Expr::Str(s)) => Some(s.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// prop → f64（数值字面量或状态绑定：Int/Double/Float/Bool）。
+fn prop_f64(comp: &DynamicComponent, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<f64> {
+    let expr = match props.get(key)? {
+        AuraPropValue::Expr(e) => e,
+        _ => return None,
+    };
+    match expr {
+        Expr::Int(i) => Some(*i as f64),
+        Expr::Float(f, _) | Expr::Double(f, _) => Some(*f),
+        Expr::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        Expr::Ident(name) => read_num_state(comp, name.as_str().trim_start_matches('.')),
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => {
+                read_num_state(comp, field.as_str())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// prop → bool（布尔字面量或状态绑定）。
+fn prop_bool(comp: &DynamicComponent, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<bool> {
+    let expr = match props.get(key)? {
+        AuraPropValue::Expr(e) => e,
+        _ => return None,
+    };
+    match expr {
+        Expr::Bool(b) => Some(*b),
+        Expr::Ident(name) => comp
+            .read_state(name.as_str().trim_start_matches('.'))
+            .ok()
+            .map(|v| matches!(v, auto_val::Value::Bool(true))),
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => comp
+                .read_state(field.as_str())
+                .ok()
+                .map(|v| matches!(v, auto_val::Value::Bool(true))),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn read_num_state(comp: &DynamicComponent, field: &str) -> Option<f64> {
+    match comp.read_state(field).ok()? {
+        auto_val::Value::Int(i) => Some(i as f64),
+        auto_val::Value::Float(f) => Some(f as f64),
+        auto_val::Value::Double(d) => Some(d),
+        auto_val::Value::Bool(b) => Some(if b { 1.0 } else { 0.0 }),
+        _ => None,
+    }
+}
+
 fn layout_text(
     ctx: &mut ProjectCtx<'_>,
     props: &HashMap<String, AuraPropValue>,
@@ -890,12 +1124,21 @@ fn element_text(
 }
 
 /// 文本承载标签（内容走 `text` prop；与 parser `get_primary_prop` 的
-/// text 档同集的常用子集；入参已小写）。
+/// text 档同集的常用子集；入参已折叠键）。
 fn is_text_tag(tag: &str) -> bool {
     matches!(
         tag,
         "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label"
     )
+}
+
+/// 折叠键（剥 `-`/`_` + 小写）——coverage `normalize_kind` 同源；本文件
+/// 全部标签匹配（layout_node 臂 + is_text_tag）以此为准。
+fn fold_tag(tag: &str) -> String {
+    tag.chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_ascii_lowercase()
 }
 
 /// 收集子树的可显示文本（Literal/Interpolated 解析后拼接）。
@@ -1982,5 +2225,130 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(ph.session.apps.is_empty(), "L2Detached 后宿主回收");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T3 —— Tier1 display 族投影快照（家族参数矩阵：默认档 ×
+    // style 覆盖档 × 绑定态）。
+    // -----------------------------------------------------------------------
+
+    /// 测试脚手架：源串 → projector → 首帧。
+    fn project(src: &str) -> (AppProjector, DrawList) {
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let mut p = AppProjector::new(component, 480.0, 320.0);
+        let frame = p.render_frame();
+        (p, frame)
+    }
+
+    fn quads_of(frame: &DrawList) -> Vec<(WRect, Rgba8)> {
+        frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, color } => Some((*rect, *color)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// icon：w-6 h-6 → 24×24 占位（size prop 档：无 style 时 1.5×4=6 → 24px
+    /// 语义同 1.5rem；此处直接像素字面量）。
+    #[test]
+    fn t3_icon_placeholder_quad() {
+        let (_, frame) = project(
+            "widget I { view { icon (name: \"star\", size: 32.0) } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "一个占位 Quad: {quads:?}");
+        let (r, _) = quads[0];
+        assert_eq!((r.w, r.h), (32.0, 32.0), "size prop 驱动: {r:?}");
+    }
+
+    /// badge：药丸底 + 居中标签（text prop + 样式 fg 覆盖）。
+    #[test]
+    fn t3_badge_pill_and_label() {
+        let (_, frame) = project(
+            "widget B { view { badge \"Beta\" { style: \"text-xs\" } } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "药丸底单 Quad: {quads:?}");
+        let (r, _) = quads[0];
+        assert!(r.w > 0.0 && r.h >= 20.0, "几何合理: {r:?}");
+        let texts = texts_of(&frame);
+        assert_eq!(texts, vec!["Beta"], "居中标签");
+    }
+
+    /// avatar：占位方块 + fallback 首字母（40 缺省档）。
+    #[test]
+    fn t3_avatar_initials() {
+        let (_, frame) = project(
+            "widget A { view { avatar (fallback: \"Jane Cooper\") } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "占位单 Quad");
+        let (r, _) = quads[0];
+        assert_eq!((r.w, r.h), (40.0, 40.0), "缺省 40×40: {r:?}");
+        let texts = texts_of(&frame);
+        assert_eq!(texts, vec!["JC"], "首字母两枚: {texts:?}");
+    }
+
+    /// progress：value/max 绑定态求值（0.6 → 60% 填充）+ 状态推进重渲染。
+    #[test]
+    fn t3_progress_binding_fraction() {
+        let src = "widget P {\n    model { var pct double = 0.6 }\n    view { progress (value: .pct, max: 1.0) { style: \"w-80\" } }\n}\n";
+        let (mut p, frame) = project(src);
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 2, "轨道 + 填充: {quads:?}");
+        let (track, fill) = (quads[0].0, quads[1].0);
+        assert_eq!(track.w, 320.0, "w-80 → 320px");
+        assert!((fill.w - 320.0 * 0.6).abs() < 0.5, "60% 填充: {fill:?}");
+        assert!((fill.x - track.x).abs() < 0.01 && fill.y == track.y, "填充左对齐轨道");
+        // 状态推进 → 填充随动（VM 写状态 + 重渲染）。
+        p.component_mut()
+            .write_state("pct", auto_val::Value::Double(1.0))
+            .expect("write");
+        let frame = p.render_frame();
+        let quads = quads_of(&frame);
+        assert!((quads[1].0.w - 320.0).abs() < 0.5, "pct=1.0 → 全填充: {:?}", quads[1].0);
+    }
+
+    /// divider/separator/spacer：线宽 1px + 空白占位几何。
+    #[test]
+    fn t3_divider_separator_spacer_geometry() {
+        let (p, frame) = project(
+            "widget S {\n    view {\n        divider { style: \"w-full\" }\n        spacer { style: \"h-4\" }\n        separator { style: \"w-full\" }\n        spacer { style: \"h-2\" }\n    }\n}\n",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 2, "两根 1px 线: {quads:?}");
+        assert_eq!((quads[0].0.h, quads[1].0.h), (1.0, 1.0), "线高 1px");
+        assert!(quads[0].0.w > 100.0, "w-full 满宽: {:?}", quads[0].0);
+        // 纵向堆叠：y 单调递增（divider → spacer16 → separator → spacer8）。
+        let ys: Vec<f32> = quads.iter().map(|(r, _)| r.y).collect();
+        assert!(ys[1] >= ys[0] + 16.0 + 1.0, "spacer h-4=16px 占位: {ys:?}");
+        let _ = p;
+    }
+
+    /// container/scroll：块流容器渲染（bg + padding 内子级）——catch-all
+    /// 容器臂 + coverage 登记（auto 放行）。
+    #[test]
+    fn t3_container_scroll_block_flow() {
+        let (_, frame) = project(
+            "widget C {\n    view {\n        container {\n            text \"inner\"\n            scroll { text \"scrolled\" }\n            style: \"p-2 bg-slate-800\"\n        }\n    }\n}\n",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "container 底色 Quad: {quads:?}");
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"inner") && texts.contains(&"scrolled"), "{texts:?}");
+        // padding p-2=8px：子级起点 = 容器 + 8。
+        let (r, _) = quads[0];
+        let first_text_y = frame
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { y, text, .. } if text == "inner" => Some(*y),
+                _ => None,
+            })
+            .expect("inner 文本");
+        assert!((first_text_y - (r.y + 8.0)).abs() < 0.01, "p-2 内边距: {first_text_y} vs {}", r.y);
     }
 }
