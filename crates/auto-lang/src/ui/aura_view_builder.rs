@@ -7570,6 +7570,11 @@ let tabs_inner = View::Row {
             if key == "class" || key == "style" {
                 continue;
             }
+            // Plan 502 M1: svg `<text>` 的位置参数文本是元素内容不是属性
+            // (`text seg["label"] { x: … }` 的 positional → props["text"])。
+            if tag == "text" && key == "text" {
+                continue;
+            }
             if let AuraPropValue::Expr(expr) = value {
                 let resolved = self.resolve_expr_to_string_with(expr, bindings);
                 if !resolved.is_empty() {
@@ -7577,7 +7582,25 @@ let tabs_inner = View::Row {
                 }
             }
         }
+        // Plan 502 M1: text 元素内容 = props["text"](resvg 原生栅格化)。
+        let text_content = if tag == "text" {
+            props
+                .get("text")
+                .and_then(|v| match v {
+                    AuraPropValue::Expr(expr) => {
+                        Some(self.resolve_expr_to_string_with(expr, bindings))
+                    }
+                    AuraPropValue::StyleBinding(_) => None,
+                })
+                .map(|s| escape(&s))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         let mut inner = self.serialize_svg_children(children, bindings);
+        if !text_content.is_empty() {
+            inner.push_str(&text_content);
+        }
         if inner.is_empty() {
             format!("<{tag}{attrs}/>")
         } else {
@@ -11139,13 +11162,14 @@ fn popover_node_children(n: &AuraNode) -> &[AuraNode] {
 
 /// Plan 442 A4: SVG 形状/结构子元素集合(serialize_svg_element 递归白名单;
 /// 根元素 svg 由 convert_svg_image 显式发起)。与 ui_gen/vue.rs map_tag 的
-/// SVG 直通臂同表。
+/// SVG 直通臂同表。Plan 502 M1: 增 `text`(diagram 标签机制——位置参数
+/// 文本经 props["text"] 进元素内容,见 serialize_svg_element)。
 fn is_svg_shape_tag(tag: &str) -> bool {
     matches!(
         tag,
         "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
             | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
-            | "radialGradient" | "clipPath" | "mask"
+            | "radialGradient" | "clipPath" | "mask" | "text"
     )
 }
 

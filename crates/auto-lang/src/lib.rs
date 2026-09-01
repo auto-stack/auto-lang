@@ -6236,6 +6236,11 @@ mod plan499_engine_float_to_int_tests;
 #[cfg(test)]
 mod plan503_tests;
 
+// Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
+// svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
+#[cfg(test)]
+mod plan502_diagram_tests;
+
 // Plan 510 / P499-7: native ID 撞号(Log×Shell 1800-1803)回归钉 +
 // 字符串池 over-release 记账回归。
 #[cfg(test)]

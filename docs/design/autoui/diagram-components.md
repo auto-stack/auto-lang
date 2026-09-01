@@ -297,13 +297,18 @@ edge  = { from: str, to: str, label: str = "", line: str = "solid",
 - **箭头**：三角形 path，Init 算端点角度；`head/tail` 字形（diamond/circle/cf-*）为
   小多边形，全部手算（donut 弧先例）。
 - **边路由 v1**：节点 bbox 边界交点直线段（正交三段路由备选，不阻塞 v1）。
-- **标签发射（关键约束）**：svg `<text>` 不支持（chart-components 既有约束）——
-  节点/边标签 = **DSL text 绝对定位 overlay**（donut tooltip 同机制：
-  `text { style: f"absolute left-[${x}px] top-[${y}px]" }`，f-string px 类 492 定案后
-  直写合法）。大图 DOM 膨胀风险见 §10；canvas v2 一并解决。
-  **备选（Phase 1 对照评估）**：svg 直通标签集增 `text`——vue 轨直通平凡，VM 轨
-  svgdoc 经 resvg 原生支持文本栅格化；若双端验证通过则取代 overlay 为首选
-  （随 svg 缩放、零 DOM 膨胀、规避 VM 轨动态 arbitrary 值风险）。
+- **标签发射（Plan 502 M1 定案 2026-09-01）**：**svg `text` 直通为 diagram 家族
+  标签机制首选**（原"svg 无 `<text>`"约束经引擎小改动解除）。改动两处：vue 轨
+  svg 子树上下文分流（`in_svg_subtree` 标志——子树内 `text` 直通为 SVG `<text>`、
+  字面量属性静态化、位置参数文本为元素内容；子树外 text→span 不变）+ VM 轨
+  svgdoc 序列化 `text` 臂（同构，resvg 原生文本栅格化）。双端视觉冒烟通过
+  （中/英文、随 viewBox 缩放、循环 record 字段取值）。
+  overlay 对照实证局限：vue 轨 CSS px 定位与 svg 响应式缩放脱钩（窄容器下标签
+  错位）；VM 轨 LeftOffset 可解析（499 M3 同源）但绝对定位落位降级为近流内偏移；
+  且 `text` 元素直挂 class f-string 在 vue 轨 shadcn 路径退化 `:style`（失效），
+  overlay 必须 col 容器化。**overlay 仅保留 tooltip 场景**（角落锚定/近似跟随，
+  donut/line 498/499 先例），不用于节点/边标签；大图 DOM 膨胀风险随 overlay
+  退役一并消除（canvas v2 文本条目仍成立，见 §10）。
 
 ### 6.2 v2：canvas 轨（与 Plan 499 统一，见 §7.4）
 
@@ -371,9 +376,9 @@ records 转译器**（文本 → 结构化数据 → 原生渲染），保双端
   一层映射，组件代码不感知。499 M1 增补输入③。
 - **动画**（499 M5 双轨策略：vue CSS transition / VM 数值插值）：直接覆盖 diagram
   布局动画（数据变化 → 节点位置插值）与 focus 过渡。
-- **对 diagram 的特殊意义**：canvas 轨不只是性能，还是**文本发射的正解**——svg 轨
-  无 `<text>`，节点标签 v1 只能 DSL text 绝对定位 overlay（大图 DOM 膨胀）；canvas
-  Program 原生文本绘制一举解决。
+- **对 diagram 的特殊意义**：canvas 轨不只是性能，还是**元素级事件与高频重绘的
+  正解**（边命中/节点拖拽/pan-zoom 代码命中、`.Tick` 流式重绘）；文本发射已由
+  svg `text` 直通解决（502 M1），canvas 原生文本绘制作为 v2 统一通路继承。
 
 ### 7.5 对 498/499 的影响与边界
 
@@ -424,11 +429,10 @@ records 转译器**（文本 → 结构化数据 → 原生渲染），保双端
 
 ## 10. 已知风险与开放问题
 
-1. **标签发射**：svg 无 `<text>` → 绝对定位 text overlay。动态 `left-[${x}px]` 类在
-   vue 轨 Tailwind arbitrary value 无虞；**VM/iced 轨对动态 arbitrary 值的解析支持面
-   需核验**（donut tooltip 只用了固定值 `top-[20px]` 先例）——Phase 1 首个验证项，
-   回退方案 = R006 式槽位字段。备选：svg 直通标签集增 `text`（§6.1），与 overlay
-   同批对照评估，通过则升级为首选。
+1. **标签发射（✅ Plan 502 M1 已收口）**：svg `text` 直通胜出（§6.1 定案记录）。
+   原 overlay 风险条留档：动态 `left-[${x}px]` 在 VM/iced 轨可解析（499 M3
+   `LeftOffset` 断言 + 502 dump 复证）但渲染落位降级；vue 轨响应式缩放脱钩。
+   overlay 退守 tooltip 专用。
 2. **布局算法质量**：Sugiyama-lite 在稠密图上交叉数可观；接受目检相当口径，
    `layout` prop 预留 `"auto"` 以外的将来值。
 3. **gantt 日期**：`"YYYY-MM-DD"` str 手工 split 解析，无时区/时长日历语义
