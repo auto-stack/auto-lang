@@ -4402,6 +4402,19 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
                 inherit_text_color(c, color);
             }
         }
+        // PLAN-054 T5 (A10): Image 同样继承按钮文本色——发送钮
+        // `bg-primary text-primary-foreground { Send{} }` 的图标此前落
+        // OnBackground 回退,亮色主题下白钮白标不可见。
+        AbstractView::Image { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
+            }
+        }
         AbstractView::Row { children, .. } | AbstractView::Column { children, .. } | AbstractView::List { items: children, .. } => {
             for child in children {
                 inherit_text_color(child, color);
