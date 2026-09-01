@@ -217,7 +217,7 @@ widget App {
             { from: "check", to: "run" },
             { from: "run",   to: "done" },
             { from: "check", to: "retry" },
-            { from: "retry", to: "check" }
+            { from: "retry", to: "check", line: "dash" }
         ]
     }
     view {
@@ -270,9 +270,22 @@ description: \"e2e fixture\"
     assert!(td.contains(r##"y=\"240\""##), "td rn/rt 同层 y=240");
     assert!(td.contains(r##"y=\"348\""##), "td dn 第 3 层 y=348");
     assert!(td.contains(r##"viewBox=\"0 0 336 416\""##), "td viewBox 包络");
-    assert!(td.contains(r##"M 168 46 L 168 154"##), "td 主干垂直直线");
-    assert!(td.contains(r##"M 252 262 L 168 154"##), "td 回环边向上(DFS 回边)");
-    assert!(td.contains(r##"M 84 262 L 84 370"##), "td rn→dn 垂直(叶居中于父)");
+    assert!(td.contains(r##"M 234.88889 240 L 185.11111 176"##), "td 回环边向上且 bbox 裁剪(DFS 回边)");
+    assert!(td.contains(r##"M 84 284 L 84 348"##), "td rn→dn 垂直且 bbox 裁剪(叶居中于父)");
+    // M4:边 = bbox 交点段(不再穿节点);箭头字形实心三角
+    assert!(td.contains(r##"M 168 68 L 168 132"##), "M4 st→ck bbox 交点段(st 底边 68 → ck 顶边 132)");
+    assert!(
+        td.contains(r##"M 168 132 L 163 122 L 173 122 Z"##),
+        "M4 ck 入口箭头字形(tip 168,132;翼 ±5;尾 10)"
+    );
+    assert!(
+        td.contains(r##"stroke-dasharray=\"4 3\""##),
+        "M4 回环边 dash 样式"
+    );
+    assert!(
+        td.contains(r##"M 84 348 L 79 338 L 89 338 Z"##),
+        "M4 dn 入口箭头字形(rn→dn 垂直边)"
+    );
 
     // ---- lr:转置,层沿 x 展开;st/ck/dn 中轴 y=100,rn/rt 分居 y=46/154 ----
     let lrd = run_dir("lr");
@@ -280,7 +293,7 @@ description: \"e2e fixture\"
     assert!(lrd.contains(r##"x=\"360\""##) && lrd.contains(r##"y=\"24\""##), "lr rn(360,y24)");
     assert!(lrd.contains(r##"y=\"132\""##) && lrd.contains(r##"x=\"528\""##), "lr rt(y132)/dn(528)");
     assert!(lrd.contains(r##"viewBox=\"0 0 672 200\""##), "lr viewBox 转置包络");
-    assert!(lrd.contains(r##"M 84 100 L 252 100"##), "lr 主干水平直线");
+    assert!(lrd.contains(r##"M 144 100 L 192 100"##), "lr 主干水平直线(bbox 裁剪)");
 }
 
 // Plan 502 M3 追加:Sugiyama-lite 布局核几何对拍(镜像管线,script 上下文)。
@@ -625,4 +638,35 @@ f"r:${outR} fb:${outF} c:${outC}"
     // ⑦ 确定性:双跑一致。
     let again = run_case("5", "[0, 1, 2, 1, 3]", "[1, 2, 4, 3, 1]", "td");
     assert_eq!(demo_td, again, "布局确定性(同输入同输出)");
+}
+
+/// Plan 502 M4:字形变体数学(diamond 四点 / circle 双弧)——与组件
+/// Init 内联块同式;e2e 已锚定 arrow 精确形态,此处覆盖其余两档。
+#[test]
+fn plan502_m4_glyph_variants() {
+    let code = r##"
+var bx float = 84.0
+var by float = 132.0
+var ux float = 0.0
+var uy float = 1.0
+var out = ""
+// diamond:tip → (6,±5) → 12 → (6,∓5)
+var d1x = bx - ux * 6.0 - uy * 5.0
+var d1y = by - uy * 6.0 + ux * 5.0
+var d2x = bx - ux * 12.0
+var d2y = by - uy * 12.0
+var d3x = bx - ux * 6.0 + uy * 5.0
+var d3y = by - uy * 6.0 - ux * 5.0
+out = out + f"M ${bx} ${by} L ${d1x} ${d1y} L ${d2x} ${d2y} L ${d3x} ${d3y} Z;"
+// circle:双弧(中心 tip-5u,r=5)
+var ccx = bx - ux * 5.0
+var ccy = by - uy * 5.0
+out = out + f"M ${ccx - 5.0} ${ccy} a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 Z"
+out
+"##;
+    let result = crate::run(code).unwrap();
+    assert_eq!(
+        result,
+        "M 84 132 L 79 126 L 84 120 L 89 126 Z;M 79 127 a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 Z"
+    );
 }

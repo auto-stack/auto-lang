@@ -22,7 +22,7 @@ widget FlowDiagramPage {
             { from: "check", to: "run",   label: "yes" },
             { from: "run",   to: "done" },
             { from: "check", to: "retry", label: "no" },
-            { from: "retry", to: "check" }
+            { from: "retry", to: "check", line: "dash" }
         ]
     }
 

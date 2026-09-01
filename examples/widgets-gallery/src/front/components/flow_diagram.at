@@ -32,6 +32,7 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
         // render 段记录(按 kind 分桶,view 无分支)
         nodesDg List = []
         edgesDg List = []
+        glyphsDg List = []
         vbDg str = "0 0 560 300"
     }
 
@@ -49,6 +50,9 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
             // ---- 边端点索引(id → index 线性查) ----
             var ef List = []
             var et List = []
+            var linesArr List = []
+            var headsArr List = []
+            var tailsArr List = []
             for e in .edges {
                 var fa = e["from"]
                 var ta = e["to"]
@@ -66,6 +70,9 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
                 }
                 ef.push(fj)
                 et.push(tj)
+                linesArr.push(e["line"])
+                headsArr.push(e["head"])
+                tailsArr.push(e["tail"])
             }
 
             // ---- M3 rank 趟①: DFS 回边检测(灰→灰边 = 环上回卷点,剥离。
@@ -458,7 +465,12 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
             }
             .nodesDg = outNodes
 
+            // ---- M4 段记录: 边 = bbox 边界交点直线段(轴满偏消除除法
+            //      尾差);head/tail 字形(arrow/diamond/circle 实心小多边形,
+            //      donut 弧先例);line 样式(dash/thick)。cf-* v1 别名 circle
+            //      (Phase 2a 补),字形缺失容忍(缺字段 = Int 0)。
             var outEdges List = []
+            var outGlyphs List = []
             ei = 0
             while ei < m {
                 var fj2 = ef[ei]
@@ -468,11 +480,149 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
                     var y0 = cys[fj2]
                     var x1 = cxs[tj2]
                     var y1 = cys[tj2]
-                    outEdges.push({ d: f"M ${x0} ${y0} L ${x1} ${y1}" })
+                    var sx = x1 - x0
+                    var sy = y1 - y0
+                    var asx float = sx
+                    if asx < 0.0 {
+                        asx = -asx
+                    }
+                    var asy float = sy
+                    if asy < 0.0 {
+                        asy = -asy
+                    }
+                    var hwE float = nw / 2.0
+                    var hhE float = nh / 2.0
+                    var txo float = 1000000.0
+                    if asx > 0.0 {
+                        txo = hwE / asx
+                    }
+                    var tyo float = 1000000.0
+                    if asy > 0.0 {
+                        tyo = hhE / asy
+                    }
+                    var tOut float = txo
+                    var outY bool = false
+                    if tyo <= txo {
+                        tOut = tyo
+                        outY = true
+                    }
+                    var ax float = x0
+                    var ay float = y0
+                    var bx float = x1
+                    var by float = y1
+                    if outY {
+                        ay = y0
+                        if sy > 0.0 {
+                            ay = y0 + hhE
+                        }
+                        if sy < 0.0 {
+                            ay = y0 - hhE
+                        }
+                        by = y1
+                        if sy > 0.0 {
+                            by = y1 - hhE
+                        }
+                        if sy < 0.0 {
+                            by = y1 + hhE
+                        }
+                        ax = x0 + tOut * sx
+                        bx = x1 - tOut * sx
+                    } else {
+                        ax = x0
+                        if sx > 0.0 {
+                            ax = x0 + hwE
+                        }
+                        if sx < 0.0 {
+                            ax = x0 - hwE
+                        }
+                        bx = x1
+                        if sx > 0.0 {
+                            bx = x1 - hwE
+                        }
+                        if sx < 0.0 {
+                            bx = x1 + hwE
+                        }
+                        ay = y0 + tOut * sy
+                        by = y1 - tOut * sy
+                    }
+
+                    var lv = linesArr[ei]
+                    var dashv = ""
+                    var swv = "1.5"
+                    if lv == "dash" {
+                        dashv = "4 3"
+                    }
+                    if lv == "thick" {
+                        swv = "2.5"
+                    }
+                    outEdges.push({ d: f"M ${ax} ${ay} L ${bx} ${by}", dash: dashv, sw: swv })
+
+                    // ---- 字形(方向单位向量 u 与垂向量 v;箭头=三角
+                    //      tip-10±5、菱形=四点、圆=双弧,均实心) ----
+                    var hv = headsArr[ei]
+                    var tv = tailsArr[ei]
+                    if sx != 0.0 || sy != 0.0 {
+                        var sl float = math.sqrt(sx * sx + sy * sy)
+                        var ux float = sx / sl
+                        var uy float = sy / sl
+                        if hv != "none" {
+                            if hv == "diamond" {
+                                var d1x = bx - ux * 6.0 - uy * 5.0
+                                var d1y = by - uy * 6.0 + ux * 5.0
+                                var d2x = bx - ux * 12.0
+                                var d2y = by - uy * 12.0
+                                var d3x = bx - ux * 6.0 + uy * 5.0
+                                var d3y = by - uy * 6.0 - ux * 5.0
+                                outGlyphs.push({ d: f"M ${bx} ${by} L ${d1x} ${d1y} L ${d2x} ${d2y} L ${d3x} ${d3y} Z" })
+                            } else {
+                                if hv == "circle" {
+                                    var ccx = bx - ux * 5.0
+                                    var ccy = by - uy * 5.0
+                                    outGlyphs.push({ d: f"M ${ccx - 5.0} ${ccy} a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 Z" })
+                                } else {
+                                    var bcx = bx - ux * 10.0
+                                    var bcy = by - uy * 10.0
+                                    var p1x = bcx - uy * 5.0
+                                    var p1y = bcy + ux * 5.0
+                                    var p2x = bcx + uy * 5.0
+                                    var p2y = bcy - ux * 5.0
+                                    outGlyphs.push({ d: f"M ${bx} ${by} L ${p1x} ${p1y} L ${p2x} ${p2y} Z" })
+                                }
+                            }
+                        }
+                        if tv != "none" && tv != 0 {
+                            var tux float = -ux
+                            var tuy float = -uy
+                            if tv == "diamond" {
+                                var e1x = ax - tux * 6.0 - tuy * 5.0
+                                var e1y = ay - tuy * 6.0 + tux * 5.0
+                                var e2x = ax - tux * 12.0
+                                var e2y = ay - tuy * 12.0
+                                var e3x = ax - tux * 6.0 + tuy * 5.0
+                                var e3y = ay - tuy * 6.0 - tux * 5.0
+                                outGlyphs.push({ d: f"M ${ax} ${ay} L ${e1x} ${e1y} L ${e2x} ${e2y} L ${e3x} ${e3y} Z" })
+                            } else {
+                                if tv == "circle" {
+                                    var tcx = ax - tux * 5.0
+                                    var tcy = ay - tuy * 5.0
+                                    outGlyphs.push({ d: f"M ${tcx - 5.0} ${tcy} a 5 5 0 1 0 10 0 a 5 5 0 1 0 -10 0 Z" })
+                                } else {
+                                    var qcx = ax - tux * 10.0
+                                    var qcy = ay - tuy * 10.0
+                                    var r1x = qcx - tuy * 5.0
+                                    var r1y = qcy + tux * 5.0
+                                    var r2x = qcx + tuy * 5.0
+                                    var r2y = qcy - tux * 5.0
+                                    outGlyphs.push({ d: f"M ${ax} ${ay} L ${r1x} ${r1y} L ${r2x} ${r2y} Z" })
+                                }
+                            }
+                        }
+                    }
                 }
                 ei = ei + 1
             }
             .edgesDg = outEdges
+            .glyphsDg = outGlyphs
 
             // ---- viewBox 自适应(实际坐标包络 + 边距) ----
             var wMax float = 0.0
@@ -497,7 +647,10 @@ widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
         col (style: "w-full max-w-xl mx-auto") {
             svg (viewBox: .vbDg, style: "w-full h-auto") {
                 for e in .edgesDg {
-                    path (d: e.d, stroke: "#94a3b8", fill: "none", stroke-width: "1.5") {}
+                    path (d: e.d, stroke: "#94a3b8", fill: "none", stroke-width: e.sw, stroke-dasharray: e.dash) {}
+                }
+                for g in .glyphsDg {
+                    path (d: g.d, fill: "#64748b") {}
                 }
                 for nd in .nodesDg {
                     rect (x: nd.x, y: nd.y, width: nd.w, height: nd.h, rx: "6", fill: nd.fill, stroke: nd.stroke, stroke-width: "1") {}
