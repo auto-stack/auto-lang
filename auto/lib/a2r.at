@@ -1819,7 +1819,10 @@ fn ar_method_call(mut a Ar, mut p P, recv str, recv_ty str, word str) str {
             if args.len() > 1 && ar_all_digits(a1) == 1 {
                 lit_b = 1
             }
-            return recv + "[" + ar_usize_cast(a0, lit_a) + ".." + ar_usize_cast(a1, lit_b) + "].to_string()"
+            // Plan 514 W2(P511-1 根因①⑤腿):镜像主 a2r——码点切片
+            // chars().take(b).skip(a)(字节切片 recv[a..b] 在 CJK 内非
+            // char boundary 直接 panic,⑤腿 b13/b14/b19 实证)
+            return recv + ".chars().take((" + a1 + ") as usize).skip((" + a0 + ") as usize).collect::<String>()"
         }
         "replace" -> {
             a.infer = 0
