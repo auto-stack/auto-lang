@@ -6226,6 +6226,12 @@ mod plan499_engine_float_to_int_tests;
 #[cfg(test)]
 mod plan503_tests;
 
+// Plan 510 / P499-7: native ID 撞号(Log×Shell 1800-1803)回归钉 +
+// 字符串池 over-release 记账回归。
+#[cfg(test)]
+#[path = "tests/plan510_pool_tests.rs"]
+mod plan510_pool_tests;
+
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]
 mod plan492_m2_tests;
