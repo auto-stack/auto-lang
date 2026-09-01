@@ -1480,7 +1480,46 @@ mod musk_vm_track_p054_runtime_probe {
         eprintln!("[P054-probe] state fields: {:?}", fields);
         let authed = dc.write_state("token", auto_val::Value::Str("probe-token".into()));
         authed.expect("write token");
+        // T3 R3 勘察：给 .current 填真值，看 ${currentName}/${currentTitle}
+        // 字面量是否被求值（workspace_selector computed 形态）。
+        let ws = auto_val::Obj::new()
+            .with("id", auto_val::Value::str("ws-1"))
+            .with("name", auto_val::Value::str("musk-demo"))
+            .with("path", auto_val::Value::str("D:\\autostack\\auto-musk"));
+        dc.write_state("current", auto_val::Value::Obj(ws))
+            .expect("write current");
+        // T3 R3 勘察续：VM flash 里 computed 是否编成同名 fn + call_vm_fn 直调。
+        let bridge = dc.bridge();
+        let names: Vec<String> = bridge
+            .vm()
+            .flash
+            .exports_by_name
+            .keys()
+            .filter(|k| k.contains("current") || k.contains("Name") || k.contains("Title"))
+            .cloned()
+            .collect();
+        eprintln!("[P054-probe] vm fn exports matching current/Name/Title: {:?}", names);
+        for cand in ["currentName", "currentTitle", "WorkspaceSelector.currentName"] {
+            match bridge.call_vm_fn(cand, &[]) {
+                Ok(v) => eprintln!("[P054-probe] call_vm_fn({cand}) = {:?}", v),
+                Err(e) => eprintln!("[P054-probe] call_vm_fn({cand}) ERR: {:?}", e),
+            }
+        }
+        for cand in ["ws_load_current", "ws_load_recent"] {
+            match bridge.call_vm_fn(cand, &[]) {
+                Ok(v) => eprintln!("[P054-probe] call_vm_fn({cand}) = {:?}", v),
+                Err(e) => eprintln!("[P054-probe] call_vm_fn({cand}) ERR: {:?}", e),
+            }
+        }
+        eprintln!(
+            "[P054-probe] root read_state(current) pre-view = {:?}",
+            bridge.read_state("current")
+        );
         let (view, _, _) = dc.view_with_debug_gated(false);
+        eprintln!(
+            "[P054-probe] root read_state(current) post-view = {:?}",
+            dc.bridge().read_state("current")
+        );
         fn walk(
             view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
             imgs: &mut Vec<String>,
@@ -1517,5 +1556,323 @@ mod musk_vm_track_p054_runtime_probe {
         for t in &texts {
             eprintln!("  text: {:?}", t);
         }
+    }
+}
+
+/// PLAN-054 T3 (R3/R4): 文本插值 computed 形态求值 + i18n {'x'} 转义。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_interp_i18n {
+    use crate::parser::Parser;
+
+    fn build(src: &str) -> crate::ui::dynamic::DynamicComponent {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    fn texts_of(comp: &crate::ui::dynamic::DynamicComponent) -> Vec<String> {
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn walk(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match view {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Button { label, content, .. } => {
+                    out.push(format!("[label {:?}]", label));
+                    if let Some(c) = content {
+                        walk(c, out);
+                    }
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, out);
+                    }
+                }
+                View::Container { child, .. } => walk(child, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(&view, &mut out);
+        out
+    }
+
+    /// 根 widget 形态：computed if（.current != None → .current.name）。
+    /// workspace_selector.at:23 的 currentName 同款。此前显示字面
+    /// "${currentName}"（read_state Err 兜底臂）。
+    #[test]
+    fn computed_if_text_resolves_in_root_widget() {
+        let src = concat!(
+            "widget Root54c {\n",
+            "    model { var current obj = None }\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let comp = build(src);
+        let texts = texts_of(&comp);
+        eprintln!("[P054-T3] root texts: {:?}", texts);
+        assert!(
+            texts.iter().any(|t| t == "选择工作目录"),
+            "computed if 必须求值（current=None → else 分支）, got: {:?}",
+            texts
+        );
+    }
+
+    /// 子 widget 形态：computed 定义在子 widget，父视图实例化。
+    /// 此前子 builder 的 computed 链路断裂 → 字面 "${currentName}"。
+    #[test]
+    fn computed_if_text_resolves_in_child_widget() {
+        let src = concat!(
+            "widget Selector54c {\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "        currentTitle => if .current != None { .current.path } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    model { var current obj = None }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "            text .currentTitle\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "widget Root54c2 {\n",
+            "    view {\n",
+            "        col {\n",
+            "            Selector54c {}\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let comp = build(src);
+        let texts = texts_of(&comp);
+        eprintln!("[P054-T3] child texts: {:?}", texts);
+        assert!(
+            texts.iter().filter(|t| !t.starts_with("[label")).count() >= 2,
+            "子 widget 两个 computed text 都要渲染, got: {:?}",
+            texts
+        );
+        assert!(
+            texts.iter().any(|t| t == "选择工作目录"),
+            "子 widget computed if 必须求值, got: {:?}",
+            texts
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("${current")),
+            "不得残留 ${{...}} 字面量, got: {:?}",
+            texts
+        );
+    }
+}
+
+/// PLAN-054 T3 (R3) 生产装载面：`var current obj = None` 的 None 初始值
+/// 经 VmBridge::new 状态种入必须是 Nil——此前 eval_expr_to_value 的 Ident
+/// 臂把 None 解析为 Int(0)（"unresolved ident 零占位"），子作用域 computed
+/// 链 `.current != None` 恒真 → `.current.path` 作用 Int(0) → None →
+/// workspace 行显示字面 "${currentName}/${currentTitle}"（A4）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_none_initial {
+    use crate::parser::Parser;
+
+    #[test]
+    fn obj_model_none_initial_seeds_nil_in_vm_state() {
+        let src = concat!(
+            "widget Root54n {\n",
+            "    model {\n",
+            "        var current obj = None\n",
+            "        var flag bool = false\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        let bridge = crate::ui::vm_bridge::VmBridge::new(&widget).expect("bridge");
+        let current = bridge.read_state("current").expect("read current");
+        eprintln!("[P054-T3] current initial = {:?}", current);
+        assert_eq!(
+            current,
+            auto_val::Value::Nil,
+            "obj = None 初始值必须种入 Nil(此前 Int(0) 令 computed != None 恒真), got {:?}",
+            current
+        );
+        let flag = bridge.read_state("flag").expect("read flag");
+        assert_eq!(flag, auto_val::Value::Bool(false), "bool 初始值不变");
+    }
+}
+
+/// PLAN-054 T3 (R3) VM 返回值形态：`.at` fn 体里裸 `return None` 必须以
+/// NV nil 返回（call_vm_fn 解码为 Value::Nil）——P-053-2 只修了 null/nil
+/// 字面量，大写 None（musk 惯用）经 Ident/未解析臂落 Int(0)，沿
+/// `.current = ws_load_current()` 写进 state → `!= None` 恒真 →
+/// `.current.path` 作用 Int(0) → workspace 行显示字面 ${currentTitle}（A4）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_none_return {
+    use crate::parser::Parser;
+
+    pub(super) fn build_bridge(src: &str) -> crate::ui::vm_bridge::VmBridge {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let fns: Vec<crate::ast::Stmt> = ast
+            .stmts
+            .iter()
+            .filter(|st| matches!(st, crate::ast::Stmt::Fn(_)))
+            .cloned()
+            .collect();
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        crate::ui::vm_bridge::VmBridge::new_with_imports(&widget, fns).expect("bridge")
+    }
+
+    #[test]
+    fn vm_fn_bare_none_return_is_nil_not_int0() {
+        let src = concat!(
+            "widget Root54nr {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn load() Value {\n",
+            "    return None\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        let v = bridge
+            .call_vm_fn("load", &[])
+            .expect("call load");
+        eprintln!("[P054-T3] return None => {:?}", v);
+        assert_eq!(
+            v,
+            auto_val::Value::Nil,
+            "裸 return None 必须解出 Nil, got {:?}（Int(0) 沿状态写入扩散成 != None 恒真）",
+            v
+        );
+    }
+}
+
+/// PLAN-054 T3 (R3)：computed if 的兜底语义——then 体求值失败（如 x 为
+/// 零默认 Int(0) 时 `x.f` 解析 None）不得整链报废出 "${name}" 字面量，
+/// 必须落到 else 兜底（`if x != None { x.f } else { fallback }` 意图）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_if_fallback {
+    use crate::parser::Parser;
+
+    #[test]
+    fn computed_if_falls_back_when_then_body_unresolvable() {
+        let src = concat!(
+            "widget Root54fb {\n",
+            "    model { var current obj = None }\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decl,
+            &[],
+            &widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        // 模拟生产现场的零默认垃圾态（VM 装载/async 句柄写回 Int(0)）。
+        comp.bridge_mut()
+            .write_state("current", auto_val::Value::Int(0))
+            .expect("write garbage current");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn texts(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match view {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        texts(c, out);
+                    }
+                }
+                View::Container { child, .. } => texts(child, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        texts(&view, &mut out);
+        eprintln!("[P054-T3] fallback texts: {:?}", out);
+        assert!(
+            out.iter().any(|t| t == "选择工作目录"),
+            "then 体不可解析时必须落 else 兜底, got: {:?}",
+            out
+        );
+        assert!(
+            !out.iter().any(|t| t.contains("${currentName}")),
+            "不得残留 ${{...}} 字面量, got: {:?}",
+            out
+        );
     }
 }

@@ -6721,39 +6721,71 @@ let tabs_inner = View::Row {
             // 多个条目,只看 branches.first() 会跳过中间分支(如 kind==Dir 命中而
             // kind==CodeAtRs 永远落 else)。
             Expr::If(if_expr) => {
+                // PLAN-054 T3: 分支体求值失败不整链报废——`if x != None { x.f }
+                // else { fallback }` 的兜底意图是"取不到就落默认";此前 then 体
+                // 任一点 None(如 x 为零默认 Int(0) 时 x.f 解析失败)→ 整个
+                // computed → None → 文本位出 "${name}" 字面量(musk 工作区行
+                // "Y${currentTitle}" 现场)。改为:分支体落空继续走后续
+                // else-if/else 链,真实 obj 全路径无损。
+                let mut selected: Option<Value> = None;
+                let mut decided = false;
                 for branch in &if_expr.branches {
-                    let cond_val = self.resolve_expr_to_value(&branch.cond, bindings)?;
+                    let Some(cond_val) = self.resolve_expr_to_value(&branch.cond, bindings) else {
+                        continue;
+                    };
                     let is_true = match &cond_val {
                         Value::Bool(false) | Value::Nil => false,
                         Value::Int(i) if *i == 0 => false,
                         _ => true,
                     };
-                    if is_true {
-                        // then body must be a single expression (Plan 339 contract)
-                        if branch.body.stmts.len() == 1 {
-                            match &branch.body.stmts[0] {
-                                crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
-                                crate::ast::Stmt::If(nested_if) => {
-                                    return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
-                                }
-                                _ => {}
-                            }
-                        }
-                        return None;
+                    if !is_true {
+                        continue;
                     }
-                }
-                if let Some(else_body) = &if_expr.else_ {
-                    if else_body.stmts.len() == 1 {
-                        match &else_body.stmts[0] {
-                            crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
+                    decided = true;
+                    // then body must be a single expression (Plan 339 contract)
+                    if branch.body.stmts.len() == 1 {
+                        match &branch.body.stmts[0] {
+                            crate::ast::Stmt::Expr(e) => {
+                                match self.resolve_expr_to_value(e, bindings) {
+                                    Some(v) => selected = Some(v),
+                                    None => decided = false,
+                                }
+                            }
                             crate::ast::Stmt::If(nested_if) => {
-                                return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                match self.resolve_expr_to_value(
+                                    &crate::ast::Expr::If(nested_if.clone()),
+                                    bindings,
+                                ) {
+                                    Some(v) => selected = Some(v),
+                                    None => decided = false,
+                                }
                             }
                             _ => {}
                         }
                     }
+                    if selected.is_some() {
+                        break;
+                    }
                 }
-                None
+                if selected.is_none() && !decided {
+                    if let Some(else_body) = &if_expr.else_ {
+                        if else_body.stmts.len() == 1 {
+                            match &else_body.stmts[0] {
+                                crate::ast::Stmt::Expr(e) => {
+                                    selected = self.resolve_expr_to_value(e, bindings);
+                                }
+                                crate::ast::Stmt::If(nested_if) => {
+                                    selected = self.resolve_expr_to_value(
+                                        &crate::ast::Expr::If(nested_if.clone()),
+                                        bindings,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                selected
             }
             // D-GAP-4: f-string in a value position (non-primary-prop props,
             // style_obj values, …) — evaluate to the joined display string
