@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 5
+current_step: 9
 total_steps: 22
 ---
 
@@ -315,14 +315,22 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W2 AA2R W5 + P511-1（worktree 续）
 
-6. [ ] corpus_a2r g09–g15 语料先行落盘。验证：AA2R 侧红清单（unsupported
-   报错即红证）。
-7. [ ] `auto/lib/a2r.at`：ar_prescan_type 方法表 + ar_prescan_ext +
-   ar_run Ext 分支。验证：g09–g10 预扫层转绿（发射层可仍红）。
-8. [ ] ar_emit_ext + ar_emit_fn2 接收器合成 + self 入作用域 + .field→
-   self.field。验证：g11–g13 live 对拍绿。
-9. [ ] 方法调用位（ar_method_call 查表/static Type::/构造器）+ type 发射
-   分离。验证：g09–g15 全绿 + rustc 零错。
+6. [✅ 已完成] g09_ext_basic/g10_type_inline_method/g11_static_new/g12_mut_field/
+   g13_method_chain/g14_ctor_call/g15_self_dot_forms 落盘；红证：
+   `PARSE-ERROR:v2 unsupported: type body member <Static>`（AA2R 首失配即停）。
+7. [✅ 已完成] ArMethod 方法表（is_static/mutates/pos）+ar_prescan_type 体内
+   fn/static 解析+ar_scan_method_writes（`.x =`/`self.x =` 字段写 token 扫描→
+   &mut 判定）+ar_prescan_ext（方法并入目标 type 表）+ar_run Ext 分支。
+8. [✅ 已完成] ar_emit_type2 struct/impl 分离（体内方法内联+ext 方法按预扫位
+   跳转，全部并入同一 impl 块=主 a2r 合并形）+ar_emit_method2（接收者合成
+   &self/&mut self/static 免+self 经 ar_vpush 入作用域）+原子 leading-Dot 臂
+   （`.field`→`self.field`、`.method(...)`→self 调用）。迭代修复：单行方法体
+   专用 ar_skip_method_body（ar_skip_decl 越界吞外层 RBrace）、ext 发射位空行
+   抑制、static 双关键字跳层。
+9. [✅ 已完成] Type.new(x)→`Type::new(x)` 静态类型路径+零参 get() 用户方法
+   直通（避开数组索引臂）+构造器（ar_call_tail 既有位置构造展开复用）。
+   验证：corpus_a2r 全绿（g01–g15 逐字符对拍主 a2r）+g09–g15 主 a2r 产物
+   rustc --emit=metadata 零错+标准门禁 16 绿+99_unit 13 绿。2026-09-01。
 10. [ ] P511-1 双根因修复（CJK 注释词法 + arr_flag 接收者跟踪）。
     验证：`--include-ignored` 37/37 绿。
 11. [ ] AA2R 腿去 ignore + CI 口径更新 + 折叠点②（矩阵+CI 绿合入）。
