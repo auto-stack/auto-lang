@@ -2304,9 +2304,11 @@ impl AuraSchema {
         elements.insert("mouse-area", ElementDef {
             tag: "mouse-area",
             category: ElementCategory::Overlay,
-            props: vec![],
+            props: vec![
+                PropDef { name: "coords", type_: PropType::String, required: false, default: None, description: "Logical extent for onmousemove coordinates, \"WxH\" (e.g. \"560x300\" = component viewBox system). Without it onmousemove args are bounds-local physical px (raw mode)" },
+            ],
             allows_children: true,
-            description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite).",
+            description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).",
         });
 
         // === Collapsible ===

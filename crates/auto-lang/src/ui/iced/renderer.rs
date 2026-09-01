@@ -3511,7 +3511,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 484: hover 命中区 —— iced mouse_area 透明包裹,仅转发
             // enter/exit 消息(通用事件分发)。style(尺寸/定位类)经
             // build_container 承载——命中区必须定宽高,空内容才有可命中面积。
-            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, style } => {
+            // Plan 499 M2: 带 on_move 时再包 PointerArea——坐标换算(bounds
+            // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
+            // 的存量 mouse-area 映射零改动。
+            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
                 let mut ma = mouse_area(content.into_iced());
                 if let Some(msg) = on_enter {
                     ma = ma.on_enter(msg);
@@ -3531,8 +3534,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         ma = ma.on_press(msg);
                     }
                 }
+                let inner: iced::Element<'static, M> = ma.into();
+                let wrapped: iced::Element<'static, M> =
+                    if let Some(handler) = on_move.filter(|_| !inspect_capture_active()) {
+                        let mut pa = crate::ui::iced::pointer_area::PointerArea::new(inner);
+                        if let Some((w, h)) = logical_extent {
+                            pa = pa.extent(w, h);
+                        }
+                        let f = std::sync::Arc::new(
+                            move |x: f32, y: f32| handler.call(x, y),
+                        );
+                        pa.on_move(f).into()
+                    } else {
+                        inner
+                    };
                 build_container(
-                    ma.into(),
+                    wrapped,
                     0,
                     None,
                     None,
@@ -5135,13 +5152,21 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
         // 双击臂依赖本臂;enter/exit/double_click 三消息递归映射。
         // Plan 498 M0: 增 on_click 映射(chart legend 点击切换显隐)。
-        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, style } => {
+        // Plan 499 M2: on_move handler 递归复合(调用产出 DynamicMessage 经
+        // from_dynamic 编码为 IcedMessage;逻辑坐标在闭包现场追加)。
+        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_move, logical_extent, style } => {
             AbstractView::MouseArea {
                 content: Box::new(convert_view_messages(*content)),
                 on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
                 on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
                 on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
                 on_click: on_click.map(|m| IcedMessage::from_dynamic(&m)),
+                on_move: on_move.map(|h| {
+                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                        IcedMessage::from_dynamic(&h.call(x, y))
+                    })
+                }),
+                logical_extent,
                 style,
             }
         }

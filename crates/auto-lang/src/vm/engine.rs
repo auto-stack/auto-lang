@@ -6869,8 +6869,14 @@ impl AutoVM {
                                 }
                             }
                         }
-                    } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") {
+                    } else if type_name.starts_with("<unknown:") || type_name.starts_with("<invalid") || type_name.starts_with("<unknown_nv:") {
                         // Integer literal methods: 0x1234.to_be_bytes(), etc.
+                        // Plan 499 M3: f64/f32/bool nanbox 接收者的 type_name 是
+                        // "<unknown_nv:{hex}>"(下方 6036 一带最终 else 产出),旧条件
+                        // 只匹配 "<unknown:"/"<invalid" 前缀——浮点接收者的
+                        // .to_int()/.to_string() 漏网直坠 CALL_SPEC 报错臂
+                        // (axisPointer 索引吸附 fi.to_int() 现场)。403-F 的
+                        // 按标签解码臂本就为这些接收者书写,补前缀即通。
                         let int_val = auto_val::decode_i32(receiver_nv);
                         match method_name.as_str() {
                             "to_be_bytes" | "to_le_bytes" => {

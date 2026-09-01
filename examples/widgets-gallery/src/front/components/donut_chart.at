@@ -1,4 +1,4 @@
-// components/donut_chart.at - DonutChart component (Plan 437 Phase 2 ④ → Plan 484 v2 → Plan 498 M3)
+// components/donut_chart.at - DonutChart component (Plan 437 Phase 2 ④ → Plan 484 v2 → Plan 498 M3 → Plan 499 M4/M5)
 //
 // 圆环图(d3-arc 风格:外弧 A → 内弧回程 Z,大弧标志 span>π),角度由
 // 数据占比循环累进计算,math.cos/sin 直调。渲染端 v1 = SVG 子树直通。
@@ -10,11 +10,19 @@
 // 492 M6:带参 msg 声明恢复(484 时代"裸挂带参 handler"绕开随 Plan 492
 // C2 定案——带参 msg 声明双轨正常——退役)。
 //
+// 499 M4(逐扇区直接命中):svgdoc 静态限制(DOM 事件不可达)经由**代码命中**
+// 解除——全图单 mouse-area(coords "260x260" = viewBox 幅面,覆盖层 inset-0
+// 随 svg 缩放)→ .PointerMove(x,y) 极坐标测试(rIn²≤dx²+dy²≤rOut² 且
+// atan2 归一落累进角区间)→ 复用 498 emphasis(hovDn + e0..3 外移路径);
+// 扇区-边命中同源 = 逻辑坐标 + 代码几何测试同一能力(diagram 边后续消费,
+// canvas-pointer-events.md §4)。path 级 onmouseenter(VM 轨死事件)退役,
+// 双端同一命中代码;图例命中保留(双入口)。tooltip 维持角落锚定。
+//
 // # Usage
 // donut-chart (data: .traffic, index: "l", field: "v") {}
 
 widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<str> = ["#2563eb", "#16a34a", "#d97706", "#dc2626"], legend: bool = true, labels: List<str> = [], tooltip: bool = true) {
-    msg { Init, Hover(int), Toggle(int) }
+    msg { Init, Hover(int), Toggle(int), PointerMove(float, float), PointerOut, AnimDnTick }
 
     model {
         // 每片段路径槽位(d=常驻/e=emphasis 外移)
@@ -45,6 +53,18 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         hovered str = "false"
         tipTitle str = ""
         tipBody str = ""
+        // 499 M4:扇区累进角端表(a1 绝对角,Init 预落)+ 数据点数
+        //(handler 跑根态不可读 prop,P320 单态;498 哨兵纪律 hit=9)
+        endsDn List = []
+        cntDn int = 0
+        // 499 M5:tooltip 淡入插值(VM 数值插值/vue CSS transition 双轨)
+        tipOpDn int = 0
+        animDn bool = false
+    }
+
+    // 499 M5:VM 数值插值驱动源(when 门控零空闲开销;每拍 +25,4 拍到顶)
+    timer {
+        AnimDnTick (every_ms: 33, when: .animDn)
     }
 
     on {
@@ -63,6 +83,7 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
             var a0 float = -1.5707963267948966
             var outTipTitle List = []
             var outTipBody List = []
+            var outEnds List = []
             var cs = .colors
             var ccount int = cs.len()
             var lname = .labels
@@ -133,14 +154,21 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                 }
                 outTipTitle.push(name)
                 outTipBody.push(f"${lv} ${vi} (${pct}%)")
+                outEnds.push(a1)
                 a0 = a1
                 k = k + 1
             }
             .tipTitles = outTipTitle
             .tipBodies = outTipBody
+            .endsDn = outEnds
+            .cntDn = k
         }
 
         .Hover(i) -> {
+            if .hovered == "false" {
+                .tipOpDn = 0
+                .animDn = true
+            }
             .hovered = "true"
             .hovDn = i
             var tt = .tipTitles[i]
@@ -151,6 +179,63 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
         .HoverOut -> {
             .hovered = "false"
             .hovDn = 9
+        }
+        // 499 M4:极坐标扇区命中。坐标为覆盖层局部(viewBox 幅面 260x260,
+        // 原点 = viewBox (150,20)),换算 svg 系后做环带 + 累进角测试;
+        // 命中 → 复用 Hover 态(emphasis 外移);未命中(环外/内孔)→ 离焦。
+        .PointerMove(x, y) -> {
+            var sx float = x + 150.0
+            var sy float = y + 20.0
+            var dx float = sx - 280.0
+            var dy float = sy - 150.0
+            var r2 float = dx * dx + dy * dy
+            var hit int = 9
+            if r2 >= 3844.0 && r2 <= 10000.0 {
+                var ang float = math.atan2(dy, dx)
+                ang = ang + 1.5707963267948966
+                if ang < 0.0 {
+                    ang = ang + 6.283185307179586
+                }
+                var i int = 0
+                while i < .cntDn {
+                    var e = .endsDn[i]
+                    var eb float = e + 1.5707963267948966
+                    if ang < eb {
+                        if hit == 9 {
+                            hit = i
+                        }
+                    }
+                    i = i + 1
+                }
+            }
+            if hit == 9 {
+                .hovered = "false"
+                .hovDn = 9
+                .animDn = false
+                .tipOpDn = 0
+            } else {
+                if .hovered == "false" {
+                    .tipOpDn = 0
+                    .animDn = true
+                }
+                .hovered = "true"
+                .hovDn = hit
+                var tt = .tipTitles[hit]
+                var tb = .tipBodies[hit]
+                .tipTitle = tt
+                .tipBody = tb
+            }
+        }
+        .PointerOut -> {
+            .hovered = "false"
+            .hovDn = 9
+        }
+        .AnimDnTick -> {
+            .tipOpDn = .tipOpDn + 25
+            if .tipOpDn > 99 {
+                .tipOpDn = 100
+                .animDn = false
+            }
         }
         .Toggle(k) -> {
             if k == 0 {
@@ -182,42 +267,47 @@ widget DonutChart (data: List, index: str = "l", field: str = "v", colors: List<
                     if .d0 != "" {
                       if .visDn0 {
                         if .hovDn == 0 {
-                            path (key: .e0, d: .e0, fill: .legendColor0, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(0)) {}
+                            path (key: .e0, d: .e0, fill: .legendColor0, stroke: "#ffffff", stroke-width: "2") {}
                         } else {
-                            path (key: .d0, d: .d0, fill: .legendColor0, onmouseenter: .Hover(0)) {}
+                            path (key: .d0, d: .d0, fill: .legendColor0) {}
                         }
                       }
                     }
                     if .d1 != "" {
                       if .visDn1 {
                         if .hovDn == 1 {
-                            path (key: .e1, d: .e1, fill: .legendColor1, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(1)) {}
+                            path (key: .e1, d: .e1, fill: .legendColor1, stroke: "#ffffff", stroke-width: "2") {}
                         } else {
-                            path (key: .d1, d: .d1, fill: .legendColor1, onmouseenter: .Hover(1)) {}
+                            path (key: .d1, d: .d1, fill: .legendColor1) {}
                         }
                       }
                     }
                     if .d2 != "" {
                       if .visDn2 {
                         if .hovDn == 2 {
-                            path (key: .e2, d: .e2, fill: .legendColor2, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(2)) {}
+                            path (key: .e2, d: .e2, fill: .legendColor2, stroke: "#ffffff", stroke-width: "2") {}
                         } else {
-                            path (key: .d2, d: .d2, fill: .legendColor2, onmouseenter: .Hover(2)) {}
+                            path (key: .d2, d: .d2, fill: .legendColor2) {}
                         }
                       }
                     }
                     if .d3 != "" {
                       if .visDn3 {
                         if .hovDn == 3 {
-                            path (key: .e3, d: .e3, fill: .legendColor3, stroke: "#ffffff", stroke-width: "2", onmouseenter: .Hover(3)) {}
+                            path (key: .e3, d: .e3, fill: .legendColor3, stroke: "#ffffff", stroke-width: "2") {}
                         } else {
-                            path (key: .d3, d: .d3, fill: .legendColor3, onmouseenter: .Hover(3)) {}
+                            path (key: .d3, d: .d3, fill: .legendColor3) {}
                         }
                       }
                     }
                 }
+                // 499 M4:全图命中覆盖层(inset-0 随 svg 容器缩放;coords
+                // 归一换算免疫响应式)——双端同一代码命中
+                if .tooltip {
+                    mouse-area (coords: "260x260", onmousemove: .PointerMove, onmouseleave: .PointerOut, style: "absolute inset-0") {}
+                }
                 if .tooltip && .hovered == "true" {
-                    col (style: "absolute top-[20px] right-[20px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md") {
+                    col (class: f"absolute top-[20px] right-[20px] z-50 bg-popover border rounded-md px-2 py-1 shadow-md opacity-${.tipOpDn} transition-opacity duration-150") {
                         text .tipTitle { style: "text-xs font-semibold text-foreground" }
                         text .tipBody { style: "text-xs text-muted-foreground" }
                     }
