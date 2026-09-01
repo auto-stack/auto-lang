@@ -1,0 +1,10 @@
+type Item {
+    name str
+    qty int
+}
+
+fn main() {
+    let it = Item { name: "a", qty: 2 }
+    print(it.name.type)
+    print(it.qty.type)
+}

@@ -1,0 +1,15 @@
+type Inner {
+    v int
+}
+
+type Outer {
+    first Inner
+    tag str
+}
+
+let o = Outer { first: Inner { v: 1 }, tag: "t" }
+let a = o.first.v
+let b = o.tag
+let cc = o.first
+o.first.v = 2
+o.tag = "u"

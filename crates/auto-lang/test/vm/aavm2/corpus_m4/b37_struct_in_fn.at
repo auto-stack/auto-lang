@@ -1,0 +1,20 @@
+type Point {
+    x int
+    y int
+}
+
+fn mk(x int, y int) Point {
+    return Point { x: x, y: y }
+}
+
+fn sum(p Point) int {
+    p.x + p.y
+}
+
+fn main() {
+    let a = mk(3, 4)
+    let b = Point { x: a.x * 2, y: a.y * 2 }
+    print(sum(a))
+    print(sum(b))
+    print(b.x - b.y)
+}
