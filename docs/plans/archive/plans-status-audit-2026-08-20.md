@@ -1,4 +1,5 @@
 # Plans 未归档状态审计（2026-08-20）
+> 📦 **终态（2026-09-01，Plan 513 B 组处置）**：接任审计 = Plan 513「仓库整合清理」需求分析总表（四代理取证处置表）；本文档历史化归档，三处活链接（specs/overview.md、design/00-intro.md、handoff-2026-08-22.md）已随迁 archive 路径。
 
 > **审计范围**：`docs/plans/` 下 30 个非归档计划文件（不含本文件与 `plans-status-audit-2026-08.md`、`plans-360-369-status-summary.md` 两个旧审计文档）
 > **审计方法**：6 个并行核查代理对每个计划做代码级验证——计划自述状态 vs master（`f21dc88f`）实际代码（文件/函数/golden 测试/git 历史），重点甄别**遗漏功能点**与**workaround**

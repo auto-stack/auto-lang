@@ -100,6 +100,6 @@
 - 全局索引：[INDEX.md](INDEX.md)（脚本生成）
 - 目标账本：[goals.md](goals.md)
 - 技术债：[docs/plans/KNOWN-DEBT-AND-RISKS.md](../plans/KNOWN-DEBT-AND-RISKS.md)
-- 计划状态审计：[docs/plans/plans-status-audit-2026-08-20.md](../plans/plans-status-audit-2026-08-20.md)
+- 计划状态审计：[docs/plans/archive/plans-status-audit-2026-08-20.md](../plans/archive/plans-status-audit-2026-08-20.md)（2026-09-01 起接任审计 = [Plan 513](../plans/513-repo-integration-cleanup.md) 需求分析总表）
 - 设计文档：[docs/design/00-intro.md](../design/00-intro.md)
 - 开发范式：[docs/specs/README.md](README.md)（v2）+ [Design 26](../design/autoplan-spec-ledger.md)
