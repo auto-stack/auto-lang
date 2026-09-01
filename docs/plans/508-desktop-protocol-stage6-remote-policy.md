@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-508
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-protocol-stage6-remote-policy
 author: [zhaopuming]
 created_at: 2026-08-31
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-lang/ui]
-current_step: 7
+current_step: 9
 total_steps: 9
 ---
 
@@ -229,8 +229,21 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 8. **实机演示 + 文档收尾**：T6 清单；设计文档 §1.3 分期表 Stage 6 注记 +
    RenderQueue 终态小结。
    验证：文档 diff + 实机留痕。
+   [✅ 已完成] 设计文档 v1.4（§1.4 Stage 6 增量 + 分期表三阶段 ✅ 注记 +
+   RenderQueue 线终态小结 + :17800 入偏差表 + Stage 6 验证节）；T6 实机
+   PASS（ui_desktop 验收宿主 outproc 模式跑示例批 + headed 浏览器真窗
+   双向闭环：Counter: 0 → 点击 → Counter: 1；截图 ×3 留痕
+   assets/508/p508-t6-{browser-before,browser-after,desktop}.png）。执行期
+   修正：outproc 子进程本体探测（非 auto 宿主向上三级找兄弟二进制）；
+   T6 驱动 launch 单槽位防覆写重发纪律（实机真交互可覆写 `__desktop_cmd`
+   排队记录——验收通道工件非产品缺陷）。
 9. **收尾**：健康检查；状态翻 execution_done。
    验证：`cargo check -p auto-lang && cargo t ui`。
+   [✅ 已完成] `cargo check -p auto-lang`（lib+tests，含 ui-iced）零错；
+   `cargo t ui` 1672/1672；`cargo t session --features ui-iced` 85/85；
+   `cargo t desktop_protocol --features ui-iced` 112/112；折叠前全量门禁
+   `cargo tf --features ui-iced` **4343/4343 绿**。新增代码零警告
+   （存量警告未触碰）。status → execution_done。
 
 ## 复审记录
 
@@ -253,10 +266,19 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 - **① 新依赖**：`tokio-tungstenite` 为 RenderQueue 线首个新三方——理由
   （手写 WS 帧协议的工程量/风险不划算）已记；若复审不接受，退路 = 纯
   std 的最小 WS 服务端（HTTP 升级 + 帧解析，仅 server 侧子集）。
+  **[执行期裁定]** 已落地 tokio-tungstenite 0.30（no-default-features +
+  connect,handshake，仅宿主 WS 侧；vm/ffi/websocket 的直接 tungstenite
+  0.24 依赖并存不动）。
 - **② InputMsg TS 编码**：代码生成（Rust 常量导出 → TS 镜像脚本）vs 手工
   镜像常量——倾向生成防漂移，T5 定；对拍测试兜底无论哪条路。
+  **[执行期裁定]** 手工镜像 + 双侧 golden 对拍（Rust
+  `p508_ts_crosscheck_golden_bytes` ↔ TS `fixtures.golden.ts` 钉同一批
+  字节，任一侧漂移即红）；代码生成留作后续计划（对拍已防漂移）。
 - **③ 端口与安全**：`:17800` 回环 v1；token 静态配置。远程跨网/TLS 另立
   计划，本计划文档明示边界。
+  **[执行期落地]** `REMOTE_WS_PORT=17800` 入设计文档偏差表④；token =
+  HTTP 升级期 query 校验（浏览器 WebSocket API 不可设自定义头——形态
+  微调，安全语义不变）；缺省（无 `shell.remote.token`）不监听 = 拒绝。
 - **④ 排程**：G5 渲染集依赖 507（Tier1+2 覆盖）；若泳道紧张可拆先行
   （G1/G2 先行折叠，远程部分等 507）——默认整领，前置注记写明
   "远程任务开工前 507 须已合入"。
