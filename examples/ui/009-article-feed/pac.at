@@ -5,7 +5,3 @@ render: "vue"
 title: "Article Feed"
 theme: "dark"
 accent: "indigo"
-
-dep "common" {
-    path: "../common"
-}

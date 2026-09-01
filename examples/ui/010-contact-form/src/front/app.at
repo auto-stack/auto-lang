@@ -1,6 +1,6 @@
 // app.at — Contact Form.
-// Plan 506: in-app title bar / Settings panel removed (ExampleHeader retired)
-// — title/theme/accent live in pac.at + os-config, host chrome carries them.
+// Plan 506: in-app title bar / Settings panel removed (common header widget
+// retired) — title/theme/accent live in pac.at + os-config, host chrome carries them.
 // Default theme: Dark mode.
 widget App {
     msg {
