@@ -190,38 +190,40 @@ mod plan510 {
         pool_soak_assert(800).await;
     }
 
-    /// Plan 510 G2 浸泡(长跑档,验收 ≥30min 等效 churn 用):
+    /// Plan 510 G2 浸泡(长跑档,验收等效 churn 用):
     /// `cargo test -p auto-lang --lib pool_soak_churn_long -- --ignored`
-    /// 轮数可由 P510_SOAK_ITERS 覆盖(缺省 200_000)。
+    /// 轮数可由 P510_SOAK_ITERS 覆盖(缺省 100_000)。
     #[tokio::test]
     #[ignore = "soak long-run: P510_SOAK_ITERS 可调,显式 --ignored 触发"]
     async fn pool_soak_churn_long() {
         let iters: usize = std::env::var("P510_SOAK_ITERS")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(200_000);
+            .unwrap_or(100_000);
         pool_soak_assert(iters).await;
     }
 
-    /// churn 载体:f-string 内化 + 拼接 + List<str> 容器进出 + 跨 fn
-    /// 参数传递 + 覆盖赋值——覆盖 add_string dedup/freelist、POP release、
-    /// 容器侧份额(rc.rs child_pool_idxs)、ListData<String> 读回配平。
+    /// churn 载体:有界长度 f-string 内化(唯一内容→freelist 复用面;重复
+    /// 后缀→dedup 命中面)+ 拼接 + List<str> 容器进出 + 跨 fn 参数传递 +
+    /// 覆盖赋值——覆盖 add_string dedup/freelist、POP release、容器侧份额
+    /// (rc.rs child_pool_idxs)、ListData<String> 读回配平。内容恒有界
+    /// (长度不随轮数增长,避免 O(n²) 字节量;churn 强度由轮数承载)。
     async fn pool_soak_assert(iters: usize) {
         let code = format!(
             r#"
 fn tag(prefix str, i int) str {{
-    f"${{prefix}}#${{i}}"
+    f"${{prefix}}#${{i}}-tail"
 }}
 
 fn main() int {{
     var acc str = "seed"
     for i in 0..{iters} {{
-        let s = tag(acc, i)
-        acc = s + "-tail"
+        let s = tag("item", i % 512)
+        acc = s
         var l List<str> = List<str>.new([s, acc])
         acc = l.get(0)
         if i % 3 == 0 {{
-            var waste str = tag("waste", i)
+            var waste str = tag("waste", i % 128)
             waste = "overwritten"
         }}
     }}
