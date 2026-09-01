@@ -349,8 +349,14 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ### W3 lib 方法化 γ4（worktree 续；每文件一提交全绿才进）
 
-12. [ ] token.at 试点方法化 + 塔顶样板验证（AA2R 转译方法化 token.at →
-    rustc 零错 → 行为一致）。验证：全闸门 + 矩阵绿。
+12. [◐ 阻塞-已回退] token.at 映射表裁定：无状态类型/纯表函数
+    （keyword_kind/kind_name）→ 按 γ4 缺省**保留自由函数**（零转换）；
+    塔顶样板验证移至首个真实状态类型 P。P 方法化试点实施：14 方法入
+    type 体（p_err→fail 避字段撞名）+全库 ~1400 调用点翻转；99_unit
+    13 绿但 corpus 转译路径红——**宿主 VM 可达闭包内方法解析洞**
+    （详见待澄清⑥），按"行为不变硬闸：红即回退"回退 lib 至 W2 态并
+    复验 corpus g 全绿；翻转脚本存档 scratch/p514_p_methodize.py。
+    W3-13..16 与 W4-17（C3 依赖方法体）连带顺延，待⑥裁定。
 13. [ ] lexer.at 转换。验证：同上。
 14. [ ] typeinfo.at + parser.at 转换。验证：同上。
 15. [ ] codegen.at + engine.at 转换。验证：同上。
@@ -378,6 +384,21 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
 
 ## 待澄清事项
 
+6. **W3 P 方法化触发宿主 VM 可达闭包内的方法解析洞（已按硬闸回退，待
+   插修复波裁定）**：P 的 14 个游标方法（kind/text/line/peek/next[fail 避
+   err 字段撞名]/expect/skip_empty_lines/push_scope/pop_scope/bind/lookup/
+   decl_lookup/decl_register）入 type 体 + 全库 ~1400 调用点翻转后——
+   最小探针（mth1–mth7 含真实 type P 全方法体）全部通过，但 lib 全量
+   transpile 路径（ar_run/aa2r_transpile_merge）在 main 调 ar_run 时于
+   **编译期**报 `CALL_SPEC: no function 'Token.next' for type 'Token'`
+   （ip 恒 0x02a6/.line→P.push_scope 体；main 直调 tokenize/parse_new/
+   p.push_scope 等则全绿=bis9/bis10 差异；错误在 ar_run 可达编译闭包内、
+   某接收者被推断为 Token 的 .next() 解析）。宿主 vm/codegen.rs 的
+   方法调用类型推断按调用可达性惰性编译的路径待考古；W3 后续文件
+   （CG/Ar）大概率同踩。按计划风险表"大洞→插修复波、W3 顺延"缺省
+   处置：lib 已回退至 W2 折叠②状态（corpus g 全绿复验），映射表与
+   翻转脚本存档（/tmp/p514/p_methodize.py 思路：类型体方法+regex 翻转），
+   待用户裁定：插宿主修复波（建议）或降级 W3 范围。
 1. **方法化映射细则**（阻塞 W3 各步骤展开，不阻塞 W1/W2）：状态类型方法
    进 `type` 体 vs `ext` 的边界（缺省：自有类型一体、跨类型扩展 ext）；
    转换覆盖率目标（缺省：不设 100%，以"一对一 Rust 对译可读性"为准，
