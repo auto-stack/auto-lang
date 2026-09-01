@@ -1113,7 +1113,8 @@ pub fn convert_color(color: &Color) -> iced::Color {
         // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
         Color::Primary | Color::Secondary | Color::Background | Color::Surface
         | Color::Error | Color::Warning | Color::Success | Color::Info
-        | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface | Color::OnDestructive => {
+        | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface | Color::OnDestructive
+        | Color::Border => {
             let (r, g, b) = resolve_semantic_rgb(color).unwrap_or((128, 128, 128));
             iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
         }

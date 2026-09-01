@@ -2775,7 +2775,7 @@ impl VueGenerator {
         // theme-aware index.html bootstrap; absent when the env vars are
         // unset, so a widget's own initial value stands). Mirrors the VM
         // seeding in run_dynamic_iced.
-        if self.has_dark_mode {
+        if self.has_dark_mode && self.dark_mode_on_widget {
             let var = self
                 .dark_mode_var
                 .clone()
@@ -14172,9 +14172,9 @@ export function cn(...inputs: ClassValue[]) {
   .dark {
     --background: 222.2 47% 7%;
     --foreground: 210 40% 98%;
-    --card: 222.2 47% 9%;
+    --card: 222.2 47% 11%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 47% 9%;
+    --popover: 222.2 47% 11%;
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;

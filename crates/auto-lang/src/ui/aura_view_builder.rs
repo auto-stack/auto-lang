@@ -5144,7 +5144,7 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "orientation", bindings)
             .unwrap_or_else(|| "vertical".to_owned());
         let (base, vertical) = if orientation == "horizontal" {
-            ("w-full h-px bg-zinc-500", false)
+            ("w-full h-px bg-border", false)
         } else {
             ("w-7 h-7", true)
         };
@@ -5159,7 +5159,7 @@ let tabs_inner = View::Row {
             };
         }
         let line = ViewBuilder::col()
-            .with_style(Style::parse("w-px h-4 bg-zinc-500").unwrap())
+            .with_style(Style::parse("w-px h-4 bg-border").unwrap())
             .build();
         if !vertical {
             let mut b = ViewBuilder::col();
