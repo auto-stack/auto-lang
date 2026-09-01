@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
-current_step: 4
+current_step: 5
 total_steps: 22
 ---
 
@@ -308,8 +308,10 @@ lexer.at → typeinfo.at + parser.at → codegen.at + engine.at → a2r.at
    圆括号形态对齐 Type::List→Vec&lt;T&gt;+is_owned_list_arg 扩 Array。验证：
    99_idiom2 12/12 绿（m01–m09 主 a2r 产物 rustc 零错）；aavm2 标准门禁 16 绿；
    99_unit 13 绿；g01–g08 逐字符对拍保持绿。2026-09-01。
-5. [ ] 折叠点①：CI 绿 + master 合入（`fix(aavm-host): Plan 514 W1 矩阵②腿
-   +方法路径加固 (Plan 514)`）。
+5. [✅ 已完成] 折叠点①：cargo tf 全绿（3350 过/0 败/96 skip=含 P511-1 预存
+   ignore）+ CI 二三层绿（vm goldens+ffi_dual 56、conformance 36）→ master
+   合入 996f98572，worktree 已回同步。CI 第一层（--include-ignored）余
+   P511-1 预存红，按计划 W2-10/W2-11 清偿后转绿。2026-09-01。
 
 ### W2 AA2R W5 + P511-1（worktree 续）
 
