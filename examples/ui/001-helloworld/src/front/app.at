@@ -1,12 +1,15 @@
 widget App {
     view {
-        center {
+        col {
             // Plan 481: selectable text —— 标题样式显式化(text-4xl 对齐 h1
             // 默认),正文可选可复制(VM 拖选/双击/Ctrl+C,vue 显式 user-select)。
             text "Hello, World!" {
                 style: "text-4xl font-bold text-primary",
                 selectable: true
             }
+            // Plan 512: fit 迁移——center 居中外壳退役（Fill 会把内容测量
+            // 钉回窗口尺寸），根 col Shrink 包裹 + 内边距。
+            style: "p-8 items-center"
         }
     }
 }

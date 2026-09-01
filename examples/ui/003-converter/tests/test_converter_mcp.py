@@ -148,7 +148,10 @@ def main():
             sys.exit(1)
 
         # Find input element IDs from snapshot
-        inputs_matched = re.findall(r'input\s+#(aura_\d+)', snap)
+        # Plan 512 S7：快照 id 双 scheme 兼容——首帧前回退路径出 aura_N
+        # （源模板），渲染完成后出 vnode_N（实况树）；何时切换取决于首帧
+        # 时序（机器负载敏感），两种 id autoui_type 均受理。
+        inputs_matched = re.findall(r'input\s+#((?:aura|vnode)_\d+)', snap)
         print(f"Matched input IDs: {inputs_matched}")
 
         if len(inputs_matched) >= 2:

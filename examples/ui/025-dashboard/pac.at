@@ -10,4 +10,5 @@ description: "System monitor dashboard - KPI cards, live area charts, sortable p
 
 scene: "ui"
 render: "vue"
+title: "Dashboard"
 front_port: 4025

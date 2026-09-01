@@ -13,7 +13,7 @@ widget App {
     }
 
     view {
-        center {
+        col {
             col {
                 row {
                     button "<" { onclick: .PrevMonth, style: "w-10 h-10 rounded-full hover:bg-gray-100 text-gray-600 font-bold" }
@@ -51,8 +51,12 @@ widget App {
                     gap: 0
                     style: "w-full mt-1"
                 }
-                style: "w-full max-w-md p-6 bg-white rounded-2xl shadow-lg"
+                style: "w-112 p-6 bg-white rounded-2xl shadow-lg"
             }
+            // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
+            // 卡片固定宽 w-112=448px（原 w-full+max-w-md 在 Shrink 根下会
+            // 塌缩；w-[28rem] rem 任意值 iced 端不支持，用 Tailwind 刻度）。
+            style: "p-4 items-center"
         }
     }
 

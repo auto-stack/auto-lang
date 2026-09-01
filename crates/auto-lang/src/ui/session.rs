@@ -406,6 +406,19 @@ pub struct WindowEntry {
     /// dynamic_view 以 Shrink 根构建并布 `aura_fit_root_<app>` 测量锚点，
     /// 首帧后经 LayoutCollector 测量回填 `pending_window_resize` 转正。
     pub fit_pending: Cell<bool>,
+    /// Plan 512：fit 窗持久标记（首测完成 fit_pending 翻 false 后，
+    /// 动态重测以本字段识别 fit 窗；标记点同 fit_pending 武装点）。
+    /// Cell 以便拆借视图（SessionView*）按引用下穿到 view 层。
+    pub fit_enabled: Cell<bool>,
+    /// Plan 512：用户手动 resize 一次性锁定（v1 裁定：锁定后不再自动
+    /// 跟随内容尺寸；待澄清③"重解锁"为增强候选）。
+    pub fit_user_locked: Cell<bool>,
+    /// Plan 512：app view 重建待重测标记（dispatch 漏斗在 view_dirty
+    /// 置位时打标，ServiceTick 节拍消费发起测量）。
+    pub fit_dirty: Cell<bool>,
+    /// Plan 512：最近一次程序化 fit resize 的应用值——OS 回波豁免用
+    /// （`__window_resized` 到达尺寸 ≠ 本值即用户手动 resize → 锁定）。
+    pub fit_last_applied: RefCell<Option<iced::Size>>,
 }
 
 pub struct AppSession {
@@ -528,6 +541,11 @@ pub struct VWinState {
     /// Plan 504：内容自适应虚拟窗（注册表条目 pac `window: "fit"` 经
     /// LaunchSpec.fit 透传）——语义同 [`WindowEntry::fit_pending`]。
     pub fit_pending: Cell<bool>,
+    /// Plan 512：fit 持久标记/用户锁定/待重测三字段——语义同
+    /// [`WindowEntry`] 同名字段（用户锁定在 WM Resize 交互臂置位）。
+    pub fit_enabled: Cell<bool>,
+    pub fit_user_locked: Cell<bool>,
+    pub fit_dirty: Cell<bool>,
 }
 
 /// 最小窗口管理器状态（Plan 462 T2）。位置/焦点/z 的唯一事实源；
@@ -615,6 +633,9 @@ impl WmState {
                 initial_resize_done: Cell::new(false),
                 initial_focus_done: Cell::new(false),
                 fit_pending: Cell::new(false),
+                fit_enabled: Cell::new(false),
+                fit_user_locked: Cell::new(false),
+                fit_dirty: Cell::new(false),
             },
         );
         self.z_order.push(wid);
@@ -935,6 +956,11 @@ impl WmState {
                     r.height = height;
                     // 窗口级字段同步（响应式布局 window_width 随缩放更新）。
                     *v.window_size.borrow_mut() = iced::Size::new(width, height);
+                    // Plan 512：用户手动缩放 fit 窗 → 一次性锁定（不再自动
+                    // 跟随内容尺寸；v1 裁定，重解锁为增强候选）。
+                    if v.fit_enabled.get() {
+                        v.fit_user_locked.set(true);
+                    }
                 }
             }
         }
@@ -1366,6 +1392,8 @@ pub struct ShellFields {
     pub initial_focus_done: Cell<bool>,
     /// Plan 504：fit 垫片（windowless 面恒 false，不参与自适应）。
     pub fit_pending: Cell<bool>,
+    /// Plan 512：fit_enabled 垫片（恒 false，同 fit_pending）。
+    pub fit_enabled: Cell<bool>,
 }
 
 /// Plan 496 M5：桌面本体 pack 默认壁纸色（theme Background dark 的
@@ -1943,6 +1971,8 @@ fn spawn_outproc_child(
             if let Some(host) = self.host.as_mut() {
                 if let Some(v) = host.wm.wins.get_mut(&wid) {
                     v.fit_pending.set(true);
+                    // Plan 512：持久 fit 标记（首测完成后动态重测识别用）。
+                    v.fit_enabled.set(true);
                 }
             }
         }
@@ -2539,6 +2569,34 @@ fn spawn_outproc_child(
                 .unwrap_or(false)
     }
 
+    /// Plan 512：fit 动态重测——任一 fit 窗有内容重建待重测（fit_dirty
+    /// 由 dispatch 漏斗在 view_dirty 置位时打标，见 [`Self::mark_fit_dirty`]）。
+    pub fn has_fit_remeasure_pending(&self) -> bool {
+        self.windows.values().any(|e| e.fit_dirty.get())
+            || self
+                .host
+                .as_ref()
+                .map(|h| h.wm.wins.values().any(|v| v.fit_dirty.get()))
+                .unwrap_or(false)
+    }
+
+    /// Plan 512：把 app 的 view 重建标记落到其 fit 窗条目。仅首测已完成
+    /// （!fit_pending）且未被用户锁定的 fit 窗参与动态重测。
+    pub fn mark_fit_dirty(&self, app: AppId) {
+        for e in self.windows.values() {
+            if e.app == app && e.fit_enabled.get() && !e.fit_pending.get() && !e.fit_user_locked.get() {
+                e.fit_dirty.set(true);
+            }
+        }
+        if let Some(h) = &self.host {
+            for v in h.wm.wins.values() {
+                if v.app == app && v.fit_enabled.get() && !v.fit_pending.get() && !v.fit_user_locked.get() {
+                    v.fit_dirty.set(true);
+                }
+            }
+        }
+    }
+
     /// boot 期把待定尺寸记入桌面级暂存表；Opened 登记（`register_window`）
     /// 时随窗口条目转正。459 的 boot 开窗路径同步登记，本暂存主要服务
     /// "先知尺寸、后得 window::Id" 的外部宿主场景与测试。
@@ -2552,11 +2610,20 @@ fn spawn_outproc_child(
     pub fn register_window(&mut self, win: iced::window::Id, app: AppId, size: iced::Size) {
         // Plan 504：同键覆盖（Opened 幂等兜底）保留 fit_pending——boot 臂在
         // Opened 到达前已置位，覆盖重建不能把待测量标记抹掉。
-        let fit_pending = self
+        // Plan 512：同理由保留 fit 四件套（enabled/locked/dirty/last_applied）。
+        let (fit_pending, fit_enabled, fit_user_locked, fit_dirty, fit_last_applied) = self
             .windows
             .get(&win)
-            .map(|e| e.fit_pending.get())
-            .unwrap_or(false);
+            .map(|e| {
+                (
+                    e.fit_pending.get(),
+                    e.fit_enabled.get(),
+                    e.fit_user_locked.get(),
+                    e.fit_dirty.get(),
+                    *e.fit_last_applied.borrow(),
+                )
+            })
+            .unwrap_or((false, false, false, false, None));
         self.windows.insert(
             win,
             WindowEntry {
@@ -2566,6 +2633,10 @@ fn spawn_outproc_child(
                 initial_resize_done: Cell::new(false),
                 initial_focus_done: Cell::new(false),
                 fit_pending: Cell::new(fit_pending),
+                fit_enabled: Cell::new(fit_enabled),
+                fit_user_locked: Cell::new(fit_user_locked),
+                fit_dirty: Cell::new(fit_dirty),
+                fit_last_applied: RefCell::new(fit_last_applied),
             },
         );
     }
@@ -2647,6 +2718,7 @@ fn spawn_outproc_child(
                     &mut host.shell_fields.initial_resize_done,
                     &mut host.shell_fields.initial_focus_done,
                     &host.shell_fields.fit_pending,
+                    &host.shell_fields.fit_enabled,
                 )
             } else if is_launcher {
                 (
@@ -2655,6 +2727,7 @@ fn spawn_outproc_child(
                     &mut host.launcher_fields.initial_resize_done,
                     &mut host.launcher_fields.initial_focus_done,
                     &host.launcher_fields.fit_pending,
+                    &host.launcher_fields.fit_enabled,
                 )
             } else if is_switcher {
                 (
@@ -2663,6 +2736,7 @@ fn spawn_outproc_child(
                     &mut host.switcher_fields.initial_resize_done,
                     &mut host.switcher_fields.initial_focus_done,
                     &host.switcher_fields.fit_pending,
+                    &host.switcher_fields.fit_enabled,
                 )
             } else if is_notification {
                 (
@@ -2671,6 +2745,7 @@ fn spawn_outproc_child(
                     &mut host.notification_fields.initial_resize_done,
                     &mut host.notification_fields.initial_focus_done,
                     &host.notification_fields.fit_pending,
+                    &host.notification_fields.fit_enabled,
                 )
             } else if is_settings {
                 (
@@ -2679,6 +2754,7 @@ fn spawn_outproc_child(
                     &mut host.settings_fields.initial_resize_done,
                     &mut host.settings_fields.initial_focus_done,
                     &host.settings_fields.fit_pending,
+                    &host.settings_fields.fit_enabled,
                 )
             } else {
                 (
@@ -2687,6 +2763,7 @@ fn spawn_outproc_child(
                     &mut host.desktop_fields.initial_resize_done,
                     &mut host.desktop_fields.initial_focus_done,
                     &host.desktop_fields.fit_pending,
+                    &host.desktop_fields.fit_enabled,
                 )
             };
             let (
@@ -2695,6 +2772,7 @@ fn spawn_outproc_child(
                 initial_resize_done,
                 initial_focus_done,
                 fit_pending,
+                fit_enabled,
             ) = fields;
             return Some(SessionViewMut {
                 app_id: id,
@@ -2707,6 +2785,7 @@ fn spawn_outproc_child(
                 initial_resize_done,
                 initial_focus_done,
                 fit_pending,
+                fit_enabled,
                 vwin_rect: None,
             });
         }
@@ -2740,6 +2819,7 @@ fn spawn_outproc_child(
                 initial_resize_done: &mut v.initial_resize_done,
                 initial_focus_done: &mut v.initial_focus_done,
                 fit_pending: &v.fit_pending,
+                fit_enabled: &v.fit_enabled,
                 vwin_rect: Some(&v.rect),
             });
         }
@@ -2755,6 +2835,7 @@ fn spawn_outproc_child(
             initial_resize_done: &mut entry.initial_resize_done,
             initial_focus_done: &mut entry.initial_focus_done,
             fit_pending: &entry.fit_pending,
+            fit_enabled: &entry.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2782,6 +2863,7 @@ fn spawn_outproc_child(
                 initial_resize_done: &v.initial_resize_done,
                 initial_focus_done: &v.initial_focus_done,
                 fit_pending: &v.fit_pending,
+                fit_enabled: &v.fit_enabled,
                 vwin_rect: Some(&v.rect),
             });
         }
@@ -2797,6 +2879,7 @@ fn spawn_outproc_child(
             initial_resize_done: &entry.initial_resize_done,
             initial_focus_done: &entry.initial_focus_done,
             fit_pending: &entry.fit_pending,
+            fit_enabled: &entry.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2819,6 +2902,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.shell_fields.initial_resize_done,
             initial_focus_done: &host.shell_fields.initial_focus_done,
             fit_pending: &host.shell_fields.fit_pending,
+            fit_enabled: &host.shell_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2840,6 +2924,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.launcher_fields.initial_resize_done,
             initial_focus_done: &host.launcher_fields.initial_focus_done,
             fit_pending: &host.launcher_fields.fit_pending,
+            fit_enabled: &host.launcher_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2874,6 +2959,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.switcher_fields.initial_resize_done,
             initial_focus_done: &host.switcher_fields.initial_focus_done,
             fit_pending: &host.switcher_fields.fit_pending,
+            fit_enabled: &host.switcher_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2908,6 +2994,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.notification_fields.initial_resize_done,
             initial_focus_done: &host.notification_fields.initial_focus_done,
             fit_pending: &host.notification_fields.fit_pending,
+            fit_enabled: &host.notification_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2954,6 +3041,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.settings_fields.initial_resize_done,
             initial_focus_done: &host.settings_fields.initial_focus_done,
             fit_pending: &host.settings_fields.fit_pending,
+            fit_enabled: &host.settings_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2976,6 +3064,7 @@ fn spawn_outproc_child(
             initial_resize_done: &host.desktop_fields.initial_resize_done,
             initial_focus_done: &host.desktop_fields.initial_focus_done,
             fit_pending: &host.desktop_fields.fit_pending,
+            fit_enabled: &host.desktop_fields.fit_enabled,
             vwin_rect: None,
         })
     }
@@ -2998,6 +3087,9 @@ pub struct SessionViewMut<'a> {
     pub initial_focus_done: &'a mut Cell<bool>,
     /// Plan 504：内容自适应窗口待生效标记（见 [`WindowEntry::fit_pending`]）。
     pub fit_pending: &'a Cell<bool>,
+    /// Plan 512：fit 持久标记（view 层 Shrink 根 + 测量锚点的常驻判据；
+    /// 见 [`WindowEntry::fit_enabled`]）。
+    pub fit_enabled: &'a Cell<bool>,
     /// desktop 模式持有本 App 虚拟窗口矩形（模型 window_* 变量落点）；
     /// 独立模式 None（走 iced::window::resize）。
     pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
@@ -3019,6 +3111,7 @@ impl<'a> SessionViewMut<'a> {
             initial_resize_done: self.initial_resize_done,
             initial_focus_done: self.initial_focus_done,
             fit_pending: self.fit_pending,
+            fit_enabled: self.fit_enabled,
             vwin_rect: self.vwin_rect,
         }
     }
@@ -3040,6 +3133,8 @@ pub struct SessionViewRef<'a> {
     pub initial_focus_done: &'a Cell<bool>,
     /// Plan 504：内容自适应窗口待生效标记（见 [`WindowEntry::fit_pending`]）。
     pub fit_pending: &'a Cell<bool>,
+    /// Plan 512：fit 持久标记（见 [`WindowEntry::fit_enabled`]）。
+    pub fit_enabled: &'a Cell<bool>,
     pub vwin_rect: Option<&'a RefCell<iced::Rectangle>>,
 }
 
@@ -4038,6 +4133,104 @@ mod tests {
             "Opened 幂等覆盖后 fit_pending 保留"
         );
         assert!(ds.has_fit_pending());
+    }
+
+    /// Plan 512：Opened 幂等覆盖同样保留 fit 四件套（enabled/locked/
+    /// dirty/last_applied）——动态重测状态跨覆盖重建不丢。
+    #[test]
+    fn register_window_overwrite_preserves_fit_remeasure_fields() {
+        let mut ds = DesktopSession::__test_session();
+        let app = insert_app(&mut ds, "FitProbe2");
+        let win = iced::window::Id::unique();
+        ds.register_window(win, app, iced::Size::new(1280.0, 800.0));
+        {
+            let e = ds.windows.get_mut(&win).unwrap();
+            e.fit_enabled.set(true);
+            e.fit_user_locked.set(true);
+            e.fit_dirty.set(true);
+            *e.fit_last_applied.borrow_mut() = Some(iced::Size::new(384.0, 392.0));
+        }
+        ds.register_window(win, app, iced::Size::new(1280.0, 800.0));
+        let e = &ds.windows[&win];
+        assert!(e.fit_enabled.get(), "覆盖后 fit_enabled 保留");
+        assert!(e.fit_user_locked.get(), "覆盖后用户锁定保留");
+        assert!(e.fit_dirty.get(), "覆盖后待重测标记保留");
+        assert_eq!(
+            *e.fit_last_applied.borrow(),
+            Some(iced::Size::new(384.0, 392.0)),
+            "覆盖后程序化应用值保留"
+        );
+    }
+
+    /// Plan 512：mark_fit_dirty 只标记有资格参与动态重测的窗（fit_enabled
+    /// + 首测完成 + 未锁定）；has_fit_remeasure_pending 汇总两模式。
+    #[test]
+    fn mark_fit_dirty_marks_only_eligible_windows() {
+        let mut ds = desktop_session_with_host();
+        let eligible = insert_app(&mut ds, "FitOK");
+        let locked = insert_app(&mut ds, "FitLocked");
+        let plain = insert_app(&mut ds, "Plain");
+        let rect = || {
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(300.0, 200.0))
+        };
+        let w1 = ds.wm_add_win(eligible, "A".into(), rect());
+        let w2 = ds.wm_add_win(locked, "B".into(), rect());
+        let w3 = ds.wm_add_win(plain, "C".into(), rect());
+        {
+            let host = ds.host.as_mut().unwrap();
+            host.wm.wins.get_mut(&w1).unwrap().fit_enabled.set(true);
+            let v2 = host.wm.wins.get_mut(&w2).unwrap();
+            v2.fit_enabled.set(true);
+            v2.fit_user_locked.set(true);
+            // w3 非 fit 窗。
+        }
+        ds.mark_fit_dirty(eligible);
+        ds.mark_fit_dirty(locked);
+        ds.mark_fit_dirty(plain);
+        let host = ds.host.as_ref().unwrap();
+        assert!(host.wm.wins[&w1].fit_dirty.get(), "有资格窗被标记");
+        assert!(!host.wm.wins[&w2].fit_dirty.get(), "锁定窗不标记");
+        assert!(!host.wm.wins[&w3].fit_dirty.get(), "非 fit 窗不标记");
+        assert!(ds.has_fit_remeasure_pending());
+        // 首测未完成（fit_pending=true）的窗也不标记。
+        host.wm.wins[&w1].fit_dirty.set(false);
+        host.wm.wins[&w1].fit_pending.set(true);
+        ds.mark_fit_dirty(eligible);
+        assert!(
+            !ds.host.as_ref().unwrap().wm.wins[&w1].fit_dirty.get(),
+            "首测未完成不标记"
+        );
+    }
+
+    /// Plan 512：WM Resize 交互对用户锁定的置位——fit 窗手动缩放即锁，
+    /// 非 fit 窗不受影响。
+    #[test]
+    fn wm_resize_interaction_locks_fit_window() {
+        let mut ds = desktop_session_with_host();
+        let fit_app = insert_app(&mut ds, "FitWin");
+        let plain_app = insert_app(&mut ds, "PlainWin");
+        let rect = || {
+            iced::Rectangle::new(iced::Point::new(100.0, 100.0), iced::Size::new(300.0, 200.0))
+        };
+        let w_fit = ds.wm_add_win(fit_app, "F".into(), rect());
+        let w_plain = ds.wm_add_win(plain_app, "P".into(), rect());
+        ds.host.as_mut().unwrap().wm.wins.get_mut(&w_fit).unwrap().fit_enabled.set(true);
+        let host_size = iced::Size::new(1600.0, 900.0);
+        for (wid, expect_lock) in [(w_fit, true), (w_plain, false)] {
+            ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
+                wid,
+                edge: ResizeEdge::SouthEast,
+                start_rect: rect(),
+                start_cursor: iced::Point::new(0.0, 0.0),
+            });
+            assert!(ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, host_size));
+            ds.host.as_mut().unwrap().wm.end_interaction();
+            assert_eq!(
+                ds.host.as_ref().unwrap().wm.wins[&wid].fit_user_locked.get(),
+                expect_lock,
+                "wid {wid:?} 锁定状态"
+            );
+        }
     }
 
     // ---- Plan 501：launch 执行臂 daemon 就绪 + env 注入 ----

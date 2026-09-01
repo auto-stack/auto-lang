@@ -596,7 +596,8 @@ mod tests {
             .map(|w| host.wm.wins[w].title.as_str())
             .collect();
         assert!(titles.contains(&"Calculator"), "titles = {titles:?}");
-        assert!(titles.contains(&"todo"), "titles = {titles:?}");
+        // Plan 512 S5：013 pac.at 补 title "Todo"（原缺省小写 id）。
+        assert!(titles.contains(&"Todo"), "titles = {titles:?}");
         assert!(titles.contains(&"459-dual-app"), "titles = {titles:?}");
         assert_eq!(host.wm.focused, Some(crate::ui::session::Wid(3)), "新窗即焦点");
     }

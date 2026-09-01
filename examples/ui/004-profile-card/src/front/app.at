@@ -8,7 +8,7 @@ widget App {
     }
 
     view {
-        center {
+        col {
             // Card container
             col {
                 // Header with gradient background
@@ -69,8 +69,11 @@ widget App {
                     style: "gap-3"
                 }
 
-                style: "bg-white rounded-lg shadow-lg border border-gray-200 max-w-sm mx-auto items-center gap-4 pb-6 overflow-hidden"
+                style: "bg-white rounded-lg shadow-lg border border-gray-200 w-96 items-center gap-4 pb-6 overflow-hidden"
             }
+            // Plan 512: fit 迁移——center 居中外壳退役，根 col Shrink 包裹；
+            // 卡片固定宽 w-96（原 max-w-sm 满窗语义在 Shrink 根下会塌缩）。
+            style: "p-6 items-center"
         }
     }
 }

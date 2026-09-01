@@ -16,4 +16,5 @@ scene: "ui"
 render: "vue"
 front_port: 4028
 icon: "search"
+title: "Launcher"
 category: "system"
