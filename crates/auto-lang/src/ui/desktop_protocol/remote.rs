@@ -403,3 +403,217 @@ mod tests {
         let _ = transport::connect(&broker_pipe, 500);
     }
 }
+
+#[cfg(test)]
+mod ts_fixtures {
+    use super::*;
+    use crate::ui::desktop_protocol::message::{DrawOp, InputMsg, MouseButton, Rgba8, WRect};
+
+    /// Plan 508 T3 对拍锚点：Rust ↔ TS（packages/drawlist-renderer
+    /// test/fixtures.golden.ts）双侧钉同一批字节——Hello（握手编码）/
+    /// PointerPressed（InputMsg 编码）/ FrameReady（DrawList 解码）。
+    /// 任一侧 codec 漂移即红（计划②：手工镜像 + 对拍兜底）。
+    #[test]
+    fn p508_ts_crosscheck_golden_bytes() {
+        let hello = ProtocolMsg::Handshake(HandshakeMsg::Hello {
+            version: 1,
+            app_name: "002-counter".into(),
+            title: "002-counter".into(),
+            icon: None,
+            width: 480.0,
+            height: 320.0,
+            fonts: Vec::new(),
+        });
+        let expect_hello: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x01, 0x00, 0x2e, 0x00, 0x00, 0x00, 0x01, 0x01,
+            0x00, 0x0b, 0x00, 0x00, 0x00, 0x30, 0x30, 0x32, 0x2d, 0x63, 0x6f, 0x75, 0x6e, 0x74,
+            0x65, 0x72, 0x0b, 0x00, 0x00, 0x00, 0x30, 0x30, 0x32, 0x2d, 0x63, 0x6f, 0x75, 0x6e,
+            0x74, 0x65, 0x72, 0x00, 0x00, 0x00, 0xf0, 0x43, 0x00, 0x00, 0xa0, 0x43, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        assert_eq!(hello.encode(), expect_hello, "TS 对拍锚点 Hello");
+
+        let press = ProtocolMsg::Input(InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 100.5,
+            y: 50.25,
+            modifiers: 0,
+        });
+        let expect_press: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x03, 0x00, 0x13, 0x00, 0x00, 0x00, 0x02, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0xc9, 0x42, 0x00, 0x00,
+            0x49, 0x42, 0x00,
+        ];
+        assert_eq!(press.encode(), expect_press, "TS 对拍锚点 PointerPressed");
+
+        let frame = ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid: 1,
+            frame_id: 2,
+            slot: 0,
+            damage: None,
+            revision: 2,
+            payload: crate::ui::desktop_protocol::message::DrawList {
+                clear: Some(Rgba8 { r: 9, g: 14, b: 26, a: 255 }),
+                ops: vec![
+                    DrawOp::Quad {
+                        rect: WRect { x: 8.0, y: 8.0, w: 100.0, h: 40.0 },
+                        color: Rgba8 { r: 59, g: 130, b: 246, a: 255 },
+                    },
+                    DrawOp::Text {
+                        x: 12.0,
+                        y: 16.0,
+                        size: 14.0,
+                        line_height: 20.0,
+                        color: Rgba8 { r: 255, g: 255, b: 255, a: 255 },
+                        text: "Counter: 0".into(),
+                    },
+                ],
+            },
+        });
+        let expect_frame: Vec<u8> = vec![
+            0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x02, 0x00, 0x5d, 0x00, 0x00, 0x00, 0x04, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x09,
+            0x0e, 0x1a, 0xff, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00,
+            0x00, 0x41, 0x00, 0x00, 0xc8, 0x42, 0x00, 0x00, 0x20, 0x42, 0x3b, 0x82, 0xf6, 0xff,
+            0x02, 0x00, 0x00, 0x40, 0x41, 0x00, 0x00, 0x80, 0x41, 0x00, 0x00, 0x60, 0x41, 0x00,
+            0x00, 0xa0, 0x41, 0xff, 0xff, 0xff, 0xff, 0x0a, 0x00, 0x00, 0x00, 0x43, 0x6f, 0x75,
+            0x6e, 0x74, 0x65, 0x72, 0x3a, 0x20, 0x30,
+        ];
+        assert_eq!(frame.encode(), expect_frame, "TS 对拍锚点 FrameReady");
+    }
+}
+
+#[cfg(test)]
+mod host_body {
+    use super::*;
+    use crate::ui::desktop_protocol::transport::{self, ws};
+    use crate::ui::session::{DesktopSession, LaunchSpec, ProcessModel};
+    use std::sync::Arc;
+
+    /// demo/T4 宿主 harness 识别 env（缺省直接跑套件时跳过）。
+    const ENV_TOKEN: &str = "P508_HOST_TOKEN";
+    const ENV_PORT: &str = "P508_HOST_PORT";
+    const ENV_READY: &str = "P508_HOST_READY";
+    const ENV_APPS: &str = "P508_HOST_APPS";
+
+    /// 真 `auto` 二进制定位（stage3 同款：debug > release，缺则增量构建）。
+    fn auto_exe() -> std::path::PathBuf {
+        let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+        for profile in ["debug", "release"] {
+            let p = target.join(profile).join("auto.exe");
+            if p.exists() {
+                return p;
+            }
+        }
+        let status = std::process::Command::new("cargo")
+            .args(["build", "-p", "auto", "--bin", "auto"])
+            .current_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .status()
+            .expect("spawn cargo build -p auto");
+        assert!(status.success(), "cargo build -p auto 失败");
+        target.join("debug").join("auto.exe")
+    }
+
+    /// Plan 508 T4/T6 宿主 harness：outproc 孵化示例批（真 auto.exe
+    /// 生产链）+ WS 远程监听 + 常驻泵，直至驱动脚本 kill。ready 文件写
+    /// 实际端口（bind(0) 支撑）。直接跑套件（无 env）时跳过。
+    #[test]
+    fn p508_remote_host_body() {
+        let Ok(token) = std::env::var(ENV_TOKEN) else {
+            return;
+        };
+        let port: u16 = std::env::var(ENV_PORT)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let apps: Vec<String> = std::env::var(ENV_APPS)
+            .unwrap_or_else(|_| "002-counter".into())
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        let broker_pipe = format!("autodesk-broker-508host-{}", std::process::id());
+
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        // 注册表 = examples 主根（真磁盘源；T3 example_source 同源装载）。
+        let mut entries: Vec<(String, LaunchSpec)> = Vec::new();
+        for name in &apps {
+            let path = concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../examples/ui/P/src/front/app.at"
+            )
+            .replace('P', name);
+            let code = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            entries.push((
+                name.clone(),
+                LaunchSpec {
+                    code,
+                    source_path: Some(path),
+                    title: Some(name.clone()),
+                    ..Default::default()
+                },
+            ));
+        }
+        session.desktop.app_resolver = Some(Arc::new(move |name: &str| {
+            entries.iter().find(|(n, _)| n == name).map(|(_, s)| LaunchSpec {
+                code: s.code.clone(),
+                source_path: s.source_path.clone(),
+                title: s.title.clone(),
+                ..Default::default()
+            })
+        }));
+        // outproc 生产 spawner：真 auto.exe + 测试隔离 broker 管道名。
+        let exe = auto_exe();
+        let app_root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui");
+        let pipe_for_spawn = broker_pipe.clone();
+        session.desktop.outproc_spawner = Some(Arc::new(move |child_name| {
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.args([
+                "run",
+                "--autodesk-incubate",
+                &format!("--app386={child_name}"),
+                &format!("--autodesk-broker={pipe_for_spawn}"),
+            ])
+            .env("AUTO_386_APP_ROOT", &app_root)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit());
+            for (k, _) in std::env::vars() {
+                if k.starts_with("NEXTEST_") {
+                    cmd.env_remove(&k);
+                }
+            }
+            cmd.spawn()
+        }));
+        session.desktop.process_model = ProcessModel::Outproc;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        session.enable_broker(&broker_pipe, Arc::clone(&stop));
+        session.enable_remote_ws(&token, port);
+        let actual_port = session.remote_ws_port().expect("ws port");
+        eprintln!(
+            "[p508-host] ws=ws://127.0.0.1:{actual_port}/?token={token} apps={apps:?}"
+        );
+        // ready 文件 = 驱动脚本同步点（端口握手）。
+        if let Ok(ready) = std::env::var(ENV_READY) {
+            std::fs::write(&ready, actual_port.to_string()).expect("write ready");
+        }
+        for app in &apps {
+            match session.launch_app(app) {
+                Ok(_) => eprintln!("[p508-host] outproc landed: {app}"),
+                Err(e) => eprintln!("[p508-host] launch {app} failed: {e}"),
+            }
+        }
+        // 常驻泵：帧/输入/远程镜像（15ms 节拍——快于人眼帧预算，慢于忙转）。
+        loop {
+            if session.pending_remote_connections() > 0 {
+                session.attach_pending_remotes();
+            }
+            session.pump_broker_clients();
+            session.pump_remote_mirrors();
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+    }
+}
