@@ -5936,7 +5936,16 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                         }
                     }
                 };
-                Ok(format!("{}<div {}{}>\n{}{}</div>\n", ind, v_for, key_attr, body_html, ind))
+                // Plan 502 M6: svg 子树内循环包装用 <template v-for>——
+                // <div> 会破坏 SVG 命名空间(rect/text 等 svg 子元素在
+                // div 容器内不渲染;diagram 节点循环实测)。<template>
+                // 是 Vue 无 DOM 包装正解,HTML 上下文行为等价。
+                let (wrap_open, wrap_close) = if self.in_svg_subtree {
+                    (format!("<template {}{}>", v_for, key_attr), "</template>")
+                } else {
+                    (format!("<div {}{}>", v_for, key_attr), "</div>")
+                };
+                Ok(format!("{}{}\n{}{}{}\n", ind, wrap_open, body_html, ind, wrap_close))
             }
 
             AuraNode::Conditional { .. } => {

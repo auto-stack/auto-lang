@@ -1,9 +1,12 @@
-// pages/flow-diagram.at — FlowDiagram 页(Plan 502 M2 起步;M6 补全双端验证/golden)
+// pages/flow-diagram.at — FlowDiagram 页(Plan 502;M6 双端验证/golden)
 //
 // diagram 家族首个组件页(设计文档 diagram-components.md §4.1/§5)。
 // 数据轨书写(静态糖 node/edge/group 归 Phase 3);组件
 // components/flow_diagram.at——布局/几何/标签全部 Auto 代码,
 // 渲染端 v1 = SVG 直通(484 同通路),标签 = svg text 直通(M1 定案)。
+// 交互:hover 节点 → emphasis + tooltip(498 三段式)。
+// 注:双卡同屏时 VM 轨 P320 单态共享根状态(Init 序非树序),双端
+// 观感以单卡目检口径为准(演示仍双卡并列)。
 
 widget FlowDiagramPage {
     use { package: official from "../components" }
@@ -46,6 +49,9 @@ widget FlowDiagramPage {
                     edges: .flowEdges
                 }
             }
+
+            h2 "Interaction"
+            text "hover 任意节点 → 该节点 emphasis 高亮(蓝框)+ 其余节点降透明 + 锚定 tooltip(id);移出复原。命中层 = 节点 bbox 绝对定位 mouse-area 兄弟层(svg 兄弟层不经 svgdoc 序列化,双端同源)。"
 
             h2 "Component source"
             codeblock (lang: "auto", code: "widget FlowDiagram (nodes: List, edges: List, direction: str = \"td\") {\n    model { nodesDg List = []  edgesDg List = []  vbDg str = \"0 0 560 300\" }\n    on { .Init -> { /* rank/order/coord 分层布局 + 段记录 */ } }\n    view { svg (viewBox: .vbDg) { for e in .edgesDg { path (d: e.d) {} } for nd in .nodesDg { rect (x: nd.x, …) {} } } }\n}\n// 完整源码见 components/flow_diagram.at") {}
