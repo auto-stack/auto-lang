@@ -611,8 +611,8 @@
   gallery_pages_compile_tests(lib 级全页可编译冒烟,补上 cargo t/tf
   不跑 tests/ 集成目标的门禁盲区)。
 
-- **P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档
-  失败**——**已偿还**(2026-09-01,Plan 510 worktree 提交 7a8ac1d2e):
+- ~~**P499-7(移入,非本计划引入)cookbook `cb_asynchronous_channel` tv 档
+  失败**~~——**已核销 ✅ 划线**(2026-09-01,Plan 513 债务簿核销;偿还于同日,Plan 510 worktree 提交 7a8ac1d2e):
   与「channel 收发时序」无关,双因:①native_catalog 把 Log 族登记
   1800-1803,与 Shell 族(NATIVE_SHELL_SYSTEM..EXIT,Plan 011,engine.rs
   显式注册后覆盖 inventory 同槽绑定)撞号——`#error(...)` 经 CALL_NAT
@@ -746,3 +746,14 @@
    可执行);挂账 #3 ActNew 偶发 InvalidOpCode(待复现);挂账 #4
    `.tabs[i].dirty` bool 读回乱码。P1–P3 已合并 master(`78aae68bb`)。
    | `examples/ui/041-auto-edit` + archive/420 §6
+
+---
+
+> **债务批二期候选清单指引（2026-09-01，Plan 513 文末）**：
+> ① 桌面线开放工作项清偿 = **Plan 515**（desktop-debt-batch-2，2026-09-01
+> 已立项；与 513 的账目域/清偿域划界见其变更摘要）；
+> ② 语言/VM/测试红族等其余 ~25 条"值得近期做"清偿候选（P506-1 UAF、
+> P499-1 timer 空转、测试红族 444×3/P487-2/P495-1/P496-2/P504-1/P507-2/
+> P502-1 等）不在 513/515 两批范围，待另立批次（无既设计划）；
+> ③ Plan 442 观察期 2026-09-03 到期——到期且无回滚由后续会话顺手归档
+> （442 尾注在案，2026-09-01 执行日未到期故未归档）。

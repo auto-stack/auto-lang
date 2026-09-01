@@ -1,7 +1,7 @@
 # diagram 组件族契约 v1（flow-diagram，裸名）
 
 > 来源：plan-502（2026-09-01 归档，Phase 1 = flow-diagram v1）；需求级设计全文见
-> [docs/design/autoui/diagram-components.md](../../../design/autoui/diagram-components.md)
+> [docs/design/autoui/diagram-components.md](../../../../design/autoui/diagram-components.md)
 > （2026-08-31 定稿，本文件只沉淀**已落地**的 v1 契约面）。姊妹篇
 > [chart-components.md](chart-components.md)（plan-437/484/498/499）。
 > 载体：`examples/widgets-gallery/src/front/components/flow_diagram.at`
