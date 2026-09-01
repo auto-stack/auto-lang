@@ -57,14 +57,16 @@ impl Coverage {
             "text", "button", "input", "image", "a",
             // Plan 507 T3 —— Tier1 display 族（归一折叠键）。
             "img", "icon", "badge", "avatar", "progress", "divider", "separator", "spacer",
+            // Plan 507 T4 —— Tier1 form 族。
+            "checkbox", "switch", "radio", "textarea",
         ]
         .into_iter()
         .map(String::from)
         .collect();
         let props: BTreeMap<String, BTreeSet<String>> = [
             ("text", vec!["text", "label", "style", "selectable"]),
-            ("button", vec!["text", "label", "style"]),
-            ("input", vec!["value", "placeholder", "type", "style"]),
+            ("button", vec!["text", "label", "style", "disabled"]),
+            ("input", vec!["value", "placeholder", "type", "style", "disabled"]),
             ("image", vec!["src", "style", "alt"]),
             ("a", vec!["text", "label", "style"]),
             // Plan 507 T3 —— display 族（props = schema 声明面 + style/class）。
@@ -76,6 +78,11 @@ impl Coverage {
             ("divider", vec!["direction", "style", "class"]),
             ("separator", vec!["orientation", "label", "style", "class"]),
             ("spacer", vec!["size", "style", "class"]),
+            // Plan 507 T4 —— form 族。
+            ("checkbox", vec!["checked", "disabled", "style", "class"]),
+            ("switch", vec!["checked", "disabled", "style", "class"]),
+            ("radio", vec!["checked", "disabled", "style", "class"]),
+            ("textarea", vec!["value", "placeholder", "disabled", "rows", "style", "class"]),
         ]
         .into_iter()
         .map(|(k, ps)| (k.to_string(), ps.into_iter().map(String::from).collect()))
@@ -83,6 +90,12 @@ impl Coverage {
         let events: BTreeMap<String, BTreeSet<String>> = [
             ("button", vec!["onclick"]),
             ("input", vec!["oninput"]),
+            // Plan 507 T4 —— Toggle 派发（register_toggle 认 onclick/onchange
+            // 双键；013/024 真源 = onclick，schema 声明 = onchange）。
+            ("checkbox", vec!["onclick", "onchange"]),
+            ("switch", vec!["onclick", "onchange"]),
+            ("radio", vec!["onclick", "onchange"]),
+            ("textarea", vec!["oninput"]),
         ]
         .into_iter()
         .map(|(k, es)| (k.to_string(), es.into_iter().map(String::from).collect()))
@@ -430,8 +443,8 @@ mod tests {
         let src = r#"widget T {
     view {
         col {
-            checkbox (checked: .ok) { onchange: .Toggle }
-            scrollable { text "x" }
+            select (value: .mode) { onchange: .Pick }
+            svg { path {} }
         }
     }
 }
@@ -442,15 +455,15 @@ mod tests {
         let Verdict::NotCovered(missing) = verdict else {
             panic!("checkbox/scrollable 应 NotCovered");
         };
-        assert!(missing.iter().any(|m| m == "tag:checkbox"), "缺项列 checkbox: {missing:?}");
+        assert!(missing.iter().any(|m| m == "tag:select"), "缺项列 select: {missing:?}");
         // 整体缺项（tag 未入表）不逐项列 prop/事件。
         assert!(
-            !missing.iter().any(|m| m.starts_with("checkbox.")),
+            !missing.iter().any(|m| m.starts_with("select.")),
             "整体缺项不逐项展开: {missing:?}"
         );
         assert!(
-            missing.iter().any(|m| m == "tag:scrollable"),
-            "缺项列 scrollable: {missing:?}"
+            missing.iter().any(|m| m == "tag:svg"),
+            "缺项列 svg: {missing:?}"
         );
     }
 
@@ -523,16 +536,17 @@ mod tests {
         assert_eq!(effective_frame_mode(RM::Queue, &covered), (FrameMode::Commands, None));
         assert_eq!(effective_frame_mode(RM::Independent, &covered), (FrameMode::Pixels, None), "显式 independent 不探测");
 
-        // 未覆盖视图（checkbox + 带参 handler）→ Pixels + 降级行。
+        // 未覆盖视图（select 弹层族——Plan 507 T4 后 checkbox 已覆盖）→
+        // Pixels + 降级行。
         let uncovered = crate::build_dynamic_component(
-            "widget U { view { checkbox (checked: .ok) { onchange: .Toggle } } }",
+            "widget U { view { select (value: .mode) { onchange: .Pick } } }",
             None,
         ).expect("build");
         let (mode, downgrade) = effective_frame_mode(RM::Auto, &uncovered);
         assert_eq!(mode, FrameMode::Pixels, "auto 未覆盖降级 independent");
         let line = downgrade.expect("降级观测行");
         assert!(line.contains("auto -> independent"), "{line}");
-        assert!(line.contains("checkbox"), "缺项清单随行: {line}");
+        assert!(line.contains("select"), "缺项清单随行: {line}");
     }
 
     /// Plan 507 T2/T3 一致性钉：元素登记表的 covered 条目必须落在

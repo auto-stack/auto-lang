@@ -70,13 +70,21 @@ const INPUT_PAD: f32 = 10.0;
 const TEXT_SIZE: f32 = 16.0;
 const LINE_H_FACTOR: f32 = 1.35;
 
-/// 命中区种类（D3 定案：widget 交互区表）。
+/// 命中区种类（D3 定案：widget 交互区表；Plan 507 T4 扩 form 族）。
 #[derive(Debug, Clone, PartialEq)]
 enum HitKind {
     /// button：零参 click handler token。
     Button(String),
-    /// input：value 绑定字段 + 零参 oninput handler。
+    /// input/textarea：value 绑定字段 + 零参 oninput handler。
     Input { field: String, oninput: Option<String> },
+    /// checkbox/switch/radio：绑定 Bool 翻转（radio 恒置 true）+ 零参
+    /// onclick/onchange handler。`name` 为 widget 名（命中区快照文本用）。
+    Toggle {
+        field: String,
+        handler: Option<String>,
+        name: &'static str,
+        radio: bool,
+    },
 }
 
 /// AuraNode view → DrawList 投影器（实现 [`FrameSource`]，直接作
@@ -132,7 +140,7 @@ impl AppProjector {
     }
 
     /// 命中区快照（测试断言口）：`(rect, "button:<handler>" |
-    /// "input:<field>")` 文本化。
+    /// "input:<field>" | "<widget>:<field>")` 文本化。
     pub fn hit_regions(&self) -> Vec<(WRect, String)> {
         self.hits
             .iter()
@@ -140,6 +148,7 @@ impl AppProjector {
                 let kind = match k {
                     HitKind::Button(h) => format!("button:{h}"),
                     HitKind::Input { field, .. } => format!("input:{field}"),
+                    HitKind::Toggle { field, name, .. } => format!("{name}:{field}"),
                 };
                 (*r, kind)
             })
@@ -333,6 +342,8 @@ struct ProjectCtx<'a> {
     comp: &'a DynamicComponent,
     ops: Vec<DrawOp>,
     hits: Vec<(WRect, HitKind)>,
+    /// 聚焦 input 的绑定字段（焦点态描边差分——Plan 507 T4）。
+    focused_field: Option<String>,
 }
 
 impl FrameSource for AppProjector {
@@ -343,7 +354,12 @@ impl FrameSource for AppProjector {
     fn render_frame(&mut self) -> DrawList {
         // 模板克隆脱离 self 借用（模板小，每帧克隆可接受）。
         let template = self.component.view_template().clone();
-        let mut ctx = ProjectCtx { comp: &self.component, ops: Vec::new(), hits: Vec::new() };
+        let mut ctx = ProjectCtx {
+            comp: &self.component,
+            ops: Vec::new(),
+            hits: Vec::new(),
+            focused_field: self.focused_field(),
+        };
         let root_style = NodeStyle::default();
         let _ = layout_block(
             &mut ctx,
@@ -389,6 +405,20 @@ impl FrameSource for AppProjector {
                         }
                         HitKind::Input { .. } => {
                             self.focused_input = Some(idx);
+                        }
+                        // Plan 507 T4：form 族翻转——Bool 取反（radio 恒置
+                        // true）→ 零参 handler 派发 → revision 前进。
+                        HitKind::Toggle { field, handler, radio, .. } => {
+                            let current =
+                                matches!(self.component.read_state(&field), Ok(auto_val::Value::Bool(true)));
+                            let next = if radio { true } else { !current };
+                            let _ = self
+                                .component
+                                .write_state(&field, auto_val::Value::Bool(next));
+                            if let Some(h) = handler {
+                                self.component.on_with_input(&h, None);
+                            }
+                            self.rev += 1;
                         }
                     }
                 }
@@ -565,6 +595,11 @@ fn layout_node(
             match tag_lc.as_str() {
                 "button" => layout_button(ctx, props, events, children, x, y, avail_w, &style),
                 "input" => layout_input(ctx, props, events, x, y, avail_w, &style),
+                // Plan 507 T4 —— Tier1 form 族。
+                "checkbox" => layout_checkbox(ctx, props, events, x, y, avail_w, &style),
+                "switch" => layout_switch(ctx, props, events, x, y, avail_w, &style),
+                "radio" => layout_radio(ctx, props, events, x, y, avail_w, &style),
+                "textarea" => layout_textarea(ctx, props, events, x, y, avail_w, &style),
                 "image" | "img" => layout_image(ctx, props, x, y, avail_w, &style),
                 // Plan 507 T3 —— Tier1 display 族。
                 "icon" => layout_icon(ctx, props, x, y, avail_w, &style),
@@ -743,7 +778,9 @@ fn layout_button(
         .unwrap_or((label_w + BUTTON_PAD * 2.0).max(BUTTON_MIN_W))
         .min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(BUTTON_H);
-    let bg = style.bg.unwrap_or(BUTTON_BG);
+    // Plan 507 T4：禁用态命令差分——观感乘暗 + 命中区不登记。
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let bg = dim_if(disabled, style.bg.unwrap_or(BUTTON_BG));
     push_quad(ctx, WRect::new(x, y, w, h), bg);
     let line_h = size * LINE_H_FACTOR;
     ctx.ops.push(DrawOp::Text {
@@ -751,13 +788,25 @@ fn layout_button(
         y: y + (h - line_h) / 2.0,
         size,
         line_height: line_h,
-        color: style.fg.unwrap_or(LABEL_FG),
+        color: dim_if(disabled, style.fg.unwrap_or(LABEL_FG)),
         text: label,
     });
     if let Some(handler) = click_handler(events) {
-        ctx.hits.push((WRect::new(x, y, w, h), HitKind::Button(handler)));
+        if !disabled {
+            ctx.hits.push((WRect::new(x, y, w, h), HitKind::Button(handler)));
+        }
     }
     LaidBlock { size: (w, h) }
+}
+
+/// 禁用态观感：alpha 压到 [`DISABLED_ALPHA`]（乘暗近似——命令差分，非
+/// 像素级透明合成语义）。
+fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
+    if disabled {
+        Rgba8::new(color.r, color.g, color.b, color.a.min(DISABLED_ALPHA))
+    } else {
+        color
+    }
 }
 
 fn layout_input(
@@ -771,10 +820,11 @@ fn layout_input(
 ) -> LaidBlock {
     let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(INPUT_H);
-    let bg = style.bg.unwrap_or(INPUT_BG);
+    // Plan 507 T4：禁用态乘暗 + 命中区不登记；焦点态描边差分
+    //（聚焦字段 = 本框绑定 → accent 边框）。
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let bg = dim_if(disabled, style.bg.unwrap_or(INPUT_BG));
     push_quad(ctx, WRect::new(x, y, w, h), bg);
-    push_border(ctx, WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
-    // 内容 = value 绑定当前值；空 → placeholder。
     let binding = props
         .get("value")
         .and_then(|v| match v {
@@ -782,6 +832,19 @@ fn layout_input(
             _ => None,
         })
         .unwrap_or_default();
+    let focused = !disabled
+        && ctx.focused_field.as_deref() == Some(binding.as_str());
+    let border = if focused {
+        resolve_color("blue-500").unwrap_or(INPUT_BORDER)
+    } else {
+        INPUT_BORDER
+    };
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(border)),
+    );
+    // 内容 = value 绑定当前值；空 → placeholder。
     let placeholder = props
         .get("placeholder")
         .and_then(|v| match v {
@@ -810,7 +873,7 @@ fn layout_input(
             y: y + (h - line_h) / 2.0,
             size,
             line_height: line_h,
-            color,
+            color: dim_if(disabled, color),
             text,
         });
     }
@@ -818,7 +881,218 @@ fn layout_input(
         .get("oninput")
         .or_else(|| events.get("onInput"))
         .and_then(|e| handler_token(&e.handler));
-    if !binding.is_empty() {
+    if !binding.is_empty() && !disabled {
+        ctx.hits.push((
+            WRect::new(x, y, w, h),
+            HitKind::Input { field: binding, oninput },
+        ));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+// ---------------------------------------------------------------------------
+// Plan 507 T4 —— Tier1 form 族臂（checkbox/switch/radio/textarea）。
+// 命中区 Toggle/输入闭环复用 input 通道；禁用态 = 乘暗 + 不登记。
+// ---------------------------------------------------------------------------
+
+/// checkbox：18×18 方框（圆角直角化保真边界）+ 选中内芯块。
+fn layout_checkbox(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(18.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(INPUT_BORDER)),
+    );
+    if checked {
+        let inset = (w.min(h) * 0.22).clamp(1.5, 6.0);
+        push_quad(
+            ctx,
+            WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
+            dim_if(disabled, style.fg.unwrap_or(BUTTON_BG)),
+        );
+    }
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "checkbox", false);
+    LaidBlock { size: (w, h) }
+}
+
+/// switch：36×20 轨道 + 16×16 滑块（位置随 checked）。
+fn layout_switch(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(36.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(20.0);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    let track = if checked { style.bg.unwrap_or(BUTTON_BG) } else { INPUT_BG };
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, track));
+    let thumb = h - 4.0;
+    let tx = if checked { x + w - thumb - 2.0 } else { x + 2.0 };
+    push_quad(
+        ctx,
+        WRect::new(tx, y + 2.0, thumb, thumb),
+        dim_if(disabled, LABEL_FG),
+    );
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "switch", false);
+    LaidBlock { size: (w, h) }
+}
+
+/// radio：16×16 外框（圆形直角化保真边界）+ 选中内芯块；点击恒置 true。
+fn layout_radio(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(16.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(INPUT_BORDER)),
+    );
+    if checked {
+        let inset = (w.min(h) * 0.28).clamp(1.5, 5.0);
+        push_quad(
+            ctx,
+            WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
+            dim_if(disabled, style.fg.unwrap_or(BUTTON_BG)),
+        );
+    }
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "radio", true);
+    LaidBlock { size: (w, h) }
+}
+
+/// Toggle 命中区登记（checked 绑定字段 + 零参 onclick/onchange handler；
+/// 无绑定或禁用 → 不登记）。
+fn register_toggle(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    disabled: bool,
+    name: &'static str,
+    radio: bool,
+) {
+    if disabled {
+        return;
+    }
+    let Some(field) = props
+        .get("checked")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(expr) => binding_field(expr),
+            _ => None,
+        })
+    else {
+        return;
+    };
+    // 真源用法（013/024）：checkbox 走 onclick；schema 声明 onchange——
+    // 两键都认，取首个零参 token。
+    let handler = ["onclick", "onchange", "onClick", "onChange", "ontoggle"]
+        .iter()
+        .find_map(|key| events.get(*key).and_then(|e| handler_token(&e.handler)));
+    ctx.hits.push((
+        WRect::new(x, y, w, h),
+        HitKind::Toggle { field, handler, name, radio },
+    ));
+}
+
+/// textarea：多行输入框（rows 行高 + 边框 + 值/占位文本；输入闭环复用
+/// input 通道——CharTyped 追加、Backspace 回退）。
+fn layout_textarea(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+    let size = style.font_size.unwrap_or(14.0);
+    let line_h = size * LINE_H_FACTOR;
+    let rows = prop_f64(ctx.comp, props, "rows").unwrap_or(4.0).max(1.0) as usize;
+    let h = style.fixed_h().unwrap_or(INPUT_PAD * 2.0 + line_h * rows as f32);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let binding = props
+        .get("value")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(expr) => binding_field(expr),
+            _ => None,
+        })
+        .unwrap_or_default();
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    let focused =
+        !disabled && ctx.focused_field.as_deref() == Some(binding.as_str());
+    let border = if focused {
+        resolve_color("blue-500").unwrap_or(INPUT_BORDER)
+    } else {
+        INPUT_BORDER
+    };
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(border)),
+    );
+    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
+    let value = if binding.is_empty() {
+        String::new()
+    } else {
+        match ctx.comp.read_state(&binding) {
+            Ok(v) => format_value(&v),
+            Err(_) => String::new(),
+        }
+    };
+    let (text, color) = if value.is_empty() {
+        (placeholder, PLACEHOLDER_FG)
+    } else {
+        (value, style.fg.unwrap_or(TEXT_FG))
+    };
+    if !text.is_empty() {
+        // 多行：按 '\n' 分行自上而下排（无自动换行——宽度溢出裁剪边界
+        // 归宿主；保真边界随注）。
+        for (i, line) in text.split('\n').take(rows.max(1)).enumerate() {
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD,
+                y: y + INPUT_PAD + line_h * i as f32,
+                size,
+                line_height: line_h,
+                color: dim_if(disabled, color),
+                text: line.to_string(),
+            });
+        }
+    }
+    let oninput = events
+        .get("oninput")
+        .or_else(|| events.get("onInput"))
+        .and_then(|e| handler_token(&e.handler));
+    if !binding.is_empty() && !disabled {
         ctx.hits.push((
             WRect::new(x, y, w, h),
             HitKind::Input { field: binding, oninput },
@@ -2350,5 +2624,182 @@ mod tests {
             })
             .expect("inner 文本");
         assert!((first_text_y - (r.y + 8.0)).abs() < 0.01, "p-2 内边距: {first_text_y} vs {}", r.y);
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T4 —— Tier1 form 族（命中区 Toggle 派发 × 焦点/禁用差分）。
+    // -----------------------------------------------------------------------
+
+    fn click(p: &mut AppProjector, x: f32, y: f32) {
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x,
+            y,
+            modifiers: 0,
+        });
+    }
+
+    /// checkbox：点击命中 → 绑定 Bool 翻转 + 零参 handler + revision 前进；
+    /// 重渲染选中内芯出现；再点翻回。
+    #[test]
+    fn t4_checkbox_toggle_round_trip() {
+        let (mut p, frame) = project(
+            "widget CB {\n    model { var ok bool = false }\n    view {\n        checkbox (checked: .ok) { onclick: .Toggle }\n    }\n}\n",
+        );
+        // 未选中：方框 + 边框，无内芯（2 quads）。
+        assert_eq!(quads_of(&frame).len(), 5, "底+四边框,未选中无内芯: {:?}", quads_of(&frame));
+        let hits = p.hit_regions();
+        assert_eq!(hits.len(), 1, "命中区: {hits:?}");
+        assert!(hits[0].1.starts_with("checkbox:ok"), "{hits:?}");
+        let (r, _) = hits[0];
+        click(&mut p, r.x + 2.0, r.y + 2.0);
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(true), "翻转");
+        assert_eq!(p.revision(), 2, "revision 前进");
+        let frame = p.render_frame();
+        assert_eq!(quads_of(&frame).len(), 6, "选中内芯出现(+1): {:?}", quads_of(&frame));
+        // 再点翻回。
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(false), "再点翻回");
+    }
+
+    /// checkbox 的 msg 路径 handler 派发（点击 → .Toggle handler 执行）。
+    #[test]
+    fn t4_checkbox_dispatches_named_handler() {
+        let (mut p, _) = project(
+            "widget CB {\n    model {\n        var ok bool = false\n        var n int = 0\n    }\n    msg T { Inc }\n    on { .T -> { .n += 1 } }\n    view {\n        checkbox (checked: .ok) { onchange: .T }\n    }\n}\n",
+        );
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("n").unwrap(), auto_val::Value::Int(1), "handler 派发");
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(true));
+    }
+
+    /// switch：滑块位置随 checked 联动（点击 → 滑块右移 + 轨道换色）。
+    #[test]
+    fn t4_switch_thumb_follows_state() {
+        let (mut p, frame) = project(
+            "widget SW {\n    model { var on bool = false }\n    view { switch (checked: .on) { onclick: .Nope } }\n}\n",
+        );
+        // 轨道 + 滑块（无 handler 名 .Nope 缺 msg？零参 token 仍登记——
+        // 派发由 on_with_input 容错）。滑块 x 左侧。
+        let q = quads_of(&frame);
+        assert_eq!(q.len(), 2, "轨道+滑块: {q:?}");
+        let off_thumb_x = q[1].0.x;
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("switch:on"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        assert_eq!(p.read_state("on").unwrap(), auto_val::Value::Bool(true));
+        let frame = p.render_frame();
+        let q = quads_of(&frame);
+        assert!(q[1].0.x > off_thumb_x + 8.0, "滑块右移: {:?} -> {:?}", off_thumb_x, q[1].0.x);
+    }
+
+    /// radio：点击恒置 true（不回落）。
+    #[test]
+    fn t4_radio_sets_true_sticky() {
+        let (mut p, _) = project(
+            "widget RD {\n    model { var pick bool = false }\n    view { radio (checked: .pick) { onclick: .Nop } }\n}\n",
+        );
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("radio:pick"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("pick").unwrap(), auto_val::Value::Bool(true));
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(
+            p.read_state("pick").unwrap(),
+            auto_val::Value::Bool(true),
+            "radio 恒置 true 不回落"
+        );
+    }
+
+    /// 禁用态差分：disabled 乘暗 + 命中区不登记（button/checkbox 双证）。
+    #[test]
+    fn t4_disabled_dim_and_no_hit_region() {
+        let (p, frame) = project(
+            "widget D {\n    model { var ok bool = true }\n    view {\n        col {\n            button \"Go\" { onclick: .Go, disabled: true }\n            checkbox (checked: .ok, disabled: true) { onclick: .T }\n        }\n    }\n}\n",
+        );
+        assert!(p.hit_regions().is_empty(), "禁用态不登记命中区");
+        let q = quads_of(&frame);
+        // 按钮底(1) + checkbox 底(1) + 四边框(4) + 选中内芯(1) = 7 quads。
+        assert_eq!(q.len(), 7, "{q:?}");
+        assert!(
+            q.iter().all(|(_, c)| c.a <= DISABLED_ALPHA),
+            "全部乘暗: {q:?}"
+        );
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Go"), "{texts:?}");
+    }
+
+    /// 焦点态差分：聚焦 input 边框换 accent（蓝色）+ 重渲染保持。
+    #[test]
+    fn t4_input_focus_border_accent() {
+        let (mut p, frame) = project(
+            "widget F {\n    model { var email str = \"\" }\n    view { input (value: .email, placeholder: \"e\") { style: \"w-64\" } }\n}\n",
+        );
+        // 未聚焦：边框 = INPUT_BORDER（4 条边 quads）。
+        let border_count = |f: &DrawList| {
+            f.ops
+                .iter()
+                .filter(|op| matches!(op, DrawOp::Quad { color, .. } if *color == resolve_color("blue-500").unwrap()))
+                .count()
+        };
+        assert_eq!(border_count(&frame), 0, "未聚焦无 accent 边");
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        let frame = p.render_frame();
+        assert_eq!(border_count(&frame), 4, "聚焦四边 accent");
+        // 输入闭环（复用 input 通道）。
+        p.on_input(&InputMsg::CharTyped { wid: 1, ch: 'x' });
+        assert_eq!(p.read_state("email").unwrap(), auto_val::Value::str("x"));
+    }
+
+    /// textarea：rows 行高 + 值/占位 + 输入闭环（CharTyped 追加）。
+    #[test]
+    fn t4_textarea_multiline_and_typing() {
+        let (mut p, frame) = project(
+            "widget TA {\n    model { var note str = \"\" }\n    view { textarea (value: .note, placeholder: \"say it\", rows: 3.0) { style: \"w-full\" } }\n}\n",
+        );
+        let q = quads_of(&frame);
+        assert_eq!(q.len(), 5, "底框 + 四边框");
+        let h = q[0].0.h;
+        // rows=3：高 = 2*10 padding + 3 * 18.9 行高。
+        assert!((h - (INPUT_PAD * 2.0 + 3.0 * 14.0 * LINE_H_FACTOR)).abs() < 0.5, "rows 高: {h}");
+        assert_eq!(texts_of(&frame), vec!["say it"], "占位文本");
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("input:note"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        for ch in "hi".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        assert_eq!(p.read_state("note").unwrap(), auto_val::Value::str("hi"), "输入闭环");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["hi"], "值显示");
+    }
+
+    /// form 族 auto 探测放行（coverage 声明面）。
+    #[test]
+    fn t4_form_family_auto_eligible() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget FRM {
+    model {
+        var ok bool = false
+        var note str = ""
+    }
+    view {
+        col {
+            checkbox (checked: .ok) { onclick: .T }
+            switch (checked: .ok) { onchange: .T }
+            radio (checked: .ok) { onclick: .T }
+            textarea (value: .note, oninput: .N) {}
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "form 族应 Covered: {verdict:?}");
     }
 }
