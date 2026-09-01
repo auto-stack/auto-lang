@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-508
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: desktop-protocol-stage6-remote-policy
 author: [zhaopuming]
 created_at: 2026-08-31
