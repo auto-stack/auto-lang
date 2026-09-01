@@ -135,6 +135,9 @@ pub struct IcedStyle {
     // Layout (L1 Core)
     pub align_items: Option<IcedAlign>,
     pub justify_content: Option<IcedJustify>,
+    // PLAN-054 T4 (A6): self-start/center/end —— 此前仅降级告警,musk
+    // 用户消息行 `self-end items-end` 右对齐失效(气泡贴左裸排)。
+    pub align_self: Option<IcedAlign>,
 
     // Plan 412 — Layout engine extras
     pub items_stretch: bool,          // cross-axis Fill (build_row/build_column wrap children)
@@ -320,6 +323,7 @@ impl IcedStyle {
             overflow_y: None,
             align_items: None,
             justify_content: None,
+            align_self: None,
             items_stretch: false,
             row_reverse: false,
             col_reverse: false,
@@ -911,13 +915,20 @@ impl IcedStyle {
                 });
             }
             StyleClass::FlexNowrap => {}
-            // iced 无 per-child 对齐/排序 — 解析保留(降级矩阵),渲染继承容器。
-            StyleClass::SelfStart | StyleClass::SelfCenter | StyleClass::SelfEnd
-            | StyleClass::SelfStretch | StyleClass::Order(_) => {
+            // PLAN-054 T4 (A6): self-start/center/end 由渲染层消费——列臂把
+            // 该子项包进 Fill+align 容器实现交叉轴对齐(此前仅降级告警,
+            // musk 用户消息行 `self-end` 右对齐失效)。SelfStretch/Order 仍降级。
+            StyleClass::SelfStart => {
+                self.align_self = Some(IcedAlign::Start);
+            }
+            StyleClass::SelfCenter => {
+                self.align_self = Some(IcedAlign::Center);
+            }
+            StyleClass::SelfEnd => {
+                self.align_self = Some(IcedAlign::End);
+            }
+            StyleClass::SelfStretch | StyleClass::Order(_) => {
                 warn_layout_degradation(match class {
-                    StyleClass::SelfStart => "self-start",
-                    StyleClass::SelfCenter => "self-center",
-                    StyleClass::SelfEnd => "self-end",
                     StyleClass::SelfStretch => "self-stretch",
                     _ => "order-N",
                 });

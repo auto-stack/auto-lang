@@ -2077,6 +2077,13 @@ fn build_column<M: Clone + Debug + 'static>(
         Some(IcedJustify::Between | IcedJustify::Around | IcedJustify::Evenly)
     );
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
+    // PLAN-054 T4 (A6): items-end —— 列交叉轴(横向)右对齐:每个子项包进
+    // Fill+align_x(End) 容器(iced 列无子项对齐;musk 用户消息列
+    // `items-end` 此前被静默丢弃,气泡与 header 贴左)。仅 End 臂新增,
+    // Start/Center 维持既有(忽略)行为,零回归面。
+    let align_end = iced_style
+        .as_ref()
+        .map_or(false, |is| is.align_items == Some(crate::ui::style::iced_adapter::IcedAlign::End));
     let spacer = |portion: u16| {
         iced::widget::Space::new()
                             .height(iced::Length::FillPortion(portion))
@@ -2097,6 +2104,11 @@ fn build_column<M: Clone + Debug + 'static>(
         first = false;
         let child = if stretch {
             container(child).width(iced::Length::Fill).into()
+        } else if align_end {
+            container(child)
+                .width(iced::Length::Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .into()
         } else {
             child
         };
@@ -3250,6 +3262,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
                 // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
+                // PLAN-054 T4 (A6): 子项 self-end/start/center → 交叉轴(横向)
+                // Fill+align 包裹——iced 列无 per-child 对齐,消息行
+                // `self-end` 右对齐此前被静默丢弃。
                 let mut els: Vec<iced::Element<'static, M>> = Vec::new();
                 for c in children {
                     let mt_auto = extract_view_style(&c)
@@ -3257,7 +3272,32 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if mt_auto {
                         els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
                     }
-                    els.push(axis_fix_col_child(c).into_iced());
+                    let align_self = extract_view_style(&c)
+                        .and_then(|s| crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self);
+                    let el = axis_fix_col_child(c).into_iced();
+                    let el = match align_self
+                    {
+                        Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
+                            iced::widget::container(el)
+                                .width(iced::Length::Fill)
+                                .align_x(iced::alignment::Horizontal::Right)
+                                .into()
+                        }
+                        Some(crate::ui::style::iced_adapter::IcedAlign::Start) => {
+                            iced::widget::container(el)
+                                .width(iced::Length::Fill)
+                                .align_x(iced::alignment::Horizontal::Left)
+                                .into()
+                        }
+                        Some(crate::ui::style::iced_adapter::IcedAlign::Center) => {
+                            iced::widget::container(el)
+                                .width(iced::Length::Fill)
+                                .align_x(iced::alignment::Horizontal::Center)
+                                .into()
+                        }
+                        _ => el,
+                    };
+                    els.push(el);
                 }
                 // Plan 490 G4：同 Row。
                 wrap_layout_onclick(build_column(els, spacing, padding, style.as_ref(), None), onclick)
@@ -4039,6 +4079,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
                         svg_widget = svg_widget.width(w.unwrap_or(iced::Length::Fixed(16.0)));
                         svg_widget = svg_widget.height(h.unwrap_or(iced::Length::Fixed(16.0)));
+                        // PLAN-054 T4 (A11): margin 系(ml-auto 贴行右端)在图标
+                        // 出口消费——此前 container 直接返回,ml-auto 静默丢失。
+                        if let Some(ref is) = is {
+                            if is.margin_left_auto || is.margin_right_auto
+                                || is.margin_left.unwrap_or(0.0) != 0.0
+                                || is.margin_right.unwrap_or(0.0) != 0.0
+                                || is.margin_top.unwrap_or(0.0) != 0.0
+                                || is.margin_bottom.unwrap_or(0.0) != 0.0
+                            {
+                                return wrap_with_margin(container(svg_widget).into(), is);
+                            }
+                        }
                         return container(svg_widget).into();
                     }
                     // Unknown icon name: render empty placeholder
@@ -4348,6 +4400,19 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         AbstractView::Button { content, .. } => {
             if let Some(c) = content {
                 inherit_text_color(c, color);
+            }
+        }
+        // PLAN-054 T5 (A10): Image 同样继承按钮文本色——发送钮
+        // `bg-primary text-primary-foreground { Send{} }` 的图标此前落
+        // OnBackground 回退,亮色主题下白钮白标不可见。
+        AbstractView::Image { style, .. } => {
+            let has_explicit_color = style.as_ref().map_or(false, |s| {
+                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+            });
+            if !has_explicit_color {
+                let mut inherited = style.take().unwrap_or_default();
+                inherited.classes.push(StyleClass::TextColor(color));
+                *style = Some(inherited);
             }
         }
         AbstractView::Row { children, .. } | AbstractView::Column { children, .. } | AbstractView::List { items: children, .. } => {

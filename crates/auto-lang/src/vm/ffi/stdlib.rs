@@ -7444,6 +7444,41 @@ pub(crate) fn push_rust_obj<T: Any + Send + Sync + 'static>(
     Ok(())
 }
 
+/// PLAN-054 T5 (A7): Date.format(epoch_ms, pattern) 宿主格式化——本地时区,
+/// 对齐 web 轨 `new Date(ms).toLocaleTimeString()`。token 按连续同字符
+/// run 解析:yyyy/MM/dd/HH/hh/mm/ss/SSS 全宽,单字符窄位;未知 run 原样保留
+/// （分隔符 `:` 等自然直通）。ms 非法(溢出/回退)返回空串。
+fn format_date_ms(ms: i64, pattern: &str) -> String {
+    use chrono::{Datelike, Local, TimeZone, Timelike};
+    let dt = match Local.timestamp_millis_opt(ms) {
+        chrono::LocalResult::Single(dt) => dt,
+        _ => return String::new(),
+    };    let mut out = String::with_capacity(pattern.len() + 8);
+    let bytes = pattern.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let run = bytes[i..].iter().take_while(|&&c| c == b).count();
+        let token = &pattern[i..i + run];
+        let rep: String = match token {
+            "yyyy" | "YYYY" => format!("{:04}", dt.year()),
+            "MM" => format!("{:02}", dt.month()),
+            "dd" | "DD" => format!("{:02}", dt.day()),
+            "HH" | "hh" => format!("{:02}", dt.hour()),
+            "H" => dt.hour().to_string(),
+            "mm" => format!("{:02}", dt.minute()),
+            "m" => dt.minute().to_string(),
+            "ss" => format!("{:02}", dt.second()),
+            "s" => dt.second().to_string(),
+            "SSS" => format!("{:03}", dt.timestamp_subsec_millis()),
+            other => other.to_string(),
+        };
+        out.push_str(&rep);
+        i += run;
+    }
+    out
+}
+
 /// Pop a heap handle and return a reference to the RustStdlibObject.
 fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, VMError> {
     {
@@ -8111,14 +8146,25 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             drop(i64::pop_from_stack(task, vm).unwrap_or(0));
             task.ram.push_i32(0);
         }
-        // Date.now：epoch 毫秒（musk msgTimeLabel/乐观 push 时间戳消费；
-        // Date.format 富格式仍为上游债——KNOWN-DEBT 051 连带登记）。
+        // Date.now：epoch 毫秒（musk msgTimeLabel/乐观 push 时间戳消费）。
         ("Date", "now") => {
             let ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
             task.ram.push_i64(ms);
+        }
+        // PLAN-054 T5 (A7): Date.format(epoch_ms, "HH:mm:ss") 宿主桥——
+        // KNOWN-DEBT 051 登记的"Date.format 富格式上游债"收口。musk
+        // msgTimeLabel(forge_helpers.at)经此产出本地时区 HH:MM:SS 时间标签,
+        // 对齐 web 轨 toLocaleTimeString 形态。token 支持最小集(未知原样):
+        // yyyy/MM/dd/HH/H/mm/m/ss/s/SSS。
+        ("Date", "format") => {
+            let pattern: String = String::pop_from_stack(task, vm).unwrap_or_default();
+            let ms: i64 = i64::pop_from_stack(task, vm).unwrap_or(0);
+            let label = format_date_ms(ms, &pattern);
+            let idx = vm.add_string(label.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
         }
 
         // ---- Stdio ----

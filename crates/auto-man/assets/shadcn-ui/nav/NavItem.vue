@@ -49,7 +49,10 @@ const props = withDefaults(
   { label: "", desc: "", badge: "", size: "md" },
 )
 
-defineEmits<{ click: [event: MouseEvent] }>()
+// PLAN-054 B2: 刻意【不】声明 emits —— Vue 3 中声明 `emits: { click }` 会
+// 把父层 `@click` 从原生透传降级为组件事件,而本组件从不 emit('click'),
+// 导致 rail 导航点击全部失效(musk 对拍 B2 现场)。删除声明后,父层 @click
+// 作为原生监听透传到根 button/RouterLink,点击恢复;`to` 路由不受影响。
 
 const base = computed(
   () => (props.size === "sm" ? ITEM_BASE_SM : props.size === "lg" ? ITEM_BASE_LG : ITEM_BASE_MD),

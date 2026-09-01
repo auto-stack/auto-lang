@@ -2188,6 +2188,9 @@ impl<'a> AuraViewBuilder<'a> {
     /// PLAN-050 T7 (C5): 图标组件 → View::Image{lucide:kebab}。size prop
     /// （lucide 惯例,px）映射 Width/Height 固定像素;renderer 端 glyph 缺失
     /// 时空占位（与既有 unknown-icon 行为一致）。
+    /// PLAN-054 T4 (A11): `class` prop 下传——musk 会话卡 "N 条" 行
+    /// `Info { size: 11, class: "text-muted-foreground shrink-0 ml-auto" }`
+    /// 的 ml-auto/着色此前整串丢弃,图标紧跟文本而非贴行右端。
     fn convert_icon_component(
         &self,
         tag: &str,
@@ -2195,11 +2198,17 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let size = self.extract_u16(props, "size").unwrap_or(16) as f32;
+        let mut classes = vec![
+            StyleClass::Width(SizeValue::Pixels(size)),
+            StyleClass::Height(SizeValue::Pixels(size)),
+        ];
+        if let Some(user_class) = self.extract_string_with(props, "class", bindings) {
+            if let Ok(user) = Style::parse(&user_class) {
+                classes.extend(user.classes);
+            }
+        }
         let style = Style {
-            classes: vec![
-                StyleClass::Width(SizeValue::Pixels(size)),
-                StyleClass::Height(SizeValue::Pixels(size)),
-            ],
+            classes,
             hover_classes: Vec::new(),
         };
         View::Image {
@@ -5340,12 +5349,10 @@ let tabs_inner = View::Row {
         // EE03,普通 button 的 title 被静默丢弃。统一接线后 renderer Button 臂
         // 剥离 EE03 尾段并把按钮包进 iced tooltip(300ms 延迟防误触)。
         // binding-aware:musk 会话列表 `title: .s.id` 按循环变量逐项求值。
+        // PLAN-054 T1: EE03 后缀推迟到构造 View::Button 时才拼入 label——
+        // 内容子树的 leading Text 必须用干净 label,否则 EE03 PUA 字形落
+        // 可见文本流(A1 卡片 "Y<id>" / A2 "Y新建会话" 常显的根因)。
         let pua_title = self.extract_string_with(props, "title", bindings).unwrap_or_default();
-        let label = if pua_title.is_empty() {
-            label
-        } else {
-            format!("{}\u{EE03}{}", label, pua_title)
-        };
 
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
@@ -5582,7 +5589,13 @@ let tabs_inner = View::Row {
 
         View::Button {
             disabled,
-            label,
+            // PLAN-054 T1: EE03 title 尾段在此统一拼入(renderer/snapshot 按
+            // EE03 拆分);label 本体保持干净,内容子树 leading Text 不受污染。
+            label: if pua_title.is_empty() {
+                label
+            } else {
+                format!("{}\u{EE03}{}", label, pua_title)
+            },
             onclick,
             style,
             on_right_click,
@@ -6717,39 +6730,71 @@ let tabs_inner = View::Row {
             // 多个条目,只看 branches.first() 会跳过中间分支(如 kind==Dir 命中而
             // kind==CodeAtRs 永远落 else)。
             Expr::If(if_expr) => {
+                // PLAN-054 T3: 分支体求值失败不整链报废——`if x != None { x.f }
+                // else { fallback }` 的兜底意图是"取不到就落默认";此前 then 体
+                // 任一点 None(如 x 为零默认 Int(0) 时 x.f 解析失败)→ 整个
+                // computed → None → 文本位出 "${name}" 字面量(musk 工作区行
+                // "Y${currentTitle}" 现场)。改为:分支体落空继续走后续
+                // else-if/else 链,真实 obj 全路径无损。
+                let mut selected: Option<Value> = None;
+                let mut decided = false;
                 for branch in &if_expr.branches {
-                    let cond_val = self.resolve_expr_to_value(&branch.cond, bindings)?;
+                    let Some(cond_val) = self.resolve_expr_to_value(&branch.cond, bindings) else {
+                        continue;
+                    };
                     let is_true = match &cond_val {
                         Value::Bool(false) | Value::Nil => false,
                         Value::Int(i) if *i == 0 => false,
                         _ => true,
                     };
-                    if is_true {
-                        // then body must be a single expression (Plan 339 contract)
-                        if branch.body.stmts.len() == 1 {
-                            match &branch.body.stmts[0] {
-                                crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
-                                crate::ast::Stmt::If(nested_if) => {
-                                    return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
-                                }
-                                _ => {}
-                            }
-                        }
-                        return None;
+                    if !is_true {
+                        continue;
                     }
-                }
-                if let Some(else_body) = &if_expr.else_ {
-                    if else_body.stmts.len() == 1 {
-                        match &else_body.stmts[0] {
-                            crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_value(e, bindings),
+                    decided = true;
+                    // then body must be a single expression (Plan 339 contract)
+                    if branch.body.stmts.len() == 1 {
+                        match &branch.body.stmts[0] {
+                            crate::ast::Stmt::Expr(e) => {
+                                match self.resolve_expr_to_value(e, bindings) {
+                                    Some(v) => selected = Some(v),
+                                    None => decided = false,
+                                }
+                            }
                             crate::ast::Stmt::If(nested_if) => {
-                                return self.resolve_expr_to_value(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                match self.resolve_expr_to_value(
+                                    &crate::ast::Expr::If(nested_if.clone()),
+                                    bindings,
+                                ) {
+                                    Some(v) => selected = Some(v),
+                                    None => decided = false,
+                                }
                             }
                             _ => {}
                         }
                     }
+                    if selected.is_some() {
+                        break;
+                    }
                 }
-                None
+                if selected.is_none() && !decided {
+                    if let Some(else_body) = &if_expr.else_ {
+                        if else_body.stmts.len() == 1 {
+                            match &else_body.stmts[0] {
+                                crate::ast::Stmt::Expr(e) => {
+                                    selected = self.resolve_expr_to_value(e, bindings);
+                                }
+                                crate::ast::Stmt::If(nested_if) => {
+                                    selected = self.resolve_expr_to_value(
+                                        &crate::ast::Expr::If(nested_if.clone()),
+                                        bindings,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                selected
             }
             // D-GAP-4: f-string in a value position (non-primary-prop props,
             // style_obj values, …) — evaluate to the joined display string

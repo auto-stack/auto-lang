@@ -988,6 +988,196 @@ mod musk_vm_track_p053_b4_title_tooltip {
 }
 
 
+/// PLAN-054 T1 (R1): EE03 title 标记不得落可见文本流——内容子树按钮的
+/// leading Text 泄漏。现场（musk chats_view.at A1/A2）：`button { title: …
+/// span { text .s.name } }`——子文本是 child node 而非 text prop，
+/// extract_children_text 落 None → label_from_prop=true，而 EE03 后缀先行
+/// 拼进 label → leading Text("EE03+title") 常显（卡片首行 "Y<id>"、
+/// "Y新建会话"、"Y设置" 的根因）。修复后：内容子树用干净 label，
+/// EE03 只留在 Button.label 走 renderer tooltip 通道。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t1_title_content_subtree {
+    use crate::parser::Parser;
+    use crate::ui::view::View;
+
+    fn build_root() -> crate::ui::dynamic::DynamicComponent {
+        let src = concat!(
+            "widget Root54t {\n",
+            "    view {\n",
+            "        col {\n",
+            "            button {\n",
+            "                title: \"sess-054-id\"\n",
+            "                span {\n",
+            "                    text \"你好\"\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    /// PLAN-054 T2 (R2)：内容子树按钮 icon 子组件——R2 全集逐图标回归锁。
+    /// 09-01 对拍 A2/A10 现场声明的丢失集（Plus/Trash2/Send/Folder/
+    /// ChevronDown/Settings）+ 对照组（Search/Info）。P-051 P2-①（模块级
+    /// use.web 注册）+ P-053-6（registry 守卫）修复后桥路已通，本测锁死
+    /// "button 内容子树 + title" 形态下每个图标都以 lucide:{kebab} 进视图。
+    #[test]
+    fn icon_component_child_renders_in_button_content_subtree() {
+        crate::ui::aura_view_builder::register_imported_components(vec![
+            "Plus".to_string(),
+            "Trash2".to_string(),
+            "Search".to_string(),
+            "Info".to_string(),
+            "Send".to_string(),
+            "Folder".to_string(),
+            "ChevronDown".to_string(),
+            "Settings".to_string(),
+        ]);
+        // (组件名, 期望 kebab glyph)——R2 丢失集在前，对照组在后。
+        let cases: &[(&str, &str)] = &[
+            ("Plus", "lucide:plus"),
+            ("Trash2", "lucide:trash-2"),
+            ("Send", "lucide:send"),
+            ("Folder", "lucide:folder"),
+            ("ChevronDown", "lucide:chevron-down"),
+            ("Settings", "lucide:settings"),
+            ("Search", "lucide:search"),
+            ("Info", "lucide:info"),
+        ];
+        for (tag, want) in cases {
+            let src = format!(
+                "widget Root54i {{\n    view {{\n        button {{\n            title: \"t-{tag}\"\n            {tag} {{ size: 14 }}\n        }}\n    }}\n}}\n"
+            );
+            let session = crate::session::CompilerSession::ui();
+            let mut parser = Parser::from(src.as_str()).with_session(session);
+            let ast = parser.parse().unwrap_or_else(|e| panic!("{tag}: parse {e}"));
+            let decls: Vec<crate::ast::WidgetDecl> = ast
+                .stmts
+                .iter()
+                .filter_map(|st| match st {
+                    crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                    _ => None,
+                })
+                .collect();
+            let root_widget =
+                crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+            let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+                &decls[0],
+                &decls[1..],
+                &root_widget,
+                crate::ui::widget_registry::WidgetRegistry::new(),
+                vec![],
+                &std::collections::HashMap::new(),
+                false,
+            )
+            .expect("component");
+            let (view, _, _) = comp.view_with_debug_gated(false);
+            fn first_image(
+                view: &View<crate::ui::interpreter::DynamicMessage>,
+                img: &mut Option<String>,
+            ) {
+                if img.is_some() {
+                    return;
+                }
+                match view {
+                    View::Image { src, .. } => *img = Some(src.clone()),
+                    View::Button { content: Some(c), .. } => first_image(c, img),
+                    View::Row { children, .. } | View::Column { children, .. } => {
+                        for c in children {
+                            first_image(c, img);
+                        }
+                    }
+                    View::Container { child, .. } => first_image(child, img),
+                    _ => {}
+                }
+            }
+            let mut got = None;
+            first_image(&view, &mut got);
+            assert_eq!(
+                got.as_deref(),
+                Some(*want),
+                "{tag} 必须以 {want} 渲染进 button 内容子树"
+            );
+        }
+        crate::ui::aura_view_builder::clear_imported_components();
+    }
+
+    /// title 仍以 EE03 尾段进 Button.label（renderer tooltip 通道不回退），
+    /// 但任何 View::Text 的可见内容不得携带 EE03（PUA 字形不落文本流）。
+    #[test]
+    fn title_ee03_stays_out_of_visible_text_stream() {
+        crate::ui::aura_view_builder::clear_imported_components();
+        let comp = build_root();
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        // 递归收集 (Button labels, Text contents)。
+        fn walk(
+            view: &View<crate::ui::interpreter::DynamicMessage>,
+            labels: &mut Vec<String>,
+            texts: &mut Vec<String>,
+        ) {
+            match view {
+                View::Button { label, content, .. } => {
+                    labels.push(label.clone());
+                    if let Some(c) = content {
+                        walk(c, labels, texts);
+                    }
+                }
+                View::Text { content, .. } => texts.push(content.clone()),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, labels, texts);
+                    }
+                }
+                View::Container { child, .. } => walk(child, labels, texts),
+                _ => {}
+            }
+        }
+        let mut labels = Vec::new();
+        let mut texts = Vec::new();
+        walk(&view, &mut labels, &mut texts);
+        eprintln!("[P054-T1] button labels: {:?}, text contents: {:?}", labels, texts);
+        assert!(
+            labels.iter().any(|l| l.ends_with(&format!("\u{EE03}sess-054-id"))),
+            "Button.label 必须保留 EE03+title 尾段(tooltip 通道), got: {:?}",
+            labels
+        );
+        assert!(
+            texts.iter().all(|t| !t.contains('\u{EE03}')),
+            "可见文本流不得携带 EE03 PUA 标记, got: {:?}",
+            texts
+        );
+        assert!(
+            texts.iter().any(|t| t == "你好"),
+            "span 子节点文本必须照常渲染, got: {:?}",
+            texts
+        );
+    }
+}
+
+
 /// P-053-8: 二级导航点击会话实参漂移——UI 事件层携带正确 id
 /// （encode `Pick\u{1f}s\u{1f}<id>`），handler 体内参数却读到会话名
 /// （"你好"）。实机日志（plan053-batch4-vm.log）：
@@ -1264,5 +1454,646 @@ mod musk_vm_track_p053_8_phantom_freelist {
         // 同字节内化仍命中存活槽。
         let again = vm.add_string("你好".as_bytes().to_vec());
         assert_eq!(again, live);
+    }
+}
+
+
+/// PLAN-054 手动探针（#[ignore]，需 MUSK_APP_PATH 指向真实 musk app.at）：
+/// 走生产管线 build_dynamic_component（与 auto run --render=vm 同装载路径，
+/// 含 register_imported_components 三路注册）渲染一帧，倒出全部 Image src
+/// 与 Text 内容——裁定图标丢失发生在注册面/视图面/渲染面哪一层。
+/// 运行：MUSK_APP_PATH=D:/autostack/auto-musk/src/front/app.at \
+///   cargo nextest run -p auto-lang --lib --features ui-iced musk_runtime_icon -- --ignored --nocapture
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_runtime_probe {
+    #[test]
+    #[ignore = "requires MUSK_APP_PATH pointing at real musk checkout"]
+    fn musk_runtime_icon_and_text_dump() {
+        let app = std::path::PathBuf::from(
+            std::env::var("MUSK_APP_PATH").expect("MUSK_APP_PATH required"),
+        );
+        let code = std::fs::read_to_string(&app).expect("read app.at");
+        let mut dc = crate::build_dynamic_component(&code, Some(app.to_str().unwrap()))
+            .expect("production loader build");
+        // 过 auth guard（app.at: authenticated => token != None computed）。
+        let fields: Vec<String> = dc.state_fields().iter().map(|f| format!("{:?}", f)).collect();
+        eprintln!("[P054-probe] state fields: {:?}", fields);
+        let authed = dc.write_state("token", auto_val::Value::Str("probe-token".into()));
+        authed.expect("write token");
+        // T3 R3 勘察：给 .current 填真值，看 ${currentName}/${currentTitle}
+        // 字面量是否被求值（workspace_selector computed 形态）。
+        let ws = auto_val::Obj::new()
+            .with("id", auto_val::Value::str("ws-1"))
+            .with("name", auto_val::Value::str("musk-demo"))
+            .with("path", auto_val::Value::str("D:\\autostack\\auto-musk"));
+        dc.write_state("current", auto_val::Value::Obj(ws))
+            .expect("write current");
+        // T3 R3 勘察续：VM flash 里 computed 是否编成同名 fn + call_vm_fn 直调。
+        let bridge = dc.bridge();
+        let names: Vec<String> = bridge
+            .vm()
+            .flash
+            .exports_by_name
+            .keys()
+            .filter(|k| k.contains("current") || k.contains("Name") || k.contains("Title"))
+            .cloned()
+            .collect();
+        eprintln!("[P054-probe] vm fn exports matching current/Name/Title: {:?}", names);
+        for cand in ["currentName", "currentTitle", "WorkspaceSelector.currentName"] {
+            match bridge.call_vm_fn(cand, &[]) {
+                Ok(v) => eprintln!("[P054-probe] call_vm_fn({cand}) = {:?}", v),
+                Err(e) => eprintln!("[P054-probe] call_vm_fn({cand}) ERR: {:?}", e),
+            }
+        }
+        for cand in ["ws_load_current", "ws_load_recent"] {
+            match bridge.call_vm_fn(cand, &[]) {
+                Ok(v) => eprintln!("[P054-probe] call_vm_fn({cand}) = {:?}", v),
+                Err(e) => eprintln!("[P054-probe] call_vm_fn({cand}) ERR: {:?}", e),
+            }
+        }
+        eprintln!(
+            "[P054-probe] root read_state(current) pre-view = {:?}",
+            bridge.read_state("current")
+        );
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        eprintln!(
+            "[P054-probe] root read_state(current) post-view = {:?}",
+            dc.bridge().read_state("current")
+        );
+        fn walk(
+            view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            imgs: &mut Vec<String>,
+            texts: &mut Vec<String>,
+            depth: usize,
+        ) {
+            use crate::ui::view::View;
+            if depth > 40 {
+                return;
+            }
+            match view {
+                View::Image { src, .. } => imgs.push(src.clone()),
+                View::Text { content, .. } => texts.push(content.clone()),
+                View::Button { label, content, .. } => {
+                    texts.push(format!("[btn label={:?}]", label));
+                    if let Some(c) = content {
+                        walk(c, imgs, texts, depth + 1);
+                    }
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, imgs, texts, depth + 1);
+                    }
+                }
+                View::Container { child, .. } => walk(child, imgs, texts, depth + 1),
+                _ => {}
+            }
+        }
+        let mut imgs = Vec::new();
+        let mut texts = Vec::new();
+        walk(&view, &mut imgs, &mut texts, 0);
+        eprintln!("[P054-probe] image srcs ({}): {:?}", imgs.len(), imgs);
+        eprintln!("[P054-probe] texts ({}):", texts.len());
+        for t in &texts {
+            eprintln!("  text: {:?}", t);
+        }
+    }
+}
+
+/// PLAN-054 T3 (R3/R4): 文本插值 computed 形态求值 + i18n {'x'} 转义。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_interp_i18n {
+    use crate::parser::Parser;
+
+    fn build(src: &str) -> crate::ui::dynamic::DynamicComponent {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component")
+    }
+
+    fn texts_of(comp: &crate::ui::dynamic::DynamicComponent) -> Vec<String> {
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn walk(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match view {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Button { label, content, .. } => {
+                    out.push(format!("[label {:?}]", label));
+                    if let Some(c) = content {
+                        walk(c, out);
+                    }
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        walk(c, out);
+                    }
+                }
+                View::Container { child, .. } => walk(child, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        walk(&view, &mut out);
+        out
+    }
+
+    /// 根 widget 形态：computed if（.current != None → .current.name）。
+    /// workspace_selector.at:23 的 currentName 同款。此前显示字面
+    /// "${currentName}"（read_state Err 兜底臂）。
+    #[test]
+    fn computed_if_text_resolves_in_root_widget() {
+        let src = concat!(
+            "widget Root54c {\n",
+            "    model { var current obj = None }\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let comp = build(src);
+        let texts = texts_of(&comp);
+        eprintln!("[P054-T3] root texts: {:?}", texts);
+        assert!(
+            texts.iter().any(|t| t == "选择工作目录"),
+            "computed if 必须求值（current=None → else 分支）, got: {:?}",
+            texts
+        );
+    }
+
+    /// 子 widget 形态：computed 定义在子 widget，父视图实例化。
+    /// 此前子 builder 的 computed 链路断裂 → 字面 "${currentName}"。
+    #[test]
+    fn computed_if_text_resolves_in_child_widget() {
+        let src = concat!(
+            "widget Selector54c {\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "        currentTitle => if .current != None { .current.path } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    model { var current obj = None }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "            text .currentTitle\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "widget Root54c2 {\n",
+            "    view {\n",
+            "        col {\n",
+            "            Selector54c {}\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let comp = build(src);
+        let texts = texts_of(&comp);
+        eprintln!("[P054-T3] child texts: {:?}", texts);
+        assert!(
+            texts.iter().filter(|t| !t.starts_with("[label")).count() >= 2,
+            "子 widget 两个 computed text 都要渲染, got: {:?}",
+            texts
+        );
+        assert!(
+            texts.iter().any(|t| t == "选择工作目录"),
+            "子 widget computed if 必须求值, got: {:?}",
+            texts
+        );
+        assert!(
+            !texts.iter().any(|t| t.contains("${current")),
+            "不得残留 ${{...}} 字面量, got: {:?}",
+            texts
+        );
+    }
+}
+
+/// PLAN-054 T3 (R3) 生产装载面：`var current obj = None` 的 None 初始值
+/// 经 VmBridge::new 状态种入必须是 Nil——此前 eval_expr_to_value 的 Ident
+/// 臂把 None 解析为 Int(0)（"unresolved ident 零占位"），子作用域 computed
+/// 链 `.current != None` 恒真 → `.current.path` 作用 Int(0) → None →
+/// workspace 行显示字面 "${currentName}/${currentTitle}"（A4）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_none_initial {
+    use crate::parser::Parser;
+
+    #[test]
+    fn obj_model_none_initial_seeds_nil_in_vm_state() {
+        let src = concat!(
+            "widget Root54n {\n",
+            "    model {\n",
+            "        var current obj = None\n",
+            "        var flag bool = false\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        let bridge = crate::ui::vm_bridge::VmBridge::new(&widget).expect("bridge");
+        let current = bridge.read_state("current").expect("read current");
+        eprintln!("[P054-T3] current initial = {:?}", current);
+        assert_eq!(
+            current,
+            auto_val::Value::Nil,
+            "obj = None 初始值必须种入 Nil(此前 Int(0) 令 computed != None 恒真), got {:?}",
+            current
+        );
+        let flag = bridge.read_state("flag").expect("read flag");
+        assert_eq!(flag, auto_val::Value::Bool(false), "bool 初始值不变");
+    }
+}
+
+/// PLAN-054 T3 (R3) VM 返回值形态：`.at` fn 体里裸 `return None` 必须以
+/// NV nil 返回（call_vm_fn 解码为 Value::Nil）——P-053-2 只修了 null/nil
+/// 字面量，大写 None（musk 惯用）经 Ident/未解析臂落 Int(0)，沿
+/// `.current = ws_load_current()` 写进 state → `!= None` 恒真 →
+/// `.current.path` 作用 Int(0) → workspace 行显示字面 ${currentTitle}（A4）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_none_return {
+    use crate::parser::Parser;
+
+    pub(super) fn build_bridge(src: &str) -> crate::ui::vm_bridge::VmBridge {
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let fns: Vec<crate::ast::Stmt> = ast
+            .stmts
+            .iter()
+            .filter(|st| matches!(st, crate::ast::Stmt::Fn(_)))
+            .cloned()
+            .collect();
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        crate::ui::vm_bridge::VmBridge::new_with_imports(&widget, fns).expect("bridge")
+    }
+
+    #[test]
+    fn vm_fn_bare_none_return_is_nil_not_int0() {
+        let src = concat!(
+            "widget Root54nr {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn load() Value {\n",
+            "    return None\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        let v = bridge
+            .call_vm_fn("load", &[])
+            .expect("call load");
+        eprintln!("[P054-T3] return None => {:?}", v);
+        assert_eq!(
+            v,
+            auto_val::Value::Nil,
+            "裸 return None 必须解出 Nil, got {:?}（Int(0) 沿状态写入扩散成 != None 恒真）",
+            v
+        );
+    }
+}
+
+/// PLAN-054 T3 (R3)：computed if 的兜底语义——then 体求值失败（如 x 为
+/// 零默认 Int(0) 时 `x.f` 解析 None）不得整链报废出 "${name}" 字面量，
+/// 必须落到 else 兜底（`if x != None { x.f } else { fallback }` 意图）。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t3_if_fallback {
+    use crate::parser::Parser;
+
+    #[test]
+    fn computed_if_falls_back_when_then_body_unresolvable() {
+        let src = concat!(
+            "widget Root54fb {\n",
+            "    model { var current obj = None }\n",
+            "    computed {\n",
+            "        currentName => if .current != None { .current.name } else { \"选择工作目录\" }\n",
+            "    }\n",
+            "    view {\n",
+            "        col {\n",
+            "            text .currentName\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("decl");
+        let widget = crate::aura::extract_widget_from_decl(&decl).expect("extract");
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decl,
+            &[],
+            &widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("component");
+        // 模拟生产现场的零默认垃圾态（VM 装载/async 句柄写回 Int(0)）。
+        comp.bridge_mut()
+            .write_state("current", auto_val::Value::Int(0))
+            .expect("write garbage current");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn texts(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+            use crate::ui::view::View;
+            match view {
+                View::Text { content, .. } => out.push(content.clone()),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        texts(c, out);
+                    }
+                }
+                View::Container { child, .. } => texts(child, out),
+                _ => {}
+            }
+        }
+        let mut out = Vec::new();
+        texts(&view, &mut out);
+        eprintln!("[P054-T3] fallback texts: {:?}", out);
+        assert!(
+            out.iter().any(|t| t == "选择工作目录"),
+            "then 体不可解析时必须落 else 兜底, got: {:?}",
+            out
+        );
+        assert!(
+            !out.iter().any(|t| t.contains("${currentName}")),
+            "不得残留 ${{...}} 字面量, got: {:?}",
+            out
+        );
+    }
+}
+
+/// PLAN-054 T4 (A9) 勘察：会话卡片样式链解析产物。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t4_style_probe {
+    #[test]
+    #[ignore = "manual probe"]
+    fn session_card_style_parse_dump() {
+        let selected = crate::ui::style::Style::parse(
+            "session-item relative h-auto w-full flex flex-col items-start justify-start gap-0.5 text-left py-2.5 px-3 mb-1.5 rounded-lg border border-primary/25 bg-primary/10 text-primary",
+        );
+        let unselected = crate::ui::style::Style::parse(
+            "session-item relative h-auto w-full flex flex-col items-start justify-start gap-0.5 text-left py-2.5 px-3 mb-1.5 rounded-lg border border-transparent bg-card hover:border-border hover:bg-accent text-foreground",
+        );
+        for (name, s) in [("selected", selected), ("unselected", unselected)] {
+            let Ok(s) = s else { eprintln!("[P054-T4] {name}: PARSE FAIL"); continue };
+            let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+            eprintln!("[P054-T4] {name}: border={} width={:?} color={:?} bg={:?}",
+                is.border, is.border_width, is.border_color, is.background_color);
+        }
+    }
+}
+
+/// PLAN-054 T4 (A6/A9/A11) 回归锁：会话卡片/消息行样式链。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t4_styles {
+    use crate::ui::style::{Style, StyleClass};
+    use crate::ui::style::iced_adapter::IcedStyle;
+
+    /// A9 锁①：border-primary/25 带解析（选中卡片淡描边）。
+    /// 09-01 对拍"border alpha 未支持/描边过重"在当前 master 不成立,
+    /// 此测钉死解析面(alpha 0.25 语义色)。
+    #[test]
+    fn border_primary_25_parses_with_alpha() {
+        let s = Style::parse("border border-primary/25").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        assert!(is.border, "border 宽度类必须在");
+        let c = is.border_color.expect("border color");
+        assert!((c.a - 0.25).abs() < 0.02, "alpha 必须为 25%, got {:?}", c);
+    }
+
+    /// A9 锁②：bg-card 语义解析 = musk dark --card(222.2 47% 10%) =
+    /// rgb(13,21,38)（Plan 448 对齐,两轨一致）。"未选中色块"为旧观察。
+    #[test]
+    fn bg_card_matches_musk_dark_token() {
+        let s = Style::parse("bg-card").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        let c = is.background_color.expect("bg");
+        assert_eq!((c.r * 255.0).round() as u8, 13, "r");
+        assert_eq!((c.g * 255.0).round() as u8, 21, "g");
+        assert_eq!((c.b * 255.0).round() as u8, 38, "b");
+    }
+
+    /// A11：图标组件 class prop 下传——ml-auto 贴行右端 + muted 着色,
+    /// size 像素保持。
+    #[test]
+    fn icon_component_class_prop_carries_ml_auto_and_tint() {
+        use crate::parser::Parser;
+        use crate::ui::view::View;
+        let src = concat!(
+            "widget Root54t4 {\n",
+            "    view {\n",
+            "        row {\n",
+            "            style: \"flex items-center gap-1 w-full\"\n",
+            "            text \"N 条\"\n",
+            "            Info { size: 11, class: \"text-muted-foreground shrink-0 ml-auto\" }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        );
+        crate::ui::aura_view_builder::register_imported_components(vec!["Info".to_string()]);
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decls: Vec<crate::ast::WidgetDecl> = ast
+            .stmts
+            .iter()
+            .filter_map(|st| match st {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .collect();
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0], &decls[1..], &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            vec![], &std::collections::HashMap::new(), false,
+        )
+        .expect("component");
+        let (view, _, _) = comp.view_with_debug_gated(false);
+        fn find_image(view: &View<crate::ui::interpreter::DynamicMessage>) -> Option<&crate::ui::style::Style> {
+            match view {
+                View::Image { style, .. } => style.as_ref(),
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    children.iter().find_map(find_image)
+                }
+                View::Container { child, .. } => find_image(child),
+                _ => None,
+            }
+        }
+        let img_style = find_image(&view).expect("icon image");
+        let is = IcedStyle::from_style(img_style);
+        assert!(is.margin_left_auto, "ml-auto 必须进图标样式(A11 此前整串丢弃)");
+        assert!(is.text_color.is_some(), "text-muted-foreground 着色必须在");
+        assert!(
+            img_style.classes.iter().any(|c| matches!(c,
+                StyleClass::Width(crate::ui::style::SizeValue::Pixels(px)) if *px == 11.0)),
+            "size 像素必须保持"
+        );
+        crate::ui::aura_view_builder::clear_imported_components();
+    }
+
+    /// A6：self-end / items-end 进 IcedStyle（渲染层列臂消费）。
+    #[test]
+    fn message_row_self_end_items_end_reach_iced_style() {
+        let s = Style::parse("flex flex-col gap-[3px] max-w-[85%] self-end items-end").expect("parse");
+        let is = IcedStyle::from_style(&s);
+        assert!(
+            matches!(is.align_self, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            "self-end 必须进 align_self(此前仅降级告警)"
+        );
+        assert!(
+            matches!(is.align_items, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            "items-end 必须进 align_items"
+        );
+    }
+}
+
+/// PLAN-054 T5 (A7)：Date.format 宿主桥端到端——musk forge_helpers.at 的
+/// msgTimeLabel 同款形态（epoch 秒 ×1000 → "HH:mm:ss"），此前 Date.format
+/// 未桥接返回垃圾（时间标签缺失现场）。宿主臂收口 KNOWN-DEBT 051。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t5_date_format {
+    use super::musk_vm_track_p054_t3_none_return::build_bridge;
+
+    #[test]
+    fn date_format_bridge_yields_hhmmss_label() {
+        let src = concat!(
+            "widget Root54d {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn msg_time_label(createdAt int) str {\n",
+            "    if createdAt == 0 { return \"\" }\n",
+            "    return Date.format(createdAt * 1000, \"HH:mm:ss\")\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        // 固定历元（本地时区只影响时分秒数值,不影响形态）。
+        let out = bridge
+            .call_vm_fn("msg_time_label", &[auto_val::Value::Int(86401)])
+            .expect("call msg_time_label");
+        eprintln!("[P054-T5] msg_time_label(86401) = {:?}", out);
+        let s = match &out {
+            auto_val::Value::Str(s) => s.to_string(),
+            auto_val::Value::String(s) => s.to_string(),
+            other => panic!("必须返回字符串, got {:?}", other),
+        };
+        assert_eq!(
+            s.split(':').count(),
+            3,
+            "HH:MM:SS 形态(两个冒号三段数字), got {:?}",
+            s
+        );
+        for part in s.split(':') {
+            assert!(
+                !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()),
+                "时间段必须是数字, got {:?}",
+                s
+            );
+        }
+        // 零契约：0 → 空串（web 轨同款守卫）。
+        let zero = bridge
+            .call_vm_fn("msg_time_label", &[auto_val::Value::Int(0)])
+            .expect("call zero");
+        assert_eq!(zero, auto_val::Value::Str("".into()), "createdAt=0 必须空串");
+    }
+}
+
+/// T5 勘察：Date.now 同形态对照。
+#[cfg(all(test, feature = "ui-iced"))]
+mod musk_vm_track_p054_t5_date_probe {
+    use super::musk_vm_track_p054_t3_none_return::build_bridge;
+
+    #[test]
+    #[ignore = "manual probe"]
+    fn date_now_routing_probe() {
+        let src = concat!(
+            "widget Root54p {\n",
+            "    view {\n",
+            "        col {\n",
+            "            text \"x\"\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "fn now_ms() int {\n",
+            "    return Date.now()\n",
+            "}\n",
+            "fn fmt(ms int) str {\n",
+            "    return Date.format(ms, \"HH:mm:ss\")\n",
+            "}\n",
+            "fn fmt_now() str {\n",
+            "    return Date.format(Date.now(), \"HH:mm:ss\")\n",
+            "}\n",
+        );
+        let bridge = build_bridge(src);
+        for (name, f) in [("now_ms", 0), ("fmt", 1), ("fmt_now", 2)] {
+            let _ = f;
+            match bridge.call_vm_fn(name, &[]) {
+                Ok(v) => eprintln!("[P054-T5P] {} = {:?}", name, v),
+                Err(e) => eprintln!("[P054-T5P] {} ERR: {:?}", name, e),
+            }
+        }
+        match bridge.call_vm_fn("fmt", &[auto_val::Value::Int(86401000)]) {
+            Ok(v) => eprintln!("[P054-T5P] fmt(86401000) = {:?}", v),
+            Err(e) => eprintln!("[P054-T5P] fmt ERR: {:?}", e),
+        }
     }
 }
