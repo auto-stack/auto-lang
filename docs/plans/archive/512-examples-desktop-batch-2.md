@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-512
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: examples-desktop-batch-2
 author: [zhaopuming]
 created_at: 2026-08-31
