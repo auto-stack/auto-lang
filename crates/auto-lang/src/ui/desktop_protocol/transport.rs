@@ -353,6 +353,317 @@ mod pipe {
 #[cfg(windows)]
 pub use pipe::{connect, listen, PendingServer, PipeEnd};
 
+// ---------------------------------------------------------------------------
+// WebSocket（Plan 508 G3/G4 远程线）：tokio-tungstenite + 线程桥接同步
+// trait——pipe 同族阻塞语义。
+//
+// 消息映射：**一条 WS Binary 消息 = 一个 codec 信封**（WS 自带消息
+// 边界，无需 u32 长度前缀分帧——信封不变、传输层追加式，§1 演进
+// 纪律）。Text 帧按未知载荷拒收（解码错误路径）；Close/读错 → EOF。
+//
+// token（v1）：回环 + HTTP 升级期 query 校验（`?token=<值>`——浏览器
+// WebSocket API 不允许自定义头，query 为最简携带位）；静态 token 由
+// 调用方传入（宿主 boot 读 `shell.remote.token`，缺省不监听=拒绝）。
+// 跨网/TLS 另立计划（计划待澄清③边界）。
+// ---------------------------------------------------------------------------
+
+pub mod ws {
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+
+    use futures::{SinkExt, StreamExt};
+    use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+    use tokio_tungstenite::tungstenite::http::StatusCode;
+    use tokio_tungstenite::tungstenite::Message;
+
+    use super::{Transport, TransportError};
+    use crate::ui::desktop_protocol::codec::CodecError;
+    use crate::ui::desktop_protocol::message::ProtocolMsg;
+
+    /// 常驻 runtime（pipe 同款：worker 持续驱动 reactor；WS accept 循环
+    /// 的 select 节拍需要 timer，故 enable_all）。
+    fn make_rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("tokio runtime")
+    }
+
+    /// 读写半类型（`WebSocketStream::split` 产物；S = 底层 IO 流——
+    /// 服务端 TcpStream / 客户端 MaybeTlsStream<TcpStream>）。
+    type WsSink<S> = futures::stream::SplitSink<S, Message>;
+
+    struct Inbox {
+        envelopes: VecDeque<Vec<u8>>,
+        eof: bool,
+    }
+
+    /// WS 通道端（PipeEnd 同族）：读线程 `select!{read, shutdown}` 泵
+    /// Binary 消息 → inbox 信封；写侧 split sink（Mutex + block_on，无
+    /// 跨 await 持锁）。
+    pub struct WsEnd<S>
+    where
+        S: futures::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+            + futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+            + Unpin
+            + Send
+            + 'static,
+    {
+        inbox: Arc<Mutex<Inbox>>,
+        shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
+        writer: Arc<Mutex<WsSink<S>>>,
+        reader: Option<JoinHandle<()>>,
+        rt: Arc<tokio::runtime::Runtime>,
+    }
+
+    impl<S> WsEnd<S>
+    where
+        S: futures::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+            + futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+            + Unpin
+            + Send
+            + 'static,
+    {
+        /// 类型擦除构造（与 pipe 端统一为 `Box<dyn Transport + Send>`）。
+        fn spawn_boxed(rt: Arc<tokio::runtime::Runtime>, stream: S) -> Box<dyn Transport + Send> {
+            let (sink, stream) = stream.split();
+            let inbox = Arc::new(Mutex::new(Inbox { envelopes: VecDeque::new(), eof: false }));
+            let inbox_reader = Arc::clone(&inbox);
+            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+            let writer = Arc::new(Mutex::new(sink));
+            let rt_reader = Arc::clone(&rt);
+            let reader = std::thread::spawn(move || {
+                let rt = rt_reader;
+                let mut stream = stream;
+                let mut shutdown_rx = shutdown_rx;
+                rt.block_on(async {
+                    loop {
+                        tokio::select! {
+                            res = stream.next() => match res {
+                                Some(Ok(Message::Binary(data))) => {
+                                    inbox_reader.lock().unwrap().envelopes.push_back(data.to_vec());
+                                }
+                                // Ping/Pong：tungstenite 读侧自动应答，此处吞掉。
+                                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                                // Close / Text（未知载荷形态）/ 读错 = 对端关闭。
+                                Some(Ok(_)) | None => break,
+                                Some(Err(_)) => break,
+                            },
+                            _ = &mut shutdown_rx => break,
+                        }
+                    }
+                });
+                inbox_reader.lock().unwrap().eof = true;
+            });
+            Box::new(Self {
+                inbox,
+                shutdown_tx: Mutex::new(Some(shutdown_tx)),
+                writer,
+                reader: Some(reader),
+                rt,
+            })
+        }
+    }
+
+    impl<S> Transport for WsEnd<S>
+    where
+        S: futures::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+            + futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+            + Unpin
+            + Send
+            + 'static,
+    {
+        fn send(&mut self, msg: &ProtocolMsg) -> Result<(), TransportError> {
+            self.write_raw(&msg.encode())
+        }
+
+        /// 原始字节直写 = 一条 Binary 消息（信封形态直送；线级破坏注入同款）。
+        fn write_raw(&self, bytes: &[u8]) -> Result<(), TransportError> {
+            let mut w = self.writer.lock().unwrap();
+            self.rt
+                .block_on(async { w.send(Message::Binary(bytes.to_vec().into())).await })
+                .map_err(|e| TransportError::Io(e.to_string()))
+        }
+
+        fn try_recv(&mut self) -> Option<Result<ProtocolMsg, CodecError>> {
+            let mut inbox = self.inbox.lock().unwrap();
+            inbox.envelopes.pop_front().map(|b| ProtocolMsg::decode(&b))
+        }
+
+        fn pending(&self) -> usize {
+            self.inbox.lock().unwrap().envelopes.len()
+        }
+
+        fn is_eof(&self) -> bool {
+            self.inbox.lock().unwrap().eof
+        }
+    }
+
+    impl<S> Drop for WsEnd<S>
+    where
+        S: futures::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+            + futures::Sink<Message, Error = tokio_tungstenite::tungstenite::Error>
+            + Unpin
+            + Send
+            + 'static,
+    {
+        fn drop(&mut self) {
+            if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
+                let _ = tx.send(());
+            }
+            if let Some(handle) = self.reader.take() {
+                let _ = handle.join();
+            }
+        }
+    }
+
+    /// WS 服务端监听实例：accept 线程常驻（token 在 HTTP 升级期校验，
+    /// 失败回 401），accepted 连接排队——属主线程 `try_accept` 消费。
+    pub struct WsListener {
+        accepted: Arc<Mutex<VecDeque<Box<dyn Transport + Send>>>>,
+        stop: Arc<AtomicBool>,
+        port: u16,
+    }
+
+    /// query 串中的 token 提取（`?token=<值>`；简单前缀匹配——v1 静态
+    /// token 无编码形态）。
+    fn query_token(uri: &str) -> Option<&str> {
+        let query = uri.split_once('?')?.1;
+        for pair in query.split('&') {
+            if let Some(v) = pair.strip_prefix("token=") {
+                return Some(v);
+            }
+        }
+        None
+    }
+
+    impl WsListener {
+        /// 绑定回环端口（port 0 = 系统分配，实际端口经 [`Self::port`]）。
+        pub fn bind(port: u16, token: &str) -> Result<Self, TransportError> {
+            let rt = Arc::new(make_rt());
+            let listener = rt
+                .block_on(async { TcpListener::bind(("127.0.0.1", port)).await })
+                .map_err(|e| TransportError::Io(e.to_string()))?;
+            let port = listener
+                .local_addr()
+                .map_err(|e| TransportError::Io(e.to_string()))?
+                .port();
+            let accepted: Arc<Mutex<VecDeque<Box<dyn Transport + Send>>>> =
+                Arc::new(Mutex::new(VecDeque::new()));
+            let stop = Arc::new(AtomicBool::new(false));
+            let accepted_loop = Arc::clone(&accepted);
+            let stop_loop = Arc::clone(&stop);
+            let token = token.to_string();
+            std::thread::Builder::new()
+                .name("autodesk-ws-accept".into())
+                .spawn(move || {
+                    let rt = &rt;
+                    let listener = listener;
+                    while !stop_loop.load(Ordering::Relaxed) {
+                        // 200ms 节拍 select：停机旗标可退出（bind 独占线程
+                        // 不可 Join 属主——Drop 置位后至多一拍退出）。
+                        let incoming = rt.block_on(async {
+                            tokio::select! {
+                                res = listener.accept() => Some(res),
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => None,
+                            }
+                        });
+                        let (stream, _addr) = match incoming {
+                            Some(Ok(v)) => v,
+                            Some(Err(_)) => {
+                                std::thread::sleep(std::time::Duration::from_millis(20));
+                                continue;
+                            }
+                            None => continue,
+                        };
+                        let want = token.clone();
+                        let token_check = move |req: &Request, resp: Response| {
+                            let uri = req
+                                .uri()
+                                .path_and_query()
+                                .map(|pq| pq.as_str().to_string())
+                                .unwrap_or_default();
+                            if query_token(&uri) == Some(want.as_str()) {
+                                Ok(resp)
+                            } else {
+                                Err(http_reject_response())
+                            }
+                        };
+                        let end = rt.block_on(async {
+                            tokio_tungstenite::accept_hdr_async(stream, token_check).await
+                        });
+                        match end {
+                            Ok(ws) => {
+                                let boxed = WsEnd::spawn_boxed(Arc::clone(&rt), ws);
+                                accepted_loop.lock().unwrap().push_back(boxed);
+                            }
+                            Err(_) => {} // 401/升级失败：连接已拒（测试断言点）
+                        }
+                    }
+                })
+                .map_err(|e| TransportError::Io(e.to_string()))?;
+            Ok(Self { accepted, stop, port })
+        }
+
+        /// 实际监听端口（bind(0) 时为系统分配值）。
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+
+        /// 客户端 URL（token query 直拼——测试/宿主提示共用）。
+        pub fn url(&self, token: &str) -> String {
+            format!("ws://127.0.0.1:{}/?token={token}", self.port)
+        }
+
+        /// 弹出一个已受理连接（属主线程轮询消费；无连接 None）。
+        pub fn try_accept(&mut self) -> Option<Box<dyn Transport + Send>> {
+            self.accepted.lock().unwrap().pop_front()
+        }
+    }
+
+    impl Drop for WsListener {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// 401 升级拒绝（token 不符；ErrorResponse = http::Response）。
+    fn http_reject_response() -> tokio_tungstenite::tungstenite::http::Response<Option<String>> {
+        tokio_tungstenite::tungstenite::http::Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Some("token mismatch".into()))
+            .expect("static 401 response")
+    }
+
+    /// 客户端连入（Rust 侧消费者 + 测试；token 经 URL query 携带）。
+    pub fn connect(url: &str, timeout_ms: u32) -> Result<Box<dyn Transport + Send>, TransportError> {
+        let rt = Arc::new(make_rt());
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
+        loop {
+            match rt.block_on(async { tokio_tungstenite::connect_async(url).await }) {
+                Ok((ws, _)) => return Ok(WsEnd::spawn_boxed(rt, ws)),
+                Err(e) => {
+                    // 升级拒绝（401 等）为终态错误：直返不重试（token 拒收
+                    // 路径的判定依据）。
+                    if matches!(e, tokio_tungstenite::tungstenite::Error::Http(_)) {
+                        return Err(TransportError::Io(format!("ws upgrade rejected: {e}")));
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err(TransportError::Io(format!("connect {url}: {e}")));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+            }
+        }
+    }
+}
+
 /// 管道地址（与 autovm_daemon::pipe_addr 同款；此处单源避免反向依赖）。
 #[allow(dead_code)]
 pub fn pipe_addr(name: &str) -> String {
@@ -477,5 +788,96 @@ mod tests {
         buf.extend_from_slice(&f2[2..]);
         drain_frames(&mut buf, &mut out);
         assert_eq!(out.pop_front().unwrap(), vec![9]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 508 T1 —— WsTransport（loopback/pipe 同族单测）。
+    // -----------------------------------------------------------------------
+
+    mod ws_tests {
+        use super::super::ws;
+        use super::*;
+        use crate::ui::desktop_protocol::message::{ControlMsg, HandshakeMsg};
+
+        /// 等 listener 受理出一个服务端端点（accept 线程异步受理）。
+        fn accept_once(listener: &mut ws::WsListener) -> Box<dyn Transport + Send> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                if let Some(end) = listener.try_accept() {
+                    return end;
+                }
+                assert!(std::time::Instant::now() < deadline, "accept 超时");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
+        #[test]
+        fn ws_pair_round_trip() {
+            let mut listener = ws::WsListener::bind(0, "t1-token").expect("bind");
+            let mut client =
+                ws::connect(&listener.url("t1-token"), 3000).expect("client connect");
+            let mut server = accept_once(&mut listener);
+
+            // client → server：FIFO + 完整信封解码。
+            fifo_check(&mut client, &mut server);
+            // server → client。
+            server.send(&ProtocolMsg::Handshake(HandshakeMsg::Ready)).unwrap();
+            assert_eq!(
+                client.recv_wait(2000).unwrap().unwrap(),
+                ProtocolMsg::Handshake(HandshakeMsg::Ready)
+            );
+            assert!(!client.is_eof() && !server.is_eof());
+        }
+
+        /// 信封不变纪律（golden bytes）：WS Binary 消息体 = codec 信封原样
+        /// ——`write_raw(msg.encode())` 与 `send(msg)` 过线字节恒等，TS 侧
+        /// 镜像解码的契约锚点。
+        #[test]
+        fn ws_binary_message_is_envelope() {
+            let mut listener = ws::WsListener::bind(0, "t1-golden").expect("bind");
+            let mut client =
+                ws::connect(&listener.url("t1-golden"), 3000).expect("client connect");
+            let mut server = accept_once(&mut listener);
+
+            let msg = ProtocolMsg::Control(ControlMsg::Close { wid: 7 });
+            let golden = msg.encode();
+            client.write_raw(&golden).unwrap();
+            assert_eq!(
+                server.recv_wait(2000).unwrap().unwrap(),
+                msg,
+                "信封原样过线（无二次分帧）"
+            );
+        }
+
+        #[test]
+        fn ws_eof_after_peer_drop() {
+            let mut listener = ws::WsListener::bind(0, "t1-eof").expect("bind");
+            let client = ws::connect(&listener.url("t1-eof"), 3000).expect("client connect");
+            let mut server = accept_once(&mut listener);
+            drop(client);
+            let mut waited = 0;
+            while !server.is_eof() && waited < 3000 {
+                let _ = server.try_recv();
+                waited += 1;
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert!(server.is_eof(), "对端 drop 后应检测到 EOF");
+        }
+
+        /// token 拒收路径：错 token 的升级被 401 拒绝（终态错误，不重试）。
+        #[test]
+        fn ws_token_rejected() {
+            let mut listener = ws::WsListener::bind(0, "t1-right").expect("bind");
+            let err = ws::connect(&listener.url("t1-wrong"), 3000).err().expect("拒收");
+            match err {
+                crate::ui::desktop_protocol::transport::TransportError::Io(msg) => {
+                    assert!(msg.contains("rejected"), "升级拒绝终态错误: {msg}");
+                }
+                other => panic!("应为 Io(rejected): {other:?}"),
+            }
+            // 正确 token 仍可连（拒收不伤监听）。
+            let _client = ws::connect(&listener.url("t1-right"), 3000).expect("正确 token 可连");
+            let _server = accept_once(&mut listener);
+        }
     }
 }
