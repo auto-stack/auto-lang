@@ -1634,13 +1634,35 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         } else {
             // Non-justify wrap: propagate column's width and height to container
             if let Some(ref is) = iced_style {
-                let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                    || is.width.is_none();
-                if col_width_fill { cont = cont.width(iced::Length::Fill); }
-                let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                    || is.min_height.map_or(false, |mh| mh >= 9999.0);
-                if col_height_fill { cont = cont.height(iced::Length::Fill); }
-                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                // PLAN-055: self-end 列的视觉容器抱合——CSS 里 flex 子项
+                // align-self:flex-end 时收缩到内容宽并靠交叉轴末端。此前
+                // visual-wrap 容器无条件 Fill（块级语义），chat 气泡
+                // （bg-primary + self-end）被拉成全宽紫条、右对齐失效。
+                // End → Shrink+align_x(Right)；Start/Center 同理；
+                // 无 align_self 维持块级 Fill（AI 消息 hairline 全宽不回归）。
+                match is.align_self {
+                    Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
+                        cont = cont.width(iced::Length::Shrink)
+                            .align_x(iced::alignment::Horizontal::Right);
+                    }
+                    Some(crate::ui::style::iced_adapter::IcedAlign::Start) => {
+                        cont = cont.width(iced::Length::Shrink)
+                            .align_x(iced::alignment::Horizontal::Left);
+                    }
+                    Some(crate::ui::style::iced_adapter::IcedAlign::Center) => {
+                        cont = cont.width(iced::Length::Shrink)
+                            .align_x(iced::alignment::Horizontal::Center);
+                    }
+                    _ => {
+                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                            || is.width.is_none();
+                        if col_width_fill { cont = cont.width(iced::Length::Fill); }
+                        let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                            || is.min_height.map_or(false, |mh| mh >= 9999.0);
+                        if col_height_fill { cont = cont.height(iced::Length::Fill); }
+                        if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                    }
+                }
             }
         }
         // Apply visual styles (background, border, rounded, shadow)
@@ -2895,7 +2917,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // (e.g. `link (to: "/") { text "Docs" }`) become theme-colored
                 // instead of falling back to the body default (vue parity).
                 let inherit_color = style.as_ref().and_then(|s| {
-                    s.classes.iter().find_map(|c| match c {
+                    // PLAN-055: 取最后一个 TextColor（与 IcedStyle::from_style
+                    // "后类胜"语义一致）——此前 find_map 取首个，preset 的
+                    // `text-primary-foreground` 恒压过用户后置的
+                    // `text-muted-foreground`：图标继承 OnPrimary（深藏青）
+                    // 落深底不可见，按钮文字却是浅色——图文两色。
+                    s.classes.iter().rev().find_map(|c| match c {
                         StyleClass::TextColor(color) => Some(*color),
                         _ => None,
                     })
