@@ -13,7 +13,7 @@ touched_goals: [GOAL-017]     # 自举：用 Auto 写 Auto 编译器（aavm）
 
 affects: [aavm]
 current_step: 0
-total_steps: 18
+total_steps: 22
 ---
 
 # [PLAN-511] aavm 中阶语言能力：struct 类型定义 / use 模块化 / 中阶补缺
@@ -78,7 +78,7 @@ token.at ─ lexer.at ─ parser.at ─ typeinfo.at ─ codegen.at ─ engine.at
 ```
 
 三波改动均沿既有四层收编模式（Plan 447 ② is-match 同款），不改六文件依赖
-拓扑；W3 视体量把链接器做成 engine.at 内新段或第七文件（决策点见步骤 14，
+拓扑；W3 视体量把链接器做成 engine.at 内新段或第七文件（决策点见步骤 17，
 缺省 engine 内段，避免动 `AUTO_LIB_FILES_V2` 与 pac.at 面扩容）。
 
 **关键设计约束（全程生效）**：
@@ -220,7 +220,17 @@ KNOWN-DEBT-AND-RISKS.md P474-旁支/P495、Plan 447/495 归档）
   延后项（闭包/嵌套 fn/OOP/泛型）。
 - project.md 模块清单/判据/能力矩阵回写；auto/lib/README.md 同步。
 
-## 测试设计
+## 测试设计（TDD 三层，测试先行）
+
+> 范式转变（区别于 429-434 的"corpus 随切片长"）：本计划**每波语料/测试架构
+> 先行落盘，闸门转红为实现启动条件**；W3 的多文件 harness 在动 lib 代码之前
+> 先建成并用宿主双侧自证正确。既有事实：`auto test` CLI 已存在（#[test] 函数
+> 在隔离 VM task 执行，test_runner.rs:131；断言 native `auto.assert_eq`）；
+> 文件式用例协议（.at + .expected.out/.result/.error）由 vm_file_tests.rs 与
+> `auto test` 的 discover_vm_tests 共用 test/vm/ 目录；宿主 use 多文件样板
+> test/vm/17_modules/001_use_fn（点路径 `use auto.greet_mod` → auto/ 根）。
+
+### L1 红先行 corpus（差分主判据，cargo tv）
 
 | 层 | 判据 | 命令 |
 |---|---|---|
@@ -232,27 +242,59 @@ KNOWN-DEBT-AND-RISKS.md P474-旁支/P495、Plan 447/495 归档）
 | CI | vm-files-ci.yml 全绿 | push 后 GitHub Actions |
 | 分级门禁 | Category B（auto/lib .at 为主 + 测试 harness Rust 改动）：局部 `cargo t vm`/`cargo tv`，合入前一次 `cargo tf` | `.cargo/config.toml` 别名 |
 
+TDD 流程（W1/W2 零新架构——M2-M5 闸门均为目录扫描泛型，新 .at 文件自动进闸）：
+新能力宿主已支持 → corpus 落盘即刻获得 Rust 侧期望值，aavm 侧遇新语法报
+unsupported → **tv 转红 = 测试就位证据** → 四层实现 → 绿。语料先于 lib 改动提交。
+
+### L2 W3 多文件 harness（新测试架构，先于 W3 实现）
+
+- `corpus_use/{NNN_case}/` 目录协议：main.at + 被依赖模块 .at（结构镜像
+  17_modules/001_use_fn；模块文件与 main 同目录，`use mod` 相对解析）。
+- Rust 侧新 harness 变体（`crates/auto-lang/src/tests/aavm2_m4.rs`/`m5.rs`
+  增多文件腿）：镜像宿主 resolve_uses + Linker 全管线编译/执行，与 aavm
+  `ev_run_files` 对拍，判据同单文件。
+- **错误用例通道**（aavm2 闸门现无 .expected.error 等价物）：harness 增错误
+  形态比对（use.rs/use.py 拒绝报错、循环依赖报错、未声明模块报错），断言
+  两侧错误信息一致（错误文本以宿主为规范，考古定案后镜像）。
+- harness 自证：实现前先用"双侧都走宿主路径"的对照跑绿，证明架构本身正确。
+
+### L3 Auto 侧 fast loop（`auto test`，红先行单元层）
+
+- `test/vm/aavm2/99_unit/*.at`：`#[test]` fn + `auto.assert_eq`，断言
+  ev_run/ev_run_files 微行为（引擎单 opcode 语义、解析边界、模块解析环检测）。
+- `auto test <dir>` 直跑 VM，无需 cargo 编译——开发内环；同时是"aavm 测试
+  也用 Auto 写"的自举方向第一块资产。
+- lib 符号引用方案 W0 考古定案：宿主 use 点路径（`use auto.lib.token` 形态
+  → auto/lib/ 解析可行性）或 auto/ 下聚合入口；AA2R 路径（auto build）对
+  测试文件的容忍策略同步确认。
+
 回归钉：每个 corpus 文件即回归钉（无静态期望、实时对拍，Plan 495 模式）。
 
 ## 验收标准
 
 1. tv-aavm2 全绿（M1–M5 含全部新 corpus：struct 系 b34–b37、补缺系 b38–b43、
    corpus_use 多文件组），vm-files-ci 绿。
-2. `ev_run_files` 能编译执行双模块以上程序：跨模块 pub fn 调用、模块顶层
-   初始化序、`use mod: item`/通导入形态，输出与宿主全管线一致。
-3. 五方矩阵既有稳定集（corpus_m4 原有 b01–b33）不回绿破腿；新语料的矩阵
+2. **TDD 过程证据**：三波各自的"语料先行红清单"留档于执行步骤证据
+   （步骤 2/8/13）；W3 harness 自证记录（双侧宿主路径对照绿）留档。
+3. `ev_run_files` 能编译执行双模块以上程序：跨模块 pub fn 调用、模块顶层
+   初始化序、`use mod: item`/通导入形态，输出与宿主全管线一致；错误用例
+   通道（use.rs 拒绝/循环依赖/未声明模块）双侧一致。
+4. `test/vm/aavm2/99_unit/` Auto 侧单测套件（#[test]+assert_eq）成建制，
+   `auto test` 可跑且绿。
+5. 五方矩阵既有稳定集（corpus_m4 原有 b01–b33）不回绿破腿；新语料的矩阵
    腿处置有显式决策与 divergence 登记。
-4. W0 考古规格文档落盘且实现与规格一致（复审抽查）；divergences.md/
+6. W0 考古规格文档落盘且实现与规格一致（复审抽查）；divergences.md/
    project.md/README 回写完成。
-5. `cargo tf` 全量绿（折叠前）；零新增编译警告；无调试打印残留。
-6. 延后项（闭包/嵌套 fn/OOP/泛型/May/生成器）在 KNOWN-DEBT 或 plan
+7. `cargo tf` 全量绿（折叠前）；零新增编译警告；无调试打印残留。
+8. 延后项（闭包/嵌套 fn/OOP/泛型/May/生成器）在 KNOWN-DEBT 或 plan
    Out-of-Scope 有显式登记，无静默丢弃。
 
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 > 约定：所有 auto/lib 改动在 worktree `.worktrees/plan-511-dev` 内进行；
-> 每波（步骤 6/10/16）为折叠点，波内 tv-aavm2 绿即准合入。
+> **TDD 硬约定：每波语料/测试架构先行落盘（闸门转红）再动 lib 实现**；
+> 每波（步骤 7/12/18）为折叠点，波内 tv-aavm2 绿即准合入。
 
 ### W0 考古先行（master 直接做，纯文档）
 
@@ -262,53 +304,67 @@ KNOWN-DEBT-AND-RISKS.md P474-旁支/P495、Plan 447/495 归档）
    `docs/specs/aavm/design/` 规格（新章或扩 m4-bytecode-format.md），
    含最小宿主样本反汇编与待镜像怪序注记。
    验证：文档评审（宿主反汇编片段贴证）；scratch 考古脚本不入库。
+   同批考古（L3 前置）：宿主 use 对 auto/lib 子目录点路径解析行为
+   （`use auto.lib.token` 可行性）；`auto test` + `auto.assert_eq` 在
+   VM 模式对 ev_run 调用型的可用性（探针一件）；use 错误形态文本
+   （use.rs 拒绝/循环依赖/未声明模块，错误用例通道的期望基准）。
 
 ### W1 struct 四层（worktree）
 
-2. [ ] `auto/lib/parser.at`：type-decl members 完整解析 + 构造字面量/
-   字段访问表达式；corpus_m1/m2 扩展（p 系列用例）。验证：tv-aavm2 M1/M2 绿。
-3. [ ] `auto/lib/typeinfo.at`：type 注册表 + 构造/字段推断；corpus_m3 扩展。
+2. [ ] **W1 语料先行（红）**：corpus_m1/m2（p 系列 type-decl/构造/字段
+   访问）、corpus_m3（t 系列）、corpus_m4（b34–b37）全部落盘；跑
+   tv-aavm2 确认 M2-M5 对应件**转红**（unsupported 报错即红证），红清单
+   记入本步骤证据。验证：tv-aavm2 红（预期内）+ 红件清单。
+3. [ ] `auto/lib/parser.at`：type-decl members 完整解析 + 构造字面量/
+   字段访问表达式。验证：tv-aavm2 M1/M2 绿。
+4. [ ] `auto/lib/typeinfo.at`：type 注册表 + 构造/字段推断。
    验证：tv-aavm2 M3 绿。
-4. [ ] `auto/lib/codegen.at`：TypeDecl 分支 + 构造发射（create.obj+set.field
-   序，按步骤 1 规格）+ 字段读写；corpus_m4 增 b34–b37。
-   验证：tv-aavm2 M4 绿。
-5. [ ] `auto/lib/engine.at`：create.obj/set.field/get.field 分派（VInst 复用
+5. [ ] `auto/lib/codegen.at`：TypeDecl 分支 + 构造发射（create.obj+set.field
+   序，按步骤 1 规格）+ 字段读写。验证：tv-aavm2 M4 绿。
+6. [ ] `auto/lib/engine.at`：create.obj/set.field/get.field 分派（VInst 复用
    或新载体）+ print 形态对齐。验证：tv-aavm2 M5 绿。
-6. [ ] 折叠点①：AA2R 矩阵腿决策执行（待澄清①）+ divergence 登记 +
+7. [ ] 折叠点①：AA2R 矩阵腿决策执行（待澄清①）+ divergence 登记 +
    vm-files-ci 绿 + master 合入（`feat(aavm): Plan 511 W1 struct 类型四层收编 (Plan 511)`）。
 
 ### W2 中阶补缺（worktree 续）
 
-7. [ ] `auto/lib/codegen.at`+`engine.at`：for-in 数组/表达式迭代（发射序按
-   规格）。验证：新 corpus b38 + tv-aavm2 绿。
-8. [ ] `auto/lib/codegen.at`：字符串下标 + 一元负 + 下标复合赋值。
-   验证：b39–b41 + tv-aavm2 绿。
-9. [ ] `auto/lib/codegen.at`+`engine.at`：全局变量（global_vars 集 +
-   load.global/store.global + 引擎全局区）。验证：b42/b43 + tv-aavm2 绿。
-10. [ ] 折叠点②：divergence 登记 + CI 绿 + master 合入（W2 同款提交格式）。
+8. [ ] **W2 语料先行（红）**：b38–b43 corpus 落盘，tv 转红清单记证据。
+9. [ ] `auto/lib/codegen.at`+`engine.at`：for-in 数组/表达式迭代（发射序按
+   规格；顺收 447 收账缺口①——List 型 fn 参数 `.len()` 接收者跟踪，便宜则
+   一并修）。验证：b38 + tv-aavm2 绿。
+10. [ ] `auto/lib/codegen.at`：字符串下标 + 一元负 + 下标复合赋值。
+    验证：b39–b41 + tv-aavm2 绿。
+11. [ ] `auto/lib/codegen.at`+`engine.at`：全局变量（global_vars 集 +
+    load.global/store.global + 引擎全局区）。验证：b42/b43 + tv-aavm2 绿。
+12. [ ] 折叠点②：divergence 登记 + CI 绿 + master 合入（W2 同款提交格式）。
 
-### W3 use 模块化（worktree 续）
+### W3 use 模块化（worktree 续；测试架构先于实现）
 
-11. [ ] `auto/lib/parser.at`：use 语句四形态解析 + 异构导入拒绝；corpus_m2
-    扩展。验证：tv-aavm2 M2 绿。
-12. [ ] 模块解析器：`mod.at` 读取（auto.file.read_text）+ 传递依赖 + 环检测
-    + 去重缓存。验证：单测 corpus（解析层用例）。
-13. [ ] `auto/lib/codegen.at`：多编译单元 + pub 导出 + `mod#fn` 限定符号 +
+13. [ ] **W3 测试架构先行**：`corpus_use/` 目录协议落地（首批用例双份期望
+    生成）；m4/m5 harness 多文件变体（Rust 侧镜像 resolve_uses+Linker）；
+    错误用例通道（.expected.error 等价物）——harness 用"双侧宿主路径"对照
+    自证绿。验证：harness 自证跑绿 + aavm 侧红清单。
+14. [ ] `auto/lib/parser.at`：use 语句四形态解析 + 异构导入拒绝；
+    corpus_m2 扩展（含错误形态件）。验证：tv-aavm2 M2 绿。
+15. [ ] 模块解析器：`mod.at` 读取（auto.file.read_text）+ 传递依赖 + 环检测
+    + 去重缓存。验证：99_unit Auto 侧单测（auto test）先行红→绿。
+16. [ ] `auto/lib/codegen.at`：多编译单元 + pub 导出 + `mod#fn` 限定符号 +
     导入名作用域注入。验证：corpus_use 编译期用例（M4 前置）。
-14. [ ] 链接器（缺省 engine.at 新段；超限则第七文件 + AUTO_LIB_FILES_V2/
+17. [ ] 链接器（缺省 engine.at 新段；超限则第七文件 + AUTO_LIB_FILES_V2/
     pac.at 同步——决策点在步 1 规格里预判）：拼装/重定位/初始化序/全局区
-    合并。验证：链接层单测用例。
-15. [ ] `auto/lib/engine.at`：`ev_run_files(main_path)` 入口 + 跨模块 call；
-    m4/m5 harness（`crates/auto-lang/src/tests/aavm2_m4.rs`/`aavm2_m5.rs`）
-    增多文件变体（Rust 侧镜像 resolve_uses+Linker 管线）；`corpus_use/`
-    多文件组落地。验证：tv-aavm2 全绿（M4/M5 多文件腿）。
-16. [ ] 折叠点③：divergence 登记 + CI 绿 + master 合入（W3 同款提交格式）。
+    合并。验证：链接层用例 + 99_unit 单测。
+18. [ ] `auto/lib/engine.at`：`ev_run_files(main_path)` 入口 + 跨模块 call；
+    corpus_use 全量接入多文件闸门。验证：tv-aavm2 全绿（M4/M5 多文件腿）。
+19. [ ] 折叠点③：divergence 登记 + CI 绿 + master 合入（W3 同款提交格式）。
 
 ### 收尾
 
-17. [ ] 文档回写：project.md（模块清单/判据/能力矩阵）、auto/lib/README.md、
+20. [ ] L3 资产固化：`test/vm/aavm2/99_unit/` Auto 侧单测套件（#[test]+
+    assert_eq，`auto test` 可跑）成建制落盘；W0 定案的 lib 引用方案回写
+    文档。验证：`auto test test/vm/aavm2/99_unit` 绿。
+21. [ ] 文档回写：project.md（模块清单/判据/能力矩阵）、auto/lib/README.md、
     divergences.md、KNOWN-DEBT 视情；overview.md aavm 行能力注记。
-18. [ ] 复审（/auto-plan:review 范式：验收标准逐条对代码、遗漏/延后扫描、
+22. [ ] 复审（/auto-plan:review 范式：验收标准逐条对代码、遗漏/延后扫描、
     健康检查、spec-impact 元数据）→ `cargo tf` 全量 → status: reviewed。
 
 ## 复审记录
