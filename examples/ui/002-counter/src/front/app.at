@@ -3,14 +3,17 @@ widget App {
         var count int = 0
     }
 
+    // Plan 506: 外壳改"内容即页面"（无 center 包裹，循 011 样板），配合
+    // pac `window: "fit"` 窗口随内容收缩。
     view {
-        center {
+        col {
             text `Counter: ${.count}`
             row {
                 button "-" { onclick: () => {.count -= 1} }
                 button "Reset" { onclick: () => {.count = 0} }
                 button "+" { onclick: () => {.count += 1} }
             }
+            style: "items-center gap-4 p-6"
         }
     }
 }

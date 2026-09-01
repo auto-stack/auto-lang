@@ -2,9 +2,6 @@ name: "pricing-table"
 version: "1.0.0"
 scene: "ui"
 render: "vue"
+title: "Pricing Table"
 theme: "dark"
 accent: "indigo"
-
-dep "common" {
-    path: "../common"
-}

@@ -13,13 +13,13 @@ widget App {
     model {
         var interval int = 1000
         var mounted int = 0
-        var window_width int = 370
-        var window_height int = 506
     }
 
+    // Plan 506: 外壳改"内容即页面"（无 center 包裹，循 011 样板），配合
+    // pac `window: "fit"` 窗口随内容收缩（棋盘尺寸随难度档变化，fit 窗
+    // 在 launch 时按当帧内容收缩）。
     view {
-        center {
-            col {
+        col {
                 // —— 信息栏 ——
                 row {
                     col {
@@ -133,8 +133,7 @@ widget App {
                     }
                 }
 
-                style: "w-full max-w-fit p-4 items-center gap-4"
-            }
+            style: "max-w-fit p-4 items-center gap-4"
         }
     }
 

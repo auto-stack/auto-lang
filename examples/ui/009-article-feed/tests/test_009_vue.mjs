@@ -46,50 +46,33 @@ async function main() {
   console.log(`[*] Navigating to ${url}...`);
   await page.goto(url, { waitUntil: 'networkidle' });
 
+  let failures = 0;
+  const check = (name, ok) => {
+    if (ok) { console.log(`[+] OK: ${name}`); }
+    else { failures++; console.log(`[-] FAIL: ${name}`); }
+  };
+
   // 1. Initial Dark
   console.log('[*] Capturing 009_vue_dark_initial...');
   await page.screenshot({ path: path.join(outDir, '009_vue_dark_initial.png'), fullPage: true });
 
-  // 2. Open Settings
-  console.log('[*] Clicking Settings button...');
-  await page.click('button:has-text("Settings")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 009_vue_settings_open...');
-  await page.screenshot({ path: path.join(outDir, '009_vue_settings_open.png'), fullPage: true });
+  // Plan 506: in-app title bar / Settings removed (ExampleHeader retired —
+  // title/theme/accent moved to pac.at + os-config, host chrome carries them).
+  const settingsBtn = await page.$('button:has-text("Settings")');
+  check('no in-app Settings header (Plan 506)', settingsBtn === null);
 
-  // 3. Click Coral Accent (2nd accent circle)
-  console.log('[*] Clicking Coral accent button...');
-  // The accent buttons are ghost buttons with bg-rose-500 or in the ACCENT COLOR row
-  const accentButtons = await page.$$('button.bg-rose-500, button[class*="rose"]');
-  if (accentButtons.length > 0) {
-    await accentButtons[0].click();
-  } else {
-    // fallback by position in the accent row
-    const buttons = await page.$$('button');
-    // Button order: Settings, Light, Dark, indigo, coral (idx 4)
-    if (buttons.length >= 5) {
-      await buttons[4].click();
-    }
+  // Content sanity: article cards still render.
+  const blogHeading = await page.$('text=Blog Posts');
+  check('content marker present: Blog Posts', blogHeading !== null);
+  const readMoreBtn = await page.$('button:has-text("Read more")');
+  check('content marker present: Read more', readMoreBtn !== null);
+
+  if (failures > 0) {
+    console.error(`[-] ${failures} assertion(s) failed`);
+    await browser.close();
+    process.exit(1);
   }
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 009_vue_coral_accent...');
-  await page.screenshot({ path: path.join(outDir, '009_vue_coral_accent.png'), fullPage: true });
-
-  // 4. Click Light mode
-  console.log('[*] Clicking Light mode button...');
-  await page.click('button:has-text("Light")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 009_vue_light_mode...');
-  await page.screenshot({ path: path.join(outDir, '009_vue_light_mode.png'), fullPage: true });
-
-  // 5. Back to Dark mode
-  console.log('[*] Clicking Dark mode button...');
-  await page.click('button:has-text("Dark")');
-  await page.waitForTimeout(400);
-  console.log('[*] Capturing 009_vue_back_to_dark...');
-  await page.screenshot({ path: path.join(outDir, '009_vue_back_to_dark.png'), fullPage: true });
-
-  console.log('[+] All Vue screenshots captured successfully!');
+  console.log('[+] All Vue assertions passed!');
   await browser.close();
 }
 

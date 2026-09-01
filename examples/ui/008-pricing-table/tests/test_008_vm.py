@@ -96,48 +96,23 @@ def main():
         print("[+] VM Ready! Capturing Initial Dark screenshot...")
         client.screenshot("008_vm_dark_initial")
 
-        # 1. Open Settings
+        # Plan 506: in-app title bar / Settings removed (ExampleHeader retired —
+        # title/theme/accent moved to pac.at + os-config, host chrome carries them).
+        failures = []
         snap = client.snapshot()
-        settings_btn_id = find_id_by_text(snap, "⚙ Settings")
-        print(f"[*] Settings button id: {settings_btn_id}")
-        if settings_btn_id:
-            client.press(settings_btn_id)
-            time.sleep(0.4)
-            client.screenshot("008_vm_settings_open")
+        if "Settings" in snap or "ExampleHeader" in snap:
+            failures.append("in-app header/settings still present in snapshot")
+            print("[-] FAIL: snapshot still contains Settings/ExampleHeader")
+        else:
+            print("[+] OK: no in-app Settings header (Plan 506)")
 
-        # 2. Select Coral Accent
-        snap = client.snapshot()
-        color_btn_ids = []
-        for line in snap.splitlines():
-            if 'button #' in line and '""' in line:
-                for p in line.split():
-                    if p.startswith("#"):
-                        color_btn_ids.append(p.rstrip(":,{"))
-        print(f"[*] Found color buttons: {color_btn_ids}")
-        if len(color_btn_ids) >= 2:
-            coral_id = color_btn_ids[1]
-            print(f"[*] Clicking coral accent ({coral_id})...")
-            client.press(coral_id)
-            time.sleep(0.4)
-            client.screenshot("008_vm_coral_accent")
-
-        # 3. Theme Light
-        snap = client.snapshot()
-        light_btn_id = find_id_by_text(snap, "☀️ Light")
-        print(f"[*] Light button id: {light_btn_id}")
-        if light_btn_id:
-            client.press(light_btn_id)
-            time.sleep(0.4)
-            client.screenshot("008_vm_light_mode")
-
-        # 4. Theme Dark
-        snap = client.snapshot()
-        dark_btn_id = find_id_by_text(snap, "🌙 Dark")
-        print(f"[*] Dark button id: {dark_btn_id}")
-        if dark_btn_id:
-            client.press(dark_btn_id)
-            time.sleep(0.4)
-            client.screenshot("008_vm_back_to_dark")
+        # Content sanity: pricing cards still render.
+        for marker in ("Pricing Plans", "Buy Now"):
+            if marker not in snap:
+                failures.append(f"content marker missing: {marker}")
+                print(f"[-] FAIL: content marker missing: {marker}")
+            else:
+                print(f"[+] OK: content marker present: {marker}")
 
         # Copy screenshots
         for f in os.listdir("."):
@@ -145,7 +120,10 @@ def main():
                 shutil.copy(f, os.path.join(out_dir, f))
                 os.remove(f)
 
-        print("[+] All VM screenshots captured successfully!")
+        if failures:
+            print(f"[-] {len(failures)} assertion(s) failed: {failures}", file=sys.stderr)
+            sys.exit(1)
+        print("[+] All VM assertions passed!")
 
     finally:
         print("[*] Terminating VM process...")

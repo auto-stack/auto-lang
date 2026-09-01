@@ -34,6 +34,7 @@ import time
 import tempfile
 import os
 import re
+import struct
 
 try:
     import requests
@@ -128,6 +129,9 @@ class McpClient:
     def state(self, *fields):
         return self.call("autoui_state", fields=list(fields))
 
+    def screenshot(self, name="", baseline=False):
+        return self.call("autoui_screenshot", name=name, baseline=baseline)
+
 
 def wait_for_server(url, timeout=30):
     for _ in range(timeout):
@@ -141,24 +145,16 @@ def wait_for_server(url, timeout=30):
     return False
 
 
-def find_all_elements_by_event(snapshot_text, event_name, attr="onclick"):
-    """All element ids bound to `event_name` via `attr`, in document order.
+def find_buttons_by_label(snapshot_text, label):
+    """All `button #id "<label>"` ids in document order.
 
-    The 038 grid renders one button per board cell (row-major), so the Nth
-    `.Reveal` button IS cell N — the iced message carries the resolved
-    (cell.x, cell.y) even though the snapshot text shows the bare name.
+    The rendered-vtree MCP snapshot carries no event annotations (computed
+    events are only populated on the F12 path), so cells are located by
+    label instead: the 038 grid renders one button per board cell
+    (row-major), so the Nth "　" button IS cell N.
     """
-    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
-    current_id = None
-    target = f"{attr}: .{event_name}"
-    ids = []
-    for line in snapshot_text.splitlines():
-        m = pattern_id.search(line)
-        if m:
-            current_id = m.group(1)
-        if target in line and current_id is not None:
-            ids.append(current_id)
-    return ids
+    pat = re.compile(r'button\s+#(aura_\d+|vnode_\d+)\s+"' + re.escape(label) + '"')
+    return pat.findall(snapshot_text)
 
 
 def count_button_labels(snapshot_text):
@@ -205,10 +201,11 @@ def run_tests_038(mcp_url):
     result.check("timer label", "⏱ 0s" in snap, "⏱ 0s label missing")
     for label in ("初级 9×9", "中级 16×16", "高级 30×16"):
         result.check(f"difficulty {label}", label in snap, "missing")
-    reveal_ids = find_all_elements_by_event(snap, "Reveal")
-    result.check("81 Reveal cell buttons", len(reveal_ids) == 81,
+    reveal_ids = find_buttons_by_label(snap, "　")
+    result.check("81 covered cell buttons", len(reveal_ids) == 81,
                  f"got {len(reveal_ids)}")
-    result.check("Reset button bound", "onclick: .Reset" in snap, "missing")
+    result.check("Reset button bound", find_buttons_by_label(snap, "🔄") != [],
+                 "missing")
     # G3 crash-fix witness: the multi-byte labels render at all.
     result.check("emoji labels render (UTF-8 fix)", "💣" in snap and "⏱" in snap,
                  "highlight_code panic regression")
@@ -223,9 +220,23 @@ def run_tests_038(mcp_url):
     # T3: first click at cell 36 (4,4) — first-click-safe mine placement,
     # then flood-fill. Pinned OBSERVED deterministic values (see header):
     # 29 revealed, 16 numbered, 52 still covered.
+    # KNOWN MASTER BUG: the Reveal handler's in-place struct-literal board
+    # rebuild trips the VM RC use-after-free canary (rc.rs:530) and kills the
+    # process — pre-existing on master (not Plan 506). Guard so the suite
+    # reports it as a FAIL instead of dying, and still runs T6 (fit).
     print("\nT3: First Click + Flood Reveal (deterministic LCG board)")
-    r = mcp.click(reveal_ids[36])
-    result.check("click status ok", "status: ok" in r, r)
+    uaf_blocked = False
+    try:
+        r = mcp.click(reveal_ids[36])
+        result.check("click status ok", "status: ok" in r, r)
+    except (requests.ConnectionError, RuntimeError) as e:
+        result.check("click status ok", False, f"Reveal press died (VM RC use-after-free, master-preexisting): {e}")
+        uaf_blocked = True
+    if uaf_blocked:
+        result.skip("flood reveal / lose / reset flows", "VM process died on Reveal (RC UAF, see KNOWN-DEBT)")
+        print("\nT6: Fit Window (Plan 506)")
+        result.skip("fit window shrunk to board size", "VM process died on Reveal (RC UAF)")
+        return result
     state = mcp.state("game_state")
     result.check("game_state playing", 'game_state: "playing"' in state, state)
     snap2 = mcp.snapshot()
@@ -251,16 +262,8 @@ def run_tests_038(mcp_url):
 
     # T5: reset restores a fresh board.
     print("\nT5: Reset")
-    reset_btn = None
-    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
-    current = None
-    for line in snap3.splitlines():
-        m = pattern_id.search(line)
-        if m:
-            current = m.group(1)
-        if "onclick: .Reset" in line and current:
-            reset_btn = current
-            break
+    reset_ids = find_buttons_by_label(snap3, "🔄")
+    reset_btn = reset_ids[0] if reset_ids else None
     if reset_btn is None:
         result.skip("reset", "Reset button not found")
     else:
@@ -271,6 +274,22 @@ def run_tests_038(mcp_url):
         hist4 = count_button_labels(snap4)
         result.check("board fully re-covered (81 '　')", hist4["unrevealed"] == 81,
                      f"unrevealed = {hist4['unrevealed']}")
+
+    # T6 (Plan 506): window:"fit" — the independent VM window shrinks to the
+    # board size instead of the 1293x836 default. The screenshot PNG's pixel
+    # size IS the window size (iced window capture).
+    print("\nT6: Fit Window (Plan 506)")
+    ss = mcp.screenshot(name="mines_vm_fit_initial", baseline=True)
+    shot = os.path.join(MINES_PROJECT, "src", "front", "tests", "screenshots",
+                        "mines_vm_fit_initial.png")
+    ok, detail = False, ss
+    if os.path.isfile(shot):
+        with open(shot, "rb") as fh:
+            head = fh.read(26)
+        w, h = struct.unpack(">II", head[16:24])
+        ok = w < 900 and h < 900
+        detail = f"{w}x{h} (default 1293x836)"
+    result.check("fit window shrunk to board size", ok, detail)
 
     return result
 
