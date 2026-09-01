@@ -105,6 +105,7 @@ fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
     }
 }
 
+
 /// Decode a string tag from an i32 variable (non-stack sources).
 /// NOTE: Under nanbox, callers should prefer `pop_str_idx()` when reading from the stack.
 /// This helper is for sites where the value is already in an i32 variable
@@ -899,7 +900,10 @@ impl AutoVM {
     /// cwd 变成单字符 "r"、payload 丢失、进程静默退出)。池只增不减,
     /// 这里按内容去重:重复内容(样式串/标签/空串等运行时高频churn)
     /// 复用既有索引,池规模稳定在低位。根治(索引 u32 化/池 GC)记
-    /// 引擎债,见 docs/plans/060。
+    /// 引擎债——池生命周期债登记于
+    /// docs/plans/KNOWN-DEBT-AND-RISKS.md(Plan 510 条目;over-release
+    /// 记账清偿见 docs/plans/510-vm-pool-over-release.md;旧指针
+    /// docs/plans/060 系闭包语法计划,主题不符已接正)。
     pub fn add_string(&self, bytes: Vec<u8>) -> usize {
         let dedup_hit = { self.string_dedup.lock().unwrap().get(&bytes).copied() };
         if let Some(idx) = dedup_hit {
@@ -955,6 +959,9 @@ impl AutoVM {
                             pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
                         );
                     }
+                    // Plan 510 G3:总次数计数(soak 断言通道;首见签名只去重打印)。
+                    pool.phantom_drops
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     continue;
                 }
                 chosen = Some(slot);
@@ -2549,11 +2556,14 @@ impl AutoVM {
                         let val = match pop_tagged(&mut task.ram) {
                             StackTag::Str(str_idx) => {
                                 let strings = self.strings.read().unwrap();
-                                if let Some(bytes) = strings.get(str_idx as usize) {
-                                    auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
-                                } else {
-                                    auto_val::Value::Nil
-                                }
+                                let v = strings
+                                    .get(str_idx as usize)
+                                    .map(|bytes| auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into()))
+                                    .unwrap_or(auto_val::Value::Nil);
+                                drop(strings);
+                                // Plan 510 G3:物化拷贝后份额配平释放。
+                                self.pool_release(str_idx as usize);
+                                v
                             }
                             StackTag::Int(bits) => {
                                 auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
@@ -2945,8 +2955,10 @@ impl AutoVM {
                     }
 
                     // Pop parts from stack (in reverse order)
+                    // Plan 510:守卫不得跨弹栈持有——pop_tagged_rc 的
+                    // pool_release 归零会走 pool_free_idx 的 strings.write(),
+                    // 外层 read 守卫未放即同线程自锁(mold 模板测试实挂)。
                     let mut parts = Vec::with_capacity(part_count as usize);
-                    let strings = self.strings.read().unwrap();
                     for i in (0..part_count as usize).rev() {
                         let tag = type_tags[i];
                         // Plan 474 待澄清#5: 运行期 tag-first 转换。原实现盲信
@@ -2987,10 +2999,16 @@ impl AutoVM {
                             1 => {
                                 match pop_tagged(&mut task.ram) {
                                     StackTag::Str(idx) => {
-                                        if (idx as usize) < strings.len() {
-                                            String::from_utf8_lossy(&strings[idx as usize]).to_string()
-                                        } else {
-                                            format!("<invalid_str_idx:{}>", idx)
+                                        let bytes = {
+                                            let strings = self.strings.read().unwrap();
+                                            strings.get(idx as usize).cloned()
+                                        };
+                                        // Plan 510 G3:内容已拷贝,份额配平释放
+                                        // (free 清内容,必须先拷贝后释放)。
+                                        self.pool_release(idx as usize);
+                                        match bytes {
+                                            Some(b) => String::from_utf8_lossy(&b).to_string(),
+                                            None => format!("<invalid_str_idx:{}>", idx),
                                         }
                                     }
                                     StackTag::Int(bits) => {
@@ -3005,10 +3023,16 @@ impl AutoVM {
                             _ => {
                                 match pop_tagged(&mut task.ram) {
                                     StackTag::Str(idx) => {
-                                        if (idx as usize) < strings.len() {
-                                            String::from_utf8_lossy(&strings[idx as usize]).to_string()
-                                        } else {
-                                            format!("<invalid_str_idx:{}>", idx)
+                                        let bytes = {
+                                            let strings = self.strings.read().unwrap();
+                                            strings.get(idx as usize).cloned()
+                                        };
+                                        // Plan 510 G3:内容已拷贝,份额配平释放
+                                        // (free 清内容,必须先拷贝后释放)。
+                                        self.pool_release(idx as usize);
+                                        match bytes {
+                                            Some(b) => String::from_utf8_lossy(&b).to_string(),
+                                            None => format!("<invalid_str_idx:{}>", idx),
                                         }
                                     }
                                     StackTag::Int(bits) => {
@@ -3110,7 +3134,6 @@ impl AutoVM {
                         };
                         parts.push(s);
                     }
-                    drop(strings);
                     parts.reverse();
 
                     // Join all parts into a single string
@@ -3455,6 +3478,8 @@ impl AutoVM {
                                 .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
                                 .unwrap_or(0);
                             drop(strings);
+                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                            self.pool_release(idx as usize);
                             task.ram.push_i32(parsed);
                         }
                         StackTag::Int(v) => {
@@ -3471,6 +3496,8 @@ impl AutoVM {
                                 .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
                                 .unwrap_or(0.0);
                             drop(strings);
+                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                            self.pool_release(idx as usize);
                             task.ram.push_f32(parsed);
                         }
                         StackTag::Int(v) => {
@@ -3531,6 +3558,8 @@ impl AutoVM {
                                 .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
                                 .unwrap_or(0i64);
                             drop(strings);
+                            // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                            self.pool_release(idx as usize);
                             self.push_i64_vm(task, parsed);
                         }
                         StackTag::Int(v) => {

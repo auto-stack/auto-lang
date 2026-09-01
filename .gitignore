@@ -27,6 +27,8 @@ history.txt
 *.wrong.ts
 *.wrong.vue
 *.wrong.out
+# cookbook_vm_tests 失配副产物(P499-7 清偿:误提交的 60 个已删)
+wrong.out
 *.wrong.result
 *.wrong.ets
 *.wrong.gd

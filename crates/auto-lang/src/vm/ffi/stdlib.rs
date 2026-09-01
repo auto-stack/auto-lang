@@ -2110,7 +2110,7 @@ pub fn shim_math_to_degrees(n: f64) -> f64 {
 }
 
 // ============================================================================
-// Log Functions (ID 1800-1899)
+// Log Functions (debug/info/warn/error = 1805-1808, noop = 1804;P499-7 移段)
 // ============================================================================
 
 /// Log a debug message to stdout
@@ -3636,24 +3636,12 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
                 if let Ok(i) = param_val.parse::<i32>() {
                     ht.ram.push_i32(i);
                 } else {
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        let i = strings.len();
-                        strings.push(param_val.as_bytes().to_vec());
-                        i
-                    };
-                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                    crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &param_val);
                 }
                 n_args += 1;
             }
             if !body.is_empty() {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(body.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &body);
                 n_args += 1;
             }
 
@@ -3774,26 +3762,13 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                 if let Ok(i) = param_val.parse::<i32>() {
                     ht.ram.push_i32(i);
                 } else {
-                    // Allocate string in VM string pool and push
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        let i = strings.len();
-                        strings.push(param_val.as_bytes().to_vec());
-                        i
-                    };
-                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                    crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &param_val);
                 }
                 n_args += 1;
             }
             // Push body if present (for POST/PUT)
             if !body.is_empty() {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(body.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                crate::vm::ffi::http_server::push_str_arg(vm, &mut ht, &body);
                 n_args += 1;
             }
 
@@ -7682,7 +7657,7 @@ fn shim_rust_stdlib_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             match stem {
                 Some(s) => {
                     let idx = vm.add_string(s.into_bytes());
-                    task.ram.push_nv(auto_val::encode_string(idx as u32));
+                    vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
                 }
                 None => task.ram.push_nv(auto_val::encode_null()),
             }

@@ -1072,16 +1072,20 @@ macro_rules! for_each_bigvm_native {
             ("auto.char.to_upper", 1606, Int),
             ("auto.char.to_str", 1607, String),
 
-            // === Log (1800-1804) ===
-            ("auto.log.debug", 1800, Void),
-            ("auto.log.info", 1801, Void),
-            ("auto.log.warn", 1802, Void),
-            ("auto.log.error", 1803, Void),
+            // === Log (1805-1808;noop=1804) ===
+            // P499-7/Plan 510: Log 四名原登 1800-1803,与 Shell 族
+            // (NATIVE_SHELL_SYSTEM..EXIT,Plan 011,engine.rs 显式注册)
+            // 撞号——CALL_NAT 派发到 shell shim(#error→shim_shell_exit
+            // →ExitRequested)。移至 1805-1808,inventory 注册自动跟进。
+            ("auto.log.debug", 1805, Void),
+            ("auto.log.info", 1806, Void),
+            ("auto.log.warn", 1807, Void),
+            ("auto.log.error", 1808, Void),
             ("auto.log.noop", 1804, Void),
-            ("Log.debug", 1800, Void),
-            ("Log.info", 1801, Void),
-            ("Log.warn", 1802, Void),
-            ("Log.error", 1803, Void),
+            ("Log.debug", 1805, Void),
+            ("Log.info", 1806, Void),
+            ("Log.warn", 1807, Void),
+            ("Log.error", 1808, Void),
 
             // === Math (1700-1733) ===
             // Plan 437 §0.6.H：三角/指对数族 shim 均经原生栈 push_f64 返回
@@ -1938,15 +1942,15 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.char.to_lower", 1605),
     ("auto.char.to_upper", 1606),
     ("auto.char.to_str", 1607),
-    ("auto.log.debug", 1800),
-    ("auto.log.info", 1801),
-    ("auto.log.warn", 1802),
-    ("auto.log.error", 1803),
+    ("auto.log.debug", 1805),
+    ("auto.log.info", 1806),
+    ("auto.log.warn", 1807),
+    ("auto.log.error", 1808),
     ("auto.log.noop", 1804),
-    ("Log.debug", 1800),
-    ("Log.info", 1801),
-    ("Log.warn", 1802),
-    ("Log.error", 1803),
+    ("Log.debug", 1805),
+    ("Log.info", 1806),
+    ("Log.warn", 1807),
+    ("Log.error", 1808),
     ("auto.math.abs", 1700),
     ("auto.math.min", 1701),
     ("auto.math.max", 1702),

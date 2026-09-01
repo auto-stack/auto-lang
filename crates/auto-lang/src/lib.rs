@@ -227,6 +227,15 @@ pub fn pool_log_seq() -> u64 {
     SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Plan 510 G3:over-release 审计门(P510_AUDIT=1)——首次多扣款
+/// (release 时 rc==0)打印双栈,把"哪条路径多扣"从推断变实锤。
+pub fn p510_audit() -> bool {
+    static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENV.get_or_init(|| {
+        std::env::var("P510_AUDIT").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+    })
+}
+
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
@@ -6225,6 +6234,17 @@ mod plan499_engine_float_to_int_tests;
 // Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
 #[cfg(test)]
 mod plan503_tests;
+
+// Plan 510 / P499-7: native ID 撞号(Log×Shell 1800-1803)回归钉 +
+// 字符串池 over-release 记账回归。
+#[cfg(test)]
+#[path = "tests/plan510_pool_tests.rs"]
+mod plan510_pool_tests;
+
+// P499-6 清偿:widgets-gallery 全页可编译冒烟(lib 级,入日常门禁)。
+#[cfg(test)]
+#[path = "tests/gallery_pages_compile_tests.rs"]
+mod gallery_pages_compile_tests;
 
 // Plan 492 M2 (族 A1): primary-shorthand `[` 后缀解析回归。
 #[cfg(test)]

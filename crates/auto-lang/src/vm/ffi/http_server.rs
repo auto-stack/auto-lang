@@ -1951,6 +1951,16 @@ fn list_notes() []Note {
 /// Each request is dispatched to a VM handler function via call_fn_by_name.
 ///
 /// Future: replace with Axum for concurrency, SSE, TLS support.
+/// Plan 510 G1-1: handler 实参字符串入池咽喉。原三处(路径参数/body/
+/// request_info)裸 `strings.write().push` + `push_nv(encode_string)`:
+/// 不进 dedup、不 ensure_len(rc 数组不覆盖该槽)——引用天生无计数,
+/// 消费侧任何 release 即凭空多扣(over-release 注入源;P-053-5 把
+/// native.rs/stdlib.rs 收口到 add_string 时漏掉本文件)。
+/// 统一走 intern_runtime_str(add_string + rc 入栈 +1)。
+pub(crate) fn push_str_arg(vm: &crate::vm::engine::AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
+    vm.intern_runtime_str(task, s.as_bytes().to_vec());
+}
+
 pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
     let listener = match TcpListener::bind(addr) {
         Ok(l) => l,
@@ -2041,24 +2051,12 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                 if let Ok(i) = param_val.parse::<i32>() {
                     ht.ram.push_i32(i);
                 } else {
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        let i = strings.len();
-                        strings.push(param_val.as_bytes().to_vec());
-                        i
-                    };
-                    ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                    push_str_arg(vm, &mut ht, &param_val);
                 }
                 n_args += 1;
             }
             if !body.is_empty() {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(body.as_bytes().to_vec());
-                    i
-                };
-                ht.ram.push_nv(auto_val::encode_string(idx as u32));
+                push_str_arg(vm, &mut ht, &body);
                 n_args += 1;
             }
 
@@ -2515,13 +2513,7 @@ async fn handle_connection_async(
         // Push request info as arg.
         if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
             if let Ok(mut t) = t_arc.try_lock() {
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(request_info.as_bytes().to_vec());
-                    i
-                };
-                t.ram.push_nv(auto_val::encode_string(idx as u32));
+                push_str_arg(vm, &mut t, &request_info);
             }
         }
         let mw_result = if let Some(t_arc) = vm.tasks.get(&mw_task_id) {
@@ -2830,13 +2822,8 @@ fn build_handler_args(
                 if let Ok(i) = param_val.parse::<i32>() {
                     task.ram.push_i32(i);
                 } else {
-                    let idx = {
-                        let mut strings = vm.strings.write().unwrap();
-                        let i = strings.len();
-                        strings.push(param_val.as_bytes().to_vec());
-                        i
-                    };
-                    vm.rc_push_str_idx(&mut task, idx as usize);
+                    // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
+                        push_str_arg(vm, &mut task, &param_val);
                 }
                 n_args += 1;
             }
@@ -2847,13 +2834,8 @@ fn build_handler_args(
                     .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
                     .collect();
                 let json_str = format!("{{{}}}", json_parts.join(","));
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(json_str.into_bytes());
-                    i
-                };
-                vm.rc_push_str_idx(&mut task, idx as usize);
+                // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
+                    push_str_arg(vm, &mut task, &json_str);
                 n_args += 1;
             }
 
@@ -2861,13 +2843,8 @@ fn build_handler_args(
             if let Some(mp) = multipart_json {
                 // Plan 346 5a (B6): multipart push — fields + persisted-file
                 // metadata as JSON (takes the body arg slot).
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(mp.as_bytes().to_vec());
-                    i
-                };
-                vm.rc_push_str_idx(&mut task, idx as usize);
+                // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
+                    push_str_arg(vm, &mut task, &mp);
                 n_args += 1;
             } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
@@ -2881,13 +2858,8 @@ fn build_handler_args(
                 } else {
                     body.to_string()
                 };
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(body_to_push.into_bytes());
-                    i
-                };
-                vm.rc_push_str_idx(&mut task, idx as usize);
+                // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
+                    push_str_arg(vm, &mut task, &body_to_push);
                 n_args += 1;
             }
 
@@ -2923,13 +2895,8 @@ fn build_handler_args(
                 };
                 let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
                 let meta_json = format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val);
-                let idx = {
-                    let mut strings = vm.strings.write().unwrap();
-                    let i = strings.len();
-                    strings.push(meta_json.into_bytes());
-                    i
-                };
-                vm.rc_push_str_idx(&mut task, idx as usize);
+                // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
+                    push_str_arg(vm, &mut task, &meta_json);
                 n_args += 1;
             }
         }

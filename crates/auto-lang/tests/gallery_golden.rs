@@ -167,6 +167,14 @@ fn gallery_vue_golden() {
     // 采样本身也不允许带出幻影 import)
     assert_ui_imports_resolve(&full_text);
 
+    // P499-6 围栏:生成错误串(!!GENERATION ERROR!!)曾被原样采样进基线
+    // 「洗白」——kitchen-sink.at 解析错以 2.5KB 错误串形态通过 golden,
+    // vue serve 却整站 500。golden 从此拒绝任何失败样本入库。
+    assert!(
+        !full_text.contains("!!GENERATION ERROR!!"),
+        "gallery 有 .at 生成失败 —— 修复后才能采样/对比 golden(拒绝洗白,P499-6)"
+    );
+
     // 调试:GALLERY_GOLDEN_DUMP=<path> 导出全文,供两次运行 diff 定位非确定性
     if let Ok(dump) = std::env::var("GALLERY_GOLDEN_DUMP") {
         fs::write(&dump, &full_text).expect("write dump");

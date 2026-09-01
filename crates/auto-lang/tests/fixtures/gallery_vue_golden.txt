@@ -46,7 +46,7 @@ front/pages/grid.at	29791	ddbdbe8ed1a6e966
 front/pages/hovercard.at	12180	f1fa65f34b9105cc
 front/pages/index.at	67498	5d285b0bfbabcfaa
 front/pages/input.at	28240	2cf646939fde14f3
-front/pages/kitchen-sink.at	2519	efa52d889e6ac8dd
+front/pages/kitchen-sink.at	10643	64c28349f5ad69d8
 front/pages/label.at	13276	378c7d9a69235176
 front/pages/line-chart.at	14942	dbafe689e471decd
 front/pages/menubar.at	8947	717c321af1d86722
@@ -79,4 +79,4 @@ front/pages/toast.at	38090	ad1a266786606ee0
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	10782	e9ea18d974dd5af5
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1489135	8dfdc7d82909aa68
+TOTAL	1497259	6fff06adb89c4144
