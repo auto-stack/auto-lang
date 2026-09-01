@@ -508,6 +508,14 @@
   语义 = 宿主首帧测量内容尺寸并收缩窗口一次。011 切 Scientific 模式后
   内容增高，窗口不重测，底部 `=` 键轻微裁剪（实机截图可见）。候选后续：
   内容尺寸变化信号 → 宿主重测（协议/宿主增强，另行计划）。
+  **【已清偿 · Plan 512】** view 重建打标（dispatch 漏斗 fit_dirty）→
+  ServiceTick 节拍重测 → 滞回 8px 双向跟随（standalone iced resize +
+  desktop vwin rect 双路径，用户手动 resize 一次性锁定）。实证：
+  011 Scientific +44px/回缩基线（tests/test_512_fit_remeasure.py）、
+  005 校验错误行 +39px/回缩（005 同名探针）。两处实证改案留痕计划
+  步骤 3：standalone ServiceTick 订阅断链补齐；活树布局受当前窗口钳制
+  → 锚点外套 scrollable 量真实自然尺寸（宽度方向仍受视口钳制，见
+  P512-1）。
 - **P504-3 desktop 真实 launch 实况 e2e 未通（合成输入打不进 winit）**：
   desktop fit/seeding 覆盖到 session 级单测 + standalone 实机；ui_desktop
   宿主可起、MCP 截图可见桌面，但 SendInput 键鼠（即便 AttachThreadInput
@@ -687,3 +695,26 @@
 4. **限定调用占位泄漏镜像**：`db.fn()` 发射 const.i32 0 接收者占位
    （宿主 Ident 模块兜底，Plan 437 已知泄漏）——aavm 镜像之，帧 bp
    锚定下无害；宿主若清偿该泄漏需同步。
+
+### P512（2026-09-01，Plan 512 fit 动态重测 + 批二迁移执行期登记）
+
+1. **P512-1 fit 宽度方向量测受视口钳制**：动态重测的 scrollable 方案
+   （fit_aware_root 锚点外套 vertical scrollable）只给内容侧无限**高**
+   约束；宽度仍钳在当前窗口/视口宽——内容自然宽超出窗口时量不到、
+   窗口不横向跟随（011 Scientific 6 列 grid 实测未超 384 宽，未触发）。
+   偿还路径：双向 scrollable（横向滚动语义侵入）或自定义测量 widget
+   （layout 以宽上限排版、operate 回报子树自然尺寸）——后者语义干净，
+   待有宽度增长需求载体时立项。
+2. **P512-2 用户锁定后内容余量裸露出窗口底色**：fit 窗常驻 Shrink 根
+   （512 前为首测后回 Fill），用户手动放大窗（锁定）后内容左上对齐、
+   余量区无 Fill 背景填充（v1 语义，fit_aware_root 文档注释在案）。
+   解锁增强（如双击标题栏恢复 fit）与锁定态视觉语义一并留待裁定
+   （512 待澄清③）。
+3. **P512-3 `p508_g2_outproc_arm` 并发偶红**：512 门禁全量跑时红一次
+   （17.7s outproc 孵化用例，并行会话高负载下超时族），单跑即绿；
+   与 512 改动面无涉（508 进程模型），按 489 族 flake 注记。
+
+### P502(2026-09-01,Plan 502 diagram Phase 1 复审登记)
+
+1. **P502-1(master 既有,非本计划引入)`plan055_strip_html_tests::strips_tags_and_decodes_entities` ui-iced 档红**:`strip_html_tags("<span>@x</span> 你好")` 产出双空格(`" @x  你好"`),期望单空格(aura_view_builder.rs:11263 断言)。本机 master(eda3a5a5e)同红复证——musk PLAN-055 批(c964ffa81)引入面;`cargo tf` 无 ui-iced 不触发,唯日常档 `cargo t` 可见。偿还:strip_html_tags 标签/实体后空白规范化(或按语义修正期望),归 musk 批主理方裁定。
+2. **P502 执行期发现#9 处置核验**:kitchen-sink `@autodown/engine` scaffold 依赖缺失担忧经复审核验**已上游愈合**(P499-6 d0c23388d kitchen-sink 再生成,import 不复存在)——不入债。
