@@ -594,7 +594,8 @@ fn ev_exec(c CG, entry int, trace int, mut gnames List<str>, mut gvals List<Val>
             var qi2 = 0
             while qi2 < gnames.len() {
                 if gnames.get(qi2) == gname2 {
-                    gvals.set(qi2, gval2)
+                    var gv2c = gval2.clone()
+                    gvals.set(qi2, gv2c)
                     gfound = true
                 }
                 qi2 = qi2 + 1

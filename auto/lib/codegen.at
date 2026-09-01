@@ -1027,7 +1027,9 @@ fn cg_expr(mut c CG, mut p P, min int) {
         // auto_modules + mod.fn reloc 符号——链接期定址;调用后可接
         // 后缀/中缀,故 call_done 包裹而非 return)
         var call_done = false
-        if p_kind(p) == TokenKind.Dot && (p_peek(p, 1) == TokenKind.Ident || is_soft_ident_kind(p_peek(p, 1))) && p_peek(p, 2) == TokenKind.LParen && cg_is_module(c, name) {
+        // 注:括号化 || 不入 && 链(a2r 转译不保括号优先级——提中间变量)
+        var qk_name = p_peek(p, 1) == TokenKind.Ident || is_soft_ident_kind(p_peek(p, 1))
+        if p_kind(p) == TokenKind.Dot && qk_name && p_peek(p, 2) == TokenKind.LParen && cg_is_module(c, name) {
             p_next(p)
             var qfn = p_text(p)
             p_next(p)
@@ -1072,7 +1074,8 @@ fn cg_expr(mut c CG, mut p P, min int) {
             if idx < 0 {
                 // W2:全局读(镜像宿主读链 局部>全局 优先序;W3 模块限名)
                 if cg_is_global(c, cg_gkey(c, name)) {
-                    var gidx = cg_pool_add(c, cg_gkey(c, name))
+                    var gkr = cg_gkey(c, name)
+                    var gidx = cg_pool_add(c, gkr)
                     emit(c, OpCode.LoadGlobal, gidx.str(), gidx)
                     c.arr_flag = 0
                 } else {
@@ -1221,7 +1224,8 @@ fn cg_expr(mut c CG, mut p P, min int) {
                 cg_expr(c, p, infix_r(p_op(opk)))
                 var rhs_str = c.str_flag
                 var mn = cg_binop_mnem(p_op(opk))
-                if opk == TokenKind.Add && (lhs_str == 1 || rhs_str == 1) {
+                var str_either = lhs_str == 1 || rhs_str == 1
+                if opk == TokenKind.Add && str_either {
                     mn = OpCode.StrCat
                     c.str_flag = 1
                 } else {
@@ -1988,7 +1992,8 @@ fn cg_stmt(mut c CG, mut p P) {
                 var gopk = p_kind(p)
                 p_next(p)
                 if gopk != TokenKind.Asn {
-                    var gg = cg_pool_add(c, cg_gkey(c, name))
+                    var gka = cg_gkey(c, name)
+                    var gg = cg_pool_add(c, gka)
                     emit(c, OpCode.LoadGlobal, gg.str(), gg)
                 }
                 cg_expr(c, p, 0)
@@ -1997,7 +2002,8 @@ fn cg_stmt(mut c CG, mut p P) {
                     emit(c, gmn, "", 0)
                 }
                 emit(c, OpCode.Dup, "", 0)
-                var gidx3 = cg_pool_add(c, cg_gkey(c, name))
+                var gkb = cg_gkey(c, name)
+                var gidx3 = cg_pool_add(c, gkb)
                 emit(c, OpCode.StoreGlobal, gidx3.str(), gidx3)
                 emit(c, OpCode.Pop, "", 0)
                 return
@@ -2488,17 +2494,16 @@ fn cg_resolve_into(file str, mut mods List<CGMod>, mut loading List<str>, mut do
     while i < uses.len() {
         var u = uses.get(i)
         if u.kind == "rs" {
-            var crate = u.module
-            var dot = crate.char_at(0)
+            var crate_name = u.module
             var di = 0
-            while di < crate.len() {
-                if crate.char_at(di) == 46 {
-                    crate = crate.slice(0, di)
-                    di = crate.len()
+            while di < crate_name.len() {
+                if crate_name.char_at(di) == 46 {
+                    crate_name = crate_name.slice(0, di)
+                    di = crate_name.len()
                 }
                 di = di + 1
             }
-            return "Crate '" + crate + "' not declared. Add `dep " + crate + "` before `use.rs`."
+            return "Crate '" + crate_name + "' not declared. Add `dep " + crate_name + "` before `use.rs`."
         }
         if u.kind == "py" {
             return "Python FFI not enabled. Rebuild with `--features python` to use `use.py`."
@@ -2535,13 +2540,7 @@ fn cg_resolve_into(file str, mut mods List<CGMod>, mut loading List<str>, mut do
             if rerr != "" {
                 return rerr
             }
-            var li = 0
-            while li < loading.len() {
-                if loading.get(li) == m {
-                    loading.set(li, "")
-                }
-                li = li + 1
-            }
+            // loading 免清除:done 表先行判定,链上环检测仅需活动期在栈
             mods.push(CGMod(m, msrc))
             done.push(m)
         }
@@ -2706,7 +2705,8 @@ fn cg_link_modules(mut cgs List<CG>) CG {
         while fi < mc.fns.len() {
             var fe = mc.fns.get(fi)
             m.fns.push(FnEntry(fe.name, fe.ins + ins_base))
-            m.fn_mods.push(mc.mod_name)
+            var mn2 = mc.mod_name
+            m.fn_mods.push(mn2)
             fi = fi + 1
         }
         // defers(绝对化 ins 指针)
