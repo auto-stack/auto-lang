@@ -293,12 +293,14 @@ mod tests {
     const T3_H: f32 = 900.0;
 
     /// 001–005 示例名（与 examples/ui 目录一致）。
-    const T3_EXAMPLES: [&str; 5] = [
+    const T3_EXAMPLES: [&str; 6] = [
         "001-helloworld",
         "002-counter",
         "003-converter",
         "004-profile-card",
         "005-login",
+        // Plan 507 T10：Tier1+Tier2 构造覆盖示例（实机 queue 模式语料）。
+        "p507-tier-coverage",
     ];
 
     fn example_source(dir: &str) -> String {
@@ -606,6 +608,33 @@ mod tests {
                     .iter()
                     .any(|t| t.contains("Password is required"))),
                 "005 提交后错误经 if 块显示"
+            );
+        }
+
+        // p507（Plan 507 T10）：Tier1+2 全家福实机 queue 模式——帧到位
+        //（heading/badge/card 文本族）→ checkbox 翻转 → if 块 ON→OFF。
+        {
+            assert!(
+                wait_frames(&mut session, |s| composed_texts(s, "p507-tier-coverage")
+                    .iter()
+                    .any(|t| t == "Tier Coverage")
+                    && composed_texts(s, "p507-tier-coverage").iter().any(|t| t == "feat: ON")),
+                "p507 首帧 Tier1+2 文本到位: {:?}",
+                composed_texts(&session, "p507-tier-coverage")
+            );
+            let (hx, hy) = twin_hit("p507-tier-coverage", "checkbox:ok")
+                .expect("p507 checkbox 坐标");
+            let (ox, oy) = origin_of(&session, "p507-tier-coverage").expect("p507 窗原点");
+            assert!(
+                session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left),
+                "p507 点击路由"
+            );
+            assert!(
+                wait_frames(&mut session, |s| composed_texts(s, "p507-tier-coverage")
+                    .iter()
+                    .any(|t| t == "feat: OFF")),
+                "p507 checkbox 翻转经 if 块显示: {:?}",
+                composed_texts(&session, "p507-tier-coverage")
             );
         }
 

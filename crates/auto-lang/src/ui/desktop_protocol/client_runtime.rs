@@ -43,6 +43,18 @@ const INPUT_BG: Rgba8 = Rgba8::new(30, 30, 36, 255);
 /// image 占位底色（保真边界：位图内容归 Stage 5）。
 const IMAGE_PLACEHOLDER: Rgba8 = Rgba8::new(60, 60, 70, 255);
 
+// Plan 507 T3 —— Tier1 display 族常量（未声明样式时的缺省观感）。
+/// badge 药丸底（accent 基调，与按钮同族）。
+const BADGE_BG: Rgba8 = Rgba8::new(48, 96, 200, 255);
+/// avatar 占位底（圆角直角化——保真边界同 image）。
+const AVATAR_BG: Rgba8 = Rgba8::new(70, 70, 82, 255);
+/// progress 轨道底。
+const PROGRESS_TRACK: Rgba8 = Rgba8::new(45, 45, 52, 255);
+/// divider/分隔线。
+const DIVIDER_BG: Rgba8 = Rgba8::new(80, 80, 90, 255);
+/// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。
+const DISABLED_ALPHA: u8 = 110;
+
 /// 页边距（根内容盒）。
 const MARGIN: f32 = 10.0;
 /// 缺省块间距（未声明 gap- 时）。
@@ -58,13 +70,21 @@ const INPUT_PAD: f32 = 10.0;
 const TEXT_SIZE: f32 = 16.0;
 const LINE_H_FACTOR: f32 = 1.35;
 
-/// 命中区种类（D3 定案：widget 交互区表）。
+/// 命中区种类（D3 定案：widget 交互区表；Plan 507 T4 扩 form 族）。
 #[derive(Debug, Clone, PartialEq)]
 enum HitKind {
     /// button：零参 click handler token。
     Button(String),
-    /// input：value 绑定字段 + 零参 oninput handler。
+    /// input/textarea：value 绑定字段 + 零参 oninput handler。
     Input { field: String, oninput: Option<String> },
+    /// checkbox/switch/radio：绑定 Bool 翻转（radio 恒置 true）+ 零参
+    /// onclick/onchange handler。`name` 为 widget 名（命中区快照文本用）。
+    Toggle {
+        field: String,
+        handler: Option<String>,
+        name: &'static str,
+        radio: bool,
+    },
 }
 
 /// AuraNode view → DrawList 投影器（实现 [`FrameSource`]，直接作
@@ -120,7 +140,7 @@ impl AppProjector {
     }
 
     /// 命中区快照（测试断言口）：`(rect, "button:<handler>" |
-    /// "input:<field>")` 文本化。
+    /// "input:<field>" | "<widget>:<field>")` 文本化。
     pub fn hit_regions(&self) -> Vec<(WRect, String)> {
         self.hits
             .iter()
@@ -128,6 +148,7 @@ impl AppProjector {
                 let kind = match k {
                     HitKind::Button(h) => format!("button:{h}"),
                     HitKind::Input { field, .. } => format!("input:{field}"),
+                    HitKind::Toggle { field, name, .. } => format!("{name}:{field}"),
                 };
                 (*r, kind)
             })
@@ -321,6 +342,8 @@ struct ProjectCtx<'a> {
     comp: &'a DynamicComponent,
     ops: Vec<DrawOp>,
     hits: Vec<(WRect, HitKind)>,
+    /// 聚焦 input 的绑定字段（焦点态描边差分——Plan 507 T4）。
+    focused_field: Option<String>,
 }
 
 impl FrameSource for AppProjector {
@@ -331,7 +354,12 @@ impl FrameSource for AppProjector {
     fn render_frame(&mut self) -> DrawList {
         // 模板克隆脱离 self 借用（模板小，每帧克隆可接受）。
         let template = self.component.view_template().clone();
-        let mut ctx = ProjectCtx { comp: &self.component, ops: Vec::new(), hits: Vec::new() };
+        let mut ctx = ProjectCtx {
+            comp: &self.component,
+            ops: Vec::new(),
+            hits: Vec::new(),
+            focused_field: self.focused_field(),
+        };
         let root_style = NodeStyle::default();
         let _ = layout_block(
             &mut ctx,
@@ -377,6 +405,29 @@ impl FrameSource for AppProjector {
                         }
                         HitKind::Input { .. } => {
                             self.focused_input = Some(idx);
+                        }
+                        // Plan 507 T4：form 族翻转。**handler 在场 = handler
+                        // 拥有状态变更**（真源语义：024 `.ToggleDesktop` 自行
+                        // 翻转 `.dVisible`——投影器自动翻转会与之对冲成
+                        // 双翻）；无 handler 才走自动翻转（checkbox/switch
+                        // 取反；radio 恒置 true）。
+                        HitKind::Toggle { field, handler, radio, .. } => {
+                            match handler {
+                                Some(h) => {
+                                    self.component.on_with_input(&h, None);
+                                }
+                                None => {
+                                    let current = matches!(
+                                        self.component.read_state(&field),
+                                        Ok(auto_val::Value::Bool(true))
+                                    );
+                                    let next = if radio { true } else { !current };
+                                    let _ = self
+                                        .component
+                                        .write_state(&field, auto_val::Value::Bool(next));
+                                }
+                            }
+                            self.rev += 1;
                         }
                     }
                 }
@@ -545,15 +596,44 @@ fn layout_node(
 ) -> LaidBlock {
     match node {
         AuraNode::Element { tag, props, events, children, .. } => {
-            let tag_lc = tag.to_ascii_lowercase();
+            // 折叠键匹配（剥 -/_ + 小写——aura.at 别名策略同口径；coverage
+            // normalize_kind 同源）。coverage 表外标签不会到这（auto 探测
+            // 已降级）；显式 queue 强跑时未知标签走容器兜底臂。
+            let tag_lc = fold_tag(tag);
             let style = NodeStyle::parse(style_str_of(props));
             match tag_lc.as_str() {
                 "button" => layout_button(ctx, props, events, children, x, y, avail_w, &style),
                 "input" => layout_input(ctx, props, events, x, y, avail_w, &style),
+                // Plan 507 T4 —— Tier1 form 族。
+                "checkbox" => layout_checkbox(ctx, props, events, x, y, avail_w, &style),
+                "switch" => layout_switch(ctx, props, events, x, y, avail_w, &style),
+                "radio" => layout_radio(ctx, props, events, x, y, avail_w, &style),
+                "textarea" => layout_textarea(ctx, props, events, x, y, avail_w, &style),
                 "image" | "img" => layout_image(ctx, props, x, y, avail_w, &style),
+                // Plan 507 T3 —— Tier1 display 族。
+                "icon" => layout_icon(ctx, props, x, y, avail_w, &style),
+                "badge" => layout_badge(ctx, props, children, x, y, avail_w, &style),
+                "avatar" => layout_avatar(ctx, props, x, y, avail_w, &style),
+                "progress" => layout_progress(ctx, props, x, y, avail_w, &style),
+                "divider" | "separator" => layout_divider(ctx, props, x, y, avail_w, &style),
+                "spacer" => layout_spacer(&style),
                 _ if is_text_tag(&tag_lc) || tag_lc == "a" => {
-                    layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a")
+                    layout_text(ctx, props, children, x, y, avail_w, &style, tag_lc == "a", &tag_lc)
                 }
+                // Plan 507 T5 —— grid（cols 等宽网格）与 card 族（card =
+                // 表面缺省档容器；title/description/content/header/footer/
+                // action = 普通块流容器，shadcn 字号/间距档不载——保真边界
+                // 随注）。
+                "grid" => layout_grid(ctx, props, children, x, y, avail_w, &style),
+                "card" => layout_container(
+                    ctx,
+                    children,
+                    x,
+                    y,
+                    avail_w,
+                    &card_surface(style),
+                    Dir::Vertical,
+                ),
                 // 容器标签（col/row/center/hstack/vstack 及未知容器——
                 // coverage 表外标签不会到这：装载期探测已降级）。
                 _ => {
@@ -562,43 +642,7 @@ fn layout_node(
                     } else {
                         Dir::Vertical
                     };
-                    let pad = (
-                        style.pad_left(),
-                        style.pad_top(),
-                        style.pad_right(),
-                        style.pad_bottom(),
-                    );
-                    let mut inner_w = avail_w;
-                    if let Some(fw) = style.fixed_w() {
-                        inner_w = (fw - pad.0 - pad.2).max(0.0);
-                    }
-                    if let Some(max_w) = style.box_layout.max_width {
-                        inner_w = inner_w.min((max_w - pad.0 - pad.2).max(0.0));
-                    }
-                    let laid = layout_block(
-                        ctx,
-                        children,
-                        x + pad.0,
-                        y + pad.1,
-                        inner_w.max(0.0),
-                        dir,
-                        &style,
-                    );
-                    let outer_w = match style.fixed_w() {
-                        Some(fw) => fw,
-                        None => (laid.size.0 + pad.0 + pad.2).max(0.0),
-                    };
-                    let outer_h = match style.fixed_h() {
-                        Some(fh) => fh,
-                        None => laid.size.1 + pad.1 + pad.3,
-                    };
-                    if let Some(bg) = style.bg {
-                        push_quad(ctx, WRect::new(x, y, outer_w, outer_h), bg);
-                    }
-                    if let Some(border) = style.border {
-                        push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
-                    }
-                    LaidBlock { size: (outer_w, outer_h) }
+                    layout_container(ctx, children, x, y, avail_w, &style, dir)
                 }
             }
         }
@@ -721,7 +765,9 @@ fn layout_button(
         .unwrap_or((label_w + BUTTON_PAD * 2.0).max(BUTTON_MIN_W))
         .min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(BUTTON_H);
-    let bg = style.bg.unwrap_or(BUTTON_BG);
+    // Plan 507 T4：禁用态命令差分——观感乘暗 + 命中区不登记。
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let bg = dim_if(disabled, style.bg.unwrap_or(BUTTON_BG));
     push_quad(ctx, WRect::new(x, y, w, h), bg);
     let line_h = size * LINE_H_FACTOR;
     ctx.ops.push(DrawOp::Text {
@@ -729,13 +775,176 @@ fn layout_button(
         y: y + (h - line_h) / 2.0,
         size,
         line_height: line_h,
-        color: style.fg.unwrap_or(LABEL_FG),
+        color: dim_if(disabled, style.fg.unwrap_or(LABEL_FG)),
         text: label,
     });
     if let Some(handler) = click_handler(events) {
-        ctx.hits.push((WRect::new(x, y, w, h), HitKind::Button(handler)));
+        if !disabled {
+            ctx.hits.push((WRect::new(x, y, w, h), HitKind::Button(handler)));
+        }
     }
     LaidBlock { size: (w, h) }
+}
+
+/// 禁用态观感：alpha 压到 [`DISABLED_ALPHA`]（乘暗近似——命令差分，非
+/// 像素级透明合成语义）。
+fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
+    if disabled {
+        Rgba8::new(color.r, color.g, color.b, color.a.min(DISABLED_ALPHA))
+    } else {
+        color
+    }
+}
+
+// Plan 507 T5 —— Tier1 layout/复合容器。
+/// card 表面底色（未声明样式时的缺省观感——shadcn card 的深色档近似）。
+const CARD_BG: Rgba8 = Rgba8::new(32, 32, 40, 255);
+/// card 缺省内边距。
+const CARD_PAD: f32 = 16.0;
+/// grid 缺省列数（真源 011/016 均显式 `cols:`；缺省 2 档——保真边界随注）。
+const GRID_COLS: usize = 2;
+
+/// grid：cols 列等宽网格（`cols`/`columns` prop；row-major 行序——真源
+/// 011 计算器/016 日历形态）。格子宽 = (内容宽 - gap×(cols-1))/cols，
+/// 行高 = 行内最大值；bg 底色经重排置于子级之下（行内节点少，幂等重排
+/// 与 row 居中同档先例）。
+fn layout_grid(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let cols = prop_f64(ctx.comp, props, "cols")
+        .or_else(|| prop_f64(ctx.comp, props, "columns"))
+        .unwrap_or(GRID_COLS as f64)
+        .max(1.0) as usize;
+    // 真源（011/016）走 `gap:` prop；style gap- 类为回退档。
+    let gap = prop_f64(ctx.comp, props, "gap").map(|g| g as f32).unwrap_or_else(|| style.gap());
+    let mut visible: Vec<&AuraNode> = Vec::with_capacity(children.len());
+    flatten_visible(ctx.comp, children, &mut visible);
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
+    let cell_w = if visible.is_empty() {
+        0.0
+    } else {
+        // 最后一行不满 cols 时 gap 按满行扣（简化：等宽格子不随行缩短）。
+        ((inner_w - gap * (cols.saturating_sub(1)) as f32) / cols as f32).max(0.0)
+    };
+    let place_rows = |ctx: &mut ProjectCtx<'_>| -> (f32, f32) {
+        let mut row_y = 0.0f32;
+        for (ri, row) in visible.chunks(cols).enumerate() {
+            if ri > 0 {
+                row_y += gap;
+            }
+            let mut row_h = 0.0f32;
+            for (ci, node) in row.iter().enumerate() {
+                // 等宽格：格 x = 列号 × (格宽 + gap)——与内容宽度无关。
+                let cell_x = ci as f32 * (cell_w + gap);
+                let laid = layout_node(ctx, node, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                row_h = row_h.max(laid.size.1);
+            }
+            row_y += row_h;
+        }
+        (cell_w * cols as f32 + gap * (cols - 1) as f32, row_y)
+    };
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let (content_w, content_h) = place_rows(ctx);
+    let outer_w = match style.fixed_w() {
+        Some(fw) => fw,
+        None => content_w + pad.0 + pad.2,
+    };
+    let outer_h = match style.fixed_h() {
+        Some(fh) => fh,
+        None => content_h + pad.1 + pad.3,
+    };
+    if style.bg.is_some() {
+        // 底色置于子级之下：撤首轮产物后重排。
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        push_quad(ctx, WRect::new(x, y, outer_w, outer_h), style.bg.unwrap());
+        place_rows(ctx);
+    }
+    if let Some(border) = style.border {
+        push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
+    }
+    LaidBlock { size: (outer_w, outer_h) }
+}
+
+/// 通用块流容器（col/row/center/card 族/语义容器共用——500 catch-all 臂
+/// 的具名化，Plan 507 T5）。
+fn layout_container(
+    ctx: &mut ProjectCtx<'_>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+    dir: Dir,
+) -> LaidBlock {
+    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let mut inner_w = avail_w;
+    if let Some(fw) = style.fixed_w() {
+        inner_w = (fw - pad.0 - pad.2).max(0.0);
+    }
+    if let Some(max_w) = style.box_layout.max_width {
+        inner_w = inner_w.min((max_w - pad.0 - pad.2).max(0.0));
+    }
+    // Plan 507 T5 z 序修正：容器底色必须先于子级绘制（500 期 bg 排在
+    // 子级之后——broker_surface 顺序栅格化会盖住子级；003 卡片实机
+    // 表现 = 空底板。修正 = 首轮量尺寸 → 撤产物 → bg → 重排子级 →
+    // border。幂等重排先例：row 主轴居中/grid 底色。
+    let ops_mark = ctx.ops.len();
+    let hits_mark = ctx.hits.len();
+    let laid = layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), dir, style);
+    let outer_w = match style.fixed_w() {
+        Some(fw) => fw,
+        None => (laid.size.0 + pad.0 + pad.2).max(0.0),
+    };
+    let outer_h = match style.fixed_h() {
+        Some(fh) => fh,
+        None => laid.size.1 + pad.1 + pad.3,
+    };
+    if style.bg.is_some() || style.border.is_some() {
+        ctx.ops.truncate(ops_mark);
+        ctx.hits.truncate(hits_mark);
+        if let Some(bg) = style.bg {
+            push_quad(ctx, WRect::new(x, y, outer_w, outer_h), bg);
+        }
+        layout_block(ctx, children, x + pad.0, y + pad.1, inner_w.max(0.0), dir, style);
+        if let Some(border) = style.border {
+            push_border(ctx, WRect::new(x, y, outer_w, outer_h), border);
+        }
+    }
+    LaidBlock { size: (outer_w, outer_h) }
+}
+
+/// card 表面缺省档：无 bg/border/padding 声明时补 shadcn card 近似
+/// （底色 + 边线 + 16 内边距；显式 style 全覆盖）。
+fn card_surface(mut style: NodeStyle) -> NodeStyle {
+    if style.bg.is_none() {
+        style.bg = Some(CARD_BG);
+    }
+    if style.border.is_none() {
+        style.border = Some(DIVIDER_BG);
+    }
+    let b = &mut style.box_layout;
+    if b.padding_left.is_none() {
+        b.padding_left = Some(CARD_PAD);
+    }
+    if b.padding_right.is_none() {
+        b.padding_right = Some(CARD_PAD);
+    }
+    if b.padding_top.is_none() {
+        b.padding_top = Some(CARD_PAD);
+    }
+    if b.padding_bottom.is_none() {
+        b.padding_bottom = Some(CARD_PAD);
+    }
+    style
 }
 
 fn layout_input(
@@ -749,10 +958,11 @@ fn layout_input(
 ) -> LaidBlock {
     let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(INPUT_H);
-    let bg = style.bg.unwrap_or(INPUT_BG);
+    // Plan 507 T4：禁用态乘暗 + 命中区不登记；焦点态描边差分
+    //（聚焦字段 = 本框绑定 → accent 边框）。
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let bg = dim_if(disabled, style.bg.unwrap_or(INPUT_BG));
     push_quad(ctx, WRect::new(x, y, w, h), bg);
-    push_border(ctx, WRect::new(x, y, w, h), style.border.unwrap_or(INPUT_BORDER));
-    // 内容 = value 绑定当前值；空 → placeholder。
     let binding = props
         .get("value")
         .and_then(|v| match v {
@@ -760,6 +970,19 @@ fn layout_input(
             _ => None,
         })
         .unwrap_or_default();
+    let focused = !disabled
+        && ctx.focused_field.as_deref() == Some(binding.as_str());
+    let border = if focused {
+        resolve_color("blue-500").unwrap_or(INPUT_BORDER)
+    } else {
+        INPUT_BORDER
+    };
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(border)),
+    );
+    // 内容 = value 绑定当前值；空 → placeholder。
     let placeholder = props
         .get("placeholder")
         .and_then(|v| match v {
@@ -788,7 +1011,7 @@ fn layout_input(
             y: y + (h - line_h) / 2.0,
             size,
             line_height: line_h,
-            color,
+            color: dim_if(disabled, color),
             text,
         });
     }
@@ -796,7 +1019,218 @@ fn layout_input(
         .get("oninput")
         .or_else(|| events.get("onInput"))
         .and_then(|e| handler_token(&e.handler));
-    if !binding.is_empty() {
+    if !binding.is_empty() && !disabled {
+        ctx.hits.push((
+            WRect::new(x, y, w, h),
+            HitKind::Input { field: binding, oninput },
+        ));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+// ---------------------------------------------------------------------------
+// Plan 507 T4 —— Tier1 form 族臂（checkbox/switch/radio/textarea）。
+// 命中区 Toggle/输入闭环复用 input 通道；禁用态 = 乘暗 + 不登记。
+// ---------------------------------------------------------------------------
+
+/// checkbox：18×18 方框（圆角直角化保真边界）+ 选中内芯块。
+fn layout_checkbox(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(18.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(INPUT_BORDER)),
+    );
+    if checked {
+        let inset = (w.min(h) * 0.22).clamp(1.5, 6.0);
+        push_quad(
+            ctx,
+            WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
+            dim_if(disabled, style.fg.unwrap_or(BUTTON_BG)),
+        );
+    }
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "checkbox", false);
+    LaidBlock { size: (w, h) }
+}
+
+/// switch：36×20 轨道 + 16×16 滑块（位置随 checked）。
+fn layout_switch(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(36.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(20.0);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    let track = if checked { style.bg.unwrap_or(BUTTON_BG) } else { INPUT_BG };
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, track));
+    let thumb = h - 4.0;
+    let tx = if checked { x + w - thumb - 2.0 } else { x + 2.0 };
+    push_quad(
+        ctx,
+        WRect::new(tx, y + 2.0, thumb, thumb),
+        dim_if(disabled, LABEL_FG),
+    );
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "switch", false);
+    LaidBlock { size: (w, h) }
+}
+
+/// radio：16×16 外框（圆形直角化保真边界）+ 选中内芯块；点击恒置 true。
+fn layout_radio(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(16.0).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(w);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let checked = prop_bool(ctx.comp, props, "checked").unwrap_or(false);
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(INPUT_BORDER)),
+    );
+    if checked {
+        let inset = (w.min(h) * 0.28).clamp(1.5, 5.0);
+        push_quad(
+            ctx,
+            WRect::new(x + inset, y + inset, w - inset * 2.0, h - inset * 2.0),
+            dim_if(disabled, style.fg.unwrap_or(BUTTON_BG)),
+        );
+    }
+    register_toggle(ctx, props, events, x, y, w, h, disabled, "radio", true);
+    LaidBlock { size: (w, h) }
+}
+
+/// Toggle 命中区登记（checked 绑定字段 + 零参 onclick/onchange handler；
+/// 无绑定或禁用 → 不登记）。
+fn register_toggle(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    disabled: bool,
+    name: &'static str,
+    radio: bool,
+) {
+    if disabled {
+        return;
+    }
+    let Some(field) = props
+        .get("checked")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(expr) => binding_field(expr),
+            _ => None,
+        })
+    else {
+        return;
+    };
+    // 真源用法（013/024）：checkbox 走 onclick；schema 声明 onchange——
+    // 两键都认，取首个零参 token。
+    let handler = ["onclick", "onchange", "onClick", "onChange", "ontoggle"]
+        .iter()
+        .find_map(|key| events.get(*key).and_then(|e| handler_token(&e.handler)));
+    ctx.hits.push((
+        WRect::new(x, y, w, h),
+        HitKind::Toggle { field, handler, name, radio },
+    ));
+}
+
+/// textarea：多行输入框（rows 行高 + 边框 + 值/占位文本；输入闭环复用
+/// input 通道——CharTyped 追加、Backspace 回退）。
+fn layout_textarea(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    events: &HashMap<String, crate::aura::AuraEvent>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+    let size = style.font_size.unwrap_or(14.0);
+    let line_h = size * LINE_H_FACTOR;
+    let rows = prop_f64(ctx.comp, props, "rows").unwrap_or(4.0).max(1.0) as usize;
+    let h = style.fixed_h().unwrap_or(INPUT_PAD * 2.0 + line_h * rows as f32);
+    let disabled = prop_bool(ctx.comp, props, "disabled").unwrap_or(false);
+    let binding = props
+        .get("value")
+        .and_then(|v| match v {
+            AuraPropValue::Expr(expr) => binding_field(expr),
+            _ => None,
+        })
+        .unwrap_or_default();
+    push_quad(ctx, WRect::new(x, y, w, h), dim_if(disabled, style.bg.unwrap_or(INPUT_BG)));
+    let focused =
+        !disabled && ctx.focused_field.as_deref() == Some(binding.as_str());
+    let border = if focused {
+        resolve_color("blue-500").unwrap_or(INPUT_BORDER)
+    } else {
+        INPUT_BORDER
+    };
+    push_border(
+        ctx,
+        WRect::new(x, y, w, h),
+        dim_if(disabled, style.border.unwrap_or(border)),
+    );
+    let placeholder = prop_str(props, "placeholder").unwrap_or_default();
+    let value = if binding.is_empty() {
+        String::new()
+    } else {
+        match ctx.comp.read_state(&binding) {
+            Ok(v) => format_value(&v),
+            Err(_) => String::new(),
+        }
+    };
+    let (text, color) = if value.is_empty() {
+        (placeholder, PLACEHOLDER_FG)
+    } else {
+        (value, style.fg.unwrap_or(TEXT_FG))
+    };
+    if !text.is_empty() {
+        // 多行：按 '\n' 分行自上而下排（无自动换行——宽度溢出裁剪边界
+        // 归宿主；保真边界随注）。
+        for (i, line) in text.split('\n').take(rows.max(1)).enumerate() {
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD,
+                y: y + INPUT_PAD + line_h * i as f32,
+                size,
+                line_height: line_h,
+                color: dim_if(disabled, color),
+                text: line.to_string(),
+            });
+        }
+    }
+    let oninput = events
+        .get("oninput")
+        .or_else(|| events.get("onInput"))
+        .and_then(|e| handler_token(&e.handler));
+    if !binding.is_empty() && !disabled {
         ctx.hits.push((
             WRect::new(x, y, w, h),
             HitKind::Input { field: binding, oninput },
@@ -823,6 +1257,218 @@ fn layout_image(
     LaidBlock { size: (w, h) }
 }
 
+// ---------------------------------------------------------------------------
+// Plan 507 T3 —— Tier1 display 族臂（icon/badge/avatar/progress/divider/
+// separator/spacer）。保真边界随注（Coverage 表同口径）：icon 字形、
+// avatar/image 位图内容、圆角直角化均归宿主栅格化/Stage 5+。
+// ---------------------------------------------------------------------------
+
+/// icon：字形占位方块（尺寸 = style 宽或 `size` prop，缺省 24）。
+fn layout_icon(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let _ = prop_str(props, "name");
+    let size = style
+        .fixed_w()
+        .or_else(|| prop_f64(ctx.comp, props, "size").map(|v| v as f32))
+        .unwrap_or(24.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, size, size), style.bg.unwrap_or(IMAGE_PLACEHOLDER));
+    LaidBlock { size: (size, size) }
+}
+
+/// badge：药丸底 + 居中短标签（variant 配色 v1 取 accent 单档）。
+fn layout_badge(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    children: &[AuraNode],
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let label = element_text(ctx.comp, props, children);
+    let size = style.font_size.unwrap_or(12.0);
+    let line_h = size * LINE_H_FACTOR;
+    let h = style.fixed_h().unwrap_or(line_h.max(20.0));
+    let w = style
+        .fixed_w()
+        .unwrap_or(measure_text(&label, size) + 16.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, w, h), style.bg.unwrap_or(BADGE_BG));
+    if !label.is_empty() {
+        ctx.ops.push(DrawOp::Text {
+            x: x + (w - measure_text(&label, size)) / 2.0,
+            y: y + (h - line_h) / 2.0,
+            size,
+            line_height: line_h,
+            color: style.fg.unwrap_or(LABEL_FG),
+            text: label,
+        });
+    }
+    LaidBlock { size: (w, h) }
+}
+
+/// avatar：方块占位 + fallback 首字母（src 位图内容归 Stage 5+）。
+fn layout_avatar(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let size = style
+        .fixed_w()
+        .or_else(|| style.fixed_h())
+        .unwrap_or(40.0)
+        .min(avail_w.max(0.0));
+    push_quad(ctx, WRect::new(x, y, size, size), style.bg.unwrap_or(AVATAR_BG));
+    let initials: String = prop_str(props, "fallback")
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|w| w.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase();
+    if !initials.is_empty() {
+        let size_px = size * 0.4;
+        let line_h = size_px * LINE_H_FACTOR;
+        ctx.ops.push(DrawOp::Text {
+            x: x + (size - measure_text(&initials, size_px)) / 2.0,
+            y: y + (size - line_h) / 2.0,
+            size: size_px,
+            line_height: line_h,
+            color: style.fg.unwrap_or(LABEL_FG),
+            text: initials,
+        });
+    }
+    LaidBlock { size: (size, size) }
+}
+
+/// progress：轨道 + 填充条（value/max 绑定求值；缺省 0..1）。
+fn layout_progress(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let value = prop_f64(ctx.comp, props, "value").unwrap_or(0.0);
+    let max = prop_f64(ctx.comp, props, "max").unwrap_or(1.0).max(1e-9);
+    let frac = (value / max).clamp(0.0, 1.0) as f32;
+    let w = style.fixed_w().unwrap_or(avail_w).min(avail_w.max(0.0));
+    let h = style.fixed_h().unwrap_or(8.0);
+    push_quad(ctx, WRect::new(x, y, w, h), PROGRESS_TRACK);
+    if frac > 0.0 {
+        push_quad(ctx, WRect::new(x, y, w * frac, h), style.bg.unwrap_or(BUTTON_BG));
+    }
+    LaidBlock { size: (w, h) }
+}
+
+/// divider/separator：1px 分隔线（direction/orientation 竖向取固定高——
+/// 块流 v1 叶子无交叉轴可用高度，无 h- 声明时取 24 近似，保真边界随注）。
+fn layout_divider(
+    ctx: &mut ProjectCtx<'_>,
+    props: &HashMap<String, AuraPropValue>,
+    x: f32,
+    y: f32,
+    avail_w: f32,
+    style: &NodeStyle,
+) -> LaidBlock {
+    let vertical = prop_str(props, "direction")
+        .or_else(|| prop_str(props, "orientation"))
+        .is_some_and(|d| d.eq_ignore_ascii_case("vertical"));
+    let t = 1.0f32.max(style.fixed_h().unwrap_or(0.0).min(4.0));
+    if vertical {
+        let h = style.fixed_h().unwrap_or(24.0);
+        push_quad(ctx, WRect::new(x, y, t, h), style.bg.unwrap_or(DIVIDER_BG));
+        LaidBlock { size: (t, h) }
+    } else {
+        let w = style.fixed_w().unwrap_or(avail_w);
+        push_quad(ctx, WRect::new(x, y, w, t), style.bg.unwrap_or(DIVIDER_BG));
+        LaidBlock { size: (w, t) }
+    }
+}
+
+/// spacer：空白占位（style 尺寸驱动；缺省高 8——flex 语义静态帧取最小位）。
+fn layout_spacer(style: &NodeStyle) -> LaidBlock {
+    LaidBlock {
+        size: (
+            style.fixed_w().unwrap_or(0.0),
+            style.fixed_h().unwrap_or(GAP),
+        ),
+    }
+}
+
+/// prop → 字符串字面量（仅字符串字面量 prop；状态引用走 resolve_expr_display）。
+fn prop_str<'a>(props: &'a HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
+    match props.get(key)? {
+        AuraPropValue::Expr(Expr::Str(s)) => Some(s.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// prop → f64（数值字面量或状态绑定：Int/Double/Float/Bool）。
+fn prop_f64(comp: &DynamicComponent, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<f64> {
+    let expr = match props.get(key)? {
+        AuraPropValue::Expr(e) => e,
+        _ => return None,
+    };
+    match expr {
+        Expr::Int(i) => Some(*i as f64),
+        Expr::Float(f, _) | Expr::Double(f, _) => Some(*f),
+        Expr::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
+        Expr::Ident(name) => read_num_state(comp, name.as_str().trim_start_matches('.')),
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => {
+                read_num_state(comp, field.as_str())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// prop → bool（布尔字面量或状态绑定）。
+fn prop_bool(comp: &DynamicComponent, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<bool> {
+    let expr = match props.get(key)? {
+        AuraPropValue::Expr(e) => e,
+        _ => return None,
+    };
+    match expr {
+        Expr::Bool(b) => Some(*b),
+        Expr::Ident(name) => comp
+            .read_state(name.as_str().trim_start_matches('.'))
+            .ok()
+            .map(|v| matches!(v, auto_val::Value::Bool(true))),
+        Expr::Dot(obj, field) => match obj.as_ref() {
+            Expr::Ident(base) if base.as_str() == "." || base.as_str() == "self" => comp
+                .read_state(field.as_str())
+                .ok()
+                .map(|v| matches!(v, auto_val::Value::Bool(true))),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn read_num_state(comp: &DynamicComponent, field: &str) -> Option<f64> {
+    match comp.read_state(field).ok()? {
+        auto_val::Value::Int(i) => Some(i as f64),
+        auto_val::Value::Float(f) => Some(f as f64),
+        auto_val::Value::Double(d) => Some(d),
+        auto_val::Value::Bool(b) => Some(if b { 1.0 } else { 0.0 }),
+        _ => None,
+    }
+}
+
 fn layout_text(
     ctx: &mut ProjectCtx<'_>,
     props: &HashMap<String, AuraPropValue>,
@@ -832,27 +1478,68 @@ fn layout_text(
     avail_w: f32,
     style: &NodeStyle,
     link: bool,
+    tag: &str,
 ) -> LaidBlock {
+    // Plan 507 T6：typography 族缺省档（显式 style 优先）。
+    let profile = typography_profile(tag);
     let text = element_text(ctx.comp, props, children);
-    let size = style.font_size.unwrap_or(TEXT_SIZE);
+    let size = style.font_size.or(profile.size).unwrap_or(TEXT_SIZE);
     let line_h = size * LINE_H_FACTOR;
     if text.is_empty() {
         return LaidBlock { size: (0.0, 0.0) };
     }
-    let w = measure_text(&text, size).min(avail_w.max(0.0));
-    let color = style.fg.unwrap_or(if link {
+    let default_fg = if link {
         // a：accent 前景（可链接观感；下划线 DrawOp 不载——保真边界）。
         resolve_color("blue-500").unwrap_or(TEXT_FG)
+    } else if profile.quote {
+        PLACEHOLDER_FG
     } else {
         TEXT_FG
-    });
+    };
+    let color = style.fg.unwrap_or(default_fg);
+    // 引用条：左侧 2px accent + 文本右移（bg Quad 先于文本——z 序口径）。
+    let (tx0, bar_w) = if profile.quote { (x + 12.0, 2.0) } else { (x, 0.0) };
+    if profile.quote {
+        push_quad(ctx, WRect::new(x, y, bar_w, line_h), BUTTON_BG);
+    }
+    // 代码盒/预格式：底盒 + 换行保留（pre 系列多行；行宽 = 最长行）。
+    if profile.code_box {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let max_w = lines
+            .iter()
+            .map(|l| measure_text(l, size))
+            .fold(0.0f32, f32::max)
+            .min(avail_w.max(0.0));
+        let box_w = (max_w + INPUT_PAD * 2.0).min(avail_w.max(0.0));
+        let box_h = line_h * lines.len() as f32 + INPUT_PAD * 2.0;
+        push_quad(ctx, WRect::new(x, y, box_w, box_h), style.bg.unwrap_or(INPUT_BG));
+        for (i, line) in lines.iter().enumerate() {
+            if line.is_empty() {
+                continue;
+            }
+            ctx.ops.push(DrawOp::Text {
+                x: x + INPUT_PAD,
+                y: y + INPUT_PAD + line_h * i as f32,
+                size,
+                line_height: line_h,
+                color,
+                text: line.to_string(),
+            });
+        }
+        return LaidBlock { size: (box_w, box_h) };
+    }
+    let w = measure_text(&text, size).min((avail_w - bar_w - (tx0 - x)).max(0.0));
     let tx = if style.text_center {
         x + (avail_w - w) / 2.0
     } else {
-        x
+        tx0
     };
+    // bold 档（b/strong/heading + font-bold 类）：DrawOp 无字重字段，
+    // v1 不产生视觉差分——保真边界同 500 的 font_bold 解析不渲染
+    //（宿主字体注册（FontBlob 通道）后按字重档渲染）。
+    let _ = (profile.bold, style.font_bold);
     ctx.ops.push(DrawOp::Text { x: tx, y, size, line_height: line_h, color, text });
-    LaidBlock { size: (w, line_h) }
+    LaidBlock { size: (w + (tx0 - x), line_h) }
 }
 
 /// value 绑定表达式 → 字段名（`.email` / `email` / `.self.x`）。
@@ -890,12 +1577,53 @@ fn element_text(
 }
 
 /// 文本承载标签（内容走 `text` prop；与 parser `get_primary_prop` 的
-/// text 档同集的常用子集；入参已小写）。
+/// text 档同集的常用子集 + Plan 507 T6 typography 族；入参已折叠键）。
 fn is_text_tag(tag: &str) -> bool {
     matches!(
         tag,
         "text" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "label"
+            | "b" | "em" | "i" | "strong" | "small" | "code" | "pre" | "blockquote"
+            | "quote" | "heading" | "codeblock" | "codepane" | "figcaption"
     )
+}
+
+/// Plan 507 T6 —— typography 族缺省档（显式 style 声明优先）：
+/// bold/字号/块盒/引用条；italic 与等宽字体 DrawOp 不载（保真边界：
+/// em/i 按常规体渲染，code 系列常规体 + 底盒）。
+struct TypographyProfile {
+    size: Option<f32>,
+    bold: bool,
+    /// 代码块/预格式：底盒 + 保留换行。
+    code_box: bool,
+    /// 引用：左侧 accent 条 + 缩进 + 静音前景。
+    quote: bool,
+}
+
+fn typography_profile(tag: &str) -> TypographyProfile {
+    match tag {
+        "b" | "strong" => TypographyProfile { size: None, bold: true, code_box: false, quote: false },
+        "small" | "figcaption" => {
+            TypographyProfile { size: Some(12.0), bold: false, code_box: false, quote: false }
+        }
+        "heading" => TypographyProfile { size: Some(24.0), bold: true, code_box: false, quote: false },
+        "code" => TypographyProfile { size: Some(14.0), bold: false, code_box: false, quote: false },
+        "pre" | "codeblock" | "codepane" => {
+            TypographyProfile { size: Some(14.0), bold: false, code_box: true, quote: false }
+        }
+        "blockquote" | "quote" => {
+            TypographyProfile { size: None, bold: false, code_box: false, quote: true }
+        }
+        _ => TypographyProfile { size: None, bold: false, code_box: false, quote: false },
+    }
+}
+
+/// 折叠键（剥 `-`/`_` + 小写）——coverage `normalize_kind` 同源；本文件
+/// 全部标签匹配（layout_node 臂 + is_text_tag）以此为准。
+fn fold_tag(tag: &str) -> String {
+    tag.chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_ascii_lowercase()
 }
 
 /// 收集子树的可显示文本（Literal/Interpolated 解析后拼接）。
@@ -1693,6 +2421,118 @@ mod tests {
         );
     }
 
+    /// 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）——parity
+    /// 金样共用序列化（001 + 507 矩阵）。
+    fn drawlist_to_text(frame: &DrawList) -> String {
+        let mut out = String::new();
+        match frame.clear {
+            Some(c) => out.push_str(&format!("clear {},{},{},{}\n", c.r, c.g, c.b, c.a)),
+            None => out.push_str("clear -\n"),
+        }
+        for op in &frame.ops {
+            match op {
+                DrawOp::Quad { rect, color } => out.push_str(&format!(
+                    "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}\n",
+                    rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
+                )),
+                DrawOp::Text { x, y, size, line_height, color, text } => out.push_str(&format!(
+                    "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}\n",
+                    x, y, size, line_height, color.r, color.g, color.b, color.a, text
+                )),
+            }
+        }
+        out
+    }
+
+    /// Plan 507 T8 —— parity 金样矩阵（覆盖表驱动抽样）：Tier1 每家族
+    /// ≥1 条 + Tier2 每语义组 1 条；两阶段（初帧 → 家族规范交互 → 复帧）
+    /// 全精度锁。`AUTO_WRITE_GOLDEN=1` 重写期望文件。
+    #[test]
+    fn parity_matrix_queue_golden() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test/parity/matrix");
+        std::fs::create_dir_all(&dir).expect("mkdir matrix");
+        for (name, src) in parity_matrix_fixtures() {
+            let component =
+                crate::build_dynamic_component(src, None).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let mut p = AppProjector::new(component, 480.0, 640.0);
+            let mut out = String::new();
+            out.push_str("---- frame 1 ----\n");
+            out.push_str(&drawlist_to_text(&p.render_frame()));
+            // 家族规范交互：首个命中区点击 + 输入框字符写入（交互闭环
+            // 差分入样）。
+            out.push_str("---- after input ----\n");
+            if let Some((r, kind)) = p.hit_regions().first().cloned() {
+                p.on_input(&InputMsg::PointerPressed {
+                    wid: 1,
+                    button: MouseButton::Left,
+                    x: r.x + 2.0,
+                    y: r.y + 2.0,
+                    modifiers: 0,
+                });
+                if kind.starts_with("input:") {
+                    p.on_input(&InputMsg::CharTyped { wid: 1, ch: 'x' });
+                }
+            }
+            out.push_str(&drawlist_to_text(&p.render_frame()));
+            let exp_path = dir.join(format!("{name}.expected.txt"));
+            if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
+                std::fs::write(&exp_path, &out).expect("write golden");
+            }
+            let expected = std::fs::read_to_string(&exp_path)
+                .unwrap_or_else(|e| panic!("read {name} golden: {e}"));
+            if out != expected {
+                let _ = std::fs::write(dir.join(format!("{name}.wrong.txt")), &out);
+                panic!(
+                    "{name} queue 金样不匹配（见 test/parity/matrix/{name}.wrong.txt）EXP---{expected}ACT---{out}"
+                );
+            }
+        }
+    }
+
+    /// Plan 507 T8 防漏钉：矩阵夹具的扫描标签并集 ⊇ target_set 可投影集
+    ///（kinds + layouts，视图构造 if 除外）——target_set 扩容必带矩阵
+    /// 夹具，金样矩阵与覆盖表不脱钩。
+    #[test]
+    fn parity_matrix_covers_target_set() {
+        use crate::ui::desktop_protocol::coverage::{judge, scan_view, Coverage, Verdict};
+        let coverage = Coverage::target_set();
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, src) in parity_matrix_fixtures() {
+            let component = crate::build_dynamic_component(src, None).expect("build");
+            let scan = scan_view(component.view_template());
+            // 夹具本身必须 Covered（矩阵只收可上 queue 的形态）。
+            assert!(
+                matches!(judge(&scan, &coverage), Verdict::Covered),
+                "矩阵夹具应 Covered: {:?}",
+                scan.tags
+            );
+            seen.extend(scan.tags.iter().cloned());
+        }
+        for kind in &coverage.kinds {
+            assert!(seen.contains(kind), "矩阵缺 {kind} 夹具（金样防漏）");
+        }
+        for layout in &coverage.layouts {
+            if layout == "if" {
+                continue; // 视图构造（001–005 if 已有行为金样）
+            }
+            assert!(seen.contains(layout), "矩阵缺 {layout} 夹具（金样防漏）");
+        }
+    }
+
+    /// 矩阵夹具清单（name, 源）——Tier1 三族 + Tier2 两组；交互行为
+    /// （首个命中区点击/输入）内建于 parity_matrix_queue_golden。
+    fn parity_matrix_fixtures() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("t1_display", "widget M1 {\n    model {\n        var pct double = 0.6\n        var who str = \"Jane Cooper\"\n    }\n    view {\n        col {\n            image (src: \"a.png\") { style: \"w-10 h-10\" }\n            img (src: \"b.png\") { style: \"w-8 h-8\" }\n            icon (name: \"star\", size: 20.0)\n            badge \"New\"\n            avatar (fallback: .who)\n            progress (value: .pct) { style: \"w-40\" }\n            divider { style: \"w-full\" }\n            separator { style: \"w-full\" }\n            spacer { style: \"h-2\" }\n            a \"docs\"\n            text \"plain\"\n            span \"spanned\"\n            button \"Go\" { onclick: .Go }\n        }\n    }\n}\n"),
+            ("t1_form", "widget M2 {\n    model {\n        var ok bool = false\n        var on bool = true\n        var pick bool = false\n        var note str = \"\"\n        var name str = \"\"\n    }\n    view {\n        col {\n            input (value: .name, placeholder: \"name\") { oninput: .N }\n            checkbox (checked: .ok) { onclick: .T }\n            switch (checked: .on) { onchange: .S }\n            radio (checked: .pick) { onclick: .R }\n            textarea (value: .note, placeholder: \"note\", rows: 2.0) {}\n            button \"Submit\" { onclick: .T }\n        }\n    }\n}\n"),
+            ("t1_layout_grid_card", "widget M3 {\n    view {\n        center {\n            card {\n                cardheader { cardtitle { text \"T\" } }\n                cardcontent {\n                    grid (cols: 3.0, gap: 4.0) {\n                        grid-item { text \"1\" }\n                        grid-item { text \"2\" }\n                        grid-item { text \"3\" }\n                    }\n                }\n                carddescription { text \"D\" }
+                card-action { text \"A\" }
+                cardfooter { text \"F\" }\n            }\n            row {\n                container { text \"c\" }\n                scroll { text \"s\" }\n            }\n        }\n    }\n}\n"),
+            ("t2_typography", "widget M4 {\n    view {\n        col {\n            h1 \"h1\"\n            p \"para\"\n            label \"lbl\"\n            b \"bold\"\n            strong \"strong\"\n            em \"em\"\n            i \"it\"\n            small \"sm\"\n            code \"c = 1\"\n            pre \"l1\\nl2\"\n            blockquote \"q\"\n            heading \"H\"\n            figcaption \"cap\"\n        }\n    }\n}\n"),
+            ("t2_semantic", "widget M5 {\n    view {\n        main {\n            header { text \"hd\" }\n            nav { text \"nv\" }\n            article {\n                section { text \"sec\" }\n                figure { text \"fig\" }\n                aside { text \"as\" }\n            }\n            ul { li { text \"i1\" } }\n            ol { li { text \"i2\" } }\n            dl { dt { text \"t\" } dd { text \"d\" } }\n            details { summary { text \"sum\" } }\n            footer { text \"ft\" }\n        }\n    }\n}\n"),
+        ]
+    }
+
     /// Plan 500 步骤 9（T4）：queue 臂投影金样（001 三臂对拍基线的
     /// queue 臂；vue 臂挂 a2vue 同族，iced 像素臂留实机档——497 已证
     /// headless 栅格化不可行）。`AUTO_WRITE_GOLDEN=1` 重写期望文件。
@@ -1704,28 +2544,7 @@ mod tests {
         let component = crate::build_dynamic_component(&src, None).expect("build");
         let mut p = AppProjector::new(component, 480.0, 900.0);
         let frame = p.render_frame();
-        // 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）。
-        let mut out = String::new();
-        match frame.clear {
-            Some(c) => out.push_str(&format!("clear {},{},{},{}
-", c.r, c.g, c.b, c.a)),
-            None => out.push_str("clear -
-"),
-        }
-        for op in &frame.ops {
-            match op {
-                DrawOp::Quad { rect, color } => out.push_str(&format!(
-                    "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}
-",
-                    rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
-                )),
-                DrawOp::Text { x, y, size, line_height, color, text } => out.push_str(&format!(
-                    "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}
-",
-                    x, y, size, line_height, color.r, color.g, color.b, color.a, text
-                )),
-            }
-        }
+        let out = drawlist_to_text(&frame);
         let exp_path = dir.join("001_queue.expected.txt");
         if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
             std::fs::write(&exp_path, &out).expect("write golden");
@@ -1982,5 +2801,545 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(ph.session.apps.is_empty(), "L2Detached 后宿主回收");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T3 —— Tier1 display 族投影快照（家族参数矩阵：默认档 ×
+    // style 覆盖档 × 绑定态）。
+    // -----------------------------------------------------------------------
+
+    /// 测试脚手架：源串 → projector → 首帧。
+    fn project(src: &str) -> (AppProjector, DrawList) {
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let mut p = AppProjector::new(component, 480.0, 320.0);
+        let frame = p.render_frame();
+        (p, frame)
+    }
+
+    fn quads_of(frame: &DrawList) -> Vec<(WRect, Rgba8)> {
+        frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, color } => Some((*rect, *color)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// icon：w-6 h-6 → 24×24 占位（size prop 档：无 style 时 1.5×4=6 → 24px
+    /// 语义同 1.5rem；此处直接像素字面量）。
+    #[test]
+    fn t3_icon_placeholder_quad() {
+        let (_, frame) = project(
+            "widget I { view { icon (name: \"star\", size: 32.0) } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "一个占位 Quad: {quads:?}");
+        let (r, _) = quads[0];
+        assert_eq!((r.w, r.h), (32.0, 32.0), "size prop 驱动: {r:?}");
+    }
+
+    /// badge：药丸底 + 居中标签（text prop + 样式 fg 覆盖）。
+    #[test]
+    fn t3_badge_pill_and_label() {
+        let (_, frame) = project(
+            "widget B { view { badge \"Beta\" { style: \"text-xs\" } } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "药丸底单 Quad: {quads:?}");
+        let (r, _) = quads[0];
+        assert!(r.w > 0.0 && r.h >= 20.0, "几何合理: {r:?}");
+        let texts = texts_of(&frame);
+        assert_eq!(texts, vec!["Beta"], "居中标签");
+    }
+
+    /// avatar：占位方块 + fallback 首字母（40 缺省档）。
+    #[test]
+    fn t3_avatar_initials() {
+        let (_, frame) = project(
+            "widget A { view { avatar (fallback: \"Jane Cooper\") } }",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "占位单 Quad");
+        let (r, _) = quads[0];
+        assert_eq!((r.w, r.h), (40.0, 40.0), "缺省 40×40: {r:?}");
+        let texts = texts_of(&frame);
+        assert_eq!(texts, vec!["JC"], "首字母两枚: {texts:?}");
+    }
+
+    /// progress：value/max 绑定态求值（0.6 → 60% 填充）+ 状态推进重渲染。
+    #[test]
+    fn t3_progress_binding_fraction() {
+        let src = "widget P {\n    model { var pct double = 0.6 }\n    view { progress (value: .pct, max: 1.0) { style: \"w-80\" } }\n}\n";
+        let (mut p, frame) = project(src);
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 2, "轨道 + 填充: {quads:?}");
+        let (track, fill) = (quads[0].0, quads[1].0);
+        assert_eq!(track.w, 320.0, "w-80 → 320px");
+        assert!((fill.w - 320.0 * 0.6).abs() < 0.5, "60% 填充: {fill:?}");
+        assert!((fill.x - track.x).abs() < 0.01 && fill.y == track.y, "填充左对齐轨道");
+        // 状态推进 → 填充随动（VM 写状态 + 重渲染）。
+        p.component_mut()
+            .write_state("pct", auto_val::Value::Double(1.0))
+            .expect("write");
+        let frame = p.render_frame();
+        let quads = quads_of(&frame);
+        assert!((quads[1].0.w - 320.0).abs() < 0.5, "pct=1.0 → 全填充: {:?}", quads[1].0);
+    }
+
+    /// divider/separator/spacer：线宽 1px + 空白占位几何。
+    #[test]
+    fn t3_divider_separator_spacer_geometry() {
+        let (p, frame) = project(
+            "widget S {\n    view {\n        divider { style: \"w-full\" }\n        spacer { style: \"h-4\" }\n        separator { style: \"w-full\" }\n        spacer { style: \"h-2\" }\n    }\n}\n",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 2, "两根 1px 线: {quads:?}");
+        assert_eq!((quads[0].0.h, quads[1].0.h), (1.0, 1.0), "线高 1px");
+        assert!(quads[0].0.w > 100.0, "w-full 满宽: {:?}", quads[0].0);
+        // 纵向堆叠：y 单调递增（divider → spacer16 → separator → spacer8）。
+        let ys: Vec<f32> = quads.iter().map(|(r, _)| r.y).collect();
+        assert!(ys[1] >= ys[0] + 16.0 + 1.0, "spacer h-4=16px 占位: {ys:?}");
+        let _ = p;
+    }
+
+    /// container/scroll：块流容器渲染（bg + padding 内子级）——catch-all
+    /// 容器臂 + coverage 登记（auto 放行）。
+    #[test]
+    fn t3_container_scroll_block_flow() {
+        let (_, frame) = project(
+            "widget C {\n    view {\n        container {\n            text \"inner\"\n            scroll { text \"scrolled\" }\n            style: \"p-2 bg-slate-800\"\n        }\n    }\n}\n",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "container 底色 Quad: {quads:?}");
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"inner") && texts.contains(&"scrolled"), "{texts:?}");
+        // padding p-2=8px：子级起点 = 容器 + 8。
+        let (r, _) = quads[0];
+        let first_text_y = frame
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { y, text, .. } if text == "inner" => Some(*y),
+                _ => None,
+            })
+            .expect("inner 文本");
+        assert!((first_text_y - (r.y + 8.0)).abs() < 0.01, "p-2 内边距: {first_text_y} vs {}", r.y);
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T4 —— Tier1 form 族（命中区 Toggle 派发 × 焦点/禁用差分）。
+    // -----------------------------------------------------------------------
+
+    fn click(p: &mut AppProjector, x: f32, y: f32) {
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x,
+            y,
+            modifiers: 0,
+        });
+    }
+
+    /// checkbox：点击命中 → 绑定 Bool 翻转 + 零参 handler + revision 前进；
+    /// 重渲染选中内芯出现；再点翻回。
+    #[test]
+    fn t4_checkbox_toggle_round_trip() {
+        let (mut p, frame) = project(
+            "widget CB {\n    model { var ok bool = false }\n    view {\n        checkbox (checked: .ok) {}\n    }\n}\n",
+        );
+        // 未选中：方框 + 边框，无内芯（2 quads）。
+        assert_eq!(quads_of(&frame).len(), 5, "底+四边框,未选中无内芯: {:?}", quads_of(&frame));
+        let hits = p.hit_regions();
+        assert_eq!(hits.len(), 1, "命中区: {hits:?}");
+        assert!(hits[0].1.starts_with("checkbox:ok"), "{hits:?}");
+        let (r, _) = hits[0];
+        click(&mut p, r.x + 2.0, r.y + 2.0);
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(true), "翻转");
+        assert_eq!(p.revision(), 2, "revision 前进");
+        let frame = p.render_frame();
+        assert_eq!(quads_of(&frame).len(), 6, "选中内芯出现(+1): {:?}", quads_of(&frame));
+        // 再点翻回。
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(false), "再点翻回");
+    }
+
+    /// checkbox 的 msg 路径 handler 派发（点击 → .Toggle handler 执行）。
+    #[test]
+    fn t4_checkbox_dispatches_named_handler() {
+        let (mut p, _) = project(
+            "widget CB {\n    model {\n        var ok bool = false\n        var n int = 0\n    }\n    msg T { Inc }\n    on { .T -> {\n            .n += 1\n            if .ok {\n                .ok = false\n            } else {\n                .ok = true\n            }\n        } }\n    view {\n        checkbox (checked: .ok) { onchange: .T }\n    }\n}\n",
+        );
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("n").unwrap(), auto_val::Value::Int(1), "handler 派发");
+        assert_eq!(p.read_state("ok").unwrap(), auto_val::Value::Bool(true));
+    }
+
+    /// switch：滑块位置随 checked 联动（点击 → 滑块右移 + 轨道换色）。
+    #[test]
+    fn t4_switch_thumb_follows_state() {
+        let (mut p, frame) = project(
+            "widget SW {\n    model { var on bool = false }\n    view { switch (checked: .on) {} }\n}\n",
+        );
+        // 轨道 + 滑块（无 handler → 自动翻转路径）。滑块 x 左侧。
+        let q = quads_of(&frame);
+        assert_eq!(q.len(), 2, "轨道+滑块: {q:?}");
+        let off_thumb_x = q[1].0.x;
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("switch:on"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        assert_eq!(p.read_state("on").unwrap(), auto_val::Value::Bool(true));
+        let frame = p.render_frame();
+        let q = quads_of(&frame);
+        assert!(q[1].0.x > off_thumb_x + 8.0, "滑块右移: {:?} -> {:?}", off_thumb_x, q[1].0.x);
+    }
+
+    /// radio：点击恒置 true（不回落）。
+    #[test]
+    fn t4_radio_sets_true_sticky() {
+        let (mut p, _) = project(
+            "widget RD {\n    model { var pick bool = false }\n    view { radio (checked: .pick) {} }\n}\n",
+        );
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("radio:pick"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(p.read_state("pick").unwrap(), auto_val::Value::Bool(true));
+        click(&mut p, hits[0].0.x + 2.0, hits[0].0.y + 2.0);
+        assert_eq!(
+            p.read_state("pick").unwrap(),
+            auto_val::Value::Bool(true),
+            "radio 恒置 true 不回落"
+        );
+    }
+
+    /// 禁用态差分：disabled 乘暗 + 命中区不登记（button/checkbox 双证）。
+    #[test]
+    fn t4_disabled_dim_and_no_hit_region() {
+        let (p, frame) = project(
+            "widget D {\n    model { var ok bool = true }\n    view {\n        col {\n            button \"Go\" { onclick: .Go, disabled: true }\n            checkbox (checked: .ok, disabled: true) { onclick: .T }\n        }\n    }\n}\n",
+        );
+        assert!(p.hit_regions().is_empty(), "禁用态不登记命中区");
+        let q = quads_of(&frame);
+        // 按钮底(1) + checkbox 底(1) + 四边框(4) + 选中内芯(1) = 7 quads。
+        assert_eq!(q.len(), 7, "{q:?}");
+        assert!(
+            q.iter().all(|(_, c)| c.a <= DISABLED_ALPHA),
+            "全部乘暗: {q:?}"
+        );
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Go"), "{texts:?}");
+    }
+
+    /// 焦点态差分：聚焦 input 边框换 accent（蓝色）+ 重渲染保持。
+    #[test]
+    fn t4_input_focus_border_accent() {
+        let (mut p, frame) = project(
+            "widget F {\n    model { var email str = \"\" }\n    view { input (value: .email, placeholder: \"e\") { style: \"w-64\" } }\n}\n",
+        );
+        // 未聚焦：边框 = INPUT_BORDER（4 条边 quads）。
+        let border_count = |f: &DrawList| {
+            f.ops
+                .iter()
+                .filter(|op| matches!(op, DrawOp::Quad { color, .. } if *color == resolve_color("blue-500").unwrap()))
+                .count()
+        };
+        assert_eq!(border_count(&frame), 0, "未聚焦无 accent 边");
+        let hits = p.hit_regions();
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        let frame = p.render_frame();
+        assert_eq!(border_count(&frame), 4, "聚焦四边 accent");
+        // 输入闭环（复用 input 通道）。
+        p.on_input(&InputMsg::CharTyped { wid: 1, ch: 'x' });
+        assert_eq!(p.read_state("email").unwrap(), auto_val::Value::str("x"));
+    }
+
+    /// textarea：rows 行高 + 值/占位 + 输入闭环（CharTyped 追加）。
+    #[test]
+    fn t4_textarea_multiline_and_typing() {
+        let (mut p, frame) = project(
+            "widget TA {\n    model { var note str = \"\" }\n    view { textarea (value: .note, placeholder: \"say it\", rows: 3.0) { style: \"w-full\" } }\n}\n",
+        );
+        let q = quads_of(&frame);
+        assert_eq!(q.len(), 5, "底框 + 四边框");
+        let h = q[0].0.h;
+        // rows=3：高 = 2*10 padding + 3 * 18.9 行高。
+        assert!((h - (INPUT_PAD * 2.0 + 3.0 * 14.0 * LINE_H_FACTOR)).abs() < 0.5, "rows 高: {h}");
+        assert_eq!(texts_of(&frame), vec!["say it"], "占位文本");
+        let hits = p.hit_regions();
+        assert!(hits[0].1.starts_with("input:note"), "{hits:?}");
+        click(&mut p, hits[0].0.x + 5.0, hits[0].0.y + 5.0);
+        for ch in "hi".chars() {
+            p.on_input(&InputMsg::CharTyped { wid: 1, ch });
+        }
+        assert_eq!(p.read_state("note").unwrap(), auto_val::Value::str("hi"), "输入闭环");
+        let frame = p.render_frame();
+        assert_eq!(texts_of(&frame), vec!["hi"], "值显示");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T5 —— grid/card 族 + 容器 z 序修正回归。
+    // -----------------------------------------------------------------------
+
+    /// 容器 z 序（500 逃逸修正回归）：bg Quad 必须先于子级 Text。
+    #[test]
+    fn t5_container_bg_below_children() {
+        let (_, frame) = project(
+            "widget Z {
+    view {
+        col {
+            text \"under?\"
+            style: \"p-2 bg-slate-800\"
+        }
+    }
+}
+",
+        );
+        let bg_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { .. }))
+            .expect("bg Quad");
+        let text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "under?"))
+            .expect("子级 Text");
+        assert!(bg_idx < text_idx, "bg({bg_idx}) 应先于 text({text_idx}): {:?}", frame.ops);
+    }
+
+    /// grid：cols 等宽网格——3 列 6 格 = 2 行；格子宽 = (内容宽 - 2×gap)/3；
+    /// 二行 y 下移；行内 x 递增。
+    #[test]
+    fn t5_grid_equal_cells_and_rows() {
+        let (p, frame) = project(
+            "widget G {
+    view {
+        grid (cols: 3.0, gap: 4.0) {
+            grid-item { text \"a\" }
+            grid-item { text \"b\" }
+            grid-item { text \"c\" }
+            grid-item { text \"d\" }
+            grid-item { text \"e\" }
+            grid-item { text \"f\" }
+            style: \"w-96\"
+        }
+    }
+}
+",
+        );
+        let _ = p;
+        let texts: Vec<(f32, f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { x, y, text, .. } => Some((*x, *y, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.len(), 6, "{texts:?}");
+        let find = |t: &str| texts.iter().find(|(_, _, s)| *s == t).copied().expect(t);
+        let (ax, ay, _) = find("a");
+        let (bx, _, _) = find("b");
+        let (cx, _, _) = find("c");
+        let (dx, dy, _) = find("d");
+        // w-96=384：格子宽 = (384 - 2*4)/3 = 125.33；行内 x 步进 = 格宽+gap。
+        let cell = (384.0 - 2.0 * 4.0) / 3.0;
+        assert!((bx - ax - (cell + 4.0)).abs() < 1.0, "x 步进 = 格宽+gap: {ax} -> {bx}");
+        assert!((cx - bx - (cell + 4.0)).abs() < 1.0, "第三列: {bx} -> {cx}");
+        assert!(dy > ay + 5.0, "第二行下移: {ay} -> {dy}");
+        assert!((dx - ax).abs() < 0.5, "第二行首列对齐: {ax} vs {dx}");
+    }
+
+    /// card：表面缺省档（CARD_BG + 边线 + 16 内边距）+ 子级可见；
+    /// 显式 style 覆盖缺省。
+    #[test]
+    fn t5_card_surface_defaults() {
+        let (_, frame) = project(
+            "widget K {
+    view {
+        card {
+            cardheader { cardtitle { text \"Title\" } }
+            cardcontent { text \"Body\" }
+        }
+    }
+}
+",
+        );
+        let quads = quads_of(&frame);
+        // card 底 + 4 边框线。
+        assert_eq!(quads.len(), 5, "缺省表面: {quads:?}");
+        assert_eq!(quads[0].1, CARD_BG, "缺省底色");
+        let (r, _) = quads[0];
+        assert!((r.w - 16.0 * 2.0 - 0.0).abs() < 60.0, "卡片宽 = 内容+2×16: {r:?}");
+        // z 序：底色最先。
+        let bg_idx = frame.ops.iter().position(|op| matches!(op, DrawOp::Quad { .. })).unwrap();
+        let text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "Title"))
+            .unwrap();
+        assert!(bg_idx < text_idx, "底色先于子级");
+        let texts = texts_of(&frame);
+        assert!(texts.contains(&"Title") && texts.contains(&"Body"), "{texts:?}");
+    }
+
+    /// grid/card 族 auto 探测放行（coverage 声明面；kebab 折叠键同归）。
+    #[test]
+    fn t5_grid_card_family_auto_eligible() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget GC {
+    view {
+        card {
+            card-header { card-title { text "T" } }
+            grid (cols: 2.0) {
+                grid-item { text "1" }
+                grid-item { text "2" }
+            }
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "grid/card 族应 Covered: {verdict:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 507 T6 —— Tier2 typography + 语义容器。
+    // -----------------------------------------------------------------------
+
+    /// typography 族缺省档：b/strong（bold 边界注记）、small 12px、
+    /// heading 24px、code 盒、引用条。
+    #[test]
+    fn t6_typography_profiles() {
+        let (_, frame) = project(
+            "widget T {
+    view {
+        col {
+            b \"bold!\"
+            small \"tiny\"
+            heading \"Big\"
+            code \"x = 1\"
+            blockquote \"said\"
+        }
+    }
+}
+",
+        );
+        let texts: Vec<(f32, &str)> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { size, text, .. } => Some((*size, text.as_str())),
+                _ => None,
+            })
+            .collect();
+        let find = |t: &str| texts.iter().find(|(_, s)| *s == t).copied().expect(t);
+        assert_eq!(find("bold!").0, 16.0, "b 缺省正文字号（bold 差分 v1 不载）");
+        assert_eq!(find("tiny").0, 12.0, "small 档");
+        assert_eq!(find("Big").0, 24.0, "heading 档");
+        assert_eq!(find("x = 1").0, 14.0, "code 档");
+        // 引用：accent 条 Quad 先于文本 + 静音前景。
+        let quote_text_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Text { text, .. } if text == "said"))
+            .expect("引用文本");
+        let bar_idx = frame
+            .ops
+            .iter()
+            .position(|op| matches!(op, DrawOp::Quad { rect, .. } if rect.w == 2.0))
+            .expect("引用条");
+        assert!(bar_idx < quote_text_idx, "引用条先于文本（z 序）");
+        if let DrawOp::Text { color, .. } = &frame.ops[quote_text_idx] {
+            assert_eq!(*color, PLACEHOLDER_FG, "引用静音前景");
+        }
+    }
+
+    /// pre/codeblock：底盒 + 换行保留（多行 = 多 Text op）。
+    #[test]
+    fn t6_pre_codebox_multiline() {
+        let (_, frame) = project(
+            "widget P {
+    view {
+        pre \"line1\nline2\"
+    }
+}
+",
+        );
+        let quads = quads_of(&frame);
+        assert_eq!(quads.len(), 1, "底盒");
+        let (box_r, box_c) = quads[0];
+        assert_eq!(box_c, INPUT_BG, "缺省底盒色");
+        let lines: Vec<&str> = texts_of(&frame);
+        assert_eq!(lines, vec!["line1", "line2"], "两行文本");
+        assert!(
+            (box_r.h - (2.0 * 14.0 * LINE_H_FACTOR + INPUT_PAD * 2.0)).abs() < 0.5,
+            "盒高 = 2 行 + padding: {:?}",
+            box_r
+        );
+    }
+
+    /// 语义容器：块流纵排渲染 + auto 放行（header/main/nav/li 等）。
+    #[test]
+    fn t6_semantic_containers_block_flow() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget S {
+    view {
+        main {
+            header { text "H" }
+            nav { text "N" }
+            article {
+                section { text "S1" }
+                ul { li { text "i1" } li { text "i2" } }
+                figure { text "F" }
+            }
+            aside { text "A" }
+            footer { text "Fo" }
+            details { summary { text "Su" } }
+            dl { dt { text "t" } dd { text "d" } }
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "语义容器应 Covered: {verdict:?}");
+        let mut p = AppProjector::new(component, 480.0, 640.0);
+        let frame = p.render_frame();
+        let texts = texts_of(&frame);
+        for expect in ["H", "N", "S1", "i1", "i2", "F", "A", "Fo", "Su", "t", "d"] {
+            assert!(texts.contains(&expect), "缺 {expect}: {texts:?}");
+        }
+    }
+
+    /// form 族 auto 探测放行（coverage 声明面）。
+    #[test]
+    fn t4_form_family_auto_eligible() {
+        let coverage = crate::ui::desktop_protocol::coverage::Coverage::target_set();
+        let src = r#"widget FRM {
+    model {
+        var ok bool = false
+        var note str = ""
+    }
+    view {
+        col {
+            checkbox (checked: .ok) { onclick: .T }
+            switch (checked: .ok) { onchange: .T }
+            radio (checked: .ok) { onclick: .T }
+            textarea (value: .note, oninput: .N) {}
+        }
+    }
+}
+"#;
+        let component = crate::build_dynamic_component(src, None).expect("build");
+        let scan = crate::ui::desktop_protocol::coverage::scan_view(component.view_template());
+        let verdict = crate::ui::desktop_protocol::coverage::judge(&scan, &coverage);
+        assert!(verdict.is_covered(), "form 族应 Covered: {verdict:?}");
     }
 }

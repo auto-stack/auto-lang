@@ -1,0 +1,4 @@
+name: "p507-tier-coverage"
+version: "1.0.0"
+scene: "ui"
+render: "vue"

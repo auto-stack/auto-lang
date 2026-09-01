@@ -2170,3 +2170,59 @@ fn schema_drift_fence() {
     }
 }
 
+
+// ============================================================================
+// Plan 507 T2 —— queue 臂元素级覆盖漂移围栏（第三端 parity 债闸门）。
+//
+// `schema/aura.at` element 全集 ↔ `ui::desktop_protocol::element_coverage`
+// 登记表**双向**同步：
+//   - aura.at 新增 element 未登记 → 红（新 widget 默认 not-yet 必须显式
+//     登记——防"第三端 parity 债"静默烂尾）；
+//   - 登记表条目在 aura.at 已除名 → 红（陈旧登记同样不同步）。
+// 覆盖率数字随测试输出（covered/not-yet/not-consumed/total）——日常档
+// 一跑即见爬坡进度（G5）。
+// ============================================================================
+
+#[test]
+fn queue_coverage_drift_fence() {
+    use auto_lang::aura::element_coverage::{
+        element_counts, element_table, QueueStatus,
+    };
+
+    let aura_at = read("../../schema/aura.at");
+    let declared = scan_aura_at(&aura_at);
+    let registered: BTreeSet<String> =
+        element_table().iter().map(|(tag, _)| tag.to_string()).collect();
+
+    // 方向一：未登记即红（Plan 507 G5 防烂尾刹车）。
+    let unregistered: BTreeSet<String> = only_in(&declared, &registered);
+    assert!(
+        unregistered.is_empty(),
+        "aura.at 新增 element 未在 element_coverage 登记:\n  {}\n\
+         登记路径:crates/auto-lang/src/aura/element_coverage.rs\n\
+         (默认 not-yet/not-consumed 即过——登记动作不可省)",
+        unregistered.iter().cloned().collect::<Vec<_>>().join(", ")
+    );
+
+    // 方向二：登记条目已从 aura.at 除名 → 红（陈旧登记）。
+    let stale: BTreeSet<String> = only_in(&registered, &declared);
+    assert!(
+        stale.is_empty(),
+        "element_coverage 登记的 tag 已不在 aura.at:\n  {}",
+        stale.iter().cloned().collect::<Vec<_>>().join(", ")
+    );
+
+    // 计数一致性 + 覆盖率输出（T6 门禁可读数字）。
+    let (covered, not_yet, not_consumed, total) = element_counts();
+    assert_eq!(total, declared.len(), "登记总数与 aura.at element 数一致");
+    let registered_covered = element_table()
+        .iter()
+        .filter(|(_, s)| matches!(s, QueueStatus::Covered))
+        .count();
+    assert_eq!(registered_covered, covered, "covered 计数一致");
+    println!(
+        "[queue-coverage] covered {covered} / not-yet {not_yet} / not-consumed \
+         {not_consumed} / total {total}（{covered}/{total} = {:.1}%）",
+        covered as f64 / total as f64 * 100.0
+    );
+}
