@@ -605,3 +605,23 @@
   与异步通道无关)。`cargo tf`(无 test-vm-files 特性)不含此测,故日常门禁
   未遮蔽。偿还:定位 channel 收发时序回归(疑似近期 VM 调度改动),修后
   补 tv 档到日常门禁的讨论。
+
+- **P507-1 queue 臂投影保真边界集(登记在案,非静默)**:scroll 无裁剪
+  (DrawOp v1 无 scissor——溢出内容不剪,宿主 Stage 5+ 裁剪算子后收口);
+  typography bold/italic 不产生视觉差分(无字重/斜体通道,同 500
+  font_bold 解析不渲染先例);ul/ol li 列表标记不载;grid 缺省列数 2 且
+  末行 gap 按满行扣;竖向 divider 无交叉轴可用高度(无 h- 声明取 24 近似);
+  icon/avatar/image 为占位 Quad(位图与字形归宿主栅格化)。均在
+  element_coverage.rs reason 串/代码注释随注——升格时机:DrawOp v2
+  (clip/font 权重/位图通道)。
+
+- **P507-2(pre-existing,非本计划引入)`demo::counter_loopback_demo_parity_with_direct_mount`
+  libtest 并行竞态**:断言 `wid == 1` 假设进程内首个窗口,iced window-id
+  全局计数器在同进程多测试并行下被抢占(507 新增测试改变调度后首现;单跑
+  两版本均绿;nextest 每测试独立进程=日常档天然隔离)。偿还:demo 测试改
+  相对断言(取孵化返回 wid 而非硬编码 1)。
+
+- **P507-3 覆盖率数字默认档不可见**:nextest 隐藏通过测试的 stdout,
+  `[queue-coverage]` 行需 `--success-output immediate`(命令已档
+  .cargo/config.toml 注释)。可选偿还:element_counts 挂 bin 或写
+  状态文件。
