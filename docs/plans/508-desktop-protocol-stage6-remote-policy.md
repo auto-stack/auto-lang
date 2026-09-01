@@ -212,6 +212,16 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 
 ## 待澄清事项
 
+- **⑤（执行期 2026-09-01）远程部分阻塞**：步骤 3–8（WS transport/远程
+  会话/渲染器包/demo/Playwright）按④前置注记须 507（Stage 5 覆盖）
+  先合入；当前 507 仍 drafting 未领（阶段1 已按分期纪律折叠 master：
+  4510f3de2）。**处置**：G1/G2 已收口；远程部分等 507 合入后本计划
+  续领（worktree `.worktrees/plan-508-dev` 与分支保留），或用户裁定
+  改拆先行折叠/另立计划。
+- **⑥（执行期 2026-09-01）存量破坏通报**：`crates/auto-lang/tests/
+  osconfig_integration.rs:220` 在 `--features ui-iced` 编译下缺
+  LaunchSpec `fit`/`name` 字段（Plan 504 引入时遗留，非本计划改动；
+  日常门禁不含该测试目标故未拦截）。候选入 KNOWN-DEBT（复审时定）。
 - **① 新依赖**：`tokio-tungstenite` 为 RenderQueue 线首个新三方——理由
   （手写 WS 帧协议的工程量/风险不划算）已记；若复审不接受，退路 = 纯
   std 的最小 WS 服务端（HTTP 升级 + 帧解析，仅 server 侧子集）。
