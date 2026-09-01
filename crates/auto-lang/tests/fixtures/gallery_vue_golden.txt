@@ -1,4 +1,4 @@
-front/app.at	16594	3938bc9dd9f24fa5
+front/app.at	16819	68b40adceba89bac
 front/components/area_chart.at	20421	4eb5d67f3efd7fa8
 front/components/bar_chart.at	19020	c214a05182b8f229
 front/components/carousel.at	3149	7d8b748fff8cafa9
@@ -8,6 +8,7 @@ front/components/command.at	4778	b79d10b155c422b6
 front/components/copy_button.at	2640	cccf52d84f3e1abe
 front/components/datepicker.at	3459	9a790c6c3f89284b
 front/components/donut_chart.at	11506	1a19bba82654993a
+front/components/flow_diagram.at	3054	e08325db0959efd4
 front/components/line_chart.at	22464	bfc4601d1fa7c3e6
 front/components/toggle.at	1706	c66ffd55db9868db
 front/components/togglegroup.at	2860	4d73cd43839fa840
@@ -40,13 +41,14 @@ front/pages/donut-chart.at	8119	e79e0fe52c7783dd
 front/pages/drawer.at	10470	b95f59a5843a54e6
 front/pages/dropdownmenu.at	12248	f5223d55d802c831
 front/pages/flex.at	32272	88f5a53fad7518f3
+front/pages/flow-diagram.at	10159	7e2dff381512a56f
 front/pages/form.at	10913	bcad99645200d0f9
 front/pages/grid-span.at	29129	12cc16f0211e6803
 front/pages/grid.at	29791	ddbdbe8ed1a6e966
 front/pages/hovercard.at	12180	f1fa65f34b9105cc
 front/pages/index.at	67498	5d285b0bfbabcfaa
 front/pages/input.at	28240	2cf646939fde14f3
-front/pages/kitchen-sink.at	2519	efa52d889e6ac8dd
+front/pages/kitchen-sink.at	10759	015b8329e5166e18
 front/pages/label.at	13276	378c7d9a69235176
 front/pages/line-chart.at	14942	dbafe689e471decd
 front/pages/menubar.at	8947	717c321af1d86722
@@ -79,4 +81,4 @@ front/pages/toast.at	38090	ad1a266786606ee0
 front/pages/toggle.at	10182	03ef858225effeb9
 front/pages/togglegroup.at	10782	e9ea18d974dd5af5
 front/pages/tooltip.at	10398	d385682f0171996d
-TOTAL	1489135	8dfdc7d82909aa68
+TOTAL	1510815	117ccb2c50e9dc6a

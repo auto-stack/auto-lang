@@ -155,3 +155,26 @@ fn plan502_m1_vue_svg_text_passthrough() {
         "overlay 轨 f-string arbitrary 值必须保留在类串"
     );
 }
+
+
+/// Plan 502 顺带修复的预存债回归:`link "label" {}` 位置参数文本形态。
+/// 此前 parse_view_link 仅认 (props) 形态,kitchen-sink(docs_gen 产物)
+/// 的 link "sample" {} 整体解析失败 → vue 轨路由 import 断链整站白屏
+/// (435 起预存,VM 轨仅丢页未暴露)。
+#[test]
+fn plan502_link_positional_text_parses() {
+    let code = r#"
+widget W {
+    view {
+        row {
+            link "sample" {}
+            link (href: "sample") {}
+        }
+    }
+}
+"#;
+    let session = crate::session::CompilerSession::ui();
+    let mut parser = crate::parser::Parser::from(code).with_session(session);
+    let ast = parser.parse().expect("link positional form must parse");
+    assert!(ast.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))));
+}

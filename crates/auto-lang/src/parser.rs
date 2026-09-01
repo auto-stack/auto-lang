@@ -3170,6 +3170,15 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(Key::NamedKey(value))
             }
+            // Plan 502 M2:`to` 是 Plan 162 的 .to(Type) 方法关键字,但
+            // diagram 边 record 的合法键(设计文档 diagram-components.md
+            // §5 edge schema { from, to })。键位上下文化,与 Type/Tag/
+            // Task 同款——.to() 转换走点后缀位,与此不冲突。
+            TokenKind::To => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
             // 2026-08-22(tag 软关键字):tag 作字段名(Cell{ tag: "..." })
             TokenKind::Tag => {
                 let value = self.cur.text.clone();
@@ -15242,10 +15251,17 @@ impl<'a> Parser<'a> {
         let start_pos = self.cur.pos;
         self.expect(TokenKind::Link)?;
 
-        // Parse props in parentheses: (to: "/path") or (text: "label", href: "#")
+        // Plan 502(预存债修复):`link "label" {}` 位置参数文本形态——与
+        // text/badge 等文本主属性元素对齐。此前仅支持 (props) 形态,
+        // kitchen-sink(docs_gen 产物)的 link "sample" {} 自 435 起整体
+        // 解析失败,vue 轨路由 import 断链整站白屏。
         let mut to = String::new();
         let mut text = String::new();
         let mut href = String::new();
+        if self.is_kind(TokenKind::Str) {
+            text = self.cur.text.to_string();
+            self.next();
+        }
 
         if self.is_kind(TokenKind::LParen) {
             self.next();

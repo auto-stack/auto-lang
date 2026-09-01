@@ -1,0 +1,169 @@
+// components/flow_diagram.at - FlowDiagram component (Plan 502 M2 骨架 → M3 布局核 → M4 边路由/箭头 → M5 标签/hover)
+//
+// diagram 家族首个组件:流程图(架构图/C4/拓扑同构表达)。数据轨 props
+// (nodes/edges record 列表,设计文档 diagram-components.md §5 schema);
+// 静态糖(node/edge/group DSL)归 Phase 3,当前以数据轨书写。
+//
+// M2 骨架:props 解析 → 等距网格占位布局(M3 换 Sugiyama-lite)→
+// render 段记录(按 kind 分桶:nodesDg/edgesDg,view 无分支——line_chart
+// 同款纪律)→ svg 循环发射(rect 节点 + 直线边),双端冒烟。
+// 渲染端 v1 = SVG 直通(484 同通路);标签机制 = svg text 直通(M1 定案,
+// vue 轨 in_svg_subtree 分流 / VM 轨 svgdoc text 臂)。
+//
+// 纪律:float 中间量显式 float(chart 几何同款);几何字段以 str 入段记录
+// (chart pts 先例,双端 svg 属性同源);段记录字段访问走 Dot 形态
+// (位置参数 text 只收 ident.field——M1 实证)。
+//
+// # Usage
+// use { package: official from "../components" }
+// flow-diagram (direction: "td") {
+//     nodes: .topoNodes
+//     edges: .topoEdges
+// }
+
+widget FlowDiagram (nodes: List, edges: List, direction: str = "td") {
+    msg { Init }
+
+    model {
+        // render 段记录(按 kind 分桶,view 无分支)
+        nodesDg List = []
+        edgesDg List = []
+        vbDg str = "0 0 560 300"
+    }
+
+    on {
+        .Init -> {
+            var n int = .nodes.len()
+
+            // ---- M2 占位布局: 等距网格(cols = ceil(sqrt(n)));M3 换分层 ----
+            var cols float = 1.0
+            var cnf float = n
+            cols = math.sqrt(cnf)
+            var ci int = cols.to_int()
+            if ci * ci < n {
+                ci = ci + 1
+            }
+            if ci < 1 {
+                ci = 1
+            }
+
+            var nw float = 120.0
+            var nh float = 44.0
+            var gx float = 48.0
+            var gy float = 64.0
+            var m float = 24.0
+
+            var rows int = n / ci
+            if rows * ci < n {
+                rows = rows + 1
+            }
+            if rows < 1 {
+                rows = 1
+            }
+
+            // 中心坐标占位(td: 行=层纵深;lr M3 经转置)
+            var cxs List = []
+            var cys List = []
+            var i int = 0
+            while i < n {
+                var colf float = 0.0
+                var iv float = i % ci
+                colf = iv
+                var rowf float = 0.0
+                var rv float = i / ci
+                rowf = rv
+                cxs.push(m + nw / 2.0 + colf * (nw + gx))
+                cys.push(m + nh / 2.0 + rowf * (nh + gy))
+                i = i + 1
+            }
+
+            // ---- 段记录: 节点(bbox)+ 边(中心连线,M4 换 bbox 交点) ----
+            var outNodes List = []
+            i = 0
+            for nd in .nodes {
+                var lbl = nd["label"]
+                if lbl == "" {
+                    lbl = nd["id"]
+                }
+                var fill = "#dbeafe"
+                var stroke = "#93c5fd"
+                var shape = nd["shape"]
+                if shape == "round" {
+                    fill = "#dcfce7"
+                    stroke = "#86efac"
+                }
+                if shape == "diamond" {
+                    fill = "#fef9c3"
+                    stroke = "#fde047"
+                }
+                var cx = cxs[i]
+                var cy = cys[i]
+                outNodes.push({
+                    x: f"${cx - nw / 2.0}",
+                    y: f"${cy - nh / 2.0}",
+                    w: f"${nw}",
+                    h: f"${nh}",
+                    fill: fill,
+                    stroke: stroke,
+                    label: lbl,
+                    id: nd["id"]
+                })
+                i = i + 1
+            }
+            .nodesDg = outNodes
+
+            var outEdges List = []
+            for e in .edges {
+                var fa = e["from"]
+                var ta = e["to"]
+                // 端点节点序(线性查 id;M3 建 id→索引映射表)
+                var fj int = -1
+                i = 0
+                for nd in .nodes {
+                    if nd["id"] == fa {
+                        fj = i
+                    }
+                    i = i + 1
+                }
+                var tj int = -1
+                i = 0
+                for nd in .nodes {
+                    if nd["id"] == ta {
+                        tj = i
+                    }
+                    i = i + 1
+                }
+                if fj >= 0 && tj >= 0 {
+                    var x0 = cxs[fj]
+                    var y0 = cys[fj]
+                    var x1 = cxs[tj]
+                    var y1 = cys[tj]
+                    outEdges.push({ d: f"M ${x0} ${y0} L ${x1} ${y1}" })
+                }
+            }
+            .edgesDg = outEdges
+
+            // ---- viewBox 自适应 ----
+            var wf float = m * 2.0
+            var cif float = ci
+            wf = wf + cif * nw + (cif - 1.0) * gx
+            var hf float = m * 2.0
+            var rf float = rows
+            hf = hf + rf * nh + (rf - 1.0) * gy
+            .vbDg = f"0 0 ${wf} ${hf}"
+        }
+    }
+
+    view {
+        col (style: "w-full max-w-xl mx-auto") {
+            svg (viewBox: .vbDg, style: "w-full h-auto") {
+                for e in .edgesDg {
+                    path (d: e.d, stroke: "#94a3b8", fill: "none", stroke-width: "1.5") {}
+                }
+                for nd in .nodesDg {
+                    rect (x: nd.x, y: nd.y, width: nd.w, height: nd.h, rx: "6", fill: nd.fill, stroke: nd.stroke, stroke-width: "1") {}
+                }
+            }
+        }
+    }
+}
