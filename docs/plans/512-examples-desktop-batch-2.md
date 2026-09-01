@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-512
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: examples-desktop-batch-2
 author: [zhaopuming]
 created_at: 2026-08-31
@@ -90,8 +90,9 @@ total_steps: 8
 - **P506-1**：038 Reveal VM RC UAF（master 预存，疑 511 线回归）——交互型
   app（017 chat/019 video/020 music 等）验证前核对；511（池族修复线）状态
   执行期查。
-- **排程**：507（S5）/508（S6）执行中（session/renderer 轻交叠）；502/
-  509/510 drafting 待领。本计划可并行领取。
+- **排程**：507 已归档、508 execution_done（起草时的 session/renderer 轻交叠
+  风险基本出清，后合者 rebase 压力小）；502/509/510 drafting/归档待领。
+  本计划可并行领取。（2026-09-01 开工时更新）
 
 ## 详细设计
 
