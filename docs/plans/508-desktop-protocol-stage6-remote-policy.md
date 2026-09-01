@@ -205,6 +205,13 @@ RenderQueue/分离渲染线的**收官计划**（Stage 1–5 已落：协议五�
 5. **渲染器包骨架**：`packages/drawlist-renderer/`（renderFrame/hitTest/
    connect/InputMsg 编码）+ T3 单测。
    验证：`pnpm -C packages/drawlist-renderer test`（或既有前端测试入口）。
+   [✅ 已完成] worktree commit cd51ef18c：codec/messages/render/connect
+   四模块（Hello 编码、Welcome/FrameReady/HitTable 解码、
+   PointerPressed/CharTyped 编码、Canvas2D 渲染、重连 ReconnectPolicy
+   对齐）；T3 vitest **20/20 绿** = 对拍锚点三件（与 Rust
+   `p508_ts_crosscheck_golden_bytes` 双侧钉同一批字节——计划②裁定
+   手工镜像 + golden 兜底）+ 渲染快照（调用序断言）+ hitTest 表驱动
+   + 重连预算假时钟；`tsc --noEmit` 零错。
 6. **demo 页**：`examples/remote/viewer/`（vite 单页）连宿主渲染。
    验证：手动起宿主+demo 页冒烟截图。
 7. **Playwright 端到端**：002-counter 远程闭环脚本（autoui-verifier 入口）
